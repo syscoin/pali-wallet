@@ -1,3 +1,4 @@
+import { authenticateNativeOperation } from './operationAuthentication';
 import { expect, test } from '@playwright/test';
 
 const owner = '0x1111111111111111111111111111111111111111';
@@ -30,6 +31,7 @@ test('ERC-721 ID zero has exact collectible consent at 320px', async ({ page }, 
   await expect(page.getByText('Token transfer', { exact: true })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('erc721-review.png') });
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   await expect(page.getByTestId('native-send-hash')).toBeVisible();
   await expect(page.getByTestId('native-send-collectible-contract')).toHaveText(contract);
 });

@@ -139,7 +139,8 @@ const controller: NativeTransferView = {
   async prepare(to, amount, nonce) {
     publishReview(to, parseDecimalAmount(amount, 18).toString(), undefined, nonce);
   },
-  async confirm(id) {
+  async confirm(id, credential) {
+    if (credential.method !== 'password' || credential.password !== 'public-password') throw Error('INVALID_CREDENTIAL');
     if (snapshot.review?.id !== id) throw Error('Invalid fixture confirmation');
     if (route.has('storage-full')) {
       clearTimeout(expiry);
@@ -456,6 +457,7 @@ function Fixture() {
         )
       ) : (
         <NativeSend
+          authenticationMethod="password"
           account={{ address: sender, network: sendContext.networkId, revision: 1 }}
           savedHash={route.has('ledger-replay') ? '0x' + '3'.repeat(64) : undefined}
           controller={controller}

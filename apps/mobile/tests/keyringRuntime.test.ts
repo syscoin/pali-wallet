@@ -1374,7 +1374,7 @@ test('activity reset drains an interrupted broadcast before clearing local track
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
   const held = network.holdBroadcast();
   try {
-    const confirm = transfers.confirm(await prepareAccountTransfer(transfers));
+    const confirm = transfers.confirm(await prepareAccountTransfer(transfers), { method: 'password', password: PASSWORD });
     const cancelled = assert.rejects(confirm, /CANCELLED/);
     await held.entered;
     const reset = f.runtime.resetActivity(() => undefined, () => transfers.cancelForActivityReset());
@@ -1389,18 +1389,18 @@ test('activity reset drains an interrupted broadcast before clearing local track
 });
 
 for (const networkId of ['ethereum', 'zksys-testnet'] as const) {
-test(`${networkId} normal confirmation and exact-byte retry perform no extra authentication or hydration`, async () => {
+test(`${networkId} normal confirmation and exact-byte retry each authenticate without rehydrating accounts`, async () => {
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), network = localTransferRpc(networkId);
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
   try {
     await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     const before = { unlocks: sdk.unlocks, hydrations: sdk.hydrations, success: f.disk.successWrites, failure: f.disk.failureWrites };
-    await transfers.confirm(await prepareAccountTransfer(transfers));
+    await transfers.confirm(await prepareAccountTransfer(transfers), { method: 'password', password: PASSWORD });
     await transfers.recover(true);
     const retry = transfers.getSnapshot().review!;
     assert.equal(retry.retry, true);
-    await transfers.confirm(retry.id);
-    assert.deepEqual({ unlocks: sdk.unlocks, hydrations: sdk.hydrations, success: f.disk.successWrites, failure: f.disk.failureWrites }, before);
+    await transfers.confirm(retry.id, { method: 'password', password: PASSWORD });
+    assert.deepEqual({ unlocks: sdk.unlocks, hydrations: sdk.hydrations, success: f.disk.successWrites, failure: f.disk.failureWrites }, { ...before, unlocks: before.unlocks + 2, success: before.success + 2 });
     assert.equal(network.broadcasts.length, 2);
     assert.equal(network.broadcasts[0], network.broadcasts[1]);
     assert.equal(f.authority.getSnapshot().phase, 'ready');
@@ -1416,7 +1416,7 @@ test(`${networkId} synchronous selection reentrancy from SDK signing is denied b
     let attempted: Promise<void> | undefined;
     const revision = f.authority.getSnapshot().revision;
     sdk.onSign(() => { attempted = f.execute({ kind: 'select', id: 'hd:60:0' }); void attempted.catch(() => undefined); });
-    await transfers.confirm(await prepareAccountTransfer(transfers));
+    await transfers.confirm(await prepareAccountTransfer(transfers), { method: 'password', password: PASSWORD });
     await assert.rejects(attempted!, /BUSY/);
     assert.equal(f.authority.getSnapshot().revision, revision);
     assert.equal(Transaction.from(network.broadcasts[0]!).from, f.authority.getSnapshot().account!.address);
@@ -1442,7 +1442,7 @@ for (const phase of ['journal-read', 'journal-write', 'broadcast'] as const) {
         const id = await prepareAccountTransfer(transfers);
         if (phase === 'journal-write') f.disk.onRecord(async (kind, key) => { if (kind === 'create' && key.startsWith('pali-evm-signed-v1:')) { f.disk.onRecord(); entered.resolve(); await release.promise; } });
         else { broadcastHold = network.holdBroadcast(); void broadcastHold.entered.then(entered.resolve); }
-        pending = transfers.confirm(id);
+        pending = transfers.confirm(id, { method: 'password', password: PASSWORD });
       }
       void pending.catch(() => undefined);
       await entered.promise;
@@ -1464,7 +1464,7 @@ for (const phase of ['journal-read', 'journal-write', 'broadcast'] as const) {
 
 }
 
-test('account selection waits for active backup authentication and invalidates a completed old challenge', async () => {
+test('account selection waits for active backup authentication and invalidates an old phrase acknowledgement', async () => {
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
   const backup = new SeedBackupFlow(f.authority, () => f.runtime.backup);
   try {
@@ -1475,7 +1475,7 @@ test('account selection waits for active backup authentication and invalidates a
     await assert.rejects(f.execute({ kind: 'select', id: 'hd:60:0' }), /BUSY/);
     hold.release(); const challenge = await pending;
     await f.execute({ kind: 'select', id: 'hd:60:0' });
-    await assert.rejects(backup.confirm(challenge.id, challenge.positions.map((position) => challenge.words[position]!)), /BACKUP_EXPIRED/);
+    await assert.rejects(backup.acknowledge(challenge.id), /BACKUP_EXPIRED/);
     assert.equal(f.authority.getSnapshot().phase, 'ready');
   } finally { backup.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
@@ -1649,12 +1649,12 @@ test(`${networkId} native controller retries exact installed-SDK bytes before it
     const review = await prepareAccountTransfer(transfers);
     assert.equal(transfers.getSnapshot().review!.context.chainId, getNativeNetwork(networkId).chainId);
     assert.equal(transfers.getSnapshot().review!.context.symbol, 'TSYS');
-    await transfers.confirm(review);
+    await transfers.confirm(review, { method: 'password', password: PASSWORD });
     assert.equal(network.broadcasts.length, 1);
     assert.equal(Transaction.from(network.broadcasts[0]!).chainId, BigInt(getNativeNetwork(networkId).chainId));
     await transfers.recover(true);
     assert.equal(transfers.getSnapshot().review!.retry, true);
-    await transfers.confirm(transfers.getSnapshot().review!.id);
+    await transfers.confirm(transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
     assert.equal(network.broadcasts.length, 2);
     assert.equal(network.broadcasts[1], network.broadcasts[0]);
     network.include();
@@ -1694,7 +1694,7 @@ test(`${networkId} synchronous network reentrancy cannot retarget the current sh
       attempted = f.authority.selectNetwork('ethereum', revision, f.authority.getCatalogue()!.revision, () => {});
       void attempted.catch(() => undefined);
     });
-    await transfers.confirm(await prepareAccountTransfer(transfers));
+    await transfers.confirm(await prepareAccountTransfer(transfers), { method: 'password', password: PASSWORD });
     await assert.rejects(attempted!, /BUSY/);
     assert.equal(f.authority.getSnapshot().revision, revision);
     assert.equal(Transaction.from(network.broadcasts[0]!).chainId, BigInt(getNativeNetwork(networkId).chainId));
@@ -1715,7 +1715,7 @@ for (const phase of ['journal-write', 'broadcast'] as const) {
         if (kind === 'create' && key.startsWith('pali-evm-signed-v1:')) { entered.resolve(); await release.promise; }
       });
       else broadcastHold = network.holdBroadcast();
-      const signing = transfers.confirm(review); void signing.catch(() => undefined);
+      const signing = transfers.confirm(review, { method: 'password', password: PASSWORD }); void signing.catch(() => undefined);
       await (broadcastHold?.entered ?? entered.promise);
       await select('ethereum'); await select(networkId);
       release.resolve(); broadcastHold?.release();
@@ -1757,11 +1757,11 @@ for (const expensiveAfterReview of [false, true]) {
       currentBase = expensiveAfterReview ? 1n : 10n;
       network.setFees({ baseFee: currentBase, priorityFee: 9n });
       if (expensiveAfterReview) {
-        await assert.rejects(transfers.confirm(id), /EXPIRED/);
+        await assert.rejects(transfers.confirm(id, { method: 'password', password: PASSWORD }), /EXPIRED/);
         assert.equal(network.broadcasts.length, 0);
         assert.equal(await (await f.runtime.transfers!.journal(() => undefined)).load(), null);
       } else {
-        await transfers.confirm(id);
+        await transfers.confirm(id, { method: 'password', password: PASSWORD });
         assert.equal(network.broadcasts.length, 1);
         const signed = Transaction.from(network.broadcasts[0]!);
         assert.equal(signed.chainId, 57057n);
@@ -1829,7 +1829,7 @@ test('network A-B-A cancels held Ethereum journal work without touching its pend
   try {
     const review = await prepareAccountTransfer(transfers);
     f.disk.onRecord(async (kind, key) => { if (kind === 'create' && key.startsWith('pali-evm-signed-v1:')) { f.disk.onRecord(); entered.resolve(); await release.promise; } });
-    const pending = transfers.confirm(review); void pending.catch(() => undefined);
+    const pending = transfers.confirm(review, { method: 'password', password: PASSWORD }); void pending.catch(() => undefined);
     await entered.promise;
     await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     assert.equal(f.authority.getSnapshot().account?.network, 'base');
@@ -1875,7 +1875,7 @@ test('ambiguous signed-record acknowledgement quarantines authority and reopenin
   try {
     const review = await prepareAccountTransfer(transfers);
     f.disk.loseCasAcknowledgement();
-    await expectUnavailable(f.authority, () => assert.rejects(transfers.confirm(review)));
+    await expectUnavailable(f.authority, () => assert.rejects(transfers.confirm(review, { method: 'password', password: PASSWORD })));
     assert.equal(f.authority.getSnapshot().phase, 'unavailable');
     await assert.rejects(f.authority.unlock(PASSWORD), /NOT_READY/);
     await assert.rejects(f.runtime.backup.readPhrase(PASSWORD), /CLEANUP_FAILED/);
@@ -1906,7 +1906,7 @@ test('an ambiguous journal acknowledgement after background lock cannot be unloc
     const review = await prepareAccountTransfer(transfers);
     f.disk.onRecord(async (kind, key) => { if (kind === 'create' && key.startsWith('pali-evm-signed-v1:')) { f.disk.onRecord(); entered.resolve(); await release.promise; } });
     f.disk.loseNextAcknowledgement();
-    const pending = transfers.confirm(review); void pending.catch(() => undefined);
+    const pending = transfers.confirm(review, { method: 'password', password: PASSWORD }); void pending.catch(() => undefined);
     await entered.promise;
     f.authority.lock(); release.resolve();
     await assert.rejects(pending, /CANCELLED/);
@@ -2502,7 +2502,7 @@ test('explicit same-chain RPC edits preserve tokens, exact-byte retries and cold
     const token = { contractAddress: '0x3333333333333333333333333333333333333333', name: 'Token', symbol: 'TOK', decimals: 6 };
     await f.runtime.tokens!.add(0, token, () => undefined);
     const review = await prepareAccountTransfer(first);
-    await first.confirm(review);
+    await first.confirm(review, { method: 'password', password: PASSWORD });
     const original = originalRpc.broadcasts[0]!;
     const registration = createNativeNetwork({ ...getNativeNetwork('ethereum'), name: 'My Ethereum provider', rpcUrl: 'https://changed.example/rpc' });
     await f.authority.manageNetwork({ kind: 'save-network', registration }, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
@@ -2514,7 +2514,7 @@ test('explicit same-chain RPC edits preserve tokens, exact-byte retries and cold
     const retryReview = retry.getSnapshot().review!;
     assert.equal(retryReview.context.rpcUrl, registration.rpcUrl);
     assert.equal(retryReview.retry, true);
-    await retry.confirm(retryReview.id);
+    await retry.confirm(retryReview.id, { method: 'password', password: PASSWORD });
     assert.deepEqual(nextRpc.broadcasts, [original]);
     f.authority.lock(); await f.authority.unlock(PASSWORD);
     assert.equal(f.authority.getSnapshot().phase, 'ready');
@@ -2563,16 +2563,16 @@ test('unlocking again cannot revive an old review or sign it for a newly selecte
   try {
     const firstReview = await prepareAccountTransfer(transfers);
     f.authority.lock(); await f.authority.unlock(PASSWORD);
-    await assert.rejects(transfers.confirm(firstReview), /EXPIRED/);
+    await assert.rejects(transfers.confirm(firstReview, { method: 'password', password: PASSWORD }), /EXPIRED/);
     const secondReview = await prepareAccountTransfer(transfers);
     await f.execute({ kind: 'create', label: 'Selected account', password: PASSWORD });
-    await assert.rejects(transfers.confirm(secondReview), /EXPIRED/);
+    await assert.rejects(transfers.confirm(secondReview, { method: 'password', password: PASSWORD }), /EXPIRED/);
     assert.equal(signatures, 0); assert.equal(network.broadcasts.length, 0);
     const selected = f.authority.getSnapshot().account!.address;
     const before = [sdk.unlocks, sdk.hydrations];
-    await transfers.confirm(await prepareAccountTransfer(transfers));
+    await transfers.confirm(await prepareAccountTransfer(transfers), { method: 'password', password: PASSWORD });
     assert.equal(Transaction.from(network.broadcasts[0]!).from, selected);
-    assert.deepEqual([sdk.unlocks, sdk.hydrations], before);
+    assert.deepEqual([sdk.unlocks, sdk.hydrations], [before[0]! + 1, before[1]]);
   } finally { transfers.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
@@ -2670,7 +2670,7 @@ test('review expiry during shared signed-record persistence retains exact bytes 
     f.disk.onRecord(async (kind, key) => {
       if (kind === 'create' && key.startsWith('pali-evm-signed-v1:')) now += 100_000;
     });
-    await assert.rejects(transfers.confirm(review), /EXPIRED/);
+    await assert.rejects(transfers.confirm(review, { method: 'password', password: PASSWORD }), /EXPIRED/);
     assert.equal(network.broadcasts.length, 0);
     f.disk.onRecord();
     const saved = await (await f.runtime.transfers!.journal(() => undefined)).load();
@@ -2680,7 +2680,7 @@ test('review expiry during shared signed-record persistence retains exact bytes 
     await transfers.recover(true);
     const retry = transfers.getSnapshot().review!;
     assert.equal(retry.retry, true);
-    await transfers.confirm(retry.id);
+    await transfers.confirm(retry.id, { method: 'password', password: PASSWORD });
     assert.deepEqual(network.broadcasts, [saved!.rawTransaction]);
   } finally { f.disk.onRecord(); transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
@@ -2720,10 +2720,10 @@ test('two real submissions remain in local Activity after offline cold reopen', 
   const transfers=new NativeTransfers(f.authority,()=>f.runtime.transfers,{rpc:network.rpc});
   let reopened: NativeCustodyAuthority | undefined;
   try {
-    await transfers.confirm(await prepareAccountTransfer(transfers));
+    await transfers.confirm(await prepareAccountTransfer(transfers), { method: 'password', password: PASSWORD });
     network.include();await transfers.recover();
     assert.equal(transfers.getSnapshot().phase,'confirmed');
-    await transfers.confirm(await prepareAccountTransfer(transfers));
+    await transfers.confirm(await prepareAccountTransfer(transfers), { method: 'password', password: PASSWORD });
     assert.equal(network.broadcasts.length,2);
     assert.deepEqual(network.broadcasts.map(raw=>Transaction.from(raw).nonce),[0,1]);
     const hashes=network.broadcasts.map(raw=>Transaction.from(raw).hash);
@@ -3101,7 +3101,7 @@ test('Trezor runtime uses shared allocation, preserves records on unlock and sig
     const transfers = new NativeTransfers(owner, () => runtime.transfers, { rpc });
     try {
       await transfers.prepare('0x' + '22'.repeat(20), '0.001', '7');
-      await transfers.confirm(transfers.getSnapshot().review!.id);
+      await transfers.confirm(transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
       assert.equal(transfers.getSnapshot().phase, 'pending');
       assert.equal(broadcasts, 1);
     } finally { transfers.dispose(); }
@@ -3326,7 +3326,7 @@ test('Trezor runtime replays saved UTXO bytes without Suite or a new signature',
     const calls = fixture.paths.length;
     const send = await runtime.openUtxoSend!(() => undefined);
     const review = await send.prepareRetry(txid);
-    const result = await send.confirm(review);
+    const result = await send.confirm(review, { method: 'password', password: PASSWORD });
     assert.equal(result.txid, txid); assert.equal(broadcasts, 1);
     assert.equal(fixture.paths.length, calls);
     assert.equal(runtime.trezor.getSnapshot().phase, 'idle');
@@ -3445,7 +3445,7 @@ test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review 
     assert.equal(methods.length, callCount);
     owner.lock(); await owner.unlock(PASSWORD);
     assert.equal(runtime.trezor.getSnapshot().phase, 'resume');
-    await assert.rejects(first.confirm(review), /CANCELLED|NOT_READY/);
+    await assert.rejects(first.confirm(review, { method: 'password', password: PASSWORD }), /CANCELLED|NOT_READY/);
     const intent = await runtime.trezor.resumeSend(); assert.equal(intent.kind, 'utxo');
     if (intent.kind !== 'utxo') throw new Error('Unexpected draft');
     assert.equal(intent.rbf, false, 'paused handoff retains the actual reviewed option');
@@ -3453,7 +3453,11 @@ test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review 
     const freshReview = await fresh.prepare(intent);
     assert.equal(freshReview.transactionOptions.rbf, false);
     assert.notEqual(freshReview, review); assert.equal(methods.length, callCount); assert.equal(broadcasts, 0);
-    await fresh.confirm(freshReview);
+    const beforeAuthentication = methods.filter(method => method === 'signTransaction').length;
+    await assert.rejects(fresh.confirm(freshReview, { method: 'biometric' }), /DEVICE_UNLOCK_UNAVAILABLE/);
+    assert.equal(methods.filter(method => method === 'signTransaction').length, beforeAuthentication,
+      'declined authentication must preserve this reviewed operation without reaching Trezor');
+    await fresh.confirm(freshReview, { method: 'password', password: PASSWORD });
     assert.equal(methods.filter(method => method === 'signTransaction').length, 1);
     assert.equal(broadcasts, 1);
   } finally { await owner.dispose(); await sessions.dispose(); }

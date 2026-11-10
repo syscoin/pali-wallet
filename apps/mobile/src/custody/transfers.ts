@@ -9,7 +9,7 @@ import { EvmAutomaticNonceUnresolved, unsignedTransferBytes, type EvmUnsignedTra
 import { parseDecimalAmount } from '../core/amounts.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
-import type { CustodySnapshot } from './types.ts';
+import type { CustodySnapshot, NativeOperationCredential } from './types.ts';
 import {
   TransferJournalError,
 } from './transferJournal.ts';
@@ -81,6 +81,7 @@ export interface NativeTransferJournalHandle {
 }
 export type NativeTransferDispatchValidation = (planner: NativeAutomaticNoncePlanner, assertCurrent: () => void) => Promise<void>;
 export interface NativeTransferRuntime {
+  authenticateOperation(credential: NativeOperationCredential, assertCurrent: () => void): Promise<void>;
   evmSubmissionFailure?(error: unknown): Readonly<{ transactionNotBroadcast: boolean; signedTransactionHash?: string }> | undefined;
   replay(assertCurrent: () => void, transport: Pick<EvmReplaySession, 'observe' | 'dispatch'>,
     options: { now: () => number; randomBytes: (length: number) => Uint8Array }): Pick<EvmSignedReplay, 'prepare' | 'confirm' | 'cancel' | 'list'>;
@@ -136,6 +137,9 @@ export class NativeTransferError extends Error {
     | 'CANCELLED'
     | 'BUSY'
     | 'NOT_READY'
+    | 'INVALID_CREDENTIAL'
+    | 'AUTH_THROTTLED'
+    | 'DEVICE_UNLOCK_UNAVAILABLE'
     | 'INVALID_INPUT'
     | 'INVALID_NONCE'
     | 'NONCE_UNAVAILABLE'
@@ -228,7 +232,7 @@ export class NativeTransfers {
       this.prepareToken(contract, recipient, amount, nonce),
     prepareCollectible: (saved: SavedCollectible, recipient: string, tokenId: string, amountUnits: string, nonce?: string) =>
       this.prepareCollectible(saved, recipient, tokenId, amountUnits, nonce),
-    confirm: (id: string) => this.confirm(id),
+    confirm: (id: string, credential: NativeOperationCredential) => this.confirm(id, credential),
     recover: (offerRetry?: boolean, hash?: string) => this.recover(offerRetry, hash),
     loadMorePredecessors: () => this.loadMorePredecessors(),
   });
@@ -873,7 +877,7 @@ export class NativeTransfers {
       });
     });
   }
-  confirm(reviewId: string): Promise<void> {
+  confirm(reviewId: string, credential: NativeOperationCredential): Promise<void> {
     if (this.active) return Promise.reject(new NativeTransferError('BUSY'));
     const approved = this.review;
     if (
@@ -884,11 +888,43 @@ export class NativeTransfers {
       this.cancel();
       return Promise.reject(new NativeTransferError('EXPIRED'));
     }
-    this.review = null;
-    if (this.expiry !== null) clearTimeout(this.expiry);
-    this.expiry = null;
+    let pendingCredential: NativeOperationCredential | null = credential;
+    const consume = () => {
+      if (this.review !== approved) return;
+      this.review = null;
+      if (this.expiry !== null) clearTimeout(this.expiry);
+      this.expiry = null;
+    };
+    const authenticate = async (runtime: NativeTransferRuntime, assertCurrent: () => void, context: NativeSendContext) => {
+      const check = () => {
+        assertCurrent();
+        if (this.review !== approved || approved.public.context.registrationHash !== context.registrationHash || this.now() >= approved.expires) {
+          consume();
+          throw new NativeTransferError('EXPIRED');
+        }
+      };
+      check();
+      const entered = pendingCredential;
+      pendingCredential = null;
+      if (!entered) throw new NativeTransferError('INVALID_CREDENTIAL');
+      const refusal = await this.runSecretOperation(async () => {
+        try {
+          await runtime.authenticateOperation(entered, check);
+          return null;
+        } catch (cause) {
+          const code = cause instanceof Error ? cause.message : '';
+          if (code === 'INVALID_CREDENTIAL' || code === 'AUTH_THROTTLED' || code === 'DEVICE_UNLOCK_UNAVAILABLE')
+            return new NativeTransferError(code);
+          throw cause;
+        }
+      });
+      check();
+      if (refusal) throw refusal;
+      consume();
+    };
     if (approved.replay) return this.perform(async ({ assertCurrent, context, runtime }) => {
-      if (approved.public.context.registrationHash !== context.registrationHash) throw new NativeTransferError('EXPIRED');
+      await authenticate(runtime, assertCurrent, context);
+      assertCurrent();
       runtime.assertUnlocked(assertCurrent);
       this.publish({ phase: 'submitting', review: approved.public, hash: approved.public.replay!.hash, message: null });
       let result: Awaited<ReturnType<EvmSignedReplay['confirm']>>;
@@ -907,7 +943,8 @@ export class NativeTransfers {
         message: result.status === 'submitted' ? 'Submitted. Waiting for network confirmation.' : 'Submission could not be confirmed. Check this transaction before sending again.' });
     });
     return this.perform(async ({ assertCurrent, runtime, signal, address, context, rpc }) => {
-      if (approved.public.context.registrationHash !== context.registrationHash) throw new NativeTransferError('EXPIRED');
+      await authenticate(runtime, assertCurrent, context);
+      assertCurrent();
       let startedSubmission = false;
       const collectible = approved.collectible;
       const intent = collectible?.quote.intent ?? approved.public.intent;

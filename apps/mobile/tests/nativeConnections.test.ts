@@ -130,6 +130,8 @@ function fixture(
   let moduleMetadataWait = Promise.resolve();
   let signWait: Promise<void> = Promise.resolve();
   let storageWait: Promise<void> = Promise.resolve();
+  let permissionPublished: ((hasGrant: boolean) => void) | undefined;
+  let permissionSettlement: (() => Promise<void>) | undefined;
   let preparationError: Error | undefined;
   let beforePreparedReturn: (() => void) | undefined;
   let smartDisposals = 0;
@@ -548,6 +550,7 @@ function fixture(
   };
   const proposal: WalletConnectProposal = {
     id: 3,
+    expiresAt: null,
     pairingTopic: PAIRING,
     peerPublicKey: PEER,
     metadata: session.metadata,
@@ -633,11 +636,19 @@ function fixture(
       const repository = await restoredRepository;
       const observed = { ...repository, permissions(binding: Parameters<typeof repository.permissions>[0]) {
         const port = repository.permissions(binding);
-        return { ...port, publish(frame: Parameters<typeof port.publish>[0]) {
+        return { ...port,
+          async exclusive<T>(work: () => Promise<T>): Promise<T> {
+            const settle = permissionSettlement;
+            const result = await port.exclusive(work);
+            await settle?.();
+            return result;
+          },
+          publish(frame: Parameters<typeof port.publish>[0]) {
           const grant = frame.dapps[ORIGIN];
           if (options.smartCreation && grant?.accountType === 'SmartAccount')
             creationGrantPublications.push(grant.accountId);
           port.publish(frame);
+          permissionPublished?.(!!grant);
         } };
       } };
       return { ...host, repository: observed, calls: repository.calls };
@@ -806,6 +817,8 @@ function fixture(
     setApprovalMetadata(value: ApprovalContractMetadata) { approvalMetadata = value; },
     setPreparationWait(value: Promise<void>) { preparationWait = value; },
     setStorageWait(value: Promise<void>) { storageWait = value; },
+    onPermissionPublication(callback: typeof permissionPublished) { permissionPublished = callback; },
+    setPermissionSettlement(callback: typeof permissionSettlement) { permissionSettlement = callback; },
     failTransactionPreparation() { preparationError = new Error('Estimate unavailable'); },
     blockSite() {
       siteBlocked = true;
@@ -874,6 +887,7 @@ function fixture(
     expirePairing() {
       pairingExpiry = Date.now() - 1;
     },
+    setPairingExpiry(value: number) { pairingExpiry = value; },
     closed: () => closed,
     pairCanceled: () => pairCanceled,
     refresh() {
@@ -1366,7 +1380,7 @@ test('a failed cancelled pairing cannot reset a newer pairing', async () => {
       })
     );
     const oldPair = f.view.pair('wc:old');
-    const rejected = assert.rejects(oldPair, { message: 'old SDK failure' });
+    const rejected = assert.rejects(oldPair, { message: 'CONTEXT_CHANGED' });
     await settle();
     f.view.cancel();
     f.setPairFailure(undefined);
@@ -1454,7 +1468,7 @@ test('a pairing failure preserves an unavailable transport state', async () => {
       })
     );
     const pairing = f.view.pair('wc:fixture');
-    const rejected = assert.rejects(pairing, { message: 'SDK failure' });
+    const rejected = assert.rejects(pairing, { message: 'CONTEXT_CHANGED' });
     await settle();
     f.event({ type: 'unavailable' });
     release();
@@ -1481,6 +1495,105 @@ test('a cancelled pairing cannot reappear as a late proposal', async () => {
   } finally {
     await f.controller.dispose();
   }
+});
+
+test('pairing deadline retires waiting UI, rejects late proposals and permits an explicit fresh pairing', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1_000_000 });
+  const f = fixture(); await settle();
+  try {
+    const expiry = Date.now() + 1000;
+    f.setPairingExpiry(expiry);
+    await f.view.pair('wc:fixture');
+    assert.equal(f.view.getSnapshot().pairingExpiresAt, expiry);
+    assert.equal(f.view.getSnapshot().status, 'pairing');
+    t.mock.timers.tick(1000); await settle();
+    assert.equal(f.view.getSnapshot().status, 'ready');
+    assert.equal(f.view.getSnapshot().pairingExpiresAt, null);
+    assert.equal(f.view.getSnapshot().error, 'REQUEST_EXPIRED');
+    assert.equal(f.pairCanceled(), 1);
+    f.event({ type: 'proposal', proposal: { ...f.proposal, expiresAt: Date.now() + 5000 } });
+    await settle(); assert.deepEqual(f.view.getSnapshot().proposals, []);
+    f.setPairingExpiry(Date.now() + 5000);
+    await f.view.pair('wc:fixture');
+    f.event({ type: 'proposal', proposal: f.proposal });
+    assert.equal(f.view.getSnapshot().proposals[0]?.canApprove, true);
+    assert.equal(JSON.stringify(f.view.getSnapshot()).includes(PAIRING), false);
+  } finally { await f.controller.dispose(); }
+});
+
+test('pairing expiry releases a held pair call without adopting its late result', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 2_000_000 });
+  const f = fixture(); await settle();
+  const held = Promise.withResolvers<void>(); f.setPairWait(held.promise); f.setPairingExpiry(Date.now() + 1000);
+  try {
+    const pending = f.view.pair('wc:fixture');
+    const rejected = assert.rejects(pending, { message: 'CONTEXT_CHANGED' });
+    await settle(); t.mock.timers.tick(1000); await rejected;
+    assert.equal(f.view.getSnapshot().pairingExpiresAt, null);
+    f.setPairWait(Promise.resolve()); f.setPairingExpiry(Date.now() + 10000);
+    await f.view.pair('wc:new');
+    held.resolve(); await settle();
+    assert.equal(f.view.getSnapshot().pairingExpiresAt, Date.now() + 10000);
+    assert.equal(f.view.getSnapshot().status, 'pairing');
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+test('proposal expiry removes its approval and public permissions exactly match the granted methods', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 3_000_000 });
+  const f = fixture(); await settle();
+  try {
+    await f.view.pair('wc:fixture');
+    const expiresAt = Date.now() + 1000;
+    f.event({ type: 'proposal', proposal: { ...f.proposal, expiresAt } });
+    const before = f.view.getSnapshot();
+    assert.equal(before.proposals[0]?.expiresAt, expiresAt);
+    assert.equal(before.proposals[0]?.methodsByAccount.find(value => value.accountId === 'hd:60:0')?.methods.includes('personal_sign'), true);
+    t.mock.timers.tick(1000); await settle();
+    assert.deepEqual(f.view.getSnapshot().proposals, []);
+    await assert.rejects(f.view.approve(f.proposal.id, 'hd:60:0', 'ethereum', f.view.getSnapshot().revision), { message: 'CONTEXT_CHANGED' });
+    assert.equal(f.approved(), 0);
+    f.event({ type: 'proposal', proposal: { ...f.proposal, expiresAt: Date.now() + 5000 } });
+    const next = f.view.getSnapshot();
+    const methods = next.proposals[0]!.methodsByAccount.find(value => value.accountId === 'hd:60:0')!.methods;
+    await f.view.approve(f.proposal.id, 'hd:60:0', 'ethereum', next.revision);
+    assert.deepEqual(f.session.namespaces.eip155!.methods, methods);
+    const connected = f.view.getSnapshot().sessions[0]!;
+    assert.deepEqual(connected.methods, methods);
+    assert.equal(connected.expiresAt, f.session.expiry * 1000);
+    assert.equal(connected.address, ADDRESS);
+  } finally { await f.controller.dispose(); }
+});
+
+test('late expired-approval revocation failure cannot invalidate a replacement transport', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 4_000_000 });
+  const f = fixture(); await settle();
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  try {
+    await f.view.pair('wc:fixture');
+    f.event({ type: 'proposal', proposal: { ...f.proposal, expiresAt: Date.now() + 1000 } });
+    f.onPermissionPublication(hasGrant => {
+      if (!hasGrant) return;
+      f.onPermissionPublication(undefined);
+      f.setPermissionSettlement(async () => {
+        f.setPermissionSettlement(undefined);
+        entered.resolve(); await release.promise;
+        throw Error('Late old revocation acknowledgement failure');
+      });
+      t.mock.timers.tick(1000);
+    });
+    const approving = f.view.approve(f.proposal.id, 'hd:60:0', 'ethereum', f.view.getSnapshot().revision);
+    const rejected = assert.rejects(approving);
+    await entered.promise;
+    f.event({ type: 'unavailable' }); await settle();
+    await f.view.retry(); f.setPairingExpiry(Date.now() + 10000);
+    await f.view.pair('wc:new');
+    assert.equal(f.view.getSnapshot().status, 'pairing');
+    const opened = f.opened();
+    release.resolve(); await rejected; await settle();
+    assert.equal(f.view.getSnapshot().status, 'pairing');
+    assert.equal(f.view.getSnapshot().error, null);
+    assert.equal(f.opened(), opened);
+  } finally { release.resolve(); await f.controller.dispose(); }
 });
 
 test('pairing reserves before transport initialization and stale cancellation errors stay dismissed', async () => {
@@ -1576,6 +1689,7 @@ test('an expired cancelled pairing no longer blocks a subsequent proposal', asyn
     f.view.cancel();
     await settle();
     f.expirePairing();
+    f.setPairingExpiry(Date.now() + 300000);
     await f.view.pair('wc:fixture');
     f.event({ type: 'proposal', proposal: f.proposal });
     assert.equal(f.view.getSnapshot().proposals[0]?.canApprove, true);

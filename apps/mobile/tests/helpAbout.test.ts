@@ -9,9 +9,9 @@ import { nativeTranslationFixture } from './localizationFixture.ts';
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
 const source = (path: string) => readFileSync(new NodeURL(path, import.meta.url), 'utf8');
-function setup(component = 'HelpAbout', watchOnly = true) {
+function setup(component = 'HelpAbout', watchOnly = true, options: { backupRequired?: boolean; navigation?: boolean } = {}) {
   const cells: Cell[] = [], effects: (() => void)[] = [];
-  let cursor = 0, active = 'active', backs = 0, closes = 0, security = 0, autoLock = 0, blocked = false;
+  let cursor = 0, active = 'active', backs = 0, closes = 0, security = 0, autoLock = 0, backups = 0, blocked = false;
   let pending: Promise<unknown> = Promise.resolve(true);
   const actions: { kind: string; value: string }[] = [];
   const listeners = new Map<string, Set<(value: string) => void>>();
@@ -37,15 +37,16 @@ function setup(component = 'HelpAbout', watchOnly = true) {
   const deps: Record<string, unknown> = { react, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     'expo-clipboard': { async setStringAsync(value: string) { actions.push({ kind: 'copy', value }); if (blocked) return false; return await pending; } },
     '../../../../source/shared/paliInformation': { PALI_INFORMATION }, '../../app.json': JSON.parse(source('../app.json')), '../ui': ui, './HelpAbout': { HelpAbout: 'HelpAbout' }, './DisplayCurrency': { DisplayCurrency: 'DisplayCurrency' },
-    './NativePreferences': { NativePreferences: 'NativePreferences' }, '../platform/localization': nativeTranslationFixture };
+    './NativePreferences': { NativePreferences: 'NativePreferences' }, './WalletBackupBadge': { WalletBackupBadge: 'WalletBackupBadge' }, '../platform/localization': nativeTranslationFixture };
   const module = { exports: {} as Record<string, (props: object) => Element> };
   const code = ts.transpileModule(source(`../src/screens/${component}.tsx`), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
   runInNewContext(code, { module, exports: module.exports, require(name: string) { assert.ok(Object.hasOwn(deps, name), `Unexpected public-screen dependency ${name}`); return deps[name]; } });
-  const props = { onBack() { backs++; }, accountLabel: 'Public account', watchOnly, navigation, onSecurity() { security++; }, onAutoLock() { autoLock++; }, onLock() { closes++; } };
+  const props = { onBack() { backs++; }, accountLabel: 'Public account', watchOnly, navigation: options.navigation === false ? undefined : navigation,
+    backupRequired: options.backupRequired, onBackup() { backups++; }, onSecurity() { security++; }, onAutoLock() { autoLock++; }, onLock() { closes++; } };
   return { render() { cursor = 0; const tree = module.exports[component]!(props); effects.splice(0).forEach((run) => run()); return tree; }, actions,
     pending(value: Promise<unknown>) { pending = value; }, block() { blocked = true; },
     emit(event: string, value = '') { if (event === 'change') active = value; for (const fn of listeners.get(event) ?? []) fn(value); },
-    back() { return registeredBack?.(); }, immersive: () => immersive, backs: () => backs, closes: () => closes, security: () => security, autoLock: () => autoLock,
+    back() { return registeredBack?.(); }, immersive: () => immersive, backs: () => backs, closes: () => closes, security: () => security, autoLock: () => autoLock, backups: () => backups,
     dispose() { cells.forEach((c) => c.cleanup?.()); }, listeners: () => [...listeners.values()].reduce((n, set) => n + set.size, 0) };
 }
 function all(value: unknown): Element[] {
@@ -56,7 +57,7 @@ const text = (value: unknown) => all(value).flatMap((e) => e.children.flat(Infin
 function press(tree: Element, title: string) { const node = all(tree).find((e) => e.props.title === title); assert.ok(node, title); return node.props.onPress(); }
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 test('actual Help uses mobile metadata and starts no I/O', () => {
-  const f = setup(), tree = f.render(); assert.match(text(tree), /Version\s+0\.1\.0/); assert.match(text(tree), /Development build/);
+  const f = setup(), tree = f.render(); assert.match(text(tree), /Version\s+0\.1\.0/); assert.doesNotMatch(text(tree), /Development build/);
   assert.match(text(tree), /https:\/\/discord.com\/invite\/syscoin/); assert.equal(f.actions.length, 0);
   assert.ok(all(tree).find((e) => e.type === 'Screen')?.props.footer); press(tree, 'Done'); assert.equal(f.backs(), 1); f.dispose();
 });
@@ -83,6 +84,19 @@ test('actual Settings hardware Back returns from Help before leaving Settings; p
   const f = setup('RealSettings'); let tree = f.render(); press(tree, 'Help & about'); tree = f.render(); assert.equal(tree.type, 'HelpAbout'); assert.equal(f.immersive(), true);
   assert.equal(f.back(), true); tree = f.render(); assert.equal(f.immersive(), false); assert.equal(f.backs(), 0); press(tree, 'Hide accounts'); assert.equal(f.closes(), 1);
   assert.equal(f.back(), true); assert.equal(f.backs(), 1); f.dispose();
+});
+
+test('root Settings omits the Back arrow and forwards the required-backup action', () => {
+  const f = setup('RealSettings', false, { backupRequired: true });
+  const tree = f.render(), header = all(tree).find(node => node.type === 'Header'); assert(header);
+  assert.equal(header.props.onBack, undefined);
+  const badge = all(tree).find(node => node.type === 'WalletBackupBadge'); assert(badge);
+  badge.props.onPress(); assert.equal(f.backups(), 1);
+  press(tree, 'Help & about'); assert.equal(typeof f.render().props.onBack, 'function'); f.dispose();
+  const backedUp = setup('RealSettings', false);
+  assert.equal(all(backedUp.render()).some(node => node.type === 'WalletBackupBadge'), false); backedUp.dispose();
+  const standalone = setup('RealSettings', false, { navigation: false });
+  assert.equal(typeof all(standalone.render()).find(node => node.type === 'Header')!.props.onBack, 'function'); standalone.dispose();
 });
 test('actual Settings hardware Back closes Display currency before leaving Settings', () => {
   const f = setup('RealSettings');

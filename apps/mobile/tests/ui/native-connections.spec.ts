@@ -4,7 +4,7 @@ test('reviews a connection at narrow width and passes the selected account and r
   await page.setViewportSize({ width: 320, height: 568 });
   await page.goto('http://127.0.0.1:4179/?connections=1&font-scale=1.6');
   await page.evaluate(() => window.__nativeConnectionsFixture.proposal());
-  await expect(page.getByText('Reported website')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Example app', exact: true })).toBeVisible();
   await expect(page.getByText('https://example.invalid', { exact: true })).toBeVisible();
   await page.getByRole('radio', { name: /^Savings,/ }).click();
   const approve = page.getByRole('button', { name: 'Connect', exact: true });
@@ -18,9 +18,10 @@ test('reviews a connection at narrow width and passes the selected account and r
   await approve.click();
   await expect.poll(() => page.evaluate(() => window.__nativeConnectionsFixture.calls().filter((call) => call.method === 'approve')))
     .toEqual([{ method: 'approve', args: [42, 'hd:60:1', 'ethereum', 8] }]);
-  await expect(page.getByText('Your connections')).toBeVisible();
+  await expect(page.getByText('Active connections')).toBeVisible();
   await page.getByRole('button', { name: 'Disconnect Example app' }).click();
-  await expect(page.getByText('Your connections')).toHaveCount(0);
+  await expect(page.getByText('Active connections')).toBeVisible();
+  await expect(page.getByText('No active connections')).toBeVisible();
 });
 
 test('shows an unsupported proposal with rejection available', async ({ page }) => {
@@ -29,7 +30,7 @@ test('shows an unsupported proposal with rejection available', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Connect', exact: true })).toBeDisabled();
   await expect(page.getByText('Unsupported request', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Reject', exact: true }).click();
-  await expect(page.getByText('Connect to Example app')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Example app', exact: true })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => window.__nativeConnectionsFixture.calls().filter((call) => call.method === 'reject')))
     .toEqual([{ method: 'reject', args: [42] }]);
 });
@@ -71,7 +72,7 @@ test('an incoming link supersedes a pending clipboard read', async ({ page }) =>
   });
   await page.getByRole('button', { name: 'Paste connection link' }).click();
   await page.evaluate(() => window.__nativeConnectionsFixture.incoming({ id: 'new-os-link', uri: 'wc:new-os-link', expiresAt: Date.now() + 60000 }));
-  await expect(page.getByText('Waiting for the app', { exact: true })).toBeVisible();
+  await expect(page.getByText('Waiting for app request', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.evaluate(() => window.__completeConnectionClipboard('wc:stale-clipboard-link'));
   expect(await page.evaluate(() => window.__nativeConnectionsFixture.calls().filter((call) => call.method === 'pair')))
@@ -86,7 +87,7 @@ test('shows pairing progress, cancellation and a recoverable context error', asy
     } });
   });
   await page.getByRole('button', { name: 'Paste connection link' }).click();
-  await expect(page.getByText('Waiting for the app', { exact: true })).toBeVisible();
+  await expect(page.getByText('Waiting for app request', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Paste connection link' })).toBeVisible();
   await page.evaluate(() => window.__nativeConnectionsFixture.fail());

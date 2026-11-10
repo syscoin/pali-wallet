@@ -5,6 +5,7 @@ import { URL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import * as pairingLinks from '../src/connections/pairingLinks.ts';
+import { parseEvmRecipientQr } from '../src/core/recipientQr.ts';
 
 type Element = {
   type: unknown;
@@ -22,7 +23,7 @@ const URI = `wc:${'11'.repeat(32)}@2?relay-protocol=irn&symKey=${'22'.repeat(
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 const code = ts.transpileModule(
   readFileSync(
-    new URL('../src/screens/ConnectionQrScanner.native.tsx', import.meta.url),
+    new URL('../src/screens/QrScanner.native.tsx', import.meta.url),
     'utf8'
   ),
   {
@@ -45,7 +46,8 @@ function deferred<T>() {
 
 function fixture(
   permission: () => Promise<{ granted: boolean }>,
-  platform = 'android'
+  platform = 'android',
+  kind: 'connection' | 'recipient' = 'connection'
 ) {
   const cells: Cell[] = [];
   const effects: (() => void)[] = [];
@@ -142,7 +144,7 @@ function fixture(
     },
   };
   const module = {
-    exports: {} as { ConnectionQrScanner(props: object): Element },
+    exports: {} as { QrScanner(props: object): Element },
   };
   runInNewContext(code, {
     module,
@@ -155,6 +157,16 @@ function fixture(
       return dependencies[name];
     },
   });
+  const wrapper = { exports: {} as Record<string, (props: object) => Element> };
+  const wrapperName = kind === 'connection' ? 'ConnectionQrScanner' : 'RecipientQrScanner';
+  const wrapperCode = ts.transpileModule(readFileSync(new URL(`../src/screens/${kind === 'connection' ? 'ConnectionQrScanner.shared' : 'RecipientQrScanner'}.tsx`, import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true },
+  }).outputText;
+  runInNewContext(wrapperCode, { module: wrapper, exports: wrapper.exports, require(name: string) {
+    if (name === './QrScanner') return { QrScanner: 'QrScanner' };
+    if (name === '../core/recipientQr') return { parseEvmRecipientQr };
+    assert(Object.hasOwn(dependencies, name), `Unexpected wrapper dependency ${name}`); return dependencies[name];
+  } });
   const props = {
     onScan: (uri: string) => scans.push(uri),
     onClose: () => {
@@ -163,7 +175,7 @@ function fixture(
   };
   const render = () => {
     cursor = 0;
-    const tree = module.exports.ConnectionQrScanner(props);
+    const tree = module.exports.QrScanner(wrapper.exports[wrapperName]!(props).props);
     effects.splice(0).forEach((effect) => effect());
     return tree;
   };
@@ -270,6 +282,29 @@ test('the camera accepts only QR input and hands one valid connection to the con
   } finally {
     f.unmount();
   }
+});
+
+test('recipient QR accepts only a validated raw address and never consumes a payment or connection link', async () => {
+  const f = fixture(async () => ({ granted: true }), 'android', 'recipient');
+  try {
+    await settle(); const camera = find(f.render(), 'CameraView')!;
+    const address = '0x52908400098527886E0F7030069857D2E4169EE7';
+    for (const value of [URI, `ethereum:${address}?value=100`, ` ${address}`, '0x' + '0'.repeat(40), address.slice(0, -1)])
+      camera.props.onBarcodeScanned({ data: value });
+    assert.deepEqual(f.scans, []); assert(notice(f.render(), 'Recipient address needed'));
+    camera.props.onBarcodeScanned({ data: address.toLowerCase() });
+    camera.props.onBarcodeScanned({ data: address });
+    assert.deepEqual(f.scans, [address]);
+  } finally { f.unmount(); }
+});
+
+test('a recipient scan is retired by Back before a queued camera result', async () => {
+  const f = fixture(async () => ({ granted: true }), 'android', 'recipient');
+  try {
+    await settle(); const scan = find(f.render(), 'CameraView')!.props.onBarcodeScanned;
+    f.emit('hardwareBackPress'); scan({ data: '0x1111111111111111111111111111111111111111' });
+    assert.equal(f.closes, 1); assert.deepEqual(f.scans, []);
+  } finally { f.unmount(); }
 });
 
 for (const boundary of ['background', 'blur', 'unmount'] as const) {

@@ -12,7 +12,7 @@ import {
   ViewStyle,
   useWindowDimensions,
 } from 'react-native';
-import Svg, { Circle, G, Path, Polygon } from 'react-native-svg';
+import Svg, { Circle, Defs, G, Mask, Path, Pattern, Polygon, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 export const colors = {
   bg: '#07152a',
@@ -27,6 +27,32 @@ export const colors = {
   red: '#ff8a9a',
   amber: '#edc58c',
 } as const;
+
+/** Static native vector decoration; no images, requests or animation work. */
+export function WelcomeBackdrop() {
+  return <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={StyleSheet.absoluteFill}>
+    <Svg width="100%" height="100%" viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice">
+      <Defs>
+        <RadialGradient id="welcome-glow" cx="50%" cy="43%" rx="48%" ry="43%">
+          <Stop offset="0" stopColor={colors.blue} stopOpacity="0.13" />
+          <Stop offset="0.45" stopColor={colors.pink} stopOpacity="0.04" />
+          <Stop offset="1" stopColor={colors.bg} stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id="welcome-dot-fade" cx="50%" cy="42%" rx="40%" ry="31%">
+          <Stop offset="0" stopColor="white" stopOpacity="0.7" />
+          <Stop offset="0.55" stopColor="white" stopOpacity="0.38" />
+          <Stop offset="1" stopColor="white" stopOpacity="0" />
+        </RadialGradient>
+        <Pattern id="welcome-dots" width="18" height="18" patternUnits="userSpaceOnUse">
+          <Circle cx="9" cy="9" r="0.9" fill={colors.blue} />
+        </Pattern>
+        <Mask id="welcome-mask"><Rect width="390" height="844" fill="url(#welcome-dot-fade)" /></Mask>
+      </Defs>
+      <Rect width="390" height="844" fill="url(#welcome-glow)" />
+      <Rect width="390" height="844" fill="url(#welcome-dots)" mask="url(#welcome-mask)" />
+    </Svg>
+  </View>;
+}
 
 export function Text({ style, ...props }: TextProps) {
   return (
@@ -71,6 +97,7 @@ const iconPaths: Record<string, string[]> = {
   ],
   check: ['m5 12 4 4L19 6'],
   lock: ['M7 10V7a5 5 0 0 1 10 0v3', 'M5 10h14v11H5z', 'M12 14v3'],
+  fingerprint: ['M4 9a8 8 0 0 1 16 0', 'M7 21c2-3 2-6 2-9a3 3 0 0 1 6 0c0 4-1 7-2 10', 'M3 16c1-1 1-3 1-4', 'M6 17c1-2 0-4 0-5a6 6 0 0 1 12 0c0 3 0 5-1 8', 'M10 22c2-4 2-6 2-10', 'M21 12c0 2 0 3-1 5'],
   shield: ['M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6z', 'm8 12 3 3 5-6'],
   eye: [
     'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12',

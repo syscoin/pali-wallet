@@ -2,6 +2,7 @@ import React, { useLayoutEffect, useRef, useState } from 'react';
 import { DisplayCurrency } from './DisplayCurrency';
 import { HelpAbout } from './HelpAbout';
 import { NativePreferences } from './NativePreferences';
+import { WalletBackupBadge } from './WalletBackupBadge';
 import { useNativeTranslation } from '../platform/localization';
 import type { ShellLeafNavigation } from './RealAppShell';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -49,8 +50,9 @@ function ResetActivity({ accountLabel, target, onBack }: {
   </Screen></SafeAreaView>;
 }
 
-export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, onInfrastructure, activityReset, onLock, onBack, navigation }: {
-  accountLabel: string; watchOnly: boolean; navigation: ShellLeafNavigation; onSecurity?: () => void; onAutoLock?: () => void; onInfrastructure?: () => void; onLock(): void; onBack(): void;
+export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, onInfrastructure, activityReset, onLock, onBack, navigation, backupRequired = false, onBackup }: {
+  accountLabel: string; watchOnly: boolean; navigation?: ShellLeafNavigation; onSecurity?: () => void; onAutoLock?: () => void; onInfrastructure?: () => void; onLock(): void; onBack(): void;
+  backupRequired?: boolean; onBackup?(): void;
   activityReset?: ActivityResetTarget;
 }) {
   const { t } = useNativeTranslation();
@@ -59,8 +61,8 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
   const leaf = opened?.leaf === 'activity' && opened.scope !== activityReset?.scope ? null : opened?.leaf ?? null;
   const back = () => { languageOwner.current = null; if (leaf) setOpened(null); else onBack(); };
   useLayoutEffect(() => () => { languageOwner.current = null; }, []);
-  useLayoutEffect(() => navigation.registerBack(() => { back(); return true; }));
-  useLayoutEffect(() => { navigation.setImmersive(leaf !== null); return () => navigation.setImmersive(false); }, [navigation, leaf]);
+  useLayoutEffect(() => navigation?.registerBack(() => { back(); return true; }));
+  useLayoutEffect(() => { navigation?.setImmersive(leaf !== null); return () => navigation?.setImmersive(false); }, [navigation, leaf]);
   if (leaf === 'about') return <HelpAbout onBack={back} />;
   if (leaf === 'currency') return <DisplayCurrency onBack={back} />;
   if (leaf === 'language') return <NativePreferences onBack={back} assertCurrent={() => {
@@ -70,7 +72,8 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
   return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}><Screen gap={16} footer={
     <Button title={watchOnly ? t('mobile.settings.hide') : t('mobile.settings.lock')} icon="lock" size="compact" variant="secondary" onPress={onLock} />
   }>
-    <Header title={t('mobile.settings.title')} subtitle={accountLabel} onBack={onBack} />
+    <Header title={t('mobile.settings.title')} subtitle={accountLabel} onBack={navigation ? undefined : onBack} />
+    {backupRequired && <WalletBackupBadge onPress={onBackup} />}
     {(onSecurity || onAutoLock || onInfrastructure || activityReset) && <Card>
       {onSecurity && <Row title={t('mobile.settings.securityTitle')} subtitle={t('mobile.settings.securitySubtitle')} icon="shield" onPress={onSecurity} dense last={!onAutoLock && !onInfrastructure && !activityReset} />}
       {onAutoLock && <Row title={t('mobile.settings.autoLockTitle')} subtitle={t('mobile.settings.autoLockSubtitle')} icon="lock" onPress={onAutoLock} dense last={!onInfrastructure && !activityReset} />}

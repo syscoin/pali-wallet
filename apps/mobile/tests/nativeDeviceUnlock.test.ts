@@ -187,3 +187,64 @@ test('native device unlock gives a retired Trezor handoff fresh authority before
     assert.equal(f.owner.getCatalogue()!.accounts.find(account => account.type === 'Trezor')?.address, wallet.address);
   } finally { await f.close(); await service.dispose(); }
 });
+
+test('operation authentication reuses device enrollment without changing the live account', async () => {
+  const f = await fixture();
+  try {
+    await f.runtime.backup.confirm(await f.runtime.backup.fingerprint());
+    await f.owner.refreshAuthenticatedMetadata();
+    await f.owner.setDeviceUnlock(true, PASSWORD, () => undefined);
+    const before = f.owner.getSnapshot(), catalogue = f.owner.getCatalogue();
+    const auth = f.runtime.security!.authenticateOperation;
+    await auth({ method: 'biometric' }, () => { assert.equal(f.owner.getSnapshot(), before); });
+    assert.equal(f.owner.getSnapshot(), before);
+    assert.equal(f.owner.getCatalogue(), catalogue);
+    f.afterRead(async () => { throw Error('cancelled OS prompt'); });
+    await assert.rejects(auth({ method: 'biometric' }, () => undefined), /DEVICE_UNLOCK_UNAVAILABLE/);
+    assert.equal(f.owner.getSnapshot(), before);
+    f.afterRead(async () => undefined);
+    await assert.rejects(auth({ method: 'password', password: 'Wrong public password 1!' }, () => undefined), /INVALID_CREDENTIAL/);
+    assert.equal(f.owner.getSnapshot(), before);
+    await auth({ method: 'password', password: PASSWORD }, () => undefined);
+    assert.equal(f.owner.getSnapshot(), before);
+    assert.equal(f.owner.getCatalogue(), catalogue);
+  } finally { await f.close(); }
+});
+
+test('lock during operation biometrics cannot restore or authorize the retired session', async () => {
+  const f = await fixture();
+  try {
+    await f.runtime.backup.confirm(await f.runtime.backup.fingerprint());
+    await f.owner.refreshAuthenticatedMetadata();
+    await f.owner.setDeviceUnlock(true, PASSWORD, () => undefined);
+    let entered!: () => void, finish!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const held = new Promise<void>(resolve => { finish = resolve; });
+    f.afterRead(async () => { entered(); await held; });
+    const pending = f.runtime.security!.authenticateOperation({ method: 'biometric' }, () => {
+      if (f.owner.getSnapshot().phase !== 'ready') throw Error('CANCELLED');
+    });
+    const refused = assert.rejects(pending, /CANCELLED/);
+    await started;
+    f.owner.lock(); finish(); await refused;
+    assert.equal(f.owner.getSnapshot().phase, 'locked');
+    await assert.rejects(f.runtime.session.readSelectedAddress(), /NOT_READY/);
+  } finally { await f.close(); }
+});
+
+test('operation lockout refuses biometrics before protected key access without stale review state', async () => {
+  const f = await fixture();
+  try {
+    await f.runtime.backup.confirm(await f.runtime.backup.fingerprint());
+    await f.owner.refreshAuthenticatedMetadata();
+    await f.owner.setDeviceUnlock(true, PASSWORD, () => undefined);
+    const before = f.owner.getSnapshot(), catalogue = f.owner.getCatalogue();
+    let reads = 0;
+    f.afterRead(async () => { reads++; });
+    for (let attempt = 0; attempt < 5; attempt++) await f.store.authGuard.recordFailure();
+    await assert.rejects(f.runtime.security!.authenticateOperation({ method: 'biometric' }, () => undefined), /AUTH_THROTTLED/);
+    assert.equal(reads, 0);
+    assert.equal(f.owner.getSnapshot(), before);
+    assert.equal(f.owner.getCatalogue(), catalogue);
+  } finally { await f.close(); }
+});

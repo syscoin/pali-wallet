@@ -156,6 +156,7 @@ export function NativeSmartBatchFixture() {
       getSnapshot: () => ({
         revision: current.current.review?.revision ?? 0,
         status: 'ready',
+        pairingExpiresAt: null,
         accounts: [],
         selectedAccountId: null,
         network: null,

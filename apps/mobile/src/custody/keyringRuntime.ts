@@ -143,7 +143,7 @@ import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
 import { isNativeNewPassword, isNativePasswordInput } from './password.ts';
 import type { IKeyringAccountState, INetwork as SdkNetwork } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { normalizePublicAddress } from '../core/addresses.ts';
-import { canonicalUtxoEndpoint, findUtxoNetwork, getUtxoSdkNetwork, isCustomUtxoNetworkId, projectUtxoRegistration, supportsUtxoSoftwareCustody, utxoRegistrationData, type UtxoNetwork, type UtxoNetworkId } from '../core/utxoNetworks.ts';
+import { canonicalUtxoEndpoint, findUtxoNetwork, getUtxoSdkNetwork, isCustomUtxoNetworkId, projectUtxoRegistration, supportsUtxoSoftwareCustody, UTXO_NETWORKS, utxoRegistrationData, type UtxoNetwork, type UtxoNetworkId } from '../core/utxoNetworks.ts';
 import { exactUtxoResponseFetch, verifySavedUtxoEndpoint, verifyUtxoRegistration } from '../core/utxoReadSession.ts';
 import { createOwnedUtxoBlockbookRead } from '../../../../source/wallet/utxoBlockbookReads.ts';
 import type { UtxoActivityContext, UtxoActivitySource } from '../core/utxoActivity.ts';
@@ -151,8 +151,9 @@ import type { UtxoBalance } from '../core/utxoBalanceReader.ts';
 import { findWifAddressType, normalizeUtxoAddress } from '../core/utxoAddresses.ts';
 import { parseUtxoPublicIdentifier, type UtxoPublicIdentifier } from '../core/utxoIdentifier.ts';
 import { WalletStorageError, type OpenWalletStorage, type RecoveryStorageSnapshot, type WalletIdentityRead } from '../storage/types.ts';
-import type { CustodyRuntime, CustodyRuntimeFactory } from './types.ts';
+import type { CustodyRuntime, CustodyRuntimeFactory, NativeOperationCredential } from './types.ts';
 import { CustodyRuntimeError } from './types.ts';
+import { previewNativePhraseAddresses } from './phrasePreview.ts';
 import { TransferJournalError } from './transferJournal.ts';
 import { NativeWalletCatalogue, WalletCatalogueError,
   catalogueAccountGroup,
@@ -1229,6 +1230,50 @@ export function createKeyringRuntimeFactory(
             trezorSessionGeneration = dependencies.trezorSessions?.advanceSessionGeneration() ?? 0;
           }
           return true;
+        };
+        const operationAuthenticationRefusals = new WeakSet<object>();
+        const authenticateOperation = async (credential: NativeOperationCredential, assertCurrent: () => void): Promise<void> => {
+          if (!credential || (credential.method !== 'password' && credential.method !== 'biometric'))
+            throw new KeyringRuntimeError('INVALID_INPUT');
+          let failure = credential.method === 'biometric' ? 'DEVICE_UNLOCK_UNAVAILABLE' : 'INVALID_CREDENTIAL';
+          const authenticated = await run(async (captured) => {
+            const ring = keyring, identity = verifiedIdentity, catalogue = catalogueSnapshot;
+            const check = () => {
+              current(captured); checkGuard(assertCurrent);
+              if (ring !== keyring || !ring.isUnlocked() || !identity || verifiedIdentity !== identity || catalogueSnapshot !== catalogue)
+                throw new KeyringRuntimeError('CANCELLED');
+            };
+            check();
+            try {
+            if (credential.method === 'biometric') {
+              if (!deviceUnlock) return false;
+              await storage.authGuard.checkAllowed(); check();
+              try { await deviceUnlock.verifyPresence(check); }
+              catch (error) {
+                check();
+                if (error instanceof Error && error.message === 'DEVICE_UNLOCK_UNAVAILABLE') return false;
+                throw error;
+              }
+            } else if (!(await authenticate(credential.password, captured, { identity: identity!, assertCurrent: check }))) return false;
+            check();
+            if (JSON.stringify(await readIdentity()) !== JSON.stringify(identity)) throw new KeyringRuntimeError('CANCELLED');
+            check();
+            if (credential.method === 'biometric') { await storage.authGuard.recordSuccess(); check(); }
+            return true;
+            } catch (error) {
+              if (error instanceof WalletStorageError && error.code === 'AUTH_THROTTLED') {
+                check(); failure = 'AUTH_THROTTLED'; return false;
+              }
+              throw error;
+            }
+          });
+          // A dismissed OS prompt or a wrong password does not retire a still-current
+          // review. The rate limiter and every owner/lifecycle guard still apply.
+          if (!authenticated) {
+            const refusal = new Error(failure);
+            operationAuthenticationRefusals.add(refusal);
+            throw refusal;
+          }
         };
         const dataBinding = async (captured: number, guard: () => void = () => undefined): Promise<string> => {
           current(captured); checkGuard(guard);
@@ -5659,7 +5704,16 @@ export function createKeyringRuntimeFactory(
             ? { getSentryKeyNetwork, openSentryKeyManagement } : {}),
           ...(storage.removal && storage.recovery ? { authorizeWalletRemoval } : {}),
           accounts,
+          previewPhrase: (phrase, assertCurrent) => run(async (captured) => {
+            const check = () => { current(captured); checkGuard(assertCurrent); };
+            check();
+            const rows = await previewNativePhraseAddresses(keyring, phrase.normalize('NFKD').trim().toLowerCase().split(/\s+/).join(' '),
+              UTXO_NETWORKS.find(network => supportsUtxoSoftwareCustody(network)), check);
+            check();
+            return rows;
+          }),
           security: {
+            authenticateOperation,
             reauthenticateIdlePolicy: (password, assertCurrent) => run(async (captured) => {
               current(captured); checkGuard(assertCurrent);
               if (!keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY');
@@ -6079,6 +6133,7 @@ export function createKeyringRuntimeFactory(
             }
             const sdkNetwork = getUtxoSdkNetwork(network), account = state.accounts[selected.type][selected.index]!;
             const { xpub } = account;
+            let authenticating = false;
             if (selected.type === 'Imported') checkedUtxoImport(account, network);
             const guard = () => {
               current(captured); checkGuard(assertOwner); current(captured);
@@ -6091,7 +6146,7 @@ export function createKeyringRuntimeFactory(
                   actual.slip44 !== sdkNetwork.slip44 || actual.currency !== sdkNetwork.currency ||
                   actual.utxoBackendChain !== sdkNetwork.utxoBackendChain || actual.url !== sdkNetwork.url)
                 throw new KeyringRuntimeError('CANCELLED');
-              if (active || reserved) throw new KeyringRuntimeError('BUSY');
+              if ((active || reserved) && !authenticating) throw new KeyringRuntimeError('BUSY');
             };
             guard(); await dataBinding(captured, guard); guard();
             const profileId = await ring.getPrivateRecordProfileId(); guard();
@@ -6102,12 +6157,19 @@ export function createKeyringRuntimeFactory(
             const collateral = getSentryKeyNetwork()
               ? createNativeSentryCollateral(await bindSentryNodes(captured,guard)) : null;
             guard();
+            const authenticateUtxoOperation = async (credential: NativeOperationCredential, check: () => void) => {
+              guard();
+              authenticating = true;
+              try { await authenticateOperation(credential, check); }
+              finally { authenticating = false; }
+              guard();
+            };
             const createOpened = () => createNativeUtxoSend(network, {
               profileId,
               account: { address: selected.address, id: selected.index, type: accountType, xpub },
               network: { kind: 'syscoin', currency: sdkNetwork.currency, chainId: sdkNetwork.chainId,
                 genesisHash: network.genesisHash, slip44: sdkNetwork.slip44, url: sdkNetwork.url },
-            }, { keyring: ring, assertCurrent: guard }, ring.syscoinTransaction, utxoRecords, dependencies.utxoFetch!, ring.getAddress, collateral);
+            }, { keyring: ring, assertCurrent: guard }, ring.syscoinTransaction, utxoRecords, dependencies.utxoFetch!, ring.getAddress, collateral, authenticateUtxoOperation);
             let opened = createOpened();
             utxoSend = opened;
             return Object.freeze<NativeUtxoSend>({ ...opened,
@@ -6152,15 +6214,16 @@ export function createKeyringRuntimeFactory(
                 }
                 return view;
               },
-              async confirm(view) {
-              const pending = opened.confirm(view);
+              async confirm(view, credential) {
+              const pending = opened.confirm(view, credential);
               pendingSubmissions.add(pending);
               try {
                 const result = await pending;
                 if (trezorAttempt) await finishTrezor(trezorAttempt.session, guard);
                 return result;
               } catch (error) {
-                if (trezorAttempt) await failTrezor(captured, admittedTrezorEpoch, error);
+                if (trezorAttempt && !(error instanceof Error && operationAuthenticationRefusals.has(error)))
+                  await failTrezor(captured, admittedTrezorEpoch, error);
                 throw error;
               }
               finally {
@@ -6256,6 +6319,7 @@ export function createKeyringRuntimeFactory(
             },
           },
           transfers: {
+            authenticateOperation,
             async replacementOriginal(hash, mode, assertCurrent, signal) {
               if (active || reserved || closed || !canSign()) return null;
               const captured = generation, selected = selectedAccount();

@@ -140,40 +140,38 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.container}><KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen scrollResetKey={`${review.id}:${submitted ? 'result' : editingApproval ? 'edit' : 'review'}`} footer={<>
     {ledger.showConnect && !submitted && <Button title="Connect Ledger" variant="secondary" size="compact" onPress={ledger.connect} />}
+    <View style={s.actions}>
+    <Button title={submitted || review.broadcastHash ? 'Close' : 'Reject'} variant="secondary" onPress={close} style={s.action} />
     {!submitted && <Button title={review.needsAccountSwitch ? 'Switch account' : retry ? `Retry call ${batch!.index + 1}/${batch!.calls.length}` : batch ? `Confirm call ${batch.index + 1}/${batch.calls.length}` : 'Confirm transaction'}
       disabled={expired || editingApproval || review.error !== null || review.busy || !review.needsAccountSwitch &&
-        (ledger.blocked || !retry && (!prepared || review.requiresWarningAcknowledgement && !acknowledged))} onPress={approve} />}
-    <Button title={submitted || review.broadcastHash ? 'Close' : 'Reject'} variant="quiet" size="compact" onPress={close} />
+        (ledger.blocked || !retry && (!prepared || review.requiresWarningAcknowledgement && !acknowledged))} onPress={approve} style={s.action} />}
+    </View>
   </>} gap={16}>
-    <Header title={batch ? 'Review calls' : 'Review transaction'} onBack={close} />
-    <Card style={s.card}>
-      <View style={s.identityGroup}>
-      <Text style={s.appName}>{review.appName}</Text>
-      <Text selectable style={s.origin}>{review.origin}</Text>
-      <DappSiteStatus verification={review.verification} />
-      </View>
-      <View style={s.divider} />
-      <View style={s.identityGroup}>
-      <Text style={s.account}>{review.accountLabel}</Text>
-      <Text selectable style={s.address}>{review.address}</Text>
-      <Text style={s.muted}>{review.networkLabel} · Chain ID {review.chainId}</Text>
-      </View>
+    <Header title={batch ? 'Review calls' : 'Transaction request'} onBack={close} />
+    <Card style={s.appCard}>
+      <View style={s.appMark} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><Text style={s.appInitial}>{Array.from(review.appName.trim())[0]?.toUpperCase() || '•'}</Text></View>
+      <View style={s.appCopy}><Text style={s.appName}>{review.appName}</Text>
+      <Text selectable style={s.origin}>{review.networkLabel} · {review.origin}</Text></View>
     </Card>
+    {transaction && <View style={s.hero}>
+      {batch && <Text accessibilityRole="header" style={s.sectionTitle}>Call {batch.index + 1} of {batch.calls.length}</Text>}
+      <Text style={[s.label, { textAlign: 'center' }]}>{transaction.to === null ? 'Contract deployment' : transaction.data === '0x' ? `${review.symbol} transfer` : 'Contract interaction'}</Text>
+      <Text selectable style={[s.amount, amount(transaction.value).length > 22 && s.longAmount]} accessibilityLabel={amount(transaction.value)}>{formatBaseUnits(transaction.value, review.decimals)}</Text>
+      <Text style={s.amountSymbol}>{review.symbol}</Text>
+    </View>}
+    <DappSiteStatus verification={review.verification} />
     {review.approval && transaction && <ApprovalReview summary={review.approval} transaction={transaction}
       onEditingChange={setApprovalEditing}
       disabled={!!batch || review.busy || submitted || review.needsAccountSwitch || review.error !== null}
       edit={(value) => controller.editApprovalAmount(review.id, review.revision, value)} />}
-    {transaction && <Card style={s.card}>
-      {batch && <Text accessibilityRole="header" style={s.sectionTitle}>Call {batch.index + 1} of {batch.calls.length}</Text>}
-      <Text style={s.label}>{transaction.to === null ? 'Contract deployment' : transaction.data === '0x' ? 'Send' : 'Contract interaction'}</Text>
-      <Text selectable style={s.amount}>{amount(transaction.value)}</Text>
-      <Text style={s.label}>{transaction.to === null ? 'Destination' : 'To'}</Text>
-      <Text selectable style={s.address}>{transaction.to ?? 'New contract'}</Text>
-      <View style={s.divider} />
-      <Text style={s.label}>Maximum network fee</Text>
-      <Text selectable style={s.account}>{review.maximumFeeUnits === null ? 'Calculating…' : amount(review.maximumFeeUnits)}</Text>
-      <Text style={s.label}>Maximum total</Text>
-      <Text selectable style={s.account}>{review.maximumTotalUnits === null ? 'Calculating…' : amount(review.maximumTotalUnits)}</Text>
+      <Card style={s.facts}>
+        <View style={s.fact}><Text style={s.factLabel}>From</Text><View style={s.factValue}><Text style={s.factAccount}>{review.accountLabel}</Text><Text selectable style={s.factAddress}>{review.address}</Text></View></View>
+        {transaction && <View style={s.fact}><Text style={s.factLabel}>{transaction.to === null ? 'Destination' : 'To'}</Text><Text selectable style={[s.factValue, s.factAddress]}>{transaction.to ?? 'New contract'}</Text></View>}
+        <View style={s.fact}><Text style={s.factLabel}>Network</Text><Text style={[s.factValue, s.factText]}>{review.networkLabel} · Chain {review.chainId}</Text></View>
+        <View style={s.fact}><Text style={s.factLabel}>Maximum network fee</Text><Text selectable style={[s.factValue, s.factText]}>{review.maximumFeeUnits === null ? 'Calculating…' : amount(review.maximumFeeUnits)}</Text></View>
+        <View style={[s.fact, s.lastFact]}><Text style={s.factLabel}>Maximum total</Text><Text selectable style={[s.factValue, s.factText]}>{review.maximumTotalUnits === null ? 'Calculating…' : amount(review.maximumTotalUnits)}</Text></View>
+      </Card>
+    {transaction && <>
       {showFeeChoices && comparison && (
         <View style={s.feeNotice}>
           <Text accessibilityRole="header" style={s.feeTitle}>
@@ -203,8 +201,8 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
         </View>
       )}
       <Button title={detailsVisible ? 'Hide transaction details' : 'View transaction details'} variant="quiet" size="compact"
-        expanded={detailsVisible} onPress={() => setDetailsRevision(detailsVisible ? null : review.revision)} />
-    </Card>}
+        icon={detailsVisible ? 'chevron-down' : 'chevron-right'} expanded={detailsVisible} onPress={() => setDetailsRevision(detailsVisible ? null : review.revision)} />
+    </>}
     {transaction && detailsVisible && <TransactionDetails key={`${review.id}:${review.revision}`} transaction={transaction} />}
     {batch && <Card style={s.card}>
       <Button title={callsVisible ? 'Hide calls' : `View all ${batch.calls.length} calls`} variant="quiet" size="compact"
@@ -248,12 +246,27 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   card: { gap: 10, padding: 16 },
-  identityGroup: { gap: 4 },
-  appName: { fontSize: 20, lineHeight: 27, fontWeight: '700' },
-  origin: { fontSize: 14, lineHeight: 21, color: colors.blue },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: 4 },
+  appCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 },
+  appMark: { width: 42, height: 42, borderRadius: 12, backgroundColor: colors.pink, alignItems: 'center', justifyContent: 'center' },
+  appInitial: { color: colors.bg, fontSize: 20, fontWeight: '700' },
+  appCopy: { flex: 1, minWidth: 0, gap: 3 },
+  appName: { fontSize: 16, lineHeight: 23, fontWeight: '600' },
+  origin: { fontSize: 12, lineHeight: 18, color: colors.muted },
+  hero: { alignItems: 'stretch', gap: 8, paddingVertical: 16 },
+  actions: { flexDirection: 'row', gap: 10 },
+  action: { flex: 1, minWidth: 0 },
+  facts: { overflow: 'hidden' },
+  fact: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  lastFact: { borderBottomWidth: 0 },
+  factLabel: { width: '38%', color: colors.muted, fontSize: 13, lineHeight: 20 },
+  factValue: { flex: 1, minWidth: 0, gap: 3 },
+  factAccount: { textAlign: 'right', fontSize: 13, lineHeight: 20, fontWeight: '500' },
+  factAddress: { textAlign: 'right', fontSize: 12, lineHeight: 18, color: colors.muted },
+  factText: { textAlign: 'right', fontSize: 13, lineHeight: 20 },
   account: { fontSize: 16, lineHeight: 22, fontWeight: '600' },
-  amount: { fontSize: 26, lineHeight: 34, fontWeight: '700' },
+  amount: { width: '100%', flexShrink: 1, fontSize: 30, lineHeight: 39, fontWeight: '700', textAlign: 'center' },
+  longAmount: { fontSize: 20, lineHeight: 29 },
+  amountSymbol: { fontSize: 17, lineHeight: 24, color: colors.muted, textAlign: 'center' },
   label: { fontSize: 12, lineHeight: 17, color: colors.muted },
   address: { fontSize: 13, lineHeight: 20, color: colors.muted },
   muted: { fontSize: 14, lineHeight: 22, color: colors.muted },

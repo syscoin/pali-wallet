@@ -1,3 +1,4 @@
+import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import React, { useLayoutEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { sptBalanceTotalUnits, type SptBalance } from '../../../../source/shared/sptInventory';
@@ -18,6 +19,7 @@ const PAGE_SIZE = 20;
 
 /** Public asset inventory from the shared Blockbook account parser; no extra lookup. */
 export function NativeSptAssets({ holdings, loading, onSend, onReceive, onRefresh, onModeChange, onBackHandlerChange }: Props) {
+  const { hidden: hideBalances } = useBalancePrivacy();
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Pick<SptBalance, 'assetGuid' | 'symbol'> | null>(null);
@@ -39,8 +41,8 @@ export function NativeSptAssets({ holdings, loading, onSend, onReceive, onRefres
       <Text style={s.heading}>{asset?.symbol ?? selected.symbol}</Text>
       <Text selectable style={s.muted}>Asset {selected.assetGuid}</Text>
       {asset ? <>
-        <Text style={s.amount}>{formatBaseUnits(asset.confirmedUnits, asset.decimals)} {asset.symbol}</Text>
-        {asset.pendingDeltaUnits !== '0' && <Text style={s.muted}>Pending {formatBalanceDelta(asset.pendingDeltaUnits, asset.decimals)} {asset.symbol}</Text>}
+        <Text style={s.amount}>{hideBalances ? HIDDEN_BALANCE : formatBaseUnits(asset.confirmedUnits, asset.decimals)} {asset.symbol}</Text>
+        {asset.pendingDeltaUnits !== '0' && <Text style={s.muted}>Pending {hideBalances ? HIDDEN_BALANCE : formatBalanceDelta(asset.pendingDeltaUnits, asset.decimals)} {asset.symbol}</Text>}
         <View style={s.actions}>
           {onSend && sptBalanceTotalUnits(asset) !== '0' && <Button title="Send" size="compact" style={s.action} icon="arrow-up-right" onPress={() => onSend(asset)} />}
           {onReceive && <Button title="Receive" size="compact" style={s.action} icon="arrow-down-left" variant="secondary" onPress={onReceive} />}
@@ -56,7 +58,7 @@ export function NativeSptAssets({ holdings, loading, onSend, onReceive, onRefres
       <Text style={s.muted}>No token holdings.</Text> : <>
       <IdleTextInput accessibilityLabel="Search tokens" placeholder="Search name or asset ID" placeholderTextColor={colors.muted} value={query} onChangeText={value => { setQuery(value); setPage(0); }} maxLength={128} autoCorrect={false} autoCapitalize="none" style={s.search} />
       <Card>{rows.map((item, index) => <Row dense key={item.assetGuid} title={item.symbol}
-        subtitle={`${formatBaseUnits(item.confirmedUnits, item.decimals)} · Asset ${item.assetGuid}${item.pendingDeltaUnits !== '0' ? ' · Pending activity' : ''}`}
+        subtitle={`${hideBalances ? HIDDEN_BALANCE : formatBaseUnits(item.confirmedUnits, item.decimals)} · Asset ${item.assetGuid}${item.pendingDeltaUnits !== '0' ? ' · Pending activity' : ''}`}
         onPress={() => setSelected({ assetGuid: item.assetGuid, symbol: item.symbol })} last={index === rows.length - 1} />)}</Card>
       {!rows.length && <Text style={s.muted}>No matching tokens.</Text>}
       {lastPage > 0 && <View style={s.pages}>

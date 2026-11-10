@@ -1,3 +1,5 @@
+import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
+import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Linking, Share, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,6 +23,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
   authority: WatchOnlyAuthority; onAccounts(): void; onExit(): void; onLock(): void; navigation?: ShellLeafNavigation;
 }) {
   const { width, fontScale } = useWindowDimensions();
+  const { hidden: hideBalances } = useBalancePrivacy();
   const receiveQrSize = width <= 340 ? 176 : 204;
   const stackActions = fontScale >= 1.6 && width < 240 * fontScale;
   const actionStyle = [s.flex, width <= 340 && s.compactAction, stackActions && s.stackedAction];
@@ -113,11 +116,11 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
           <View style={s.hero}>
             <Coin id={utxo ? network.symbol : network.id} fallbackSymbol={utxo ? network.symbol : undefined} size={46} />
             <Text style={s.label}>{network.name.toUpperCase()}{utxo ? ' CONFIRMED BALANCE' : ' BALANCE'}</Text>
-            <Text style={[s.amount, amount !== null && amount.length > 14 && styles.walletBalanceLong, amount !== null && amount.length > 20 && styles.walletBalancePrecise]} accessibilityLabel={amount === null ? loading ? `Loading ${network.name} balance` : 'Balance unavailable' : `${network.name}${utxo ? ' confirmed' : ''} balance ${amount} ${network.symbol}`}>{amount ?? '—'}</Text>
+            <Text style={[s.amount, mode === 'asset' && !hideBalances && amount !== null && amount.length > 14 && styles.walletBalanceLong, mode === 'asset' && !hideBalances && amount !== null && amount.length > 20 && styles.walletBalancePrecise]} accessibilityLabel={hideBalances ? 'Balance hidden' : amount === null ? loading ? `Loading ${network.name} balance` : 'Balance unavailable' : `${network.name}${utxo ? ' confirmed' : ''} balance ${amount} ${network.symbol}`}>{hideBalances ? HIDDEN_BALANCE : amount === null ? '—' : mode === 'asset' ? amount : compactActivityAmountLabel(amount)}</Text>
             <Text style={styles.muted}>{amount === null ? loading ? 'Updating…' : 'Balance unavailable' : network.symbol}</Text>
-            <PortfolioQuote {...quote} testID="watch-portfolio-quote" />
+            <PortfolioQuote {...quote} quote={hideBalances && quote.supported ? HIDDEN_BALANCE : quote.quote} testID="watch-portfolio-quote" />
             {loading && <ActivityIndicator color={colors.pink} />}
-            {utxo && <Text style={s.pending} accessibilityLabel={pendingAmount === null ? 'Pending balance change unavailable' : `Pending balance change ${pendingAmount} ${network.symbol}`}>Pending balance change: {pendingAmount === null ? 'Unavailable' : `${pendingAmount} ${network.symbol}`}</Text>}
+            {utxo && <Text style={s.pending} accessibilityLabel={hideBalances && pendingAmount !== null ? 'Pending balance hidden' : pendingAmount === null ? 'Pending balance change unavailable' : `Pending balance change ${pendingAmount} ${network.symbol}`}>Pending balance change: {hideBalances && pendingAmount !== null ? HIDDEN_BALANCE : pendingAmount === null ? 'Unavailable' : `${pendingAmount} ${network.symbol}`}</Text>}
           </View>
           {snapshot.balance.status === 'error' && <Notice title="Could not load your balance" body="Your address is still available. Refresh to try again." tone="amber" />}
           <Button title="Receive" icon="arrow-down-left" size="compact" onPress={receive} />
@@ -127,7 +130,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
           </> : <View style={s.assetList}>
             <Text accessibilityRole="header" style={s.assetHeading}>Assets</Text>
             <Card><Row title={network.symbol} subtitle={network.name} icon={<Coin id={utxo ? network.symbol : network.id} fallbackSymbol={utxo ? network.symbol : undefined} size={32} />}
-              right={<Text style={s.assetBalance}>{amount ?? '—'} {network.symbol}</Text>}
+              right={<Text style={s.assetBalance} accessibilityLabel={hideBalances ? 'Balance hidden' : `${amount ?? 'Unavailable'} ${network.symbol}`}>{hideBalances ? HIDDEN_BALANCE : amount === null ? '—' : compactActivityAmountLabel(amount)} {network.symbol}</Text>}
               onPress={() => { if (current(snapshot.generation)) { assetGeneration.current = snapshot.generation; setMode('asset'); } }} last /></Card>
           </View>}
         </>}

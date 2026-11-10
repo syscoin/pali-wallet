@@ -1,3 +1,4 @@
+import { authenticateNativeOperation } from './operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 
 test.use({ baseURL: 'http://127.0.0.1:4179' });
@@ -44,6 +45,7 @@ test('connecting a Ledger preserves the EVM review and still requires Confirm', 
     await page.evaluate(() => window.__nativeSendFixture.confirmations())
   ).toEqual([]);
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   expect(
     await page.evaluate(() => window.__nativeSendFixture.confirmations())
   ).toEqual([{ id: review }]);
@@ -173,6 +175,7 @@ test('saved EVM signed bytes replay without connecting Ledger', async ({
     page.getByRole('button', { name: 'Connect Ledger', exact: true })
   ).toHaveCount(0);
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   expect(
     await page.evaluate(() => window.__nativeSendFixture.confirmations())
   ).toHaveLength(1);

@@ -16,12 +16,14 @@ function fixture() {
   let record: DeviceUnlockEnrollmentSnapshot = Object.freeze({ ...scope, enrollmentId: null });
   let nextId = first;
   let failure: 'refused' | 'ack' | null = null;
-  let afterRead = current as () => void, afterWrite = current as () => void;
+  let afterRead: () => void | Promise<void> = current, afterWrite = current as () => void;
+  let afterDecode = current as () => void;
+  let available = true;
   let reads = 0, mutations = 0, decoded: Uint8Array | null = null;
   const items = new Map<string, string>();
   const protectedItems = createDeviceUnlockCredentialStore({
-    async available() { return true; },
-    async read(alias) { reads++; const item = items.get(alias) ?? null; afterRead(); return item; },
+    async available() { return available; },
+    async read(alias) { reads++; const item = items.get(alias) ?? null; await afterRead(); return item; },
     async write(alias, raw) { items.set(alias, raw); afterWrite(); },
     async remove(alias) { items.delete(alias); },
   });
@@ -38,7 +40,7 @@ function fixture() {
   };
   const make = () => createDeviceUnlockEnrollment({ enrollment, randomId: () => nextId, credentials: {
     ...protectedItems,
-    async read(...args) { decoded = await protectedItems.read(...args); return decoded; },
+    async read(...args) { decoded = await protectedItems.read(...args); afterDecode(); return decoded; },
   } });
   const coordinator = make();
   const prove = async (guard: () => void) => {
@@ -49,7 +51,10 @@ function fixture() {
     get mutations() { return mutations; }, get decoded() { return decoded; },
     choose(id: string) { nextId = id; }, fail(kind: typeof failure) { failure = kind; },
     replace(id: string) { record = Object.freeze({ ...scope, enrollmentId: id }); },
-    onRead(operation: () => void) { afterRead = operation; }, onWrite(operation: () => void) { afterWrite = operation; },
+    replaceReference(change: Partial<DeviceUnlockEnrollmentSnapshot>) { record = Object.freeze({ ...record, ...change }); },
+    availability(value: boolean) { available = value; },
+    onDecode(operation: () => void) { afterDecode = operation; },
+    onRead(operation: () => void | Promise<void>) { afterRead = operation; }, onWrite(operation: () => void) { afterWrite = operation; },
   };
 }
 
@@ -136,4 +141,84 @@ test('a reference changed during SDK proof retires the exact captured session', 
     return true;
   }, current, async () => { retired++; }), unavailable);
   assert.equal(retired, 1);
+});
+
+test('presence verification reads the protected current enrollment and erases its key without SDK delivery', async () => {
+  const f = fixture(), c = f.coordinator;
+  await c.issue(f.prove, current);
+  const record = f.record, saved = [...f.items], before = f.reads;
+  assert.equal(await c.verifyPresence(current), undefined);
+  assert.equal(f.reads, before + 1);
+  assert.equal(f.record, record);
+  assert.equal(f.mutations, 1);
+  assert.deepEqual([...f.items], saved);
+  assert.deepEqual(f.decoded, new Uint8Array(32));
+  assert.equal(await c.sdkPort.readCredential(scope.pairFingerprint), null);
+});
+
+test('presence verification refuses disabled, unavailable, missing and failed protected credentials', async () => {
+  const f = fixture(), c = f.coordinator;
+  await assert.rejects(c.verifyPresence(current), unavailable);
+  assert.equal(f.reads, 0);
+  await c.issue(f.prove, current);
+  const before = f.reads;
+  f.availability(false);
+  await assert.rejects(c.verifyPresence(current), unavailable);
+  assert.equal(f.reads, before);
+  f.availability(true);
+  f.onRead(() => { throw Error('OS read failed'); });
+  await assert.rejects(c.verifyPresence(current), unavailable);
+  f.onRead(current);
+  f.items.clear();
+  await assert.rejects(c.verifyPresence(current), unavailable);
+});
+
+test('presence verification binds every enrollment field across the protected read', async () => {
+  const changes: Partial<DeviceUnlockEnrollmentSnapshot>[] = [
+    { installationId: '66'.repeat(16) },
+    { walletBindingId: '77'.repeat(32) },
+    { pairFingerprint: '88'.repeat(32) },
+    { enrollmentId: second },
+    { enrollmentId: null },
+  ];
+  for (const change of changes) {
+    const f = fixture(), c = f.coordinator;
+    await c.issue(f.prove, current);
+    f.onRead(() => f.replaceReference(change));
+    await assert.rejects(c.verifyPresence(current), unavailable);
+    assert.deepEqual(f.decoded, new Uint8Array(32));
+  }
+});
+
+test('revoked presence verification erases already-read bytes and rejects non-synchronous guards', async () => {
+  const f = fixture(), c = f.coordinator;
+  await c.issue(f.prove, current);
+  let live = true;
+  const check = () => { if (!live) throw Error('CANCELLED'); };
+  f.onDecode(() => { live = false; });
+  await assert.rejects(c.verifyPresence(check), unavailable);
+  assert.deepEqual(f.decoded, new Uint8Array(32));
+  const before = f.reads;
+  await assert.rejects(c.verifyPresence(check), unavailable);
+  await assert.rejects(c.verifyPresence(async () => undefined), unavailable);
+  assert.equal(f.reads, before);
+});
+
+test('presence verification shares the single active operation with issue, resume and disable', async () => {
+  const f = fixture(), c = f.coordinator;
+  await c.issue(f.prove, current);
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  f.onRead(() => { entered.resolve(); return release.promise; });
+  const pending = c.verifyPresence(current);
+  await entered.promise;
+  await assert.rejects(c.verifyPresence(current), unavailable);
+  await assert.rejects(c.issue(f.prove, current), unavailable);
+  await assert.rejects(c.resume(async () => assert.fail('SDK must not run'), current, retire), unavailable);
+  await assert.rejects(c.disable(current), unavailable);
+  assert.equal(await c.sdkPort.readCredential(scope.pairFingerprint), null);
+  release.resolve();
+  await pending;
+  assert.deepEqual(f.decoded, new Uint8Array(32));
+  f.onRead(current);
+  await c.verifyPresence(current);
 });

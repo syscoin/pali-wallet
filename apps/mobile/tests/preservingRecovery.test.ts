@@ -1835,7 +1835,7 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
     previous.addOutput(bitcoin.address.toOutputScript(account.address, network.addressNetwork), 100000n);
     const recipient = bitcoin.payments.p2wpkh({ hash: Buffer.alloc(20, 9), network: network.addressNetwork }).address!;
     let send = await f.runtime.openUtxoSend!(current);
-    const { txid } = await send.confirm(await send.prepare({ amount: '0.0004', recipient }));
+    const { txid } = await send.confirm(await send.prepare({ amount: '0.0004', recipient }), { method: 'password', password: OLD });
     assert.equal(txid, posted?.txid);
     const observation = ['/api/v2/', '/api/v2/block-index/0', `/api/v2/tx/${txid}`];
     assert.equal(await send.check(txid), 'seen');

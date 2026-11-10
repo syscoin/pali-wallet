@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 
-import { colors, Icon, PaliMark } from '../ui';
+import { colors, Icon, PaliMark, WelcomeBackdrop } from '../ui';
 import { useNativeTranslation } from '../platform/localization';
 import { createWatchAccount, type WatchAccountNetwork } from '../core/watchOnlyAuthority';
 import { parseUtxoPublicIdentifier } from '../core/utxoIdentifier';
@@ -35,7 +35,8 @@ type WelcomeProps = {
   onPreview: () => void;
   onDesign?: () => void;
   onWatch: () => void;
-  onWallet?: () => void;
+  onCreateWallet?: () => void;
+  onImportWallet?: () => void;
 };
 
 type AddWatchAccountProps = {
@@ -47,66 +48,29 @@ type AddWatchAccountProps = {
   onNetworksChanged?(): Promise<void>;
 };
 
-function BrandMark({ small = false }: { small?: boolean }) {
-  return <PaliMark size={small ? 32 : 112} />;
-}
-
 export function Welcome({
   onPreview,
   onWatch,
   onDesign,
-  onWallet,
+  onCreateWallet,
+  onImportWallet,
 }: WelcomeProps) {
   const { t } = useNativeTranslation();
   const compact = useWindowDimensions().height < 740;
   return (
     <View style={styles.screen}>
+      <WelcomeBackdrop />
       <ScrollView
         style={styles.welcomeScroll}
         contentContainerStyle={styles.welcomeContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.brandRow}>
-          <BrandMark small />
-          <Text style={styles.brandName}>pali</Text>
+        <View style={styles.welcomeBrand}>
+          <PaliMark size={compact ? 96 : 120} />
+          <Text accessibilityRole="header" style={styles.welcomeName}>Pali Wallet</Text>
         </View>
 
-        <View
-          style={[styles.hero, compact && styles.heroCompact]}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-        >
-          <View style={styles.haloOuter} />
-          <View style={styles.haloInner} />
-          <View style={styles.heroPlate}>
-            <BrandMark />
-          </View>
-        </View>
-
-        <View style={styles.intro}>
-          <Text accessibilityRole="header" style={styles.welcomeTitle}>
-            {t('mobile.welcome.titleFirst')}{'\n'}
-            <Text style={styles.titleAccent}>{t('mobile.welcome.titleAccent')}</Text>
-          </Text>
-          <Text style={styles.welcomeDescription}>
-            {onWallet
-              ? t('mobile.welcome.nativeDescription')
-              : t('mobile.welcome.watchDescription')}
-          </Text>
-        </View>
-
-        <View style={styles.trustRow}>
-          <View style={styles.trustIcon}>
-            <Icon name="shield" size={18} color={colors.green} />
-          </View>
-          <Text style={styles.trustText}>
-            {onWallet
-              ? t('mobile.welcome.nativeControl')
-              : t('mobile.welcome.watchControl')}
-          </Text>
-        </View>
-
-        {!onWallet && (
+        {!onCreateWallet && !onImportWallet && (
           <View style={styles.previewActions}>
             {onDesign && (
               <IdlePressable
@@ -141,17 +105,22 @@ export function Welcome({
         )}
       </ScrollView>
       <View style={styles.welcomeActions}>
-        {onWallet && (
+        {onCreateWallet && (
           <IdlePressable
             accessibilityRole="button"
-            onPress={onWallet}
+            onPress={onCreateWallet}
             style={({ pressed }) => [
               styles.primaryButton,
               pressed && styles.pressed,
             ]}
           >
-            <Text style={styles.primaryButtonText}>{t('mobile.welcome.setup')}</Text>
-            <Icon name="arrow-right" size={21} color={colors.bg} />
+            <Text style={styles.primaryButtonText}>Create wallet</Text>
+          </IdlePressable>
+        )}
+        {onImportWallet && (
+          <IdlePressable accessibilityRole="button" onPress={onImportWallet}
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+            <Text style={styles.secondaryButtonText}>Import existing wallet</Text>
           </IdlePressable>
         )}
         <IdlePressable
@@ -159,18 +128,18 @@ export function Welcome({
           accessibilityHint={t('mobile.welcome.watchHint')}
           onPress={onWatch}
           style={({ pressed }) => [
-            onWallet ? styles.secondaryButton : styles.primaryButton,
+            onCreateWallet || onImportWallet ? styles.quietButton : styles.primaryButton,
             pressed && styles.pressed,
           ]}
         >
           <Text
             style={
-              onWallet ? styles.secondaryButtonText : styles.primaryButtonText
+              onCreateWallet || onImportWallet ? styles.quietButtonText : styles.primaryButtonText
             }
           >
             {t('mobile.welcome.watch')}
           </Text>
-          {!onWallet && <Icon name="arrow-right" size={21} color={colors.bg} />}
+          {!onCreateWallet && !onImportWallet && <Icon name="arrow-right" size={21} color={colors.bg} />}
         </IdlePressable>
       </View>
     </View>
@@ -290,10 +259,13 @@ const styles = StyleSheet.create({
   welcomeScroll: { flex: 1 },
   welcomeContent: {
     flexGrow: 1,
+    justifyContent: 'center',
     paddingHorizontal: 26,
     paddingTop: 20,
     paddingBottom: 20,
   },
+  welcomeBrand: { alignItems: 'center', gap: 18, paddingVertical: 28 },
+  welcomeName: { color: colors.text, fontSize: 34, lineHeight: 42, fontWeight: '600', letterSpacing: -1 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   brandName: {
     color: colors.text,
@@ -448,9 +420,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 26,
     paddingTop: 12,
     paddingBottom: 20,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
   },
+  quietButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, paddingVertical: 12 },
+  quietButtonText: { color: colors.blue, fontSize: 15, lineHeight: 22, fontWeight: '500', textAlign: 'center' },
   primaryButton: {
     minHeight: 56,
     paddingVertical: 15,
@@ -474,7 +446,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: 18,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.blue,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',

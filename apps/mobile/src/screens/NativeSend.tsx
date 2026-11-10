@@ -1,4 +1,7 @@
 import type { NativePortfolioAccount } from '../portfolio/nativePortfolio';
+import type { NativeOperationCredential } from '../custody/types';
+import { TransactionAuthentication } from './TransactionAuthentication';
+import { RecipientQrScanner } from './RecipientQrScanner';
 import type { NativeRecipientResolution, NativeRecipientResolver } from '../portfolio/nativeRecipientResolver';
 import { NativeTokenMaximum } from './NativeTokenMaximum';
 import type { NativeTokenView } from '../portfolio/nativeTokens';
@@ -49,6 +52,8 @@ import {
   Coin,
   colors,
   Header,
+  Icon,
+  IconButton,
   Notice,
   Screen,
   styles,
@@ -65,6 +70,9 @@ export const nativeTransferFailure = (
   const code = error instanceof Error ? error.message : '';
   if (code === 'ENS_UNAVAILABLE') return 'This ENS name could not be resolved. Check the name and try again.';
   if (code === 'RECIPIENT_EXPIRED') return 'The recipient lookup expired or changed. Review the transfer again.';
+  if (code === 'INVALID_CREDENTIAL') return 'That password is incorrect. Please try again.';
+  if (code === 'AUTH_THROTTLED') return 'Too many incorrect passwords. Wait a few minutes before trying again.';
+  if (code === 'DEVICE_UNLOCK_UNAVAILABLE') return 'Biometric confirmation was not completed. Try again or use your password.';
   if (code === 'SIGNED_STORAGE_FULL') return hasSavedTransaction ? SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE : SIGNED_STORAGE_FULL_MESSAGE;
   if (code === 'CANCELLATION_QUEUED')
     return hasSavedTransaction
@@ -124,7 +132,7 @@ type RecipientPickerSession = Readonly<{
   accounts: readonly EvmRecipientChoice[];
 }>;
 
-export function NativeSendInput({ label, value, onChange, onEdit, busy, keyboardType = 'default', max = 1024, placeholder }: {
+export function NativeSendInput({ label, value, onChange, onEdit, busy, keyboardType = 'default', max = 1024, placeholder, trailing }: {
   label: string;
   value: string;
   onChange(value: string): void;
@@ -133,11 +141,12 @@ export function NativeSendInput({ label, value, onChange, onEdit, busy, keyboard
   keyboardType?: TextInputProps['keyboardType'];
   max?: number;
   placeholder?: string;
+  trailing?: React.ReactNode;
 }) {
   return (
     <View style={s.field}>
       <Text style={s.label}>{label}</Text>
-      <IdleTextInput
+      <View style={trailing ? s.inputWithAction : undefined}><IdleTextInput
         accessibilityLabel={label}
         value={value}
         onChangeText={(next) => {
@@ -158,8 +167,9 @@ export function NativeSendInput({ label, value, onChange, onEdit, busy, keyboard
         placeholder={placeholder}
         placeholderTextColor={colors.muted}
         selectionColor={colors.pink}
-        style={s.input}
+        style={[s.input, !!trailing && s.inputWithActionField]}
       />
+      {trailing}</View>
     </View>
   );
 }
@@ -190,8 +200,14 @@ export function NativeSend({
   initialDraft,
   beforeClose,
   recipientResolver,
+  authenticationMethod,
+  onChangeNetwork,
+  onViewTransaction,
 }: {
   controller: NativeTransferView;
+  authenticationMethod: NativeOperationCredential['method'];
+  onChangeNetwork?(): void;
+  onViewTransaction?(hash: string): void;
   ledgerConnection?: NativeLedgerConnectionView;
   initialDraft?: NativeSendInitialDraft;
   beforeClose?(): Promise<void>;
@@ -249,14 +265,21 @@ export function NativeSend({
     activePicker.current = null;
     setOpenPicker(null);
   }, []);
-  const [amount, setAmount] = useState(initialDraft?.amount ?? initialAmount);
-  const [tokenId, setTokenId] = useState(initialDraft?.tokenId ?? '');
-  const [advanced, setAdvanced] = useState(!!initialDraft);
-  const [nonce, setNonce] = useState(initialDraft?.nonce ?? '');
+  const [amount, setAmountState] = useState(initialDraft?.amount ?? initialAmount);
+  const [tokenId, setTokenIdState] = useState(initialDraft?.tokenId ?? '');
+  const [advanced, setAdvancedState] = useState(!!initialDraft);
+  const [nonce, setNonceState] = useState(initialDraft?.nonce ?? '');
   const [error, setError] = useState('');
   const [leavePrompt, setLeavePrompt] = useState<{ review: typeof snapshot.review; fallback: typeof snapshot | null } | null>(null);
   const leaving = useRef(false);
   const lifetime = useRef({ alive: true, epoch: 0 });
+  type AuthenticationReview = { review: NonNullable<typeof snapshot.review>; epoch: number;
+    account: NativePortfolioAccount; registrationHash: string; submitted: boolean };
+  const [authentication, setAuthentication] = useState<AuthenticationReview | null>(null);
+  const authenticationOwner = useRef<AuthenticationReview | null>(null);
+  const [authenticationBusy, setAuthenticationBusy] = useState(false);
+  const [scanner, setScanner] = useState<{ scope: object; epoch: number; account: NativePortfolioAccount; registrationHash: string } | null>(null);
+  const scannerOwner = useRef<typeof scanner>(null);
   const [resolving, setResolving] = useState(false);
   const [resolvedRecipient, setResolvedRecipient] = useState<NativeRecipientResolution | null>(null);
   const resolution = useRef<{
@@ -265,10 +288,15 @@ export function NativeSend({
     authorized: boolean;
     review?: NonNullable<typeof snapshot.review>;
   } | null>(null);
-  const latestRecipientOwner = useRef({ controller, account, context, recipientResolver, recipient });
+  const latestRecipientOwner = useRef({ controller, account, context, recipientResolver, recipient, amount, tokenId, nonce, advanced, token, collectible });
   useLayoutEffect(() => {
-    latestRecipientOwner.current = { controller, account, context, recipientResolver, recipient };
-  }, [controller, account, context, recipientResolver, recipient]);
+    latestRecipientOwner.current = { controller, account, context, recipientResolver, recipient, amount, tokenId, nonce, advanced, token, collectible };
+  }, [controller, account, context, recipientResolver, recipient, amount, tokenId, nonce, advanced, token, collectible]);
+  const closeScanner = () => { scannerOwner.current = null; setScanner(null); };
+  const setAmount = (value: string) => { closeScanner(); setAmountState(value); };
+  const setTokenId = (value: string) => { closeScanner(); setTokenIdState(value); };
+  const setAdvanced = (value: boolean) => { closeScanner(); setAdvancedState(value); };
+  const setNonce = (value: string) => { closeScanner(); setNonceState(value); };
   const retireResolution = useCallback((cancelReview = true) => {
     const held = resolution.current;
     resolution.current = null;
@@ -279,6 +307,7 @@ export function NativeSend({
     setResolvedRecipient(null);
   }, [controller]);
   const setRecipient = (value: string) => {
+    closeScanner();
     retireResolution();
     setRecipientDraft({ value });
   };
@@ -291,7 +320,7 @@ export function NativeSend({
     latestBack.current = onBack;
   }, [onBack]);
   const [closingHardware, setClosingHardware] = useState(false);
-  const busy = resolving || closingHardware || ['preparing', 'signing', 'submitting'].includes(snapshot.phase);
+  const busy = authenticationBusy || resolving || closingHardware || ['preparing', 'signing', 'submitting'].includes(snapshot.phase);
   const promptMatches = (current: typeof snapshot) => !!leavePrompt &&
     current.phase === 'submitting' && current.review === leavePrompt.review &&
     (leavePrompt.review !== null || current === leavePrompt.fallback);
@@ -374,6 +403,10 @@ export function NativeSend({
   const finishClose = useCallback(() => {
     if (!lifetime.current.alive || leaving.current) return;
     leaving.current = true;
+    scannerOwner.current = null;
+    setScanner(null);
+    authenticationOwner.current = null;
+    setAuthentication(null);
     retirePicker();
     retireResolution();
     lifetime.current.epoch++;
@@ -391,13 +424,17 @@ export function NativeSend({
         setError('The hardware request is still closing. Try again.');
       }
     });
-  }, [beforeClose, controller, retirePicker, retireResolution]);
+  }, [beforeClose, controller, retirePicker, retireResolution, setAuthentication, setError, setScanner]);
   const close = useCallback(() => {
     if (!lifetime.current.alive || leaving.current) return;
     const current = controller.getSnapshot();
     if (current.phase === 'submitting') {
       Keyboard.dismiss();
       setLeavePrompt({ review: current.review, fallback: current.review === null ? current : null });
+      return;
+    }
+    if (current.phase === 'review' && current.review && !current.review.retry && !current.review.replacement) {
+      controller.cancel();
       return;
     }
     finishClose();
@@ -420,20 +457,22 @@ export function NativeSend({
     });
     return () => {
       activePicker.current = null;
+      scannerOwner.current = null;
+      authenticationOwner.current = null;
       current.alive = false;
       current.epoch++;
       controller.cancel();
       back.remove();
     };
   }, [controller, close]);
-  const run = async (operation: () => Promise<void>) => {
+  const run = async (operation: () => Promise<void>, isCurrent = () => true) => {
     if (busy) return;
     const captured = lifetime.current.epoch;
     setError('');
     try {
       await operation();
     } catch (cause) {
-      if (lifetime.current.alive && captured === lifetime.current.epoch) {
+      if (lifetime.current.alive && captured === lifetime.current.epoch && isCurrent()) {
         const current = controller.getSnapshot();
         if (cause instanceof Error && cause.message === 'EXPIRED' &&
           current.phase === 'unknown' && current.hash &&
@@ -471,7 +510,6 @@ export function NativeSend({
         held.ticket.assertCurrent();
         if (recipient.trim() !== held.ticket.input ||
             (reviewedCollectible?.recipient ?? review.recipient).toLowerCase() !== held.ticket.address.toLowerCase()) throw new Error('RECIPIENT_EXPIRED');
-        held.authorized = true;
       } catch {
         retireResolution();
         setError('The recipient lookup expired or changed. Review the transfer again.');
@@ -479,7 +517,35 @@ export function NativeSend({
       }
     }
     Keyboard.dismiss();
-    void run(() => controller.confirm(review.id));
+    const next = { review, epoch: lifetime.current.epoch, account,
+      registrationHash: context.registrationHash, submitted: false };
+    authenticationOwner.current = next;
+    setError('');
+    setAuthentication(next);
+  };
+  const authenticationCurrent = (held: AuthenticationReview) => {
+    const latest = latestRecipientOwner.current;
+    return lifetime.current.alive && authenticationOwner.current === held && lifetime.current.epoch === held.epoch &&
+      latest.controller === controller && latest.account.address === held.account.address &&
+      latest.account.network === held.account.network && latest.account.revision === held.account.revision &&
+      latest.context.registrationHash === held.registrationHash && controller.getSnapshot().phase === 'review' &&
+      controller.getSnapshot().review === held.review;
+  };
+  const confirmAuthentication = async (held: AuthenticationReview, credential: NativeOperationCredential) => {
+    if (!authenticationCurrent(held) || held.submitted || busy) return;
+    const resolved = resolution.current;
+    if (resolved?.ticket && !held.review.retry) {
+      try { resolved.ticket.assertCurrent(); resolved.authorized = true; }
+      catch { retireResolution(); authenticationOwner.current = null; setAuthentication(null);
+        setError('The recipient lookup expired or changed. Review the transfer again.'); return; }
+    }
+    held.submitted = true;
+    setAuthenticationBusy(true);
+    await run(() => controller.confirm(held.review.id, credential), () => authenticationOwner.current === held);
+    if (!lifetime.current.alive || authenticationOwner.current !== held || lifetime.current.epoch !== held.epoch) return;
+    held.submitted = false;
+    setAuthenticationBusy(false);
+    if (!authenticationCurrent(held)) { authenticationOwner.current = null; setAuthentication(null); }
   };
   const prepare = () => {
     retirePicker();
@@ -574,9 +640,7 @@ export function NativeSend({
   const clearCollectibleError = () => {
     if (draftCollectible && error) setError('');
   };
-  const terminal = ['confirmed', 'reverted', 'nonce-consumed'].includes(
-    snapshot.phase
-  );
+  const knownOutcome = ['pending', 'confirmed', 'reverted'].includes(snapshot.phase);
   const hasOutcome =
     snapshot.hash &&
     [
@@ -594,16 +658,11 @@ export function NativeSend({
                 onPress={submit}
                 testID="native-send-confirm"
               />
-              <Button
-                title={review.retry || review.replacement ? 'Close review' : 'Edit transfer'}
-                variant="quiet"
-                disabled={busy}
-                onPress={() => {
-                  if (replacementHash) close();
-                  else if (reviewedCollectible && review.replay) void run(() => controller.recover(false, review.replay?.hash));
-                  else controller.cancel();
-                }}
-              />
+  </> : hasOutcome && knownOutcome ? <>
+    {onViewTransaction && <Button title="View transaction" onPress={() => {
+      if (lifetime.current.alive && snapshot.hash && controller.getSnapshot().hash === snapshot.hash) onViewTransaction(snapshot.hash);
+    }} />}
+    <Button title="Done" variant={onViewTransaction ? 'secondary' : 'primary'} onPress={close} />
   </> : hasOutcome ? <Button title={replacementHash ? 'Back to Activity' : 'Back to wallet'} variant="secondary" onPress={close} /> : !replacementHash ? (
     <Button title="Review transfer" disabled={busy || !recipient.trim() ||
       (draftCollectible?.tokenStandard === 'ERC-721' ? !tokenId.trim() : !amount)}
@@ -781,10 +840,10 @@ export function NativeSend({
           ) : hasOutcome ? (
             <>
               <View style={s.hero}>
-                <Coin
+                {snapshot.phase === 'pending' || snapshot.phase === 'confirmed' ? <View style={s.submittedIcon}><Icon name="check" size={32} color={colors.blue} /></View> : <Coin
                   id={outcomeToken || outcomeCollectible ? 'custom-token' : capturedContext.networkId}
                   size={46}
-                />
+                />}
                 <Text style={s.title}>
                   {snapshot.phase === 'confirmed'
                     ? cancellation
@@ -801,7 +860,7 @@ export function NativeSend({
                     ? snapshot.message === SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE ? 'Check earlier transaction' : snapshot.message === ASSET_STATE_SAVED_MESSAGE ? 'Saved, not submitted' : 'Checking submission'
                     : snapshot.phase === 'unavailable'
                     ? 'Status unavailable'
-                    : cancellation ? 'Cancellation submitted' : replacementHash ? 'Replacement submitted' : 'Transfer pending'}
+                    : 'Transaction submitted'}
                 </Text>
               </View>
               {outcomeToken && tokenIdentity(outcomeToken)}
@@ -817,8 +876,9 @@ export function NativeSend({
                       : `${capturedContext.name} transaction`
                   }
                   body={
-                    snapshot.message ??
-                    'Check the transaction status before sending again.'
+                    snapshot.message ?? (snapshot.phase === 'pending'
+                      ? 'View this transaction in Activity to track confirmation.'
+                      : 'Check the transaction status before sending again.')
                   }
                   tone={
                     snapshot.phase === 'unknown' ||
@@ -836,12 +896,12 @@ export function NativeSend({
                   {snapshot.hash}
                 </Text>
               </Card>
-              <Button
+              {!knownOutcome && <Button
                 title="Check status"
-                variant={terminal ? 'secondary' : 'primary'}
+                variant="primary"
                 disabled={busy}
                 onPress={() => void run(() => controller.recover(false, snapshot.hash ?? undefined))}
-              />
+              />}
               {snapshot.phase === 'unknown' && !snapshot.inspectionOnly && (
                 <Button
                   title="Review retry"
@@ -850,27 +910,20 @@ export function NativeSend({
                   onPress={() => void run(() => controller.recover(true, snapshot.hash ?? undefined))}
                 />
               )}
-              {!replacementHash && ['confirmed', 'reverted', 'nonce-consumed'].includes(
-                snapshot.phase
-              ) && (
-                <Button
-                  title="New transfer"
-                  onPress={() => {
-                    setRecipient('');
-                    setAmount(initialAmount);
-                    setTokenId('');
-                    setAdvanced(false);
-                    setNonce('');
-                    setError('');
-                    controller.cancel();
-                  }}
-                />
-              )}
             </>
           ) : replacementHash ? (
             !busy && <Button title="Check again" variant="secondary" onPress={() => void run(() => prepareReplacement(replacementHash))} />
           ) : (
             <>
+              <Card style={s.networkCard}>
+                <Coin id={capturedContext.networkId} size={32} />
+                <View style={s.networkDescription}><Text style={s.networkName}>{capturedContext.name}</Text>
+                  <Text style={styles.muted}>{capturedContext.symbol}{capturedContext.testnet ? ' · Test network' : ''}</Text></View>
+                {onChangeNetwork && <Button title="Change" variant="quiet" size="compact" disabled={busy} onPress={() => {
+                  if (busy || !lifetime.current.alive) return;
+                  closeScanner(); onChangeNetwork();
+                }} />}
+              </Card>
               <NativeSendInput
                 label={draftCollectible ? 'Recipient address' : `${capturedContext.name} address`}
                 value={recipient}
@@ -879,6 +932,12 @@ export function NativeSend({
                 busy={busy}
                 max={255}
                 placeholder="0x… or name.eth"
+                trailing={<IconButton label="Scan recipient address" icon="scan" disabled={busy} onPress={() => {
+                  if (busy || !lifetime.current.alive || controller.getSnapshot().review) return;
+                  retirePicker(); Keyboard.dismiss();
+                  const next = { scope: latestRecipientOwner.current, epoch: lifetime.current.epoch, account, registrationHash: context.registrationHash };
+                  scannerOwner.current = next; setScanner(next);
+                }} />}
               />
               {recipientPicker && !savedHash && !replacementHash && !token && !draftCollectible && (
                 <>
@@ -990,6 +1049,27 @@ export function NativeSend({
         onClose={() => setLedgerPicker(null)}
         onFinished={() => setLedgerPicker(null)}
       />}
+      {scanner && scanner.account.address === account.address && scanner.account.network === account.network &&
+        scanner.account.revision === account.revision && scanner.registrationHash === context.registrationHash && <Modal visible animationType="slide" onRequestClose={closeScanner}>
+        <RecipientQrScanner onClose={closeScanner} onScan={address => {
+          if (!lifetime.current.alive || scannerOwner.current !== scanner || lifetime.current.epoch !== scanner.epoch ||
+              latestRecipientOwner.current !== scanner.scope || controller.getSnapshot().review ||
+              ['preparing', 'signing', 'submitting'].includes(controller.getSnapshot().phase)) return;
+          closeScanner(); setRecipient(address);
+        }} />
+      </Modal>}
+      {snapshot.phase === 'review' && authentication && authentication.review === review && authentication.account.address === account.address &&
+        authentication.account.network === account.network && authentication.account.revision === account.revision &&
+        authentication.registrationHash === context.registrationHash && <TransactionAuthentication
+          identity={`${authentication.registrationHash}:${authentication.review.id}:${authentication.account.revision}`}
+          method={authenticationMethod} busy={authenticationBusy} error={error || undefined}
+          onConfirm={credential => { void confirmAuthentication(authentication, credential); }}
+          onCancel={() => {
+            if (!authenticationCurrent(authentication)) return;
+            const started = authentication.submitted;
+            authenticationOwner.current = null; setAuthentication(null); setAuthenticationBusy(false); setError('');
+            if (started) controller.cancel();
+          }} />}
       <Modal
         visible={promptMatches(snapshot)}
         transparent
@@ -1013,6 +1093,11 @@ export function NativeSend({
   );
 }
 const s = StyleSheet.create({
+  submittedIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' },
+  networkCard: { padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  networkDescription: { flex: 1, minWidth: 0, gap: 2 }, networkName: { fontSize: 14, fontWeight: '600', color: colors.text },
+  inputWithAction: { flexDirection: 'row', alignItems: 'center', paddingRight: 4, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 12 },
+  inputWithActionField: { flex: 1, minWidth: 0, borderWidth: 0, backgroundColor: 'transparent' },
   recipientChoice: { minHeight: 48, justifyContent: 'center', gap: 2, paddingVertical: 6 },
   safeArea: { flex: 1, backgroundColor: colors.bg },
   leaveOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)' },

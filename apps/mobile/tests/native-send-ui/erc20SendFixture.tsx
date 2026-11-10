@@ -162,6 +162,10 @@ const rpc = new NativeTransferRpc({
   },
 });
 const runtime: NativeTransferRuntime = {
+  async authenticateOperation(credential, check) {
+    check();
+    if (credential.method !== 'password' || credential.password !== 'public-password') throw Error('INVALID_CREDENTIAL');
+  },
   replay(guard, transport, options) {
     return new EvmSignedReplay(signedRecords, () => ({authorizeReplay: (entry) => authorizePrivateNoteReplay(entry, guard, async () => { throw Error('Unexpected private replay'); }, async () => { throw new Error('Unexpected private withdrawal'); }),recordSession:signedRecordTestSession(guard),assertCurrent:guard,
       context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
@@ -355,6 +359,7 @@ export function Erc20SendFixture() {
     }} />
   </> : <Text>Wallet closed</Text>;
   return <NativeSend
+    authenticationMethod="password"
     account={{ address: wallet.address, network: 'ethereum', revision: state.revision }}
     key={snapshot.revision}
     controller={controller.view}

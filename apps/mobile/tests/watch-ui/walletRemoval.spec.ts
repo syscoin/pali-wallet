@@ -34,7 +34,7 @@ async function openWallet(page: Page, { empty = false, android = false } = {}) {
   if (empty) params.set('empty', '1');
   if (android) params.set('android', '1');
   await page.goto('/?' + params);
-  if (empty) await button(page, 'Set up your wallet').click();
+  if (empty) await button(page, 'Create wallet').click();
   else await button(page, 'Open wallet').click();
   await unlock(page);
 }
@@ -165,16 +165,16 @@ test('verified removal dispatches once, survives background reconciliation, and 
   await expect.poll(async () => (await audit(page)).commits).toBe(1);
   expect((await audit(page)).confirmationAttempts).toBe(1);
   expect(await page.evaluate(() => window.__watchFixture.nativePhase())).toBe('disposed');
-  await expect(button(page, 'Set up your wallet')).toHaveCount(0);
+  await expect(button(page, 'Create wallet')).toHaveCount(0);
   await page.evaluate(() => window.__watchFixture.lifecycle('background'));
   await page.evaluate(() => window.__watchFixture.removal.release());
   await page.evaluate(() => window.__watchFixture.lifecycle('active'));
   await expect(title(page, 'Wallet removed')).toBeVisible();
   await button(page, 'Continue').click();
-  await expect(button(page, 'Set up your wallet')).toBeVisible();
+  await expect(button(page, 'Create wallet')).toBeVisible();
   expect(await selection(page)).toBeNull();
-  await button(page, 'Set up your wallet').click();
-  await expect(button(page, 'Create a wallet')).toBeVisible();
+  await button(page, 'Create wallet').click();
+  await expect(title(page, 'Protect your wallet')).toBeVisible();
   expect((await audit(page)).reopens).toBe(1);
 });
 
@@ -185,7 +185,7 @@ test('known unchanged removal returns to the existing wallet, never setup', asyn
   await authorize(page);
   await button(page, 'Remove wallet').click();
   await expect(title(page, 'Wallet kept')).toBeVisible();
-  await expect(button(page, 'Set up your wallet')).toHaveCount(0);
+  await expect(button(page, 'Create wallet')).toHaveCount(0);
   await button(page, /Return to wallet|Back to unlock/).click();
   await expect(button(page, 'Unlock wallet')).toBeVisible();
   await unlock(page);
@@ -201,7 +201,7 @@ test('an unconfirmed removal stays on a truthful outcome and offers no setup or 
   await expect(title(page, 'Removal could not be confirmed')).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.back())).toBe(true);
   await expect(title(page, 'Removal could not be confirmed')).toBeVisible();
-  await expect(button(page, 'Set up your wallet')).toHaveCount(0);
+  await expect(button(page, 'Create wallet')).toHaveCount(0);
   await expect(button(page, 'Create a wallet')).toHaveCount(0);
   await expect(button(page, 'Remove wallet')).toHaveCount(0);
   expect((await audit(page)).commits).toBe(1);

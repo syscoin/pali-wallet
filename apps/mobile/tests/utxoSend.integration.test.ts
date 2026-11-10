@@ -261,6 +261,8 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
     },createSentryCollateralCoordinator());
     const protection=Object.values(SENTRY_NETWORKS).some(item=>item.chainId===network.chainId&&item.genesisHash===network.genesisHash)
       ? {scope:collateralScope,registry:collateralRegistry} : null;
+    let authenticationHook: (() => Promise<void>) | undefined;
+    let clockOffset = 0;
     const openSend = (assertOwner: () => void, currentNetwork = network) => createNativeUtxoSend(
       currentNetwork,
       {
@@ -285,7 +287,13 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       records,
       fetcher,
       ring.getAddress,
-      protection
+      protection,
+      async (credential, check) => {
+        check();
+        assert.deepEqual(credential, { method: 'password', password: syntheticPassword });
+        await authenticationHook?.();
+      },
+      () => performance.now() + clockOffset,
     );
     const send = openSend(assertCurrent);
     const protectFunding=async()=>{
@@ -305,14 +313,14 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       });
       await assert.rejects(send.prepare(draft));excluded.mock.restore();await releaseFunding();
       const stale=await send.prepare(draft);await protectFunding();
-      await assert.rejects(send.confirm(stale),/protected Sentry Node collateral/);
+      await assert.rejects(send.confirm(stale, { method: 'password', password: syntheticPassword }),/protected Sentry Node collateral/);
       assert.equal(sign.mock.callCount(),0);assert.deepEqual(posted,[]);await releaseFunding();
       const signOriginal=ring.syscoinTransaction.signPSBT.bind(ring.syscoinTransaction);sign.mock.restore();
       const hold=t.mock.method(ring.syscoinTransaction,'signPSBT',async(...args:Parameters<typeof signOriginal>)=>{
         const signed=await signOriginal(...args);await protectFunding();return signed;
       });
       const signedBeforeLink=await send.prepare(draft);
-      await assert.rejects(send.confirm(signedBeforeLink),/protected Sentry Node collateral/);
+      await assert.rejects(send.confirm(signedBeforeLink, { method: 'password', password: syntheticPassword }),/protected Sentry Node collateral/);
       assert.equal(hold.mock.callCount(),1);assert.deepEqual(posted,[]);assert.deepEqual(await send.list(),[]);
       hold.mock.restore();await releaseFunding();calls.length=0;
     }
@@ -424,10 +432,10 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       assert.equal(change?.asset?.rawAmount, '187654322');
       assert.equal(change?.address === account.address, type === 'Imported');
       assert(BigInt(review.feeSatoshis) > 0n);
-      await assert.rejects(send.confirm({ ...review }), /NOT_READY/);
+      await assert.rejects(send.confirm({ ...review }, { method: 'password', password: syntheticPassword }), /NOT_READY/);
       assert.equal(sign.mock.callCount(), 0);
       assert.deepEqual(posted, []);
-      await assert.rejects(send.confirm(review), { code: 'UTXO_SUBMISSION_UNKNOWN' });
+      await assert.rejects(send.confirm(review, { method: 'password', password: syntheticPassword }), { code: 'UTXO_SUBMISSION_UNKNOWN' });
       assert.equal(sign.mock.callCount(), 1);
       assert.equal(posted.length, 1);
       const signed = bitcoin.Transaction.fromHex(posted[0]!);
@@ -495,11 +503,11 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       }
       const afterRestart = calls.length;
       assert.deepEqual(await reopened.list(), [{ txid: signed.getId(), accepted: false }]);
-      await assert.rejects(reopened.confirm(review), /NOT_READY/);
+      await assert.rejects(reopened.confirm(review, { method: 'password', password: syntheticPassword }), /NOT_READY/);
       let retry = await reopened.prepareRetry(signed.getId());
       if(protection){
         await protectFunding();
-        await assert.rejects(reopened.confirm(retry),/protected Sentry Node collateral/);
+        await assert.rejects(reopened.confirm(retry, { method: 'password', password: syntheticPassword }),/protected Sentry Node collateral/);
         assert.equal(posted.length,1);assert.equal(freshSign.mock.callCount(),0);
         await assert.rejects(reopened.prepareRetry(signed.getId()),/protected Sentry Node collateral/);
         await releaseFunding();retry=await reopened.prepareRetry(signed.getId());
@@ -507,7 +515,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       assert.deepEqual(retry.outputs, review.outputs);
       assert.equal(retry.feeSatoshis, review.feeSatoshis);
       assert.deepEqual(retry.transactionOptions, { rbf: false, zdag: true });
-      await reopened.confirm(retry);
+      await reopened.confirm(retry, { method: 'password', password: syntheticPassword });
       assert.equal(sign.mock.callCount(), 1);
       assert.equal(freshSign.mock.callCount(), 0);
       assert.deepEqual(calls.slice(afterRestart), ['GET /api/v2/', 'GET /api/v2/block-index/0', 'POST /api/v2/sendtx/']);
@@ -525,6 +533,40 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       await assert.rejects(send.prepare({ amount: '0.0004', recipient: unsupported }), { code: 'INVALID_INPUT' });
       assert.equal(calls.length, 0);
     }
+    if (network.id === 'bitcoin' && type === 'HDAccount') {
+      const sign = t.mock.method(ring.syscoinTransaction, 'signPSBT');
+      const credential = { method: 'password' as const, password: syntheticPassword };
+      const preserved = await send.prepare({ amount: '0.0004', recipient });
+      authenticationHook = async () => { throw Error('INVALID_CREDENTIAL'); };
+      await assert.rejects(send.confirm(preserved, credential), /INVALID_CREDENTIAL/);
+      assert.equal(sign.mock.callCount(), 0);
+      assert.deepEqual(posted, []);
+      try {
+        for (const retirement of ['cancel', 'expiry', 'owner'] as const) {
+          const reviewed = retirement === 'cancel' ? preserved : await send.prepare({ amount: '0.0004', recipient });
+          const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+          authenticationHook = async () => { entered.resolve(); await release.promise; };
+          const pending = send.confirm(reviewed, credential);
+          const rejected = assert.rejects(pending, /CANCELLED/);
+          await entered.promise;
+          if (retirement === 'cancel') send.cancel();
+          else if (retirement === 'expiry') clockOffset += 90_001;
+          else active = false;
+          release.resolve();
+          await rejected;
+          active = true;
+          authenticationHook = undefined;
+          assert.equal(sign.mock.callCount(), 0);
+          assert.deepEqual(posted, []);
+          assert.deepEqual(await send.list(), []);
+        }
+      } finally {
+        active = true;
+        authenticationHook = undefined;
+        sign.mock.restore();
+        send.cancel();
+      }
+    }
     let review = await send.prepare({ amount: '0.0004', recipient });
     assert.deepEqual(review.transactionOptions, { rbf: true });
     assert.equal(review.outputs[0]?.address, recipient);
@@ -534,7 +576,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
     assert.equal(bitcoin.address.fromOutputScript(bitcoin.address.toOutputScript(change.address, network.addressNetwork), network.addressNetwork), change.address);
     assert(BigInt(review.feeSatoshis) > 0n);
     assert.equal(calls.filter((entry) => entry.startsWith('POST')).length, 0);
-    await assert.rejects(send.confirm({ ...review }), /NOT_READY/);
+    await assert.rejects(send.confirm({ ...review }, { method: 'password', password: syntheticPassword }), /NOT_READY/);
     const originalSign = ring.syscoinTransaction.signPSBT.bind(ring.syscoinTransaction);
     const dishonestSign = t.mock.method(ring.syscoinTransaction, 'signPSBT', async (...args: Parameters<typeof originalSign>) => {
       const signed = await originalSign(...args);
@@ -544,7 +586,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       witness.value += 1n;
       return PsbtUtils.toPali(psbt);
     });
-    await assert.rejects(send.confirm(review), {
+    await assert.rejects(send.confirm(review, { method: 'password', password: syntheticPassword }), {
       code: 'UTXO_QUOTE_FEE_CHANGED',
       transactionNotBroadcast: true,
     });
@@ -558,11 +600,30 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
     wrongOptions.mock.restore();
     review = await send.prepare({ amount: '0.0004', recipient, rbf: false });
     assert.deepEqual(review.transactionOptions, { rbf: false });
-    const { txid } = await send.confirm(review);
+    const { txid } = await send.confirm(review, { method: 'password', password: syntheticPassword });
     assert(bitcoin.Transaction.fromHex(published!).ins.every(({ sequence }: { sequence: number }) => sequence >= 0xfffffffe));
     assert.equal(txid, ackId);
     assert.equal(calls.filter((entry) => entry.startsWith('POST')).length, 1);
     assert.equal(await send.check(txid), 'confirmed');
+    if (network.id === 'bitcoin' && type === 'HDAccount') {
+      const sign = t.mock.method(ring.syscoinTransaction, 'signPSBT');
+      const credential = { method: 'password' as const, password: syntheticPassword };
+      const original = published, beforePosts = posted.length;
+      const retry = await send.prepareRetry(txid);
+      authenticationHook = async () => { throw Error('INVALID_CREDENTIAL'); };
+      try {
+        await assert.rejects(send.confirm(retry, credential), /INVALID_CREDENTIAL/);
+        assert.equal(sign.mock.callCount(), 0);
+        assert.equal(posted.length, beforePosts);
+        authenticationHook = undefined;
+        assert.equal((await send.confirm(retry, credential)).txid, txid);
+        assert.equal(sign.mock.callCount(), 0);
+        assert.deepEqual(posted.slice(beforePosts), [original]);
+      } finally {
+        authenticationHook = undefined;
+        sign.mock.restore();
+      }
+    }
     if (network === litecoinRegistration) {
       const replacement = projectUtxoRegistration({
         ...utxoRegistrationData(network),
@@ -581,7 +642,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       assert.deepEqual(retry.transactionOptions, { rbf: false });
       assert.equal(calls.length, beforeReview);
       const exactRaw = published;
-      assert.equal((await reopened.confirm(retry)).txid, txid);
+      assert.equal((await reopened.confirm(retry, { method: 'password', password: syntheticPassword })).txid, txid);
       assert.deepEqual(calls.slice(beforeReview), ['GET /api/v2/', 'GET /api/v2/block-index/0', 'POST /api/v2/sendtx/']);
       assert.deepEqual(posted, [exactRaw, exactRaw]);
       assert.equal(state.activeNetwork.url, replacement.endpoint);
@@ -1100,7 +1161,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
             .find((row) => row.key === UTXO_SIGNED_RECORD_KEY)?.value;
           blockBroadcast = true;
           const beforePosts = posts.length;
-          await assert.rejects(send.confirm(review), { code: 'UTXO_SUBMISSION_NOT_DISPATCHED', transactionNotBroadcast: true });
+          await assert.rejects(send.confirm(review, { method: 'password', password }), { code: 'UTXO_SUBMISSION_NOT_DISPATCHED', transactionNotBroadcast: true });
           assert.equal(posts.length, beforePosts);
           const [retained] = await send.list();
           assert(retained);
@@ -1137,7 +1198,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
             ]);
           }
         } else {
-          ({ txid } = await send.confirm(review));
+          ({ txid } = await send.confirm(review, { method: 'password', password }));
           raw = posts.at(-1)!;
         }
 
@@ -1156,7 +1217,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
         assert.equal(owner.getSnapshot().account?.address, address);
         send = await runtime.openUtxoSend!(current);
         assert.deepEqual((await send.list()).map((entry) => entry.txid), [txid]);
-        assert.equal((await send.confirm(await send.prepareRetry(txid))).txid, txid);
+        assert.equal((await send.confirm(await send.prepareRetry(txid), { method: 'password', password })).txid, txid);
         if (raw) assert.equal(posts.at(-1), raw);
         else assert.equal(bitcoin.Transaction.fromHex(posts.at(-1)!).getId(), txid);
         confirmed = true;
@@ -1215,7 +1276,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
           assert.equal(await reopened.check(txid), 'unknown');
           const retry = await reopened.prepareRetry(txid);
           assert.equal(retry.retryProviderOrigin, new URL(endpoint).origin);
-          assert.equal((await reopened.confirm(retry)).txid, txid);
+          assert.equal((await reopened.confirm(retry, { method: 'password', password })).txid, txid);
           missingSavedTransfer = false;
           assert.equal(posts.at(-1), exact);
           assert.deepEqual(routes.slice(beforeReorg), [
@@ -1274,7 +1335,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     const [previousSend] = await restored.list();
     assert(previousSend);
     const oldRaw = posts.at(-1);
-    assert.equal((await restored.confirm(await restored.prepareRetry(previousSend.txid))).txid, previousSend.txid);
+    assert.equal((await restored.confirm(await restored.prepareRetry(previousSend.txid), { method: 'password', password: nextPassword })).txid, previousSend.txid);
     assert.equal(posts.at(-1), oldRaw);
   } finally {
     await owner.dispose();

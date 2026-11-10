@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { KeyringRuntimeError, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { SeedBackupFlow } from '../src/custody/seedBackup.ts';
+import { IdleLock } from '../src/core/idleLock.ts';
+import { SecurityPreferences } from '../src/core/securityPreferences.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
@@ -75,30 +77,38 @@ async function fixture() {
       },
     },
   };
-  const authority = new NativeCustodyAuthority({ async open() { return runtime; } });
+  let now = 0;
+  const idle = new IdleLock(() => ({ monotonic: now, wall: now }), (() => 0) as unknown as typeof setTimeout, (() => undefined) as typeof clearTimeout);
+  const preferences = new SecurityPreferences({ async get() { return null; }, async set() {} });
+  const authority = new NativeCustodyAuthority({ async open() { return runtime; } }, {
+    preferences, assertActive() { if (!idle.check()) throw Error('EXPIRED'); },
+  });
+  idle.begin(authority, () => authority.lock());
   const flow = new SeedBackupFlow(authority, () => runtime.backup);
   await authority.initialize();
   await authority.unlock(PASSWORD);
   return { authority, flow, runtime, get confirms() { return confirms; },
     replaceWallet() { fingerprint = 'wallet-two'; },
-    async close() { flow.dispose(); await authority.dispose(); } };
+    expire() { now += 300_000; },
+    async close() { idle.stop(); flow.dispose(); await authority.dispose(); } };
 }
 
-test('fresh authentication and correct challenge confirm only the same durable wallet', async () => {
+test('fresh phrase presentation waits for an explicit one-use acknowledgement of the same durable wallet', async () => {
   const f = await fixture();
   try {
     const shown = await f.flow.begin(PASSWORD);
     assert.equal(shown.words.join(' '), PHRASE);
-    assert.equal(new Set(shown.positions).size, 3);
+    assert.deepEqual(Object.keys(shown).sort(), ['id', 'words']);
     assert.equal(JSON.stringify(f.authority.getSnapshot()).includes(PHRASE), false);
-    await assert.rejects(f.flow.confirm(shown.id, ['wrong', 'wrong', 'wrong']), /BACKUP_WORDS_MISMATCH/);
     assert.equal(f.confirms, 0);
-    await assert.rejects(f.flow.confirm(shown.id, new Array<string>(3)), /BACKUP_WORDS_MISMATCH/);
+    assert.equal(f.authority.getSnapshot().backup, 'unconfirmed');
+    await assert.rejects(f.flow.acknowledge('wrong-presentation'), /BACKUP_EXPIRED/);
     assert.equal(f.confirms, 0);
-    await f.flow.confirm(shown.id, shown.positions.map((position) => shown.words[position]!));
+    await f.flow.acknowledge(shown.id);
     assert.equal(f.confirms, 1);
     assert.equal(f.authority.getSnapshot().phase, 'ready');
-    await assert.rejects(f.flow.confirm(shown.id, []), /BACKUP_EXPIRED/);
+    assert.equal(f.authority.getSnapshot().backup, 'confirmed');
+    await assert.rejects(f.flow.acknowledge(shown.id), /BACKUP_EXPIRED/);
   } finally { await f.close(); }
 });
 
@@ -130,7 +140,7 @@ test('wallet replacement cannot receive a stale backup receipt', async () => {
   const f = await fixture();
   try {
     const shown = await f.flow.begin(PASSWORD); f.replaceWallet();
-    await assert.rejects(f.flow.confirm(shown.id, shown.positions.map((p) => shown.words[p]!)), /^Error: BACKUP_UNAVAILABLE$/);
+    await assert.rejects(f.flow.acknowledge(shown.id), /^Error: BACKUP_UNAVAILABLE$/);
     assert.equal(f.confirms, 0);
     assert.equal(f.authority.getSnapshot().phase, 'locked');
   } finally { await f.close(); }
@@ -143,7 +153,7 @@ test('late persistence after lock cannot reopen the wallet', async () => {
   f.runtime.backup.confirm = async (fingerprint) => { await original(fingerprint); started.resolve(); await release.promise; };
   try {
     const shown = await f.flow.begin(PASSWORD);
-    const pending = f.flow.confirm(shown.id, shown.positions.map((p) => shown.words[p]!));
+    const pending = f.flow.acknowledge(shown.id);
     await started.promise; f.authority.lock(); release.resolve();
     await assert.rejects(pending, /^Error: BACKUP_UNAVAILABLE$/);
     assert.equal(f.authority.getSnapshot().phase, 'locked');
@@ -163,14 +173,63 @@ test('clear observers cannot start concurrent authentication or revive disposed 
   } finally { unsubscribe(); await f.close(); }
 });
 
-test('five incorrect challenges require fresh authentication', async () => {
+test('cancelled or superseded presentation IDs cannot acknowledge a new presentation', async () => {
   const f = await fixture();
   try {
+    const first = await f.flow.begin(PASSWORD);
+    f.flow.cancel();
+    await assert.rejects(f.flow.acknowledge(first.id), /BACKUP_EXPIRED/);
+    const second = await f.flow.begin(PASSWORD);
+    assert.notEqual(first.id, second.id);
+    await assert.rejects(f.flow.acknowledge(first.id), /BACKUP_EXPIRED/);
+    assert.equal(f.confirms, 0);
+    await f.flow.acknowledge(second.id);
+    assert.equal(f.confirms, 1);
+  } finally { await f.close(); }
+});
+
+for (const interruption of ['lock', 'expiry', 'dispose'] as const) {
+  test(`${interruption} refuses a captured acknowledgement before persistence`, async () => {
+    const f = await fixture();
+    try {
+      const shown = await f.flow.begin(PASSWORD);
+      if (interruption === 'lock') f.authority.lock();
+      if (interruption === 'expiry') f.expire(); // No timer callback fires: the authority guard checks the deadline.
+      if (interruption === 'dispose') f.flow.dispose();
+      await assert.rejects(f.flow.acknowledge(shown.id), /BACKUP_EXPIRED/);
+      assert.equal(f.confirms, 0);
+      assert.equal(f.authority.getSnapshot().backup, 'unconfirmed');
+      if (interruption !== 'dispose') assert.equal(f.authority.getSnapshot().phase, 'locked');
+    } finally { await f.close(); }
+  });
+}
+
+test('failed durable acknowledgement locks and consumes the presentation without marking backup complete', async () => {
+  const f = await fixture();
+  f.runtime.backup.confirm = async () => { throw Error('storage refused acknowledgement'); };
+  try {
     const shown = await f.flow.begin(PASSWORD);
-    for (let attempt = 0; attempt < 4; attempt++)
-      await assert.rejects(f.flow.confirm(shown.id, []), /BACKUP_WORDS_MISMATCH/);
-    await assert.rejects(f.flow.confirm(shown.id, []), /BACKUP_EXPIRED/);
+    await assert.rejects(f.flow.acknowledge(shown.id), /BACKUP_UNAVAILABLE/);
+    assert.equal(f.authority.getSnapshot().backup, 'unconfirmed');
     assert.equal(f.authority.getSnapshot().phase, 'locked');
+    await assert.rejects(f.flow.acknowledge(shown.id), /BACKUP_EXPIRED/);
     assert.equal(f.confirms, 0);
   } finally { await f.close(); }
+});
+
+test('pending acknowledgement is single-flight and completion observers cannot start a new phrase read', async () => {
+  const f = await fixture(), started = deferred(), release = deferred();
+  const original = f.runtime.backup.confirm;
+  f.runtime.backup.confirm = async (fingerprint) => { started.resolve(); await release.promise; await original(fingerprint); };
+  const attempts: Promise<unknown>[] = [];
+  try {
+    const shown = await f.flow.begin(PASSWORD);
+    const off = f.flow.onClear(() => { attempts.push(f.flow.begin(PASSWORD).catch(error => error.message)); });
+    const pending = f.flow.acknowledge(shown.id);
+    await started.promise;
+    await assert.rejects(f.flow.acknowledge(shown.id), /BUSY/);
+    release.resolve(); await pending; off();
+    assert.deepEqual(await Promise.all(attempts), ['BUSY']);
+    assert.equal(f.confirms, 1);
+  } finally { release.resolve(); await f.close(); }
 });

@@ -219,7 +219,7 @@ export class NativeActivity {
       const state = this.source.getSnapshot();
       if (state.revision === revision) return;
       revision = state.revision;
-      if (state.phase !== 'ready') {
+      if (!['ready', 'backup-required'].includes(state.phase)) {
         this.stop();
         this.publish(initial());
       } else void this.refresh();
@@ -250,7 +250,7 @@ export class NativeActivity {
     if (
       generation !== this.generation ||
       signal?.aborted ||
-      this.source.getSnapshot().phase !== 'ready' ||
+      !['ready', 'backup-required'].includes(this.source.getSnapshot().phase) ||
       this.source.getSnapshot().revision !== revision
     )
       throw new ActivityError('CANCELLED');

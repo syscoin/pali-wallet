@@ -132,16 +132,17 @@ test('backup-required authentication consumes the hint before backup completion 
   await page.goto('/?backup-required=1');
   await page.getByRole('textbox', { name: 'Password', exact: true }).fill('public-password');
   await page.getByRole('button', { name: 'Unlock wallet', exact: true }).click();
+  await page.getByRole('button', { name: 'Back up your wallet. Protect access if this phone is lost.', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Show recovery phrase', exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.nativePhase())).toBe('backup-required');
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
   await page.getByRole('textbox', { name: 'Confirm your password', exact: true }).fill('public-password');
   await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click();
-  await page.getByRole('button', { name: "I've written them down", exact: true }).click();
-  for (const input of await page.getByRole('textbox', { name: /^Word [0-9]+$/ }).all()) {
-    await input.fill(await input.getAttribute('aria-label') === 'Word 12' ? 'about' : 'abandon');
-  }
-  await page.getByRole('button', { name: 'Confirm backup', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeDisabled();
+  await page.getByRole('checkbox', { name: 'I have written down my recovery phrase and stored it safely', exact: true }).click();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page.getByText('Backup complete', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.events().filter((event) => event === 'backup:confirmed').length)).toBe(1);
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();

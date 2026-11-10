@@ -198,8 +198,9 @@ test('native unlock and all security presentation stages exclude the tab shell',
   await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click();
   await expect(page.getByText('abandon', { exact: true })).toHaveCount(11);
   await expect(page.getByRole('tab')).toHaveCount(0);
-  await page.getByRole('button', { name: "I've written them down", exact: true }).click();
-  await expect(page.getByRole('textbox', { name: /^Word [0-9]+$/ })).toHaveCount(3);
+  await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeDisabled();
+  await expect(page.getByRole('checkbox', { name: 'I have written down my recovery phrase and stored it safely', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: /^Word [0-9]+$/ })).toHaveCount(0);
   await expect(page.getByRole('tab')).toHaveCount(0);
 });
 

@@ -57,11 +57,19 @@ export type CustodyStoredState =
  * qualify crypto/storage before returning a runtime. It owns one SDK authority,
  * never rebinds its store, and exposes only the selected public address here.
  */
+export type NativeOperationCredential = Readonly<
+  { method: 'biometric' } | { method: 'password'; password: string }
+>;
+
 export interface CustodyRuntime {
+  readonly previewPhrase?: (phrase: string, assertCurrent: () => void) => Promise<readonly Readonly<{ label: string; address: string }>[]>;
   readonly accounts?: NativeAccountRuntime;
   readonly imports?: NativeImportRuntime;
   readonly networks?: NativeNetworkRuntime;
-  readonly security?: { reauthenticateIdlePolicy(password: string, assertCurrent: () => void): Promise<void> };
+  readonly security?: {
+    reauthenticateIdlePolicy(password: string, assertCurrent: () => void): Promise<void>;
+    authenticateOperation(credential: NativeOperationCredential, assertCurrent: () => void): Promise<void>;
+  };
   readonly deviceUnlock?: {
     status(): Promise<Readonly<{ available: boolean; enabled: boolean }>>;
     enroll(password: string, assertCurrent: () => void): Promise<Readonly<{ authenticated: boolean }>>;

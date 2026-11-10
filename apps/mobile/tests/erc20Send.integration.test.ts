@@ -197,7 +197,7 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
         values.base = 0;
         values.eth = 100000n;
       }
-      await assert.rejects(transfers!.confirm(review.id), {
+      await assert.rejects(transfers!.confirm(review.id, { method: 'password', password: PASSWORD }), {
         code:
           kind === 'token'
             ? 'INSUFFICIENT_TOKEN_BALANCE'
@@ -219,7 +219,7 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
       gas: 50000,
     });
     await transfers!.prepareToken(CONTRACT, RECIPIENT, '1.23');
-    await transfers!.confirm(transfers!.getSnapshot().review!.id);
+    await transfers!.confirm(transfers!.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
     assert.equal(transfers!.getSnapshot().phase, 'unknown');
     const raw = sent[0]!;
     const hash = keccak256(raw);
@@ -267,14 +267,14 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     tampered.entries[0].metadata.intent.token.decimals = 3;
     const changed = JSON.stringify(tampered);
     assert.equal(await storage!.signedRecords.compareAndSet(profile,saved,changed,()=>undefined),true);
-    await assert.rejects(transfers!.confirm(transfers!.getSnapshot().review!.id));
+    await assert.rejects(transfers!.confirm(transfers!.getSnapshot().review!.id, { method: 'password', password: PASSWORD }));
     assert.equal(sent.length, 1);
     assert.equal(await storage!.signedRecords.read(profile),changed);
     assert.equal(await storage!.signedRecords.compareAndSet(profile,changed,saved,()=>undefined),true);
     if(authority!.getSnapshot().phase!=='ready')await authority!.unlock(PASSWORD);
     await transfers!.recover(true);
     values.loseResponse = false;
-    await transfers!.confirm(transfers!.getSnapshot().review!.id);
+    await transfers!.confirm(transfers!.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
     assert.equal(sent.length, 2);
     assert.equal(sent[1], raw);
     assert.equal(transfers!.getSnapshot().hash, hash);
@@ -285,12 +285,12 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     assert.equal(replacement.intent!.amountUnits, '123');
     assert.equal(replacement.intent!.token.decimals, 2);
     values.tokens = 122n;
-    await assert.rejects(transfers!.confirm(replacement.id), { code: 'INSUFFICIENT_TOKEN_BALANCE' });
+    await assert.rejects(transfers!.confirm(replacement.id, { method: 'password', password: PASSWORD }), { code: 'INSUFFICIENT_TOKEN_BALANCE' });
     assert.equal(sent.length, 2);
     values.tokens = 10000n;
     await transfers!.prepareSpeedUp(hash);
     replacement = transfers!.getSnapshot().review!;
-    await transfers!.confirm(replacement.id);
+    await transfers!.confirm(replacement.id, { method: 'password', password: PASSWORD });
     assert.equal(sent.length, 3);
     const bumped = Transaction.from(sent[2]!);
     assert.equal(bumped.data, Transaction.from(raw).data);

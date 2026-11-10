@@ -29,14 +29,18 @@ for (const viewport of [
     ).toHaveCount(0);
 
     const setup = page.getByRole('button', {
-      name: 'Set up your wallet',
+      name: 'Create wallet',
+      exact: true,
+    });
+    const restore = page.getByRole('button', {
+      name: 'Import existing wallet',
       exact: true,
     });
     const watch = page.getByRole('button', {
       name: 'Watch an account',
       exact: true,
     });
-    for (const action of [setup, watch]) {
+    for (const action of [setup, restore, watch]) {
       await expect(action).toBeVisible();
       const bounds = await action.boundingBox();
       expect(bounds).not.toBeNull();

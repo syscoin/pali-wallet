@@ -1,7 +1,8 @@
+import { reloadBalancePrivacy, saveBalancePrivacy, useBalancePrivacy } from '../platform/balancePrivacy';
 import { useNativeTranslation } from '../platform/localization';
 import { IdleTextInput } from './IdleActivityBoundary';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { HdKeyExportFlow, HdKeyExportPresentation } from '../custody/hdKeyExport';
 import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
@@ -16,15 +17,18 @@ type Props = {
   onViewRecovery(): void;
   onRemoveWallet?(): void;
   onDeviceUnlock?(): void;
+  onAutoLock?(): void;
   deviceUnlockEnabled?: boolean;
+  backupConfirmed?: boolean;
   onLock(): void;
   onBack(): void;
   captureFailureHandler(): (error: unknown) => void;
 };
 
 /** Private presentation stays in this mounted, protected native screen only. */
-export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, accountLabel, address, onViewRecovery, onRemoveWallet, onDeviceUnlock, deviceUnlockEnabled, onLock, onBack, captureFailureHandler }: Props) {
+export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, accountLabel, address, onViewRecovery, onRemoveWallet, onDeviceUnlock, onAutoLock, deviceUnlockEnabled, backupConfirmed = true, onLock, onBack, captureFailureHandler }: Props) {
   const { t } = useNativeTranslation();
+  const privacy = useBalancePrivacy();
   const [mode, setMode] = useState<'hub' | 'key' | 'recovery'>('hub');
   const [password, setPassword] = useState('');
   const [presentation, setPresentation] = useState<HdKeyExportPresentation | null>(null);
@@ -89,25 +93,25 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
   const shown = presentation && presentation.accountId === accountId && presentation.address === address &&
     keyExport.isCurrent(presentation.id) ? presentation : null;
   const utxo = keyFormat !== 'evm' ? keyFormat : null;
-  let backupTitle = t('mobile.security.phraseBackedUp');
-  let backupBody = t('mobile.security.phraseBackup');
-  if (accountType === 'Ledger' || accountType === 'Trezor') {
-    backupTitle = t('mobile.security.hardwareTitle', { device: accountType });
-    backupBody = t('mobile.security.hardwareBody', { device: accountType });
-  } else if (accountType === 'Imported') {
-    backupTitle = t('mobile.security.importBackupTitle');
-    backupBody = t('mobile.security.importBackupBody');
-  }
+  const backupStatus = backupConfirmed ? 'Backed up' : 'Back up needed';
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen gap={16} footer={mode === 'key' ? <Button title={shown ? t('mobile.security.hide') : t('mobile.security.reveal')} disabled={!shown && (busy || !password)} onPress={shown ? hide : reveal} /> : mode === 'hub' ? <Button title={t('mobile.settings.lock')} variant="secondary" size="compact" icon="lock" onPress={() => { hide(); onLock(); }} /> : undefined}><Header title={mode === 'key' ? t('mobile.security.accountKey') : mode === 'recovery' ? t('mobile.security.recoveryGuide') : t('mobile.security.title')} onBack={back} />
         {mode === 'hub' ? <>
-          <Notice title={backupTitle} body={backupBody} />
-          <Card><Row title={accountType === 'Ledger' || accountType === 'Trezor' ? t('mobile.security.viewPaliPhrase') : t('mobile.security.viewPhrase')} subtitle={t('mobile.security.passwordWords')} icon="shield" onPress={() => { hide(); onViewRecovery(); }} />
+          <Card><Row title={accountType === 'Ledger' || accountType === 'Trezor' ? t('mobile.security.viewPaliPhrase') : t('mobile.security.viewPhrase')} subtitle={backupStatus} icon="shield" onPress={() => { hide(); onViewRecovery(); }} />
             {keyFormat && (accountType === 'HDAccount' || accountType === 'Imported') && <Row title={t('mobile.security.revealAccountKey')} subtitle={accountLabel} icon="eye" onPress={() => { hide(); setMode('key'); }} />}
             {onDeviceUnlock && <Row title={t('mobile.security.biometric')} subtitle={deviceUnlockEnabled ? t('mobile.security.on') : t('mobile.security.off')} icon="lock" onPress={() => { hide(); onDeviceUnlock(); }} />}
+            {onAutoLock && <Row title="Auto-lock" subtitle="Choose when Pali locks" icon="lock" onPress={() => { hide(); onAutoLock(); }} />}
+            <Row title="Privacy mode" subtitle="Hide balances and Activity summaries" icon="eye" right={<Switch
+              accessibilityLabel="Hide balances and Activity summaries" value={privacy.hidden}
+              disabled={privacy.status !== 'ready'} trackColor={{ true: colors.pink }}
+              onValueChange={hidden => { if (privacy.status === 'ready') void saveBalancePrivacy(hidden); }} />} />
             <Row title={t('mobile.security.recoveryGuide')} subtitle={t('mobile.security.backupsRestore')} icon="help" onPress={() => { hide(); setMode('recovery'); }} last /></Card>
+          {privacy.status === 'unavailable' && <>
+            <Text accessibilityRole="alert" style={s.error}>Privacy setting unavailable. Balances stay hidden until the saved setting can be read.</Text>
+            <Button title="Retry privacy setting" variant="quiet" onPress={() => void reloadBalancePrivacy()} />
+          </>}
           {onRemoveWallet && <Button title={t('mobile.security.removeWallet')} variant="danger" size="compact" onPress={() => { hide(); onRemoveWallet(); }} />}
         </> : mode === 'recovery' ? <>
           <Text style={s.heading}>{t('mobile.security.keepPhraseOffline')}</Text>

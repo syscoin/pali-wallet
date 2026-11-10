@@ -30,6 +30,7 @@ import {
   normalizeUtxoAddress,
 } from '../core/utxoAddresses.ts';
 import { CustodyRuntimeError } from './types.ts';
+import type { NativeOperationCredential } from './types.ts';
 
 import type {
   IKeyringManager,
@@ -85,6 +86,7 @@ export function createNativeUtxoSend(
   fetch: typeof globalThis.fetch,
   getAddress: IKeyringManager['getAddress'],
   collateral: ReturnType<typeof createNativeSentryCollateral> | null,
+  authenticateOperation: (credential: NativeOperationCredential, assertCurrent: () => void) => Promise<void>,
   now = () => performance.now()
 ) {
   const sentryChain = Object.values(SENTRY_NETWORKS).some(item=>
@@ -430,14 +432,17 @@ export function createNativeUtxoSend(
         return view;
       });
     },
-    async confirm(view: NativeUtxoReview): Promise<Readonly<{ txid: string }>> {
+    async confirm(view: NativeUtxoReview, credential: NativeOperationCredential): Promise<Readonly<{ txid: string }>> {
       return run(async () => {
         const selected = review;
         if (!selected || view !== selected.view)
           throw new CustodyRuntimeError('NOT_READY');
-        review = undefined;
         const check = capture(revision, selected.expires);
         check();
+        await authenticateOperation(credential, check);
+        check();
+        if (review !== selected) throw new CustodyRuntimeError('CANCELLED');
+        review = undefined;
         const currentSession = { ...session, assertCurrent: check };
         if ('retained' in selected)
           return submitProtected(selected.retained.outpoints,check,transport=>submitRetainedUtxo({

@@ -46,7 +46,7 @@ type Operation = {
   attempted?: boolean;
   check: Guard;
   completed?: boolean;
-  kind: 'issue' | 'resume' | 'disable';
+  kind: 'issue' | 'resume' | 'disable' | 'presence';
   scope?: DeviceUnlockCredentialScope;
 };
 
@@ -164,6 +164,35 @@ export function createDeviceUnlockEnrollment(
   });
   return Object.freeze({
     sdkPort,
+    /** The guard owns the unlocked session; this verifies presence without releasing its key. */
+    async verifyPresence(guard: Guard): Promise<void> {
+      try {
+        await run('presence', guard, async (operation) => {
+          const { check } = operation;
+          let key: Uint8Array | null = null;
+          try {
+            if (!(await ports.credentials.available())) throw unavailable();
+            check();
+            const reference = await ports.enrollment.read();
+            check();
+            if (!reference?.enrollmentId) throw unavailable();
+            const scope = scopeOf(reference, reference.enrollmentId);
+            operation.scope = scope;
+            key = await ports.credentials.read(scope, check);
+            check();
+            if (!(key instanceof Uint8Array) || key.length !== 32)
+              throw unavailable();
+            const latest = await ports.enrollment.read();
+            check();
+            if (!same(latest, scope)) throw unavailable();
+          } finally {
+            if (key instanceof Uint8Array) key.fill(0);
+          }
+        });
+      } catch {
+        throw unavailable();
+      }
+    },
     issue: (prove: (assertCurrent: Guard) => Promise<boolean>, guard: Guard) =>
       run('issue', guard, async (operation) => {
         const { check } = operation;

@@ -315,6 +315,9 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     ])
   );
   Object.assign(dependencies, {
+    './BackupIntroduction': { BackupIntroduction: 'BackupIntroduction' },
+    './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
+    './NativeImportWallet': { NativeImportWallet: 'NativeImportWallet' },
     '../platform/localization': nativeTranslationFixture,
     '../../../../source/shared/smartAccountLinks.ts': { PALI_RECOVERY_ALERTS_URL },
     '../smartAccount/guardianRecovery': { getNativeGuardianRecoveryChoices },

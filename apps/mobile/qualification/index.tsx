@@ -613,23 +613,14 @@ function QualificationApp() {
             }
             let rejected = false;
             try {
-              await backup!.confirm(presentation.id, [
-                'incorrect',
-                'incorrect',
-                'incorrect',
-              ]);
+              await backup!.acknowledge(`${presentation.id}-stale`);
             } catch {
               rejected = true;
             }
             expect(
               rejected && authority!.getSnapshot().backup === 'unconfirmed'
             );
-            await backup!.confirm(
-              presentation.id,
-              presentation.positions.map(
-                (position) => presentation.words[position]!
-              )
-            );
+            await backup!.acknowledge(presentation.id);
             expect(authority!.getSnapshot().phase === 'ready');
           });
         } else {

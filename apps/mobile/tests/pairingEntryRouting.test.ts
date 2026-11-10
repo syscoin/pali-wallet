@@ -346,3 +346,30 @@ test('a user navigation makes a delayed cold link stale', async () => {
     f.dispose();
   }
 });
+
+for (const kind of ['create', 'import'] as const) {
+  test(`welcome ${kind} opens that native form without selecting an account`, async () => {
+    const f = harness();
+    try {
+      f.load.resolve();
+      await settle();
+      f.selection.resolve(null);
+      await settle();
+      const welcome = f.find(f.render(), 'Welcome');
+      assert.ok(welcome);
+      welcome.props[kind === 'create' ? 'onCreateWallet' : 'onImportWallet']();
+      const wallet = f.find(f.render(), 'NativeWalletScreen');
+      assert.ok(wallet);
+      assert.equal(wallet.props.initialSetup, kind);
+      assert.equal(wallet.props.initialAccountId, undefined);
+      assert.deepEqual(f.saved, []);
+      wallet.props.onExit();
+      const next = f.find(f.render(), 'Welcome');
+      assert.ok(next);
+      next.props.onWatch();
+      assert.ok(f.find(f.render(), 'AddWatchAccount'));
+    } finally {
+      f.dispose();
+    }
+  });
+}

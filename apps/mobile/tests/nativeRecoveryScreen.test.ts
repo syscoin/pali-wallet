@@ -43,6 +43,11 @@ const inventory = { status: 'needs-matching-phrase-verification', reason: null, 
   retainedSignedTransactions: 5, tokenEntries: 6,
   historySummaries: 7, cachedTransactions: 8, activityPreferences: 9,
 } };
+const walletScreenPorts = {
+  './BackupIntroduction': { BackupIntroduction: 'BackupIntroduction' },
+  './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
+  './NativeImportWallet': { NativeImportWallet: 'NativeImportWallet' },
+};
 function evaluate(source: string, dependencies: Record<string, unknown>, flow = false) {
   const require = createRequire(import.meta.url);
   const babelRequire = createRequire(require.resolve('babel-preset-expo'));
@@ -236,6 +241,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
   const noteRestore = { cancel() {}, lock() {}, step: { phase: 'select' } };
   Object.assign(dependencies, {
+    ...walletScreenPorts,
     '../platform/localization': nativeTranslationFixture,
     '../../../../source/shared/smartAccountLinks.ts': { PALI_RECOVERY_ALERTS_URL },
     '../smartAccount/guardianRecovery': { getNativeGuardianRecoveryChoices },
@@ -286,7 +292,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   let locks = 0;
   const lifecycle: string[] = [];
   const enrollments: { enabled: boolean; password: string }[] = [];
-  const backupConfirmations: { id: string; answers: readonly string[] }[] = [];
+  const backupAcknowledgements: string[] = [];
   const authentication = new DeviceUnlockPrompt({
     state: () => root.native.AppState.currentState,
     subscribe(listener) {
@@ -334,11 +340,11 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
       async begin(password: string) {
         assert(backupCompletion, 'Backup is outside this fixture');
         assert.equal(password, 'public test password');
-        return { id: 'public-backup-review', words: [...Array(11).fill('abandon'), 'about'], positions: [0, 5, 11] };
+        return { id: 'public-backup-review', words: [...Array(11).fill('abandon'), 'about'] };
       },
-      async confirm(id: string, answers: readonly string[]) {
+      async acknowledge(id: string) {
         assert(backupCompletion, 'Backup is outside this fixture');
-        backupConfirmations.push({ id, answers: [...answers] });
+        backupAcknowledgements.push(id);
         await backupCompletion;
         publish({ phase: 'ready', backup: 'confirmed', account: { address, network: 'ethereum' } });
       },
@@ -349,6 +355,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
   const noteRestore = { cancel() {}, lock() {}, step: { phase: 'select' } };
   Object.assign(dependencies, {
+    ...walletScreenPorts,
     '../platform/localization': nativeTranslationFixture,
     '../../../../source/shared/smartAccountLinks.ts': { PALI_RECOVERY_ALERTS_URL },
     '../smartAccount/guardianRecovery': { getNativeGuardianRecoveryChoices },
@@ -375,59 +382,77 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   const unlock = async (error: string | null) => {
     nextError = error;
     let tree = render();
+    const fallback = all(tree).find(node => node.props.title === 'Use wallet password');
+    if (fallback) { press(fallback); tree = render(); }
     const input = all(tree).find((node) => node.props.label === 'Password'); assert.ok(input);
     (input.props.onChange as (value: string) => void)('public test password');
     tree = render(); press(button(tree, 'Unlock wallet'));
     await new Promise((resolve) => setImmediate(resolve));
     return render();
   };
-  return { render, unlock, publish, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, backupConfirmations, lifecycle, get locks() { return locks; } };
+  return { render, unlock, publish, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, backupAcknowledgements, lifecycle, get locks() { return locks; } };
 }
 
-test('backup completion waits for successful confirmation, clears words, and Done or Back returns to the wallet', async () => {
+test('backup completion requires a checked acknowledgement, waits for durable save, and clears words before Done or Back', async () => {
   for (const action of ['done', 'back'] as const) {
     const completion = Promise.withResolvers<void>();
     const f = await walletFeedbackFixture(false, false, undefined, completion.promise);
     try {
       let tree = await f.unlock(null);
-      const password = all(tree).find(node => node.props.label === 'Confirm your password'); assert(password);
-      (password.props.onChange as (value: string) => void)('public test password');
-      press(button(f.render(), 'Show recovery phrase'));
+      const home = all(tree).find(node => node.type === 'NativePortfolio'); assert(home);
+      (home.props.onBackup as () => void)(); tree = f.render();
+      const intro = all(tree).find(node => node.type === 'BackupIntroduction'); assert(intro);
+      (intro.props.onStart as () => void)(); tree = f.render();
+      const authentication = all(tree).find(node => node.type === 'TransactionAuthentication'); assert(authentication);
+      assert.equal(authentication.props.method, 'password');
+      assert.equal(authentication.props.title, 'Unlock recovery phrase');
+      assert(!JSON.stringify(tree).includes('abandon'));
+      (authentication.props.onConfirm as (value: { method: string; password?: string }) => void)({ method: 'biometric' });
+      assert(!JSON.stringify(f.render()).includes('abandon'));
+      (authentication.props.onConfirm as (value: { method: string; password: string }) => void)({ method: 'password', password: 'public test password' });
       await new Promise(resolve => setImmediate(resolve));
       tree = f.render(); assert.match(text(tree), /abandon/);
-      press(button(tree, "I've written them down"));
+      const uncheckedDone = button(tree, 'Done');
+      assert.equal(uncheckedDone.props.disabled, true);
+      press(uncheckedDone); // Even a directly invoked disabled callback cannot acknowledge.
+      assert.deepEqual(f.backupAcknowledgements, []);
+      const checkbox = all(tree).find(node => node.props.accessibilityRole === 'checkbox'); assert(checkbox);
+      assert.equal(checkbox.props.accessibilityLabel, 'I have written down my recovery phrase and stored it safely');
+      assert.equal((checkbox.props.accessibilityState as { checked: boolean }).checked, false);
+      assert.equal((checkbox.props.accessibilityState as { disabled: boolean }).disabled, false);
+      press(checkbox);
       tree = f.render();
-      for (const [label, answer] of [['Word 1', 'abandon'], ['Word 6', 'abandon'], ['Word 12', 'about']] as const) {
-        const input = all(tree).find(node => node.props.label === label); assert(input);
-        (input.props.onChange as (value: string) => void)(answer);
-      }
-      press(button(f.render(), 'Confirm backup'));
+      assert.equal(button(tree, 'Done').props.disabled, false);
+      assert.equal(all(tree).some(node => typeof node.props.label === 'string' && /^Word /.test(node.props.label)), false);
+      press(button(tree, 'Done'));
       await new Promise(resolve => setImmediate(resolve));
-      assert.equal(all(f.render()).some(node => node.props.title === 'Done'), false);
-      assert.deepEqual(f.backupConfirmations, [{ id: 'public-backup-review', answers: ['abandon', 'abandon', 'about'] }]);
+      tree = f.render();
+      assert.equal(button(tree, 'Done').props.disabled, true);
+      assert.deepEqual(f.backupAcknowledgements, ['public-backup-review']);
+      assert(!all(tree).some(node => node.type === 'Header' && node.props.title === 'Backup complete'));
       completion.resolve(); await new Promise(resolve => setImmediate(resolve));
       tree = f.render();
-      assert(all(tree).some(node => node.type === 'Header' && node.props.title === 'Backup complete'));
-      assert.match(text(tree), /Recovery phrase backed up/);
+      assert.equal(all(tree).some(node => node.type === 'Header'), false);
+      assert.match(text(tree), /Backup complete/);
       assert(!JSON.stringify(tree).includes('abandon'));
       assert.equal(all(tree).some(node => typeof node.props.label === 'string' && /^Word /.test(node.props.label)), false);
       if (action === 'done') press(button(tree, 'Done'));
       else f.hardware();
       assert(all(f.render()).some(node => node.type === 'NativePortfolio'));
-      assert.equal(f.backupConfirmations.length, 1);
+      assert.equal(f.backupAcknowledgements.length, 1);
     } finally { f.dispose(); }
   }
 });
 
-test('password setup makes biometric enrollment an explicit optional choice', async () => {
+test('password setup defaults biometric enrollment on and keeps it optional', async () => {
   for (const enable of [false, true]) {
     const f = await walletFeedbackFixture(true, true);
     try {
       press(button(f.render(), 'Create a wallet'));
       let tree = f.render();
       const choice = all(tree).find(node => node.props.accessibilityLabel === 'Use biometric unlock'); assert(choice);
-      assert.equal(choice.props.value, false);
-      if (enable) (choice.props.onValueChange as (value: boolean) => void)(true);
+      assert.equal(choice.props.value, true);
+      if (!enable) (choice.props.onValueChange as (value: boolean) => void)(false);
       for (const label of ['New password', 'Confirm password']) {
         const input = all(tree).find(node => node.props.label === label); assert(input);
         (input.props.onChange as (value: string) => void)('Public fixture password 1!');
@@ -443,7 +468,8 @@ for (const interruption of ['inactive', 'blur']) test(`native wallet keeps passw
   const f = await walletFeedbackFixture(true);
   try {
     let tree = f.render();
-    assert(button(tree, 'Unlock wallet'));
+    assert(button(tree, 'Use wallet password'));
+    assert.equal(all(tree).some(node => node.props.label === 'Password'), false);
     press(button(tree, 'Unlock with biometrics'));
     await new Promise(resolve => setImmediate(resolve));
     if (interruption === 'inactive') f.emit('change', 'inactive'); else f.emit('blur');
@@ -460,7 +486,11 @@ for (const interruption of ['inactive', 'blur']) test(`native wallet keeps passw
     }
     await new Promise(resolve => setImmediate(resolve));
     tree = f.render();
-    assert.ok(all(tree).some(node => node.props.label === 'Confirm your password'));
+    const home = all(tree).find(node => node.type === 'NativePortfolio'); assert(home);
+    (home.props.onBackup as () => void)(); tree = f.render();
+    const intro = all(tree).find(node => node.type === 'BackupIntroduction'); assert(intro);
+    (intro.props.onStart as () => void)(); tree = f.render();
+    assert.ok(all(tree).some(node => node.type === 'TransactionAuthentication' && node.props.method === 'password'));
     const lifecycleOffset = f.lifecycle.length;
     f.emit('blur'); f.render();
     assert.equal(f.locks, 1);
@@ -491,7 +521,11 @@ for (const enabled of [false, true]) test(`a queued settings Cancel revokes pend
     assert.deepEqual(f.lifecycle.slice(lifecycleOffset), ['psbt-cancel', 'lock']);
     finish(); await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(f.enrollments, []);
-    assert(button(f.render(), 'Unlock wallet'));
+    let locked = f.render();
+    const fallback = all(locked).find(node => node.props.title === 'Use wallet password');
+    if (fallback) { press(fallback); locked = f.render(); }
+    assert(button(locked, 'Unlock wallet'));
+    assert.equal(all(locked).find(node => node.props.label === 'Password')?.props.value, '');
   } finally { finish(); f.dispose(); }
 });
 
@@ -508,9 +542,12 @@ test('native wallet background revokes a pending biometric prompt', async () => 
     assert.deepEqual(f.lifecycle.slice(lifecycleOffset), ['psbt-background', 'lock']);
     f.emit('change', 'active'); f.releasePrompt();
     await new Promise(resolve => setImmediate(resolve));
-    const tree = f.render();
+    let tree = f.render();
+    assert(button(tree, 'Use wallet password'));
+    press(button(tree, 'Use wallet password')); tree = f.render();
     assert(button(tree, 'Unlock wallet'));
-    assert.equal(all(tree).some(node => node.props.label === 'Confirm your password'), false);
+    assert.equal(all(tree).find(node => node.props.label === 'Password')?.props.value, '');
+    assert.equal(all(tree).some(node => node.type === 'TransactionAuthentication'), false);
   } finally { f.dispose(); }
 });
 
@@ -586,6 +623,7 @@ for (const exit of ['back', 'background', 'working-lock', 'blur-before-drain', '
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
   const noteRestore = { cancel() {}, lock() {}, step: { phase: 'select' } };
   Object.assign(dependencies, {
+    ...walletScreenPorts,
     '../platform/localization': nativeTranslationFixture,
     '../../../../source/shared/smartAccountLinks.ts': { PALI_RECOVERY_ALERTS_URL },
     '../smartAccount/guardianRecovery': { getNativeGuardianRecoveryChoices },

@@ -18,8 +18,8 @@ async function fixture(language = 'en') {
     resources: { [language]: { translation: languageMessages(language) }, en: { translation: languageMessages('en') } },
     interpolation: { escapeValue: false } });
   const returned: unknown[][] = [], selected: unknown[][] = [];
-  const session = { id: 'exact-session', name: 'App', origin: 'https://app.example', accountLabel: 'Account', networkLabel: 'Network', returnTarget: {} };
-  const connectionSnapshot = { revision: 7, status: 'ready', proposals: [], accounts: [], selectedAccountId: null,
+  const session = { id: 'exact-session', name: 'App', origin: 'https://app.example', accountLabel: 'Account', networkLabel: 'Network', returnTarget: {}, address: null, methods: ['eth_accounts'], expiresAt: Date.now() + 60_000 };
+  const connectionSnapshot = { revision: 7, status: 'ready', pairingExpiresAt: null, proposals: [], accounts: [], selectedAccountId: null,
     network: { id: 'ethereum', label: 'Ethereum', chainId: '1' }, sessions: [session], signingReview: null, error: null };
   const account = { id: 'hd:60:0', label: 'My account', address: `0x${'12'.repeat(20)}`, type: 'HDAccount', index: 0 };
   const catalogue = { revision: 3, active: { accountId: account.id }, accounts: [account] };
@@ -42,13 +42,15 @@ async function fixture(language = 'en') {
   const imported = {
     '../platform/localization': { useNativeTranslation: () => ({ t: engine.t.bind(engine), i18n: engine }) },
     'react-native': { View: 'View', FlatList: 'FlatList', KeyboardAvoidingView: 'KeyboardAvoidingView', ActivityIndicator: 'ActivityIndicator',
-      Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
+      Switch: 'Switch', Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
       BackHandler: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} }, StyleSheet: { create: (value: unknown) => value } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'IconButton', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
     'expo-clipboard': {}, './DappSiteStatus': { DappSiteStatus: 'DappSiteStatus' }, './ConnectionQrScanner': { ConnectionQrScanner: 'ConnectionQrScanner' },
     './IdleActivityBoundary': { IdleTextInput: 'Input', IdlePressable: 'Pressable' },
     '../custody/importedAccounts': { isUtxoAccountPrivateKey: () => false },
+    '../platform/balancePrivacy': { useBalancePrivacy: () => ({ status: 'ready', hidden: false }),
+      async reloadBalancePrivacy() {}, async saveBalancePrivacy() {} },
     '../core/utxoAddresses': { UTXO_IMPORT_TYPES: ['p2wpkh'], UTXO_IMPORT_LABELS: { p2wpkh: 'Native SegWit' } },
     '../../../../source/shared/chainCatalogue': { rankChainSuggestions: () => [] }, '../custody/networkContext': {},
     './TrustedSiteLookup': { TrustedSiteLookup: 'TrustedSiteLookup' }, './WatchGuardianRecovery': { WatchGuardianRecovery: 'WatchGuardianRecovery' },
@@ -76,6 +78,7 @@ for (const language of PALI_LANGUAGE_OPTIONS) test(`all six management screens r
 
 test('language changes preserve exact Open website session and review revision', async () => {
   const f = await fixture('es'), screen = f.screen('NativeConnections');
+  screen.render().find(element => element.type === 'Pressable' && element.props.accessibilityLabel?.startsWith('App,'))!.props.onPress();
   const open = screen.render().find(element => element.type === 'Button' && element.props.title === f.engine.t('mobile.connections.openWebsite'));
   assert(open); open.props.onPress(); await Promise.resolve();
   assert.deepEqual(f.returned, [['exact-session', 7]]); screen.close();

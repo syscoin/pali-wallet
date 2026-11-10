@@ -1,3 +1,4 @@
+import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, {
   useCallback,
@@ -84,6 +85,7 @@ function TokenContent({
   onBackHandlerChange,
   onModeChange,
 }: Props & { snapshot: NativeTokenSnapshot }) {
+  const { hidden: hideBalances } = useBalancePrivacy();
   const [route, setRoute] = useState<Route>({ kind: 'list' });
   const [contract, setContract] = useState('');
   const [localError, setLocalError] = useState('');
@@ -217,7 +219,7 @@ function TokenContent({
     metadata: { decimals: number };
   }) =>
     item.status === 'available' && item.units !== null
-      ? formatTokenUnits(item.units, item.metadata.decimals)
+      ? hideBalances ? HIDDEN_BALANCE : formatTokenUnits(item.units, item.metadata.decimals)
       : item.status === 'loading'
       ? 'Loading…'
       : item.status === 'error'
@@ -404,7 +406,7 @@ function TokenContent({
                   <Text selectable style={s.contract}>{contractAddress}</Text>
                   {tokenId !== undefined && <Text selectable style={s.contract}>Token ID {tokenId}</Text>}
                   <Text selectable style={s.contract}>
-                    {tokenStandard === 'ERC-721' ? 'Items reported' : 'Quantity reported'}: {units}
+                    {tokenStandard === 'ERC-721' ? 'Items reported' : 'Quantity reported'}: {hideBalances ? HIDDEN_BALANCE : units}
                   </Text>
                   {snapshot.canCheckCollectible && <IdlePressable accessibilityRole="button"
                     accessibilityLabel={`View ${name} ${tokenId === undefined ? 'collection' : `token ${tokenId}`}`}
@@ -570,13 +572,13 @@ function TokenContent({
                   {identity}
                   <Text
                     style={s.balance}
-                    accessibilityLabel={`Token balance ${formatTokenUnits(
+                    accessibilityLabel={hideBalances ? 'Balance hidden' : `Token balance ${formatTokenUnits(
                       snapshot.preview.units,
                       snapshot.preview.metadata.decimals
                     )}`}
                     testID="native-token-preview-balance"
                   >
-                    {formatTokenUnits(
+                    {hideBalances ? HIDDEN_BALANCE : formatTokenUnits(
                       snapshot.preview.units,
                       snapshot.preview.metadata.decimals
                     )}{' '}
@@ -669,7 +671,7 @@ function TokenContent({
                     <Text style={s.name}>{token.metadata.name}</Text>
                   <Text
                     style={s.balance}
-                    accessibilityLabel={`Token balance ${balance(token)}`}
+                    accessibilityLabel={hideBalances ? 'Balance hidden' : `Token balance ${balance(token)}`}
                     testID="native-token-detail-balance"
                   >
                     {balance(token)}
@@ -760,6 +762,7 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
   onSend?(): void;
   onLeaveChange(leave: (() => void) | null): void;
 }) {
+  const { hidden: hideBalances } = useBalancePrivacy();
   const fixedId = item && 'tokenId' in item ? item.tokenId : undefined;
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [draft, setDraft] = useState<{
@@ -892,7 +895,7 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
     {result.kind === 'invalid' && <Text accessibilityRole="alert" style={s.error}>{result.message}</Text>}
     {result.kind === 'error' && <Notice title="Ownership unavailable" body="The network couldn’t confirm this item. Try again." tone="amber" />}
     {result.kind === 'ready' && <Text selectable accessibilityLiveRegion="polite" testID="native-collectible-quantity">
-      {draft.tokenStandard === 'ERC-721' ? (result.units === '0' ? 'This account doesn’t own this item.' : 'This account owns this item.') : `Quantity on network: ${result.units}`}
+      {hideBalances ? 'Balance hidden' : draft.tokenStandard === 'ERC-721' ? (result.units === '0' ? 'This account doesn’t own this item.' : 'This account owns this item.') : `Quantity on network: ${result.units}`}
     </Text>}
     {!confirmRemove && canCheck && <Button title={result.kind === 'loading' ? 'Checking ownership…' : 'Check ownership'}
       variant={onSend ? 'secondary' : 'primary'}

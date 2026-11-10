@@ -134,6 +134,7 @@ export type NativeConnectionsSnapshot = Readonly<{
   }> | null;
   revision: number;
   status: 'locked' | 'ready' | 'pairing' | 'approving' | 'unavailable';
+  pairingExpiresAt: number | null;
   selectedAccountId: string | null;
   accounts: readonly Readonly<{ id: string; label: string; address: string }>[];
   network: Readonly<{ id: string; label: string; chainId: string }> | null;
@@ -142,7 +143,9 @@ export type NativeConnectionsSnapshot = Readonly<{
     name: string;
     origin: string;
     verification: WalletConnectVerification;
+    expiresAt: number | null;
     requiredMethods: readonly string[];
+    methodsByAccount: readonly Readonly<{ accountId: string; methods: readonly string[] }>[];
     canApprove: boolean;
   }>[];
   sessions: readonly Readonly<{
@@ -151,6 +154,9 @@ export type NativeConnectionsSnapshot = Readonly<{
     origin: string;
     accountLabel: string;
     networkLabel: string;
+    address: string | null;
+    expiresAt: number;
+    methods: readonly string[];
     returnTarget: NativeDappReturnTarget | null;
   }>[];
   signingReview: NativeSigningReview | null;

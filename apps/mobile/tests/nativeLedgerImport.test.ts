@@ -751,12 +751,12 @@ for (const changedChain of [false, true])
             chainId = '0x2';
           });
         if (changedChain) {
-          await assert.rejects(transfers.confirm(review.id), {
+          await assert.rejects(transfers.confirm(review.id, { method: 'password', password: password }), {
             code: 'FAILED',
           });
           assert.equal(transfers.getSnapshot().phase, 'unavailable');
         } else {
-          await transfers.confirm(review.id);
+          await transfers.confirm(review.id, { method: 'password', password: password });
           assert.equal(transfers.getSnapshot().phase, 'pending');
         }
         assert.equal(f.signedCount, 1);
@@ -882,7 +882,7 @@ test('Ledger UTXO review uses its saved xpub before connection and the shared si
     await f.connection.finishConnection();
     assert.equal(f.connection.isConnected(), true);
     assert.equal(f.psbtSignCount, 0);
-    await send.confirm(review);
+    await send.confirm(review, { method: 'password', password });
     assert.equal(f.psbtSignCount, 1);
     assert.equal(broadcasts, 1);
     send.cancel();

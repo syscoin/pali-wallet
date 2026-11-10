@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
@@ -28,6 +28,8 @@ import {
 import { NativeLedgerConnectionModal } from './NativeLedger';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { IdleTextInput } from './IdleActivityBoundary';
+import { TransactionAuthentication } from './TransactionAuthentication';
+import type { NativeOperationCredential } from '../custody/types';
 
 import type { UtxoNetwork } from '../core/utxoNetworks';
 import type {
@@ -43,6 +45,9 @@ type Outcome = Readonly<{
 
 function describe(error: unknown): string {
   const code = error instanceof Error ? error.message : '';
+  if (code === 'INVALID_CREDENTIAL') return 'That password is incorrect. Please try again.';
+  if (code === 'DEVICE_UNLOCK_UNAVAILABLE') return 'Biometric confirmation was not completed. Try again or use your password.';
+  if (code === 'AUTH_THROTTLED') return 'Too many incorrect passwords. Unlock your wallet again after waiting.';
   if (code === 'INVALID_INPUT')
     return 'Enter a valid address and amount for this network.';
   if (code === 'CANCELLED' || code === 'NOT_READY')
@@ -67,7 +72,9 @@ export function NativeUtxoSendScreen({
   initialDraft,
   beforeClose,
   maximumAmount,
+  authenticationMethod,
 }: {
+  authenticationMethod: 'biometric' | 'password';
   accountLabel: string;
   ledgerConnection?: NativeLedgerConnectionView;
   initialDraft?: Readonly<{ recipient: string; amount: string; max?: boolean; rbf?: boolean }>;
@@ -103,6 +110,13 @@ export function NativeUtxoSendScreen({
   >([]);
   const [savedLimit, setSavedLimit] = useState(6);
   const [error, setError] = useState('');
+  const [authenticationOpen, setAuthenticationOpen] = useState(false);
+  const currentReview = useRef<NativeUtxoReview | null>(null);
+  useLayoutEffect(() => {
+    currentReview.current = review;
+    setAuthenticationOpen(false);
+    return () => { currentReview.current = null; };
+  }, [review]);
   const owner = useRef({ revision: 0 });
   const draftRevision = useRef(0);
   const inFlight = useRef(false);
@@ -138,6 +152,7 @@ export function NativeUtxoSendScreen({
     };
   }, [open]);
   const close = () => {
+    setAuthenticationOpen(false);
     if (closing.current) return;
     Keyboard.dismiss();
     if (review && !busy) {
@@ -233,36 +248,37 @@ export function NativeUtxoSendScreen({
       const phase = await send!.check(txid);
       if (current()) setOutcome({ txid, phase });
     });
+  const confirmAuthenticated = (credential: NativeOperationCredential) => {
+    if (!review || !send || currentReview.current !== review) return;
+    const approved = review;
+    run(async (current) => {
+      try {
+        const { txid } = await send.confirm(approved, credential);
+        if (current()) { setAuthenticationOpen(false); setReview(null); setOutcome({ txid, phase: 'submitted' }); }
+      } catch (cause) {
+        const code = cause instanceof Error ? cause.message : '';
+        if (current() && !['INVALID_CREDENTIAL', 'DEVICE_UNLOCK_UNAVAILABLE'].includes(code)) {
+          setAuthenticationOpen(false); setReview(null);
+          void send.list().then(records => { if (current()) setSaved([...records].reverse()); }).catch(() => undefined);
+        }
+        throw cause;
+      }
+    });
+  };
   const confirm = review && (
     <Button
       title={review.retryTxid ? 'Resend saved transfer' : 'Confirm and send'}
       disabled={busy || !review.retryTxid && !ledgerReady}
       onPress={() => {
         if (!review.retryTxid && ledgerConnection && !ledgerConnection.isConnected()) return;
-        run(async (current) => {
-          setReview(null);
-          try {
-            const { txid } = await send!.confirm(review);
-            if (current()) setOutcome({ txid, phase: 'submitted' });
-          } catch (cause) {
-            // The signed bytes may be durable even if expiry prevented POST.
-            if (current())
-              void send!
-                .list()
-                .then((records) => {
-                  if (current()) setSaved([...records].reverse());
-                })
-                .catch(() => undefined);
-            throw cause;
-          }
-        });
+        setError(''); setAuthenticationOpen(true);
       }}
       testID="native-utxo-confirm"
     />
   );
   const footer = outcome ? (
     <Button title="Done" onPress={close} />
-  ) : review ? <>{confirm}<Button title="Edit transfer" variant="quiet" disabled={busy} onPress={close} /></> : (
+  ) : review ? confirm : (
     <Button
       title="Review transfer"
       disabled={!send || busy || !address.trim() || !(amount || max)}
@@ -525,6 +541,15 @@ export function NativeUtxoSendScreen({
           )}
         </Screen>
       </KeyboardAvoidingView>
+      {authenticationOpen && review && <TransactionAuthentication
+        identity={`${owner.current.revision}:${draftRevision.current}:${review.retryTxid ?? 'new'}`}
+        method={authenticationMethod} busy={busy} error={error}
+        onConfirm={confirmAuthenticated} onCancel={() => {
+          if (currentReview.current !== review) return;
+          if (inFlight.current) { close(); return; }
+          setAuthenticationOpen(false); setError('');
+        }}
+      />}
       {ledgerPicker && ledgerPicker === ledgerConnection && <NativeLedgerConnectionModal
         controller={ledgerPicker}
         onClose={() => setLedgerPicker(null)}

@@ -80,7 +80,7 @@ test('construction and detached reads have no source or network side effects; ze
   stop(); disconnect();
 });
 
-test('all non-ready or invalid public custody states stay unavailable without requests', async () => {
+test('unauthenticated or invalid public custody states stay unavailable without requests', async () => {
   const values: CustodySnapshot[] = [
     ...(['opening', 'empty', 'locked', 'authenticating', 'backup-required', 'unavailable', 'disposed'] as const).map(phase => ({ ...ready(), phase })),
     { ...ready(), account: null },
@@ -99,6 +99,25 @@ test('all non-ready or invalid public custody states stay unavailable without re
     assert.equal(f.controller.isCurrent({ address: A, network: 'ethereum', revision: 1 }), false);
     disconnect();
   }
+});
+
+test('unconfirmed authenticated Home reads the real public account and still revokes on lock', async () => {
+  const source = new Source({ ...ready(), phase: 'backup-required', backup: 'unconfirmed' });
+  const f = fixture(source), disconnect = f.controller.connect();
+  assert.equal(source.getSnapshot().phase, 'backup-required');
+  assert.equal(source.getSnapshot().backup, 'unconfirmed');
+  assert.equal(f.calls.length, 1);
+  f.calls[0]!.resolve({ chainId: 1, units: '123' }); await tick();
+  const account = f.controller.getActiveAccount();
+  assert.equal(account?.address, A);
+  assert.equal(f.controller.getSnapshot().units, '123');
+  const pending = f.controller.refresh();
+  source.set({ ...source.value, phase: 'locked', revision: 2, account: null });
+  assert.equal(f.calls[1]!.signal.aborted, true);
+  f.calls[1]!.resolve({ chainId: 1, units: '999' }); await pending;
+  assert.equal(f.controller.getSnapshot().status, 'unavailable');
+  assert.equal(f.controller.isCurrent(account), false);
+  disconnect();
 });
 
 for (const outcome of ['success', 'failure'] as const) {

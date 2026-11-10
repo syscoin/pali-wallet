@@ -1,3 +1,4 @@
+import { authenticateNativeOperation } from './operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 
 test.use({
@@ -160,6 +161,7 @@ test('Advanced nonce is opt-in and shows the exact choice before approval at 320
   await expect(page.getByTestId('native-send-reviewed-nonce')).toHaveText('0');
   expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toHaveLength(1);
 });
 
@@ -174,7 +176,8 @@ test('cancellation shows the original and maximum fee before one explicit approv
   await expect(page.getByRole('textbox')).toHaveCount(0);
   expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
   await page.getByRole('button', { name: 'Submit cancellation' }).click();
-  await expect(page.getByText('Cancellation submitted', { exact: true })).toBeVisible();
+  await authenticateNativeOperation(page);
+  await expect(page.getByText('Transaction submitted', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toHaveLength(1);
 });
 
@@ -198,7 +201,8 @@ test('Speed Up shows the original and reviewed fee before one explicit approval'
   await expect(page.getByRole('textbox')).toHaveCount(0);
   expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
   await page.getByRole('button', { name: 'Submit Speed Up' }).click();
-  await expect(page.getByText('Replacement submitted', { exact: true })).toBeVisible();
+  await authenticateNativeOperation(page);
+  await expect(page.getByText('Transaction submitted', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toHaveLength(1);
 });
 
@@ -223,6 +227,7 @@ test('expired review cannot confirm and a replacement requires explicit consent'
   await expect(passwordInput(page)).toHaveCount(0);
   await expect(page.getByTestId('native-send-confirm')).toBeEnabled();
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   expect(
     await page.evaluate(() => window.__nativeSendFixture.confirmations())
   ).toEqual([{ id: 'fixture-review-2' }]);
@@ -250,6 +255,7 @@ test('same-review refresh and replacement do not automatically confirm', async (
   await expect(passwordInput(page)).toHaveCount(0);
   await expect(page.getByTestId('native-send-confirm')).toBeEnabled();
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   expect(
     await page.evaluate(() => window.__nativeSendFixture.confirmations())
   ).toEqual([{ id: 'fixture-review-2' }]);
@@ -296,6 +302,7 @@ test('NEVM native send renders captured testnet and TSYS labels through ordinary
     })
   ).toBeVisible();
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   await page.evaluate(() => window.__nativeSendFixture.settle('confirmed'));
   await expect(
     page.getByText('Transfer confirmed', { exact: true })
@@ -316,6 +323,7 @@ test('NEVM reverted receipt uses ordinary reverted status', async ({
   await page.getByLabel('Amount in TSYS', { exact: true }).fill('0.001');
   await page.getByTestId('native-send-review').click();
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   await page.evaluate(() => window.__nativeSendFixture.settle('reverted'));
   await expect(
     page.getByText('Transfer reverted', { exact: true })
@@ -393,8 +401,9 @@ test('zkSYS review keeps captured chain57057 labels through ordinary confirmatio
     })
   ).toBeVisible();
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   await expect(
-    page.getByText('Transfer pending', { exact: true })
+    page.getByText('Transaction submitted', { exact: true })
   ).toBeVisible();
   await expect(
     page.getByText('Transfer confirmed', { exact: true })
@@ -415,6 +424,7 @@ test('zkSYS reverted and unavailable-outcome states retain distinct ordinary out
   await page.goto('/?zksys-send');
   await prepareZkSys(page);
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   await page.evaluate(() => window.__nativeSendFixture.settle('reverted'));
   await expect(
     page.getByText('Transfer reverted', { exact: true })
@@ -444,6 +454,7 @@ for (const kind of ['base-fee', 'nonce', 'malformed'] as const) {
       window.__nativeSendFixture.reviewId()
     );
     await page.getByTestId('native-send-confirm').click();
+    await authenticateNativeOperation(page);
     await expect(passwordInput(page)).toHaveCount(0);
     if (kind === 'malformed')
       await expect(
@@ -480,6 +491,7 @@ test('saved expired review keeps its accessible error alert', async ({ page }) =
   await page.goto('/?quoteFailure=saved-expired');
   await prepare(page);
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   const message = 'Your signed transaction is saved. Check it before sending again.';
   const alert = page.getByRole('alert');
   await expect(alert).toHaveCount(1);
@@ -493,6 +505,7 @@ test('storage limit shows one actionable no-submission alert', async ({ page }) 
   await page.goto('/?storage-full');
   await prepare(page);
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   await expect(page.getByRole('alert')).toHaveText('This transaction was not submitted because Pali could not save it within its local transaction storage limit. Check Activity.');
   expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
 });
@@ -500,6 +513,7 @@ test('storage limit shows one actionable no-submission alert', async ({ page }) 
 test('storage limit distinguishes a failed replacement from its earlier saved transaction', async ({ page }) => {
   await page.goto('/?speed-up-transfer&storage-full');
   await page.getByRole('button', { name: 'Submit Speed Up' }).click();
+  await authenticateNativeOperation(page);
   await expect(page.getByText('Check earlier transaction', { exact: true })).toBeVisible();
   const alert = page.getByRole('alert');
   await expect(alert).toHaveCount(1);

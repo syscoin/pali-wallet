@@ -2,11 +2,12 @@ import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WalletRemovalError, type NativeWalletRemoval as Removal, type WalletRemovalTicket } from '../custody/walletRemoval';
-import { Button, colors, Header, Notice, Screen, styles, Text } from '../ui';
+import { Button, colors, Header, Icon, Notice, Screen, styles, Text } from '../ui';
 import { NoteBackupPasswordField } from './NoteBackupPasswordField';
 
 export type RemovalScreenOutcome = 'removed' | 'unchanged' | 'unconfirmed';
 type Props = {
+  backupConfirmed: boolean;
   removal: Pick<Removal, 'authorize' | 'cancel'>;
   isCurrent(): boolean;
   confirm(ticket: WalletRemovalTicket, assertCurrent: () => void): Promise<RemovalScreenOutcome>;
@@ -32,7 +33,7 @@ function discardTicket(attempt: Attempt) {
   attempt.ticket = undefined;
 }
 
-export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack, onContinue }: Props) {
+export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack, onContinue, backupConfirmed }: Props) {
   const life = useRef<Owner>({ live: false, finishing: false });
   const [password, setPassword] = useState('');
   const [step, setStep] = useState<Step>({ phase: 'password' });
@@ -133,10 +134,22 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
   };
 
   const title = step.phase === 'outcome' ? step.outcome === 'removed' ? 'Wallet removed' : step.outcome === 'unchanged' ? 'Wallet kept' : 'Removal could not be confirmed'
-    : step.phase === 'blocked' ? 'Wallet storage unavailable' : 'Remove wallet from this device';
+    : step.phase === 'blocked' ? 'Wallet storage unavailable' : 'Remove wallet';
+  const footer = step.phase === 'password' ? <>
+    <Button title="Continue" disabled={!password} onPress={() => void authorize()} />
+    <Button title="Cancel" variant="secondary" onPress={back} />
+  </> : step.phase === 'review' ? <>
+    {!backupConfirmed && <Notice title="Backup not verified" body="This wallet has not been verified as backed up." tone="red" />}
+    <Button title="Remove wallet" variant="danger" onPress={() => void remove()} />
+    <Button title="Cancel" variant="secondary" onPress={back} />
+  </> : step.phase === 'authorizing' ? <Button title="Cancel" variant="secondary" onPress={back} />
+    : step.phase === 'working' && !step.cancelling ? <Button title="Cancel removal" variant="secondary" onPress={back} />
+    : step.phase === 'outcome' && step.outcome !== 'unconfirmed' ? <Button title={step.outcome === 'removed' ? 'Continue' : 'Return to wallet'} disabled={finishing} onPress={() => {
+      if (step.outcome !== 'unconfirmed') void finish(step.outcome);
+    }} /> : undefined;
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen gap={16}>
+      <Screen gap={16} footer={footer}>
         <Header title={title} onBack={step.phase === 'outcome' || step.phase === 'blocked' ? undefined : back} />
         {step.phase === 'password' && <>
           <Text>Removing this wallet deletes its accounts, Sentry keys, private notes, and saved transaction records from this device.</Text>
@@ -144,34 +157,24 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
           <Text style={styles.muted}>Transfers already sent can still complete. Watch accounts and device settings stay saved.</Text>
           <NoteBackupPasswordField label="Confirm your wallet password" value={password} onChange={setPassword} busy={false} />
           {step.error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{step.error}</Text>}
-          <View style={s.actions}>
-            <Button title="Continue" disabled={!password} onPress={() => void authorize()} />
-            <Button title="Cancel" variant="secondary" onPress={back} />
-          </View>
         </>}
         {step.phase === 'authorizing' && <>
           <Text accessibilityLiveRegion="polite">Confirming your password…</Text>
-          <Button title="Cancel" variant="secondary" onPress={back} />
         </>}
         {step.phase === 'review' && <>
-          <Notice title="Remove the whole wallet?" body="All local wallet records, including imported keys, Sentry keys, private notes, and saved pending transactions, will be removed." tone="amber" />
-          <Text style={styles.muted}>Confirm within 30 seconds.</Text>
-          <View style={s.actions}>
-            <Button title="Remove wallet" variant="danger" onPress={() => void remove()} />
-            <Button title="Cancel" variant="secondary" onPress={back} />
+          <View style={s.reviewHero}>
+            <View style={s.trash} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><Icon name="trash" size={32} color={colors.pink} /></View>
+            <Text style={s.question}>Remove wallet from this phone?</Text>
+            <Text style={s.reviewCopy}>You will need your recovery phrase and separate key or note backups to restore access. This cannot be undone.</Text>
           </View>
         </>}
         {step.phase === 'working' && <>
           <Text accessibilityLiveRegion="polite">{step.cancelling ? 'Checking whether removal completed…' : 'Removing wallet and checking storage…'}</Text>
-          {!step.cancelling && <Button title="Cancel removal" variant="secondary" onPress={back} />}
         </>}
         {step.phase === 'outcome' && <>
           {step.outcome === 'removed' && <Text accessibilityLiveRegion="polite">Pali verified that the local wallet records were removed. Saved watch accounts remain available.</Text>}
           {step.outcome === 'unchanged' && <Text accessibilityLiveRegion="polite">Removal did not complete. Your wallet records are still saved on this device.</Text>}
           {step.outcome === 'unconfirmed' && <Text accessibilityRole="alert">Pali could not verify whether removal completed. Close and reopen Pali to check this device.</Text>}
-          {step.outcome !== 'unconfirmed' && <Button title={step.outcome === 'removed' ? 'Continue' : 'Return to wallet'} disabled={finishing} onPress={() => {
-            if (step.outcome !== 'unconfirmed') void finish(step.outcome);
-          }} />}
         </>}
         {step.phase === 'blocked' && <Text accessibilityRole="alert">Close and reopen Pali to check this device.</Text>}
       </Screen>
@@ -182,6 +185,9 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   fill: { flex: 1 },
-  actions: { gap: 10 },
+  reviewHero: { alignItems: 'center', paddingVertical: 24, gap: 20 },
+  trash: { width: 72, height: 72, borderRadius: 22, backgroundColor: '#301f2c', borderWidth: 1, borderColor: '#784153', alignItems: 'center', justifyContent: 'center' },
+  question: { color: colors.text, fontSize: 24, lineHeight: 33, fontWeight: '600', textAlign: 'center' },
+  reviewCopy: { color: colors.muted, fontSize: 15, lineHeight: 23, textAlign: 'center' },
   error: { color: colors.red },
 });

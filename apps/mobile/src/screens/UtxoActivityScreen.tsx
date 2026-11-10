@@ -1,3 +1,4 @@
+import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, AppState, FlatList, Linking, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,6 +11,7 @@ import type { UtxoNetwork } from '../core/utxoNetworks';
 import type { ShellLeafNavigation } from './RealAppShell';
 import { Button, Card, colors, Header, IconButton, Notice, SegmentedControl, styles, Text } from '../ui';
 import { ActivityListRow, activityDate } from './ActivityListRow';
+import { TransactionDetailLayout } from './TransactionDetailLayout';
 import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
 
 function signed(units: string, decimals: number, symbol: string): string {
@@ -32,10 +34,12 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
   navigation: ShellLeafNavigation;
   onBack(): void;
 }) {
+  const { hidden: hideBalances } = useBalancePrivacy();
   const lifetime = useRef({ alive: true, busy: false, action: 0, selected: null as string | null, pending: null as object | null, nodeRequest: null as AbortController | null });
   const controller = useMemo(() => new UtxoActivity(authority, () => AppState.currentState === 'active'), [authority]);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [selected, setSelected] = useState<string | null>(null);
+  const [detailsFor, setDetailsFor] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'sent' | 'received'>('all');
   const [feedback, setFeedback] = useState('');
   const [confirmationOwner, setConfirmationOwner] = useState<UtxoActivityContext | null>(null);
@@ -46,6 +50,7 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
     lifetime.current.action++;
     lifetime.current.nodeRequest?.abort();
     setNodeInfo(null);
+    setDetailsFor(null);
     setSelected(txid); setFeedback(''); setConfirmationOwner(null);
     if (txid) controller.selectDetail(txid); else controller.clearDetail();
   }, [controller]);
@@ -162,14 +167,15 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
           renderItem={({ item, index }) => {
             const date = dateOf(item), flow = rowDirection(item);
             const fullAmount = item.hasAssetData ? assetQuantity(item) ?? 'Asset activity' : net(item.netUnits);
+            const privateAmount = hideBalances && (item.hasAssetData ? assetQuantity(item) !== null : item.netUnits !== null);
             const first = index === 0 || dateOf(rows[index - 1]!).key !== date.key;
             const last = index === rows.length - 1 || dateOf(rows[index + 1]!).key !== date.key;
             return <ActivityListRow testID={`watch-activity-row-${item.txid}`}
               first={first} last={last} heading={first ? date.label : undefined} direction={flow}
               title={flow === 'sent' ? 'Sent' : flow === 'received' ? 'Received' : flow === 'self' ? 'Self transfer' : item.hasAssetData ? 'Asset activity' : 'Activity'}
               subtitle={`${network.name} · ${item.block && item.observedConfirmations > 0 ? 'Confirmed' : 'Pending'}`}
-              amount={compactActivityAmountLabel(fullAmount.replace(/^−/, '-'))} time={date.time}
-              label={`${fullAmount}, ${status(item)}. ${date.label} ${date.time}. View transaction details`}
+              amount={privateAmount ? HIDDEN_BALANCE : compactActivityAmountLabel(fullAmount.replace(/^−/, '-'))} time={date.time}
+              label={`${privateAmount ? 'Amount hidden' : fullAmount}, ${status(item)}. ${date.label} ${date.time}. View transaction details`}
               disabled={!!chosen || state.status === 'loading'}
               onPress={() => { if (controller.isCurrent()) selectTransaction(item.txid); }} />;
           }}
@@ -183,14 +189,29 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
           </View>} />
       </View>
       {chosen && <ScrollView testID="watch-activity-detail" style={s.detailOverlay} contentContainerStyle={[s.content, s.detailContent]}>
-        <Text style={s.amount}>{detailAmount}</Text>
-        <Text style={styles.muted}>{chosen.hasAssetData ? chosen.assetAmount ? chosen.assetAmount.scope === 'account' ? 'Account asset amount' : 'Asset operation amount' : 'Asset quantity unavailable' : chosen.nativeTransfer ? chosen.nativeTransfer.kind === 'self' ? 'Native self-transfer' : 'Native transfer' : 'Native account change'}</Text>
+        <TransactionDetailLayout amount={detailAmount}
+          direction={rowDirection(chosen) === 'sent' ? 'Sent' : rowDirection(chosen) === 'received' ? 'Received' : rowDirection(chosen) === 'self' ? 'Self transfer' : 'Activity'}
+          status={chosen.block && chosen.observedConfirmations > 0 ? 'Confirmed' : status(chosen)}
+          tone={chosen.block && chosen.observedConfirmations > 0 ? 'confirmed' : chosen.block === null ? 'pending' : 'unknown'}
+          rows={[
+            { label: 'Network', value: network.name },
+            { label: 'Date', value: `${dateOf(chosen).label}${dateOf(chosen).time ? `, ${dateOf(chosen).time}` : ''}` },
+            { label: 'From', value: detail?.status === 'ready' && detail.from.length ? detail.from.join('\n') : 'Not available' },
+            { label: 'To', value: detail?.status === 'ready' && detail.to.length ? detail.to.join('\n') : 'Not available' },
+            { label: 'Network fee', value: units(chosen.transactionFeeUnits) },
+            { label: 'Transaction ID', value: chosen.txid, actionLabel: 'Copy transaction ID', onPress: () => { if (!busy) void act('copy'); } },
+          ]} onExplorer={() => void act('explorer')} explorerDisabled={busy} />
         {state.status === 'stale' && <Notice title="Previously loaded activity" body="Refresh the list to check this transaction again." tone="amber" />}
         {detail?.status === 'loading' && <ActivityIndicator accessibilityLabel="Loading transaction details" color={colors.pink} />}
         {detail?.status === 'unavailable' && <View style={s.section}>
           <Text style={styles.muted}>Couldn’t load full details.</Text>
           <Button title="Try again" variant="secondary" onPress={() => controller.retryDetail()} />
         </View>}
+        <Button title="Details" variant="quiet" size="compact" expanded={detailsFor === chosen.txid}
+          onPress={() => setDetailsFor(detailsFor === chosen.txid ? null : chosen.txid)} />
+        {detailsFor === chosen.txid && <>
+        <Text selectable style={s.hash}>{detailAmount}</Text>
+        <Text style={styles.muted}>{chosen.hasAssetData ? chosen.assetAmount ? chosen.assetAmount.scope === 'account' ? 'Account asset amount' : 'Asset operation amount' : 'Asset quantity unavailable' : chosen.nativeTransfer ? chosen.nativeTransfer.kind === 'self' ? 'Native self-transfer' : 'Native transfer' : 'Native account change'}</Text>
         <Card style={s.detail}>
           <Text style={s.label}>TRANSACTION ID</Text><Text selectable style={s.hash}>{chosen.txid}</Text>
           {chosen.assetAmount?.assetGuid && <><Text style={s.label}>ASSET ID</Text><Text selectable style={s.hash}>{chosen.assetAmount.assetGuid}</Text></>}
@@ -216,9 +237,8 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
             {nodeInfo.node.nevmAddress && <><Text style={s.label}>REGISTERED NEVM ADDRESS</Text><Text selectable style={s.hash}>{nodeInfo.node.nevmAddress}</Text></>}
           </Card>}
         </>}
+        </>}
         {busy && <ActivityIndicator accessibilityLabel="Completing transaction action" color={colors.pink} />}
-        <Button title="Copy transaction ID" variant="secondary" disabled={busy} onPress={() => void act('copy')} />
-        <Button title="Open transaction in explorer" variant="quiet" disabled={busy} onPress={() => void act('explorer')} />
         {!!feedback && <Text accessibilityLiveRegion="polite" style={styles.muted}>{feedback}</Text>}
       </ScrollView>}
     </View>}

@@ -10,11 +10,12 @@ import { isAssetAmountEqualToBalance, toEightDecimalBuilderAmount } from '../../
 import { snapshotUtxoRbf } from '../../../source/shared/utxoTransactionOptions.ts';
 import { SYSX_ASSET_GUID, SYSX_ASSET_DECIMALS } from '../../../source/shared/syscoinAssetIds.ts';
 import type { NativeUtxoAsset, NativeUtxoReview } from '../src/custody/utxoSend.ts';
+import type { NativeOperationCredential } from '../src/custody/types.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (value: any) => void };
 const all = (value: any): Element[] => Array.isArray(value) ? value.flatMap(all)
-  : value && typeof value === 'object' && 'children' in value ? [value, ...value.children.flatMap(all)] : [];
+  : value && typeof value === 'object' && 'children' in value ? [value, ...value.children.flatMap(all), ...all(value.props.footer)] : [];
 const source = readFileSync(new URL('../src/screens/NativeUtxoSend.tsx', import.meta.url), 'utf8');
 const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS,
   target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
@@ -37,6 +38,7 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
       if (deps && value.deps && deps.length === value.deps.length && deps.every((item, index) => Object.is(item, value.deps![index]))) return;
       value.deps = deps; effects.push(() => { value.cleanup?.(); value.cleanup = run() || undefined; });
     },
+    useLayoutEffect(run: () => void | (() => void), deps?: readonly unknown[]): void { react.useEffect(run, deps); },
     useSyncExternalStore(_subscribe: unknown, read: () => unknown) { cell(); return read(); },
   };
   const native = { ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'View'].map((name) => [name, name])),
@@ -47,6 +49,7 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
     react, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
     '../core/amounts': { formatBaseUnits }, './NativeLedger': { NativeLedgerConnectionModal: 'Ledger' },
     './IdleActivityBoundary': { IdleTextInput: 'Input' },
+    './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
     '../../../../source/shared/syscoinAssetIds': { SYSX_ASSET_GUID, SYSX_ASSET_DECIMALS },
     '../../../../source/utils/syscoinAssetAmount': { isAssetAmountEqualToBalance, toEightDecimalBuilderAmount },
     '../../../../source/shared/utxoTransactionOptions': { snapshotUtxoRbf },
@@ -54,26 +57,32 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
   const module = { exports: {} as any };
   runInNewContext(code, { module, exports: module.exports, Error, require(name: string) { assert(Object.hasOwn(imports, name), name); return imports[name]; } });
   const requests: any[] = []; let cancels = 0, confirmations = 0, gate: Promise<void> | undefined, release: (() => void) | undefined;
+  const authorized: { review: NativeUtxoReview; credential: NativeOperationCredential }[] = [];
+  const reviews: NativeUtxoReview[] = [];
   const service = {
     cancel() { cancels++; }, async list() { return []; },
     async prepare(input: any): Promise<NativeUtxoReview> {
       requests.push(structuredClone(input));
       if (gate) await gate; // Deliberately deliver a late result after cancellation.
-      return { transactionOptions: { rbf: input.rbf, ...(input.asset ? { zdag: !input.rbf } : {}) }, feeSatoshis: '100',
+      const view = { transactionOptions: { rbf: input.rbf, ...(input.asset ? { zdag: !input.rbf } : {}) }, feeSatoshis: '100',
         outputs: [{ address: input.recipient, amountSatoshis: input.asset ? '294' : '10000',
           ...(input.asset ? { asset: { assetGuid: input.asset.assetGuid, rawAmount: parseDecimalAmount(input.amount, input.asset.decimals).toString() } } : {}) }],
         ...(input.asset ? { assetDisplay: input.asset } : {}) };
+      reviews.push(view); return view;
     },
-    async confirm() { confirmations++; return { txid: 'ab'.repeat(32) }; },
+    async confirm(review: NativeUtxoReview, credential: NativeOperationCredential) {
+      confirmations++; authorized.push({ review, credential }); return { txid: 'ab'.repeat(32) };
+    },
   };
   const open = async () => service;
   const render = () => { cursor = 0; const tree = module.exports.NativeUtxoSendScreen({ accountLabel: 'Account', asset,
-    maximumAmount: maximum, network: getUtxoNetwork(asset ? 'syscoin' : 'bitcoin'), open, onBack() {} }) as Element;
+    authenticationMethod: 'password', maximumAmount: maximum, network: getUtxoNetwork(asset ? 'syscoin' : 'bitcoin'), open, onBack() {} }) as Element;
     effects.splice(0).forEach((run) => run()); return tree; };
   const press = (title: string) => { const button = all(render()).find((node) => node.type === 'Button' && node.props.title === title); assert(button, title); button.props.onPress(); };
   const edit = (label: string, value: string) => { const input = all(render()).find((node) => node.type === 'Input' && node.props.accessibilityLabel === label); assert(input, label); input.props.onChangeText(value); };
   const review = () => { const screen = all(render()).find((node) => node.type === 'Screen')!; screen.props.footer.props.onPress(); };
-  return { render, press, edit, review, requests, counts: () => ({ cancels, confirmations }),
+  const authentication = () => { const modal = all(render()).find(node => node.type === 'TransactionAuthentication'); assert(modal); return modal; };
+  return { render, press, edit, review, requests, reviews, authorized, authentication, counts: () => ({ cancels, confirmations }),
     changeBalance(value: string) { maximum = value; },
     hold() { gate = new Promise<void>((resolve) => { release = resolve; }); },
     release() { release?.(); gate = undefined; },
@@ -89,7 +98,39 @@ test('native options start collapsed, preserve RBF default and bind a changed op
   f.press('Advanced options'); f.press('Replace-by-fee enabled'); f.review(); await tick();
   assert.equal(f.requests[1].rbf, false);
   const text = all(f.render()).flatMap((node) => node.children).join(' '); assert.match(text, /Replace-by-fee/); assert.match(text, /Disabled/);
-  f.press('Confirm and send'); await tick(); assert.equal(f.counts().confirmations, 1); f.close();
+  f.press('Confirm and send'); f.authentication().props.onConfirm({ method: 'password', password: 'public-password' });
+  await tick(); assert.equal(f.counts().confirmations, 1); f.close();
+});
+
+test('UTXO confirmation opens authentication and cancel preserves the reviewed transfer', async () => {
+  const f = fixture(); f.render(); await tick();
+  try {
+    f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1'); f.review(); await tick();
+    const reviewed = f.reviews[0], cancelledBeforeAuthentication = f.counts().cancels;
+    f.press('Confirm and send');
+    const authentication = f.authentication();
+    assert.equal(authentication.props.method, 'password'); assert.equal(f.counts().confirmations, 0);
+    authentication.props.onCancel();
+    assert.equal(all(f.render()).some(node => node.type === 'TransactionAuthentication'), false);
+    assert.equal(f.counts().cancels, cancelledBeforeAuthentication);
+    f.press('Confirm and send');
+    f.authentication().props.onConfirm({ method: 'password', password: 'public-password' }); await tick();
+    assert.equal(f.counts().confirmations, 1); assert.strictEqual(f.authorized[0]?.review, reviewed);
+    assert.equal(f.authorized[0]?.credential.method, 'password');
+  } finally { f.close(); }
+});
+
+for (const replacement of [false, true]) test(`stale UTXO authentication after Back${replacement ? ' and a new review' : ''} cannot confirm`, async () => {
+  const f = fixture(); f.render(); await tick();
+  try {
+    f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1'); f.review(); await tick();
+    f.press('Confirm and send'); const authentication = f.authentication();
+    all(f.render()).find(node => node.type === 'Header')!.props.onBack(); f.render();
+    if (replacement) { f.edit('Amount in BTC', '0.2'); f.review(); await tick(); }
+    authentication.props.onConfirm({ method: 'password', password: 'public-password' }); await tick();
+    assert.equal(f.counts().confirmations, 0);
+    if (replacement) { f.press('Confirm and send'); assert.equal(f.authentication().props.busy, false); }
+  } finally { f.close(); }
 });
 
 test('SPT Z-DAG uses the inverse RBF option and MAX fills the selected exact total once', async () => {

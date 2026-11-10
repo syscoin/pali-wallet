@@ -95,11 +95,12 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
     const registration = getNativeNetwork(network);
     let expectedRaw: string | undefined, requests = 0;
     const wrapped: NativeTransferRuntime = {
+    authenticateOperation: (...args) => transfer.authenticateOperation(...args),
     replay: (...args) => transfer.replay(...args),
       submit: (...args) => transfer.submit(...args),
       journal: (assertCurrent) => transfer.journal(assertCurrent),
       async sign(...args) { expect(phase === 'create'); signatures++; return transfer.sign(...args); },
-      // The report counts unlocked-session admission; retry never reauthenticates.
+      // The report counts the replay admission check separately from fresh operation authentication.
       assertUnlocked(...args) { expect(phase === 'restart'); authorizations++; return transfer.assertUnlocked(...args); },
     };
     const rpc = new NativeTransferRpc({ networkId: network, fetch: async (url, init) => {
@@ -145,7 +146,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
         }
         guard(); const review = controller.getSnapshot().review;
         expect(review && review.retry === (phase === 'restart') && review.context.chainId === registration.chainId);
-        await controller.confirm(review.id); guard();
+        await controller.confirm(review.id, { method: 'password', password: password }); guard();
         expect(controller.getSnapshot().phase === (phase === 'create' ? 'unknown' : 'pending'));
         const saved = await (await transfer.journal(guard)).load(); guard();
         expect(saved && saved.rawTransaction === expectedRaw && saved.phase === (phase === 'create' ? 'signed' : 'submitted'));

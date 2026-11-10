@@ -206,6 +206,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const watchState = useSyncExternalStore(watchAccounts.subscribe, watchAccounts.getSnapshot, watchAccounts.getSnapshot);
   const [catalogue, setCatalogue] = useState<NativeWalletCatalogueSnapshot | null>(null);
   const [requestedHdId, setRequestedHdId] = useState<string | undefined>();
+  const [initialSetup, setInitialSetup] = useState<'create' | 'import' | undefined>();
   const lastSelection = useRef<AccountSelection | null>(null);
   const [selectionError, setSelectionError] = useState('');
   const [requestedRoute, setRoute] = useState<Route>('welcome');
@@ -265,6 +266,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const go = useCallback((next: Route) => {
     navigationGeneration.current++;
     if (next !== 'native') {
+      setInitialSetup(undefined);
       const pending = pairingInbox.getSnapshot();
       if (pending) pairingInbox.consume(pending.id);
     }
@@ -278,6 +280,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       if (!entry) return;
       // A link opens connection review without choosing or persisting an account.
       setRequestedHdId(undefined);
+      setInitialSetup(undefined);
       authority.current?.lock();
       setPreview(false);
       setSheet(null);
@@ -298,9 +301,14 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     });
   };
   const openWallet = (id?: unknown) => {
+    setInitialSetup(undefined);
     const selectedId = typeof id === 'string' ? id : requestedHdId ?? catalogue?.active.accountId;
     setRequestedHdId(selectedId);
     if (selectedId) rememberSelection(nativeAccountSelection(selectedId));
+    authority.current?.lock(); setSheet(null); setPreview(false); go('native');
+  };
+  const startWalletSetup = (kind: 'create' | 'import') => {
+    setRequestedHdId(undefined); setInitialSetup(kind);
     authority.current?.lock(); setSheet(null); setPreview(false); go('native');
   };
   const openWatch = (selection: AccountSelection) => {
@@ -555,7 +563,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   } : {};
   const accountActions = { ...watchNetworkActions, watch: watchState, onAdd: addAccount, onRename: renameWatch, onRemove: removeWatch, onRetry: async () => { await loadAccounts(); setStartupError(''); }, availableWatchNetworks };
   const selectionNotice = selectionError ? <Notice title="Account choice not saved" body={selectionError} tone="amber" /> : null;
-  if (route === 'native') return <><NativeWalletScreen onExit={exit} incomingPairing={incomingPairing} onPairingHandled={pairingHandled} initialAccountId={requestedHdId} onWalletRemoved={walletRemoved} onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection(nativeAccountSelection(id)); }} accounts={{ ...accountActions, onSelectWatch: openWatch, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
+  if (route === 'native') return <><NativeWalletScreen onExit={exit} incomingPairing={incomingPairing} onPairingHandled={pairingHandled} initialAccountId={requestedHdId} initialSetup={initialSetup} onWalletRemoved={walletRemoved} onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection(nativeAccountSelection(id)); }} accounts={{ ...accountActions, onSelectWatch: openWatch, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
   if (!preview && route === 'accounts') return <><WalletAccounts {...accountActions} catalogue={null}
     active={snapshot.selectedAccountId ? { kind: 'watch', id: snapshot.selectedAccountId } : null}
     onSelect={(selection) => { if (selection.kind !== 'watch') openWallet(selection.id); else openWatch(selection); }}
@@ -608,7 +616,8 @@ function AppContent({ availableWatchNetworks }: AppProps) {
         onPreview={startPreview}
         onWatch={() => go('add')}
         onDesign={openDesign}
-        onWallet={Platform.OS !== 'web' ? openWallet : undefined}
+        onCreateWallet={Platform.OS !== 'web' ? () => startWalletSetup('create') : undefined}
+        onImportWallet={Platform.OS !== 'web' ? () => startWalletSetup('import') : undefined}
       />
     );
   else if (route === 'add')

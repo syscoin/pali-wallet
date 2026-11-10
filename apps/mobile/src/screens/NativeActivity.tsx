@@ -1,3 +1,4 @@
+import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import React, {
   useCallback,
   useEffect,
@@ -24,6 +25,7 @@ import { formatTokenUnits } from '../../../../source/shared/erc20';
 import { getEvmHistoryDirection } from '../../../../source/shared/evmHistory';
 import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
 import { ActivityListRow, activityDate } from './ActivityListRow';
+import { TransactionDetailLayout } from './TransactionDetailLayout';
 import type { ShellLeafNavigation } from './RealAppShell';
 import type {
   ActivityRow,
@@ -235,7 +237,9 @@ function NativeActivityContent({
   onSpeedUpPending?(hash: string): void;
   initialHash?: string;
 }) {
+  const { hidden: hideBalances } = useBalancePrivacy();
   const [selected, setSelected] = useState<string | null>(null);
+  const [detailsFor, setDetailsFor] = useState<string | null>(null);
   const arrival = useRef<string | null>(null);
   const [copyAddress, setCopyAddress] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
@@ -380,6 +384,7 @@ function NativeActivityContent({
   const close = () => {
     if (optionsOpen) { setOptionsOpen(false); return; }
     setCopyAddress(null);
+    setDetailsFor(null);
     if (selected) setSelected(null);
     else if (savedPending) {
       restored.current = false;
@@ -543,9 +548,9 @@ function NativeActivityContent({
               first={first} last={last} heading={first ? date.label : undefined}
               title={!isNumeric ? fullAmount : flow === 'sent' ? 'Sent' : flow === 'received' ? 'Received' : flow === 'self' ? 'Self transfer' : 'Activity'}
               subtitle={`${snapshot.networkName ?? snapshot.nativeSymbol ?? 'Network'} · ${displayStatus(item)}${item.unavailable ? ' · Details unavailable' : ''}`}
-              amount={isNumeric ? compactActivityAmountLabel(`${/^[+−-]/.test(fullAmount) ? '' : flow === 'received' ? '+' : flow === 'sent' ? '-' : ''}${fullAmount}`.replace(/^−/, '-')) : ''}
+              amount={isNumeric && hideBalances ? HIDDEN_BALANCE : isNumeric ? compactActivityAmountLabel(`${/^[+−-]/.test(fullAmount) ? '' : flow === 'received' ? '+' : flow === 'sent' ? '-' : ''}${fullAmount}`.replace(/^−/, '-')) : ''}
               time={date.time}
-              label={`${fullAmount}, ${displayStatus(item)}. ${date.label} ${date.time}. View transaction details`}
+              label={`${hideBalances && isNumeric ? 'Amount hidden' : fullAmount}, ${displayStatus(item)}. ${date.label} ${date.time}. View transaction details`}
               onPress={() =>
                 afterPositionSaved(() => {
                   setFeedback('');
@@ -594,10 +599,27 @@ function NativeActivityContent({
       </View>
       {chosen && (
         <ScrollView key={chosen.hash} contentContainerStyle={[s.content, s.detailContent]}>
-          <Text style={s.detailAmount}>
-            {amount(chosen, snapshot.nativeSymbol ?? 'ETH')}
-          </Text>
-          <Text style={styles.muted}>{displayStatus(chosen)}</Text>
+          <TransactionDetailLayout
+            amount={`${rowMonetaryAmount(chosen) ? direction(chosen, owner) === 'sent' ? '-' : direction(chosen, owner) === 'received' ? '+' : '' : ''}${amount(chosen, snapshot.nativeSymbol ?? 'ETH')}`}
+            direction={direction(chosen, owner) === 'sent' ? 'Sent' : direction(chosen, owner) === 'received' ? 'Received' : direction(chosen, owner) === 'self' ? 'Self transfer' : 'Activity'}
+            status={displayStatus(chosen)}
+            tone={displayStatus(chosen) === 'Confirmed' ? 'confirmed' : displayStatus(chosen) === 'Reverted' ? 'failed' : /pending/i.test(displayStatus(chosen)) ? 'pending' : 'unknown'}
+            rows={[
+              { label: 'Network', value: snapshot.networkName ?? snapshot.nativeSymbol ?? 'Network' },
+              { label: 'Date', value: `${rowDate(chosen).label}${rowDate(chosen).time ? `, ${rowDate(chosen).time}` : ''}` },
+              { label: 'From', value: sender(chosen, owner) ?? 'Not available', actionLabel: 'Copy sender address',
+                ...(sender(chosen, owner) ? { onPress: () => setCopyAddress(sender(chosen, owner)) } : {}) },
+              { label: 'To', value: recipient(chosen) ?? (chosen.indexed?.to === null || chosen.indexed?.to === '' || chosen.local?.recipient === null ? 'Contract creation' : 'Not available'),
+                actionLabel: 'Copy recipient address', ...(recipient(chosen) ? { onPress: () => setCopyAddress(recipient(chosen)) } : {}) },
+              { label: 'Network fee', value: fee(chosen, snapshot.nativeSymbol ?? 'ETH') },
+              { label: 'Transaction ID', value: chosen.hash },
+            ]}
+            {...(snapshot.explorerUrl ? { onExplorer: () => { void Linking.openURL(`${snapshot.explorerUrl!.replace(/\/$/, '')}/tx/${chosen.hash}`).catch(() => setFeedback('Could not open the explorer.')); } } : {})}
+          />
+          <Button title="Details" variant="quiet" size="compact" expanded={detailsFor === chosen.hash}
+            onPress={() => setDetailsFor(detailsFor === chosen.hash ? null : chosen.hash)} />
+          {detailsFor === chosen.hash && <>
+          <Text selectable style={s.full}>{amount(chosen, snapshot.nativeSymbol ?? 'ETH')}</Text>
           {chosen.local?.token && !chosen.indexed && (
             <Notice
               title="Amount approved in Pali"
@@ -613,13 +635,6 @@ function NativeActivityContent({
             <Text style={s.full}>
               {sender(chosen, owner) ?? 'Not available'}
             </Text>
-            {!!sender(chosen, owner) && (
-              <Button
-                title="Copy sender address"
-                variant="quiet"
-                onPress={() => setCopyAddress(sender(chosen, owner))}
-              />
-            )}
             <Text style={s.label}>
               {collectible
                 ? 'SIGNED RECIPIENT'
@@ -635,13 +650,6 @@ function NativeActivityContent({
                   ? 'Contract creation'
                   : 'Not available')}
             </Text>
-            {!!recipient(chosen) && (
-              <Button
-                title="Copy recipient address"
-                variant="quiet"
-                onPress={() => setCopyAddress(recipient(chosen))}
-              />
-            )}
             {chosen.local?.token && (
               <>
                 <Text style={s.label}>TOKEN CONTRACT</Text>
@@ -745,19 +753,7 @@ function NativeActivityContent({
               onPress={() => onReplay(chosen.hash)}
             />
           )}
-          {snapshot.explorerUrl && (
-            <Button
-              title="View on explorer"
-              variant="quiet"
-              onPress={() => {
-                void Linking.openURL(
-                  `${snapshot.explorerUrl!.replace(/\/$/, '')}/tx/${
-                    chosen.hash
-                  }`
-                ).catch(() => setFeedback('Could not open the explorer.'));
-              }}
-            />
-          )}
+          </>}
           {!!feedback && (
             <Text accessibilityLiveRegion="polite" style={styles.muted}>
               {feedback}

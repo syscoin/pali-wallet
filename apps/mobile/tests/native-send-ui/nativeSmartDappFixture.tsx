@@ -136,6 +136,7 @@ export function NativeSmartDappFixture() {
     getSnapshot: () => ({
       revision: latest.current?.revision ?? 0,
       status: 'ready',
+      pairingExpiresAt: null,
       accounts: [],
       selectedAccountId: null,
       network: null,

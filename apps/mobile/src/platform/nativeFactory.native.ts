@@ -612,7 +612,7 @@ export function createNativeWalletControllers() {
     const open = selected.openUtxoSend;
     if (!open) throw new CustodyOperationError('NOT_READY');
     const send = await observeFailure(() => open(assertCurrent));
-    return Object.freeze<NativeUtxoSend>({ ...send, confirm: (view) => observeFailure(() => send.confirm(view)) });
+    return Object.freeze<NativeUtxoSend>({ ...send, confirm: (view, credential) => observeFailure(() => send.confirm(view, credential)) });
   };
   const openNoteMaintenance = async (signal: AbortSignal, assertOwner: () => void): Promise<NativeNoteMaintenanceRuntime> => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);

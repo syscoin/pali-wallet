@@ -77,11 +77,11 @@ test('Security uses the actual seed backup flow and offers no reset or clipboard
   await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click();
   await expect(page.getByText('abandon', { exact: true })).toHaveCount(11);
   await expect(page.getByRole('button', { name: /Copy|Share/ })).toHaveCount(0);
-  await page.getByRole('button', { name: "I've written them down", exact: true }).click();
-  for (const input of await page.getByRole('textbox', { name: /^Word [0-9]+$/ }).all()) {
-    await input.fill(await input.getAttribute('aria-label') === 'Word 12' ? 'about' : 'abandon');
-  }
-  await page.getByRole('button', { name: 'Confirm backup', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeDisabled();
+  await page.getByRole('checkbox', { name: 'I have written down my recovery phrase and stored it safely', exact: true }).click();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page.getByText('Backup complete', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Security & backups', exact: false })).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.events().filter((event) => event === 'backup:confirmed').length)).toBe(1);
   expect((await page.evaluate(() => window.__watchFixture.audit())).keyReads).toBe(0);

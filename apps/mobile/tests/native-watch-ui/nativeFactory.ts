@@ -23,7 +23,7 @@ import { DeviceUnlockPrompt } from '../../src/platform/deviceUnlockPrompt';
 import { AppState } from 'react-native';
 import type { NativeAccountView } from '../../src/custody/accounts';
 import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCatalogue';
-import type { CustodyRuntime } from '../../src/custody/types';
+import type { CustodyRuntime, NativeOperationCredential } from '../../src/custody/types';
 import { getNativeNetwork, NATIVE_NETWORKS } from '../../src/custody/networkContext';
 import { ADDRESS, SECOND, audit, events, unlockGate, signGate, keyReadGate, activityResetGate, PUBLIC_TEST_KEY, keyFailure, importGate, importFailure } from './state';
 import { recoveryAudit, recoveryGate } from './recoveryState';
@@ -229,7 +229,23 @@ export function createNativeWalletControllers() {
         { id: 'hd:0:0', type: 'HDAccount', index: 0, slip44: 0, label: 'Account 1', address: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4' },
       ] as const,
     });
+  const authenticateOperation = async (credential: NativeOperationCredential, check: () => void) => {
+    check();
+    if (credential.method === 'biometric') {
+      if (!authentication || !visualDeviceUnlockEnabled) throw new Error('DEVICE_UNLOCK_UNAVAILABLE');
+      await authentication.run(async () => { await unlockGate(); check(); });
+    } else {
+      await unlockGate();
+      if (credential.password !== fixturePassword) throw new Error('INVALID_CREDENTIAL');
+    }
+    check();
+  };
   const runtime: CustodyRuntime = {
+    async previewPhrase(phrase, check) {
+      check();
+      if (!visualReviewEnabled || phrase !== visualReviewFixture.phrase) throw new Error('INVALID_INPUT');
+      return [{ label: 'EVM account', address: ADDRESS }];
+    },
     ...(authentication ? { deviceUnlock: {
       async status() { return { available: true, enabled: visualDeviceUnlockEnabled }; },
       async enroll(password, check) {
@@ -253,7 +269,7 @@ export function createNativeWalletControllers() {
         return { authenticated: true };
       },
     } satisfies NonNullable<CustodyRuntime['deviceUnlock']> } : {}),
-    security: { async reauthenticateIdlePolicy(password, check) { check(); events.push('idle:auth'); await unlockGate(); if (password !== fixturePassword) throw new KeyringRuntimeError('INVALID_CREDENTIAL'); check(); } },
+    security: { authenticateOperation, async reauthenticateIdlePolicy(password, check) { check(); events.push('idle:auth'); await unlockGate(); if (password !== fixturePassword) throw new KeyringRuntimeError('INVALID_CREDENTIAL'); check(); } },
     networks: {
       getSelectedId: () => catalogue.active.networkId,
       reserve(id, expectedRevision) {
@@ -389,6 +405,7 @@ export function createNativeWalletControllers() {
   latestAuthority = authority;
   retiredAuthorities.push(authority);
   const transferRuntime: NativeTransferRuntime = {
+    authenticateOperation,
     replay() { throw Error("Fixture has no retained signed transactions"); },
     async submit(_raw, _hash, guard) { guard(); throw Error('Fixture does not submit signatures'); },
     async journal(guard) { guard(); return {

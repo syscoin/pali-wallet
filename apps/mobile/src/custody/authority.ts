@@ -519,6 +519,19 @@ export class NativeCustodyAuthority {
     return this.authenticate('create', password);
   }
 
+  async previewPhrase(phrase: string, assertCurrent: () => void) {
+    const runtime = this.runtime, revision = this.revision;
+    const check = () => {
+      if (!runtime?.previewPhrase || runtime !== this.runtime || revision !== this.revision || this.snapshot.phase !== 'empty')
+        throw new CustodyOperationError('CANCELLED');
+      assertSynchronousEvmFeeGuard(assertCurrent);
+    };
+    check();
+    const addresses = await runtime!.previewPhrase!(phrase, check);
+    check();
+    return addresses;
+  }
+
   importPhrase(phrase: string, password: string): Promise<void> {
     return this.authenticate('import', password, phrase);
   }

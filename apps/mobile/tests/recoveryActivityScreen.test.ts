@@ -4,12 +4,15 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
+import { formatBaseUnits } from '../src/core/amounts.ts';
+import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { DEFAULT_ACTIVITY_VIEW } from '../src/activity/types.ts';
 
 type Element = { type: any; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; dependencies?: unknown[]; cleanup?: () => void };
 const hash = '0x' + '11'.repeat(32);
 function fixture(initialHash?: string, held = false) {
+  let privacyHidden = false;
   const cells = new Map<unknown, Cell[]>();
   let current: Cell[] = [],
     cursor = 0;
@@ -109,7 +112,7 @@ function fixture(initialHash?: string, held = false) {
     async setView() {},
   };
   const ui = Object.fromEntries(
-    ['Button', 'Card', 'Header', 'Notice', 'Text'].map((name) => [name, name])
+    ['Button', 'Card', 'Header', 'IconButton', 'Notice', 'SegmentedControl', 'Text'].map((name) => [name, name])
   );
   const native = Object.fromEntries(
     ['ActivityIndicator', 'FlatList', 'Modal', 'ScrollView', 'View'].map(
@@ -117,6 +120,7 @@ function fixture(initialHash?: string, held = false) {
     )
   );
   const dependencies: Record<string, unknown> = {
+    '../platform/balancePrivacy': { HIDDEN_BALANCE: '••••', useBalancePrivacy: () => ({ hidden: privacyHidden, status: 'ready' }) },
     react,
     'react-native': {
       ...native,
@@ -128,7 +132,10 @@ function fixture(initialHash?: string, held = false) {
     'expo-clipboard': {},
     '../ui': { ...ui, colors: {}, styles: {} },
     './IdleActivityBoundary': { IdlePressable: 'IdlePressable' },
-    '../core/amounts': { formatBaseUnits: () => '0' },
+    '../core/amounts': { formatBaseUnits },
+    '../activity/activityAmountLabel': { compactActivityAmountLabel },
+    './ActivityListRow': { ActivityListRow: 'ActivityListRow', activityDate: () => ({ key: 'today', label: 'Today', time: '10:00' }) },
+    './TransactionDetailLayout': { TransactionDetailLayout: 'TransactionDetailLayout' },
     '../../../../source/shared/erc20': { formatTokenUnits: () => '0' },
     '../../../../source/shared/evmHistory': {
       getEvmHistoryDirection: () => 'unknown',
@@ -170,6 +177,8 @@ function fixture(initialHash?: string, held = false) {
     return result;
   };
   return {
+    privacy(value: boolean) { privacyHidden = value; },
+    rows(value: unknown[]) { snapshot = { ...snapshot, rows: value }; },
     render() {
       const parent = renderOne(module.exports.NativeActivityScreen, {
         controller,
@@ -260,4 +269,24 @@ test('Activity waits for a ready scope and drops a late result after unmount', a
   await settle();
   assert.deepEqual(f.inspected(), []);
   assert.equal(f.replays(), 0);
+});
+
+
+test('privacy masks Activity list quantities and accessibility labels but keeps opened transaction details exact', async () => {
+  const f = fixture();
+  const row = { hash, checking: false, unavailable: false, observation: { status: 'pending', timestamp: null,
+    valueUnits: '1250000000000000000', feeUnits: null, nonce: '0', latestNonce: '0',
+    from: '0x' + '22'.repeat(20), to: '0x' + '33'.repeat(20), events: [] } };
+  f.rows([row]);
+  try {
+    let list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    assert.equal(list.props.renderItem({ item: row, index: 0 }).props.amount, '1.25 ETH');
+    f.privacy(true);
+    list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    const preview = list.props.renderItem({ item: row, index: 0 });
+    assert.equal(preview.props.amount, '••••'); assert(!preview.props.label.includes('1.25'));
+    preview.props.onPress(); await settle();
+    const detail = all(f.render()).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
+    assert.equal(detail.props.amount, '1.25 ETH');
+  } finally { f.dispose(); }
 });
