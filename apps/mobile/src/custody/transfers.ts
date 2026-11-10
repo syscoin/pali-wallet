@@ -31,6 +31,7 @@ import {
 import type { NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 import { snapshotSavedCollectible, type SavedCollectible } from '../portfolio/tokenRegistry.ts';
 import { snapshotNftTransferSelection, withNftInventorySignal, type NftTransferSelection } from './nftTransferAdmission.ts';
+import { nativeEvmMaximumReserve } from '../../../../source/shared/evmNativeMaximum.ts';
 
 export type NativeTransferReview = Readonly<{
   context: NativeSendContext;
@@ -155,6 +156,7 @@ export class NativeTransferError extends Error {
     | 'ASSET_STATE_WAIT'
     | 'SIGNED_STORAGE_FULL'
     | 'PENDING_TRANSFER'
+    | 'MAX_PENDING'
     | 'FAILED'
     | 'INSUFFICIENT_BALANCE'
     | 'INSUFFICIENT_TOKEN_BALANCE'
@@ -176,6 +178,7 @@ export type NativeTransferView = Readonly<
     | 'subscribe'
     | 'cancel'
     | 'prepare'
+    | 'prepareMaximum'
     | 'prepareCancellation'
     | 'prepareSavedCancellation'
     | 'prepareSpeedUp'
@@ -231,6 +234,7 @@ export class NativeTransfers {
     cancel: () => this.cancel(),
     prepare: (recipient: string, amount: string, nonce?: string) =>
       this.prepare(recipient, amount, nonce),
+    prepareMaximum: (recipient: string, nonce?: string) => this.prepareMaximum(recipient, nonce),
     prepareCancellation: (hash: string) => this.prepareCancellation(hash),
     prepareSavedCancellation: (hash: string) => this.prepareSavedCancellation(hash),
     prepareSpeedUp: (hash: string) => this.prepareSpeedUp(hash),
@@ -472,6 +476,10 @@ export class NativeTransfers {
               : ASSET_STATE_WAIT_MESSAGE,
           });
           throw new NativeTransferError('ASSET_STATE_WAIT');
+        }
+        if ((error instanceof NativeTransferError || error instanceof NativeTransferRpcError) && error.code === 'MAX_PENDING') {
+          this.publish({ phase: 'idle', review: null, message: 'MAX is unavailable while an outgoing transaction is pending. Check Activity before trying again.' });
+          throw new NativeTransferError('MAX_PENDING');
         }
         if (error instanceof NativeTransferError && error.code === 'NONCE_RETAINED') {
           this.publish({ phase: 'idle', review: null });
@@ -766,6 +774,36 @@ export class NativeTransfers {
       const quote = await rpc.prepare(address, to, units, signal, nonceOverride,
         journal.planAutomaticNonce).catch((error: unknown) =>
           this.rejectDraftNonce(error, journal, nonceOverride !== undefined));
+      assertCurrent();
+      await this.checkDraftNonce(journal, quote.transaction.nonce, nonceOverride !== undefined);
+      assertCurrent();
+      this.showReview(quote.transaction, undefined, context, { nonceOverride });
+    });
+  }
+  prepareMaximum(recipient: string, nonce?: string): Promise<void> {
+    let to: string;
+    let nonceOverride: number | undefined;
+    try {
+      to = normalizePublicAddress(recipient, 'ethereum');
+      nonceOverride = parseNonceOverride(nonce);
+    } catch (error) {
+      return Promise.reject(error instanceof NativeTransferError ? error : new NativeTransferError('INVALID_INPUT'));
+    }
+    return this.perform(async ({ assertCurrent, runtime, signal, address, context, rpc }) => {
+      const catalogue = this.source.getCatalogue?.();
+      const selected = catalogue?.accounts.find(account => account.id === catalogue.active.accountId);
+      if (!selected || selected.address.toLowerCase() !== address.toLowerCase() || catalogue?.active.networkId !== context.networkId ||
+        !['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(selected.type)) throw new NativeTransferError('NOT_READY');
+      const reserve = nativeEvmMaximumReserve(selected.type === 'Ledger' || selected.type === 'Trezor' ? 'hardware' : 'software');
+      this.review = null;
+      this.publish({ phase: 'preparing', context, review: null, hash: null, message: null, intent: null, collectible: undefined, inspectionOnly: false });
+      const journal = await runtime.journal(assertCurrent);
+      assertCurrent();
+      const saved = await journal.load();
+      assertCurrent();
+      if (saved && ['signed', 'attempted', 'submitted'].includes(saved.phase)) throw new NativeTransferError('MAX_PENDING');
+      const quote = await rpc.prepareMaximum(address, to, reserve, signal, nonceOverride, journal.planAutomaticNonce)
+        .catch((error: unknown) => this.rejectDraftNonce(error, journal, nonceOverride !== undefined));
       assertCurrent();
       await this.checkDraftNonce(journal, quote.transaction.nonce, nonceOverride !== undefined);
       assertCurrent();

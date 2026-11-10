@@ -34,7 +34,7 @@ const otherToken = Object.freeze({
   name: 'Other public fixture token',
   symbol: 'OTHER',
 });
-function fixture() {
+function fixture(maximumAccountType?: 'HDAccount' | 'Imported' | 'Ledger' | 'Trezor' | 'SmartAccount') {
   let state: CustodySnapshot = {
     phase: 'ready',
     revision: 1,
@@ -79,6 +79,10 @@ function fixture() {
   const rpcMethods: string[] = [];
   const source = {
     getSnapshot: () => state,
+    ...(maximumAccountType ? { getCatalogue: () => ({ revision: 1,
+      accounts: [{ id: 'maximum-payer', type: maximumAccountType, index: 0, slip44: 60, address: wallet.address, label: 'Maximum payer' }],
+      networks: [getNativeNetwork('ethereum')], utxoNetworks: [], active: { accountId: 'maximum-payer', networkId: 'ethereum' as const },
+    }) } : {}),
     subscribe(listener: (state: CustodySnapshot) => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -346,6 +350,122 @@ function fixture() {
     },
   };
 }
+for (const type of ['HDAccount', 'Imported', 'Ledger', 'Trezor'] as const) {
+  test(`native MAX ${type} reserves the shared fee policy and sends exactly the review`, async () => {
+    const f = fixture(type);
+    try {
+      await f.transfers.prepareMaximum(to);
+      const approved = f.transfers.getSnapshot().review;
+      assert(approved);
+      const reserve = type === 'Ledger' || type === 'Trezor' ? 1_000_000_000_000n : 0n;
+      assert.equal(BigInt(approved.amountUnits) + BigInt(approved.maximumFeeUnits) + reserve, 0x10000000000000000n);
+      assert.equal(f.authentications(), 0);
+      assert.equal(f.signatures(), 0);
+      assert.equal(f.broadcasts.length, 0);
+      await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
+      assert.equal(f.authentications(), 1);
+      assert.equal(f.signatures(), 1);
+      assert.equal(f.broadcasts.length, 1);
+      const sent = Transaction.from(f.broadcasts[0]);
+      assert.equal(sent.value.toString(), approved.amountUnits);
+      assert.equal(sent.gasLimit.toString(), approved.gasLimit);
+      assert.equal(sent.maxFeePerGas?.toString() ?? sent.gasPrice?.toString(), approved.maximumFeePerGas);
+    } finally { f.close(); }
+  });
+}
+
+test('native MAX refuses externally pending and retained outgoing transactions', async () => {
+  const external = fixture('HDAccount');
+  try {
+    external.nextNonce();
+    await assert.rejects(external.transfers.prepareMaximum(to), { code: 'MAX_PENDING' });
+    assert.equal(external.transfers.getSnapshot().review, null);
+    assert.equal(external.signatures(), 0);
+    assert.equal(external.broadcasts.length, 0);
+  } finally { external.close(); }
+  const retained = fixture('HDAccount');
+  try {
+    const approved = await review(retained);
+    retained.loseAcknowledgment();
+    await retained.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
+    assert.equal(retained.transfers.getSnapshot().phase, 'unknown');
+    const signed = retained.signatures(), posts = retained.broadcasts.length;
+    await assert.rejects(retained.transfers.prepareMaximum(to), { code: 'MAX_PENDING' });
+    assert.equal(retained.signatures(), signed);
+    assert.equal(retained.broadcasts.length, posts);
+  } finally { retained.close(); }
+});
+
+test('native MAX preserves an explicit unused higher nonce through the reviewed signature', async () => {
+  const f = fixture('HDAccount');
+  try {
+    await f.transfers.prepareMaximum(to, '7');
+    const approved = f.transfers.getSnapshot().review;
+    assert(approved);
+    assert.equal(approved.nonce, '7');
+    assert.equal(approved.nonceOverride, 7);
+    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
+    assert.equal(Transaction.from(f.broadcasts[0]).nonce, 7);
+    assert.equal(Transaction.from(f.broadcasts[0]).value.toString(), approved.amountUnits);
+    assert.equal(f.signatures(), 1);
+  } finally { f.close(); }
+  const pending = fixture('HDAccount');
+  try {
+    pending.nextNonce();
+    await assert.rejects(pending.transfers.prepareMaximum(to, '7'), { code: 'MAX_PENDING' });
+    assert.equal(pending.signatures(), 0);
+  } finally { pending.close(); }
+});
+
+test('native MAX never rewrites an approved amount after balance growth or loss', async () => {
+  for (const grows of [true, false]) {
+    const f = fixture('HDAccount');
+    try {
+      await f.transfers.prepareMaximum(to);
+      const approved = f.transfers.getSnapshot().review;
+      assert(approved);
+      f.setPendingBalance(BigInt(approved.totalUnits) + (grows ? 1000n : -1n));
+      if (grows) {
+        await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
+        assert.equal(Transaction.from(f.broadcasts[0]).value.toString(), approved.amountUnits);
+      } else {
+        await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL));
+        assert.equal(f.signatures(), 0);
+        assert.equal(f.broadcasts.length, 0);
+      }
+    } finally { f.close(); }
+  }
+});
+
+test('native MAX keeps authentication, expiry, no-funds and payer-kind refusals', async () => {
+  const f = fixture('HDAccount');
+  try {
+    await f.transfers.prepareMaximum(to);
+    const approved = f.transfers.getSnapshot().review;
+    assert(approved);
+    await assert.rejects(f.transfers.confirm(approved.id, { method: 'pin', pin: '000000' }), { code: 'INVALID_CREDENTIAL' });
+    assert.equal(f.transfers.getSnapshot().review, approved);
+    assert.equal(f.signatures(), 0);
+    f.expire();
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'EXPIRED' });
+    assert.equal(f.broadcasts.length, 0);
+  } finally { f.close(); }
+  const empty = fixture('Imported');
+  try {
+    empty.insufficient();
+    await assert.rejects(empty.transfers.prepareMaximum(to));
+    assert.equal(empty.transfers.getSnapshot().review, null);
+    assert.equal(empty.authentications(), 0);
+    assert.equal(empty.signatures(), 0);
+  } finally { empty.close(); }
+  const smart = fixture('SmartAccount');
+  try {
+    await assert.rejects(smart.transfers.prepareMaximum(to));
+    assert.equal(smart.transfers.getSnapshot().review, null);
+    assert.equal(smart.signatures(), 0);
+  } finally { smart.close(); }
+});
+
 // Authenticated, deterministic capacity setup in an unrelated chain scope. No
 // network calls or production limits are changed; the same profile stores both.
 async function fillSyntheticJournal(f: ReturnType<typeof fixture>) {

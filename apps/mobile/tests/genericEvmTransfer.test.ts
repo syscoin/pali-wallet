@@ -13,6 +13,7 @@ function fixture(network: NativeNetworkRegistration, legacy = false) {
   let receipt: unknown = { transactionHash: hash, from, to, status: '0x1', blockNumber: '0x10', blockHash };
   let nonce = '0x1', gas = '0x5208', balance = '0xffffffffffffffff';
   let wrongChain = false, unsupportedTip = false;
+  let estimateHook: (() => void) | undefined;
   const fetcher = async (_url: string, init: RequestInit) => {
     assert.equal(_url, network.rpcUrl);
     const body = JSON.parse(String(init.body));
@@ -28,7 +29,7 @@ function fixture(network: NativeNetworkRegistration, legacy = false) {
       case 'eth_feeHistory': result = { reward: [['0x0', '0x0', '0x1'], ['0x0', '0x0', '0x1']] }; break;
       case 'eth_getTransactionCount': result = nonce; break;
       case 'eth_getBalance': result = balance; break;
-      case 'eth_estimateGas': result = gas; break;
+      case 'eth_estimateGas': estimateHook?.(); result = gas; break;
       case 'eth_getTransactionReceipt': result = receipt; break;
       case 'eth_getCode': result = '0x6000'; break;
       case 'eth_call': result = body.params[0].data === '0x313ce567' ? `0x${'6'.padStart(64, '0')}` : body.params[0].data.startsWith('0x70a08231') ? `0x${'f'.repeat(64)}` : '0x'; break;
@@ -38,9 +39,44 @@ function fixture(network: NativeNetworkRegistration, legacy = false) {
   };
   return { calls, rpc: new NativeTransferRpc({ registration: network, fetch: fetcher }), setReceipt: (value: unknown) => { receipt = value; },
     setNonce: (value: string) => { nonce = value; }, setGas: (value: string) => { gas = value; }, setBalance: (value: string) => { balance = value; },
+    onEstimate: (hook: () => void) => { estimateHook = hook; },
     wrongChain: () => { wrongChain = true; }, unsupportedTip: () => { unsupportedTip = true; } };
 }
 const custom = (id: string, chainId: string) => createNativeNetwork({ id, name: id, kind: 'evm', chainId, slip44: 60, rpcUrl: `https://${id}.example/rpc`, symbol: 'TEST', decimals: 18, testnet: true });
+for (const legacy of [false, true]) test(`native MAX quotes an unlisted ${legacy ? 'legacy' : 'dynamic-fee'} chain with exact fee coverage`, async () => {
+  const f = fixture(custom('maximum-chain', '98760'), legacy), signal = new AbortController().signal;
+  const reserve = 1_000_000_000_000n;
+  const quote = await f.rpc.prepareMaximum(from, to, reserve, signal, undefined, emptyNoncePlanner);
+  assert.equal(BigInt(quote.transaction.value) + BigInt(quote.maximumFeeUnits) + reserve, 0xffffffffffffffffn);
+  assert.deepEqual((await f.rpc.requote(quote.transaction, signal, undefined, undefined, emptyNoncePlanner)).transaction, quote.transaction);
+  const estimates = f.calls.filter(call => call.method === 'eth_estimateGas');
+  assert(estimates.length >= 3 && estimates.length <= 5);
+  assert.equal((estimates.at(-2)!.params[0] as { value: string }).value, `0x${BigInt(quote.transaction.value).toString(16)}`);
+  assert.equal(f.calls.some(call => call.method === 'eth_sendRawTransaction'), false);
+});
+
+test('native MAX abort and changed-chain guards stop quote publication', async () => {
+  const f = fixture(custom('maximum-abort', '65430')), owner = new AbortController();
+  f.onEstimate(() => owner.abort());
+  await assert.rejects(f.rpc.prepareMaximum(from, to, 0n, owner.signal, undefined, emptyNoncePlanner), { code: 'CANCELLED' });
+  const changed = fixture(custom('maximum-changed', '65431'));
+  changed.wrongChain();
+  await assert.rejects(changed.rpc.prepareMaximum(from, to, 0n, new AbortController().signal, undefined, emptyNoncePlanner), { code: 'INVALID_RESPONSE' });
+  assert.deepEqual(changed.calls.map(call => call.method), ['eth_chainId']);
+});
+
+test('native MAX refuses a final exact-value estimate above its bounded refined cap', async () => {
+  const f = fixture(custom('maximum-growing-gas', '65432'));
+  const gas = [21000n, 40000n, 80000n, 200000n];
+  let at = 0;
+  f.onEstimate(() => {
+    const next = gas[Math.min(at++, gas.length - 1)];
+    assert(next !== undefined);
+    f.setGas(`0x${next.toString(16)}`);
+  });
+  await assert.rejects(f.rpc.prepareMaximum(from, to, 0n, new AbortController().signal, undefined, emptyNoncePlanner), { code: 'REVIEW_REQUIRED' });
+  assert.equal(at, 4);
+});
 for (const network of [...NATIVE_NETWORKS, custom('custom-one', '43210'), custom('custom-two', '98765')]) {
   test(`${network.id}: one generic fee path, zero priority and first receipt confirms`, async () => {
     const f = fixture(network), signal = new AbortController().signal;
