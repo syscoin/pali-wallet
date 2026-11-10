@@ -98,9 +98,8 @@ function fixture(canSign = true, restored = false) {
         await delay;
         return { phase: 'verified' };
       },
-      async reviewRestored(password) {
+      async reviewRestored() {
         reviews++;
-        assert.equal(password, 'password');
       },
       async close() {},
     },
@@ -216,7 +215,7 @@ test('watch-only model can prepare relayed mode but cannot invoke direct mode', 
 test('restored review is explicit and status/directory reads are serialized', async () => {
   const f = fixture(true, true),
     gate = held();
-  await f.model.reviewRestored('password');
+  await f.model.reviewRestored();
   assert.equal(f.counts().reviews, 1);
   assert.equal(f.model.getSnapshot().restored, false);
   f.hold(gate.promise);

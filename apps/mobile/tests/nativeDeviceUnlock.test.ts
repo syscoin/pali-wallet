@@ -10,6 +10,7 @@ import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { createDeviceUnlockCredentialStore } from '../src/storage/deviceUnlockCredential.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 import { deviceUnlockUserRefusal } from '../../../source/wallet/deviceUnlockEnrollment.ts';
+import { SeedBackupFlow } from '../src/custody/seedBackup.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = '123456';
@@ -219,6 +220,38 @@ test('operation authentication reuses device enrollment without changing the liv
     assert.equal(f.owner.getSnapshot(), before);
     assert.equal(f.owner.getCatalogue(), catalogue);
   } finally { await f.close(); }
+});
+
+for (const failure of ['missing', 'corrupt', 'changed', 'read'] as const) test(`phrase flow reflects retired SDK authority after ${failure} biometric enrollment`, async () => {
+  const f = await fixture(), flow = new SeedBackupFlow(f.owner, () => f.runtime.backup);
+  try {
+    await f.runtime.backup.confirm(await f.runtime.backup.fingerprint()); await f.owner.refreshAuthenticatedMetadata();
+    await f.owner.setDeviceUnlock(true, PASSWORD, () => undefined);
+    const reference = await f.store.deviceUnlockEnrollment.read(); assert(reference);
+    if (failure === 'missing') f.protectedItems.clear();
+    if (failure === 'corrupt') for (const key of f.protectedItems.keys()) f.protectedItems.set(key, 'corrupt');
+    if (failure === 'changed') f.afterRead(async () => {
+      assert.equal(await f.store.deviceUnlockEnrollment.compareAndSet(reference, 'ef'.repeat(16), () => undefined), true);
+    });
+    if (failure === 'read') f.afterRead(async () => { f.failEnrollmentRead(); });
+    await assert.rejects(flow.begin({ method: 'biometric' }), /BACKUP_UNAVAILABLE/);
+    assert.equal(f.owner.getSnapshot().phase, 'locked');
+    assert.equal(f.owner.getCatalogue(), null);
+    assert.equal(f.runtime.catalogue.getSnapshot(), null);
+  } finally { flow.dispose(); await f.close(); }
+});
+
+test('phrase flow preserves only a genuine biometric refusal and then accepts a fresh PIN', async () => {
+  const f = await fixture(), flow = new SeedBackupFlow(f.owner, () => f.runtime.backup);
+  try {
+    await f.owner.setDeviceUnlock(true, PASSWORD, () => undefined);
+    const before = f.owner.getSnapshot();
+    f.afterRead(async () => { throw deviceUnlockUserRefusal(); });
+    await assert.rejects(flow.begin({ method: 'biometric' }), /DEVICE_UNLOCK_UNAVAILABLE/);
+    assert.equal(f.owner.getSnapshot(), before);
+    f.afterRead(async () => undefined);
+    assert.equal((await flow.begin(PASSWORD)).words.join(' '), PHRASE);
+  } finally { flow.dispose(); await f.close(); }
 });
 
 for (const failure of ['read', 'changed', 'missing', 'forged'] as const) test(`operation biometric ${failure} failure retires the public session instead of becoming a retryable refusal`, async () => {

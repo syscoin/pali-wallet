@@ -28,7 +28,7 @@ test('restore expiry retires the same preview and tells the screen to clear its 
   await restore.select(choose, ok);
   const preview = await restore.prepare('test backup password', ok, expired);
   await cleared;
-  await assert.rejects(restore.restore(preview.id, 'never submitted'), { code: 'BACKUP_STALE' });
+  await assert.rejects(restore.restore(preview.id), { code: 'BACKUP_STALE' });
   assert.deepEqual(cancelled, [preview.id]);
 });
 
@@ -48,10 +48,10 @@ test('a stale route cannot publish a late receipt or reuse the review', async ()
   const restore = createNativeNoteRestore(async () => runtime);
   await restore.select(choose, ok);
   const { id } = await restore.prepare('test backup password', ok, unavailable);
-  const pending = restore.restore(id, 'test wallet password');
+  const pending = restore.restore(id);
   restore.cancel();
   done({ id, added: 1, duplicates: 0, guarded: 1, confirmed: true });
   await assert.rejects(pending, error => error instanceof NoteBackupServiceError && error.code === 'BACKUP_CANCELLED');
-  await assert.rejects(restore.restore(id, 'new password'), { code: 'BACKUP_STALE' });
+  await assert.rejects(restore.restore(id), { code: 'BACKUP_STALE' });
   assert.deepEqual(cancelled, [id]);
 });

@@ -84,6 +84,7 @@ export type NativeTransferReplay = Pick<EvmSignedReplay, 'confirm' | 'cancel' | 
   prepare(hash: string, mode: 'inspect' | 'resend'): Promise<EvmReplayPreparation | Readonly<{ status: 'unknown'; hash: string; transaction: EvmSavedTransaction }>>;
 };
 export interface NativeTransferRuntime {
+  isAuthenticationRefusal(error: unknown): boolean;
   authenticateOperation(credential: NativeOperationCredential, assertCurrent: () => void): Promise<void>;
   authorizeOperation(credential: NativeOperationCredential, transaction: EvmUnsignedTransfer, assertCurrent: () => void): Promise<NativeOperationAuthorization>;
   releaseOperationAuthorization(authorization: NativeOperationAuthorization): void;
@@ -926,7 +927,8 @@ export class NativeTransfers {
           return null;
         } catch (cause) {
           const code = cause instanceof Error ? cause.message : '';
-          if (code === 'INVALID_CREDENTIAL' || code === 'AUTH_THROTTLED' || code === 'DEVICE_UNLOCK_UNAVAILABLE')
+          if (runtime.isAuthenticationRefusal(cause) === true &&
+              (code === 'INVALID_CREDENTIAL' || code === 'AUTH_THROTTLED' || code === 'DEVICE_UNLOCK_UNAVAILABLE'))
             return new NativeTransferError(code);
           throw cause;
         }

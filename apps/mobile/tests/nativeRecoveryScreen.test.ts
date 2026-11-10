@@ -125,8 +125,9 @@ function setup(phase = 'entry') {
   let admitted = true;
   const flow = { getSnapshot: () => snapshot, subscribe: () => () => {}, start() { calls.starts++; },
     back() { calls.backs++; }, cancel() { calls.cancels++; }, enter() { snapshot.phase = 'entry'; },
-    submit(input: Record<string, string>) { calls.submits++; assert.deepEqual(Object.keys(input).sort(), ['phrase', 'pin']); if (admitted) snapshot.phase = 'verifying'; return admitted; },
-    commit() { calls.commits++; snapshot.phase = 'committing'; },
+    submit(input: Record<string, string>) { calls.submits++; assert.deepEqual(Object.keys(input).sort(), ['phrase']); if (admitted) snapshot.phase = 'verifying'; return admitted; },
+    commit() { calls.commits++; snapshot.phase = 'pin'; },
+    submitPin(_pin: string) { snapshot.phase = 'committing'; return true; },
   };
   const expand = (value: unknown): unknown => {
     if (!value || typeof value !== 'object' || !('children' in value)) return value;
@@ -178,16 +179,19 @@ test('recovery keeps numbered input bounded with native autofill disabled', () =
   assert.equal(f.calls.starts, 1); f.dispose();
 });
 
-test('recovery hands phrase to PIN setup then submits once and clears words', () => {
+test('recovery verifies the phrase before showing wallet confirmation and PIN setup', () => {
   const f = setup(); let tree = f.render();
   (field(tree, 'Recovery word 1').props.onChangeText as (text: string) => void)('abandon '.repeat(11) + 'about');
-  tree = f.render(); press(button(tree, 'Continue')); tree = f.render();
-  assert.equal(tree.type, 'PinSetup'); const submit = tree.props.onComplete as (pin: string) => void;
-  submit('123456'); submit('123456');
+  tree = f.render(); press(button(tree, 'Continue'));
   assert.equal(f.calls.submits, 1); assert.equal(f.snapshot.phase, 'verifying');
   tree = f.render(); assert.equal(all(tree).filter(e => e.type === 'TextInput').length, 0);
-  f.snapshot.phase = 'entry'; tree = f.render(); assert.equal(field(tree, 'Recovery word 1').props.value, '');
-  assert.ok(f.dismisses()); f.dispose();
+  assert.notEqual(tree.type, 'PinSetup');
+  f.snapshot.phase = 'review'; tree = f.render();
+  assert.ok(all(tree).some(e => e.type === 'Notice' && /phrase matches/.test(String(e.props.title)))); press(button(tree, 'Create new PIN'));
+  tree = f.render(); assert.equal(tree.type, 'PinSetup');
+  (tree.props.onComplete as (pin: string) => void)('123456');
+  assert.equal(f.snapshot.phase, 'committing');
+  f.dispose();
 });
 
 for (const event of ['background', 'inactive', 'blur'] as const) test(`actual ${event} handler clears input and cancels without waiting for unmount`, () => {
@@ -302,7 +306,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   installed.forEach((s) => s.remove()); leaf.dispose(); root.dispose();
 });
 
-async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo') {
+async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED' }) {
   const root = setup();
   const networkId = networkMode === 'utxo' ? 'bitcoin' : 'ethereum';
   const address = `0x${'11'.repeat(20)}`;
@@ -310,7 +314,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     accounts: [{ id: 'hd:60:0', type: 'HDAccount', index: 0, slip44: 60, address, label: 'Account 1' }],
     networks: networkContext.NATIVE_NETWORKS, utxoNetworks: networkMode ? UTXO_NETWORKS : [] };
   let state: { phase: string; revision: number; presence: string; backup: string; account: { address: string; network: string } | null; error: string | null } =
-    { phase: setting || depositMode || networkMode ? 'ready' : empty ? 'empty' : 'locked', revision: 1, presence: empty ? 'empty' : 'existing', backup: empty ? 'unconfirmed' : 'confirmed', account: setting || depositMode || networkMode ? { address, network: networkId } : null, error: null };
+    { phase: setting || depositMode || networkMode || pinChange ? 'ready' : empty ? 'empty' : 'locked', revision: 1, presence: empty ? 'empty' : 'existing', backup: empty ? 'unconfirmed' : 'confirmed', account: setting || depositMode || networkMode || pinChange ? { address, network: networkId } : null, error: null };
   let observer: (snapshot: typeof state) => void = () => {};
   let nextError: string | null = null;
   let releasePrompt!: () => void;
@@ -353,6 +357,10 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
       },
       cancelAccountOperation() {},
       async initialize() {}, subscribe(fn: typeof observer) { observer = fn; return () => { observer = () => {}; }; },
+      async changePin(current: string, next: string, check: () => void) {
+        assert(pinChange); check(); pinChange.calls.push([current, next]);
+        if (current !== '123456') throw new Error(pinChange.refusal);
+      },
       async getAuthenticationStatus() { return { pinConfigured: !empty, biometricsAvailable: deviceUnlock, biometricsEnabled: deviceUnlock && (setting?.enabled ?? !empty) }; },
       async create() { publish({ phase: 'backup-required', presence: 'existing', backup: 'unconfirmed' }); },
       async setDeviceUnlock(enabled: boolean, password: string, check: () => void) {
@@ -443,6 +451,34 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   };
   return { render, unlock, publish, noteRestore, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, backupAcknowledgements, lifecycle, get locks() { return locks; } };
 }
+
+for (const refusal of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED'] as const) test(`Change PIN returns to a fresh current-PIN entry after ${refusal}`, async () => {
+  const change = { calls: [] as [string, string][], refusal };
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, undefined, change);
+  const find = (type: string) => {
+    const entry = all(f.render()).find(node => node.type === type);
+    assert(entry, type); return entry;
+  };
+  try {
+    (find('NativePortfolio').props.onSecurity as () => void)();
+    (find('NativeSecurity').props.onChangePin as () => void)();
+    assert.equal(find('PinEntryScreen').props.title, 'Enter your current PIN');
+    (find('PinEntryScreen').props.onComplete as (pin: string) => void)('000000');
+    (find('PinSetup').props.onComplete as (pin: string) => void)('654321');
+    await new Promise(resolve => setImmediate(resolve));
+    const retry = find('PinEntryScreen');
+    assert.equal(retry.props.title, 'Enter your current PIN');
+    assert(retry.props.error, 'The refusal remains visible beside current-PIN entry');
+    assert.equal(retry.props.busy, false);
+    assert.equal(all(f.render()).filter(node => node.type === 'PinSetup').length, 0, 'Old PIN setup is unmounted');
+    (retry.props.onComplete as (pin: string) => void)('123456');
+    assert.equal(find('PinSetup').props.error, '', 'The previous refusal does not leak into new-PIN setup');
+    (find('PinSetup').props.onComplete as (pin: string) => void)('654321');
+    await new Promise(resolve => setImmediate(resolve));
+    assert(find('NativeSecurity'));
+    assert.deepEqual(change.calls, [['000000', '654321'], ['123456', '654321']]);
+  } finally { f.dispose(); }
+});
 
 test('backup completion waits for verification and durable save, then clears displayed words', async () => {
   for (const action of ['done', 'back'] as const) {

@@ -3,6 +3,7 @@ import { BackHandler } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeSentryKeyManagement } from '../custody/sentryKeyManagement';
 import type { NativeSentryNodeManagement } from '../custody/sentryNodeManagement';
+import type { NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { Card, colors, Header, Row, Screen } from '../ui';
 import { NativeSentryKeys } from './NativeSentryKeys';
 import { NativeSentryNodes } from './NativeSentryNodes';
@@ -15,7 +16,8 @@ type Props = {
   ): Promise<NativeSentryKeyManagement>;
   openNodes(
     signal: AbortSignal,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    authentication: NativePrivateAuthenticationScope
   ): Promise<NativeSentryNodeManagement>;
   onBack(): void;
 };

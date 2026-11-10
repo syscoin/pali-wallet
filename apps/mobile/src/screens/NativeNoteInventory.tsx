@@ -76,7 +76,7 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
   const view: State = 'source' in state && state.source === readInventory ? state : LOADING;
   const updateReady = useCallback((changes: { page: number } | { selected: number | null } | { revealing: boolean } | { withdrawing: boolean }) => {
     if (!life.current.live) return;
-    if ('revealing' in changes) life.current.revealing = changes.revealing;
+    if ('revealing' in changes) life.current.revealing = false;
     setState((current) => current === view && current.phase === 'ready' ? { ...current, ...changes } : current);
   }, [view]);
   const back = useCallback(() => {
@@ -136,6 +136,14 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
     void load();
   }, [load, note]);
   const checked = inspection?.note === note ? inspection : null;
+  const revealVisibility = useCallback((visible: boolean) => {
+    const owner = life.current;
+    if (!owner.live || selectedNote.current !== note || visible && AppState.currentState !== 'active') {
+      if (visible) throw new Error('CANCELLED');
+      return;
+    }
+    owner.revealing = visible;
+  }, [note]);
   const checkNote = async () => {
     const owner = life.current;
     if (!owner.live || owner.request || view.phase !== 'ready' || !note || !view.inventory.checkNote || AppState.currentState !== 'active') return;
@@ -176,6 +184,7 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
   };
 
   if (view.phase === 'ready' && revealing && note) return <NativeNoteReveal key={view.selected} inventory={view.inventory} note={note}
+    authentication={view.authentication} onSecretVisibilityChange={revealVisibility}
     onBack={() => updateReady({ revealing: false })} onLock={lock} />;
   if (view.phase === 'ready' && withdrawing && note && inventory?.openWithdrawal) return <NativePrivateWithdrawal
     key={view.selected} note={note} open={openWithdrawal} onBack={closeWithdrawal} authentication={view.authentication} />;

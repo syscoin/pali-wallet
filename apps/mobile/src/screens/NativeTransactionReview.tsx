@@ -1,3 +1,5 @@
+import { decodeAssetTransfer } from '../../../../source/shared/assetTransfer';
+import { formatTokenUnits } from '../../../../source/shared/erc20';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -92,6 +94,7 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
   }, [controller, review.id]);
 
   const transaction = review.transaction;
+  const transfer = transaction ? (review.assetTransfer === undefined ? decodeAssetTransfer(transaction.data, transaction.to) : review.assetTransfer) : null;
   const prepared = transaction !== null && review.maximumFeeUnits !== null && review.maximumTotalUnits !== null;
   const comparison = review.feeComparison;
   const showFeeChoices =
@@ -155,9 +158,16 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
     </Card>
     {transaction && <View style={s.hero}>
       {batch && <Text accessibilityRole="header" style={s.sectionTitle}>Call {batch.index + 1} of {batch.calls.length}</Text>}
-      <Text style={[s.label, { textAlign: 'center' }]}>{transaction.to === null ? 'Contract deployment' : transaction.data === '0x' ? `${review.symbol} transfer` : 'Contract interaction'}</Text>
-      <Text selectable style={[s.amount, amount(transaction.value).length > 22 && s.longAmount]} accessibilityLabel={amount(transaction.value)}>{formatBaseUnits(transaction.value, review.decimals)}</Text>
-      <Text style={s.amountSymbol}>{review.symbol}</Text>
+      <Text style={[s.label, { textAlign: 'center' }]}>{transfer ? transfer.standardVerified ? `${transfer.standard} transfer` : 'Transfer call' : transaction.to === null ? 'Contract deployment' : transaction.data === '0x' ? `${review.symbol} transfer` : 'Contract interaction'}</Text>
+      {!transfer && transaction.data !== '0x' && <Text style={[s.muted, { textAlign: 'center' }]}>Native currency sent</Text>}
+      {transfer ? transfer.items.map((item, index) => <View key={index} style={s.asset}>
+        <Text selectable style={[s.amount, s.longAmount]}>{transfer.token ? formatTokenUnits(item.units, transfer.token.decimals) : item.tokenId ? `#${item.tokenId}` : item.units}</Text>
+        <Text style={s.amountSymbol}>{transfer.token?.symbol ?? (item.tokenId ? `${item.units} NFT${item.units === '1' ? '' : 's'}` : 'Base units / token ID')}</Text>
+      </View>) : <>
+        <Text selectable style={[s.amount, amount(transaction.value).length > 22 && s.longAmount]} accessibilityLabel={amount(transaction.value)}>{formatBaseUnits(transaction.value, review.decimals)}</Text>
+        <Text style={s.amountSymbol}>{review.symbol}</Text>
+      </>}
+      {!transfer && transaction.data !== '0x' && <Text style={[s.muted, { textAlign: 'center' }]}>This amount excludes any tokens or NFTs the contract may move.</Text>}
     </View>}
     <DappSiteStatus verification={review.verification} />
     {review.approval && transaction && <ApprovalReview summary={review.approval} transaction={transaction}
@@ -166,10 +176,13 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
       edit={(value) => controller.editApprovalAmount(review.id, review.revision, value)} />}
       <Card style={s.facts}>
         <View style={s.fact}><Text style={s.factLabel}>From</Text><View style={s.factValue}><Text style={s.factAccount}>{review.accountLabel}</Text><Text selectable style={s.factAddress}>{review.address}</Text></View></View>
-        {transaction && <View style={s.fact}><Text style={s.factLabel}>{transaction.to === null ? 'Destination' : 'To'}</Text><Text selectable style={[s.factValue, s.factAddress]}>{transaction.to ?? 'New contract'}</Text></View>}
+        {transaction && <View style={s.fact}><Text style={s.factLabel}>{transfer ? 'Recipient' : transaction.to === null ? 'Destination' : 'To'}</Text><Text selectable style={[s.factValue, s.factAddress]}>{transfer?.recipient ?? transaction.to ?? 'New contract'}</Text></View>}
+        {transfer && <View style={s.fact}><Text style={s.factLabel}>Token contract</Text><Text selectable style={[s.factValue, s.factAddress]}>{transfer.contract}</Text></View>}
+        {transfer?.from && <View style={s.fact}><Text style={s.factLabel}>Asset owner</Text><Text selectable style={[s.factValue, s.factAddress]}>{transfer.from}</Text></View>}
+        {transfer && transaction?.value !== '0' && <View style={s.fact}><Text style={s.factLabel}>Also sending</Text><Text style={[s.factValue, s.factText]}>{amount(transaction!.value)}</Text></View>}
         <View style={s.fact}><Text style={s.factLabel}>Network</Text><Text style={[s.factValue, s.factText]}>{review.networkLabel} · Chain {review.chainId}</Text></View>
         <View style={s.fact}><Text style={s.factLabel}>Maximum network fee</Text><Text selectable style={[s.factValue, s.factText]}>{review.maximumFeeUnits === null ? 'Calculating…' : amount(review.maximumFeeUnits)}</Text></View>
-        <View style={[s.fact, s.lastFact]}><Text style={s.factLabel}>Maximum total</Text><Text selectable style={[s.factValue, s.factText]}>{review.maximumTotalUnits === null ? 'Calculating…' : amount(review.maximumTotalUnits)}</Text></View>
+        <View style={[s.fact, s.lastFact]}><Text style={s.factLabel}>{transfer || transaction?.data !== '0x' ? `Maximum ${review.symbol} debit` : 'Maximum total'}</Text><Text selectable style={[s.factValue, s.factText]}>{review.maximumTotalUnits === null ? 'Calculating…' : amount(review.maximumTotalUnits)}</Text></View>
       </Card>
     {transaction && <>
       {showFeeChoices && comparison && (
@@ -252,6 +265,7 @@ const s = StyleSheet.create({
   appCopy: { flex: 1, minWidth: 0, gap: 3 },
   appName: { fontSize: 16, lineHeight: 23, fontWeight: '600' },
   origin: { fontSize: 12, lineHeight: 18, color: colors.muted },
+  asset: { gap: 8 },
   hero: { alignItems: 'stretch', gap: 8, paddingVertical: 16 },
   actions: { flexDirection: 'row', gap: 10 },
   action: { flex: 1, minWidth: 0 },

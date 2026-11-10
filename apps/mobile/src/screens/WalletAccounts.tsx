@@ -55,6 +55,17 @@ export function WalletAccounts(props: WalletAccountsProps) {
   const entries = projectAccounts(props.catalogue, props.watch.accounts);
   const selected = props.active ? accountIdentity(props.active) : null;
   const canManageWatch = props.watch.status === 'ready' && !props.watch.busy && !busy;
+  const accessibleIdentity = (entry: (typeof entries)[number]) => {
+    if (entry.kind === 'watch') {
+      const account = props.watch.accounts.find(value => value.id === entry.selection.id)!;
+      const addresses = Object.entries(account.addresses).map(([id, address]) =>
+        `${getNetwork(id as Parameters<typeof getNetwork>[0], props.watch.utxoNetworks).name}, ${address}`);
+      return `${entry.name} (watch-only), ${addresses.join('; ')}`;
+    }
+    const kind = entry.kind === 'hd' ? 'Recovery phrase account' : entry.kind === 'imported' ? 'Imported key'
+      : entry.kind === 'smart' ? 'Smart account' : entry.kind === 'ledger' ? 'Ledger hardware wallet' : 'Trezor hardware wallet';
+    return `${entry.name} (wallet), ${kind}, ${entry.address}`;
+  };
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}><KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     {form === 'add' ? <AddWatchAccount utxoNetworks={props.watch.utxoNetworks} networkSettings={props.networkSettings} onNetworksChanged={props.onNetworksChanged} availableNetworks={props.availableWatchNetworks} onAdd={props.onAdd} onCancel={() => setForm(null)} /> : <Screen footer={form ? <Button title={form.kind === 'rename' ? 'Save name' : 'Remove watch account'} disabled={!canManageWatch || form.kind === 'rename' && !name.trim()} onPress={() => void run(() => form.kind === 'rename' ? props.onRename(form.id, name) : props.onRemove(form.id))} /> : undefined}>
       <Header title={form ? form.kind === 'rename' ? 'Rename watch account' : 'Remove watch account' : 'Accounts'} subtitle="Wallet and watch accounts" onBack={() => back.current()} />
@@ -67,7 +78,9 @@ export function WalletAccounts(props: WalletAccountsProps) {
       </> : <>
         <Text style={styles.muted}>Wallet accounts unlock through your wallet. Imported keys need separate backups. Watch accounts can view balances and receive addresses only.</Text>
         {entries.map((entry) => <Card key={entry.identity} style={s.account}>
-          <IdlePressable accessibilityRole="button" accessibilityLabel={`Select ${entry.name} (${entry.selection.kind !== 'watch' ? 'wallet' : 'watch-only'})`} disabled={busy || props.watch.busy || entry.selection.kind === 'watch' && props.watch.status !== 'ready'} onPress={() => void run(() => props.onSelect(entry.selection))}>
+          <IdlePressable accessibilityRole="button" accessibilityLabel={`Select ${accessibleIdentity(entry)}${entry.identity === selected ? ', selected' : ''}`}
+            accessibilityState={{ selected: entry.identity === selected, disabled: busy || props.watch.busy || entry.selection.kind === 'watch' && props.watch.status !== 'ready' }}
+            disabled={busy || props.watch.busy || entry.selection.kind === 'watch' && props.watch.status !== 'ready'} onPress={() => void run(() => props.onSelect(entry.selection))}>
             <View style={s.row}><Text style={s.name}>{entry.name}</Text>{entry.identity === selected && <Text style={s.selected}>Selected</Text>}</View>
             <Text style={s.kind}>{entry.selection.kind === 'hd' ? 'Recovery phrase account' : entry.selection.kind === 'imported' ? 'Imported key · Separate backup' : entry.selection.kind === 'smart' ? 'Smart account' : entry.selection.kind === 'ledger' ? 'Ledger hardware wallet' : entry.selection.kind === 'trezor' ? 'Trezor' : (() => {
               const watched = props.watch.accounts.find((account) => account.id === entry.selection.id)!;
@@ -77,8 +90,8 @@ export function WalletAccounts(props: WalletAccountsProps) {
             <Text selectable style={s.address}>{entry.address}</Text>
           </IdlePressable>
           {entry.selection.kind === 'watch' && <View style={s.actions}>
-            <IconButton label={`Rename ${entry.name}`} icon="edit" disabled={!canManageWatch} onPress={() => { setName(entry.name); setForm({ kind: 'rename', id: entry.selection.id, name: entry.name, address: entry.address }); setError(''); }} />
-            <IconButton label={`Remove ${entry.name}`} icon="trash" disabled={!canManageWatch} onPress={() => { setForm({ kind: 'remove', id: entry.selection.id, name: entry.name, address: entry.address }); setError(''); }} />
+            <IconButton label={`Rename ${accessibleIdentity(entry)}`} icon="edit" disabled={!canManageWatch} onPress={() => { setName(entry.name); setForm({ kind: 'rename', id: entry.selection.id, name: entry.name, address: entry.address }); setError(''); }} />
+            <IconButton label={`Remove ${accessibleIdentity(entry)}`} icon="trash" disabled={!canManageWatch} onPress={() => { setForm({ kind: 'remove', id: entry.selection.id, name: entry.name, address: entry.address }); setError(''); }} />
           </View>}
         </Card>)}
         {props.onManageHd && <Button title="Manage wallet accounts" variant="secondary" disabled={busy} onPress={props.onManageHd} />}

@@ -40,8 +40,8 @@ export function createNativeDappSentryHost(ports: Readonly<{
         async approve(assent: NativeSentryAssent, guard: () => void) {
           check(); guard(); if (assent.kind !== details.kind) throw new Error('INVALID_INPUT');
           const result = assent.kind === 'vote'
-            ? await approvals.votes.sign({ id: retained, password: assent.password })
-            : await approvals.operations.sign({ id: retained, password: assent.password, keyId: assent.keyId, authorizationId: assent.authorizationId });
+            ? await approvals.votes.sign({ id: retained })
+            : await approvals.operations.sign({ id: retained, keyId: assent.keyId, authorizationId: assent.authorizationId });
           check(); guard(); return result;
         },
         disclose() { check(); if (!vote) approvals.operations.publishFeeAuthorization(retained); },

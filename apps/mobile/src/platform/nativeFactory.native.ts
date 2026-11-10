@@ -1,4 +1,4 @@
-import { bindNativePrivateAuthentication, bindNativePrivateAuthenticationChild, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication.ts';
+import { bindNativePrivateAuthentication, bindNativePrivateAuthenticationChild, createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication.ts';
 import type { NativeSmartModuleManagement } from '../smartAccount/moduleManagement.ts';
 import { createNativePrivacyServiceSettings } from './privacyServiceSettings.native';
 import type { NativePrivacyControls } from '../privacy/privacyControls';
@@ -32,7 +32,7 @@ import { CustodyOperationError, NativeCustodyAuthority } from '../custody/author
 import { createKeyringRuntimeFactory } from '../custody/keyringRuntime.ts';
 import type { KeyringRuntime } from '../custody/keyringRuntime.ts';
 import { SeedBackupFlow } from '../custody/seedBackup.ts';
-import { HdKeyExportFlow } from '../custody/hdKeyExport.ts';
+import { HdKeyExportFlow, type NativeHdKeyExportRuntime } from '../custody/hdKeyExport.ts';
 import { NativeTransfers } from '../custody/transfers.ts';
 import { NativeTokens } from '../portfolio/nativeTokens.ts';
 import { NativeActivity } from '../activity/nativeActivity.ts';
@@ -254,7 +254,13 @@ export function createNativeWalletControllers() {
       if (runtime !== captured || authority.getSnapshot().phase !== 'ready') throw new CustodyOperationError('CANCELLED');
       return manager;
     },
-    openNodes: (...args) => sentry.openNodes(...args),
+    async openNodes(...args) {
+      const authentication = createNativePrivateAuthenticationScope();
+      try {
+        const nodes = await sentry.openNodes(...args, authentication);
+        return Object.freeze({ ...nodes, dispose() { authentication.retire(); nodes.dispose(); } });
+      } catch (error) { authentication.retire(); throw error; }
+    },
   });
   const syscoin = createNativeDappSyscoinHost({ source: authority, fetch: walletFetch,
     readPublic(method, owner, isChange, signal, check) {
@@ -348,7 +354,24 @@ export function createNativeWalletControllers() {
     assertActive,
   });
   const backup = new SeedBackupFlow(authority, () => runtime?.backup);
-  const keyExport = new HdKeyExportFlow(authority, () => runtime?.keyExport);
+  const bindOperationAuthentication = (scope: NativePrivateAuthenticationScope, selected: KeyringRuntime) =>
+    bindNativePrivateAuthentication(scope, {
+      assertCurrent() { if (runtime !== selected || !selected.catalogue.getSnapshot()) throw new CustodyOperationError('CANCELLED'); },
+      isPromptActive: () => deviceUnlock.prompt.isActive(),
+    });
+  const keyExportFacades = new WeakMap<KeyringRuntime, NativeHdKeyExportRuntime>();
+  const keyExport = new HdKeyExportFlow(authority, () => {
+    const selected = runtime;
+    if (!selected?.keyExport) return undefined;
+    let facade = keyExportFacades.get(selected);
+    if (!facade) {
+      const port = selected.keyExport;
+      facade = Object.freeze<NativeHdKeyExportRuntime>({ isAuthenticationRefusal: port.isAuthenticationRefusal,
+        readSelected: (scope, signal, guard, authentication) => port.readSelected(scope, signal, guard, bindOperationAuthentication(authentication, selected)) });
+      keyExportFacades.set(selected, facade);
+    }
+    return facade;
+  });
   const readRpc = { fetch: walletFetch, registrations: () => authority.getCatalogue()?.networks };
   const evmBalances = createBalanceReader(readRpc);
   const balanceReader: BalanceReader = {
@@ -378,9 +401,12 @@ export function createNativeWalletControllers() {
     supportsSmartAccounts: () => runtime?.accounts?.supportsSmartAccounts?.() === true,
     cancel: () => authority.cancelAccountOperation(),
   });
-  const imports: NativeImportView = Object.freeze({
+  const imports: NativeImportView = Object.freeze<NativeImportView>({
     previewUtxo: (...args: Parameters<NativeImportView['previewUtxo']>) => authority.previewUtxoImport(...args),
-    submit: (...args: Parameters<NativeImportView['submit']>) => authority.importAccount(...args),
+    submit: (input, revision, catalogueRevision, signal, authentication) => {
+      if (!runtime) return Promise.reject(new CustodyOperationError('NOT_READY'));
+      return authority.importAccount(input, revision, catalogueRevision, signal, bindOperationAuthentication(authentication, runtime));
+    },
     cancel: () => authority.cancelAccountOperation(),
   });
   // Public counts from this owner's existing lease only; never retire or reopen it.
@@ -426,11 +452,12 @@ export function createNativeWalletControllers() {
   const sentry = Object.freeze({
     available: () => authority.getSnapshot().phase === 'ready' && !!runtime?.getSentryKeyNetwork?.(),
     signingAvailable: () => authority.getSnapshot().phase === 'ready' && !!runtime?.getSentryKeyNetwork?.() && !!runtime.openSentryApprovals,
-    async openApprovals(lifetime: AbortSignal, assertOwner: () => void): Promise<NativeSentryApprovals> {
-      const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    async openApprovals(lifetime: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeSentryApprovals> {
+      const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+      const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
       const open = selected.openSentryApprovals;
       if (!open) throw new CustodyOperationError('NOT_READY');
-      const manager = await observeFailure(() => open(lifetime, assertCurrent));
+      const manager = await observeFailure(() => open(lifetime, assertCurrent, binding));
       try { assertCurrent(); if (lifetime.aborted) throw new CustodyOperationError('CANCELLED'); }
       catch (cause) { manager.dispose(); throw cause; }
       return Object.freeze({ ...manager,
@@ -453,11 +480,12 @@ export function createNativeWalletControllers() {
         saveSettings: (...args) => observeFailure(() => manager.saveSettings(...args)),
       });
     },
-    async openNodes(lifetime: AbortSignal, assertOwner: () => void): Promise<NativeSentryNodeManagement> {
-      const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    async openNodes(lifetime: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeSentryNodeManagement> {
+      const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+      const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
       const open = selected.openSentryNodeManagement;
       if (!open) throw new CustodyOperationError('NOT_READY');
-      const manager = await observeFailure(() => open(lifetime, assertCurrent));
+      const manager = await observeFailure(() => open(lifetime, assertCurrent, binding));
       try { assertCurrent(); if (lifetime.aborted) throw new CustodyOperationError('CANCELLED'); }
       catch (cause) { manager.dispose(); throw cause; }
       return Object.freeze<NativeSentryNodeManagement>({
@@ -630,7 +658,7 @@ export function createNativeWalletControllers() {
       dispose: value.dispose,
       getNotes: guard => observeFailure(() => value.getNotes(guard)),
       clearCompletedNote: (id, guard) => observeFailure(() => value.clearCompletedNote(id, guard)),
-      recoverFailedWithdrawal: (id, password, guard) => observeFailure(() => value.recoverFailedWithdrawal(id, password, guard)),
+      recoverFailedWithdrawal: (id, guard) => observeFailure(() => value.recoverFailedWithdrawal(id, guard)),
     });
   };
   const openPrivacyControls = async (signal: AbortSignal, assertOwner: () => void): Promise<NativePrivacyControls> => {

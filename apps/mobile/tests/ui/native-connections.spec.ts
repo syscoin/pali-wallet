@@ -18,9 +18,9 @@ test('reviews a connection at narrow width and passes the selected account and r
   await approve.click();
   await expect.poll(() => page.evaluate(() => window.__nativeConnectionsFixture.calls().filter((call) => call.method === 'approve')))
     .toEqual([{ method: 'approve', args: [42, 'hd:60:1', 'ethereum', 8] }]);
-  await expect(page.getByText('Active connections')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Active connections', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Disconnect Example app' }).click();
-  await expect(page.getByText('Active connections')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Active connections', exact: true })).toBeVisible();
   await expect(page.getByText('No active connections')).toBeVisible();
 });
 

@@ -12,6 +12,7 @@ import { ACCOUNT_SELECTION_KEY, createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY 
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { NativeWalletRemoval } from '../src/custody/walletRemoval.ts';
+import { captureNativePinRecord, type NativePinCredentialPort, type NativePinRecord } from '../src/custody/pinVault.ts';
 import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecycle.ts';
 import { NativeConnectionsController } from '../src/connections/controller.ts';
 import type { WalletConnectTransport } from '../src/connections/walletConnect.ts';
@@ -47,6 +48,14 @@ async function fixture(withSlhCache = false) {
   let pauseUnlock: ReturnType<typeof pause> | undefined, afterRemovalCommit: SqlHook | undefined;
   const purgedNamespaces: string[] = [];
   let purgeFailure = false, pausePurge: ReturnType<typeof pause> | undefined;
+  let credentialFailure: 'before' | 'after' | undefined;
+  const removedCredentials: NativePinRecord[] = [];
+  const credentials: NativePinCredentialPort = { ...pinCredential, async remove(record) {
+    removedCredentials.push(record);
+    if (credentialFailure === 'before') throw Error('Protected credential deletion failed');
+    await pinCredential.remove(record);
+    if (credentialFailure === 'after') throw Error('Protected credential deletion acknowledgement lost');
+  } };
   let beforeSnapshot: (check: () => void) => Promise<void> = async () => undefined;
   let reopenedIdentity: string | undefined;
   const rings: InstanceType<typeof sdk.HostKeyring>[] = [];
@@ -99,7 +108,7 @@ async function fixture(withSlhCache = false) {
       return attempt;
     },
   }) });
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: withSlhCache ? {
+  const factory = createKeyringRuntimeFactory({ pinCredential: credentials, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: withSlhCache ? {
     open() { throw Error('No signing context belongs to this removal fixture'); },
     async purgePublicCache(namespace, guard) {
       guard(); assert.equal(owner.getSnapshot().phase, 'disposed'); assert.equal(rings.some(ring => ring.isUnlocked()), false);
@@ -116,6 +125,7 @@ async function fixture(withSlhCache = false) {
   const owner = new NativeCustodyAuthority({ open: async () => runtime });
   await owner.initialize();
   await owner.importPhrase(PHRASE, PASSWORD);
+  const initialPin = (await storage.pin.read())!;
   const values = new Map([
     [ACCOUNT_SELECTION_KEY, NATIVE_HINT],
     [PUBLIC_ACCOUNTS_KEY, 'independent watch records fixture bytes'],
@@ -137,7 +147,15 @@ async function fixture(withSlhCache = false) {
     beforeSnapshot: (check) => beforeSnapshot(check),
   });
   return {
-    owner, runtime, storage, removal, values, statements, ports,
+    owner, runtime, storage, removal, values, statements, ports, file, initialPin, credentials, removedCredentials,
+    failCredentialRemoval(value: 'before' | 'after' | undefined) { credentialFailure = value; },
+    async reopenRuntime() {
+      return await createKeyringRuntimeFactory({ pinCredential: credentials, requestOperationCredential: null,
+        privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+        ensureCryptoReady: async () => undefined, loadSdk: async () => sdk,
+        openStorage: () => openWalletStorage(ports),
+      }).open() as KeyringRuntime;
+    },
     purgedNamespaces, failPurge() { purgeFailure = true; }, holdPurge() { return pausePurge = pause(); },
     holdRetirement() {
       const gate = pause(), original = runtime.storage.retireForRemoval!.bind(runtime.storage);
@@ -162,7 +180,7 @@ async function fixture(withSlhCache = false) {
         const service = await runtime.openNoteBackup!(current, createTestPrivateAuthentication(current));
         const id = service.begin();
         await service.prepareImport(id, bytes, FILE_PASSWORD);
-        assert.equal((await service.commitImport(id, PASSWORD)).added, 1);
+        assert.equal((await service.commitImport(id)).added, 1);
       } finally { bytes.fill(0); }
     },
     async close() {
@@ -200,8 +218,63 @@ test('real SDK authorization issues an empty one-use ticket and only explicit co
     assert.equal(f.values.get(ACCOUNT_SELECTION_KEY), 'null');
     assert.equal(f.values.get(PUBLIC_ACCOUNTS_KEY), 'independent watch records fixture bytes');
     assert.equal(f.removalCommits, 1);
+    assert.deepEqual(f.removedCredentials, [f.initialPin]);
+    assert.equal(await f.credentials.read(f.initialPin, current), null);
   } finally { await f.close(); }
 });
+
+for (const failure of ['before', 'after'] as const) {
+  test(`PIN cleanup ${failure} deletion failure persists exact retry across a cold reopen`, async () => {
+    const f = await fixture();
+    let reopened: KeyringRuntime | undefined;
+    try {
+      const unrelated = captureNativePinRecord({ ...f.initialPin, enrollmentId: 'f'.repeat(32) });
+      await f.credentials.stage(unrelated, { secret: '1'.repeat(64), pepper: new Uint8Array(32).fill(1) }, current);
+      f.failCredentialRemoval(failure);
+      const ticket = await f.removal.authorize(PASSWORD, current);
+      await assert.rejects(f.removal.confirm(ticket, current), { code: 'REOPEN_REQUIRED' });
+      assert.equal(f.removal.hasVerifiedRemoval(), false);
+      assert.equal(f.removalCommits, 1);
+      assert.equal(f.owner.getSnapshot().phase, 'disposed');
+      const blocked = await openWalletStorage(f.ports);
+      try {
+        await assert.rejects(blocked.readState(), { code: 'STORAGE_REOPEN_REQUIRED' });
+        await assert.rejects(blocked.keyringStorage.createManyIfAbsent({ vault: 'new-wallet' }), { code: 'STORAGE_REOPEN_REQUIRED' });
+      } finally { await blocked.close(); }
+      f.failCredentialRemoval(undefined);
+      reopened = await f.reopenRuntime();
+      assert.deepEqual(await reopened.storage.readState(), { presence: 'empty', backup: 'unconfirmed' });
+      assert.deepEqual(f.removedCredentials, [f.initialPin, f.initialPin]);
+      assert.equal(await f.credentials.read(f.initialPin, current), null);
+      const retained = await f.credentials.read(unrelated, current);
+      assert.ok(retained); retained.pepper.fill(0);
+    } finally { await reopened?.storage.close(); await f.close(); }
+  });
+}
+
+for (const alteration of ['different-installation', 'new-wallet-row'] as const) {
+  test(`PIN cleanup refuses ${alteration} without deleting another credential`, async () => {
+    const f = await fixture();
+    try {
+      f.failCredentialRemoval('before');
+      const ticket = await f.removal.authorize(PASSWORD, current);
+      await assert.rejects(f.removal.confirm(ticket, current), { code: 'REOPEN_REQUIRED' });
+      const { connection } = nodeConnection(f.file);
+      try {
+        if (alteration === 'different-installation') {
+          await connection.runAsync('UPDATE wallet_metadata SET value = ? WHERE key = ?', [
+            JSON.stringify({ ...f.initialPin, installationId: '0'.repeat(32) }), 'removed-pin-credential',
+          ]);
+        } else await connection.runAsync('INSERT INTO keyring_records (key, value) VALUES (?, ?)', ['new-wallet-row', '"retained"']);
+      } finally { await connection.closeAsync(); }
+      f.failCredentialRemoval(undefined);
+      await assert.rejects(f.reopenRuntime(), { code: 'STORAGE_CORRUPT' });
+      assert.deepEqual(f.removedCredentials, [f.initialPin]);
+      const retained = await f.credentials.read(f.initialPin, current);
+      assert.ok(retained); retained.pepper.fill(0);
+    } finally { await f.close(); }
+  });
+}
 
 test('wrong credentials use the existing durable throttle and never clear selection or delete data', async () => {
   const f = await fixture();
@@ -465,6 +538,10 @@ for (const when of ['before', 'after'] as const) {
       assert.equal(f.opens, 2);
       assert.equal(f.removalCommits, 1);
       assert.equal(f.values.get(ACCOUNT_SELECTION_KEY), WATCH_HINT);
+      assert.deepEqual(f.removedCredentials, when === 'after' ? [f.initialPin] : []);
+      const retained = await f.credentials.read(f.initialPin, current);
+      assert.equal(retained === null, when === 'after');
+      retained?.pepper.fill(0);
     } finally { await f.close(); }
   });
 }

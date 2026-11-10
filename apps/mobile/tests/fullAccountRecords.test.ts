@@ -1,4 +1,6 @@
 import { withTestPinOperation } from './fixtures/pinOperation.ts';
+import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
+import { createNativePublicSessionRecord, NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
 import { signTestTransfer } from './fixtures/operationAuthorization.ts';
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
@@ -190,9 +192,10 @@ test('the existing SDK reuses a deleted HD ID and the canonical map preserves a 
         label: 'Imported alias',
         expectedAddress: second.address,
       },
-      PASSWORD,
       f.authority.getSnapshot().revision,
-      f.authority.getCatalogue()!.revision
+      f.authority.getCatalogue()!.revision,
+      new AbortController().signal,
+      createTestPrivateAuthentication(() => undefined)
     );
     await f.execute({ kind: 'create', label: 'HD alias',});
     const aliases = f.authority
@@ -245,13 +248,23 @@ test('the existing SDK reuses a deleted HD ID and the canonical map preserves a 
 test('an actual SDK HD4096 record survives nonactive cold loading, selection and signing', async () => {
   const f = await fixture();
   try {
-    const record = await f.record(), group = record.groups[0];
+    const record = await f.record(), previous = structuredClone(record), group = record.groups[0];
     const ring = f.keyring;
     const check = ring.capturePublicSessionGuard();
+    const identity = await f.storage.recovery.readIdentity();
+    assert(identity); assert(identity.root);
+    const previousCheckpoint = await f.storage.keyringStorage.get(NATIVE_PUBLIC_SESSION_KEY);
     const account = await withTestPinOperation(f.storage.pin, pinCredential, ring, PASSWORD, check,
-      () => ring.deriveEvmHdRuntimeAccount({index: 4096}, {assertCurrent: check}));
-    group.accounts.HDAccount[4096] = account;
-    await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY, record);
+      async () => {
+        const derived = await ring.deriveEvmHdRuntimeAccount({index: 4096}, {assertCurrent: check});
+        group.accounts.HDAccount[4096] = derived;
+        const checkpoint = await createNativePublicSessionRecord(ring, record, identity, new Map(), check);
+        assert.equal(await f.storage.keyringStorage.compareAndSetMany([
+          { key: WALLET_CATALOGUE_KEY, expected: previous, value: record },
+          { key: NATIVE_PUBLIC_SESSION_KEY, expected: previousCheckpoint, value: checkpoint },
+        ], check), true);
+        return derived;
+      });
     await f.reopen();
     assert(f.authority.getCatalogue()!.accounts.some((row) => row.id === 'hd:60:4096'));
     assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:0');
@@ -261,7 +274,7 @@ test('an actual SDK HD4096 record survives nonactive cold loading, selection and
     const current = f.authority.getCatalogue()!;
     const secret = await f.runtime.keyExport!.readSelected({ authorityRevision: f.authority.getSnapshot().revision, catalogueRevision: current.revision,
       accountId: 'hd:60:4096', index: 4096, address: account.address, networkId: current.active.networkId,
-      registrationHash: getNativeNetwork(current.active.networkId, current.networks).registrationHash }, PASSWORD, () => undefined);
+      registrationHash: getNativeNetwork(current.active.networkId, current.networks).registrationHash }, new AbortController().signal, () => undefined, createTestPrivateAuthentication(() => undefined));
     assert.equal(new Wallet(secret).address, account.address);
 
   } finally { await f.close(); }

@@ -2623,7 +2623,7 @@ export class NativeConnectionsController {
         feeChoice: message.review.kind === 'transaction' && prepared?.transaction === message.review.transaction
           ? message.review.feeChoice : null,
         transaction: prepared?.transaction ?? null, maximumFeeUnits: prepared?.maximumFeeUnits ?? null,
-        maximumTotalUnits: prepared?.maximumTotalUnits ?? null, approval: prepared?.approval ?? null,
+        maximumTotalUnits: prepared?.maximumTotalUnits ?? null, approval: prepared?.approval ?? null, assetTransfer: prepared?.assetTransfer ?? null,
         symbol: this.host!.context().network.currency, decimals: 18, broadcastHash: message.broadcastHash ?? null,
         expiresAt: message.requestExpiresAt, advisories, requiresWarningAcknowledgement: warning,
         batch: Object.freeze({ phase: snapshot.phase, index: snapshot.index,
@@ -2723,6 +2723,7 @@ export class NativeConnectionsController {
           operation: snapshot,
           batchApprovals: prepared.batchApprovals,
           approval: prepared.approval,
+      ...("assetTransfer" in prepared ? { assetTransfer: prepared.assetTransfer } : {}),
         });
         this.publish();
       };
@@ -2832,6 +2833,7 @@ export class NativeConnectionsController {
       maximumFeeUnits: prepared.maximumFeeUnits,
       maximumTotalUnits: prepared.maximumTotalUnits,
       approval: prepared.approval,
+      ...("assetTransfer" in prepared ? { assetTransfer: prepared.assetTransfer } : {}),
       expiresAt,
       advisories: Object.freeze(advisories.addresses),
       requiresWarningAcknowledgement: Boolean(advisories.warning),

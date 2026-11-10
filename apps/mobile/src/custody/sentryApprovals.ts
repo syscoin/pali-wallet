@@ -15,7 +15,8 @@ import {
 } from '../../../../source/wallet/sentryKeyVault.ts';
 import { SharedSentryVoteApprovals } from '../../../../source/wallet/sentryVoteApprovals.ts';
 import { SharedSentryOperationApprovals } from '../../../../source/wallet/sentryOperationApprovals.ts';
-import type { SentryApprovalHost } from '../../../../source/wallet/sentryApprovalHost.ts';
+import { consumeSentrySigningMaterial, sentryAuthorityRequestId, type SentryApprovalHost, type SentrySigningMaterialRequest } from '../../../../source/wallet/sentryApprovalHost.ts';
+import { HOST_WALLET_AUTHENTICATION, isHostWalletAuthentication } from '../../../../source/shared/walletAuthentication.ts';
 import type { SentryApprovalScope, SentryRequestScope, SentryRequestLifetime } from '../../../../source/wallet/sentryApprovalTypes.ts';
 import type {
   RunSentryCrypto,
@@ -24,7 +25,6 @@ import type {
 import type { createNativeSentryCollateral } from './sentryNodeManagement.ts';
 import type { NativeSentryWalletAuthority } from './sentryWalletAuthority.ts';
 import type { SentryNodeStorage } from '../storage/sentryNodeDomain.ts';
-import { isNativePasswordInput } from './password.ts';
 import { encodeBoundedStorageValue } from '../storage/json.ts';
 
 export function createNativeSentryJsonReader(
@@ -109,7 +109,8 @@ type Ports = Readonly<{
   vaultId: string;
   readSettings(): Promise<unknown>;
   readJson: ReturnType<typeof createNativeSentryJsonReader>;
-  readSeed(password: string, check: () => void): Promise<string>;
+  isAuthenticating(): boolean;
+  withSigningMaterial<T>(request: SentrySigningMaterialRequest, work: (seed: string, privateAccount: string | null) => Promise<T>): Promise<T>;
   run<T>(operation: () => Promise<T>): Promise<T>;
   runCrypto: RunSentryCrypto;
   walletAuthority: NativeSentryWalletAuthority;
@@ -158,17 +159,25 @@ export function createNativeSentryApprovals(ports: Ports) {
       return scope;
     },
     assertCurrent: assertScope,
-    async getSeed(password, captured, assertRequest) {
-      assertScope(captured);
-      assertSynchronousEvmFeeGuard(assertRequest);
-      if (!isNativePasswordInput(password)) throw new Error('INVALID_INPUT');
-      const seed = await ports.readSeed(password, () => {
-        assertScope(captured);
-        assertSynchronousEvmFeeGuard(assertRequest);
+    async withSigningMaterial(request, work) {
+      assertScope(request.scope);
+      if (!isHostWalletAuthentication(request.authentication)) throw new Error('Native authentication is required');
+      const prepared = new Map<string, Awaited<ReturnType<NativeSentryWalletAuthority['prepare']>>>();
+      for (const authority of request.walletAuthorities) {
+        assertSynchronousEvmFeeGuard(request.assertCurrent);
+        prepared.set(sentryAuthorityRequestId(authority), await ports.walletAuthority.prepare(authority.address, authority.purpose));
+        assertScope(request.scope);
+      }
+      return ports.withSigningMaterial(request, async (seed, privateAccount) => {
+        const resolved = new Map<string, { scheme: 'ecdsa'; secretKey: string } | undefined>();
+        try {
+          for (const [id, resolve] of prepared) resolved.set(id, resolve && privateAccount !== null ? resolve(privateAccount) : undefined);
+          return await consumeSentrySigningMaterial(request, seed, resolved, work);
+        } finally {
+          for (const authority of resolved.values()) if (authority) authority.secretKey = '';
+          resolved.clear(); prepared.clear();
+        }
       });
-      assertScope(captured);
-      assertSynchronousEvmFeeGuard(assertRequest);
-      return seed;
     },
     async getSettings(captured) {
       assertScope(captured);
@@ -218,12 +227,6 @@ export function createNativeSentryApprovals(ports: Ports) {
       assertScope(captured);
       return result;
     },
-    async resolveWalletAuthority(params, captured) {
-      assertScope(captured);
-      const result = await ports.walletAuthority.resolve(params, 'management');
-      assertScope(captured);
-      return result;
-    },
     async runCrypto<T extends SentryCryptoResult>(
       job: Parameters<RunSentryCrypto>[0],
       assertRequest: () => void
@@ -252,15 +255,7 @@ export function createNativeSentryApprovals(ports: Ports) {
       SENTRY_NETWORKS[ports.network].genesisHash
   )
     throw new Error('CANCELLED');
-  const votes = new SharedSentryVoteApprovals({
-    ...host,
-    async resolveWalletAuthority(params, captured) {
-      assertScope(captured);
-      const result = await ports.walletAuthority.resolve(params, 'voting');
-      assertScope(captured);
-      return result;
-    },
-  });
+  const votes = new SharedSentryVoteApprovals(host);
   const operations = new SharedSentryOperationApprovals({
     ...host,
     network: (captured) => {
@@ -313,6 +308,7 @@ export function createNativeSentryApprovals(ports: Ports) {
   };
   return Object.freeze({
     assertCurrent: check,
+    isAuthenticating: ports.isAuthenticating,
     votes: Object.freeze({
       prepare: (raw: unknown, origin: string, assertGrant: () => void, lifetime: SentryRequestLifetime) => {
         check();
@@ -330,9 +326,9 @@ export function createNativeSentryApprovals(ports: Ports) {
       },
       cancel: (id: string) => votes.cancel(id),
       clear: () => votes.clear(),
-      sign: (params: Parameters<SharedSentryVoteApprovals['sign']>[0]) => {
+      sign: (params: Omit<Parameters<SharedSentryVoteApprovals['sign']>[0], 'password'>) => {
         check();
-        return votes.sign({ ...params });
+        return votes.sign({ ...params, password: HOST_WALLET_AUTHENTICATION });
       },
     }),
     operations: Object.freeze({
@@ -354,9 +350,9 @@ export function createNativeSentryApprovals(ports: Ports) {
       clear: () => operations.clear(),
       publishFeeAuthorization: (id: string) => { check(); operations.publishFeeAuthorization(id); },
       revalidate: () => operations.revalidate(),
-      sign: (params: Parameters<SharedSentryOperationApprovals['sign']>[0]) => {
+      sign: (params: Omit<Parameters<SharedSentryOperationApprovals['sign']>[0], 'password'>) => {
         check();
-        return operations.sign({ ...params });
+        return operations.sign({ ...params, password: HOST_WALLET_AUTHENTICATION });
       },
       prepareFeePsbt: (transactionHex: string, origin: string) => {
         check();

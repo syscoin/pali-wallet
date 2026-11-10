@@ -8,7 +8,7 @@ function fixture(kind: 'control' | 'sentry') {
   const native = { Platform: { OS: 'ios' }, KeyboardAvoidingView: 'KeyboardAvoidingView', AppState: { currentState: 'active', addEventListener(_event: string, handler: (state: string) => void) { app = handler; return { remove() { app = undefined; } }; } },
     BackHandler: { addEventListener(_event: string, handler: () => boolean) { back = handler; return { remove() { back = undefined; } }; } },
     Keyboard: { dismiss() {} }, StyleSheet: { create: (v: unknown) => v }, View: 'View' };
-  const review: any = { id: 'request-1', revision: 1, appName: 'Example', origin: 'https://example.test', accountLabel: 'Wallet', address: '0x123',
+  let review: any = { id: 'request-1', revision: 1, appName: 'Example', origin: 'https://example.test', accountLabel: 'Wallet', address: '0x123',
     networkLabel: 'Test network', chainId: '1', expiresAt: 1000, busy: false, error: null,
     verification: { validation: 'UNKNOWN', isScam: false }, details: kind === 'control'
       ? { kind: 'network-switch', name: 'Chain', chainId: '99', symbol: 'COIN', rpcUrl: 'https://rpc.example.test' }
@@ -27,9 +27,8 @@ function fixture(kind: 'control' | 'sentry') {
       setTimeout(callback: () => void) { timers.set(++serial, callback); return serial; }, clearTimeout(id: number) { timers.delete(id); } });
   const render = () => screenElements(f.render({ review, controller }));
   const button = () => screenElements(render().find(e => e.type === 'Screen')!.props.footer).find(e => e.type === 'Button' && e.props.title !== 'Reject')!;
-  const password = () => render().find(e => e.type === 'Input')!;
   const tick = async () => { await Promise.resolve(); await Promise.resolve(); };
-  return { review, controller, render, button, password, approvals, rejections, tick,
+  return { get review() { return review; }, replaceReview(update: Record<string, unknown>) { review = { ...review, ...update }; }, controller, render, button, approvals, rejections, tick,
     expire() { clock = 1001; [...timers.values()].forEach(run => run()); },
     background() { native.AppState.currentState = 'background'; app?.('background'); },
     back: () => back?.(), close: f.close };
@@ -51,20 +50,24 @@ test('expired control cannot become a new asset consent without a new current re
   f.review.id = 'request-2'; f.review.expiresAt = 2000; f.render(); assert(!f.button().props.disabled); f.close();
 });
 
-test('Sentry signature uses the displayed role/slot and clears PIN before asynchronous signing', async () => {
+test('Sentry signature requests shared authorization for the displayed role/slot only once', async () => {
   const f = fixture('sentry'); f.render(); f.render().find(e => e.type === 'Row' && e.props.title.startsWith('New owner'))!.props.onPress();
-  f.password().props.onChange('123456'); const submit = f.button().props.onPress;
+  const held = Promise.withResolvers<void>();
+  f.controller.approveSentry = async (...args: unknown[]) => { f.approvals.push(structuredClone(args)); await held.promise; };
+  assert(!f.render().some(e => e.type === 'Input'));
+  const submit = f.button().props.onPress;
   submit(); submit(); await f.tick();
-  assert.deepEqual(f.approvals, [['request-1', 1, { kind: 'operation', password: '123456', keyId: 'new', authorizationId: 'newOwner' }]]);
-  assert.equal(f.password().props.value, ''); assert(f.button().props.disabled); f.close();
+  assert.deepEqual(f.approvals, [['request-1', 1, { kind: 'operation', keyId: 'new', authorizationId: 'newOwner' }]]);
+  assert(f.button().props.disabled); held.resolve(); await f.tick(); f.close();
 });
 
-test('Sentry expiry, background, review replacement and authority-key edits require fresh PIN entry', () => {
+test('Sentry expiry, background and replaced review cannot launch stale authorization', () => {
   const f = fixture('sentry'); f.render();
-  f.password().props.onChange('654321'); f.expire(); assert.equal(f.password().props.value, ''); assert(f.button().props.disabled);
-  f.review.id = 'request-2'; f.review.expiresAt = 2000; f.render(); assert.equal(f.password().props.value, '');
-  f.password().props.onChange('654321'); f.background(); assert.equal(f.password().props.value, '');
-  f.password().props.onChange('654321'); f.render().find(e => e.type === 'Row')!.props.onPress(); assert.equal(f.password().props.value, '');
+  const stale = f.button().props.onPress;
+  f.expire(); assert(f.button().props.disabled); stale();
+  f.replaceReview({ id: 'request-2', expiresAt: 2000 }); f.render(); stale();
+  f.background(); f.button().props.onPress();
+  assert.deepEqual(f.approvals, []);
   assert.equal(f.back(), true); f.close();
 });
 
@@ -77,19 +80,55 @@ test('linking uses no password and sends no UI-authored node or transaction payl
 test('a produced signature with uncertain response delivery cannot be retried as a password failure', async () => {
   const f = fixture('sentry');
   f.controller.approveSentry = async () => { f.review.error = 'DELIVERY_UNCERTAIN'; throw Error('Lost response'); };
-  f.render(); f.password().props.onChange('123456'); f.button().props.onPress(); await f.tick();
+  f.render(); f.button().props.onPress(); await f.tick();
   assert(f.button().props.disabled);
   assert(f.render().some(e => e.type === 'Notice' && e.props.title === 'Authorization delivery uncertain'));
   assert(!f.render().some(e => e.type === 'Notice' && e.props.title === 'Authorization unsuccessful'));
-  assert.equal(f.password().props.value, ''); f.close();
+  assert(!f.render().some(e => e.type === 'Input')); f.close();
 });
 
 
-test('a replacement Sentry review revision remounts its PIN entry', () => {
+test('a replacement Sentry review revision requires its own current approval callback', async () => {
   const f = fixture('sentry');
   try {
-    const original = f.password().props.key;
-    f.review.revision++;
-    assert.notEqual(f.password().props.key, original);
+    const original = f.button().props.onPress;
+    f.replaceReview({ revision: 2 }); f.render(); original();
+    assert.deepEqual(f.approvals, []);
+    f.button().props.onPress(); await f.tick();
+    assert.equal(f.approvals.length, 1);
+    assert.equal(f.approvals[0]![1], 2);
+  } finally { f.close(); }
+});
+
+
+test('Sentry service review shows payout and address changes before opening technical details', () => {
+  const f = fixture('sentry');
+  try {
+    f.review.details.approval.review = { operation: 'updateService', proTxHash: 'ab'.repeat(32), feeSatoshis: '50', outputs: [], changes: {
+      service: { previous: 'old.example:8369', next: 'new.example:8369' },
+      operatorPayoutScript: { previous: '0014' + '11'.repeat(20), next: '0014' + '22'.repeat(20) },
+      nevmAddress: { previous: '0x' + '33'.repeat(20), next: '0x' + '44'.repeat(20) },
+    } };
+    const fields = f.render().filter(node => typeof node.type === 'function' && (node.type as Function).name === 'Field');
+    for (const value of Object.values(f.review.details.approval.review.changes) as { previous: string; next: string }[]) {
+      assert(fields.some(node => node.props.name === 'Current' && node.props.value === value.previous));
+      assert(fields.some(node => node.props.name === 'Proposed' && node.props.value === value.next));
+    }
+    assert(fields.some(node => node.props.name === 'Transaction fee' && node.props.value === '50 satoshis'));
+  } finally { f.close(); }
+});
+
+test('Sentry registration review keeps payout and authority changes visible while technical material is collapsed', () => {
+  const f = fixture('sentry');
+  try {
+    f.review.details.approval.review = { operation: 'updateRegistrar', feeSatoshis: '75', outputs: [], authorizations: [], fields: {
+      previousPayoutAddress: 'old-payout', payoutAddress: 'new-payout', previousVotingKeyId: 'old-vote', votingKeyId: 'new-vote',
+      previousOperatorPublicKey: 'old-operator', operatorPublicKey: 'new-operator', childKeyCommitment: 'technical-commitment',
+    } };
+    const values = () => f.render().filter(node => typeof node.type === 'function' && (node.type as Function).name === 'Field').map(node => node.props.value);
+    for (const value of ['old-payout', 'new-payout', 'old-vote', 'new-vote', 'old-operator', 'new-operator']) assert(values().includes(value));
+    assert(!values().includes('technical-commitment'));
+    f.render().find(node => node.type === 'Button' && node.props.title === 'View request details')!.props.onPress();
+    assert(values().includes('technical-commitment'));
   } finally { f.close(); }
 });

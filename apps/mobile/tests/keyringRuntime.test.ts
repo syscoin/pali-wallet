@@ -1,3 +1,6 @@
+import { testHdKeyExportRuntime } from './fixtures/hdKeyExport.ts';
+import { NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
+import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
 import { nonSuiteSigningHandoff } from './nonSuiteSigningHandoff.ts';
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import type { NativePinRecord } from '../src/custody/pinVault.ts';
@@ -6,7 +9,7 @@ import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { createKeyringRuntimeFactory, type KeyringRuntime, type KeyringRuntimeDependencies } from '../src/custody/keyringRuntime.ts';
+import { createKeyringRuntimeFactory, KeyringRuntimeError, type KeyringRuntime, type KeyringRuntimeDependencies } from '../src/custody/keyringRuntime.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { NativeSmartCreationAllocation } from '../src/smartAccount/preparation.ts';
 import { deriveDefaultSmartAccount } from '../../../source/utils/smartAccount/bootstrap.ts';
@@ -138,6 +141,7 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
       async prepareCreation(before, pair, root) {
         assert.equal(before.state.presence,'empty'); assert(sameRecoverySnapshot(before,snapshot()));
         const nextRecords = new Map(records); nextRecords.set('vault',pair.vault); nextRecords.set('vault-keys',pair.keys); nextRecords.set(WALLET_CATALOGUE_KEY,pair.accountRecords);
+        nextRecords.set(NATIVE_PUBLIC_SESSION_KEY, pair.publicSession);
         const binding = createHash('sha256').update(JSON.stringify([pair.vault,pair.keys])).digest('hex');
         const after: ReturnType<typeof snapshot> = { identity:{walletBindingId:binding,pairFingerprint:binding,root:structuredClone(root),verification:'requires-unlock'},
           state:{presence:'existing',backup:'unconfirmed'},records:[...nextRecords].map(([key,value])=>({key,value:JSON.stringify(value)})),metadata:[{key:'local-pin-v1',value:JSON.stringify(pair.pin)}],notes:[],signedRecords:[] };
@@ -1380,7 +1384,7 @@ async function raceSdk() {
   let gate: { phase: string; entered: ReturnType<typeof deferredAccount>; released: ReturnType<typeof deferredAccount> } | undefined;
   let signingHook: (() => void) | undefined;
   let exportResult: string | undefined;
-  let exportError = false;
+  let exportError: Error | undefined;
   let exports = 0;
   let imports = 0;
   let unlocks = 0;
@@ -1416,7 +1420,7 @@ async function raceSdk() {
         exports++;
         assert.equal(args[1], sdk.KeyringAccountType.HDAccount);
         await hold('export-before');
-        if (exportError) throw new Error('synthetic SDK error containing secret material');
+        if (exportError) throw exportError;
         const result = exportResult ?? await exportKey(...args);
         await hold('export-after');
         return result;
@@ -1437,7 +1441,8 @@ async function raceSdk() {
     get allocations() { return allocations; },
     setAllocationPatch(value?: Record<string, unknown>) { allocationPatch = value; },
     setExportResult(value?: string) { exportResult = value; },
-    failExport() { exportError = true; },
+    failExport() { exportError = new Error('synthetic SDK error containing secret material'); },
+    setExportError(error: Error) { exportError = error; },
     hold(phase: string) {
       const current = { phase, entered: deferredAccount(), released: deferredAccount() }; gate = current;
       return { entered: current.entered.promise, release() { gate = undefined; current.released.resolve(); } };
@@ -2159,7 +2164,7 @@ test('journal quarantine rejects every later secret operation on the same runtim
       () => f.runtime.session.importWallet(PHRASE, PASSWORD),
       () => f.runtime.backup.readPhrase(PASSWORD),
       () => f.runtime.backup.confirm('1'.repeat(64)),
-      () => f.runtime.keyExport!.readSelected(exportScope, PASSWORD, () => undefined),
+      () => readTestSelectedKey(f.runtime, exportScope, () => undefined),
       () => signTestTransfer(f.runtime.transfers!, tx, { assertCurrent: () => undefined, signal: new AbortController().signal }),
       () => Promise.resolve().then(() => f.runtime.transfers!.assertUnlocked(() => undefined)),
     ];
@@ -2241,15 +2246,29 @@ function selectedKeyScope(f: Awaited<ReturnType<typeof readyAccounts>>): HdKeyEx
     accountId: a.id, index: a.index, address: a.address, networkId: c.active.networkId,
     registrationHash: getNativeNetwork(c.active.networkId).registrationHash });
 }
+function readTestSelectedKey(runtime: KeyringRuntime, scope: HdKeyExportScope, check: () => void) {
+  return runtime.keyExport!.readSelected(scope, new AbortController().signal, check, createTestPrivateAuthentication(() => undefined));
+}
+async function eventually(predicate: () => boolean) {
+  const deadline = Date.now() + 10000;
+  while (!predicate() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5));
+  assert(predicate(), 'expected asynchronous fixture state');
+}
+function credentialPrompt() {
+  const broker = new OperationAuthentication();
+  let current: OperationAuthenticationPrompt | null = null;
+  const detach = broker.attach(prompt => { current = prompt; });
+  return { broker, detach, get current() { return current; } };
+}
 
 test('HD key reveal uses real SDK across registered networks and recreated nonzero indices', async () => {
-  const f = await readyAccounts(), flow = new HdKeyExportFlow(f.authority, () => f.runtime.keyExport);
+  const f = await readyAccounts(), flow = new HdKeyExportFlow(f.authority, () => testHdKeyExportRuntime(f.runtime.keyExport!));
   try {
     const key0 = HDNodeWallet.fromPhrase(PHRASE, undefined, "m/44'/60'/0'/0/0").privateKey;
     for (const n of NATIVE_NETWORKS) {
       if (n.id !== f.authority.getCatalogue()!.active.networkId)
         await f.authority.selectNetwork(n.id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
-      const before = JSON.stringify([...f.disk.records]), shown = await flow.begin(PASSWORD);
+      const before = JSON.stringify([...f.disk.records]), shown = await flow.begin();
       assert.equal(shown.privateKey, key0); assert.equal(shown.address, ADDRESS); assert.equal(shown.accountId, 'hd:60:0');
       assert.equal(Object.isFrozen(shown), true); assert.equal(flow.isCurrent(shown.id), true);
       assert.equal(JSON.stringify([...f.disk.records]), before);
@@ -2257,24 +2276,24 @@ test('HD key reveal uses real SDK across registered networks and recreated nonze
       flow.cancel(); assert.equal(flow.isCurrent(shown.id), false);
     }
     await f.execute({ kind: 'create', label: 'Second',});
-    const shown = await flow.begin(PASSWORD), key1 = HDNodeWallet.fromPhrase(PHRASE, undefined, "m/44'/60'/0'/0/1");
+    const shown = await flow.begin(), key1 = HDNodeWallet.fromPhrase(PHRASE, undefined, "m/44'/60'/0'/0/1");
     assert.equal(shown.privateKey, key1.privateKey); assert.equal(shown.address, key1.address);
     await f.execute({ kind: 'select', id: 'hd:60:0' }); assert.equal(flow.isCurrent(shown.id), false);
     await f.execute({ kind: 'remove', id: 'hd:60:1',});
     await f.execute({ kind: 'create', label: 'Recreated second',});
-    assert.equal((await flow.begin(PASSWORD)).privateKey, key1.privateKey);
+    assert.equal((await flow.begin()).privateKey, key1.privateKey);
   } finally { flow.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
 test('UTXO HD reveal returns the selected SDK account key and clears on network changes', async () => {
-  const f = await readyAccounts(), flow = new HdKeyExportFlow(f.authority, () => f.runtime.keyExport);
+  const f = await readyAccounts(), flow = new HdKeyExportFlow(f.authority, () => testHdKeyExportRuntime(f.runtime.keyExport!));
   try {
     let previous: string | undefined;
     for (const network of UTXO_NETWORKS) {
       await f.authority.selectNetwork(network.id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
       if (previous) assert.equal(flow.isCurrent(previous), false);
       const before = JSON.stringify([...f.disk.records]);
-      const shown = await flow.begin(PASSWORD);
+      const shown = await flow.begin();
       assert(shown.privateKey.startsWith(network.testnet ? 'vprv' : 'zprv'));
       assert.equal(shown.accountId, `hd:${network.slip44}:0`);
       assert.equal(shown.address, f.authority.getSnapshot().account?.address);
@@ -2290,17 +2309,17 @@ test('UTXO HD reveal returns the selected SDK account key and clears on network 
 
 test('UTXO HD reveal rejects a valid extended key for a different account', async () => {
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
-  const flow = new HdKeyExportFlow(f.authority, () => f.runtime.keyExport);
+  const flow = new HdKeyExportFlow(f.authority, () => testHdKeyExportRuntime(f.runtime.keyExport!));
   try {
     const network = UTXO_NETWORKS[0]!;
     await f.authority.selectNetwork(network.id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     await f.execute({ kind: 'create', label: 'Another account',});
-    const shown = await flow.begin(PASSWORD);
+    const shown = await flow.begin();
     assert.equal(shown.accountId, `hd:${network.slip44}:1`);
     await f.execute({ kind: 'select', id: `hd:${network.slip44}:0` });
     assert.equal(flow.isCurrent(shown.id), false);
     sdk.setExportResult(shown.privateKey);
-    await assert.rejects(flow.begin(PASSWORD), /^Error: KEY_EXPORT_UNAVAILABLE$/);
+    await assert.rejects(flow.begin(), /^Error: KEY_EXPORT_UNAVAILABLE$/);
     assert.equal(f.authority.getSnapshot().phase, 'locked');
   } finally { flow.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
@@ -2312,31 +2331,31 @@ test('HD key export rejects forged scopes, accessors and asynchronous guards', a
     const accessor = { ...scope }; Object.defineProperty(accessor, 'index', { enumerable: true, get() { reads++; return 0; } });
     for (const input of [accessor, { ...scope, accountType: 'Imported' }, { ...scope, index: [0] },
       { ...scope, authorityRevision: -1 }])
-      await assert.rejects(f.runtime.keyExport!.readSelected(input as HdKeyExportScope, PASSWORD, () => undefined), /INVALID_INPUT/);
+      await assert.rejects(readTestSelectedKey(f.runtime, input as HdKeyExportScope, () => undefined), /INVALID_INPUT/);
     assert.equal(reads, 0); assert.equal(sdk.exports, 0);
     for (const input of [{ ...scope, registrationHash: '0x' + '1'.repeat(64) }, { ...scope, index: 1, accountId: 'hd:60:1' }, { ...scope, catalogueRevision: scope.catalogueRevision + 1 }]) {
-      await assert.rejects(f.runtime.keyExport!.readSelected(input, PASSWORD, () => undefined), /CANCELLED/);
+      await assert.rejects(readTestSelectedKey(f.runtime, input, () => undefined), /CANCELLED/);
       f.authority.lock(); await f.authority.unlock(PASSWORD);
     }
-    await assert.rejects(f.runtime.keyExport!.readSelected(selectedKeyScope(f), PASSWORD, (() => Promise.resolve()) as any), /CANCELLED/);
+    await assert.rejects(readTestSelectedKey(f.runtime, selectedKeyScope(f), (() => Promise.resolve()) as any), /CANCELLED/);
     assert.equal(sdk.exports, 0);
   } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
 test('HD key export rejects malformed, zero, out-of-range and wrong-address keys', async () => {
-  const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), flow = new HdKeyExportFlow(f.authority, () => f.runtime.keyExport);
+  const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), flow = new HdKeyExportFlow(f.authority, () => testHdKeyExportRuntime(f.runtime.keyExport!));
   try {
     const wrongKey = HDNodeWallet.fromPhrase(PHRASE, undefined, "m/44'/60'/0'/0/1").privateKey;
     for (const key of ['secret', '0x' + '0'.repeat(64), '0x' + 'f'.repeat(64),
       '0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141', wrongKey]) {
       sdk.setExportResult(key);
-      await assert.rejects(flow.begin(PASSWORD), (error: Error) => {
+      await assert.rejects(flow.begin(), (error: Error) => {
         assert.equal(error.message, 'KEY_EXPORT_UNAVAILABLE'); assert.equal(JSON.stringify(error).includes(key), false); return true;
       });
       assert.equal(f.authority.getSnapshot().phase, 'locked'); await f.authority.unlock(PASSWORD);
     }
     sdk.failExport(); const before = { failure: f.disk.failureWrites, success: f.disk.successWrites };
-    await assert.rejects(flow.begin(PASSWORD), /^Error: KEY_EXPORT_UNAVAILABLE$/);
+    await assert.rejects(flow.begin(), /^Error: KEY_EXPORT_UNAVAILABLE$/);
     assert.equal(f.disk.failureWrites, before.failure + 1);
     assert.equal(f.disk.successWrites, before.success + 1, 'valid PIN was verified before the SDK export failed');
     assert.equal(f.authority.getSnapshot().phase, 'locked', 'an untrusted SDK export failure still retires custody');
@@ -2344,46 +2363,52 @@ test('HD key export rejects malformed, zero, out-of-range and wrong-address keys
 });
 
 test('reveal refusals keep the real public SDK session and allow a fresh PIN attempt', async () => {
-  const f = await readyAccounts();
+  const prompt = credentialPrompt(), f = await readyAccounts(undefined, undefined, prompt.broker.request);
   const backup = new SeedBackupFlow(f.authority, () => f.runtime.backup);
-  const keys = new HdKeyExportFlow(f.authority, () => f.runtime.keyExport);
+  const keys = new HdKeyExportFlow(f.authority, () => testHdKeyExportRuntime(f.runtime.keyExport!));
   try {
     const state = f.authority.getSnapshot(), catalogue = f.authority.getCatalogue();
     await assert.rejects(backup.begin('000000'), /INVALID_CREDENTIAL/);
-    await assert.rejects(backup.begin({ method: 'biometric' }), /DEVICE_UNLOCK_UNAVAILABLE/);
-    await assert.rejects(keys.begin('000000'), /INVALID_CREDENTIAL/);
+    const pending = keys.begin();
+    await eventually(() => !!prompt.current && !prompt.current.busy);
+    prompt.current!.confirm({ method: 'pin', pin: '000000' });
+    await eventually(() => !!prompt.current?.error && !prompt.current.busy);
     assert.equal(f.authority.getSnapshot(), state);
     assert.equal(f.authority.getCatalogue(), catalogue);
     assert.equal(await f.runtime.session.readSelectedAddress(), state.account!.address);
+    prompt.current!.confirm({ method: 'pin', pin: PASSWORD });
+    assert.match((await pending).privateKey, /^0x[0-9a-f]{64}$/);
     const shown = await backup.begin(PASSWORD);
     assert.equal(shown.words.join(' '), PHRASE);
     backup.cancel();
-    assert.match((await keys.begin(PASSWORD)).privateKey, /^0x[0-9a-f]{64}$/);
-  } finally { backup.dispose(); keys.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
+  } finally { prompt.detach(); backup.dispose(); keys.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
 test('HD key reveal shares unlock throttle and counts wrong authentication after cancellation', async () => {
-  const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), flow = new HdKeyExportFlow(f.authority, () => f.runtime.keyExport);
+  const sdk = await raceSdk(), prompt = credentialPrompt(), f = await readyAccounts(sdk.loadSdk, undefined, prompt.broker.request), flow = new HdKeyExportFlow(f.authority, () => testHdKeyExportRuntime(f.runtime.keyExport!));
   const hold = f.disk.holdPinRead(), before = f.disk.failureWrites;
   try {
-    const pending = flow.begin('000000'); void pending.catch(() => undefined);
+    const pending = flow.begin(); void pending.catch(() => undefined);
+    await eventually(() => !!prompt.current && !prompt.current.busy);
+    prompt.current!.confirm({ method: 'pin', pin: '000000' });
     await hold.started; f.authority.lock(); hold.finish(); await assert.rejects(pending, /CANCELLED/);
+    await eventually(() => f.disk.failureWrites === before + 1);
     assert.equal(f.disk.failureWrites, before + 1); assert.equal(f.disk.failures, 1); assert.equal(sdk.exports, 0);
     for (let attempt = 0; attempt < 4; attempt++) await assert.rejects(f.authority.unlock('000000'), /INVALID_CREDENTIAL/);
     assert.equal(f.disk.failures, 5); await assert.rejects(f.authority.unlock(PASSWORD), /AUTH_THROTTLED/);
-    assert.equal(f.disk.failureWrites, before + 5); await assert.rejects(flow.begin(PASSWORD), /KEY_EXPORT_UNAVAILABLE/);
+    assert.equal(f.disk.failureWrites, before + 5); await assert.rejects(flow.begin(), /KEY_EXPORT_UNAVAILABLE/);
     assert.equal(sdk.exports, 0);
-  } finally { hold.finish(); flow.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
+  } finally { hold.finish(); prompt.detach(); flow.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
 for (const phase of ['password', 'credential-read', 'export-before', 'export-after']) {
   test(`HD key reveal revokes at ${phase} and serializes other privileged operations`, async () => {
-    const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), flow = new HdKeyExportFlow(f.authority, () => f.runtime.keyExport);
+    const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), flow = new HdKeyExportFlow(f.authority, () => testHdKeyExportRuntime(f.runtime.keyExport!));
     const credential = phase === 'credential-read' ? f.disk.holdPinRead() : null;
     const hold = credential ? { entered: credential.started, release: credential.finish } : sdk.hold(phase);
     try {
-      const pending = flow.begin(PASSWORD); void pending.catch(() => undefined); await hold.entered;
-      await assert.rejects(flow.begin(PASSWORD), /BUSY/);
+      const pending = flow.begin(); void pending.catch(() => undefined); await hold.entered;
+      await assert.rejects(flow.begin(), /BUSY/);
       await assert.rejects(f.runtime.backup.readPhrase(PASSWORD), /BUSY/);
       assert.throws(() => f.runtime.transfers!.assertUnlocked(() => undefined), /BUSY/);
       await assert.rejects(signTestTransfer(f.runtime.transfers!, { type: 2, accessList: [], from: ADDRESS,
@@ -2393,24 +2418,24 @@ for (const phase of ['password', 'credential-read', 'export-before', 'export-aft
       f.authority.lock(); await assert.rejects(f.authority.unlock(PASSWORD), /OPERATION_FAILED|BUSY/);
       hold.release(); await assert.rejects(pending, /CANCELLED/);
       assert.equal(f.authority.getSnapshot().account, null); await f.authority.unlock(PASSWORD);
-      const shown = await flow.begin(PASSWORD); assert.equal(shown.address, ADDRESS);
+      const shown = await flow.begin(); assert.equal(shown.address, ADDRESS);
       assert.equal(sdk.exports, phase.startsWith('export') ? 2 : 1);
     } finally { hold.release(); flow.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
   });
 }
 
 test('HD key presentation expires on network/account A-B-A, reentrant clear and disposal', async () => {
-  const f = await readyAccounts(), flow = new HdKeyExportFlow(f.authority, () => f.runtime.keyExport), attempts: Promise<unknown>[] = [];
-  const unsubscribe = flow.onClear(() => attempts.push(flow.begin(PASSWORD).catch((error: Error) => error.message)));
+  const f = await readyAccounts(), flow = new HdKeyExportFlow(f.authority, () => testHdKeyExportRuntime(f.runtime.keyExport!)), attempts: Promise<unknown>[] = [];
+  const unsubscribe = flow.onClear(() => attempts.push(flow.begin().catch((error: Error) => error.message)));
   try {
-    const first = await flow.begin(PASSWORD); assert.deepEqual(await Promise.all(attempts), ['BUSY']); unsubscribe();
+    const first = await flow.begin(); assert.deepEqual(await Promise.all(attempts), ['BUSY']); unsubscribe();
     await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     assert.equal(flow.isCurrent(first.id), false);
-    await f.execute({ kind: 'create', label: 'Second',}); const second = await flow.begin(PASSWORD);
+    await f.execute({ kind: 'create', label: 'Second',}); const second = await flow.begin();
     await f.execute({ kind: 'select', id: 'hd:60:0' }); await f.execute({ kind: 'select', id: 'hd:60:1' }); assert.equal(flow.isCurrent(second.id), false);
-    const last = await flow.begin(PASSWORD); flow.dispose(); assert.equal(flow.isCurrent(last.id), false);
-    await assert.rejects(flow.begin(PASSWORD), /KEY_EXPORT_EXPIRED/);
+    const last = await flow.begin(); flow.dispose(); assert.equal(flow.isCurrent(last.id), false);
+    await assert.rejects(flow.begin(), /KEY_EXPORT_EXPIRED/);
   } finally { unsubscribe(); flow.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
@@ -2418,21 +2443,33 @@ test('HD key runtime refuses unconfirmed backup without mutating stored records'
   const disk = memoryDisk(); disk.denyNetwork(); const runtime = await disk.factory.open() as KeyringRuntime;
   try {
     await runtime.session.importWallet(PHRASE, PASSWORD); const c = runtime.catalogue.getSnapshot()!, before = JSON.stringify([...disk.records]);
-    await assert.rejects(runtime.keyExport!.readSelected({ authorityRevision: 0, catalogueRevision: c.revision,
-      accountId: 'hd:60:0', index: 0, address: ADDRESS, networkId: 'ethereum', registrationHash: getNativeNetwork('ethereum').registrationHash }, PASSWORD, () => undefined), /NOT_READY/);
+    await assert.rejects(readTestSelectedKey(runtime, { authorityRevision: 0, catalogueRevision: c.revision,
+      accountId: 'hd:60:0', index: 0, address: ADDRESS, networkId: 'ethereum', registrationHash: getNativeNetwork('ethereum').registrationHash }, () => undefined), /NOT_READY/);
     assert.equal(JSON.stringify([...disk.records]), before);
     assert.deepEqual(await runtime.storage.readState(), { presence: 'existing', backup: 'unconfirmed' });
   } finally { await runtime.storage.close(); disk.restoreNetwork(); }
 });
 
+for (const code of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED', 'DEVICE_UNLOCK_UNAVAILABLE'] as const)
+  test(`HD key export reflects runtime retirement for an unbranded ${code} SDK failure`, async () => {
+    const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
+    const flow = new HdKeyExportFlow(f.authority, () => testHdKeyExportRuntime(f.runtime.keyExport!));
+    try {
+      sdk.setExportError(new KeyringRuntimeError(code));
+      await assert.rejects(flow.begin(), /KEY_EXPORT_UNAVAILABLE/);
+      assert.equal(f.runtime.catalogue.getSnapshot(), null);
+      assert.equal(f.authority.getSnapshot().phase, 'locked');
+    } finally { flow.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
+  });
+
 test('HD key flow rejects a completed runtime result after authority A-B-A before publication', async () => {
   const f = await readyAccounts(); const entered = deferredAccount(), release = deferredAccount();
-  const port = { async readSelected(...args: Parameters<NonNullable<KeyringRuntime['keyExport']>['readSelected']>) {
+  const port = { isAuthenticationRefusal: f.runtime.keyExport!.isAuthenticationRefusal, async readSelected(...args: Parameters<NonNullable<KeyringRuntime['keyExport']>['readSelected']>) {
     const key = await f.runtime.keyExport!.readSelected(...args); entered.resolve(); await release.promise; return key;
   } };
-  const flow = new HdKeyExportFlow(f.authority, () => port);
+  const flow = new HdKeyExportFlow(f.authority, () => testHdKeyExportRuntime(port));
   try {
-    const pending = flow.begin(PASSWORD); void pending.catch(() => undefined); await entered.promise;
+    const pending = flow.begin(); void pending.catch(() => undefined); await entered.promise;
     f.authority.lock(); await f.authority.unlock(PASSWORD);
     assert.equal(f.authority.getSnapshot().account!.address, ADDRESS);
     release.resolve(); await assert.rejects(pending, /CANCELLED/);
@@ -2443,13 +2480,13 @@ test('HD key flow rejects a completed runtime result after authority A-B-A befor
 test('HD key flow disposal retires an in-flight read and reentrant clear cannot authenticate', async () => {
   const f = await readyAccounts(), sdkEntered = deferredAccount(), release = deferredAccount();
   let reads = 0;
-  const port = { async readSelected(...args: Parameters<NonNullable<KeyringRuntime['keyExport']>['readSelected']>) {
+  const port = { isAuthenticationRefusal: f.runtime.keyExport!.isAuthenticationRefusal, async readSelected(...args: Parameters<NonNullable<KeyringRuntime['keyExport']>['readSelected']>) {
     reads++; const key = await f.runtime.keyExport!.readSelected(...args); sdkEntered.resolve(); await release.promise; return key;
   } };
-  const flow = new HdKeyExportFlow(f.authority, () => port), attempts: Promise<unknown>[] = [];
-  const off = flow.onClear(() => attempts.push(flow.begin(PASSWORD).catch((error: Error) => error.message)));
+  const flow = new HdKeyExportFlow(f.authority, () => testHdKeyExportRuntime(port)), attempts: Promise<unknown>[] = [];
+  const off = flow.onClear(() => attempts.push(flow.begin().catch((error: Error) => error.message)));
   try {
-    const pending = flow.begin(PASSWORD); void pending.catch(() => undefined); await sdkEntered.promise;
+    const pending = flow.begin(); void pending.catch(() => undefined); await sdkEntered.promise;
     flow.dispose(); release.resolve(); await assert.rejects(pending, /CANCELLED/);
     assert.equal(reads, 1); assert.equal(f.authority.getSnapshot().phase, 'ready', 'disposed flow cannot lock a live context after its runtime read drained');
     assert.ok((await Promise.all(attempts)).every((result) => result === 'BUSY' || result === 'KEY_EXPORT_EXPIRED'));
@@ -2458,17 +2495,17 @@ test('HD key flow disposal retires an in-flight read and reentrant clear cannot 
 
 test('obsolete export failure cannot revoke a replacement flow started by a clear observer', async () => {
   const f = await readyAccounts(), entered = deferredAccount(), release = deferredAccount();
-  const replacement = { readSelected: (...args: Parameters<NonNullable<KeyringRuntime['keyExport']>['readSelected']>) => f.runtime.keyExport!.readSelected(...args) };
-  let currentPort = { async readSelected(...args: Parameters<NonNullable<KeyringRuntime['keyExport']>['readSelected']>): Promise<string> {
+  const replacement = { isAuthenticationRefusal: f.runtime.keyExport!.isAuthenticationRefusal, readSelected: (...args: Parameters<NonNullable<KeyringRuntime['keyExport']>['readSelected']>) => f.runtime.keyExport!.readSelected(...args) };
+  let currentPort = { isAuthenticationRefusal: f.runtime.keyExport!.isAuthenticationRefusal, async readSelected(...args: Parameters<NonNullable<KeyringRuntime['keyExport']>['readSelected']>): Promise<string> {
     await f.runtime.keyExport!.readSelected(...args); entered.resolve(); await release.promise;
     throw new Error(PASSWORD);
   } };
-  const old = new HdKeyExportFlow(f.authority, () => currentPort), next = new HdKeyExportFlow(f.authority, () => currentPort);
+  const old = new HdKeyExportFlow(f.authority, () => testHdKeyExportRuntime(currentPort)), next = new HdKeyExportFlow(f.authority, () => testHdKeyExportRuntime(currentPort));
   let replacementRead: Promise<Awaited<ReturnType<HdKeyExportFlow['begin']>>> | undefined;
   let off = () => {};
   try {
-    const pending = old.begin(PASSWORD); void pending.catch(() => undefined); await entered.promise;
-    off = old.onClear(() => { off(); currentPort = replacement; replacementRead = next.begin(PASSWORD); });
+    const pending = old.begin(); void pending.catch(() => undefined); await entered.promise;
+    off = old.onClear(() => { off(); currentPort = replacement; replacementRead = next.begin(); });
     release.resolve(); await assert.rejects(pending, /^Error: KEY_EXPORT_UNAVAILABLE$/);
     const shown = await replacementRead!;
     assert.equal(shown.address, ADDRESS); assert.equal(next.isCurrent(shown.id), true);
@@ -2479,13 +2516,13 @@ test('obsolete export failure cannot revoke a replacement flow started by a clea
 test('HD key flow is unavailable before backup, while locked, and on the web host', async () => {
   const disk = memoryDisk(); disk.denyNetwork(); let runtime!: KeyringRuntime, portReads = 0;
   const authority = new NativeCustodyAuthority({ async open() { runtime = await disk.factory.open() as KeyringRuntime; return runtime; } });
-  const flow = new HdKeyExportFlow(authority, () => { portReads++; return runtime.keyExport; });
+  const flow = new HdKeyExportFlow(authority, () => { portReads++; return runtime.keyExport && testHdKeyExportRuntime(runtime.keyExport); });
   try {
     await authority.initialize(); await authority.importPhrase(PHRASE, PASSWORD);
     assert.equal(authority.getSnapshot().phase, 'backup-required');
-    await assert.rejects(flow.begin(PASSWORD), /KEY_EXPORT_UNAVAILABLE/);
+    await assert.rejects(flow.begin(), /KEY_EXPORT_UNAVAILABLE/);
     assert.equal(authority.getSnapshot().phase, 'backup-required'); assert.equal(portReads, 0);
-    authority.lock(); await assert.rejects(flow.begin(PASSWORD), /KEY_EXPORT_UNAVAILABLE/);
+    authority.lock(); await assert.rejects(flow.begin(), /KEY_EXPORT_UNAVAILABLE/);
     assert.equal(authority.getSnapshot().phase, 'locked'); assert.equal(portReads, 0);
     const web = await import('../src/platform/nativeFactory.web.ts');
     assert.throws(() => web.createNativeWalletControllers(), /unavailable on web/);
@@ -2496,8 +2533,7 @@ test('HD key flow is unavailable before backup, while locked, and on the web hos
 const IMPORTED_TEST_KEY = '0x' + '1'.padStart(64, '0');
 const importedAddress = (key = IMPORTED_TEST_KEY) => new Wallet(key).address;
 async function importTestKey(f: Awaited<ReturnType<typeof readyAccounts>>, key = IMPORTED_TEST_KEY, label = 'Imported test') {
-  await f.authority.importAccount({ privateKey: key, expectedAddress: importedAddress(key), label }, PASSWORD,
-    f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+  await f.authority.importAccount({ privateKey: key, expectedAddress: importedAddress(key), label }, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, new AbortController().signal, createTestPrivateAuthentication(() => undefined));
 }
 
 test('installed SDK imported accounts persist AEAD, cold-reopen and sign/export at a nonzero host ordinal', async () => {
@@ -2526,8 +2562,8 @@ test('installed SDK imported accounts persist AEAD, cold-reopen and sign/export 
       assert.equal(Transaction.from(signed.rawTransaction).from, importedAddress());
       await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(signed.rawTransaction);
     }
-    const flow = new HdKeyExportFlow(f.authority, () => f.runtime.keyExport);
-    assert.equal((await flow.begin(PASSWORD)).privateKey, IMPORTED_TEST_KEY); flow.dispose();
+    const flow = new HdKeyExportFlow(f.authority, () => testHdKeyExportRuntime(f.runtime.keyExport!));
+    assert.equal((await flow.begin()).privateKey, IMPORTED_TEST_KEY); flow.dispose();
     await f.authority.dispose();
     let reopenedRuntime!: KeyringRuntime;
     const reopened = new NativeCustodyAuthority({ async open() { reopenedRuntime = await f.disk.factory.open() as KeyringRuntime; return reopenedRuntime; } });
@@ -2564,8 +2600,8 @@ test('SDK imported gap reuse retains the higher account through cold reopen, exp
     for (const [id, key] of [['imported:60:0', replacementKey], ['imported:60:1', secondKey]] as const) {
       await reopened.manageAccounts({ kind: 'select', id }, reopened.getSnapshot().revision, reopened.getCatalogue()!.revision);
       assert.equal(reopened.getSnapshot().account!.address, importedAddress(key));
-      const flow: HdKeyExportFlow = new HdKeyExportFlow(reopened, () => runtime.keyExport);
-      try { assert.equal((await flow.begin(PASSWORD)).privateKey, key); } finally { flow.dispose(); }
+      const flow: HdKeyExportFlow = new HdKeyExportFlow(reopened, () => runtime.keyExport && testHdKeyExportRuntime(runtime.keyExport));
+      try { assert.equal((await flow.begin()).privateKey, key); } finally { flow.dispose(); }
       const signed = await signTestTransfer(runtime.transfers!, { type: 2, accessList: [], from: importedAddress(key), to: ADDRESS,
         chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
       assert.equal(Transaction.from(signed.rawTransaction).from, importedAddress(key));
@@ -2590,7 +2626,7 @@ test('imported admission rejects duplicates and malformed private form inputs wi
     Object.defineProperty(getter, 'privateKey', { enumerable: true, get() { reads++; return IMPORTED_TEST_KEY; } });
     for (const request of [getter, { ...getter, privateKey: PHRASE }, { ...getter, privateKey: '0x' + '0'.repeat(64) },
       { ...getter, expectedAddress: ADDRESS }, { ...getter, accountType: 'HDAccount' }]) {
-      await assert.rejects(f.authority.importAccount(request, PASSWORD, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision), /INVALID_INPUT/);
+      await assert.rejects(f.authority.importAccount(request, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, new AbortController().signal, createTestPrivateAuthentication(() => undefined)), /INVALID_INPUT/);
     }
     assert.equal(reads, 4, 'only test spreads read the accessor; the runtime snapshot never does');
     assert.equal(f.authority.getSnapshot().phase, 'ready');
@@ -2605,8 +2641,7 @@ for (const phase of ['password', 'import-after', 'encrypt-after']) {
       const before = JSON.stringify([...f.disk.records]);
       const pending = importTestKey(f); void pending.catch(() => undefined); await hold.entered;
       const otherKey = '0x' + '2'.padStart(64, '0');
-      await assert.rejects(f.authority.importAccount({ privateKey: otherKey, expectedAddress: importedAddress(otherKey), label: 'Other' },
-        PASSWORD, f.authority.getSnapshot().revision, 0), /BUSY/);
+      await assert.rejects(f.authority.importAccount({ privateKey: otherKey, expectedAddress: importedAddress(otherKey), label: 'Other' }, f.authority.getSnapshot().revision, 0, new AbortController().signal, createTestPrivateAuthentication(() => undefined)), /BUSY/);
       await assert.rejects(f.runtime.backup.readPhrase(PASSWORD), /BUSY/);
       assert.throws(() => f.runtime.transfers!.assertUnlocked(() => undefined), /BUSY/);
       await assert.rejects(f.authority.manageAccounts({ kind: 'select', id: 'hd:60:0' }, f.authority.getSnapshot().revision, 0), /BUSY/);
@@ -2621,8 +2656,7 @@ test('imported credential rejection shares persistent throttle after lifecycle c
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), hold = f.disk.holdPinRead();
   const before = f.disk.failureWrites;
   try {
-    const pending = f.authority.importAccount({ privateKey: IMPORTED_TEST_KEY, label: 'Import', expectedAddress: importedAddress() },
-      '000000', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision); void pending.catch(() => undefined);
+    const pending = f.authority.importAccount({ privateKey: IMPORTED_TEST_KEY, label: 'Import', expectedAddress: importedAddress() }, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, new AbortController().signal, createTestPrivateAuthentication(() => undefined)); void pending.catch(() => undefined);
     await Promise.race([hold.started, pending]); f.authority.lock(); hold.finish(); await assert.rejects(pending, /CANCELLED/);
     assert.equal(f.disk.failureWrites, before + 1); assert.equal(sdk.imports, 0);
     for (let i = 0; i < 4; i++) await assert.rejects(f.authority.unlock('000000'), /INVALID_CREDENTIAL/);

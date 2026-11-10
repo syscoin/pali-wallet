@@ -5,6 +5,7 @@ import { NativeSmartBatchFixture } from './nativeSmartBatchFixture';
 import { NativeSentryNodesFixture } from './nativeSentryNodesFixture';
 import { NativeDappConsentFixture } from './nativeDappConsentFixture';
 import { NativeSentryFixture } from './nativeSentryFixture';
+import { NativeNoteAuthFixture } from './nativeNoteAuthFixture';
 import { NativeSmartCurrencyFixture } from './nativeSmartCurrencyFixture';
 import { NativeNoteImportFixture } from './nativeNoteImportFixture';
 import { NativePrivateDepositFixture, NativeNoteStatusFixture } from './nativePrivateDepositFixture';
@@ -427,6 +428,8 @@ function Fixture() {
               { label: 'Transaction ID', value: viewedTransaction },
             ]} />
         </Screen>
+      ) : route.has('note-auth-leaf') ? (
+        <NativeNoteAuthFixture />
       ) : route.has('smart-modules') ? (
         <NativeSmartManagementFixture kind="modules" />
       ) : route.has('smart-authenticator') ? (

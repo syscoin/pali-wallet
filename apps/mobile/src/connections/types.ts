@@ -1,3 +1,4 @@
+import type { AssetTransferCall } from '../../../../source/shared/assetTransfer.ts';
 import type { DappEncryptionMethod } from '../../../../source/shared/dappEncryptionRequest.ts';
 import type { SmartAccountModuleRequestMethod } from '../../../../source/shared/smartAccountModuleRequest.ts';
 import type { EvmDappFeeChoice, EvmDappFeeComparison } from '../../../../source/shared/evmDappFeePolicy.ts';
@@ -89,6 +90,7 @@ export type NativeTransactionReview = NativeSigningReviewBase &
     decimals: number;
     broadcastHash: string | null;
     approval: ApprovalSummary | null;
+    assetTransfer?: AssetTransferCall | null;
     batch?: Readonly<{
       phase: 'preparing' | 'review' | 'submitting' | 'failed' | 'unknown' | 'complete';
       index: number;

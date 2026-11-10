@@ -1,3 +1,6 @@
+import { Interface } from 'ethers/abi';
+import { decodeAssetTransfer } from '../../../source/shared/assetTransfer.ts';
+import { formatTokenUnits } from '../../../source/shared/erc20.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { useDappLedgerConnection } from '../src/screens/useDappLedgerConnection';
@@ -39,6 +42,7 @@ function fixture(kind: 'message' | 'transaction' | 'psbt' | 'smart-transaction' 
       'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
       '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
       './IdleActivityBoundary': { IdlePressable: 'Pressable' }, './DappSiteStatus': { DappSiteStatus: 'DappSiteStatus' },
+      '../../../../source/shared/assetTransfer': { decodeAssetTransfer }, '../../../../source/shared/erc20': { formatTokenUnits },
       '../core/amounts': { formatBaseUnits }, './ApprovalReview': { ApprovalReview: 'ApprovalReview' },
     }, globals);
   return { review, controller, ledgerConnection, state, approvals, deviceActions,
@@ -161,5 +165,37 @@ test('long message keeps one bordered rejection and approval action in the fixed
     f.review.dispatched = true;
     const complete = f.render().find(node => node.type === 'Screen'); assert(complete);
     assert.equal(screenElements(complete.props.footer).find(node => node.type === 'Button' && node.props.title === 'Close')?.props.variant, 'secondary');
+  } finally { f.close(); }
+});
+
+for (const kind of ['erc20', 'erc721', 'unknown'] as const) test(`dapp ${kind} transfer displays recipient and asset in the primary review`, () => {
+  const f = fixture('transaction');
+  try {
+    const recipient = '0x3333333333333333333333333333333333333333';
+    const nft = kind === 'erc721';
+    const iface = new Interface([nft ? 'function safeTransferFrom(address,address,uint256)' : 'function transfer(address,uint256)']);
+    const data = iface.encodeFunctionData(nft ? 'safeTransferFrom' : 'transfer', nft ? [f.review.address, recipient, 91] : [recipient, 2500000]);
+    f.review.transaction = { ...f.review.transaction, data, value: '0' };
+    const metadata = kind === 'unknown' ? undefined : nft ? { standard: 'ERC-721' as const } : {
+      standard: 'ERC-20' as const, token: { contractAddress: f.review.transaction.to, name: 'USD token', symbol: 'USDT', decimals: 6 },
+    };
+    f.review.assetTransfer = decodeAssetTransfer(data, f.review.transaction.to, metadata);
+    const values = f.render();
+    const text = values.flatMap(element => element.children.filter(value => typeof value === 'string')).join(' ');
+    assert(text.includes(recipient)); assert(text.includes('Recipient')); assert(text.includes('Token contract'));
+    assert(text.includes(nft ? '#91' : kind === 'erc20' ? '2.5' : '2500000'));
+    assert(!text.includes('Contract interaction'));
+    assert(!values.some(value => value.type === 'TransactionDetails'));
+  } finally { f.close(); }
+});
+
+test('unknown contract call identifies native value separately from possible asset effects', () => {
+  const f = fixture('transaction');
+  try {
+    f.review.transaction = { ...f.review.transaction, value: '0', data: '0x12345678' };
+    const text = f.render().flatMap(element => element.children.filter(value => typeof value === 'string')).join(' ');
+    assert(text.includes('Native currency sent'));
+    assert(text.includes('This amount excludes any tokens or NFTs the contract may move.'));
+    assert(text.includes('Maximum ETH debit'));
   } finally { f.close(); }
 });

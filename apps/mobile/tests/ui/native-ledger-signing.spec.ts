@@ -129,6 +129,7 @@ test('UTXO prepares from saved public data and still requires confirmation after
     await page.evaluate(() => window.__nativeUtxoLedgerFixture.opens())
   ).toBe(1);
   await page.getByTestId('native-utxo-confirm').click();
+  await authenticateNativeOperation(page);
   expect(
     await page.evaluate(() => window.__nativeUtxoLedgerFixture.confirmations())
   ).toBe(1);
@@ -156,6 +157,7 @@ test('UTXO reconnect keeps the existing review and its expiry', async ({
     await page.evaluate(() => window.__nativeUtxoLedgerFixture.opens())
   ).toBe(1);
   await page.getByTestId('native-utxo-confirm').click();
+  await authenticateNativeOperation(page);
   await expect(page.getByRole('alert')).toContainText(
     'This review is no longer available'
   );
@@ -201,6 +203,7 @@ test('saved UTXO signed bytes replay without connecting Ledger', async ({
     page.getByRole('button', { name: 'Connect Ledger', exact: true })
   ).toHaveCount(0);
   await page.getByTestId('native-utxo-confirm').click();
+  await authenticateNativeOperation(page);
   expect(
     await page.evaluate(() => window.__nativeUtxoLedgerFixture.confirmations())
   ).toBe(1);

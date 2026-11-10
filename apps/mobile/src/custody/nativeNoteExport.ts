@@ -61,11 +61,10 @@ export function createNativeNoteExport(openRuntime: (guard: Guard) => Promise<Na
         }, NOTE_BACKUP_PREVIEW_TTL_MS);
       } catch (error) { clear(owned); throw error; }
     },
-    async prepare(walletPassword: string, backupPassword: string, assertWallet: Guard) {
+    async prepare(backupPassword: string, assertWallet: Guard) {
       const owned = current;
       if (pending) throw new NoteBackupServiceError('BACKUP_BUSY');
       if (!owned || owned.runtime || owned.writing) throw new NoteBackupServiceError('BACKUP_STALE');
-      if (walletPassword === backupPassword) throw new NoteBackupServiceError('BACKUP_INVALID_PASSWORD');
       pending = true;
       let output: Uint8Array | undefined;
       owned.assertWallet = assertWallet;
@@ -76,7 +75,7 @@ export function createNativeNoteExport(openRuntime: (guard: Guard) => Promise<Na
         guard();
         const id = runtime.begin();
         owned.runtime = runtime; owned.id = id;
-        const { bytes, noteCount, createdAt } = await runtime.exportEncrypted(id, walletPassword, backupPassword);
+        const { bytes, noteCount, createdAt } = await runtime.exportEncrypted(id, backupPassword);
         output = bytes;
         guard();
         owned.encrypted = bytes; output = undefined;

@@ -12,6 +12,7 @@ import type {
   IPrivateVaultRestorePlan,
   IPrivateVaultSession,
 } from './privateVault.ts';
+import type { WalletAuthentication } from '../shared/walletAuthentication.ts';
 
 export const NOTE_BACKUP_PREVIEW_TTL_MS = 300_000;
 export type NoteBackupServiceErrorCode =
@@ -81,12 +82,12 @@ export interface INoteBackupService {
   cancel: (id: string) => void;
   commitImport: (
     id: string,
-    walletPassword: string
+    walletPassword: WalletAuthentication
   ) => Promise<Readonly<INoteBackupConfirmation>>;
   dispose: () => void;
   exportEncrypted: (
     id: string,
-    walletPassword: string,
+    walletPassword: WalletAuthentication,
     backupPassword: string
   ) => Promise<Readonly<INoteBackupExport>>;
   prepareImport: (

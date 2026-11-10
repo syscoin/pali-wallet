@@ -44,7 +44,6 @@ import type {
 } from '../../../source/wallet/sentryCryptoJobs.ts';
 import { qualifyNativeSentryApprovals } from '../qualification/native-sentry-approvals.ts';
 
-const PASSWORD = 'Public approval fixture password 1!';
 const SEED =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const scalar = (n: number) => n.toString(16).padStart(64, '0');
@@ -201,9 +200,10 @@ async function fixture() {
   });
   let walletAuthority: NativeSentryWalletAuthority = {
     has: async () => false,
-    resolve: async () => undefined,
+    prepare: async () => undefined,
     owns: async () => false,
   };
+  let privateAccount: string | null = null;
   const adapter = () =>
     createNativeSentryApprovals({
       assertCurrent: check,
@@ -227,12 +227,12 @@ async function fixture() {
         serviceUrl: service,
         maxFeeSatoshis: '10000',
       }),
-      async readSeed(password, assertCurrent) {
+      isAuthenticating: () => false,
+      async withSigningMaterial(request, work) {
         check();
-        assertCurrent();
+        request.assertCurrent();
         authentications++;
-        if (password !== PASSWORD) throw new Error('INVALID_CREDENTIAL');
-        return SEED;
+        return work(SEED, privateAccount);
       },
       run: async (operation) => {
         check();
@@ -251,7 +251,7 @@ async function fixture() {
       },
       walletAuthority: {
         has: (address) => walletAuthority.has(address),
-        resolve: (params, purpose) => walletAuthority.resolve(params, purpose),
+        prepare: (address, purpose) => walletAuthority.prepare(address, purpose),
         owns: (outpoint) => walletAuthority.owns(outpoint),
       },
     });
@@ -291,6 +291,7 @@ async function fixture() {
     setAuthority: (authority: typeof walletAuthority) => {
       walletAuthority = authority;
     },
+    setPrivateAccount(value: string) { privateAccount = value; },
     retire: () => {
       live = false;
     },
@@ -312,7 +313,7 @@ test('real encrypted voting key signs the reviewed proposal; public facade and r
     assert.equal(approval.missingVotingKeys.length, 0);
     assert(Object.isFrozen(approval.request.nodes[0]));
     assert.equal('host' in manager.votes, false);
-    const result = await manager.votes.sign({ id, password: PASSWORD });
+    const result = await manager.votes.sign({ id });
     assert.equal(result.votes.length, 1);
     assert(
       await verifySentryGovernanceVote(
@@ -345,11 +346,7 @@ test('real BLS service authorization and secp management use the same SDK review
     const id = await manager.operations.prepare(f.request, 'https://dapp.test', () => undefined, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const approval = manager.operations.getApproval(id);
     assert.equal(approval.keys[0]!.scheme, 'bls-basic');
-    const result = await manager.operations.sign({
-      id,
-      keyId: approval.keys[0]!.id,
-      password: PASSWORD,
-    });
+    const result = await manager.operations.sign({ id, keyId: approval.keys[0]!.id });
 manager.operations.publishFeeAuthorization(id);
     assert(
       await verifySentryOperation(
@@ -382,12 +379,7 @@ manager.operations.publishFeeAuthorization(id);
     const key = manager.operations
       .getApproval(managementId)
       .keys.find((item) => item.role === 'owner')!;
-    const signed = await manager.operations.sign({
-      id: managementId,
-      keyId: key.id,
-      authorizationId: key.authorizationId,
-      password: PASSWORD,
-    });
+    const signed = await manager.operations.sign({ id: managementId, keyId: key.id, authorizationId: key.authorizationId });
 manager.operations.publishFeeAuthorization(managementId);
     assert(
       await verifySentryManagementOperation(
@@ -433,7 +425,7 @@ test('fresh proposal, node, service or selected owner changes cannot release an 
       if (change === 'scope') f.retire();
       if (change === 'cancel') manager.votes.cancel(id);
       await assert.rejects(async () =>
-        manager.votes.sign({ id, password: PASSWORD })
+        manager.votes.sign({ id })
       );
       assert.equal(f.counts().signatures, 0, change);
       assert.equal(f.counts().posts, 0, change);
@@ -459,7 +451,7 @@ test('cancellation drains a started real SDK signature and withholds its late re
       return result as never;
     });
     let settled = false;
-    const pending = manager.votes.sign({ id, password: PASSWORD });
+    const pending = manager.votes.sign({ id });
     const refused = assert.rejects(
       pending.finally(() => {
         settled = true;
@@ -488,7 +480,7 @@ test('governance authorization preserves the existing collateral admission seman
         f.collateral.scope
       );
     const id = await manager.votes.prepare(f.voteRequest, 'https://dapp.test', () => undefined, { assertCurrent: () => undefined, signal: new AbortController().signal });
-    await manager.votes.sign({ id, password: PASSWORD });
+    await manager.votes.sign({ id });
     await f.collateral.registry.reserveSentryCollateral({
       ...f.collateral.scope,
       admission,
@@ -542,13 +534,9 @@ test('selected imported software WIF votes through the shared authority matcher,
     readJson: async () => {
       throw new Error('Single WIF does not disclose an account key');
     },
-    async readPrivateAccount(password, check) {
-      check();
-      assert.equal(password, PASSWORD);
-      return pair.toWIF();
-    },
   });
   f.setAuthority(authority);
+  f.setPrivateAccount(pair.toWIF());
   const manager = f.adapter();
   try {
     const id = await manager.votes.prepare(f.voteRequest, 'https://dapp.test', () => undefined, { assertCurrent: () => undefined, signal: new AbortController().signal });
@@ -556,7 +544,7 @@ test('selected imported software WIF votes through the shared authority matcher,
       manager.votes.getApproval(id).nodes[0]!.keyId,
       'wallet-voting'
     );
-    const result = await manager.votes.sign({ id, password: PASSWORD });
+    const result = await manager.votes.sign({ id });
     assert(
       await verifySentryGovernanceVote(
         f.voteRequest,
@@ -723,7 +711,7 @@ test('native published fee authority outlives only its parent wire and refuses a
   const assertGrant = () => { if (grant !== captured) throw new Error('GRANT_CHANGED'); };
   try {
     const id = await manager.operations.prepare(f.request, 'https://dapp.test', assertGrant, { assertCurrent: current, signal: parent.signal });
-    const response = await manager.operations.sign({ id, keyId: manager.operations.getApproval(id).keys[0]!.id, password: PASSWORD });
+    const response = await manager.operations.sign({ id, keyId: manager.operations.getApproval(id).keys[0]!.id });
     assert.throws(() => manager.operations.prepareFeePsbt(response.transactionHex, 'https://dapp.test'));
     manager.operations.publishFeeAuthorization(id);
     parent.abort(); manager.operations.cancel(id);

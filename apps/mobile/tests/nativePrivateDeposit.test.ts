@@ -687,7 +687,7 @@ test('an imported EVM private key signs the exact native private-deposit review'
   const signer = new Wallet(key);
   let operation: Awaited<ReturnType<NonNullable<KeyringRuntime['openPrivateDeposit']>>> | undefined;
   try {
-    await f.runtime.imports!.reserve({ privateKey: key, label: 'Imported', expectedAddress: signer.address }, PASSWORD, f.runtime.catalogue.getSnapshot()!.revision).execute(noop);
+    await f.runtime.imports!.reserve({ privateKey: key, label: 'Imported', expectedAddress: signer.address }, f.runtime.catalogue.getSnapshot()!.revision, new AbortController().signal, createTestPrivateAuthentication(noop)).execute(noop);
     await f.select('imported:60:0');
     operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
     await operation.prepare({ poolId: 'eth-1' });

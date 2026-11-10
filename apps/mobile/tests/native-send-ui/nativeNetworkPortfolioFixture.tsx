@@ -72,6 +72,6 @@ window.__nativeNetworkPortfolio = { reads: () => [...reads], sends: () => sends,
 export function NativeNetworkPortfolioFixture() {
   const [view, setView] = useState<'portfolio' | 'networks'>('portfolio');
   return view === 'networks' ? <NativeNetworks controller={networks} onBack={() => setView('portfolio')} /> :
-    <NativePortfolio source={authority} reader={reader} onManageNetworks={() => setView('networks')}
+    <NativePortfolio source={authority} reader={reader} onManageNetworks={() => setView('networks')} onChangeReceiveNetwork={() => setView('networks')}
       onSend={() => { sends++; }} onExit={() => undefined} onLock={() => undefined} onViewRecovery={() => undefined} />;
 }

@@ -127,7 +127,7 @@ function fixture(kind: 'deposit' | 'withdrawal') {
       confirm: () => model.confirm('review'),
       refresh: () => model.refresh(),
       loadRelayers: () => model.loadRelayers(),
-      reviewRestored: () => model.reviewRestored('password'),
+      reviewRestored: () => model.reviewRestored(),
     } as Partial<Record<Operation, () => Promise<void>>>,
   };
 }

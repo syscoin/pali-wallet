@@ -80,11 +80,11 @@ async function nativeFixture(phrase = PHRASE) {
     const decoded = await Promise.all(rows.map(async row => ({ key: row.key, value: await saved.keyringStorage.get(row.key) })));
     return readNativeSlhPublicStates(decoded, ring, check);
   };
-  const authorize = async (purpose: 'setup' | 'sign', accountIndex: number | null, signal: AbortSignal, check: () => void): Promise<NativeSlhActionSecrets> => {
+  const authorize = async <T>(purpose: 'setup' | 'sign', accountIndex: number | null, signal: AbortSignal, check: () => void, work: (secrets: NativeSlhActionSecrets) => Promise<T>): Promise<T> => {
     check(); if (signal.aborted) throw Error('SLH_DSA_EXECUTION_RETIRED');
     const setup = purpose === 'setup' ? await boundKeyring.deriveSLHDSASetupSecretForAccount({ accountIndex: accountIndex! }) : null;
     check(); if (signal.aborted) throw Error('SLH_DSA_EXECUTION_RETIRED');
-    return { setup, crypto: boundKeyring, dispose() {} };
+    return work({ setup, crypto: boundKeyring, dispose() {} });
   };
   const openExecution: NativeSlhExecutionFactory = owner => {
     wallet(); assert.equal(owner.namespace, namespace); opened++;
@@ -417,10 +417,10 @@ test('cold SQLite and real SDK unlock recover the saved private record without d
     const namespace = await ring.getPrivateRecordProfileId(); assert.equal(namespace, f.namespace);
     const check = ring.captureUnlockedSessionGuard();
     hydrated = createNativeSlhDsaRuntime({ namespace, publicStates: await f.readPublicStates(ring, reopened, check),
-      async authorize(purpose, accountIndex, signal, guard) {
+      async authorize(purpose, accountIndex, signal, guard, work) {
         check(); guard(); if (signal.aborted) throw Error('SLH_DSA_EXECUTION_RETIRED');
         const setup = purpose === 'setup' ? await ring.deriveSLHDSASetupSecretForAccount({ accountIndex: accountIndex! }) : null;
-        return { setup, crypto: ring, dispose() {} };
+        return work({ setup, crypto: ring, dispose() {} });
       }, storage: reopened.keyringStorage,
       assertCurrent: check, openExecution() { throw Error('hydration must not rederive or start native crypto'); },
       onStorageFault() { throw Error('unexpected cold storage fault'); }, now: Date.now,

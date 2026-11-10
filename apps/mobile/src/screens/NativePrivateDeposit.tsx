@@ -119,7 +119,7 @@ export function NativePrivateDeposit({
       (controller) => {
         current.controller = controller;
         if (current.live && AppState.currentState === 'active') setOpened({ source: open, controller });
-        else { current.live = false; current.authentication.retire(); current.abort.abort(); void controller.dispose().catch(() => undefined); }
+        else { current.live = false; current.authentication.retire(); current.abort.abort(); return controller.dispose().catch(() => undefined); }
       },
       () => {
         if (current.live && AppState.currentState === 'active') setOpened({ source: open, failed: true });

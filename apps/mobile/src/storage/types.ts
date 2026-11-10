@@ -145,6 +145,9 @@ export interface OpenWalletStorage {
     recordSuccess(): Promise<void>;
   }>;
   readonly removal?: Readonly<{
+    /** Finish an acknowledged removal's exact protected PIN alias before any
+     * ordinary storage access. The durable receipt survives failed cleanup. */
+    settlePinCredential(remove: (record: NativePinRecord) => Promise<void>): Promise<void>;
     /** Trusted host only, after fresh authentication and explicit confirmation.
      * The one-use snapshot must come from this owner after authentication.
      * The synchronous guard binds the exact retired custody generation. */
@@ -163,6 +166,7 @@ export interface OpenWalletStorage {
         vault: unknown;
         keys: unknown;
         accountRecords: unknown;
+        publicSession: unknown;
         pin: NativePinRecord;
       }>,
       root: RecoveryRoot
@@ -173,6 +177,7 @@ export interface OpenWalletStorage {
     bindIdentity(expectedPairFingerprint: string, root: RecoveryRoot, assertCurrent: () => void): Promise<void>;
     prepareReplacement?(snapshot: RecoveryStorageSnapshot, pair: Readonly<{ vault: unknown; keys: unknown; pin: NativePinRecord;
         accountRecords?: unknown;
+        publicSession: unknown;
       }>, root: RecoveryRoot): Promise<RecoveryWritePlan>;
     plannedSnapshot?(plan: RecoveryWritePlan): RecoveryStorageSnapshot;
     commitReplacement?(plan: unknown, assertCurrent: () => void): Promise<void>;

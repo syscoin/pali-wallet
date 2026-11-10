@@ -21,7 +21,6 @@ import type { NativePrivateWithdrawalView as WithdrawalView } from '../custody/p
 import { formatBaseUnits } from '../core/amounts';
 import { Button, Card, colors, Header, Screen, styles, Text } from '../ui';
 import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
-import { PinField } from './PinEntry';
 import { createNativePrivateAuthenticationChild, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
@@ -100,7 +99,7 @@ export function NativePrivateWithdrawal({ note, open, onBack, authentication }: 
       (controller) => {
         current.controller = controller;
         if (current.live && AppState.currentState === 'active') setOpened({ source: open, controller });
-        else { current.live = false; current.abort.abort(); void controller.dispose().catch(() => undefined); }
+        else { current.live = false; current.abort.abort(); return controller.dispose().catch(() => undefined); }
       },
       () => {
         if (current.live && AppState.currentState === 'active') setOpened({ source: open, failed: true });
@@ -174,13 +173,8 @@ function WithdrawalContent({
   note: NativeSavedNote;
   onBack(): void;
 }) {
-  const [password, setPassword] = useState('');
   const subscribe = useCallback(
-    (notify: () => void) =>
-      controller.subscribe(() => {
-        setPassword('');
-        notify();
-      }),
+    (notify: () => void) => controller.subscribe(notify),
     [controller]
   );
   const state = useSyncExternalStore(
@@ -222,7 +216,6 @@ function WithdrawalContent({
     if (!review) return;
     const timer = setTimeout(() => {
       setExpired(review.intentId);
-      setPassword('');
     }, Math.max(0, review.expiresAt - Date.now()));
     return () => clearTimeout(timer);
   }, [review]);
@@ -286,11 +279,9 @@ function WithdrawalContent({
     }
   };
   const reviewRestored = () => {
-    if (busy || !password) return;
-    const entered = password;
-    setPassword('');
+    if (busy) return;
     Keyboard.dismiss();
-    void controller.reviewRestored(entered).catch(() => undefined);
+    void controller.reviewRestored().catch(() => undefined);
   };
   const title = submitted
     ? spent
@@ -317,7 +308,7 @@ function WithdrawalContent({
       : state.error === 'verification'
       ? 'Check the pool data before preparing this withdrawal.'
       : state.error === 'restored'
-      ? 'Could not review this restored note. Confirm your PIN and try again.'
+      ? 'Could not review this restored note. Try again.'
       : state.error === 'unavailable'
       ? 'This withdrawal is unavailable in the current account or network.'
       : state.error === 'failed'
@@ -329,7 +320,7 @@ function WithdrawalContent({
   ) : state.restored ? (
     <Button
       title={busy ? 'Reviewing note…' : 'Review restored note'}
-      disabled={busy || !password}
+      disabled={busy}
       onPress={reviewRestored}
     />
   ) : showReview ? (
@@ -388,12 +379,6 @@ function WithdrawalContent({
               <Text style={styles.muted}>
                 Review this restored note before withdrawing.
               </Text>
-              <PinField
-                label="Confirm your wallet PIN"
-                value={password}
-                onChange={setPassword}
-                busy={busy}
-              />
             </>
           ) : !showReview && !submitted ? (
             <>

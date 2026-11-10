@@ -1,3 +1,4 @@
+import { storageOnlyPublicSession } from './fixtures/publicSessionRecord.ts';
 import { createTestPinRecord } from './fixtures/pinRecord.ts';
 import assert from 'node:assert/strict';
 import { createHash, webcrypto } from 'node:crypto';
@@ -549,7 +550,7 @@ test('scoped slots reject swaps and preserve both encrypted buckets through matc
     update.run(testRaw, slot('testnet'));
 
     const candidate = validPair(2);
-    const pair = { vault: candidate.vault, keys: candidate['vault-keys'], pin: await createTestPinRecord(f.storage, { vault: candidate.vault, keys: candidate['vault-keys'] }, (await f.storage.recovery.readIdentity())!.walletBindingId) };
+    const pair = { publicSession: storageOnlyPublicSession((await f.storage.recovery.readIdentity())!.walletBindingId), vault: candidate.vault, keys: candidate['vault-keys'], pin: await createTestPinRecord(f.storage, { vault: candidate.vault, keys: candidate['vault-keys'] }, (await f.storage.recovery.readIdentity())!.walletBindingId) };
     const foreign = await f.storage.recovery.readSnapshot();
     await assert.rejects(
       f.storage.recovery.prepareReplacement!(foreign, pair, makeRoot('2')),

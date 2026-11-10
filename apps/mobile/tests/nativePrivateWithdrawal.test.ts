@@ -1,3 +1,5 @@
+import { prepareRecoveryPin } from './fixtures/recoveryPin.ts';
+import { OperationAuthentication } from '../src/core/operationAuthentication.ts';
 import { createTestPrivateAuthentication, readTestNoteInventory, testInventoryAuthentication } from './fixtures/privateAuthentication.ts';
 import { createPrivateVaultSession } from '../../../source/wallet/privateVault.ts';
 import { createTestPinRecordKeyring } from './fixtures/pinOperation.ts';
@@ -159,7 +161,23 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       headers: { 'content-type': 'application/json' },
     });
   };
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: { getOrigin: () => privacySettings.getOrigin(), changeOrigin: (...args) => privacySettings.changeOrigin(...args) }, slhExecution: null,
+  let refuseNextAuthorization = false;
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (request, signal, check, verify) => {
+    check();
+    if (!refuseNextAuthorization) {
+      const result = await verify({ method: 'pin', pin: PASSWORD }, check);
+      if (!result.accepted) throw Error(result.reason);
+      return;
+    }
+    refuseNextAuthorization = false;
+    const broker = new OperationAuthentication();
+    const detach = broker.attach(prompt => {
+      if (!prompt || prompt.busy) return;
+      queueMicrotask(() => prompt.error ? prompt.cancel() : prompt.confirm({ method: 'pin', pin: '000000' }));
+    });
+    try { await broker.request(request, signal, check, verify); }
+    finally { detach(); }
+  }, privacyServiceSettings: { getOrigin: () => privacySettings.getOrigin(), changeOrigin: (...args) => privacySettings.changeOrigin(...args) }, slhExecution: null,
     readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
@@ -307,6 +325,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       ] = true;
     },
     posted,
+    refuseNextAuthorization() { refuseNextAuthorization = true; },
     rpcMethods,
     relayedPosts,
     poolReads,
@@ -376,7 +395,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       const backup = await runtime.openNoteBackup!(noop, createTestPrivateAuthentication(noop));
       const id = backup.begin();
       await backup.prepareImport(id, bytes, backupPassword);
-      await backup.commitImport(id, PASSWORD);
+      await backup.commitImport(id);
       noteStatus = { phase: 'verified' };
       return readTestNoteInventory(runtime, noop);
     },
@@ -593,8 +612,9 @@ test('imported EVM payer withdraws a saved note through the normal selected-key 
           label: 'Withdrawal payer',
           expectedAddress: signer.address,
         },
-        PASSWORD,
-        f.runtime.catalogue.getSnapshot()!.revision
+        f.runtime.catalogue.getSnapshot()!.revision,
+        new AbortController().signal,
+        createTestPrivateAuthentication(noop)
       )
       .execute(noop);
     const inventory = await readTestNoteInventory(f.runtime, noop);
@@ -629,7 +649,7 @@ test('restored note requires explicit authenticated review before fresh withdraw
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     assert.equal(model.getSnapshot().error, 'restored');
     assert.equal(f.proofs, 0);
-    await model.reviewRestored(PASSWORD);
+    await model.reviewRestored();
     assert.equal(model.getSnapshot().restored, false);
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     assert.equal(model.getSnapshot().phase, 'review');
@@ -983,9 +1003,10 @@ test('native failed-withdrawal recovery authenticates, preserves the original jo
     const [before] = await f.privateNotes(); assert(before?.withdrawal);
     const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop, createTestPrivateAuthentication(noop));
     assert((await maintenance.getNotes(noop)).notes[0]!.withdrawal?.canCheckRecovery);
-    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id, PASSWORD + 'wrong', noop));
+    f.refuseNextAuthorization();
+    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id, noop));
     assert.equal((await f.privateNotes())[0]!.withdrawal?.recovery, undefined);
-    await maintenance.recoverFailedWithdrawal(before.id, PASSWORD, noop);
+    await maintenance.recoverFailedWithdrawal(before.id, noop);
     const [after] = await f.privateNotes(); assert(after?.withdrawal?.recovery);
     assert.equal(after.note, before.note); assert.equal(after.withdrawal.transactionHash, before.withdrawal.transactionHash);
     assert.equal(after.withdrawal.proofHash, before.withdrawal.proofHash); assert.equal(f.posted.length, 2);
@@ -1075,7 +1096,7 @@ for (const fault of ['release', 'quarantine-and-release'] as const) for (const r
     }
     const previousDisposals = f.disposed; f.failPoolCleanup();
     if (retirement === 'close') await assert.rejects(f.runtime.storage.close(), { code: 'CLEANUP_FAILED' });
-    await assert.rejects(recovery.prepare(PHRASE, '654321', noop).then(value => { proof = value; }), { code: 'UNAVAILABLE' });
+    await assert.rejects(prepareRecoveryPin(recovery, PHRASE, '654321', noop).then(value => { proof = value; }), { code: 'UNAVAILABLE' });
     assert.equal(proof, undefined); assert.equal(recoveryOpens, 0, 'failed retirement never grants a new storage/snapshot lease');
     await assert.rejects(f.runtime.storage.retireForRecovery!(), { code: 'CLEANUP_FAILED' });
     await assert.rejects(f.runtime.storage.close(), { code: 'CLEANUP_FAILED' });

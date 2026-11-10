@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { watchAccountName } from '../accountControlNames';
 
 const SYS = 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58';
 const BTC = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
@@ -55,10 +56,10 @@ test('SYS actual paste, full-address review, fixed scope, QR, copy/share and ren
   await page.screenshot({ path: testInfo.outputPath('sys-large-text-receive.png'), fullPage: true });
   await page.getByRole('button', { name: 'Back', exact: true }).click(); await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await expect(page.getByText('Watch-only · Syscoin Mainnet', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Rename SYS savings watch', exact: true }).click();
+  await page.getByRole('button', { name: watchAccountName('Rename', 'SYS savings watch', 'Syscoin Mainnet', SYS) }).click();
   await page.getByRole('textbox', { name: 'Watch account name', exact: true }).fill('Renamed SYS');
   await page.getByRole('button', { name: 'Save name', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Select Renamed SYS (watch-only)', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: watchAccountName('Select', 'Renamed SYS', 'Syscoin Mainnet', SYS) })).toBeVisible();
   const accounts = await page.evaluate(() => window.__watchFixture.accounts());
   expect(accounts).toHaveLength(1); expect(accounts[0]!.addresses).toEqual({ syscoin: SYS });
   await page.reload(); await page.getByRole('button', { name: 'View my accounts', exact: true }).click();

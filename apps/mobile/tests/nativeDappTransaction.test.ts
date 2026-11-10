@@ -1,3 +1,5 @@
+import { Interface } from 'ethers/abi';
+import type { ApprovalContractMetadata } from '../../../source/shared/approval.ts';
 import { createOwnedEvmFeeFunding, type EvmFeeFunding, NATIVE_EVM_FEE_FUNDING } from '../../../source/shared/evmFeeApproval.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,6 +18,8 @@ const network = getNativeNetwork('ethereum');
 function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance = '0x100000000000000', pendingHeader: 'normal' | 'null' | 'malformed' = 'normal') {
   let current = true, now = 1, estimate = 21_000, estimates = 0, signs = 0, broadcasts = 0;
   let signingHook = () => {};
+  let metadataReads = 0;
+  let metadataReader = async (_contract: string): Promise<ApprovalContractMetadata | undefined> => undefined;
   const nonceOverrides: (number | undefined)[] = [];
   const calls: { method: string; params: any[] }[] = [];
   const lifetime = new AbortController();
@@ -44,6 +48,7 @@ function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance 
   const sender = new NativeTransferRpc({ registration: network, fetch: fetcher });
   const prepare = (input: unknown) => prepareNativeConnectionTransaction(input, {
     funding, gasPolicy: { kind: 'estimate' }, network, rpc, planner, signal: lifetime.signal, assertCurrent: guard, now: () => now,
+    async readApprovalMetadata(contract, check) { metadataReads++; check(); const result = await metadataReader(contract); check(); return result; },
     async sign(transaction, assertCurrent) {
       assertCurrent(); signs++; signingHook(); assertCurrent();
       const rawTransaction = await wallet.signTransaction(Transaction.from(serializePreparedEvmTransaction(transaction)));
@@ -59,6 +64,7 @@ function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance 
   return { prepare, calls, nonceOverrides, guard, retire() { current = false; lifetime.abort(); },
     expire() { now += 90_000; }, increaseEstimate() { estimate = 40_000; },
     onSign(hook: () => void) { signingHook = hook; },
+    setMetadataReader(read: typeof metadataReader) { metadataReader = read; }, get metadataReads() { return metadataReads; },
     get signs() { return signs; }, get broadcasts() { return broadcasts; }, get estimates() { return estimates; } };
 }
 
@@ -164,4 +170,32 @@ test('null pending block uses canonical fee bounds while malformed pending data 
   const malformed = fixture(NATIVE_EVM_FEE_FUNDING, '0x100000000000000', 'malformed');
   await assert.rejects(malformed.prepare({ from: wallet.address, to: recipient }), { code: 'INVALID_RESPONSE' });
   assert.equal(malformed.signs, 0);
+});
+
+test('recognized asset call obtains bound display metadata without signing', async () => {
+  const f = fixture();
+  const iface = new Interface(['function transfer(address,uint256)']);
+  f.setMetadataReader(async contract => {
+    assert.equal(contract.toLowerCase(), recipient.toLowerCase());
+    return { standard: 'ERC-20', token: { contractAddress: contract, name: 'USD token', symbol: 'USD', decimals: 6 } };
+  });
+  const intended = `0x${'33'.repeat(20)}`;
+  const review = await f.prepare({ from: wallet.address, to: recipient, data: iface.encodeFunctionData('transfer', [intended, 2500000]) });
+  assert.equal(review.assetTransfer?.recipient.toLowerCase(), intended.toLowerCase());
+  assert.equal(review.assetTransfer?.items[0]?.units, '2500000');
+  assert.equal(review.assetTransfer?.token?.decimals, 6);
+  assert.equal(f.metadataReads, 1); assert.equal(f.signs, 0); assert.equal(f.broadcasts, 0);
+});
+
+test('metadata arriving after owner retirement cannot publish an asset review', async () => {
+  const f = fixture();
+  const iface = new Interface(['function transfer(address,uint256)']);
+  f.setMetadataReader(async () => { f.retire(); return undefined; });
+  await assert.rejects(f.prepare({ from: wallet.address, to: recipient, data: iface.encodeFunctionData('transfer', [recipient, 1]) }));
+  assert.equal(f.metadataReads, 1); assert.equal(f.signs, 0); assert.equal(f.broadcasts, 0);
+});
+
+test('ordinary native transfer does not request token metadata', async () => {
+  const f = fixture(); await f.prepare({ from: wallet.address, to: recipient, value: '0x1' });
+  assert.equal(f.metadataReads, 0);
 });

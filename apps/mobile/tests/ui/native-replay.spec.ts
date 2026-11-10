@@ -77,6 +77,9 @@ test('checking an earlier collectible keeps the displayed hash', async ({ page }
   await expect(page.getByRole('button', { name: 'Resend signed transaction' })).toBeVisible();
   await expect(page.getByTestId('native-send-collectible-id')).toHaveText('0');
   await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByText('Wallet closed', { exact: true })).toBeVisible();
+  // The production parent returns to Activity. Reopen its status-only route with the exact selected hash.
+  await page.goto(`/?erc20-send&inspect=${first}`);
   const hash = page.getByTestId('native-send-hash');
   await expect(hash).toHaveText(first);
   await expect(page.getByRole('button', { name: 'Review retry' })).toBeVisible();

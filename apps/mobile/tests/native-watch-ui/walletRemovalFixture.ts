@@ -68,6 +68,7 @@ export function createWalletRemovalFixture(
 ) {
   let dispatched: Result | undefined;
   const storage = storagePort(() => before, {
+    async settlePinCredential() {},
     async commit(snapshot, guard) {
       guard();
       if (snapshot !== before || owner.getSnapshot().phase !== 'disposed') throw Error('Unexpected removal admission');
@@ -92,7 +93,7 @@ export function createWalletRemovalFixture(
       guard();
       await beforeSnapshot(guard);
       guard();
-      return { snapshot: before, assertCurrent: guard, async purgePublicCaches(check) { check(); } };
+      return { snapshot: before, assertCurrent: guard, async purgePublicCaches(check) { check(); }, removePinCredential: unavailable };
     },
   };
   const flow = new NativeWalletRemoval({
@@ -102,7 +103,7 @@ export function createWalletRemovalFixture(
     async reopen(expected) {
       audit.reopens++;
       if (expected !== installation || dispatched === 'unconfirmed') throw Error('Synthetic verification failure');
-      return storagePort(() => dispatched === 'removed' ? empty : before);
+      return storagePort(() => dispatched === 'removed' ? empty : before, { commit: unavailable, async settlePinCredential() {} });
     },
     clearNativeSelection: clearNativeAccountSelection,
     assertActive() {},

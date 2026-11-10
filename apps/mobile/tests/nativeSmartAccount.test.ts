@@ -1,3 +1,5 @@
+import { prepareRecoveryPin } from './fixtures/recoveryPin.ts';
+import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
 import { createTestPinRecordKeyring } from './fixtures/pinOperation.ts';
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import { normalizeSmartAccountModuleRequest } from '../../../source/shared/smartAccountModuleRequest.ts';
@@ -356,6 +358,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   return {
     slhDerivations,
     assertNoSigningKeys() { for (const instance of sdkInstances) assert.equal(instance.isUnlocked(), false); },
+    assertOneSigningOperation() { assert.equal(sdkInstances.filter(instance => instance.isUnlocked()).length, 1); },
     mutateLedgerOwner(index: number, mutate: (account: IKeyringAccountState) => void) {assert(mutateLedgerOwner); mutateLedgerOwner(index, mutate);},
     mutateSelectedSmart(mutate: (account: IKeyringAccountState) => void) { assert(mutateSelectedSmart); mutateSelectedSmart(mutate); },
     installSlh() { assert(installSlh); installSlh(); },
@@ -419,7 +422,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
       const recovery = new NativeRecoveryCoordinator({ pinCredential, owner, async retireControllers() {},
         ensureCryptoReady: async () => undefined, openStorage });
       try {
-        const proof = await recovery.prepare(PHRASE, password, () => undefined);
+        const proof = await prepareRecoveryPin(recovery, PHRASE, password, () => undefined);
         assert.equal(await recovery.commit(proof), 'committed-locked');
         currentPin = password;
       } finally { await recovery.dispose(); }
@@ -1914,7 +1917,7 @@ test('owned Smart metadata refresh commits shared observations and survives auth
   try {
     const privateKey = '0x' + '02'.repeat(32);
     await f.owner.importAccount({ privateKey, label: 'Independent imported key', expectedAddress: importedKeyIdentity(privateKey, 0).address },
-      PASSWORD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+      f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision, new AbortController().signal, createTestPrivateAuthentication(() => undefined));
     await f.change({ kind: 'create-smart', label: 'Guardian account',});
     const before = (await f.inspectRecovery()).record;
     const accountBefore = savedSmartAccount(before);
@@ -2392,7 +2395,7 @@ for (const delayedMetadata of [false, true]) test(`native guardian recovery pers
   try {
     const privateKey = '0x' + '02'.repeat(32);
     await f.owner.importAccount({ privateKey, label: 'Replacement', expectedAddress: importedKeyIdentity(privateKey, 0).address },
-      PASSWORD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+      f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision, new AbortController().signal, createTestPrivateAuthentication(() => undefined));
     await f.change({ kind: 'create-smart', label: 'Recoverable account',});
     const accounts = f.owner.getCatalogue()!.accounts;
     const guardian = accounts.find(account => account.id === 'hd:60:0')!;
@@ -2450,7 +2453,7 @@ async function startNativeRecovery() {
   const f = await fixture({}, true);
   const privateKey = '0x' + '03'.repeat(32);
   await f.owner.importAccount({ privateKey, label: 'Recovery replacement', expectedAddress: importedKeyIdentity(privateKey, 0).address },
-    PASSWORD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+    f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision, new AbortController().signal, createTestPrivateAuthentication(() => undefined));
   await f.change({ kind: 'create-smart', label: 'Recovery target',});
   const guardian = f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!;
   const replacement = f.owner.getCatalogue()!.accounts.find(account => account.type === 'Imported')!;
@@ -2464,7 +2467,7 @@ async function smartGuardianRecoveryFixture(composite = false, hooks: { before?:
   try {
     const privateKey = '0x' + '04'.repeat(32);
     await f.owner.importAccount({ privateKey, label: 'Smart guardian replacement', expectedAddress: importedKeyIdentity(privateKey, 0).address },
-      PASSWORD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+      f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision, new AbortController().signal, createTestPrivateAuthentication(() => undefined));
     await f.change({ kind: 'create-smart', label: 'Smart guardian',});
     const guardian = f.owner.getCatalogue()!.accounts.find(account => account.id === 'smart:60:0')!;
     await f.change({ kind: 'create', label: 'Separate recovery payer',});
@@ -3255,10 +3258,10 @@ function slhSmartBackend(onRetire: () => Promise<void> = async () => undefined) 
   const roots = new WeakMap<NativeSlhTree, Uint8Array>(), cached = new Map<string, Uint8Array>();
   const actions: string[] = [];
   let opened = 0, closed = 0, setups = 0, cacheLoads = 0;
-  let assertPublic: () => void = () => undefined;
+  let assertOperation: () => void = () => undefined;
   const capability: NativeSlhExecutionCapability = {
     open(owner) {
-      assertPublic();
+      assertOperation();
       owner.assertCurrent();
       opened++;
       let retired = false;
@@ -3270,10 +3273,10 @@ function slhSmartBackend(onRetire: () => Promise<void> = async () => undefined) 
         writeTree() { throw Error('No parallel leaf lane'); },
         async loadTree(keyId) { if (!cached.has(keyId)) return null; cacheLoads++; const value = tree(); roots.set(value, cached.get(keyId)!.slice()); return { tree: value, keyId, bytes: 134217712 }; },
         async saveTree(keyId, value) { cached.set(keyId, roots.get(value)!.slice()); },
-        openSetup() { assertPublic(); setups++; return { buildChunk: (_value, _level, _start, count) => { assertPublic(); return count; }, dispose() {} }; },
+        openSetup() { assertOperation(); setups++; return { buildChunk: (_value, _level, _start, count) => { assertOperation(); return count; }, dispose() {} }; },
         createLeafLanes() { throw Error('No parallel leaf lane'); },
         importKey() { return { destroy() {} }; }, releaseKey: value => value.destroy(),
-        signPrelude(_key, message) { assertPublic(); assert.deepEqual([...message.subarray(0, 2)], [0, 0]); actions.push(hexlify(message.subarray(2))); return new Uint8Array(46); },
+        signPrelude(_key, message) { assertOperation(); assert.deepEqual([...message.subarray(0, 2)], [0, 0]); actions.push(hexlify(message.subarray(2))); return new Uint8Array(46); },
         async signForsTree(_key, _prefix, treeIndex) { return { treeIndex, shard: new Uint8Array(416) }; },
         finishSignature() { return new Uint8Array(3856).fill(9); },
         signCached() { throw Error('No fallback expected'); },
@@ -3284,7 +3287,7 @@ function slhSmartBackend(onRetire: () => Promise<void> = async () => undefined) 
     },
     async purgePublicCache(_namespace, check) { check(); cached.clear(); },
   };
-  return { capability, actions, get opened() { return opened; }, get active() { return opened - closed; }, get setups() { return setups; }, get cacheLoads() { return cacheLoads; }, checkPublic(check: () => void) { assertPublic = check; }, forgetCache() { cached.clear(); } };
+  return { capability, actions, get opened() { return opened; }, get active() { return opened - closed; }, get setups() { return setups; }, get cacheLoads() { return cacheLoads; }, checkOperation(check: () => void) { assertOperation = check; }, forgetCache() { cached.clear(); } };
 }
 async function provisionSlhSmart(f: Awaited<ReturnType<typeof fixture>>) {
   await f.change({ kind: 'create-smart', label: 'Owned SLH signer',});
@@ -3297,12 +3300,14 @@ async function provisionSlhSmart(f: Awaited<ReturnType<typeof fixture>>) {
 
 test('prepared uninstalled SLH status survives cold unlock without rederivation or native execution', async () => {
   const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability);
-  backend.checkPublic(() => f.assertNoSigningKeys());
+  backend.checkOperation(() => f.assertOneSigningOperation());
+  f.assertNoSigningKeys();
   try {
     await f.change({ kind: 'create-smart', label: 'Prepared signer',});
     let facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
     const key = await facade.prepareFresh(() => undefined);
     assert.equal(backend.active, 0, 'setup releases its native context before returning');
+    f.assertNoSigningKeys();
     const row = await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId));
     assert.deepEqual(await facade.readPrepared(), [key]);
     assert.equal(f.runtime.canManageSlhDsa(), true); assert.equal(f.runtime.canSignSmartAccount(), true);
@@ -3311,6 +3316,7 @@ test('prepared uninstalled SLH status survives cold unlock without rederivation 
     facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
     assert.deepEqual(await facade.readPrepared(), [key]);
     assert.equal(backend.opened, opened, 'status must not create a native context');
+    f.assertNoSigningKeys();
     assert.deepEqual(f.slhDerivations, [0]);
     assert.deepEqual(await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId)), row);
     f.mutateSelectedSmart(account => { account.smartAccount!.descriptor!.accountIndex++; });
@@ -3321,7 +3327,8 @@ test('prepared uninstalled SLH status survives cold unlock without rederivation 
 
 test('SLH repeated signing and cold status retain only encrypted state and public metadata between actions', async () => {
   const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability);
-  backend.checkPublic(() => f.assertNoSigningKeys());
+  backend.checkOperation(() => f.assertOneSigningOperation());
+  f.assertNoSigningKeys();
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
   try {
     const key = await provisionSlhSmart(f);
@@ -3441,6 +3448,7 @@ test('healthy wallet lock waits for the captured SLH execution to drain', async 
     await entered.promise;
     await new Promise<void>(resolve => setImmediate(resolve));
     assert.equal(settled, false, 'healthy lock must retain the native drain barrier');
+    f.assertNoSigningKeys();
     await assert.rejects(f.runtime.session.readSelectedAddress(), /NOT_READY/);
     release.resolve(); await locked; await rejected;
     assert.equal(settled, true);

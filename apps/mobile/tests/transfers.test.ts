@@ -64,6 +64,9 @@ function fixture() {
   let authentications = 0;
   let locks = 0;
   let authenticationError: string | null = null;
+  let authenticationRefusal = false;
+  const authenticationRefusals = new WeakSet<object>();
+  const refusal = (code: string) => { const error = Error(code); authenticationRefusals.add(error); return error; };
   let authenticationGate: Promise<void> | null = null;
   let altered: 'value' | 'signer' | 'hash' | 'oversized' | 'noncanonical' | null = null;
   let signGate: Promise<void> | null = null;
@@ -104,13 +107,14 @@ function fixture() {
   const runtime = {
     authorizeOperation: operationAuthorization.authorizeOperation,
     releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
+    isAuthenticationRefusal(error: unknown) { return !!error && typeof error === 'object' && authenticationRefusals.has(error); },
     async authenticateOperation(credential: NativeOperationCredential, guard: () => void) {
       guard(); authentications++;
       if (!credential || credential.method === 'pin' && credential.pin !== OPERATION_CREDENTIAL.pin)
-        throw Error('INVALID_CREDENTIAL');
+        throw refusal('INVALID_CREDENTIAL');
       if (authenticationGate) await authenticationGate;
       guard();
-      if (authenticationError) throw Error(authenticationError);
+      if (authenticationError) throw authenticationRefusal ? refusal(authenticationError) : Error(authenticationError);
     },
     evmSubmissionFailure,
     async replacementOriginal(hash: string, mode: 'cancel' | 'speed-up', guard: () => void) {
@@ -259,7 +263,8 @@ function fixture() {
     signatures: () => signatures,
     authentications: () => authentications,
     locks: () => locks,
-    failAuthentication(code: string | null) { authenticationError = code; },
+    failAuthentication(code: string | null) { authenticationError = code; authenticationRefusal = false; },
+    refuseAuthentication(code: string) { authenticationError = code; authenticationRefusal = true; },
     holdAuthentication(promise: Promise<void>) { authenticationGate = promise; },
     tokenReadsAfterChange,
     holdPostJournalTokenRead(hook: () => Promise<void>) { postJournalTokenRead = hook; },
@@ -712,7 +717,7 @@ test('cancelled biometric confirmation permits password retry without signing fi
   const f = fixture();
   try {
     const approved = await review(f);
-    f.failAuthentication('DEVICE_UNLOCK_UNAVAILABLE');
+    f.refuseAuthentication('DEVICE_UNLOCK_UNAVAILABLE');
     await assert.rejects(f.transfers.confirm(approved.id, { method: 'biometric' }), { code: 'DEVICE_UNLOCK_UNAVAILABLE' });
     assert.strictEqual(f.transfers.getSnapshot().review, approved); assert.equal(f.signatures(), 0);
     f.failAuthentication(null);
@@ -742,12 +747,29 @@ for (const code of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED', 'DEVICE_UNLOCK_UNAVA
   test(`recognized ${code} authentication refusal keeps the exact review without locking`, async () => {
     const f = fixture();
     try {
-      const approved = await review(f); f.failAuthentication(code);
+      const approved = await review(f); f.refuseAuthentication(code);
       await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code });
       assert.equal(f.locks(), 0); assert.strictEqual(f.transfers.getSnapshot().review, approved);
       assert.equal(f.signatures(), 0); assert.equal(f.broadcasts.length, 0);
       f.failAuthentication(null); await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
       assert.equal(f.signatures(), 1); assert.equal(f.locks(), 0);
+    } finally { f.close(); }
+  });
+}
+
+for (const code of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED', 'DEVICE_UNLOCK_UNAVAILABLE'] as const) {
+  test(`unbranded ${code} cannot preserve a retryable review after authentication failure`, async () => {
+    const f = fixture();
+    try {
+      const approved = await review(f); f.failAuthentication(code);
+      await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'CANCELLED' });
+      assert.equal(f.locks(), 1);
+      assert.equal(f.source.getSnapshot().phase, 'locked');
+      assert.equal(f.transfers.getSnapshot().review, null);
+      assert.equal(f.signatures(), 0); assert.equal(f.broadcasts.length, 0);
+      assert.equal(Object.keys(f.records).length, 0);
+      await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL));
+      assert.equal(f.locks(), 1);
     } finally { f.close(); }
   });
 }

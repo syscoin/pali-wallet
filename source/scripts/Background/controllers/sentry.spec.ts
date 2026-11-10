@@ -262,7 +262,9 @@ beforeEach(() => {
   (chromeStorage.getItems as jest.Mock).mockResolvedValue({});
   (chromeStorage.setItem as jest.Mock).mockReset().mockResolvedValue(undefined);
   (listSentryKeys as jest.Mock).mockResolvedValue([summary]);
-  (loadSentryKey as jest.Mock).mockResolvedValue(imported);
+  (loadSentryKey as jest.Mock).mockImplementation(async () => ({
+    ...imported,
+  }));
   (saveSentryKey as jest.Mock).mockResolvedValue(summary);
   (saveSentryKeys as jest.Mock).mockResolvedValue([summary]);
   (runSentryCrypto as jest.Mock).mockResolvedValue({
@@ -485,6 +487,17 @@ it('invalidates pending approvals on account/network/session changes', async () 
 });
 
 it('authorizes once only after fresh unchanged state and local reauthentication', async () => {
+  let signingKey: typeof imported | undefined;
+  (runSentryCrypto as jest.Mock).mockImplementation(async (job, guard) => {
+    guard();
+    expect(job.type).toBe('sign');
+    signingKey = { ...job.key };
+    return {
+      version: 1,
+      operation: 'updateService',
+      transactionHex: 'signed-public-bytes',
+    };
+  });
   const id = await controller.prepare(request, 'https://dapp.test', {
     assertCurrent: () => undefined,
     signal: new AbortController().signal,
@@ -497,10 +510,16 @@ it('authorizes once only after fresh unchanged state and local reauthentication'
   controller.publishFeeAuthorization(id);
   expect(response.transactionHex).toBe('signed-public-bytes');
   expect(getSeed).toHaveBeenCalledWith('pw');
+  expect(getSeed).toHaveBeenCalledTimes(1);
+  expect(signingKey).toEqual(imported);
   expect(runSentryCrypto).toHaveBeenCalledWith(
-    expect.objectContaining({ type: 'sign', key: imported }),
+    expect.objectContaining({
+      type: 'sign',
+      key: { ...imported, secretKey: '' },
+    }),
     expect.any(Function)
   );
+  expect(runSentryCrypto).toHaveBeenCalledTimes(1);
   await expect(
     controller.sign({ id, keyId: summary.id, password: 'pw' })
   ).rejects.toThrow('expired');

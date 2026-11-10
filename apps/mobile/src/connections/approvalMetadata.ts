@@ -32,6 +32,7 @@ export async function readNativeApprovalMetadata(
       signal,
       check,
       async ({ call }) => {
+        const standards: ('ERC-721' | 'ERC-1155')[] = [];
         for (const [id, name] of [
           ['80ac58cd', 'ERC-721'],
           ['d9b67a26', 'ERC-1155'],
@@ -42,12 +43,13 @@ export async function readNativeApprovalMetadata(
             response.kind === 'result' &&
             response.data === `0x${'0'.repeat(63)}1`
           )
-            return name;
+            standards.push(name);
         }
-        return undefined;
+        return standards.length > 1 ? 'ambiguous' as const : standards[0];
       }
     );
     check();
+    if (standard === 'ambiguous') return undefined;
     if (standard) return Object.freeze({ standard });
   } catch {
     check();

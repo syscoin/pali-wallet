@@ -1,10 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeSentryAssent, NativeSentryReview as Review } from '../connections/sentryRequests';
 import type { NativeConnectionsView } from '../connections/types';
 import { Button, Card, colors, Header, Notice, Row, Screen, Text } from '../ui';
-import { PinField } from './PinEntry';
 import { DappSiteStatus } from './DappSiteStatus';
 
 function Field({ name, value }: { name: string; value: string }) {
@@ -14,14 +13,14 @@ function Field({ name, value }: { name: string; value: string }) {
 /** Render only the independently checked, public shared approval; no UI-authored signing payload. */
 export function NativeSentryReview({ review, controller }: { review: Review; controller: Pick<NativeConnectionsView, 'approveSentry' | 'rejectSentry'> }) {
   const identity = `${review.id}:${review.expiresAt}`;
-  const [credential, setCredential] = useState({ id: identity, approval: review.details, value: '' });
+  const currentReview = useRef(review);
+  useLayoutEffect(() => { currentReview.current = review; }, [review]);
   const [selection, setSelection] = useState({ id: identity, index: 0 });
   const [expiredReview, setExpiredReview] = useState<string | null>(null);
   const [pendingIdentity, setPendingIdentity] = useState<string | null>(null);
   const expired = expiredReview === identity, submitting = pendingIdentity === identity;
   const [error, setError] = useState('');
   const busy = useRef(false), alive = useRef(true), attempt = useRef<object | null>(null);
-  const password = credential.id === identity && credential.approval === review.details ? credential.value : '';
   const details = review.details;
   const [expandedReview, setExpandedReview] = useState<string | null>(null);
   const showDetails = expandedReview === identity;
@@ -30,31 +29,34 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
   const link = details?.kind === 'link' ? details.approval : null;
   const key = operation?.keys[selection.id === identity ? selection.index : 0];
   const title = link ? 'Link Sentry node' : vote ? 'Approve governance vote' : operation?.review.operation === 'updateService' ? 'Update node service' : operation?.review.operation === 'updateRegistrar' ? 'Update node registration' : 'Authorize Sentry update';
-  const fieldNames: Record<string, string> = { service: 'Service address', nevmAddress: 'NEVM address', operatorPayoutScript: 'Operator payout script' };
+  const fieldNames: Record<string, string> = { service: 'Service address', nevmAddress: 'NEVM address', operatorPayoutScript: 'Operator payout script',
+    payoutAddress: 'Proposed payout address', previousPayoutAddress: 'Current payout address',
+    ownerKeyId: 'Owner key ID', votingKeyId: 'Proposed voting key ID', previousVotingKeyId: 'Current voting key ID',
+    operatorPublicKey: 'Proposed operator public key', previousOperatorPublicKey: 'Current operator public key',
+    pqVotingPublicKey: 'Proposed post-quantum voting key', previousPQVotingPublicKey: 'Current post-quantum voting key',
+    pqOwnerPublicKey: 'Proposed post-quantum owner key', previousPQOwnerPublicKey: 'Current post-quantum owner key' };
+  const technicalField = (name: string) => ['globalKeyVersion', 'childKeyCommitment', 'collateralSigningMessage'].includes(name);
   const fieldName = (name: string) => fieldNames[name] ?? name.replace(/([A-Z])/g, ' $1');
   const unavailable = !details || !!review.error || expired;
-  const blocked = unavailable || review.busy || submitting || (details?.kind !== 'link' && !password) ||
+  const blocked = unavailable || review.busy || submitting ||
     !!operation && !key || !!vote && (!vote.nodes.length || !!vote.missingVotingKeys.length);
-  const reject = useCallback(() => { setCredential({ id: identity, approval: details, value: '' }); void controller.rejectSentry(review.id).catch(() => undefined); }, [controller, review.id, identity, details]);
+  const reject = useCallback(() => { if (currentReview.current === review) void controller.rejectSentry(review.id).catch(() => undefined); }, [controller, review]);
   useEffect(() => {
     alive.current = true; busy.current = false; attempt.current = null;
-    const clear = () => setCredential({ id: identity, approval: details, value: '' });
-    const timer = setTimeout(() => { clear(); setExpiredReview(identity); }, Math.max(0, review.expiresAt - Date.now()));
-    const app = AppState.addEventListener('change', state => { if (state !== 'active') clear(); });
+    const timer = setTimeout(() => { setExpiredReview(identity); }, Math.max(0, review.expiresAt - Date.now()));
     const back = BackHandler.addEventListener('hardwareBackPress', () => { reject(); return true; });
-    return () => { alive.current = false; attempt.current = null; clearTimeout(timer); app.remove(); back.remove(); };
+    return () => { alive.current = false; attempt.current = null; clearTimeout(timer); back.remove(); };
   }, [controller, review.id, review.expiresAt, details, identity, reject]);
   const approve = async () => {
-    if (blocked || busy.current || Date.now() >= review.expiresAt || AppState.currentState !== 'active' || !details) return;
+    if (currentReview.current !== review || blocked || busy.current || Date.now() >= review.expiresAt || AppState.currentState !== 'active' || !details) return;
     const ticket = {}; attempt.current = ticket;
     busy.current = true; setPendingIdentity(identity); setError(''); Keyboard.dismiss();
     const assent: NativeSentryAssent = details.kind === 'link' ? { kind: 'link' } : details.kind === 'vote'
-      ? { kind: 'vote', password } : { kind: 'operation', password, keyId: key!.id,
+      ? { kind: 'vote' } : { kind: 'operation', keyId: key!.id,
         ...(key!.authorizationId ? { authorizationId: key!.authorizationId } : {}) };
-    setCredential({ id: identity, approval: details, value: '' });
     try { await controller.approveSentry(review.id, review.revision, assent); }
-    catch { if (alive.current && attempt.current === ticket) setError('Could not authorize this request. Check your PIN and try again.'); }
-    finally { if (attempt.current === ticket) { attempt.current = null; busy.current = false; if (alive.current) setPendingIdentity(null); } }
+    catch { if (alive.current && currentReview.current === review && attempt.current === ticket) setError('Could not authorize this request. Try again.'); }
+    finally { if (attempt.current === ticket) { attempt.current = null; busy.current = false; if (alive.current && currentReview.current === review) setPendingIdentity(null); } }
   };
   return <SafeAreaView edges={['top', 'bottom']} style={s.root}>
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -80,23 +82,24 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
         <Text style={s.muted}>{operation.review.operation === 'updateService' ? 'Change the service information for this node using the selected authority key.' : 'Authorize the node changes shown below using the selected authority key.'}</Text>
         <Field name="Registered node" value={operation.review.proTxHash ?? 'New registration'} />
         {key && <><Field name="Authority" value={key.label} /><Text style={s.muted}>{key.role} · {key.scheme}</Text></>}
-        {'changes' in operation.review && Object.entries(operation.review.changes).filter(([name]) => !/script/i.test(name)).map(([name, change]) =>
-          <Card key={name} style={s.change}><Text style={s.title}>{fieldName(name)}</Text><Field name="Current" value={change.previous} /><Field name="Proposed" value={change.next || 'Not set'} /></Card>)}
+        {'changes' in operation.review ? Object.entries(operation.review.changes).map(([name, change]) =>
+          <Card key={name} style={s.change}><Text style={s.title}>{fieldName(name)}</Text><Field name="Current" value={change.previous} /><Field name="Proposed" value={change.next || 'Not set'} /></Card>) :
+          Object.entries(operation.review.fields).filter(([name]) => !technicalField(name)).map(([name, value]) =>
+            <Field key={name} name={fieldName(name)} value={value} />)}
         <Field name="Transaction fee" value={`${operation.review.feeSatoshis} satoshis`} />
       </Card>
       {!!operation.keys.length && <Card><Text style={s.keyHeading}>Choose authority key</Text>{operation.keys.map((item, index) => <Row
         key={`${item.id}:${item.authorizationId ?? ''}`} title={`${item.label} · ${item.authorizationId ?? item.role}`}
         subtitle={`${item.scheme}${key === item ? ' · Selected' : ''}`} onPress={review.busy ? undefined : () => {
-          setCredential({ id: identity, approval: details, value: '' }); setSelection({ id: identity, index });
+          setSelection({ id: identity, index });
         }} last={index === operation.keys.length - 1} />)}</Card>}
       {!operation.keys.length && <Notice title="Authority key unavailable" body="Import the matching node authority key in Sentry settings before approving this request." />}
       <Button title={showDetails ? 'Hide request details' : 'View request details'} variant="quiet" size="compact" expanded={showDetails} onPress={() => setExpandedReview(showDetails ? null : identity)} />
       {showDetails && <>
         <Card style={s.card}>
           <Field name="Operation" value={operation.review.operation} /><Field name="State source" value={operation.serviceUrl} />
-          {'changes' in operation.review ? Object.entries(operation.review.changes).filter(([name]) => /script/i.test(name)).map(([name, change]) =>
-            <Card key={name} style={s.change}><Text style={s.title}>{fieldName(name)}</Text><Field name="Current" value={change.previous} /><Field name="Proposed" value={change.next || 'Not set'} /></Card>) :
-            Object.entries(operation.review.fields).map(([name, value]) => <Field key={name} name={fieldName(name)} value={value} />)}
+          {'fields' in operation.review && Object.entries(operation.review.fields).filter(([name]) => technicalField(name)).map(([name, value]) =>
+            <Field key={name} name={fieldName(name)} value={value} />)}
           {'authorizations' in operation.review && operation.review.authorizations.map(auth => <Text key={auth.id}>{auth.id} · {auth.scheme} · {auth.signed ? 'Already signed' : 'Signature required'}</Text>)}
         </Card>
         <Card style={s.card}><Text style={s.title}>Fee transaction outputs</Text>
@@ -113,8 +116,6 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
       {vote.nodes.map(node => <Field key={node.proTxHash} name={node.keyLabel} value={node.proTxHash} />)}
       {!!vote.missingVotingKeys.length && <Notice title="Voting keys unavailable" body="Import the matching voting keys in Sentry settings before approving this request." />}
     </Card>}
-    {details && details.kind !== 'link' && <PinField key={`${identity}:${review.revision}`} label="Wallet PIN" value={password} onChange={value => setCredential({ id: identity, approval: details, value })}
-      busy={unavailable || review.busy || submitting} />}
     {!details && !review.error && <Text accessibilityLiveRegion="polite">Checking node state…</Text>}
     {review.error === 'BLOCKED_SITE' && !review.verification.isScam && <Notice title="Known security risk" body="Pali flagged this website. This request is blocked." />}
     {review.error === 'SENTRY_UNAVAILABLE' && <Notice title="Request unavailable" body="Pali could not verify this node request. Ask the app to try again." />}

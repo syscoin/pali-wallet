@@ -68,7 +68,7 @@ export function createNativeNoteRestore(openRuntime: (assertOwner: Guard) => Pro
         throw error;
       }
     },
-    async restore(id: string, password: string) {
+    async restore(id: string) {
       if (committing) throw new NoteBackupServiceError('BACKUP_BUSY');
       const owned = plan;
       if (!owned || owned.preview.id !== id) throw new NoteBackupServiceError('BACKUP_STALE');
@@ -78,7 +78,7 @@ export function createNativeNoteRestore(openRuntime: (assertOwner: Guard) => Pro
       }
       committing = true;
       try {
-        const receipt = await owned.runtime.commitImport(id, password);
+        const receipt = await owned.runtime.commitImport(id);
         if (plan !== owned) throw new NoteBackupServiceError('BACKUP_CANCELLED');
         return receipt;
       }

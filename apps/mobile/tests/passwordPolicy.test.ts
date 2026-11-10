@@ -51,7 +51,7 @@ test('native input bounds remain separate from shared password strength', () => 
   assert.equal(isNativeNewPassword('old password'), false);
 });
 
-test('recovery rejects invalid PIN input before retiring the wallet or opening storage', async () => {
+test('recovery rejects malformed phrase input before retiring the wallet or opening storage', async () => {
   let externalCalls = 0;
   const coordinator = new NativeRecoveryCoordinator({
     pinCredential: createTestPinCredentialPort(),
@@ -63,8 +63,8 @@ test('recovery rejects invalid PIN input before retiring the wallet or opening s
     ensureCryptoReady: async () => { externalCalls++; },
     openStorage: async () => { externalCalls++; throw new Error('Must not open'); },
   });
-  for (const password of ['only twelve lowercase letters', 'Abcdefghijk1', 'Abcdefghijk!', valid + 'x'.repeat(1013)]) {
-    await assert.rejects(coordinator.prepare('abandon '.repeat(11) + 'about', password, () => undefined), { code: 'INVALID_INPUT' });
+  for (const phrase of [42 as never, '\ud800', 'x'.repeat(4097)]) {
+    await assert.rejects(coordinator.prepare(phrase, () => undefined), { code: 'INVALID_INPUT' });
   }
   assert.equal(externalCalls, 0);
   coordinator.cancel();

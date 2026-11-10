@@ -488,7 +488,7 @@ test('the native storage coordinator exposes note backup to the real keyring acr
     file = await codec.encrypt({ format: 'pali-private-notes', version: 1, createdAt: 20, notes: [note] }, backupPassword);
     const id = restore.begin();
     assert.equal((await restore.prepareImport(id, file, backupPassword)).added, 1);
-    assert.equal((await restore.commitImport(id, walletPassword)).confirmed, true);
+    assert.equal((await restore.commitImport(id)).confirmed, true);
     assert.ok(runtime.openNoteCapacity);
     const capacity = await runtime.openNoteCapacity(current, createTestPrivateAuthentication(current));
     const initial = await capacity.getCapacity();
@@ -507,7 +507,7 @@ test('the native storage coordinator exposes note backup to the real keyring acr
     assert.deepEqual(reopened, updated);
     assert.ok(runtime.openNoteBackup);
     const backup = await runtime.openNoteBackup(current, createTestPrivateAuthentication(current));
-    const result = await backup.exportEncrypted(backup.begin(), walletPassword, backupPassword);
+    const result = await backup.exportEncrypted(backup.begin(), backupPassword);
     exported = result.bytes;
     assert.deepEqual((await codec.decrypt(exported, backupPassword)).notes, [{ ...note, reconciliationRequired: true }]);
   } finally {

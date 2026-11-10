@@ -1,5 +1,6 @@
 import { enterPin, pinField, fillPinField, revealBackupPhrase, confirmFixtureBackup } from '../ui/operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
+import { nativeAccountName } from '../accountControlNames';
 
 const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
 const SECOND = '0x1111111111111111111111111111111111111111';
@@ -37,7 +38,7 @@ test('selected-account reveal stays hidden until fresh auth and clears on Hide a
   await openSecurity(page);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
-  await page.getByRole('button', { name: 'Select Account 2 (wallet)', exact: true }).click();
+  await page.getByRole('button', { name: nativeAccountName('Account 2', 'Recovery phrase account', SECOND) }).click();
   await page.getByRole('button', { name: 'Security & backups', exact: false }).click();
   await openKey(page);
   await expect(page.getByText('Account 2', { exact: true })).toBeVisible();

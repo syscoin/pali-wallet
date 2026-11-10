@@ -9,6 +9,7 @@ import { normalizePublicAddress } from '../core/addresses.ts';
 import { normalizeUtxoAddress } from '../core/utxoAddresses.ts';
 import { findUtxoNetwork, getUtxoSdkNetwork, type UtxoNetwork } from '../core/utxoNetworks.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from './privateAuthentication.ts';
 
 /** Selected key expectation, never caller-granted SDK authority. */
 export type HdKeyExportScope = Readonly<{
@@ -21,8 +22,9 @@ export type HdKeyExportScope = Readonly<{
   registrationHash: string;
 }>;
 
-export interface NativeHdKeyExportRuntime {
-  readSelected(scope: HdKeyExportScope, password: string, assertCurrent: () => void): Promise<string>;
+export interface NativeHdKeyExportRuntime<Authentication = NativePrivateAuthenticationScope> {
+  isAuthenticationRefusal(error: unknown): boolean;
+  readSelected(scope: HdKeyExportScope, signal: AbortSignal, assertCurrent: () => void, authentication: Authentication): Promise<string>;
 }
 
 export type HdKeyExportPresentation = Readonly<{
@@ -83,6 +85,8 @@ export class HdKeyExportFlow {
   private busy = false;
   private disposed = false;
   private cancelling = false;
+  private authentication: NativePrivateAuthenticationScope | null = null;
+  private abort: AbortController | null = null;
   private readonly authority: NativeCustodyAuthority;
   private readonly runtime: () => NativeHdKeyExportRuntime | undefined;
   private readonly unsubscribe: () => void;
@@ -113,10 +117,14 @@ export class HdKeyExportFlow {
     return !!this.presentation && this.presentation.id === id && !!this.scope && this.contextCurrent(this.scope);
   }
 
+  isAuthenticating(): boolean { return this.authentication?.isAuthenticating() === true; }
+
   cancel(): void {
     if (this.cancelling) return;
     this.cancelling = true;
     this.operation++;
+    this.authentication?.retire(); this.authentication = null;
+    this.abort?.abort(); this.abort = null;
     this.presentation = null;
     this.scope = null;
     for (const listener of [...this.clearListeners]) {
@@ -125,13 +133,15 @@ export class HdKeyExportFlow {
     this.cancelling = false;
   }
 
-  async begin(password: string): Promise<HdKeyExportPresentation> {
+  async begin(): Promise<HdKeyExportPresentation> {
     if (this.disposed) throw new Error('KEY_EXPORT_EXPIRED');
     if (this.busy || this.cancelling) throw new Error('BUSY');
     // Reserve before injected callbacks or clear observers can reenter.
     this.busy = true;
     let scope: HdKeyExportScope | undefined;
     let runtime: NativeHdKeyExportRuntime | undefined;
+    let authentication: NativePrivateAuthenticationScope | undefined;
+    let abort: AbortController | undefined;
     try {
       scope = capture(this.authority);
       runtime = this.runtime();
@@ -139,13 +149,15 @@ export class HdKeyExportFlow {
       const expected = scope, owner = runtime;
       this.cancel();
       this.scope = expected;
+      this.authentication = authentication = createNativePrivateAuthenticationScope();
+      this.abort = abort = new AbortController();
       const operation = this.operation;
       const current = () => {
         if (operation !== this.operation || !this.contextCurrent(expected) || this.runtime() !== owner)
           throw new Error('CANCELLED');
       };
       current();
-      const privateKey = await owner.readSelected(expected, password, current);
+      const privateKey = await owner.readSelected(expected, abort.signal, current, authentication);
       current();
       const catalogue = this.authority.getCatalogue();
       const utxo = findUtxoNetwork(expected.networkId, catalogue?.utxoNetworks);
@@ -163,23 +175,29 @@ export class HdKeyExportFlow {
       return presentation;
     } catch (error) {
       this.cancel();
-      const refusal = error instanceof CustodyRuntimeError &&
-        (error.code === 'INVALID_CREDENTIAL' || error.code === 'AUTH_THROTTLED' || error.code === 'DEVICE_UNLOCK_UNAVAILABLE');
       // A failing current runtime may have already cleared its catalogue. Use
       // its captured public authority identity to reflect that lock, but never
       // revoke a replacement context when obsolete work eventually settles.
       const now = this.authority.getSnapshot();
       let sameRuntime = false;
       try { sameRuntime = !!runtime && this.runtime() === runtime; } catch { /* No authority over an unavailable replacement. */ }
+      let refusal = false;
+      try { refusal = sameRuntime && error instanceof CustodyRuntimeError && runtime!.isAuthenticationRefusal(error) === true; }
+      catch { /* A failed verifier cannot preserve authority. */ }
       if (!refusal && !this.disposed && scope && sameRuntime &&
           now.revision === scope.authorityRevision && now.phase === 'ready' &&
           now.account?.address === scope.address && now.account.network === scope.networkId)
         this.authority.lock();
       if (error instanceof Error && error.message === 'CANCELLED') throw new Error('CANCELLED');
-      if (refusal)
+      if (refusal && error instanceof CustodyRuntimeError)
         throw new Error(error.code);
       throw new Error('KEY_EXPORT_UNAVAILABLE');
-    } finally { this.busy = false; }
+    } finally {
+      authentication?.retire(); abort?.abort();
+      if (this.authentication === authentication) this.authentication = null;
+      if (this.abort === abort) this.abort = null;
+      this.busy = false;
+    }
   }
 
   dispose(): void {

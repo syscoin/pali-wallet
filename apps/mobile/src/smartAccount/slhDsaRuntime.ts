@@ -80,7 +80,7 @@ const captureInstalled = (input: NativeSlhInstalledKey): NativeSlhInstalledKey =
 export function createNativeSlhDsaRuntime(ports: Readonly<{
   namespace: string;
   publicStates: NativeSlhPublicStates;
-  authorize(purpose: 'setup' | 'sign', accountIndex: number | null, signal: AbortSignal, assertCurrent: () => void): Promise<NativeSlhActionSecrets>;
+  authorize<T>(purpose: 'setup' | 'sign', accountIndex: number | null, signal: AbortSignal, assertCurrent: () => void, work: (secrets: NativeSlhActionSecrets) => Promise<T>): Promise<T>;
   storage: KeyringStoragePort;
   assertCurrent(): void;
   openExecution: NativeSlhExecutionFactory;
@@ -259,8 +259,7 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
     const work = actionTail.then(async () => {
       wallet(); assertSynchronousEvmFeeGuard(assertRequest);
       await refreshRetiredExecution();
-      let secrets: NativeSlhActionSecrets | null = null;
-      let signer: Signer | undefined;
+      let entered = false, completed = false, admitted = true;
       let result: T;
       const authorization = new AbortController();
       const abort = () => authorization.abort();
@@ -269,19 +268,30 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
       if (signal.aborted || lifetime.signal.aborted) abort();
       try {
         if (authorization.signal.aborted) throw new Error('SLH_DSA_SESSION_RETIRED');
-        secrets = await authorize(purpose, accountIndex, authorization.signal, () => { wallet(); assertSynchronousEvmFeeGuard(assertRequest); });
-        wallet(); assertSynchronousEvmFeeGuard(assertRequest);
-        const crypto = createSlhDsaProfileStateCrypto(secrets.crypto, wallet);
-        signer = createSigner(crypto);
-        result = await operation(signer, crypto, secrets.setup);
+        result = await authorize(purpose, accountIndex, authorization.signal, () => { wallet(); assertSynchronousEvmFeeGuard(assertRequest); }, async secrets => {
+          if (!admitted || entered || authorization.signal.aborted) throw new Error('SLH_DSA_SESSION_RETIRED');
+          entered = true;
+          let signer: Signer | undefined;
+          try {
+            wallet(); assertSynchronousEvmFeeGuard(assertRequest);
+            const crypto = createSlhDsaProfileStateCrypto(secrets.crypto, wallet);
+            signer = createSigner(crypto);
+            const value = await operation(signer, crypto, secrets.setup);
+            wallet(); assertSynchronousEvmFeeGuard(assertRequest);
+            completed = true; return value;
+          } finally {
+            signer?.clearRuntimeSLHDSAStates();
+            const previous = execution; execution = undefined; executionEpoch++;
+            try { if (previous) await previous.native.retire(); }
+            catch (error) { fault(error); }
+            finally { secrets.dispose(); }
+          }
+        });
+        if (!entered || !completed) throw new Error('SLH_DSA_SESSION_RETIRED');
       } finally {
+        admitted = false;
         signal.removeEventListener('abort', abort);
         lifetime.signal.removeEventListener('abort', abort);
-        signer?.clearRuntimeSLHDSAStates();
-        const previous = execution; execution = undefined; executionEpoch++;
-        try { if (previous) await previous.native.retire(); }
-        catch (error) { fault(error); }
-        finally { secrets?.dispose(); secrets = null; }
       }
       wallet(); assertSynchronousEvmFeeGuard(assertRequest);
       if (signal.aborted) throw new Error('SLH_DSA_SESSION_RETIRED');

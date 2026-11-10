@@ -42,7 +42,7 @@ test('writes once only after explicit save, and verification reuses readback wit
     async revoke() {},
   });
   flow.select(token, ok, unused);
-  assert.deepEqual(await flow.prepare('wallet', 'backup', ok), { noteCount: 2, createdAt: 100 });
+  assert.deepEqual(await flow.prepare('backup', ok), { noteCount: 2, createdAt: 100 });
   assert.equal(writes, 0);
   await flow.save();
   assert.equal(writes, 1);
@@ -60,7 +60,7 @@ test('a changed wallet cannot save the prepared file even while the route owner 
   let current = true;
   const flow = createNativeNoteExport(async () => notes, { write: unused, async revoke() {} });
   flow.select(token, ok, unused);
-  await flow.prepare('wallet', 'backup', () => {
+  await flow.prepare('backup', () => {
     if (!current) throw new NoteBackupServiceError('BACKUP_CANCELLED');
   });
   current = false;
@@ -79,7 +79,7 @@ test('a write that completes after revocation cannot report success or be replay
     async revoke(id) { revoked.push(id); },
   });
   flow.select(token, ok, unused);
-  await flow.prepare('wallet', 'backup', ok);
+  await flow.prepare('backup', ok);
   const pending = flow.save();
   flow.cancel();
   assert.throws(() => flow.select(token, ok, unused), { code: 'BACKUP_BUSY' });

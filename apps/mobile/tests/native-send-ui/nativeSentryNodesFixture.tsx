@@ -6,6 +6,8 @@ import type {
   SentryNodeLinkReview,
 } from '../../src/custody/sentryNodeManagement';
 import type { SentryCollateralReservation } from '../../../../source/wallet/sentryCollateral';
+import { NativeOperationAuthentication } from '../../src/screens/NativeOperationAuthentication';
+import { nativeOperationAuthentication } from '../../src/platform/operationAuthentication';
 
 // Public screen fixture only: native storage, authority and network validation are tested separately.
 const node = Object.freeze({
@@ -46,6 +48,7 @@ const open = async (
     proTxHash: node.proTxHash,
   });
   return {
+    isAuthenticating: () => false,
     async list() {
       check();
       return {
@@ -92,10 +95,15 @@ const open = async (
     async releaseCollateral(input) {
       check();
       if (
-        !input.acknowledgeNodeStops ||
-        input.password !== '123456'
+        !input.acknowledgeNodeStops
       )
         throw new Error('Invalid fixture confirmation');
+      await nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'account-change', biometricsEnabled: false }, signal, check,
+        async (credential, guard) => {
+          guard();
+          return credential.method === 'pin' && credential.pin === '123456' ? { accepted: true } : { accepted: false, reason: 'INVALID_CREDENTIAL' };
+        });
+      check();
       calls.push('release');
       protectedCollateral = false;
       return input.reservation;
@@ -108,10 +116,10 @@ const open = async (
 };
 export function NativeSentryNodesFixture() {
   return (
-    <NativeSentryNodes
+    <><NativeSentryNodes
       networkLabel="Syscoin"
       open={open}
       onBack={() => calls.push('close')}
-    />
+    /><NativeOperationAuthentication isProtectedPromptActive={() => false} /></>
   );
 }
