@@ -58,8 +58,15 @@ export function WalletAccounts(props: WalletAccountsProps) {
   const accessibleIdentity = (entry: (typeof entries)[number]) => {
     if (entry.kind === 'watch') {
       const account = props.watch.accounts.find(value => value.id === entry.selection.id)!;
-      const addresses = Object.entries(account.addresses).map(([id, address]) =>
-        `${getNetwork(id as Parameters<typeof getNetwork>[0], props.watch.utxoNetworks).name}, ${address}`);
+      const grouped = new Map<string, ReturnType<typeof getNetwork>[]>();
+      for (const [id, address] of Object.entries(account.addresses)) {
+        const networks = grouped.get(address) ?? [];
+        networks.push(getNetwork(id as Parameters<typeof getNetwork>[0], props.watch.utxoNetworks));
+        grouped.set(address, networks);
+      }
+      const addresses = Array.from(grouped, ([address, networks]) =>
+        `${networks.length > 1 && networks.every(network => network.kind === 'evm')
+          ? 'Public EVM address' : networks.map(network => network.name).join(' / ')}, ${address}`);
       return `${entry.name} (watch-only), ${addresses.join('; ')}`;
     }
     const kind = entry.kind === 'hd' ? 'Recovery phrase account' : entry.kind === 'imported' ? 'Imported key'

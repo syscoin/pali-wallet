@@ -264,7 +264,7 @@ test('same-address native to watch switch revokes native owner before public tab
   await openNative(page); await unlock(page);
   await chooseTab(page, 'Tools');
   await page.getByRole('button', { name: 'Accounts', exact: false }).click();
-  await page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Ethereum', '0x52908400098527886E0F7030069857D2E4169EE7') }).click();
+  await page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Public EVM address', '0x52908400098527886E0F7030069857D2E4169EE7') }).click();
   await tabs(page);
   await expect(page.getByText('Shared address watch · Watch-only', { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.__watchFixture.oldPhases()[0])).toBe('disposed');

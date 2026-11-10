@@ -59,7 +59,7 @@ test('a held watch-only quote preserves Receive geometry at large text', async (
   await page.goto('/?fiat-fixture&hold-quote');
   await page.addStyleTag({ content: '[dir="auto"] { font-size: 22px !important; line-height: 1.4 !important; }' });
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
-  await page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Ethereum', '0x52908400098527886E0F7030069857D2E4169EE7') }).click();
+  await page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Public EVM address', '0x52908400098527886E0F7030069857D2E4169EE7') }).click();
   await expect(page.getByLabel('Ethereum balance 2.5 ETH', { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.__watchFixture.quotes().length)).toBe(1);
   const quote = page.getByTestId('watch-portfolio-quote');

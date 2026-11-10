@@ -15,7 +15,7 @@ async function unlock(page: Page) {
 }
 async function selectWatchFromNative(page: Page) {
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
-  await page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Ethereum', ADDRESS) }).click();
+  await page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Public EVM address', ADDRESS) }).click();
   await expect(page.getByText('Shared address watch · Watch-only', { exact: true })).toBeVisible();
 }
 async function expectWatchOnly(page: Page) {
@@ -42,8 +42,8 @@ test('actual App switches HD to watch to HD; shared address never inherits autho
   await unlock(page);
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await expect(page.getByRole('button', { name: nativeAccountName('Account 1', 'Recovery phrase account', ADDRESS) })).toContainText(ADDRESS);
-  await expect(page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Ethereum', ADDRESS) })).toContainText(ADDRESS);
-  await page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Ethereum', ADDRESS) }).click();
+  await expect(page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Public EVM address', ADDRESS) })).toContainText(ADDRESS);
+  await page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Public EVM address', ADDRESS) }).click();
   await expectWatchOnly(page);
   await expect(page.getByLabel('Ethereum balance 2.5 ETH', { exact: true })).toBeVisible();
   expect((await fixture(page)).unlocks).toBe(1);
@@ -222,7 +222,7 @@ test('review and pending signing are revoked before a watch account becomes acti
   // Cancelling an in-flight secret operation locks the native source immediately.
   await expect(page.getByRole('button', { name: 'View watch accounts', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'View watch accounts', exact: true }).click();
-  await page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Ethereum', ADDRESS) }).click();
+  await page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Public EVM address', ADDRESS) }).click();
   await expectWatchOnly(page);
   await page.evaluate(() => window.__watchFixture.releaseSign());
   await expect.poll(() => page.evaluate(() => window.__watchFixture.oldPhases()[0])).toBe('disposed');
@@ -241,19 +241,19 @@ test('watch management persists add rename and remove through actual forms', asy
   await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await expect(page.getByText('Vacation · Watch-only', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
-  await page.getByRole('button', { name: watchAccountName('Rename', 'Vacation', 'Ethereum', SECOND) }).click();
+  await page.getByRole('button', { name: watchAccountName('Rename', 'Vacation', 'Public EVM address', SECOND) }).click();
   await page.getByRole('textbox', { name: 'Watch account name', exact: true }).fill('Travel');
   await page.getByRole('button', { name: 'Save name', exact: true }).click();
-  await expect(page.getByRole('button', { name: watchAccountName('Select', 'Travel', 'Ethereum', SECOND) })).toBeVisible();
+  await expect(page.getByRole('button', { name: watchAccountName('Select', 'Travel', 'Public EVM address', SECOND) })).toBeVisible();
   await page.reload();
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
-  await expect(page.getByRole('button', { name: watchAccountName('Select', 'Travel', 'Ethereum', SECOND) })).toBeVisible();
-  await page.getByRole('button', { name: watchAccountName('Remove', 'Travel', 'Ethereum', SECOND) }).click();
+  await expect(page.getByRole('button', { name: watchAccountName('Select', 'Travel', 'Public EVM address', SECOND) })).toBeVisible();
+  await page.getByRole('button', { name: watchAccountName('Remove', 'Travel', 'Public EVM address', SECOND) }).click();
   await page.getByRole('button', { name: 'Remove watch account', exact: true }).click();
-  await expect(page.getByRole('button', { name: watchAccountName('Select', 'Travel', 'Ethereum', SECOND) })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: watchAccountName('Select', 'Travel', 'Public EVM address', SECOND) })).toHaveCount(0);
   await page.reload();
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
-  await expect(page.getByRole('button', { name: watchAccountName('Select', 'Travel', 'Ethereum', SECOND) })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: watchAccountName('Select', 'Travel', 'Public EVM address', SECOND) })).toHaveCount(0);
   expect((await fixture(page)).unlocks).toBe(0);
   expect((await fixture(page)).writes).toBe(0); // reload resets the audit, not persisted records
 });
@@ -270,7 +270,7 @@ test('read failure is visible, preserves saved records, and prevents an empty re
   await expect(page.getByRole('button', { name: 'Watch an account', exact: true })).toBeDisabled();
   await page.evaluate(() => window.__watchFixture.readFailure(false));
   await page.getByRole('button', { name: 'Reopen watch accounts', exact: true }).click();
-  await expect(page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Ethereum', ADDRESS) })).toBeVisible();
+  await expect(page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Public EVM address', ADDRESS) })).toBeVisible();
   expect((await fixture(page)).writes).toBe(0);
 });
 
@@ -303,7 +303,7 @@ test('background hides HD names and addresses; watch-only chooser and large type
   await page.getByRole('button', { name: 'View watch accounts', exact: true }).click();
   await expect(page.getByRole('button', { name: nativeAccountName('Account 2', 'Recovery phrase account', SECOND) })).toHaveCount(0);
   await page.addStyleTag({ content: '[dir="auto"] { font-size: 23px !important; line-height: 1.4 !important; }' });
-  await page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Ethereum', ADDRESS) }).click();
+  await page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Public EVM address', ADDRESS) }).click();
   await expectWatchOnly(page);
   await page.getByRole('button', { name: 'Receive', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Copy address', exact: true })).toBeVisible();

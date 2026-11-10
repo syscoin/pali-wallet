@@ -301,7 +301,7 @@ test('a shared-address watch remains public and separate from its imported key a
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Security|private key|recovery phrase/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
-  await expect(page.getByRole('button', { name: watchAccountName('Select', 'Imported address watch', 'Ethereum', ADDRESS) })).toBeVisible();
+  await expect(page.getByRole('button', { name: watchAccountName('Select', 'Imported address watch', 'Public EVM address', ADDRESS) })).toBeVisible();
   await expect(page.getByRole('button', { name: nativeAccountName(NAME, 'Imported key', ADDRESS) })).toHaveCount(0);
   await page.getByRole('button', { name: 'Open wallet', exact: true }).click(); await unlock(page);
   await expect(page.getByText(`${NAME} · Ethereum`, { exact: true })).toBeVisible();
