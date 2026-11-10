@@ -9,6 +9,11 @@ import { defaultAbiCoder } from 'utils/ethersV6Compat';
 import { signP256WebAuthnActionHash } from 'utils/passkey/authenticator';
 import { SLH_DSA_SIGNATURE_LENGTH } from 'utils/slhDsa/constants';
 
+import {
+  getSmartAccountSigningPlan,
+  canSignSmartAccountActionHash,
+  signSmartAccountActionHash as dispatchPlannedSmartAccount,
+} from './authenticatorDispatch';
 import { getPaliModuleAddress, paliSmartAccountInterface } from './contracts';
 import { isPaliSignableValidator } from './custom';
 import {
@@ -551,4 +556,107 @@ it('rechecks the prepared operation before every composite child', async () => {
   ).rejects.toThrow('nonce changed');
   expect(signEcdsa).toHaveBeenCalledTimes(1);
   expect(signP256WebAuthnActionHash).not.toHaveBeenCalled();
+});
+
+describe('one shared capability and connection plan', () => {
+  it.each([1, 2])(
+    'retains healthy extension composite ordering and exact %i-child stopping',
+    async (threshold) => {
+      const smartAccount = metadata(threshold);
+      const inventory = [
+        { address: OWNER, id: 7, type: 'Ledger' },
+        { address: OWNER.toLowerCase(), id: 0, type: 'HDAccount' },
+      ];
+      const plan = getSmartAccountSigningPlan(smartAccount, {
+        ecdsa: inventory,
+        p256WebAuthn: true,
+        slhDsa: false,
+      })!;
+      expect(plan.authenticators.map((entry) => entry.index)).toEqual(
+        threshold === 1 ? [0] : [0, 1]
+      );
+      expect(plan.authenticators[0].owners).toEqual([inventory[0]]);
+      expect(
+        canSignSmartAccountActionHash(smartAccount, {
+          ecdsa: inventory,
+          p256WebAuthn: true,
+          slhDsa: false,
+        })
+      ).toBe(true);
+      const order: string[] = [];
+      await dispatchPlannedSmartAccount({
+        smartAccount,
+        actionHash: ACTION_HASH,
+        async assertBeforeAuthentication() {
+          expect(plan.authenticators.length).toBe(threshold);
+        },
+        ports: {
+          ecdsa: {
+            localOwners: inventory,
+            async signActionHash({ owner: requestedOwner }) {
+              expect(requestedOwner).toEqual(inventory[0]);
+              order.push('ecdsa');
+              return ECDSA_SIGNATURE;
+            },
+          },
+          p256WebAuthn: {
+            async signActionHash() {
+              order.push('p256-webauthn');
+              return { signature: P256_SIGNATURE };
+            },
+          },
+          slhDsa: null,
+        },
+      });
+      expect(order).toEqual(
+        plan.authenticators.map((entry) => entry.validator.id)
+      );
+    }
+  );
+  it('does not require an unused later Ledger child when the earlier interactive child satisfies the threshold', () => {
+    const smartAccount = metadata(1);
+    compositeModule(smartAccount).config.childValidators = [P256, ECDSA];
+    const plan = getSmartAccountSigningPlan(smartAccount, {
+      ecdsa: [{ address: OWNER, id: 7, type: 'Ledger' }],
+      p256WebAuthn: true,
+      slhDsa: false,
+    })!;
+    expect(plan.authenticators.map((entry) => entry.validator.address)).toEqual(
+      [P256]
+    );
+    expect(plan.authenticators.flatMap((entry) => entry.owners)).toEqual([]);
+  });
+  it('retires a chosen child that loses capability without switching to a later unconnected owner', async () => {
+    const smartAccount = metadata(1);
+    compositeModule(smartAccount).config.childValidators = [P256, ECDSA];
+    const ledger = jest.fn(async () => ECDSA_SIGNATURE);
+    const unavailable = new SmartAccountExternalSignatureRequired({
+      actionHash: ACTION_HASH,
+      authenticator: 'p256-webauthn',
+      validator: P256,
+      message: 'Owned capability retired',
+    });
+    await expect(
+      dispatchPlannedSmartAccount({
+        smartAccount,
+        actionHash: ACTION_HASH,
+        async assertBeforeAuthentication() {
+          expect(ledger).not.toHaveBeenCalled();
+        },
+        ports: {
+          ecdsa: {
+            localOwners: [{ address: OWNER, id: 7, type: 'Ledger' }],
+            signActionHash: ledger,
+          },
+          p256WebAuthn: {
+            async signActionHash() {
+              throw unavailable;
+            },
+          },
+          slhDsa: null,
+        },
+      })
+    ).rejects.toBe(unavailable);
+    expect(ledger).not.toHaveBeenCalled();
+  });
 });

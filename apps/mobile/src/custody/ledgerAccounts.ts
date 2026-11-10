@@ -47,8 +47,9 @@ export type NativeLedgerView =
 export interface NativeLedgerRuntime {
   subscribeStatus(listener: () => void): () => void;
   isConnected(): boolean;
+  getConnectionTargets(): readonly string[];
   scan(
-    request: Readonly<{ purpose: 'import' | 'connect' }>,
+    request: Readonly<{ purpose: 'import' } | {purpose: 'connect'; accountIds: readonly string[]}>,
     signal: AbortSignal,
     assertCurrent: () => void,
     onDevices: (devices: readonly NativeLedgerDevice[]) => void,
@@ -220,7 +221,9 @@ export class NativeLedgerAccounts<Purpose extends 'import' | 'connect'> {
     try {
       session.opening = Promise.resolve().then(() =>
         runtime.scan(
-          { purpose: this.purpose },
+          this.purpose === 'connect'
+            ? { purpose: 'connect', accountIds: runtime.getConnectionTargets() }
+            : { purpose: 'import' },
           session.controller.signal,
           () => this.check(session),
           (devices) => {
@@ -266,7 +269,9 @@ export class NativeLedgerAccounts<Purpose extends 'import' | 'connect'> {
     } catch (error) {
       await this.fail(
         session,
-        'Could not read this Ledger account. Open the matching app on your Ledger and try again.'
+        (error as {code?: unknown})?.code === 'LEDGER_SMART_OWNERS_UNAVAILABLE'
+          ? 'Connect the Ledger containing every required owner. Switching between multiple Ledger devices is not supported in this review.'
+          : 'Could not read this Ledger account. Open the matching app on your Ledger and try again.'
       );
       throw error;
     }

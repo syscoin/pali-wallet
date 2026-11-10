@@ -160,6 +160,8 @@ export type NativeSmartAccountOperationHost = Readonly<{
 
 /** Presentation owns two explicit authorizations. The shared engine owns every transaction. */
 export class NativeSmartAccountOperation {
+  /** Presentation deadline; signing retains the existing monotonic controller deadline. */
+  readonly authorizationExpiresAt = Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS;
   private snapshot: NativeSmartAccountOperationSnapshot;
   private readonly listeners = new Set<() => void>();
   private readonly lifetime = new AbortController();

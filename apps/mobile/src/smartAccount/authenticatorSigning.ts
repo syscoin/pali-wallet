@@ -4,7 +4,7 @@ import {
 } from '../../../../source/utils/ethersV6Compat.ts';
 import {
   signSmartAccountActionHash,
-  canSignSmartAccountActionHash,
+  getSmartAccountSigningPlan,
   type SmartAccountAuthenticatorSignature,
   type SmartAccountAuthenticatorPorts,
 } from '../../../../source/utils/smartAccount/authenticatorDispatch.ts';
@@ -19,7 +19,7 @@ import type {
 export type NativeSmartAccountSigningOwner = Readonly<{
   address: string;
   id: number;
-  type: 'HDAccount' | 'Imported';
+  type: 'HDAccount' | 'Imported' | 'Ledger';
 }>;
 
 /** The shared chain observer owns deployment addresses; retain its active module identity. */
@@ -57,7 +57,7 @@ function captureNativeSmartAccountSigningContext(inputMetadata: ISmartAccountMet
     if (
       !Number.isSafeInteger(owner.id) ||
       owner.id < 0 ||
-      (owner.type !== 'HDAccount' && owner.type !== 'Imported')
+      !['HDAccount', 'Imported', 'Ledger'].includes(owner.type)
     )
       throw new Error('Native smart account owner is unavailable');
     return Object.freeze({
@@ -71,7 +71,7 @@ function captureNativeSmartAccountSigningContext(inputMetadata: ISmartAccountMet
     inventory.length
   )
     throw new Error('Native smart account owner identity changed');
-  // Match the original native findOwner: the first software account for an
+  // Match the original native findOwner: the first supported account for an
   // address owns signing. An alias neither blocks another owner nor counts as
   // another approval, and a rejection never falls through to its alias.
   const firstOwners = new Map<string, NativeSmartAccountSigningOwner>();
@@ -118,12 +118,13 @@ function captureNativeSmartAccountSigningContext(inputMetadata: ISmartAccountMet
   return { metadata, owners };
 }
 
+export function getNativeSmartAccountSigningPlan(metadata: ISmartAccountMetadata, localOwners: readonly NativeSmartAccountSigningOwner[], available: Readonly<{ slhDsa: boolean }>) {
+  if (typeof available?.slhDsa !== 'boolean') throw new Error('Explicit native signing availability is required');
+  const captured = captureNativeSmartAccountSigningContext(metadata, localOwners);
+  return getSmartAccountSigningPlan(captured.metadata, {ecdsa: captured.owners, p256WebAuthn: false, slhDsa: available.slhDsa});
+}
 export function canSignNativeSmartAccountActionHash(metadata: ISmartAccountMetadata, localOwners: readonly NativeSmartAccountSigningOwner[], available: Readonly<{ slhDsa: boolean }>): boolean {
-  try {
-    if (typeof available?.slhDsa !== 'boolean') return false;
-    const captured = captureNativeSmartAccountSigningContext(metadata, localOwners);
-    return canSignSmartAccountActionHash(captured.metadata, { ecdsa: captured.owners, p256WebAuthn: false, slhDsa: available.slhDsa });
-  } catch { return false; }
+  try { return getNativeSmartAccountSigningPlan(metadata, localOwners, available) !== null; } catch { return false; }
 }
 
 /** Host-owned keys around the existing shared threshold/composite collector. */

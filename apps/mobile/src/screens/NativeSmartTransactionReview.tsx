@@ -1,3 +1,5 @@
+import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
+import { useDappLedgerConnection } from './useDappLedgerConnection';
 import React, { useEffect, useRef, useState } from 'react';
 import { BackHandler, StyleSheet } from 'react-native';
 import type {
@@ -13,10 +15,13 @@ import { Button, Card, Notice, Text } from '../ui';
 export function NativeSmartTransactionReviewScreen({
   review,
   controller,
+  ledgerConnection,
 }: {
+  ledgerConnection?: NativeLedgerConnectionView;
   review: NativeSmartTransactionReview;
   controller: NativeConnectionsView;
 }) {
+  const ledger = useDappLedgerConnection({review, controller, ledgerConnection});
   const [acknowledged, setAcknowledged] = useState<object | null>(null);
   const [editing, setEditing] = useState<object | null>(null);
   const editingRef = useRef(editing);
@@ -41,13 +46,13 @@ export function NativeSmartTransactionReviewScreen({
       state={review.operation}
       onBack={close}
       disabled={
-        review.error !== null ||
+        (review.operation.phase === 'authorize' && ledger.blocked) || review.error !== null ||
         review.needsAccountSwitch ||
         !warningsAccepted ||
         editing === intent
       }
       authorize={() => {
-        if (editingRef.current === intent) return;
+        if (editingRef.current === intent || !ledger.canApprove()) return;
         void controller
           .approveRequest(review.id, review.revision, warningsAccepted)
           .catch(() => undefined);
@@ -59,6 +64,8 @@ export function NativeSmartTransactionReviewScreen({
       }}
       before={
         <>
+          {ledger.showConnect && <Button title="Connect Ledger" variant="secondary" onPress={ledger.connect} />}
+          {ledger.modal}
           <Card style={styles.site}>
             <Text>{review.appName}</Text>
             <Text selectable>{review.origin}</Text>

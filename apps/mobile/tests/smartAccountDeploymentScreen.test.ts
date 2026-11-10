@@ -63,6 +63,7 @@ function fixture() {
       ];
     },
     useEffect() {},
+    useCallback<T>(callback: T) {return callback;},
     useSyncExternalStore(_subscribe: unknown, read: () => unknown) {
       return read();
     },
@@ -83,6 +84,7 @@ function fixture() {
   const imports: Record<string, unknown> = {
     react,
     '../platform/localization': nativeTranslationFixture,
+    './useDappLedgerConnection': {useOwnedLedgerConnection: () => ({blocked: false, showConnect: false, modal: null, canApprove: () => true})},
     'react-native': {
       ActivityIndicator: 'ActivityIndicator',
       View: 'View',

@@ -1,3 +1,4 @@
+import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import React, {
   useCallback,
   useEffect,
@@ -18,6 +19,7 @@ import { Button, colors, Header, Notice, Screen, Text } from '../ui';
 import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation';
 
 type Props = {
+  ledgerConnection?: NativeLedgerConnectionView;
   open(
     signal: AbortSignal,
     assertCurrent: () => void
@@ -41,7 +43,7 @@ function disposeOwner(owner: Owner): Promise<void> {
   return owner.disposing;
 }
 
-export function NativeSmartAccountAuthenticator({ open, onBack }: Props) {
+export function NativeSmartAccountAuthenticator({ open, onBack, ledgerConnection }: Props) {
   const owner = useRef<Owner | undefined>(undefined);
   const callbacks = useRef({ onBack });
   const [opened, setOpened] = useState<{
@@ -133,6 +135,7 @@ export function NativeSmartAccountAuthenticator({ open, onBack }: Props) {
     return (
       <NativeSmartAccountOperationScreen
         controller={current.controller}
+        ledgerConnection={ledgerConnection}
         onBack={back}
       />
     );

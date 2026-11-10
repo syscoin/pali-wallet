@@ -8,10 +8,7 @@ import {
   getInstalledValidatorModuleByAddress,
 } from './modules.ts';
 import type { SmartAccountAuthenticatorSignature } from './signature.ts';
-import {
-  isPaliSignableValidator,
-  isPaliValidatorAlgorithmSupported,
-} from './validatorSignability.ts';
+import { isPaliSignableValidator } from './validatorSignability.ts';
 import type {
   ISmartAccountMetadata,
   SmartAccountP256WebAuthnConfig,
@@ -137,6 +134,7 @@ type SmartAccountAuthenticatorDriver<
     context: SmartAccountAuthenticatorContext<T> & {
       assertBeforeAuthentication(): Promise<void>;
       ports: SmartAccountAuthenticatorPorts;
+      signingPlan: SmartAccountSigningPlan;
     }
   ) => Promise<SmartAccountAuthenticatorSignature>;
 };
@@ -249,11 +247,18 @@ export type SmartAccountAuthenticatorAvailability = Readonly<{
   slhDsa: boolean;
 }>;
 
-/** Public capability query over the same modules, owner selection and child thresholds. */
-export function canSignSmartAccountActionHash(
-  smartAccount: ISmartAccountMetadata,
+export type SmartAccountSigningPlan = Readonly<{
+  authenticators: readonly Readonly<{
+    index: number;
+    owners: readonly SmartAccountLocalOwner[];
+    validator: SmartAccountValidatorModule;
+  }>[];
+  validator: SmartAccountValidatorModule;
+}>;
+
+function assertAuthenticatorAvailability(
   available: SmartAccountAuthenticatorAvailability
-): boolean {
+): void {
   if (
     !available ||
     !Object.hasOwn(available, 'ecdsa') ||
@@ -266,22 +271,96 @@ export function canSignSmartAccountActionHash(
     throw new TypeError(
       'Explicit smart account authenticator availability is required'
     );
-  return isPaliSignableValidator(
+}
+
+/** Validator metadata is a public JSON DTO; do not retain caller-mutated policy arrays. */
+function captureSigningValidator(
+  validator: SmartAccountValidatorModule
+): SmartAccountValidatorModule {
+  const copy: SmartAccountValidatorModule = JSON.parse(
+    JSON.stringify(validator)
+  );
+  for (const value of Object.values(copy.config))
+    if (value && typeof value === 'object') Object.freeze(value);
+  Object.freeze(copy.config);
+  return Object.freeze(copy);
+}
+
+/** One ordered, threshold-stopping plan for capability, device connection and signing. */
+function planAuthenticator(
+  validator: SmartAccountValidatorModule,
+  metadata: ISmartAccountMetadata,
+  available: SmartAccountAuthenticatorAvailability
+): SmartAccountSigningPlan | null {
+  assertAuthenticatorAvailability(available);
+  const availableLeaf = (child: SmartAccountValidatorModule): boolean => {
+    if (child.id === 'ecdsa')
+      return (
+        Number.isSafeInteger(child.config.threshold) &&
+        child.config.threshold >= 1 &&
+        localEcdsaOwners(child, available.ecdsa).length >=
+          child.config.threshold
+      );
+    if (child.id === 'p256-webauthn') return available.p256WebAuthn;
+    if (child.id === 'slh-dsa') return available.slhDsa;
+    return false;
+  };
+  if (!isPaliSignableValidator(validator, metadata, availableLeaf)) return null;
+  validator = captureSigningValidator(validator);
+  const candidates =
+    validator.id === 'composite'
+      ? validator.config.childValidators.map((address, index) => ({
+          index,
+          validator: captureSigningValidator(
+            getInstalledValidatorModuleByAddress(metadata, address)!
+          ),
+        }))
+      : [{ index: 0, validator }];
+  const threshold =
+    validator.id === 'composite' ? validator.config.threshold : 1;
+  const authenticators: Array<
+    SmartAccountSigningPlan['authenticators'][number]
+  > = [];
+  for (const candidate of candidates) {
+    if (!availableLeaf(candidate.validator)) continue;
+    authenticators.push(
+      Object.freeze({
+        ...candidate,
+        owners: Object.freeze(
+          candidate.validator.id === 'ecdsa'
+            ? localEcdsaOwners(candidate.validator, available.ecdsa).slice(
+                0,
+                candidate.validator.config.threshold
+              )
+            : []
+        ),
+      })
+    );
+    if (authenticators.length === threshold) break;
+  }
+  return Object.freeze({
+    validator,
+    authenticators: Object.freeze(authenticators),
+  });
+}
+
+export function getSmartAccountSigningPlan(
+  smartAccount: ISmartAccountMetadata,
+  available: SmartAccountAuthenticatorAvailability
+): SmartAccountSigningPlan | null {
+  return planAuthenticator(
     getCurrentValidatorModule(smartAccount),
     smartAccount,
-    (validator) => {
-      if (validator.id === 'ecdsa')
-        return (
-          Number.isSafeInteger(validator.config.threshold) &&
-          validator.config.threshold >= 1 &&
-          localEcdsaOwners(validator, available.ecdsa).length >=
-            validator.config.threshold
-        );
-      if (validator.id === 'p256-webauthn') return available.p256WebAuthn;
-      if (validator.id === 'slh-dsa') return available.slhDsa;
-      return false;
-    }
+    available
   );
+}
+
+/** Capability uses the identical owner order and composite stopping point as dispatch. */
+export function canSignSmartAccountActionHash(
+  smartAccount: ISmartAccountMetadata,
+  available: SmartAccountAuthenticatorAvailability
+): boolean {
+  return getSmartAccountSigningPlan(smartAccount, available) !== null;
 }
 
 const ecdsaDriver: SmartAccountAuthenticatorDriver<
@@ -300,15 +379,17 @@ const ecdsaDriver: SmartAccountAuthenticatorDriver<
   id: 'ecdsa',
   signActionHash: async (context) => {
     const runtimeContext = context.ports.ecdsa;
-    const localOwners = localEcdsaOwners(
-      context.validator,
-      runtimeContext?.localOwners ?? null
-    );
+    const localOwners =
+      context.signingPlan.authenticators.find(
+        (entry) =>
+          entry.validator.address.toLowerCase() ===
+          context.validator.address.toLowerCase()
+      )?.owners ?? [];
     const threshold = context.validator.config.threshold;
 
     if (runtimeContext?.signActionHash && localOwners.length >= threshold) {
       const signatures: string[] = [];
-      for (const owner of localOwners.slice(0, threshold)) {
+      for (const owner of localOwners) {
         const signature = await runtimeContext.signActionHash({
           actionHash: context.actionHash,
           ...(context.executionContextId
@@ -418,31 +499,13 @@ const compositeDriver: SmartAccountAuthenticatorDriver<
     ),
   id: 'composite',
   signActionHash: async (context) => {
-    if (
-      !isPaliSignableValidator(
-        context.validator,
-        context.smartAccount,
-        isPaliValidatorAlgorithmSupported
-      )
-    ) {
-      throw new SmartAccountExternalSignatureRequired(
-        compositeDriver.createExternalSignatureRequest(context)
-      );
-    }
     // Composite v1 forwards one action hash to each child. Its bytes[] must
     // retain configured contract order, including empty external/unused slots;
     // child signatures do not carry the outer validator-address prefix.
     const signatures = context.validator.config.childValidators.map(() => '0x');
     let approvals = 0;
-    for (const [
-      index,
-      childAddress,
-    ] of context.validator.config.childValidators.entries()) {
-      const child = getInstalledValidatorModuleByAddress(
-        context.smartAccount,
-        childAddress
-      )!;
-      if (child.id === 'custom') continue;
+    for (const { index, validator: child } of context.signingPlan
+      .authenticators) {
       const driver = getAuthenticatorDriver(child);
       await context.assertBeforeAuthentication();
       context.onAuthenticatorSigningStarted?.(child.id);
@@ -456,11 +519,6 @@ const compositeDriver: SmartAccountAuthenticatorDriver<
           const aggregate = defaultAbiCoder.encode(['bytes[]'], [signatures]);
           return { proof: aggregate, signature: aggregate };
         }
-      } catch (error) {
-        // Only explicit absence of a local signer is skippable. Rejection,
-        // stale context, storage and cryptographic errors must reach the user.
-        if (!(error instanceof SmartAccountExternalSignatureRequired))
-          throw error;
       } finally {
         context.onAuthenticatorSigningResolved?.(child.id);
       }
@@ -558,6 +616,18 @@ export const signSmartAccountWithValidator = async (
   params = Object.freeze({ ...params });
   const { validator } = params;
   const driver = getAuthenticatorDriver(validator);
+  const signingPlan = planAuthenticator(validator, params.smartAccount, {
+    ecdsa: params.ports.ecdsa?.localOwners ?? null,
+    p256WebAuthn: params.ports.p256WebAuthn !== null,
+    slhDsa:
+      params.ports.slhDsa !== null &&
+      (params.ports.slhDsa.signActionHash !== null ||
+        params.ports.slhDsa.signMessageActionHash !== null),
+  });
+  if (!signingPlan)
+    throw new SmartAccountExternalSignatureRequired(
+      driver.createExternalSignatureRequest({ ...params, validator })
+    );
 
   await params.assertBeforeAuthentication();
   params.onAuthenticatorSigningStarted?.(validator.id);
@@ -567,12 +637,13 @@ export const signSmartAccountWithValidator = async (
       accountId: params.accountId,
       actionHash: params.actionHash,
       ports: params.ports,
+      signingPlan,
       executionContextId: params.executionContextId,
       onAuthenticatorSigningResolved: params.onAuthenticatorSigningResolved,
       onAuthenticatorSigningStarted: params.onAuthenticatorSigningStarted,
       allowReservedSLHDSASignature: params.allowReservedSLHDSASignature,
       smartAccount: params.smartAccount,
-      validator,
+      validator: signingPlan.validator,
     })
     .finally(() => {
       params.onAuthenticatorSigningResolved?.(validator.id);
@@ -580,7 +651,7 @@ export const signSmartAccountWithValidator = async (
 
   return {
     ...signature,
-    validator: getAddress(validator.address),
+    validator: getAddress(signingPlan.validator.address),
   };
 };
 

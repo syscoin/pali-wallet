@@ -1,4 +1,4 @@
-import { signSmartAccountOwnerIntent } from '../../../../source/utils/smartAccount/ownerSigning.ts';
+import { signSmartAccountOwnerIntent, type SmartAccountOwnerSigningSdk } from '../../../../source/utils/smartAccount/ownerSigning.ts';
 import { supportsDappEncryptionAccount } from '../../../../source/shared/dappEncryptionRequest.ts';
 import { bindEoaCallsSignedLifecycle, captureEoaCallsSignedMetadata, readRetainedEoaCall, recoverRetainedEoaCallsAttempt, settleEoaCallsSignedSubmission } from '../../../../source/wallet/dappCallsBundles.ts';
 import { sentrySettingsStorageKey } from '../../../../source/shared/sentrySettings.ts';
@@ -64,7 +64,7 @@ import {
   type SmartAccountLocalOwner,
 } from '../../../../source/utils/smartAccount/signOperation.ts';
 import type { NativeSmartOperationPorts } from '../smartAccount/runtime.ts';
-import { signNativeSmartAccountActionHash, canSignNativeSmartAccountActionHash, type NativeSmartAccountSigningOwner } from '../smartAccount/authenticatorSigning.ts';
+import { signNativeSmartAccountActionHash, canSignNativeSmartAccountActionHash, getNativeSmartAccountSigningPlan, type NativeSmartAccountSigningOwner } from '../smartAccount/authenticatorSigning.ts';
 import type { SmartAccountAuthenticatorPorts } from '../../../../source/utils/smartAccount/authenticatorDispatch.ts';
 import type { SLHDSADispatchApproval } from '../../../../source/utils/slhDsa/types.ts';
 import { requireSmartAccountAuthenticator } from '../../../../source/utils/smartAccount/prepareOperation.ts';
@@ -427,7 +427,7 @@ export function createKeyringRuntimeFactory(
         type State = ReturnType<typeof initialState>;
         let ledgerTransport: NativeLedgerTransport | undefined;
         let ledgerLifetime: AbortController | undefined;
-        let ledgerVerified: { accountId: string; generation: number; snapshot: NativeWalletCatalogueSnapshot; transport: NativeLedgerTransport } | undefined;
+        let ledgerVerified: { accountId: string; targetIds: readonly string[]; assertCurrent(): void; generation: number; snapshot: NativeWalletCatalogueSnapshot; transport: NativeLedgerTransport } | undefined;
         let ledgerCleanup: Promise<void> | undefined;
         let ledgerOpening: { retire(): Promise<void> } | undefined;
         let ledgerScanOrdinal = 0;
@@ -2752,14 +2752,50 @@ export function createKeyringRuntimeFactory(
           }); },
           cancel: cancelTrezor,
         };
+        const captureSmartSigningOwners = () => {
+          const localOwners: NativeSmartAccountSigningOwner[] = [];
+          const ownerRecords = new Map<string, IKeyringAccountState>();
+          for (const type of ['HDAccount', 'Imported', 'Ledger'] as const) {
+            if (type === 'Ledger' && (!dependencies.createLedgerTransport || !keyring.ledgerSigner)) continue;
+            for (const owner of Object.values(state.accounts[type]))
+              if (!owner.isSmartAccount && !owner.isTrezorWallet && (type === 'Ledger' || !owner.isLedgerWallet)) {
+                localOwners.push({address: owner.address, id: owner.id, type});
+                ownerRecords.set(`${type}:${owner.id}`, owner);
+              }
+          }
+          return {localOwners, ownerRecords};
+        };
+        const ledgerConnectionTargets = (): readonly string[] => {
+          if (!catalogueSnapshot || !keyring.isUnlocked()) throw new KeyringRuntimeError('NOT_READY');
+          const selected = selectedAccount();
+          if (selected.type === 'Ledger') return Object.freeze([selected.id]);
+          if (selected.type !== 'SmartAccount' || selected.slip44 !== 60) throw new KeyringRuntimeError('NOT_READY');
+          const metadata = state.accounts.SmartAccount[selected.index]?.smartAccount;
+          if (!metadata) throw new KeyringRuntimeError('NOT_READY');
+          const plan = getNativeSmartAccountSigningPlan(metadata, captureSmartSigningOwners().localOwners, {slhDsa: slhCapability !== null});
+          if (!plan) throw new KeyringRuntimeError('NOT_READY');
+          const result = new Set<string>();
+          for (const entry of plan.authenticators) for (const owner of entry.owners) if (owner.type === 'Ledger') {
+            const target = catalogueSnapshot.accounts.find(account => account.type === 'Ledger' && account.index === owner.id && account.address.toLowerCase() === owner.address.toLowerCase());
+            if (!target || target.slip44 !== 60) throw new KeyringRuntimeError('NOT_READY');
+            result.add(target.id);
+          }
+          return Object.freeze([...result]);
+        };
         const ledger: NativeLedgerRuntime = {
           subscribeStatus(listener) {
             ledgerStatusListeners.add(listener);
             return () => { ledgerStatusListeners.delete(listener); };
           },
+          getConnectionTargets: ledgerConnectionTargets,
           isConnected() {
+            let targets: readonly string[];
+            try { targets = ledgerConnectionTargets(); } catch { return false; }
+            if (!targets.length) return true;
             const verified = ledgerVerified;
+            try { verified?.assertCurrent(); } catch { return false; }
             return (
+              JSON.stringify(verified?.targetIds) === JSON.stringify(targets) &&
               !!verified &&
               !closed &&
               !requiresReopen() &&
@@ -2775,18 +2811,27 @@ export function createKeyringRuntimeFactory(
             if (
               !request ||
               !['import', 'connect'].includes(request.purpose) ||
-              Object.keys(request).join() !== 'purpose'
+              (request.purpose === 'import' ? Object.keys(request).join() !== 'purpose' :
+                Object.keys(request).sort().join() !== 'accountIds,purpose' || !Array.isArray(request.accountIds))
             )
               throw new KeyringRuntimeError('INVALID_INPUT');
             const before = catalogueSnapshot,
               ring = keyring,
               captured = generation;
-            const target =
-              request.purpose === 'connect' ? selectedAccount() : undefined;
-            if (target && target.type !== 'Ledger')
-              throw new KeyringRuntimeError('NOT_READY');
-            const saved = target && state.accounts.Ledger[target.index];
-            if (target && !saved) throw new KeyringRuntimeError('NOT_READY');
+            const selected = selectedAccount();
+            const selectedRecord = state.accounts[selected.type][selected.index];
+            const selectedAddress = selectedRecord?.address, selectedPublicKey = selectedRecord?.xpub;
+            const selectedPolicy = JSON.stringify(selectedRecord?.smartAccount);
+            const networkIdentity = JSON.stringify(state.activeNetwork);
+            const targetIds = request.purpose === 'connect' ? ledgerConnectionTargets() : [];
+            if (request.purpose === 'connect' && (!targetIds.length || JSON.stringify(request.accountIds) !== JSON.stringify(targetIds)))
+              throw new KeyringRuntimeError('INVALID_INPUT');
+            const targets = targetIds.map(id => {
+              const target = before!.accounts.find(account => account.id === id && account.type === 'Ledger');
+              const saved = target && state.accounts.Ledger[target.index];
+              if (!target || !saved) throw new KeyringRuntimeError('NOT_READY');
+              return {target, saved, address: saved.address, publicKey: saved.xpub};
+            });
             const assertWallet = () => {
               current(captured);
               if (
@@ -2794,11 +2839,12 @@ export function createKeyringRuntimeFactory(
                 catalogueSnapshot !== before ||
                 keyring !== ring ||
                 !ring.isUnlocked() ||
-                (target &&
-                  (before.active.accountId !== target.id ||
-                    state.accounts.Ledger[target.index]?.xpub !== saved!.xpub ||
-                    state.accounts.Ledger[target.index]?.address !==
-                      saved!.address))
+                before.active.accountId !== selected.id ||
+                state.accounts[selected.type][selected.index] !== selectedRecord ||
+                selectedRecord?.address !== selectedAddress || selectedRecord?.xpub !== selectedPublicKey ||
+                JSON.stringify(selectedRecord?.smartAccount) !== selectedPolicy || JSON.stringify(state.activeNetwork) !== networkIdentity ||
+                targets.some(({target, saved, address, publicKey}) => state.accounts.Ledger[target.index] !== saved ||
+                  saved.address !== address || saved.xpub !== publicKey)
               )
                 throw new KeyringRuntimeError('CANCELLED');
             };
@@ -2919,15 +2965,15 @@ export function createKeyringRuntimeFactory(
                   }
                 }
               );
-              let selected = false;
+              let deviceSelected = false;
               let verified = false;
               return {
                 async select(id) {
                   check();
                   const candidate = candidates.get(id);
-                  if (!candidate || selected)
+                  if (!candidate || deviceSelected)
                     throw new KeyringRuntimeError('INVALID_INPUT');
-                  selected = true;
+                  deviceSelected = true;
                   await stop();
                   check();
                   await selection(candidate.device);
@@ -2954,18 +3000,21 @@ export function createKeyringRuntimeFactory(
                     });
                   }
                   const signer = ring.ledgerSigner!;
-                  if (target!.slip44 === 60) {
+                  for (const {target, saved} of targets) {
+                  if (target.slip44 === 60) {
                     const actual = await signer.evm.getEvmAddressAndPubKey({
-                      accountIndex: target!.index,
+                      accountIndex: target.index,
                     });
                     check();
                     if (
                       actual.address.toLowerCase() !==
-                        saved!.address.toLowerCase() ||
+                        saved.address.toLowerCase() ||
                       actual.publicKey.replace(/^0x/, '').toLowerCase() !==
-                        saved!.xpub.replace(/^0x/, '').toLowerCase()
+                        saved.xpub.replace(/^0x/, '').toLowerCase()
                     )
-                      throw new KeyringRuntimeError('INVALID_INPUT');
+                      throw selected.type === 'SmartAccount'
+                        ? Object.assign(new KeyringRuntimeError('INVALID_INPUT'), {code: 'LEDGER_SMART_OWNERS_UNAVAILABLE'})
+                        : new KeyringRuntimeError('INVALID_INPUT');
                   } else {
                     const network = findUtxoNetwork(
                       before!.active.networkId,
@@ -2973,23 +3022,26 @@ export function createKeyringRuntimeFactory(
                     );
                     if (!network) throw new KeyringRuntimeError('NOT_READY');
                     const actual = await signer.utxo.getXpub({
-                      index: target!.index,
+                      index: target.index,
                       coin: state.activeNetwork.currency,
-                      slip44: target!.slip44,
+                      slip44: target.slip44,
                     });
                     check();
                     if (
                       sdk.convertExtendedKeyVersion(
                         actual,
                         network.publicKeyVersion
-                      ) !== saved!.xpub
+                      ) !== saved.xpub
                     )
-                      throw new KeyringRuntimeError('INVALID_INPUT');
+                      throw selected.type === 'SmartAccount'
+                        ? Object.assign(new KeyringRuntimeError('INVALID_INPUT'), {code: 'LEDGER_SMART_OWNERS_UNAVAILABLE'})
+                        : new KeyringRuntimeError('INVALID_INPUT');
+                  }
                   }
                   verified = true;
                   return Object.freeze({
                     name: candidate.name,
-                    address: target!.address,
+                    address: targets[0]!.target.address,
                   });
                 },
                 handoff() {
@@ -2997,13 +3049,15 @@ export function createKeyringRuntimeFactory(
                   if (
                     request.purpose !== 'connect' ||
                     !verified ||
-                    !target ||
+                    !targets.length ||
                     !transport.host.getStatus().connected
                   )
                     throw new KeyringRuntimeError('NOT_READY');
                   handedOff = true;
                   ledgerVerified = {
-                    accountId: target.id,
+                    accountId: selected.id,
+                    targetIds,
+                    assertCurrent: assertWallet,
                     generation: captured,
                     snapshot: before!,
                     transport,
@@ -3026,6 +3080,21 @@ export function createKeyringRuntimeFactory(
             }
           },
         };
+        const smartOwnerSigningPorts = (owner: NativeSmartAccountSigningOwner, signal: AbortSignal, assertCurrent: () => void, ring: IndexedKeyring): SmartAccountOwnerSigningSdk => ({
+          rawSign: (params, options) => ring.ethereumTransaction.ethSign(params, options),
+          ledger: owner.type === 'Ledger' ? {
+            async signTypedData(request: Parameters<NonNullable<SmartAccountOwnerSigningSdk['ledger']>['signTypedData']>[0], authority: {signal: AbortSignal; assertCurrent(): void}) {
+              checkGuard(assertCurrent);
+              const target = catalogueSnapshot?.accounts.find(account => account.type === 'Ledger' && account.index === owner.id && account.address.toLowerCase() === owner.address.toLowerCase());
+              if (!target || !ledgerVerified?.targetIds.includes(target.id) || request.accountIndex !== owner.id ||
+                  request.expectedAddress.toLowerCase() !== owner.address.toLowerCase() || authority.signal !== signal || !ring.ledgerSigner)
+                throw new KeyringRuntimeError('NOT_READY');
+              return withOwnedLedgerConnection({signal, assertCurrent, connected: () => ledger.isConnected(), current: () => ledgerTransport, retire: retireLedger},
+                check => { check(); return ring.ledgerSigner!.evm.signTypedData(request, authority); });
+            },
+          } : null,
+          trezor: null,
+        });
         const refreshSmartAccountMetadata = async (signal: AbortSignal, assertOwner: () => void) => {
             const captured = generation, snapshot = catalogueSnapshot, ring = keyring;
             if (active || reserved) throw new KeyringRuntimeError('BUSY');
@@ -3122,10 +3191,7 @@ export function createKeyringRuntimeFactory(
             const selected = selectedAccount(), account = selected.type === 'SmartAccount' ? state.accounts.SmartAccount[selected.index] : undefined;
             if (!account?.smartAccount) return false;
             requireSmartAccountAddressIdentity(account, account.smartAccount.chainId);
-            const localOwners: NativeSmartAccountSigningOwner[] = [];
-            for (const type of ['HDAccount', 'Imported'] as const)
-              for (const owner of Object.values(state.accounts[type]))
-                if (!owner.isSmartAccount && !owner.isLedgerWallet && !owner.isTrezorWallet) localOwners.push({ address: owner.address, id: owner.id, type });
+            const {localOwners} = captureSmartSigningOwners();
             return canSignNativeSmartAccountActionHash(account.smartAccount, localOwners, { slhDsa: slhCapability !== null });
           } catch { return false; }
         };
@@ -3674,17 +3740,18 @@ export function createKeyringRuntimeFactory(
               slhDsa: slhCapability === null ? null : (metadata, actionHash, assertCurrent) =>
                 slhDsaSigningPort(captured, metadata, accountId, actionHash, () => { check(); checkGuard(assertCurrent); }, null),
               signOwner(address, digest, owner, assertCurrent, intent, signal) {
+                if (owner.type === 'Ledger' && !ledger.isConnected()) return Promise.reject(new KeyringRuntimeError('NOT_READY'));
                 return run(async ownerGeneration => {
                   const guard = () => { current(ownerGeneration); check(); checkGuard(assertCurrent); };
                   guard();
                   const target = state.accounts[owner.type]?.[owner.id];
-                  if ((owner.type !== 'HDAccount' && owner.type !== 'Imported') || !target ||
+                  if ((owner.type !== 'HDAccount' && owner.type !== 'Imported' && owner.type !== 'Ledger') || !target ||
                       target.address.toLowerCase() !== address.toLowerCase()) throw new KeyringRuntimeError('INVALID_INPUT');
                   if (intent.actionHash !== digest) throw new KeyringRuntimeError('INVALID_INPUT');
                   const signature = await signSmartAccountOwnerIntent({
                     intent, selectedSmart: { id: selected.index, type: selected.type, expectedAddress: selected.address },
                     owner: { ...owner, address }, authority: { assertCurrent: guard, signal },
-                    sdk: { rawSign: (params, options) => ring.ethereumTransaction.ethSign(params, options), ledger: null, trezor: null },
+                    sdk: smartOwnerSigningPorts({ id: owner.id, type: owner.type, address }, signal, guard, ring),
                   });
                   guard();
                   return signature;
@@ -4049,35 +4116,10 @@ export function createKeyringRuntimeFactory(
               check();
               return { snapshot, selected, account, network, approval, check, binding };
             };
-            const findLocalEcdsaOwner = (
-              address: string
-            ): SmartAccountLocalOwner | null => {
-              for (const type of ['HDAccount', 'Imported'] as const) {
-                const owner = Object.values(state.accounts[type]).find(
-                  (entry) =>
-                    !entry.isSmartAccount &&
-                    !entry.isLedgerWallet &&
-                    !entry.isTrezorWallet &&
-                    entry.address.toLowerCase() === address.toLowerCase()
-                );
-                if (owner)
-                  return {
-                    id: owner.id,
-                    type: type as SmartAccountLocalOwner['type'],
-                  };
-              }
-              return null;
-            };
-            const captureLocalSmartOwners = () => {
-              const localOwners: NativeSmartAccountSigningOwner[] = [];
-              const ownerRecords = new Map<string, IKeyringAccountState>();
-              for (const type of ['HDAccount', 'Imported'] as const)
-                for (const owner of Object.values(state.accounts[type]))
-                  if (!owner.isSmartAccount && !owner.isLedgerWallet && !owner.isTrezorWallet) {
-                    localOwners.push({ address: owner.address, id: owner.id, type });
-                    ownerRecords.set(`${type}:${owner.id}`, owner);
-                  }
-              return { localOwners, ownerRecords };
+            const captureLocalSmartOwners = captureSmartSigningOwners;
+            const findLocalEcdsaOwner = (address: string): SmartAccountLocalOwner | null => {
+              const owner = captureSmartSigningOwners().localOwners.find(owner => owner.address.toLowerCase() === address.toLowerCase());
+              return owner ? {id: owner.id, type: owner.type as SmartAccountLocalOwner['type']} : null;
             };
             const supportsLocalSmartAccount = (accountId: string) => {
               assertOwner();
@@ -4544,7 +4586,7 @@ export function createKeyringRuntimeFactory(
                           intent: prepared.ownerSigningIntent,
                           selectedSmart: { id: selected.index, type: selected.type, expectedAddress: selected.address },
                           owner: { ...owner, address }, authority: { assertCurrent: ownerGuard, signal: approval.signal },
-                          sdk: { rawSign: (params, options) => ring.ethereumTransaction.ethSign(params, options), ledger: null, trezor: null },
+                          sdk: smartOwnerSigningPorts({ ...owner, address }, approval.signal, ownerGuard, ring),
                         });
                         ownerGuard(); return result;
                       },

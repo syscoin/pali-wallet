@@ -24,7 +24,7 @@ async function fixture() {
       subscribe: () => () => {}, async startImport() { throw new Error('Hardware is outside this fixture'); },
       async resumeImport() { throw new Error('Hardware is outside this fixture'); },
       async resumeSend() { throw new Error('Hardware is outside this fixture'); }, async cancel() {} },
-    ledger: { subscribeStatus: () => () => {}, isConnected: () => false, async scan() { throw new Error('Hardware is outside this fixture'); } },
+    ledger: { getConnectionTargets: () => [], subscribeStatus: () => () => {}, isConnected: () => false, async scan() { throw new Error('Hardware is outside this fixture'); } },
     catalogue: { getSnapshot: () => null, getControlSnapshot: () => null, previewNetworkSelection() { throw Error('Network selection is outside this fixture'); } },
     async readConnectionUtxoPublic() { throw Error('UTXO is outside this fixture'); },
     async openSlhDsaAccount() { throw new Error('SLH is outside this fixture'); },

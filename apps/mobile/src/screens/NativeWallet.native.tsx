@@ -260,6 +260,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     scope: `${guardianEpoch}:${guardianContext}`,
     address: snapshot.account.address,
     manage: openGuardianPolicy && inspectGuardianRemoval ? {
+      ledgerConnection: ledgerConnection ?? undefined,
       chainId: Number(getNativeNetwork(snapshot.account.network, catalogue?.networks).chainId),
       inspectRemoval: (signal: AbortSignal, assertView: () => void) => inspectGuardianRemoval(signal, () => {
         assertView();
@@ -870,10 +871,10 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     return signingReview.kind === 'encryption'
       ? <NativeEncryptionReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} />
       : signingReview.kind === 'smart-transaction'
-      ? <NativeSmartTransactionReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} />
+      ? <NativeSmartTransactionReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} ledgerConnection={ledgerConnection ?? undefined} />
       : signingReview.kind === 'transaction'
       ? <NativeTransactionReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined} />
-      : <NativeMessageReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined} />;
+      : <NativeMessageReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} ledgerConnection={selectedAccountType === 'Ledger' || selectedAccountType === 'SmartAccount' ? ledgerConnection ?? undefined : undefined} />;
   if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && connectionView && connectionSnapshot?.callsStatus)
     return <NativeCallsStatus key={connectionSnapshot.callsStatus.id} view={connectionSnapshot.callsStatus} controller={connectionView} />;
   if (stage === 'connections' && snapshot.phase === 'ready' && connectionView)
@@ -1115,13 +1116,13 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     }} />
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
-  else if (snapshot.phase === 'ready' && stage === 'slh-dsa' && openSlhDsaManagement) return <NativeSlhDsaManagementScreen open={openSlhDsaManagement} onBack={closeStage} />;
-  else if (snapshot.phase === 'ready' && stage === 'smart-authenticator' && openWalletAuthenticator) return <NativeSmartAccountAuthenticator
+  else if (snapshot.phase === 'ready' && stage === 'slh-dsa' && openSlhDsaManagement) return <NativeSlhDsaManagementScreen ledgerConnection={ledgerConnection ?? undefined} open={openSlhDsaManagement} onBack={closeStage} />;
+  else if (snapshot.phase === 'ready' && stage === 'smart-authenticator' && openWalletAuthenticator) return <NativeSmartAccountAuthenticator ledgerConnection={ledgerConnection ?? undefined}
     open={openWalletAuthenticator} onBack={closeStage} />;
-  else if (snapshot.phase === 'ready' && stage === 'smart-deploy' && openSmartDeployment) return <NativeSmartAccountOperationRoute
+  else if (snapshot.phase === 'ready' && stage === 'smart-deploy' && openSmartDeployment) return <NativeSmartAccountOperationRoute ledgerConnection={ledgerConnection ?? undefined}
     open={openSmartDeployment} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && (sendTarget?.kind === 'native' || sendTarget?.kind === 'token' || sendTarget?.kind === 'collectible') && canSendSmart && openSmartSend && snapshot.account && publicSource && balanceReader)
-    return <NativeSmartAccountSend recipientResolver={recipientResolver} account={{ ...snapshot.account, revision: snapshot.revision }} source={publicSource} reader={balanceReader} tokenView={tokenView ?? undefined} token={sendTarget.kind === 'token' ? sendTarget.token : undefined} collectible={sendTarget.kind === 'collectible' ? sendTarget.collectible : undefined} open={openSmartSend} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} accountLabel={accountLabel} onBack={closeStage} />;
+    return <NativeSmartAccountSend ledgerConnection={ledgerConnection ?? undefined} recipientResolver={recipientResolver} account={{ ...snapshot.account, revision: snapshot.revision }} source={publicSource} reader={balanceReader} tokenView={tokenView ?? undefined} token={sendTarget.kind === 'token' ? sendTarget.token : undefined} collectible={sendTarget.kind === 'collectible' ? sendTarget.collectible : undefined} open={openSmartSend} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} accountLabel={accountLabel} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && sendTarget && sendTarget.kind !== 'spt' && sendTarget.kind !== 'utxo' && canSign && transferView && snapshot.account) return <NativeSend recipientResolver={recipientResolver} key={sendDraft?.resumeId}
     beforeClose={selectedAccountType === 'Trezor' ? trezorView?.cancel : undefined}
     initialDraft={sendDraft?.resume && sendDraft.resume.kind !== 'utxo' ? sendDraft.resume.draft : undefined}
