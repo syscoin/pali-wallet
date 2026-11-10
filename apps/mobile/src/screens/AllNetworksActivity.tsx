@@ -114,7 +114,7 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
         const first = !previous || present(previous).date.key !== display.date.key, last = !next || present(next).date.key !== display.date.key;
         return <ActivityListRow testID={`account-activity-row-${item.choice.scope.network.id}-${item.row.hash}`} first={first} last={last}
           heading={first ? display.date.label : undefined} title={display.title} subtitle={`${display.status}${item.row.unavailable ? ' · Details unavailable' : ''}`}
-          networkBadge={item.choice.networkName} networkId={item.choice.scope.network.id} networkSymbol={item.choice.symbol}
+          networkBadge={snapshot.filter === 'all' ? item.choice.networkName : undefined} networkId={item.choice.scope.network.id} networkSymbol={item.choice.symbol}
           direction={display.direction} amount={display.amount} time={display.date.time}
           label={`${display.label}. Network: ${item.choice.networkName}`} disabled={busy} onPress={() => { setError(''); setSelection(item); }} />;
       }}

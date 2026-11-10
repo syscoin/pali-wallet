@@ -33,6 +33,8 @@ test('concrete and direction filters stay scoped, and hidden balances do not lea
   await page.getByRole('radio', { name: /^Ethereum/ }).click();
   await expect(page.getByTestId('activity-filter-icon-ethereum')).toBeVisible();
   await expect(page.getByTestId(`account-activity-row-base-${hash}`)).toHaveCount(0);
+  await expect(page.getByTestId(`account-activity-row-ethereum-${hash}`).getByText('Ethereum', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('activity-network-icon-ethereum')).toHaveCount(0);
   await page.evaluate(() => window.__allActivityFixture.hideBalances(true));
   await expect(page.getByTestId(`account-activity-row-ethereum-${hash}`)).toHaveAccessibleName(/^Amount hidden, Confirmed/);
 });
