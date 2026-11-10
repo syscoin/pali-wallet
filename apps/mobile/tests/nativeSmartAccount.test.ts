@@ -14,7 +14,7 @@ import { createDappSigningApproval } from '../../../source/wallet/dappSigningApp
 import { decodeNftSafeTransferData } from '../../../source/shared/nftTransfer.ts';
 import { decodeErc20Transfer } from '../../../source/shared/erc20.ts';
 import { getSmartAccountUserOpHash } from '../../../source/utils/smartAccount/userOperationHash.ts';
-import { encodeEcdsaValidatorInitData, getConfiguredAuthenticatorAddress } from '../../../source/utils/smartAccount/account.ts';
+import { encodeEcdsaValidatorInitData, encodeSmartAccountValidatorNonceKey, getConfiguredAuthenticatorAddress } from '../../../source/utils/smartAccount/account.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -3360,5 +3360,42 @@ test('module management follows the extension self-target blacklist policy', asy
     await operation.prepare(); assert.equal(operation.getSnapshot().phase, 'failed');
     assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
     assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.customModules?.length ?? 0, 0);
+  } finally { await operation?.dispose(); await f.close(); }
+});
+
+for (const kind of ['exact', 'maximum'] as const) test(`ordinary Smart ${kind} send prepares and signs with freshly hydrated composite metadata`, async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Externally deployed account', password: PASSWORD });
+    // Cached constructor metadata remains undeployed/ECDSA. Another client has
+    // deployed the account and activated composite authentication on-chain.
+    f.guardianStatus('no-policy'); f.fundedSmart();
+    f.observedCompositeChildren([getConfiguredAuthenticatorAddress(1, 'ecdsa')]);
+    const cached = savedSmartAccount((await f.inspectRecovery()).record).smartAccount;
+    assert.equal(cached.isDeployed, false); assert.equal(cached.auth.module, 'ecdsa');
+    operation = await f.runtime.openSmartAccountSend('0x5555555555555555555555555555555555555555', kind === 'exact' ? { kind, amount: '0.000001' } : { kind }, () => undefined);
+    await operation.prepare();
+    const review = operation.getSnapshot();
+    assert.equal(review.phase, 'authorize', JSON.stringify(review));
+    const validator = getConfiguredAuthenticatorAddress(1, 'composite');
+    assert.equal(BigInt(review.authorization!.nonce) >> 64n, BigInt(encodeSmartAccountValidatorNonceKey(validator)), 'nonce and gas preparation must use the newly observed authenticator');
+    const authorizing = operation.authorize(review.revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id); await authorizing;
+    assert.equal(operation.getSnapshot().phase, 'complete');
+    assert.equal(f.submitted.length, 1); assert.equal(f.signatures.length, 1);
+    const transaction = Transaction.from(f.submitted[0]!);
+    const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', transaction.data);
+    assert.equal(operations[0].nonce, BigInt(review.authorization!.nonce), 'the submitted envelope must retain the reviewed composite nonce');
+    const [childProofs] = coder.decode(['bytes[]'], operations[0].signature);
+    assert.deepEqual([...childProofs], [f.signatures[0]!.signature], 'the submitted composite proof must preserve its configured ECDSA child');
+    const op = operations[0];
+    const submittedHash = getSmartAccountUserOpHash({ sender: op.sender, nonce: op.nonce.toString(), initCode: op.initCode, callData: op.callData,
+      accountGasLimits: op.accountGasLimits, preVerificationGas: op.preVerificationGas.toString(), gasFees: op.gasFees, paymasterAndData: op.paymasterAndData, signature: op.signature }, 1);
+    assert.equal(submittedHash, review.userOperationHash); assert.equal(f.signatures[0]!.digest, submittedHash);
+    assert.equal(recoverAddress(submittedHash, childProofs[0]).toLowerCase(), f.signatures[0]!.address.toLowerCase());
   } finally { await operation?.dispose(); await f.close(); }
 });

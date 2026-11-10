@@ -283,7 +283,7 @@ export function createNativeSmartOperation(
         executions: { target: string; data: string; value: string }[]
       ) =>
         prepareSmartAccountOperation({
-          account: intent.kind === 'modules' ? { ...account, smartAccount: metadata } : account,
+          account: { ...account, smartAccount: metadata },
           chainId,
           provider,
           pending,
