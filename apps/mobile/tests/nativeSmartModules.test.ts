@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getAddress } from '../../../source/utils/ethersV6Compat.ts';
 import type { ISmartAccountMetadata, SmartAccountValidatorModule } from '../../../source/types/network.ts';
-import { buildECDSAAuthenticator } from '../../../source/utils/smartAccount/authenticators.ts';
+import { buildECDSAAuthenticator, buildP256WebAuthnAuthenticator, buildSLHDSAAuthenticator } from '../../../source/utils/smartAccount/authenticators.ts';
 import { encodeCompositeValidatorInitData } from '../../../source/utils/smartAccount/account.ts';
 import { getPaliModuleAddress, paliSmartAccountInterface } from '../../../source/utils/smartAccount/contracts.ts';
 import { buildCompositeValidatorExecutions, buildCustomValidatorInstallExecutions, buildValidatorUninstallExecutions } from '../../../source/utils/smartAccount/moduleCommands.ts';
@@ -11,11 +11,11 @@ import { assertNativeSmartModuleCommandApplied, assertNativeSmartModuleCommandCu
 const address = (value: number) => getAddress(`0x${value.toString(16).padStart(40, '0')}`);
 const accountAddress = address(100), customAddress = address(200), owner = address(300), chainId = 5700;
 const compositeAddress = getAddress(getPaliModuleAddress(chainId, 'composite'));
-const install: NativeSmartModuleDraft = { kind: 'install-custom', address: customAddress, name: 'External validator', initData: '0xabcd', riskAcknowledged: true };
+const install: NativeSmartModuleDraft = { kind: 'install-custom', address: customAddress, name: 'External validator', initData: '0xabcd' };
 const available = (module: SmartAccountValidatorModule) => module.id === 'ecdsa';
 function metadata(): ISmartAccountMetadata {
   const built = buildECDSAAuthenticator({ chainId, config: { owners: [owner], threshold: 1 } });
-  return { chainId, contractVersion: '1', deploymentSalt: '0x' + '00'.repeat(32), ...built.metadata, auth: built.auth, isDeployed: true };
+  return { chainId, contractVersion: '1', deploymentSalt: '0x' + '00'.repeat(32), ...built.metadata, auth: built.auth, deploymentAuth: { data: built.auth.data, validator: built.auth.validator }, isDeployed: true };
 }
 function custom(): SmartAccountValidatorModule {
   return { id: 'custom', type: 'validator', address: customAddress, data: '0xabcd', config: { name: 'External validator', moduleType: 1, compositeCompatible: true, initData: '0xabcd' } };
@@ -23,7 +23,7 @@ function custom(): SmartAccountValidatorModule {
 function composite(children: string[], threshold: number): SmartAccountValidatorModule {
   return { id: 'composite', type: 'validator', address: compositeAddress, data: encodeCompositeValidatorInitData(children, threshold), config: { childValidators: children, threshold } };
 }
-const build = (draft: NativeSmartModuleDraft, value = metadata()) => buildNativeSmartModuleCommand({ accountAddress, metadata: value, draft, isAlgorithmAvailable: available });
+const build = (draft: NativeSmartModuleDraft, value = metadata(), options: Pick<Parameters<typeof buildNativeSmartModuleCommand>[0], 'removalPolicy' | 'deploymentAdmission'> = { removalPolicy: 'all-installed-composites', deploymentAdmission: 'deployed-only' }) => buildNativeSmartModuleCommand({ accountAddress, metadata: value, draft, isAlgorithmAvailable: available, ...options });
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
 test('module drafts copy public fields and freeze caller-owned children', () => {
@@ -40,13 +40,13 @@ test('module drafts copy public fields and freeze caller-owned children', () => 
   assert.equal((snapshotNativeSmartModuleDraft({ ...install, initData: '' }) as typeof install).initData, '0x');
 });
 
-test('module drafts reject missing consent, accessors, unbounded fields and malformed parameters', () => {
+test('module drafts reject remote consent fields, accessors, unbounded fields and malformed parameters', () => {
   let reads = 0;
   const getter = { ...install };
   Object.defineProperty(getter, 'address', { get() { reads++; return customAddress; }, enumerable: true });
   const childGetter = [customAddress];
   Object.defineProperty(childGetter, '0', { get() { reads++; return customAddress; }, enumerable: true });
-  const invalid: unknown[] = [null, {}, { ...install, riskAcknowledged: false }, { ...install, address: address(0) }, { ...install, initData: '0x1' }, { ...install, name: 'a'.repeat(121) }, { ...install, initData: '0x' + '00'.repeat(65537) }, { ...install, capability: () => undefined }, getter,
+  const invalid: unknown[] = [null, {}, { ...install, riskAcknowledged: true }, { ...install, riskAcknowledged: false }, { ...install, address: address(0) }, { ...install, initData: '0x1' }, { ...install, name: 'a'.repeat(121) }, { ...install, initData: '0x' + '00'.repeat(65537) }, { ...install, capability: () => undefined }, getter,
     { kind: 'uninstall', address: 'not-an-address' }, { kind: 'composite', children: [customAddress, customAddress], threshold: 1 }, { kind: 'composite', children: [customAddress], threshold: 2 }, { kind: 'composite', children: Array(65).fill(customAddress), threshold: 1 }, { kind: 'composite', children: new Array(1), threshold: 1 }, { kind: 'composite', children: childGetter, threshold: 1 }];
   for (const draft of invalid) assert.throws(() => snapshotNativeSmartModuleDraft(draft));
   assert.equal(reads, 0);
@@ -104,7 +104,7 @@ test('composite availability and lockout decisions remain in the shared builder'
   const value = metadata(), child = value.auth!.validator;
   value.installedModules!.push(custom());
   assert.throws(() => build({ kind: 'composite', children: [child, customAddress], threshold: 2 }, value), /COMPOSITE_LOCKOUT/);
-  assert.throws(() => buildNativeSmartModuleCommand({ accountAddress, metadata: value, draft: { kind: 'composite', children: [child], threshold: 1 }, isAlgorithmAvailable: () => false }), /COMPOSITE_LOCKOUT/);
+  assert.throws(() => buildNativeSmartModuleCommand({ accountAddress, metadata: value, draft: { kind: 'composite', children: [child], threshold: 1 }, isAlgorithmAvailable: () => false, removalPolicy: 'all-installed-composites', deploymentAdmission: 'deployed-only' }), /COMPOSITE_LOCKOUT/);
   const incompatible = copy(value), module = incompatible.installedModules![1]!;
   if (module.id === 'custom') module.config.compositeCompatible = false;
   assert.throws(() => build({ kind: 'composite', children: [child, customAddress], threshold: 1 }, incompatible), /INVALID_COMPOSITE/);
@@ -147,4 +147,85 @@ test('uninstall application requires target absence and unchanged original activ
   const applied = copy(value); applied.installedModules!.pop();
   assert.doesNotThrow(() => assertNativeSmartModuleCommandApplied(command, applied));
   assert.throws(() => assertNativeSmartModuleCommandApplied(command, { ...applied, isDeployed: false }));
+});
+
+test('module command admission and removal policy must be explicit and immutable', () => {
+  const input = { accountAddress, metadata: metadata(), draft: install, isAlgorithmAvailable: available };
+  assert.throws(() => buildNativeSmartModuleCommand(input as never));
+  assert.throws(() => buildNativeSmartModuleCommand({ ...input, removalPolicy: 'all-installed-composites' } as never));
+  assert.throws(() => buildNativeSmartModuleCommand({ ...input, deploymentAdmission: 'deployed-only' } as never));
+  assert.throws(() => build(install, metadata(), { removalPolicy: 'unknown' as never, deploymentAdmission: 'deployed-only' }));
+  assert.throws(() => build(install, metadata(), { removalPolicy: 'all-installed-composites', deploymentAdmission: 'unknown' as never }));
+  const command = build(install);
+  assert.equal(command.removalPolicy, 'all-installed-composites');
+  assert.equal(command.deploymentAdmission, 'deployed-only');
+  assert.equal(command.sourceIsDeployed, true);
+  assert(Object.isFrozen(command));
+});
+
+test('dapp and local removal retain their distinct shared composite-reference policies', () => {
+  const value = metadata(), child = value.auth!.validator;
+  value.installedModules!.push(custom(), composite([child, customAddress], 1));
+  const draft: NativeSmartModuleDraft = { kind: 'uninstall', address: customAddress };
+  assert.throws(() => build(draft, value));
+  const options = { removalPolicy: 'active-composite' as const, deploymentAdmission: 'deployed-only' as const };
+  assert.doesNotThrow(() => build(draft, value, options));
+  const active = value.installedModules!.find(module => module.id === 'composite')!;
+  value.auth = { module: 'composite', validator: active.address, data: active.data! };
+  assert.throws(() => build(draft, value, options));
+  value.installedModules!.push({ type: 'executor', id: 'guardian-recovery', address: address(400), config: { guardians: [owner], delaySeconds: 259200, threshold: 1 } });
+  assert.throws(() => build({ kind: 'uninstall', address: address(400) }, value, options));
+});
+
+const constructorAdmission = { removalPolicy: 'active-composite' as const, deploymentAdmission: 'constructor-or-deployed' as const };
+test('undeployed constructor commands require explicit admission and bind deployment state through review', () => {
+  const value = { ...metadata(), isDeployed: false };
+  assert.throws(() => build(install, value));
+  const command = build(install, value, constructorAdmission);
+  assert.equal(command.sourceIsDeployed, false);
+  assert.equal(command.deploymentAdmission, 'constructor-or-deployed');
+  assert.doesNotThrow(() => assertNativeSmartModuleCommandCurrent(command, copy(value)));
+  assert.throws(() => assertNativeSmartModuleCommandCurrent(command, { ...value, isDeployed: true }));
+  assert.throws(() => assertNativeSmartModuleCommandApplied(command, value));
+  const applied = { ...copy(value), isDeployed: true };
+  applied.installedModules!.push(custom());
+  assert.doesNotThrow(() => assertNativeSmartModuleCommandApplied(command, applied));
+});
+
+test('constructor admission preserves a transient custom probe while refusing observed installation drift', () => {
+  const value = { ...metadata(), isDeployed: false }, command = build(install, value, constructorAdmission);
+  const observed = copy(value);
+  observed.customModules = [{ address: customAddress, name: 'Public probe', moduleType: 1, initData: '0xabcd', compositeCompatible: false }];
+  assert.doesNotThrow(() => assertNativeSmartModuleCommandCurrent(command, observed));
+  observed.installedModules!.push(custom());
+  assert.throws(() => assertNativeSmartModuleCommandCurrent(command, observed));
+});
+
+test('constructor admission refuses missing/mismatched origin auth, nonbuiltin addresses and config/data drift', () => {
+  const value = { ...metadata(), isDeployed: false };
+  const missing = copy(value); delete missing.deploymentAuth;
+  assert.throws(() => build(install, missing, constructorAdmission));
+  const origin = copy(value); origin.deploymentAuth = { ...origin.deploymentAuth!, data: '0x' };
+  assert.throws(() => build(install, origin, constructorAdmission));
+  const noncanonical = copy(value), active = noncanonical.installedModules![0]!;
+  active.address = address(499); noncanonical.auth!.validator = active.address; noncanonical.deploymentAuth = { ...noncanonical.deploymentAuth!, validator: active.address };
+  assert.throws(() => build(install, noncanonical, constructorAdmission));
+  const config = copy(value), ecdsa = config.installedModules![0]!;
+  if (ecdsa.id === 'ecdsa') ecdsa.config.owners = [address(399)];
+  assert.throws(() => build(install, config, constructorAdmission));
+  const external = copy(value), module = { ...custom(), address: address(401) };
+  external.installedModules = [module]; external.auth = { module: 'custom', validator: module.address, data: module.data! }; external.deploymentAuth = { validator: module.address, data: module.data! };
+  assert.throws(() => build(install, external, constructorAdmission));
+  assert.throws(() => build(install, { ...value, isDeployed: undefined as never }, constructorAdmission));
+});
+
+for (const kind of ['p256-webauthn', 'slh-dsa'] as const) test(`pure constructor admission validates canonical ${kind} configuration without granting native signing`, () => {
+  const bytes = (value: string) => '0x' + value.repeat(32);
+  const built = kind === 'p256-webauthn'
+    ? buildP256WebAuthnAuthenticator({ chainId, config: { publicKey: { x: bytes('11'), y: bytes('22'), rpIdHash: bytes('33'), originHash: bytes('44'), originLength: 24 } } })
+    : buildSLHDSAAuthenticator({ chainId, config: { keyId: 'public-key-reference', pkRoot: bytes('11'), pkSeed: bytes('22'), parameterSet: 'SLH-DSA-SHA2-128-24', signatureLimit: 100 } });
+  const value = { ...metadata(), ...built.metadata, auth: built.auth, deploymentAuth: { validator: built.auth.validator, data: built.auth.data }, isDeployed: false };
+  assert.doesNotThrow(() => build(install, value, constructorAdmission));
+  const drift = copy(value); drift.installedModules![0]!.data = '0x';
+  assert.throws(() => build(install, drift, constructorAdmission));
 });

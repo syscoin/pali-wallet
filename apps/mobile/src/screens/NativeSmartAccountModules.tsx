@@ -28,7 +28,7 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
   const [epoch, setEpoch] = useState(0), [manager, setManager] = useState<NativeSmartModuleManagement>(), [metadata, setMetadata] = useState<ISmartAccountMetadata>();
   const [operation, setOperation] = useState<NativeSmartAccountOperation>(), [busy, setBusy] = useState(false), [failure, setFailure] = useState<string>(), [closing, setClosing] = useState(false);
   const [mode, setMode] = useState<'installed' | 'custom' | 'composite'>('installed');
-  const [address, setAddress] = useState(''), [name, setName] = useState(''), [initData, setInitData] = useState('0x'), [risk, setRisk] = useState(false);
+  const [address, setAddress] = useState(''), [name, setName] = useState(''), [initData, setInitData] = useState('0x');
   const [preflight, setPreflight] = useState<{ address: string; result: CustomValidatorPreflightResult }>();
   const [children, setChildren] = useState<readonly string[]>([]), [threshold, setThreshold] = useState('1');
   useLayoutEffect(() => { callbacks.current = { onBack }; }, [onBack]);
@@ -41,7 +41,7 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
   }, []);
   const load = useCallback(async (owner: Owner) => {
     check(owner); const value = await owner.manager!.read(); check(owner);
-    setMetadata(value); setPreflight(undefined); setRisk(false);
+    setMetadata(value); setPreflight(undefined);
     const installed = value.installedModules?.find(module => module.type === 'validator' && module.id === 'composite');
     setChildren(installed?.id === 'composite' ? [...installed.config.childValidators] : []);
     setThreshold(String(installed?.id === 'composite' ? installed.config.threshold : 1));
@@ -59,7 +59,7 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
     selected.current = owner;
     void Promise.resolve().then(() => run(owner, async () => {
       setManager(undefined); setMetadata(undefined); setOperation(undefined); setClosing(false); setFailure(undefined); setMode('installed');
-      setAddress(''); setName(''); setInitData('0x'); setRisk(false); setPreflight(undefined);
+      setAddress(''); setName(''); setInitData('0x'); setPreflight(undefined);
       const value = await open(owner.abort.signal, () => check(owner)); check(owner);
       owner.manager = value; setManager(value); await load(owner);
     }));
@@ -114,11 +114,11 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
         </>}
         {metadata && mode === 'custom' && <Card style={s.card}>
           <Text>{t('smartAccountHub.customModuleHint')}</Text>
-          <NativeSendInput label={t('smartAccountHub.moduleAddress')} value={address} busy={blocked} onChange={value => { setAddress(value); setPreflight(undefined); setRisk(false); }} />
+          <NativeSendInput label={t('smartAccountHub.moduleAddress')} value={address} busy={blocked} onChange={value => { setAddress(value); setPreflight(undefined); }} />
           <NativeSendInput label={t('smartAccountHub.moduleName')} value={name} busy={blocked} max={120} placeholder={t('smartAccountHub.moduleNamePlaceholder')} onChange={setName} />
           <NativeSendInput label={t('smartAccountHub.moduleInitData')} value={initData} busy={blocked} max={131074} onChange={setInitData} />
           <Button title={t('smartAccountHub.checkModule')} variant="secondary" disabled={blocked || !address.trim()} onPress={() => action(async (owner, value) => {
-            const checkedAddress = address.trim(); setPreflight(undefined); setRisk(false);
+            const checkedAddress = address.trim(); setPreflight(undefined);
             const result = await value.preflightCustom(checkedAddress); check(owner); setPreflight({ address: checkedAddress, result });
           })} />
           {checked && <>
@@ -126,10 +126,8 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
             {checked.failures.map(failure => <Text key={failure}>{t(failure === 'already-installed' ? 'smartAccountHub.preflightAlreadyInstalled' : failure === 'no-contract-code' ? 'smartAccountHub.preflightNoCode' : 'smartAccountHub.preflightNotValidator')}</Text>)}
           </>}
           {!validInit && <Text>{t('smartAccountHub.invalidInitData')}</Text>}
-          <Notice title={t('smartAccountHub.customModule')} body={t('smartAccountHub.customRisk')} tone="amber" />
-          <View style={s.choice}><Text style={s.choiceText}>{t('smartAccountHub.customRiskAck')}</Text><Switch accessibilityLabel={t('smartAccountHub.customRiskAck')} value={risk} disabled={blocked || !checked?.ok} onValueChange={setRisk} /></View>
-          <Button title={t('smartAccountHub.install')} disabled={blocked || !checked?.ok || !risk || !validInit} onPress={() => {
-            if (checked?.ok && risk && validInit) review({ kind: 'install-custom', address: address.trim(), name: name.trim(), initData: initData.trim(), riskAcknowledged: true });
+          <Button title={t('smartAccountHub.install')} disabled={blocked || !checked?.ok || !validInit} onPress={() => {
+            if (checked?.ok && validInit) review({ kind: 'install-custom', address: address.trim(), name: name.trim(), initData: initData.trim() });
           }} />
         </Card>}
         {metadata && mode === 'composite' && <Card style={s.card}>

@@ -155,6 +155,7 @@ export function NativeEoaBatchFixture() {
     activateRequestAccount: unavailable,
     chooseTransactionFee: unavailable,
     editApprovalAmount: unavailable,
+    async retrySmartMetadata() { throw new Error('Smart metadata refresh is outside this fixture'); },
     confirmSmartPayer: unavailable,
     callsStatusShown: unavailable,
     dismissCallsStatus: unavailable,

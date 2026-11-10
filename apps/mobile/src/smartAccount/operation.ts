@@ -1,4 +1,4 @@
-import type { NativeSmartModuleCommand } from './modules.ts';
+import type { NativeSmartModuleCommand, NativeSmartModuleConsent } from './modules.ts';
 import { isSmartAccountPendingStateError } from '../../../../source/utils/smartAccount/pendingState.ts';
 import { NativeOperationDrain } from '../custody/operationDrain.ts';
 import type { SmartAccountValidatorSwitch } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
@@ -450,6 +450,17 @@ export class NativeSmartAccountOperation {
     }
   }
   async authorize(revision: number): Promise<void> {
+    if (this.host.intent.kind === 'modules') throw new Error('Explicit module authorization is required');
+    return this.authorizeCurrent(revision);
+  }
+  async authorizeModuleChange(revision: number, consent: NativeSmartModuleConsent): Promise<void> {
+    if (this.host.intent.kind !== 'modules' || !consent || typeof consent !== 'object') throw new Error('Explicit module authorization is required');
+    const fields = Object.getOwnPropertyDescriptors(consent), kind = this.host.intent.command.draft.kind;
+    const expected = kind === 'install-custom' ? ['kind', 'riskAcknowledged'] : ['kind'];
+    if (Reflect.ownKeys(fields).length !== expected.length || expected.some(field => !fields[field] || !Object.hasOwn(fields[field], 'value')) || fields.kind?.value !== kind || (kind === 'install-custom' && fields.riskAcknowledged?.value !== true)) throw new Error('Explicit module authorization is required');
+    return this.authorizeCurrent(revision);
+  }
+  private async authorizeCurrent(revision: number): Promise<void> {
     if (
       this.disposed ||
       this.snapshot.phase !== 'authorize' ||

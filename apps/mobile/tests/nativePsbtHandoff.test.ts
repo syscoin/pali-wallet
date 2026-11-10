@@ -198,3 +198,76 @@ test('native signing requires explicit live continuation fields rather than an o
   for(const value of [undefined,null,{},...Object.keys(valid).map(key=>({...valid,[key]:undefined})),{...valid,expiresAt:Date.now()-1},{...valid,expiresAt:NaN}])
     assert.throws(()=>requireNativeSigningHandoff(value),/continuation authority is required/);
 });
+
+test('canonical preparation binds one immutable scope shared by Suite launch and suspension', async () => {
+  const f = fixture(), handoffs = new NativeSigningHandoffs({ async cancel() {}, changed() {} });
+  try {
+    const original = f.owner().resumeScope, prepared = { ...original, signing: 'canonical-prepared-policy' };
+    const handoff = handoffs.capture({ id: 'prepared', wire: f.wire, scope: original, expiresAt: f.wire.expiresAt, order: 1,
+      assertCurrent() {}, eligible: () => true, drain: async () => undefined, retire() {} });
+    assert(!Object.hasOwn(handoff, 'bindPreparedScope'));
+    handoffs.bindPreparedScope(handoff, prepared);
+    handoffs.bindPreparedScope(handoff, { ...prepared });
+    assert.throws(() => handoffs.bindPreparedScope(handoff, { ...prepared, signing: 'later-policy' }), /REQUEST_EXPIRED/);
+    prepared.signing = 'caller-mutation';
+    const expiresAt = Date.now() + 30000;
+    handoff.beforeSuiteOpen(expiresAt, {})(true); assert(handoffs.background(handoff));
+    const descriptor = handoffs.descriptor(handoff.id)!;
+    assert.equal(descriptor.scope.signing, 'canonical-prepared-policy'); assert(Object.isFrozen(descriptor.scope));
+    assert.equal(descriptor.expiresAt, expiresAt); assert.equal(descriptor.wire, JSON.stringify(f.wire));
+    assert.throws(() => handoffs.bindPreparedScope(handoff, original), /REQUEST_EXPIRED/);
+    assert.equal(handoffs.descriptor(handoff.id), descriptor);
+  } finally { handoffs.cancelDapp(); await f.manager.dispose(); }
+});
+
+for (const field of ['adapter', 'wallet', 'unlockGeneration', 'accountId', 'address', 'type', 'xpub', 'registration', 'grant'] as const) test(`canonical preparation cannot replace captured ${field}`, async () => {
+  const f = fixture(), handoffs = new NativeSigningHandoffs({ async cancel() {}, changed() {} });
+  try {
+    const scope = f.owner().resumeScope;
+    const handoff = handoffs.capture({ id: 'owned', wire: f.wire, scope, expiresAt: f.wire.expiresAt, order: 1,
+      assertCurrent() {}, eligible: () => true, drain: async () => undefined, retire() {} });
+    const changed = { ...scope, [field]: typeof scope[field] === 'number' ? 2 : 'changed' };
+    assert.throws(() => handoffs.bindPreparedScope(handoff, changed), /REQUEST_EXPIRED/);
+    handoffs.bindPreparedScope(handoff, { ...scope, signing: 'prepared' });
+    assert.equal(handoffs.size, 0);
+  } finally { handoffs.cancelDapp(); await f.manager.dispose(); }
+});
+
+for (const terminal of ['launch-opened', 'launch-failed', 'signature'] as const) test(`canonical preparation cannot bind after ${terminal}`, async () => {
+  const f = fixture(), handoffs = new NativeSigningHandoffs({ async cancel() {}, changed() {} });
+  try {
+    const scope = f.owner().resumeScope;
+    const handoff = handoffs.capture({ id: 'terminal', wire: f.wire, scope, expiresAt: f.wire.expiresAt, order: 1,
+      assertCurrent() {}, eligible: () => true, drain: async () => undefined, retire() {} });
+    if (terminal === 'signature') handoff.beforeSignature();
+    else handoff.beforeSuiteOpen(Date.now() + 30000, {})(terminal === 'launch-opened');
+    assert.throws(() => handoffs.bindPreparedScope(handoff, scope), /REQUEST_EXPIRED/);
+    assert.throws(() => handoffs.bindPreparedScope(handoff, { ...scope, signing: 'prepared' }), /REQUEST_EXPIRED/);
+  } finally { handoffs.cancelDapp(); await f.manager.dispose(); }
+});
+
+test('canonical preparation cannot promote originally unproven wire freshness into Trezor authority', async () => {
+  const f = fixture(), handoffs = new NativeSigningHandoffs({ async cancel() {}, changed() {} });
+  try {
+    const wire = { ...f.wire, freshness: 'unproven' as 'fresh' | 'unproven' }, scope = { ...f.owner().resumeScope, type: 'SmartAccount', trezor: false };
+    const handoff = handoffs.capture({ id: 'unproven-prepared', wire, scope, expiresAt: wire.expiresAt, order: 1,
+      assertCurrent() {}, eligible: () => true, drain: async () => undefined, retire() { throw Error('Must not retire'); } });
+    wire.freshness = 'fresh';
+    assert.throws(() => handoffs.bindPreparedScope(handoff, { ...scope, trezor: true, signing: 'trezor-prepared' }), /REQUEST_EXPIRED/);
+    assert.throws(() => handoff.beforeSuiteOpen(Date.now() + 30000, {}), /REQUEST_EXPIRED/);
+    assert.equal(handoffs.background(handoff), false); assert.equal(handoffs.size, 0);
+  } finally { handoffs.cancelDapp(); await f.manager.dispose(); }
+});
+
+test('canonical preparation requires the owning live queue capability', async () => {
+  const f = fixture(), handoffs = new NativeSigningHandoffs({ async cancel() {}, changed() {} });
+  try {
+    let live = true;
+    const scope = f.owner().resumeScope;
+    const handoff = handoffs.capture({ id: 'live', wire: f.wire, scope, expiresAt: f.wire.expiresAt, order: 1,
+      assertCurrent() { if (!live) throw Error('CONTEXT_CHANGED'); }, eligible: () => true, drain: async () => undefined, retire() {} });
+    assert.throws(() => handoffs.bindPreparedScope({ ...handoff }, scope), /REQUEST_EXPIRED/);
+    live = false;
+    assert.throws(() => handoffs.bindPreparedScope(handoff, scope), /CONTEXT_CHANGED/);
+  } finally { handoffs.cancelDapp(); await f.manager.dispose(); }
+});

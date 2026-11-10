@@ -196,6 +196,7 @@ export function NativeSmartDappFixture() {
           }
       );
     },
+    async retrySmartMetadata() { throw new Error('Smart metadata refresh is outside this fixture'); },
     async confirmSmartPayer(...args) {
       calls.push({ method: 'confirmSmartPayer', args });
       setReview(

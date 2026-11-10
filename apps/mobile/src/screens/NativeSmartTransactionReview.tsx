@@ -51,12 +51,15 @@ export function NativeSmartTransactionReviewScreen({
         !warningsAccepted ||
         editing === intent
       }
-      authorize={() => {
+      authorize={(acknowledgedCustomRisk) => {
         if (editingRef.current === intent || !ledger.canApprove()) return;
+        const requiresCustomRisk = intent.kind === 'modules' && intent.command.draft.kind === 'install-custom';
+        if (requiresCustomRisk && acknowledgedCustomRisk !== true) return;
         void controller
-          .approveRequest(review.id, review.revision, warningsAccepted)
+          .approveRequest(review.id, review.revision, warningsAccepted && (!requiresCustomRisk || acknowledgedCustomRisk === true))
           .catch(() => undefined);
       }}
+      retryMetadata={() => { void controller.retrySmartMetadata(review.id, review.revision).catch(() => undefined); }}
       confirmPayer={(id) => {
         void controller
           .confirmSmartPayer(review.id, review.revision, id)

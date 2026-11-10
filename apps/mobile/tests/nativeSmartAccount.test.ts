@@ -1,3 +1,4 @@
+import { normalizeSmartAccountModuleRequest } from '../../../source/shared/smartAccountModuleRequest.ts';
 import { nativeSmartTrezorDevice } from './nativeSmartTrezorDevice.ts';
 import { nonSuiteSigningHandoff } from './nonSuiteSigningHandoff.ts';
 import { NativeLedgerAccounts } from '../src/custody/ledgerAccounts.ts';
@@ -3215,7 +3216,7 @@ for(const action of ['guardian-policy','wallet-authenticator','slh-installation'
       original=await f.runtime.openSlhDsaInstallation(key.keyId,new AbortController().signal,()=>undefined);
     }
     await original.prepare();assert.equal(original.getSnapshot().phase,'authorize');
-    const signing=original.authorize(original.getSnapshot().revision);await Promise.race([entered.promise,signing.then(()=>{throw Error('Expected Suite authorization');})]);
+    const signing=original.getSnapshot().intent.kind==='modules'?authorizeReviewedModule(original):original.authorize(original.getSnapshot().revision);await Promise.race([entered.promise,signing.then(()=>{throw Error('Expected Suite authorization');})]);
     const deadline=device.sessions.getSnapshot()!.expiresAt;original.background();f.owner.lock();await signing;release.resolve();await new Promise(resolve=>setImmediate(resolve));
     await f.owner.unlock(PASSWORD);const draft=await f.runtime.trezor.resumeSend();assert.equal(draft.kind,'smart-operation');
     resumed=await f.runtime.resumeSmartAccountOperation(draft.id,new AbortController().signal,()=>undefined);await resumed.prepare();
@@ -3228,7 +3229,7 @@ for(const action of ['guardian-policy','wallet-authenticator','slh-installation'
 });
 
 const CUSTOM_MODULE = '0x7777777777777777777777777777777777777777';
-const customModuleDraft = () => ({ kind: 'install-custom' as const, address: CUSTOM_MODULE, name: 'Custom fixture', initData: '0x1234', riskAcknowledged: true as const });
+const customModuleDraft = () => ({ kind: 'install-custom' as const, address: CUSTOM_MODULE, name: 'Custom fixture', initData: '0x1234' });
 
 test('dapp module inventory reads only the requested cached Smart account without network or signing work', async () => {
   const f = await fixture({}, true);
@@ -3251,10 +3252,18 @@ test('dapp module inventory reads only the requested cached Smart account withou
   } finally { await f.close(); }
 });
 
+function authorizeReviewedModule(operation: NativeSmartAccountOperation) {
+  const review = operation.getSnapshot();
+  assert.equal(review.intent.kind, 'modules');
+  if (review.intent.kind !== 'modules') throw Error('Not a module review');
+  return operation.authorizeModuleChange(review.revision, review.intent.command.draft.kind === 'install-custom'
+    ? { kind: 'install-custom', riskAcknowledged: true } : { kind: review.intent.command.draft.kind });
+}
+
 async function confirmModuleOperation(operation: NativeSmartAccountOperation) {
   await operation.prepare();
   assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
-  const authorizing = operation.authorize(operation.getSnapshot().revision);
+  const authorizing = authorizeReviewedModule(operation);
   for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
     await new Promise(resolve => setTimeout(resolve, 5));
   assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
@@ -3262,6 +3271,80 @@ async function confirmModuleOperation(operation: NativeSmartAccountOperation) {
   await authorizing;
   assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
 }
+
+for (const deployed of [false, true]) test(`dapp custom module consent uses the shared operation with deployed=${deployed}`, async () => {
+  const f = await fixture({}, true);
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Dapp modules', password: PASSWORD });
+    if (deployed) f.guardianStatus('no-policy');
+    f.fundedSmart(); f.customValidator(CUSTOM_MODULE);
+    connection = await smartMessageApproval(f);
+    const prepared = await connection.host.prepareModuleChange({ accountId: connection.selected.id, networkId: 'ethereum',
+      request: normalizeSmartAccountModuleRequest('wallet_requestSmartAccountModuleInstall', [{ address: CUSTOM_MODULE, initData: '0x1234', name: 'Fixture module', riskAcknowledged: true }]),
+      approval: connection.approval, handoff: nonSuiteSigningHandoff }, connection.approval.assertCurrent);
+    operation = prepared.operation;
+    await operation.prepare();
+    const review = operation.getSnapshot();
+    assert.equal(review.phase, 'authorize', JSON.stringify(review));
+    assert.equal(review.intent.kind, 'modules');
+    if (review.intent.kind !== 'modules') throw Error('Wrong intent');
+    assert.equal(review.intent.command.sourceIsDeployed, deployed);
+    assert.equal(review.intent.command.removalPolicy, 'active-composite');
+    await assert.rejects(operation.authorize(review.revision), /Explicit module authorization/);
+    await assert.rejects(operation.authorizeModuleChange(review.revision, { kind: 'install-custom', riskAcknowledged: false } as never), /Explicit module authorization/);
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+    f.onBroadcast(() => { f.guardianStatus('no-policy'); f.customValidator(CUSTOM_MODULE, true); });
+    const work = authorizeReviewedModule(operation);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id); await work;
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    assert.equal(operation.getSnapshot().metadataRefresh, 'complete');
+    assert.equal(f.signatures.length, 1); assert.equal(f.submitted.length, 1);
+    connection.approval.assertCurrent();
+    const raw = Transaction.from(f.submitted[0]!);
+    const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', raw.data);
+    assert.equal(operations[0].initCode === '0x', deployed);
+  } finally { await operation?.dispose(); connection?.approval.dispose(); await f.close(); }
+});
+
+test('dapp Trezor module installation preserves private approval through signed discovery and canonical reconciliation', async () => {
+  const { f, device, close } = await readyTrezorSmartOwner();
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    f.customValidator(CUSTOM_MODULE);
+    connection = await smartMessageApproval(f);
+    let signaturesAccepted = 0;
+    const deadline = Date.now() + 60000;
+    const handoff = { id: 'module-trezor', expiresAt: deadline,
+      beforeSuiteOpen() { return () => undefined; },
+      beforeSignature() { signaturesAccepted++; }, isSuspended: () => false };
+    const prepared = await connection.host.prepareModuleChange({ accountId: connection.selected.id, networkId: 'ethereum',
+      request: normalizeSmartAccountModuleRequest('wallet_requestSmartAccountModuleInstall', [{ address: CUSTOM_MODULE, name: 'Trezor module', initData: '0x1234' }]),
+      approval: connection.approval, handoff }, connection.approval.assertCurrent);
+    operation = prepared.operation;
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    assert(operation.authorizationExpiresAt <= deadline);
+    f.onBroadcast(() => f.customValidator(CUSTOM_MODULE, true));
+    const signing = authorizeReviewedModule(operation);
+    for (let attempt = 0; attempt < 1000 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; attempt++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(operation.getSnapshot().phase, 'review-fee', JSON.stringify(operation.getSnapshot()));
+    assert.equal(signaturesAccepted, 1); assert.equal(device.signatures.length, 1); assert.equal(f.submitted.length, 0);
+    connection.approval.assertCurrent();
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id); await signing;
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    assert.equal(operation.getSnapshot().metadataRefresh, 'complete');
+    assert.equal(f.submitted.length, 1); assert.equal(device.signatures.length, 1);
+    assert.equal(f.owner.getCatalogue()!.active.accountId, connection.selected.id);
+    connection.approval.assertCurrent();
+  } finally { await operation?.dispose(); connection?.approval.dispose(); await close(); }
+});
 
 for (const delayed of [false, true]) test(`module management custom install survives restart and metadata-only retry (delayed=${delayed})`, async () => {
   const f = await fixture({}, true);
@@ -3280,7 +3363,7 @@ for (const delayed of [false, true]) test(`module management custom install surv
       f.customValidator(CUSTOM_MODULE, true); await operation.retryMetadata();
       assert.equal(operation.getSnapshot().metadataRefresh, 'complete');
     }
-    await operation.authorize(operation.getSnapshot().revision);
+    await authorizeReviewedModule(operation);
     assert.equal(f.submitted.length, 1); assert.equal(f.signatures.length, 1);
     assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.customModules?.[0]?.address, CUSTOM_MODULE);
     await operation.dispose(); operation = undefined;
@@ -3302,7 +3385,7 @@ test('module management rejects stale owner before signing and active-validator 
     operation = await f.runtime.openSmartAccountModuleChange(customModuleDraft(), new AbortController().signal, () => undefined);
     await operation.prepare(); assert.equal(operation.getSnapshot().phase, 'authorize');
     f.observedEcdsaOwners(['0x8888888888888888888888888888888888888888'], 1);
-    await operation.authorize(operation.getSnapshot().revision);
+    await authorizeReviewedModule(operation);
     assert.equal(operation.getSnapshot().phase, 'failed');
     assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
   } finally { await operation?.dispose(); await f.close(); }
@@ -3341,7 +3424,7 @@ test('module management cancellation while saving a discovery record rolls back 
     try {
       await operation.prepare(); assert.equal(operation.getSnapshot().phase, 'authorize');
       armed = true;
-      await operation.authorize(operation.getSnapshot().revision);
+      await authorizeReviewedModule(operation);
       assert.equal(operation.getSnapshot().phase, 'failed');
     } finally { await operation.dispose(); }
     assert.equal(writes, 1, 'revocation occurs during the authorized discovery update');
@@ -3398,7 +3481,7 @@ for (const boundary of ['before-review', 'before-sign'] as const) test(`custom v
     if (boundary === 'before-sign') {
       assert.equal(operation.getSnapshot().phase, 'authorize');
       f.customValidator(CUSTOM_MODULE, true);
-      const work = operation.authorize(operation.getSnapshot().revision);
+      const work = authorizeReviewedModule(operation);
       for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
         await new Promise(resolve => setTimeout(resolve, 5));
       if (operation.getSnapshot().payerReview) operation.cancel();
@@ -3418,7 +3501,7 @@ test('a custom installation during payer review is refused before wire submissio
     f.guardianStatus('no-policy'); f.fundedSmart(); f.customValidator(CUSTOM_MODULE);
     operation = await f.runtime.openSmartAccountModuleChange(customModuleDraft(), new AbortController().signal, () => undefined);
     await operation.prepare(); assert.equal(operation.getSnapshot().phase, 'authorize');
-    const work = operation.authorize(operation.getSnapshot().revision);
+    const work = authorizeReviewedModule(operation);
     for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
       await new Promise(resolve => setTimeout(resolve, 5));
     assert(operation.getSnapshot().payerReview);
