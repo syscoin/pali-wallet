@@ -1,8 +1,8 @@
 # Additional implemented screens
 
-65 feature states; 130 fresh captures at 390×844 and 320×568.
+67 feature states; 134 captures at 390×844 and 320×568.
 
-UI source: 04466c2e9498dfd250ac575e393db72fceec0e1f. All frames use this source checkpoint; exact routes, timestamps and loaded asset URLs remain in manifest.json.
+Latest UI source: f56efcd161caa58a73379d785bdcade27776fdea. Each frame records its source checkpoint in manifest.json; unchanged prior captures are retained with their original revision, route, timestamp and asset URLs.
 
 All captures render actual RNWeb components with synthetic public fixture adapters. No physical hardware, device biometric/camera/keyboard, live funds, or live network signing is represented. All external network access was blocked. The healthy market chart uses locally fulfilled, explicitly synthetic test responses. Development-only copy may be visible because these are development fixture exports.
 
@@ -795,6 +795,30 @@ Actions: Initial state.
 ![Smart account send form at 390px](65-smart-send-form-390.png)
 
 ![Smart account send form at 320px](65-smart-send-form-320.png)
+
+## 66-watch-settings — Watch-only settings
+
+Component: WatchSession / RealSettings.
+
+Route: http://127.0.0.1:4292/?evm-activity=1&evm-activity-mode=value
+
+Actions: View my accounts → Settings.
+
+![Watch-only settings at 390px](66-watch-settings-390.png)
+
+![Watch-only settings at 320px](66-watch-settings-320.png)
+
+## 67-watch-auto-lock — Watch-only auto-lock
+
+Component: WatchSession / AutoLockSettings.
+
+Route: http://127.0.0.1:4292/?evm-activity=1&evm-activity-mode=value
+
+Actions: View my accounts → Settings → Auto-lock.
+
+![Watch-only auto-lock at 390px](67-watch-auto-lock-390.png)
+
+![Watch-only auto-lock at 320px](67-watch-auto-lock-320.png)
 
 ## Not represented
 

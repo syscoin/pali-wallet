@@ -9,7 +9,7 @@ import { nativeTranslationFixture } from './localizationFixture.ts';
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
 const source = (path: string) => readFileSync(new NodeURL(path, import.meta.url), 'utf8');
-function setup(component = 'HelpAbout', watchOnly = true, options: { backupRequired?: boolean; navigation?: boolean } = {}) {
+function setup(component = 'HelpAbout', watchOnly = true, options: { backupRequired?: boolean; navigation?: boolean; autoLock?: boolean } = {}) {
   const cells: Cell[] = [], effects: (() => void)[] = [];
   let cursor = 0, active = 'active', backs = 0, closes = 0, security = 0, autoLock = 0, connections = 0, backups = 0, blocked = false;
   let pending: Promise<unknown> = Promise.resolve(true);
@@ -42,7 +42,7 @@ function setup(component = 'HelpAbout', watchOnly = true, options: { backupRequi
   const code = ts.transpileModule(source(`../src/screens/${component}.tsx`), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
   runInNewContext(code, { module, exports: module.exports, require(name: string) { assert.ok(Object.hasOwn(deps, name), `Unexpected public-screen dependency ${name}`); return deps[name]; } });
   const props = { onBack() { backs++; }, accountLabel: 'Public account', watchOnly, navigation: options.navigation === false ? undefined : navigation,
-    backupRequired: options.backupRequired, onBackup() { backups++; }, onSecurity() { security++; }, onAutoLock() { autoLock++; }, onConnections() { connections++; }, onLock() { closes++; } };
+    backupRequired: options.backupRequired, onBackup() { backups++; }, onSecurity() { security++; }, onAutoLock: options.autoLock === false ? undefined : () => { autoLock++; }, onConnections() { connections++; }, onLock() { closes++; } };
   return { render() { cursor = 0; const tree = module.exports[component]!(props); effects.splice(0).forEach((run) => run()); return tree; }, actions,
     pending(value: Promise<unknown>) { pending = value; }, block() { blocked = true; },
     emit(event: string, value = '') { if (event === 'change') active = value; for (const fn of listeners.get(event) ?? []) fn(value); },
@@ -132,6 +132,19 @@ test('custody Settings keeps security and connected apps without a duplicate Aut
   assert(!all(tree).some(node => node.props.title === 'Auto-lock')); assert.equal(f.autoLock(), 0);
   press(tree, 'Help & about'); tree = f.render(); (tree.props.onBack as () => void)(); tree = f.render();
   press(tree, 'Lock wallet'); assert.equal(f.closes(), 1); assert.equal(f.security(), 1); assert.equal(f.autoLock(), 0); f.dispose();
+});
+test('watch-only Settings exposes its existing Auto-lock route with a clock icon', () => {
+  const f = setup('RealSettings', true);
+  const rows = all(f.render()).filter(node => node.type === 'Row' && node.props.title === 'Auto-lock');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.props.icon, 'clock');
+  rows[0]!.props.onPress();
+  assert.equal(f.autoLock(), 1);
+  assert.equal(f.immersive(), false);
+  f.dispose();
+  const unavailable = setup('RealSettings', true, { autoLock: false });
+  assert.equal(all(unavailable.render()).some(node => node.props.title === 'Auto-lock'), false);
+  unavailable.dispose();
 });
 test('copy feedback is adjacent to its initiating control and uses the existing live region', async () => {
   const f = setup(); press(f.render(), 'Copy support link'); await tick(); const tree = f.render();

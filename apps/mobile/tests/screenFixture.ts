@@ -41,12 +41,12 @@ export function screenFixture(file: URL, exported: string, imports: Record<strin
     },
     useEffect(callback: () => void | (() => void), deps?: readonly unknown[]) { react.useLayoutEffect(callback, deps); },
   };
-  const module = { exports: {} as Record<string, (props: any) => ScreenElement> };
+  const module = { exports: {} as Record<string, (props: any, ...args: any[]) => ScreenElement> };
   const code = ts.transpileModule(readFileSync(new NodeURL(file.href), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true, ...compilerOptions } }).outputText;
   runInNewContext(code, { module, exports: module.exports, Error, Date, setTimeout, clearTimeout, ...globals,
     require(name: string) { if (name === 'react') return react; assert(Object.hasOwn(imports, name), `Missing screen port: ${name}`); return imports[name]; } });
   return {
-    render(props: any) { cursor = 0; const tree = module.exports[exported]!(props); effects.splice(0).forEach(run => run()); return tree; },
+    render(props: any, ...args: any[]) { cursor = 0; const tree = module.exports[exported]!(props, ...args); effects.splice(0).forEach(run => run()); return tree; },
     close() { cells.forEach(c => c.cleanup?.()); },
   };
 }

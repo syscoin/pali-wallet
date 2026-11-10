@@ -23,13 +23,16 @@ import { formatBaseUnits } from '../core/amounts';
 import { Button, Card, colors, Header, Screen, Text } from '../ui';
 import { recordIdleActivity } from '../platform/security';
 import { IdlePressable } from './IdleActivityBoundary';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 export type NativePrivateDepositTask = Readonly<{ poolId: PrivacyPoolId; noteId: string }>;
 
 type Props = {
   open(
     signal: AbortSignal,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    authentication: NativePrivateAuthenticationScope
   ): Promise<DepositController>;
   onBack(): void;
   onBackup(task?: NativePrivateDepositTask): void;
@@ -43,6 +46,7 @@ type Owner = {
   controller?: DepositController;
   opening?: Promise<void>;
   disposing?: Promise<void>;
+  authentication: NativePrivateAuthenticationScope;
 };
 function disposeOwner(owner: Owner): Promise<void> {
   owner.disposing ??= Promise.resolve(owner.opening).then(async () => {
@@ -74,6 +78,7 @@ export function NativePrivateDeposit({
       const current = owner.current;
       if (!current?.live) return;
       current.live = false;
+      current.authentication.retire();
       current.returning = true;
       current.abort.abort();
       setOpened({ source: open, closing: true });
@@ -100,31 +105,32 @@ export function NativePrivateDeposit({
     [leave]
   );
   useEffect(() => {
-    const current: Owner = { live: true, abort: new AbortController() };
+    const current: Owner = { live: true, abort: new AbortController(), authentication: createNativePrivateAuthenticationScope() };
     owner.current = current;
     const check = () => {
       if (
-        !current.live ||
+        owner.current !== current || !current.live ||
         current.abort.signal.aborted ||
-        AppState.currentState !== 'active'
+        (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, AppState.currentState))
       )
         throw new Error('privacy_cancelled');
     };
-    current.opening = open(current.abort.signal, check).then(
+    current.opening = open(current.abort.signal, check, current.authentication).then(
       (controller) => {
         current.controller = controller;
-        if (current.live) setOpened({ source: open, controller });
+        if (current.live && AppState.currentState === 'active') setOpened({ source: open, controller });
+        else { current.live = false; current.authentication.retire(); current.abort.abort(); void controller.dispose().catch(() => undefined); }
       },
       () => {
-        if (current.live) setOpened({ source: open, failed: true });
+        if (current.live && AppState.currentState === 'active') setOpened({ source: open, failed: true });
       }
     );
     const change = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') back();
+      if (state !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, state)) back();
     });
     const blur =
       Platform.OS === 'android'
-        ? AppState.addEventListener('blur', back)
+        ? AppState.addEventListener('blur', () => { if (!allowsPrivateAuthenticationInterruption(current.authentication, 'blur')) back(); })
         : undefined;
     const hardwareBack = BackHandler.addEventListener(
       'hardwareBackPress',
@@ -135,6 +141,7 @@ export function NativePrivateDeposit({
     );
     return () => {
       current.live = false;
+      current.authentication.retire();
       current.returning = false;
       current.abort.abort();
       void disposeOwner(current).catch(() => undefined);

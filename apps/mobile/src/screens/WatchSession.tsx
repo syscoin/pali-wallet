@@ -41,7 +41,7 @@ export function WatchSession({ authority, onAccounts, onExit }: {
   }, []);
   const [autoLockScope, setAutoLockScope] = useState<string | null>(null);
   const liveScope = currentScope();
-  if (autoLockScope !== null && autoLockScope === liveScope) return <AutoLockSettings mode="watch" onBack={() => setAutoLockScope(null)} save={(expected, minutes, _password, check) => {
+  if (autoLockScope !== null && autoLockScope === liveScope) return <AutoLockSettings mode="watch" onBack={() => { if (currentScope() === autoLockScope) setAutoLockScope(null); }} save={(expected, minutes, _password, check) => {
     const captured = liveScope;
     return securityPreferences.save(expected, 'watch', minutes, () => { check(); watchIdle.assertCurrent(); if (captured !== currentScope()) throw Error('CANCELLED'); });
   }} />;
@@ -65,6 +65,8 @@ export function WatchSession({ authority, onAccounts, onExit }: {
         }),
       } : undefined} />;
   }
-  else content = <RealSettings navigation={shell.navigation} accountLabel={label} watchOnly onAutoLock={() => setAutoLockScope(currentScope())} onLock={onExit} onBack={() => shell.select('wallet')} />;
+  else content = <RealSettings navigation={shell.navigation} accountLabel={label} watchOnly onAutoLock={() => {
+    if (liveScope && AppState.currentState === 'active' && currentScope() === liveScope) setAutoLockScope(liveScope);
+  }} onLock={onExit} onBack={() => shell.select('wallet')} />;
   return <RealAppShell tab={shell.tab} onTab={shell.select} immersive={shell.immersive || snapshot.status !== 'ready'}>{content}</RealAppShell>;
 }

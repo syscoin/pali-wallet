@@ -25,12 +25,13 @@ async function clickTabs(page: Page, names: string[]) {
         .click();
   }, names);
 }
-test('Activity header Back saves position once and returns to Wallet without recursive departure', async ({
+test('Activity root uses tab navigation and saves position once when returning to Wallet', async ({
   page,
 }) => {
   await activity(page);
   await page.evaluate(() => window.__activityFixture.delaySave(150));
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Back', exact: true })).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Wallet', exact: true }).click();
   await expect(
     page.getByRole('tab', { name: 'Wallet', exact: true })
   ).toHaveAttribute('aria-selected', 'true');

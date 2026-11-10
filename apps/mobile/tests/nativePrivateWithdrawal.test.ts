@@ -1,3 +1,4 @@
+import { createTestPrivateAuthentication, readTestNoteInventory, testInventoryAuthentication } from './fixtures/privateAuthentication.ts';
 import { createPrivateVaultSession } from '../../../source/wallet/privateVault.ts';
 import { createTestPinRecordKeyring } from './fixtures/pinOperation.ts';
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
@@ -320,13 +321,13 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     },
     async seed() {
       const signal = new AbortController();
-      const deposit = await runtime.openPrivateDeposit!(signal.signal, noop);
+      const deposit = await runtime.openPrivateDeposit!(signal.signal, noop, createTestPrivateAuthentication(noop));
       await deposit.prepare({ poolId: 'eth-1' });
       await deposit.confirm(deposit.getSnapshot().review!.intentId);
       assert.equal(deposit.getSnapshot().phase, 'submitted');
       await deposit.dispose();
       noteStatus = { phase: 'verified' };
-      return runtime.readNoteInventory!(noop);
+      return readTestNoteInventory(runtime, noop);
     },
 
     beforeResponse(callback: () => Promise<void>) {
@@ -372,12 +373,12 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
         },
         backupPassword
       );
-      const backup = await runtime.openNoteBackup!(noop);
+      const backup = await runtime.openNoteBackup!(noop, createTestPrivateAuthentication(noop));
       const id = backup.begin();
       await backup.prepareImport(id, bytes, backupPassword);
       await backup.commitImport(id, PASSWORD);
       noteStatus = { phase: 'verified' };
-      return runtime.readNoteInventory!(noop);
+      return readTestNoteInventory(runtime, noop);
     },
     async select(id: string) {
       const accounts = runtime.accounts!;
@@ -433,7 +434,7 @@ test('native saved-note withdrawal binds exact fixed-gas SDK bytes and never est
       inventory.notes[0]!,
       new AbortController().signal,
       noop
-    );
+    , testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     assert.equal(model.getSnapshot().phase, 'review');
     assert.equal(f.posted.length, 1);
@@ -469,7 +470,7 @@ test('inventory rejects a forged saved-note row before proving', async () => {
         { ...inventory.notes[0]! },
         new AbortController().signal,
         noop
-      )
+      , testInventoryAuthentication(inventory))
     );
     assert.equal(f.proofs, 0);
     assert.equal(f.posted.length, 1);
@@ -487,7 +488,7 @@ test('changed proof public signals cannot create a review or retained withdrawal
       inventory.notes[0]!,
       new AbortController().signal,
       noop
-    );
+    , testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     assert.equal(model.getSnapshot().phase, 'failed');
     assert.equal(f.posted.length, 1);
@@ -506,7 +507,7 @@ test('unknown withdrawal preserves the signed transaction and note reservation f
       inventory.notes[0]!,
       new AbortController().signal,
       noop
-    );
+    , testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     f.loseResponse(true);
     await model.confirm(model.getSnapshot().review!.intentId);
@@ -518,12 +519,12 @@ test('unknown withdrawal preserves the signed transaction and note reservation f
     assert.equal((await f.privateNotes())[0]!.withdrawal?.phase, 'unknown');
     await model.dispose();
     await f.reopen();
-    const reopened = await f.runtime.readNoteInventory!(noop);
+    const reopened = await readTestNoteInventory(f.runtime, noop);
     const resumed = await reopened.openWithdrawal!(
       reopened.notes[0]!,
       new AbortController().signal,
       noop
-    );
+    , testInventoryAuthentication(reopened));
     assert.equal(resumed.getSnapshot().status?.phase, 'unknown');
     await resumed.prepare({ recipient: RECIPIENT, mode: 'direct' });
     assert.equal(resumed.getSnapshot().phase, 'failed');
@@ -555,7 +556,7 @@ test('cancel during held proof drains the runtime before returning to inventory'
       inventory.notes[0]!,
       lifetime.signal,
       noop
-    );
+    , testInventoryAuthentication(inventory));
     const preparing = model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     await started;
     lifetime.abort();
@@ -566,11 +567,11 @@ test('cancel during held proof drains the runtime before returning to inventory'
     });
     await Promise.resolve();
     assert.equal(disposed, false);
-    await assert.rejects(f.runtime.readNoteInventory!(noop), /BUSY/);
+    await assert.rejects(readTestNoteInventory(f.runtime, noop), /BUSY/);
     release();
     await Promise.all([preparing, disposing]);
     assert.equal(disposed, true);
-    await f.runtime.readNoteInventory!(noop);
+    await readTestNoteInventory(f.runtime, noop);
     assert.notEqual(model.getSnapshot().phase, 'review');
     assert.equal(f.posted.length, 1);
   } finally {
@@ -596,12 +597,12 @@ test('imported EVM payer withdraws a saved note through the normal selected-key 
         f.runtime.catalogue.getSnapshot()!.revision
       )
       .execute(noop);
-    const inventory = await f.runtime.readNoteInventory!(noop);
+    const inventory = await readTestNoteInventory(f.runtime, noop);
     const model = await inventory.openWithdrawal!(
       inventory.notes[0]!,
       new AbortController().signal,
       noop
-    );
+    , testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     await model.confirm(model.getSnapshot().review!.intentId);
     assert.equal(model.getSnapshot().phase, 'submitted');
@@ -624,7 +625,7 @@ test('restored note requires explicit authenticated review before fresh withdraw
       inventory.notes[0]!,
       new AbortController().signal,
       noop
-    );
+    , testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     assert.equal(model.getSnapshot().error, 'restored');
     assert.equal(f.proofs, 0);
@@ -656,12 +657,12 @@ for (const change of ['account', 'lock-unlock'] as const) {
         await f.addAccount();
         await f.select('hd:60:0');
       }
-      const inventory = await f.runtime.readNoteInventory!(noop);
+      const inventory = await readTestNoteInventory(f.runtime, noop);
       const model = await inventory.openWithdrawal!(
         inventory.notes[0]!,
         new AbortController().signal,
         noop
-      );
+      , testInventoryAuthentication(inventory));
       await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
       f.beforeResponse(async () => {
         entered();
@@ -696,7 +697,7 @@ test('relayed withdrawal uses the shared proof POST and durable job acknowledgem
       inventory.notes[0]!,
       new AbortController().signal,
       noop
-    );
+    , testInventoryAuthentication(inventory));
     await model.loadRelayers();
     await model.prepare({
       recipient: RECIPIENT,
@@ -739,7 +740,7 @@ test('ACK storage quarantine preserves the retained withdrawal and locks custody
       inventory.notes[0]!,
       new AbortController().signal,
       noop
-    );
+    , testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     f.beforeResponse(async () => {
       failRead = true;
@@ -784,7 +785,7 @@ test('cancel during held reservation cannot sign or persist a usable withdrawal 
       inventory.notes[0]!,
       lifetime.signal,
       noop
-    );
+    , testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     holding = true;
     const confirming = model.confirm(model.getSnapshot().review!.intentId);
@@ -806,12 +807,12 @@ test('an account change invalidates the current withdrawal review before signing
     await f.seed();
     await f.addAccount();
     await f.select('hd:60:0');
-    const inventory = await f.runtime.readNoteInventory!(noop);
+    const inventory = await readTestNoteInventory(f.runtime, noop);
     const model = await inventory.openWithdrawal!(
       inventory.notes[0]!,
       new AbortController().signal,
       noop
-    );
+    , testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     await f.select('hd:60:1');
     await assert.rejects(model.confirm(model.getSnapshot().review!.intentId));
@@ -832,14 +833,14 @@ for (const flag of [
     try {
       const before = await f.seed();
       f.markUnsupported(flag);
-      const inventory = await f.runtime.readNoteInventory!(noop);
+      const inventory = await readTestNoteInventory(f.runtime, noop);
       assert.equal(inventory.openWithdrawal, undefined);
       await assert.rejects(
         before.openWithdrawal!(
           before.notes[0]!,
           new AbortController().signal,
           noop
-        )
+        , testInventoryAuthentication(before))
       );
       assert.equal(f.proofs, 0);
       assert.equal(f.posted.length, 1);
@@ -861,7 +862,7 @@ test('cancellation immediately after reservation commit clears only the unsigned
   } });
   try {
     const inventory = await f.seed();
-    const model = await inventory.openWithdrawal!(inventory.notes[0]!, lifetime.signal, noop);
+    const model = await inventory.openWithdrawal!(inventory.notes[0]!, lifetime.signal, noop, testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     armed = true;
     await model.confirm(model.getSnapshot().review!.intentId);
@@ -881,7 +882,7 @@ test('deposit cancellation immediately after reservation commit clears only its 
     }
   } });
   try {
-    const model = await f.runtime.openPrivateDeposit!(lifetime.signal, noop);
+    const model = await f.runtime.openPrivateDeposit!(lifetime.signal, noop, createTestPrivateAuthentication(noop));
     await model.prepare({ poolId: 'eth-1' });
     armed = true;
     await model.confirm(model.getSnapshot().review!.intentId);
@@ -897,7 +898,7 @@ test('native maintenance clears only shared-verified completed notes and preserv
     const inventory = await f.seed();
     await f.restore();
     const withdrawalRoute = new AbortController();
-    const model = await inventory.openWithdrawal!(inventory.notes[0]!, withdrawalRoute.signal, noop);
+    const model = await inventory.openWithdrawal!(inventory.notes[0]!, withdrawalRoute.signal, noop, testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     await model.confirm(model.getSnapshot().review!.intentId);
     assert.equal(model.getSnapshot().phase, 'submitted');
@@ -905,7 +906,7 @@ test('native maintenance clears only shared-verified completed notes and preserv
     const before = await f.privateNotes(); assert.equal(before.length, 2);
     const completed = before.find(note => note.withdrawal)!, unspent = before.find(note => !note.withdrawal)!;
     assert(identifyClassicNote(completed.note).nullifierHash);
-    const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop);
+    const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop, createTestPrivateAuthentication(noop));
     const localReads = f.rpcMethods.length;
     const notes = await maintenance.getNotes(noop); assert.equal(notes.notes.length, 2);
     assert.equal(f.rpcMethods.length, localReads, 'opening inventory performs no note-specific RPC');
@@ -929,11 +930,11 @@ for (const cancel of ['route', 'lock'] as const) test(`native maintenance rolls 
   const route = new AbortController();
   try {
     const inventory = await f.seed(); const withdrawalRoute = new AbortController();
-    const model = await inventory.openWithdrawal!(inventory.notes[0]!, withdrawalRoute.signal, noop);
+    const model = await inventory.openWithdrawal!(inventory.notes[0]!, withdrawalRoute.signal, noop, testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' }); await model.confirm(model.getSnapshot().review!.intentId);
     withdrawalRoute.abort(); await model.dispose(); f.enableCompletionReads();
     const [note] = await f.privateNotes(); assert(note);
-    const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop); hold = true;
+    const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop, createTestPrivateAuthentication(noop)); hold = true;
     const removed = assert.rejects(maintenance.clearCompletedNote(note.id, noop)); await entered.promise;
     let retired: Promise<void>;
     if (cancel === 'lock') retired = f.runtime.session.lock();
@@ -976,11 +977,11 @@ test('native failed-withdrawal recovery authenticates, preserves the original jo
   const f = await fixture(); const route = new AbortController();
   try {
     const inventory = await f.seed(), withdrawalRoute = new AbortController();
-    const model = await inventory.openWithdrawal!(inventory.notes[0]!, withdrawalRoute.signal, noop);
+    const model = await inventory.openWithdrawal!(inventory.notes[0]!, withdrawalRoute.signal, noop, testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' }); await model.confirm(model.getSnapshot().review!.intentId);
     withdrawalRoute.abort(); await model.dispose(); f.enableCompletionReads(true);
     const [before] = await f.privateNotes(); assert(before?.withdrawal);
-    const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop);
+    const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop, createTestPrivateAuthentication(noop));
     assert((await maintenance.getNotes(noop)).notes[0]!.withdrawal?.canCheckRecovery);
     await assert.rejects(maintenance.recoverFailedWithdrawal(before.id, PASSWORD + 'wrong', noop));
     assert.equal((await f.privateNotes())[0]!.withdrawal?.recovery, undefined);
@@ -1000,7 +1001,7 @@ test('a service-origin change preserves unknown recovery after an unacknowledged
   try {
     const inventory = await f.seed();
     const settings = await f.runtime.openPrivacyControls!(settingsRoute.signal, noop), origin = await settings.getOrigin();
-    const model = await inventory.openWithdrawal!(inventory.notes[0]!, route.signal, noop);
+    const model = await inventory.openWithdrawal!(inventory.notes[0]!, route.signal, noop, testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     f.beforeResponse(async () => { entered.resolve(); await release.promise; });
     const sending = model.confirm(model.getSnapshot().review!.intentId); await entered.promise;
@@ -1027,7 +1028,7 @@ test('a service-origin change waits for durable recording of an already verified
   try {
     const inventory = await f.seed();
     const settings = await f.runtime.openPrivacyControls!(settingsRoute.signal, noop), origin = await settings.getOrigin();
-    const model = await inventory.openWithdrawal!(inventory.notes[0]!, route.signal, noop);
+    const model = await inventory.openWithdrawal!(inventory.notes[0]!, route.signal, noop, testInventoryAuthentication(inventory));
     await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     f.beforeResponse(async () => { holding = true; });
     const sending = model.confirm(model.getSnapshot().review!.intentId); await entered.promise;
@@ -1061,7 +1062,7 @@ for (const fault of ['release', 'quarantine-and-release'] as const) for (const r
   try {
     if (fault === 'quarantine-and-release') {
       const inventory = await f.seed();
-      const withdrawal = await inventory.openWithdrawal!(inventory.notes[0]!, route.signal, noop);
+      const withdrawal = await inventory.openWithdrawal!(inventory.notes[0]!, route.signal, noop, testInventoryAuthentication(inventory));
       await withdrawal.prepare({ recipient: RECIPIENT, mode: 'direct' });
       f.beforeResponse(async () => { failRead = true; });
       await withdrawal.confirm(withdrawal.getSnapshot().review!.intentId);

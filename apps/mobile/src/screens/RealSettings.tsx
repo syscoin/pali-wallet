@@ -50,7 +50,7 @@ function ResetActivity({ accountLabel, target, onBack }: {
   </Screen></SafeAreaView>;
 }
 
-export function RealSettings({ accountLabel, watchOnly, onSecurity, onConnections, onInfrastructure, activityReset, onLock, onBack, navigation, backupRequired = false, onBackup }: {
+export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, onConnections, onInfrastructure, activityReset, onLock, onBack, navigation, backupRequired = false, onBackup }: {
   accountLabel: string; watchOnly: boolean; navigation?: ShellLeafNavigation; onSecurity?: () => void; onAutoLock?: () => void; onConnections?: () => void; onInfrastructure?: () => void; onLock(): void; onBack(): void;
   backupRequired?: boolean; onBackup?(): void;
   activityReset?: ActivityResetTarget;
@@ -81,6 +81,7 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onConnection
       {activityReset && <Row title={t('mobile.settings.activityTitle')} subtitle={t('mobile.settings.activitySubtitle')} icon="activity" onPress={() => setOpened({ leaf: 'activity', scope: activityReset.scope })} dense last />}
     </Card>}
     <Card>
+      {watchOnly && onAutoLock && <Row title="Auto-lock" subtitle="Choose when watch accounts hide" icon="clock" onPress={onAutoLock} dense />}
       <Row title={t('generalMenu.languages')} subtitle={t('settings.currentLanguage')} icon="globe" dense onPress={() => {
         const next = { leaf: 'language' as const }; languageOwner.current = next; setOpened(next);
       }} />

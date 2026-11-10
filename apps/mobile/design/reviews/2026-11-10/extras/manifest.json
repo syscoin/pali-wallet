@@ -1,6 +1,6 @@
 {
-  "started": "2026-11-10T20:41:05.191Z",
-  "updated": "2026-11-10T20:43:58.379Z",
+  "started": "2026-11-10T21:05:26.968Z",
+  "updated": "2026-11-10T21:05:32.947Z",
   "report": [
     {
       "id": "65-smart-send-form",
@@ -3253,9 +3253,123 @@
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
       "sourceCheckpoint": "04466c2e9498dfd250ac575e393db72fceec0e1f"
+    },
+    {
+      "id": "66-watch-settings",
+      "label": "Watch-only settings",
+      "component": "WatchSession / RealSettings",
+      "url": "http://127.0.0.1:4292/?evm-activity=1&evm-activity-mode=value",
+      "steps": [
+        "View my accounts",
+        "Settings"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "66-watch-settings-390.png",
+      "capturedAt": "2026-11-10T21:05:28.444Z",
+      "note": null,
+      "text": "Settings\nShared address watch\nAuto-lock\nChoose when watch accounts hide\nLanguages\nCurrent language\nDisplay currency\nEstimated wallet values\nHelp & about\nSupport, documentation and version\nThis account contains a public address, not its private key or recovery phrase. Keep backups in the wallet that controls it.\nPali hides and locks the current session when the app leaves the foreground. Public blockchain activity remains public.\nHide accounts\nWallet\nActivity\nTools\nSettings",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "f56efcd161caa58a73379d785bdcade27776fdea"
+    },
+    {
+      "id": "67-watch-auto-lock",
+      "label": "Watch-only auto-lock",
+      "component": "WatchSession / AutoLockSettings",
+      "url": "http://127.0.0.1:4292/?evm-activity=1&evm-activity-mode=value",
+      "steps": [
+        "View my accounts",
+        "Settings",
+        "Auto-lock"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "67-watch-auto-lock-390.png",
+      "capturedAt": "2026-11-10T21:05:29.950Z",
+      "note": null,
+      "text": "Auto-lock\nWatch accounts\nHide watch accounts after foreground inactivity. Current: 5 minutes.\n5 minutes\n15 minutes\n30 minutes\n1 hour\n2 hours\nOff while open\nCustom minutes (5–120, or 0 for Off)\nPali still locks or hides this session when you leave the app or it loses focus. This setting never enables automatic unlock.\nSave auto-lock\nCancel",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "f56efcd161caa58a73379d785bdcade27776fdea"
+    },
+    {
+      "id": "66-watch-settings",
+      "label": "Watch-only settings",
+      "component": "WatchSession / RealSettings",
+      "url": "http://127.0.0.1:4292/?evm-activity=1&evm-activity-mode=value",
+      "steps": [
+        "View my accounts",
+        "Settings"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "66-watch-settings-320.png",
+      "capturedAt": "2026-11-10T21:05:31.427Z",
+      "note": null,
+      "text": "Settings\nShared address watch\nAuto-lock\nChoose when watch accounts hide\nLanguages\nCurrent language\nDisplay currency\nEstimated wallet values\nHelp & about\nSupport, documentation and version\nThis account contains a public address, not its private key or recovery phrase. Keep backups in the wallet that controls it.\nPali hides and locks the current session when the app leaves the foreground. Public blockchain activity remains public.\nHide accounts\nWallet\nActivity\nTools\nSettings",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "f56efcd161caa58a73379d785bdcade27776fdea"
+    },
+    {
+      "id": "67-watch-auto-lock",
+      "label": "Watch-only auto-lock",
+      "component": "WatchSession / AutoLockSettings",
+      "url": "http://127.0.0.1:4292/?evm-activity=1&evm-activity-mode=value",
+      "steps": [
+        "View my accounts",
+        "Settings",
+        "Auto-lock"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "67-watch-auto-lock-320.png",
+      "capturedAt": "2026-11-10T21:05:32.943Z",
+      "note": null,
+      "text": "Auto-lock\nWatch accounts\nHide watch accounts after foreground inactivity. Current: 5 minutes.\n5 minutes\n15 minutes\n30 minutes\n1 hour\n2 hours\nOff while open\nCustom minutes (5–120, or 0 for Off)\nPali still locks or hides this session when you leave the app or it loses focus. This setting never enables automatic unlock.\nSave auto-lock\nCancel",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "f56efcd161caa58a73379d785bdcade27776fdea"
     }
   ],
   "failures": [],
-  "sourceCheckpoint": "04466c2e9498dfd250ac575e393db72fceec0e1f",
-  "sourceQualification": "All frames in this fresh batch render the same UI source checkpoint. Loaded asset URLs and capture timestamps are retained per frame. Synthetic public adapters do not qualify native devices, secrets or signing."
+  "sourceCheckpoint": "f56efcd161caa58a73379d785bdcade27776fdea",
+  "sourceCheckpoints": [
+    "04466c2e9498dfd250ac575e393db72fceec0e1f",
+    "f56efcd161caa58a73379d785bdcade27776fdea"
+  ],
+  "sourceQualification": "Each frame records its own UI source checkpoint, loaded asset URLs and capture timestamp. Unchanged prior captures are retained. Synthetic public adapters do not qualify native devices, secrets or signing."
 }

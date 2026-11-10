@@ -10,6 +10,8 @@ import { formatBaseUnits } from '../src/core/amounts.ts';
 import type { IPrivacyDepositReview } from '../../../source/utils/privacy/transactionTypes.ts';
 import type { PrivacyPoolId } from '../../../source/utils/privacy/types.ts';
 import { screenElements, type ScreenElement } from './screenFixture.ts';
+import { createNativePrivateAuthenticationScope, createNativePrivateAuthenticationChild } from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
 type Component = (props: any) => ScreenElement;
@@ -56,6 +58,8 @@ function mount(file: string, name: string) {
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map(value => [value, value])), colors: {}, styles: {} },
     './IdleActivityBoundary': { IdlePressable: 'IdlePressable' },
     './NoteBackupPasswordField': { NoteBackupPasswordField: 'NoteBackupPasswordField' }, './PinEntry': { PinField: 'PinField' },
+    '../custody/privateAuthentication': { createNativePrivateAuthenticationScope, createNativePrivateAuthenticationChild },
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
   };
   const module = { exports: {} as Record<string, Component> };
   const code = ts.transpileModule(readFileSync(new URL(`../src/screens/${file}.tsx`, import.meta.url), 'utf8'), {
