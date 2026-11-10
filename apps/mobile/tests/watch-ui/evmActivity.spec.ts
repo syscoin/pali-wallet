@@ -57,6 +57,19 @@ async function network(page: Page, name: string) {
   await page.getByRole('tab', { name: 'Activity', exact: true }).click();
 }
 
+test('long exact activity amounts wrap inside a narrow transaction row', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await open(page);
+  const amount = page.getByText(`${LARGE} RAW`, { exact: true });
+  await expect(amount).toBeVisible();
+  expect(await amount.evaluate(element => {
+    const row = element.closest('[role="button"]')!;
+    const outer = row.getBoundingClientRect();
+    const range = document.createRange(); range.selectNodeContents(element);
+    return [...range.getClientRects()].every(rect => rect.left >= outer.left - 1 && rect.right <= outer.right + 1);
+  })).toBe(true);
+});
+
 test.beforeEach(async ({ page }) => {
   await page.route('**/*', async (route) => {
     if (new URL(route.request().url()).origin !== 'http://127.0.0.1:4182') {
