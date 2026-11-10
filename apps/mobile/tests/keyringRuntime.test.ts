@@ -82,6 +82,7 @@ delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 
 function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActive?: () => void, connectionFetch?: KeyringRuntimeDependencies['connectionFetch'], trezorSessions?: KeyringRuntimeDependencies['trezorSessions'], utxoFetch?: typeof fetch, prepareSmartAccount?: KeyringRuntimeDependencies['prepareSmartAccount'], requestCredential?: KeyringRuntimeDependencies['requestOperationCredential']) {
   let pin: NativePinRecord | null = null;
+  let obsoletePin: NativePinRecord | null = null;
   const pinAttempts = new WeakMap<object, { record: string; failures: number }>();
   const storedPins = createTestPinCredentialPort();
   let afterPinRead: () => Promise<void> = async () => {};
@@ -129,7 +130,9 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
         assert(held); assert.equal(held.record, JSON.stringify(pin)); assert.equal(held.failures, failures);
         failures = 0; successWrites++;
       },
-      async replace(expected, next, check) { check(); if (failPinCommit) throw new WalletStorageError('STORAGE_CHANGED'); assert.deepEqual(expected, pin); pin = next; },
+      async prepareReplacement(expected, next, check) { check(); assert.deepEqual(expected, pin); assert.equal(obsoletePin, null); obsoletePin = next; },
+      async replace(expected, next, check) { check(); if (failPinCommit) throw new WalletStorageError('STORAGE_CHANGED'); assert.deepEqual(expected, pin); obsoletePin = pin; pin = next; },
+      async settleCredentialRemoval(remove) { if (obsoletePin) { await remove(obsoletePin); obsoletePin = null; } },
     },
     utxoSignedRecords: utxoPort,
     signedRecords: {
