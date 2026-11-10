@@ -1,3 +1,4 @@
+import { snapshotNativeSmartModuleDraft } from './modules.ts';
 import { getAddress } from 'ethers/address';
 import { createErc20Policy, parseErc20Units } from '../../../../source/shared/erc20.ts';
 import { snapshotNftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
@@ -9,6 +10,7 @@ const invalid = (): never => { throw new Error('Invalid public Smart account act
 /** Copy only the public action DTO. The original builders revalidate policy and custody on return. */
 export function snapshotNativeSmartLocalAction(action: NativeSmartLocalAction): NativeSmartLocalAction {
   if (!action || typeof action !== 'object') return invalid();
+  if (action.kind === 'modules') return Object.freeze({ kind: action.kind, draft: snapshotNativeSmartModuleDraft(action.draft) });
   if (action.kind === 'wallet-authenticator') return Object.freeze({ kind: action.kind });
   if (action.kind === 'slh-installation') {
     if (typeof action.keyId !== 'string' || !action.keyId || action.keyId.length > 256) return invalid();

@@ -1,23 +1,24 @@
-import type { ISmartAccountMetadata } from 'types/network';
-import type { SmartAccountValidatorModule } from 'types/network';
-import { Interface } from 'utils/ethersV6Compat';
-import { getAddress } from 'utils/ethersV6Compat';
+import { Interface, getAddress } from '../ethersV6Compat.ts';
 
-import { aggregateContractCalls } from './aggregate';
+import { aggregateContractCalls } from './aggregate.ts';
 import {
   ERC7579_MODULE_TYPE_VALIDATOR,
   PALI_MODULE_TYPE_COMPOSITE_CHILD,
-} from './contracts';
+} from './contracts.ts';
 import {
   getInstalledValidatorModuleByAddress,
   listInstalledValidatorModules,
-} from './modules';
+} from './modules.ts';
 import {
   isPaliValidatorAlgorithmSupported,
   isPaliSignableValidator,
-} from './validatorSignability';
+} from './validatorSignability.ts';
+import type {
+  ISmartAccountMetadata,
+  SmartAccountValidatorModule,
+} from '../../types/network.ts';
 
-export { isPaliSignableValidator } from './validatorSignability';
+export { isPaliSignableValidator } from './validatorSignability.ts';
 
 // ---------------------------------------------------------------------------
 // Bring-your-own (custom) validator support: trustless install preflight and
@@ -102,14 +103,15 @@ export const preflightCustomValidatorInstall = async (
     ]
   );
   const isValidator =
-    moduleTypeResult.success && Boolean(moduleTypeResult.result[0]);
+    moduleTypeResult?.success === true && Boolean(moduleTypeResult.result[0]);
   if (!isValidator) {
     failures.push('not-a-validator-module');
   }
 
   return {
     compositeCompatible:
-      compositeTypeResult.success && Boolean(compositeTypeResult.result[0]),
+      compositeTypeResult?.success === true &&
+      Boolean(compositeTypeResult.result[0]),
     failures,
     ok: failures.length === 0,
   };

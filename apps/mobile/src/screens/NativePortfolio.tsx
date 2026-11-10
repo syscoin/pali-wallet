@@ -33,6 +33,7 @@ type Props = {
   onDeploySmartAccount?(): void;
   onUseWalletAuthenticator?(): void;
   onManageSlhDsa?(): void;
+  onManageSmartAccountModules?(): void;
   onExit(): void;
   onLock(): void;
   onViewRecovery(): void;
@@ -53,16 +54,16 @@ type Feedback = { scope: string; text: string; failed?: boolean } | null;
 const scopeOf = (account: NativePortfolioAccount) => `${account.revision}:${account.network}:${account.address}`;
 
 /** Only the custody authority's public account projection reaches this screen. */
-export function NativePortfolio({ hardwareRequest, source, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onManageSlhDsa, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendSpt, onSendToken, onSendCollectible, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Props) {
+export function NativePortfolio({ hardwareRequest, source, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onManageSlhDsa, onManageSmartAccountModules, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendSpt, onSendToken, onSendCollectible, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Props) {
   const balanceReader = useMemo(() => reader ?? createBalanceReader({ fetch: walletFetch, registrations: () => source.getCatalogue?.()?.networks }), [reader, source]);
   const model = useMemo(() => new NativePortfolioController(source, balanceReader), [source, balanceReader]);
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   useLayoutEffect(() => model.connect(), [model]);
   const scope = snapshot.account ? scopeOf(snapshot.account) : 'unavailable';
-  return <NativePortfolioContent hardwareRequest={hardwareRequest} smartAccount={smartAccount} onDeploySmartAccount={onDeploySmartAccount} onUseWalletAuthenticator={onUseWalletAuthenticator} onManageSlhDsa={onManageSlhDsa} key={scope} model={model} snapshot={snapshot} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onSecurity={onSecurity} onSend={onSend} onSendSpt={onSendSpt} onSendToken={onSendToken} onSendCollectible={onSendCollectible} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} navigation={navigation} />;
+  return <NativePortfolioContent hardwareRequest={hardwareRequest} smartAccount={smartAccount} onDeploySmartAccount={onDeploySmartAccount} onUseWalletAuthenticator={onUseWalletAuthenticator} onManageSlhDsa={onManageSlhDsa} onManageSmartAccountModules={onManageSmartAccountModules} key={scope} model={model} snapshot={snapshot} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onSecurity={onSecurity} onSend={onSend} onSendSpt={onSendSpt} onSendToken={onSendToken} onSendCollectible={onSendCollectible} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} navigation={navigation} />;
 }
 
-function NativePortfolioContent({ hardwareRequest, model, snapshot, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onManageSlhDsa, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendSpt, onSendToken, onSendCollectible, accountLabel, onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Omit<Props, 'source' | 'reader' | 'accountLabel'> & {
+function NativePortfolioContent({ hardwareRequest, model, snapshot, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onManageSlhDsa, onManageSmartAccountModules, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendSpt, onSendToken, onSendCollectible, accountLabel, onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Omit<Props, 'source' | 'reader' | 'accountLabel'> & {
   model: NativePortfolioController; snapshot: NativePortfolioSnapshot; accountLabel: string;
 }) {
   const { t } = useNativeTranslation();
@@ -187,6 +188,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, smartAccount
         {smartAccount && <Card><Text style={s.label}>SMART ACCOUNT</Text>
           <Text style={styles.muted}>Managed by {smartAccount.managementAddress}</Text>
           <Text style={styles.muted}>{smartAccount.isDeployed ? t(canSend ? 'settings.smartAccountInfrastructureReadyStatus' : 'settings.unavailable') : t('settings.smartAccountUndeployedNotice')}</Text>
+          {smartAccount.isDeployed && onManageSmartAccountModules && <Button title={t('mobile.smartAccountModules.title')} variant="secondary" onPress={() => { if (account && model.isCurrent(account)) onManageSmartAccountModules(); }} />}
           {onManageSlhDsa && <Button title={t('settings.slhDsaAuthenticator')} variant="secondary" onPress={() => { if (account && model.isCurrent(account)) onManageSlhDsa(); }} />}
           {onUseWalletAuthenticator && <Button title="Use Pali wallet" variant="secondary" onPress={() => { if (account && model.isCurrent(account)) onUseWalletAuthenticator(); }} />}
         </Card>}

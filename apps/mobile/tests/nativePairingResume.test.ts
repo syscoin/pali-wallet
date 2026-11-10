@@ -235,6 +235,8 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     },
     canManageGuardianPolicy: () => smartAccount && canManage,
     canSignSmartAccount: () => smartAccount && (canManage || slh), canManageSlhDsa: () => smartAccount && slh,
+    canManageSmartAccountModules: () => false,
+    async openSmartAccountModules() { throw Error('Modules are outside this fixture'); },
     async openSlhDsaManagement(_signal: AbortSignal, check: () => void) { check(); authenticatorGuards.push(check); return { installedKeys: [] }; },
     canUseWalletAuthenticator: () => smartAccount && canManage && catalogue.accounts[0]?.smartAccount?.isDeployed === true,
     async openWalletAuthenticator(_signal: AbortSignal, check: () => void) {

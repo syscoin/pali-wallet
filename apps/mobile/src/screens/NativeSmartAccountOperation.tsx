@@ -247,11 +247,13 @@ export function NativeSmartAccountOperationContent({
     state.intent.kind === 'guardian-policy' ? state.intent.command : null;
   const authenticator =
     state.intent.kind === 'authenticator' ? state.intent.command : null;
+  const modules = state.intent.kind === 'modules' ? state.intent.command : null;
   const transfer =
     state.intent.kind !== 'deploy' &&
     state.intent.kind !== 'dapp-batch' &&
     state.intent.kind !== 'guardian-policy' &&
-    state.intent.kind !== 'authenticator'
+    state.intent.kind !== 'authenticator' &&
+    state.intent.kind !== 'modules'
       ? state.intent
       : null;
   const waiting = ['preparing', 'preparing-fee', 'waiting'].includes(
@@ -263,7 +265,9 @@ export function NativeSmartAccountOperationContent({
         <Header
           title={
             state.phase === 'authorize'
-              ? authenticator
+              ? modules
+                ? t('mobile.smartAccountModules.review')
+                : authenticator
                 ? t('settings.smartAccountCurrentApprovalMethod')
                 : guardian
                 ? guardian.kind === 'remove'
@@ -278,6 +282,8 @@ export function NativeSmartAccountOperationContent({
                 : 'Authorize deployment'
               : payer?.purpose === 'fund-account'
               ? 'Fund smart account'
+              : modules
+              ? t('mobile.smartAccountModules.title')
               : authenticator
               ? t(authenticator.targetModule.id === 'slh-dsa' ? 'settings.slhDsaAuthenticator' : 'settings.ecdsaAuthenticator')
               : guardian
@@ -300,6 +306,24 @@ export function NativeSmartAccountOperationContent({
           </Text>
           <Text style={s.label}>Chain ID {state.network.chainId}</Text>
         </Card>
+        {modules && (
+          <Card style={s.card}>
+            <Text style={s.label}>{t(modules.draft.kind === 'install-custom' ? 'smartAccountHub.install' : modules.draft.kind === 'uninstall' ? 'smartAccountHub.uninstall' : 'smartAccountHub.compositeSavePolicy')}</Text>
+            <Text style={s.label}>{t('smartAccountHub.moduleAddress')}</Text>
+            <Text selectable style={s.address}>{modules.targetAddress}</Text>
+            {modules.draft.kind === 'install-custom' && <>
+              <Text style={s.label}>{t('smartAccountHub.moduleName')}</Text><Text>{modules.draft.name}</Text>
+              <Text style={s.label}>{t('smartAccountHub.moduleInitData')}</Text><Text selectable style={s.address}>{modules.draft.initData}</Text>
+              <Notice title={t('smartAccountHub.customModule')} body={t('smartAccountHub.customRisk')} tone="amber" />
+            </>}
+            {modules.draft.kind === 'uninstall' && <Text>{t('smartAccountHub.uninstallDescription')}</Text>}
+            {modules.draft.kind === 'composite' && <>
+              <Text style={s.label}>{t('smartAccountHub.compositeMethods')}</Text>
+              {modules.draft.children.map(child => <Text key={child} selectable style={s.address}>{child}</Text>)}
+              <Text>{t('smartAccountHub.compositeThresholdSummary', { required: modules.draft.threshold, total: modules.draft.children.length })}</Text>
+            </>}
+          </Card>
+        )}
         {authenticator && (
           <Card style={s.card}>
             <Text style={s.label}>{t(authenticator.targetModule.id === 'slh-dsa' ? 'settings.slhDsaAuthenticator' : authenticator.targetModule.id === 'ecdsa' ? 'settings.ecdsaAuthenticator' : 'settings.compositeAuthenticator')}</Text>
@@ -432,7 +456,9 @@ export function NativeSmartAccountOperationContent({
           <>
             <Notice
               title={
-                authenticator
+                modules
+                  ? t('mobile.smartAccountModules.authorize')
+                  : authenticator
                   ? t('settings.useSmartAccountValidator')
                   : guardian
                   ? guardian.kind === 'remove'
@@ -447,7 +473,9 @@ export function NativeSmartAccountOperationContent({
                   : 'Create this account on the network'
               }
               body={
-                authenticator
+                modules
+                  ? t('mobile.smartAccountModules.authorizationHint')
+                  : authenticator
                   ? authenticator.targetModule.id === 'slh-dsa'
                     ? t('settings.slhDsaSetupConfirmDescription')
                     : 'Authorize replacing the current authenticator settings with the owner and threshold shown above. The following review confirms the paying account and submission fee.'
@@ -507,7 +535,9 @@ export function NativeSmartAccountOperationContent({
             </Card>
             <Button
               title={
-                authenticator
+                modules
+                  ? t('mobile.smartAccountModules.authorize')
+                  : authenticator
                   ? 'Authorize authenticator change'
                   : guardian
                   ? guardian.kind === 'remove'
@@ -532,6 +562,8 @@ export function NativeSmartAccountOperationContent({
               title={
                 payer.purpose === 'fund-account'
                   ? 'Fund the account charge'
+                  : modules
+                  ? t('mobile.smartAccountModules.submit')
                   : authenticator
                   ? 'Submit the authorized authenticator change'
                   : guardian
@@ -549,6 +581,8 @@ export function NativeSmartAccountOperationContent({
               body={
                 payer.purpose === 'fund-account'
                   ? 'Move this amount to your smart account so it can cover its network charge.'
+                  : modules
+                  ? t('mobile.smartAccountModules.submitHint')
                   : authenticator
                   ? t('smartAccountHub.compositeOnchainHint')
                   : guardian
@@ -588,6 +622,8 @@ export function NativeSmartAccountOperationContent({
               title={
                 payer.purpose === 'fund-account'
                   ? 'Confirm funding'
+                  : modules
+                  ? t('mobile.smartAccountModules.confirm')
                   : authenticator
                   ? 'Confirm authenticator change'
                   : guardian
@@ -615,6 +651,8 @@ export function NativeSmartAccountOperationContent({
                 ? state.error
                 : state.phase === 'waiting'
                 ? 'Waiting for the network…'
+                : modules
+                ? t('mobile.smartAccountModules.preparing')
                 : authenticator
                 ? 'Preparing authenticator change…'
                 : guardian
@@ -632,7 +670,9 @@ export function NativeSmartAccountOperationContent({
         {state.phase === 'complete' && (
           <Notice
             title={
-              authenticator
+              modules
+                ? t('mobile.smartAccountModules.confirmed')
+                : authenticator
                 ? state.transactionHash
                   ? 'Authenticator transaction confirmed'
                   : t('settings.smartAccountAuthenticatorConfigured')
@@ -649,7 +689,9 @@ export function NativeSmartAccountOperationContent({
                 : 'Smart account deployed'
             }
             body={
-              authenticator
+              modules
+                ? t('mobile.smartAccountModules.confirmedHint')
+                : authenticator
                 ? state.transactionHash
                   ? 'The network confirmed the authenticator change.'
                   : t('settings.smartAccountCurrentApprovalMethodHint')
@@ -665,26 +707,28 @@ export function NativeSmartAccountOperationContent({
             }
           />
         )}
-        {(guardian || authenticator) &&
+        {(guardian || authenticator || modules) &&
           state.phase === 'complete' &&
           state.metadataRefresh === 'refreshing' && (
-            <Text>Refreshing account status…</Text>
+            <Text>{modules ? t('mobile.smartAccountModules.refreshing') : 'Refreshing account status…'}</Text>
           )}
-        {(guardian || authenticator) &&
+        {(guardian || authenticator || modules) &&
           state.phase === 'complete' &&
           state.metadataRefresh === 'failed' && (
             <>
               <Notice
-                title="Account status unavailable"
+                title={modules ? t('mobile.smartAccountModules.statusUnavailable') : 'Account status unavailable'}
                 body={
-                  authenticator
+                  modules
+                    ? t('mobile.smartAccountModules.refreshHint')
+                    : authenticator
                     ? 'The authenticator transaction is confirmed. Refresh the saved account status to see the updated owner.'
                     : 'The policy transaction is confirmed. Refresh the saved account status to see the updated policy.'
                 }
                 tone="amber"
               />
               <Button
-                title="Refresh account status"
+                title={modules ? t('mobile.smartAccountModules.refresh') : 'Refresh account status'}
                 disabled={disabled || !retryMetadata}
                 onPress={() => retryMetadata?.()}
               />
@@ -693,7 +737,9 @@ export function NativeSmartAccountOperationContent({
         {state.error && state.phase !== 'preparing' && (
           <Notice
             title={
-              authenticator
+              modules
+                ? t('mobile.smartAccountModules.checkStatus')
+                : authenticator
                 ? 'Check authenticator status'
                 : guardian
                 ? guardian.kind === 'remove'
@@ -712,7 +758,7 @@ export function NativeSmartAccountOperationContent({
         {state.transactionHash && (
           <Card style={s.card}>
             <Text style={s.label}>
-              {authenticator && state.phase === 'complete'
+              {(authenticator || modules) && state.phase === 'complete'
                 ? 'Confirmed transaction'
                 : 'Latest transaction'}
             </Text>

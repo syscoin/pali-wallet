@@ -1,12 +1,14 @@
+import type { NativeSmartModuleDraft } from '../smartAccount/modules.ts';
 import type { NativeSmartAccountIntent, NativeGuardianPolicyDraft } from '../smartAccount/operation.ts';
 import type { NativeAssetTransferIntent } from './transferIntent.ts';
 import type { NativeReplacementMode } from './transferRpc.ts';
 import type { NativeUtxoAsset } from './utxoSend.ts';
 
 export type NativeSmartLocalAction =
-  | Readonly<{kind:'operation';intent:Exclude<NativeSmartAccountIntent,{kind:'guardian-policy' | 'authenticator' | 'dapp-call' | 'dapp-batch'}>}>
+  | Readonly<{kind:'operation';intent:Exclude<NativeSmartAccountIntent,{kind:'guardian-policy' | 'authenticator' | 'modules' | 'dapp-call' | 'dapp-batch'}>}>
   | Readonly<{kind:'guardian-policy';draft:NativeGuardianPolicyDraft}>
   | Readonly<{kind:'wallet-authenticator'}>
+  | Readonly<{kind:'modules';draft:NativeSmartModuleDraft}>
   | Readonly<{kind:'slh-installation';keyId:string}>;
 
 export type NativeTrezorResumeIntent = Readonly<{

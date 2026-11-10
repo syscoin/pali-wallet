@@ -1883,6 +1883,24 @@
     }
   },
   "mobile": {
+    "smartAccountModules": {
+      "title": "模块",
+      "review": "审核模块变更",
+      "authorize": "授权模块变更",
+      "authorizationHint": "授权上方显示的模块操作。下一步审核将确认付款账户和提交费用。",
+      "submit": "提交已授权的模块变更",
+      "submitHint": "此交易将提交您已授权的模块变更。",
+      "confirm": "确认模块变更",
+      "preparing": "正在准备模块变更…",
+      "confirmed": "模块交易已确认",
+      "confirmedHint": "网络已确认此模块变更。",
+      "refreshing": "正在刷新账户状态…",
+      "statusUnavailable": "账户状态不可用",
+      "refreshHint": "模块交易已确认。请刷新账户状态以查看已安装的模块。",
+      "refresh": "刷新账户状态",
+      "checkStatus": "检查模块状态",
+      "unavailable": "无法准备此模块变更。请刷新账户状态并检查您的选择。"
+    },
     "settings": {
       "title": "设置",
       "securityTitle": "安全与备份",

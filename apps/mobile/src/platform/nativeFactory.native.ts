@@ -1,3 +1,4 @@
+import type { NativeSmartModuleManagement } from '../smartAccount/moduleManagement.ts';
 import { createNativePrivacyServiceSettings } from './privacyServiceSettings.native';
 import type { NativePrivacyControls } from '../privacy/privacyControls';
 import type { NativeNoteMaintenanceRuntime , NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from '../custody/noteBackupRuntime';
@@ -523,6 +524,26 @@ export function createNativeWalletControllers() {
     const operation = await observeFailure(() => selected.resumeSmartAccountOperation(id, signal, check));
     try { check(); return operation; } catch (error) { await operation.dispose(); throw error; }
   };
+  const openSmartAccountModules = async (signal: AbortSignal, assertOwner: () => void): Promise<NativeSmartModuleManagement> => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
+    check();
+    const snapshot = authority.getSnapshot(), catalogue = authority.getCatalogue();
+    if (!snapshot.account || !catalogue || !selected.canUseWalletAuthenticator()) throw Error('CANCELLED');
+    const network = catalogue.networks.find(network => network.id === catalogue.active.networkId);
+    if (!network) throw Error('CANCELLED');
+    return Object.freeze({
+      accountAddress: snapshot.account.address, networkName: network.name,
+      read: () => observeFailure(() => selected.readSmartAccountModules(signal, check)),
+      preflightCustom: address => observeFailure(() => selected.preflightSmartAccountModule(address, signal, check)),
+      async openChange(draft, operationSignal, assertView) {
+        const guard = () => { check(); assertSynchronousEvmFeeGuard(assertView); if (operationSignal.aborted) throw Error('CANCELLED'); };
+        guard();
+        const operation = await observeFailure(() => selected.openSmartAccountModuleChange(draft, operationSignal, guard));
+        try { guard(); return operation; } catch (error) { await operation.dispose(); throw error; }
+      },
+    });
+  };
   const openSlhDsaManagement = async (signal: AbortSignal, assertOwner: () => void): Promise<NativeSlhDsaManagement> => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
@@ -666,6 +687,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, sentry, recipientResolver, openSlhDsaManagement, canManageSlhDsa: () => runtime?.canManageSlhDsa() === true, canSignSmartAccount: () => runtime?.canSignSmartAccount() === true, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openResumedSmartAccountOperation, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, openNoteMaintenance, openPrivacyControls, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, sentry, recipientResolver, openSmartAccountModules, canManageSmartAccountModules: () => runtime?.canUseWalletAuthenticator() === true, openSlhDsaManagement, canManageSlhDsa: () => runtime?.canManageSlhDsa() === true, canSignSmartAccount: () => runtime?.canSignSmartAccount() === true, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openResumedSmartAccountOperation, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, openNoteMaintenance, openPrivacyControls, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

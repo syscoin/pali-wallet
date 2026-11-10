@@ -31,6 +31,7 @@ import type { CustomValidatorPreflightResult } from 'utils/smartAccount';
 import {
   buildCustomValidatorInstallExecutions,
   buildValidatorUninstallExecutions,
+  canRemoveValidatorModule,
 } from 'utils/smartAccount/moduleCommands';
 import { getSmartAccountActionErrorMessage } from 'utils/smartAccountErrors';
 
@@ -197,22 +198,11 @@ export const SmartAccountModuleConsent = () => {
       sameAddress(metadata?.auth?.validator, module.address)
   );
   const targetModuleIsValidator = targetModule?.type === 'validator';
-  const isActiveValidator = sameAddress(
-    metadata?.auth?.validator,
-    moduleAddress || undefined
+  const canRemoveModule = Boolean(
+    metadata &&
+      moduleAddress &&
+      canRemoveValidatorModule(metadata, moduleAddress, 'active-composite')
   );
-  const activeCompositeValidator = installedModules.find(
-    (module) =>
-      module.type === 'validator' &&
-      module.id === 'composite' &&
-      sameAddress(metadata?.auth?.validator, module.address)
-  );
-  const isActiveCompositeChild =
-    activeCompositeValidator?.type === 'validator' &&
-    activeCompositeValidator.id === 'composite' &&
-    activeCompositeValidator.config.childValidators.some((child) =>
-      sameAddress(child, moduleAddress || undefined)
-    );
 
   // Static request validation (no chain access needed).
   const staticError = !isSmartAccount
@@ -230,7 +220,7 @@ export const SmartAccountModuleConsent = () => {
     ? t('smartAccountHub.moduleNotInstalled')
     : action === 'uninstall' && targetModule && !targetModuleIsValidator
     ? t('smartAccountHub.moduleUninstallUnsupported')
-    : action === 'uninstall' && (isActiveValidator || isActiveCompositeChild)
+    : action === 'uninstall' && !canRemoveModule
     ? t('smartAccountHub.cannotRemoveActiveValidator')
     : null;
 
@@ -372,10 +362,7 @@ export const SmartAccountModuleConsent = () => {
         setError(t('smartAccountHub.moduleUninstallUnsupported'));
         return;
       }
-      if (
-        action === 'uninstall' &&
-        (isActiveValidator || isActiveCompositeChild)
-      ) {
+      if (action === 'uninstall' && !canRemoveModule) {
         setError(t('smartAccountHub.cannotRemoveActiveValidator'));
         return;
       }
@@ -512,8 +499,7 @@ export const SmartAccountModuleConsent = () => {
     host,
     initData,
     isCurrentScope,
-    isActiveValidator,
-    isActiveCompositeChild,
+    canRemoveModule,
     metadata,
     moduleAddress,
     preflight,
