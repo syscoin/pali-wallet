@@ -2,6 +2,7 @@
  * @jest-environment jsdom
  * @jest-environment-options {"customExportConditions":["node","node-addons"]}
  */
+
 import {
   act,
   cleanup,
@@ -13,6 +14,10 @@ import {
 import { createRequire } from 'module';
 import React from 'react';
 
+import {
+  bindDappAccountApproval,
+  captureDappAccountApproval,
+} from '../../handlers/messageSignApproval';
 import Decrypt from 'pages/Transactions/Decrypt';
 import EncryptPubKey from 'pages/Transactions/EncryptPubKey';
 import DAppController from 'scripts/Background/controllers/DAppController';
@@ -26,6 +31,9 @@ import spamFilterReducer from 'state/spamFilter';
 import vaultReducer from 'state/vault';
 import vaultGlobalReducer from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
+
+import { getMethodConfig } from './method-registry';
+import { accountSwitchingMiddleware } from './request-pipeline';
 
 // Use the installed SDK's native nested dependency resolution. Jest's
 // moduleDirectories override otherwise substitutes a different ECC dependency.
@@ -43,12 +51,14 @@ let mockQuery: any;
 let mockController: any;
 let mockPopupResolve: (value: any) => void;
 let mockInternalListener: any;
+let mockUnbindApproval: (() => void) | undefined;
 let mockEmitter: any;
 const mockEvents: any[] = [];
 jest.mock('state/store', () => ({
   __esModule: true,
   default: {
     getState: () => mockState,
+    subscribe: () => () => undefined,
     dispatch: (action: any) => {
       mockState = {
         ...mockState,
@@ -87,6 +97,15 @@ jest.mock('state/store', () => ({
     },
   },
 }));
+jest.mock(
+  'scripts/Background/controllers/message-handler/request-lifetime',
+  () => ({
+    ...jest.requireActual(
+      'scripts/Background/controllers/message-handler/request-lifetime'
+    ),
+    isRequestDocumentLive: async () => true,
+  })
+);
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
@@ -275,9 +294,6 @@ beforeEach(() => {
     getWalletSetupStatus: () => false,
   });
   Object.defineProperty(wallet, 'ethereumTransaction', { value: sdk });
-  // The real constructor binds public methods before message dispatch.
-  wallet.getEncryptionPublicKeyForAccount =
-    wallet.getEncryptionPublicKeyForAccount.bind(wallet);
   mockController = {
     wallet,
     dapp: DAppController(
@@ -327,6 +343,10 @@ beforeEach(() => {
     mockQuery = { ...popup.data, host: popup.host, eventName: popup.eventName };
     return new Promise((resolve) => {
       mockPopupResolve = resolve;
+      bindCurrentEncryption((value) => {
+        mockEvents.push({ name: `${popup.eventName}.${popup.host}`, value });
+        resolve(value);
+      });
       render(
         popup.route === MethodRoute.EncryptKey ? <EncryptPubKey /> : <Decrypt />
       );
@@ -335,8 +355,49 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  mockUnbindApproval?.();
+  mockUnbindApproval = undefined;
   jest.restoreAllMocks();
 });
+
+function bindCurrentEncryption(
+  deliver: (value: string) => void = () => undefined
+) {
+  mockUnbindApproval?.();
+  const approval = captureDappAccountApproval({
+    host: HOST,
+    method: mockQuery.eventName,
+    params:
+      mockQuery.eventName === 'eth_decrypt'
+        ? [mockQuery[0], mockQuery[1]]
+        : [mockQuery[0]],
+    sender: {
+      tab: { id: 71 },
+      documentId: 'request-document',
+      url: `${HOST}/request`,
+      origin: HOST,
+    } as any,
+    getWalletSessionGeneration: () => 7,
+  });
+  const unbind = bindDappAccountApproval(
+    'synthetic-approval-document',
+    approval,
+    async () => true,
+    {
+      sdk,
+      assertCurrent: approval.assertCurrent,
+      async deliver(value, check, dispatch) {
+        check();
+        dispatch();
+        deliver(value);
+      },
+    }
+  );
+  mockUnbindApproval = () => {
+    unbind();
+    approval.dispose();
+  };
+}
 
 async function approve(method: string, params: any[]) {
   const pending = request(method, params);
@@ -359,11 +420,67 @@ it('healthy: the actual SDK returns A encryption key when A is requested', async
   expect(popupPromise).toHaveBeenCalledTimes(1);
 });
 
+it('refuses a Smart target before account-selection consent or private-key access', async () => {
+  const getKey = jest.spyOn(sdk, 'getEncryptedPubKey');
+  mockState.vault.accounts.SmartAccount = {
+    0: {
+      id: 0,
+      address: FOREIGN,
+      isSmartAccount: true,
+      xprv: '',
+      xpub: FOREIGN,
+    },
+  };
+  const next = jest.fn();
+  await expect(
+    accountSwitchingMiddleware(
+      {
+        methodConfig: getMethodConfig('eth_getEncryptionPublicKey'),
+        originalRequest: {
+          method: 'eth_getEncryptionPublicKey',
+          params: [FOREIGN],
+          host: HOST,
+        },
+      } as any,
+      next
+    )
+  ).rejects.toMatchObject({ code: 4200 });
+  expect(next).not.toHaveBeenCalled();
+  expect(popupPromise).not.toHaveBeenCalled();
+  expect(getKey).not.toHaveBeenCalled();
+});
+
 it('healthy: the actual SDK decrypts A ciphertext when A is requested', async () => {
   await expect(approve('eth_decrypt', [ciphertext, ADDRESS])).resolves.toBe(
     PLAINTEXT
   );
   expect(popupPromise).toHaveBeenCalledTimes(1);
+});
+
+it('keeps the captured software owner through a Redux balance and label refresh', async () => {
+  mockQuery = {
+    host: HOST,
+    eventName: 'eth_decrypt',
+    0: ciphertext,
+    1: ADDRESS,
+  };
+  bindCurrentEncryption((value) =>
+    mockEvents.push({ name: `eth_decrypt.${HOST}`, value })
+  );
+  expect(
+    await mockEmitter(['wallet', 'performDappEncryptionApproval'], ['preview'])
+  ).toBe(PLAINTEXT);
+  mockState.vault.accounts.HDAccount[0] = {
+    ...mockState.vault.accounts.HDAccount[0],
+    label: 'Updated display label',
+    balances: { ethereum: 123 },
+  };
+  expect(
+    await mockEmitter(['wallet', 'performDappEncryptionApproval'], ['approve'])
+  ).toBe(true);
+  expect(mockEvents).toEqual([
+    { name: `eth_decrypt.${HOST}`, value: PLAINTEXT },
+  ]);
 });
 
 it.each([false, true])(
@@ -375,6 +492,9 @@ it.each([false, true])(
       0: ADDRESS,
     };
     mockPopupResolve = jest.fn();
+    bindCurrentEncryption((value) =>
+      mockEvents.push({ name: `eth_getEncryptionPublicKey.${HOST}`, value })
+    );
     const execute = mockEmitter.getMockImplementation();
     const getKey = jest.spyOn(sdk, 'getEncryptedPubKey');
     let release!: () => void;
@@ -397,7 +517,9 @@ it.each([false, true])(
       });
     await act(async () => release());
     if (switchAccount) {
-      await screen.findByText('Requested account is not active');
+      await screen.findByText(
+        'This site approval is no longer current. Request it again.'
+      );
       expect(getKey).not.toHaveBeenCalled();
       expect(mockEvents).toEqual([]);
     } else {
@@ -502,8 +624,8 @@ it('preserves a case-insensitive requested receiver all the way into the actual 
     approve('eth_decrypt', [ciphertext, ADDRESS.toLowerCase()])
   ).resolves.toBe(PLAINTEXT);
   expect(mockEmitter).toHaveBeenCalledWith(
-    ['wallet', 'ethereumTransaction', 'decryptMessage'],
-    [[ciphertext, ADDRESS.toLowerCase()]]
+    ['wallet', 'performDappEncryptionApproval'],
+    ['approve']
   );
 });
 
@@ -553,6 +675,7 @@ it('invalidates a decrypted preview when only its requested receiver changes', a
     0: ciphertext,
     1: ADDRESS,
   };
+  bindCurrentEncryption();
   const view = render(<Decrypt />);
   await act(async () => {
     fireEvent.click(

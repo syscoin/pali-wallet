@@ -121,24 +121,35 @@ test('encryption review wraps long identifiers and announces successful or denie
                   callback(transform(state))
                 )
               : (send as any)(request).then(transform);
-          if (
-            request?.type === 'CONTROLLER_ACTION' &&
-            request.data?.methods?.[1] === 'ethereumTransaction'
-          ) {
-            if (request.data.methods[2] === 'decryptMessage') {
+          if (request?.type === 'CONTROLLER_ACTION') {
+            const methods = request.data?.methods;
+            // UI-only fixture: real document enrollment and SDK decryption are
+            // covered by the provider journeys, not this synthetic presentation.
+            if (
+              methods?.length === 2 &&
+              methods[0] === 'wallet' &&
+              methods[1] === 'performDappEncryptionApproval' &&
+              request.data.params?.length === 1 &&
+              request.data.params[0] === 'preview'
+            ) {
               const qa = (window as any).__encryptionQa;
               qa.previews.push(request.data.params);
               if (typeof callback === 'function')
                 return queueMicrotask(() => callback(qa.plaintext));
               return Promise.resolve(qa.plaintext);
             }
-            (window as any).__encryptionQa.writes.push(request.data.methods);
-            const failure = {
-              error: 'Synthetic review blocks approval actions',
-            };
-            if (typeof callback === 'function')
-              return queueMicrotask(() => callback(failure));
-            return Promise.resolve(failure);
+            if (
+              methods?.[1] === 'ethereumTransaction' ||
+              methods?.[1] === 'performDappEncryptionApproval'
+            ) {
+              (window as any).__encryptionQa.writes.push(methods);
+              const failure = {
+                error: 'Synthetic review blocks approval actions',
+              };
+              if (typeof callback === 'function')
+                return queueMicrotask(() => callback(failure));
+              return Promise.resolve(failure);
+            }
           }
           return (send as any)(...args);
         }) as typeof chrome.runtime.sendMessage;
@@ -274,7 +285,7 @@ test('encryption review wraps long identifiers and announces successful or denie
           ).toEqual([address, plaintext]);
           expect(
             await page.evaluate(() => (window as any).__encryptionQa.previews)
-          ).toEqual([[['synthetic-ciphertext', address]]]);
+          ).toEqual([['preview']]);
           expect(
             await page.evaluate(() => (window as any).__encryptionQa.writes)
           ).toEqual([]);
@@ -285,6 +296,15 @@ test('encryption review wraps long identifiers and announces successful or denie
         });
       }
     }
+    await info.attach('encryption-fixture-scope', {
+      body: JSON.stringify({
+        uiOnly: true,
+        controllerStateReplaced: true,
+        controllerResultsReplaced: true,
+        actualSdkDecryption: false,
+      }),
+      contentType: 'application/json',
+    });
     expect(routes.deniedWrites).toEqual([]);
     status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {

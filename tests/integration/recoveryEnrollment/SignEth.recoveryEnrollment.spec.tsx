@@ -17,7 +17,7 @@ import path from 'path';
 import React from 'react';
 
 import EthSign from '../../../source/pages/Transactions/SignEth';
-import { captureMessageSignApproval } from '../../../source/scripts/Background/handlers/messageSignApproval';
+import { captureDappAccountApproval } from '../../../source/scripts/Background/handlers/messageSignApproval';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { defaultAbiCoder, hexlify, toUtf8Bytes } from 'utils/ethersV6Compat';
 
@@ -85,7 +85,7 @@ let mockState: any;
 let mockQuery: any;
 let mockMetadata: any;
 let mockWalletSessionGeneration = 0;
-let mockApproval: ReturnType<typeof captureMessageSignApproval>;
+let mockApproval: ReturnType<typeof captureDappAccountApproval>;
 let backend: ChildProcess;
 let backendInfo: any;
 let requestId = 0;
@@ -262,7 +262,7 @@ async function reviewSign(
     0: hexlify(toUtf8Bytes(message)),
     1: account,
   };
-  mockApproval = captureMessageSignApproval({
+  mockApproval = captureDappAccountApproval({
     method: 'personal_sign',
     getWalletSessionGeneration: () => mockWalletSessionGeneration,
     host: mockQuery.host,

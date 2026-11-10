@@ -1,3 +1,4 @@
+import type { DappEncryptionMethod } from '../../../../source/shared/dappEncryptionRequest.ts';
 import type { EvmDappFeeChoice, EvmDappFeeComparison } from '../../../../source/shared/evmDappFeePolicy.ts';
 import type { NativeSmartAccountOperationSnapshot } from '../smartAccount/operation.ts';
 import type { WalletConnectVerification } from './walletConnect.ts';
@@ -107,7 +108,14 @@ export type NativeSmartTransactionReview = NativeSigningReviewBase &
     batchApprovals?: readonly (ApprovalSummary | null)[];
   }>;
 
+export type NativeEncryptionReview = NativeSigningReviewBase & Readonly<{
+  kind: 'encryption';
+  method: DappEncryptionMethod;
+  ciphertext: string | null;
+}>;
+
 export type NativeSigningReview =
+  | NativeEncryptionReview
   | NativeMessageReview
   | NativeTransactionReview
   | NativeSmartTransactionReview;
@@ -171,6 +179,7 @@ export type NativeConnectionsView = Readonly<{
   ): Promise<void>;
   reject(proposalId: number): Promise<void>;
   disconnect(connectionId: string): Promise<void>;
+  previewEncryption(id: string, revision: number): Promise<string>;
   approveRequest(
     id: string,
     revision: number,

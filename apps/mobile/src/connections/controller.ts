@@ -1,3 +1,5 @@
+import { isDappEncryptionMethod, readDappEncryptionRequest, supportsDappEncryptionAccount, type DappEncryptionRequest } from '../../../../source/shared/dappEncryptionRequest.ts';
+import { prepareDappEncryptionApproval } from '../../../../source/wallet/dappEncryptionApproval.ts';
 import { dappCaipChain, dappNamespace, DAPP_MODE_METHODS, normalizeDappModeRequest, type DappChainScope } from '../../../../source/shared/dappChainScope.ts';
 import { DAPP_SYSCOIN_READ_METHODS, isDappSyscoinRead, normalizeDappSyscoinRead } from '../../../../source/shared/dappSyscoinReads.ts';
 import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks.ts';
@@ -67,6 +69,7 @@ import {
 import type {
   NativeConnectionError,
   NativeMessageReview,
+  NativeEncryptionReview,
   NativeSigningReview,
   NativeTransactionReview,
   NativeSmartTransactionReview,
@@ -96,6 +99,8 @@ const METHODS = Object.freeze([
   'wallet_sendCalls',
   'wallet_getCallsStatus',
   'wallet_showCallsStatus',
+  'eth_getEncryptionPublicKey',
+  'eth_decrypt',
   'personal_sign',
   'eth_signTypedData',
   'eth_signTypedData_v3',
@@ -128,7 +133,10 @@ type CallsRequest = Readonly<{
   bundleId: string;
   reservationId: string;
 }>;
-type SigningRequest = DappMessageRequest | TransactionRequest | CallsRequest;
+type SigningRequest = DappMessageRequest | DappEncryptionRequest | TransactionRequest | CallsRequest;
+function isEncryptionRequest(request: SigningRequest): request is DappEncryptionRequest {
+  return isDappEncryptionMethod(request.method);
+}
 function isTransactionRequest(
   request: SigningRequest
 ): request is TransactionRequest | CallsRequest {
@@ -138,6 +146,7 @@ function isTransactionRequest(
   );
 }
 type PrivateSigningReview =
+  | Omit<NativeEncryptionReview, 'revision' | 'needsAccountSwitch' | 'busy' | 'dispatched'>
   | Omit<
       NativeMessageReview,
       'revision' | 'needsAccountSwitch' | 'busy' | 'dispatched'
@@ -163,6 +172,7 @@ type PendingSigning = {
   accountXpub: string;
   approval: MessageApproval | undefined;
   review: PrivateSigningReview;
+  encryption?: ReturnType<typeof prepareDappEncryptionApproval>;
   prepared?: NativePreparedConnectionTransaction;
   smart?: NativeSmartAccountOperation;
   unsubscribeSmart?: () => void;
@@ -377,6 +387,7 @@ export class NativeConnectionsController {
         this.perform(() => this.approve(id, accountId, networkId, revision)),
       reject: (id) => this.perform(() => this.reject(id)),
       disconnect: (id) => this.perform(() => this.disconnect(id)),
+      previewEncryption: (id, revision) => this.previewEncryption(id, revision),
       approveRequest: (id, revision, acknowledgeWarning) =>
         this.perform(
           () => this.approveRequest(id, revision, acknowledgeWarning),
@@ -522,6 +533,7 @@ export class NativeConnectionsController {
     const scope = this.host && this.options.source.getSnapshot().phase === 'ready' ? this.chainScope() : undefined;
     return METHODS.filter((method) => {
       const hardware = accountType === 'Ledger' || accountType === 'Trezor';
+      if (isDappEncryptionMethod(method) && !supportsDappEncryptionAccount({ type: accountType })) return false;
       if (hardware && method === 'eth_signTypedData') return false;
       if (scope?.kind === 'syscoin') {
         if ((SENTRY_DAPP_METHODS as readonly string[]).includes(method)) return !hardware && Object.values(SENTRY_NETWORKS).some(network => network.chainId === scope.chainId && network.genesisHash === scope.genesisHash);
@@ -1519,7 +1531,7 @@ export class NativeConnectionsController {
     };
     let responseGuard = guard;
     if (
-      isDappMessageMethod(request.method) ||
+      isDappMessageMethod(request.method) || isDappEncryptionMethod(request.method) ||
       request.method === 'eth_sendTransaction' ||
       request.method === 'wallet_sendCalls'
     ) {
@@ -1862,6 +1874,7 @@ export class NativeConnectionsController {
     const smart = message.smart?.dispose();
     message.unsubscribeEoa?.();
     message.eoa?.dispose();
+    message.encryption?.retire();
     message.approval?.dispose();
     clearTimeout(message.timer);
     const respondToRequest = !(
@@ -2001,6 +2014,8 @@ export class NativeConnectionsController {
           bundleId: calls.id ?? this.host!.calls.generateWalletBundleId(),
           reservationId: this.host!.calls.generateWalletBundleId(),
         };
+      } else if (isDappEncryptionMethod(wire.method)) {
+        request = readDappEncryptionRequest(wire.method, wire.params, account.address);
       } else {
         assertDappTypedDataValid(wire.method, wire.params);
         request = readDappMessageRequest(
@@ -2031,7 +2046,7 @@ export class NativeConnectionsController {
       ? 'INVALID_MESSAGE'
       : null;
     const order =
-      isTransactionRequest(request) ||
+      isTransactionRequest(request) || isEncryptionRequest(request) ||
       request.method === 'personal_sign' ||
       request.version === 'V1'
         ? null
@@ -2124,6 +2139,8 @@ export class NativeConnectionsController {
               broadcastHash: null,
               approval: null,
             }
+          : isEncryptionRequest(request)
+          ? { kind: 'encryption' as const, method: request.method, ciphertext: request.method === 'eth_decrypt' ? request.ciphertext : null }
           : {
               kind: 'message' as const,
               smartAccount: account.type === 'SmartAccount',
@@ -2166,6 +2183,11 @@ export class NativeConnectionsController {
           !message.review.error
         )
           await this.prepareTransactionReview(message);
+        message.busy = false;
+        this.publish();
+        return;
+      }
+      if (isEncryptionRequest(request)) {
         message.busy = false;
         this.publish();
         return;
@@ -2665,6 +2687,38 @@ export class NativeConnectionsController {
       throw error;
     }
   }
+  private encryptionApproval(message: PendingSigning) {
+    if (!isEncryptionRequest(message.request) || !message.approval) return failure('UNSUPPORTED_REQUEST');
+    if (!message.encryption) {
+      const approval = message.approval;
+      message.encryption = prepareDappEncryptionApproval({
+        account: { type: this.host!.context().accounts.find(account => account.id === message.accountId)?.type },
+        request: message.request as DappEncryptionRequest,
+        approval,
+        sdk: this.host!.encryptionSdk({ accountId: message.accountId, networkId: message.networkId, approval }),
+        assertCurrent: () => { approval.assertCurrent(); if (!this.requestConnectionCurrent(message) || this.host!.context().activeAccountId !== message.accountId) failure('CONTEXT_CHANGED'); },
+        checkDocument: async () => { approval.assertCurrent(); },
+        deliver: async (result, assertCurrent, onDispatch) => {
+          await this.transport!.respond(message.session.binding, message.wire.id, { result }, assertCurrent, () => {
+            onDispatch();
+            message.dispatched = true;
+          });
+        },
+      });
+    }
+    return message.encryption;
+  }
+  private async previewEncryption(id: string, revision: number): Promise<string> {
+    const message = this.requests.get(id);
+    if (!message || revision !== this.revision || this.requests.values().next().value !== message ||
+      Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder) < message.queueOrder ||
+      message.review.error || message.dispatched || this.host!.context().activeAccountId !== message.accountId) return failure('REQUEST_EXPIRED');
+    if (message.busy || this.action) return failure('BUSY');
+    message.busy = true;
+    this.publish();
+    try { return await this.encryptionApproval(message).preview(); }
+    finally { if (this.requests.get(id) === message) { message.busy = false; this.publish(); } }
+  }
   private async approveRequest(
     id: string,
     revision: number,
@@ -2694,6 +2748,11 @@ export class NativeConnectionsController {
     this.publish();
     try {
       let result: unknown;
+      if (isEncryptionRequest(message.request)) {
+        await this.encryptionApproval(message).approve();
+        await this.retireRequest(message, false);
+        return;
+      }
       if (isTransactionRequest(message.request)) {
         if (message.eoa) {
           const state = message.eoa.getSnapshot();
@@ -2773,7 +2832,10 @@ export class NativeConnectionsController {
         }
         return failure('DELIVERY_UNCERTAIN');
       }
-      await this.retireRequest(message);
+      if (isEncryptionRequest(message.request) && this.requestConnectionCurrent(message) && approval.isCurrent()) {
+        message.busy = false;
+        this.publish();
+      } else await this.retireRequest(message);
       throw error;
     }
   }
