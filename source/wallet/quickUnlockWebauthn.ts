@@ -1,6 +1,6 @@
 import { bytesToBase64Url } from '../utils/passkey/base64url.ts';
 import {
-  readPasskeyClientData,
+  readPasskeyClientDataJSON,
   type PasskeyClientDataType,
 } from '../utils/passkey/clientData.ts';
 import { parseP256DerSignature } from '../utils/passkey/p256Signature.ts';
@@ -109,13 +109,6 @@ function checkOwner(assertCurrent: () => void): void {
   throw invalid();
 }
 
-const criticalFields = new Set([
-  'type',
-  'challenge',
-  'origin',
-  'crossOrigin',
-  'topOrigin',
-]);
 function admitClientData(
   bytes: Bytes,
   type: PasskeyClientDataType,
@@ -123,39 +116,7 @@ function admitClientData(
   origin: string
 ) {
   try {
-    const text = new TextDecoder('utf-8', {
-      fatal: true,
-      ignoreBOM: true,
-    }).decode(bytes);
-    const data = readPasskeyClientData(
-      text,
-      type,
-      bytesToBase64Url(challenge),
-      origin
-    );
-    if (
-      !['type', 'challenge', 'origin'].every((field) =>
-        Object.prototype.hasOwnProperty.call(data, field)
-      ) ||
-      'topOrigin' in data ||
-      (data.crossOrigin !== undefined && data.crossOrigin !== false)
-    )
-      throw invalid();
-    // JSON.parse collapses duplicate keys. Reject conflicting spellings of
-    // ceremony fields before trusting the decoded value.
-    const seen = new Set<string>();
-    let depth = 0;
-    for (const [token, literal, colon] of text.matchAll(
-      /("(?:[^"\\]|\\.)*")\s*(:)?|[[\]{}]/g
-    )) {
-      if (token === '{' || token === '[') depth++;
-      if (token === '}' || token === ']') depth--;
-      if (depth !== 1 || !colon) continue;
-      const field: string = JSON.parse(literal!);
-      if (!criticalFields.has(field)) continue;
-      if (seen.has(field)) throw invalid();
-      seen.add(field);
-    }
+    readPasskeyClientDataJSON(bytes, type, bytesToBase64Url(challenge), origin);
   } catch {
     throw invalid();
   }

@@ -1,6 +1,6 @@
-import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import { defaultAbiCoder } from '../ethersV6Compat';
 
-import { readPasskeyClientData } from './clientData';
+import { readPasskeyClientDataJSON } from './clientData';
 
 export type PasskeyWebAuthnProof = {
   authenticatorData: string;
@@ -23,11 +23,10 @@ export const encodePasskeyWebAuthnProof = (proof: PasskeyWebAuthnProof) =>
 export const validatePasskeyClientDataJSON = (
   clientDataJSON: Uint8Array,
   expectedChallenge: string,
-  expectedOrigin?: string
+  expectedOrigin: string
 ) => {
-  const clientDataText = new TextDecoder().decode(clientDataJSON);
-  const clientData = readPasskeyClientData(
-    clientDataText,
+  const { clientDataText } = readPasskeyClientDataJSON(
+    clientDataJSON,
     'webauthn.get',
     expectedChallenge,
     expectedOrigin
@@ -50,10 +49,7 @@ export const validatePasskeyClientDataJSON = (
   return {
     challengeOffset: findStringValueOffset('challenge', expectedChallenge),
     clientDataText,
-    originOffset: findStringValueOffset(
-      'origin',
-      expectedOrigin || clientData.origin
-    ),
+    originOffset: findStringValueOffset('origin', expectedOrigin),
     typeOffset: findStringValueOffset('type', 'webauthn.get'),
   };
 };

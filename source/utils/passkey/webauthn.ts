@@ -1,6 +1,5 @@
-import { PasskeyBackupStatus } from 'types/network';
-import { id as hashText } from 'utils/ethersV6Compat';
-import { toUtf8Bytes } from 'utils/ethersV6Compat';
+import { PasskeyBackupStatus } from '../../types/network';
+import { id as hashText, toUtf8Bytes } from '../ethersV6Compat';
 
 import {
   base64UrlToBytes,
@@ -9,8 +8,27 @@ import {
   hexToBytes,
 } from './base64url';
 import { asCborBytes, asCborMap, decodeCbor } from './cbor';
+import { readPasskeyClientDataJSON } from './clientData';
+import {
+  admitPasskeyAuthenticatorData,
+  capturePasskeyExpectation,
+  checkPasskeyCurrent,
+  copyPasskeyBytes,
+  equalPasskeyBytes,
+  MAX_PASSKEY_CREDENTIAL_BYTES,
+  MAX_PASSKEY_RESPONSE_BYTES,
+  type PasskeyCeremonyExpectation,
+  type RawPasskeyAssertion,
+  type RawPasskeyRegistration,
+} from './credentialResponse';
 import { P256_ORDER as P256_N, parseP256DerSignature } from './p256Signature';
 import { validatePasskeyClientDataJSON } from './validation';
+
+export type {
+  PasskeyCeremonyExpectation,
+  RawPasskeyAssertion,
+  RawPasskeyRegistration,
+} from './credentialResponse';
 
 export type PasskeyPublicKey = {
   backupStatus: PasskeyBackupStatus;
@@ -63,7 +81,6 @@ export type PasskeyCredentialRequest = {
 const ES256_ALGORITHM = -7;
 const P256_CRV = 1;
 const AUTH_DATA_FIXED_LENGTH = 37;
-const ATTESTED_CREDENTIAL_DATA_FLAG = 0x40;
 const BACKUP_ELIGIBLE_FLAG = 0x08;
 const BACKUP_STATE_FLAG = 0x10;
 const P256_P = BigInt(
@@ -306,56 +323,180 @@ export const getPasskeyBackupStatus = (
   return PasskeyBackupStatus.DeviceBound;
 };
 
-const extractCredentialPublicKey = async (
-  attestationObject: Uint8Array,
-  expectedOrigin: string
-): Promise<PasskeyPublicKey> => {
-  const attestation = asCborMap(decodeCbor(attestationObject).value);
-  const authData = asCborBytes(attestation.get('authData'));
+// Only the browser facade may omit RP ID: the browser then chooses its
+// effective RP. Raw host entry points below always require an explicit RP ID.
+type CapturedPasskeyCeremony = Omit<PasskeyCeremonyExpectation, 'rpId'> & {
+  rpId?: string;
+};
 
+const captureBrowserCeremony = (
+  challenge: Uint8Array,
+  rpId?: string
+): CapturedPasskeyCeremony => {
   if (
-    authData.length < AUTH_DATA_FIXED_LENGTH ||
-    (authData[32] & ATTESTED_CREDENTIAL_DATA_FLAG) === 0
+    typeof window === 'undefined' ||
+    !window.document ||
+    !window.location?.origin
   ) {
-    throw new Error('Authenticator did not return attested credential data');
+    throw new Error('WebAuthn origin is unavailable');
   }
+  const owner = window;
+  const document = owner.document;
+  const origin = owner.location.origin;
+  const assertCurrent = () => {
+    if (
+      typeof window === 'undefined' ||
+      window !== owner ||
+      window.document !== document ||
+      window.location?.origin !== origin
+    ) {
+      throw new Error('WebAuthn document changed');
+    }
+  };
+  assertCurrent();
+  return {
+    assertCurrent,
+    challenge: copyPasskeyBytes(challenge, 'challenge', 1, 1024),
+    origin,
+    rpId: rpId || undefined,
+  };
+};
 
-  let offset = AUTH_DATA_FIXED_LENGTH + 16; // rpIdHash + flags + signCount + AAGUID
+const hashForCeremony = async (
+  bytes: Uint8Array,
+  expected: CapturedPasskeyCeremony
+): Promise<Uint8Array> => {
+  checkPasskeyCurrent(expected.assertCurrent);
+  const digest = await sha256(bytes);
+  checkPasskeyCurrent(expected.assertCurrent);
+  return digest;
+};
+
+const checkRpIdHash = async (
+  authData: Uint8Array,
+  expected: CapturedPasskeyCeremony
+): Promise<void> => {
+  if (expected.rpId !== undefined) {
+    const expectedHash = await hashForCeremony(
+      toUtf8Bytes(expected.rpId),
+      expected
+    );
+    if (!equalPasskeyBytes(authData.subarray(0, 32), expectedHash)) {
+      throw new Error('WebAuthn authenticator data has an unexpected RP ID');
+    }
+  }
+};
+
+const extractAttestedCredential = (attestationObject: Uint8Array) => {
+  const decoded = decodeCbor(attestationObject);
+  if (decoded.offset !== attestationObject.length) {
+    throw new Error('Invalid WebAuthn attestation object');
+  }
+  const attestation = asCborMap(decoded.value);
+  const authData = asCborBytes(attestation.get('authData'));
+  admitPasskeyAuthenticatorData(authData, true);
+  let offset = AUTH_DATA_FIXED_LENGTH + 16; // Header and AAGUID.
+  if (authData.length < offset + 2) {
+    throw new Error('Missing attested credential ID');
+  }
   const credentialIdLength = (authData[offset] << 8) | authData[offset + 1];
   offset += 2;
-
+  if (
+    !credentialIdLength ||
+    credentialIdLength > MAX_PASSKEY_CREDENTIAL_BYTES ||
+    offset + credentialIdLength >= authData.length
+  ) {
+    throw new Error('Invalid attested credential ID');
+  }
   const credentialIdBytes = authData.slice(offset, offset + credentialIdLength);
   offset += credentialIdLength;
-
-  const coseKey = asCborMap(decodeCbor(authData, offset).value);
-  const alg = coseKey.get(3);
-  const crv = coseKey.get(-1);
+  const decodedKey = decodeCbor(authData, offset);
+  const coseKey = asCborMap(decodedKey.value);
   const x = asCborBytes(coseKey.get(-2));
   const y = asCborBytes(coseKey.get(-3));
-
   if (
-    alg !== ES256_ALGORITHM ||
-    crv !== P256_CRV ||
+    coseKey.get(1) !== 2 ||
+    coseKey.get(3) !== ES256_ALGORITHM ||
+    coseKey.get(-1) !== P256_CRV ||
     x.length !== 32 ||
     y.length !== 32
   ) {
     throw new Error('Passkey must use ES256 / P-256');
   }
+  if (
+    (authData[32] & 0x80) !== 0
+      ? decodedKey.offset >= authData.length
+      : decodedKey.offset !== authData.length
+  ) {
+    throw new Error('Invalid attested credential data length');
+  }
+  return { authData, credentialIdBytes, x, y };
+};
 
-  const credentialIdHash = await sha256(credentialIdBytes);
-  const rpIdHash = authData.slice(0, 32);
-
+const normalizeRegistrationResponse = async (
+  response: RawPasskeyRegistration,
+  userId: Uint8Array,
+  expected: CapturedPasskeyCeremony
+): Promise<PasskeyRegistrationResult> => {
+  checkPasskeyCurrent(expected.assertCurrent);
+  const rawId = copyPasskeyBytes(
+    response.rawId,
+    'credential ID',
+    1,
+    MAX_PASSKEY_CREDENTIAL_BYTES
+  );
+  const userHandle = copyPasskeyBytes(userId, 'user ID', 1, 64);
+  const clientDataJSON = copyPasskeyBytes(
+    response.clientDataJSON,
+    'client data',
+    1,
+    MAX_PASSKEY_RESPONSE_BYTES
+  );
+  const attestationObject = copyPasskeyBytes(
+    response.attestationObject,
+    'attestation object',
+    1,
+    MAX_PASSKEY_RESPONSE_BYTES
+  );
+  readPasskeyClientDataJSON(
+    clientDataJSON,
+    'webauthn.create',
+    bytesToBase64Url(expected.challenge),
+    expected.origin
+  );
+  const { authData, credentialIdBytes, x, y } =
+    extractAttestedCredential(attestationObject);
+  if (!equalPasskeyBytes(rawId, credentialIdBytes)) {
+    throw new Error('WebAuthn attested credential ID does not match raw ID');
+  }
+  await checkRpIdHash(authData, expected);
+  const credentialIdHash = await hashForCeremony(credentialIdBytes, expected);
+  checkPasskeyCurrent(expected.assertCurrent);
   return {
     backupStatus: getPasskeyBackupStatus(authData),
     credentialId: bytesToBase64Url(credentialIdBytes),
     credentialIdHash: bytesToHex(credentialIdHash),
-    originHash: hashText(expectedOrigin),
-    originLength: toUtf8Bytes(expectedOrigin).length,
-    rpIdHash: bytesToHex(rpIdHash),
+    originHash: hashText(expected.origin),
+    originLength: toUtf8Bytes(expected.origin).length,
+    rawId: bytesToBase64Url(rawId),
+    rpIdHash: bytesToHex(authData.slice(0, 32)),
+    userHandle: bytesToBase64Url(userHandle),
     x: bytesToHex(x),
     y: bytesToHex(y),
   };
 };
+
+/** Normalize genuine host response bytes; this does not acquire a credential or authorize a wallet session. */
+export const normalizePasskeyRegistration = async (
+  response: RawPasskeyRegistration,
+  userId: Uint8Array,
+  expected: PasskeyCeremonyExpectation
+): Promise<PasskeyRegistrationResult> =>
+  normalizeRegistrationResponse(
+    response,
+    userId,
+    capturePasskeyExpectation(expected)
+  );
 
 export const createPasskeyCredential = async ({
   accountName,
@@ -367,7 +508,13 @@ export const createPasskeyCredential = async ({
   userId,
 }: PasskeyCredentialRequest): Promise<PasskeyRegistrationResult> => {
   const challenge = hexToBytes(challengeHex);
-  const userIdBytes = userId || crypto.getRandomValues(new Uint8Array(32));
+  const expected = captureBrowserCeremony(challenge, rpId);
+  const userIdBytes = copyPasskeyBytes(
+    userId || crypto.getRandomValues(new Uint8Array(32)),
+    'user ID',
+    1,
+    64
+  );
   const excludeCredentials = (excludeCredentialIds || []).map(
     (credentialId) => ({
       id: toArrayBuffer(base64UrlToBytes(credentialId)),
@@ -400,82 +547,82 @@ export const createPasskeyCredential = async ({
 
   if (!credential) throw new Error('Passkey creation was cancelled');
   const response = credential.response as AuthenticatorAttestationResponse;
-  const expectedOrigin =
-    typeof window !== 'undefined' && window.location?.origin
-      ? window.location.origin
-      : '';
-  if (!expectedOrigin) {
-    throw new Error('WebAuthn origin is unavailable');
-  }
-  const publicKey = await extractCredentialPublicKey(
-    toBytes(response.attestationObject),
-    expectedOrigin
+  return normalizeRegistrationResponse(
+    {
+      attestationObject: toBytes(response.attestationObject),
+      clientDataJSON: toBytes(response.clientDataJSON),
+      rawId: toBytes(credential.rawId),
+    },
+    userIdBytes,
+    expected
   );
-
-  return {
-    ...publicKey,
-    rawId: bytesToBase64Url(toBytes(credential.rawId)),
-    userHandle: bytesToBase64Url(userIdBytes),
-  };
 };
 
-const getPasskeyAssertionForCredential = async (
-  credentialId: string | undefined,
-  challengeHex: string,
-  rpId?: string
+const normalizeAssertionResponse = async (
+  response: RawPasskeyAssertion,
+  expected: CapturedPasskeyCeremony,
+  credentialId?: Uint8Array
 ): Promise<PasskeyAssertionResult> => {
-  const challenge = hexToBytes(challengeHex);
-  const challengeText = bytesToBase64Url(challenge);
-  const credential = (await navigator.credentials.get({
-    publicKey: {
-      challenge: toArrayBuffer(challenge),
-      ...(credentialId
-        ? {
-            allowCredentials: [
-              {
-                id: toArrayBuffer(base64UrlToBytes(credentialId)),
-                type: 'public-key' as const,
-              },
-            ],
-          }
-        : {}),
-      ...(rpId ? { rpId } : {}),
-      timeout: 120_000,
-      userVerification: 'required',
-    },
-  })) as PublicKeyCredential | null;
-
-  if (!credential) throw new Error('Passkey approval was cancelled');
-  const response = credential.response as AuthenticatorAssertionResponse;
-  const authenticatorData = toBytes(response.authenticatorData);
-  const clientDataJSON = toBytes(response.clientDataJSON);
-  const credentialIdBytes = toBytes(credential.rawId);
-  const credentialIdHash = await sha256(credentialIdBytes);
-  const signature = toBytes(response.signature);
-  const expectedOrigin =
-    typeof window !== 'undefined' && window.location?.origin
-      ? window.location.origin
-      : undefined;
+  checkPasskeyCurrent(expected.assertCurrent);
+  const authenticatorData = copyPasskeyBytes(
+    response.authenticatorData,
+    'authenticator data',
+    37,
+    MAX_PASSKEY_RESPONSE_BYTES
+  );
+  const clientDataJSON = copyPasskeyBytes(
+    response.clientDataJSON,
+    'client data',
+    1,
+    MAX_PASSKEY_RESPONSE_BYTES
+  );
+  const credentialIdBytes = copyPasskeyBytes(
+    response.rawId,
+    'credential ID',
+    1,
+    MAX_PASSKEY_CREDENTIAL_BYTES
+  );
+  const signature = copyPasskeyBytes(response.signature, 'signature', 8, 72);
+  const userHandleBytes =
+    response.userHandle === undefined
+      ? undefined
+      : copyPasskeyBytes(response.userHandle, 'user handle', 0, 64);
+  if (
+    credentialId !== undefined &&
+    !equalPasskeyBytes(
+      credentialIdBytes,
+      copyPasskeyBytes(
+        credentialId,
+        'expected credential ID',
+        1,
+        MAX_PASSKEY_CREDENTIAL_BYTES
+      )
+    )
+  ) {
+    throw new Error('WebAuthn returned an unexpected credential ID');
+  }
+  admitPasskeyAuthenticatorData(authenticatorData, false);
   const { challengeOffset, originOffset, typeOffset } =
     validatePasskeyClientDataJSON(
       clientDataJSON,
-      challengeText,
-      expectedOrigin
+      bytesToBase64Url(expected.challenge),
+      expected.origin
     );
-
-  const clientDataHash = await sha256(clientDataJSON);
-  const digest = await sha256(concatBytes(authenticatorData, clientDataHash));
   const rawSignature = parseP256DerSignature(signature);
+  await checkRpIdHash(authenticatorData, expected);
+  const credentialIdHash = await hashForCeremony(credentialIdBytes, expected);
+  const clientDataHash = await hashForCeremony(clientDataJSON, expected);
+  const digest = await hashForCeremony(
+    concatBytes(authenticatorData, clientDataHash),
+    expected
+  );
   const r = rawSignature.subarray(0, 32);
   const s = normalizeP256S(rawSignature.subarray(32));
   const origin = getClientDataOrigin(clientDataJSON, originOffset);
   const rpIdHash = bytesToHex(authenticatorData.slice(0, 32));
   const originLength = toUtf8Bytes(origin).length;
   const originHash = hashText(origin);
-  const userHandle = response.userHandle
-    ? bytesToBase64Url(toBytes(response.userHandle))
-    : undefined;
-
+  checkPasskeyCurrent(expected.assertCurrent);
   return {
     authenticatorData: bytesToHex(authenticatorData),
     backupStatus: getPasskeyBackupStatus(authenticatorData),
@@ -496,8 +643,67 @@ const getPasskeyAssertionForCredential = async (
     r: bytesToHex(r),
     s: bytesToHex(s),
     typeOffset,
-    userHandle,
+    userHandle:
+      userHandleBytes === undefined
+        ? undefined
+        : bytesToBase64Url(userHandleBytes),
   };
+};
+
+/** Explicit RP/origin/challenge expectations are required outside the browser facade. */
+export const normalizePasskeyAssertion = async (
+  response: RawPasskeyAssertion,
+  expected: PasskeyCeremonyExpectation,
+  credentialId?: Uint8Array
+): Promise<PasskeyAssertionResult> =>
+  normalizeAssertionResponse(
+    response,
+    capturePasskeyExpectation(expected),
+    credentialId
+  );
+
+const getPasskeyAssertionForCredential = async (
+  credentialId: string | undefined,
+  challengeHex: string,
+  rpId?: string
+): Promise<PasskeyAssertionResult> => {
+  const challenge = hexToBytes(challengeHex);
+  const expected = captureBrowserCeremony(challenge, rpId);
+  const credentialIdBytes =
+    credentialId === undefined ? undefined : base64UrlToBytes(credentialId);
+  const credential = (await navigator.credentials.get({
+    publicKey: {
+      challenge: toArrayBuffer(challenge),
+      ...(credentialIdBytes
+        ? {
+            allowCredentials: [
+              {
+                id: toArrayBuffer(credentialIdBytes),
+                type: 'public-key' as const,
+              },
+            ],
+          }
+        : {}),
+      ...(rpId ? { rpId } : {}),
+      timeout: 120_000,
+      userVerification: 'required',
+    },
+  })) as PublicKeyCredential | null;
+  if (!credential) throw new Error('Passkey approval was cancelled');
+  const response = credential.response as AuthenticatorAssertionResponse;
+  return normalizeAssertionResponse(
+    {
+      authenticatorData: toBytes(response.authenticatorData),
+      clientDataJSON: toBytes(response.clientDataJSON),
+      rawId: toBytes(credential.rawId),
+      signature: toBytes(response.signature),
+      userHandle: response.userHandle
+        ? toBytes(response.userHandle)
+        : undefined,
+    },
+    expected,
+    credentialIdBytes
+  );
 };
 
 export const getPasskeyAssertion = async (

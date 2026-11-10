@@ -30,7 +30,7 @@ describe('P-256 WebAuthn validation utilities', () => {
       JSON.stringify({ display: '🧪', challenge, origin, type })
     );
 
-    expect(validatePasskeyClientDataJSON(bytes, challenge)).toEqual({
+    expect(validatePasskeyClientDataJSON(bytes, challenge, origin)).toEqual({
       clientDataText: bytes.toString(),
       challengeOffset: bytes.indexOf(challenge),
       originOffset: bytes.indexOf(origin),
