@@ -8,6 +8,14 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import {
+  getRequestedSmartAccountAuthenticator,
+  projectSmartAccountPreparationResult,
+  resolveSmartAccountPreparationTarget,
+  SmartAccountPreparationError,
+  type SmartAccountPreparationEcdsaConfig,
+  type SmartAccountPreparationRequest,
+} from '../../shared/smartAccountPreparation.ts';
 import { DropdownArrowSvg, LoadingSvg } from 'components/Icon/Icon';
 import { Button, Card, Icon } from 'components/index';
 import { PqOperationStatus } from 'components/Loading';
@@ -45,24 +53,8 @@ import {
   encodeUninstallValidatorModuleCall,
   getPaliModuleAddress,
   isSLHDSAOffscreenSignerSupported,
-  PaliSmartAccountAuthenticatorSetup,
   signAndSubmitSmartAccountExecutions,
 } from 'utils/smartAccount';
-
-type PrepareSmartAccountRequest = {
-  authenticator?:
-    | PaliSmartAccountAuthenticatorSetup
-    | { config?: any; id?: string };
-  initialAuthenticator?:
-    | PaliSmartAccountAuthenticatorSetup
-    | { config?: any; id?: string };
-  label?: string;
-  policy?: {
-    authenticator?:
-      | PaliSmartAccountAuthenticatorSetup
-      | { config?: any; id?: string };
-  };
-};
 
 type PreparedAuthenticator = {
   auth: {
@@ -106,11 +98,9 @@ const displayNameForAuthenticator = (
 };
 
 const getRequestedAuthenticator = (
-  request: PrepareSmartAccountRequest
+  request: SmartAccountPreparationRequest
 ): { config?: any; id: string } =>
-  (request.authenticator ||
-    request.initialAuthenticator ||
-    request.policy?.authenticator || { id: 'p256-webauthn' }) as {
+  getRequestedSmartAccountAuthenticator(request) as {
     config?: any;
     id: string;
   };
@@ -285,27 +275,14 @@ const normalizeP256Authenticator = async ({
 
 const normalizeEcdsaAuthenticator = ({
   chainId,
-  requested,
-  validationError,
+  config,
 }: {
   chainId: number;
-  requested: { config?: any; id: string };
-  validationError: string;
+  config: SmartAccountPreparationEcdsaConfig | undefined;
 }): PreparedAuthenticator | undefined => {
-  const owners = requested.config?.owners;
-  if (!Array.isArray(owners) || owners.length === 0) {
-    return undefined;
-  }
-
-  const normalizedOwners = owners.map((owner: string) => getAddress(owner));
-  const { threshold = 1 } = requested.config;
-  if (
-    !Number.isInteger(threshold) ||
-    threshold < 1 ||
-    threshold > normalizedOwners.length ||
-    new Set(normalizedOwners).size !== normalizedOwners.length
-  )
-    throw new Error(validationError);
+  if (!config) return undefined;
+  const normalizedOwners = [...config.owners];
+  const { threshold } = config;
   const validator = getPaliModuleAddress(chainId, 'ecdsa');
   const data = encodeEcdsaValidatorInitData(normalizedOwners, threshold);
 
@@ -376,7 +353,7 @@ export const PrepareSmartAccount = () => {
     approvalId?: string;
     eventName?: string;
     host?: string;
-    request?: PrepareSmartAccountRequest;
+    request?: SmartAccountPreparationRequest;
   };
   const { accounts, activeNetwork } = useSelector(
     (state: RootState) => state.vault
@@ -574,41 +551,21 @@ export const PrepareSmartAccount = () => {
     try {
       setCreationStep('credential');
 
-      if (
-        !['ecdsa', 'p256-webauthn', 'slh-dsa', 'composite'].includes(
-          requestedAuthenticator.id
-        ) ||
-        (requestedAuthenticator.id === 'ecdsa' &&
-          requestedAuthenticator.config !== undefined &&
-          (!Array.isArray(requestedAuthenticator.config?.owners) ||
-            requestedAuthenticator.config.owners.length === 0))
-      ) {
-        throw new Error(t('connections.smartAccountPrepareFailed'));
-      }
-
-      if (requestedAuthenticator.id === 'composite') {
-        throw new Error(t('connections.smartAccountCompositeUnsupported'));
-      }
-
-      if (hasExternalPasskey) {
-        throw new Error(
-          t('connections.smartAccountExternalPasskeyUnsupported')
-        );
-      }
-
-      if (
-        requestedAuthenticator.id === 'slh-dsa' &&
-        (requestedAuthenticator.config || !isSLHDSAOffscreenSignerSupported())
-      ) {
-        throw new Error(t('connections.smartAccountPrepareFailed'));
-      }
+      const target = resolveSmartAccountPreparationTarget(
+        requestedAuthenticator,
+        {
+          slhDsaSupported:
+            requestedAuthenticator.id === 'slh-dsa' &&
+            isSLHDSAOffscreenSignerSupported(),
+        }
+      );
 
       let { account, requested } = progress;
       // A successful allocation is durable. A later read/gas failure must not
       // move the user's retry (or newly supplied gas) to another address.
       if (!account) {
         requested =
-          requestedAuthenticator.id === 'p256-webauthn'
+          target.id === 'p256-webauthn'
             ? await normalizeP256Authenticator({
                 chainId: activeNetwork.chainId,
                 label,
@@ -616,11 +573,10 @@ export const PrepareSmartAccount = () => {
                   'connections.smartAccountPasskeySaveFailed'
                 ),
               })
-            : requestedAuthenticator.id === 'ecdsa'
+            : target.id === 'ecdsa'
             ? normalizeEcdsaAuthenticator({
                 chainId: activeNetwork.chainId,
-                requested: requestedAuthenticator,
-                validationError: t('connections.smartAccountPrepareFailed'),
+                config: target.config,
               })
             : undefined;
 
@@ -704,10 +660,13 @@ export const PrepareSmartAccount = () => {
         if (!isCurrent()) return;
 
         progress.completed = true;
-        dispatchBackgroundEvent(`${eventName}.${host}`, {
-          address: account.address,
-          chainId: `0x${activeNetwork.chainId.toString(16)}`,
-        });
+        dispatchBackgroundEvent(
+          `${eventName}.${host}`,
+          projectSmartAccountPreparationResult(
+            account.address,
+            activeNetwork.chainId
+          )
+        );
         window.close();
         return;
       }
@@ -810,11 +769,14 @@ export const PrepareSmartAccount = () => {
       if (!isCurrent()) return;
 
       progress.completed = true;
-      dispatchBackgroundEvent(`${eventName}.${host}`, {
-        address: account.address,
-        chainId: `0x${activeNetwork.chainId.toString(16)}`,
-        installedValidator: requested.auth.validator,
-      });
+      dispatchBackgroundEvent(
+        `${eventName}.${host}`,
+        projectSmartAccountPreparationResult(
+          account.address,
+          activeNetwork.chainId,
+          requested.auth.validator
+        )
+      );
       window.close();
     } catch (err: any) {
       if (!isCurrent()) return;
@@ -826,6 +788,14 @@ export const PrepareSmartAccount = () => {
             ? t('send.submissionStatusUnknown')
             : isNativeGasRequiredError(err)
             ? t('send.insufficientFundsForGas')
+            : err instanceof SmartAccountPreparationError
+            ? t(
+                err.code === 'COMPOSITE_UNSUPPORTED'
+                  ? 'connections.smartAccountCompositeUnsupported'
+                  : err.code === 'EXTERNAL_PASSKEY_UNSUPPORTED'
+                  ? 'connections.smartAccountExternalPasskeyUnsupported'
+                  : 'connections.smartAccountPrepareFailed'
+              )
             : err?.message || t('connections.smartAccountPrepareFailed')
         );
       }
