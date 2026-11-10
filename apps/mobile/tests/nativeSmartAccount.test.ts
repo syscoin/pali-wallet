@@ -1,4 +1,5 @@
 import { normalizeSmartAccountModuleRequest } from '../../../source/shared/smartAccountModuleRequest.ts';
+import type { NativeSmartCreationAllocation } from '../src/smartAccount/preparation.ts';
 import { nativeSmartTrezorDevice } from './nativeSmartTrezorDevice.ts';
 import { nonSuiteSigningHandoff } from './nonSuiteSigningHandoff.ts';
 import { NativeLedgerAccounts } from '../src/custody/ledgerAccounts.ts';
@@ -375,6 +376,152 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     async close() { await owner.dispose(); await rm(directory, { recursive: true, force: true }); },
   };
 }
+
+test('creation allocation saves the canonical bootstrap before publication without a password or signing operation', async () => {
+  const f = await fixture({}, true), lifetime = new AbortController();
+  try {
+    const host = await f.runtime.openConnectionHost(), management = host.context().accounts.find(account => account.id === 'hd:60:0')!;
+    let committed: NativeSmartCreationAllocation | undefined;
+    const allocation = await host.allocateSmartAccount({ networkId: 'ethereum', label: 'Dapp savings', target: { id: 'ecdsa', config: undefined }, externalOwnersAcknowledged: false }, lifetime.signal, () => undefined, receipt => {
+      committed = receipt; receipt.assertCurrent();
+      assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.some(account => account.type === 'SmartAccount'), false, 'request adopts its receipt before catalogue publication');
+    });
+    assert.equal(allocation, committed); allocation.assertCurrent();
+    assert(Object.isFrozen(allocation)); assert(Object.isFrozen(allocation.account)); assert(Object.isFrozen(allocation.target));
+    assert.equal(allocation.account.id, 'smart:60:0'); assert.equal(host.context().activeAccountId, allocation.account.id);
+    const saved = savedSmartAccount((await f.inspectRecovery()).record);
+    assert.equal(saved.address, allocation.account.address);
+    assert.equal(saved.smartAccount.auth.data, encodeEcdsaValidatorInitData([management.address], 1));
+    assert.equal(saved.smartAccount.isDeployed, false);
+    await assert.rejects(host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined), { code: 'INVALID_INPUT' });
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+    lifetime.abort(); assert.throws(allocation.assertCurrent, { code: 'CANCELLED' });
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    assert.equal(f.owner.getCatalogue()!.accounts.find(account => account.id === allocation.account.id)!.address, allocation.account.address);
+  } finally { await f.close(); }
+});
+
+test('creation allocation snapshots its target and rejects forged receipts or an unacknowledged external owner before allocation', async () => {
+  const f = await fixture({}, true), lifetime = new AbortController();
+  try {
+    const host = await f.runtime.openConnectionHost(), target = { id: 'ecdsa' as const, config: { owners: ['0x' + '66'.repeat(20)], threshold: 1 } };
+    const request = { networkId: 'ethereum', label: 'External owner', target, externalOwnersAcknowledged: false };
+    const calls = f.calls.length;
+    await assert.rejects(host.allocateSmartAccount(request, lifetime.signal, () => undefined, () => undefined), { code: 'INVALID_INPUT' });
+    assert.equal(f.calls.length, calls); assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.length, 1);
+    const allocation = await host.allocateSmartAccount({ ...request, externalOwnersAcknowledged: true }, lifetime.signal, () => undefined, () => undefined);
+    target.config.owners[0] = '0x' + '77'.repeat(20);
+    assert(allocation.target.id === 'ecdsa' && allocation.target.config);
+    assert.deepEqual(allocation.target.config.owners, ['0x' + '66'.repeat(20)]);
+    await assert.rejects(host.prepareSmartAccountCreationOperation({ ...allocation }, nonSuiteSigningHandoff, () => undefined), { code: 'INVALID_INPUT' });
+    await assert.rejects(host.prepareSmartAccountCreationOperation({ ...allocation, target }, nonSuiteSigningHandoff, () => undefined), { code: 'INVALID_INPUT' });
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { await f.close(); }
+});
+
+test('creation allocation retains a committed account when its request cancels during the commit callback', async () => {
+  const f = await fixture({}, true), lifetime = new AbortController();
+  let committed: NativeSmartCreationAllocation | undefined;
+  try {
+    const host = await f.runtime.openConnectionHost();
+    await assert.rejects(host.allocateSmartAccount({ networkId: 'ethereum', label: 'Cancelled after save', target: { id: 'ecdsa', config: undefined }, externalOwnersAcknowledged: false }, lifetime.signal, () => undefined, receipt => {
+      committed = receipt; lifetime.abort();
+    }), { code: 'CANCELLED' });
+    assert(committed); assert.throws(committed.assertCurrent, { code: 'CANCELLED' });
+    assert.equal(savedSmartAccount((await f.inspectRecovery()).record).address, committed.account.address);
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { await f.close(); }
+});
+
+test('creation allocation rejects an invalid label or unselected network before allocator reads', async () => {
+  const f = await fixture();
+  try {
+    const host = await f.runtime.openConnectionHost(), calls = f.calls.length;
+    for (const [networkId, label] of [['ethereum', ' padded '], ['ethereum', 'x'.repeat(65)], ['nevm', 'Wrong network']])
+      await assert.rejects(host.allocateSmartAccount({ networkId: networkId!, label: label!, target: { id: 'ecdsa', config: undefined }, externalOwnersAcknowledged: false }, new AbortController().signal, () => undefined, () => undefined));
+    assert.equal(f.calls.length, calls); assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.length, 1);
+  } finally { await f.close(); }
+});
+
+for (const target of [{ id: 'p256-webauthn' }, { id: 'slh-dsa' }] as const) test(`creation allocation rejects unavailable ${target.id} acquisition before allocating`, async () => {
+  const f = await fixture();
+  try {
+    const host = await f.runtime.openConnectionHost(), calls = f.calls.length;
+    await assert.rejects(host.allocateSmartAccount({ networkId: 'ethereum', label: 'Unavailable credential', target, externalOwnersAcknowledged: false }, new AbortController().signal, () => undefined, () => undefined));
+    assert.equal(f.calls.length, calls); assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.length, 1);
+    assert.equal(f.submitted.length, 0);
+  } finally { await f.close(); }
+});
+
+test('creation allocation serializes the real allocator and cancellation before commit saves no account', async () => {
+  const f = await fixture(), entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>(), lifetime = new AbortController();
+  try {
+    const host = await f.runtime.openConnectionHost(), input = { networkId: 'ethereum', label: 'Held allocation', target: { id: 'ecdsa' as const, config: undefined }, externalOwnersAcknowledged: false };
+    f.hold(async () => { entered.resolve(); await release.promise; });
+    const allocating = host.allocateSmartAccount(input, lifetime.signal, () => undefined, () => assert.fail('Cancelled allocation committed'));
+    const rejected = assert.rejects(allocating);
+    await entered.promise;
+    await assert.rejects(host.allocateSmartAccount(input, lifetime.signal, () => undefined, () => undefined), /BUSY/);
+    lifetime.abort(); release.resolve(); await rejected;
+    f.owner.lock(); await f.owner.unlock(PASSWORD);
+    assert.equal(f.owner.getCatalogue()!.accounts.length, 1); assert.equal(f.submitted.length, 0);
+  } finally { release.resolve(); await f.close(); }
+});
+
+for (const change of ['owner', 'network', 'source-auth'] as const) test(`creation allocation refuses ${change} drift before preparing its captured target`, async () => {
+  const f = await fixture({}, true);
+  try {
+    const host = await f.runtime.openConnectionHost(), owner = host.context().accounts.find(account => account.id === 'hd:60:0')!.address;
+    let current = true;
+    const allocation = await host.allocateSmartAccount({ networkId: 'ethereum', label: 'Bound creation', target: { id: 'ecdsa', config: { owners: [owner], threshold: 1 } }, externalOwnersAcknowledged: false }, new AbortController().signal, () => { if (!current) throw Error('REQUEST_RETIRED'); }, () => undefined);
+    if (change === 'owner') current = false;
+    else if (change === 'network') await f.selectNetwork('syscoin-nevm');
+    else { f.guardianStatus('no-policy'); f.observedEcdsaOwners(['0x' + '77'.repeat(20)], 1); }
+    await assert.rejects(host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined));
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { await f.close(); }
+});
+
+test('creation allocation retries the same saved address after a later read failure and configures through existing operations', async () => {
+  const f = await fixture({}, true);
+  let deployment: NativeSmartAccountOperation | undefined, configuration: NativeSmartAccountOperation | undefined, noOp: NativeSmartAccountOperation | undefined;
+  try {
+    const host = await f.runtime.openConnectionHost(), requestedOwner = '0x' + '66'.repeat(20);
+    const allocation = await host.allocateSmartAccount({ networkId: 'ethereum', label: 'Configured creation', target: { id: 'ecdsa', config: { owners: [requestedOwner], threshold: 1 } }, externalOwnersAcknowledged: true }, new AbortController().signal, () => undefined, () => undefined);
+    f.guardianStatus('unavailable');
+    await assert.rejects(host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined));
+    allocation.assertCurrent(); assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.filter(account => account.type === 'SmartAccount').length, 1);
+    f.deployed(); f.undeployed();
+    deployment = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined);
+    assert.equal(deployment.getSnapshot().intent.kind, 'deploy'); await deployment.prepare();
+    const deploying = deployment.authorize(deployment.getSnapshot().revision);
+    for (let i = 0; i < 300 && !['complete', 'failed'].includes(deployment.getSnapshot().phase); i++) {
+      const review = deployment.getSnapshot().payerReview; if (review) deployment.confirmPayer(review.id);
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    await deploying; assert.equal(deployment.getSnapshot().phase, 'complete', JSON.stringify(deployment.getSnapshot()));
+    await deployment.dispose(); deployment = undefined;
+    f.guardianStatus('no-policy'); f.fundedSmart();
+    configuration = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined);
+    await configuration.prepare(); const intent = configuration.getSnapshot().intent;
+    assert(intent.kind === 'authenticator'); assert.equal(intent.command.executions.length, 1);
+    const rotate = paliSmartAccountInterface.decodeFunctionData('rotateValidator', intent.command.executions[0]!.data);
+    assert.equal(rotate[2], encodeEcdsaValidatorInitData([requestedOwner], 1));
+    f.onBroadcast(() => f.observedEcdsaOwners([requestedOwner], 1));
+    const configuring = configuration.authorize(configuration.getSnapshot().revision);
+    for (let i = 0; i < 300 && !configuration.getSnapshot().payerReview && configuration.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(configuration.getSnapshot().payerReview, JSON.stringify(configuration.getSnapshot()));
+    configuration.confirmPayer(configuration.getSnapshot().payerReview!.id); await configuring;
+    assert.equal(configuration.getSnapshot().phase, 'complete'); assert.equal(configuration.getSnapshot().metadataRefresh, 'complete');
+    await configuration.dispose(); configuration = undefined;
+    const signed = f.signatures.length, submitted = f.submitted.length;
+    noOp = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined); await noOp.prepare();
+    assert.equal(noOp.getSnapshot().phase, 'complete'); assert.equal(noOp.getSnapshot().metadataRefresh, 'complete');
+    assert.equal(f.signatures.length, signed); assert.equal(f.submitted.length, submitted);
+    assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === allocation.account.id)!.address, allocation.account.address);
+    assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.filter(account => account.type === 'SmartAccount').length, 1);
+  } finally { await deployment?.dispose(); await configuration?.dispose(); await noOp?.dispose(); await f.close(); }
+});
 
 test('real SDK smart account creation, selection and cold unlock retain the original owner and receive address', async () => {
   const f = await fixture();

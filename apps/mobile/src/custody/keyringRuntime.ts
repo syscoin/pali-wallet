@@ -1,5 +1,7 @@
 import { getSmartAccountModulesProjection } from '../../../../source/shared/smartAccountModules.ts';
 import { normalizeSmartAccountModuleRequest } from '../../../../source/shared/smartAccountModuleRequest.ts';
+import { resolveSmartAccountPreparationTarget } from '../../../../source/shared/smartAccountPreparation.ts';
+import type { NativeSmartCreationAllocation, NativeSmartCreationRequest } from '../smartAccount/preparation.ts';
 import { buildNativeSmartModuleCommand, snapshotNativeSmartModuleDraft, assertNativeSmartModuleCommandApplied, type NativeSmartModuleDraft, type NativeSmartModuleDeploymentAdmission } from '../smartAccount/modules.ts';
 import { preflightCustomValidatorInstall, type CustomValidatorPreflightResult } from '../../../../source/utils/smartAccount/custom.ts';
 import { createNativePrivacyControls, type NativePrivacyControls, type NativePrivacyServiceSettingsPort } from '../privacy/privacyControls.ts';
@@ -13,7 +15,7 @@ import { signSmartAccountOwnerIntent, type SmartAccountOwnerSigningSdk } from '.
 import { supportsDappEncryptionAccount } from '../../../../source/shared/dappEncryptionRequest.ts';
 import { bindEoaCallsSignedLifecycle, captureEoaCallsSignedMetadata, readRetainedEoaCall, recoverRetainedEoaCallsAttempt, settleEoaCallsSignedSubmission } from '../../../../source/wallet/dappCallsBundles.ts';
 import { sentrySettingsStorageKey } from '../../../../source/shared/sentrySettings.ts';
-import { buildECDSAAuthenticator, buildSLHDSAAuthenticator } from '../../../../source/utils/smartAccount/authenticators.ts';
+import { buildECDSAAuthenticator, buildSLHDSAAuthenticator, type SmartAccountAuthenticatorBuildResult } from '../../../../source/utils/smartAccount/authenticators.ts';
 import { getSLHDSAStateStorageKey } from '../../../../source/utils/slhDsa/constants.ts';
 import { parseSLHDSAStateStorageKey } from '../../../../source/wallet/slhDsaState.ts';
 import { assertSmartAccountValidatorSwitchApplied, buildSmartAccountValidatorSwitch } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
@@ -2473,6 +2475,48 @@ export function createKeyringRuntimeFactory(
             { keyring, assertCurrent: owner.check }, previous, utxoSubmissionUrl(previous.endpoint), () => approve(network)
           );
         };
+        const allocateSmartAccountRecord = async (label: string, expectedRevision: number, lifetime: AbortSignal | null,
+          assertOwner: () => void, onCommitted: (next: NativeWalletCatalogueSnapshot, created: IKeyringAccountState) => void) => {
+            checkGuard(assertOwner);
+            const before = catalogueSnapshot, ring = keyring, selected = selectedAccount();
+            const prepare = dependencies.prepareSmartAccount, managementOwner = state.accounts.HDAccount[0];
+            if (!before || before.revision !== expectedRevision || !ring.isUnlocked() || !prepare ||
+                findUtxoNetwork(before.active.networkId, before.utxoNetworks) || !managementOwner?.address)
+              throw new KeyringRuntimeError('NOT_READY');
+            const network = getNativeNetwork(before.active.networkId, before.networks), signal = new AbortController();
+            const abort = () => signal.abort();
+            lifetime?.addEventListener('abort', abort, { once: true });
+            pendingRegistration = signal;
+            const check = () => {
+              checkGuard(assertOwner);
+              if (signal.signal.aborted || lifetime?.aborted || keyring !== ring || !ring.isUnlocked() ||
+                  catalogueSnapshot !== before || selectedAccount() !== selected || state.accounts.HDAccount[0] !== managementOwner)
+                throw new KeyringRuntimeError('CANCELLED');
+            };
+            try {
+              check();
+              const created = await ring.createSmartAccount({ label,
+                deriveAccount: accountIndex => prepare(network, accountIndex, managementOwner.address, signal.signal, check) });
+              check();
+              if (!created.isSmartAccount || created.isImported || created.isLedgerWallet || created.isTrezorWallet || created.xprv !== '')
+                throw new KeyringRuntimeError('OPERATION_FAILED');
+              requireSmartAccountAddressIdentity({ address: created.address, xpub: created.xpub, smartAccount: created.smartAccount }, Number(network.chainId));
+              const next = await catalogue.mutate(expectedRevision, { kind: 'create-smart', account: created }, check);
+              check();
+              // The request records its durable allocation before publication
+              // invalidates observers of the previous selected account.
+              try { checkGuard(() => onCommitted(next, created)); }
+              finally { publishAccounts(next); }
+              return created;
+            } finally {
+              lifetime?.removeEventListener('abort', abort);
+              if (pendingRegistration === signal) pendingRegistration = null;
+              signal.abort();
+            }
+        };
+        const smartCreationAllocations = new WeakMap<NativeSmartCreationAllocation, Readonly<{
+          signal: AbortSignal; target: NativeSmartCreationAllocation['target']; ring: IndexedKeyring; generation: number; bootstrapAuthHash: string;
+        }>>();
         const reserveContext = (input:
             | NativeAccountRequest | import('./accounts.ts').NativeNetworkRequest, expectedRevision: number, networkSelection: boolean) => {
             if (closed || !keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY');
@@ -2556,25 +2600,9 @@ export function createKeyringRuntimeFactory(
                       derived = checkedAccount(created, created.id, before.active.networkId, before.utxoNetworks);
                   mutation = { kind: 'create', account: derived } as const;
                   } else if (request.kind === 'create-smart') {
-                    const prepare = dependencies.prepareSmartAccount;
-                    if (!prepare || findUtxoNetwork(before.active.networkId, before.utxoNetworks)) throw new KeyringRuntimeError('NOT_READY');
-                    const network = getNativeNetwork(before.active.networkId, before.networks);
-                    const managementAddress = state.accounts.HDAccount[0]?.address;
-                    if (!managementAddress) throw new KeyringRuntimeError('NOT_READY');
-                    const signal = new AbortController();
-                    pendingRegistration = signal;
-                    const check = () => { current(captured); checkGuard(assertCurrent); if (signal.signal.aborted) throw new KeyringRuntimeError('CANCELLED'); };
-                    try {
-                      const created = await keyring.createSmartAccount({ label: request.label,
-                        deriveAccount: (accountIndex) => prepare(network, accountIndex, managementAddress, signal.signal, check),
-                      });
-                      check();
-                      if (!created.isSmartAccount || created.isImported || created.isLedgerWallet || created.isTrezorWallet || created.xprv !== '')
-                        throw new KeyringRuntimeError('OPERATION_FAILED');
-                      requireSmartAccountAddressIdentity({ address: created.address, xpub: created.xpub, smartAccount: created.smartAccount }, Number(network.chainId));
-                      derived = created;
-                      mutation = { kind: 'create-smart', account: created } as const;
-                    } finally { if (pendingRegistration === signal) pendingRegistration = null; signal.abort(); }
+                    await allocateSmartAccountRecord(request.label, expectedRevision, null,
+                      () => { current(captured); checkGuard(assertCurrent); }, () => undefined);
+                    return null;
                   } else if (requiresUtxoApproval) {
                     if (!approval || approval.signal.aborted || approval.snapshot !== before)
                       throw new KeyringRuntimeError('CANCELLED');
@@ -4156,9 +4184,9 @@ export function createKeyringRuntimeFactory(
             };
             return openSmartAccountOperation({ kind: 'guardian-policy', command }, assertOwner, origin, undefined, assertPolicy);
         };
-        const openWalletAuthenticator = async (signal: AbortSignal, assertOwner: () => void, origin: SmartOperationOrigin): Promise<NativeSmartAccountOperation> => {
+        const openSmartAccountAuthenticator = async (target: SmartAccountAuthenticatorBuildResult, signal: AbortSignal, assertOwner: () => void, origin: SmartOperationOrigin): Promise<NativeSmartAccountOperation> => {
             const captured = generation, before = catalogueSnapshot;
-            if (!before || !canSignSmartAccount()) throw new KeyringRuntimeError('NOT_READY');
+            if (!before) throw new KeyringRuntimeError('NOT_READY');
             const address = selectedAccount().address;
             const check = () => {
               current(captured); checkGuard(assertOwner);
@@ -4168,9 +4196,18 @@ export function createKeyringRuntimeFactory(
             };
             await refreshSmartAccountMetadata(signal, check);
             check();
-            if (!canSignSmartAccount()) throw new KeyringRuntimeError('NOT_READY');
             const selected = selectedAccount();
             const account = state.accounts.SmartAccount[selected.index];
+            if (!account?.smartAccount) throw new KeyringRuntimeError('NOT_READY');
+            if (!canSignSmartAccount() && (!account.smartAccount.auth || getSmartAccountAuthHash(account.smartAccount.auth) !== getSmartAccountAuthHash(target.auth)))
+              throw new KeyringRuntimeError('NOT_READY');
+            const command = buildSmartAccountValidatorSwitch({ accountAddress: account.address,
+              chainId: account.smartAccount.chainId, metadata: account.smartAccount, target });
+            return openSmartAccountOperation({ kind: 'authenticator', command }, check, origin);
+        };
+        const openWalletAuthenticator = async (signal: AbortSignal, assertOwner: () => void, origin: SmartOperationOrigin): Promise<NativeSmartAccountOperation> => {
+            if (!catalogueSnapshot || !canSignSmartAccount()) throw new KeyringRuntimeError('NOT_READY');
+            const selected = selectedAccount(), account = state.accounts.SmartAccount[selected.index];
             if (!account?.smartAccount) throw new KeyringRuntimeError('NOT_READY');
             const hdOwner = state.accounts.HDAccount[0] ?? Object.values(state.accounts.HDAccount)[0];
             const ownerType = hdOwner ? 'HDAccount' as const : 'Imported' as const;
@@ -4178,17 +4215,15 @@ export function createKeyringRuntimeFactory(
             if (!owner || owner.isSmartAccount || owner.isLedgerWallet || owner.isTrezorWallet)
               throw new KeyringRuntimeError('NOT_READY');
             const ownerId = owner.id, ownerAddress = owner.address;
-            const command = buildSmartAccountValidatorSwitch({ accountAddress: account.address,
-              chainId: account.smartAccount.chainId, metadata: account.smartAccount,
-              target: buildECDSAAuthenticator({ chainId: account.smartAccount.chainId, config: { owners: [ownerAddress], threshold: 1 } }) });
             const checkOwner = () => {
-              check();
+              checkGuard(assertOwner);
               const currentOwner = state.accounts[ownerType][ownerId];
               if (!currentOwner || currentOwner.address.toLowerCase() !== ownerAddress.toLowerCase() ||
                   currentOwner.isSmartAccount || currentOwner.isLedgerWallet || currentOwner.isTrezorWallet)
                 throw new KeyringRuntimeError('CANCELLED');
             };
-            return openSmartAccountOperation({ kind: 'authenticator', command }, checkOwner, origin);
+            return openSmartAccountAuthenticator(buildECDSAAuthenticator({ chainId: account.smartAccount.chainId,
+              config: { owners: [ownerAddress], threshold: 1 } }), signal, checkOwner, origin);
         };
         const preflightModuleInstall = async (address: string, signal: AbortSignal, assertOwner: () => void, deploymentAdmission: NativeSmartModuleDeploymentAdmission): Promise<CustomValidatorPreflightResult> => {
             const captured = generation, snapshot = catalogueSnapshot, selected = selectedAccount();
@@ -4559,6 +4594,108 @@ export function createKeyringRuntimeFactory(
               calls: repository.calls,
               supportsAtomicCalls: supportsLocalSmartAccount,
               supportsSmartAccountMessages: supportsLocalSmartAccount,
+              async allocateSmartAccount(input, signal, assertRequestCurrent, onCommitted) {
+                assertOwner(); checkGuard(assertRequestCurrent);
+                if (typeof onCommitted !== 'function' || !signal || typeof signal.addEventListener !== 'function' || signal.aborted)
+                  throw new KeyringRuntimeError('INVALID_INPUT');
+                if (!input || typeof input !== 'object') throw new KeyringRuntimeError('INVALID_INPUT');
+                const fields = Object.getOwnPropertyDescriptors(input);
+                if (Reflect.ownKeys(fields).sort().join(',') !== 'externalOwnersAcknowledged,label,networkId,target' ||
+                    Object.values(fields).some(field => !Object.hasOwn(field, 'value'))) throw new KeyringRuntimeError('INVALID_INPUT');
+                const request = Object.fromEntries(Object.entries(fields).map(([key, field]) => [key, field.value])) as NativeSmartCreationRequest;
+                if (
+                    typeof request.networkId !== 'string' || typeof request.externalOwnersAcknowledged !== 'boolean' ||
+                    typeof request.label !== 'string' || !request.label.isWellFormed() || !request.label || request.label.trim() !== request.label ||
+                    request.label.length > 64 || /[\u0000-\u001f\u007f-\u009f]/.test(request.label))
+                  throw new KeyringRuntimeError('INVALID_INPUT');
+                if (!request.target || typeof request.target !== 'object') throw new KeyringRuntimeError('INVALID_INPUT');
+                const targetFields = Object.getOwnPropertyDescriptors(request.target);
+                if (!targetFields.id || Reflect.ownKeys(targetFields).some(key => key !== 'id' && key !== 'config') ||
+                    Object.values(targetFields).some(field => !Object.hasOwn(field, 'value'))) throw new KeyringRuntimeError('INVALID_INPUT');
+                const config = targetFields.config?.value;
+                const target = resolveSmartAccountPreparationTarget({ id: targetFields.id.value,
+                  config: config === undefined ? undefined : decodeStorageValue(encodeStorageValue(config)) }, { slhDsaSupported: false });
+                // Credential acquisition is a separate real capability. This
+                // foundation never manufactures passkeys or PQ setup material.
+                if (target.id !== 'ecdsa') throw new KeyringRuntimeError('NOT_READY');
+                const before = catalogueSnapshot, ring = keyring, captured = generation;
+                if (!before || !ring.isUnlocked() || before.active.networkId !== request.networkId ||
+                    findUtxoNetwork(request.networkId, before.utxoNetworks) || !dependencies.prepareSmartAccount)
+                  throw new KeyringRuntimeError('NOT_READY');
+                const network = getNativeNetwork(request.networkId, before.networks), selected = selectedAccount();
+                const management = state.accounts.HDAccount[0];
+                if (!management?.address || !management.xpub) throw new KeyringRuntimeError('NOT_READY');
+                const managementIdentity = JSON.stringify([management.address, management.xpub]);
+                if (target.config) {
+                  buildECDSAAuthenticator({ chainId: Number(network.chainId), config: { owners: [...target.config.owners], threshold: target.config.threshold } });
+                  const local = (['HDAccount', 'Imported', 'Ledger', 'Trezor'] as const).flatMap(type => Object.values(state.accounts[type]).map(account => account.address.toLowerCase()));
+                  if (target.config.owners.some(owner => !local.includes(owner.toLowerCase())) && !request.externalOwnersAcknowledged)
+                    throw new KeyringRuntimeError('INVALID_INPUT');
+                }
+                const check = () => {
+                  assertOwner(); current(captured); checkGuard(assertRequestCurrent);
+                  if (signal.aborted || keyring !== ring || !ring.isUnlocked() || catalogueSnapshot !== before || selectedAccount() !== selected)
+                    throw new KeyringRuntimeError('CANCELLED');
+                };
+                let allocation: NativeSmartCreationAllocation | undefined, publishing = true;
+                await run(async () => {
+                  check();
+                  await allocateSmartAccountRecord(request.label, before.revision, signal, check, (next, created) => {
+                    const saved = next.accounts.find(account => account.type === 'SmartAccount' && account.index === created.id);
+                    if (!saved || !created.smartAccount?.auth) throw new KeyringRuntimeError('OPERATION_FAILED');
+                    const identity = (metadata: ISmartAccountMetadata | undefined) => metadata && JSON.stringify({
+                      chainId: metadata.chainId, descriptor: metadata.descriptor, deploymentAuth: metadata.deploymentAuth,
+                      deploymentSalt: metadata.deploymentSalt, factoryAddress: metadata.factoryAddress,
+                    });
+                    const expectedIdentity = identity(created.smartAccount);
+                    const receipt: NativeSmartCreationAllocation = Object.freeze({
+                      account: Object.freeze({ id: saved.id, index: saved.index, type: 'SmartAccount', address: saved.address, xpub: created.xpub, label: saved.label }),
+                      networkId: request.networkId, chainId: Number(network.chainId), target,
+                      assertCurrent() {
+                        assertOwner(); current(captured); checkGuard(assertRequestCurrent);
+                        const snapshot = catalogueSnapshot, provisional = publishing && snapshot === before;
+                        const record = provisional ? created : state.accounts.SmartAccount[saved.index];
+                        if (signal.aborted || keyring !== ring || !ring.isUnlocked() || !snapshot ||
+                            (!provisional && snapshot.active.accountId !== saved.id) || snapshot.active.networkId !== request.networkId ||
+                            getNativeNetwork(request.networkId, snapshot.networks).registrationHash !== network.registrationHash ||
+                            record?.address !== saved.address || record.xpub !== created.xpub || identity(record.smartAccount) !== expectedIdentity ||
+                            JSON.stringify([state.accounts.HDAccount[0]?.address, state.accounts.HDAccount[0]?.xpub]) !== managementIdentity)
+                          throw new KeyringRuntimeError('CANCELLED');
+                        requireSmartAccountAddressIdentity(record, Number(network.chainId));
+                      },
+                    });
+                    smartCreationAllocations.set(receipt, Object.freeze({ signal, target, ring, generation: captured,
+                      bootstrapAuthHash: getSmartAccountAuthHash(created.smartAccount.auth) }));
+                    allocation = receipt;
+                    checkGuard(() => onCommitted(receipt));
+                  });
+                  publishing = false;
+                });
+                if (!allocation) throw new KeyringRuntimeError('OPERATION_FAILED');
+                allocation.assertCurrent(); return allocation;
+              },
+              async prepareSmartAccountCreationOperation(allocation, handoff, assertRequestCurrent) {
+                const owned = smartCreationAllocations.get(allocation);
+                if (!owned || owned.target.id !== 'ecdsa' || !owned.target.config) throw new KeyringRuntimeError('INVALID_INPUT');
+                requireNativeSigningHandoff(handoff);
+                const check = () => {
+                  current(owned.generation); allocation.assertCurrent(); checkGuard(assertRequestCurrent);
+                  if (keyring !== owned.ring || allocation.target !== owned.target) throw new KeyringRuntimeError('CANCELLED');
+                };
+                check();
+                const target = buildECDSAAuthenticator({ chainId: allocation.chainId,
+                  config: { owners: [...owned.target.config.owners], threshold: owned.target.config.threshold } });
+                const assertSource = () => {
+                  check();
+                  const metadata = state.accounts.SmartAccount[allocation.account.index]?.smartAccount;
+                  if (!metadata?.auth || ![owned.bootstrapAuthHash, getSmartAccountAuthHash(target.auth)].includes(getSmartAccountAuthHash(metadata.auth)))
+                    throw new KeyringRuntimeError('CANCELLED');
+                };
+                await refreshSmartAccountMetadata(owned.signal, check); assertSource();
+                if (!state.accounts.SmartAccount[allocation.account.index]!.smartAccount!.isDeployed)
+                  return openSmartAccountOperation({ kind: 'deploy' }, assertSource, { kind: 'dapp', handoff });
+                return openSmartAccountAuthenticator(target, owned.signal, assertSource, { kind: 'dapp', handoff });
+              },
               async prepareModuleChange(input, assertRequestCurrent) {
                 assertOwner(); input.approval.assertCurrent(); checkGuard(assertRequestCurrent);
                 requireNativeSigningHandoff(input.handoff);

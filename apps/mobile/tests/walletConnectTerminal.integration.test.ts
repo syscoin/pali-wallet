@@ -207,6 +207,70 @@ test('actual SDK public history proves fresh original-expiry requests and fences
   } finally { await transport.close(); }
 });
 
+test('actual SDK account update requires its encrypted peer ACK and retains the original request wire', { timeout: 5000 }, async (t) => {
+  const f = await fixture(false, true);
+  t.signal.addEventListener('abort', () => f.owner.abort(), { once: true });
+  f.options.supportedMethods.push('wallet_prepareSmartAccount');
+  const transport = await openWalletConnectTransport(f.options);
+  try {
+    const client = f.client!, current = client.session.get(f.topic);
+    const negotiated = {
+      eip155: { ...current.namespaces.eip155!,
+        accounts: [...current.namespaces.eip155!.accounts, 'eip155:137:0x' + '33'.repeat(20)],
+        methods: [...current.namespaces.eip155!.methods, 'wallet_prepareSmartAccount'],
+        chains: ['eip155:1', 'eip155:137'],
+      },
+    };
+    await client.session.update(f.topic, { namespaces: negotiated, controller: current.self.publicKey });
+    f.core.relayer.confirmOnlineStateOrThrow = async () => {};
+    await f.core.crypto.setSymKey('e5'.repeat(32), f.topic);
+    const engine = client.engine as unknown as { onRelayMessage(event: { topic: string; message: string; transportType: 'relay' }): Promise<void> };
+    let peerAcks = 0;
+    let ackFailure: unknown;
+    const published: unknown[] = [];
+    f.core.relayer.publish = async (topic, message) => {
+      const payload = await f.core.crypto.decode(topic, message);
+      published.push(payload);
+      if (payload && 'method' in payload && payload.method === 'wc_sessionUpdate') {
+        const response = await f.core.crypto.encode(topic, { id: payload.id, jsonrpc: '2.0', result: true });
+        // A relay receives the ACK after publish returns. Awaiting receive
+        // inside publish would deadlock the SDK's own mutation queue.
+        setImmediate(() => {
+          peerAcks++;
+          void engine.onRelayMessage({ topic, message: response, transportType: 'relay' }).catch(error => {
+            ackFailure = error; f.owner.abort();
+          });
+        });
+      }
+    };
+    const id = 54, params = { chainId: 'eip155:1', request: {
+      method: 'wallet_prepareSmartAccount', params: [{ authenticator: { id: 'ecdsa' } }], expiryTimestamp: Math.floor(Date.now() / 1000) + 300,
+    } };
+    await f.core.history.set(f.topic, { id, jsonrpc: '2.0', method: 'wc_sessionRequest', params });
+    const historical = await f.core.history.get(f.topic, id);
+    const request = { id, topic: f.topic, params, verifyContext: { verified: {
+      validation: 'UNKNOWN' as const, origin: 'https://example.com', verifyUrl: 'https://verify.walletconnect.com',
+    } } };
+    await client.pendingRequest.set(id, request);
+    client.events.emit('session_request', request);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const event = f.events.find(event => event.type === 'request' && event.request.id === id);
+    assert(event?.type === 'request'); const wire = event.request;
+    let committed = 0;
+    const address = '0x' + '22'.repeat(20);
+    const session = await transport.updatePreparedAccount(wire.session.binding, id, address, new AbortController().signal, () => {}, () => { committed++; assert.equal(peerAcks, 1); });
+    assert.deepEqual(session.namespaces, { eip155: { ...negotiated.eip155, accounts: [`eip155:1:${address}`, 'eip155:137:0x' + '33'.repeat(20)] } });
+    assert.equal(committed, 1);
+    assert.equal(ackFailure, undefined);
+    assert.equal(await transport.pending(wire.session.binding, id, () => {}), wire);
+    assert.equal(await f.core.history.get(f.topic, id), historical);
+    assert.equal(wire.freshness, 'fresh');
+    assert.deepEqual(wire.session.namespaces, negotiated);
+    await transport.respond(wire.session.binding, id, { result: { address, chainId: '0x1' } }, () => {}, () => {});
+    assert.equal(published.length, 2);
+  } finally { await transport.close(); }
+});
+
 async function encryptedRequests() {
   const f = await fixture(false, true), transport = await openWalletConnectTransport(f.options);
   const published: unknown[] = [];

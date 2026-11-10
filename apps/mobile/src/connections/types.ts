@@ -11,6 +11,7 @@ import type { NativeDappControlReview } from './controlRequests.ts';
 import type { NativeDappReturnTarget } from './pairingReturn.ts';
 import type { NativeSentryReview, NativeSentryAssent } from './sentryRequests.ts';
 import type { NativePsbtReview } from './psbtRequests.ts';
+import type { NativeSmartPreparationReview } from './smartPreparationRequests.ts';
 
 export type NativeConnectionError =
   | 'INVALID_LINK'
@@ -122,6 +123,7 @@ export type NativeSigningReview =
   | NativeSmartTransactionReview;
 
 export type NativeConnectionsSnapshot = Readonly<{
+  preparationReview: NativeSmartPreparationReview | null;
   psbtReview: NativePsbtReview | null;
   sentryReview: NativeSentryReview | null;
   controlReview: NativeDappControlReview | null;
@@ -157,6 +159,10 @@ export type NativeConnectionsSnapshot = Readonly<{
 
 /** Public view commands carry identifiers only, never transport or keyring handles. */
 export type NativeConnectionsView = Readonly<{
+  approveSmartPreparation(id: string, revision: number, externalOwnersAck: boolean): Promise<void>;
+  confirmSmartPreparationPayer(id: string, revision: number, payerId: number): Promise<void>;
+  retrySmartPreparationMetadata(id: string, revision: number): Promise<void>;
+  rejectSmartPreparation(id: string): Promise<void>;
   approvePsbt(id: string, revision: number): Promise<void>;
   rejectPsbt(id: string): Promise<void>;
   backgroundSigning(): void;
