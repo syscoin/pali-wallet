@@ -21,6 +21,7 @@ import { NativeTokenPortfolioFixture } from './nativeTokenPortfolioFixture';
 import { NativeUtxoSendFixture } from './nativeUtxoSendFixture';
 import { Erc20SendFixture } from './erc20SendFixture';
 import { NetworkPickerFixture } from './networkPickerFixture';
+import { NativeAccountOverviewFixture } from './nativeAccountOverviewFixture';
 import { NativeConnectionsFixture } from './nativeConnectionsFixture';
 import { createLedgerConnectionFixture } from './nativeLedgerConnectionFixture';
 import { NativeLedgerFixture } from './nativeLedgerFixture';
@@ -50,6 +51,8 @@ import type {
 } from '../../src/custody/accounts';
 import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCatalogue';
 import { NativeSend, type NativeRecipientPicker } from '../../src/screens/NativeSend';
+import type { NativeUnsignedSendDraft } from '../../src/screens/sendNetworkDraft';
+import type { Erc20Metadata } from '../../../../source/shared/erc20';
 import { formatBaseUnits, parseDecimalAmount } from '../../src/core/amounts';
 import type {
   NativeTransferSnapshot,
@@ -410,6 +413,14 @@ window.__nativeAccountsFixture = {
 
 function Fixture() {
   const [viewedTransaction, setViewedTransaction] = useState<string | null>(null);
+  const [selectedSendAsset, setSelectedSendAsset] = useState<Erc20Metadata | undefined>(undefined);
+  const [assetDraft, setAssetDraft] = useState<Extract<NativeUnsignedSendDraft, { kind: 'evm' }> | undefined>(undefined);
+  const cachedSendAssets = [
+    { metadata: { name: 'USD Coin', symbol: 'USDC', decimals: 6, contractAddress: '0x' + 'ab'.repeat(20) }, units: '12000000', status: 'available' as const },
+    { metadata: { name: 'Dai', symbol: 'DAI', decimals: 18, contractAddress: '0x' + 'cd'.repeat(20) }, units: '4000000000000000000', status: 'available' as const },
+    ...(route.has('many-assets') ? Array.from({ length: 300 }, (_, index) => ({ metadata: { name: `Saved token ${index}`, symbol: `T${index}`, decimals: 6,
+      contractAddress: '0x' + (index + 1).toString(16).padStart(40, '0') }, units: '1000000', status: 'available' as const })) : []),
+  ];
   const failure = useSyncExternalStore(
     accountController.subscribe,
     () => accountFailure,
@@ -422,7 +433,7 @@ function Fixture() {
   );
   return (
     <SafeAreaProvider>
-      {viewedTransaction && submittedReview ? (
+      {new URLSearchParams(window.location.search).has('account-portfolio') ? <NativeAccountOverviewFixture /> : viewedTransaction && submittedReview ? (
         <Screen><Header title="Transaction details" subtitle={`Account 1 · ${sendContext.name}`} onBack={() => setViewedTransaction(null)} />
           <TransactionDetailLayout amount={`${formatBaseUnits(submittedReview.amountUnits, 18)} ${sendContext.symbol}`}
             direction="Sent" status="Pending" tone="pending" rows={[
@@ -508,6 +519,13 @@ function Fixture() {
         )
       ) : (
         <NativeSend
+          key={selectedSendAsset?.contractAddress ?? 'native'}
+          token={route.has('send-assets') ? selectedSendAsset : undefined}
+          assetChoices={route.has('send-assets') ? cachedSendAssets : undefined}
+          initialDraft={route.has('send-assets') ? assetDraft : undefined}
+          onChangeAsset={route.has('send-assets') ? (draft, asset) => {
+            controller.cancel(); setSelectedSendAsset(asset); setAssetDraft({ kind: 'evm', recipient: draft.recipient, amount: '', nonce: '', max: false, advanced: false });
+          } : undefined}
           authenticationMethod={biometricAuth ? 'biometric' : 'pin'}
           account={{ address: sender, network: sendContext.networkId, revision: 1 }}
           savedHash={route.has('ledger-replay') ? '0x' + '3'.repeat(64) : undefined}

@@ -118,6 +118,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
     '../../../../source/utils/nftTokenId': { normalizeNftTokenId },
     './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum', nativeTokenAvailableAmount: (asset: Erc20Metadata) => formatTokenUnits('100', asset.decimals) },
     './SendNetworkCard': { SendNetworkCard: 'SendNetworkCard' },
+    './SendAssetSelector': { SendAssetSelector: 'SendAssetSelector' },
     './RecipientQrScanner': { RecipientQrScanner: 'RecipientQrScanner' },
     './NativeSend': {
       NativeSendInput: 'Input',

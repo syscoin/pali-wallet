@@ -6,6 +6,7 @@ import test from 'node:test';
 import ts from 'typescript';
 import * as core from '../src/core/index.ts';
 import * as pairingLinks from '../src/connections/pairingLinks.ts';
+import { quietActivityNotifications } from './notificationFixture.ts';
 
 type Element = {
   type: unknown;
@@ -190,6 +191,8 @@ function harness() {
       AddWatchAccount: 'AddWatchAccount',
     },
     './src/screens/NativeWallet': { NativeWalletScreen: 'NativeWalletScreen' },
+    './src/screens/NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' },
+    './src/notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
     './src/screens/WalletAccounts': {},
     './src/screens/WatchSession': {},
     './src/core/watchAccounts': { WatchAccounts: Accounts },

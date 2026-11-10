@@ -1354,7 +1354,17 @@
     "errorDetails": "Une erreur est survenue : {{error}}",
     "errorWithContext": "Une erreur est survenue : {{error}} : {{context}}",
     "viewDetails": "Cliquez pour voir les détails",
-    "clickToView": "Cliquez pour voir les détails"
+    "clickToView": "Cliquez pour voir les détails",
+    "activityTitle": "Activité du portefeuille",
+    "activityPending": "Une transaction entrante ou sortante est en attente.",
+    "activityConfirmed": "Une transaction entrante ou sortante a été confirmée.",
+    "activityFailed": "Une transaction a échoué.",
+    "activityUnknown": "Une transaction a été incluse ; son résultat est encore indisponible.",
+    "recoveryStarted": "La récupération par gardiens a commencé.",
+    "recoveryCancelled": "La récupération par gardiens a été annulée.",
+    "recoveryCompleted": "La récupération par gardiens est terminée.",
+    "recoveryExpired": "La récupération par gardiens a expiré.",
+    "guardianPolicyChanged": "La politique des gardiens a changé."
   },
   "faucet": {
     "title": "Robinet",
@@ -2107,7 +2117,6 @@
       "evmBody": "Anyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place.",
       "hide": "Hide private key",
       "sessionOnly": "Hide the key when you are finished. Revealing it again requires fresh authorization.",
-      "confirmPassword": "Confirm your wallet PIN",
       "reveal": "Reveal private key",
       "confirming": "Confirming PIN",
       "hardwareGuide": "Your {{device}} account uses its own recovery backup. The phrase shown in Pali belongs to this Pali wallet."
@@ -2155,7 +2164,6 @@
       "derived": "One recovery phrase, another address",
       "smartBody": "Create a smart account managed by Account 1 on this network. It can receive funds after creation; deployment is required before sending.",
       "derivedBody": "This account is derived from your existing recovery phrase. Keep that phrase backed up offline.",
-      "confirmPassword": "Confirm wallet PIN",
       "subtitle": "{{network}} · Wallet accounts",
       "select": "Select {{name}}",
       "removeHardware": "Removing this local account keeps its keys on your {{device}}. Connect the same device to add it again.",
@@ -2245,7 +2253,12 @@
       "balanceSuffix": ", balance and receive only",
       "editLabel": "Edit {{name}}{{chain}}",
       "useLabel": "Use {{name}}, {{symbol}}, Chain ID {{chainId}}",
-      "chain": "Chain ID {{chainId}}"
+      "chain": "Chain ID {{chainId}}",
+      "sendFrom": "Envoyer depuis",
+      "receiveOn": "Recevoir sur",
+      "chooseSource": "Choisissez la source de l’envoi",
+      "chooseDestination": "Choisissez où recevoir",
+      "availableBalance": "{{amount}} {{symbol}} disponibles"
     },
     "tools": {
       "title": "Outils",
@@ -2282,6 +2295,43 @@
       "unavailable": "La configuration est indisponible. Actualisez son état avant de réessayer.",
       "cancelled": "Le portefeuille a changé ou a été verrouillé. Rouvrez la configuration.",
       "reviewOptional": "Examiner le déploiement facultatif"
+    },
+    "notifications": {
+      "title": "Alertes d’activité",
+      "description": "Choisissez les comptes à surveiller pour les transferts et la récupération.",
+      "privacy": "Les aperçus masquent les soldes et les adresses.",
+      "background": "Les vérifications en arrière-plan dépendent de votre téléphone.",
+      "empty": "Aucun compte ne correspond à votre recherche.",
+      "unavailable": "Alertes indisponibles",
+      "error": "Vérifiez les autorisations de notification dans les réglages de l’appareil, puis réessayez.",
+      "checkNow": "Vérifier maintenant",
+      "disableAll": "Désactiver toutes les alertes",
+      "search": "Rechercher des comptes ou réseaux"
+    },
+    "accountPortfolio": {
+      "value": "Valeur du portefeuille",
+      "estimated": "Valeur estimée",
+      "partial": "Valeur connue · Certains soldes ou prix sont indisponibles",
+      "testnetsExcluded": "Fonds des réseaux de test exclus",
+      "allNetworks": "Tous les réseaux",
+      "unavailableNetwork": "Réseau indisponible",
+      "chooseAccount": "Choisir un compte, {{account}}",
+      "chooseFilter": "Choisir un filtre réseau, {{network}}",
+      "assets": "Actifs · {{account}}",
+      "unavailable": "Portefeuille indisponible. Rouvrez-le pour réessayer.",
+      "noAddress": "Ce compte ne possède pas d’adresse enregistrée sur le réseau sélectionné. Choisissez un autre filtre.",
+      "error": "Impossible de terminer la demande. Réessayez.",
+      "activityNetwork": "Voir les transactions sur {{network}}",
+      "activityAll": "Voir l’activité sur les réseaux ajoutés",
+      "collectibles": "Objets de collection enregistrés : {{count}} · {{network}}",
+      "refresh": "Actualiser le portefeuille"
+    },
+    "sendAssets": {
+      "choose": "Choisir un actif",
+      "search": "Rechercher les actifs enregistrés",
+      "label": "Actif",
+      "change": "Changer d’actif",
+      "unavailable": "Actifs enregistrés indisponibles. Réessayez."
     }
   }
 }

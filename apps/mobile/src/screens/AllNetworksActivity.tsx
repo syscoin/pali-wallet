@@ -1,0 +1,147 @@
+import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { ActivityIndicator, AppState, FlatList, Modal, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import type { AccountActivityController, AccountActivityRow } from '../activity/accountActivity';
+import { useBalancePrivacy } from '../platform/balancePrivacy';
+import { useNativeTranslation } from '../platform/localization';
+import { Button, Card, Coin, colors, Header, Icon, IconButton, Notice, SegmentedControl, styles, Text } from '../ui';
+import { ActivityListRow } from './ActivityListRow';
+import { IdlePressable } from './IdleActivityBoundary';
+import { NativeActivityScreen, nativeActivityRowPresentation } from './NativeActivity';
+import { NetworkSourceSheet } from './NetworkSourceSheet';
+import type { ShellLeafNavigation } from './RealAppShell';
+
+export type AccountActivityAction = 'saved' | 'cancel' | 'cancel-saved' | 'speed-up';
+export function AllNetworksActivity({ controller, accountLabel, navigation, onAction, initialTarget }: {
+  controller: AccountActivityController;
+  accountLabel: string;
+  navigation?: ShellLeafNavigation;
+  onAction?(entry: AccountActivityRow, action: AccountActivityAction, hash: string, assertCurrent: () => void): Promise<void>;
+  initialTarget?: Readonly<{ networkId: string; hash: string }>;
+}) {
+  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+  const { hidden } = useBalancePrivacy(), { t } = useNativeTranslation();
+  const [selection, setSelection] = useState<AccountActivityRow | null>(null);
+  const [sheet, setSheet] = useState<'filter' | 'options' | null>(null);
+  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const lifetime = useRef({ alive: true, generation: 0, busy: false });
+  const arrival = useRef('');
+  const list = useRef<FlatList<AccountActivityRow>>(null);
+  useLayoutEffect(() => controller.connect(), [controller]);
+  useLayoutEffect(() => { const owner = lifetime.current; owner.alive = true; return () => { owner.alive = false; owner.generation++; }; }, []);
+  const currentSelection = selection && controller.findRow(selection.choice.scope.network.id, selection.row.hash);
+  const selected = currentSelection?.controller === selection?.controller ? currentSelection : undefined;
+  const targetNetworkId = initialTarget?.networkId, targetHash = initialTarget?.hash;
+  useEffect(() => {
+    let live = true;
+    const update = () => {
+      if (!live) return;
+      if (!targetNetworkId || !targetHash) { arrival.current = ''; return; }
+      const key = `${targetNetworkId}:${targetHash}`, current = controller.getSnapshot();
+      if (arrival.current === key) return;
+      if (current.status === 'ready' && current.filter !== 'all' && current.filter !== targetNetworkId &&
+          current.choices.some(choice => choice.scope.network.id === targetNetworkId) && arrival.current !== `pending:${key}`) {
+        arrival.current = `pending:${key}`;
+        void controller.selectFilter(targetNetworkId).catch(() => { if (live) setError('Activity could not be opened. Refresh and try again.'); });
+        return;
+      }
+      const row = controller.findRow(targetNetworkId, targetHash);
+      if (row) { arrival.current = key; setSelection(row); }
+    };
+    const unsubscribe = controller.subscribe(update);
+    queueMicrotask(update);
+    return () => { live = false; unsubscribe(); };
+  }, [controller, targetNetworkId, targetHash]);
+  const closeSheet = () => { lifetime.current.generation++; lifetime.current.busy = false; setBusy(false); setSheet(null); };
+  const closeDetail = () => { lifetime.current.generation++; lifetime.current.busy = false; setBusy(false); setSelection(null); };
+  useLayoutEffect(() => {
+    if (selected) return;
+    return navigation?.registerBack(() => { if (sheet) { closeSheet(); return true; } return false; });
+  }, [navigation, selected, sheet]);
+  const run = async (operation: (check: () => void) => Promise<void>) => {
+    const owner = lifetime.current;
+    if (!owner.alive || owner.busy || AppState.currentState !== 'active') return;
+    const generation = ++owner.generation, accountId = snapshot.accountId;
+    const check = () => { if (!owner.alive || owner.generation !== generation || AppState.currentState !== 'active' || controller.getSnapshot().accountId !== accountId) throw Error('Activity changed'); };
+    owner.busy = true; setBusy(true); setError('');
+    try { check(); await operation(check); check(); }
+    catch { if (owner.alive && generation === owner.generation) setError('Activity could not be opened. Refresh and try again.'); }
+    finally { if (owner.alive && generation === owner.generation) { owner.busy = false; setBusy(false); } }
+  };
+  const present = (entry: AccountActivityRow) => nativeActivityRowPresentation(entry.row, {
+    accountAddress: entry.choice.scope.accountAddress, nativeSymbol: entry.choice.symbol, networkName: entry.choice.networkName, hideBalances: hidden,
+  });
+  if (selected) {
+    const action = onAction ? (kind: AccountActivityAction) => (hash: string) => { void run(async check => {
+      const same = controller.getSnapshot().choices.some(choice => JSON.stringify(choice.scope) === JSON.stringify(selected.choice.scope));
+      const child = selected.controller.getSnapshot();
+      if (!same || !(child.rows.some(row => row.hash === hash) || child.savedPending?.rows.some(row => row.hash === hash))) throw Error('Activity scope changed');
+      await onAction(selected, kind, hash, check);
+    }); } : undefined;
+    return <View style={s.root}><NativeActivityScreen key={selected.key} controller={selected.controller} accountLabel={accountLabel}
+      externallyConnected detailOnly initialHash={selected.row.hash} navigation={navigation} onBack={closeDetail}
+      onReplay={action?.('saved')} onCancelPending={action?.('cancel')} onCancelSaved={action?.('cancel-saved')} onSpeedUpPending={action?.('speed-up')} />
+      {busy && <Text accessibilityLiveRegion="polite" style={s.actionFeedback}>Opening transfer…</Text>}
+      {!!error && <Notice title="Could not open transfer" body={error} tone="amber" />}
+    </View>;
+  }
+  const filterChoice = snapshot.choices.find(choice => choice.scope.network.id === snapshot.filter);
+  const filterName = snapshot.filter === 'all' ? t('mobile.accountPortfolio.allNetworks') : filterChoice?.networkName ?? t('mobile.accountPortfolio.unavailableNetwork');
+  return <SafeAreaView edges={navigation ? ['top'] : ['top', 'bottom']} style={s.root}>
+    <View style={s.header}><Header title="Activity" subtitle={accountLabel} right={<View style={s.toolbar}>
+      <IconButton label="Refresh activity" icon="refresh" disabled={busy || snapshot.refreshing || snapshot.status === 'loading'} onPress={() => void run(async () => { await controller.refresh(); })} />
+      <IconButton label="Activity options" icon="settings" selected={sheet === 'options'} onPress={() => setSheet('options')} />
+    </View>} /></View>
+    <FlatList ref={list} data={snapshot.rows} keyExtractor={entry => entry.key} contentContainerStyle={s.content}
+      ListHeaderComponent={<View style={s.section}>
+        <IdlePressable accessibilityRole="button" accessibilityLabel={`Activity network: ${filterName}`} disabled={busy || snapshot.status === 'loading'} onPress={() => setSheet('filter')} style={s.filter}>
+          <View style={s.filterChoice}>
+            <View testID={`activity-filter-icon-${filterChoice?.scope.network.id ?? 'all'}`} accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+              {filterChoice ? <Coin id={filterChoice.scope.network.id} fallbackSymbol={filterChoice.symbol} size={18} /> : <Icon name="globe" size={18} color={colors.blue} />}
+            </View>
+            <Text style={s.filterLabel}>{filterName}</Text>
+          </View><Icon name="chevron-down" size={18} color={colors.muted} />
+        </IdlePressable>
+        <SegmentedControl label="Activity filter" value={snapshot.view.filter}
+          options={[{ value: 'all', label: 'All' }, { value: 'sent', label: 'Sent' }, { value: 'received', label: 'Received' }]}
+          onChange={filter => { void controller.setView({ filter, anchor: null, offset: 0 }); list.current?.scrollToOffset({ offset: 0 }); }} />
+        <Text style={s.caption}>Recent activity</Text>
+        {(snapshot.status === 'loading' || snapshot.refreshing) && <ActivityIndicator accessibilityLabel="Loading activity" color={colors.pink} />}
+        {!!(snapshot.error || error) && <Notice title="Some activity is unavailable" body={error || snapshot.error || undefined} tone="amber" />}
+      </View>}
+      renderItem={({ item, index }) => {
+        const display = present(item), previous = snapshot.rows[index - 1], next = snapshot.rows[index + 1];
+        const first = !previous || present(previous).date.key !== display.date.key, last = !next || present(next).date.key !== display.date.key;
+        return <ActivityListRow testID={`account-activity-row-${item.choice.scope.network.id}-${item.row.hash}`} first={first} last={last}
+          heading={first ? display.date.label : undefined} title={display.title} subtitle={`${display.status}${item.row.unavailable ? ' · Details unavailable' : ''}`}
+          networkBadge={item.choice.networkName} networkId={item.choice.scope.network.id} networkSymbol={item.choice.symbol}
+          direction={display.direction} amount={display.amount} time={display.date.time}
+          label={`${display.label}. Network: ${item.choice.networkName}`} disabled={busy} onPress={() => { setError(''); setSelection(item); }} />;
+      }}
+      ListEmptyComponent={snapshot.status !== 'loading' && !snapshot.refreshing ? <View style={s.empty}>
+        <Text style={s.emptyTitle}>{snapshot.status === 'unavailable' ? 'Activity unavailable' : 'No activity to show'}</Text>
+        <Text style={s.caption}>Refresh or choose another filter.</Text>
+      </View> : undefined}
+      ListFooterComponent={<View style={s.section}>{snapshot.hasMore && <Button title={snapshot.loadingMore ? 'Loading older activity…' : 'Load older activity'} variant="secondary" size="compact"
+        disabled={busy || snapshot.loadingMore} onPress={() => void run(async () => { await controller.loadMore(); })} />}</View>} />
+    <Modal visible={sheet !== null} transparent animationType="slide" onRequestClose={closeSheet}>
+      {sheet === 'filter' ? <NetworkSourceSheet purpose="filter" overContent busy={busy} selectedId={snapshot.filter ?? ''}
+        options={[{ id: 'all', name: t('mobile.accountPortfolio.allNetworks'), symbol: '' }, ...snapshot.choices.map(choice => ({ id: choice.scope.network.id, name: choice.networkName, symbol: choice.symbol }))]}
+        onSelect={id => { void run(async check => { await controller.selectFilter(id); check(); setSheet(null); }); }} onClose={closeSheet} />
+        : <View style={s.modal}><Card style={s.options}><Text style={s.emptyTitle}>Activity options</Text>
+          <Button title={snapshot.view.showZero ? 'Hide zero-value token activity' : 'Show zero-value token activity'} variant="secondary" onPress={() => { void controller.setView({ showZero: !snapshot.view.showZero }); setSheet(null); }} />
+          <Button title="Close" variant="quiet" onPress={closeSheet} />
+        </Card></View>}
+    </Modal>
+  </SafeAreaView>;
+}
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.bg }, header: { paddingHorizontal: 16 }, toolbar: { flexDirection: 'row' },
+  content: { paddingHorizontal: 16, paddingBottom: 24 }, section: { gap: 10, paddingVertical: 8 },
+  filter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, paddingHorizontal: 13, borderRadius: 12, backgroundColor: colors.surface },
+  filterChoice: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 },
+  filterLabel: { fontSize: 14, fontWeight: '500', flexShrink: 1 }, caption: { ...styles.muted, fontSize: 12, lineHeight: 18 },
+  empty: { alignItems: 'center', gap: 8, paddingVertical: 40 }, emptyTitle: { fontSize: 18, fontWeight: '600' },
+  modal: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#0008', padding: 16 }, options: { gap: 16, padding: 20 },
+  actionFeedback: { ...styles.muted, textAlign: 'center', padding: 12 },
+});

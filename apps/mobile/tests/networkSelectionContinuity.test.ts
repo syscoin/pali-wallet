@@ -53,10 +53,15 @@ function picker() {
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../../../../source/shared/chainCatalogue': { rankChainSuggestions: () => [] },
     '../custody/networkContext': { createNativeNetwork: () => { throw Error('No network editing'); } },
+    './NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' },
     '../ui': { ...Object.fromEntries(['Button', 'Header', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
   });
   const props = { controller, onBack() { closes++; }, selection: { purpose: 'send', assertCurrent() { if (!live) throw Error('stale'); }, onSelected(receipt: { selection: { networkId: string } }) { selected.push(receipt.selection.networkId); } } };
-  const options = () => screenElements(screen.render(props)).filter(node => node.props.network);
+  const options = () => {
+    const sheet = screen.render(props);
+    const rows = sheet.props.options as { id: string }[];
+    return rows.map(network => ({ props: { network, onSelect: sheet.props.onSelect } }));
+  };
   return { screen, props, options, requests, selected, back: () => back(), closes: () => closes, cancellations: () => cancellations,
     hold(value: Promise<void>) { hold = value; }, stale() { live = false; } };
 }
@@ -66,12 +71,25 @@ test('selection-only picker preserves Back/Cancel and uses the captured shared s
   try {
     const tree = f.screen.render(f.props);
     assert.equal(screenElements(tree).some(node => node.props.title === 'Add network'), false);
-    const cancel = screenElements(tree).find(node => node.props.title === 'Cancel'); assert(cancel); cancel.props.onPress();
+    assert.equal(tree.type, 'NetworkSourceSheet'); tree.props.onClose();
     assert.equal(f.closes(), 1); assert.deepEqual(f.requests, []);
     const target = f.options().find(node => node.props.network.id === 'syscoin-nevm'); assert(target);
     await target.props.onSelect('syscoin-nevm');
     assert.deepEqual(f.requests, [['syscoin-nevm', 3, 5]]); assert.deepEqual(f.selected, ['syscoin-nevm']);
     f.back(); assert.equal(f.closes(), 2);
+  } finally { f.screen.close(); }
+});
+
+test('source sheet shows a balance only on its observed network and choosing the current row dismisses without switching', async () => {
+  const f = picker();
+  try {
+    const tree = f.screen.render({ ...f.props, selection: { ...f.props.selection,
+      balance: { networkId: 'ethereum', available: '1.25', loading: false } } });
+    assert.equal(tree.props.options[0].id, 'ethereum');
+    assert.equal(tree.props.options[0].available, '1.25');
+    assert.equal(tree.props.options.find((row: { id: string }) => row.id === 'syscoin-nevm').available, undefined);
+    await tree.props.onSelect('ethereum');
+    assert.deepEqual(f.requests, []); assert.equal(f.closes(), 1);
   } finally { f.screen.close(); }
 });
 

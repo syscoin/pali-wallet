@@ -1354,7 +1354,17 @@
     "errorDetails": "Произошла ошибка: {{error}}",
     "errorWithContext": "Произошла ошибка: {{error}}: {{context}}",
     "viewDetails": "Нажмите для просмотра сведений",
-    "clickToView": "Нажмите для просмотра деталей"
+    "clickToView": "Нажмите для просмотра деталей",
+    "activityTitle": "Активность кошелька",
+    "activityPending": "Входящая или исходящая транзакция ожидает подтверждения.",
+    "activityConfirmed": "Входящая или исходящая транзакция подтверждена.",
+    "activityFailed": "Транзакция завершилась ошибкой.",
+    "activityUnknown": "Транзакция включена в блок; результат пока недоступен.",
+    "recoveryStarted": "Восстановление через хранителей начато.",
+    "recoveryCancelled": "Восстановление через хранителей отменено.",
+    "recoveryCompleted": "Восстановление через хранителей завершено.",
+    "recoveryExpired": "Срок восстановления через хранителей истёк.",
+    "guardianPolicyChanged": "Политика хранителей изменена."
   },
   "faucet": {
     "title": "Кран",
@@ -2107,7 +2117,6 @@
       "evmBody": "Anyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place.",
       "hide": "Hide private key",
       "sessionOnly": "Hide the key when you are finished. Revealing it again requires fresh authorization.",
-      "confirmPassword": "Confirm your wallet PIN",
       "reveal": "Reveal private key",
       "confirming": "Confirming PIN",
       "hardwareGuide": "Your {{device}} account uses its own recovery backup. The phrase shown in Pali belongs to this Pali wallet."
@@ -2155,7 +2164,6 @@
       "derived": "One recovery phrase, another address",
       "smartBody": "Create a smart account managed by Account 1 on this network. It can receive funds after creation; deployment is required before sending.",
       "derivedBody": "This account is derived from your existing recovery phrase. Keep that phrase backed up offline.",
-      "confirmPassword": "Confirm wallet PIN",
       "subtitle": "{{network}} · Wallet accounts",
       "select": "Select {{name}}",
       "removeHardware": "Removing this local account keeps its keys on your {{device}}. Connect the same device to add it again.",
@@ -2245,7 +2253,12 @@
       "balanceSuffix": ", balance and receive only",
       "editLabel": "Edit {{name}}{{chain}}",
       "useLabel": "Use {{name}}, {{symbol}}, Chain ID {{chainId}}",
-      "chain": "Chain ID {{chainId}}"
+      "chain": "Chain ID {{chainId}}",
+      "sendFrom": "Отправить из",
+      "receiveOn": "Получить в",
+      "chooseSource": "Выберите источник отправки",
+      "chooseDestination": "Выберите сеть получения",
+      "availableBalance": "Доступно: {{amount}} {{symbol}}"
     },
     "tools": {
       "title": "Инструменты",
@@ -2282,6 +2295,43 @@
       "unavailable": "Настройка недоступна. Обновите статус перед повторной попыткой.",
       "cancelled": "Кошелёк изменён или заблокирован. Откройте настройку заново.",
       "reviewOptional": "Проверить необязательное развёртывание"
+    },
+    "notifications": {
+      "title": "Уведомления об активности",
+      "description": "Выберите счета для уведомлений о переводах и восстановлении.",
+      "privacy": "В уведомлениях скрыты балансы и адреса.",
+      "background": "Фоновые проверки зависят от телефона.",
+      "empty": "Нет счетов, соответствующих запросу.",
+      "unavailable": "Уведомления недоступны",
+      "error": "Проверьте разрешения уведомлений в настройках устройства и повторите попытку.",
+      "checkNow": "Проверить сейчас",
+      "disableAll": "Отключить все уведомления",
+      "search": "Поиск счетов или сетей"
+    },
+    "accountPortfolio": {
+      "value": "Стоимость портфеля",
+      "estimated": "Оценочная стоимость",
+      "partial": "Известная стоимость · Некоторые балансы или цены недоступны",
+      "testnetsExcluded": "Средства тестовых сетей исключены",
+      "allNetworks": "Все сети",
+      "unavailableNetwork": "Сеть недоступна",
+      "chooseAccount": "Выбрать счёт, {{account}}",
+      "chooseFilter": "Выбрать фильтр сети, {{network}}",
+      "assets": "Активы · {{account}}",
+      "unavailable": "Портфель недоступен. Откройте кошелёк снова.",
+      "noAddress": "Для этого счёта нет сохранённого адреса в выбранной сети. Выберите другой фильтр.",
+      "error": "Не удалось выполнить запрос. Повторите попытку.",
+      "activityNetwork": "Показать транзакции в {{network}}",
+      "activityAll": "Показать активность в добавленных сетях",
+      "collectibles": "Сохранённые коллекционные активы: {{count}} · {{network}}",
+      "refresh": "Обновить портфель"
+    },
+    "sendAssets": {
+      "choose": "Выбрать актив",
+      "search": "Поиск сохранённых активов",
+      "label": "Актив",
+      "change": "Сменить актив",
+      "unavailable": "Сохранённые активы недоступны. Повторите попытку."
     }
   }
 }

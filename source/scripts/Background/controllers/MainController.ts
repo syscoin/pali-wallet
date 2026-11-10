@@ -80,6 +80,7 @@ import {
   readEvmRpcQuantity,
 } from '../../../shared/evmTransactionObservation';
 import { getEvmTransferCost } from '../../../shared/evmTransferCost';
+import { observeGuardianActivity } from '../../../shared/guardianActivityObservation';
 import {
   BLOCKBOOK_TICKER_PATH,
   readBlockbookNativeQuote,
@@ -105,6 +106,7 @@ import {
   getWalletNavigationScope,
   IWalletNavigationScope,
 } from '../../../utils/navigationState';
+import { guardianStatusProvider } from '../../../utils/smartAccount/guardianStatusProvider';
 import { signSmartAccountOwnerIntent } from '../../../utils/smartAccount/ownerSigning.ts';
 import { assertAccountCreationAvailable } from '../../../wallet/accountRecords';
 import {
@@ -453,6 +455,7 @@ import {
   createExtensionRetainedCancellation,
   readLiveEvmChainId,
 } from './evmSignedReplay';
+import { ExtensionActivityNotifications } from './extensionActivityNotifications';
 import {
   captureReviewedNativeEvmTransfer,
   freshSdkGasEstimate,
@@ -509,6 +512,10 @@ import {
 } from './transactions/types';
 import { createUtxoActivityParticipantProjection } from './transactions/utxoActivityParticipants';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
+import type {
+  ActivityNotificationFact,
+  ActivityNotificationScope,
+} from '../../../shared/activityNotifications';
 import type { EvmAutoNonceSnapshot } from '../../../shared/evmAutoNonce';
 import type { SmartAccountControllerAuthority } from '../../../shared/smartAccountControllerAuthority';
 import type {
@@ -668,6 +675,8 @@ class MainController {
   private isNetworkSwitching = false;
   private isRemovingNetwork = false;
   private walletSessionGeneration = 0;
+  private extensionActivityNotifications?: ExtensionActivityNotifications;
+  private guardianNotificationScan?: Promise<void>;
   private smartOwnerInvalidators?: Set<() => void>;
   private utxoWalletReviewKey?: Promise<CryptoKey>;
   private activeUtxoReads?: Set<AbortController>;
@@ -8575,6 +8584,138 @@ class MainController {
     return promise;
   }
 
+  private activityNotificationObserver() {
+    return (this.extensionActivityNotifications ??=
+      new ExtensionActivityNotifications());
+  }
+
+  private activityNotificationScope(
+    accountInfo: { id: number; type: KeyringAccountType },
+    account: IKeyringAccountState,
+    network: INetwork,
+    isBitcoinBased: boolean
+  ): ActivityNotificationScope {
+    return {
+      accountId: String(accountInfo.id),
+      accountType: accountInfo.type,
+      accountAddress: isBitcoinBased
+        ? account.xpub || account.address
+        : account.address,
+      chainId: String(network.chainId),
+      networkType: isBitcoinBased ? 'utxo' : 'evm',
+      networkKey: JSON.stringify([
+        network.kind,
+        network.url,
+        network.apiUrl ?? '',
+      ]),
+    };
+  }
+
+  private deliverActivityNotification(
+    fact: ActivityNotificationFact,
+    transactions: readonly any[],
+    account: IKeyringAccountState,
+    network: INetwork,
+    isBitcoinBased: boolean,
+    isCurrent: () => boolean
+  ) {
+    if (!isCurrent()) return;
+    const type =
+      fact.kind === 'transaction-pending'
+        ? 'pending'
+        : fact.kind === 'transaction-confirmed'
+        ? 'confirmed'
+        : fact.kind === 'transaction-failed'
+        ? 'failed'
+        : null;
+    const transaction = transactions.find(
+      (tx) => String(tx.hash || tx.txid).toLowerCase() === fact.transactionHash
+    );
+    if (type && transaction)
+      notificationManager.notifyTransaction({
+        transaction,
+        type,
+        account: { address: account.address, label: account.label },
+        network,
+        isEvm: !isBitcoinBased,
+        fact,
+        isCurrent,
+      });
+    else notificationManager.notifyActivity?.(fact, isCurrent);
+  }
+
+  /** The existing selected-account tick must not query sibling accounts or chains. */
+  private scheduleGuardianActivityNotifications(activeNetwork: INetwork) {
+    if (this.guardianNotificationScan) return;
+    const session = this.walletSessionGeneration;
+    const namespace = this.walletStateGeneration ?? 0;
+    const { vault } = store.getState();
+    const accountInfo = vault.activeAccount;
+    const account = vault.accounts[accountInfo.type]?.[accountInfo.id];
+    if (
+      !account?.isSmartAccount ||
+      account.smartAccount?.chainId !== activeNetwork.chainId ||
+      vault.activeNetwork.url !== activeNetwork.url ||
+      vault.activeNetwork.chainId !== activeNetwork.chainId
+    )
+      return;
+    const network = activeNetwork;
+    const observer = this.activityNotificationObserver();
+    const scan = (async () => {
+      const scope = this.activityNotificationScope(
+        accountInfo,
+        account,
+        network,
+        false
+      );
+      const isCurrent = () => {
+        const latest = store.getState();
+        const current =
+          latest.vault.accounts[accountInfo.type]?.[accountInfo.id];
+        const configured =
+          latest.vaultGlobal.networks?.ethereum?.[network.chainId];
+        return (
+          session === this.walletSessionGeneration &&
+          namespace === (this.walletStateGeneration ?? 0) &&
+          latest.vault.activeAccount.id === accountInfo.id &&
+          latest.vault.activeAccount.type === accountInfo.type &&
+          latest.vault.activeNetwork.chainId === network.chainId &&
+          latest.vault.activeNetwork.url === network.url &&
+          current?.address.toLowerCase() === account.address.toLowerCase() &&
+          current?.isSmartAccount === true &&
+          current.smartAccount?.chainId === network.chainId &&
+          configured?.url === network.url &&
+          configured?.apiUrl === network.apiUrl
+        );
+      };
+      const assertCurrent = () => {
+        if (!isCurrent())
+          throw new Error('Guardian notification scope changed');
+      };
+      await observer.guardian({
+        namespace,
+        scope,
+        isCurrent,
+        read: (knownOperationId) =>
+          observeGuardianActivity({
+            scope,
+            knownOperationId,
+            assertCurrent,
+            provider: guardianStatusProvider(
+              this.getOrCreatePersistentProvider(network.chainId, network.url)
+            ),
+          }),
+        deliver: (fact) => notificationManager.notifyActivity(fact, isCurrent),
+      });
+    })()
+      .catch(() => undefined)
+      .finally(() => {
+        if (this.guardianNotificationScan === scan)
+          this.guardianNotificationScan = undefined;
+      });
+    this.guardianNotificationScan = scan;
+  }
+
   public updateUserTransactionsState({
     isBitcoinBased,
     activeNetwork,
@@ -8591,6 +8732,8 @@ class MainController {
     isRapidPolling?: boolean;
   }) {
     if (this.clearingEvmActivity) return;
+    if (isPolling && !isRapidPolling && !isBitcoinBased)
+      this.scheduleGuardianActivityNotifications(activeNetwork);
     // For polling, we don't need keyring access - we're just fetching public transaction data
     // Only check if unlocked for non-polling operations
     if (!isPolling) {
@@ -8742,54 +8885,48 @@ class MainController {
                     };
                   });
 
-              // Suppress notifications on first sync for this account/chain to avoid spam
-              // Baseline at current latest transactions and notify only for subsequent updates
-              const hasPreviousTxs =
-                Array.isArray(previousTxs) && previousTxs.length > 0;
-
-              // Notify about transaction updates
-              // Always check for notifications, even during polling - users should be notified
-              // about new transactions discovered in the background while using dapps
-              if (account && hasPreviousTxs) {
-                updatedTxs.forEach((tx: any) => {
-                  const txId = tx.hash || tx.txid;
-                  const previousTx = txId ? previousTxMap.get(txId) : undefined;
-                  const isCurrentConfirmed = isTransactionInBlock(tx);
-                  const wasPreviouslyConfirmed = previousTx
-                    ? isTransactionInBlock(previousTx)
-                    : false;
-
-                  // New pending transaction
-                  if (!previousTx && !isCurrentConfirmed) {
-                    notificationManager.notifyTransaction({
-                      transaction: tx,
-                      type: 'pending',
-                      account: {
-                        address: account.address,
-                        label: account.label,
-                      },
-                      network: activeNetwork,
-                      isEvm: !isBitcoinBased,
-                    });
+              if (account) {
+                const notificationScope = this.activityNotificationScope(
+                  activeAccount,
+                  account,
+                  activeNetwork,
+                  isBitcoinBased
+                );
+                const observedFacts =
+                  this.activityNotificationObserver().history({
+                    scope: notificationScope,
+                    namespace: this.walletStateGeneration ?? 0,
+                    previousTransactions: previousTxs,
+                    transactions: updatedTxs,
+                    isCurrent: isCurrentRead,
+                    deliver: (fact) =>
+                      this.deliverActivityNotification(
+                        fact,
+                        updatedTxs,
+                        account,
+                        activeNetwork,
+                        isBitcoinBased,
+                        isCurrentRead
+                      ),
+                  });
+                // Initial historical sync is not a new confirmation. Preserve
+                // the normal refresh policy, including the first transaction
+                // after an observed empty baseline.
+                if (
+                  !isBitcoinBased &&
+                  (previousTxs.length > 0 ||
+                    observedFacts.some(
+                      (fact) => fact.kind === 'transaction-confirmed'
+                    ))
+                )
+                  for (const tx of updatedTxs) {
+                    const before = previousTxMap.get(tx.hash || tx.txid);
+                    if (
+                      isTransactionInBlock(tx) &&
+                      !isTransactionInBlock(before)
+                    )
+                      this.refreshBalancesAfterHistory(tx);
                   }
-
-                  // Transaction just confirmed
-                  if (isCurrentConfirmed && !wasPreviouslyConfirmed) {
-                    if (!isBitcoinBased) this.refreshBalancesAfterHistory(tx);
-                    notificationManager.notifyTransaction({
-                      transaction: tx,
-                      type: isBitcoinBased
-                        ? 'confirmed'
-                        : this.getEvmMinedTransactionNotificationType(tx),
-                      account: {
-                        address: account.address,
-                        label: account.label,
-                      },
-                      network: activeNetwork,
-                      isEvm: !isBitcoinBased,
-                    });
-                  }
-                });
               }
 
               store.dispatch(
@@ -8822,6 +8959,33 @@ class MainController {
               // Update pending transaction badge
               notificationManager.updatePendingTransactionBadge(updatedTxs);
             } else if (Array.isArray(txs)) {
+              const account =
+                latestVault.accounts[activeAccount.type]?.[activeAccount.id];
+              if (account)
+                this.activityNotificationObserver().history({
+                  scope: this.activityNotificationScope(
+                    activeAccount,
+                    account,
+                    activeNetwork,
+                    isBitcoinBased
+                  ),
+                  namespace: this.walletStateGeneration ?? 0,
+                  previousTransactions:
+                    latestVault.accountTransactions[activeAccount.type]?.[
+                      activeAccount.id
+                    ]?.ethereum?.[activeNetwork.chainId] || [],
+                  transactions: [],
+                  isCurrent: isCurrentRead,
+                  deliver: (fact) =>
+                    this.deliverActivityNotification(
+                      fact,
+                      [],
+                      account,
+                      activeNetwork,
+                      isBitcoinBased,
+                      isCurrentRead
+                    ),
+                });
               // An empty EVM read retains local history, but the badge must
               // still belong to the current account after a context switch.
               notificationManager.updatePendingTransactionBadge(

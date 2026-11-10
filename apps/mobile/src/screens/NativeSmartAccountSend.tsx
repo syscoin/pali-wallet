@@ -45,6 +45,8 @@ import { NativeSendInput, nativeTransferFailure } from './NativeSend';
 import { NativeTokenMaximum, nativeTokenAvailableAmount } from './NativeTokenMaximum';
 import { RecipientQrScanner } from './RecipientQrScanner';
 import { SendNetworkCard } from './SendNetworkCard';
+import { SendAssetSelector, type SendAssetItem } from './SendAssetSelector';
+import type { NativeUnsignedSendDraft } from './sendNetworkDraft';
 import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation';
 import { Button, Card, Coin, colors, Header, IconButton, Notice, Screen, styles, Text } from '../ui';
 
@@ -91,6 +93,10 @@ export function NativeSmartAccountSend({
   onBack,
   recipientResolver,
   ledgerConnection,
+  assetChoices,
+  onChangeAsset,
+  initialRecipient,
+  availableNative,
 }: {
   ledgerConnection?: NativeLedgerConnectionView;
   open(
@@ -108,6 +114,10 @@ export function NativeSmartAccountSend({
   tokenView?: Pick<NativeTokenView, 'subscribe' | 'getSnapshot' | 'connect'>;
   onBack(): void;
   recipientResolver?: NativeRecipientResolver;
+  assetChoices?: readonly SendAssetItem[];
+  onChangeAsset?(draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>, token?: Erc20Metadata): void;
+  initialRecipient?: string;
+  availableNative?: string;
 }) {
   const portfolio = useMemo(
     () => new NativePortfolioController(source, reader),
@@ -123,6 +133,7 @@ export function NativeSmartAccountSend({
     tokenView?.getSnapshot ?? emptyInventory,
     tokenView?.getSnapshot ?? emptyInventory
   );
+  const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   useLayoutEffect(
     () =>
       collectible
@@ -132,6 +143,8 @@ export function NativeSmartAccountSend({
         : portfolio.connect(),
     [portfolio, token, tokenView, collectible]
   );
+  useLayoutEffect(() => !token && !collectible && assetPickerOpen && !assetChoices ? tokenView?.connect() : undefined,
+    [token, collectible, assetPickerOpen, assetChoices, tokenView]);
   const selectedToken =
     token &&
     inventory?.items.find(
@@ -146,7 +159,7 @@ export function NativeSmartAccountSend({
   const loadingBalance = token
     ? selectedToken?.status === 'loading'
     : balance.status === 'loading';
-  const [recipient, setRecipient] = useState('');
+  const [recipient, setRecipient] = useState(initialRecipient ?? '');
   const [amount, setAmount] = useState(
     collectible?.tokenStandard === 'ERC-721' ? '1' : ''
   );
@@ -426,7 +439,15 @@ export function NativeSmartAccountSend({
         } gap={16}>
           <Header title={collectible ? 'Send collectible' : `Send ${symbol}`}
             subtitle={`${accountLabel} · ${context.name}${context.testnet ? ' · Test network' : ''}`} onBack={back} />
-          <SendNetworkCard context={context} disabled={busy} />
+          {onChangeAsset && !collectible ? <SendAssetSelector context={context} token={token} nativeAvailable={availableNative}
+            items={inventory?.status === 'ready' && sameNativePortfolioAccount(inventory.account, account) ? inventory.items : assetChoices ?? []}
+            loading={assetPickerOpen && !assetChoices && inventory?.status === 'loading'} unavailable={!assetChoices && inventory?.status === 'error'}
+            open={assetPickerOpen} busy={busy} onOpen={() => { if (!busy) { closeScanner(); setAssetPickerOpen(true); } }}
+            onClose={() => setAssetPickerOpen(false)} onSelect={next => {
+              if (busy) return;
+              setAssetPickerOpen(false);
+              onChangeAsset({ kind: 'evm', recipient, amount, nonce: '', max: maximum, advanced: false }, next);
+            }} /> : <SendNetworkCard context={context} disabled={busy} />}
           {collectible && (
             <Card style={s.asset}>
               <Text style={s.label}>COLLECTIBLE CONTRACT · {collectible.tokenStandard}</Text>

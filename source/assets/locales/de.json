@@ -1354,7 +1354,17 @@
     "errorDetails": "Ein Fehler ist aufgetreten: {{error}}",
     "errorWithContext": "Ein Fehler ist aufgetreten: {{error}}: {{context}}",
     "viewDetails": "Klicken, um Details anzuzeigen",
-    "clickToView": "Klicken um Details anzuzeigen"
+    "clickToView": "Klicken um Details anzuzeigen",
+    "activityTitle": "Wallet-Aktivität",
+    "activityPending": "Eine eingehende oder ausgehende Transaktion ist ausstehend.",
+    "activityConfirmed": "Eine eingehende oder ausgehende Transaktion wurde bestätigt.",
+    "activityFailed": "Eine Transaktion ist fehlgeschlagen.",
+    "activityUnknown": "Eine Transaktion wurde aufgenommen; ihr Ergebnis ist noch nicht verfügbar.",
+    "recoveryStarted": "Die Wiederherstellung durch Guardians wurde gestartet.",
+    "recoveryCancelled": "Die Wiederherstellung wurde abgebrochen.",
+    "recoveryCompleted": "Die Wiederherstellung wurde abgeschlossen.",
+    "recoveryExpired": "Die Wiederherstellung ist abgelaufen.",
+    "guardianPolicyChanged": "Die Guardian-Regeln wurden geändert."
   },
   "faucet": {
     "title": "Faucet",
@@ -2107,7 +2117,6 @@
       "evmBody": "Anyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place.",
       "hide": "Hide private key",
       "sessionOnly": "Hide the key when you are finished. Revealing it again requires fresh authorization.",
-      "confirmPassword": "Confirm your wallet PIN",
       "reveal": "Reveal private key",
       "confirming": "Confirming PIN",
       "hardwareGuide": "Your {{device}} account uses its own recovery backup. The phrase shown in Pali belongs to this Pali wallet."
@@ -2155,7 +2164,6 @@
       "derived": "One recovery phrase, another address",
       "smartBody": "Create a smart account managed by Account 1 on this network. It can receive funds after creation; deployment is required before sending.",
       "derivedBody": "This account is derived from your existing recovery phrase. Keep that phrase backed up offline.",
-      "confirmPassword": "Confirm wallet PIN",
       "subtitle": "{{network}} · Wallet accounts",
       "select": "Select {{name}}",
       "removeHardware": "Removing this local account keeps its keys on your {{device}}. Connect the same device to add it again.",
@@ -2245,7 +2253,12 @@
       "balanceSuffix": ", balance and receive only",
       "editLabel": "Edit {{name}}{{chain}}",
       "useLabel": "Use {{name}}, {{symbol}}, Chain ID {{chainId}}",
-      "chain": "Chain ID {{chainId}}"
+      "chain": "Chain ID {{chainId}}",
+      "sendFrom": "Senden von",
+      "receiveOn": "Empfangen auf",
+      "chooseSource": "Quelle zum Senden auswählen",
+      "chooseDestination": "Netzwerk zum Empfangen auswählen",
+      "availableBalance": "{{amount}} {{symbol}} verfügbar"
     },
     "tools": {
       "title": "Werkzeuge",
@@ -2282,6 +2295,43 @@
       "unavailable": "Die Einrichtung ist nicht verfügbar. Aktualisieren Sie den Status, bevor Sie es erneut versuchen.",
       "cancelled": "Das Wallet wurde geändert oder gesperrt. Öffnen Sie die Einrichtung erneut.",
       "reviewOptional": "Optionale Bereitstellung prüfen"
+    },
+    "notifications": {
+      "title": "Aktivitätsmeldungen",
+      "description": "Konten für Transfer- und Wiederherstellungsmeldungen auswählen.",
+      "privacy": "Vorschauen verbergen Guthaben und Adressen.",
+      "background": "Hintergrundprüfungen hängen von Ihrem Telefon ab.",
+      "empty": "Keine Konten entsprechen Ihrer Suche.",
+      "unavailable": "Meldungen nicht verfügbar",
+      "error": "Prüfen Sie die Mitteilungsrechte in den Geräteeinstellungen und versuchen Sie es erneut.",
+      "checkNow": "Jetzt prüfen",
+      "disableAll": "Alle Meldungen ausschalten",
+      "search": "Konten oder Netzwerke suchen"
+    },
+    "accountPortfolio": {
+      "value": "Portfoliowert",
+      "estimated": "Geschätzter Wert",
+      "partial": "Bekannter Wert · Einige Guthaben oder Preise nicht verfügbar",
+      "testnetsExcluded": "Testnetz-Guthaben ausgeschlossen",
+      "allNetworks": "Alle Netzwerke",
+      "unavailableNetwork": "Netzwerk nicht verfügbar",
+      "chooseAccount": "Konto auswählen, {{account}}",
+      "chooseFilter": "Netzwerkfilter auswählen, {{network}}",
+      "assets": "Vermögenswerte · {{account}}",
+      "unavailable": "Portfolio nicht verfügbar. Öffnen Sie Ihre Wallet erneut.",
+      "noAddress": "Dieses Konto hat keine gespeicherte Adresse im ausgewählten Netzwerk. Wählen Sie einen anderen Filter.",
+      "error": "Anfrage fehlgeschlagen. Versuchen Sie es erneut.",
+      "activityNetwork": "Transaktionen auf {{network}} anzeigen",
+      "activityAll": "Aktivität in hinzugefügten Netzwerken anzeigen",
+      "collectibles": "Gespeicherte Sammlerstücke: {{count}} · {{network}}",
+      "refresh": "Portfolio aktualisieren"
+    },
+    "sendAssets": {
+      "choose": "Asset auswählen",
+      "search": "Gespeicherte Assets suchen",
+      "label": "Asset",
+      "change": "Asset ändern",
+      "unavailable": "Gespeicherte Assets nicht verfügbar. Erneut versuchen."
     }
   }
 }

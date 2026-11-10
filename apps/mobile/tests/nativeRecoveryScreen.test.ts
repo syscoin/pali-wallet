@@ -28,6 +28,7 @@ import { createNativeSentryKeyManagement, type NativeSentryKeyManagement } from 
 import { OperationAuthentication, type OperationAuthenticationPrompt } from '../src/core/operationAuthentication.ts';
 import type { NativeConnectionsView } from '../src/connections/types.ts';
 import type { NativeTrezorView } from '../src/custody/trezorAccounts.ts';
+import { quietActivityNotifications, type NotificationTestPort } from './notificationFixture.ts';
 
 // Leaf tests inject completed PIN values; the actual numeric pad has dedicated coverage.
 function pinFieldFixture(f: ReturnType<typeof setup>) {
@@ -61,6 +62,9 @@ const inventory = { status: 'needs-matching-phrase-verification', reason: null, 
   historySummaries: 7, cachedTransactions: 8, activityPreferences: 9,
 } };
 const walletScreenPorts = {
+  './NativeAccountOverview': { NativePortfolioRoute: 'NativePortfolio' },
+  '../notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
+  '../activity/accountActivity': { AccountActivityController: class {} },
   './BackupIntroduction': { BackupIntroduction: 'BackupIntroduction' },
   './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
   './NativeImportWallet': { NativeImportWallet: 'NativeImportWallet' },
@@ -306,7 +310,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   installed.forEach((s) => s.remove()); leaf.dispose(); root.dispose();
 });
 
-async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED' }) {
+async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED' }, notificationPort: NotificationTestPort = quietActivityNotifications) {
   const root = setup();
   const networkId = networkMode === 'utxo' ? 'bitcoin' : 'ethereum';
   const address = `0x${'11'.repeat(20)}`;
@@ -320,6 +324,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   let releasePrompt!: () => void;
   let locks = 0;
   const lifecycle: string[] = [];
+  const notificationRoutes: { tab: string; identity: string }[] = [];
   const enrollments: { enabled: boolean; password: string }[] = [];
   const backupAcknowledgements: string[] = [];
   const authentication = new DeviceUnlockPrompt({
@@ -333,6 +338,8 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   });
   const publish = (patch: Partial<typeof state>) => { state = { ...state, ...patch }; observer(state); };
   const controllers = {
+    getNotificationChoices: () => networkContext.NATIVE_NETWORKS.map(network => ({ label: 'Account 1', networkName: network.name, symbol: network.symbol,
+      scope: { id: `native:hd:60:0:${network.id}`, accountId: 'hd:60:0', accountType: 'HDAccount', accountAddress: address, network, guardian: false } })),
     canManageGuardianPolicy: () => false, canSignSmartAccount: () => false, canManageSlhDsa: () => false,
     canManageSmartAccountModules: () => false,
     async openSmartAccountModules() { throw Error('Modules are outside this fixture'); },
@@ -407,6 +414,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     begin(mode: string) { assert(depositMode && mode === 'export'); return true; } };
   Object.assign(dependencies, {
     ...walletScreenPorts,
+    '../notifications/service': { nativeActivityNotifications: notificationPort, isNotificationPermissionPromptActive: () => false },
     '../portfolio/nativePortfolio': { NativePortfolioController: class { getSnapshot = () => null; subscribe = () => () => {}; connect() { return () => {}; } }, sameNativePortfolioAccount: () => false },
     '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'biometrics', icon: 'fingerprint' }) },
     '../platform/localization': nativeTranslationFixture,
@@ -435,7 +443,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     './NativeRecovery': { NativeRecovery: 'NativeRecovery' }, './NativeNoteRestore': { NoteRestoreUnconfirmedNotice: 'NoteRestoreUnconfirmedNotice' },
     '../custody/networkView': { createNativeNetworkView: networkMode ? createNativeNetworkView : () => ({}) },
     './useNativeNoteBackup': { useNativeNoteBackup: () => noteRestore },
-    './useRealShell': { useRealShell: () => ({ tab: depositMode ? 'tools' : 'wallet', navigation: {}, goBack() {}, restoreRoot() {} }) },
+    './useRealShell': { useRealShell: () => ({ tab: depositMode ? 'tools' : 'wallet', navigation: {}, goBack() {}, restoreRoot(tab: string, identity: string) { notificationRoutes.push({ tab, identity }); } }) },
   });
   const Root = evaluate(source, dependencies).NativeWalletContent as (props: object) => Element;
   const props = { controllerRef: { current: null }, onExit() {} };
@@ -449,7 +457,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     await new Promise((resolve) => setImmediate(resolve));
     return render();
   };
-  return { render, unlock, publish, noteRestore, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, backupAcknowledgements, lifecycle, get locks() { return locks; } };
+  return { render, unlock, publish, noteRestore, notificationRoutes, selectedNetwork: () => state.account?.network, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, backupAcknowledgements, lifecycle, get locks() { return locks; } };
 }
 
 for (const refusal of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED'] as const) test(`Change PIN returns to a fresh current-PIN entry after ${refusal}`, async () => {
@@ -1190,7 +1198,7 @@ test('private deposit backup returns its public task and discards stale export c
   }
 });
 
-for (const family of ['evm', 'utxo'] as const) test(`contextual ${family} network picker preserves Cancel draft and resets only after a proven selection`, async () => {
+for (const family of ['evm'] as ('evm' | 'utxo')[]) test(`contextual ${family} network picker preserves Cancel draft and resets only after a proven selection`, async () => {
   const f = await walletFeedbackFixture(false, false, undefined, undefined, false, family);
   const form = family === 'evm'
     ? { kind: 'evm', recipient: '0x52908400098527886E0F7030069857D2E4169EE7', amount: '2.5', nonce: '8', tokenId: '3', max: true, advanced: true }
@@ -1225,6 +1233,33 @@ for (const family of ['evm', 'utxo'] as const) test(`contextual ${family} networ
   } finally { f.dispose(); }
 });
 
+test('UTXO Send opens its known network directly without a source selector', async () => {
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'utxo');
+  try {
+    const portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
+    (portfolio.props.onSend as () => void)();
+    const send = f.render(); assert.equal(send.type, 'NativeUtxoSendScreen'); assert.equal(send.props.onChangeNetwork, undefined);
+  } finally { f.dispose(); }
+});
+
+test('same-network asset changes preserve recipient but clear amount, MAX, and advanced draft state', async () => {
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm');
+  try {
+    (all(f.render()).find(node => node.type === 'NativePortfolio')!.props.onSend as () => void)();
+    const send = f.render(), asset = { contractAddress: '0x' + 'ab'.repeat(20), name: 'Saved token', symbol: 'TOK', decimals: 6 };
+    (send.props.onChangeAsset as (form: unknown, token: unknown) => void)({ kind: 'evm', recipient: 'alice.eth', amount: '9', nonce: '7', max: true, advanced: true }, asset);
+    await new Promise(resolve => setImmediate(resolve));
+    const changed = f.render();
+    assert.equal(changed.type, 'NativeSend'); assert.equal(changed.props.token, asset);
+    assert.deepEqual(JSON.parse(JSON.stringify(changed.props.initialDraft)), { kind: 'evm', recipient: 'alice.eth', amount: '', nonce: '', max: false, advanced: false });
+    assert.equal(f.selectedNetwork(), 'ethereum');
+    (changed.props.onBack as () => void)();
+    (send.props.onChangeAsset as (form: unknown) => void)({ kind: 'evm', recipient: 'stale.eth', amount: '9', nonce: '', max: false, advanced: false });
+    await new Promise(resolve => setImmediate(resolve));
+    assert(all(f.render()).some(node => node.type === 'NativePortfolio'));
+  } finally { f.dispose(); }
+});
+
 test('Receive network selection returns to the canonical address and does not reuse the previous network acknowledgement', async () => {
   const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm');
   try {
@@ -1244,5 +1279,44 @@ test('Receive network selection returns to the canonical address and does not re
     assert.deepEqual(JSON.parse(JSON.stringify(portfolio.props.initialReceive)), {
       account: { address: UTXO_ADDRESSES.bitcoin, network: 'bitcoin', revision: 2 }, backupAcknowledged: false,
     });
+  } finally { f.dispose(); }
+});
+
+function notificationTapPort(kind: 'transaction-confirmed' | 'recovery-started', wait = Promise.resolve(), accountType = 'HDAccount') {
+  const eventId = `pali-alert-${'ab'.repeat(16)}`, network = networkContext.getNativeNetwork('syscoin-nevm');
+  const scope = { id: 'native:hd:60:0:syscoin-nevm', accountId: 'hd:60:0', accountType, accountAddress: '0x' + '11'.repeat(20), network, guardian: false };
+  let state = { ...quietActivityNotifications.getSnapshot(), pendingEventId: eventId as string | null };
+  let resolutions = 0;
+  const port: NotificationTestPort = {
+    ...quietActivityNotifications, getSnapshot: () => state,
+    async getPendingOwner() { return { accountId: scope.accountId, accountType }; },
+    async resolveTapAfterUnlock(_id, validate) {
+      resolutions++; await wait;
+      if (!validate(scope)) return null;
+      state = { ...state, pendingEventId: null };
+      return { scopeId: scope.id, accountId: scope.accountId, accountType, networkId: network.id, kind, transactionHash: '0x' + 'ab'.repeat(32) };
+    },
+  };
+  return { port, resolutions: () => resolutions };
+}
+
+for (const kind of ['transaction-confirmed', 'recovery-started'] as const) test(`native ${kind} tap selects its exact network before opening the public destination`, async () => {
+  const tap = notificationTapPort(kind);
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port);
+  try {
+    f.render(); await new Promise(resolve => setImmediate(resolve)); f.render();
+    assert.equal(f.selectedNetwork(), 'syscoin-nevm');
+    assert.deepEqual(f.notificationRoutes, [{ tab: kind === 'transaction-confirmed' ? 'activity' : 'tools', identity: 'hd:60:0:syscoin-nevm' }]);
+    assert.equal(tap.resolutions(), 1);
+  } finally { f.dispose(); }
+});
+
+test('native tap resolution cannot select a network after background revocation', async () => {
+  const held = Promise.withResolvers<void>(), tap = notificationTapPort('transaction-confirmed', held.promise);
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, tap.port);
+  try {
+    f.render(); await new Promise(resolve => setImmediate(resolve));
+    f.emit('change', 'background'); held.resolve(); await new Promise(resolve => setImmediate(resolve)); f.render();
+    assert.equal(f.selectedNetwork(), 'ethereum'); assert.deepEqual(f.notificationRoutes, []);
   } finally { f.dispose(); }
 });

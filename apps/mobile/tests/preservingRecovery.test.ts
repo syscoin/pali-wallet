@@ -31,7 +31,7 @@ import { getUtxoNetwork, getUtxoSdkNetwork, type UtxoNetworkId } from '../src/co
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { createUtxoBalanceReader } from '../src/core/utxoBalanceReader.ts';
 import { metadata as utxoMetadata, UTXO_ADDRESSES } from './publicWatchFixtures.ts';
-import { WALLET_CATALOGUE_KEY, type NativeAccountRecord } from '../src/custody/walletCatalogue.ts';
+import { WALLET_CATALOGUE_KEY, sentryRootPublicIdentity, type NativeAccountRecord } from '../src/custody/walletCatalogue.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { ACTIVITY_STORAGE_KEY } from '../src/activity/historyStore.ts';
 import { createActivityScope } from '../src/activity/types.ts';
@@ -43,7 +43,7 @@ import { UTXO_SIGNED_RECORD_KEY, UtxoSignedRecords } from '../../../source/walle
 import { ROOT_DOMAIN as UTXO_ROOT_DOMAIN } from '../../../source/wallet/utxoSignedBundle.ts';
 import { utxoInputOutpoints } from '../../../source/utils/utxoAcknowledgedInputs.ts';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
-import { createSentryKeyVault } from '../../../source/wallet/sentryKeyVault.ts';
+import { createSentryKeyVault, deriveSentryVaultId } from '../../../source/wallet/sentryKeyVault.ts';
 import { SENTRY_SLOT_KEYS } from '../src/storage/sentryKeyDomain.ts';
 import type { DeriveSentryPublicKey } from '../src/custody/sentryKeyManagement.ts';
 import { parseSentrySettingsStorageKey } from '../../../source/shared/sentrySettings.ts';
@@ -545,7 +545,7 @@ for (const fault of ['before-write', 'commit-not-applied', 'commit-applied'] as 
       f.owner.lock();
       const before = f.read(), proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined); let injected = false;
       const fail = (_kind: unknown, sql: string) => {
-        if (!injected && (fault === 'before-write' ? sql.startsWith('UPDATE keyring_records') : sql === 'COMMIT')) { injected = true; throw new Error('Injected commit fault'); }
+        if (!injected && (fault === 'before-write' ? sql.startsWith('INSERT INTO keyring_records') : sql === 'COMMIT')) { injected = true; throw new Error('Injected commit fault'); }
       };
       if (fault === 'commit-applied') f.setAfter(fail); else f.setHook(fail);
       if (fault === 'commit-applied') assert.equal(await recovery.commit(proof), 'committed-locked');
@@ -716,14 +716,16 @@ test('recovery waits for a locked old owner to drain an admitted real SDK secret
     }
   }
   const f = await fixture(async () => ({ ...sdk, HostKeyring: DelayedOperation }));
-  f.owner.lock(); hold = true;
-  const oldUnlock = f.owner.unlock(OLD).catch((error) => error);
+  f.owner.lock(); await f.owner.unlock(OLD); hold = true;
+  // Public unlock no longer opens a signing-secret lease. Hold a real
+  // authorized backup operation to exercise retirement's existing drain.
+  const oldSecret = f.runtime.backup.readPhrase(OLD).catch((error) => error);
   await pause.reached; f.owner.lock(); const recovery = f.coordinator();
   try {
     const pending = prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
     await new Promise<void>((resolve) => setImmediate(resolve));
     assert.equal(f.opens, 1, 'recovery cannot acquire the old lease early');
-    hold = false; pause.release(); await oldUnlock;
+    hold = false; pause.release(); await oldSecret;
     const proof = await pending; assert.equal(f.opens, 2);
     await recovery.commit(proof); await f.reopen(); await f.owner.unlock(NEXT);
     assert.equal(f.owner.getSnapshot().phase, 'ready');
@@ -736,7 +738,7 @@ for (const boundary of ['write', 'committed'] as const) {
     try {
       const before = f.read(), proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined); let held = false;
       const pauseOnce: SqlHook = async (_kind, sql) => {
-        if (!held && (boundary === 'write' ? sql.startsWith('UPDATE keyring_records') : sql === 'COMMIT')) { held = true; pause.enter(); await pause.gate; }
+        if (!held && (boundary === 'write' ? sql.startsWith('INSERT INTO keyring_records') : sql === 'COMMIT')) { held = true; pause.enter(); await pause.gate; }
       };
       if (boundary === 'write') f.setHook(pauseOnce); else f.setAfter(pauseOnce);
       const pending = recovery.commit(proof); await pause.reached;
@@ -946,7 +948,7 @@ test('a reentrant cancellation from the final commit guard rolls back before COM
   };
   try {
     const before = f.read(), proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, guard);
-    expectedWrites = before.metadata.filter(row => ['identity', 'auth', 'backup', 'local-pin-v1'].includes(String(row.key))).length;
+    expectedWrites = before.metadata.filter(row => ['identity', 'auth', 'backup', 'local-pin-v1'].includes(String(row.key))).length + Number(before.metadata.some(row => row.key === 'local-pin-v1'));
     f.setAfter((_kind, sql) => { if (sql.startsWith('INSERT INTO wallet_metadata')) metadataWrites++; });
     await assert.rejects(recovery.commit(proof), { code: 'CANCELLED' });
     assert.equal(cancelled, true);
@@ -967,7 +969,7 @@ for (const boundary of ['cancellation', 'expiry'] as const) {
     };
     try {
       const before = f.read(), proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, guard);
-    expectedWrites = before.metadata.filter(row => ['identity', 'auth', 'backup', 'local-pin-v1'].includes(String(row.key))).length;
+    expectedWrites = before.metadata.filter(row => ['identity', 'auth', 'backup', 'local-pin-v1'].includes(String(row.key))).length + Number(before.metadata.some(row => row.key === 'local-pin-v1'));
       f.dispatched.length = 0;
       f.setAfter((_kind, sql) => { if (sql.startsWith('INSERT INTO wallet_metadata')) metadataWrites++; });
       await assert.rejects(recovery.commit(proof), { code: 'CANCELLED' });
@@ -981,21 +983,23 @@ for (const boundary of ['cancellation', 'expiry'] as const) {
 
 test('cancellation after COMMIT dispatch reconciles the complete new pair without compensation', async () => {
   const f = await fixture(); f.owner.lock(); const recovery = f.coordinator();
-  let queued = false;
+  let queued = false, cleanupDeletes = 0;
   try {
     const before = f.read(), proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
     f.dispatched.length = 0;
+    f.setAfter((kind, sql) => { if (kind === 'run' && sql === 'DELETE FROM wallet_metadata WHERE key = ? AND value = ?') cleanupDeletes++; });
     f.setDispatch((sql) => { if (sql === 'COMMIT' && !queued) { queued = true; queueMicrotask(() => recovery.cancel()); } });
     await assert.rejects(recovery.commit(proof), { code: 'CANCELLED' });
     f.setDispatch();
     assert.equal(queued, true);
-    assert.equal(f.dispatched.filter((sql) => sql === 'COMMIT').length, 1);
+    assert.equal(cleanupDeletes, 1, 'the second commit retires the acknowledged old credential receipt');
+    assert.equal(f.dispatched.filter((sql) => sql === 'COMMIT').length, 2);
     assert.deepEqual(retained(f.read()), retained(before));
     assert.notDeepEqual(f.read().records.filter((row) => ['vault', 'vault-keys'].includes(row.key)),
       before.records.filter((row) => ['vault', 'vault-keys'].includes(row.key)));
     await f.reopen(); await f.owner.unlock(NEXT);
     assert.equal(f.owner.getSnapshot().phase, 'ready');
-  } finally { f.setDispatch(); await recovery.dispose(); await f.close(); }
+  } finally { f.setDispatch(); f.setAfter(); await recovery.dispose(); await f.close(); }
 });
 
 test('cancellation before the first snapshot cannot let an old helper adopt a newer pair', async () => {
@@ -1331,13 +1335,9 @@ test('Sentry buckets survive cold unlock and recovery, then explicit wallet remo
     for (const [networkId] of networks) await selectNetwork(f, networkId);
     removal = removalForCurrentOwner();
     const ticket = await removal.authorize(OLD, current);
-    for (const [networkId, network] of networks) {
-      const registration = getUtxoNetwork(networkId);
+    for (const [, network] of networks) {
       const catalogue = await accountRecord(f);
-      const first = catalogue.groups.find(
-        (group) => group.key === String(registration.slip44)
-      )!.accounts.HDAccount[0]!;
-      const vaultId = createHash('sha256').update(first.xpub).digest('hex');
+      const vaultId = await deriveSentryVaultId(sentryRootPublicIdentity(catalogue, network), digest);
       const identity = (await f.store.recovery.readIdentity())!;
       const bind = f.store.sentryKeys.bind;
       const owner = {

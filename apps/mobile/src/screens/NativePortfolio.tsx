@@ -30,7 +30,7 @@ import type { NativePortfolioAccount, NativePortfolioSnapshot, PublicCustodySour
 import { Button, Card, Coin, colors, Header, Icon, IconButton, Notice, Row, Screen, styles, Text } from '../ui';
 import { useNativeTranslation } from '../platform/localization';
 
-type Props = {
+export type NativePortfolioProps = {
   source: PublicCustodySource;
   hardwareRequest?: React.ReactNode;
   smartAccount?: NativeCatalogueAccount['smartAccount'];
@@ -56,7 +56,11 @@ type Props = {
   onActivity?(): void;
   tokenView?: NativeTokenView;
   navigation?: ShellLeafNavigation;
+  onOverviewBack?(): void;
+  openReceive?: boolean;
+  initialTokenContract?: string;
 };
+type Props = NativePortfolioProps;
 export type NativeReceiveContinuation = Readonly<{ account: NativePortfolioAccount; backupAcknowledged: boolean }>;
 type Feedback = { scope: string; text: string; failed?: boolean } | null;
 type ReceiveAcknowledgement = Readonly<{ model: NativePortfolioController; scope: string }>;
@@ -64,7 +68,7 @@ type ReceiveWarning = ReceiveAcknowledgement & Readonly<{ account: NativePortfol
 const scopeOf = (account: NativePortfolioAccount) => `${account.revision}:${account.network}:${account.address}`;
 
 /** Only the custody authority's public account projection reaches this screen. */
-export function NativePortfolio({ hardwareRequest, source, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onManageSlhDsa, onManageSmartAccountModules, onExit, onLock, onViewRecovery, onBackup, onSecurity, onSend, onSendSpt, onSendToken, onSendCollectible, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onChangeReceiveNetwork, initialReceive, onActivity, tokenView, navigation }: Props) {
+export function NativePortfolio({ hardwareRequest, source, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onManageSlhDsa, onManageSmartAccountModules, onExit, onLock, onViewRecovery, onBackup, onSecurity, onSend, onSendSpt, onSendToken, onSendCollectible, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onChangeReceiveNetwork, initialReceive, onActivity, tokenView, navigation, onOverviewBack, openReceive, initialTokenContract }: Props) {
   const balanceReader = useMemo(() => reader ?? createBalanceReader({ fetch: walletFetch, registrations: () => source.getCatalogue?.()?.networks }), [reader, source]);
   const model = useMemo(() => new NativePortfolioController(source, balanceReader), [source, balanceReader]);
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
@@ -74,10 +78,10 @@ export function NativePortfolio({ hardwareRequest, source, smartAccount, onDeplo
   const requiresBackup = useCallback(() => source.getSnapshot().backup !== 'confirmed', [source]);
   useLayoutEffect(() => model.connect(), [model]);
   const scope = snapshot.account ? scopeOf(snapshot.account) : 'unavailable';
-  return <NativePortfolioContent initialReceive={initialReceive} onChangeReceiveNetwork={onChangeReceiveNetwork} hardwareRequest={hardwareRequest} smartAccount={smartAccount} onDeploySmartAccount={onDeploySmartAccount} onUseWalletAuthenticator={onUseWalletAuthenticator} onManageSlhDsa={onManageSlhDsa} onManageSmartAccountModules={onManageSmartAccountModules} key={scope} model={model} snapshot={snapshot} backupRequired={custody.backup === 'unconfirmed'} requiresBackup={requiresBackup} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onBackup={onBackup} onSecurity={onSecurity} onSend={onSend} onSendSpt={onSendSpt} onSendToken={onSendToken} onSendCollectible={onSendCollectible} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} navigation={navigation} />;
+  return <NativePortfolioContent initialTokenContract={initialTokenContract} onOverviewBack={onOverviewBack} openReceive={openReceive} initialReceive={initialReceive} onChangeReceiveNetwork={onChangeReceiveNetwork} hardwareRequest={hardwareRequest} smartAccount={smartAccount} onDeploySmartAccount={onDeploySmartAccount} onUseWalletAuthenticator={onUseWalletAuthenticator} onManageSlhDsa={onManageSlhDsa} onManageSmartAccountModules={onManageSmartAccountModules} key={scope} model={model} snapshot={snapshot} backupRequired={custody.backup === 'unconfirmed'} requiresBackup={requiresBackup} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onBackup={onBackup} onSecurity={onSecurity} onSend={onSend} onSendSpt={onSendSpt} onSendToken={onSendToken} onSendCollectible={onSendCollectible} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} navigation={navigation} />;
 }
 
-function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequired, requiresBackup, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onManageSlhDsa, onManageSmartAccountModules, onExit, onLock, onViewRecovery, onBackup, onSecurity, onSend, onSendSpt, onSendToken, onSendCollectible, accountLabel, onManageAccounts, onManageNetworks, onChangeReceiveNetwork, initialReceive, onActivity, tokenView, navigation }: Omit<Props, 'source' | 'reader' | 'accountLabel'> & {
+function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequired, requiresBackup, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onManageSlhDsa, onManageSmartAccountModules, onExit, onLock, onViewRecovery, onBackup, onSecurity, onSend, onSendSpt, onSendToken, onSendCollectible, accountLabel, onManageAccounts, onManageNetworks, onChangeReceiveNetwork, initialReceive, onActivity, tokenView, navigation, onOverviewBack, openReceive, initialTokenContract }: Omit<Props, 'source' | 'reader' | 'accountLabel'> & {
   model: NativePortfolioController; snapshot: NativePortfolioSnapshot; accountLabel: string;
   backupRequired: boolean; requiresBackup(): boolean;
 }) {
@@ -94,6 +98,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
   const [nativeDetailScope, setNativeDetailScope] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [pendingAction, setPendingAction] = useState<'copy' | 'share' | 'faucet' | null>(null);
+  const requestedReceive = useRef(false);
   const { width, fontScale } = useWindowDimensions();
   const receiveQrSize = width <= 340 ? 176 : 204;
   const stackActions = fontScale >= 1.6 && width < 240 * fontScale;
@@ -203,6 +208,11 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
       receiveWarningOwner.current = captured; setReceiveWarning(captured);
     } else setReceiveScope(scopeOf(account));
   };
+  useLayoutEffect(() => {
+    if (openReceive && !requestedReceive.current && account && model.isCurrent(account)) {
+      requestedReceive.current = true; requestReceive();
+    }
+  }, [openReceive, account, model]);
   const warningCurrent = (captured: ReceiveWarning) => receiveWarningOwner.current === captured &&
     captured.model === model && lifecycle.current.alive && lifecycle.current.epoch === captured.epoch && AppState.currentState === 'active' && model.isCurrent(captured.account);
   const receiveAnyway = (captured: ReceiveWarning) => {
@@ -229,7 +239,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
   return <SafeAreaView edges={navigation && !receiving && !nativeDetail && !tokenTitle ? ['top'] : ['top', 'bottom']} style={s.safeArea}>
     <View style={s.flex} accessibilityElementsHidden={!!warning} importantForAccessibility={warning ? 'no-hide-descendants' : 'auto'}>
     <Screen key={receiving ? 'receive' : 'portfolio'} scrollResetKey={nativeDetail ? 'native-asset' : tokenTitle ?? 'portfolio'} footer={actions} footerScrollable={receiving} gap={receiving ? 12 : 16}>
-      <Header title={receiving ? `Receive ${symbol}` : nativeDetail ? networkName : tokenTitle ?? 'Pali Wallet'} subtitle={`${accountLabel} · ${networkName}${network.testnet ? ' · Test network' : ''}`} onBack={receiving || nativeDetail || !!tokenTitle ? back : undefined} brand={!receiving && !nativeDetail && !tokenTitle} right={!receiving && !tokenTitle ? <View style={s.toolbar}>
+      <Header title={receiving ? `Receive ${symbol}` : nativeDetail ? networkName : tokenTitle ?? 'Pali Wallet'} subtitle={`${accountLabel} · ${networkName}${network.testnet ? ' · Test network' : ''}`} onBack={receiving || nativeDetail || !!tokenTitle ? back : onOverviewBack} brand={!receiving && !nativeDetail && !tokenTitle} right={!receiving && !tokenTitle ? <View style={s.toolbar}>
         {canSend && <IconButton label={loading ? 'Refreshing balance' : 'Refresh balance'} icon="refresh" disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
         {!nativeDetail && onManageAccounts && <IconButton label="Accounts" icon="wallet" onPress={onManageAccounts} />}
       </View> : undefined} />
@@ -298,7 +308,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
           onReceive={canReceive ? requestReceive : undefined}
           onRefresh={() => { if (account && model.isCurrent(account)) void model.refresh(); }}
           onSend={account && onSendSpt ? asset => { if (model.isCurrent(account)) { if (requiresBackup()) (onBackup ?? onViewRecovery)(); else onSendSpt(asset); } } : undefined} />}
-        {tokenView && !utxo && <NativeTokens registration={registration} nativeAsset={nativeCoinCard} controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle}
+        {tokenView && !utxo && <NativeTokens initialContract={initialTokenContract} registration={registration} nativeAsset={nativeCoinCard} controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle}
           onSend={account && onSendToken ? (token) => { if (model.isCurrent(account)) { if (requiresBackup()) (onBackup ?? onViewRecovery)(); else onSendToken(token); } } : undefined}
           onSendCollectible={account && onSendCollectible ? (collectible) => { if (model.isCurrent(account)) { if (requiresBackup()) (onBackup ?? onViewRecovery)(); else onSendCollectible(collectible); } } : undefined}
           onReceive={requestReceive} />}

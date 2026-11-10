@@ -183,7 +183,7 @@ import { NativeTransferRpc, assertSpeedUpEnvelope } from './transferRpc.ts';
 import { readOwnData, snapshotCancellationTransfer, snapshotNftQuoteEnvelope, snapshotUnsignedTransfer, unsignedTransferBytes } from './evmFeeContracts.ts';
 import { normalizeErc20Address } from '../portfolio/erc20Metadata.ts';
 import { NativeTokenRegistry, snapshotSavedCollectible } from '../portfolio/tokenRegistry.ts';
-import type { NativeTokenInventory, NativeTokenScope, SavedCollectible } from '../portfolio/tokenRegistry.ts';
+import type { NativeTokenInventory, NativeTokenPortfolioScope, NativeTokenScope, SavedCollectible } from '../portfolio/tokenRegistry.ts';
 import type { NativeTokenRuntime } from '../portfolio/nativeTokens.ts';
 import { NativeActivityHistory } from '../activity/historyStore.ts';
 import { createActivityScope, type ActivityScope, type EvmActivityReadScope } from '../activity/types.ts';
@@ -408,6 +408,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   readonly catalogue: {
     getSnapshot(): NativeWalletCatalogueSnapshot | null;
     getControlSnapshot(): ReturnType<NativeWalletCatalogue['getControlSnapshot']>;
+    getMonitoringSnapshot(): ReturnType<NativeWalletCatalogue['getMonitoringSnapshot']>;
     previewNetworkSelection(id: string, expectedRevision: number): ReturnType<NativeWalletCatalogue['previewNetworkSelection']>;
   };
   readonly backup: {
@@ -3450,14 +3451,42 @@ export function createKeyringRuntimeFactory(
           },
         };
         const canSign = () => !!catalogueSnapshot && ['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(selectedAccount().type) && nativeSigningEnabled(catalogueSnapshot.active.networkId, catalogueSnapshot.networks);
-        const activityContext = async (assertCurrent: () => void): Promise<{ scope: ActivityScope; guard: () => void; index: number; type: NativeAccountType }> => {
+        const activityContext = async (assertCurrent: () => void, target?: NativeTokenPortfolioScope): Promise<{ scope: ActivityScope; guard: () => void; index: number; type: NativeAccountType }> => {
           const captured = generation;
-          const guard = () => { current(captured); checkGuard(assertCurrent); if (reserved) throw new KeyringRuntimeError('BUSY'); if (!keyring.hasPublicSession() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY'); };
+          const snapshot = catalogueSnapshot;
+          const guard = () => { current(captured); checkGuard(assertCurrent); if (reserved) throw new KeyringRuntimeError('BUSY'); if (!keyring.hasPublicSession() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY'); if (target && snapshot !== catalogueSnapshot) throw new KeyringRuntimeError('CANCELLED'); };
           guard();
           const selected = catalogueSnapshot!.accounts.find((account) => account.id === catalogueSnapshot!.active.accountId)!;
-          const networkId = catalogueSnapshot!.active.networkId;
+          const networkId = target?.networkId ?? catalogueSnapshot!.active.networkId;
+          const network = getNativeNetwork(networkId, catalogueSnapshot!.networks);
+          if (target && (selected.slip44 !== 60 || selected.id !== target.accountId || selected.address !== target.address ||
+            network.registrationHash !== target.registrationHash || selected.type === 'SmartAccount' && selected.smartAccount?.chainId !== Number(network.chainId)))
+            throw new KeyringRuntimeError('CANCELLED');
           const fingerprint = await dataBinding(captured, guard); guard();
-          return { scope: createActivityScope(fingerprint, selected.id, selected.address, getNativeNetwork(networkId, catalogueSnapshot!.networks)), guard, index: selected.index, type: selected.type };
+          return { scope: createActivityScope(fingerprint, selected.id, selected.address, network), guard, index: selected.index, type: selected.type };
+        };
+        const inspectionOnly = <T extends object>(local: T): T & { inspectionOnly: true } => {
+          const record = { ...local, inspectionOnly: true as const };
+          delete (record as { speedUpEligible?: true }).speedUpEligible;
+          return record;
+        };
+        let scopedActivityLoad: Promise<unknown> = Promise.resolve();
+        const loadActivity = async (assertCurrent: () => void, target?: NativeTokenPortfolioScope) => {
+          const { scope, guard, index, type } = await activityContext(assertCurrent, target);
+          const journal = createNativeSignedRecordView(signedRecords, { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard }, scope.walletFingerprint, { index, type, address: scope.address }, scope.network);
+          const recent = await journal.activities(); guard();
+          const saved = await activityHistory.load(scope, guard); guard();
+          let locals = type === 'SmartAccount' ? recent.records.map(local => {
+            const archived = saved.archived.find(record => record.hash === local.hash && record.recipient === local.recipient &&
+              record.amountUnits === local.amountUnits && record.maximumFeeUnits === local.maximumFeeUnits && record.nonce === local.nonce && record.createdAt === local.createdAt);
+            return archived ? { ...local, phase: archived.phase } : local;
+          }) : recent.records;
+          if (target) locals = locals.map(inspectionOnly);
+          const inventory = await tokens.load({ walletFingerprint: scope.walletFingerprint, accountId: scope.accountId,
+            address: scope.address, network: scope.network.id, chainId: scope.network.chainId, registrationHash: scope.network.registrationHash }, guard); guard();
+          return { scope, locals, assets: inventory.items, saved: { ...saved,
+            archived: type === 'SmartAccount' || target ? saved.archived.map(inspectionOnly) : saved.archived,
+            truncated: saved.truncated || recent.truncated } };
         };
         const checkActivityContext = async (scope: EvmActivityReadScope, assertCurrent: () => void) => {
           const context = await activityContext(assertCurrent);
@@ -3467,14 +3496,17 @@ export function createKeyringRuntimeFactory(
         const tokenOperation = <T>(
           assertCurrent: () => void,
           action: (scope: NativeTokenScope, guard: () => void) => Promise<T>,
-          kind?: 'registry-write'
+          kind?: 'registry-write',
+          target?: NativeTokenPortfolioScope
         ): Promise<T> => {
           if (active || reserved) return Promise.reject(new KeyringRuntimeError('BUSY'));
           const captured = generation;
+          let targetSnapshot: NativeWalletCatalogueSnapshot | null = null;
           const check = () => {
             current(captured); checkGuard(assertCurrent);
             if (closed || captured !== generation) throw new KeyringRuntimeError('CANCELLED');
             if (!keyring.hasPublicSession() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY');
+            if (targetSnapshot && catalogueSnapshot !== targetSnapshot) throw new KeyringRuntimeError('CANCELLED');
           };
           // Reserve through the synchronous caller guard. Nothing can enter
           // between successful admission, epoch retirement and task installation.
@@ -3491,7 +3523,14 @@ export function createKeyringRuntimeFactory(
           const task = Promise.resolve().then(async () => {
             check();
             const selected = catalogueSnapshot!.accounts.find((account) => account.id === catalogueSnapshot!.active.accountId)!;
-            const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
+            const network = getNativeNetwork(target?.networkId ?? catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
+            if (target) {
+              if (selected.slip44 !== 60 || target.accountId !== selected.id || target.address !== selected.address ||
+                  target.registrationHash !== network.registrationHash ||
+                  (selected.type === 'SmartAccount' && selected.smartAccount?.chainId !== Number(network.chainId)))
+                throw new KeyringRuntimeError('CANCELLED');
+              targetSnapshot = catalogueSnapshot!;
+            }
             const walletFingerprint = await dataBinding(captured, check); check();
             const result = await action(Object.freeze({ walletFingerprint, accountId: selected.id, address: selected.address,
               network: network.id, chainId: network.chainId, registrationHash: network.registrationHash }), check);
@@ -6351,6 +6390,12 @@ export function createKeyringRuntimeFactory(
               while (active) { await active.catch(() => undefined); checkGuard(guard); }
               return tokenOperation(guard, (scope, check) => tokens.load(scope, check));
             },
+            loadScoped: async (target, guard) => {
+              const captured = Object.freeze({ accountId: target.accountId, address: target.address,
+                networkId: target.networkId, registrationHash: target.registrationHash });
+              while (active) { await active.catch(() => undefined); checkGuard(guard); }
+              return tokenOperation(guard, (scope, check) => tokens.load(scope, check), undefined, captured);
+            },
             add: (revision, metadata, guard) => tokenOperation(guard,
               (scope, check) => tokens.add(scope, revision, metadata, check), 'registry-write'),
             remove: (revision, contract, guard) => tokenOperation(guard,
@@ -6369,6 +6414,7 @@ export function createKeyringRuntimeFactory(
           catalogue: {
             getSnapshot: () => closed || requiresReopen() || !keyring.hasPublicSession() ? null : catalogueSnapshot,
             getControlSnapshot: () => closed || requiresReopen() || !keyring.hasPublicSession() ? null : catalogue.getControlSnapshot(),
+            getMonitoringSnapshot: () => closed || requiresReopen() || !keyring.hasPublicSession() ? null : catalogue.getMonitoringSnapshot(),
             previewNetworkSelection(id, expectedRevision) {
               current(generation);
               if (closed || requiresReopen() || !keyring.hasPublicSession()) throw new KeyringRuntimeError('NOT_READY');
@@ -6847,25 +6893,43 @@ export function createKeyringRuntimeFactory(
             } });
           } } : {}),
           activity: {
-            async load(assertCurrent) {
-              const { scope, guard, index, type } = await activityContext(assertCurrent);
-              const journal = createNativeSignedRecordView(signedRecords,{keyring: transactionRecordKeyring(keyring, guard),assertCurrent:guard},scope.walletFingerprint,{index,type,address:scope.address},scope.network);
-              const recent = await journal.activities(); guard();
-              const saved = await activityHistory.load(scope, guard); guard();
-              const locals = type === 'SmartAccount' ? recent.records.map(local => {
-                const archived = saved.archived.find(record => record.hash === local.hash &&
-                  record.recipient === local.recipient && record.amountUnits === local.amountUnits &&
-                  record.maximumFeeUnits === local.maximumFeeUnits && record.nonce === local.nonce &&
-                  record.createdAt === local.createdAt);
-                return archived ? { ...local, phase: archived.phase } : local;
-              }) : recent.records;
-              const inventory = await tokens.load({ walletFingerprint: scope.walletFingerprint, accountId: scope.accountId,
-                address: scope.address, network: scope.network.id, chainId: scope.network.chainId,
-                registrationHash: scope.network.registrationHash }, guard); guard();
-              return { scope, locals, assets: inventory.items,
-                saved: { ...saved, archived: type === 'SmartAccount'
-                  ? saved.archived.map(record => ({ ...record, inspectionOnly: true as const })) : saved.archived,
-                  truncated: saved.truncated || recent.truncated } };
+            load: assertCurrent => loadActivity(assertCurrent),
+            forScope(input, assertOwner) {
+              const target = Object.freeze({ accountId: input.accountId, address: input.address,
+                networkId: input.networkId, registrationHash: input.registrationHash });
+              const checked = (check: () => void) => () => { checkGuard(assertOwner); checkGuard(check); };
+              return Object.freeze<NativeActivityRuntime>({
+                load: (check: () => void) => {
+                  const result = scopedActivityLoad.catch(() => undefined).then(() => loadActivity(checked(check), target));
+                  scopedActivityLoad = result;
+                  return result;
+                },
+                async loadSavedPending(previousScope, beforeHash, assertCurrent) {
+                  const { scope, guard, index, type } = await activityContext(checked(assertCurrent), target);
+                  if (previousScope.key !== scope.key || previousScope.sourceId !== scope.sourceId) throw new KeyringRuntimeError('CANCELLED');
+                  const journal = createNativeSignedRecordView(signedRecords, { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard }, scope.walletFingerprint,
+                    { index, type, address: scope.address }, scope.network);
+                  const page = await journal.pendingActivities(beforeHash); guard();
+                  if (type !== 'SmartAccount') return { ...page, records: page.records.map(inspectionOnly) };
+                  const saved = await activityHistory.load(scope, guard); guard();
+                  return { ...page, records: page.records.filter(local => !saved.archived.some(record => record.hash === local.hash && record.phase !== 'submitted')).map(inspectionOnly) };
+                },
+                async observeLocal(local, assertCurrent, signal) {
+                  const { scope, guard } = await activityContext(checked(assertCurrent), target);
+                  if (signal.aborted || local.chainId !== scope.network.chainId || local.address !== scope.address ||
+                      local.walletFingerprint !== scope.walletFingerprint || local.accountId !== scope.accountId)
+                    throw new KeyringRuntimeError('CANCELLED');
+                  const rpc = new EvmTransferReadRpc(scope.network, { fetch: dependencies.connectionFetch ?? walletFetch });
+                  if (local.smartAccount) return observeSmartAccountActivity({ chainId: local.chainId, hash: local.hash,
+                    account: local.address, nonce: local.nonce, ...local.smartAccount },
+                    (method, params) => rpc.retirementRead(method, params, signal, guard), guard);
+                  return rpc.observation({ hash: local.hash, from: local.address,
+                    to: local.token?.contractAddress ?? local.collectibleTransfer?.contractAddress ?? local.recipient,
+                    nonce: String(local.nonce) }, signal, guard);
+                },
+                async saveCache(_scope, _candidates, check) { checked(check)(); },
+                async saveView(_scope, _view, check) { checked(check)(); },
+              });
             },
             async loadSavedPending(previousScope, beforeHash, assertCurrent) {
               const { scope, guard, index, type } = await checkActivityContext(previousScope, assertCurrent);

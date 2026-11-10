@@ -34,8 +34,11 @@ import {
   type EvmSettlementStatus,
 } from '../../../../source/utils/evmReplacement.ts';
 import type { EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
+import type { NativeTokenPortfolioScope } from '../portfolio/tokenRegistry.ts';
 
 export interface NativeActivityRuntime {
+  /** Selected-account public reads on an explicit saved network. */
+  forScope?(scope: NativeTokenPortfolioScope, assertCurrent: () => void): NativeActivityRuntime;
   load(
     guard: () => void,
     signal?: AbortSignal
@@ -97,6 +100,7 @@ export type NativeActivitySnapshot = Readonly<{
   error: string | null;
   coverage: string;
   truncated: boolean;
+  discoveryAvailable?: boolean;
   canViewSavedPending?: boolean;
   savedPending?: Readonly<{
     rows: readonly ActivityRow[];
@@ -149,6 +153,7 @@ const initial = (): NativeActivitySnapshot =>
     coverage:
       'Direct transactions and ERC20 transfer events from the selected network are included.',
     truncated: false,
+    discoveryAvailable: false,
     canViewSavedPending: false,
     savedPending: undefined,
   });
@@ -304,6 +309,7 @@ export class NativeActivity {
         nativeSymbol: scope.network.symbol,
         explorerUrl: scope.explorerUrl,
         truncated: saved.truncated,
+        discoveryAvailable: !!scope.apiUrl,
         canViewSavedPending: !!runtime.loadSavedPending,
       });
       this.renderRows(true);

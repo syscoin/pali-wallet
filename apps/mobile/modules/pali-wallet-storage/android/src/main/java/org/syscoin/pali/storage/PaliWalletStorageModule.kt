@@ -71,6 +71,13 @@ class PaliWalletStorageModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("PaliWalletStorage")
+    AsyncFunction("prepareNotificationStorage") { create: Boolean ->
+      PaliNotificationStoragePolicy.prepare(appContext.reactContext ?: failure(), create)
+    }
+    AsyncFunction("protectNotificationStorage") {
+      PaliNotificationStoragePolicy.prepare(appContext.reactContext ?: failure(), false)
+      Unit
+    }
     Function("preparePublicSnapshot") { pool: String, serviceOrigin: String ->
       publicSnapshots.prepare { PaliPublicSnapshotDownloader.prepare(pool, serviceOrigin, it) }
     }

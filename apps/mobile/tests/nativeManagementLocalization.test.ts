@@ -61,6 +61,7 @@ async function fixture(language = 'en') {
     '../../../../source/shared/chainCatalogue': { rankChainSuggestions: () => [] }, '../custody/networkContext': {},
     './TrustedSiteLookup': { TrustedSiteLookup: 'TrustedSiteLookup' }, './WatchGuardianRecovery': { WatchGuardianRecovery: 'WatchGuardianRecovery' },
     './NativeConnections': { NativeConnections: 'NativeConnections' },
+    './NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' },
   };
   function screen(name: Name) {
     const host = screenFixture(new URL(`../src/screens/${name}.tsx`, import.meta.url), name, imported);

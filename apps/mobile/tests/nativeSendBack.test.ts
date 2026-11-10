@@ -11,7 +11,7 @@ import { formatBaseUnits } from '../src/core/amounts.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (next: unknown) => void };
-function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>, recipientResolver?: NativeRecipientResolver, onChangeNetwork?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>) => void, onViewTransaction?: (hash: string) => void) {
+function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>, recipientResolver?: NativeRecipientResolver, onChangeNetwork?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>) => void, onViewTransaction?: (hash: string) => void, onChangeAsset?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>, token?: unknown) => void) {
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
@@ -33,6 +33,8 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
     './RecipientQrScanner': { RecipientQrScanner: 'RecipientQrScanner' },
     './SendNetworkCard': { SendNetworkCard: 'SendNetworkCard' },
+    './SendAssetSelector': { SendAssetSelector: 'SendAssetSelector' },
+    '../portfolio/nativePortfolio': { sameNativePortfolioAccount: (left: any, right: any) => left?.address === right?.address && left?.network === right?.network && left?.revision === right?.revision },
     './NativeLedger': { NativeLedgerConnectionModal: 'NativeLedgerConnectionModal' },
     './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum', nativeTokenAvailableAmount: (token: { balance?: string }) => token.balance },
     react,'react-native':native,'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},'../ui':ui,
@@ -73,7 +75,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     }, async prepareToken(...args: unknown[]) { prepared.push(args); }};
   const context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false};
   let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
-  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,beforeClose,recipientResolver,account,authenticationMethod,availableAmount:'2',onChangeNetwork,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
+  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,beforeClose,recipientResolver,account,authenticationMethod,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
   return {render,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
     useBiometrics() { authenticationMethod = 'biometric'; },
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
@@ -192,6 +194,17 @@ test('network Change captures unsigned form text without preparing or authorizin
   assert.equal(captured.length, 1);
   assert.deepEqual(JSON.parse(JSON.stringify(captured[0])), { kind: 'evm', recipient: '0x2222222222222222222222222222222222222222', amount: '1.234567890123456789', nonce: '', tokenId: '', max: false, advanced: false });
   assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []); f.dispose();
+});
+
+test('asset selector captures same-network unsigned text without preparing or authorizing', () => {
+  const captured: unknown[] = [];
+  const f = setup(undefined, undefined, undefined, undefined, undefined, (draft, token) => captured.push([draft, token])); f.snapshot.phase = 'idle';
+  editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+  editSend(f, 'Amount in ETH', '1.5');
+  const asset = { contractAddress: '0x' + 'ab'.repeat(20), name: 'Saved token', symbol: 'TOK', decimals: 6 };
+  one(f.render(), 'SendAssetSelector').props.onSelect(asset);
+  assert.equal((captured[0] as any[])[0].recipient, '0x2222222222222222222222222222222222222222');
+  assert.equal((captured[0] as any[])[1], asset); assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []); f.dispose();
 });
 
 test('review has one primary action and Header Back returns to the unchanged draft', async () => {

@@ -1,3 +1,6 @@
+import { nativeActivityNotifications } from '../notifications/service';
+import { parseNativeAccountId } from '../custody/accountIdentity';
+import { nativeNotificationChoices } from '../notifications/choices';
 import { bindNativePrivateAuthentication, bindNativePrivateAuthenticationChild, createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication.ts';
 import type { NativeSmartModuleManagement } from '../smartAccount/moduleManagement.ts';
 import { createNativePrivacyServiceSettings } from './privacyServiceSettings.native';
@@ -35,6 +38,8 @@ import { SeedBackupFlow } from '../custody/seedBackup.ts';
 import { HdKeyExportFlow, type NativeHdKeyExportRuntime } from '../custody/hdKeyExport.ts';
 import { NativeTransfers } from '../custody/transfers.ts';
 import { NativeTokens } from '../portfolio/nativeTokens.ts';
+import { createScopedPortfolioAssetReader } from '../portfolio/scopedPortfolioAssets.ts';
+import type { NativeNotificationScope } from '../notifications/types.ts';
 import { NativeActivity } from '../activity/nativeActivity.ts';
 import { ActivityExplorerReader } from '../activity/explorerReader.ts';
 import { ActivityReceiptReader } from '../activity/receiptReader.ts';
@@ -344,7 +349,11 @@ export function createNativeWalletControllers() {
   };
   const removal = new NativeWalletRemoval({
     owner: authority,
-    beforeSnapshot: async (guard) => { guard(); await disposeConnections(); guard(); },
+    beforeSnapshot: async (guard) => {
+      guard();
+      await nativeActivityNotifications.replaceAccountTypes(['HDAccount', 'Imported', 'SmartAccount', 'Ledger', 'Trezor'], [], guard);
+      guard(); await disposeConnections(); guard();
+    },
     source: () => runtime && ownedStorage ? { runtime, storage: ownedStorage } : undefined,
     reopen: openStorage,
     async clearNativeSelection(check) {
@@ -397,7 +406,15 @@ export function createNativeWalletControllers() {
     getSnapshot: () => authority.getCatalogue(),
     getContextRevision: () => authority.getSnapshot().revision,
     subscribe: (listener: () => void) => authority.subscribe(() => listener()),
-    execute: (...args: Parameters<NativeAccountView['execute']>) => authority.manageAccounts(...args),
+    execute: async (...args: Parameters<NativeAccountView['execute']>) => {
+      if (args[0].kind === 'remove') {
+        const before = authority.getSnapshot(), catalogue = authority.getCatalogue();
+        if (before.revision !== args[1] || catalogue?.revision !== args[2]) throw new CustodyOperationError('CANCELLED');
+        await nativeActivityNotifications.disableOwner(parseNativeAccountId(args[0].id).type, args[0].id);
+        if (authority.getSnapshot() !== before || authority.getCatalogue() !== catalogue) throw new CustodyOperationError('CANCELLED');
+      }
+      return authority.manageAccounts(...args);
+    },
     supportsSmartAccounts: () => runtime?.accounts?.supportsSmartAccounts?.() === true,
     cancel: () => authority.cancelAccountOperation(),
   });
@@ -742,6 +759,41 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, sentry, recipientResolver, openSmartInfrastructure, openSmartAccountModules, canManageSmartAccountModules: () => runtime?.canUseWalletAuthenticator() === true, openSlhDsaManagement, canManageSlhDsa: () => runtime?.canManageSlhDsa() === true, canSignSmartAccount: () => runtime?.canSignSmartAccount() === true, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openResumedSmartAccountOperation, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, openNoteMaintenance, openPrivacyControls, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  const getNotificationChoices = () => {
+    const snapshot = authority.getSnapshot(), catalogue = authority.getCatalogue();
+    const monitoring = runtime?.catalogue.getMonitoringSnapshot();
+    if (!['ready', 'backup-required'].includes(snapshot.phase) || !catalogue || !monitoring || monitoring.revision !== catalogue.revision)
+      throw new CustodyOperationError('NOT_READY');
+    return nativeNotificationChoices(monitoring);
+  };
+  const readPortfolioAssets = (scope: NativeNotificationScope, signal: AbortSignal, assertCurrent: () => void) => {
+    const selected = runtime, before = authority.getSnapshot(), catalogue = authority.getCatalogue();
+    const check = () => {
+      assertSynchronousEvmFeeGuard(assertCurrent);
+      if (signal.aborted || runtime !== selected || authority.getSnapshot() !== before || authority.getCatalogue() !== catalogue ||
+          !selected?.tokens?.loadScoped || !catalogue || catalogue.active.accountId !== scope.accountId || before.account?.address !== scope.accountAddress ||
+          !getNotificationChoices().some(choice => JSON.stringify(choice.scope) === JSON.stringify(scope)))
+        throw new CustodyOperationError('CANCELLED');
+    };
+    check();
+    return createScopedPortfolioAssetReader({ fetch: walletFetch,
+      load: (target, guard) => { check(); return selected!.tokens!.loadScoped!(target, guard); },
+    })(scope, signal, check);
+  };
+  const getScopedActivityRuntime = (scope: NativeNotificationScope, assertCurrent: () => void) => {
+    const selected = runtime, before = authority.getSnapshot(), catalogue = authority.getCatalogue();
+    const check = () => {
+      assertSynchronousEvmFeeGuard(assertCurrent);
+      if (runtime !== selected || authority.getSnapshot() !== before || authority.getCatalogue() !== catalogue || !selected?.activity?.forScope ||
+          !catalogue || catalogue.active.accountId !== scope.accountId || before.account?.address !== scope.accountAddress ||
+          !getNotificationChoices().some(choice => JSON.stringify(choice.scope) === JSON.stringify(scope)))
+        throw new CustodyOperationError('CANCELLED');
+    };
+    check();
+    return selected!.activity!.forScope!({ accountId: scope.accountId, address: scope.accountAddress,
+      networkId: scope.network.id, registrationHash: 'registrationHash' in scope.network ? scope.network.registrationHash : '' }, check);
+  };
+  const activityReaders = Object.freeze({ explorer: new ActivityExplorerReader(walletFetch), receipts: new ActivityReceiptReader({ fetch: walletFetch }) });
+  return { getNotificationChoices, readPortfolioAssets, getScopedActivityRuntime, activityReaders, authority, sentry, recipientResolver, openSmartInfrastructure, openSmartAccountModules, canManageSmartAccountModules: () => runtime?.canUseWalletAuthenticator() === true, openSlhDsaManagement, canManageSlhDsa: () => runtime?.canManageSlhDsa() === true, canSignSmartAccount: () => runtime?.canSignSmartAccount() === true, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openResumedSmartAccountOperation, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, openNoteMaintenance, openPrivacyControls, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

@@ -1354,7 +1354,17 @@
     "errorDetails": "An error occurred: {{error}}",
     "errorWithContext": "An error occurred: {{error}}: {{context}}",
     "viewDetails": "Click to view details",
-    "clickToView": "Click to view details"
+    "clickToView": "Click to view details",
+    "activityTitle": "Wallet activity",
+    "activityPending": "An incoming or outgoing transaction is pending.",
+    "activityConfirmed": "An incoming or outgoing transaction was confirmed.",
+    "activityFailed": "A transaction failed.",
+    "activityUnknown": "A transaction was mined; its outcome is not yet available.",
+    "recoveryStarted": "Guardian recovery started.",
+    "recoveryCancelled": "Guardian recovery was cancelled.",
+    "recoveryCompleted": "Guardian recovery completed.",
+    "recoveryExpired": "Guardian recovery expired.",
+    "guardianPolicyChanged": "Guardian policy changed."
   },
   "faucet": {
     "title": "Faucet",
@@ -2107,7 +2117,6 @@
       "evmBody": "Anyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place.",
       "hide": "Hide private key",
       "sessionOnly": "Hide the key when you are finished. Revealing it again requires fresh authorization.",
-      "confirmPassword": "Confirm your wallet PIN",
       "reveal": "Reveal private key",
       "confirming": "Confirming PIN",
       "hardwareGuide": "Your {{device}} account uses its own recovery backup. The phrase shown in Pali belongs to this Pali wallet."
@@ -2155,7 +2164,6 @@
       "derived": "One recovery phrase, another address",
       "smartBody": "Create a smart account managed by Account 1 on this network. It can receive funds after creation; deployment is required before sending.",
       "derivedBody": "This account is derived from your existing recovery phrase. Keep that phrase backed up offline.",
-      "confirmPassword": "Confirm wallet PIN",
       "subtitle": "{{network}} · Wallet accounts",
       "select": "Select {{name}}",
       "removeHardware": "Removing this local account keeps its keys on your {{device}}. Connect the same device to add it again.",
@@ -2245,7 +2253,12 @@
       "balanceSuffix": ", balance and receive only",
       "editLabel": "Edit {{name}}{{chain}}",
       "useLabel": "Use {{name}}, {{symbol}}, Chain ID {{chainId}}",
-      "chain": "Chain ID {{chainId}}"
+      "chain": "Chain ID {{chainId}}",
+      "sendFrom": "Send from",
+      "receiveOn": "Receive on",
+      "chooseSource": "Choose where to send from",
+      "chooseDestination": "Choose where to receive",
+      "availableBalance": "{{amount}} {{symbol}} available"
     },
     "tools": {
       "title": "Tools",
@@ -2282,6 +2295,43 @@
       "unavailable": "Setup is unavailable. Refresh its status before trying again.",
       "cancelled": "The wallet changed or locked. Reopen setup.",
       "reviewOptional": "Review optional deployment"
+    },
+    "notifications": {
+      "title": "Activity alerts",
+      "description": "Choose accounts to watch for transfers and recovery changes.",
+      "privacy": "Previews hide balances and addresses.",
+      "background": "Background checks depend on your phone.",
+      "empty": "No accounts match your search.",
+      "unavailable": "Alerts unavailable",
+      "error": "Check notification permissions in device settings, then try again.",
+      "checkNow": "Check now",
+      "disableAll": "Turn off all alerts",
+      "search": "Search accounts or networks"
+    },
+    "accountPortfolio": {
+      "value": "Portfolio value",
+      "estimated": "Estimated value",
+      "partial": "Known value · Some balances or prices unavailable",
+      "testnetsExcluded": "Test network funds excluded",
+      "allNetworks": "All networks",
+      "unavailableNetwork": "Unavailable network",
+      "chooseAccount": "Choose account, {{account}}",
+      "chooseFilter": "Choose network filter, {{network}}",
+      "assets": "Assets · {{account}}",
+      "unavailable": "Portfolio unavailable. Reopen your wallet to try again.",
+      "noAddress": "This account has no saved address on the selected network. Choose another filter.",
+      "error": "Could not complete this request. Try again.",
+      "activityNetwork": "View transactions on {{network}}",
+      "activityAll": "View activity across added networks",
+      "collectibles": "Saved collectibles: {{count}} · {{network}}",
+      "refresh": "Refresh portfolio"
+    },
+    "sendAssets": {
+      "choose": "Choose asset",
+      "search": "Search saved assets",
+      "label": "Asset",
+      "change": "Change asset",
+      "unavailable": "Saved assets unavailable. Try again."
     }
   }
 }

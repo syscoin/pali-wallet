@@ -69,6 +69,13 @@ export type NativeWalletCatalogueSnapshot = Readonly<{
   utxoNetworks: readonly UtxoNetwork[];
   active: Readonly<{ accountId: string; networkId: EvmNetworkId }>;
 }>;
+/** Public identifiers for explicitly enrolled activity monitoring; never key material. */
+export type NativeMonitoringSnapshot = Readonly<{
+  revision: number;
+  accounts: readonly Readonly<{ account: NativeCatalogueAccount; identifier: string; isAccount: boolean; kind: 'evm' | 'utxo'; chainId: number }>[];
+  networks: readonly NativeNetworkRegistration[];
+  utxoNetworks: readonly UtxoNetwork[];
+}>;
 /** Non-signing controls can prove a saved account in an inactive network family. */
 export type NativeWalletControlCatalogueSnapshot = Readonly<{
   revision: number;
@@ -697,6 +704,20 @@ export class NativeWalletCatalogue {
       this.controlRecord = this.record;
     }
     return this.controlSnapshot;
+  }
+  getMonitoringSnapshot(): NativeMonitoringSnapshot | null {
+    if (!this.record || this.uncertain) return null;
+    return Object.freeze({ revision: this.record.revision,
+      networks: Object.freeze(catalogueEvmNetworks(this.record)),
+      utxoNetworks: catalogueUtxoNetworks(this.record.networks),
+      accounts: Object.freeze(this.record.groups.flatMap(group => publicAccounts(group).map(account => {
+        const original = group.accounts[account.type][account.index]!;
+        const utxo = group.activeNetwork.kind === 'syscoin';
+        return Object.freeze({ account, identifier: utxo ? original.xpub : account.address,
+          isAccount: utxo && original.xpub !== original.address,
+          kind: utxo ? 'utxo' as const : 'evm' as const, chainId: group.activeNetwork.chainId });
+      }))),
+    });
   }
   previewNetworkSelection(id: string, expectedRevision: number): NativeNetworkSelection {
     if (!this.record || this.uncertain || this.record.revision !== expectedRevision) return changed();

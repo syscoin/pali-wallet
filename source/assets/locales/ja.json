@@ -1354,7 +1354,17 @@
     "errorDetails": "エラーが発生しました：{{error}}",
     "errorWithContext": "エラーが発生しました：{{error}}：{{context}}",
     "viewDetails": "クリックして詳細を表示",
-    "clickToView": "クリックして詳細を表示"
+    "clickToView": "クリックして詳細を表示",
+    "activityTitle": "ウォレットの履歴",
+    "activityPending": "入出金の取引が保留中です。",
+    "activityConfirmed": "入出金の取引が確認されました。",
+    "activityFailed": "取引が失敗しました。",
+    "activityUnknown": "取引がブロックに含まれましたが、結果はまだ確認できません。",
+    "recoveryStarted": "ガーディアンによる復元が開始されました。",
+    "recoveryCancelled": "ガーディアンによる復元がキャンセルされました。",
+    "recoveryCompleted": "ガーディアンによる復元が完了しました。",
+    "recoveryExpired": "ガーディアンによる復元の期限が切れました。",
+    "guardianPolicyChanged": "ガーディアンのポリシーが変更されました。"
   },
   "faucet": {
     "title": "フォーセット",
@@ -2107,7 +2117,6 @@
       "evmBody": "Anyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place.",
       "hide": "Hide private key",
       "sessionOnly": "Hide the key when you are finished. Revealing it again requires fresh authorization.",
-      "confirmPassword": "Confirm your wallet PIN",
       "reveal": "Reveal private key",
       "confirming": "Confirming PIN",
       "hardwareGuide": "Your {{device}} account uses its own recovery backup. The phrase shown in Pali belongs to this Pali wallet."
@@ -2155,7 +2164,6 @@
       "derived": "One recovery phrase, another address",
       "smartBody": "Create a smart account managed by Account 1 on this network. It can receive funds after creation; deployment is required before sending.",
       "derivedBody": "This account is derived from your existing recovery phrase. Keep that phrase backed up offline.",
-      "confirmPassword": "Confirm wallet PIN",
       "subtitle": "{{network}} · Wallet accounts",
       "select": "Select {{name}}",
       "removeHardware": "Removing this local account keeps its keys on your {{device}}. Connect the same device to add it again.",
@@ -2245,7 +2253,12 @@
       "balanceSuffix": ", balance and receive only",
       "editLabel": "Edit {{name}}{{chain}}",
       "useLabel": "Use {{name}}, {{symbol}}, Chain ID {{chainId}}",
-      "chain": "Chain ID {{chainId}}"
+      "chain": "Chain ID {{chainId}}",
+      "sendFrom": "送信元",
+      "receiveOn": "受取ネットワーク",
+      "chooseSource": "送信元を選択",
+      "chooseDestination": "受取先を選択",
+      "availableBalance": "利用可能：{{amount}} {{symbol}}"
     },
     "tools": {
       "title": "ツール",
@@ -2282,6 +2295,43 @@
       "unavailable": "設定を利用できません。状態を更新してから再試行してください。",
       "cancelled": "ウォレットが変更またはロックされました。設定を開き直してください。",
       "reviewOptional": "任意のデプロイを確認"
+    },
+    "notifications": {
+      "title": "アクティビティ通知",
+      "description": "送金や復元の変更を通知するアカウントを選択します。",
+      "privacy": "プレビューには残高やアドレスを表示しません。",
+      "background": "バックグラウンドの確認は端末の状態に依存します。",
+      "empty": "検索に一致するアカウントはありません。",
+      "unavailable": "通知を利用できません",
+      "error": "端末の設定で通知の許可を確認して、もう一度お試しください。",
+      "checkNow": "今すぐ確認",
+      "disableAll": "すべての通知をオフ",
+      "search": "アカウントやネットワークを検索"
+    },
+    "accountPortfolio": {
+      "value": "ポートフォリオの評価額",
+      "estimated": "推定評価額",
+      "partial": "確認済み評価額 · 一部の残高または価格は不明です",
+      "testnetsExcluded": "テストネットの資産は除外",
+      "allNetworks": "すべてのネットワーク",
+      "unavailableNetwork": "利用できないネットワーク",
+      "chooseAccount": "アカウントを選択、{{account}}",
+      "chooseFilter": "ネットワークを選択、{{network}}",
+      "assets": "資産 · {{account}}",
+      "unavailable": "ポートフォリオを利用できません。ウォレットを開き直してください。",
+      "noAddress": "選択したネットワークにはこのアカウントのアドレスが保存されていません。別のフィルターを選択してください。",
+      "error": "リクエストを完了できませんでした。もう一度お試しください。",
+      "activityNetwork": "{{network}} の取引を見る",
+      "activityAll": "追加したネットワークの履歴を見る",
+      "collectibles": "保存済みコレクション：{{count}} · {{network}}",
+      "refresh": "ポートフォリオを更新"
+    },
+    "sendAssets": {
+      "choose": "資産を選択",
+      "search": "保存済み資産を検索",
+      "label": "資産",
+      "change": "資産を変更",
+      "unavailable": "保存済み資産を取得できません。もう一度お試しください。"
     }
   }
 }

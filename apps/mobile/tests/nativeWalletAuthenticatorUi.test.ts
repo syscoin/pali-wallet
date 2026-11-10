@@ -192,6 +192,7 @@ function harness(
     },
     './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum', nativeTokenAvailableAmount: () => null },
     './SendNetworkCard': { SendNetworkCard: 'SendNetworkCard' },
+    './SendAssetSelector': { SendAssetSelector: 'SendAssetSelector' },
     './RecipientQrScanner': { RecipientQrScanner: 'RecipientQrScanner' },
     './NativeSend': {
       NativeSendInput: 'Input',

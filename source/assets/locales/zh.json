@@ -1354,7 +1354,17 @@
     "errorDetails": "发生错误：{{error}}",
     "errorWithContext": "发生错误：{{error}}：{{context}}",
     "viewDetails": "点击查看详情",
-    "clickToView": "点击查看详情"
+    "clickToView": "点击查看详情",
+    "activityTitle": "钱包动态",
+    "activityPending": "有一笔转入或转出交易待确认。",
+    "activityConfirmed": "一笔转入或转出交易已确认。",
+    "activityFailed": "一笔交易失败。",
+    "activityUnknown": "交易已打包，但结果尚不可用。",
+    "recoveryStarted": "守护人恢复已开始。",
+    "recoveryCancelled": "守护人恢复已取消。",
+    "recoveryCompleted": "守护人恢复已完成。",
+    "recoveryExpired": "守护人恢复已过期。",
+    "guardianPolicyChanged": "守护人策略已更改。"
   },
   "faucet": {
     "title": "水龙头",
@@ -2107,7 +2117,6 @@
       "evmBody": "Anyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place.",
       "hide": "Hide private key",
       "sessionOnly": "Hide the key when you are finished. Revealing it again requires fresh authorization.",
-      "confirmPassword": "Confirm your wallet PIN",
       "reveal": "Reveal private key",
       "confirming": "Confirming PIN",
       "hardwareGuide": "Your {{device}} account uses its own recovery backup. The phrase shown in Pali belongs to this Pali wallet."
@@ -2155,7 +2164,6 @@
       "derived": "One recovery phrase, another address",
       "smartBody": "Create a smart account managed by Account 1 on this network. It can receive funds after creation; deployment is required before sending.",
       "derivedBody": "This account is derived from your existing recovery phrase. Keep that phrase backed up offline.",
-      "confirmPassword": "Confirm wallet PIN",
       "subtitle": "{{network}} · Wallet accounts",
       "select": "Select {{name}}",
       "removeHardware": "Removing this local account keeps its keys on your {{device}}. Connect the same device to add it again.",
@@ -2245,7 +2253,12 @@
       "balanceSuffix": ", balance and receive only",
       "editLabel": "Edit {{name}}{{chain}}",
       "useLabel": "Use {{name}}, {{symbol}}, Chain ID {{chainId}}",
-      "chain": "Chain ID {{chainId}}"
+      "chain": "Chain ID {{chainId}}",
+      "sendFrom": "发送来源",
+      "receiveOn": "接收网络",
+      "chooseSource": "选择发送来源",
+      "chooseDestination": "选择接收网络",
+      "availableBalance": "可用：{{amount}} {{symbol}}"
     },
     "tools": {
       "title": "工具",
@@ -2282,6 +2295,43 @@
       "unavailable": "设置暂不可用。请刷新状态后重试。",
       "cancelled": "钱包已更改或锁定。请重新打开设置。",
       "reviewOptional": "审核可选部署"
+    },
+    "notifications": {
+      "title": "动态提醒",
+      "description": "选择要关注转账和恢复变化的账户。",
+      "privacy": "预览隐藏余额和地址。",
+      "background": "后台检查取决于手机的调度。",
+      "empty": "没有符合搜索条件的账户。",
+      "unavailable": "提醒不可用",
+      "error": "请检查设备设置中的通知权限，然后重试。",
+      "checkNow": "立即检查",
+      "disableAll": "关闭全部提醒",
+      "search": "搜索账户或网络"
+    },
+    "accountPortfolio": {
+      "value": "投资组合价值",
+      "estimated": "估算价值",
+      "partial": "已知价值 · 部分余额或价格不可用",
+      "testnetsExcluded": "不含测试网络资金",
+      "allNetworks": "所有网络",
+      "unavailableNetwork": "网络不可用",
+      "chooseAccount": "选择账户，{{account}}",
+      "chooseFilter": "选择网络筛选，{{network}}",
+      "assets": "资产 · {{account}}",
+      "unavailable": "投资组合不可用。请重新打开钱包后重试。",
+      "noAddress": "此账户在所选网络上没有已保存的地址。请选择其他筛选项。",
+      "error": "无法完成请求。请重试。",
+      "activityNetwork": "查看 {{network}} 上的交易",
+      "activityAll": "查看已添加网络的动态",
+      "collectibles": "已保存藏品：{{count}} · {{network}}",
+      "refresh": "刷新投资组合"
+    },
+    "sendAssets": {
+      "choose": "选择资产",
+      "search": "搜索已保存的资产",
+      "label": "资产",
+      "change": "更换资产",
+      "unavailable": "已保存的资产暂不可用。请重试。"
     }
   }
 }

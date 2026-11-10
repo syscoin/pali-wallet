@@ -1354,7 +1354,17 @@
     "errorDetails": "Ocorreu um erro: {{error}}",
     "errorWithContext": "Ocorreu um erro: {{error}}: {{context}}",
     "viewDetails": "Clique para ver detalhes",
-    "clickToView": "Clique para ver detalhes"
+    "clickToView": "Clique para ver detalhes",
+    "activityTitle": "Atividade da carteira",
+    "activityPending": "Uma transação de entrada ou saída está pendente.",
+    "activityConfirmed": "Uma transação de entrada ou saída foi confirmada.",
+    "activityFailed": "Uma transação falhou.",
+    "activityUnknown": "Uma transação foi incluída; o resultado ainda não está disponível.",
+    "recoveryStarted": "A recuperação por guardiões foi iniciada.",
+    "recoveryCancelled": "A recuperação por guardiões foi cancelada.",
+    "recoveryCompleted": "A recuperação por guardiões foi concluída.",
+    "recoveryExpired": "A recuperação por guardiões expirou.",
+    "guardianPolicyChanged": "A política de guardiões mudou."
   },
   "faucet": {
     "title": "Faucet",
@@ -2107,7 +2117,6 @@
       "evmBody": "Anyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place.",
       "hide": "Hide private key",
       "sessionOnly": "Hide the key when you are finished. Revealing it again requires fresh authorization.",
-      "confirmPassword": "Confirm your wallet PIN",
       "reveal": "Reveal private key",
       "confirming": "Confirming PIN",
       "hardwareGuide": "Your {{device}} account uses its own recovery backup. The phrase shown in Pali belongs to this Pali wallet."
@@ -2155,7 +2164,6 @@
       "derived": "One recovery phrase, another address",
       "smartBody": "Create a smart account managed by Account 1 on this network. It can receive funds after creation; deployment is required before sending.",
       "derivedBody": "This account is derived from your existing recovery phrase. Keep that phrase backed up offline.",
-      "confirmPassword": "Confirm wallet PIN",
       "subtitle": "{{network}} · Wallet accounts",
       "select": "Select {{name}}",
       "removeHardware": "Removing this local account keeps its keys on your {{device}}. Connect the same device to add it again.",
@@ -2245,7 +2253,12 @@
       "balanceSuffix": ", balance and receive only",
       "editLabel": "Edit {{name}}{{chain}}",
       "useLabel": "Use {{name}}, {{symbol}}, Chain ID {{chainId}}",
-      "chain": "Chain ID {{chainId}}"
+      "chain": "Chain ID {{chainId}}",
+      "sendFrom": "Enviar de",
+      "receiveOn": "Receber em",
+      "chooseSource": "Escolha de onde enviar",
+      "chooseDestination": "Escolha onde receber",
+      "availableBalance": "{{amount}} {{symbol}} disponíveis"
     },
     "tools": {
       "title": "Ferramentas",
@@ -2282,6 +2295,43 @@
       "unavailable": "A configuração não está disponível. Atualize o estado antes de tentar novamente.",
       "cancelled": "A carteira mudou ou foi bloqueada. Reabra a configuração.",
       "reviewOptional": "Rever implantação opcional"
+    },
+    "notifications": {
+      "title": "Alertas de atividade",
+      "description": "Escolha contas para acompanhar transferências e alterações de recuperação.",
+      "privacy": "As prévias ocultam saldos e endereços.",
+      "background": "As verificações em segundo plano dependem do telefone.",
+      "empty": "Nenhuma conta corresponde à pesquisa.",
+      "unavailable": "Alertas indisponíveis",
+      "error": "Verifique as permissões de notificação nas configurações do dispositivo e tente novamente.",
+      "checkNow": "Verificar agora",
+      "disableAll": "Desativar todos os alertas",
+      "search": "Buscar contas ou redes"
+    },
+    "accountPortfolio": {
+      "value": "Valor da carteira",
+      "estimated": "Valor estimado",
+      "partial": "Valor conhecido · Alguns saldos ou preços indisponíveis",
+      "testnetsExcluded": "Fundos de redes de teste excluídos",
+      "allNetworks": "Todas as redes",
+      "unavailableNetwork": "Rede indisponível",
+      "chooseAccount": "Escolher conta, {{account}}",
+      "chooseFilter": "Escolher filtro de rede, {{network}}",
+      "assets": "Ativos · {{account}}",
+      "unavailable": "Carteira indisponível. Abra-a novamente para tentar de novo.",
+      "noAddress": "Esta conta não tem endereço salvo na rede selecionada. Escolha outro filtro.",
+      "error": "Não foi possível concluir a solicitação. Tente novamente.",
+      "activityNetwork": "Ver transações em {{network}}",
+      "activityAll": "Ver atividade nas redes adicionadas",
+      "collectibles": "Colecionáveis salvos: {{count}} · {{network}}",
+      "refresh": "Atualizar carteira"
+    },
+    "sendAssets": {
+      "choose": "Escolher ativo",
+      "search": "Pesquisar ativos salvos",
+      "label": "Ativo",
+      "change": "Alterar ativo",
+      "unavailable": "Ativos salvos indisponíveis. Tente novamente."
     }
   }
 }

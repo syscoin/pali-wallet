@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { SecurityPreferences } from '../src/core/securityPreferences.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
+import { quietActivityNotifications } from './notificationFixture.ts';
 
 async function fixture() {
   let raw: string | null = null, writes = 0, idleChecks = 0, exits = 0;
@@ -20,6 +21,8 @@ async function fixture() {
     './WatchAccountPortfolio': { WatchAccountPortfolio: 'WatchAccountPortfolio' }, './UtxoActivityScreen': { UtxoActivityScreen: 'UtxoActivityScreen' },
     './NativeActivity': { NativeActivityScreen: 'NativeActivityScreen' }, '../activity/watchActivity': { createWatchEvmActivity: () => ({}) },
     '../platform/http': { walletFetch: async () => { throw Error('Unexpected network'); } },
+    '../notifications/service': { nativeActivityNotifications: quietActivityNotifications },
+    '../notifications/choices': { watchNotificationChoices: () => [] },
     './useRealShell': { useRealShell: () => ({ tab: 'settings', navigation, immersive: false, goBack() {}, select() {} }) },
   });
   const render = () => screen.render({ authority, onAccounts() {}, onExit() { exits++; } });

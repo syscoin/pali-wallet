@@ -20,6 +20,7 @@ import { TabDeparture } from '../src/navigation/tabDeparture.ts';
 import type { ShellLeafNavigation, RealTab } from '../src/screens/RealAppShell';
 import type { NativeActivitySnapshot } from '../src/activity/nativeActivity.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
+import { quietActivityNotifications } from './notificationFixture.ts';
 
 const require = createRequire(import.meta.url);
 // Use the declared Expo Babel preset's toolchain to strip the installed RN Flow
@@ -363,6 +364,8 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
     'expo-status-bar': { StatusBar: 'StatusBar' }, 'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', './src/ui': ui,
     './src/screens/Onboarding': onboarding, './src/screens/NativeWallet': {}, './src/screens/WalletAccounts': accounts,
     './src/screens/WatchSession': {}, './src/core/watchAccounts': { WatchAccounts }, './src/core/accountDirectory': {},
+    './src/screens/NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' },
+    './src/notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
     './src/design/Studio': {}, './src/screens/Settings': {}, './src/core/index': core,
     './src/platform': { publicAccountRecords: { assertNetworkCurrent() {}, load: async () => ({ version: 1, records: [], accounts: [], utxoNetworks: UTXO_NETWORKS }), compareAndSet: async () => ({ version: 1, records: [], accounts: [], utxoNetworks: UTXO_NETWORKS }) },
       loadAccountSelection: async () => null, saveAccountSelection: async () => {}, balanceReader: {}, isNativePersistence: false },

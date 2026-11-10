@@ -48,7 +48,7 @@ const unavailable = async (): Promise<never> => { throw Error('Unplanned wallet-
 
 function storagePort(read: () => RecoveryStorageSnapshot, removal?: OpenWalletStorage['removal']): OpenWalletStorage {
   return {
-    pin: { installationId: installation, read: unavailable, beginAttempt: unavailable, completeAttempt: unavailable, replace: unavailable },
+    pin: { installationId: installation, read: unavailable, beginAttempt: unavailable, completeAttempt: unavailable, prepareReplacement: unavailable, replace: unavailable, settleCredentialRemoval: unavailable },
     keyringStorage: { get: unavailable, set: unavailable, deleteItem: unavailable, createManyIfAbsent: unavailable, compareAndSet: unavailable, compareAndSetMany: unavailable },
     signedRecords: { read: unavailable, compareAndSet: unavailable },
     authGuard: { checkAllowed: unavailable, recordFailure: unavailable, recordSuccess: unavailable },
@@ -83,7 +83,7 @@ export function createWalletRemovalFixture(
     },
   });
   const runtime: Pick<KeyringRuntime, 'authorizeWalletRemoval' | 'catalogue'> = {
-    catalogue: { ...catalogue, getControlSnapshot: () => null,
+    catalogue: { ...catalogue, getControlSnapshot: () => null, getMonitoringSnapshot: () => null,
       previewNetworkSelection() { throw Error('Dapp network control is outside this removal fixture'); } },
     async authorizeWalletRemoval(password, guard, beforeSnapshot) {
       guard();

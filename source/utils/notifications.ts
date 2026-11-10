@@ -1,5 +1,6 @@
 import { checkIfPopupIsOpen } from './checkPopupOpen';
 import { getNotificationTranslator } from './notificationLocale';
+import type { ActivityNotificationFact } from '../shared/activityNotifications';
 
 export interface INotificationOptions {
   buttons?: Array<{
@@ -11,6 +12,7 @@ export interface INotificationOptions {
   iconUrl?: string;
   imageUrl?: string;
   isClickable?: boolean;
+  isCurrent?: () => boolean;
   message: string;
   priority?: 0 | 1 | 2;
   requireInteraction?: boolean;
@@ -49,6 +51,7 @@ export const createNotification = async (
 
   // Don't show notifications if popup is open (user is actively using the wallet)
   const popupOpen = await checkIfPopupIsOpen();
+  if (options.isCurrent && !options.isCurrent()) return null;
   if (popupOpen && !options.requireInteraction) {
     return null;
   }
@@ -90,6 +93,38 @@ export const createNotification = async (
     } catch (error) {
       resolve(null);
     }
+  });
+};
+
+/** Scoped public facts use a generic lock-screen message. No account address,
+ * transaction amount, guardian address or RPC-supplied text is disclosed.
+ */
+export const showActivityNotification = async (
+  fact: ActivityNotificationFact,
+  isCurrent: () => boolean = () => true
+): Promise<string | null> => {
+  const notify = await getNotificationTranslator();
+  if (!isCurrent()) return null;
+  const messages: Record<ActivityNotificationFact['kind'], string> = {
+    'transaction-pending': 'activityPending',
+    'transaction-confirmed': 'activityConfirmed',
+    'transaction-failed': 'activityFailed',
+    'transaction-status-unknown': 'activityUnknown',
+    'recovery-started': 'recoveryStarted',
+    'recovery-cancelled': 'recoveryCancelled',
+    'recovery-completed': 'recoveryCompleted',
+    'recovery-expired': 'recoveryExpired',
+    'guardian-policy-changed': 'guardianPolicyChanged',
+  };
+  return createNotification({
+    title: notify('notifications.activityTitle'),
+    message: notify(`notifications.${messages[fact.kind]}`),
+    isCurrent,
+    isClickable: true,
+    clickAction: () => {
+      if (!isCurrent()) return;
+      void chrome.action.openPopup();
+    },
   });
 };
 

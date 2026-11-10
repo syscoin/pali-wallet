@@ -96,6 +96,18 @@ async function addWatchAccount(f: ReturnType<typeof fixture>) {
   return { saved, watches, registry, id };
 }
 
+test('monitoring enrollment refuses a retired saved custom UTXO registration before returning its old endpoint', async () => {
+  const f = fixture(), { saved, id, registry } = await addWatchAccount(f);
+  const owner = await f.open(); owner.unlock();
+  const original = owner.getMonitoringEntries();
+  assert.equal(original[0]?.network.id, id);
+  assert.equal('endpoint' in original[0]!.network && original[0]!.network.endpoint, first);
+  await registry.save(saved, draft(second), signal(), id);
+  const before = [...f.calls];
+  assert.throws(() => owner.getMonitoringEntries(), /changed|Reopen|registration/i);
+  assert.deepEqual(f.calls, before, 'retiring an enrollment target performs no RPC');
+});
+
 test('registers non-default SDK Litecoin and reopens the exact watch balance and activity scope', async () => {
   const f = fixture();
   const { saved, id } = await addWatchAccount(f);

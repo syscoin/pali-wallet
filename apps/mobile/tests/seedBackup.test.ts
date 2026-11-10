@@ -29,7 +29,7 @@ async function fixture() {
       async resumeImport() { throw new Error('Hardware is outside this fixture'); },
       async resumeSend() { throw new Error('Hardware is outside this fixture'); }, async cancel() {} },
     ledger: { getConnectionTargets: () => [], subscribeStatus: () => () => {}, isConnected: () => false, async scan() { throw new Error('Hardware is outside this fixture'); } },
-    catalogue: { getSnapshot: () => null, getControlSnapshot: () => null, previewNetworkSelection() { throw Error('Network selection is outside this fixture'); } },
+    catalogue: { getSnapshot: () => null, getControlSnapshot: () => null, getMonitoringSnapshot: () => null, previewNetworkSelection() { throw Error('Network selection is outside this fixture'); } },
     async readConnectionUtxoPublic() { throw Error('UTXO is outside this fixture'); },
     async openSlhDsaAccount() { throw new Error('SLH is outside this fixture'); },
     async openSmartAccountSend() { throw new Error('not used'); },

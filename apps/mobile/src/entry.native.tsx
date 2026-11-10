@@ -1,3 +1,4 @@
+import './notifications/backgroundTask';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { registerRootComponent } from 'expo';
@@ -10,6 +11,7 @@ function NativeEntry() {
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let current = true;
+    let stopNotifications: (() => void) | undefined;
     void loadAfterNativeCrypto(ensureNativeCryptoReady, () => {
       // Locale resources and protected preferences stay behind the same gate.
       // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -19,11 +21,16 @@ function NativeEntry() {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       return (require('../App') as typeof import('../App')).default;
     }).then((component) => {
-      if (current) setApplication(() => component);
+      if (current) {
+        // Public activity monitoring never opens the spending vault.
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        stopNotifications = (require('./notifications/service.native') as typeof import('./notifications/service.native')).startNativeNotificationLifecycle();
+        setApplication(() => component);
+      }
     }).catch(() => {
       if (current) setFailed(true);
     });
-    return () => { current = false; };
+    return () => { current = false; stopNotifications?.(); };
   }, []);
   if (Application) return <Application />;
   return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#07121f', padding: 28 }}>

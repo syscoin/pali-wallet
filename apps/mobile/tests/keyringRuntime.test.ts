@@ -82,6 +82,7 @@ delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 
 function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActive?: () => void, connectionFetch?: KeyringRuntimeDependencies['connectionFetch'], trezorSessions?: KeyringRuntimeDependencies['trezorSessions'], utxoFetch?: typeof fetch, prepareSmartAccount?: KeyringRuntimeDependencies['prepareSmartAccount'], requestCredential?: KeyringRuntimeDependencies['requestOperationCredential']) {
   let pin: NativePinRecord | null = null;
+  let obsoletePin: NativePinRecord | null = null;
   const pinAttempts = new WeakMap<object, { record: string; failures: number }>();
   const storedPins = createTestPinCredentialPort();
   let afterPinRead: () => Promise<void> = async () => {};
@@ -129,7 +130,9 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
         assert(held); assert.equal(held.record, JSON.stringify(pin)); assert.equal(held.failures, failures);
         failures = 0; successWrites++;
       },
-      async replace(expected, next, check) { check(); if (failPinCommit) throw new WalletStorageError('STORAGE_CHANGED'); assert.deepEqual(expected, pin); pin = next; },
+      async prepareReplacement(expected, next, check) { check(); assert.deepEqual(expected, pin); assert.equal(obsoletePin, null); obsoletePin = next; },
+      async replace(expected, next, check) { check(); if (failPinCommit) throw new WalletStorageError('STORAGE_CHANGED'); assert.deepEqual(expected, pin); obsoletePin = pin; pin = next; },
+      async settleCredentialRemoval(remove) { if (obsoletePin) { await remove(obsoletePin); obsoletePin = null; } },
     },
     utxoSignedRecords: utxoPort,
     signedRecords: {
@@ -588,9 +591,6 @@ test('backup uses fresh SDK authentication and a wallet-bound storage receipt', 
 
 async function controlledSdk() {
   const sdk = await loadNativeKeyringSdk();
-  let entered = () => {};
-  let release = Promise.resolve();
-  let holding = false;
   let unlockCalls = 0;
   let hydrations = 0;
   class ControlledKeyring extends sdk.HostKeyring {
@@ -603,7 +603,6 @@ async function controlledSdk() {
       options: import('@sidhujag/sysweb3-keyring/cjs/software.js').SecretOperationOptions, work: (secret: string) => T | Promise<T>): Promise<T> {
       return super.withSecretOperation(credential, options, async secret => {
         unlockCalls++;
-        if (holding) { entered(); await release; }
         return work(secret);
       });
     }
@@ -612,13 +611,6 @@ async function controlledSdk() {
     loadSdk: async () => ({ ...sdk, HostKeyring: ControlledKeyring }),
     get hydrations() { return hydrations; },
     get unlockCalls() { return unlockCalls; },
-    hold() {
-      holding = true;
-      const started = new Promise<void>((resolve) => { entered = resolve; });
-      let finish!: () => void;
-      release = new Promise<void>((resolve) => { finish = resolve; });
-      return { started, finish: () => { holding = false; finish(); } };
-    },
   };
 }
 
@@ -649,7 +641,7 @@ test('lifecycle cancellation still records each explicit wrong-PIN failure and r
   } finally { await runtime.storage.close(); }
 });
 
-test('cancelled successful authentication neither clears failures nor hydrates an account', async () => {
+test('cancelled successful authentication neither clears failures nor hydrates an account', { timeout: 10000 }, async () => {
   const controlled = await controlledSdk();
   const disk = memoryDisk(controlled.loadSdk);
   const runtime = await disk.factory.open();
@@ -660,7 +652,9 @@ test('cancelled successful authentication neither clears failures nor hydrates a
     assert.equal((await runtime.session.unlock('000000')).authenticated, false);
     assert.equal(disk.failures, 1);
     const hydrated = controlled.hydrations;
-    const hold = controlled.hold();
+    // Public unlock never enters an SDK secret operation. Interrupt the actual
+    // protected PIN read instead of waiting for a signing-root decryption.
+    const hold = disk.holdPinRead();
     const pending = runtime.session.unlock(PASSWORD);
     await hold.started;
     await runtime.session.lock();
@@ -670,6 +664,7 @@ test('cancelled successful authentication neither clears failures nor hydrates a
     assert.equal(disk.failureWrites, before.failures + 2);
     assert.equal(disk.successWrites, before.successes);
     assert.equal(controlled.hydrations, hydrated);
+    assert.equal(controlled.unlockCalls, 0);
     await assert.rejects(runtime.session.readSelectedAddress(), /NOT_READY/);
   } finally { await runtime.storage.close(); }
 });
@@ -719,8 +714,8 @@ test('an incomplete canonical account record is refused unchanged before account
     disk.records.delete(WALLET_CATALOGUE_KEY);
     const incomplete = JSON.stringify([...disk.records]);
     runtime = await disk.factory.open() as KeyringRuntime;
-    await assert.rejects(runtime.session.unlock('000000'), /OPERATION_FAILED/);
-    await assert.rejects(runtime.session.unlock(PASSWORD), /OPERATION_FAILED/);
+    await assert.rejects(runtime.session.unlock('000000'), /NOT_READY/);
+    await assert.rejects(runtime.session.unlock(PASSWORD), /NOT_READY/);
     assert.equal(disk.failureWrites, initialChecks, 'invalid record admission precedes any additional PIN check');
     assert.equal(runtime.catalogue.getSnapshot(), null);
     assert.equal(JSON.stringify([...disk.records]), incomplete);
@@ -792,6 +787,25 @@ async function readyAccounts(loadSdk?: KeyringRuntimeDependencies['loadSdk'], co
   const execute = (request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) => authority.manageAccounts(request, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
   return { disk, authority, get runtime() { return runtime; }, execute };
 }
+
+test('runtime monitoring wrapper exports public state only during an open public session without mutating custody', async () => {
+  const f = await readyAccounts();
+  try {
+    const before = structuredClone([...f.disk.records]);
+    const monitoring = f.runtime.catalogue.getMonitoringSnapshot();
+    assert(monitoring);
+    assert.equal(monitoring.revision, f.runtime.catalogue.getSnapshot()!.revision);
+    assert(monitoring.accounts.some(entry => entry.account.id === 'hd:60:0' && entry.identifier === ADDRESS));
+    assert(!/xprv|privateKey|walletFingerprint|mnemonic|vault/.test(JSON.stringify(monitoring)));
+    assert.deepEqual([...f.disk.records], before);
+    f.authority.lock();
+    assert.equal(f.runtime.catalogue.getMonitoringSnapshot(), null);
+    await f.authority.unlock(PASSWORD);
+    assert.deepEqual(f.runtime.catalogue.getMonitoringSnapshot(), monitoring);
+    await f.authority.dispose();
+    assert.equal(f.runtime.catalogue.getMonitoringSnapshot(), null);
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
 
 async function readySmartCreationAuthority(beforeAddress: () => Promise<void> = async () => undefined) {
   const sdk = await loadNativeKeyringSdk(), keyrings: InstanceType<typeof sdk.HostKeyring>[] = [];
@@ -2218,6 +2232,71 @@ test('native token capability uses authenticated account/network, preserves rest
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
+test('scoped portfolio inventory reads only the selected account on an inactive saved network without selecting or signing', async () => {
+  const f = await readyAccounts();
+  const ethToken = { contractAddress: '0x1111111111111111111111111111111111111111', decimals: 6, name: 'Ethereum saved', symbol: 'ETHS' };
+  const baseToken = { ...ethToken, contractAddress: '0x2222222222222222222222222222222222222222', name: 'Base saved', symbol: 'BASES' };
+  try {
+    await f.runtime.tokens!.add(0, ethToken, () => undefined);
+    for (let index = 1; index < 15; index++) await f.execute({ kind: 'create', label: `Account ${index + 1}` });
+    await f.execute({ kind: 'select', id: 'hd:60:0' });
+    let catalogue = f.authority.getCatalogue()!;
+    await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, catalogue.revision, () => {});
+    const inventory = await f.runtime.tokens!.load(() => undefined);
+    await f.runtime.tokens!.add(inventory.revision, baseToken, () => undefined);
+    catalogue = f.authority.getCatalogue()!;
+    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, catalogue.revision, () => {});
+    const before = f.authority.getSnapshot(), publicCatalogue = f.authority.getCatalogue()!;
+    const base = publicCatalogue.networks.find(entry => entry.id === 'base')!;
+    const target = { accountId: 'hd:60:0', address: before.account!.address, networkId: base.id, registrationHash: base.registrationHash };
+    const records = structuredClone([...f.disk.records]), credentials = f.disk.successWrites;
+    assert.equal(publicCatalogue.accounts.length, 15);
+    assert.deepEqual((await f.runtime.tokens!.loadScoped!(target, () => undefined)).items, [baseToken]);
+    assert.equal(f.authority.getSnapshot(), before);
+    assert.equal(f.authority.getCatalogue(), publicCatalogue);
+    assert.deepEqual([...f.disk.records], records);
+    assert.equal(f.disk.successWrites, credentials);
+    const activity = f.runtime.activity!.forScope!(target, () => undefined);
+    const activitySnapshot = await activity.load(() => undefined);
+    assert.equal(activitySnapshot.scope.network.id, 'base');
+    assert.equal(activitySnapshot.scope.address, ADDRESS);
+    assert.equal(f.authority.getSnapshot(), before);
+    assert.deepEqual([...f.disk.records], records);
+    await assert.rejects(f.runtime.tokens!.loadScoped!({ ...target, accountId: 'hd:60:1' }, () => undefined), /CANCELLED/);
+    await assert.rejects(f.runtime.tokens!.loadScoped!({ ...target, registrationHash: '0x' + '00'.repeat(32) }, () => undefined), /CANCELLED/);
+    f.authority.lock();
+    await assert.rejects(f.runtime.tokens!.loadScoped!(target, () => undefined), /CANCELLED|NOT_READY/);
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+test('scoped activity includes an inactive-network retained pending transaction as inspection-only without mutating history', async () => {
+  const f = await readyAccounts();
+  try {
+    let catalogue = f.authority.getCatalogue()!;
+    await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, catalogue.revision, () => {});
+    const base = f.authority.getCatalogue()!.networks.find(network => network.id === 'base')!;
+    const signed = await signTestTransfer(f.runtime.transfers!, { type: 2, accessList: [], from: ADDRESS,
+      to: '0x1111111111111111111111111111111111111111', chainId: base.chainId, nonce: '0', value: '1',
+      gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' },
+      { assertCurrent: () => undefined, signal: new AbortController().signal });
+    const journal = await f.runtime.transfers!.journal(() => undefined);
+    await journal.saveSigned(signed.rawTransaction);
+    catalogue = f.authority.getCatalogue()!;
+    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, catalogue.revision, () => {});
+    const before = f.authority.getSnapshot(), records = structuredClone([...f.disk.records]);
+    const scoped = f.runtime.activity!.forScope!({ accountId: 'hd:60:0', address: ADDRESS,
+      networkId: base.id, registrationHash: base.registrationHash }, () => undefined);
+    const loaded = await scoped.load(() => undefined);
+    assert.equal(loaded.locals[0]?.hash, signed.hash);
+    assert.equal(loaded.locals[0]?.inspectionOnly, true);
+    assert.equal(loaded.locals[0]?.speedUpEligible, undefined);
+    await scoped.saveCache(loaded.scope, [], () => undefined);
+    await scoped.saveView(loaded.scope, { filter: 'sent', showZero: true, anchor: null, offset: 0 }, () => undefined);
+    assert.deepEqual([...f.disk.records], records);
+    assert.equal(f.authority.getSnapshot(), before);
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
 test('token storage admission blocks account switching and lost commit acknowledgement quarantines runtime', async () => {
   const f = await readyAccounts();
   const token = { contractAddress: '0x1111111111111111111111111111111111111111', decimals: 18, name: 'Token', symbol: 'TOKEN' };
@@ -2664,20 +2743,17 @@ test('imported credential rejection shares persistent throttle after lifecycle c
   } finally { hold.finish(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
-test('full imported account restoration performs one unlock and stops at a revoked record read', async () => {
+test('imported account public restore decrypts no signing keys and stops at a revoked PIN read', { timeout: 10000 }, async () => {
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
   try {
     await importTestKey(f); await importTestKey(f, '0x' + '2'.padStart(64, '0'));
     f.authority.lock(); const before = sdk.unlocks;
-    await f.authority.unlock(PASSWORD); assert.equal(sdk.unlocks - before, 1);
+    await f.authority.unlock(PASSWORD); assert.equal(sdk.unlocks - before, 0);
     assert.equal(sdk.exports, 0, 'complete encrypted SDK maps avoid per-account key exports');
     const importedBefore = sdk.imports;
-    f.authority.lock(); const entered = deferredAccount(), release = deferredAccount();
-    f.disk.onRecord(async (kind, key) => {
-      if (kind === 'get' && key === WALLET_CATALOGUE_KEY) { entered.resolve(); await release.promise; }
-    });
-    const pending = f.authority.unlock(PASSWORD); void pending.catch(() => undefined); await entered.promise;
-    f.authority.lock(); f.disk.onRecord(); release.resolve(); await assert.rejects(pending, /CANCELLED/);
+    f.authority.lock(); const held = f.disk.holdPinRead();
+    const pending = f.authority.unlock(PASSWORD); void pending.catch(() => undefined); await held.started;
+    f.authority.lock(); held.finish(); await assert.rejects(pending, /CANCELLED/);
     assert.equal(sdk.imports, importedBefore, 'restore never reimports saved scalars');
     assert.equal(f.authority.getSnapshot().account, null); assert.equal(f.runtime.catalogue.getSnapshot(), null);
   } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }

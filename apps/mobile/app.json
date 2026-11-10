@@ -56,6 +56,14 @@
           "neverForLocation": true,
           "bluetoothAlwaysPermission": "Allow Pali to connect to your Ledger hardware wallet."
         }
+      ],
+      "expo-background-task",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "pali-account-activity-v1",
+          "enableBackgroundRemoteNotifications": false
+        }
       ]
     ],
     "updates": {

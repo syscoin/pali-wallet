@@ -19,6 +19,13 @@ export type NativeTokenScope = Readonly<{
   chainId: string;
   registrationHash: string;
 }>;
+/** Public target for a saved-token read; never carries a wallet fingerprint. */
+export type NativeTokenPortfolioScope = Readonly<{
+  accountId: string;
+  address: string;
+  networkId: string;
+  registrationHash: string;
+}>;
 export type NativeTokenInventory = Readonly<{
   revision: number;
   items: readonly Erc20Metadata[];

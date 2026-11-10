@@ -32,6 +32,7 @@ import { AssetMarketCard } from '../portfolio/AssetMarketCard';
 import type { NativeNetworkRegistration } from '../custody/networkContext';
 
 type Props = {
+  initialContract?: string;
   registration?: NativeNetworkRegistration | null;
   nativeAsset?: React.ReactNode;
   controller: NativeTokenView;
@@ -84,9 +85,10 @@ function TokenContent({
   onSendCollectible,
   onBackHandlerChange,
   onModeChange,
+  initialContract,
 }: Props & { snapshot: NativeTokenSnapshot }) {
   const { hidden: hideBalances } = useBalancePrivacy();
-  const [route, setRoute] = useState<Route>({ kind: 'list' });
+  const [route, setRoute] = useState<Route>(initialContract ? { kind: 'detail', contract: initialContract } : { kind: 'list' });
   const [contract, setContract] = useState('');
   const [localError, setLocalError] = useState('');
   const lifetime = useRef({ alive: false, epoch: 0, running: false });

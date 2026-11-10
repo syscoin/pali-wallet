@@ -1354,7 +1354,17 @@
     "errorDetails": "오류가 발생했습니다: {{error}}",
     "errorWithContext": "오류가 발생했습니다: {{error}}: {{context}}",
     "viewDetails": "클릭하여 세부 정보 보기",
-    "clickToView": "세부 정보를 보려면 클릭하세요"
+    "clickToView": "세부 정보를 보려면 클릭하세요",
+    "activityTitle": "지갑 활동",
+    "activityPending": "입금 또는 출금 거래가 대기 중입니다.",
+    "activityConfirmed": "입금 또는 출금 거래가 확인되었습니다.",
+    "activityFailed": "거래가 실패했습니다.",
+    "activityUnknown": "거래가 블록에 포함되었지만 결과는 아직 확인할 수 없습니다.",
+    "recoveryStarted": "가디언 복구가 시작되었습니다.",
+    "recoveryCancelled": "가디언 복구가 취소되었습니다.",
+    "recoveryCompleted": "가디언 복구가 완료되었습니다.",
+    "recoveryExpired": "가디언 복구가 만료되었습니다.",
+    "guardianPolicyChanged": "가디언 정책이 변경되었습니다."
   },
   "faucet": {
     "title": "수도꼭지",
@@ -2107,7 +2117,6 @@
       "evmBody": "Anyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place.",
       "hide": "Hide private key",
       "sessionOnly": "Hide the key when you are finished. Revealing it again requires fresh authorization.",
-      "confirmPassword": "Confirm your wallet PIN",
       "reveal": "Reveal private key",
       "confirming": "Confirming PIN",
       "hardwareGuide": "Your {{device}} account uses its own recovery backup. The phrase shown in Pali belongs to this Pali wallet."
@@ -2155,7 +2164,6 @@
       "derived": "One recovery phrase, another address",
       "smartBody": "Create a smart account managed by Account 1 on this network. It can receive funds after creation; deployment is required before sending.",
       "derivedBody": "This account is derived from your existing recovery phrase. Keep that phrase backed up offline.",
-      "confirmPassword": "Confirm wallet PIN",
       "subtitle": "{{network}} · Wallet accounts",
       "select": "Select {{name}}",
       "removeHardware": "Removing this local account keeps its keys on your {{device}}. Connect the same device to add it again.",
@@ -2245,7 +2253,12 @@
       "balanceSuffix": ", balance and receive only",
       "editLabel": "Edit {{name}}{{chain}}",
       "useLabel": "Use {{name}}, {{symbol}}, Chain ID {{chainId}}",
-      "chain": "Chain ID {{chainId}}"
+      "chain": "Chain ID {{chainId}}",
+      "sendFrom": "보내는 네트워크",
+      "receiveOn": "받는 네트워크",
+      "chooseSource": "보낼 곳 선택",
+      "chooseDestination": "받을 곳 선택",
+      "availableBalance": "사용 가능: {{amount}} {{symbol}}"
     },
     "tools": {
       "title": "도구",
@@ -2282,6 +2295,43 @@
       "unavailable": "설정을 사용할 수 없습니다. 다시 시도하기 전에 상태를 새로 고치세요.",
       "cancelled": "지갑이 변경되었거나 잠겼습니다. 설정을 다시 여세요.",
       "reviewOptional": "선택적 배포 검토"
+    },
+    "notifications": {
+      "title": "활동 알림",
+      "description": "거래 및 복구 변경 사항을 알릴 계정을 선택하세요.",
+      "privacy": "미리 보기에는 잔액과 주소가 표시되지 않습니다.",
+      "background": "백그라운드 확인은 휴대폰 상태에 따라 달라집니다.",
+      "empty": "검색과 일치하는 계정이 없습니다.",
+      "unavailable": "알림을 사용할 수 없음",
+      "error": "기기 설정에서 알림 권한을 확인한 후 다시 시도하세요.",
+      "checkNow": "지금 확인",
+      "disableAll": "모든 알림 끄기",
+      "search": "계정 또는 네트워크 검색"
+    },
+    "accountPortfolio": {
+      "value": "포트폴리오 가치",
+      "estimated": "예상 가치",
+      "partial": "확인된 가치 · 일부 잔액 또는 가격을 사용할 수 없습니다",
+      "testnetsExcluded": "테스트 네트워크 자산 제외",
+      "allNetworks": "모든 네트워크",
+      "unavailableNetwork": "사용할 수 없는 네트워크",
+      "chooseAccount": "계정 선택, {{account}}",
+      "chooseFilter": "네트워크 필터 선택, {{network}}",
+      "assets": "자산 · {{account}}",
+      "unavailable": "포트폴리오를 사용할 수 없습니다. 지갑을 다시 열어 주세요.",
+      "noAddress": "선택한 네트워크에 저장된 주소가 없습니다. 다른 필터를 선택하세요.",
+      "error": "요청을 완료할 수 없습니다. 다시 시도하세요.",
+      "activityNetwork": "{{network}} 거래 보기",
+      "activityAll": "추가된 네트워크의 활동 보기",
+      "collectibles": "저장된 수집품: {{count}} · {{network}}",
+      "refresh": "포트폴리오 새로고침"
+    },
+    "sendAssets": {
+      "choose": "자산 선택",
+      "search": "저장된 자산 검색",
+      "label": "자산",
+      "change": "자산 변경",
+      "unavailable": "저장된 자산을 불러올 수 없습니다. 다시 시도해 주세요."
     }
   }
 }

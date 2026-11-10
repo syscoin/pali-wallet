@@ -10,6 +10,7 @@ import { createNativeNetwork, type NativeNetworkRegistration } from '../custody/
 import type { NativeNetworkSnapshot, NativeNetworkView } from '../custody/networkView';
 import type { NativeNetworkSelectionReceipt } from '../custody/accounts';
 import { Button, colors, Header, Notice, Screen, Text } from '../ui';
+import { NetworkSourceSheet } from './NetworkSourceSheet';
 
 function failure(error: unknown, t: TFunction): string {
   const code = error instanceof Error ? error.message : '';
@@ -117,6 +118,8 @@ export function NativeNetworks<Id extends string>({ controller, onBack, selectio
     purpose: 'send' | 'receive';
     assertCurrent(): void;
     onSelected(receipt: NativeNetworkSelectionReceipt): void;
+    balance?: Readonly<{ networkId: string; available?: string; loading: boolean }>;
+    balances?: readonly Readonly<{ networkId: string; available: string; loading: boolean }>[];
   }>;
 }) {
   const { t } = useNativeTranslation();
@@ -310,14 +313,25 @@ export function NativeNetworks<Id extends string>({ controller, onBack, selectio
   const matches = snapshot?.networks.filter((network) =>
     (selection?.purpose !== 'send' || network.canSign) &&
     (!search || network.name.toLocaleLowerCase().includes(search) || network.symbol.toLocaleLowerCase().includes(search))) ?? [];
+  if (selection) {
+    const choices = [...matches].sort((left, right) => Number(right.id === snapshot?.selectedId) - Number(left.id === snapshot?.selectedId) || Number(left.testnet) - Number(right.testnet));
+    return <NetworkSourceSheet purpose={selection.purpose} selectedId={snapshot?.selectedId ?? ''}
+      options={choices.map(network => {
+        const balance = network.id === snapshot?.selectedId && selection.balance?.networkId === network.id && selection.balance.available !== undefined
+          ? selection.balance : selection.balances?.find(value => value.networkId === network.id) ?? (selection.balance?.networkId === network.id ? selection.balance : undefined);
+        return { id: network.id, name: network.name, symbol: network.symbol, testnet: network.testnet, chainId: network.registration?.chainId,
+          ...(balance ? { available: balance.available, loading: balance.loading } : {}) };
+      })}
+      busy={busy} error={error} onSelect={id => handleSelect(id as Id)} onClose={close} />;
+  }
   return <SafeAreaView style={s.safeArea} edges={['top', 'bottom']}>
     <KeyboardAvoidingView style={s.safeArea} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen key={form ? 'network-form' : 'network-list'} gap={16} footer={form ? <>
         {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
         <Button title={form.utxo && form.id ? busy ? t('mobile.networks.saving') : t('mobile.networks.saveChanges') : busy ? t('mobile.networks.checking') : t('mobile.networks.save')} disabled={busy} onPress={() => { void save(); }} />
         <Button title={t('buttons.cancel')} variant="secondary" disabled={busy} onPress={discardForm} />
-      </> : selection ? <Button title={t('buttons.cancel')} variant="secondary" onPress={close} /> : undefined}>
-        <Header title={form ? form.utxo ? (form.id ? t('mobile.networks.editUtxo') : t('mobile.networks.addUtxo')) : form.id ? t('mobile.networks.edit') : t('mobile.networks.add') : selection ? selection.purpose === 'send' ? 'Choose send network' : 'Choose receive network' : t('mobile.networks.title')} subtitle={form ? undefined : t('mobile.networks.choose')} onBack={form ? discardForm : close} />
+      </> : undefined}>
+        <Header title={form ? form.utxo ? (form.id ? t('mobile.networks.editUtxo') : t('mobile.networks.addUtxo')) : form.id ? t('mobile.networks.edit') : t('mobile.networks.add') : t('mobile.networks.title')} subtitle={form ? undefined : t('mobile.networks.choose')} onBack={form ? discardForm : close} />
         {form ? <>
           {!form.utxo && !form.id && snapshot && controller.loadCatalogue && (
             <NetworkSuggestions query={catalogueQuery} onQuery={setCatalogueQuery}

@@ -11,6 +11,7 @@ import * as utxoNetworks from '../src/core/utxoNetworks.ts';
 import type { NativePairingEntry } from '../src/connections/pairingLinks.ts';
 import type { NativeConnectionsView } from '../src/connections/types.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
+import { quietActivityNotifications } from './notificationFixture.ts';
 
 type Element = {
   type: unknown;
@@ -325,6 +326,9 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     ])
   );
   Object.assign(dependencies, {
+    './NativeAccountOverview': { NativePortfolioRoute: 'NativePortfolio' },
+    '../notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
+    '../activity/accountActivity': { AccountActivityController: class {} },
     './BackupIntroduction': { BackupIntroduction: 'BackupIntroduction' },
     './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
     './NativeImportWallet': { NativeImportWallet: 'NativeImportWallet' },

@@ -1,9 +1,10 @@
-import type { NativePortfolioAccount } from '../portfolio/nativePortfolio';
+import { sameNativePortfolioAccount, type NativePortfolioAccount } from '../portfolio/nativePortfolio';
 import type { NativeUnsignedSendDraft } from './sendNetworkDraft';
 import type { NativeOperationCredential } from '../custody/types';
 import { TransactionAuthentication } from './TransactionAuthentication';
 import { RecipientQrScanner } from './RecipientQrScanner';
 import { SendNetworkCard } from './SendNetworkCard';
+import { SendAssetSelector, type SendAssetItem } from './SendAssetSelector';
 import type { NativeRecipientResolution, NativeRecipientResolver } from '../portfolio/nativeRecipientResolver';
 import { NativeTokenMaximum, nativeTokenAvailableAmount } from './NativeTokenMaximum';
 import type { NativeTokenView } from '../portfolio/nativeTokens';
@@ -210,6 +211,8 @@ export function NativeSend({
   draftNotice,
   onViewTransaction,
   availableAmount,
+  assetChoices,
+  onChangeAsset,
 }: {
   controller: NativeTransferView;
   authenticationMethod: NativeOperationCredential['method'];
@@ -217,6 +220,8 @@ export function NativeSend({
   draftNotice?: string;
   onViewTransaction?(hash: string): void;
   availableAmount?: string;
+  assetChoices?: readonly SendAssetItem[];
+  onChangeAsset?(draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>, token?: Erc20Metadata): void;
   ledgerConnection?: NativeLedgerConnectionView;
   initialDraft?: NativeSendInitialDraft;
   beforeClose?(): Promise<void>;
@@ -242,9 +247,11 @@ export function NativeSend({
     tokenView?.getSnapshot ?? emptyTokenSnapshot,
     tokenView?.getSnapshot ?? emptyTokenSnapshot
   );
+  const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+  const readTokenInventory = !!token || assetPickerOpen && !assetChoices;
   useLayoutEffect(
-    () => token ? tokenView?.connect() : undefined,
-    [token, tokenView]
+    () => readTokenInventory ? tokenView?.connect() : undefined,
+    [readTokenInventory, tokenView]
   );
   const [maximum, setMaximum] = useState(initialDraft?.max ?? false);
   const [tokenDetails, setTokenDetails] = useState(false);
@@ -936,10 +943,19 @@ export function NativeSend({
             !busy && <Button title="Check again" variant="secondary" onPress={() => void run(() => prepareReplacement(replacementHash))} />
           ) : (
             <>
-              <SendNetworkCard context={capturedContext} disabled={busy} onChange={onChangeNetwork ? () => {
+              {onChangeAsset && !draftCollectible ? <SendAssetSelector context={capturedContext} token={token} nativeAvailable={availableAmount}
+                items={tokenSnapshot?.status === 'ready' && sameNativePortfolioAccount(tokenSnapshot.account, account) ? tokenSnapshot.items : assetChoices ?? []}
+                loading={assetPickerOpen && !assetChoices && tokenSnapshot?.status === 'loading'}
+                unavailable={!assetChoices && tokenSnapshot?.status === 'error'} open={assetPickerOpen} busy={busy}
+                onOpen={() => { if (!busy && lifetime.current.alive) { closeScanner(); setAssetPickerOpen(true); } }}
+                onClose={() => setAssetPickerOpen(false)} onSelect={next => {
+                  if (busy || !lifetime.current.alive) return;
+                  setAssetPickerOpen(false);
+                  onChangeAsset(Object.freeze({ kind: 'evm', recipient, amount, nonce, tokenId, max: maximum, advanced }), next);
+                }} /> : <SendNetworkCard context={capturedContext} disabled={busy} onChange={onChangeNetwork ? () => {
                   if (busy || !lifetime.current.alive) return;
                   closeScanner(); onChangeNetwork(Object.freeze({ kind: 'evm', recipient, amount, nonce, tokenId, max: maximum, advanced }));
-                } : undefined} />
+                } : undefined} />}
               {draftNotice && <Text accessibilityLiveRegion="polite" style={styles.muted}>{draftNotice}</Text>}
               <NativeSendInput
                 label={draftCollectible ? 'Recipient address' : `${capturedContext.name} address`}

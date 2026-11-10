@@ -7,7 +7,7 @@ import {
 import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId.ts';
 import { normalizeErc20Address, parseErc20Metadata } from './erc20Metadata.ts';
 import { createErc20Reader, Erc20ReadError, type Erc20Reader } from './erc20ReadRpc.ts';
-import type { NativeTokenInventory, SavedCollectible } from './tokenRegistry.ts';
+import type { NativeTokenInventory, NativeTokenPortfolioScope, SavedCollectible } from './tokenRegistry.ts';
 import { NativeTokenRegistryError, snapshotSavedCollectible } from './tokenRegistry.ts';
 import {
   sameNativePortfolioAccount,
@@ -24,6 +24,7 @@ import type { createNftOwnershipReader } from './nftOwnershipReadRpc.ts';
 
 export interface NativeTokenRuntime {
   load(assertCurrent: () => void): Promise<NativeTokenInventory>;
+  loadScoped?(scope: NativeTokenPortfolioScope, assertCurrent: () => void): Promise<NativeTokenInventory>;
   add(
     expectedRevision: number,
     metadata: Erc20Metadata,

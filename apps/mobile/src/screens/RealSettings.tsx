@@ -3,6 +3,7 @@ import { DisplayCurrency } from './DisplayCurrency';
 import { HelpAbout } from './HelpAbout';
 import { NativePreferences } from './NativePreferences';
 import { WalletBackupBadge } from './WalletBackupBadge';
+import { ActivityNotifications, type NotificationSettingsTarget } from './ActivityNotifications';
 import { useNativeTranslation } from '../platform/localization';
 import type { ShellLeafNavigation } from './RealAppShell';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -50,17 +51,19 @@ function ResetActivity({ accountLabel, target, onBack }: {
   </Screen></SafeAreaView>;
 }
 
-export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, onConnections, onInfrastructure, activityReset, onLock, onBack, navigation, backupRequired = false, onBackup }: {
+export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, onConnections, onInfrastructure, activityReset, notifications, onLock, onBack, navigation, backupRequired = false, onBackup }: {
   accountLabel: string; watchOnly: boolean; navigation?: ShellLeafNavigation; onSecurity?: () => void; onAutoLock?: () => void; onConnections?: () => void; onInfrastructure?: () => void; onLock(): void; onBack(): void;
   backupRequired?: boolean; onBackup?(): void;
   activityReset?: ActivityResetTarget;
+  notifications?: NotificationSettingsTarget;
 }) {
   const { t } = useNativeTranslation();
-  const [opened, setOpened] = useState<Readonly<{ leaf: 'about' | 'currency' | 'activity' | 'language'; scope?: string }> | null>(null);
+  const [opened, setOpened] = useState<Readonly<{ leaf: 'about' | 'currency' | 'activity' | 'language' | 'notifications'; scope?: string }> | null>(null);
   const languageOwner = useRef<typeof opened>(null);
-  const leaf = opened?.leaf === 'activity' && opened.scope !== activityReset?.scope ? null : opened?.leaf ?? null;
-  const back = () => { languageOwner.current = null; if (leaf) setOpened(null); else onBack(); };
-  useLayoutEffect(() => () => { languageOwner.current = null; }, []);
+  const notificationsOwner = useRef<typeof opened>(null);
+  const leaf = opened?.leaf === 'activity' && opened.scope !== activityReset?.scope || opened?.leaf === 'notifications' && opened.scope !== notifications?.scope ? null : opened?.leaf ?? null;
+  const back = () => { languageOwner.current = null; notificationsOwner.current = null; if (leaf) setOpened(null); else onBack(); };
+  useLayoutEffect(() => () => { languageOwner.current = null; notificationsOwner.current = null; }, []);
   useLayoutEffect(() => navigation?.registerBack(() => { back(); return true; }));
   useLayoutEffect(() => { navigation?.setImmersive(leaf !== null); return () => navigation?.setImmersive(false); }, [navigation, leaf]);
   if (leaf === 'about') return <HelpAbout onBack={back} />;
@@ -69,6 +72,9 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
     if (languageOwner.current !== opened) throw new Error('CANCELLED');
   }} />;
   if (leaf === 'activity' && activityReset) return <ResetActivity key={activityReset.scope} accountLabel={accountLabel} target={activityReset} onBack={back} />;
+  if (leaf === 'notifications' && notifications) return <ActivityNotifications key={notifications.scope} target={{ ...notifications,
+    assertCurrent() { if (notificationsOwner.current !== opened) throw Error('CANCELLED'); notifications.assertCurrent(); },
+  }} onBack={back} />;
   return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}><Screen gap={16} footer={
     <Button title={watchOnly ? t('mobile.settings.hide') : t('mobile.settings.lock')} icon="lock" size="compact" variant="secondary" onPress={onLock} />
   }>
@@ -81,6 +87,9 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
       {activityReset && <Row title={t('mobile.settings.activityTitle')} subtitle={t('mobile.settings.activitySubtitle')} icon="activity" onPress={() => setOpened({ leaf: 'activity', scope: activityReset.scope })} dense last />}
     </Card>}
     <Card>
+      {notifications && <Row title={t('mobile.notifications.title')} subtitle={t('mobile.notifications.description')} icon="activity" onPress={() => {
+        const next = { leaf: 'notifications' as const, scope: notifications.scope }; notificationsOwner.current = next; setOpened(next);
+      }} dense />}
       {watchOnly && onAutoLock && <Row title="Auto-lock" subtitle="Choose when watch accounts hide" icon="clock" onPress={onAutoLock} dense />}
       <Row title={t('generalMenu.languages')} subtitle={t('settings.currentLanguage')} icon="globe" dense onPress={() => {
         const next = { leaf: 'language' as const }; languageOwner.current = next; setOpened(next);

@@ -209,6 +209,16 @@ async function projection(page: Page) {
                 state.vaultGlobal.networks.ethereum[chainId]?.apiUrl || null,
               ])
             ),
+            customNetwork: (() => {
+              const network = state.vaultGlobal.networks.ethereum[65001];
+              return network
+                ? {
+                    chainId: network.chainId,
+                    label: network.label,
+                    url: network.url,
+                  }
+                : null;
+            })(),
             grants: Object.values(state.dapp?.dapps || {}).map(
               (grant: any) => ({
                 host: grant.host,
@@ -805,8 +815,20 @@ test('published legacy wallet upgrades in-place without reimporting its vault', 
         .locator('#rpc_explorer')
         .fill('https://legacy-explorer.invalid/');
       await page.getByRole('button', { name: /^(save|add)$/i }).click();
-      const ok = page.getByRole('button', { name: /^ok$/i }).first();
-      if (await ok.isVisible().catch(() => false)) await ok.click();
+      // The published 4.0.0 handler awaits validation and addCustomRpc before
+      // navigating back. A Playwright click finishes before that async work;
+      // routing home early lets the handler's later navigate(-1) undo it.
+      await expect
+        .poll(async () => (await projection(page)).customNetwork, {
+          message: 'Wait for the legacy custom RPC save to reach wallet state',
+          timeout: 60000,
+        })
+        .toEqual({
+          chainId: 65001,
+          label: 'Legacy upgrade network',
+          url: CUSTOM_RPC,
+        });
+      await expect(page.locator('#rpc_url')).toHaveCount(0, { timeout: 60000 });
       await route('#/home');
       await switchNetwork('Legacy upgrade network', 'EVM');
       const value = await capture('legacy-custom-network');
