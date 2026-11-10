@@ -81,6 +81,7 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
   const pending = state.status?.pending;
   // Adapt once for this immutable quote. Monotonic checks below remain the authority.
   const connectionDeadline = useMemo(() => review
+    // eslint-disable-next-line react-hooks/purity -- Snapshot the wall-clock adapter once; the monotonic guard below owns authorization.
     ? Date.now() + Math.max(0, review.expiresAtMonotonicMilliseconds - performance.now())
     : 0, [review]);
   const isReviewCurrent = useCallback(() => {
@@ -89,6 +90,7 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
     return latest.revision === state.revision && latest.phase === 'review' && latest.feeReview === review &&
       !latest.status?.pending && !latest.error;
   }, [controller, current, isCurrent, review, state.revision]);
+  // eslint-disable-next-line react-hooks/refs -- Hide expired/retired approvals as well as rejecting them in the event handler.
   const reviewAvailable = state.phase === 'review' && isReviewCurrent();
   const ledger = useOwnedLedgerConnection({ owner: controller ?? empty, revision: state.revision,
     expiresAt: connectionDeadline, available: reviewAvailable,
