@@ -270,6 +270,13 @@ export function createNativeWalletControllers() {
           return connection.verifyPersonalMessage(message, signature);
         } });
       return Object.freeze({ ...connection, controls, reads, syscoin, sentry: sentryRequests,
+        allocateSmartAccount: (...args: Parameters<typeof connection.allocateSmartAccount>) => {
+          if (runtime !== captured) return Promise.reject(new CustodyOperationError('CANCELLED'));
+          const [input, signal, check, committed] = args;
+          return authority.allocateConnectionSmartAccount(input, signal, () => {
+            assertSynchronousEvmFeeGuard(check); if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
+          }, committed);
+        },
         psbt: { cancelHandoff: (job: object) => {
           return connection.cancelSigningHandoff(job);
         }, prepare: (request: NativePsbtRequest, signal: AbortSignal, check: () => void, handoff: import('../connections/signingHandoff.ts').NativeSigningHandoff) => {

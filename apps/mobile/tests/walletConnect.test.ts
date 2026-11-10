@@ -73,12 +73,15 @@ function fixture() {
   let initialize: () => Promise<void> = async () => undefined;
   let beforeRespond: () => Promise<void> = async () => undefined;
   let beforeAck: () => Promise<void> = async () => undefined;
+  let beforeUpdate: () => Promise<void> = async () => undefined;
+  let beforeUpdateAck: () => Promise<void> = async () => undefined;
   let beforeStorageWrite: () => Promise<void> = async () => undefined;
   let storageTail = Promise.resolve();
   let parseFailure: Error | undefined;
   const events: WalletConnectTransportEvent[] = [],
     calls: string[] = [];
   const responders: unknown[] = [];
+  const updates: unknown[] = [];
   const protocolValues = new Map<string, unknown>();
   const sessions = new Map<string, unknown>([
     [TOPIC, structuredClone(rawSession)],
@@ -182,6 +185,19 @@ function fixture() {
         },
       };
     },
+    async update(input) {
+      calls.push('update');
+      updates.push(structuredClone(input));
+      await beforeUpdate();
+      const current = sessions.get(input.topic) as typeof rawSession;
+      sessions.set(input.topic, { ...current, namespaces: structuredClone(input.namespaces) });
+      return {
+        acknowledged: async () => {
+          calls.push('update-ack');
+          await beforeUpdateAck();
+        },
+      };
+    },
     async reject() {
       calls.push('reject');
     },
@@ -267,6 +283,7 @@ function fixture() {
     events,
     calls,
     responders,
+    updates,
     protocolValues,
     pending,
     history,
@@ -292,6 +309,12 @@ function fixture() {
     },
     setBeforeAck(value: () => Promise<void>) {
       beforeAck = value;
+    },
+    setBeforeUpdate(value: () => Promise<void>) {
+      beforeUpdate = value;
+    },
+    setBeforeUpdateAck(value: () => Promise<void>) {
+      beforeUpdateAck = value;
     },
     setBeforeStorageWrite(value: () => Promise<void>) {
       beforeStorageWrite = value;
@@ -323,6 +346,270 @@ async function request(
   assert(event?.type === 'request');
   return event.request;
 }
+
+const PREPARE_SMART_ACCOUNT = 'wallet_prepareSmartAccount';
+const PREPARED_ADDRESS = '0x' + '22'.repeat(20);
+function enableSmartPreparation(f: ReturnType<typeof fixture>) {
+  f.options.supportedMethods.push(PREPARE_SMART_ACCOUNT);
+  const current = structuredClone(rawSession);
+  current.namespaces.eip155.methods.push(PREPARE_SMART_ACCOUNT);
+  f.sessions.set(TOPIC, current);
+}
+async function preparationRequest(
+  f: ReturnType<typeof fixture>,
+  id = 51,
+  chainId = 'eip155:1',
+  method = PREPARE_SMART_ACCOUNT
+): Promise<WalletConnectRequest> {
+  const params = { chainId, request: { method, params: [{ authenticator: { id: 'ecdsa' } }],
+    expiryTimestamp: Math.floor(Date.now() / 1000) + 300 } };
+  f.setPending(id, { id, topic: TOPIC, params });
+  f.emit('session_request', { id, topic: TOPIC, params });
+  await settle();
+  const event = f.events.find(event => event.type === 'request' && event.request.id === id);
+  assert(event?.type === 'request');
+  return event.request;
+}
+
+test('prepared account update preserves negotiated scope and advances only its original admission', async () => {
+  const f = fixture(); enableSmartPreparation(f);
+  const original = structuredClone(f.sessions.get(TOPIC)) as typeof rawSession;
+  const anotherChain = 'eip155:137:0x' + '33'.repeat(20);
+  original.namespaces.eip155.accounts = [anotherChain, ...original.namespaces.eip155.accounts, 'eip155:1:0x' + '44'.repeat(20)];
+  original.namespaces.eip155.chains.push('eip155:137');
+  const negotiated = { ...original.namespaces,
+    bip122: { accounts: ['bip122:000000000019d6689c085ae165831e93:bc1example'], methods: ['getAccount'], events: [] },
+    'eip155:1': { accounts: ['eip155:1:0x' + '55'.repeat(20)], methods: [PREPARE_SMART_ACCOUNT], events: [] },
+  };
+  f.sessions.set(TOPIC, { ...original, namespaces: negotiated });
+  const transport = await openWalletConnectTransport(f.options);
+  try {
+    const stale = await request(f), wire = await preparationRequest(f);
+    const pendingBefore = structuredClone(f.pending.get(wire.id)), historyBefore = f.history.find(value => (value as { id: number }).id === wire.id);
+    const held = deferred(), entered = deferred();
+    f.setBeforeUpdateAck(async () => { entered.release(); await held.promise; });
+    let commits = 0;
+    const updated = transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, session => {
+      commits++; assert.deepEqual(session.namespaces.eip155!.accounts, [anotherChain, `eip155:1:${PREPARED_ADDRESS}`]);
+    });
+    await entered.promise;
+    assert.equal(commits, 0);
+    await assert.rejects(transport.respond(stale.session.binding, stale.id, { result: 'stale signature' }, () => {}, () => {}));
+    held.release();
+    const session = await updated;
+    assert.equal(commits, 1);
+    assert.deepEqual(session.namespaces, {
+      ...negotiated,
+      eip155: { ...negotiated.eip155, accounts: [anotherChain, `eip155:1:${PREPARED_ADDRESS}`] },
+      'eip155:1': { ...negotiated['eip155:1'], accounts: [`eip155:1:${PREPARED_ADDRESS}`] },
+    });
+    assert.deepEqual(session.binding, wire.session.binding);
+    assert.equal(session.expiry, wire.session.expiry);
+    assert.equal(await transport.pending(wire.session.binding, wire.id, () => {}), wire);
+    assert.equal(wire.freshness, 'fresh');
+    assert.deepEqual(wire.session.namespaces, negotiated);
+    assert.deepEqual(f.pending.get(wire.id), pendingBefore);
+    assert.equal(f.history.find(value => (value as { id: number }).id === wire.id), historyBefore);
+    await assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => {}));
+    await assert.rejects(transport.respond(stale.session.binding, stale.id, { result: 'stale signature' }, () => {}, () => {}));
+    await transport.respond(wire.session.binding, wire.id, { result: { address: PREPARED_ADDRESS, chainId: '0x1' } }, () => {}, () => {});
+    assert.equal(f.updates.length, 1);
+    assert.equal(f.responders.length, 1);
+  } finally { await transport.close(); }
+});
+
+for (const invalid of ['not-method', 'not-negotiated', 'not-supported', 'wrong-chain', 'wrong-peer', 'address', 'missing-signal', 'aborted-signal', 'missing-guard', 'missing-callback'] as const)
+test(`prepared account update rejects ${invalid} without changing session scope`, async () => {
+  const f = fixture(); enableSmartPreparation(f);
+  if (invalid === 'not-negotiated') {
+    const original = structuredClone(rawSession); f.sessions.set(TOPIC, original);
+  }
+  if (invalid === 'not-supported') f.options.supportedMethods.pop();
+  const transport = await openWalletConnectTransport(f.options);
+  try {
+    const wire = await preparationRequest(f, 51, invalid === 'wrong-chain' ? 'eip155:2' : 'eip155:1', invalid === 'not-method' ? 'personal_sign' : PREPARE_SMART_ACCOUNT);
+    const original = structuredClone(f.sessions.get(TOPIC));
+    const lifetime = new AbortController(); if (invalid === 'aborted-signal') lifetime.abort();
+    await assert.rejects(transport.updatePreparedAccount(
+      invalid === 'wrong-peer' ? { ...wire.session.binding, peerPublicKey: 'e5'.repeat(32) } : wire.session.binding,
+      wire.id, invalid === 'address' ? '0x1234' : PREPARED_ADDRESS, invalid === 'missing-signal' ? undefined as never : lifetime.signal,
+      invalid === 'missing-guard' ? undefined as never : () => {},
+      invalid === 'missing-callback' ? undefined as never : () => {}
+    ));
+    assert.equal(f.updates.length, 0); assert.deepEqual(f.sessions.get(TOPIC), original);
+  } finally { await transport.close(); }
+});
+
+for (const phase of ['dispatch', 'ack'] as const) test(`unknown ${phase} cannot commit or repeat a prepared account update`, async () => {
+  const f = fixture(); enableSmartPreparation(f);
+  const transport = await openWalletConnectTransport(f.options);
+  try {
+    const wire = await preparationRequest(f), original = structuredClone(f.sessions.get(TOPIC));
+    const failure = async () => { throw Error('Private protocol failure'); };
+    if (phase === 'dispatch') f.setBeforeUpdate(failure); else f.setBeforeUpdateAck(failure);
+    let commits = 0;
+    await assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
+    assert.equal(commits, 0); assert.equal(f.updates.length, 1);
+    // An ACK failure can leave the SDK's local namespaces changed. It never
+    // grants a response correlation exception or a second update attempt.
+    if (phase === 'ack') await assert.rejects(transport.respond(wire.session.binding, wire.id, { error: { code: 4001, message: 'Unknown account update' } }, () => {}, () => {}));
+    f.sessions.set(TOPIC, original);
+    await assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
+    assert.equal(f.updates.length, 1);
+    await transport.respond(wire.session.binding, wire.id, { error: { code: 4001, message: 'Account update failed' } }, () => {}, () => {});
+    assert.equal(f.responders.length, 1); assert.equal(commits, 0);
+  } finally { await transport.close(); }
+});
+
+test('an SDK session persistence failure cannot acknowledge or repeat a prepared account update', async () => {
+  const f = fixture(); enableSmartPreparation(f);
+  const transport = await openWalletConnectTransport(f.options);
+  try {
+    const wire = await preparationRequest(f), original = structuredClone(f.sessions.get(TOPIC));
+    f.setBeforeStorageWrite(async () => { throw Error('Private encrypted storage failure'); });
+    f.setBeforeUpdate(() => f.core.storage.setItem('updated-session', true));
+    let commits = 0;
+    await assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
+    assert.equal(commits, 0); assert.equal(f.calls.includes('update-ack'), false);
+    assert.deepEqual(f.sessions.get(TOPIC), original);
+    assert.equal(f.protocolValues.has('updated-session'), false);
+    await assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
+    assert.equal(f.updates.length, 1);
+  } finally { await transport.close(); }
+});
+
+for (const change of ['session', 'pending', 'history', 'expired', 'revoked'] as const)
+test(`held history ${change} cannot dispatch a prepared account update`, async () => {
+  const f = fixture(); enableSmartPreparation(f);
+  const transport = await openWalletConnectTransport(f.options), held = deferred(), entered = deferred();
+  try {
+    const wire = await preparationRequest(f), get = f.core.history.get;
+    f.core.history.get = async (topic, id) => { const value = await get(topic, id); entered.release(); await held.promise; return value; };
+    let current = true, commits = 0;
+    const updating = assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal,
+      () => { if (!current) throw Error('Expired approval'); }, () => { commits++; }));
+    await entered.promise;
+    if (change === 'session') {
+      const changed = structuredClone(f.sessions.get(TOPIC)) as typeof rawSession;
+      changed.namespaces.eip155.methods.push('eth_sign'); f.sessions.set(TOPIC, changed);
+    } else if (change === 'pending') f.setPending(wire.id, { id: wire.id, topic: TOPIC, params: { changed: true } });
+    else if (change === 'history') {
+      const index = f.history.findIndex(value => (value as { id: number }).id === wire.id);
+      f.history[index] = structuredClone(f.history[index]);
+    } else if (change === 'expired') current = false;
+    else f.setOwner(false);
+    held.release(); await updating;
+    assert.equal(commits, 0); assert.equal(f.updates.length, 0);
+  } finally { held.release(); await transport.close(); }
+});
+
+for (const change of ['methods', 'events', 'chains', 'namespace', 'metadata', 'expiry', 'deleted', 'pending', 'history', 'request-expired', 'revoked', 'storage', 'storage-owner'] as const)
+test(`ACK with concurrent ${change} drift cannot adopt a prepared account session`, async () => {
+  const f = fixture(); enableSmartPreparation(f);
+  const transport = await openWalletConnectTransport(f.options), held = deferred(), entered = deferred();
+  try {
+    const wire = await preparationRequest(f);
+    f.setBeforeUpdateAck(async () => { entered.release(); await held.promise; });
+    let commits = 0;
+    const updating = assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
+    await entered.promise;
+    const changed = structuredClone(f.sessions.get(TOPIC)) as typeof rawSession;
+    if (change === 'methods') changed.namespaces.eip155.methods.push('eth_sign');
+    else if (change === 'events') changed.namespaces.eip155.events.push('newEvent');
+    else if (change === 'chains') changed.namespaces.eip155.chains.push('eip155:2');
+    else if (change === 'namespace') Object.assign(changed.namespaces, { solana: { accounts: ['solana:main:address'], methods: [], events: [] } });
+    else if (change === 'metadata') changed.peer.metadata.name = 'Another dapp';
+    else if (change === 'expiry') changed.expiry++;
+    if (['methods', 'events', 'chains', 'namespace', 'metadata', 'expiry'].includes(change)) f.sessions.set(TOPIC, changed);
+    else if (change === 'deleted') { f.sessions.delete(TOPIC); f.emit('session_delete', { topic: TOPIC }); await settle(); }
+    else if (change === 'pending') f.setPending(wire.id, { id: wire.id, topic: TOPIC, params: {} });
+    else if (change === 'history') Object.assign(f.history.find(value => (value as { id: number }).id === wire.id)!, { response: { result: true } });
+    else if (change === 'request-expired') { f.emit('session_request_expire', { id: wire.id }); await settle(); }
+    else if (change === 'revoked') f.setOwner(false);
+    else if (change === 'storage') f.setHealthy(false);
+    else f.core.storage = f.options.repository.transport;
+    held.release(); await updating;
+    assert.equal(commits, 0); assert.equal(f.updates.length, 1);
+  } finally {
+    held.release();
+    if (change === 'storage') await assert.rejects(transport.close());
+    else await transport.close();
+  }
+});
+
+test('verified prepared account commit is reported once before a post-ACK request deadline guard', async () => {
+  const f = fixture(); enableSmartPreparation(f);
+  const now = Date.now; let clock = now(); Date.now = () => clock;
+  const transport = await openWalletConnectTransport(f.options), held = deferred(), entered = deferred();
+  try {
+    const wire = await preparationRequest(f); let commits = 0;
+    f.setBeforeUpdateAck(async () => { entered.release(); await held.promise; });
+    const updating = assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal,
+      () => { if (clock >= wire.expiresAt) { assert.equal(commits, 1); throw Error('Request deadline'); } },
+      () => { commits++; clock = wire.expiresAt; }));
+    await entered.promise; held.release(); await updating;
+    assert.equal(commits, 1); assert.equal(f.updates.length, 1);
+    await assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
+    assert.equal(commits, 1); assert.equal(f.updates.length, 1);
+  } finally { Date.now = now; held.release(); await transport.close(); }
+});
+
+for (const reason of ['cancel', 'expiry'] as const) test(`a never-resolving update ACK settles on request ${reason} without late adoption`, async (t) => {
+  const f = fixture(); enableSmartPreparation(f);
+  const transport = await openWalletConnectTransport(f.options), held = deferred(), entered = deferred(), lifetime = new AbortController();
+  try {
+    const wire = await preparationRequest(f), next = await preparationRequest(f, 52), original = structuredClone(f.sessions.get(TOPIC));
+    if (reason === 'expiry') t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
+    f.setBeforeUpdateAck(async () => { entered.release(); await held.promise; });
+    let commits = 0;
+    const updating = assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, lifetime.signal, () => {}, () => { commits++; }));
+    await entered.promise;
+    if (reason === 'cancel') lifetime.abort();
+    else t.mock.timers.tick(wire.expiresAt - Date.now());
+    const settled = await Promise.race([updating.then(() => true), settle().then(() => false)]);
+    assert.equal(settled, true, 'the caller must settle without waiting for an SDK ACK');
+    assert.equal(commits, 0); assert.equal(f.updates.length, 1);
+    await assert.rejects(transport.respond(wire.session.binding, wire.id, { result: 'must not publish' }, () => {}, () => {}));
+    if (reason === 'expiry') t.mock.timers.reset();
+    // Even an apparent local rollback cannot release this uncertain topic to
+    // another admitted owner while the original SDK ACK remains outstanding.
+    f.sessions.set(TOPIC, original);
+    await assert.rejects(transport.updatePreparedAccount(next.session.binding, next.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
+    held.release(); await settle(); await settle();
+    assert.equal(commits, 0); assert.equal(f.responders.length, 0); assert.equal(f.updates.length, 1);
+    await assert.rejects(transport.updatePreparedAccount(next.session.binding, next.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
+  } finally { t.mock.timers.reset(); held.release(); await transport.close(); }
+});
+
+test('another admitted preparation cannot race an in-flight update for the same session', async () => {
+  const f = fixture(); enableSmartPreparation(f);
+  const transport = await openWalletConnectTransport(f.options), held = deferred(), entered = deferred();
+  try {
+    const first = await preparationRequest(f), second = await preparationRequest(f, 52);
+    f.setBeforeUpdateAck(async () => { entered.release(); await held.promise; });
+    const updating = transport.updatePreparedAccount(first.session.binding, first.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => {});
+    await entered.promise;
+    await assert.rejects(transport.updatePreparedAccount(second.session.binding, second.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => {}));
+    held.release(); await updating;
+    await assert.rejects(transport.updatePreparedAccount(second.session.binding, second.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => {}));
+    assert.equal(f.updates.length, 1);
+  } finally { held.release(); await transport.close(); }
+});
+
+test('prepared account update rechecks configured storage after the final durable barrier', async () => {
+  const f = fixture(); enableSmartPreparation(f);
+  const transport = await openWalletConnectTransport(f.options), held = deferred(), committed = deferred();
+  try {
+    const wire = await preparationRequest(f); let commits = 0;
+    const updating = assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => {
+      commits++; f.setBarrier(held.promise); committed.release();
+    }));
+    await committed.promise; await settle();
+    f.core.storage = f.options.repository.transport;
+    held.release(); await updating;
+    assert.equal(commits, 1); assert.equal(f.updates.length, 1);
+  } finally { held.release(); await transport.close(); }
+});
 
 for (const [label, input, validation, isScam] of [
   ['missing', undefined, 'UNKNOWN', false],

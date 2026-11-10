@@ -6,6 +6,13 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createKeyringRuntimeFactory, type KeyringRuntime, type KeyringRuntimeDependencies } from '../src/custody/keyringRuntime.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
+import type { NativeSmartCreationAllocation } from '../src/smartAccount/preparation.ts';
+import { deriveDefaultSmartAccount } from '../../../source/utils/smartAccount/bootstrap.ts';
+import { paliSmartAccountFactoryInterface } from '../../../source/utils/smartAccount/contracts.ts';
+import { PALI_ACCOUNT_PROXY_CREATION_CODE, PALI_CANONICAL_FACTORY_ADDRESS, PALI_INFRASTRUCTURE_METADATA_BY_ID } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
+import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
+import { AbiCoder, Interface } from 'ethers/abi';
+import { getCreate2Address } from 'ethers/address';
 import { NativeConnectionsController } from '../src/connections/controller.ts';
 import type { WalletConnectTransportEvent, WalletConnectSession, WalletConnectResponse } from '../src/connections/walletConnect.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
@@ -15,7 +22,7 @@ import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import { SeedBackupFlow } from '../src/custody/seedBackup.ts';
 import { HdKeyExportFlow, type HdKeyExportScope } from '../src/custody/hdKeyExport.ts';
 import { keccak256 } from 'ethers/crypto';
-import { getBytes } from 'ethers/utils';
+import { concat, getBytes } from 'ethers/utils';
 import { approveHardwareDappRequest, hardwareDappRpc } from './hardwareDappTestSupport.ts';
 import { Transaction } from 'ethers/transaction';
 import { HDNodeWallet, Wallet } from 'ethers/wallet';
@@ -54,7 +61,7 @@ process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 
-function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActive?: () => void, connectionFetch?: KeyringRuntimeDependencies['connectionFetch'], trezorSessions?: KeyringRuntimeDependencies['trezorSessions'], utxoFetch?: typeof fetch) {
+function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActive?: () => void, connectionFetch?: KeyringRuntimeDependencies['connectionFetch'], trezorSessions?: KeyringRuntimeDependencies['trezorSessions'], utxoFetch?: typeof fetch, prepareSmartAccount?: KeyringRuntimeDependencies['prepareSmartAccount']) {
   const records = new Map<string, unknown>();
   let confirmation: string | undefined;
   let failures = 0;
@@ -182,7 +189,7 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
   }); };
   const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => {
     assert.ok(globalThis.crypto.subtle, 'Node supplies real WebCrypto for this control');
-  }, openStorage: open, loadSdk, assertActive, connectionFetch, trezorSessions, utxoFetch });
+  }, openStorage: open, loadSdk, assertActive, connectionFetch, trezorSessions, utxoFetch, prepareSmartAccount });
   return {
     clearFixtureIdentity() { identity = null; }, fixtureIdentity: () => identity,
     records, factory, signedBundles, utxoPort, signedValue: () => [...signedBundles.values()][0],
@@ -717,6 +724,91 @@ async function readyAccounts(loadSdk?: KeyringRuntimeDependencies['loadSdk'], co
   const execute = (request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) => authority.manageAccounts(request, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
   return { disk, authority, get runtime() { return runtime; }, execute };
 }
+
+async function readySmartCreationAuthority(beforeAddress: () => Promise<void> = async () => undefined) {
+  const coder = AbiCoder.defaultAbiCoder(), module = 'tuple(address module,bytes data)';
+  const prepare: NonNullable<KeyringRuntimeDependencies['prepareSmartAccount']> = (network, accountIndex, managementAddress, _signal, assertCurrent) =>
+    deriveDefaultSmartAccount({ accountIndex, chainId: Number(network.chainId), managementAddress, assertCurrent,
+      assertInfrastructureSupported: async () => undefined,
+      provider: {
+        getNetwork: async () => ({ chainId: BigInt(network.chainId) }), verifyConfiguredChainId: async () => undefined,
+        async call(transaction) {
+          assertCurrent();
+          const parsed = paliSmartAccountFactoryInterface.parseTransaction({ data: String(transaction.data) }); assert(parsed);
+          if (parsed.name === 'getInitData') return paliSmartAccountFactoryInterface.encodeFunctionResult(parsed.fragment,
+            [coder.encode([`${module}[]`, `${module}[]`, module, `${module}[]`], [[[parsed.args[0], parsed.args[1]]], [], ['0x' + '00'.repeat(20), '0x'], []])]);
+          assert.equal(parsed.name, 'getAddress'); await beforeAddress(); assertCurrent();
+          const initializer = new Interface(['function initializeAccount(bytes initCode)']).encodeFunctionData('initializeAccount', [parsed.args[1]]);
+          const creation = concat([PALI_ACCOUNT_PROXY_CREATION_CODE, coder.encode(['address', 'bytes'], [PALI_INFRASTRUCTURE_METADATA_BY_ID.accountImplementation.address, initializer])]);
+          return paliSmartAccountFactoryInterface.encodeFunctionResult(parsed.fragment, [getCreate2Address(PALI_CANONICAL_FACTORY_ADDRESS, parsed.args[0], keccak256(creation))]);
+        },
+      } });
+  const disk = memoryDisk(undefined, undefined, undefined, undefined, undefined, prepare); disk.denyNetwork();
+  let runtime!: KeyringRuntime;
+  const authority = new NativeCustodyAuthority({ async open() { runtime = await disk.factory.open() as KeyringRuntime; return runtime; } });
+  await authority.initialize(); await authority.importPhrase(PHRASE, PASSWORD);
+  await runtime.backup.confirm(await runtime.backup.fingerprint()); await authority.refreshAuthenticatedMetadata();
+  return { authority, disk, get runtime() { return runtime; },
+    request: { networkId: 'ethereum', label: 'Owned dapp creation', target: { id: 'ecdsa' as const, config: undefined }, externalOwnersAcknowledged: false },
+    async close() { await authority.dispose(); disk.restoreNetwork(); } };
+}
+
+test('owned Smart creation authority publishes the actual private selection before returning its allocation', async () => {
+  const f = await readySmartCreationAuthority(), lifetime = new AbortController();
+  const portfolio = new NativePortfolioController(f.authority, { async readBalance() { throw Error('No balance read is needed'); } });
+  const disconnect = portfolio.connect(); let committed: NativeSmartCreationAllocation | undefined, published = false;
+  const before = f.authority.getSnapshot();
+  const unsubscribe = f.authority.subscribe(snapshot => {
+    if (snapshot.account?.address === committed?.account.address) {
+      published = true; assert.equal(snapshot.phase, 'ready'); assert.equal(f.authority.getCatalogue()!.active.accountId, committed!.account.id);
+    }
+  });
+  try {
+    const allocation = await f.authority.allocateConnectionSmartAccount(f.request, lifetime.signal, () => undefined, receipt => {
+      committed = receipt; assert.equal(f.authority.getSnapshot().account!.address, before.account!.address);
+    });
+    assert.equal(allocation, committed); assert(published); assert(f.authority.getSnapshot().revision > before.revision);
+    assert.equal(f.authority.getSnapshot().account!.address, allocation.account.address);
+    assert.equal(f.authority.getCatalogue()!.active.accountId, allocation.account.id);
+    assert.equal(await f.runtime.session.readSelectedAddress(), allocation.account.address);
+    const host = await f.runtime.openConnectionHost();
+    assert.equal(host.context().activeAccountId, allocation.account.id); assert.equal(f.runtime.canSignSmartAccount(), true);
+    assert.equal(portfolio.getActiveAccount()!.address, allocation.account.address);
+    allocation.assertCurrent();
+  } finally { unsubscribe(); disconnect(); await f.close(); }
+});
+
+test('owned Smart creation authority refuses a stale request before its held private allocation commits', async () => {
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const f = await readySmartCreationAuthority(async () => { entered.resolve(); await release.promise; });
+  let current = true;
+  try {
+    const allocating = f.authority.allocateConnectionSmartAccount(f.request, new AbortController().signal, () => { if (!current) throw Error('Retired request'); }, () => assert.fail('Stale allocation committed'));
+    const rejected = assert.rejects(allocating); await entered.promise; current = false; release.resolve(); await rejected;
+    assert.notEqual(f.authority.getSnapshot().phase, 'ready'); assert.equal(f.authority.getSnapshot().account, null);
+    await f.authority.unlock(PASSWORD); assert.equal(f.authority.getCatalogue()!.accounts.filter(account => account.type === 'SmartAccount').length, 0);
+  } finally { release.resolve(); await f.close(); }
+});
+
+for (const stop of ['abort-at-commit', 'lock-during-adoption'] as const) test(`owned Smart creation authority retains saved allocation and fails closed on ${stop}`, async () => {
+  const f = await readySmartCreationAuthority(), lifetime = new AbortController();
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let committed: NativeSmartCreationAllocation | undefined;
+  const original = f.runtime.session.readSelectedAddress.bind(f.runtime.session);
+  if (stop === 'lock-during-adoption') f.runtime.session.readSelectedAddress = async () => { entered.resolve(); await release.promise; return original(); };
+  try {
+    const allocating = f.authority.allocateConnectionSmartAccount(f.request, lifetime.signal, () => undefined, receipt => {
+      committed = receipt; if (stop === 'abort-at-commit') lifetime.abort();
+    });
+    const rejected = assert.rejects(allocating);
+    if (stop === 'lock-during-adoption') { await entered.promise; f.authority.lock(); release.resolve(); }
+    await rejected; assert(committed); assert.notEqual(f.authority.getSnapshot().phase, 'ready'); assert.equal(f.authority.getSnapshot().account, null);
+    f.runtime.session.readSelectedAddress = original;
+    await f.authority.unlock(PASSWORD);
+    assert.equal(f.authority.getSnapshot().account!.address, committed.account.address);
+    assert.equal(f.authority.getCatalogue()!.active.accountId, committed.account.id);
+  } finally { release.resolve(); f.runtime.session.readSelectedAddress = original; await f.close(); }
+});
 
 function approveRuntimeMessage(
   f: Awaited<ReturnType<typeof readyAccounts>>,
@@ -2783,6 +2875,7 @@ for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject
       async openTransport(options) {
         event = options.onEvent;
         return {
+          async updatePreparedAccount() { throw Error('Smart creation is outside this fixture'); },
           async pending() { return null; },
           async sessions() { return [session]; },
           async pair() { throw Error('Unexpected pair'); },

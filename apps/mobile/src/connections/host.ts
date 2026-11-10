@@ -1,5 +1,6 @@
 import type { SmartAccountModulesProjection } from '../../../../source/shared/smartAccountModules.ts';
 import type { SmartAccountModuleRequest } from '../../../../source/shared/smartAccountModuleRequest.ts';
+import type { NativeSmartCreationAllocation, NativeSmartCreationRequest } from '../smartAccount/preparation.ts';
 import type { NativeSigningHandoff } from './signingHandoff.ts';
 import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 import type { DappEncryptionSdk } from '../../../../source/wallet/dappEncryptionApproval.ts';
@@ -65,6 +66,18 @@ export type NativeConnectionSigningHost = Readonly<{
   supportsAtomicCalls(accountId: string): boolean;
   readSmartAccountModules(accountId: string, networkId: string, assertCurrent: () => void): SmartAccountModulesProjection;
   supportsSmartAccountMessages(accountId: string): boolean;
+  allocateSmartAccount(
+    input: NativeSmartCreationRequest,
+    signal: AbortSignal,
+    assertRequestCurrent: () => void,
+    onCommitted: (allocation: NativeSmartCreationAllocation) => void
+  ): Promise<NativeSmartCreationAllocation>;
+  /** Configured ECDSA only: deploy first, then configure using the same allocation. */
+  prepareSmartAccountCreationOperation(
+    allocation: NativeSmartCreationAllocation,
+    handoff: NativeSigningHandoff,
+    assertCurrent: () => void
+  ): Promise<NativeSmartAccountOperation>;
   /** Caller proves that the per-call consent sequence no longer exists. */
   recoverStoppedEoaCalls(origin: string, id: string, assertStopped: () => void): Promise<void>;
   readCallsStatus(
