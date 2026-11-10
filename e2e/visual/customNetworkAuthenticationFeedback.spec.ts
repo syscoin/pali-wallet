@@ -323,6 +323,13 @@ test('custom network authentication feedback follows the saved Spanish locale an
       async () => {
         await page.locator('#rpc_url').fill(`${server.url}/healthy-rpc`);
         await page.locator('#rpc_url').press('Tab');
+        await expect
+          .poll(() =>
+            server.reads.some(
+              (read) => read.path === '/healthy-rpc' && read.status === 200
+            )
+          )
+          .toBe(true);
         await expect(page.locator('#rpc_chainId')).toHaveValue(
           String(CHAIN_ID)
         );
