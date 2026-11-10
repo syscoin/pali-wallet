@@ -299,7 +299,9 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       read: () => this.queued(() => this.readPinRecord()),
       beginAttempt: (record: NativePinRecord, guard: () => void) => this.beginPinAttempt(record, guard),
       completeAttempt: (attempt: object, guard: () => void) => this.completePinAttempt(attempt, guard),
+      prepareReplacement: (expected: NativePinRecord, next: NativePinRecord, guard: () => void) => this.preparePinReplacement(expected, next, guard),
       replace: (expected: NativePinRecord, next: NativePinRecord, guard: () => void) => this.replacePin(expected, next, guard),
+      settleCredentialRemoval: (remove: (record: NativePinRecord) => Promise<void>) => this.settlePinCredential(remove),
     });
     this.authGuard = Object.freeze({
       checkAllowed: () => this.checkAllowed(),
@@ -1341,7 +1343,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         if (row.source === 'meta' && row.key === 'identity') pair.identity = value;
       }
       if (records.filter(({ key }) => !sentrySlotNetwork(key) && !sentryNodeSlotNetwork(key)).length > STORAGE_LIMITS.records ||
-          records.filter(({ key }) => sentrySlotNetwork(key)).length > 2 || records.filter(({ key }) => sentryNodeSlotNetwork(key)).length > 2 || metadata.length > 6 ||
+          records.filter(({ key }) => sentrySlotNetwork(key)).length > 2 || records.filter(({ key }) => sentryNodeSlotNetwork(key)).length > 2 || metadata.length > 7 ||
           !metadata.some((row) => row.key === 'installation' && row.value === this.installationId)) throw failure();
       const state = await this.storedState(pair);
       const identity = state.presence === 'empty' ? null : readWalletIdentity(await this.fingerprint(pair), pair.identity);
@@ -1359,8 +1361,9 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         } else {
           if (!identity || !pin) throw failure();
           const current = captureNativePinRecord(decodeStorageValue(pin.value));
-          if (record.walletBindingId !== identity.walletBindingId || record.enrollmentId === current.enrollmentId ||
-              record.pairFingerprint === identity.pairFingerprint) throw failure();
+          // Recovery changes the pair; a PIN rotation deliberately keeps it.
+          // Both retire a distinct alias under this installation and wallet.
+          if (record.walletBindingId !== identity.walletBindingId || record.enrollmentId === current.enrollmentId) throw failure();
         }
       }
       const utxo = records.find(({ key }) => key === UTXO_SIGNED_RECORD_KEY);
@@ -1388,7 +1391,9 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       if (notes.length && !identity) throw failure();
       if (identity) inspectNoteDomain(notes, identity.walletBindingId, identity.root?.profileId);
       this.inspectSignedRows(signedRecords, identity);
-      return Object.freeze({ identity, state, records: Object.freeze(records), metadata: Object.freeze(metadata), notes: Object.freeze(notes), signedRecords: Object.freeze(signedRecords) });
+      // Several validated tables contribute record rows. Their source order
+      // must not differ from the canonical key order used by recovery plans.
+      return Object.freeze({ identity, state, records: Object.freeze([...records].sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0)), metadata: Object.freeze(metadata), notes: Object.freeze(notes), signedRecords: Object.freeze(signedRecords) });
   }
 
   private readSnapshot(): Promise<RecoveryStorageSnapshot> {
@@ -1791,15 +1796,38 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       this.authenticationWindow = null;
     });
   }
+  private preparePinReplacement(expected: NativePinRecord, next: NativePinRecord, guard: () => void): Promise<void> {
+    const before = captureNativePinRecord(expected), staged = captureNativePinRecord(next), check = storageGuard(guard);
+    this.assertPinScope(staged, before.walletBindingId, before.pairFingerprint);
+    if (before.enrollmentId === staged.enrollmentId) return Promise.reject(new WalletStorageError('STORAGE_CHANGED'));
+    return this.queued(async () => {
+      await this.transaction(async () => {
+        check(); const current = await this.readPinRecord(); check();
+        if (!current || encodeStorageValue(current) !== encodeStorageValue(before) ||
+            await this.db.getFirstAsync('SELECT 1 FROM wallet_metadata WHERE key = ?', [REMOVED_PIN_KEY]))
+          throw new WalletStorageError('STORAGE_CHANGED');
+        // This alias may be written only after this durable receipt returns.
+        await this.db.runAsync('INSERT INTO wallet_metadata (key, value) VALUES (?, ?)', [REMOVED_PIN_KEY, encodeStorageValue(staged)]); check();
+      }, check).catch(error => this.requireReopenIfPoisoned(error));
+      this.pendingPinRemoval = true;
+    });
+  }
   private replacePin(expected: NativePinRecord, next: NativePinRecord, guard: () => void): Promise<void> {
     const before = captureNativePinRecord(expected), after = captureNativePinRecord(next), check = storageGuard(guard);
     this.assertPinScope(after, before.walletBindingId, before.pairFingerprint);
     if (before.enrollmentId === after.enrollmentId) return Promise.reject(new WalletStorageError('STORAGE_CHANGED'));
-    return this.queued(() => this.transaction(async () => {
-      check(); const current = await this.readPinRecord(); check();
-      if (!current || encodeStorageValue(current) !== encodeStorageValue(before)) throw new WalletStorageError('STORAGE_CHANGED');
-      await this.db.runAsync('UPDATE wallet_metadata SET value = ? WHERE key = ?', [encodeStorageValue(after), PIN_KEY]); check();
-    }, check).catch(error => this.requireReopenIfPoisoned(error)));
+    return this.queued(async () => {
+      await this.transaction(async () => {
+        check(); const current = await this.readPinRecord(); check();
+        const receipt = await this.db.getFirstAsync<{ value: string }>('SELECT value FROM wallet_metadata WHERE key = ?', [REMOVED_PIN_KEY]);
+        if (!this.pendingPinRemoval || !current || encodeStorageValue(current) !== encodeStorageValue(before) ||
+            receipt?.value !== encodeStorageValue(after))
+          throw new WalletStorageError('STORAGE_CHANGED');
+        await this.db.runAsync('UPDATE wallet_metadata SET value = ? WHERE key = ?', [encodeStorageValue(before), REMOVED_PIN_KEY]); check();
+        await this.db.runAsync('UPDATE wallet_metadata SET value = ? WHERE key = ?', [encodeStorageValue(after), PIN_KEY]); check();
+      }, check).catch(error => this.requireReopenIfPoisoned(error));
+      this.pendingPinRemoval = true;
+    }, true);
   }
 
   private authenticationRecord(raw: string | undefined): AuthRecord {

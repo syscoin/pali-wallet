@@ -15,7 +15,11 @@ export type NativePinStorage = Readonly<{
   read(): Promise<NativePinRecord | null>;
   beginAttempt(record: NativePinRecord, check: () => void): Promise<object>;
   completeAttempt(attempt: object, check: () => void): Promise<void>;
+  /** Persist the staged alias cleanup receipt before its OS secret can exist. */
+  prepareReplacement(expected: NativePinRecord, next: NativePinRecord, check: () => void): Promise<void>;
   replace(expected: NativePinRecord, next: NativePinRecord, check: () => void): Promise<void>;
+  /** Settle the existing durable obsolete-credential receipt before ordinary use. */
+  settleCredentialRemoval(remove: (record: NativePinRecord) => Promise<void>): Promise<void>;
 }>;
 /** Runs before a normal wallet is admitted, including after a process restart. */
 export async function settleNativePinRemoval(
@@ -85,25 +89,28 @@ export function createNativePinVault(storage: NativePinStorage, port: NativePinC
       guard(check); if (!completed) throw unavailable(); return result;
     } finally { if (value?.pepper instanceof Uint8Array) value.pepper.fill(0); }
   };
+  const stage = async (pin: string, scope: Pick<NativePinRecord, 'walletBindingId' | 'pairFingerprint'>, secret: string, check: () => void,
+    prepare?: (record: NativePinRecord) => Promise<void>): Promise<NativePinRecord> => {
+    if (!isNativePin(pin)) throw unavailable(); guard(check);
+    const pepper = random(32), salt = random(16), id = random(16);
+    try {
+      const base = captureNativePinRecord({ version: 1, installationId: storage.installationId, ...scope, enrollmentId: hex(id), salt: hex(salt), verifier: '0'.repeat(128) });
+      const record = captureNativePinRecord({ ...base, verifier: await verifier(pin, base, pepper, check) });
+      credential({ secret, pepper });
+      // Rotation records the next alias before any OS write. Generic initial
+      // enrollment keeps its existing stage/cleanup behavior.
+      if (prepare) { await prepare(record); guard(check); }
+      try { await port.stage(record, { secret, pepper }, check); guard(check); return record; }
+      catch (error) {
+        if (!prepare) await port.remove(record);
+        throw error;
+      }
+    } finally { pepper.fill(0); salt.fill(0); id.fill(0); }
+  };
   return Object.freeze({
     withVerifiedSecret,
     createSecret() { const value = random(32); try { return `Pali#1:${hex(value)}`; } finally { value.fill(0); } },
-    async stage(pin: string, scope: Pick<NativePinRecord, 'walletBindingId' | 'pairFingerprint'>, secret: string, check: () => void): Promise<NativePinRecord> {
-      if (!isNativePin(pin)) throw unavailable(); guard(check);
-      const pepper = random(32), salt = random(16), id = random(16);
-      try {
-        const base = captureNativePinRecord({ version: 1, installationId: storage.installationId, ...scope, enrollmentId: hex(id), salt: hex(salt), verifier: '0'.repeat(128) });
-        const record = captureNativePinRecord({ ...base, verifier: await verifier(pin, base, pepper, check) });
-        credential({ secret, pepper });
-        try { await port.stage(record, { secret, pepper }, check); guard(check); return record; }
-        catch (error) {
-          // This unique alias has not been returned to a caller or committed.
-          // A lost write acknowledgement must not leave an orphaned credential.
-          await port.remove(record);
-          throw error;
-        }
-      } finally { pepper.fill(0); salt.fill(0); id.fill(0); }
-    },
+    stage: (pin: string, scope: Pick<NativePinRecord, 'walletBindingId' | 'pairFingerprint'>, secret: string, check: () => void) => stage(pin, scope, secret, check),
     async authenticate(pin: string, check: () => void, prove: (secret: string) => Promise<boolean>): Promise<boolean> {
       try {
         return await withVerifiedSecret(pin, check, async (secret, authenticated) => {
@@ -123,10 +130,31 @@ export function createNativePinVault(storage: NativePinStorage, port: NativePinC
       if (!accepted) throw new Error('INVALID_CREDENTIAL');
       await this.withSecret(check, async secret => {
         const expected = await storage.read(); guard(check); if (!expected) throw unavailable();
-        const next = await this.stage(nextPin, expected, secret, check);
-        // An uncertain COMMIT must retain the new OS alias for reconciliation.
-        await storage.replace(expected, next, check); guard(check);
-        await port.remove(expected); guard(check);
+        let staged: NativePinRecord | undefined;
+        const removeTransitionCredential = (record: NativePinRecord) => {
+          if (!staged || (JSON.stringify(record) !== JSON.stringify(expected) && JSON.stringify(record) !== JSON.stringify(staged))) throw unavailable();
+          return port.remove(record);
+        };
+        try {
+          const next = await stage(nextPin, expected, secret, check, record => {
+            staged = record;
+            return storage.prepareReplacement(expected, record, check);
+          });
+          // The storage transaction retains the old alias in its existing
+          // cleanup receipt atomically with installing the new PIN record.
+          await storage.replace(expected, next, check);
+        } catch (error) {
+          // The receipt names NEXT before replacement and OLD after it. An
+          // uncertain COMMIT poisons this owner and leaves cold open to settle
+          // the durable outcome. Never guess which alias became current.
+          try { if (staged) await storage.settleCredentialRemoval(removeTransitionCredential); }
+          catch { /* The receipt remains durable until cleanup is acknowledged. */ }
+          throw error;
+        }
+        // Cleanup is valid even if UI ownership ended after COMMIT. Failure
+        // leaves the durable receipt and blocks this owner until settlement.
+        await storage.settleCredentialRemoval(removeTransitionCredential);
+        guard(check);
       });
     },
   });
