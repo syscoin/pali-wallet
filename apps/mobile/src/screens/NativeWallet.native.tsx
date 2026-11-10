@@ -134,7 +134,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, initial
   return <><NativeWalletContent {...{ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled, controllerRef }} /><NativeOperationAuthentication isProtectedPromptActive={() => controllerRef.current?.authentication?.isActive() === true} /></>;
 }
 
-export function NativeWalletContent({ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled, controllerRef: controllers }: NativeWalletProps & { controllerRef: React.MutableRefObject<Controllers | null> }) {
+export function NativeWalletContent({ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled, controllerRef: controllersRef }: NativeWalletProps & { controllerRef: React.MutableRefObject<Controllers | null> }) {
   const { t } = useNativeTranslation();
   const biometrics = useBiometricPresentation();
   const bridge = useRef(accounts);
@@ -246,7 +246,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const [error, setError] = useState('');
   const rootOrigin = useRef<RootOrigin | null>(null);
   const noteRestore = useNativeNoteBackup(() => {
-    const local = controllers.current;
+    const local = controllersRef.current;
     return mounted.current && local && !recoveryRef.current &&
       nativeLifecycle.current(screenToken.current) === local && !nativeLifecycle.hasRecovery(screenToken.current) ? local : null;
   }, mode => setStage(mode === 'restore' ? 'restore-notes' : 'backup-notes'));
@@ -258,7 +258,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const revoke = useCallback((background = false) => {
     // The AppState owner records exact Suite suspension before authority.lock
     // synchronously revalidates and removes the old request consent.
-    const local = controllers.current;
+    const local = controllersRef.current;
     if (background === true) {
       local?.trezor.background();
       local?.connections.backgroundSigning();
@@ -278,11 +278,11 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     networkReturnOwner.current = null; setNetworkReturn(null); setReceiveContinuation(undefined);
     setSentryScope(null);
     importRequest.current.active = false; setImportActiveToken(null); setImportScope(null);
-    controllers.current?.authentication?.cancel();
+    controllersRef.current?.authentication?.cancel();
     setRecoveryActivity(null); setResumeGuardianScope(null); setTransactionActivity(null);
-    controllers.current?.keyExport.cancel(); controllers.current?.backup.cancel(); controllers.current?.authority.lock();
+    controllersRef.current?.keyExport.cancel(); controllersRef.current?.backup.cancel(); controllersRef.current?.authority.lock();
     Keyboard.dismiss(); clearSecrets(); setSendDraft(null); setSmartResumeId(null); if (!recoveryRef.current && !retainRemoval) setStage('choose'); setError('');
-  }, [clearSecrets, lockNoteRestore]);
+  }, [clearSecrets, lockNoteRestore, controllersRef]);
   useLayoutEffect(() => {
     if (mounted.current && AppState.currentState === 'active' && securityPreferences.getSnapshot().status === 'ready') custodyIdle.begin(screenToken.current, revoke);
   });
@@ -293,25 +293,25 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     else { clearSecrets(); setStage('security'); }
   };
   const readyContext = useCallback(() => {
-    const local = controllers.current;
+    const local = controllersRef.current;
     return custodyContext(local?.authority.getSnapshot(), local?.authority.getCatalogue());
-  }, []);
+  }, [controllersRef]);
   const openResumedSmartOperation = useCallback(async (assertView: () => void, signal: AbortSignal) => {
-    const local = controllers.current, origin = rootOrigin.current, id = smartResumeId;
+    const local = controllersRef.current, origin = rootOrigin.current, id = smartResumeId;
     const check = () => {
       assertView();
       if (!local || !id || !origin || origin.stage !== 'smart-resume' || signal.aborted ||
-          !mounted.current || controllers.current !== local || rootOrigin.current !== origin ||
+          !mounted.current || controllersRef.current !== local || rootOrigin.current !== origin ||
           epoch.current !== origin.epoch || AppState.currentState !== 'active' || readyContext()?.identity !== origin.identity)
         throw new Error('CANCELLED');
     };
     check();
     const operation = await local!.openResumedSmartAccountOperation(id!, signal, check);
     try { check(); return operation; } catch (error) { await operation.dispose(); throw error; }
-  }, [readyContext, smartResumeId]);
+  }, [readyContext, smartResumeId, controllersRef]);
   const currentShellScope = () => {
     if (stage !== 'choose') return null;
-    const local = controllers.current, state = local?.authority.getSnapshot(), saved = local?.authority.getCatalogue();
+    const local = controllersRef.current, state = local?.authority.getSnapshot(), saved = local?.authority.getCatalogue();
     if (!state || !saved || !state.account || !['ready', 'backup-required'].includes(state.phase)) return null;
     return `${state.revision}:${saved.active.accountId}:${state.account.network}`;
   };
@@ -364,12 +364,12 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   } : undefined;
 
   const closeGuardian = useCallback(() => {
-    const local = controllers.current;
+    const local = controllersRef.current;
     if (!mounted.current || !local || epoch.current !== guardianEpoch || AppState.currentState !== 'active' ||
         readyContext()?.context !== guardianContext) return;
     const next = local.authority.getCatalogue();
     setCatalogue(next); bridge.current?.onNativeCatalogue(next);
-  }, [guardianEpoch, guardianContext, readyContext]);
+  }, [guardianEpoch, guardianContext, readyContext, controllersRef]);
 
   const hasSigningAccount = selectedAccountType === 'HDAccount' || selectedAccountType === 'Imported' || selectedAccountType === 'Ledger' && !!ledgerConnection || selectedAccountType === 'Trezor' && !!trezorView;
   const canSign = !!snapshot.account && hasSigningAccount && nativeSigningEnabled(snapshot.account.network, catalogue?.networks);
@@ -388,7 +388,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const sentryRoute = stage === 'sentry-keys' && sentryAvailable &&
     sentryScope?.context === custodyContext(snapshot, catalogue)?.context;
   const openRecoveryActivity = async (payerId: string, chainId: number, hash: string) => {
-    const local = controllers.current;
+    const local = controllersRef.current;
     const before = local?.authority.getCatalogue();
     const capturedEpoch = epoch.current;
     if (!local || !before || !guardianContext || readyContext()?.context !== guardianContext ||
@@ -399,7 +399,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     await local.accounts.execute({ kind: 'select', id: payerId }, local.authority.getSnapshot().revision, before.revision);
     const after = local.authority.getCatalogue();
     const context = readyContext();
-    if (!mounted.current || controllers.current !== local || epoch.current !== capturedEpoch || AppState.currentState !== 'active' ||
+    if (!mounted.current || controllersRef.current !== local || epoch.current !== capturedEpoch || AppState.currentState !== 'active' ||
         !after || !context || after.active.accountId !== payerId || Number(getNativeNetwork(after.active.networkId, after.networks).chainId) !== chainId)
       throw Error('CANCELLED');
     setRecoveryActivity({ local, epoch: capturedEpoch, context: context.context, targetId, payerId, chainId, hash });
@@ -407,7 +407,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   };
   const returnToRecovery = async () => {
     const saved = recoveryActivity;
-    if (!saved || !mounted.current || controllers.current !== saved.local || epoch.current !== saved.epoch ||
+    if (!saved || !mounted.current || controllersRef.current !== saved.local || epoch.current !== saved.epoch ||
         AppState.currentState !== 'active' || readyContext()?.context !== saved.context) return;
     const before = saved.local.authority.getCatalogue();
     if (!before || !before.accounts.some(account => account.id === saved.targetId && account.type === 'SmartAccount' &&
@@ -416,17 +416,17 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     await saved.local.accounts.execute({ kind: 'select', id: saved.targetId }, saved.local.authority.getSnapshot().revision, before.revision);
     const context = readyContext();
     const after = saved.local.authority.getCatalogue();
-    if (!mounted.current || controllers.current !== saved.local || epoch.current !== saved.epoch || AppState.currentState !== 'active' ||
+    if (!mounted.current || controllersRef.current !== saved.local || epoch.current !== saved.epoch || AppState.currentState !== 'active' ||
         !context || !after || after.active.accountId !== saved.targetId || Number(getNativeNetwork(after.active.networkId, after.networks).chainId) !== saved.chainId) return;
     setResumeGuardianScope(`${saved.epoch}:${context.context}`);
     shell.restoreRoot('tools', context.identity);
   };
   useEffect(() => {
-    if (recoveryActivity && (controllers.current !== recoveryActivity.local || epoch.current !== recoveryActivity.epoch ||
+    if (recoveryActivity && (controllersRef.current !== recoveryActivity.local || epoch.current !== recoveryActivity.epoch ||
         readyContext()?.context !== recoveryActivity.context)) setRecoveryActivity(null);
-  }, [recoveryActivity, snapshot.revision, readyContext]);
+  }, [recoveryActivity, snapshot.revision, readyContext, controllersRef]);
   const openStage = (next: Stage, sendTarget?: SendTarget) => {
-    const local = controllers.current;
+    const local = controllersRef.current;
     const owner = local?.authority.getSnapshot();
     const capturedCatalogue = local?.authority.getCatalogue();
     const current = custodyContext(owner, capturedCatalogue);
@@ -447,7 +447,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         capturedCatalogue?.accounts.some(({ address }) => address.toLowerCase() !== sender)
         ? {
           current: () => {
-            if (AppState.currentState !== 'active' || controllers.current !== local ||
+            if (AppState.currentState !== 'active' || controllersRef.current !== local ||
                 rootOrigin.current !== origin || epoch.current !== origin.epoch) return false;
             const latest = local.authority.getCatalogue();
             return latest?.revision === capturedCatalogue.revision &&
@@ -462,26 +462,26 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     setStage(next);
   };
   const networkRouteCurrent = (route: NetworkReturn) => mounted.current && networkReturnOwner.current === route &&
-    controllers.current === route.local && epoch.current === route.origin.epoch && rootOrigin.current === route.origin && AppState.currentState === 'active';
+    controllersRef.current === route.local && epoch.current === route.origin.epoch && rootOrigin.current === route.origin && AppState.currentState === 'active';
   const openSendNetwork = (form: NativeUnsignedSendDraft) => {
-    const local = controllers.current, before = readyContext(), saved = sendDraft, captured = epoch.current;
+    const local = controllersRef.current, before = readyContext(), saved = sendDraft, captured = epoch.current;
     if (!local || !before || !saved || rootOrigin.current !== saved.origin || before.context !== saved.origin.context ||
         stage !== 'send' || AppState.currentState !== 'active') return;
     if (form.kind === 'evm') local.transfers.cancel();
     const closeHardware = form.kind === 'evm' && selectedAccountType === 'Trezor' ? local.trezor?.cancel() : Promise.resolve();
     void Promise.resolve(closeHardware).then(() => {
       const current = readyContext(), catalogue = local.authority.getCatalogue();
-      if (!mounted.current || controllers.current !== local || epoch.current !== captured || rootOrigin.current !== saved.origin ||
+      if (!mounted.current || controllersRef.current !== local || epoch.current !== captured || rootOrigin.current !== saved.origin ||
           AppState.currentState !== 'active' || current?.context !== before.context || !catalogue) return;
       const origin: RootOrigin = { ...saved.origin, stage: 'networks' };
       const route: NetworkReturn = { kind: 'send', local, origin, sourceRevision: local.authority.getSnapshot().revision,
         sourceCatalogueRevision: catalogue.revision, target: saved.target, form: Object.freeze({ ...form }) };
       networkReturnOwner.current = route; setNetworkReturn(route); rootOrigin.current = origin;
       setSendDraft(null); setStage('networks');
-    }).catch(() => { if (mounted.current && controllers.current === local && epoch.current === captured) setError('The current request is still closing. Try again.'); });
+    }).catch(() => { if (mounted.current && controllersRef.current === local && epoch.current === captured) setError('The current request is still closing. Try again.'); });
   };
   const openReceiveNetwork = (continuation: NativeReceiveContinuation) => {
-    const local = controllers.current, current = readyContext(), catalogue = local?.authority.getCatalogue(), account = local?.authority.getSnapshot().account;
+    const local = controllersRef.current, current = readyContext(), catalogue = local?.authority.getCatalogue(), account = local?.authority.getSnapshot().account;
     if (!local || !current || !catalogue || !account || stage !== 'choose' || AppState.currentState !== 'active' ||
         continuation.account.revision !== local.authority.getSnapshot().revision || continuation.account.network !== account.network || continuation.account.address !== account.address) return;
     const origin: RootOrigin = { tab: shell.tab, stage: 'networks', ...current, epoch: epoch.current };
@@ -543,8 +543,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     depositBackupReturn.current = null; setDepositBackupRoute(null); setDepositTask(null);
     const origin = rootOrigin.current; rootOrigin.current = null;
     const current = readyContext();
-    if (stage === 'smart-infrastructure' || stage === 'smart-deploy' || stage === 'smart-resume' || stage === 'smart-authenticator' || stage === 'slh-dsa' || stage === 'smart-modules' || stage === 'send' && selectedAccountType === 'SmartAccount') setCatalogue(controllers.current?.authority.getCatalogue() ?? null);
-    const local = controllers.current;
+    if (stage === 'smart-infrastructure' || stage === 'smart-deploy' || stage === 'smart-resume' || stage === 'smart-authenticator' || stage === 'slh-dsa' || stage === 'smart-modules' || stage === 'send' && selectedAccountType === 'SmartAccount') setCatalogue(controllersRef.current?.authority.getCatalogue() ?? null);
+    const local = controllersRef.current;
     setCanSignSmart(local?.canSignSmartAccount() === true); setCanManageSlh(local?.canManageSlhDsa() === true); setCanManageModules(local?.canManageSmartAccountModules() === true);
     setCanUseWalletAuthenticator(local?.canUseWalletAuthenticator() === true);
     setSendDraft(null);
@@ -557,10 +557,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const closeBackup = () => {
     // In-flight credential work keeps the existing lock-on-leave behavior.
     if (submitting.current) { revoke(); return; }
-    controllers.current?.backup.cancel(); clearSecrets(); setError(''); closeStage();
+    controllersRef.current?.backup.cancel(); clearSecrets(); setError(''); closeStage();
   };
   const openRequiredBackup = () => {
-    const local = controllers.current;
+    const local = controllersRef.current;
     if (!local || submitting.current || !protectedScreen || AppState.currentState !== 'active' ||
         local.authority.getSnapshot().phase !== 'backup-required') return;
     local.backup.cancel(); clearSecrets(); setError(''); setStage('backup-intro');
@@ -610,7 +610,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     depositBackupReturn.current = null; setDepositBackupRoute(null); setDepositTask(null);
     cancelNoteRestore();
     detachSubscriptions.current(); detachSubscriptions.current = () => undefined;
-    controllers.current = null;
+    controllersRef.current = null;
     setSentry(null); setSentryScope(null);
     if (rootOrigin.current?.stage === 'send' || rootOrigin.current?.stage === 'smart-resume') {
       rootOrigin.current = null;
@@ -623,15 +623,15 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     setPublicSource(null); setBalanceReader(null); setRecipientResolver(undefined); setReadGuardianRecovery(null); setOpenGuardianPolicy(null); setInspectGuardianRemoval(null); setGuardianRecoveryController(null); setRecoveryActivity(null); setResumeGuardianScope(null); setAccountView(null); setTrezorView(null); setLedgerView(null); setLedgerConnection(null); setConnectionView(null); setConnectionSnapshot(null); setSigningReview(null); setNetworkView(null);
     setOpenNoteCapacity(null); setReadNoteInventory(null); setOpenPrivateDeposit(null); setTransactionActivity(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setOpenSmartDeployment(null); setOpenSmartSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
     bridge.current?.onNativeCatalogue(null);
-  }, [cancelNoteRestore]);
+  }, [cancelNoteRestore, controllersRef]);
   const attach = useCallback((local: Controllers) => {
-    detachSubscriptions.current(); controllers.current = local;
+    detachSubscriptions.current(); controllersRef.current = local;
     setCanRemoveWallet(!!local.removal);
     setOpenSlhDsaManagement(() => async (signal: AbortSignal, assertView: () => void) => {
       const origin = rootOrigin.current, address = local.authority.getSnapshot().account?.address;
       const check = () => {
         assertView();
-        if (!origin || origin.stage !== 'slh-dsa' || !address || !mounted.current || controllers.current !== local ||
+        if (!origin || origin.stage !== 'slh-dsa' || !address || !mounted.current || controllersRef.current !== local ||
             rootOrigin.current !== origin || epoch.current !== origin.epoch || AppState.currentState !== 'active' ||
             readyContext()?.identity !== origin.identity || local.authority.getSnapshot().account?.address !== address)
           throw new Error('CANCELLED');
@@ -642,7 +642,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       const origin = rootOrigin.current, address = local.authority.getSnapshot().account?.address;
       const check = () => {
         assertView();
-        if (!origin || origin.stage !== 'smart-infrastructure' || !address || !mounted.current || controllers.current !== local ||
+        if (!origin || origin.stage !== 'smart-infrastructure' || !address || !mounted.current || controllersRef.current !== local ||
             rootOrigin.current !== origin || epoch.current !== origin.epoch || AppState.currentState !== 'active' ||
             readyContext()?.identity !== origin.identity || local.authority.getSnapshot().account?.address !== address)
           throw new Error('CANCELLED');
@@ -654,7 +654,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       const origin = rootOrigin.current, address = local.authority.getSnapshot().account?.address;
       const check = () => {
         assertView();
-        if (!origin || origin.stage !== 'smart-modules' || !address || !mounted.current || controllers.current !== local ||
+        if (!origin || origin.stage !== 'smart-modules' || !address || !mounted.current || controllersRef.current !== local ||
             rootOrigin.current !== origin || epoch.current !== origin.epoch || AppState.currentState !== 'active' ||
             readyContext()?.identity !== origin.identity || local.authority.getSnapshot().account?.address !== address)
           throw new Error('CANCELLED');
@@ -667,7 +667,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       const check = () => {
         assertView();
         if (!origin || origin.stage !== 'smart-authenticator' || !address ||
-            !mounted.current || controllers.current !== local || rootOrigin.current !== origin ||
+            !mounted.current || controllersRef.current !== local || rootOrigin.current !== origin ||
             epoch.current !== origin.epoch || AppState.currentState !== 'active' ||
             readyContext()?.identity !== origin.identity || local.authority.getSnapshot().account?.address !== address)
           throw new Error('CANCELLED');
@@ -686,7 +686,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       const capturedEpoch = epoch.current;
       return local.readGuardianRecovery(signal, () => {
         assertView();
-        if (!mounted.current || controllers.current !== local || epoch.current !== capturedEpoch)
+        if (!mounted.current || controllersRef.current !== local || epoch.current !== capturedEpoch)
           throw new Error('CANCELLED');
       });
     });
@@ -697,18 +697,18 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       subscribe: (listener: Parameters<PublicCustodySource['subscribe']>[0]) => local.authority.subscribe(listener),
     });
     const update = (state: CustodySnapshot) => {
-      if (!mounted.current || controllers.current !== local) return;
+      if (!mounted.current || controllersRef.current !== local) return;
       setGuardianEpoch(epoch.current);
       setCanSignSmart(local.canSignSmartAccount()); setCanManageSlh(local.canManageSlhDsa()); setCanManageModules(local.canManageSmartAccountModules());
       setCanUseWalletAuthenticator(local.canUseWalletAuthenticator());
       {
         void local.authority.getAuthenticationStatus().then((status) => {
-          if (mounted.current && controllers.current === local && local.authority.getSnapshot() === state) {
+          if (mounted.current && controllersRef.current === local && local.authority.getSnapshot() === state) {
             setDeviceUnlockStatus(status ? { available: status.biometricsAvailable, enabled: status.biometricsEnabled } : null);
             setPinConfigured(status?.pinConfigured ?? null);
           }
         }).catch(() => {
-          if (mounted.current && controllers.current === local && local.authority.getSnapshot() === state) { setDeviceUnlockStatus(null); setPinConfigured(null); }
+          if (mounted.current && controllersRef.current === local && local.authority.getSnapshot() === state) { setDeviceUnlockStatus(null); setPinConfigured(null); }
         });
       }
       setSentry(local.sentry);
@@ -719,7 +719,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
           const capturedEpoch = epoch.current;
           return local.guardianRecovery.open(draft, signal, () => {
             assertView();
-            if (!mounted.current || controllers.current !== local || epoch.current !== capturedEpoch || AppState.currentState !== 'active')
+            if (!mounted.current || controllersRef.current !== local || epoch.current !== capturedEpoch || AppState.currentState !== 'active')
               throw new Error('CANCELLED');
           });
         },
@@ -728,7 +728,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         const capturedEpoch = epoch.current;
         return local.openGuardianPolicy(draft, signal, () => {
           assertView();
-          if (!mounted.current || controllers.current !== local || epoch.current !== capturedEpoch || AppState.currentState !== 'active')
+          if (!mounted.current || controllersRef.current !== local || epoch.current !== capturedEpoch || AppState.currentState !== 'active')
             throw new Error('CANCELLED');
         });
       } : null);
@@ -736,7 +736,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         const capturedEpoch = epoch.current;
         return local.inspectGuardianRemoval(signal, () => {
           assertView();
-          if (!mounted.current || controllers.current !== local || epoch.current !== capturedEpoch || AppState.currentState !== 'active')
+          if (!mounted.current || controllersRef.current !== local || epoch.current !== capturedEpoch || AppState.currentState !== 'active')
             throw new Error('CANCELLED');
         });
       } : null);
@@ -784,7 +784,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     const unsubscribe = local.authority.subscribe(update);
     update(local.authority.getSnapshot());
     const updateMessage = () => {
-      if (mounted.current && controllers.current === local) {
+      if (mounted.current && controllersRef.current === local) {
         const next = local.connections.getSnapshot();
         setConnectionSnapshot(next);
         setSigningReview(next.signingReview);
@@ -795,7 +795,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     const clear = local.backup.onClear(() => { setPresentation(null); });
     detachSubscriptions.current = () => { unsubscribe(); unsubscribeMessages(); clear(); };
     setProtectedScreen(true);
-  }, [clearSecrets, readyContext]);
+  }, [clearSecrets, readyContext, controllersRef]);
   const install = useCallback(async () => {
     try {
       const local = await nativeLifecycle.acquire(screenToken.current, () => mounted.current && AppState.currentState === 'active');
@@ -806,7 +806,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     }
   }, [attach]);
   useLayoutEffect(() => {
-    const local = controllers.current;
+    const local = controllersRef.current;
     if (removalRef.current || (stage === 'remove-wallet' && snapshot.phase !== 'locked') || !local?.removal?.requiresControllerReopen()) return;
     const token = screenToken.current;
     const generation = ++epoch.current;
@@ -816,12 +816,12 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     clearOwnerView(); clearSecrets(); setSnapshot(INITIAL); setProtectedScreen(false); setStage('choose');
     void draining.then(async () => {
       if (mounted.current && epoch.current === generation && screenToken.current === token &&
-          AppState.currentState === 'active' && !controllers.current) await install();
+          AppState.currentState === 'active' && !controllersRef.current) await install();
     }).catch(() => {
       if (mounted.current && epoch.current === generation)
         setError('Secure wallet storage is unavailable. Close and reopen Pali to try again.');
     });
-  }, [stage, snapshot.phase, snapshot.revision, clearOwnerView, clearSecrets, install]);
+  }, [stage, snapshot.phase, snapshot.revision, clearOwnerView, clearSecrets, install, controllersRef]);
   useEffect(() => {
     const lifecycleEpoch = epoch, ownedToken = screenToken.current;
     mounted.current = true;
@@ -829,30 +829,30 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     const resume = () => {
       if (!mounted.current || AppState.currentState !== 'active') return;
       custodyIdle.begin(screenToken.current, revoke);
-      if (!controllers.current && !recoveryRef.current && !removalRef.current)
+      if (!controllersRef.current && !recoveryRef.current && !removalRef.current)
         void install().catch(() => undefined);
     };
     const lifecycle = AppState.addEventListener('change', (state) => {
-      if (state === 'inactive' && controllers.current?.authentication?.isActive()) { clearSecrets(); Keyboard.dismiss(); }
+      if (state === 'inactive' && controllersRef.current?.authentication?.isActive()) { clearSecrets(); Keyboard.dismiss(); }
       else if (state !== 'active') revoke(true);
       else resume();
     });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
-      if (controllers.current?.authentication?.isActive()) { clearSecrets(); Keyboard.dismiss(); } else revoke(true);
+      if (controllersRef.current?.authentication?.isActive()) { clearSecrets(); Keyboard.dismiss(); } else revoke(true);
     }) : null;
     const focus = AppState.addEventListener('focus', resume);
     return () => {
       mounted.current = false; lifecycleEpoch.current++; recoveryRef.current?.cancel();
       removalRef.current?.local.removal.cancel(); removalRef.current = null;
       detachSubscriptions.current(); detachSubscriptions.current = () => undefined;
-      bridge.current?.onNativeCatalogue(null); controllers.current = null;
+      bridge.current?.onNativeCatalogue(null); controllersRef.current = null;
       lifecycle.remove(); blur?.remove(); focus.remove(); custodyIdle.stop(ownedToken);
       void nativeLifecycle.release(ownedToken).catch(() => undefined);
     };
-  }, [install, revoke, clearSecrets]);
+  }, [install, revoke, clearSecrets, controllersRef]);
 
   const openRemoval = () => {
-    const local = controllers.current, authority = local?.authority.getSnapshot();
+    const local = controllersRef.current, authority = local?.authority.getSnapshot();
     if (!local?.removal || !onWalletRemoved || !protectedScreen || removalRef.current || !mounted.current ||
         AppState.currentState !== 'active' || stage !== 'security' || !authority || !['ready', 'backup-required'].includes(authority.phase) ||
         nativeLifecycle.current(screenToken.current) !== local) return;
@@ -861,7 +861,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   };
 
   const removalCurrent = (scope: RemovalScope) => {
-    if (!mounted.current || removalRef.current !== scope || controllers.current !== scope.local || scope.epoch !== epoch.current ||
+    if (!mounted.current || removalRef.current !== scope || controllersRef.current !== scope.local || scope.epoch !== epoch.current ||
         AppState.currentState !== 'active' || nativeLifecycle.current(screenToken.current) !== scope.local) return false;
     const now = scope.local.authority.getSnapshot();
     return now === scope.authority || scope.phase === 'working' && now.phase === 'disposed' && now.revision === scope.authority.revision + 1;
@@ -890,7 +890,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     if (outcome === 'removed' && (!retired || !scope.local.removal.hasVerifiedRemoval())) throw new Error('REOPEN_REQUIRED');
     if (retired) {
       const draining = nativeLifecycle.release(screenToken.current);
-      if (controllers.current === scope.local) { clearOwnerView(); setSnapshot(INITIAL); setProtectedScreen(false); }
+      if (controllersRef.current === scope.local) { clearOwnerView(); setSnapshot(INITIAL); setProtectedScreen(false); }
       await draining;
     }
     if (!mounted.current || removalRef.current !== scope || AppState.currentState !== 'active') return;
@@ -905,7 +905,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   };
 
   const openRecovery = () => {
-    const local = controllers.current;
+    const local = controllersRef.current;
     if (!local || recoveryRef.current || submitting.current || !protectedScreen || AppState.currentState !== 'active' ||
         local.authority.getSnapshot().phase !== 'locked' || nativeLifecycle.current(screenToken.current) !== local) return;
     cancelNoteRestore();
@@ -915,7 +915,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     flow = new NativeRecoveryFlow({
       readInventory: () => local.readRecoveryInventory(),
       createCoordinator: () => { recoveryStarted = true; return nativeLifecycle.startRecovery(screenToken.current, local); },
-      isCurrent: () => mounted.current && recoveryRef.current === flow && controllers.current === local && epoch.current === captured && AppState.currentState === 'active',
+      isCurrent: () => mounted.current && recoveryRef.current === flow && controllersRef.current === local && epoch.current === captured && AppState.currentState === 'active',
       leave: exit,
       finish: async (outcome) => {
         savedRecoveryOutcome = outcome;
@@ -950,7 +950,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
 
   const perform = async (action: (local: Controllers) => Promise<void>) => {
     if (submitting.current || !protectedScreen || AppState.currentState !== 'active') return;
-    const local = controllers.current; if (!local) return;
+    const local = controllersRef.current; if (!local) return;
     const captured = epoch.current;
     feedbackRequest.current++;
     submitting.current = true; setBusy(true); setError('');
@@ -989,7 +989,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       if (useDeviceUnlock && ['ready', 'backup-required'].includes(authority.getSnapshot().phase)) {
         const captured = epoch.current;
         await authority.setDeviceUnlock(true, enteredPin, () => {
-          if (!mounted.current || controllers.current !== local || epoch.current !== captured || AppState.currentState !== 'active') throw new Error('CANCELLED');
+          if (!mounted.current || controllersRef.current !== local || epoch.current !== captured || AppState.currentState !== 'active') throw new Error('CANCELLED');
         });
       }
       if (['ready', 'backup-required'].includes(authority.getSnapshot().phase)) setStage('choose');
@@ -997,7 +997,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   };
 
   const openImport = () => {
-    const local = controllers.current;
+    const local = controllersRef.current;
     const context = local?.authority.getSnapshot();
     const current = local?.authority.getCatalogue();
     if (!local?.imports || !context?.account || context.phase !== 'ready' || !current) return;
@@ -1009,7 +1009,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       submit: (...args: Parameters<NativeImportView['submit']>) => local.imports.submit(...args),
       cancel: () => {
         const now = local.authority.getSnapshot();
-        if (controllers.current === local && importRequest.current.token === token && importRequest.current.active &&
+        if (controllersRef.current === local && importRequest.current.token === token && importRequest.current.active &&
             now.phase === 'authenticating' && now.revision === context.revision + 1) local.imports.cancel();
       },
     });
@@ -1020,15 +1020,15 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     setStage('import-key');
   };
   const previewImport = useCallback(async (words: string, assertView: () => void) => {
-    const local = controllers.current, captured = epoch.current;
+    const local = controllersRef.current, captured = epoch.current;
     const check = () => {
       assertView();
-      if (!local || controllers.current !== local || !mounted.current || epoch.current !== captured ||
+      if (!local || controllersRef.current !== local || !mounted.current || epoch.current !== captured ||
           AppState.currentState !== 'active' || local.authority.getSnapshot().phase !== 'empty') throw new Error('CANCELLED');
     };
     check();
     return local!.authority.previewPhrase(words, check);
-  }, []);
+  }, [controllersRef]);
   const locked = snapshot.phase === 'locked';
   const quickUnlock = !!deviceUnlockStatus?.available && !!deviceUnlockStatus.enabled;
   const unavailable = snapshot.phase === 'unavailable' || !!error && !protectedScreen;
@@ -1072,7 +1072,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         clearSecrets(); void perform(async local => {
           const captured = epoch.current;
           await local.authority.unlockWithDevice(() => {
-            if (!mounted.current || controllers.current !== local || epoch.current !== captured || AppState.currentState !== 'active') throw new Error('CANCELLED');
+            if (!mounted.current || controllersRef.current !== local || epoch.current !== captured || AppState.currentState !== 'active') throw new Error('CANCELLED');
           }); await finishUnlock(local);
         });
       }} />}
@@ -1086,13 +1086,13 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       void perform(async local => {
         const captured = epoch.current;
         await local.authority.changePin(currentPin, next, () => {
-          if (!mounted.current || controllers.current !== local || epoch.current !== captured || AppState.currentState !== 'active') throw new Error('CANCELLED');
+          if (!mounted.current || controllersRef.current !== local || epoch.current !== captured || AppState.currentState !== 'active') throw new Error('CANCELLED');
         }); clearSecrets(); setStage('security');
       });
     }} />;
   if (snapshot.phase === 'empty' && (stage === 'import' || stage === 'import-security' && !phrase))
     return <NativeImportWallet preview={previewImport} onBack={exit} onConfirmed={words => {
-      if (AppState.currentState === 'active' && controllers.current?.authority.getSnapshot().phase === 'empty') {
+      if (AppState.currentState === 'active' && controllersRef.current?.authority.getSnapshot().phase === 'empty') {
         setPhrase(words); setStage('import-security');
       }
     }} />;
@@ -1103,7 +1103,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         void perform(async local => {
           const captured = epoch.current;
           await local.backup.confirm(id, answers);
-          if (mounted.current && controllers.current === local && epoch.current === captured && AppState.currentState === 'active' && local.authority.getSnapshot().phase === 'ready') {
+          if (mounted.current && controllersRef.current === local && epoch.current === captured && AppState.currentState === 'active' && local.authority.getSnapshot().phase === 'ready') {
             clearSecrets(); setStage('backup-complete');
           }
         });
@@ -1120,7 +1120,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
           void perform(async local => {
             const captured = epoch.current;
             const shown = await local.backup.begin(entered);
-            if (mounted.current && controllers.current === local && epoch.current === captured &&
+            if (mounted.current && controllersRef.current === local && epoch.current === captured &&
                 AppState.currentState === 'active' && ['ready', 'backup-required'].includes(local.authority.getSnapshot().phase)) {
               setPresentation(shown); setStage('words');
             }
@@ -1171,10 +1171,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       onAdd={async (input) => { revoke(); setStage('accounts'); await accounts.onAdd(input); }} />;
   if (stage === 'trezor' && trezorView && snapshot.phase === 'ready')
     return <NativeTrezor controller={trezorView} onBack={() => {
-      void controllers.current?.connections.cancelSigningHandoff().catch(() => undefined);
+      void controllersRef.current?.connections.cancelSigningHandoff().catch(() => undefined);
       if (rootOrigin.current?.stage === 'trezor') closeStage(); else setStage('manage-hd');
     }} onImported={() => { rootOrigin.current = null; setStage('choose'); }} onResumeSend={async (intent: NativeTrezorResumeIntent) => {
-      const local = controllers.current;
+      const local = controllersRef.current;
       const current = readyContext();
       const captured = local?.authority.getCatalogue();
       if (!current || !captured || AppState.currentState !== 'active' ||
@@ -1184,7 +1184,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         if (!local) throw Error('CANCELLED');
         const resumeEpoch = epoch.current;
         await local.connections.resumeSigning(intent.id);
-        if (controllers.current === local && epoch.current === resumeEpoch && AppState.currentState === 'active') setStage('choose');
+        if (controllersRef.current === local && epoch.current === resumeEpoch && AppState.currentState === 'active') setStage('choose');
         return;
       }
       if (intent.kind === 'smart-operation') {
@@ -1218,7 +1218,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       onSubmitEnd={() => { if (importRequest.current.token === importScope.token) importRequest.current.active = false; if (mounted.current) setImportActiveToken((value) => value === importScope.token ? null : value); }}
       onBack={() => { setImportScope(null); setStage('manage-hd'); }}
       onImported={() => {
-        const local = controllers.current, now = local?.authority.getSnapshot(), current = local?.authority.getCatalogue();
+        const local = controllersRef.current, now = local?.authority.getSnapshot(), current = local?.authority.getCatalogue();
         if (mounted.current && importRequest.current.token === importScope.token && now?.phase === 'ready' &&
             now.revision === importScope.contextRevision + 1 && current?.accounts.some((account) => account.id === current.active.accountId && account.type === 'Imported')) {
           rootOrigin.current = null; setImportScope(null); setStage('choose');
@@ -1261,7 +1261,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     key={snapshot.revision} open={openPrivateDeposit} initialTask={depositTask ?? undefined}
     onBack={() => { depositBackupReturn.current = null; setDepositBackupRoute(null); setDepositTask(null); setStage('private-notes'); }}
     onBackup={task => {
-      const owner = controllers.current, current = readyContext();
+      const owner = controllersRef.current, current = readyContext();
       if (!owner || !current || current.context !== guardianContext || AppState.currentState !== 'active') return;
       if (noteRestore.begin('export')) {
         depositBackupReturn.current = task ? { owner, identity: current.identity, task: Object.freeze({ poolId: task.poolId, noteId: task.noteId }) } : null;
@@ -1298,7 +1298,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       onBack={() => {
         if (AppState.currentState !== 'active' || depositBackupReturn.current !== returning) return;
         const current = readyContext();
-        if (returning && (!current || returning.owner !== controllers.current || returning.identity !== current.identity)) {
+        if (returning && (!current || returning.owner !== controllersRef.current || returning.identity !== current.identity)) {
           depositBackupReturn.current = null; setDepositBackupRoute(null); setDepositTask(null); return;
         }
         cancelNoteRestore(); depositBackupReturn.current = null; setDepositBackupRoute(null);
@@ -1323,14 +1323,14 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       deviceUnlockEnabled={deviceUnlockStatus?.enabled}
       onAutoLock={snapshot.phase === 'ready' && saveIdle ? () => setStage('auto-lock') : undefined}
       captureFailureHandler={() => {
-        const local = controllers.current;
+        const local = controllersRef.current;
         const context = local?.authority.getSnapshot();
         const capturedEpoch = epoch.current;
         const request = ++feedbackRequest.current;
         return (cause) => {
           const code = cause instanceof Error ? cause.message : '';
           if (!local || !context || context.phase !== 'ready' || !context.account ||
-              !mounted.current || controllers.current !== local || epoch.current !== capturedEpoch || feedbackRequest.current !== request ||
+              !mounted.current || controllersRef.current !== local || epoch.current !== capturedEpoch || feedbackRequest.current !== request ||
               (code !== 'INVALID_CREDENTIAL' && code !== 'AUTH_THROTTLED')) return;
           const current = local.authority.getSnapshot();
           // Only this request's own failure lock may publish feedback. A new
@@ -1355,7 +1355,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       void perform(async (local) => {
         const captured = epoch.current;
         await local.authority.setDeviceUnlock(enabled, entered, () => {
-          if (!mounted.current || controllers.current !== local || epoch.current !== captured || AppState.currentState !== 'active') throw new Error('CANCELLED');
+          if (!mounted.current || controllersRef.current !== local || epoch.current !== captured || AppState.currentState !== 'active') throw new Error('CANCELLED');
         });
         if (local.authority.getSnapshot().phase === 'ready') setStage('security');
       });
@@ -1496,11 +1496,11 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         scope: custodyContext(snapshot, catalogue)!.context,
         networkLabel: getNativeNetwork(snapshot.account.network, catalogue.networks).name,
         async reset(assertView) {
-          const local = controllers.current;
+          const local = controllersRef.current;
           const expected = custodyContext(snapshot, catalogue)!.context;
           const check = () => {
             assertView();
-            if (!mounted.current || !local || local !== controllers.current || AppState.currentState !== 'active' ||
+            if (!mounted.current || !local || local !== controllersRef.current || AppState.currentState !== 'active' ||
                 readyContext()?.context !== expected) throw new Error('CANCELLED');
           };
           check();
