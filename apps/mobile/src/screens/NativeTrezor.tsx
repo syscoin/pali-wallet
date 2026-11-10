@@ -173,6 +173,20 @@ export function NativeTrezor({
               <Text selectable style={s.address}>{snapshot.address}</Text>
             </Card>
           )}
+          {snapshot.signer && (
+            <Card style={s.card}>
+              <Text style={s.label}>Expected signer</Text>
+              {snapshot.signer.total > 1 && (
+                <Text accessibilityLiveRegion="polite" style={s.label}>
+                  Signer {snapshot.signer.step} of {snapshot.signer.total}
+                </Text>
+              )}
+              <Text style={s.label}>{snapshot.signer.label}</Text>
+              <Text selectable style={s.address}>
+                {snapshot.signer.address}
+              </Text>
+            </Card>
+          )}
           {(waiting || busy) && (
             <View style={s.waiting}>
               <ActivityIndicator color={colors.pink} />

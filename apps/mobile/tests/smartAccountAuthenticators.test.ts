@@ -696,12 +696,15 @@ test('an ECDSA-satisfied composite does not touch an unused injected SLH key', a
 });
 
 
-test('native ordered plan permits one exact Trezor signature and refuses multiple Trezor terminal steps',()=>{
+test('native ordered plan permits separate ECDSA Trezor owner steps and gates uncheckpointed selected drivers',()=>{
   const f=fixture(), one=f.localOwners.map((owner,index)=>index===0?{...owner,type:'Trezor' as const}:owner);
   assert(canSignNativeSmartAccountActionHash(f.ecdsa(1),one,{slhDsa:false}));
   assert(canSignNativeSmartAccountActionHash(f.ecdsa(2),one,{slhDsa:false}));
   const two=one.map((owner,index)=>index===1?{...owner,type:'Trezor' as const}:owner);
-  assert.equal(canSignNativeSmartAccountActionHash(f.ecdsa(2),two,{slhDsa:false}),false);
+  assert(canSignNativeSmartAccountActionHash(f.ecdsa(2),two,{slhDsa:false}));
   const plan=getNativeSmartAccountSigningPlan(f.ecdsa(2),one,{slhDsa:false});assert(plan);
   assert.deepEqual(plan.authenticators[0]!.owners.map(owner=>owner.type),['Trezor','HDAccount']);
+  assert(canSignNativeSmartAccountActionHash(f.composite(1,false,2),two,{slhDsa:true}),'an unused SLH child does not restrict the selected ECDSA plan');
+  assert.equal(canSignNativeSmartAccountActionHash(f.composite(2,false,2),two,{slhDsa:true}),false,'selected SLH proofs need a separate resume contract');
+  assert(canSignNativeSmartAccountActionHash(f.composite(2,false,2),f.localOwners,{slhDsa:true}),'software-only composite signing retains the existing path');
 });

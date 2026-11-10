@@ -22,7 +22,7 @@ import type { NativeTrezorView } from '../src/custody/trezorAccounts.ts';
 
 function trezorLifecycle() {
   return {background() {}, async cancel() {}, subscribe: () => () => undefined,
-    getSnapshot: () => ({phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, error: null}),
+    getSnapshot: () => ({phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, signer: null, error: null}),
   } satisfies Pick<NativeTrezorView, 'background' | 'cancel' | 'subscribe' | 'getSnapshot'>;
 }
 

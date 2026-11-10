@@ -19,12 +19,17 @@ let snapshot: NativeTrezorSnapshot = Object.freeze({
       ? 'import'
       : resume === 'utxo'
       ? 'utxo-send'
+      : resume === 'smart'
+      ? 'smart-operation'
       : resume
       ? 'send'
       : null,
   networkLabel: 'Ethereum',
-  accountLabel: resume ? 'Travel Trezor' : '',
+  accountLabel: resume === 'smart' ? 'Smart savings' : resume ? 'Travel Trezor' : '',
   address: resume ? '0x1111111111111111111111111111111111111111' : null,
+  signer: resume === 'smart'
+    ? { label: 'Travel Trezor signer', address: '0x2222222222222222222222222222222222222222', step: 2, total: 3 }
+    : null,
   error: null,
 });
 const calls: string[] = [];
@@ -41,10 +46,11 @@ const publish = (patch: Partial<NativeTrezorSnapshot>) => {
 };
 const intent: NativeTrezorResumeIntent = Object.freeze({
   id: 'public-fixture-intent',
-  accountId: 'Trezor:0',
+  accountId: resume === 'smart' ? 'smart:60:0' : 'Trezor:0',
   networkId: 'ethereum',
-  kind: 'evm',
-  unsignedTransaction: '0xpublic-fixture-envelope',
+  ...(resume === 'smart'
+    ? { kind: 'smart-operation' as const }
+    : { kind: 'evm' as const, unsignedTransaction: '0xpublic-fixture-envelope' }),
 });
 const controller: NativeTrezorView = {
   getSnapshot: () => snapshot,
@@ -54,7 +60,7 @@ const controller: NativeTrezorView = {
   },
   async startImport(label) {
     calls.push(`open:${label}`);
-    publish({ phase: 'waiting', operation: 'import', accountLabel: label });
+    publish({ phase: 'waiting', operation: 'import', accountLabel: label, signer: null });
     if (route.has('hold'))
       await new Promise<void>((resolve) => {
         resolveOperation = resolve;
@@ -80,7 +86,7 @@ const controller: NativeTrezorView = {
         rejectCancel = () =>
           reject(new Error('public fixture cleanup failure'));
       });
-    publish({ phase: 'idle', operation: null, address: null });
+    publish({ phase: 'idle', operation: null, address: null, signer: null });
   },
 };
 declare global {

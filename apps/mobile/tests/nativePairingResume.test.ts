@@ -221,7 +221,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       cancel() {},
     },
     trezor: {
-      getSnapshot: () => ({phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, error: null}),
+      getSnapshot: () => ({phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, signer: null, error: null}),
       subscribe: () => () => undefined,
       background() {lifecycleEvents.push('trezor-background');},
       async cancel() {lifecycleEvents.push('trezor-cancel');},
