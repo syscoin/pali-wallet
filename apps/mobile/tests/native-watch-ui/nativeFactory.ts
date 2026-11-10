@@ -400,12 +400,18 @@ export function createNativeWalletControllers() {
           : importedKeyIdentity(key, index);
         if (input.expectedAddress !== identity.address || !input.label.trim()) throw new KeyringRuntimeError('INVALID_INPUT');
         if (catalogue.accounts.some((account) => account.address === identity.address)) throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
-        return { cancel() {}, async execute(guard) {
-          guard(); audit.importAttempts++; events.push('import:start');
-          await requestFixtureCredential(binding, signal, guard, 'account-change');
-          await importGate();
-          if (importFailure) throw new KeyringRuntimeError(importFailure);
+        let cancelled = false;
+        const check = (guard: () => void) => {
+          if (cancelled || signal.aborted) throw new KeyringRuntimeError('CANCELLED');
           guard();
+        };
+        return { cancel() { cancelled = true; }, async execute(guard) {
+          check(guard); audit.importAttempts++; events.push('import:start');
+          await requestFixtureCredential(binding, signal, () => check(guard), 'account-change');
+          check(guard);
+          await importGate();
+          check(guard);
+          if (importFailure) throw new KeyringRuntimeError(importFailure);
           importedKeys.set(identity.id, key);
           const account = { id: identity.id, type: 'Imported' as const, index: identity.index, slip44: fixture ? 0 : 60, label: input.label, address: identity.address,
             ...(fixture?.utxoExtended && { utxoExtended: true as const }) };

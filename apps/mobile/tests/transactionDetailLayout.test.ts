@@ -38,3 +38,24 @@ test('compact transaction facts retain full accessible amounts and identifiers w
   assert.equal(explorer.props.title, 'View on explorer'); explorer.props.onPress(); assert.equal(explorers, 1);
   f.close();
 });
+
+
+test('numeric-only transaction identifiers stay bounded as identifiers and copy exactly', () => {
+  const hash = '0'.repeat(63) + '1';
+  let copied = '';
+  const f = screenFixture(new URL('../src/screens/TransactionDetailLayout.tsx', import.meta.url), 'TransactionDetailLayout', {
+    'react-native': { StyleSheet: { create: (value: unknown) => value }, View: 'View' },
+    '../activity/activityAmountLabel': { compactActivityAmountLabel },
+    '../ui': { colors: {}, ...Object.fromEntries(['Button', 'Card', 'Icon', 'Text'].map(name => [name, name])) },
+    './IdleActivityBoundary': { IdlePressable: 'Row' },
+  });
+  const nodes = screenElements(f.render({ amount: '1 BTC', direction: 'Received', status: 'Confirmed', tone: 'confirmed',
+    rows: [{ label: 'Transaction ID', value: hash, actionLabel: 'Copy transaction ID', onPress: () => { copied = hash; } }],
+  }));
+  const value = nodes.find(node => node.type === 'Text' && node.props.accessibilityLabel === hash); assert(value);
+  assert.equal(value.children[0], `${hash.slice(0, 16)}…${hash.slice(-12)}`);
+  const copy = nodes.find(node => node.type === 'Row'); assert(copy);
+  assert.equal(copy.props.accessibilityLabel, `Copy transaction ID: ${hash}`);
+  copy.props.onPress(); assert.equal(copied, hash);
+  f.close();
+});

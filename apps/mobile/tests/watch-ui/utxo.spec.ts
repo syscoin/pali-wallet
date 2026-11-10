@@ -42,7 +42,7 @@ test('SYS actual paste, full-address review, fixed scope, QR, copy/share and ren
   await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await expect(page.getByLabel('Syscoin Mainnet confirmed balance 1.23456789 SYS', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Pending balance change +0.00000123 SYS', { exact: true })).toBeVisible();
-  await expect(page.getByText('Syscoin Mainnet', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^SYS Syscoin Mainnet/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Network/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Receive', exact: true }).click();
   await expect(page.getByRole('img', { name: `QR code for Syscoin Mainnet address ${SYS}` })).toBeVisible();
@@ -71,7 +71,7 @@ test('BTC shows confirmed and negative pending separately without fiat or networ
   await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await expect(page.getByLabel('Bitcoin confirmed balance 1.23456789 BTC', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Pending balance change -0.00000456 BTC', { exact: true })).toBeVisible();
-  await expect(page.getByText('Incoming and outgoing transactions waiting for confirmation.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Pending balance change: -0.00000456 BTC', { exact: true })).toBeVisible();
   await expect(page.getByText(/\$|USD/)).toHaveCount(0); await expect(page.getByRole('button', { name: /^Network/ })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('btc-negative-pending.png'), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false); await watchOnly(page);
@@ -95,10 +95,11 @@ test('Syscoin Testnet uses its own watch address, indexed history and explorer',
     'https://blockbook-dev.syscoin.org/api/v2/block-index/0',
     `https://blockbook-dev.syscoin.org/api/v2/address/${address}?details=txsummary&page=1&pageSize=20`,
   ]);
-  await page.getByRole('button', { name: 'Net change −10.0 tSYS', exact: true }).first().click();
+  await page.getByTestId(`watch-activity-row-${'1'.padStart(64, '0')}`).click();
   await expect(page.getByRole('heading', { name: 'Transaction details', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Details', exact: true }).click();
   await expect(page.getByText('Received by this account: 1.0 tSYS', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Open transaction in explorer', exact: true }).click();
+  await page.getByRole('button', { name: 'View on explorer', exact: true }).click();
   expect(await page.evaluate(() => window.__watchFixture.activity.opened())).toEqual([
     `https://explorer-blockbook-dev.syscoin.org/tx/${'1'.padStart(64, '0')}`,
   ]);
@@ -167,7 +168,9 @@ test('public account key follows the real add, aggregate refresh, receive, renam
   await expect(page.getByRole('img', { name: `QR code for Bitcoin address ${firstAddress}` })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
-  await page.getByRole('button', { name: 'Rename BTC savings watch', exact: true }).click();
+  const publicKey = await page.evaluate(() => window.__watchFixture.accounts()[0]?.addresses.bitcoin);
+  expect(publicKey).toBeDefined();
+  await page.getByRole('button', { name: watchAccountName('Rename', 'BTC savings watch', 'Bitcoin', publicKey!) }).click();
   await page.getByRole('textbox', { name: 'Watch account name', exact: true }).fill('Public wallet');
   await page.getByRole('button', { name: 'Save name', exact: true }).click();
   await page.reload(); await page.getByRole('button', { name: 'View my accounts', exact: true }).click();

@@ -66,7 +66,7 @@ export function PinEntryScreen({ title, description, onComplete, onBack, footer,
   const spacious = height >= 800 && fontScale <= 1.2 && !footer && !error && !notice;
   useLayoutEffect(() => { const back = BackHandler.addEventListener('hardwareBackPress', () => { onBack?.(); return true; }); return () => back.remove(); }, [onBack]);
   return <SafeAreaView style={s.root} edges={['top', 'bottom']}>
-    <Screen footer={footer} gap={compact ? 12 : 20}>
+    <Screen footer={footer} gap={compact ? notice ? 8 : 12 : 20}>
       {brand ? <View style={[s.brand, compact && s.brandCompact]}><PaliMark size={compact ? 32 : 44} /><Text style={s.brandName}>Pali Wallet</Text></View> :
         <Header title="" onBack={onBack} right={step ? <Text style={s.step}>{step}</Text> : undefined} />}
       <View style={[s.intro, spacious && s.introSpacious, compact && s.introCompact]}>

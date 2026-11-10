@@ -48,15 +48,15 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
     const unsubscribe = keyExport.onClear(clear);
     const interrupted = (next: string) => {
       if (next === 'active' || (next === 'inactive' || next === 'blur') && keyExport.isAuthenticating()) return;
-      keyExport.cancel(); clear();
+      state.request++; keyExport.cancel(); clear();
     };
     const app = AppState.addEventListener('change', interrupted);
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => interrupted('blur')) : null;
     return () => {
-      state.mounted = false; state.operation++;
+      state.mounted = false; state.operation++; state.request++;
       unsubscribe(); app.remove(); blur?.remove(); keyExport.cancel();
     };
-  }, [keyExport, clear]);
+  }, [keyExport, clear, accountId, address]);
   const hide = () => { lifecycle.current.request++; keyExport.cancel(); clear(); };
   const back = () => {
     hide();
@@ -83,10 +83,12 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
       if (state.mounted && state.operation === operation && AppState.currentState === 'active' && keyExport.isCurrent(shown.id) &&
           shown.accountId === accountId && shown.address === address) setPresentation(shown);
     } catch (cause) {
-      if (state.mounted && state.operation === operation) {
+      const code = cause instanceof Error ? cause.message : '';
+      // The flow clears its own failed presentation before rejecting. Preserve
+      // feedback only for this still-active request, never a departure or cancel.
+      if (state.mounted && state.request === request && AppState.currentState === 'active' && code !== 'CANCELLED') {
         setError(t('mobile.security.revealFailed'));
       }
-      const code = cause instanceof Error ? cause.message : '';
       // The flow's own failure lock can unmount this screen before the promise
       // settles. Its captured parent handler checks the actual locked context.
       if (state.request === request && (code === 'INVALID_CREDENTIAL' || code === 'AUTH_THROTTLED')) {

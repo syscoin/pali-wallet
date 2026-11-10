@@ -1064,7 +1064,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       <Notice title="Set up your PIN" body="This development wallet was created before PIN access. Restore access with its recovery phrase to create a PIN. Your saved wallet is preserved." />
     </Screen>
   </SafeAreaView>;
-  if (locked && protectedScreen) return <PinEntryScreen brand title="Welcome back" description="Enter your Pali PIN." notice={recoveryNotice}
+  if (locked && protectedScreen) return <PinEntryScreen brand title="Welcome back" description={recoveryNotice ? undefined : "Enter your Pali PIN."} notice={recoveryNotice}
     busy={busy} error={error || (snapshot.error ? message(new Error(snapshot.error)) : undefined)}
     resetKey={`${snapshot.revision}:${error}`} onComplete={entered => {
       void perform(async local => { await local.authority.unlock(entered); await finishUnlock(local); });
