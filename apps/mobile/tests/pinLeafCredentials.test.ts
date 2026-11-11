@@ -22,6 +22,7 @@ function environment() {
       '../ui': { ...components(['Button', 'Card', 'Header', 'Icon', 'Notice', 'PaliMark', 'Row', 'Screen', 'Text']), colors: {}, styles: {} },
       './IdleActivityBoundary': { IdlePressable: 'IdlePressable', IdleTextInput: 'IdleTextInput' },
       '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'biometrics', icon: 'fingerprint' }) },
+      './usePinErrorFeedback': { usePinErrorFeedback: () => ({ style: {}, shaking: false, clear() {} }) },
       '../core/biometricPresentation': { genericBiometrics: { label: 'biometrics', icon: 'fingerprint' } },
       './PinEntry': { PinField: 'PinField' }, './NoteBackupPasswordField': { NoteBackupPasswordField: 'FilePassword' },
     },

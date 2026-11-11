@@ -1,10 +1,11 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AppState, BackHandler, Modal, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Animated, AppState, BackHandler, Modal, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, colors, Header, Icon, PaliMark, Screen, Text } from '../ui';
 import { IdlePressable } from './IdleActivityBoundary';
 import type { BiometricPresentation } from '../core/biometricPresentation';
 import { useBiometricPresentation } from '../platform/useBiometricPresentation';
+import { usePinErrorFeedback } from './usePinErrorFeedback';
 export { genericBiometrics, type BiometricPresentation } from '../core/biometricPresentation';
 
 export const isWalletPin = (pin: unknown): pin is string => typeof pin === 'string' && /^\d{6}$/.test(pin);
@@ -17,31 +18,39 @@ export function PinPad({ onComplete, disabled = false, resetKey = '', error, spa
   const scope = useMemo(() => ({ resetKey }), [resetKey]);
   const [entry, setEntry] = useState<{ scope: object; count: number } | null>(null);
   const digitCount = entry?.scope === scope ? entry.count : 0;
+  const feedback = usePinErrorFeedback(error, disabled, resetKey);
+  const [feedbackCount, setFeedbackCount] = useState(0);
+  const visibleCount = feedback.shaking ? feedbackCount : digitCount;
   const owner = useRef<{ scope: object; active: boolean; sealed: boolean; digits: string } | null>(null);
   const latest = useRef({ onComplete, disabled });
   useLayoutEffect(() => { latest.current = { onComplete, disabled }; }, [onComplete, disabled]);
   useLayoutEffect(() => {
     const current = { scope, active: true, sealed: false, digits: '' };
     owner.current = current;
-    const clear = () => { current.digits = ''; current.sealed = false; if (owner.current === current) setEntry({ scope, count: 0 }); };
+    const clear = () => {
+      current.digits = ''; current.sealed = false;
+      if (owner.current === current) { setEntry({ scope, count: 0 }); setFeedbackCount(0); }
+    };
     const activity = AppState.addEventListener('change', state => { if (state !== 'active') clear(); });
     return () => { current.active = false; current.digits = ''; activity.remove(); };
   }, [scope]);
   const edit = (digit: string | null) => {
     const current = owner.current;
     if (!current || current.scope !== scope || !current.active || current.sealed || latest.current.disabled || AppState.currentState !== 'active') return;
+    feedback.clear();
     const next = digit === null ? current.digits.slice(0, -1) : current.digits + digit;
     if (next.length > 6) return;
-    current.digits = next; setEntry({ scope, count: next.length });
+    current.digits = next; setFeedbackCount(next.length); setEntry({ scope, count: next.length });
     if (next.length === 6) {
       current.sealed = true;
+      current.digits = '';
       latest.current.onComplete(next);
     }
   };
   return <View style={[s.pad, spacious && s.padSpacious, compact && s.padCompact]}>
-    <View accessible accessibilityLabel={`PIN, ${digitCount} of 6 digits entered`} style={[s.dots, compact && s.dotsCompact]}>
-      {Array.from({ length: 6 }, (_, index) => <View key={index} style={[s.dot, index < digitCount && s.filled]} />)}
-    </View>
+    <Animated.View testID="pin-error-feedback" accessible accessibilityLabel={`PIN, ${digitCount} of 6 digits entered`} style={[s.dots, compact && s.dotsCompact, feedback.style]}>
+      {Array.from({ length: 6 }, (_, index) => <View key={index} style={[s.dot, index < visibleCount && s.filled]} />)}
+    </Animated.View>
     {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
     <View style={s.keys}>
       {['123', '456', '789', ' 0x'].map((row, index) => <View key={index} style={s.keyRow}>
@@ -88,6 +97,7 @@ export function PinSetup({ onComplete, onBack, available = false, biometrics, bu
   const presentation = biometrics ?? detectedBiometrics;
   const [step, setStep] = useState<'create' | 'confirm' | 'biometric'>('create');
   const [localError, setLocalError] = useState('');
+  const [submissionError, setSubmissionError] = useState<string | undefined>();
   const [attempt, setAttempt] = useState(0);
   const pin = useRef('');
   const submitted = useRef(false);
@@ -95,8 +105,10 @@ export function PinSetup({ onComplete, onBack, available = false, biometrics, bu
   const previousBusy = useRef(false);
   const previousError = useRef(error);
   const captured = generation.current.value;
+  const visibleSubmissionError = !busy && error ? submissionError : undefined;
   useLayoutEffect(() => {
     if (!busy && error && (previousBusy.current || previousError.current !== error)) {
+      if (submitted.current) setSubmissionError(error);
       if (submitted.current && step === 'confirm' && !offerBiometrics) {
         // A retry needs a fresh confirmation, including a new keypad owner.
         generation.current.value++;
@@ -109,19 +121,21 @@ export function PinSetup({ onComplete, onBack, available = false, biometrics, bu
   }, [busy, error, offerBiometrics, step]);
   useLayoutEffect(() => {
     const current = generation.current;
-    const clear = () => { current.value++; pin.current = ''; submitted.current = false; setStep('create'); setLocalError(''); setAttempt(value => value + 1); };
+    const clear = () => { current.value++; pin.current = ''; submitted.current = false; setStep('create'); setLocalError(''); setSubmissionError(undefined); setAttempt(value => value + 1); };
     const subscription = AppState.addEventListener('change', state => { if (state !== 'active') clear(); });
     return () => { current.value++; pin.current = ''; subscription.remove(); };
   }, []);
   const back = () => {
     if (captured !== generation.current.value || busy || submitted.current) return;
     generation.current.value++;
+    setSubmissionError(undefined);
     if (step === 'create') { pin.current = ''; onBack(); }
     else { pin.current = ''; setStep('create'); setLocalError(''); setAttempt(value => value + 1); }
   };
   const finish = (enabled: boolean) => {
     if (captured !== generation.current.value || busy || submitted.current || !isWalletPin(pin.current) || AppState.currentState !== 'active') return;
     submitted.current = true;
+    setLocalError(''); setSubmissionError(undefined);
     onComplete(pin.current, enabled);
   };
   if (step === 'biometric') return <SafeAreaView style={s.root} edges={['top', 'bottom']}>
@@ -134,14 +148,14 @@ export function PinSetup({ onComplete, onBack, available = false, biometrics, bu
         <Text accessibilityRole="header" style={s.title}>Unlock faster</Text>
         <Text style={s.description}>Unlock Pali and approve transactions with {presentation.label}. Your PIN always remains available.</Text>
         {!available && <Text style={s.description}>Set up biometrics in your device settings to enable this later.</Text>}
-        {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
+        {!!visibleSubmissionError && <Text accessibilityRole="alert" style={s.error}>{visibleSubmissionError}</Text>}
       </View>
     </Screen>
   </SafeAreaView>;
   return <PinEntryScreen title={step === 'create' ? title : 'Confirm your PIN'}
     description={step === 'create' ? 'Use this PIN to unlock Pali and confirm transactions.' : 'Enter the same PIN again.'}
     onBack={back} step={`${step === 'create' ? 1 : 2} of ${offerBiometrics ? 3 : 2}`} busy={busy}
-    error={localError || error} resetKey={`${step}:${attempt}`}
+    error={localError || visibleSubmissionError} resetKey={`${step}:${attempt}`}
     onComplete={entered => {
       if (captured !== generation.current.value) return;
       if (step === 'create') { generation.current.value++; pin.current = entered; setLocalError(''); setStep('confirm'); }

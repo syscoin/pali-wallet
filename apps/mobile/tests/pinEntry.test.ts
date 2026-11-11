@@ -3,13 +3,13 @@ import test from 'node:test';
 import ts from 'typescript';
 import { screenElements, screenFixture, type ScreenElement } from './screenFixture.ts';
 
-function fixture(exported: 'PinPad' | 'PinSetup' | 'PinField' | 'PinEntryScreen') {
+function fixture(exported: 'PinPad' | 'PinSetup' | 'PinField' | 'PinEntryScreen', feedback = { shaking: false, clear() {} }) {
   let state = 'active';
   const activities = new Set<(state: string) => void>();
   const backs = new Set<() => boolean>();
   const host = screenFixture(new URL('../src/screens/PinEntry.tsx', import.meta.url), exported, {
     'react-native': {
-      View: 'View', Modal: 'Modal', StyleSheet: { create: (value: unknown) => value },
+      View: 'View', Modal: 'Modal', Animated: { View: 'AnimatedView' }, StyleSheet: { create: (value: unknown) => value },
       useWindowDimensions: () => ({ width: 390, height: 844 }),
       AppState: { get currentState() { return state; }, addEventListener: (_event: string, handler: (next: string) => void) => {
         activities.add(handler); return { remove: () => activities.delete(handler) };
@@ -22,6 +22,7 @@ function fixture(exported: 'PinPad' | 'PinSetup' | 'PinField' | 'PinEntryScreen'
     '../ui': { ...Object.fromEntries(['Button', 'Header', 'Icon', 'PaliMark', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
     './IdleActivityBoundary': { IdlePressable: 'Key' },
     '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'biometrics', icon: 'fingerprint' }) },
+    './usePinErrorFeedback': { usePinErrorFeedback: () => ({ style: {}, ...feedback }) },
     '../core/biometricPresentation': { genericBiometrics: { label: 'biometrics', icon: 'fingerprint' } },
   }, {}, { target: ts.ScriptTarget.ES2022 });
   return {
@@ -79,6 +80,27 @@ test('keys captured before a reset cannot enter digits or complete the replaceme
   for (const captured of keys) captured.props.onPress();
   assert.deepEqual(first, []); assert.deepEqual(second, []);
   assert(f.render(props).some(element => element.props.accessibilityLabel === 'PIN, 0 of 6 digits entered'));
+  f.close();
+});
+
+test('error feedback can retain only the filled-dot count after the PIN has cleared', () => {
+  const feedback = { shaking: false, clear() { feedback.shaking = false; } };
+  const f = fixture('PinPad', feedback), completed: string[] = [];
+  const props = { resetKey: 0, onComplete: (pin: string) => completed.push(pin) };
+  for (const digit of '123456') key(f.render(props), digit).props.onPress();
+  assert.deepEqual(completed, ['123456']);
+  feedback.shaking = true;
+  const failed = { ...props, resetKey: 1, error: 'Incorrect PIN' };
+  const tree = f.render(failed);
+  const dots = tree.find(element => element.props.testID === 'pin-error-feedback'); assert(dots);
+  assert.equal(dots.props.accessibilityLabel, 'PIN, 0 of 6 digits entered');
+  const filled = screenElements(dots).filter(element => element.type === 'View' && element.props.style?.some((style: object | false) => style && 'backgroundColor' in style));
+  assert.equal(filled.length, 6);
+  feedback.shaking = false;
+  assert.equal(screenElements(f.render(failed).find(element => element.props.testID === 'pin-error-feedback')).filter(element =>
+    element.type === 'View' && element.props.style?.some((style: object | false) => style && 'backgroundColor' in style)).length, 0);
+  for (const digit of '654321') key(f.render(failed), digit).props.onPress();
+  assert.deepEqual(completed, ['123456', '654321'], 'Animation adds no submission and the new PIN is independent');
   f.close();
 });
 
@@ -154,6 +176,28 @@ for (const renderedBusy of [true, false]) test(`PIN-only setup clears a failed c
   enter('123456');
   assert.deepEqual(completed, ['123456', '123456'], 'The retried confirmation still submits once');
   setup.close(); pad.close();
+});
+
+test('Back from a failed PIN confirmation retires its error through the next local flow', () => {
+  const f = fixture('PinSetup');
+  const props = { offerBiometrics: false, onBack() {}, onComplete() {} };
+  entry(f.render(props)).props.onComplete('123456'); entry(f.render(props)).props.onComplete('123456');
+  f.render({ ...props, busy: true });
+  const failedProps = { ...props, error: 'Could not save the PIN. Try again.' };
+  f.render(failedProps);
+  const failed = entry(f.render(failedProps)); assert.equal(failed.props.error, failedProps.error);
+  failed.props.onBack();
+  const create = entry(f.render(failedProps));
+  assert.equal(create.props.title, 'Create a 6-digit PIN'); assert.equal(create.props.error, undefined);
+  create.props.onComplete('654321');
+  const confirm = entry(f.render(failedProps));
+  assert.equal(confirm.props.error, undefined, 'The dismissed parent error does not return on Confirm');
+  confirm.props.onComplete('123456');
+  assert.match(entry(f.render(failedProps)).props.error, /do not match/);
+  entry(f.render(failedProps)).props.onComplete('654321');
+  f.render({ ...failedProps, busy: true }); f.render(failedProps);
+  assert.equal(entry(f.render(failedProps)).props.error, failedProps.error, 'A later failed submission reports the same error again');
+  f.close();
 });
 
 test('PIN field cancellation retires the modal callback and another field cannot inherit it', () => {

@@ -42,3 +42,7 @@ Validation: 28 mobile controller/component tests, 68 extension tests, eight brow
 ## Second independent pass
 
 The follow-up source review rechecked shared button callers, hardware focus and dismissal, portfolio ownership/cancellation/work limits, and mobile onboarding/recovery/send/settings/advanced flows. It found one additional product defect: after a failed PIN-only setup submission, the confirmation keypad could remain sealed. The correction opens a fresh confirmation attempt and retires the old callback, retaining duplicate-submission protection. Two regressions cover delayed and immediate failures; all 76 related PIN/recovery tests pass. Mobile typecheck and targeted lint pass. This changes retry state only, not credential storage or authorization policy.
+
+## Authentication error feedback
+
+PIN errors and the app's biometric-failure fallback now shake the dot indicator horizontally by at most 6 px for 300 ms; buttons stay still. The completed PIN string clears before submission, while only the filled-dot count remains briefly. Reduce Motion keeps the indicator static and clears immediately. Backgrounding, Android blur, a new input, or unmount cancels the animation. Native Face ID/fingerprint dialogs retain OS-controlled feedback.
