@@ -60,6 +60,7 @@ const row = (digit: string, blockNumber: number) => ({
   blockHash: `0x${digit.repeat(64)}`,
   confirmations: 1,
   timestamp: blockNumber,
+  isError: '0',
   chainId: 5700,
 });
 const existing = row('a', 10);
@@ -97,6 +98,8 @@ const expectOnlyHistoryStatus = (
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Existing block 10 is the enrollment baseline; block 11 arrives afterward.
+  jest.spyOn(Date, 'now').mockReturnValue(10000);
   const initial = vaultReducer(undefined, { type: 'test/init' });
   mockStore = configureStore({
     reducer: { vault: vaultReducer, vaultGlobal: vaultGlobalReducer },
@@ -146,16 +149,38 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => jest.restoreAllMocks());
+
 it('commits a healthy current explorer response through the real vault reducer', async () => {
   fetchHistory.mockResolvedValue([existing, recent]);
   await refresh();
   expect(rows().map(({ hash }: any) => hash)).toContain(recent.hash);
   expect(notificationManager.notifyTransaction).toHaveBeenCalledTimes(1);
+  expect(notificationManager.notifyTransaction).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: 'confirmed',
+      fact: expect.objectContaining({ kind: 'transaction-confirmed' }),
+    })
+  );
   expect(
     notificationManager.updatePendingTransactionBadge
   ).toHaveBeenCalledWith(
     expect.arrayContaining([expect.objectContaining({ hash: recent.hash })])
   );
+});
+
+it('commits history without treating an unknown receipt outcome as a confirmed alert', async () => {
+  fetchHistory.mockResolvedValue([existing, { ...recent, isError: undefined }]);
+  await refresh();
+  expect(rows().map(({ hash }: any) => hash)).toContain(recent.hash);
+  expect(notificationManager.notifyTransaction).not.toHaveBeenCalled();
+});
+
+it('commits a later-discovered historical transaction without replaying an old alert', async () => {
+  fetchHistory.mockResolvedValue([existing, { ...recent, timestamp: 9 }]);
+  await refresh();
+  expect(rows().map(({ hash }: any) => hash)).toContain(recent.hash);
+  expect(notificationManager.notifyTransaction).not.toHaveBeenCalled();
 });
 
 it('keeps cached EVM history when its reader returns an empty result', async () => {
