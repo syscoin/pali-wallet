@@ -296,7 +296,8 @@ export function NativeSend({
   const [authentication, setAuthentication] = useState<AuthenticationReview | null>(null);
   const authenticationOwner = useRef<AuthenticationReview | null>(null);
   const [authenticationBusy, setAuthenticationBusy] = useState(false);
-  const [scanner, setScanner] = useState<{ scope: object; epoch: number; account: NativePortfolioAccount; registrationHash: string } | null>(null);
+  const latestRecipientOwner = useRef({ controller, account, context, recipientResolver, recipient, amount, tokenId, nonce, advanced, token, collectible });
+  const [scanner, setScanner] = useState<{ scope: typeof latestRecipientOwner.current; epoch: number; account: NativePortfolioAccount; registrationHash: string } | null>(null);
   const scannerOwner = useRef<typeof scanner>(null);
   const [resolving, setResolving] = useState(false);
   const [resolvedRecipient, setResolvedRecipient] = useState<NativeRecipientResolution | null>(null);
@@ -306,7 +307,6 @@ export function NativeSend({
     authorized: boolean;
     review?: NonNullable<typeof snapshot.review>;
   } | null>(null);
-  const latestRecipientOwner = useRef({ controller, account, context, recipientResolver, recipient, amount, tokenId, nonce, advanced, token, collectible });
   useLayoutEffect(() => {
     latestRecipientOwner.current = { controller, account, context, recipientResolver, recipient, amount, tokenId, nonce, advanced, token, collectible };
   }, [controller, account, context, recipientResolver, recipient, amount, tokenId, nonce, advanced, token, collectible]);
@@ -1093,8 +1093,13 @@ export function NativeSend({
       {scanner && scanner.account.address === account.address && scanner.account.network === account.network &&
         scanner.account.revision === account.revision && scanner.registrationHash === context.registrationHash && <Modal visible animationType="slide" onRequestClose={closeScanner}>
         <RecipientQrScanner onClose={closeScanner} onScan={address => {
+          const current = latestRecipientOwner.current, captured = scanner.scope;
           if (!lifetime.current.alive || scannerOwner.current !== scanner || lifetime.current.epoch !== scanner.epoch ||
-              latestRecipientOwner.current !== scanner.scope || controller.getSnapshot().review ||
+              current.controller !== captured.controller || !sameNativePortfolioAccount(current.account, captured.account) ||
+              current.context.registrationHash !== captured.context.registrationHash || current.recipientResolver !== captured.recipientResolver ||
+              current.recipient !== captured.recipient || current.amount !== captured.amount || current.tokenId !== captured.tokenId ||
+              current.nonce !== captured.nonce || current.advanced !== captured.advanced || current.token !== captured.token || current.collectible !== captured.collectible ||
+              controller.getSnapshot().review ||
               ['preparing', 'signing', 'submitting'].includes(controller.getSnapshot().phase)) return;
           closeScanner(); setRecipient(address);
         }} />

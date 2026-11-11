@@ -9,6 +9,7 @@ const account = { id: 'hd:60:0', label: 'Daily wallet', address };
 function fixture() {
   let now = 100_000, reads = 0, back = 0;
   let clipboard: () => Promise<string> = async () => 'wc:clipboard-link';
+  let sessionAction: () => Promise<void> = async () => {};
   let snapshot: NativeConnectionsSnapshot = {
     revision: 7, status: 'ready', pairingExpiresAt: null, accounts: [account], selectedAccountId: account.id,
     network: { id: 'ethereum', label: 'Ethereum', chainId: '1' }, proposals: [], sessions: [],
@@ -24,11 +25,12 @@ function fixture() {
     async pair(uri: string) { calls.push({ method: 'pair', args: [uri] }); },
     async approve(...args: unknown[]) { calls.push({ method: 'approve', args }); },
     async reject(...args: unknown[]) { calls.push({ method: 'reject', args }); },
-    async disconnect(...args: unknown[]) { calls.push({ method: 'disconnect', args }); },
-    async returnToDapp(...args: unknown[]) { calls.push({ method: 'return', args }); },
+    async disconnect(...args: unknown[]) { calls.push({ method: 'disconnect', args }); await sessionAction(); },
+    async returnToDapp(...args: unknown[]) { calls.push({ method: 'return', args }); await sessionAction(); },
     async retry() { calls.push({ method: 'retry', args: [] }); },
     cancel() { calls.push({ method: 'cancel', args: [] }); },
   };
+  let renderingController = controller;
   const host = screenFixture(new URL('../src/screens/NativeConnections.tsx', import.meta.url), 'NativeConnections', {
     '../platform/localization': nativeTranslationFixture,
     'react-native': { ActivityIndicator: 'ActivityIndicator', View: 'View', StyleSheet: { create: (value: unknown) => value },
@@ -44,7 +46,7 @@ function fixture() {
     setTimeout: (callback: () => void) => { timers.set(++timerId, callback); return timerId; },
     clearTimeout: (id: number) => timers.delete(id), queueMicrotask,
   });
-  const render = () => screenElements(host.render({ controller, onBack() { back++; } }));
+  const render = () => screenElements(host.render({ controller: renderingController, onBack() { back++; } }));
   const button = (title: string, elements = render()) => {
     const found = elements.find(value => value.type === 'Button' && value.props.title === title);
     assert(found, title); return found;
@@ -53,6 +55,8 @@ function fixture() {
   return { render, button, text, calls, controller, close: host.close,
     get reads() { return reads; }, get back() { return back; },
     setClipboard(value: () => Promise<string>) { clipboard = value; },
+    setSessionAction(value: () => Promise<void>) { sessionAction = value; },
+    replaceController() { renderingController = { ...controller }; },
     update(value: Partial<NativeConnectionsSnapshot>) { snapshot = { ...snapshot, ...value }; },
     advance(milliseconds: number) { now += milliseconds; const pending = [...timers.values()]; timers.clear(); pending.forEach(callback => callback()); },
     hardwareBack() { return [...backHandlers].reverse().some(handler => handler()); },
@@ -62,15 +66,21 @@ function fixture() {
         verification: { validation: 'VALID', isScam: false }, requiredMethods: ['eth_accounts'], expiresAt: now + 120_000,
         canApprove: true, methodsByAccount: [{ accountId: account.id, methods }] }] };
     },
-    session(): NativeConnectionsSnapshot['sessions'][number] {
+    session(returnable = false): NativeConnectionsSnapshot['sessions'][number] {
       return { id: 'session-1', name: 'Example app', origin: 'https://example.invalid', accountLabel: account.label,
-        networkLabel: 'Ethereum', address, methods: ['eth_accounts', 'eth_sendTransaction'], expiresAt: now + 3_600_000, returnTarget: null };
+        networkLabel: 'Ethereum', address, methods: ['eth_accounts', 'eth_sendTransaction'], expiresAt: now + 3_600_000,
+        returnTarget: returnable ? { origin: 'https://example.invalid', url: 'https://example.invalid/', verification: { validation: 'UNKNOWN', isScam: false } } : null };
     },
   };
 }
 
 const click = (element: ScreenElement) => element.props.onPress();
 const flush = async () => { await Promise.resolve(); await Promise.resolve(); };
+const settled = () => new Promise<void>(resolve => setImmediate(resolve));
+function openSession(f: ReturnType<typeof fixture>) {
+  click(f.render().find(element => element.type === 'Pressable' && element.props.accessibilityLabel?.startsWith('Example app,'))!);
+  return f.render();
+}
 
 test('always shows active connections and an empty state, with scan primary and tap-only clipboard', async () => {
   const f = fixture();
@@ -174,6 +184,94 @@ test('retired session actions cannot disconnect a successor and disappearance re
   f.update({ sessions: [] });
   assert.match(f.text(), /Active connections.*No active connections/);
   f.close();
+});
+
+for (const action of ['Open website', 'Disconnect'] as const) test(`session details show ${action} failure after public session objects refresh`, async () => {
+  const f = fixture(), session = f.session(true);
+  try {
+    f.update({ sessions: [session] }); openSession(f);
+    f.setSessionAction(async () => {
+      f.update({ revision: 8, sessions: [{ ...session }], error: 'CONNECTION_UNAVAILABLE' });
+      throw Object.assign(new Error('Private failure details'), { code: action === 'Open website' ? 'BLOCKED_SITE' : 'CONNECTION_UNAVAILABLE' });
+    });
+    click(f.button(action)); await settled();
+    const notice = f.render().find(element => element.type === 'Notice');
+    assert(notice, 'The visible details screen must explain a failed action');
+    assert.match(String(notice.props.body), action === 'Open website' ? /known phishing list/ : /service is unavailable/);
+    assert(!JSON.stringify(f.render()).includes('Private failure details'));
+    assert.equal(f.button(action).props.disabled, false);
+  } finally { f.close(); }
+});
+
+test('session action failures use a localized generic fallback for unknown errors', async () => {
+  const f = fixture();
+  try {
+    f.update({ sessions: [f.session(true)] }); openSession(f);
+    f.setSessionAction(async () => { throw Object.assign(new Error('Private URL or native error'), { code: 'ARBITRARY_INTERNAL_CODE' }); });
+    click(f.button('Open website')); await settled();
+    const notice = f.render().find(element => element.type === 'Notice');
+    assert(notice); assert.equal(notice.props.body, 'The connection service is unavailable. Try again.');
+    assert(!JSON.stringify(f.render()).includes('ARBITRARY_INTERNAL_CODE'));
+  } finally { f.close(); }
+});
+
+test('session actions exclude synchronous duplicates and retry after a current failure', async () => {
+  const f = fixture(), pending = Promise.withResolvers<void>();
+  try {
+    f.update({ sessions: [f.session(true)] }); openSession(f);
+    f.setSessionAction(() => pending.promise);
+    const open = f.button('Open website'), disconnect = f.button('Disconnect');
+    click(open); click(open); click(disconnect);
+    assert.equal(f.calls.filter(call => call.method === 'return').length, 1);
+    assert.equal(f.calls.filter(call => call.method === 'disconnect').length, 0);
+    assert.equal(f.button('Open website').props.disabled, true);
+    assert.equal(f.button('Disconnect').props.disabled, true);
+    assert(f.render().some(element => element.type === 'ActivityIndicator'));
+    pending.reject(new Error('Unavailable')); await settled();
+    f.setSessionAction(async () => {});
+    click(f.button('Open website')); await settled();
+    assert.equal(f.calls.filter(call => call.method === 'return').length, 2);
+    assert.equal(f.render().filter(element => element.type === 'Notice').length, 0);
+  } finally { pending.resolve(); f.close(); }
+});
+
+test('Back and reopening the same session retire old results without clearing a newer action', async () => {
+  const f = fixture(), old = Promise.withResolvers<void>(), next = Promise.withResolvers<void>();
+  try {
+    f.update({ sessions: [f.session(true)] }); openSession(f);
+    f.setSessionAction(() => old.promise);
+    const stale = f.button('Open website'); click(stale);
+    f.render().find(element => element.type === 'Header')!.props.onBack();
+    openSession(f);
+    f.setSessionAction(() => next.promise);
+    click(stale);
+    assert.equal(f.calls.filter(call => call.method === 'return').length, 1, 'Old callbacks cannot act after reopening');
+    click(f.button('Open website'));
+    old.reject(Object.assign(new Error('Old error'), { code: 'BLOCKED_SITE' })); await settled();
+    assert.equal(f.button('Open website').props.disabled, true, 'Old completion cannot clear the new pending action');
+    assert.equal(f.render().filter(element => element.type === 'Notice').length, 0);
+    next.resolve(); await settled();
+    assert.equal(f.button('Open website').props.disabled, false);
+  } finally { old.resolve(); next.resolve(); f.close(); }
+});
+
+for (const retirement of ['replacement', 'controller', 'lock', 'unmount'] as const) test(`session action ignores late failure after ${retirement}`, async () => {
+  const f = fixture(), pending = Promise.withResolvers<void>();
+  let closed = false;
+  try {
+    const session = f.session(true); f.update({ sessions: [session] }); openSession(f);
+    f.setSessionAction(() => pending.promise);
+    const stale = f.button('Open website'); click(stale);
+    if (retirement === 'replacement') f.update({ sessions: [{ ...session, name: 'Replacement app' }] });
+    else if (retirement === 'controller') f.replaceController();
+    else if (retirement === 'lock') f.update({ status: 'locked', sessions: [] });
+    else { f.close(); closed = true; }
+    if (!closed) f.render();
+    click(stale);
+    assert.equal(f.calls.filter(call => call.method === 'return').length, 1);
+    pending.reject(Object.assign(new Error('Old error'), { code: 'BLOCKED_SITE' })); await settled();
+    if (!closed) assert.equal(f.render().filter(element => element.type === 'Notice' && /known phishing list/.test(String(element.props.body))).length, 0);
+  } finally { pending.resolve(); if (!closed) f.close(); }
 });
 
 test('leaving while a clipboard read is pending never starts pairing', async () => {

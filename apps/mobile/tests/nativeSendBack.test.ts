@@ -73,13 +73,16 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
       if (snapshot.review !== approved) throw Error('CANCELLED');
       signatures++;
     }, async prepareToken(...args: unknown[]) { prepared.push(args); }};
-  const context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false};
+  let context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false,registrationHash:'ethereum-registration'};
   let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
   const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,beforeClose,recipientResolver,account,authenticationMethod,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
   return {render,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
     useBiometrics() { authenticationMethod = 'biometric'; },
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
     holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
+    refreshProps(){account={...account};context={...context};},
+    changeNetwork(){account={...account,network:'sepolia'};context={...context,networkId:'sepolia'};},
+    changeRegistration(){context={...context,registrationHash:'replacement-registration'};},
     changeAccount(){account={...account,revision:2};},hardware:()=>{assert.ok(hardware);return hardware();},counts:()=>({backs,cancels}),dispose:()=>cells.forEach(c=>c.cleanup?.())};
 }
 function all(node: unknown): Element[] {if(!node||typeof node!=='object'||!('children' in node))return [];const e=node as Element;return [e,...e.children.flat(Infinity).flatMap(all),...all(e.props.footer),...all(e.props.trailing)];}
@@ -163,13 +166,33 @@ test('recipient scan fills only the current draft and leaves amount and preparat
   assert.equal(all(tree).some(node => node.type === 'RecipientQrScanner'), false); f.dispose();
 });
 
-for (const boundary of ['close', 'account', 'draft'] as const) test(`recipient scan cannot fill after ${boundary} changes`, () => {
+test('recipient scan survives equal account and network props from a balance refresh', () => {
+  const f = setup(); f.snapshot.phase = 'idle';
+  try {
+    editSend(f, 'Amount in ETH', '0.25');
+    const scanner = openRecipientScanner(f);
+    f.refreshProps();
+    assert(all(f.render()).some(node => node.type === 'RecipientQrScanner'));
+    scanner.props.onScan('0x2222222222222222222222222222222222222222');
+    const tree = f.render();
+    assert.equal(all(tree).find(node => node.props.label === 'Ethereum address')!.props.value, '0x2222222222222222222222222222222222222222');
+    assert.equal(all(tree).find(node => node.props.label === 'Amount in ETH')!.props.value, '0.25');
+    assert(!all(tree).some(node => node.type === 'RecipientQrScanner'));
+    assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []);
+  } finally { f.dispose(); }
+});
+
+for (const boundary of ['close', 'account', 'network', 'registration', 'draft', 'review'] as const) test(`recipient scan cannot fill after ${boundary} changes`, () => {
   const f = setup(); f.snapshot.phase = 'idle';
   const scanner = openRecipientScanner(f);
   if (boundary === 'close') scanner.props.onClose();
   if (boundary === 'account') { f.changeAccount(); f.render(); }
+  if (boundary === 'network') { f.changeNetwork(); f.render(); }
+  if (boundary === 'registration') { f.changeRegistration(); f.render(); }
   if (boundary === 'draft') editSend(f, 'Amount in ETH', '0.5');
+  if (boundary === 'review') f.setSnapshot({ ...f.snapshot, phase: 'review', review: {} });
   scanner.props.onScan('0x2222222222222222222222222222222222222222');
+  if (boundary === 'review') f.setSnapshot({ ...f.snapshot, phase: 'idle', review: null });
   assert.equal(all(f.render()).find(node => node.props.label === 'Ethereum address')!.props.value, '');
   assert.deepEqual(f.prepared, []); f.dispose();
 });
