@@ -22,9 +22,15 @@ files over HTTPS without redirects using the **production** signing identities:
 
 - `https://paliwallet.com/.well-known/apple-app-site-association`: a
   `webcredentials.apps` entry for `<Apple Team ID>.com.paliwallet.mobile`.
-- `https://paliwallet.com/.well-known/assetlinks.json`: a
-  `delegate_permission/common.get_login_creds` statement for Android package
+- `https://paliwallet.com/.well-known/assetlinks.json`: the Credential Manager
+  `delegate_permission/common.handle_all_urls` and
+  `delegate_permission/common.get_login_creds` relations for Android package
   `com.paliwallet.mobile` with its actual Play App Signing SHA-256 fingerprint.
+
+The website association and deployment checklist are tracked in
+[pali-website #2](https://github.com/syscoin/pali-website/pull/2). App-link routing
+also requires matching Android intent filters; a domain association alone does
+not add a link handler.
 
 Do not publish a developer/debug signing certificate as production authority.
 The source plugin cannot prove website ownership or substitute invented signing
