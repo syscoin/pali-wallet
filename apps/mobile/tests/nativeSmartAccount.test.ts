@@ -1025,7 +1025,7 @@ test('wallet authenticator recognizes an already configured owner without signin
   } finally { operation?.dispose(); await f.close(); }
 });
 
-test('native passkey setup survives owned inactive/blur prompts without decrypting the signing root', async () => {
+test('native passkey setup survives owned inactive/blur prompts and cold reopen without decrypting the signing root', async () => {
   let f!: Awaited<ReturnType<typeof fixture>>, creates = 0, assertions = 0, prompt = false;
   let state = 'active';
   const scope = createNativePrivateAuthenticationScope(), lifetime = new AbortController();
@@ -1046,6 +1046,7 @@ test('native passkey setup survives owned inactive/blur prompts without decrypti
     first = await f.runtime.openPasskeyAuthenticator(false, lifetime.signal, viewGuard, binding);
     assert.equal(creates, 1); assert.equal(assertions, 0); assert.equal(f.signatures.length, 0);
     await first.dispose(); first = undefined;
+    await f.reopen(); await f.owner.unlock(PASSWORD);
     second = await f.runtime.openPasskeyAuthenticator(false, lifetime.signal, viewGuard, binding);
     assert.equal(creates, 1); assert.equal(assertions, 1);
     assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0); f.assertNoSigningKeys();
