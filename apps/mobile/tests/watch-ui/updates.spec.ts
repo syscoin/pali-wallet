@@ -1,5 +1,16 @@
 import { test, expect } from '@playwright/test';
 
+for (const width of [320, 390]) test(`Play-only progress remains readable at ${width}px`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width, height: 740 });
+  for (const [status, text] of [['pending', 'Update download pending.'], ['downloading', 'Downloading update · 42%'], ['downloaded', 'Your update is ready to install.']] as const) {
+    await page.goto(`/?update-fixture=1&update-progress=${status}`);
+    await expect(page.getByText(text, { exact: true })).toBeVisible();
+    await expect(page.getByText('No newer published release was found.')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    if (status === 'downloading') await page.screenshot({ path: testInfo.outputPath(`update-progress-${width}.png`) });
+  }
+});
+
 for (const width of [320, 390]) test(`update notes and action remain usable at ${width}px`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: 740 });
   await page.goto('/?update-fixture=1');

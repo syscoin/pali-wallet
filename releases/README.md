@@ -32,6 +32,15 @@ Chrome uses its numeric manifest version. Prerelease versions are not advertised
 Keep the feed under 32 KiB and at most 24 entries. Notes are plain text; the only
 accepted link is to this repository's release notes. No download URLs are allowed.
 
+The newest eligible version remains the installation target. Its displayed
+urgency is the highest severity among published updates this installation still
+lacks, so a later routine release cannot hide an unapplied security fix. Users
+who already installed that fix see only the urgency of subsequent updates.
+Keep important/critical entries in the bounded feed while supported older
+installations still need their fixes; removing an entry removes that history
+from the urgency calculation. Release summaries should describe cumulative
+improvements for users updating from earlier versions.
+
 Before first iOS publication, set its assigned App Store URL in
 `source/shared/walletStores.ts`. Android's package and the Chrome listing are
 compiled into Pali. Remote metadata cannot substitute a different store/link.
