@@ -2041,3 +2041,15 @@ still requires the explicit **Restart and install** action on an eligible surfac
 | 320px | 390px |
 | --- | --- |
 | ![Store-only update progress at 320px](update-notices/update-progress-320.png) | ![Store-only update progress at 390px](update-notices/update-progress-390.png) |
+
+## Trezor setup return review
+
+Actual `NativeInfrastructure` screen and controller after returning from Trezor Suite and unlocking. The original deployment receives a fresh fee review before **Confirm**; these public fixtures do not open Suite, wallet storage or an RPC, and do not qualify physical hardware. The pending summary is shown after submission rather than duplicated inside the review.
+
+| 320px | 390px |
+| --- | --- |
+| ![Trezor setup return review at 320px](infrastructure-resume/suite-resume-320.png) | ![Trezor setup return review at 390px](infrastructure-resume/suite-resume-390.png) |
+
+At 320px the content scrolls while **Confirm** and **Close** remain in the fixed footer. [Scrolled fee detail](infrastructure-resume/suite-resume-320-fee.png) shows the complete maximum fee and total.
+
+Once the original deployment is reconciled, **Continue** retires that return review and opens a fresh controller and fee review for the next required setup contract. Pending or unknown submissions remain tracked until reconciliation; continuing never signs automatically. [Capture evidence](infrastructure-resume/capture.json).

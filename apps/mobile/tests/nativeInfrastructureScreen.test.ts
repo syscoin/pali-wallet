@@ -572,6 +572,7 @@ for (const outcome of ['pending', 'unknown'] as const)
       assert.equal(button(footer(tree), 'buttons.confirm').props.disabled, false);
       assert.equal(value.counts.submissions, 0); assert.equal(value.counts.signatures, 0);
       assert(text(tree).includes(title('settings.optional')));
+      assert.equal(text(tree).split('Multicall3').length - 1, 1, 'the pending summary must not duplicate the contract during its fresh review');
       if (outcome === 'unknown') value.failUnknownSubmission();
       button(footer(tree), 'buttons.confirm').props.onPress(); await tick();
       tree = screen.render(props);

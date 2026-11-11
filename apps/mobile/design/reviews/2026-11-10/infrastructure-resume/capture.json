@@ -1,0 +1,21 @@
+{
+  "implementationCommit": "dc27559b6bdfaf4d132d1ebfef711619a08af5ec",
+  "fixtureSha256": "414910f956e1be8e8b5a9407b041a6774b80794691e6a25ce28c16d2f071b8b6",
+  "scope": "Actual NativeInfrastructure screen and controller with deterministic public adapters. No wallet storage, signing, RPC, Suite or hardware qualification.",
+  "results": [
+    {
+      "width": 320,
+      "height": 568,
+      "errors": [],
+      "confirmEnabled": true,
+      "url": "http://127.0.0.1:4187/?smart-infrastructure&infrastructure-mode=suite-resume"
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "errors": [],
+      "confirmEnabled": true,
+      "url": "http://127.0.0.1:4187/?smart-infrastructure&infrastructure-mode=suite-resume"
+    }
+  ]
+}
