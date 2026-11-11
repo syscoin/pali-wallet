@@ -112,7 +112,9 @@ test('offline sustained wallet stress: pending MAX, edits, vault switches, read 
   const primarySummaryReads = new Set<Request>();
   let lastPrimarySummaryCompletedAt = 0;
   const secondaryReads: string[] = [];
+  const historyDetailRequestDeltas: number[] = [];
   const historyFullTransactionReadDeltas: number[] = [];
+  let historyDetailPositiveControlRequests = 0;
   const fixtureObservations: Array<
     Awaited<ReturnType<typeof installUtxoFixtureRoutes>>
   > = [];
@@ -303,6 +305,25 @@ test('offline sustained wallet stress: pending MAX, edits, vault switches, read 
       // Observe only change counts and byte lengths, never serialize vault
       // contents into artifacts. No controller or persisted state is replaced.
       const win = window as any;
+      // Count the list's explicit detail requests separately from background
+      // retained-transfer status reads to the same Blockbook transaction URL.
+      if (win.__paliStressHistoryDetails === undefined) {
+        win.__paliStressHistoryDetails = 0;
+        const send = chrome.runtime.sendMessage;
+        chrome.runtime.sendMessage = function (this: unknown, ...args: any[]) {
+          const message = args[0];
+          const methods = message?.data?.methods;
+          if (
+            message?.type === 'CONTROLLER_ACTION' &&
+            Array.isArray(methods) &&
+            methods.length === 2 &&
+            methods[0] === 'wallet' &&
+            methods[1] === 'getSysTransactionFromBlockbook'
+          )
+            win.__paliStressHistoryDetails += 1;
+          return Reflect.apply(send, this, args);
+        } as typeof chrome.runtime.sendMessage;
+      }
       win.__paliStressStorage = {
         changes: 0,
         changedKeys: 0,
@@ -408,11 +429,19 @@ test('offline sustained wallet stress: pending MAX, edits, vault switches, read 
           sum + row.reads.filter((url) => /^\/api\/v2\/tx\//.test(url)).length,
         0
       );
-    const beforeReads = fullReads();
     await ensureHome();
     await expect
       .poll(selection)
       .toEqual({ kind: 'syscoin', id: 0, address: chain.fixture.userAddress });
+    const detailRequests = () =>
+      page.evaluate(() => {
+        const count = (window as any).__paliStressHistoryDetails;
+        if (!Number.isSafeInteger(count))
+          throw new Error('History detail observer is unavailable');
+        return count as number;
+      });
+    const beforeDetails = await detailRequests();
+    const beforeReads = fullReads();
     await page.locator('#activity-btn').click();
     const activityPanel = page.locator('#activity-panel-list');
     await expect(activityPanel).toBeVisible();
@@ -438,7 +467,25 @@ test('offline sustained wallet stress: pending MAX, edits, vault switches, read 
     await expect(
       activityPanel.getByText(en.settings.unavailable, { exact: true })
     ).toHaveCount(0);
+    const detailDelta = (await detailRequests()) - beforeDetails;
+    historyDetailRequestDeltas.push(detailDelta);
     historyFullTransactionReadDeltas.push(fullReads() - beforeReads);
+    expect(detailDelta).toBe(0);
+    if (historyDetailPositiveControlRequests === 0) {
+      // Prove the observer sees a real detail request, once, after verifying
+      // that merely displaying the list requested no per-row full payloads.
+      await latestRow.locator('svg.cursor-pointer').last().click();
+      await expect(page).toHaveURL(/#\/home\/details/);
+      await expect
+        .poll(detailRequests, { timeout: 5000 })
+        .toBeGreaterThan(beforeDetails);
+      historyDetailPositiveControlRequests =
+        (await detailRequests()) - beforeDetails;
+      await page.getByRole('button', { name: 'Back', exact: true }).click();
+      await expect(page).toHaveURL(/#\/home/);
+      await page.locator('#activity-btn').click();
+      await expect(activityPanel).toBeVisible();
+    }
   };
 
   try {
@@ -729,9 +776,7 @@ test('offline sustained wallet stress: pending MAX, edits, vault switches, read 
       'offline',
     ]);
     expect(pageErrors).toEqual([]);
-    expect(historyFullTransactionReadDeltas.every((count) => count === 0)).toBe(
-      true
-    );
+    expect(historyDetailRequestDeltas.every((count) => count === 0)).toBe(true);
     const metricGroups = [...new Set(measurements.map((row) => row.name))].map(
       (name) => {
         const sorted = measurements
@@ -799,6 +844,8 @@ test('offline sustained wallet stress: pending MAX, edits, vault switches, read 
               row.reads.filter((url) => /^\/api\/v2\/tx\//.test(url)).length,
             0
           ),
+          historyDetailRequestDeltas,
+          historyDetailPositiveControlRequests,
           historyFullTransactionReadDeltas,
           secondaryReadCount: secondaryReads.length,
           deniedWrites: fixtureObservations.flatMap((row) => row.deniedWrites),
