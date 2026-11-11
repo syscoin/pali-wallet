@@ -21,7 +21,7 @@ for principal in root _apt; do
   else
     printf '%s resolver readability probe exit code: %s\n' "$principal" "$?"
   fi
-  for host in archive.ubuntu.com security.ubuntu.com packages.microsoft.com; do
+  for host in mirrors.kernel.org mirrors.edge.kernel.org archive.ubuntu.com security.ubuntu.com packages.microsoft.com; do
     printf 'DNS lookup as %s: %s\n' "$principal" "$host"
     if timeout 8s sudo -n -u "$principal" getent ahosts "$host"; then
       printf 'DNS lookup succeeded\n'

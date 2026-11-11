@@ -73,6 +73,8 @@ on:
       - '.github/workflows/mobile.yml'
       - '.github/scripts/configure-chromium-sandbox.sh'
       - '.github/scripts/verify-playwright-apt-cache.sh'
+      - '.github/scripts/configure-playwright-apt-mirror.py'
+      - '.github/scripts/tests/configure-playwright-apt-mirror.test.cjs'
       - '.github/scripts/with-playwright-apt-diagnostics.sh'
       - '.github/scripts/tests/configure-chromium-sandbox.test.cjs'
       - '.nvmrc'
@@ -177,7 +179,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /var/cache/pali-playwright-apt/*.deb
-          key: playwright-apt-v1-${{ steps.apt-cache-key.outputs.platform }}-${{ steps.apt-cache-key.outputs.image }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('yarn.lock', 'package.json', '.github/workflows/main.yml', '.github/scripts/verify-playwright-apt-cache.sh') }}-${{ steps.apt-cache-key.outputs.week }}
+          key: playwright-apt-v1-${{ steps.apt-cache-key.outputs.platform }}-${{ steps.apt-cache-key.outputs.image }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('yarn.lock', 'package.json', '.github/workflows/main.yml', '.github/scripts/verify-playwright-apt-cache.sh', '.github/scripts/configure-playwright-apt-mirror.py') }}-${{ steps.apt-cache-key.outputs.week }}
       - name: Verify restored archives against fresh apt metadata
         run: bash ../../.github/scripts/with-playwright-apt-diagnostics.sh bash ../../.github/scripts/verify-playwright-apt-cache.sh
       - name: Configure temporary apt download archive

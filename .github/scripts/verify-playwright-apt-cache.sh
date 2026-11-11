@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Shared by warm and cold browser installs; never changes APT signature policy.
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+sudo -n python3 "$script_dir/configure-playwright-apt-mirror.py"
+
 archive_dir=/var/cache/pali-playwright-apt
 # Check the sandbox identity through every parent, including on a cold cache.
 sudo -u _apt test -x "$archive_dir"
