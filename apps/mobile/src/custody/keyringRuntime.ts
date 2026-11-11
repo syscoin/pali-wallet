@@ -1326,6 +1326,9 @@ export function createKeyringRuntimeFactory(
           });
         }
         const enteredPrivateSubmissions = new WeakSet<object>();
+        // One-use private refusal receipts, issued only after the owned hardware
+        // request retires. Rethrow outside run() without retiring the result screen.
+        const infrastructureSigningFailures = new WeakSet<Error>();
         function prepareOwnedEvmTransaction(input: unknown, selected: NativeCatalogueAccount,
           selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void, metadata: Readonly<Record<string, unknown>> | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy,
           hardwareSigner: (Pick<NativeHardwareDappSigning, 'signTransaction'> & {keyring(): IndexedKeyring}) | null,
@@ -1367,6 +1370,10 @@ export function createKeyringRuntimeFactory(
                     const signed = await hardwareSigner.signTransaction(serializePreparedEvmTransaction(transaction), {signal, assertCurrent: guard});
                     return {kind: 'signed' as const, signed};
                   } catch (error) {
+                    if (selected.type === 'Trezor' && error instanceof Error && infrastructureSigningFailures.delete(error)) {
+                      guard();
+                      return {kind: 'infrastructure-signing-failure' as const, error};
+                    }
                     if (selected.type !== 'Ledger' || sdk.evmSubmissionFailure(error)?.transactionNotBroadcast !== true) throw error;
                     guard();
                     if (!transport || !proof || ledgerTransport !== transport || (ledgerVerified !== proof && ledgerVerified !== undefined))
@@ -1396,7 +1403,7 @@ export function createKeyringRuntimeFactory(
               // The enclosing private confirmation owns its drain. Revoke keys
               // on error here, then let that confirmation finish without self-joining.
               }, authentication ? 'revoke' : 'join');
-              if (result.kind === 'ledger-signing-failure') {
+              if (result.kind === 'ledger-signing-failure' || result.kind === 'infrastructure-signing-failure') {
                 check(); checkGuard(assertSigningCurrent);
                 throw result.error;
               }
@@ -4604,7 +4611,26 @@ export function createKeyringRuntimeFactory(
                     await finishTrezor(session, guard); guard();
                     return signed;
                   } catch (error) {
-                    if (!ownedHandoff.isSuspended()) await failTrezor(captured, admittedEpoch, error);
+                    if (!ownedHandoff.isSuspended()) {
+                      // A foreground device failure retires the hardware request, not
+                      // its still-owned result screen. Let confirm() publish the
+                      // failure and retain/reconcile the original reservation.
+                      let currentOwner = false;
+                      try { check(); currentOwner = true; } catch { /* Retired views remain cancelled. */ }
+                      const foregroundFailure = currentOwner && localInfrastructureContext?.handoff === ownedHandoff &&
+                          localInfrastructureContext.controller === controller;
+                      if (foregroundFailure) {
+                        localInfrastructureContext = undefined;
+                        retireNativeSigningHandoff(ownedHandoff);
+                      }
+                      await failTrezor(captured, admittedEpoch, error);
+                      if (foregroundFailure) {
+                        check();
+                        const failure = error instanceof Error ? error : new Error('Trezor signing failed', {cause:error});
+                        infrastructureSigningFailures.add(failure);
+                        throw failure;
+                      }
+                    }
                     throw error;
                   } finally {
                     authority.signal.removeEventListener('abort', retire);

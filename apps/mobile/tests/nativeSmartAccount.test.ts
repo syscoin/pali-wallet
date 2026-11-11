@@ -4925,6 +4925,7 @@ function infrastructureTrezorDevice() {
   let sequence = 0, clients = 0, disposals = 0;
   let beforeCallback: ((method: string) => Promise<void>) | undefined;
   let beforeDispose: (() => Promise<void>) | undefined;
+  let signingFailure: string | undefined;
   let beforeSign: ((unsigned: string) => Promise<void>) | undefined;
   const sessions = createTrezorSessions({
     randomBytes: length => new Uint8Array(length).fill(++sequence),
@@ -4949,7 +4950,10 @@ function infrastructureTrezorDevice() {
       const url = new URL(text), method = url.searchParams.get('method')!, params = JSON.parse(url.searchParams.get('params')!);
       methods.push(method);
       let payload: Record<string, unknown>;
-      if (method === 'getFeatures') payload = {model: 'T', initialized: true, unlocked: true};
+      let success = true;
+      if (method === 'ethereumSignTransaction' && signingFailure) {
+        success = false; payload = {error: signingFailure, code: signingFailure};
+      } else if (method === 'getFeatures') payload = {model: 'T', initialized: true, unlocked: true};
       else {
         assert.equal(Number(String(params.path).split('/').at(-1)), 0);
         if (method === 'ethereumGetPublicKey') payload = {publicKey: wallet.signingKey.publicKey.slice(2)};
@@ -4967,7 +4971,7 @@ function infrastructureTrezorDevice() {
         } else throw Error(`Unexpected infrastructure Trezor method: ${method}`);
       }
       const callback = new URL(url.searchParams.get('callback')!);
-      callback.searchParams.set('response', JSON.stringify({success: true, payload}));
+      callback.searchParams.set('response', JSON.stringify(success ? {success, payload} : {success, error:{code:signingFailure!,message:'Trezor request refused'}}));
       setImmediate(() => {
         void Promise.resolve().then(() => beforeCallback?.(method)).then(() => {
           assert.equal(sessions.receiveCallback(callback.toString()), true);
@@ -4976,6 +4980,7 @@ function infrastructureTrezorDevice() {
     },
   });
   return {wallet, sessions, methods, unsignedTransactions, callbackErrors,
+    rejectSigning(error: string) {signingFailure = error;},
     counts: () => ({clients, disposals}),
     onBeforeCallback(hook: typeof beforeCallback) {beforeCallback = hook;},
     onBeforeDispose(hook: typeof beforeDispose) {beforeDispose = hook;},
@@ -5155,4 +5160,34 @@ for (const poisoned of [false, true]) test(`Trezor infrastructure private SDK ho
       await assert.rejects(device.sessions.dispose(), {message: 'SDK disposal unproven'});
     } else await bundle.close();
   }
+});
+
+for (const refusal of ['Failure_ActionCancelled', 'Failure_ProcessError'] as const) test(`foreground Trezor infrastructure ${refusal} leaves the mounted controller usable`, async () => {
+  const bundle = await readyTrezorInfrastructure(), {f, device} = bundle;
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  try {
+    f.infrastructureCode('factory', false); f.holdReceipts();
+    device.rejectSigning(refusal);
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined, null);
+    await controller.refresh(controller.getSnapshot().revision); await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!; assert(review);
+    await controller.confirm(review.id);
+    assert.equal(controller.getSnapshot().phase, 'failed', JSON.stringify(controller.getSnapshot()));
+    assert.equal(controller.getSnapshot().feeReview, null);
+    assert(controller.getSnapshot().error, 'the mounted screen receives the failure');
+    assert.equal(device.unsignedTransactions.length, 0); assert.equal(f.submitted.length, 0);
+    assert.equal(f.payerSignatures.length, 0); f.assertNoSigningKeys();
+    assert.equal(device.sessions.getSnapshot(), null, 'the failed physical request is retired');
+    const pending = ((await f.inspectRecovery()).record as {infrastructurePending: readonly NativeInfrastructurePending[]}).infrastructurePending;
+    assert.equal(pending.length, 0, 'SDK-proven pre-broadcast failure releases only the exact unsent reservation');
+    const before = controller.getSnapshot().revision;
+    await controller.refresh(before);
+    assert.equal(controller.getSnapshot().phase, 'ready');
+    assert(controller.getSnapshot().revision > before, 'Refresh remains usable without reopening the screen');
+    await controller.reviewNext(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'review');
+    assert.notEqual(controller.getSnapshot().feeReview!.id, review.id);
+    assert.equal(device.methods.filter(method => method === 'ethereumSignTransaction').length, 1, 'new review never signs automatically');
+    assert.equal(f.submitted.length, 0); assert.deepEqual(device.callbackErrors, []);
+  } finally {controller?.dispose(); await bundle.close();}
 });

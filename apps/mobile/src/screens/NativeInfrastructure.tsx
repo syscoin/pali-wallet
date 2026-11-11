@@ -140,9 +140,11 @@ export function NativeInfrastructure({ mode, open, onBack, ledgerConnection }: P
       ? mode.kind === 'suite-resume'
         ? <Button title={t('buttons.continue')} onPress={() => {
           if (!controller || !current || !isCurrent(current) || controller.getSnapshot() !== state || !readyToReview) return;
-          current.live = false;
-          current.authentication.retire();
-          current.abort.abort();
+          const active = owner.current;
+          if (!active || active !== current) return;
+          active.live = false;
+          active.authentication.retire();
+          active.abort.abort();
           controller.dispose();
           mode.onContinue();
         }} />
