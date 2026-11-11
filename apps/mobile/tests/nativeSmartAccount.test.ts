@@ -98,7 +98,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let interruptAfterReceipt = false;
   let smartCodeRead: (() => void | Promise<void>) | undefined;
   let beforeSignature: (() => void | Promise<void>) | undefined;
-  let afterBroadcast: (() => void) | undefined;
+  let afterBroadcast: (() => void | Promise<void>) | undefined;
   let guardian: ReturnType<typeof createGuardianRecoveryFixture> | undefined;
   let externalOwner = false;
   let recoveredOwner: string | undefined;
@@ -209,7 +209,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           submitted.push(request.params[0]);
           if (Transaction.from(request.params[0]).to === getPaliEntryPointAddress(Number(network.chainId))) { if (!deployed) deployedByBroadcast = true; deployed = true; }
           result = Transaction.from(request.params[0]).hash;
-          afterBroadcast?.();
+          await afterBroadcast?.();
           if (failInfrastructureBroadcast && Transaction.from(request.params[0]).to?.toLowerCase() === PALI_CREATE2_DEPLOYER_ADDRESS.toLowerCase())
             throw Error('connection lost after infrastructure submission');
         }
@@ -407,7 +407,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     onSmartCodeRead(hook: () => void | Promise<void>) { smartCodeRead = hook; },
     onCredentialRequest(hook: (check: () => void) => void | Promise<void>) { onCredentialRequest = hook; },
     onSignature(hook: () => void | Promise<void>) { beforeSignature = hook; },
-    onBroadcast(hook: () => void) { afterBroadcast = hook; },
+    onBroadcast(hook: () => void | Promise<void>) { afterBroadcast = hook; },
     substitute() { substituteAddress = true; }, hold(value: () => Promise<void>) { hold = value; },
     async change(request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) {
       await owner.manageAccounts(request, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
@@ -1222,7 +1222,7 @@ test('real smart deployment uses the owned payer, separate consent and durable S
     const smart = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
     deployment = await f.runtime.openSmartAccountDeployment(() => undefined, null);
     const submissionAtWire: boolean[] = [];
-    f.onBroadcast(() => submissionAtWire.push(deployment!.getSnapshot().userOperationSubmissionStarted));
+    f.onBroadcast(() => { submissionAtWire.push(deployment!.getSnapshot().userOperationSubmissionStarted); });
     await deployment.prepare();
     assert.equal(deployment.getSnapshot().phase, 'authorize');
     assert.equal(f.submitted.length, 0);
@@ -1304,7 +1304,7 @@ for (const failure of [null, 'invalid-code', 'owner-loss'] as const)
     } finally { deployment?.dispose(); await f.close(); }
   });
 
-test('restart after the deployment receipt refreshes metadata without another transaction', async () => {
+test('restart after the deployment receipt refreshes metadata without another transaction', { timeout: 45_000 }, async () => {
   const f = await fixture();
   let deployment: Awaited<ReturnType<KeyringRuntime['openSmartAccountDeployment']>> | undefined;
   try {
@@ -1313,13 +1313,28 @@ test('restart after the deployment receipt refreshes metadata without another tr
     deployment = await f.runtime.openSmartAccountDeployment(() => undefined, null);
     await deployment.prepare();
     f.interruptAfterReceipt();
-    const pending = deployment.authorize(deployment.getSnapshot().revision);
-    for (let attempt = 0; attempt < 300 && !['complete', 'failed'].includes(deployment.getSnapshot().phase); attempt++) {
-      const review = deployment.getSnapshot().payerReview;
-      if (review) deployment.confirmPayer(review.id);
-      await new Promise(resolve => setTimeout(resolve, 5));
+    f.onBroadcast(async () => {
+      if (f.submitted.length === 1) await new Promise(resolve => setTimeout(resolve, 1750));
+    });
+    const operation = deployment, started = performance.now();
+    const payerReviews: { purpose: string; elapsed: number }[] = [];
+    const unsubscribe = operation.subscribe(() => {
+      const review = operation.getSnapshot().payerReview;
+      if (review) {
+        payerReviews.push({ purpose: review.purpose, elapsed: performance.now() - started });
+        operation.confirmPayer(review.id);
+      }
+    });
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; operation.cancel(); }, 30_000);
+    try {
+      await operation.authorize(operation.getSnapshot().revision);
+      assert.equal(timedOut, false, JSON.stringify(operation.getSnapshot()));
+    } finally {
+      clearTimeout(timeout); unsubscribe();
     }
-    await pending;
+    assert.deepEqual(payerReviews.map(review => review.purpose), ['fund-account', 'submit-operation']);
+    assert(payerReviews[1]!.elapsed > 1500, 'the second consent must arrive after the former polling window');
     assert.equal(deployment.getSnapshot().phase, 'failed');
     assert.equal(f.submitted.length, 2);
     deployment.dispose();
