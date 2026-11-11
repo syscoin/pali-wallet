@@ -394,7 +394,7 @@ export function NativeGuardianRecovery({
               />
             )}
             <Text style={s.heading}>Replacement owner</Text>
-            {replacementKind === 'passkey' && <Card style={s.card}><Icon name="fingerprint" /><Text>Passkey</Text><Text>{t('settings.compositePasskeyDescription')}</Text></Card>}
+            {replacementKind === 'passkey' && <Card style={s.card}><Icon name="fingerprint" /><Text>Passkey</Text><Text>{t('smartAccountHub.compositePasskeyDescription')}</Text></Card>}
             {replacementKind === 'software' && replacementId && (
               <Card style={s.card}>
                 <Text style={s.label}>

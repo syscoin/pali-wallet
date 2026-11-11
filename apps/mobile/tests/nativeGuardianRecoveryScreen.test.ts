@@ -270,7 +270,8 @@ test('P256 replacement is an explicit icon-bearing choice and retains a separate
   const f = initialFixture();
   try {
     const select = button(f.render(), 'Use passkey'); assert.equal(select.props.icon, 'fingerprint'); select.props.onPress();
-    assert(text(f.render()).includes(englishI18n.t('settings.compositePasskeyDescription')));
+    assert(englishI18n.exists('smartAccountHub.compositePasskeyDescription'));
+    assert(text(f.render()).includes(englishI18n.t('smartAccountHub.compositePasskeyDescription')));
     assert(!text(f.render()).includes(englishI18n.t('settings.recoveryAuthenticatorP256WebAuthnDescription')));
     assert.equal(button(f.render(), 'Review recovery').props.disabled, false);
     button(f.render(), 'Review recovery').props.onPress(); await tick();
