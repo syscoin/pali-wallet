@@ -7,6 +7,8 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import type { NativeSmartAccountOperationSnapshot } from '../src/smartAccount/operation.ts';
+import { resolveAssetTransferDisplay } from '../../../source/shared/assetTransferDisplay.ts';
+import { getNativeNetwork } from '../src/custody/networkContext.ts';
 
 type Element = {
   type: unknown;
@@ -205,6 +207,7 @@ function harness(
       formatTokenUnits: (value: string) => value,
       parseErc20Units: (value: string) => value,
     },
+    '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay },
     '../core/amounts': { formatBaseUnits: (value: string) => value },
     '../custody/networkContext': {
       getNativeSendContext: () => ({
@@ -422,10 +425,7 @@ function operationState(): NativeSmartAccountOperationSnapshot {
         executions: [],
       },
     },
-    network: {
-      id: 'ethereum',
-      chainId: '1',
-    } as NativeSmartAccountOperationSnapshot['network'],
+    network: getNativeNetwork('ethereum'),
     phase: 'authorize',
     revision: 1,
     account,
