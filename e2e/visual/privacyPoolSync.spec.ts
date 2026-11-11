@@ -826,6 +826,26 @@ test('privacy pool preparation verifies local note imports and preserves a good 
     await wallet.step(
       'privacy: explicit preparation downloads public pool data and exposes progress',
       async () => {
+        // A refresh scheduled at the next shared quarter-hour can otherwise
+        // add another anchor pair before the initial exact-count assertion.
+        // Stay idle through a nearby boundary; later steps still exercise the
+        // real scheduled refresh and pause/resume behavior.
+        const interval = 15 * 60 * 1000;
+        const initialPeriod = Math.floor(Date.now() / interval);
+        if (interval - (Date.now() % interval) <= 90_000) {
+          await expect
+            .poll(() => Math.floor(Date.now() / interval), { timeout: 100_000 })
+            .toBeGreaterThan(initialPeriod);
+        }
+        expect(snapshots).toEqual([]);
+        expect(rpcReads.filter((read) => read.method === 'eth_call')).toEqual(
+          []
+        );
+        expect(
+          server!.blocked.filter((entry) =>
+            entry.target.includes('sysnode.info')
+          )
+        ).toEqual([]);
         await wallet!.page
           .getByRole('button', { name: en.privacy.prepare, exact: true })
           .click();
