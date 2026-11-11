@@ -416,12 +416,12 @@ export function NativeSmartAccountOperationContent({
           onBack={close}
         />
         {before}
-        <Card style={s.card}>
-          <Text style={s.label}>{network.name}</Text>
-          <Text selectable style={s.address}>
-            {state.account}
-          </Text>
-          <Text style={s.label}>Chain ID {state.network.chainId}</Text>
+        <Card style={[s.card, s.contextCard]}>
+          <View style={s.contextHeading}>
+            <Text style={s.label}>{network.name}</Text>
+            <Text style={s.label}>Chain ID {state.network.chainId}</Text>
+          </View>
+          <Text selectable style={s.address}>{state.account}</Text>
         </Card>
         {modules && (
           <Card style={s.card}>
@@ -880,6 +880,8 @@ export function NativeSmartAccountOperationContent({
   );
 }
 const s = StyleSheet.create({
+  contextCard: { padding: 12, gap: 6 },
+  contextHeading: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', columnGap: 12, rowGap: 2 },
   safe: { flex: 1, backgroundColor: colors.bg },
   card: { padding: 16, gap: 10 },
   transferHeading: { flexDirection: 'row', gap: 12, alignItems: 'center' },
