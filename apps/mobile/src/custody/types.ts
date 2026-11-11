@@ -1,6 +1,7 @@
 import type { EvmNetworkId } from './networkContext.ts';
 import type { NativeNetworkRuntime, NativeAccountRuntime } from './accounts.ts';
 import type { NativeImportRuntime } from './importedAccounts.ts';
+import type { NativePrivateAuthentication } from './privateAuthentication.ts';
 /** Public state only. Neither SDK state nor recovery material belongs here. */
 export type CustodySnapshot = Readonly<{
   phase:
@@ -87,7 +88,7 @@ export interface CustodyRuntime {
     isAuthenticationRefusal(error: unknown): boolean;
     changePin(currentPin: string, nextPin: string, assertCurrent: () => void): Promise<void>;
     authenticationStatus(): Promise<Readonly<{ pinConfigured: boolean; biometricsAvailable: boolean; biometricsEnabled: boolean }>>;
-    reauthenticateIdlePolicy(password: string, assertCurrent: () => void): Promise<void>;
+    reauthenticateIdlePolicy(signal: AbortSignal, authentication: NativePrivateAuthentication, assertCurrent: () => void): Promise<void>;
     authenticateOperation(credential: NativeOperationCredential, assertCurrent: () => void): Promise<void>;
   };
   readonly deviceUnlock?: {

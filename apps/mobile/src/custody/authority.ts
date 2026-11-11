@@ -692,14 +692,14 @@ export class NativeCustodyAuthority {
     })();
   }
 
-  saveIdlePreference(expected: SecurityPreferenceSnapshot, proposed: number, password: string, assertScreen: () => void): Promise<SecurityPreferenceSnapshot> {
+  saveIdlePreference(expected: SecurityPreferenceSnapshot, proposed: number, signal: AbortSignal, authentication: NativePrivateAuthentication, assertScreen: () => void): Promise<SecurityPreferenceSnapshot> {
     const minutes = idleMinutes(proposed);
     if (!this.policy || !this.runtime || this.snapshot.phase !== 'ready') return Promise.reject(new CustodyOperationError('NOT_READY'));
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
     const runtime = this.runtime, policy = this.policy, revision = this.revision;
     const check = () => {
       this.checkIdle();
-      if (revision !== this.revision || this.snapshot.phase !== 'ready') throw new CustodyOperationError('CANCELLED');
+      if (signal.aborted || runtime !== this.runtime || revision !== this.revision || this.snapshot.phase !== 'ready') throw new CustodyOperationError('CANCELLED');
       const result: unknown = assertScreen();
       if (result !== undefined) { if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined); throw new CustodyOperationError('CANCELLED'); }
     };
@@ -711,10 +711,11 @@ export class NativeCustodyAuthority {
         check();
         if (weakensIdlePolicy(expected.custodyIdleMinutes, minutes)) {
           if (!runtime.security) throw new CustodyOperationError('NOT_READY');
-          await runtime.security.reauthenticateIdlePolicy(password, check); check();
+          await runtime.security.reauthenticateIdlePolicy(signal, authentication, check); check();
         }
         return await policy.preferences.save(expected, 'custody', minutes, check);
       } catch (cause) {
+        if (runtime.security?.isAuthenticationRefusal(cause)) { check(); throw new CustodyOperationError('CANCELLED'); }
         const code = cause instanceof CustodyRuntimeError || cause instanceof CustodyOperationError ? cause.code : 'OPERATION_FAILED';
         this.lock();
         if (this.snapshot.phase === 'locked') this.publish({ error: code });

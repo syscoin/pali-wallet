@@ -6419,11 +6419,23 @@ export function createKeyringRuntimeFactory(
               }
             }),
             authenticateOperation,
-            reauthenticateIdlePolicy: (password, assertCurrent) => run(async (captured) => {
-              current(captured); checkGuard(assertCurrent);
-              if (!keyring.hasPublicSession() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY');
-              if (!(await authenticate(password, captured))) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
-              current(captured); checkGuard(assertCurrent);
+            reauthenticateIdlePolicy: (signal, authentication, assertCurrent) => run(async (captured) => {
+              const ring = keyring, snapshot = catalogueSnapshot, identity = verifiedIdentity;
+              const ownerCurrent = () => {
+                current(captured);
+                if (signal.aborted || ring !== keyring || snapshot !== catalogueSnapshot || identity !== verifiedIdentity)
+                  throw new KeyringRuntimeError('CANCELLED');
+              };
+              const check = () => { ownerCurrent(); checkGuard(assertCurrent); };
+              check();
+              if (!ring.hasPublicSession() || !snapshot || !identity) throw new KeyringRuntimeError('NOT_READY');
+              // The interruption marker checks identity, not the screen guard
+              // that asks this marker whether its OS prompt owns inactivity.
+              await withNativePrivateAuthentication(authentication, signal, ownerCurrent,
+                owner => requestCredential('account-change', owner, check));
+              check();
+              if (JSON.stringify(await readIdentity()) !== JSON.stringify(identity)) throw new KeyringRuntimeError('CANCELLED');
+              check();
             }),
           },
           ...(deviceUnlock && dependencies.deviceUnlock ? { deviceUnlock: {

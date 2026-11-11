@@ -13,11 +13,14 @@ import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { createDeviceUnlockCredentialStore } from '../src/storage/deviceUnlockCredential.ts';
 import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import type { NativeOperationCredentialRequester } from '../src/custody/types.ts';
+import { OperationAuthentication, type OperationAuthenticationPrompt } from '../src/core/operationAuthentication.ts';
+import { bindNativePrivateAuthentication, createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PIN = '123456';
-async function fixture() {
+async function fixture(requester?: NativeOperationCredentialRequester) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-public-checkpoint-'));
   const filename = path.join(directory, 'wallet.sqlite');
   const sdk = await loadNativeKeyringSdk();
@@ -62,8 +65,9 @@ async function fixture() {
     async ensureCryptoReady() { assert(globalThis.crypto?.subtle); },
     async openStorage() { storage = await SqliteWalletStorage.open(nodeConnection(filename).connection, digest, INSTALLATION, first); first = false; return storage; },
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
-    async requestOperationCredential(_request, signal, check, verify) {
+    async requestOperationCredential(request, signal, check, verify) {
       authorizations++; assert(!signal.aborted); check();
+      if (requester) return requester(request, signal, check, verify);
       const result = await verify({ method: 'pin', pin: PIN }, check); assert.equal(result.accepted, true);
     },
   });
@@ -153,7 +157,7 @@ test('warm PIN view authentication preserves the exact public catalogue without 
     await f.create();
     const snapshot = f.runtime.catalogue.getSnapshot(), restores = f.restoreEntries;
     await f.runtime.session.unlock(PIN);
-    await f.runtime.security!.reauthenticateIdlePolicy(PIN, () => undefined);
+    await f.runtime.security!.reauthenticateIdlePolicy(new AbortController().signal, createTestPrivateAuthentication(() => undefined), () => undefined);
     await f.runtime.security!.authenticateOperation({ method: 'pin', pin: PIN }, () => undefined);
     assert.equal(f.rootEntries, 0);
     assert.equal(f.secretReads, 0);
@@ -161,6 +165,86 @@ test('warm PIN view authentication preserves the exact public catalogue without 
     assert.equal(f.runtime.catalogue.getSnapshot(), snapshot);
     assert.equal(f.instances.at(-1)!.isUnlocked(), false);
   } finally { await f.close(); }
+});
+
+for (const method of ['pin', 'biometric'] as const) test(`idle-policy ${method} proof uses the shared credential port without opening SDK spending secrets`, async () => {
+  let requests = 0;
+  const f = await fixture(async (request, signal, check, verify) => {
+    requests++; assert.equal(request.purpose, 'account-change'); assert.equal(signal.aborted, false);
+    if (method === 'biometric') assert.equal(request.biometricsEnabled, true);
+    const result = await verify(method === 'pin' ? { method, pin: PIN } : { method }, check);
+    assert.equal(result.accepted, true);
+  });
+  try {
+    await f.create(); await f.ready();
+    if (method === 'biometric') await f.authority.setDeviceUnlock(true, PIN, () => undefined);
+    const before = f.runtime.catalogue.getSnapshot(), restores = f.restoreEntries, biometricReads = f.biometricReads;
+    await f.runtime.security!.reauthenticateIdlePolicy(new AbortController().signal, createTestPrivateAuthentication(() => undefined), () => undefined);
+    assert.equal(requests, 1); assert.equal(f.authorizations, 1);
+    assert.equal(f.runtime.catalogue.getSnapshot(), before);
+    assert.equal(f.rootEntries, 0, 'withSecretOperation, unlock and getDecryptedMnemonic must remain unused');
+    assert.equal(f.secretReads, 0); assert.equal(f.restoreEntries, restores);
+    if (method === 'biometric') assert(f.biometricReads > biometricReads);
+    assert.equal(f.instances.at(-1)!.hasPublicSession(), true);
+    assert.equal(f.instances.at(-1)!.isUnlocked(), false);
+  } finally { await f.close(); }
+});
+
+for (const ending of ['cancel', 'abort'] as const) test(`idle-policy shared prompt ${ending} preserves public state only for authentic cancellation`, async () => {
+  const authentication = new OperationAuthentication();
+  const shown = Promise.withResolvers<OperationAuthenticationPrompt>();
+  const detach = authentication.attach(prompt => { if (prompt) shown.resolve(prompt); });
+  const f = await fixture(authentication.request);
+  try {
+    await f.create(); await f.ready();
+    const before = f.runtime.catalogue.getSnapshot(), owner = new AbortController();
+    const work = f.runtime.security!.reauthenticateIdlePolicy(owner.signal, createTestPrivateAuthentication(() => undefined), () => undefined);
+    const rejected = assert.rejects(work, error => {
+      assert.equal(f.runtime.security!.isAuthenticationRefusal(error), ending === 'cancel'); return true;
+    });
+    const prompt = await shown.promise;
+    if (ending === 'cancel') prompt.cancel(); else owner.abort();
+    await rejected;
+    assert.equal(f.runtime.catalogue.getSnapshot(), ending === 'cancel' ? before : null);
+    assert.equal(f.instances.at(-1)!.hasPublicSession(), ending === 'cancel');
+    assert.equal(f.rootEntries, 0); assert.equal(f.secretReads, 0);
+  } finally { detach(); await f.close(); }
+});
+
+for (const marker of ['owned', 'other', 'missing'] as const) test(`idle-policy inactive guard ${marker === 'owned' ? 'accepts its owned' : `rejects a ${marker}`} OS prompt marker without recursion`, async () => {
+  let state = 'active', currentPrompt: AbortSignal | null = null, checks = 0;
+  const scope = createNativePrivateAuthenticationScope();
+  const other = new AbortController();
+  const binding = bindNativePrivateAuthentication(scope, {
+    assertCurrent() {},
+    isPromptActive: owner => marker === 'owned' ? owner === currentPrompt : marker === 'other' && owner === other.signal,
+  });
+  const check = () => {
+    assert(++checks < 100, 'The screen guard must not recursively re-enter itself');
+    if (state !== 'active' && !(state === 'inactive' && scope.isAuthenticating())) throw Error('CANCELLED');
+  };
+  const f = await fixture(async (_request, signal, assertCurrent, verify) => {
+    currentPrompt = signal; state = 'inactive';
+    try {
+      assertCurrent();
+      assert.equal((await verify({ method: 'pin', pin: PIN }, assertCurrent)).accepted, true);
+    } finally { state = 'active'; currentPrompt = null; }
+  });
+  try {
+    await f.create(); await f.ready();
+    const before = f.runtime.catalogue.getSnapshot();
+    const pending = f.runtime.security!.reauthenticateIdlePolicy(new AbortController().signal, binding, check);
+    if (marker === 'owned') {
+      await pending;
+      assert.equal(f.runtime.catalogue.getSnapshot(), before);
+      assert.equal(f.instances.at(-1)!.hasPublicSession(), true);
+    } else {
+      await assert.rejects(pending);
+      assert.equal(f.runtime.catalogue.getSnapshot(), null);
+      assert.equal(f.instances.at(-1)!.hasPublicSession(), false);
+    }
+    assert(checks < 100); assert.equal(f.rootEntries, 0); assert.equal(f.secretReads, 0);
+  } finally { scope.retire(); await f.close(); }
 });
 
 test('wrong cold and warm ordinary PINs never retrieve the spending credential', async () => {

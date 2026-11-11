@@ -308,7 +308,7 @@ export function createNativeWalletControllers() {
       authenticateOperation,
       async authenticationStatus() { return { pinConfigured: true, biometricsAvailable: !!authentication, biometricsEnabled: visualDeviceUnlockEnabled }; },
       async changePin(current, next, check) { check(); if (current !== fixturePassword || !/^\d{6}$/.test(next)) throw refused('INVALID_CREDENTIAL'); fixturePassword = next; check(); },
-      async reauthenticateIdlePolicy(password, check) { check(); events.push('idle:auth'); await unlockGate(); if (password !== fixturePassword) throw new KeyringRuntimeError('INVALID_CREDENTIAL'); check(); },
+      async reauthenticateIdlePolicy(signal, binding, check) { check(); events.push('idle:auth'); await requestFixtureCredential(binding, signal, check, 'account-change'); check(); },
     },
     networks: {
       getSelectedId: () => catalogue.active.networkId,
@@ -605,7 +605,11 @@ export function createNativeWalletControllers() {
       bindNativePrivateAuthentication(scope, { assertCurrent: () => { if (signal.aborted) throw refused('CANCELLED'); },
         isPromptActive: owner => authentication?.isActive(owner) === true })),
     cancel: () => authority.cancelAccountOperation() };
-  return { authority, getNotificationChoices, getScopedActivityRuntime, activityReaders, connections: connections.view, keyExport, imports,
+  const saveIdlePreference = (expected: import('../../src/core/securityPreferences').SecurityPreferenceSnapshot, minutes: number,
+    signal: AbortSignal, scope: NativePrivateAuthenticationScope, check: () => void) => authority.saveIdlePreference(expected, minutes, signal,
+      bindNativePrivateAuthentication(scope, { assertCurrent: () => { if (!sessionUnlocked || signal.aborted) throw refused('CANCELLED'); },
+        isPromptActive: owner => authentication?.isActive(owner) === true }), check);
+  return { authority, saveIdlePreference, getNotificationChoices, getScopedActivityRuntime, activityReaders, connections: connections.view, keyExport, imports,
     ...(authentication ? { authentication } : {}),
     trezor: {background() {}, async cancel() {}, subscribe: () => () => undefined,
       getSnapshot: () => idleTrezorSnapshot,

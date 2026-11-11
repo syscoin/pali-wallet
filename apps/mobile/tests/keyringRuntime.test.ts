@@ -2908,18 +2908,22 @@ test('unlocking again cannot revive an old review or sign it for a newly selecte
 
 
 test('idle policy reauthentication uses the real shared throttle and counts rejection after idle expiry', async () => {
-  const controlled = await controlledSdk(); let active = true;
-  const disk = memoryDisk(controlled.loadSdk, () => { if (!active) throw Error('CANCELLED'); }); disk.denyNetwork();
+  const controlled = await controlledSdk(); let active = true, credentialPin = '000000';
+  const disk = memoryDisk(controlled.loadSdk, () => { if (!active) throw Error('CANCELLED'); }, undefined, undefined, undefined, undefined,
+    async (_request, _signal, check, verify) => {
+      const result = await verify({ method: 'pin', pin: credentialPin }, check);
+      if (!result.accepted) throw Error(result.reason);
+    }); disk.denyNetwork();
   const runtime = await disk.factory.open() as KeyringRuntime;
   try {
     await runtime.session.importWallet(PHRASE, PASSWORD);
     const before = disk.failureWrites;
-    const hold = disk.holdPinRead(), pending = runtime.security!.reauthenticateIdlePolicy('000000', () => undefined);
+    const hold = disk.holdPinRead(), pending = runtime.security!.reauthenticateIdlePolicy(new AbortController().signal, createTestPrivateAuthentication(() => undefined), () => undefined);
     await Promise.race([hold.started, pending.then(() => { throw Error('PIN check completed before credential read'); })]); active = false; hold.finish();
     await assert.rejects(pending, /CANCELLED/);
     assert.equal(disk.failureWrites, before + 1); assert.equal(disk.failures, 1);
-    active = true; await runtime.session.unlock(PASSWORD);
-    await runtime.security!.reauthenticateIdlePolicy(PASSWORD, () => undefined);
+    active = true; credentialPin = PASSWORD; await runtime.session.unlock(PASSWORD);
+    await runtime.security!.reauthenticateIdlePolicy(new AbortController().signal, createTestPrivateAuthentication(() => undefined), () => undefined);
     assert.equal(disk.failures, 0);
   } finally { await runtime.storage.close(); disk.restoreNetwork(); }
 });

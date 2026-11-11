@@ -379,6 +379,11 @@ export function createNativeWalletControllers() {
       assertCurrent() { if (runtime !== selected || !selected.catalogue.getSnapshot()) throw new CustodyOperationError('CANCELLED'); },
       isPromptActive: owner => deviceUnlock.prompt.isActive(owner),
     });
+  const saveIdlePreference = (expected: import('../core/securityPreferences').SecurityPreferenceSnapshot, minutes: number,
+    signal: AbortSignal, authentication: NativePrivateAuthenticationScope, assertCurrent: () => void) => {
+    if (!runtime) return Promise.reject(new CustodyOperationError('NOT_READY'));
+    return authority.saveIdlePreference(expected, minutes, signal, bindOperationAuthentication(authentication, runtime), assertCurrent);
+  };
   const keyExportFacades = new WeakMap<KeyringRuntime, NativeHdKeyExportRuntime>();
   const keyExport = new HdKeyExportFlow(authority, () => {
     const selected = runtime;
@@ -821,6 +826,6 @@ export function createNativeWalletControllers() {
       networkId: scope.network.id, registrationHash: 'registrationHash' in scope.network ? scope.network.registrationHash : '' }, check);
   };
   const activityReaders = Object.freeze({ explorer: new ActivityExplorerReader(walletFetch), receipts: new ActivityReceiptReader({ fetch: walletFetch }) });
-  return { getNotificationChoices, readPortfolioAssets, getScopedActivityRuntime, activityReaders, authority, sentry, recipientResolver, openSmartInfrastructure, openSmartAccountModules, canManageSmartAccountModules: () => runtime?.canUseWalletAuthenticator() === true, openSlhDsaManagement, canManageSlhDsa: () => runtime?.canManageSlhDsa() === true, canSignSmartAccount: () => runtime?.canSignSmartAccount() === true, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openResumedSmartAccountOperation, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, openNoteMaintenance, openPrivacyControls, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { getNotificationChoices, readPortfolioAssets, getScopedActivityRuntime, activityReaders, authority, saveIdlePreference, sentry, recipientResolver, openSmartInfrastructure, openSmartAccountModules, canManageSmartAccountModules: () => runtime?.canUseWalletAuthenticator() === true, openSlhDsaManagement, canManageSlhDsa: () => runtime?.canManageSlhDsa() === true, canSignSmartAccount: () => runtime?.canSignSmartAccount() === true, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openResumedSmartAccountOperation, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, openNoteMaintenance, openPrivacyControls, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

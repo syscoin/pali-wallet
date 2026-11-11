@@ -1059,7 +1059,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       }
       if (!['ready', 'backup-required', 'authenticating'].includes(state.phase)) clearSecrets();
     };
-    setSaveIdle(() => (expected: Parameters<IdlePreferenceSave>[0], minutes: number, pin: string, check: () => void) => local.authority.saveIdlePreference(expected, minutes, pin, check));
+    setSaveIdle(() => local.saveIdlePreference);
     setOpenNoteCapacity(() => local.openNoteCapacity ?? null);
     setOpenNoteMaintenance(() => local.openNoteMaintenance ?? null);
     setOpenPrivacyControls(() => local.openPrivacyControls ?? null);

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { SecurityPreferences } from '../src/core/securityPreferences.ts';
+import { createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 import { quietActivityNotifications } from './notificationFixture.ts';
 
@@ -39,7 +40,7 @@ test('watch Settings opens Auto-lock, saves only watch timeout and returns to Se
     const settings = f.settings(); assert.equal(settings.props.watchOnly, true);
     settings.props.onAutoLock(); const route = f.render();
     assert.equal(route.type, 'AutoLockSettings'); assert.equal(route.props.mode, 'watch');
-    await route.props.save(f.preferences.getSnapshot().value, 30, '', () => undefined);
+    await route.props.save(f.preferences.getSnapshot().value, 30, new AbortController().signal, createNativePrivateAuthenticationScope(), () => undefined);
     assert.deepEqual(f.preferences.getSnapshot().value, { version: 1, custodyIdleMinutes: 5, watchIdleMinutes: 30 });
     assert(f.counts().idleChecks > 0); assert.equal(f.counts().writes, 1);
     route.props.onBack(); assert(f.settings()); assert.equal(f.counts().exits, 0);
@@ -56,7 +57,7 @@ test('stale watch Settings and Auto-lock callbacks cannot act on a replacement s
     f.changeScope(); f.settings().props.onAutoLock();
     assert.equal(f.render().type, 'AutoLockSettings');
     oldRoute.props.onBack(); assert.equal(f.render().type, 'AutoLockSettings');
-    await assert.rejects(oldRoute.props.save(expected, 30, '', () => undefined), /CANCELLED/);
+    await assert.rejects(oldRoute.props.save(expected, 30, new AbortController().signal, createNativePrivateAuthenticationScope(), () => undefined), /CANCELLED/);
     assert.equal(f.counts().writes, 0);
   } finally { f.close(); }
 });

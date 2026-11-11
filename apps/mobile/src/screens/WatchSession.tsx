@@ -124,7 +124,7 @@ export function WatchSession({ authority, onAccounts, onExit }: {
       if (lifetime.current.alive && pending && pending !== eventId) setNotificationWake(value => value + 1);
     });
   }, [notifications.pendingEventId, notificationWake, liveScope, autoLockScope, shell.immersive, authority, currentScope, restoreRoot]);
-  if (autoLockScope !== null && autoLockScope === liveScope) return <AutoLockSettings mode="watch" onBack={() => { if (currentScope() === autoLockScope) setAutoLockScope(null); }} save={(expected, minutes, _password, check) => {
+  if (autoLockScope !== null && autoLockScope === liveScope) return <AutoLockSettings mode="watch" onBack={() => { if (currentScope() === autoLockScope) setAutoLockScope(null); }} save={(expected, minutes, _signal, _authentication, check) => {
     const captured = liveScope;
     return securityPreferences.save(expected, 'watch', minutes, () => { check(); watchIdle.assertCurrent(); if (captured !== currentScope()) throw Error('CANCELLED'); });
   }} />;

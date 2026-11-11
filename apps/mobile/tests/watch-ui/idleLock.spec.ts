@@ -1,11 +1,30 @@
-import { enterPin, pinField, fillPinField } from '../ui/operationAuthentication';
+import { enterPin } from '../ui/operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 async function watch(page: Page) { await page.goto('/'); await page.getByRole('button',{name:'View my accounts',exact:true}).click(); }
 async function native(page: Page, query = '') { await page.goto(`/${query}`); await page.getByRole('button',{name:'Accounts',exact:true}).click(); await page.getByRole('button',{name:'Open wallet',exact:true}).click(); await enterPin(page, '123456'); await expect(page.getByRole('tab',{name:'Settings',exact:true})).toBeVisible(); }
 async function settings(page: Page) { await page.getByRole('tab',{name:'Settings',exact:true}).click(); const security=page.getByRole('button',{name:/^Security & backups/}); if(await security.count())await security.click(); await page.getByRole('button',{name:'Auto-lock',exact:false}).click(); await expect(page.getByRole('heading',{name:'Auto-lock',exact:true})).toBeVisible(); }
 test.beforeEach(async({page})=>{await page.route('**/*',async route=>{if(new URL(route.request().url()).origin!=='http://127.0.0.1:4182'){await route.abort();throw Error('Unexpected network');}await route.continue();});});
 test('watch settings persist only their mode; native default remains five and Off preserves lifecycle hiding',async({page})=>{await watch(page);await settings(page);await page.getByRole('radio',{name:'Off while open',exact:true}).click();await page.getByRole('button',{name:'I understand the Off setting',exact:true}).click();await page.getByRole('button',{name:'Save auto-lock',exact:true}).click();await expect(page.getByText('Auto-lock setting saved.',{exact:true})).toBeVisible();expect(JSON.parse((await page.evaluate(()=>window.__watchFixture.idle.value()))!)).toEqual({version:1,custodyIdleMinutes:5,watchIdleMinutes:0});await page.evaluate(()=>window.__watchFixture.lifecycle('background'));await page.evaluate(()=>window.__watchFixture.lifecycle('active'));await expect(page.getByRole('button',{name:'View my accounts',exact:true})).toBeVisible();await page.reload();await page.getByRole('button',{name:'View my accounts',exact:true}).click();await settings(page);await expect(page.getByText(/Current: Off while open/)).toBeVisible();});
-test('native weakening needs fresh password while shortening does not reauthenticate',async({page})=>{await native(page);await settings(page);await page.getByRole('radio',{name:'15 minutes',exact:true}).click();await expect(page.getByRole('button',{name:'Save auto-lock',exact:true})).toBeDisabled();await fillPinField(pinField(page, 'Confirm auto-lock PIN'), '123456');await page.getByRole('button',{name:'Save auto-lock',exact:true}).click();await expect(page.getByText('Auto-lock setting saved.',{exact:true})).toBeVisible();expect((await page.evaluate(()=>window.__watchFixture.events())).filter(x=>x==='idle:auth')).toHaveLength(1);await page.getByRole('radio',{name:'5 minutes',exact:true}).click();await page.getByRole('button',{name:'Save auto-lock',exact:true}).click();await expect(page.getByText(/Current: 5 minutes/)).toBeVisible();expect((await page.evaluate(()=>window.__watchFixture.events())).filter(x=>x==='idle:auth')).toHaveLength(1);});
+test('native weakening uses fresh shared PIN authorization and retry while shortening needs none', async ({ page }) => {
+  await native(page); await settings(page);
+  await page.getByRole('radio', { name: '15 minutes', exact: true }).click();
+  await expect(page.getByText('Confirm auto-lock PIN', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Save auto-lock', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Authorize change', exact: true })).toBeVisible();
+  await enterPin(page, '000000');
+  await expect(page.getByText('PIN not accepted. Try again.', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('PIN, 0 of 6 digits entered', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__watchFixture.idle.value())).toBeNull();
+  expect(await page.evaluate(() => window.__watchFixture.nativePhase())).toBe('ready');
+  await enterPin(page, '123456');
+  await expect(page.getByText('Auto-lock setting saved.', { exact: true })).toBeVisible();
+  expect((await page.evaluate(() => window.__watchFixture.events())).filter(x => x === 'idle:auth')).toHaveLength(1);
+  await page.getByRole('radio', { name: '5 minutes', exact: true }).click();
+  await page.getByRole('button', { name: 'Save auto-lock', exact: true }).click();
+  await expect(page.getByText(/Current: 5 minutes/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Authorize change', exact: true })).toHaveCount(0);
+  expect((await page.evaluate(() => window.__watchFixture.events())).filter(x => x === 'idle:auth')).toHaveLength(1);
+});
 test('expired watch input cannot renew the deadline and native idle lock clears secret presentation',async({page})=>{await watch(page);await page.evaluate(()=>window.__watchFixture.idle.elapse(300001));await page.getByRole('tab',{name:'Settings',exact:true}).click();await expect(page.getByRole('button',{name:'View my accounts',exact:true})).toBeVisible();await native(page);await page.evaluate(()=>{window.__watchFixture.idle.elapse(300001);window.__watchFixture.idle.fire();});await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();await expect(page.getByRole('tab')).toHaveCount(0);});
 test('security read failure gates opening without overwriting; retry recovers explicitly',async({page},testInfo)=>{await page.goto('/?security-read-failure=1');await expect(page.getByText('Security settings unavailable',{exact:true})).toBeVisible();await page.screenshot({path:testInfo.outputPath('security-preferences-unavailable.png'),fullPage:true});await expect(page.getByRole('button',{name:'View my accounts',exact:true})).toHaveCount(0);expect(await page.evaluate(()=>window.__watchFixture.idle.value())).toBeNull();await page.evaluate(()=>window.__watchFixture.idle.readFailure(false));await page.getByRole('button',{name:'Retry security settings',exact:true}).click();await expect(page.getByRole('button',{name:'View my accounts',exact:true})).toBeVisible();});
 test('custom validation and cancelled drafts do not change durable preferences',async({page})=>{await watch(page);await settings(page);await page.getByRole('textbox',{name:'Auto-lock minutes',exact:true}).fill('4');await expect(page.getByRole('button',{name:'Save auto-lock',exact:true})).toBeDisabled();await page.getByRole('textbox',{name:'Auto-lock minutes',exact:true}).fill('55');await page.getByRole('button',{name:'Cancel',exact:true}).click();expect(await page.evaluate(()=>window.__watchFixture.idle.value())).toBeNull();await settings(page);await expect(page.getByRole('textbox',{name:'Auto-lock minutes',exact:true})).toHaveValue('5');});
@@ -21,19 +40,45 @@ test('Android custom auto-lock remains editable in a compact large-text viewport
   await expect(minutes).toBeFocused();
   await minutes.fill('10');
   await expect(minutes).toHaveValue('10');
-  const password = pinField(page, 'Confirm auto-lock PIN');
   const save = page.getByRole('button', { name: 'Save auto-lock', exact: true });
-  await expect(password).toHaveText('Enter PIN');
-  await expect(save).toBeDisabled();
-  await fillPinField(password, '123456');
+  await expect(page.getByText('Confirm auto-lock PIN', { exact: true })).toHaveCount(0);
+  await expect(save).toBeEnabled();
   await save.click();
+  await expect(page.getByRole('heading', { name: 'Authorize change', exact: true })).toBeVisible();
+  await enterPin(page, '123456');
   await expect(page.getByText('Auto-lock setting saved.', { exact: true })).toBeVisible();
   expect((await page.evaluate(() => window.__watchFixture.events())).filter(event => event === 'idle:auth')).toHaveLength(1);
 });
 test('lost write acknowledgement hides the session and retry reads the saved setting',async({page})=>{await watch(page);await settings(page);await page.evaluate(()=>window.__watchFixture.idle.loseAck(true));await page.getByRole('radio',{name:'15 minutes',exact:true}).click();await page.getByRole('button',{name:'Save auto-lock',exact:true}).click();await expect(page.getByText('Security settings unavailable',{exact:true})).toBeVisible();await page.evaluate(()=>window.__watchFixture.idle.loseAck(false));await page.getByRole('button',{name:'Retry security settings',exact:true}).click();await page.getByRole('button',{name:'View my accounts',exact:true}).click();await settings(page);await expect(page.getByText(/Current: 15 minutes/)).toBeVisible();});
-test('idle cancels pending native weakening without clearing the old policy or reopening the session',async({page})=>{await native(page);await settings(page);await page.getByRole('radio',{name:'15 minutes',exact:true}).click();await fillPinField(pinField(page, 'Confirm auto-lock PIN'), '123456');await page.evaluate(()=>window.__watchFixture.delayUnlock(true));await page.getByRole('button',{name:'Save auto-lock',exact:true}).click();await expect(page.getByRole('button',{name:'Saving auto-lock…',exact:true})).toBeVisible();await page.evaluate(()=>{window.__watchFixture.idle.elapse(300001);window.__watchFixture.idle.fire();window.__watchFixture.releaseUnlock();});await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();expect(await page.evaluate(()=>window.__watchFixture.idle.value())).toBeNull();});
+test('idle cancels pending native weakening without clearing the old policy or reopening the session', async ({ page }) => {
+  await native(page); await settings(page);
+  await page.getByRole('radio', { name: '15 minutes', exact: true }).click();
+  await page.getByRole('button', { name: 'Save auto-lock', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Authorize change', exact: true })).toBeVisible();
+  await page.evaluate(() => window.__watchFixture.delayUnlock(true));
+  await enterPin(page, '123456');
+  await expect(page.getByText('Authorizing…', { exact: true })).toBeVisible();
+  await page.evaluate(() => { window.__watchFixture.idle.elapse(300001); window.__watchFixture.idle.fire(); window.__watchFixture.releaseUnlock(); });
+  await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__watchFixture.idle.value())).toBeNull();
+});
 test('locked native secret input is cleared by idle and user input renews only a current session',async({page})=>{await page.goto('/');await page.getByRole('button',{name:'Accounts',exact:true}).click();await page.getByRole('button',{name:'Open wallet',exact:true}).click();await enterPin(page, '123');await page.evaluate(()=>{window.__watchFixture.idle.elapse(300001);window.__watchFixture.idle.fire();});await expect(page.getByLabel('PIN, 0 of 6 digits entered', { exact: true })).toBeVisible();await enterPin(page, '123456');await page.evaluate(()=>window.__watchFixture.idle.elapse(240000));await page.getByRole('tab',{name:'Settings',exact:true}).click();await page.evaluate(()=>{window.__watchFixture.idle.elapse(240000);window.__watchFixture.idle.fire();});await expect(page.getByRole('button',{name:/^Security & backups/})).toBeVisible();await page.evaluate(()=>{window.__watchFixture.idle.elapse(60001);window.__watchFixture.idle.fire();});await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();});
-test('narrow large-type settings, validation and saving states stay usable',async({page},testInfo)=>{await page.setViewportSize({width:320,height:720});await native(page);await settings(page);await page.getByRole('radio',{name:'Off while open',exact:true}).click();await page.addStyleTag({content:'[dir="auto"] { font-size:22px !important; line-height:1.45 !important; }'});expect(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1)).toBe(false);await page.screenshot({path:testInfo.outputPath('native-auto-lock-large-type.png'),fullPage:true});await page.getByRole('button',{name:'I understand the Off setting',exact:true}).click();await fillPinField(pinField(page, 'Confirm auto-lock PIN'), '123456');await page.evaluate(()=>window.__watchFixture.delayUnlock(true));await page.getByRole('button',{name:'Save auto-lock',exact:true}).click();await page.screenshot({path:testInfo.outputPath('native-auto-lock-saving.png'),fullPage:true});await page.evaluate(()=>window.__watchFixture.releaseUnlock());await expect(page.getByText('Auto-lock setting saved.',{exact:true})).toBeVisible();});
+test('narrow large-type settings, validation and saving states stay usable', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 }); await native(page); await settings(page);
+  await page.getByRole('radio', { name: 'Off while open', exact: true }).click();
+  await page.addStyleTag({ content: '[dir="auto"] { font-size:22px !important; line-height:1.45 !important; }' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+  await page.screenshot({ path: testInfo.outputPath('native-auto-lock-large-type.png'), fullPage: true });
+  await page.getByRole('button', { name: 'I understand the Off setting', exact: true }).click();
+  await page.getByRole('button', { name: 'Save auto-lock', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Authorize change', exact: true })).toBeVisible();
+  await page.evaluate(() => window.__watchFixture.delayUnlock(true));
+  await enterPin(page, '123456');
+  await expect(page.getByText('Authorizing…', { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('native-auto-lock-saving.png'), fullPage: true });
+  await page.evaluate(() => window.__watchFixture.releaseUnlock());
+  await expect(page.getByText('Auto-lock setting saved.', { exact: true })).toBeVisible();
+});
 test('a fresh virtual activation reopens watch accounts after an expired pointer action',async({page})=>{
  await watch(page);await page.evaluate(()=>window.__watchFixture.idle.elapse(300001));
  await page.getByRole('tab',{name:'Settings',exact:true}).click();
@@ -41,16 +86,24 @@ test('a fresh virtual activation reopens watch accounts after an expired pointer
  await reopen.dispatchEvent('click',{bubbles:true,detail:0});
  await expect(page.getByRole('tab',{name:'Settings',exact:true})).toBeVisible();
 });
-test('changing the timeout clears the previous password and requires new entry',async({page},testInfo)=>{
+test('cancelled shared authorization preserves the draft and a changed timeout needs a fresh PIN',async({page},testInfo)=>{
  await native(page);await settings(page);await page.getByRole('radio',{name:'15 minutes',exact:true}).click();
- const password=pinField(page, 'Confirm auto-lock PIN'),save=page.getByRole('button',{name:'Save auto-lock',exact:true});
- await fillPinField(password, '123456');await page.getByRole('radio',{name:'5 minutes',exact:true}).click();await expect(password).toHaveCount(0);
- await page.getByRole('radio',{name:'15 minutes',exact:true}).click();await expect(password).toHaveText('Enter PIN');await expect(save).toBeDisabled();
- await fillPinField(password, '123456');await page.getByRole('radio',{name:'30 minutes',exact:true}).click();await expect(password).toHaveText('Enter PIN');await expect(save).toBeDisabled();
- expect((await page.evaluate(()=>window.__watchFixture.events())).filter(x=>x==='idle:auth')).toHaveLength(0);
+ const save=page.getByRole('button',{name:'Save auto-lock',exact:true});
+ await save.click();await expect(page.getByRole('heading',{name:'Authorize change',exact:true})).toBeVisible();
+ await enterPin(page,'123');
+ await page.getByRole('dialog').getByRole('button',{name:'Back',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Auto-lock',exact:true})).toBeVisible();
+ await expect(page.getByRole('textbox',{name:'Auto-lock minutes',exact:true})).toHaveValue('15');
+ await expect(page.getByText('Auto-lock was not changed.',{exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>window.__watchFixture.idle.value())).toBeNull();
+ expect(await page.evaluate(()=>window.__watchFixture.nativePhase())).toBe('ready');
+ await page.getByRole('radio',{name:'30 minutes',exact:true}).click();await save.click();
+ await expect(page.getByRole('heading',{name:'Authorize change',exact:true})).toBeVisible();
+ await expect(page.getByLabel('PIN, 0 of 6 digits entered',{exact:true})).toBeVisible();
  await page.screenshot({path:testInfo.outputPath('changed-timeout-clears-password.png'),fullPage:true});
- await fillPinField(password, '123456');await save.click();await expect(page.getByText('Auto-lock setting saved.',{exact:true})).toBeVisible();
- expect((await page.evaluate(()=>window.__watchFixture.events())).filter(x=>x==='idle:auth')).toHaveLength(1);
+ await enterPin(page,'123456');await expect(page.getByText('Auto-lock setting saved.',{exact:true})).toBeVisible();
+ await expect(page.getByText(/Current: 30 minutes/)).toBeVisible();
+ expect((await page.evaluate(()=>window.__watchFixture.events())).filter(x=>x==='idle:auth')).toHaveLength(2);
 });
 
 for (const viewport of [{ width: 320, height: 640 }, { width: 393, height: 852 }]) {
