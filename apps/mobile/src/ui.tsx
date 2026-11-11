@@ -579,16 +579,19 @@ export function Notice({
   title,
   body,
   tone = 'blue',
+  compact = false,
 }: {
   title: string;
   body?: string;
   tone?: 'blue' | 'amber' | 'red';
+  compact?: boolean;
 }) {
   const accent = colors[tone];
   return (
     <View
       style={[
         styles.notice,
+        compact && { padding: 0, borderWidth: 0, backgroundColor: 'transparent' },
         {
           borderColor:
             tone === 'red'
