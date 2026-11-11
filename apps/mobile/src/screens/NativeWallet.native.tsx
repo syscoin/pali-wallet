@@ -1328,6 +1328,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     bridge.current?.onSelectWatch(selection);
   };
   const recoveryNotice = recoveryOutcome && <Notice title={recoveryOutcome.kind === 'success' ? 'PIN changed' : recoveryOutcome.kind === 'uncertain' ? 'Check your PIN' : 'Recovery update'} body={recoveryOutcome.message + (recoveryOutcome.cleanupFailed ? ' The wallet could not be reopened. Close and reopen Pali to unlock.' : '')} tone={recoveryOutcome.kind === 'success' ? undefined : 'amber'} />;
+  const restoreNotice = noteRestore.step.phase === 'unconfirmed' && <Notice title="Restore could not be confirmed" body="Open this backup again after unlocking to see which notes are already saved." tone="amber" />;
   if (stage === 'recovery' && recoveryFlow) return <NativeRecovery flow={recoveryFlow} />;
   if (snapshot.phase === 'empty' && stage === 'choose') return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <Screen gap={24}>
@@ -1349,7 +1350,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       <Notice title="Set up your PIN" body="This development wallet was created before PIN access. Restore access with its recovery phrase to create a PIN. Your saved wallet is preserved." />
     </Screen>
   </SafeAreaView>;
-  if (locked && protectedScreen) return <PinEntryScreen brand title="Welcome back" description={recoveryNotice ? undefined : "Enter your Pali PIN."} notice={recoveryNotice}
+  if (locked && protectedScreen) return <PinEntryScreen brand title="Welcome back" description={recoveryNotice || restoreNotice ? undefined : "Enter your Pali PIN."} notice={recoveryNotice || restoreNotice ? <>{recoveryNotice}{restoreNotice}</> : undefined}
     busy={busy} error={error || (snapshot.error ? message(new Error(snapshot.error)) : undefined)}
     resetKey={`${snapshot.revision}:${error}`} onComplete={entered => {
       void perform(async local => { await local.authority.unlock(entered); await finishUnlock(local); });
@@ -1862,7 +1863,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         ? <View style={s.unlockBrand}><PaliMark size={36} /><Text style={s.unlockBrandName}>Pali Wallet</Text></View>
         : stage === 'backup-complete' ? null : <Header title={title} onBack={stage === 'device-unlock' ? closeDeviceUnlock : ['backup-intro', 'backup-auth', 'words', 'backup-verify'].includes(stage) ? closeBackup : exit} subtitle={typeof __DEV__ !== 'undefined' && __DEV__ ? 'Development build · Use a test wallet' : undefined} />}
         {recoveryNotice}
-        {noteRestore.step.phase === 'unconfirmed' && <Notice title="Restore could not be confirmed" body="Open this backup again after unlocking to see which notes are already saved." tone="amber" />}
+        {restoreNotice}
         {snapshot.error && !duplicateAuthenticationError && <NativeCustodyFeedback error={snapshot.error} />}
         {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
         {body}

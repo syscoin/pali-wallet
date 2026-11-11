@@ -109,7 +109,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
         <Text selectable style={s.receiveAddress} accessibilityLabel={`${network.name} address ${address}`}>{address}</Text>
         {feedbackView}
         <Notice title="Check the network" body={`Use ${network.name}${network.testnet ? ' (test network)' : ''} for this address. Check the network in the sending wallet before transferring funds.`} />
-        {utxo && <Notice title="One address only" body="Other receive and change addresses in the original wallet are not included." />}
+        {utxo && authority.getUtxoWatchScope() === 'address' && <Notice title="One address only" body="Other receive and change addresses in the original wallet are not included." />}
         {faucetCard}
       </> : <>
         {!tokenTitle && <>

@@ -6,6 +6,7 @@ import { languageMessages } from './localizationFixture.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 import { createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
+import * as pairingLinks from '../src/connections/pairingLinks.ts';
 
 const names = ['NativeConnections', 'NativeSecurity', 'NativeAccounts', 'NativeImport', 'NativeNetworks', 'RealTools'] as const;
 type Name = typeof names[number];
@@ -29,6 +30,8 @@ async function fixture(language = 'en') {
   const account = { id: 'hd:60:0', label: 'My account', address: `0x${'12'.repeat(20)}`, type: 'HDAccount', index: 0 };
   const removable = { ...account, id: 'imported:1', type: 'Imported', label: 'Imported account', index: 1 };
   const catalogue = { revision: 3, active: { accountId: account.id }, accounts: [account, removable] };
+  let currentCatalogue: typeof catalogue | null = catalogue, accountRevision = 9;
+  const accountListeners = new Set<() => void>();
   const connections = { getSnapshot: () => connectionSnapshot, subscribe: () => () => {}, cancel() {},
     async returnToDapp(...args: unknown[]) { returned.push(args); }, async disconnect() {} };
   const props: Record<Name, Record<string, unknown>> = {
@@ -36,7 +39,8 @@ async function fixture(language = 'en') {
     NativeSecurity: { keyExport: { onClear: () => () => {}, cancel() {}, isCurrent: () => false, isAuthenticating: () => false }, keyFormat: 'evm',
       accountId: account.id, accountType: 'HDAccount', accountLabel: account.label, address: account.address,
       onViewRecovery() {}, onLock() {}, onBack() {}, captureFailureHandler: () => () => {} },
-    NativeAccounts: { controller: { getSnapshot: () => catalogue, subscribe: () => () => {}, getContextRevision: () => 9,
+    NativeAccounts: { controller: { getSnapshot: () => currentCatalogue,
+      subscribe(listener: () => void) { accountListeners.add(listener); return () => { accountListeners.delete(listener); }; }, getContextRevision: () => accountRevision,
       supportsSmartAccounts: () => true,
       cancel() { accountCancels++; }, async execute(...args: unknown[]) { selected.push(structuredClone(args)); await accountOperation(); } }, onBack() { accountBacks++; }, networkLabel: 'Ethereum' },
     NativeImport: { imports: { cancel() {} }, contextRevision: 9, catalogueRevision: 3, networkLabel: 'Ethereum', utxo: false,
@@ -55,6 +59,7 @@ async function fixture(language = 'en') {
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'IconButton', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
     'expo-clipboard': {}, './DappSiteStatus': { DappSiteStatus: 'DappSiteStatus' }, './ConnectionQrScanner': { ConnectionQrScanner: 'ConnectionQrScanner' },
+    '../connections/pairingLinks': pairingLinks,
     './IdleActivityBoundary': { IdleTextInput: 'Input', IdlePressable: 'Pressable' },
     './PinEntry': { PinField: 'PinField' },
     '../custody/privateAuthentication': { createNativePrivateAuthenticationScope },
@@ -81,6 +86,10 @@ async function fixture(language = 'en') {
     hardwareBack: () => [...backHandlers].reverse().some(handler => handler()),
     accountStatus: () => ({ backs: accountBacks, cancels: accountCancels }),
     setAccountOperation(value: () => Promise<void>) { accountOperation = value; },
+    publishAccount(value: typeof catalogue | null, revision: number) {
+      currentCatalogue = value; accountRevision = revision; accountListeners.forEach(listener => listener());
+    },
+    catalogue,
   };
 }
 
@@ -112,6 +121,63 @@ test('translated account creation sends only the name and catalogue scope to sha
   await Promise.resolve();
   assert.deepEqual(f.selected, [[{ kind: 'create', label: 'Exact account' }, 9, 3]]);
   screen.close();
+});
+
+for (const kind of ['create', 'rename', 'remove'] as const) test(`${kind} retains its draft across notified authentication refusals and retries with the new context`, async () => {
+  const f = await fixture(), screen = f.screen('NativeAccounts');
+  const title = f.engine.t(kind === 'create' ? 'mobile.accounts.create' : kind === 'rename' ? 'mobile.accounts.saveName' : 'mobile.accounts.removeDevice');
+  const submit = () => screen.render().find(element => element.type === 'Button' && element.props.title === title)!.props.onPress();
+  try {
+    if (kind === 'create') {
+      screen.render().find(element => element.type === 'Header')!.props.right.props.onPress();
+      screen.render().find(element => element.type === 'Row' && element.props.title === title)!.props.onPress();
+    } else {
+      screen.render().find(element => element.type === 'IconButton' && element.props.label === `${f.engine.t(kind === 'rename' ? 'mobile.accounts.rename' : 'buttons.remove')} Imported account`)!.props.onPress();
+    }
+    if (kind === 'remove') screen.render().find(element => element.type === 'Pressable' && element.props.accessibilityRole === 'checkbox')!.props.onPress();
+    else screen.render().find(element => element.type === 'Input')!.props.onChangeText('Retained account name');
+    for (const [index, code] of ['INVALID_CREDENTIAL', 'CANCELLED'].entries()) {
+      const pending = Promise.withResolvers<void>();
+      f.setAccountOperation(async () => {
+        f.publishAccount(null, 10 + index);
+        await pending.promise;
+        f.publishAccount(f.catalogue, 10 + index);
+        throw new Error(code);
+      });
+      submit();
+      assert(screen.render().some(element => element.type === 'Notice' && element.props.title === f.engine.t('mobile.accounts.saving')));
+      pending.resolve(); await new Promise(resolve => setImmediate(resolve));
+      const restored = screen.render();
+      assert(restored.some(element => element.type === 'Button' && element.props.title === title && !element.props.disabled));
+      if (kind === 'remove') assert.equal(restored.find(element => element.props.accessibilityRole === 'checkbox')!.props['aria-checked'], true);
+      else assert.equal(restored.find(element => element.type === 'Input')!.props.value, 'Retained account name');
+      assert.equal(f.selected[index]![1], 9 + index);
+      assert.equal(f.selected[index]![2], 3);
+    }
+  } finally { screen.close(); }
+});
+
+for (const change of ['catalogue', 'lock'] as const) test(`account ${change} notification discards a pending draft and cannot restore its approval`, async () => {
+  const f = await fixture(), screen = f.screen('NativeAccounts'), pending = Promise.withResolvers<void>();
+  try {
+    screen.render().find(element => element.type === 'Header')!.props.right.props.onPress();
+    screen.render().find(element => element.type === 'Row' && element.props.title === f.engine.t('mobile.accounts.create'))!.props.onPress();
+    screen.render().find(element => element.type === 'Input')!.props.onChangeText('Must be discarded');
+    f.setAccountOperation(async () => {
+      f.publishAccount(null, 10);
+      await pending.promise;
+      f.publishAccount(f.catalogue, 10);
+      throw new Error('CANCELLED');
+    });
+    screen.render().find(element => element.type === 'Button' && element.props.title === f.engine.t('mobile.accounts.create'))!.props.onPress();
+    f.publishAccount(change === 'catalogue' ? { ...f.catalogue, revision: 4 } : null, change === 'catalogue' ? 10 : 11);
+    screen.render();
+    pending.resolve(); await new Promise(resolve => setImmediate(resolve));
+    const after = screen.render();
+    assert.equal(after.find(element => element.type === 'Header')!.props.title, f.engine.t('mobile.accounts.title'));
+    assert.equal(after.some(element => element.type === 'Input'), false);
+    assert.equal(f.selected.length, 1);
+  } finally { pending.resolve(); screen.close(); }
 });
 
 for (const kind of ['create', 'create-smart', 'rename', 'remove'] as const)

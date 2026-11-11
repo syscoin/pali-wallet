@@ -278,6 +278,13 @@ export class WatchOnlyAuthority implements WalletAuthority, UtxoActivityOwner {
   };
   getAccountNetworks = (account: PublicAccount | undefined): readonly WalletNetwork[] => getWatchNetworks(account, this.utxoNetworks);
 
+  /** UI scope only: account keys and descriptors stay inside the authority. */
+  getUtxoWatchScope = (): 'address' | 'account' | null => {
+    const snapshot = this.getSnapshot();
+    if (snapshot.status !== 'ready' || this.getNetwork(snapshot.selectedNetworkId).kind !== 'utxo') return null;
+    return this.currentSource() ? 'account' : 'address';
+  };
+
   getSnapshot(): PublicSnapshot {
     if (!this.locked && this.idle && !this.checkingIdle) { this.checkingIdle = true; try { if (!this.idle.check()) this.lock(); } finally { this.checkingIdle = false; } }
     if (this.cachedSnapshot) return this.cachedSnapshot;

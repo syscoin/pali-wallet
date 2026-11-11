@@ -25,6 +25,10 @@ import { UTXO_ADDRESSES } from './publicWatchFixtures.ts';
 import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecycle.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { NativeRecoveryFlow } from '../src/custody/recoveryFlow.ts';
+import { createNativeNoteRestore } from '../src/custody/nativeNoteRestore.ts';
+import { createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
+import { createNoteBackupCodec } from '../../../source/wallet/noteBackup.ts';
 import * as networkContext from '../src/custody/networkContext.ts';
 import { isAllowedSentryKeyRoleScheme, type SentryKeySummary } from '../../../source/wallet/sentryKeyVault.ts';
 import { containsSentryPrivateKey, parseSentryKeyBatch } from '../../../source/utils/sentry/importBatch.ts';
@@ -315,7 +319,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
 });
 
 async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED'; verifyCalls?: string[]; wait?: Promise<void> }, notificationPort: NotificationTestPort = quietActivityNotifications,
-  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }) {
+  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number }) {
   const root = setup();
   const networkId = networkMode === 'utxo' ? utxoResume ? 'syscoin' : 'bitcoin' : 'ethereum';
   const address = `0x${'11'.repeat(20)}`;
@@ -392,7 +396,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
         catch (cause) { publish({ phase: 'locked', account: null, error: 'DEVICE_UNLOCK_UNAVAILABLE' }); throw cause; }
         check(); publish({ phase: 'backup-required', backup: 'unconfirmed', account: { address, network: networkId }, error: null });
       },
-      lock() { if (deviceUnlock || pinChange) { lifecycle.push('lock'); locks++; publish({ phase: 'locked', revision: state.revision + 1, account: null }); } }, async dispose() { state = { ...state, phase: 'disposed' }; },
+      lock() { if (deviceUnlock || pinChange || restoreFailure) { lifecycle.push('lock'); locks++; publish({ phase: 'locked', revision: state.revision + 1, account: null }); } }, async dispose() { state = { ...state, phase: 'disposed' }; },
       async unlock() {
         publish({ phase: 'authenticating', error: null });
         if (nextError) { const code = nextError; publish({ phase: 'locked', error: code }); throw new Error(code); }
@@ -487,6 +491,29 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     './useRealShell': { useRealShell: () => ({ tab: networkLifecycle?.tab ?? (depositMode ? 'tools' : 'wallet'), navigation: {}, goBack() {}, select(tab: string) { notificationRoutes.push({ tab, identity: 'tab-switch' }); }, restoreRoot(tab: string, identity: string) { notificationRoutes.push({ tab, identity }); } }) },
     './AllNetworksActivity': { AllNetworksActivity: 'AllNetworksActivity' },
   });
+  if (restoreFailure) {
+    const file = await createNoteBackupCodec({ crypto: globalThis.crypto, assertCurrent() {} }).encrypt({
+      format: 'pali-private-notes', version: 1, createdAt: 1,
+      notes: [{ note: 'tornado-eth-1-1-0x' + '01'.repeat(62), createdAt: 1 }],
+    }, 'Portable test backup password');
+    Object.assign(controllers, {
+      async captureNoteFileOwner() { return async () => undefined; },
+      async openNoteBackup(check: () => void) {
+        check();
+        return { begin: () => 'restore-preview', cancel() {}, async prepareImport() {
+          check(); return { id: 'restore-preview', added: 1, duplicates: 0, guarded: 0, expiresAt: performance.now() + 10000 };
+        }, async commitImport() { check(); restoreFailure.commits++; throw Error('BACKUP_COMMIT_UNCONFIRMED'); } };
+      },
+    });
+    dependencies['./NativeNoteRestore'] = { NativeNoteRestore: 'NativeNoteRestore', NoteRestoreUnconfirmedNotice: 'NoteRestoreUnconfirmedNotice' };
+    dependencies['./useNativeNoteBackup'] = evaluate(readFileSync(new NodeURL('../src/screens/useNativeNoteBackup.ts', import.meta.url), 'utf8'), {
+      react: root.hook, 'react-native': root.native,
+      '../custody/privateAuthentication': { createNativePrivateAuthenticationScope },
+      './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+      '../platform/noteBackupPicker': { shouldLockWalletForNotePicker: () => false, pickNoteBackupFile: async () => file.slice() },
+      '../custody/nativeNoteRestore': { createNativeNoteRestore },
+    });
+  }
   const Root = evaluate(source, dependencies).NativeWalletContent as (props: object) => Element;
   const props = { controllerRef: { current: null }, onExit() {} };
   const render = () => root.renderOwner(Root, props);
@@ -1237,6 +1264,39 @@ test('Sentry settings handles a synchronous stale-at-open failure without a read
   } finally { f.dispose(); }
 });
 
+
+test('ambiguous note restore shows its recovery instructions on the PIN screen', async () => {
+  const failure = { commits: 0 };
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, true, undefined, undefined,
+    quietActivityNotifications, undefined, undefined, failure);
+  try {
+    const tools = all(f.render()).find(node => node.type === 'RealTools'); assert(tools);
+    (tools.props.onPrivateNotes as () => void)();
+    const menu = f.render(); assert.equal(menu.type, 'NativeNoteFilesMenu');
+    (menu.props.onRestore as () => void)();
+    let restore = f.render(); assert.equal(restore.type, 'NativeNoteRestore');
+    await (restore.props.onChoose as () => Promise<void>)();
+    restore = f.render();
+    assert.equal((restore.props.step as { phase: string }).phase, 'password');
+    await (restore.props.onOpen as (password: string) => Promise<void>)('Portable test backup password');
+    restore = f.render();
+    const step = restore.props.step as { phase: string; preview: { id: string } };
+    assert.equal(step.phase, 'review');
+    await (restore.props.onRestore as (id: string) => Promise<void>)(step.preview.id);
+    const locked = f.render();
+    assert.equal(locked.type, 'PinEntryScreen');
+    assert.equal(failure.commits, 1);
+    assert.equal(f.locks, 1);
+    const notices = all(locked.props.notice);
+    assert(notices.some(node => node.type === 'Notice' && node.props.title === 'Restore could not be confirmed'));
+    assert(notices.some(node => String(node.props.body).includes('after unlocking')));
+    assert(!notices.some(node => node.props.title === 'Notes restored'));
+    const retry = await f.unlock('INVALID_CREDENTIAL');
+    assert.equal(retry.type, 'PinEntryScreen');
+    assert(all(retry.props.notice).some(node => node.props.title === 'Restore could not be confirmed'), 'a failed unlock must retain the restore warning');
+    assert.equal(failure.commits, 1, 'unlock retry must not repeat the restore');
+  } finally { f.dispose(); }
+});
 
 test('private deposit backup returns its public task and discards stale export callbacks', async () => {
   for (const finish of ['saved', 'back', 'changed-context'] as const) {

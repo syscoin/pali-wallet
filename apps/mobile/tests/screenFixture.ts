@@ -33,7 +33,10 @@ export function screenFixture(file: URL, exported: string, imports: Record<strin
       return c.value as T;
     },
     useCallback<T>(callback: T, deps: readonly unknown[]) { return react.useMemo(() => callback, deps); },
-    useSyncExternalStore<T>(_subscribe: unknown, getSnapshot: () => T) { return getSnapshot(); },
+    useSyncExternalStore<T>(subscribe: (listener: () => void) => () => void, getSnapshot: () => T) {
+      react.useLayoutEffect(() => subscribe(() => {}), [subscribe]);
+      return getSnapshot();
+    },
     useLayoutEffect(callback: () => void | (() => void), deps?: readonly unknown[]) {
       const c = cell();
       if (deps && c.deps && deps.length === c.deps.length && deps.every((d, i) => Object.is(d, c.deps![i]))) return;

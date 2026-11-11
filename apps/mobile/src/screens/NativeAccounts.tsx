@@ -46,6 +46,10 @@ type Form = {
   catalogueRevision: number;
   contextRevision: number;
 };
+type FormScope = {
+  catalogue: NonNullable<ReturnType<NativeAccountView['getSnapshot']>>;
+  contextRevision: number;
+};
 function failure(error: unknown, t: TFunction): string {
   const code = error instanceof Error ? error.message : '';
   if (code === 'BUSY')
@@ -91,6 +95,8 @@ export function NativeAccounts({
   const [error, setError] = useState('');
   const [removeAcknowledged, setRemoveAcknowledged] = useState(false);
   const working = useRef(false);
+  const formScope = useRef<FormScope | null>(null);
+  const operationScope = useRef<FormScope | null>(null);
   const lifetime = useRef({ alive: true, epoch: 0 });
   const latestBack = useRef(onBack);
   useLayoutEffect(() => {
@@ -99,10 +105,21 @@ export function NativeAccounts({
   const subscribe = useCallback(
     (listener: () => void) =>
       controller.subscribe(() => {
-        setForm(null);
-        setAdding(false);
-        setName('');
-        setRemoveAcknowledged(false);
+        const scope = operationScope.current ?? formScope.current;
+        const current = controller.getSnapshot();
+        const revision = controller.getContextRevision();
+        const unchanged = scope && current === scope.catalogue && revision === scope.contextRevision;
+        // The authority hides its catalogue while authenticating our request.
+        // A refused credential then restores that exact, unmodified catalogue.
+        const authenticating = scope && scope === operationScope.current &&
+          revision === scope.contextRevision + 1 && (!current || current === scope.catalogue);
+        if (!unchanged && !authenticating) {
+          formScope.current = null;
+          setForm(null);
+          setAdding(false);
+          setName('');
+          setRemoveAcknowledged(false);
+        }
         listener();
       }),
     [controller]
@@ -120,6 +137,7 @@ export function NativeAccounts({
   }, [controller]);
   const back = useCallback(() => {
     if (form && !busy && !working.current) {
+      formScope.current = null;
       setForm(null);
       setError('');
     } else close();
@@ -146,6 +164,7 @@ export function NativeAccounts({
     setAdding(false);
     setName(value.label);
     setRemoveAcknowledged(false);
+    formScope.current = { catalogue: snapshot, contextRevision: controller.getContextRevision() };
     setForm({
       ...value,
       catalogueRevision: snapshot.revision,
@@ -163,16 +182,31 @@ export function NativeAccounts({
     setError('');
     Keyboard.dismiss();
     const epoch = lifetime.current.epoch;
+    const catalogue = controller.getSnapshot();
+    const scope = catalogue && catalogue.revision === catalogueRevision && controller.getContextRevision() === contextRevision
+      ? formScope.current ?? { catalogue, contextRevision } : null;
+    operationScope.current = scope;
     try {
       await controller.execute(request, contextRevision, catalogueRevision);
       if (lifetime.current.alive && epoch === lifetime.current.epoch) {
+        formScope.current = null;
         setForm(null);
         setName('');
       }
     } catch (cause) {
-      if (lifetime.current.alive && epoch === lifetime.current.epoch)
+      if (lifetime.current.alive && epoch === lifetime.current.epoch) {
+        // Renew only this unchanged draft after the authority has returned from
+        // authentication. Never carry approval across a changed saved catalogue.
+        if (scope && formScope.current === scope && controller.getSnapshot() === scope.catalogue &&
+            controller.getContextRevision() === scope.contextRevision + 1) {
+          const contextRevision = controller.getContextRevision();
+          formScope.current = { ...scope, contextRevision };
+          setForm(current => current && { ...current, contextRevision });
+        }
         setError(failure(cause, t));
+      }
     } finally {
+      if (operationScope.current === scope) operationScope.current = null;
       working.current = false;
       if (lifetime.current.alive && epoch === lifetime.current.epoch) {
         setBusy(false);
