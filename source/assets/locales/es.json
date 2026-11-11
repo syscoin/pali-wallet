@@ -1,24 +1,24 @@
 {
   "updates": {
-    "title": "Wallet updates",
-    "available": "Update available",
-    "current": "No newer published version found.",
-    "unavailable": "Release information is unavailable. Try again later.",
-    "notChecked": "Updates have not been checked yet.",
-    "checking": "Checking for updates…",
-    "check": "Check for updates",
-    "installed": "Installed:",
-    "latest": "Latest published:",
-    "readyToInstall": "Ready to install:",
-    "releaseNotes": "Release notes",
-    "openStore": "Open Chrome Web Store",
-    "automaticInstall": "Chrome installs updates automatically when Pali is idle. Finish your wallet actions, then close the extension.",
-    "throttled": "Chrome checked recently. Try the browser check again later.",
-    "browserUnavailable": "Chrome could not check for an update. You can check the store listing.",
+    "title": "Actualizaciones de la billetera",
+    "available": "Actualización disponible",
+    "current": "No se ha encontrado una versión publicada más reciente.",
+    "unavailable": "La información de versiones no está disponible. Inténtalo de nuevo más tarde.",
+    "notChecked": "Todavía no se han buscado actualizaciones.",
+    "checking": "Buscando actualizaciones…",
+    "check": "Buscar actualizaciones",
+    "installed": "Instalada:",
+    "latest": "Última versión publicada:",
+    "readyToInstall": "Lista para instalar:",
+    "releaseNotes": "Notas de la versión",
+    "openStore": "Abrir Chrome Web Store",
+    "automaticInstall": "Chrome instala las actualizaciones automáticamente cuando Pali está inactivo. Termina tus operaciones en la billetera y cierra la extensión.",
+    "throttled": "Chrome ha buscado actualizaciones hace poco. Inténtalo de nuevo más tarde.",
+    "browserUnavailable": "Chrome no ha podido buscar actualizaciones. Puedes consultar la página de la tienda.",
     "severity": {
-      "routine": "Routine update",
-      "important": "Important update",
-      "critical": "Critical update"
+      "routine": "Actualización rutinaria",
+      "important": "Actualización importante",
+      "critical": "Actualización crítica"
     }
   },
   "assetTransfer": {

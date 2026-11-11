@@ -1,24 +1,24 @@
 {
   "updates": {
-    "title": "Wallet updates",
-    "available": "Update available",
-    "current": "No newer published version found.",
-    "unavailable": "Release information is unavailable. Try again later.",
-    "notChecked": "Updates have not been checked yet.",
-    "checking": "Checking for updates…",
-    "check": "Check for updates",
-    "installed": "Installed:",
-    "latest": "Latest published:",
-    "readyToInstall": "Ready to install:",
-    "releaseNotes": "Release notes",
-    "openStore": "Open Chrome Web Store",
-    "automaticInstall": "Chrome installs updates automatically when Pali is idle. Finish your wallet actions, then close the extension.",
-    "throttled": "Chrome checked recently. Try the browser check again later.",
-    "browserUnavailable": "Chrome could not check for an update. You can check the store listing.",
+    "title": "Обновления кошелька",
+    "available": "Доступно обновление",
+    "current": "Более новая опубликованная версия не найдена.",
+    "unavailable": "Информация о версиях недоступна. Повторите попытку позже.",
+    "notChecked": "Проверка обновлений ещё не выполнялась.",
+    "checking": "Проверка обновлений…",
+    "check": "Проверить обновления",
+    "installed": "Установленная версия:",
+    "latest": "Последняя опубликованная версия:",
+    "readyToInstall": "Готово к установке:",
+    "releaseNotes": "Примечания к выпуску",
+    "openStore": "Открыть Chrome Web Store",
+    "automaticInstall": "Chrome автоматически устанавливает обновления, когда Pali не используется. Завершите операции в кошельке и закройте расширение.",
+    "throttled": "Chrome недавно проверял обновления. Повторите проверку позже.",
+    "browserUnavailable": "Chrome не удалось проверить обновления. Вы можете открыть страницу в магазине.",
     "severity": {
-      "routine": "Routine update",
-      "important": "Important update",
-      "critical": "Critical update"
+      "routine": "Обычное обновление",
+      "important": "Важное обновление",
+      "critical": "Критическое обновление"
     }
   },
   "assetTransfer": {

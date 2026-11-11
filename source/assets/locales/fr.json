@@ -1,24 +1,24 @@
 {
   "updates": {
-    "title": "Wallet updates",
-    "available": "Update available",
-    "current": "No newer published version found.",
-    "unavailable": "Release information is unavailable. Try again later.",
-    "notChecked": "Updates have not been checked yet.",
-    "checking": "Checking for updates…",
-    "check": "Check for updates",
-    "installed": "Installed:",
-    "latest": "Latest published:",
-    "readyToInstall": "Ready to install:",
-    "releaseNotes": "Release notes",
-    "openStore": "Open Chrome Web Store",
-    "automaticInstall": "Chrome installs updates automatically when Pali is idle. Finish your wallet actions, then close the extension.",
-    "throttled": "Chrome checked recently. Try the browser check again later.",
-    "browserUnavailable": "Chrome could not check for an update. You can check the store listing.",
+    "title": "Mises à jour du portefeuille",
+    "available": "Mise à jour disponible",
+    "current": "Aucune version publiée plus récente n’a été trouvée.",
+    "unavailable": "Les informations sur les versions sont indisponibles. Réessayez plus tard.",
+    "notChecked": "Les mises à jour n’ont pas encore été recherchées.",
+    "checking": "Recherche de mises à jour…",
+    "check": "Rechercher des mises à jour",
+    "installed": "Version installée :",
+    "latest": "Dernière version publiée :",
+    "readyToInstall": "Prête à installer :",
+    "releaseNotes": "Notes de version",
+    "openStore": "Ouvrir le Chrome Web Store",
+    "automaticInstall": "Chrome installe automatiquement les mises à jour lorsque Pali est inactif. Terminez vos opérations dans le portefeuille, puis fermez l’extension.",
+    "throttled": "Chrome a effectué une recherche récemment. Réessayez plus tard.",
+    "browserUnavailable": "Chrome n’a pas pu rechercher de mise à jour. Vous pouvez consulter la page de la boutique.",
     "severity": {
-      "routine": "Routine update",
-      "important": "Important update",
-      "critical": "Critical update"
+      "routine": "Mise à jour courante",
+      "important": "Mise à jour importante",
+      "critical": "Mise à jour critique"
     }
   },
   "assetTransfer": {

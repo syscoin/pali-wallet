@@ -1,24 +1,24 @@
 {
   "updates": {
-    "title": "Wallet updates",
-    "available": "Update available",
-    "current": "No newer published version found.",
-    "unavailable": "Release information is unavailable. Try again later.",
-    "notChecked": "Updates have not been checked yet.",
-    "checking": "Checking for updates…",
-    "check": "Check for updates",
-    "installed": "Installed:",
-    "latest": "Latest published:",
-    "readyToInstall": "Ready to install:",
-    "releaseNotes": "Release notes",
-    "openStore": "Open Chrome Web Store",
-    "automaticInstall": "Chrome installs updates automatically when Pali is idle. Finish your wallet actions, then close the extension.",
-    "throttled": "Chrome checked recently. Try the browser check again later.",
-    "browserUnavailable": "Chrome could not check for an update. You can check the store listing.",
+    "title": "钱包更新",
+    "available": "有可用更新",
+    "current": "未发现更新的已发布版本。",
+    "unavailable": "暂时无法获取版本信息，请稍后重试。",
+    "notChecked": "尚未检查更新。",
+    "checking": "正在检查更新…",
+    "check": "检查更新",
+    "installed": "已安装：",
+    "latest": "最新发布：",
+    "readyToInstall": "可安装版本：",
+    "releaseNotes": "版本说明",
+    "openStore": "打开 Chrome Web Store",
+    "automaticInstall": "Chrome 会在 Pali 空闲时自动安装更新。请完成钱包操作，然后关闭扩展程序。",
+    "throttled": "Chrome 刚刚检查过更新，请稍后再试。",
+    "browserUnavailable": "Chrome 无法检查更新，你可以查看商店页面。",
     "severity": {
-      "routine": "Routine update",
-      "important": "Important update",
-      "critical": "Critical update"
+      "routine": "常规更新",
+      "important": "重要更新",
+      "critical": "关键更新"
     }
   },
   "assetTransfer": {
