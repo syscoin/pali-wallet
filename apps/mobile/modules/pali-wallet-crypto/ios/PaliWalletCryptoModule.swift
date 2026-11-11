@@ -128,6 +128,14 @@ public final class PaliWalletCryptoModule: Module {
     if Thread.isMainThread { return UIApplication.shared.applicationState == .active }
     return DispatchQueue.main.sync { UIApplication.shared.applicationState == .active }
   }
+  private func slhResourceDefinition(_ make: @autoclosure () -> AnyDefinition) -> AnyDefinition {
+    // Expo's module builder has no conditional branches. Its empty definition
+    // exports nothing; do not even construct these functions in other bundles.
+    guard Bundle.main.bundleIdentifier == PaliSlhQualificationResources.bundleIdentifier else {
+      return ModuleDefinitionBuilder.buildBlock()
+    }
+    return make()
+  }
 
   public func definition() -> ModuleDefinition {
     Name("PaliWalletCrypto")
@@ -145,17 +153,15 @@ public final class PaliWalletCryptoModule: Module {
     OnAppContextDestroys { self.slhQualificationResources.cancel(dispose: true) }
     OnAppEntersBackground { self.slhOwner.background(); self.slhQualificationResources.cancel() }
     OnAppEntersForeground { self.slhOwner.resume() }
-    if Bundle.main.bundleIdentifier == PaliSlhQualificationResources.bundleIdentifier {
-      Function("beginSlhQualificationResources") { () throws -> String in
+    slhResourceDefinition(Function("beginSlhQualificationResources") { () throws -> String in
         guard self.slhForeground() else { throw PaliSlhFailure.unavailable }
         return try self.slhQualificationResources.begin()
-      }
-      Function("finishSlhQualificationResources") { (id: String) throws -> [String: Any] in
+      })
+    slhResourceDefinition(Function("finishSlhQualificationResources") { (id: String) throws -> [String: Any] in
         guard self.slhForeground() else { self.slhQualificationResources.cancel(id); throw PaliSlhFailure.unavailable }
         return try self.slhQualificationResources.finish(id)
-      }
-      Function("cancelSlhQualificationResources") { (id: String) in self.slhQualificationResources.cancel(id) }
-    }
+      })
+    slhResourceDefinition(Function("cancelSlhQualificationResources") { (id: String) in self.slhQualificationResources.cancel(id) })
     AsyncFunction("publicMerkleBatch") { (program: Data, promise: Promise) in
       PaliPublicMerkleBatch.shared.execute(program, owner: self.publicMerkleOwner) { result in
         switch result {
