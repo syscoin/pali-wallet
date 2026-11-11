@@ -237,10 +237,10 @@ for (const event of ['inactive', 'blur', 'background'] as const) test(`collatera
   try {
     const tree = await releaseForm(f); press(button(tree, 'Release collateral'));
     if (event === 'blur') f.emit('blur'); else f.emit('change', event);
-    assert.equal(f.backs(), event === 'background' ? 1 : 0);
-    assert.equal(f.calls.dispose, event === 'background' ? 1 : 0);
+    assert.equal(f.backs(), 0);
+    assert.equal(f.calls.dispose, 0);
     f.emit('change', 'active'); proof.resolve(); await settle();
-    assert.equal(f.calls.writes, event === 'background' ? 0 : 1);
+    assert.equal(f.calls.writes, 1);
   } finally { proof.resolve(); f.dispose(); }
 });
 

@@ -13,6 +13,8 @@ const {
   runPhysical,
 } = require('./run-physical-ios.cjs');
 const { PHYSICAL_BUNDLES } = require('./physical-contract.ts');
+const { FULL_SLH_CHECK, FULL_SLH_PHASE_TIMEOUT_MS } = require('./native-slh-full.ts');
+const { SLH_DSA_PARAMETER_SET } = require('../../../source/utils/slhDsa/constants.ts');
 const { TIMED_CRYPTO_CASES, CHECKS } = require('./simulator-contract.cjs');
 const {
   expectedQualificationSdkVersion,
@@ -40,12 +42,29 @@ function physicalDevice() {
     },
   };
 }
-function report(phase, scenario, runId) {
+// Schema fixture only; the host tests never execute or qualify native cryptography.
+function fullSlhEvidence(phase, lockfileSha256) {
+  const hash = byte => '0x' + byte.repeat(32);
+  const signed = (count, fallback = false) => ({ actionHash: hash(String(count).padStart(2, '0')),
+    signatureHash: hash(String(count + 10).padStart(2, '0')), signMs: 123.5, count,
+    verified: true, mutatedSignatureRefused: true, mutatedActionRefused: true,
+    native: { loads: 1, setups: 0, prelude: 1, fors: fallback ? 0 : 6,
+      finish: fallback ? 0 : 1, cached: fallback ? 1 : 0, forced: fallback ? 1 : 0 } });
+  return { version: 1, sourceRevision: SOURCE, lockfileSha256,
+    parameterSet: SLH_DSA_PARAMETER_SET, accountIndex: 0, profileHash: hash('01'), keyIdHash: hash('02'), publicKey32: hash('03'),
+    signatureCount: phase === 'create' ? 2 : 3, deriveCalls: phase === 'create' ? 1 : 0,
+    prepared: phase === 'create', canceledAdmissionDrained: phase === 'create',
+    timings: { deriveSetupSecretMs: phase === 'create' ? 10.5 : null,
+      prepareFreshMs: phase === 'create' ? 1000.5 : null, hydrateInstalledMs: 2.5 },
+    healthy: signed(phase === 'create' ? 1 : 3), fallback: phase === 'create' ? signed(2, true) : null };
+}
+
+function report(phase, scenario, runId, lockfileSha256) {
   return {
     version: 1,
-    status: 'passed',
+    status: 'passed', authorizationMode: 'test-only-fixture',
     phase,
-    scenario,
+    scenario: scenario === 'full_slh' ? 'import' : scenario,
     platform: 'ios',
     osVersion: '27.2',
     sessionId:
@@ -53,10 +72,14 @@ function report(phase, scenario, runId) {
         ? '11111111-1111-1111-1111-111111111111'
         : '22222222-2222-2222-2222-222222222222',
     address:
-      scenario === 'import'
+      scenario !== 'generate'
         ? '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0'
         : '0x' + '11'.repeat(20),
     fingerprint: 'f'.repeat(64),
+    ...(scenario === 'full_slh' ? { fullSlh: fullSlhEvidence(phase, lockfileSha256),
+      fullSlhResources: { version: 1, scope: 'process-lifetime-including-startup', startFootprintBytes: 1000000,
+        endFootprintBytes: 2000000, peakFootprintBytes: 3000000, peakResidentBytes: 4000000, elapsedMs: 2000,
+        initialThermalState: 0, finalThermalState: 1, worstThermalState: 2, thermalObservations: 3 } } : {}),
     networkCalls: 0,
     nativeBridgeExercised: true,
     sdkVersion: expectedQualificationSdkVersion,
@@ -77,9 +100,10 @@ function report(phase, scenario, runId) {
     },
     checks: [
       ...CHECKS,
-      'synchronous lock and wrong password refusal',
+      ...(scenario === 'full_slh' ? [FULL_SLH_CHECK] : []),
+      'synchronous lock and OS authorization refusal',
       phase === 'create'
-        ? 'fresh password-backed seed confirmation'
+        ? 'public-fixture authorized seed confirmation'
         : 'seed reauthentication after cold restart',
     ].map((name) => ({ name, durationMs: 1 })),
     storageDiagnostic: { stage: 'ready' },
@@ -87,7 +111,7 @@ function report(phase, scenario, runId) {
     erc20AccountId: 'hd:60:2',
     erc20AccountIndex: 2,
     erc20Address:
-      scenario === 'import'
+      scenario !== 'generate'
         ? '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A'
         : '0x' + '22'.repeat(20),
     erc20TransferHash: '0x' + 'c'.repeat(64),
@@ -99,7 +123,7 @@ function report(phase, scenario, runId) {
     nativeNevmVerified: true,
     nevmAccountId: 'hd:60:3',
     nevmAccountIndex: 3,
-    nevmAddress: scenario === 'import'
+    nevmAddress: scenario !== 'generate'
       ? '0xF3f50213C1d2e255e4B2bAD430F8A38EEF8D718E'
       : '0x' + '33'.repeat(20),
     nevmTransferHash: '0x' + '7'.repeat(64),
@@ -109,7 +133,7 @@ function report(phase, scenario, runId) {
     nevmRestoredFromJournal: phase === 'restart',
     nativeZksysVerified: true,
     zksysAccountId: 'hd:60:4', zksysAccountIndex: 4,
-    zksysAddress: scenario === 'import' ? '0x51cA8ff9f1C0a99f88E86B8112eA3237F55374cA' : '0x' + '44'.repeat(20),
+    zksysAddress: scenario !== 'generate' ? '0x51cA8ff9f1C0a99f88E86B8112eA3237F55374cA' : '0x' + '44'.repeat(20),
     zksysTransferHash: '0x' + '9'.repeat(64), zksysChainId: '57057', zksysJournalContainerVersion: 1,
     zksysSignatures: phase === 'create' ? 1 : 0,
     zksysAuthorizations: phase === 'create' ? 0 : 1,
@@ -137,24 +161,27 @@ function fixture(changes = {}) {
   const calls = [];
   const running = new Map();
   const reports = new Map();
+  const reportReadyAt = new Map();
   const installed = new Set(
-    changes.installed ? Object.values(PHYSICAL_BUNDLES) : []
+    changes.installed ? (changes.fullSlh ? [PHYSICAL_BUNDLES.full_slh] : [PHYSICAL_BUNDLES.import, PHYSICAL_BUNDLES.generate]) : []
   );
   const options = {
     device: DEVICE,
     sourceRevision: SOURCE,
     output: path.join(directory, 'evidence'),
     reset: !!changes.reset,
+    ...(changes.fullSlh ? { fullSlh: true } : {}),
     apps: {},
-    cdhashes: { import: '1'.repeat(40), generate: '2'.repeat(40) },
+    cdhashes: { import: '1'.repeat(40), generate: '2'.repeat(40), ...(changes.fullSlh ? { full_slh: '3'.repeat(40) } : {}) },
   };
-  for (const scenario of ['import', 'generate']) {
+  for (const scenario of changes.fullSlh ? ['full_slh'] : ['import', 'generate']) {
     const app = path.join(directory, scenario + '.app');
     fs.mkdirSync(app);
     options.apps[scenario] = app;
     const executable =
-      scenario === 'import' ? 'PaliPhysicalImport' : 'PaliPhysicalGenerate';
+      scenario === 'full_slh' ? 'PaliPhysicalSLH' : scenario === 'import' ? 'PaliPhysicalImport' : 'PaliPhysicalGenerate';
     infos[app] = {
+      ...(changes.fullSlh ? { PaliQualificationFullSLH: true } : {}),
       CFBundleIdentifier: PHYSICAL_BUNDLES[scenario],
       CFBundleExecutable: executable,
       DTPlatformName: 'iphoneos',
@@ -263,12 +290,13 @@ function fixture(changes = {}) {
               physicalBundleIdentifier: bundle,
               physicalSourceRevision: SOURCE,
             }
-          : report(phase, scenario, runId);
+          : report(phase, scenario, runId, lockHash);
       if (changes.report) changes.report(value, phase, scenario);
       reports.set(
         `${bundle}:Documents/pali-native-qualification-${phase}-${runId}.json`,
         value
       );
+      reportReadyAt.set(`${bundle}:Documents/pali-native-qualification-${phase}-${runId}.json`, time + (phase === 'reset' ? 0 : changes.reportDelayMs || 0));
       return json({ processIdentifier: next, executable });
     }
     if (a.includes('processes'))
@@ -297,7 +325,7 @@ function fixture(changes = {}) {
         return json({});
       }
       const value = reports.get(`${arg('--domain-identifier')}:${source}`);
-      if (!value || changes.noReport)
+      if (!value || changes.noReport || time < reportReadyAt.get(`${arg('--domain-identifier')}:${source}`))
         return { status: 1, stderr: 'private missing file' };
       fs.writeFileSync(destination, JSON.stringify(value));
       return json({});
@@ -373,6 +401,73 @@ test('CLI accepts only exact bounded physical inputs, with explicit reset', () =
   ])
     assert.throws(() => parseOptions(value));
 });
+test('full SLH CLI mode accepts only its separate fixed artifact pair', () => {
+  const args = ['--full-slh', '--device', DEVICE, '--source-revision', SOURCE,
+    '--full-slh-app', '/slh.app', '--full-slh-cdhash', '3'.repeat(40), '--output', '/out'];
+  const options = parseOptions(args);
+  assert.equal(options.fullSlh, true);
+  assert.deepEqual(Object.keys(options.apps), ['full_slh']);
+  for (const invalid of [args.slice(1), [...args, '--full-slh'],
+    [...args, '--import-app', '/import.app'], [...args, '--generate-cdhash', '2'.repeat(40)],
+    args.map(value => value === '3'.repeat(40) ? 'bad-hash' : value)])
+    assert.throws(() => parseOptions(invalid));
+});
+
+test('physical full SLH uses its isolated app, shared evidence and cold restart at the existing SLH limit', async () => {
+  const f = fixture({ fullSlh: true, reportDelayMs: 301000,
+    report(value) { if (value.fullSlh) value.checks.find(check => check.name === FULL_SLH_CHECK).durationMs = FULL_SLH_PHASE_TIMEOUT_MS; } });
+  try {
+    const result = await run(f);
+    assert.equal(result.fullSlhExecutionVerified, true);
+    assert.equal(result.fullSlhResourcesQualified, false);
+    assert.equal(result.summaries[0].resources.create.scope, 'process-lifetime-including-startup');
+    assert.equal(result.summaries.length, 1);
+    assert.equal(result.summaries[0].bundleIdentifier, PHYSICAL_BUNDLES.full_slh);
+    assert.equal(result.summaries[0].fullSlhExecutionVerified, true);
+    assert.equal(result.summaries[0].processRestartVerified, true);
+    assert(f.calls.filter(call => call.args.includes('install')).every(call => call.args.at(-1).endsWith('full_slh.app')));
+  } finally { f.cleanup(); }
+});
+
+test('ordinary physical reports retain their five-minute wait and reject full SLH evidence', async () => {
+  for (const changes of [{ reportDelayMs: 301000 }, { report(value) { if (value.status === 'passed') value.fullSlh = fullSlhEvidence('create', 'b'.repeat(64)); } }]) {
+    const f = fixture(changes);
+    try { await assert.rejects(run(f)); } finally { f.cleanup(); }
+  }
+});
+
+for (const mutation of ['missing', 'source', 'lockfile', 'restart-count', 'long-non-SLH-check', 'over-limit', 'resources-missing', 'resources-short', 'resources-thermal'] )
+  test(`physical full SLH rejects ${mutation} evidence`, async () => {
+    const f = fixture({ fullSlh: true, report(value, phase) {
+      if (!value.fullSlh) return;
+      if (mutation === 'missing') delete value.fullSlh;
+      else if (mutation === 'source') value.fullSlh.sourceRevision = 'e'.repeat(40);
+      else if (mutation === 'lockfile') value.fullSlh.lockfileSha256 = 'e'.repeat(64);
+      else if (mutation === 'restart-count' && phase === 'restart') value.fullSlh.signatureCount = 2;
+      else if (mutation === 'long-non-SLH-check') value.checks[0].durationMs = 300001;
+      else if (mutation === 'over-limit') value.checks.find(check => check.name === FULL_SLH_CHECK).durationMs = FULL_SLH_PHASE_TIMEOUT_MS + 1;
+      else if (mutation === 'resources-missing') delete value.fullSlhResources;
+      else if (mutation === 'resources-short') value.fullSlhResources.elapsedMs = 1;
+      else if (mutation === 'resources-thermal') value.fullSlhResources.worstThermalState = 0;
+    } });
+    try { await assert.rejects(run(f)); } finally { f.cleanup(); }
+  });
+
+test('full SLH artifact requires its exact mode and bundle before device mutation', async () => {
+  for (const info of [{ PaliQualificationFullSLH: false }, { CFBundleIdentifier: PHYSICAL_BUNDLES.import }]) {
+    const f = fixture({ fullSlh: true, info });
+    try { await assert.rejects(run(f)); assert.deepEqual(mutations(f.calls), []); } finally { f.cleanup(); }
+  }
+});
+
+test('full SLH reset targets only the separate SLH fixture', async () => {
+  const f = fixture({ fullSlh: true, reset: true, installed: true });
+  try {
+    await run(f);
+    assert.deepEqual(f.calls.filter(call => call.args.includes('uninstall')).map(call => call.args.at(-1)), [PHYSICAL_BUNDLES.full_slh]);
+  } finally { f.cleanup(); }
+});
+
 test('invalid CLI arguments are contained without echoing them or contacting a device', () => {
   const result = spawnSync(
     process.execPath,
@@ -821,7 +916,7 @@ test('reset is opt-in and uninstall is limited to two acknowledged fixed fixture
     const removed = f.calls
       .filter((c) => c.args.includes('uninstall'))
       .map((c) => c.args.at(-1));
-    assert.deepEqual(removed, Object.values(PHYSICAL_BUNDLES));
+    assert.deepEqual(removed, [PHYSICAL_BUNDLES.import, PHYSICAL_BUNDLES.generate]);
     assert.equal(f.calls.filter((c) => c.args.includes('launch')).length, 6);
   } finally {
     f.cleanup();
@@ -1049,4 +1144,14 @@ test('physical imported evidence rejects missing claims and cross-restart key/ch
     assert.throws(() => decodePhysicalReport(JSON.stringify({ ...created, ...change }), expected));
   assert.doesNotThrow(() => assertPhysicalRestart(created, restored));
   assert.throws(() => assertPhysicalRestart(created, { ...restored, importedTransferHashes: ['0x' + 'f'.repeat(64), ...restored.importedTransferHashes.slice(1)] }));
+});
+
+test('crypto fixture reports cannot claim native OS authorization', () => {
+  const runId = '0'.repeat(32), current = report('create', 'import', runId);
+  const expected = { runId, sourceRevision: SOURCE, bundleIdentifier: PHYSICAL_BUNDLES.import, phase: 'create', scenario: 'import' };
+  for (const authorizationMode of [undefined, 'native-os', 'biometric', false]) {
+    const changed = { ...current, authorizationMode };
+    assert.throws(() => decodePhysicalReport(JSON.stringify(changed), expected));
+  }
+  assert.equal(decodePhysicalReport(JSON.stringify(current), expected).authorizationMode, 'test-only-fixture');
 });

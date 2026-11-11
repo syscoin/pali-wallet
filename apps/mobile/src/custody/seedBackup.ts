@@ -49,7 +49,7 @@ export class SeedBackupFlow {
     this.cancelling = false;
   }
 
-  async begin(password: NativeOperationCredential | string): Promise<SeedBackupPresentation> {
+  async begin(password: NativeOperationCredential): Promise<SeedBackupPresentation> {
     if (this.disposed) throw new Error('BACKUP_EXPIRED');
     if (this.busy) throw new Error('BUSY');
     const state = this.authority.getSnapshot();

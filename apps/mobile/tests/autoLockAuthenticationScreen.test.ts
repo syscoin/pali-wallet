@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as idlePolicy from '../../../source/shared/idleLockPolicy.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import * as privateAuthenticationLifecycle from '../src/screens/privateAuthenticationLifecycle.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 
 function fixture(mode: 'custody' | 'watch' = 'custody') {
@@ -15,6 +16,7 @@ function fixture(mode: 'custody' | 'watch' = 'custody') {
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../../../../source/shared/idleLockPolicy': idlePolicy,
     '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': privateAuthenticationLifecycle,
     '../platform/security': { securityPreferences: { subscribe: () => () => {}, getSnapshot: () => ({ value: saved }) } },
     './IdleActivityBoundary': { IdlePressable: 'IdlePressable', IdleTextInput: 'IdleTextInput' },
     '../ui': Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'Notice', 'Screen', 'Text'].map(name => [name, name]).concat([['colors', {}], ['styles', { screen: {} }]] as any)),

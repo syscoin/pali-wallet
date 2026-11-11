@@ -30,7 +30,7 @@ test('HD key qualification cannot read a secret before backup confirmation or fo
       getCatalogue: () => ({ revision: 1, active: { accountId: `hd:60:${index}`, networkId: 'ethereum' }, accounts: [{ id: `hd:60:${index}`, index, type: 'HDAccount', address: evidence('create').address }] }) } as unknown as NativeCustodyAuthority;
     const runtime = { keyExport: { async readSelected() { reads++; return ''; } } } as unknown as KeyringRuntime;
     await assert.rejects(qualifyNativeHdKeyReveal({ authority, runtime, storage: {} as OpenWalletStorage,
-      password: 'public-test-password', expectedAddress: evidence('create').address, check: async (_name, operation) => operation() }), /QUALIFICATION_HD_KEY_REVEAL_FAILED/);
+      expectedAddress: evidence('create').address, check: async (_name, operation) => operation() }), /QUALIFICATION_HD_KEY_REVEAL_FAILED/);
   }
   assert.equal(reads, 0);
 });

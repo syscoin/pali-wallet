@@ -1,6 +1,7 @@
 import type { NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 
-/** Keep only this owner's pending OS proof alive; delivery still requires foreground. */
+/** The native adapter admits background only for its exact Android credential prompt.
+ * A general background state never produces an active marker; delivery requires foreground. */
 export function allowsPrivateAuthenticationInterruption(scope: Pick<NativePrivateAuthenticationScope, 'isAuthenticating'>, state: string | null | undefined): boolean {
-  return (state === 'inactive' || state === 'blur') && scope.isAuthenticating();
+  return (state === 'inactive' || state === 'blur' || state === 'background') && scope.isAuthenticating();
 }

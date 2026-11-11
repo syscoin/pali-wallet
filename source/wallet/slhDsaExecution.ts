@@ -54,8 +54,8 @@ export type SlhDsaExecutionHost<Tree, Key> = Readonly<{
     tree: Tree
   ): Result<Uint8Array>;
   forsConcurrency: number;
-  hardwareConcurrency: number;
   importKey(secretKey: Uint8Array): Result<Key>;
+  leafConcurrency: number;
   loadTree(keyId: string): Promise<TreeRecord<Tree> | null>;
   openSetup(seed48: Uint8Array): Result<
     Readonly<{
@@ -152,8 +152,9 @@ export const createSlhDsaExecution = <Tree, Key>(
       throw new Error(`SLH-DSA primitive is required: ${name}`);
   }
   if (
-    !Number.isInteger(host.hardwareConcurrency) ||
-    host.hardwareConcurrency < 1 ||
+    !Number.isInteger(host.leafConcurrency) ||
+    host.leafConcurrency < 1 ||
+    host.leafConcurrency > 6 ||
     !Number.isInteger(host.forsConcurrency) ||
     host.forsConcurrency < 1 ||
     host.forsConcurrency > SLH_DSA_FORS_TREE_COUNT
@@ -237,10 +238,7 @@ export const createSlhDsaExecution = <Tree, Key>(
         const handle = tree;
         let completed = 0;
         const leafCount = 1 << HEIGHT;
-        const workerCount = Math.max(
-          1,
-          Math.min(6, Math.max(1, host.hardwareConcurrency - 1))
-        );
+        const workerCount = host.leafConcurrency;
         if (workerCount > 1) {
           const lanes = host.createLeafLanes(workerCount);
           if (lanes.length !== workerCount) {

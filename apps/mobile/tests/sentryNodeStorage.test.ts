@@ -1,5 +1,5 @@
 import { storageOnlyPublicSession } from './fixtures/publicSessionRecord.ts';
-import { createTestPinRecord } from './fixtures/pinRecord.ts';
+import { createTestCredentialReference } from './fixtures/credentialReference.ts';
 import {
   createNativeSentryNodeManagement,
   createNativeSentryCollateral,
@@ -344,7 +344,7 @@ test('matching recovery preserves both domains, stale removal refuses, and Forge
       current
     );
     const candidate = validPair(2),
-      pair = { publicSession: storageOnlyPublicSession((await f.storage.recovery.readIdentity())!.walletBindingId), vault: candidate.vault, keys: candidate['vault-keys'], pin: await createTestPinRecord(f.storage, { vault: candidate.vault, keys: candidate['vault-keys'] }, (await f.storage.recovery.readIdentity())!.walletBindingId) },
+      pair = { publicSession: storageOnlyPublicSession((await f.storage.recovery.readIdentity())!.walletBindingId), vault: candidate.vault, keys: candidate['vault-keys'], credential: await createTestCredentialReference(f.storage, { vault: candidate.vault, keys: candidate['vault-keys'] }, (await f.storage.recovery.readIdentity())!.walletBindingId) },
       snapshot = await f.storage.recovery.readSnapshot();
     await assert.rejects(
       f.storage.recovery.prepareReplacement!(snapshot, pair, {
@@ -361,8 +361,8 @@ test('matching recovery preserves both domains, stale removal refuses, and Forge
       current
     );
     await f.storage.recovery.commitReplacement!(plan, current);
-    await f.storage.removal.settlePinCredential(async record => {
-      assert.deepEqual(record, JSON.parse(matching.metadata.find(row => row.key === 'local-pin-v1')!.value));
+    await f.storage.removal.settleCredential(async record => {
+      assert.deepEqual(record, JSON.parse(matching.metadata.find(row => row.key === 'local-credential-v1')!.value));
     });
     assert.deepEqual([f.raw(), f.raw('testnet')], bytes);
     await assert.rejects(main.port.read(), changed);
@@ -380,7 +380,7 @@ test('matching recovery preserves both domains, stale removal refuses, and Forge
     assert.equal(f.raw(), undefined);
     assert.equal(f.raw('testnet'), undefined);
     await f.reopen();
-    await f.storage.removal.settlePinCredential(async record => { assert.deepEqual(record, pair.pin); });
+    await f.storage.removal.settleCredential(async record => { assert.deepEqual(record, pair.credential); });
     assert.equal((await f.storage.recovery.readSnapshot()).records.length, 0);
   } finally {
     await f.close();

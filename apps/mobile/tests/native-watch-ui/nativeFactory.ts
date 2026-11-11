@@ -1,8 +1,7 @@
 import { bindTestRequestAuthentication } from '../fixtures/privateAuthentication.ts';
 import { unsignedTransferBytes } from '../../src/custody/evmFeeContracts.ts';
-import { nativeOperationAuthentication } from '../../src/platform/operationAuthentication';
-import { isOperationAuthenticationCancellation } from '../../src/core/operationAuthentication';
 import { createTestOperationAuthorizer } from '../fixtures/operationAuthorization.ts';
+import { fixtureDeviceAuthorization } from '../native-send-ui/fixtureDeviceAuthorization';
 import { activityFetch } from './utxoActivityFixture';
 import { createNativeUtxoActivity } from '../../src/custody/utxoActivity';
 import { createUtxoActivityReader } from '../../src/core/utxoActivity';
@@ -27,8 +26,6 @@ import { NativeTokens } from '../../src/portfolio/nativeTokens';
 import type { NativeTokenRuntime } from '../../src/portfolio/nativeTokens';
 import { NativeTokenRegistry } from '../../src/portfolio/tokenRegistry';
 import type { KeyringStoragePort } from '../../src/storage/types';
-import { DeviceUnlockPrompt } from '../../src/platform/deviceUnlockPrompt';
-import { AppState } from 'react-native';
 import type { NativeAccountView } from '../../src/custody/accounts';
 import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCatalogue';
 import type { CustodyRuntime, NativeOperationCredential } from '../../src/custody/types';
@@ -117,7 +114,6 @@ async function readFixtureNoteInventory(check: () => void,
 const wifFixtureEnabled = new URLSearchParams(window.location.search).has('wif-fixture');
 const visualReviewEnabled = new URLSearchParams(window.location.search).get('visual-review') === '1';
 let visualWalletPresent = !(visualReviewEnabled && new URLSearchParams(window.location.search).get('native-empty') === '1');
-let visualDeviceUnlockEnabled = visualReviewEnabled && new URLSearchParams(window.location.search).get('device-unlock') === '1';
 const needsInitialBackup = new URLSearchParams(window.location.search).has('backup-required');
 let backupConfirmed = visualWalletPresent && !needsInitialBackup;
 const publicBackupWords = Object.freeze([...Array<string>(11).fill('abandon'), 'about']);
@@ -125,9 +121,8 @@ const fingerprint = '1'.repeat(64);
 export const visualReviewFixture = Object.freeze({
   enabled: visualReviewEnabled,
   label: 'Simulated wallet and device authentication. No real keys or OS biometric prompt.',
-  password: '123456',
   phrase: publicBackupWords.join(' '),
-  state: () => ({ present: visualWalletPresent, deviceUnlockEnabled: visualDeviceUnlockEnabled, backupConfirmed }),
+  state: () => ({ present: visualWalletPresent, backupConfirmed }),
 });
 const visualTokenValues = new Map<string, unknown>();
 const sameValue = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
@@ -184,7 +179,6 @@ export let latestAuthority: NativeCustodyAuthority | null = null;
 export let latestTransfers: NativeTransfers | null = null;
 export const retiredAuthorities: NativeCustodyAuthority[] = [];
 let sessionUnlocked = false;
-let fixturePassword: string = visualReviewEnabled ? visualReviewFixture.password : '123456';
 export function recreateRemovalWallet(accountId: 'hd:60:0' | 'hd:60:1') {
   if (!removalFixtureEnabled || fixtureWalletPresent || !catalogue.accounts.some(({ id }) => id === accountId))
     throw Error('Unexpected fixture wallet recreation');
@@ -200,20 +194,16 @@ const nextAccountIndex = (type: 'HDAccount' | 'Imported') => {
 };
 const importedKeys = new Map<string, string>();
 export function createNativeWalletControllers() {
-  const authentication = visualReviewEnabled ? new DeviceUnlockPrompt({
-    state: () => AppState.currentState ?? 'unknown',
-    subscribe(listener) {
-      const subscriptions = [
-        AppState.addEventListener('change', state => listener(state)),
-        AppState.addEventListener('blur', () => listener('blur')),
-        AppState.addEventListener('focus', () => listener('focus')),
-      ];
-      return () => subscriptions.forEach(subscription => subscription.remove());
-    },
-  }) : undefined;
-  const createVisualWallet = (password: string) => {
+  const authentication = {
+    isActive: fixtureDeviceAuthorization.isActive,
+    cancel: fixtureDeviceAuthorization.cancel,
+    isAnyPromptActive: () => fixtureDeviceAuthorization.isAnyPromptActive(),
+  };
+  const createVisualWallet = async () => {
     if (!visualReviewEnabled || visualWalletPresent) throw Error('Fixture cannot create real wallets');
-    fixturePassword = password; visualWalletPresent = true; backupConfirmed = false; sessionUnlocked = true;
+    const owner = new AbortController();
+    await fixtureDeviceAuthorization.request('account-change', owner.signal, () => {});
+    visualWalletPresent = true; backupConfirmed = false; sessionUnlocked = true;
     visualTokenValues.clear();
     catalogue = Object.freeze({ ...catalogue, revision: catalogue.revision + 1,
       active: { accountId: 'hd:60:0', networkId: 'ethereum' },
@@ -238,41 +228,24 @@ export function createNativeWalletControllers() {
         { id: 'hd:0:0', type: 'HDAccount', index: 0, slip44: 0, label: 'Account 1', address: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4' },
       ] as const,
     });
-  const authenticateOperation = async (credential: NativeOperationCredential, check: () => void, owner: AbortSignal | null = null) => {
-    check();
-    if (credential.method === 'biometric') {
-      if (!authentication || !visualDeviceUnlockEnabled) throw refused('DEVICE_UNLOCK_UNAVAILABLE');
-      try { await authentication.run(owner, async () => { await unlockGate(); check(); }); }
-      catch (error) { check(); if (error instanceof Error && error.message === 'DEVICE_UNLOCK_UNAVAILABLE') throw refused('DEVICE_UNLOCK_UNAVAILABLE'); throw error; }
-    } else {
-      await unlockGate();
-      if (credential.pin !== fixturePassword) throw refused('INVALID_CREDENTIAL');
-    }
-    check();
-  };
   const credentialRefusals = new WeakSet<object>();
   const refused = (code: 'CANCELLED' | 'INVALID_CREDENTIAL' | 'DEVICE_UNLOCK_UNAVAILABLE' | 'AUTH_THROTTLED') => {
     const error = new KeyringRuntimeError(code); credentialRefusals.add(error); return error;
   };
+  const authenticateOperation = async (credential: NativeOperationCredential, check: () => void, owner: AbortSignal | null = null) => {
+    check();
+    if (credential.method !== 'device') throw refused('INVALID_CREDENTIAL');
+    try { await fixtureDeviceAuthorization.request('transaction', owner ?? new AbortController().signal, check); }
+    catch { check(); throw refused('DEVICE_UNLOCK_UNAVAILABLE'); }
+    await unlockGate(); check();
+  };
   const requestFixtureCredential = async (binding: NativePrivateAuthentication, signal: AbortSignal, guard: () => void,
-    purpose: 'secret-read' | 'account-change', preserveExplicitCancel = false) => {
-    try {
-      await withNativePrivateAuthentication(binding, signal, () => { if (!sessionUnlocked) throw refused('CANCELLED'); }, proofSignal =>
-        nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose,
-          biometricsEnabled: !!authentication && visualDeviceUnlockEnabled }, proofSignal, guard, async (credential, check) => {
-          try { await authenticateOperation(credential, check, proofSignal); return { accepted: true }; }
-          catch (error) {
-            check();
-            if (error instanceof KeyringRuntimeError && credentialRefusals.has(error) &&
-                (error.code === 'INVALID_CREDENTIAL' || error.code === 'DEVICE_UNLOCK_UNAVAILABLE' || error.code === 'AUTH_THROTTLED'))
-              return { accepted: false, reason: error.code };
-            throw error;
-          }
-        }));
-    } catch (error) {
-      if (isOperationAuthenticationCancellation(error) && !preserveExplicitCancel) throw refused('CANCELLED');
-      throw error;
-    }
+    purpose: 'secret-read' | 'account-change') => {
+    await withNativePrivateAuthentication(binding, signal, () => { guard(); if (!sessionUnlocked) throw refused('CANCELLED'); }, async proofSignal => {
+      try { await fixtureDeviceAuthorization.request(purpose, proofSignal, guard); }
+      catch { guard(); throw refused('DEVICE_UNLOCK_UNAVAILABLE'); }
+      await unlockGate(); guard();
+    });
   };
   const runtime: CustodyRuntime = {
     async previewPhrase(phrase, check) {
@@ -280,41 +253,10 @@ export function createNativeWalletControllers() {
       if (!visualReviewEnabled || phrase !== visualReviewFixture.phrase) throw new Error('INVALID_INPUT');
       return [{ label: 'EVM account', address: ADDRESS }];
     },
-    ...(authentication ? { deviceUnlock: {
-      async status() { return { available: true, enabled: visualDeviceUnlockEnabled }; },
-      async configure(enabled, signal, scope, check) {
-        check();
-        await requestFixtureCredential(scope, signal, check, 'account-change', true);
-        check();
-        if (enabled) await withNativePrivateAuthentication(scope, signal, check, owner => authentication.run(owner, unlockGate));
-        check(); visualDeviceUnlockEnabled = enabled;
-      },
-      async enroll(password, check) {
-        check();
-        if (!sessionUnlocked || password !== fixturePassword) return { authenticated: false };
-        await authentication.run(null, unlockGate);
-        check(); visualDeviceUnlockEnabled = true;
-        return { authenticated: true };
-      },
-      async disable(password, check) {
-        check();
-        if (!sessionUnlocked || password !== fixturePassword) return { authenticated: false };
-        visualDeviceUnlockEnabled = false;
-        return { authenticated: true };
-      },
-      async unlock(check) {
-        check();
-        if (!visualWalletPresent || !visualDeviceUnlockEnabled || sessionUnlocked) return { authenticated: false };
-        await authentication.run(null, unlockGate);
-        check(); sessionUnlocked = true;
-        return { authenticated: true };
-      },
-    } satisfies NonNullable<CustodyRuntime['deviceUnlock']> } : {}),
     security: {
       isAuthenticationRefusal: error => !!error && typeof error === 'object' && credentialRefusals.has(error),
-      authenticateOperation,
-      async authenticationStatus() { return { pinConfigured: true, biometricsAvailable: !!authentication, biometricsEnabled: visualDeviceUnlockEnabled }; },
-      async changePin(current, next, check) { check(); if (current !== fixturePassword || !/^\d{6}$/.test(next)) throw refused('INVALID_CREDENTIAL'); fixturePassword = next; check(); },
+      isAuthenticating: () => authentication.isAnyPromptActive(),
+      async authenticationStatus() { return { deviceAuth: new URLSearchParams(window.location.search).has('credential-missing') ? 'missing' : 'ready', credentialPresent: !new URLSearchParams(window.location.search).has('credential-missing') && (visualReviewEnabled ? visualWalletPresent : fixtureWalletPresent) }; },
       async reauthenticateIdlePolicy(signal, binding, check) { check(); events.push('idle:auth'); await requestFixtureCredential(binding, signal, check, 'account-change'); check(); },
     },
     networks: {
@@ -351,21 +293,7 @@ export function createNativeWalletControllers() {
             const guard = () => { check(); if (cancellation.signal.aborted) throw refused('CANCELLED'); };
             guard();
             if (request.kind === 'create' || request.kind === 'remove' || request.kind === 'create-smart') {
-              try {
-                await nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'account-change', biometricsEnabled: !!authentication && visualDeviceUnlockEnabled }, cancellation.signal, guard, async (credential, assertAttemptCurrent) => {
-                  try { await authenticateOperation(credential, assertAttemptCurrent); return { accepted: true }; }
-                  catch (error) {
-                    assertAttemptCurrent();
-                    if (error instanceof Error && (error.message === 'INVALID_CREDENTIAL' || error.message === 'DEVICE_UNLOCK_UNAVAILABLE')) return { accepted: false, reason: error.message };
-                    throw error;
-                  }
-                });
-              } catch (error) {
-                guard();
-                if (isOperationAuthenticationCancellation(error)) throw refused('CANCELLED');
-                if (error instanceof Error && (error.message === 'INVALID_CREDENTIAL' || error.message === 'DEVICE_UNLOCK_UNAVAILABLE')) throw refused(error.message);
-                throw error;
-              }
+              await authenticateOperation({ method: 'device' }, guard, cancellation.signal);
               guard();
             }
             let active = catalogue.active.accountId;
@@ -432,15 +360,15 @@ export function createNativeWalletControllers() {
       },
     },
     session: {
-      async createWallet(password) { createVisualWallet(password); },
-      async importWallet(phrase, password) {
+      async createWallet() { await createVisualWallet(); },
+      async importWallet(phrase) {
         if (!visualReviewEnabled || phrase.trim().toLowerCase().split(/\s+/).join(' ') !== publicBackupWords.join(' ')) throw Error('Fixture cannot import real wallets');
-        createVisualWallet(password);
+        await createVisualWallet();
       },
-      async unlock(password) {
+      async unlock() {
         audit.unlocks++; events.push('unlock:start');
         await unlockGate();
-        sessionUnlocked = password === fixturePassword;
+        sessionUnlocked = visualReviewEnabled ? visualWalletPresent : fixtureWalletPresent;
         events.push('unlock:finish');
         return { authenticated: sessionUnlocked };
       },
@@ -570,9 +498,8 @@ export function createNativeWalletControllers() {
   const backupRuntime: KeyringRuntime['backup'] = {
     isAuthenticationRefusal: error => !!error && typeof error === 'object' && credentialRefusals.has(error),
     async readPhrase(credential) {
-      const password = typeof credential === 'string' ? credential : credential.method === 'pin' ? credential.pin : visualDeviceUnlockEnabled ? fixturePassword : '';
-      if (!sessionUnlocked) throw Error('Locked fixture session');
-      if (password !== (visualReviewEnabled ? fixturePassword : '123456')) throw refused('INVALID_CREDENTIAL');
+      if (!sessionUnlocked) throw Error('Closed fixture session');
+      await authenticateOperation(credential, () => { if (!sessionUnlocked) throw refused('CANCELLED'); });
       return publicBackupWords;
     },
     async fingerprint() {
@@ -616,14 +543,8 @@ export function createNativeWalletControllers() {
     signal: AbortSignal, scope: NativePrivateAuthenticationScope, check: () => void) => authority.saveIdlePreference(expected, minutes, signal,
       bindNativePrivateAuthentication(scope, { assertCurrent: () => { if (!sessionUnlocked || signal.aborted) throw refused('CANCELLED'); },
         isPromptActive: owner => authentication?.isActive(owner) === true }), check);
-  const configureDeviceUnlock = (enabled: boolean, signal: AbortSignal, scope: NativePrivateAuthenticationScope, check: () => void) => {
-    if (!runtime.deviceUnlock) throw refused('DEVICE_UNLOCK_UNAVAILABLE');
-    const binding = bindNativePrivateAuthentication(scope, { assertCurrent: () => { if (!sessionUnlocked || signal.aborted) throw refused('CANCELLED'); },
-      isPromptActive: owner => authentication?.isActive(owner) === true });
-    return runtime.deviceUnlock.configure(enabled, signal, binding, check);
-  };
-  return { authority, saveIdlePreference, configureDeviceUnlock, getNotificationChoices, getScopedActivityRuntime, activityReaders, connections: connections.view, keyExport, imports,
-    ...(authentication ? { authentication } : {}),
+  return { authority, saveIdlePreference, getNotificationChoices, getScopedActivityRuntime, activityReaders, connections: connections.view, keyExport, imports,
+    authentication,
     trezor: {background() {}, async cancel() {}, subscribe: () => () => undefined,
       getSnapshot: () => idleTrezorSnapshot,
       async startImport() {throw Error('Trezor is outside this fixture');},
@@ -649,7 +570,7 @@ export function createNativeWalletControllers() {
       ...createBalanceReader({ fetch: fixtureFetch }),
       ...(sysxSendFixture.enabled ? { readUtxoBalance: createUtxoBalanceReader({ fetch: sysxSendFixture.fetch }).readBalance } : {}),
     }, transfers: transfers.view, tokens: tokens.view, activity, utxoActivity, accounts, backup,
-    ...(removalFixtureEnabled ? { removal: createWalletRemovalFixture(authority, { getSnapshot: () => sessionUnlocked ? catalogue : null }, (password) => password === fixturePassword) } : {}),
+    ...(removalFixtureEnabled ? { removal: createWalletRemovalFixture(authority, { getSnapshot: () => sessionUnlocked ? catalogue : null }) } : {}),
     ...(noteFixtureEnabled ? {
       readNoteInventory: (check: () => void, scope: NativePrivateAuthenticationScope) => {
         const parent = bindNativePrivateAuthentication(scope, { assertCurrent: () => { if (!sessionUnlocked) throw refused('CANCELLED'); }, isPromptActive: owner => authentication?.isActive(owner) === true });
@@ -680,7 +601,7 @@ export function createNativeWalletControllers() {
 /** This adapter tests real UI ownership, not the already tested storage protocol. */
 export function createNativeRecoveryCoordinator(controllers: ReturnType<typeof createNativeWalletControllers>) {
   recoveryAudit.created++;
-  const proof = Object.freeze({}); let cancelled = false, replacement = '', pending: Promise<unknown> = Promise.resolve();
+  const proof = Object.freeze({}); let cancelled = false, pending: Promise<unknown> = Promise.resolve();
   let assertPrepared: (() => void) | undefined;
   return {
     prepare(phrase: string, guard: () => void) {
@@ -692,18 +613,17 @@ export function createNativeRecoveryCoordinator(controllers: ReturnType<typeof c
         assertPrepared = guard; return proof;
       })(); return pending;
     },
-    async setPin(value: unknown, pin: string) {
-      if (value !== proof || cancelled || !assertPrepared || !/^\d{6}$/.test(pin)) throw Error('CANCELLED');
-      assertPrepared(); replacement = pin;
-    },
     commit(value: unknown) {
       pending = (async () => {
-        if (value !== proof || cancelled || !/^\d{6}$/.test(replacement)) throw Error('CANCELLED');
-        fixturePassword = replacement; replacement = ''; recoveryAudit.committed++;
+        if (value !== proof || cancelled || !assertPrepared) throw Error('CANCELLED');
+        assertPrepared!();
+        await fixtureDeviceAuthorization.request('account-change', new AbortController().signal, assertPrepared!);
+        recoveryAudit.committed++;
         await recoveryGate('commit'); if (cancelled) throw Error('CANCELLED'); return 'committed-locked';
       })(); return pending;
     },
-    cancel() { cancelled = true; replacement = ''; assertPrepared = undefined; },
+    isAuthenticating: () => fixtureDeviceAuthorization.isAnyPromptActive(),
+    cancel() { cancelled = true; assertPrepared = undefined; },
     async dispose() { await pending.catch(() => undefined); await recoveryGate('dispose'); recoveryAudit.disposed++; },
   };
 }

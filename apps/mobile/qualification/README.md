@@ -363,10 +363,14 @@ version output stops with `XCODE_27_REQUIRED` and selection guidance.
 This minimum applies only to the physical runner. The separate iOS Simulator
 workflow and its Xcode 26.6 selection are unchanged.
 
-The two fixed physical fixture identities are:
+The ordinary physical fixture identities are:
 
 - Import: `com.paliwallet.qualification.physical.import`
 - Generate: `com.paliwallet.qualification.physical.generate`
+
+The separate explicit full-SLH mode uses only
+`com.paliwallet.qualification.physical.slh`. It does not install or reset the
+import/generate fixtures.
 
 They have separate app containers and private Keychain groups. The production
 app remains `com.paliwallet.mobile`; the existing simulator/Android fixture
@@ -444,6 +448,52 @@ native validators plus complete physical crypto/check evidence. Create/restart
 must preserve account, fingerprint, HD, ERC20 and chain-5700/57057 transaction identity while the
 native process session changes.
 
+### Isolated full-SLH fixture
+
+Prepare another isolated copy of the same approved clean commit with the same
+locked dependency and patch checks. Configure this copy with both full-SLH and
+physical mode enabled:
+
+```sh
+CI=true PALI_NATIVE_QUALIFICATION=1 PALI_NATIVE_FULL_SLH_QUALIFICATION=1 \
+  PALI_PHYSICAL_QUALIFICATION=full_slh GITHUB_SHA="$PALI_REVIEWED_COMMIT" \
+  node scripts/configure-native-qualification.cjs
+```
+
+Prebuild and sign it using the commands above with
+`PaliPhysicalSLH.xcworkspace`, scheme `PaliPhysicalSLH` and its own build
+directory. Record the reviewed artifact's CDHash, then run:
+
+```sh
+CI=true PALI_NATIVE_QUALIFICATION=1 node --import ./scripts/register-shared-test-dependencies.mjs qualification/run-physical-ios.cjs \
+  --full-slh --device "$PALI_DEVICE" --source-revision "$PALI_REVIEWED_COMMIT" \
+  --full-slh-app "$PALI_SLH_APP" --full-slh-cdhash "$PALI_SLH_CDHASH" \
+  --output "$PALI_NEW_EVIDENCE_DIRECTORY"
+```
+
+This mode accepts only the new fixed identity and rejects the ordinary app
+arguments. It keeps the same signed artifact, source/lockfile, Keychain,
+physical-device, lease, process and nonce checks. It imports the public fixture
+and runs the ordinary custody checks plus shared full-SLH creation, installed
+cache signing, forced fallback and cold-restart validation. The SLH phase uses
+the existing 30-minute limit; ordinary phases and reset keep their five-minute
+limit. The longer qualification limit does not extend production signing
+intent lifetimes or establish acceptable user latency.
+
+Each full-SLH phase records start/end physical footprint, kernel peak physical
+footprint and peak resident size for this app process. Kernel peaks include
+startup and earlier work in that process; they are not an isolated SLH memory
+delta. A native observer records the worst reported thermal state during the
+SLH phase (0 nominal, 1 fair, 2 serious, 3 critical), with initial/final state and
+observation count. It samples no memory contents and performs no periodic
+memory polling. These APIs exist only in the exact full-SLH fixture bundle;
+backgrounding or disposal cancels the observation.
+
+The aggregate records `fullSlhExecutionVerified: true` only after both phases
+pass, and always leaves `fullSlhResourcesQualified: false`. Review the actual
+phone/OS resource and latency evidence before any release decision. This
+fixture does not enable production SLH signing or qualify setup UX.
+
 Before contacting a device, the runner copies the admitted apps into a private
 `.verified-artifacts` directory inside the new evidence directory. It rejects
 symlinks and special files, bounds each file, total bytes, entry count and depth,
@@ -475,8 +525,10 @@ redacted structure first.
 
 Uninstalling an iOS app can leave its Keychain values. Reinstalling it is not
 evidence of a fresh wallet. For a deliberately fresh repeat, add
-`--reset-fixtures` to the same command after reviewing the two app identities.
+`--reset-fixtures` to the same command after reviewing its selected app identities.
 This flag authorizes destruction of **only the dedicated physical fixtures**.
+In full-SLH mode it selects only `com.paliwallet.qualification.physical.slh`;
+the existing import/generate app data remains untouched.
 
 The runner first installs the reviewed signed fixture over its existing copy.
 It launches a qualification-only reset command with a fresh nonce, deletes only
@@ -523,3 +575,7 @@ The artifacts were rebuilt with TypeScript 5.9.3, Rollup 4.60.1 and rollup-plugi
 The existing native HTTP qualification lane also writes a separate `pali-native-walletconnect-<token>.json` sidecar for this candidate. It exercises an actual loopback WebSocket through the production adapter, closes an established connection, cancels an unfinished handshake, and checks that both public SDK owners are retired. The host independently checks socket closure and a quiet interval. The sidecar is required and matched to the build, launch, session and candidate identity before the host accepts that lane.
 
 Node protocol tests exercise the same fixture and adapter. Android and iOS execution of this added lane remains a release gate until evidence is recorded against the exact candidate head.
+
+### OS authorization boundary
+
+The native crypto/SLH and transfer fixture uses `authorizationMode: test-only-fixture` for its disposable public wallets. It is confined to qualification bundle identifiers, persists only fixture credentials in a separate namespace for restart tests, and does **not** qualify OS user presence or hardware-backed credential storage. Production uses the native protected credential port; its biometric and system-device-passcode success, cancellation, background, invalidation, and cold-reopen paths require separate device qualification.

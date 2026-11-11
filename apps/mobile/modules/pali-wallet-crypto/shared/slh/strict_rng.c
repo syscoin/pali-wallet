@@ -10,6 +10,8 @@
 
 /* Intentionally replaces upstream/randombytes.c. */
 static pthread_mutex_t process_slot = PTHREAD_MUTEX_INITIALIZER;
+static unsigned int independent_calls;
+static int exclusive_call;
 
 struct rng_lease {
     jmp_buf refusal;
@@ -55,7 +57,8 @@ void randombytes(unsigned char *output, unsigned long long length) {
     lease->draws = 1;
 }
 
-enum pali_slh_status pali_slh_run_serialized(
+static enum pali_slh_status run_owned(
+    int independent,
     enum pali_slh_rng_contract contract,
     const uint8_t *optrand16,
     pali_slh_call call,
@@ -68,9 +71,15 @@ enum pali_slh_status pali_slh_run_serialized(
         (contract != PALI_SLH_RNG_NONE && !optrand16))
         return PALI_SLH_INVALID_INPUT;
     if (active_lease) return PALI_SLH_BUSY;
-    const int locked = pthread_mutex_trylock(&process_slot);
-    if (locked == EBUSY) return PALI_SLH_BUSY;
-    if (locked != 0) return PALI_SLH_ENGINE_FAILED;
+    if (pthread_mutex_lock(&process_slot) != 0) return PALI_SLH_ENGINE_FAILED;
+    const int admitted = !exclusive_call &&
+        (independent ? independent_calls < PALI_SLH_MAX_PARALLEL_CALLS : independent_calls == 0);
+    if (admitted) {
+        if (independent) independent_calls++;
+        else exclusive_call = 1;
+    }
+    if (pthread_mutex_unlock(&process_slot) != 0) return PALI_SLH_ENGINE_FAILED;
+    if (!admitted) return PALI_SLH_BUSY;
 
     struct rng_lease lease;
     memset(&lease, 0, sizeof(lease));
@@ -90,6 +99,20 @@ enum pali_slh_status pali_slh_run_serialized(
     }
     active_lease = NULL;
     pali_slh_erase(&lease, sizeof(lease));
+    if (pthread_mutex_lock(&process_slot) != 0) return PALI_SLH_ENGINE_FAILED;
+    if (independent) independent_calls--;
+    else exclusive_call = 0;
     if (pthread_mutex_unlock(&process_slot) != 0) return PALI_SLH_ENGINE_FAILED;
     return status;
+}
+
+enum pali_slh_status pali_slh_run_serialized(
+    enum pali_slh_rng_contract contract, const uint8_t *optrand16,
+    pali_slh_call call, void *argument, int *engine_result) {
+    return run_owned(0, contract, optrand16, call, argument, engine_result);
+}
+
+enum pali_slh_status pali_slh_run_independent(
+    pali_slh_call call, void *argument, int *engine_result) {
+    return run_owned(1, PALI_SLH_RNG_NONE, NULL, call, argument, engine_result);
 }

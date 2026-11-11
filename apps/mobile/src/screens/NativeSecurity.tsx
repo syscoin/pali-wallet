@@ -1,6 +1,6 @@
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import { BalancePrivacySetting } from './BalancePrivacySetting';
 import { useNativeTranslation } from '../platform/localization';
-import { useBiometricPresentation } from '../platform/useBiometricPresentation';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,10 +16,8 @@ type Props = {
   address: string;
   onViewRecovery(): void;
   onRemoveWallet?(): void;
-  onDeviceUnlock?(): void;
+  onRestoreAccess?(): void;
   onAutoLock?(): void;
-  onChangePin?(): void;
-  deviceUnlockEnabled?: boolean;
   backupConfirmed: boolean;
   onLock(): void;
   onBack(): void;
@@ -27,9 +25,8 @@ type Props = {
 };
 
 /** Private presentation stays in this mounted, protected native screen only. */
-export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, accountLabel, address, onViewRecovery, onRemoveWallet, onDeviceUnlock, onAutoLock, onChangePin, deviceUnlockEnabled, backupConfirmed, onLock, onBack, captureFailureHandler }: Props) {
+export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, accountLabel, address, onViewRecovery, onRemoveWallet, onRestoreAccess, onAutoLock, backupConfirmed, onLock, onBack, captureFailureHandler }: Props) {
   const { t } = useNativeTranslation();
-  const biometrics = useBiometricPresentation();
   const [mode, setMode] = useState<'hub' | 'key' | 'recovery'>('hub');
   const [presentation, setPresentation] = useState<HdKeyExportPresentation | null>(null);
   const [busy, setBusy] = useState(false);
@@ -46,7 +43,7 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
     state.mounted = true;
     const unsubscribe = keyExport.onClear(clear);
     const interrupted = (next: string) => {
-      if (next === 'active' || (next === 'inactive' || next === 'blur') && keyExport.isAuthenticating()) return;
+      if (next === 'active' || allowsPrivateAuthenticationInterruption(keyExport, next)) return;
       state.request++; keyExport.cancel(); clear();
     };
     const app = AppState.addEventListener('change', interrupted);
@@ -107,11 +104,9 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen gap={16} footer={mode === 'key' ? <Button title={shown ? t('mobile.security.hide') : t('mobile.security.reveal')} disabled={!shown && busy} onPress={shown ? hide : reveal} /> : mode === 'hub' ? <Button title={t('mobile.settings.lock')} variant="secondary" size="compact" icon="lock" onPress={() => { hide(); onLock(); }} /> : undefined}><Header title={mode === 'key' ? t('mobile.security.accountKey') : mode === 'recovery' ? t('mobile.security.recoveryGuide') : t('mobile.security.title')} onBack={back} />
         {mode === 'hub' ? <>
-          <Card><Row title={accountType === 'Ledger' || accountType === 'Trezor' ? t('mobile.security.viewPaliPhrase') : t('mobile.security.viewPhrase')} subtitle={backupStatus} icon="shield" onPress={() => { hide(); onViewRecovery(); }} />
+          <Card>{onRestoreAccess && <Row title="Restore secure access" subtitle="Verify your recovery phrase to restore access on this phone" icon="key" onPress={() => { hide(); onRestoreAccess(); }} />}<Row title={accountType === 'Ledger' || accountType === 'Trezor' ? t('mobile.security.viewPaliPhrase') : t('mobile.security.viewPhrase')} subtitle={backupStatus} icon="shield" onPress={() => { hide(); onViewRecovery(); }} />
             {keyFormat && (accountType === 'HDAccount' || accountType === 'Imported') && <Row title={t('mobile.security.revealAccountKey')} subtitle={accountLabel} icon="eye" onPress={() => { hide(); setMode('key'); }} />}
-            {onChangePin && <Row title="Change PIN" subtitle="Update your wallet PIN" icon="lock" onPress={() => { hide(); onChangePin(); }} />}
-            {onDeviceUnlock && <Row title={biometrics.label === 'biometrics' ? t('mobile.security.biometric') : biometrics.label === 'fingerprint' ? 'Fingerprint unlock' : biometrics.label} subtitle={deviceUnlockEnabled ? t('mobile.security.on') : t('mobile.security.off')} icon="lock" onPress={() => { hide(); onDeviceUnlock(); }} />}
-            {onAutoLock && <Row title="Auto-lock" subtitle="Choose when Pali locks" icon="lock" onPress={() => { hide(); onAutoLock(); }} />}
+            {onAutoLock && <Row title="Auto-lock" subtitle="Choose when private screens close" icon="lock" onPress={() => { hide(); onAutoLock(); }} />}
             <BalancePrivacySetting />
             <Row title={t('mobile.security.recoveryGuide')} subtitle={t('mobile.security.backupsRestore')} icon="help" onPress={() => { hide(); setMode('recovery'); }} last /></Card>
           {onRemoveWallet && <Button title={t('mobile.security.removeWallet')} variant="danger" size="compact" onPress={() => { hide(); onRemoveWallet(); }} />}
@@ -119,7 +114,6 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
           <Text style={s.heading}>{t('mobile.security.keepPhraseOffline')}</Text>
           {(accountType === 'Ledger' || accountType === 'Trezor') && <Text style={styles.muted}>{t('mobile.security.hardwareGuide', { device: accountType })}</Text>}
           <Text style={styles.muted}>{t('mobile.security.phraseRestore')}</Text>
-          <Text style={styles.muted}>{t('mobile.security.forgotPassword')}</Text>
           <Notice title={t('mobile.security.secretTitle')} body={t('mobile.security.secretBody')} tone="amber" />
         </> : <>
           <Card style={s.identity}><Text style={s.label}>{accountLabel}</Text>

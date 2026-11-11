@@ -2,6 +2,7 @@
 export const PHYSICAL_BUNDLES = Object.freeze({
   import: 'com.paliwallet.qualification.physical.import',
   generate: 'com.paliwallet.qualification.physical.generate',
+  full_slh: 'com.paliwallet.qualification.physical.slh',
 });
 export type PhysicalScenario = keyof typeof PHYSICAL_BUNDLES;
 export type PhysicalBuild = Readonly<{
@@ -34,7 +35,8 @@ export function physicalBuild(
     Object.keys(v).sort().join(',') !==
       'bundleIdentifier,lockfileSha256,scenario,sourceRevision,version' ||
     v.version !== 1 ||
-    !['import', 'generate'].includes(v.scenario as string) ||
+    typeof v.scenario !== 'string' ||
+    !Object.hasOwn(PHYSICAL_BUNDLES, v.scenario) ||
     v.bundleIdentifier !== PHYSICAL_BUNDLES[v.scenario as PhysicalScenario] ||
     iosIdentifier !== v.bundleIdentifier ||
     androidIdentifier !== 'com.paliwallet.qualification' ||

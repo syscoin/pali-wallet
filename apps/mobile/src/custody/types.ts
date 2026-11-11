@@ -58,23 +58,8 @@ export type CustodyStoredState =
  * qualify crypto/storage before returning a runtime. It owns one SDK authority,
  * never rebinds its store, and exposes only the selected public address here.
  */
-export type NativeOperationCredential = Readonly<
-  { method: 'biometric' } | { method: 'pin'; pin: string }
->;
-export type NativeOperationCredentialRequest = Readonly<{
-  id: string;
-  purpose: 'transaction' | 'message' | 'account-change' | 'secret-read' | 'private-reconciliation';
-  biometricsEnabled: boolean;
-}>;
-export type NativeOperationCredentialVerification = Readonly<
-  { accepted: true } | { accepted: false; reason: 'INVALID_CREDENTIAL' | 'DEVICE_UNLOCK_UNAVAILABLE' | 'AUTH_THROTTLED' }
->;
-export type NativeOperationCredentialRequester = (
-  request: NativeOperationCredentialRequest,
-  signal: AbortSignal,
-  assertCurrent: () => void,
-  verify: (credential: NativeOperationCredential, assertCurrent: () => void) => Promise<NativeOperationCredentialVerification>
-) => Promise<void>;
+/** Consent intent only. Actual private access always requires an OS-protected read. */
+export type NativeOperationCredential = Readonly<{ method: 'device' }>;
 declare const nativeOperationAuthorizationBrand: unique symbol;
 /** Private one-use capability; only its owning runtime can recognize a receipt. */
 export type NativeOperationAuthorization = Readonly<{ [nativeOperationAuthorizationBrand]: true }>;
@@ -85,24 +70,16 @@ export interface CustodyRuntime {
   readonly imports?: NativeImportRuntime;
   readonly networks?: NativeNetworkRuntime;
   readonly security?: {
+    isAuthenticating(): boolean;
     isAuthenticationRefusal(error: unknown): boolean;
-    changePin(currentPin: string, nextPin: string, assertCurrent: () => void): Promise<void>;
-    authenticationStatus(): Promise<Readonly<{ pinConfigured: boolean; biometricsAvailable: boolean; biometricsEnabled: boolean }>>;
+    authenticationStatus(): Promise<Readonly<{ deviceAuth: 'ready' | 'missing' | 'unsupported'; credentialPresent: boolean }>>;
     reauthenticateIdlePolicy(signal: AbortSignal, authentication: NativePrivateAuthentication, assertCurrent: () => void): Promise<void>;
-    authenticateOperation(credential: NativeOperationCredential, assertCurrent: () => void): Promise<void>;
-  };
-  readonly deviceUnlock?: {
-    status(): Promise<Readonly<{ available: boolean; enabled: boolean }>>;
-    configure(enabled: boolean, signal: AbortSignal, authentication: NativePrivateAuthentication, assertCurrent: () => void): Promise<void>;
-    enroll(password: string, assertCurrent: () => void): Promise<Readonly<{ authenticated: boolean }>>;
-    disable(password: string, assertCurrent: () => void): Promise<Readonly<{ authenticated: boolean }>>;
-    unlock(assertCurrent: () => void): Promise<Readonly<{ authenticated: boolean }>>;
   };
   readonly session: {
-    createWallet(password: string): Promise<void>;
-    importWallet(phrase: string, password: string): Promise<void>;
+    createWallet(): Promise<void>;
+    importWallet(phrase: string): Promise<void>;
     /** Only the SDK's explicit credential rejection maps to false. */
-    unlock(password: string): Promise<Readonly<{ authenticated: boolean }>>;
+    unlock(): Promise<Readonly<{ authenticated: boolean }>>;
     readSelectedAddress(): Promise<string>;
     /** Must revoke secrets synchronously, before any asynchronous cleanup. */
     lock(): Promise<void>;

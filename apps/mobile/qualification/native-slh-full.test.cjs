@@ -325,3 +325,133 @@ test('manual full-SLH phase has its own finite 1800s budget and ordinary custody
   );
   assert.equal(exited.elapsed(), 5000);
 });
+
+test('full SLH fallback admits drained parallel peers but never all six or invalid native counts', () => {
+  for (let peers = 0; peers <= 5; peers++) {
+    const value = evidence('create');
+    value.fallback.native.fors = peers;
+    assert.doesNotThrow(() => readFullSlhEvidence(value, 'create', build));
+  }
+  for (const peers of [-1, 6, 7, 0.5, NaN, Infinity, '4']) {
+    const value = evidence('create');
+    value.fallback.native.fors = peers;
+    assert.throws(() => readFullSlhEvidence(value, 'create', build));
+  }
+});
+
+test('five-lane forced failure drains real shared scheduling before cached fallback', async () => {
+  const {
+    createSlhDsaExecution,
+  } = require('../../../source/wallet/slhDsaExecution.ts');
+  const {
+    getSLHDSAKeyId,
+  } = require('../../../source/utils/slhDsa/constants.ts');
+  const { FullSlhForsTracker } = require('./native-slh-full.ts');
+  const tracker = new FullSlhForsTracker(),
+    peers = [];
+  let injected = false,
+    calls = 0,
+    cached = 0;
+  const fields = {
+    pkRoot: '0x' + '44'.repeat(16) + '00'.repeat(16),
+    pkSeed: '0x' + '33'.repeat(16) + '00'.repeat(16),
+  };
+  const host = {
+    leafConcurrency: 5,
+    forsConcurrency: 5,
+    allocateTree: () => ({}),
+    releaseTree() {},
+    readTree: () => new Uint8Array(16).fill(0x44),
+    writeTree() {},
+    loadTree: async (keyId) => ({ keyId, bytes: 134217712, tree: {} }),
+    saveTree: async () => {},
+    openSetup: () => ({ buildChunk: () => 0, dispose() {} }),
+    createLeafLanes: () => [],
+    importKey: (value) => value,
+    releaseKey() {},
+    signPrelude: () => new Uint8Array(46),
+    async signForsTree(_key, _prelude, index) {
+      if (!injected) {
+        injected = true;
+        throw Error('FULL_SLH_BEFORE_NATIVE_FORS');
+      }
+      calls++;
+      return tracker.run(
+        () =>
+          new Promise((resolve) => {
+            peers.push(() =>
+              resolve({ treeIndex: index, shard: new Uint8Array(416) })
+            );
+          })
+      );
+    },
+    finishSignature() {
+      assert.fail('failed batch cannot assemble');
+    },
+    signCached() {
+      tracker.assertDrained();
+      cached++;
+      return new Uint8Array(3856);
+    },
+    randomFill(bytes) {
+      bytes.fill(1);
+    },
+    yield: async () => {},
+  };
+  const signing = createSlhDsaExecution(host).signActionHash(
+    {
+      ...fields,
+      keyId: getSLHDSAKeyId(fields),
+      actionHash: hash('aa'),
+      secretKeyHex:
+        '0x' +
+        '11'.repeat(16) +
+        '22'.repeat(16) +
+        '33'.repeat(16) +
+        '44'.repeat(16),
+    },
+    () => {}
+  );
+  for (let tick = 0; tick < 20; tick++) await Promise.resolve();
+  assert.equal(calls, 4);
+  assert.equal(tracker.inFlight, 4);
+  assert.equal(cached, 0);
+  assert.throws(() => tracker.assertDrained());
+  for (const release of peers.slice(0, 3)) release();
+  for (let tick = 0; tick < 20; tick++) await Promise.resolve();
+  assert.equal(tracker.inFlight, 1);
+  assert.equal(cached, 0);
+  peers[3]();
+  await signing;
+  assert.equal(tracker.inFlight, 0);
+  assert.equal(cached, 1);
+  const value = evidence('create');
+  value.fallback.native.fors = calls;
+  assert.doesNotThrow(() => readFullSlhEvidence(value, 'create', build));
+});
+
+test('full SLH failure diagnostics contain only bounded public state', () => {
+  const { readFullSlhDiagnostic } = require('./native-slh-full.ts');
+  const good = {
+    stage: 'fallback',
+    point: 'cached',
+    native: { ...signed(2, true).native, fors: 4 },
+    inFlightFors: 0,
+    signalAborted: false,
+    executionState: 'active',
+  };
+  assert.deepEqual(readFullSlhDiagnostic(good), good);
+  for (const patch of [
+    { stage: 'private key' },
+    { point: 'unknown' },
+    { inFlightFors: 7 },
+    { inFlightFors: -1 },
+    { signalAborted: 'false' },
+    { executionState: {} },
+    { secret: 'extra' },
+    { native: { ...good.native, raw: 'extra' } },
+    { native: { ...good.native, fors: Infinity } },
+  ]) {
+    assert.throws(() => readFullSlhDiagnostic({ ...good, ...patch }));
+  }
+});

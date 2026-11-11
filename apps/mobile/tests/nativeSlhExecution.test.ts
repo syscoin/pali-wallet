@@ -89,6 +89,7 @@ function fixture() {
     prepareVerify: (...args) => operation('verify', args, false),
   };
   const module: NativeSlhExecutionModule = {
+    slhParallelism: () => 1,
     createSlhContext: (scope) => {
       nativeRetired = false;
       invoke('context', scope);
@@ -244,7 +245,7 @@ test('SLH setup splits common 16384 geometry into two checked native chunks', as
   const f = fixture(),
     owned = createNativeSlhExecution(f.module, f.options),
     h = owned.host;
-  assert.equal(h.hardwareConcurrency, 1);
+  assert.equal(h.leafConcurrency, 1);
   assert.equal(h.forsConcurrency, 1);
   const tree = await h.allocateTree(),
     setup = await h.openSetup(new Uint8Array(48));
@@ -439,4 +440,77 @@ test('SLH post-native guard rejection joins undelivered allocate/load handle cle
     await rejection;
     await retirement;
   }
+});
+
+test('SLH native lane capacity is required and bounded before context creation', () => {
+  for (const count of [0, 7, 1.5, NaN]) {
+    const f = fixture();
+    f.module.slhParallelism = () => count;
+    assert.throws(() => createNativeSlhExecution(f.module, f.options));
+    assert.equal(f.count('context'), 0);
+  }
+});
+
+test('SLH independent leaf lanes retain every input until cancellation drains all workers', async () => {
+  const f = fixture();
+  f.module.slhParallelism = () => 3;
+  const owned = createNativeSlhExecution(f.module, f.options);
+  assert.equal(owned.host.leafConcurrency, 3);
+  assert.equal(owned.host.forsConcurrency, 3);
+  assert.throws(() => owned.host.createLeafLanes(4));
+  const leaves = [held<string>(), held<string>(), held<string>()];
+  f.setResult((name, args) =>
+    name === 'leaves' ? leaves[args[1] as number]!.promise : undefined
+  );
+  const lanes = owned.host.createLeafLanes(3);
+  const work = lanes.map((lane, index) =>
+    lane.buildLeaves(new Uint8Array(48), index, 1)
+  );
+  const results = work.map((value) => assert.rejects(value));
+  await Promise.resolve();
+  assert.equal(f.count('run:leaves'), 3);
+  f.signal.abort();
+  const disposal = lanes.map((lane) => lane.dispose());
+  const retirement = owned.retire();
+  assert.equal(f.count('cancel:leaves'), 3);
+  assert.equal(f.count('destroyKey'), 0);
+  assert.equal(f.count('dispose'), 0);
+  leaves[0]!.resolve(hex(16));
+  leaves[1]!.resolve(hex(16));
+  await Promise.all(results.slice(0, 2));
+  assert.equal(f.count('dispose'), 0);
+  leaves[2]!.resolve(hex(16));
+  await Promise.all([...results, ...disposal, retirement]);
+  assert.equal(f.count('dispose'), 1);
+  assert.equal(f.count('destroyKey'), 3);
+});
+
+test('SLH independent FORS results preserve exact indexed slots and drain before retirement', async () => {
+  const f = fixture();
+  f.module.slhParallelism = () => 3;
+  const owned = createNativeSlhExecution(f.module, f.options);
+  const key = await owned.host.importKey(new Uint8Array(64));
+  const shards = [held<string>(), held<string>(), held<string>()];
+  f.setResult((name, args) =>
+    name === 'fors' ? shards[args[2] as number]!.promise : undefined
+  );
+  const work = shards.map((_, index) =>
+    owned.host.signForsTree(key, new Uint8Array(46), index)
+  );
+  await Promise.resolve();
+  assert.equal(f.count('run:fors'), 3);
+  shards[2]!.resolve(hex(416, '22'));
+  shards[0]!.resolve(hex(416, '00'));
+  shards[1]!.resolve(hex(416, '11'));
+  const results = await Promise.all(work);
+  assert.deepEqual(
+    results.map((result) => result.treeIndex),
+    [0, 1, 2]
+  );
+  assert.deepEqual(
+    results.map((result) => result.shard[0]),
+    [0, 0x11, 0x22]
+  );
+  await owned.host.releaseKey(key);
+  await owned.retire();
 });

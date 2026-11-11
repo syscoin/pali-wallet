@@ -1,4 +1,4 @@
-import { enterPin } from './operationAuthentication';
+import { authenticateNativeOperation, deviceAuthorizationPrompt } from './operationAuthentication';
 import { expect, test } from '@playwright/test';
 test.use({
   baseURL: process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179',
@@ -52,11 +52,11 @@ test('linked-node review and release remain reachable on a narrow, short screen'
     )
   ).toBe(true);
   await release.click();
-  await enterPin(page, '123456');
+  await authenticateNativeOperation(page);
   await expect(
     page.getByText('Collateral protection released.', { exact: true })
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: 'PIN digit 1', exact: true })).toHaveCount(0);
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
   expect(
     await page.evaluate(() => window.__nativeSentryNodesFixture.calls())
   ).toEqual(['lookup', 'link', 'release']);

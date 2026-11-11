@@ -1,4 +1,3 @@
-import { isNativePin } from '../../src/custody/pinVault';
 // Actual leaf with a synthetic flow. This fixture does not perform recovery,
 // authenticate a phrase, access storage, or establish native qualification.
 import React, { useLayoutEffect, useState } from 'react';
@@ -57,12 +56,12 @@ class FixtureFlow {
     if (this.snapshot.phase !== 'verifying') return;
     this.publish(outcome === 'match' ? 'review' : 'entry', outcome === 'wrong' ? 'This recovery phrase does not match this wallet.' : '');
   }
-  commit() { if (this.snapshot.phase === 'review') this.publish('pin'); }
-  submitPin(pin: string) { if (this.snapshot.phase !== 'pin' || !isNativePin(pin)) return false; audit.commits++; this.publish('committing'); return true; }
+  isAuthenticating = () => false;
+  commit() { if (this.snapshot.phase === 'review') { audit.commits++; this.publish('committing'); } }
   cancel() {
     if (this.snapshot.phase === 'closed') return;
     audit.cancels++;
-    this.publish('closed', this.snapshot.phase === 'committing' ? 'We could not confirm the PIN change. It may have completed. Unlock with your new PIN first; if it does not work, try your previous unlock method.' : 'Recovery was cancelled');
+    this.publish('closed', this.snapshot.phase === 'committing' ? 'We could not confirm device authorization recovery. Close and reopen Pali before trying again.' : 'Recovery was cancelled');
   }
 }
 const flow = new FixtureFlow();

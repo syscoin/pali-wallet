@@ -1,3 +1,4 @@
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,7 +27,7 @@ export function AutoLockSettings({ mode, save, onBack }: { mode: IdleMode; save:
     owned.cancel = () => { request.abort(); authentication.retire(); };
     owned.pending = true; setBusy(true); setFeedback(''); Keyboard.dismiss();
     const check = () => { if (!owned.mounted || owned.generation !== generation || request.signal.aborted ||
-      (AppState.currentState !== 'active' && !(AppState.currentState === 'inactive' && authentication.isAuthenticating()))) throw Error('CANCELLED'); };
+      (AppState.currentState !== 'active' && !(allowsPrivateAuthenticationInterruption(authentication, AppState.currentState)))) throw Error('CANCELLED'); };
     try { check(); await save(value, proposed, request.signal, authentication, check); check(); setFeedback('Auto-lock setting saved.'); }
     catch (error) { if (owned.mounted && owned.generation === generation) setFeedback(error instanceof Error && error.message === 'CANCELLED'
       ? 'Auto-lock was not changed.' : 'The setting could not be verified. Reopen security settings before saving again.'); }
@@ -51,8 +52,8 @@ export function AutoLockSettings({ mode, save, onBack }: { mode: IdleMode; save:
     </IdlePressable>)}</Card>
     <Text>Custom minutes (5–120, or 0 for Off)</Text><IdleTextInput accessibilityLabel="Auto-lock minutes" value={draft} onChangeText={change} keyboardType="number-pad" maxLength={3} editable={!busy} style={{ borderWidth: 1, borderColor: colors.border, color: colors.text, borderRadius: 12, padding: 16 }} />
     {minutes === null && <Text accessibilityRole="alert">Enter 0 or a whole number from 5 to 120.</Text>}
-    {minutes === 0 && <><Notice title="Off while the app is open" body="This session can remain visible indefinitely without interaction. Background locking and PIN confirmations still apply." tone="amber" /><Button title={confirmed ? 'Off consequence acknowledged' : 'I understand the Off setting'} variant="secondary" disabled={busy} onPress={() => setConfirmed(true)} /></>}
-    <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>Pali still locks or hides this session when you leave the app or it loses focus. This setting never enables automatic unlock.</Text>
+    {minutes === 0 && <><Notice title="Off while the app is open" body="This session can remain visible indefinitely without interaction. Private data is hidden in the background, and sensitive actions still require device authorization." tone="amber" /><Button title={confirmed ? 'Off consequence acknowledged' : 'I understand the Off setting'} variant="secondary" disabled={busy} onPress={() => setConfirmed(true)} /></>}
+    <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>Pali still locks or hides this session when you leave the app or it loses focus. This setting never authorizes spending automatically.</Text>
     {!!feedback && <Text accessibilityLiveRegion="polite">{feedback}</Text>}
   </Screen></KeyboardAvoidingView></SafeAreaView>;
 }

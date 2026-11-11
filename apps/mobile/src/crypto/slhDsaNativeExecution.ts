@@ -73,6 +73,7 @@ export interface NativeSlhContext {
   ): NativeSlhOperation<boolean>;
 }
 export interface NativeSlhExecutionModule {
+  slhParallelism(): number;
   createSlhContext(namespace: string): NativeSlhContext;
   prepareSlhCachePurge(namespace: string): NativeSlhOperation<void>;
 }
@@ -145,6 +146,7 @@ export function createNativeSlhExecution(
   if (
     !/^0x[0-9a-f]{64}$/.test(owner.namespace) ||
     typeof module?.createSlhContext !== 'function' ||
+    typeof module.slhParallelism !== 'function' ||
     typeof owner.randomFill !== 'function' ||
     typeof owner.yield !== 'function' ||
     typeof owner.signal?.addEventListener !== 'function' ||
@@ -157,6 +159,9 @@ export function createNativeSlhExecution(
     assertSynchronousEvmFeeGuard(owner.assertCurrent);
     if (retired || owner.signal.aborted) throw failure();
   };
+  check();
+  const parallelism = module.slhParallelism();
+  integer(parallelism, 1, 6);
   check();
   const context = module.createSlhContext(owner.namespace);
   const operations = new Set<NativeSlhOperation<unknown>>();
@@ -277,9 +282,10 @@ export function createNativeSlhExecution(
     key.destroy();
   };
   const host: SlhDsaExecutionHost<NativeSlhTree, NativeSlhKey> = {
-    // The native engine owns one serialized execution slot, independently of CPU count.
-    hardwareConcurrency: 1,
-    forsConcurrency: 1,
+    // The native scheduler reports its bounded independent leaf/FORS capacity.
+    // Tree mutation, final assembly and resource cleanup remain exclusive.
+    leafConcurrency: parallelism,
+    forsConcurrency: parallelism,
     importKey(secret) {
       check();
       const key = context.importSlhKeyHex(encode(secret, 64));
@@ -353,7 +359,7 @@ export function createNativeSlhExecution(
     },
     createLeafLanes(count): SlhDsaLeafLane[] {
       check();
-      integer(count, 1, 1);
+      integer(count, 1, parallelism);
       return Array.from({ length: count }, () => {
         let key: NativeSlhKey | undefined,
           identity: string | undefined,

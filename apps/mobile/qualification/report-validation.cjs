@@ -11,7 +11,9 @@ const { isWalletConnectQualificationDiagnostic } = require('./walletconnect-nati
 const { readPrivateProofDiagnostic, PRIVATE_PROOF_CHECK } = require('./private-proof-diagnostics.ts');
 const { readSentryIsolatedDiagnostic } = require('./sentry-isolated-diagnostics.ts');
 const { SENTRY_ISOLATED_CHECK } = require('./native-sentry-isolated.ts');
-const { fullSlhBuild, readFullSlhEvidence } = require('./native-slh-full.ts');
+const { fullSlhBuild, readFullSlhEvidence, readFullSlhDiagnostic, matchesFullSlhRestart, FULL_SLH_CHECK, FULL_SLH_PHASE_TIMEOUT_MS } = require('./native-slh-full.ts');
+const { PHYSICAL_BUNDLES } = require('./physical-contract.ts');
+const { readSlhResourceEvidence } = require('./slh-resource-evidence.ts');
 const {
   isStorageQualificationDiagnostic,
 } = require('./storage-diagnostics.ts');
@@ -42,6 +44,7 @@ const FIELDS = new Set([
   ...IMPORTED_REPORT_FIELDS,
   'version',
   'status',
+  'authorizationMode',
   'phase',
   'scenario',
   'platform',
@@ -64,6 +67,7 @@ const FIELDS = new Set([
   'privateProofDiagnostic',
   'sentryIsolatedDiagnostic',
   'fullSlh',
+  'fullSlhDiagnostic',
   'mnemonicEntropyVerified',
   'storageDiagnostic',
   'nativeHdAccountsVerified',
@@ -129,6 +133,11 @@ function decodeNativeReport(
     readFullSlhEvidence(report.fullSlh, report.phase, fullSlhBuild({ version: report.fullSlh.version,
       sourceRevision: report.fullSlh.sourceRevision, lockfileSha256: report.fullSlh.lockfileSha256 }));
   }
+  if (report?.fullSlhDiagnostic !== undefined) {
+    if (report.status !== 'failed' || report.failedStage !== FULL_SLH_CHECK)
+      throw Error('Unexpected qualification report schema');
+    readFullSlhDiagnostic(report.fullSlhDiagnostic);
+  }
   if (report?.privateProofDiagnostic !== undefined) {
     if (report.status !== 'failed' || report.failedStage !== PRIVATE_PROOF_CHECK)
       throw Error('Unexpected qualification report schema');
@@ -163,7 +172,9 @@ function decodeNativeReport(
     report.phase !== phase ||
     report.scenario !== scenario ||
     report.platform !== platform ||
-    report.version !== 1
+    report.version !== 1 ||
+    (report.status === 'passed' && report.authorizationMode !== 'test-only-fixture') ||
+    (report.authorizationMode !== undefined && report.authorizationMode !== 'test-only-fixture')
   )
     throw Error('Unexpected qualification report schema');
   if (simulatorContract) assertSimulatorRefusal(report, simulatorVersion, EXPECTED_QUICK_CRYPTO_IDENTITY);
@@ -204,28 +215,41 @@ function decodePhysicalReport(text, expected) {
   if (typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > 100000)
     throw Error('Invalid physical report');
   const report = JSON.parse(text);
+  const fullSlh = expected.scenario === 'full_slh';
   if (
     !report ||
     typeof report !== 'object' ||
     Array.isArray(report) ||
     report.physicalRunId !== expected.runId ||
     report.physicalSourceRevision !== expected.sourceRevision ||
-    report.physicalBundleIdentifier !== expected.bundleIdentifier
+    report.physicalBundleIdentifier !== expected.bundleIdentifier ||
+    expected.bundleIdentifier !== PHYSICAL_BUNDLES[expected.scenario] ||
+    (report.fullSlh !== undefined) !== fullSlh ||
+    (report.fullSlhResources !== undefined) !== fullSlh
   )
     throw Error('Physical report identity mismatch');
   const {
     physicalRunId,
     physicalSourceRevision,
     physicalBundleIdentifier,
+    fullSlhResources,
     ...common
   } = report;
   const checked = decodeNativeReport(
     JSON.stringify(common),
     'ios',
     expected.phase,
-    expected.scenario
+    fullSlh ? 'import' : expected.scenario
   );
   assertFullNativeReport(checked);
+  if (fullSlh) {
+    const evidence = readFullSlhEvidence(checked.fullSlh, expected.phase, fullSlhBuild({
+      version: 1, sourceRevision: expected.sourceRevision, lockfileSha256: expected.lockfileSha256,
+    }));
+    const resources = readSlhResourceEvidence(fullSlhResources);
+    if (resources.elapsedMs < (evidence.timings.prepareFreshMs ?? 0) + evidence.timings.hydrateInstalledMs +
+      evidence.healthy.signMs + (evidence.fallback?.signMs ?? 0)) throw Error('FULL_SLH_RESOURCE_EVIDENCE_INVALID');
+  }
   const duration = (value) =>
     Number.isFinite(value) && value >= 0 && value <= 300000;
   if (
@@ -244,17 +268,20 @@ function decodePhysicalReport(text, expected) {
         !item ||
         Object.keys(item).sort().join(',') !== 'durationMs,name' ||
         typeof item.name !== 'string' ||
-        !duration(item.durationMs)
+        !(fullSlh && item.name === FULL_SLH_CHECK
+          ? Number.isFinite(item.durationMs) && item.durationMs >= 0 && item.durationMs <= FULL_SLH_PHASE_TIMEOUT_MS
+          : duration(item.durationMs))
     ) ||
+    checked.checks.filter(item => item.name === FULL_SLH_CHECK).length !== (fullSlh ? 1 : 0) ||
     CHECKS.some((name, index) => checked.checks[index]?.name !== name) ||
     !checked.checks.some(
-      (item) => item.name === 'synchronous lock and wrong password refusal'
+      (item) => item.name === 'synchronous lock and OS authorization refusal'
     ) ||
     !checked.checks.some(
       (item) =>
         item.name ===
         (expected.phase === 'create'
-          ? 'fresh password-backed seed confirmation'
+          ? 'public-fixture authorized seed confirmation'
           : 'seed reauthentication after cold restart')
     )
   )
@@ -270,6 +297,8 @@ function decodePhysicalReport(text, expected) {
 }
 
 function assertPhysicalRestart(created, restored) {
+  const fullSlh = created.physicalBundleIdentifier === PHYSICAL_BUNDLES.full_slh;
+  if (fullSlh) { readSlhResourceEvidence(created.fullSlhResources); readSlhResourceEvidence(restored.fullSlhResources); }
   if (
     created.sessionId === restored.sessionId ||
     created.address !== restored.address ||
@@ -282,7 +311,10 @@ function assertPhysicalRestart(created, restored) {
     !matchesNevmRestartEvidence(created, restored) ||
     !matchesZksysRestartEvidence(created, restored) ||
     !matchesHdKeyRevealRestartEvidence(created, restored) ||
-    !matchesImportedRestartEvidence(created, restored)
+    !matchesImportedRestartEvidence(created, restored) ||
+    (fullSlh ? !matchesFullSlhRestart(created.fullSlh, restored.fullSlh, fullSlhBuild({
+      version: 1, sourceRevision: created.physicalSourceRevision, lockfileSha256: created.fullSlh?.lockfileSha256,
+    })) : created.fullSlh !== undefined || restored.fullSlh !== undefined || created.fullSlhResources !== undefined || restored.fullSlhResources !== undefined)
   )
     throw Error('Physical cold restart identity mismatch');
 }

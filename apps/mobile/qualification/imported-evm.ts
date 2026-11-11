@@ -49,10 +49,10 @@ function expect(value: unknown): asserts value { if (!value) throw Error('QUALIF
 /** Actual native authority/SDK/storage with an injected, bounded offline RPC. No live transaction path. */
 export async function qualifyNativeImportedEvm(options: Readonly<{
   phase: 'create' | 'restart'; authority: NativeCustodyAuthority; runtime: KeyringRuntime;
-  storage: Pick<OpenWalletStorage, 'keyringStorage' | 'signedRecords' | 'recovery' | 'getWalletFingerprint'>; password: string;
+  storage: Pick<OpenWalletStorage, 'keyringStorage' | 'signedRecords' | 'recovery' | 'getWalletFingerprint'>;
   check: <T>(name: string, operation: () => Promise<T>) => Promise<T>;
 }>): Promise<ImportedQualificationEvidence> {
-  const { phase, authority, runtime, storage, password, check } = options;
+  const { phase, authority, runtime, storage, check } = options;
   const [{ NativeTransfers }, { NativeTransferRpc },
     { getNativeNetwork }, { importedKeyIdentity }, { HdKeyExportFlow }, { Transaction }] = await Promise.all([
     import('../src/custody/transfers.ts'), import('../src/custody/transferRpc.ts'), import('../src/custody/networkContext.ts'), import('../src/custody/importedAccounts.ts'),
@@ -115,7 +115,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
     };
     const rpc = new NativeTransferRpc({ networkId: network, fetch: async (url, init) => {
       guard(); expect(url === registration.rpcUrl && init.method === 'POST' && init.credentials === 'omit' && init.redirect === 'error');
-      expect(typeof init.body === 'string' && init.body.length < 5000 && !init.body.includes(password) && !init.body.includes(FIXTURE_KEY) && ++requests <= 64);
+      expect(typeof init.body === 'string' && init.body.length < 5000 && !init.body.includes('Pali#1:') && !init.body.includes(FIXTURE_KEY) && ++requests <= 64);
       const body = JSON.parse(init.body) as { id: number; method: string; params: unknown[] };
       expect(Number.isSafeInteger(body.id) && Array.isArray(body.params));
       const p = body.params; let result: unknown;
@@ -156,7 +156,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
         }
         guard(); const review = controller.getSnapshot().review;
         expect(review && review.retry === (phase === 'restart') && review.context.chainId === registration.chainId);
-        await controller.confirm(review.id, { method: 'pin', pin: password }); guard();
+        await controller.confirm(review.id, { method: 'device' }); guard();
         expect(controller.getSnapshot().phase === (phase === 'create' ? 'unknown' : 'pending'));
         const saved = await (await transfer.journal(guard)).load(); guard();
         expect(saved && saved.rawTransaction === expectedRaw && saved.phase === (phase === 'create' ? 'signed' : 'submitted'));

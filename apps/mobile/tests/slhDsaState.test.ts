@@ -95,7 +95,7 @@ async function nativeFixture(phrase = PHRASE) {
     let contextClosed = false;
     backgrounds.push(() => { contextClosed = true; });
     const host: SlhDsaExecutionHost<NativeSlhTree, NativeSlhKey> = {
-      hardwareConcurrency: 1, forsConcurrency: 1,
+      leafConcurrency: 1, forsConcurrency: 1,
       allocateTree() { const tree = { async release() {} }; roots.set(tree, new Uint8Array(16).fill(0x44)); return tree; },
       releaseTree: (tree, erase) => tree.release(erase),
       readTree(tree, offset, length) { assert.equal(offset, 134217696); assert.equal(length, 16); return roots.get(tree)!.slice(); },

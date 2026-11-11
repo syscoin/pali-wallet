@@ -117,12 +117,11 @@ export async function qualifyNativeZksysTransfer(
     authority: NativeCustodyAuthority;
     runtime: KeyringRuntime;
     storage: Pick<OpenWalletStorage, 'keyringStorage' | 'signedRecords' | 'recovery' | 'getWalletFingerprint'>;
-    password: string;
-    expectedFifthAddress?: string;
+      expectedFifthAddress?: string;
     check: Check;
   }>
 ): Promise<ZksysQualificationEvidence> {
-  const { phase, authority, runtime, storage, password, check } = options;
+  const { phase, authority, runtime, storage, check } = options;
   expect(phase === 'create' || phase === 'restart');
   if (options.expectedFifthAddress !== undefined)
     expect(
@@ -284,7 +283,7 @@ export async function qualifyNativeZksysTransfer(
       expect(
         typeof init.body === 'string' &&
           init.body.length < 5000 &&
-          !init.body.includes(password) &&
+          !init.body.includes('Pali#1:') &&
           ++requests <= 64
       );
       const body = JSON.parse(init.body) as {
@@ -414,7 +413,7 @@ export async function qualifyNativeZksysTransfer(
               review.context.chainId === '57057' &&
               review.totalUnits === '900789'
           );
-          await controller.confirm(review.id, { method: 'pin', pin: password });
+          await controller.confirm(review.id, { method: 'device' });
           guard();
           expect(controller.getSnapshot().phase === 'unknown');
         }
@@ -434,7 +433,7 @@ export async function qualifyNativeZksysTransfer(
               review.context.chainId === '57057' &&
               controller.getSnapshot().hash === entry.hash
           );
-          await controller.confirm(review.id, { method: 'pin', pin: password });
+          await controller.confirm(review.id, { method: 'device' });
           guard();
           expect(controller.getSnapshot().phase === 'pending');
         }

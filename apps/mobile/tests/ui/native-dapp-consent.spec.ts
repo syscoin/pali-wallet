@@ -1,4 +1,4 @@
-import { enterPin } from './operationAuthentication';
+import { authenticateNativeOperation } from './operationAuthentication';
 import { expect, test } from '@playwright/test';
 test.use({ baseURL: 'http://127.0.0.1:4179' });
 
@@ -21,7 +21,7 @@ for (const viewport of [{ width: 320, height: 480 }, { width: 390, height: 844 }
     await page.getByRole('button', { name: 'View request details', exact: true }).click();
     await expect(page.getByText('0014' + '77'.repeat(20), { exact: true })).toBeVisible();
     await confirm.click();
-    await enterPin(page, '123456');
+    await authenticateNativeOperation(page);
     await expect(page.getByText('Fixture approved', { exact: true })).toBeVisible();
   });
 }

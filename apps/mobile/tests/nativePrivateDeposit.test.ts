@@ -1,9 +1,10 @@
 import { bindNativePrivateAuthentication, createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { createTestPrivateAuthentication, readTestNoteInventory } from './fixtures/privateAuthentication.ts';
 import { createPrivateVaultSession } from '../../../source/wallet/privateVault.ts';
-import { createTestPinRecordKeyring } from './fixtures/pinOperation.ts';
-import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { createTestCredentialRecordKeyring } from './fixtures/credentialOperation.ts';
+import { createTestCredentialPort } from './fixtures/credential.ts';
 import assert from 'node:assert/strict';
+import type { NativeCredentialPort } from '../src/custody/credentialVault.ts';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -21,12 +22,11 @@ import type { IPrivateNoteStatus } from '../../../source/utils/privacy/privateVa
 import { getPrivacyPool } from '../../../source/utils/privacy/registry.ts';
 import { readPrivateVaultBundle } from '../../../source/wallet/privateVaultInspection.ts';
 
-const pinCredential = createTestPinCredentialPort();
+const credentialPort = createTestCredentialPort();
 
 const sdk = await loadNativeKeyringSdk();
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = '123456';
 const noop = () => undefined;
 const depositAbi = new Interface(['function deposit(bytes32) payable']);
 
@@ -37,7 +37,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   let initialized = false;
   let runtime!: KeyringRuntime;
   let keyring!: InstanceType<typeof sdk.HostKeyring>;
-  let secretLeases = 0, leasesAtBroadcast: number | undefined;
+  let secretConsumptions = 0, secretLeases = 0, leasesAtBroadcast: number | undefined;
   let signingFault = false;
   let privateAccess: { released: Promise<void>; disposed: boolean } | undefined;
   const credentialRequests: string[] = [];
@@ -52,7 +52,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       credential: Parameters<InstanceType<typeof sdk.HostKeyring>['withSecretOperation']>[0],
       options: Parameters<InstanceType<typeof sdk.HostKeyring>['withSecretOperation']>[1],
       work: (secret: string) => T | Promise<T>
-    ): Promise<T> { secretLeases++; return super.withSecretOperation(credential, options, work); }
+    ): Promise<T> { secretLeases++; return super.withSecretOperation(credential, options, async secret => { secretConsumptions++; return work(secret); }); }
     override signPreparedEvmTransaction(...args: Parameters<InstanceType<typeof sdk.HostKeyring>['signPreparedEvmTransaction']>) {
       if (signingFault) throw Error('Synthetic unknown signing fault');
       return super.signPreparedEvmTransaction(...args);
@@ -121,7 +121,11 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       headers: { 'content-type': 'application/json' },
     });
   };
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (request, _signal, check, verify) => { check(); credentialRequests.push(request.purpose); await beforeCredential(); check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys: null, slhExecution: null,
+  const credentials: NativeCredentialPort = { ...credentialPort,
+    async withSecret(reference, owner, consume) { credentialRequests.push(owner.purpose); await beforeCredential(); return credentialPort.withSecret(reference, owner, consume); },
+    async authorize(reference, owner) { credentialRequests.push(owner.purpose); await beforeCredential(); return credentialPort.authorize(reference, owner); },
+  };
+  const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort: credentials, privacyServiceSettings: null, passkeys: null, slhExecution: null,
     readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
@@ -166,7 +170,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     },
   });
   runtime = (await factory.open()) as KeyringRuntime;
-  await runtime.session.importWallet(PHRASE, PASSWORD);
+  await runtime.session.importWallet(PHRASE);
   return {
     get runtime() {
       return runtime;
@@ -177,6 +181,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     posted,
     credentialRequests,
     get secretLeases() { return secretLeases; },
+    get secretConsumptions() { return secretConsumptions; },
     get privateAccess() { return privateAccess; },
     assertNoSigningKeys() { assert.equal(keyring.isUnlocked(), false); },
     beforeCredential(callback: () => Promise<void>) { beforeCredential = callback; },
@@ -198,7 +203,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
           row.value,
           createPrivateVaultSession({
             generation: 0,
-            keyring: createTestPinRecordKeyring(storage.pin, pinCredential, keyring, () => PASSWORD, () => { assert(keyring.hasPublicSession()); }),
+            keyring: createTestCredentialRecordKeyring(storage.credential, credentialPort, keyring, () => { assert(keyring.hasPublicSession()); }),
             assertCurrent() {
               assert(keyring.hasPublicSession());
             },
@@ -419,7 +424,6 @@ test('private saved-byte replay ignores stale cancel and confirm IDs', async () 
     replay.cancel('stale');
     await assert.rejects(replay.confirm('stale'));
     assert.equal(f.disposed, before);
-    await f.runtime.security!.authenticateOperation({ method: 'pin', pin: PASSWORD }, noop);
     assert.deepEqual(await replay.confirm(prepared.review.id), { status: 'submitted', hash });
     assert.equal(f.secretLeases, beforeRetry, 'private retry and ACK reuse only their authorized record capability');
     f.assertNoSigningKeys();
@@ -449,7 +453,7 @@ for (const retirement of ['cancel', 'account-change'] as const)
         dispatch: async () => { throw Error('Cancelled reconciliation must not dispatch'); },
       }, { now: () => 1000, randomBytes: n => new Uint8Array(n).fill(5) });
       const entered = deferred();
-      const leases = f.secretLeases;
+      const consumptions = f.secretConsumptions;
       f.beforeCredential(async () => { entered.release(); await release.promise; });
       const preparing = replay.prepare(hash, 'resend');
       const rejected = assert.rejects(preparing);
@@ -460,12 +464,12 @@ for (const retirement of ['cancel', 'account-change'] as const)
       }
       replay.cancel();
       release.release(); await rejected;
-      assert.equal(f.secretLeases, leases, 'stale consent never opens a secret operation');
+      assert.equal(f.secretConsumptions, consumptions, 'stale consent never receives a protected secret');
       f.assertNoSigningKeys();
       assert.equal(f.posted.length, 1);
       if (retirement === 'account-change') {
         f.beforeCredential(async () => {});
-        await f.runtime.session.unlock(PASSWORD);
+        await f.runtime.session.unlock();
         f.assertNoSigningKeys();
         await f.select('hd:60:1');
         assert.equal(f.runtime.accounts!.getSnapshot()!.active.accountId, 'hd:60:1');
@@ -494,7 +498,7 @@ for (const change of ['account', 'lock-unlock'] as const)
       if (change === 'account') await f.select('hd:60:1');
       else {
         await f.runtime.session.lock();
-        await f.runtime.session.unlock(PASSWORD);
+        await f.runtime.session.unlock();
       }
       release.release();
       await confirming;

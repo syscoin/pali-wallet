@@ -54,11 +54,14 @@
  
  static uint32_t load_bigendian_32(const uint8_t *x) {
      return (uint32_t)(x[3]) | (((uint32_t)(x[2])) << 8) |
-@@ -131,17 +135,38 @@
+@@ -131,17 +135,41 @@
  
  static size_t crypto_hashblocks_sha256(uint8_t *statebytes,
                                         const uint8_t *in, size_t inlen) {
 +#if defined(PALI_SLH_OPENSSL_SHA256)
++    /* No complete block means no state change. Avoid copying and clearing
++     * temporary compression state for the short tails used by SLH hashes. */
++    if (inlen < 64) return inlen;
 +    uint32_t words[8];
 +    PALI_SLH_CLEAR_ON_RETURN(words);
 +    for (size_t i = 0; i < 8; ++i)
@@ -93,7 +96,7 @@
  
      a = load_bigendian_32(statebytes + 0);
      state[0] = a;
-@@ -162,21 +187,37 @@
+@@ -162,21 +190,37 @@
  
      while (inlen >= 64) {
          uint32_t w0  = load_bigendian_32(in + 0);
@@ -131,7 +134,7 @@
  
          F_32(w0, 0x428a2f98)
          F_32(w1, 0x71374491)
-@@ -284,21 +325,33 @@
+@@ -284,21 +328,33 @@
      store_bigendian_32(statebytes + 28, state[7]);
  
      return inlen;
@@ -165,7 +168,7 @@
  
    a = load_bigendian_64(statebytes +  0); state[0] = a;
    b = load_bigendian_64(statebytes +  8); state[1] = b;
-@@ -311,21 +364,37 @@
+@@ -311,21 +367,37 @@
  
    while (inlen >= 128) {
      uint64_t w0  = load_bigendian_64(in +   0);
@@ -203,7 +206,7 @@
  
      F_64(w0 ,0x428a2f98d728ae22ULL)
      F_64(w1 ,0x7137449123ef65cdULL)
-@@ -491,6 +560,7 @@
+@@ -491,6 +563,7 @@
  
  void sha256_inc_blocks(uint8_t *state, const uint8_t *in, size_t inblocks) {
      uint64_t bytes = load_bigendian_64(state + 32);
@@ -211,7 +214,7 @@
  
      crypto_hashblocks_sha256(state, in, 64 * inblocks);
      bytes += 64 * inblocks;
-@@ -500,6 +570,7 @@
+@@ -500,6 +573,7 @@
  
  void sha512_inc_blocks(uint8_t *state, const uint8_t *in, size_t inblocks) {
      uint64_t bytes = load_bigendian_64(state + 64);
@@ -219,7 +222,7 @@
  
      crypto_hashblocks_sha512(state, in, 128 * inblocks);
      bytes += 128 * inblocks;
-@@ -509,7 +580,9 @@
+@@ -509,7 +583,9 @@
  
  void sha256_inc_finalize(uint8_t *out, uint8_t *state, const uint8_t *in, size_t inlen) {
      uint8_t padded[128];
@@ -229,7 +232,7 @@
  
      crypto_hashblocks_sha256(state, in, inlen);
      in += inlen;
-@@ -557,7 +630,9 @@
+@@ -557,7 +633,9 @@
  
  void sha512_inc_finalize(uint8_t *out, uint8_t *state, const uint8_t *in, size_t inlen) {
      uint8_t padded[256];
@@ -239,7 +242,7 @@
  
      crypto_hashblocks_sha512(state, in, inlen);
      in += inlen;
-@@ -606,6 +681,7 @@
+@@ -606,6 +684,7 @@
  
  void sha256(uint8_t *out, const uint8_t *in, size_t inlen) {
      uint8_t state[40];
@@ -247,7 +250,7 @@
  
      sha256_inc_init(state);
      sha256_inc_finalize(out, state, in, inlen);
-@@ -613,6 +689,7 @@
+@@ -613,6 +692,7 @@
  
  void sha512(uint8_t *out, const uint8_t *in, size_t inlen) {
      uint8_t state[72];
@@ -255,7 +258,7 @@
  
      sha512_inc_init(state);
      sha512_inc_finalize(out, state, in, inlen);
-@@ -628,7 +705,9 @@
+@@ -628,7 +708,9 @@
            const unsigned char *in, unsigned long inlen)
  {
      SPX_VLA(uint8_t, inbuf, inlen+4);
@@ -265,7 +268,7 @@
      unsigned long i;
  
      memcpy(inbuf, in, inlen);
-@@ -654,7 +733,9 @@
+@@ -654,7 +736,9 @@
            const unsigned char *in, unsigned long inlen)
  {
      SPX_VLA(uint8_t, inbuf, inlen+4);
@@ -275,7 +278,7 @@
      unsigned long i;
  
      memcpy(inbuf, in, inlen);
-@@ -681,6 +762,7 @@
+@@ -681,6 +765,7 @@
   **/
  void seed_state(spx_ctx *ctx) {
      uint8_t block[SPX_SHA512_BLOCK_BYTES];

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prefer Kernel.org's Ubuntu mirror during the 2026-11-11 Canonical DNS outage.
+"""Prefer the hosted runner's Azure mirror; retain the fixed outage fallback.
 
 https://status.canonical.com/rss
 https://github.com/actions/runner-images/issues/15296
@@ -19,10 +19,16 @@ ORIGINAL = (
     b"https://archive.ubuntu.com/ubuntu/\tpriority:2\n"
     b"https://security.ubuntu.com/ubuntu/\tpriority:3\n"
 )
-PREFERRED = (
+KERNEL_FIRST = (
     b"https://mirrors.kernel.org/ubuntu/\tpriority:1\n"
     + ORIGINAL.replace(b"priority:3", b"priority:4")
     .replace(b"priority:2", b"priority:3").replace(b"priority:1", b"priority:2")
+)
+PREFERRED = (
+    b"http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n"
+    b"https://mirrors.kernel.org/ubuntu/\tpriority:2\n"
+    b"https://archive.ubuntu.com/ubuntu/\tpriority:3\n"
+    b"https://security.ubuntu.com/ubuntu/\tpriority:4\n"
 )
 
 
@@ -39,7 +45,7 @@ def configure(root, architecture):
     with os.fdopen(os.open(target, os.O_RDONLY | os.O_NOFOLLOW), "rb") as source:
         info = os.fstat(source.fileno())
         contents = source.read(4096)
-        if info.st_nlink != 1 or contents not in (ORIGINAL, PREFERRED):
+        if info.st_nlink != 1 or contents not in (ORIGINAL, KERNEL_FIRST, PREFERRED):
             raise ValueError("Unexpected hosted-runner apt mirror list")
         if contents == PREFERRED:
             return False

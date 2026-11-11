@@ -21,7 +21,7 @@ const wallet = Wallet.fromPhrase(
   'test test test test test test test test test test test junk'
 );
 const to = '0x1111111111111111111111111111111111111111';
-const OPERATION_CREDENTIAL = { method: 'pin', pin: '123456' } as const;
+const OPERATION_CREDENTIAL = { method: 'device' } as const;
 const token = Object.freeze({
   contractAddress: '0x3333333333333333333333333333333333333333',
   name: 'Public fixture token',
@@ -114,7 +114,7 @@ function fixture(maximumAccountType?: 'HDAccount' | 'Imported' | 'Ledger' | 'Tre
     isAuthenticationRefusal(error: unknown) { return !!error && typeof error === 'object' && authenticationRefusals.has(error); },
     async authenticateOperation(credential: NativeOperationCredential, guard: () => void) {
       guard(); authentications++;
-      if (!credential || credential.method === 'pin' && credential.pin !== OPERATION_CREDENTIAL.pin)
+      if (!credential || credential.method !== 'device')
         throw refusal('INVALID_CREDENTIAL');
       if (authenticationGate) await authenticationGate;
       guard();
@@ -443,7 +443,8 @@ test('native MAX keeps authentication, expiry, no-funds and payer-kind refusals'
     await f.transfers.prepareMaximum(to);
     const approved = f.transfers.getSnapshot().review;
     assert(approved);
-    await assert.rejects(f.transfers.confirm(approved.id, { method: 'pin', pin: '000000' }), { code: 'INVALID_CREDENTIAL' });
+    f.refuseAuthentication('INVALID_CREDENTIAL');
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'INVALID_CREDENTIAL' });
     assert.equal(f.transfers.getSnapshot().review, approved);
     assert.equal(f.signatures(), 0);
     f.expire();
@@ -825,20 +826,22 @@ test('operation authentication is required and a rejected credential preserves o
     const approved = await review(f);
     assert.equal(f.authentications(), 0);
     await assert.rejects(Reflect.apply(f.transfers.confirm, f.transfers, [approved.id]), { code: 'INVALID_CREDENTIAL' });
-    await assert.rejects(f.transfers.confirm(approved.id, { method: 'pin', pin: '000000' }), { code: 'INVALID_CREDENTIAL' });
+    f.refuseAuthentication('INVALID_CREDENTIAL');
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'INVALID_CREDENTIAL' });
     assert.strictEqual(f.transfers.getSnapshot().review, approved);
     assert.equal(f.signatures(), 0); assert.equal(f.broadcasts.length, 0); assert.equal(Object.keys(f.records).length, 0);
+    f.failAuthentication(null);
     await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
     assert.equal(f.authentications(), 2); assert.equal(f.signatures(), 1); assert.equal(f.broadcasts.length, 1);
   } finally { f.close(); }
 });
 
-test('cancelled biometric confirmation permits password retry without signing first', async () => {
+test('cancelled device confirmation permits explicit retry without signing first', async () => {
   const f = fixture();
   try {
     const approved = await review(f);
     f.refuseAuthentication('DEVICE_UNLOCK_UNAVAILABLE');
-    await assert.rejects(f.transfers.confirm(approved.id, { method: 'biometric' }), { code: 'DEVICE_UNLOCK_UNAVAILABLE' });
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'DEVICE_UNLOCK_UNAVAILABLE' });
     assert.strictEqual(f.transfers.getSnapshot().review, approved); assert.equal(f.signatures(), 0);
     f.failAuthentication(null);
     await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
@@ -991,8 +994,10 @@ test('lost acknowledgement retries the same bytes with fresh consent, without a 
     await f.transfers.recover(true);
     const retry = f.transfers.getSnapshot().review;
     assert(retry?.retry);
-    await assert.rejects(f.transfers.confirm(retry.id, { method: 'pin', pin: '000000' }), { code: 'INVALID_CREDENTIAL' });
+    f.refuseAuthentication('INVALID_CREDENTIAL');
+    await assert.rejects(f.transfers.confirm(retry.id, OPERATION_CREDENTIAL), { code: 'INVALID_CREDENTIAL' });
     assert.equal(f.broadcasts.length, 1);
+    f.failAuthentication(null);
     await f.transfers.confirm(retry.id, OPERATION_CREDENTIAL);
     assert.equal(f.authentications(), 3);
     assert.equal(f.signatures(), 1);

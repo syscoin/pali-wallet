@@ -210,7 +210,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
         lifecycleEvents.push('lock');
         change('locked');
       },
-      async getAuthenticationStatus() { return { pinConfigured: true, biometricsAvailable: false, biometricsEnabled: false }; },
+      async getAuthenticationStatus() { return { deviceAuth: 'ready', credentialPresent: true }; },
       async unlock() {
         change('ready');
       },
@@ -341,7 +341,6 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     './BackupIntroduction': { BackupIntroduction: 'BackupIntroduction' },
     './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
     './NativeImportWallet': { NativeImportWallet: 'NativeImportWallet' },
-    './PinEntry': { PinEntryScreen: 'PinEntryScreen', PinSetup: 'PinSetup', isWalletPin: (pin: unknown) => typeof pin === 'string' && /^\d{6}$/.test(pin) },
     './NativeOperationAuthentication': { NativeOperationAuthentication: 'NativeOperationAuthentication' },
     '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'biometrics', icon: 'fingerprint' }) },
     '../platform/localization': nativeTranslationFixture,
@@ -538,21 +537,21 @@ async function mounted(ready = false, smartAccount = false, withPairing = true, 
   return f;
 }
 
-test('wallet wrapper retains the live content and operation authentication sibling', () => {
+test('wallet wrapper renders public content without an app authentication sibling', () => {
   const f = harness();
   const tree = f.wrapper();
-  assert.equal(tree.type, 'Fragment');
-  assert.equal((tree.children[0] as Element).type, f.content);
-  assert.equal((tree.children[1] as Element).type, 'NativeOperationAuthentication');
+  assert.equal(tree.type, f.content);
+  assert.equal(tree.children.length, 0);
   f.dispose();
 });
 
-test('an incoming pairing waits for unlock and never applies the saved account hint', async () => {
+test('an incoming pairing waits for public entry and never applies the saved account hint', async () => {
   const f = await mounted();
   try {
     let tree = f.render();
-    assert.equal(tree.type, 'PinEntryScreen');
-    tree.props.onComplete('123456');
+    assert.equal(tree.type, 'SafeAreaView');
+    const open = find(tree, node => node.props.title === 'Open wallet');
+    assert(open); open.props.onPress();
     await settle();
     f.render();
     await settle();

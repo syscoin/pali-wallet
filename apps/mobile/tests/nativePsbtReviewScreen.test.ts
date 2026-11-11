@@ -153,7 +153,7 @@ test('a child fee review shows the verified original Sentry changes alongside ex
   } finally { f.close(); }
 });
 
-for (const boundary of ['inactive', 'blur'] as const) test(`own OS prompt ${boundary} does not hand off or reject an admitted PSBT and duplicate submission stays blocked`, async () => {
+for (const boundary of ['inactive', 'blur', 'background'] as const) test(`own credential prompt ${boundary} does not hand off or reject an admitted PSBT and duplicate submission stays blocked`, async () => {
   const f = fixture(), held = Promise.withResolvers<void>();
   let promptOwner: AbortSignal | null = null;
   const binding = privateAuthentication.bindNativePrivateAuthentication(f.authentication, { assertCurrent() {}, isPromptActive: owner => owner === promptOwner });
@@ -161,7 +161,7 @@ for (const boundary of ['inactive', 'blur'] as const) test(`own OS prompt ${boun
   f.hold(proof);
   try {
     const press = f.button().props.onPress, pending = press();
-    if (boundary === 'blur') f.blur(); else f.event('inactive');
+    if (boundary === 'blur') f.blur(); else f.event(boundary);
     press(); assert(f.button().props.disabled); assert.deepEqual(f.rejections, []);
     f.event('active'); held.resolve(); await proof; await pending;
     assert.deepEqual(f.approvals, [['psbt-1', 7]]); assert.deepEqual(f.rejections, []);
@@ -180,6 +180,7 @@ for (const boundary of ['foreign-prompt', 'foreign-prompt-blur', 'foreign-signal
   f.hold(proof);
   try {
     const press = f.button().props.onPress, pending = press();
+    if (boundary === 'background') promptOwner = null;
     if (boundary === 'back') f.back(); else if (boundary === 'expiry') f.expire(); else if (boundary.endsWith('blur')) f.blur(); else f.event(boundary === 'background' ? 'background' : 'inactive');
     assert(f.button().props.disabled); assert.deepEqual(f.rejections, ['psbt-1']);
     f.event('active'); held.resolve(); await proof; await pending; press();

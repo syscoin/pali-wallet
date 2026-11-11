@@ -14,7 +14,11 @@ echo 'Verified _apt cache traversal and sandboxed partial-file creation'
 shopt -s nullglob
 archives=("$archive_dir/"*.deb)
 if [ "${#archives[@]}" -eq 0 ]; then exit 0; fi
-sudo apt-get update -o APT::Update::Error-Mode=any
+# Bound both stalled transports and the complete metadata refresh. Run timeout
+# as root so it can terminate APT's privileged acquisition workers as well.
+sudo -n timeout --signal=TERM --kill-after=15s 300s apt-get update \
+  -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 \
+  -o Acquire::Retries=1 -o APT::Update::Error-Mode=any
 for archive in "${archives[@]}"; do
   # apt may trust a pre-existing archive's size; require its SHA256
   # from signed repository metadata before allowing cached reuse.

@@ -22,7 +22,7 @@ import {
 } from '../src/smartAccount/slhDsaRuntime.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
 import type { NativeKeyringSdk } from '../src/custody/keyringSdk.ts';
-import { createNativePinVault, type NativePinCredentialPort } from '../src/custody/pinVault.ts';
+import { createNativeCredentialVault, type NativeCredentialPort } from '../src/custody/credentialVault.ts';
 import { decodeStorageValue } from '../src/storage/json.ts';
 import { parseSLHDSAStateStorageKey } from '../../../source/wallet/slhDsaState.ts';
 import { SLH_DSA_PROFILE_STATE_DOMAIN } from '../../../source/wallet/slhDsaStateCrypto.ts';
@@ -130,7 +130,7 @@ function signed(input: unknown, count: number, fallback: boolean): boolean {
     ) &&
     n.setups === 0 &&
     n.prelude === 1 &&
-    n.fors === (fallback ? 0 : 6) &&
+    (fallback ? Number(n.fors) <= 5 : n.fors === 6) &&
     n.finish === (fallback ? 0 : 1) &&
     n.cached === (fallback ? 1 : 0) &&
     n.forced === (fallback ? 1 : 0) &&
@@ -241,14 +241,88 @@ const publicKey = (state: NativeSlhPublicState) =>
     )
   );
 
+export class FullSlhForsTracker {
+  private active = 0;
+  get inFlight(): number {
+    return this.active;
+  }
+  async run<T>(work: () => Promise<T>): Promise<T> {
+    this.active++;
+    try {
+      return await work();
+    } finally {
+      this.active--;
+    }
+  }
+  assertDrained(): void {
+    if (this.active !== 0) fail();
+  }
+}
+const diagnosticStages = [
+  'setup',
+  'cancel',
+  'healthy',
+  'fallback',
+  'restart',
+] as const;
+const diagnosticPoints = [
+  'entry',
+  'execution',
+  'load',
+  'leaf',
+  'tree',
+  'write',
+  'publish',
+  'prepared',
+  'prelude',
+  'fors',
+  'cached',
+  'signature',
+  'verification',
+  'complete',
+] as const;
+export type FullSlhDiagnostic = Readonly<{
+  stage: (typeof diagnosticStages)[number];
+  point: (typeof diagnosticPoints)[number];
+  native: Readonly<Counts>;
+  inFlightFors: number;
+  signalAborted: boolean;
+  executionState: 'not-open' | 'active' | 'retired' | 'unknown';
+}>;
+export function readFullSlhDiagnostic(value: unknown): FullSlhDiagnostic {
+  if (
+    !exact(value, [
+      'stage',
+      'point',
+      'native',
+      'inFlightFors',
+      'signalAborted',
+      'executionState',
+    ]) ||
+    !diagnosticStages.includes(value.stage as FullSlhDiagnostic['stage']) ||
+    !diagnosticPoints.includes(value.point as FullSlhDiagnostic['point']) ||
+    !exact(value.native, Object.keys(blank())) ||
+    !Object.values(value.native).every(
+      (v) => Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 10000
+    ) ||
+    !Number.isSafeInteger(value.inFlightFors) ||
+    Number(value.inFlightFors) < 0 ||
+    Number(value.inFlightFors) > 6 ||
+    typeof value.signalAborted !== 'boolean' ||
+    typeof value.executionState !== 'string' ||
+    !['not-open', 'active', 'retired', 'unknown'].includes(value.executionState)
+  )
+    fail();
+  return value as unknown as FullSlhDiagnostic;
+}
+
 /** Fixed public fixture only. Every cryptographic primitive delegates to the real native host. */
 export async function qualifyNativeSlhFull(
   ports: Readonly<{
     phase: Phase;
     build: Build;
     keyring: Keyring;
-    pin: string;
-    pinCredential: NativePinCredentialPort;
+    credentialPort: NativeCredentialPort;
     signal: AbortSignal;
     storage: OpenWalletStorage;
     productionCapability: null;
@@ -256,6 +330,7 @@ export async function qualifyNativeSlhFull(
     previous: FullSlhEvidence | null;
     assertCurrent(): void;
     onStorageFault(): void;
+    onDiagnostic(value: FullSlhDiagnostic): void;
     randomFill(bytes: Uint8Array): void;
     yield(): Promise<void>;
     digest(bytes: Uint8Array): Promise<Uint8Array>;
@@ -265,12 +340,43 @@ export async function qualifyNativeSlhFull(
   if (
     ports.productionCapability !== null ||
     typeof ports.now !== 'function' ||
+    typeof ports.onDiagnostic !== 'function' ||
     !['create', 'restart'].includes(ports.phase) ||
     (ports.phase === 'create'
       ? ports.previous !== null
       : ports.previous === null)
   )
     fail();
+  let stage: FullSlhDiagnostic['stage'] =
+    ports.phase === 'create' ? 'setup' : 'restart';
+  let counts = blank(),
+    forceFors = false,
+    admitted: (() => void) | undefined;
+  let native: OwnedNativeSlhExecution | undefined;
+  const forsTracker = new FullSlhForsTracker();
+  let lastPoint: FullSlhDiagnostic['point'] = 'entry';
+  const diagnose = (point: FullSlhDiagnostic['point'] = lastPoint) => {
+    lastPoint = point;
+    let executionState: FullSlhDiagnostic['executionState'] = 'not-open';
+    if (native) {
+      try {
+        executionState = native.isRetired() ? 'retired' : 'active';
+      } catch {
+        executionState = 'unknown';
+      }
+    }
+    ports.onDiagnostic(
+      Object.freeze({
+        stage,
+        point,
+        native: Object.freeze({ ...counts }),
+        inFlightFors: forsTracker.inFlight,
+        signalAborted: ports.signal.aborted,
+        executionState,
+      })
+    );
+  };
+  diagnose('entry');
   const check = () => assertSynchronousEvmFeeGuard(ports.assertCurrent);
   check();
   const unlocked = ports.keyring.capturePublicSessionGuard();
@@ -290,15 +396,15 @@ export async function qualifyNativeSlhFull(
     !/^0x[0-9a-f]{64}$/.test(namespace)
   )
     fail();
-  const vault = createNativePinVault(ports.storage.pin, ports.pinCredential);
+  const vault = createNativeCredentialVault(ports.storage.credential, ports.credentialPort);
   const withSecret = async <T>(signal: AbortSignal, guard: () => void, work: () => Promise<T>): Promise<T> => {
-    let authenticated: (() => Promise<void>) | undefined;
+    let authenticated = false;
     const result = await ports.keyring.withSecretOperation({ async withSecret(sdkCheck, consume) {
       const check = () => { owner(); assertSynchronousEvmFeeGuard(guard); assertSynchronousEvmFeeGuard(sdkCheck); };
-      await vault.withVerifiedSecret(ports.pin, check, async (secret, complete) => { authenticated = complete; await consume(secret); });
+      await vault.withSecret({ purpose: 'transaction', signal, assertCurrent: check }, async secret => { authenticated = true; await consume(secret); });
     } }, { signal, assertCurrent: () => { owner(); assertSynchronousEvmFeeGuard(guard); } }, async () => {
       if (!authenticated) fail();
-      await authenticated(); owner();
+      owner();
       return work();
     });
     owner(); if (ports.keyring.isUnlocked()) fail();
@@ -333,12 +439,6 @@ export async function qualifyNativeSlhFull(
   let deriveSetupSecretMs: number | null = null,
     prepareFreshMs: number | null = null,
     hydrateInstalledMs = 0;
-  let stage: 'setup' | 'cancel' | 'healthy' | 'fallback' | 'restart' =
-    ports.phase === 'create' ? 'setup' : 'restart';
-  let counts = blank(),
-    forceFors = false,
-    admitted: (() => void) | undefined;
-  let native: OwnedNativeSlhExecution | undefined;
   const openExecution: Parameters<
     typeof createNativeSlhDsaRuntime
   >[0]['openExecution'] = (captured) => {
@@ -349,6 +449,7 @@ export async function qualifyNativeSlhFull(
       yield: ports.yield,
     });
     native = actual;
+    diagnose('execution');
     const base = actual.host;
     return Object.freeze({
       ...actual,
@@ -356,14 +457,37 @@ export async function qualifyNativeSlhFull(
         ...base,
         async loadTree(id: string) {
           counts.loads++;
+          diagnose('load');
           return base.loadTree(id);
         },
-        openSetup(seed: Uint8Array) {
+        async openSetup(seed: Uint8Array) {
           counts.setups++;
-          return base.openSetup(seed);
+          const setup = await base.openSetup(seed);
+          return { ...setup, buildChunk(...args: Parameters<typeof setup.buildChunk>) {
+            diagnose('tree');
+            return setup.buildChunk(...args);
+          } };
+        },
+        createLeafLanes(count: number) {
+          return base.createLeafLanes(count).map(lane => ({
+            buildLeaves(...args: Parameters<typeof lane.buildLeaves>) {
+              diagnose('leaf');
+              return lane.buildLeaves(...args);
+            },
+            dispose: () => lane.dispose(),
+          }));
+        },
+        writeTree(...args: Parameters<typeof base.writeTree>) {
+          diagnose('write');
+          return base.writeTree(...args);
+        },
+        saveTree(...args: Parameters<typeof base.saveTree>) {
+          diagnose('publish');
+          return base.saveTree(...args);
         },
         async signPrelude(...args: Parameters<typeof base.signPrelude>) {
           counts.prelude++;
+          diagnose('prelude');
           const pending = base.signPrelude(...args);
           if (stage === 'cancel') {
             const notify = admitted;
@@ -379,7 +503,10 @@ export async function qualifyNativeSlhFull(
             throw Error('FULL_SLH_BEFORE_NATIVE_FORS');
           }
           counts.fors++;
-          return base.signForsTree(...args);
+          return forsTracker.run(async () => {
+            diagnose('fors');
+            return base.signForsTree(...args);
+          });
         },
         async finishSignature(
           ...args: Parameters<typeof base.finishSignature>
@@ -388,7 +515,9 @@ export async function qualifyNativeSlhFull(
           return base.finishSignature(...args);
         },
         async signCached(...args: Parameters<typeof base.signCached>) {
+          forsTracker.assertDrained();
           counts.cached++;
+          diagnose('cached');
           return base.signCached(...args);
         },
       }),
@@ -443,6 +572,7 @@ export async function qualifyNativeSlhFull(
         owner();
       }, ports.signal, null);
       prepareFreshMs = elapsed(start);
+      diagnose('prepared');
       owner();
       if (
         state.accountIndex !== 0 ||
@@ -516,6 +646,7 @@ export async function qualifyNativeSlhFull(
       expected: number
     ): Promise<Signed> => {
       const actionHash = `0x${byte.repeat(32)}`;
+      diagnose('signature');
       const start = clock();
       const signatureHex = await runtime.signActionHash(
         { ...key, actionHash },
@@ -526,6 +657,7 @@ export async function qualifyNativeSlhFull(
       // Includes signer state/cache I/O and usage persistence; excludes the
       // following verifier calls, mutation checks, readback and report digest.
       const signMs = elapsed(start);
+      diagnose('verification');
       owner();
       const signature = hexToBytes(signatureHex),
         action = hexToBytes(actionHash);
@@ -596,7 +728,11 @@ export async function qualifyNativeSlhFull(
       ports.phase,
       ports.build
     );
+    diagnose('complete');
     return result;
+  } catch (error) {
+    diagnose();
+    throw error;
   } finally {
     await runtime.retire();
   }

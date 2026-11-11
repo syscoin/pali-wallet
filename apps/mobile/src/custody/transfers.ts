@@ -86,7 +86,7 @@ export type NativeTransferReplay = Pick<EvmSignedReplay, 'confirm' | 'cancel' | 
 };
 export interface NativeTransferRuntime {
   isAuthenticationRefusal(error: unknown): boolean;
-  authenticateOperation(credential: NativeOperationCredential, assertCurrent: () => void): Promise<void>;
+  authenticateOperation(credential: NativeOperationCredential, assertCurrent: () => void, signal: AbortSignal): Promise<void>;
   authorizeOperation(credential: NativeOperationCredential, transaction: EvmUnsignedTransfer, assertCurrent: () => void): Promise<NativeOperationAuthorization>;
   releaseOperationAuthorization(authorization: NativeOperationAuthorization): void;
   evmSubmissionFailure?(error: unknown): Readonly<{ transactionNotBroadcast: boolean; signedTransactionHash?: string }> | undefined;
@@ -368,14 +368,14 @@ export class NativeTransfers {
     if (operation) this.source.lock();
   }
   private async runSecretOperation<T>(work: () => Promise<T>): Promise<T> {
-    const operation = {};
+    const operation = {}, runtime = this.runtime();
     this.secretOperation = operation;
     try {
       return await work();
     } catch (error) {
       // Runtime failures retire the SDK session. Revoke custody before releasing
       // the marker, even if cancel runs before the outer transfer catch.
-      if (this.secretOperation === operation) this.revokeSecretOperation();
+      if (this.secretOperation === operation && !(runtime && runtime === this.runtime() && runtime.isAuthenticationRefusal(error))) this.revokeSecretOperation();
       throw error;
     } finally {
       // A cancelled operation cannot clear a later operation's marker.
@@ -467,6 +467,10 @@ export class NativeTransfers {
           assertCurrent();
         } catch {
           throw new NativeTransferError('CANCELLED');
+        }
+        if (runtime.isAuthenticationRefusal(error) && this.review) {
+          this.publish({ phase: 'review', review: this.review.public, message: null });
+          throw new NativeTransferError(error instanceof Error && error.message === 'DEVICE_UNLOCK_UNAVAILABLE' ? 'DEVICE_UNLOCK_UNAVAILABLE' : 'CANCELLED');
         }
         if (error instanceof EvmAutomaticNonceUnresolved && error.reason === 'asset-state') {
           this.publish({
@@ -945,7 +949,7 @@ export class NativeTransfers {
       if (this.expiry !== null) clearTimeout(this.expiry);
       this.expiry = null;
     };
-    const authenticate = async (runtime: NativeTransferRuntime, assertCurrent: () => void, context: NativeSendContext, signing: boolean) => {
+    const authenticate = async (runtime: NativeTransferRuntime, assertCurrent: () => void, context: NativeSendContext, signing: boolean, signal: AbortSignal) => {
       let accepted = false;
       const check = () => {
         assertCurrent();
@@ -961,12 +965,12 @@ export class NativeTransfers {
       const refusal = await this.runSecretOperation(async () => {
         try {
           if (signing) { authorization = await runtime.authorizeOperation(entered, approved.transaction!, check); authorizationRuntime = runtime; }
-          else await runtime.authenticateOperation(entered, check);
+          else await runtime.authenticateOperation(entered, check, signal);
           return null;
         } catch (cause) {
           const code = cause instanceof Error ? cause.message : '';
           if (runtime.isAuthenticationRefusal(cause) === true &&
-              (code === 'INVALID_CREDENTIAL' || code === 'AUTH_THROTTLED' || code === 'DEVICE_UNLOCK_UNAVAILABLE'))
+              (code === 'CANCELLED' || code === 'INVALID_CREDENTIAL' || code === 'AUTH_THROTTLED' || code === 'DEVICE_UNLOCK_UNAVAILABLE'))
             return new NativeTransferError(code);
           throw cause;
         }
@@ -974,10 +978,10 @@ export class NativeTransfers {
       check();
       if (refusal) throw refusal;
       accepted = true;
-      consume();
+      if (!signing) consume();
     };
-    if (approved.replay) return this.perform(async ({ assertCurrent, context, runtime }) => {
-      await authenticate(runtime, assertCurrent, context, false);
+    if (approved.replay) return this.perform(async ({ assertCurrent, context, runtime, signal }) => {
+      await authenticate(runtime, assertCurrent, context, false, signal);
       assertCurrent();
       runtime.assertUnlocked(assertCurrent);
       this.publish({ phase: 'submitting', review: approved.public, hash: approved.public.replay!.hash, message: null });
@@ -997,7 +1001,7 @@ export class NativeTransfers {
         message: result.status === 'submitted' ? 'Submitted. Waiting for network confirmation.' : 'Submission could not be confirmed. Check this transaction before sending again.' });
     }).finally(releaseAuthorization);
     return this.perform(async ({ assertCurrent, runtime, signal, address, context, rpc }) => {
-      await authenticate(runtime, assertCurrent, context, true);
+      await authenticate(runtime, assertCurrent, context, true, signal);
       assertCurrent();
       let startedSubmission = false;
       const collectible = approved.collectible;
@@ -1085,6 +1089,7 @@ export class NativeTransfers {
           )
         );
         guard();
+        consume();
         this.verifySigned(approved.transaction!, signed);
         rawTransaction = signed.rawTransaction; transactionHash = signed.hash;
       }

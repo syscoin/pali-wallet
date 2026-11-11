@@ -1,3 +1,4 @@
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import {
   AppState,
@@ -53,7 +54,7 @@ export function NativeSentrySettings({
     });
     const check = () => {
       assertCurrent();
-      if (!current.live || (AppState.currentState !== 'active' && !(AppState.currentState === 'inactive' && manager.isAuthenticating())))
+      if (!current.live || (AppState.currentState !== 'active' && !(allowsPrivateAuthenticationInterruption(manager, AppState.currentState))))
         throw new Error('CANCELLED');
     };
     current.pending = Promise.resolve()
@@ -118,7 +119,7 @@ export function NativeSentrySettings({
       if (
         !current.live ||
         current.request !== request ||
-        (AppState.currentState !== 'active' && !(AppState.currentState === 'inactive' && manager.isAuthenticating()))
+        (AppState.currentState !== 'active' && !(allowsPrivateAuthenticationInterruption(manager, AppState.currentState)))
       )
         throw new Error('CANCELLED');
     };

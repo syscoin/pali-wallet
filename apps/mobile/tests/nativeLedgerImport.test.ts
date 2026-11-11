@@ -1,6 +1,6 @@
-import { prepareRecoveryPin } from './fixtures/recoveryPin.ts';
+import { prepareRecoveryCredential } from './fixtures/recoveryCredential.ts';
 import { signTestTransfer } from './fixtures/operationAuthorization.ts';
-import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { createTestCredentialPort } from './fixtures/credential.ts';
 import { nonSuiteSigningHandoff } from './nonSuiteSigningHandoff.ts';
 import { getNetworkConfig } from '@sidhujag/sysweb3-network';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
@@ -42,11 +42,10 @@ import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
-const pinCredential = createTestPinCredentialPort();
+const credentialPort = createTestCredentialPort();
 
 const phrase =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const password = '123456';
 const deviceWallet = new Wallet('0x' + '31'.repeat(32));
 
 function hardwareHd(slip44: number, currency: string, accountIndex: number) {
@@ -117,8 +116,7 @@ async function fixture() {
     initialized = true;
     return storage;
   };
-  let currentPin = password;
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: currentPin }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys: null, slhExecution: null,
+  const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: null, passkeys: null, slhExecution: null,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: CountedHost }),
     readEvmRetirement: null,
@@ -300,7 +298,7 @@ async function fixture() {
     await owner.initialize();
   };
   await open();
-  await owner.importPhrase(phrase, password);
+  await owner.importPhrase(phrase);
   await runtime.backup.confirm(await runtime.backup.fingerprint());
   await owner.refreshAuthenticatedMetadata();
   const view = new NativeLedgerAccounts(owner, () => runtime.ledger, 'import');
@@ -345,7 +343,7 @@ async function fixture() {
         values.map((value) => (value === 'first' ? candidate : second))
       );
     },
-    async reopen(nextPassword: string) {
+    async reopen() {
       owner = new NativeCustodyAuthority({
         async open() {
           runtime = (await factory.open()) as KeyringRuntime;
@@ -353,7 +351,7 @@ async function fixture() {
         },
       });
       await owner.initialize();
-      await owner.unlock(nextPassword); currentPin = nextPassword;
+      await owner.unlock();
     },
     get disposedCount() {
       return disposedCount;
@@ -373,7 +371,7 @@ async function fixture() {
   };
 }
 
-test('the shared SDK imports a public Ledger record, preserves it on unlock and PIN recovery', async () => {
+test('the shared SDK imports a public Ledger record, preserves it on public reopen and credential recovery', async () => {
   const f = await fixture();
   try {
     await f.view.start();
@@ -391,9 +389,9 @@ test('the shared SDK imports a public Ledger record, preserves it on unlock and 
     assert.equal(imported?.address, deviceWallet.address);
     assert.equal(imported?.id, 'ledger:60:0');
     f.owner.lock();
-    await f.owner.unlock(password);
+    await f.owner.unlock();
     assert.equal(f.owner.getCatalogue()!.active.accountId, imported!.id);
-    const recovery = new NativeRecoveryCoordinator({ pinCredential,
+    const recovery = new NativeRecoveryCoordinator({ credentialPort, isAuthenticationActive: () => false,
       owner: f.owner,
       async retireControllers() {},
       ensureCryptoReady: async () => undefined,
@@ -401,12 +399,12 @@ test('the shared SDK imports a public Ledger record, preserves it on unlock and 
     });
     try {
       f.owner.lock();
-      const proof = await prepareRecoveryPin(recovery, phrase, '654321', () => undefined);
+      const proof = await prepareRecoveryCredential(recovery, phrase, () => undefined);
       assert.equal(await recovery.commit(proof), 'committed-locked');
     } finally {
       await recovery.dispose();
     }
-    await f.reopen('654321');
+    await f.reopen();
     assert.equal(
       f.owner
         .getCatalogue()!
@@ -432,7 +430,7 @@ test('locking during device address retrieval cannot save a late Ledger account'
     f.owner.lock();
     release();
     await assert.rejects(selected);
-    await f.owner.unlock(password);
+    await f.owner.unlock();
     assert.equal(
       f.owner
         .getCatalogue()!
@@ -488,7 +486,7 @@ test('UTXO Ledger import uses the shared SDK network and BIP84 account conversio
     assert.equal(account?.id, 'ledger:0:0');
     assert.match(account!.address, /^bc1/);
     f.owner.lock();
-    await f.owner.unlock(password);
+    await f.owner.unlock();
     assert.equal(f.owner.getCatalogue()!.active.accountId, account!.id);
   } finally {
     await f.close();
@@ -565,7 +563,7 @@ test('Ledger connection reuses the saved public identity and shared EVM signing'
               maxPriorityFeePerGas: '1',
             }),
       };
-      const signed = await signTestTransfer(f.runtime.transfers!, password, transaction, {
+      const signed = await signTestTransfer(f.runtime.transfers!, transaction, {
         assertCurrent() {},
         signal: new AbortController().signal,
       });
@@ -755,19 +753,19 @@ for (const changedChain of [false, true])
             chainId = '0x2';
           });
         if (changedChain) {
-          await assert.rejects(transfers.confirm(review.id, { method: 'pin', pin: password }), {
+          await assert.rejects(transfers.confirm(review.id, { method: 'device' }), {
             code: 'FAILED',
           });
           assert.equal(transfers.getSnapshot().phase, 'unavailable');
         } else {
-          await transfers.confirm(review.id, { method: 'pin', pin: password });
+          await transfers.confirm(review.id, { method: 'device' });
           assert.equal(transfers.getSnapshot().phase, 'pending');
         }
         assert.equal(f.signedCount, 1);
         assert.equal(broadcasts, changedChain ? 0 : 1);
         const savedHash = transfers.getSnapshot().hash!;
         if (f.owner.getSnapshot().phase === 'locked')
-          await f.owner.unlock(password);
+          await f.owner.unlock();
         const saved = await (
           await f.runtime.transfers!.journal(() => undefined)
         ).load(savedHash);
@@ -790,7 +788,7 @@ test('cancellation during a Ledger prompt rejects its late signature', async () 
       await release.promise;
     });
     const controller = new AbortController();
-    const signed = signTestTransfer(f.runtime.transfers!, password,
+    const signed = signTestTransfer(f.runtime.transfers!,
       {
         type: 2,
         accessList: [],
@@ -886,7 +884,7 @@ test('Ledger UTXO review uses its saved xpub before connection and the shared si
     await f.connection.finishConnection();
     assert.equal(f.connection.isConnected(), true);
     assert.equal(f.psbtSignCount, 0);
-    await send.confirm(review, { method: 'pin', pin: password });
+    await send.confirm(review, { method: 'device' });
     assert.equal(f.psbtSignCount, 1);
     assert.equal(broadcasts, 1);
     send.cancel();
@@ -948,7 +946,7 @@ test('Ledger signs the same reviewed ERC20 and collectible envelopes through the
         maxFeePerGas: '3',
         maxPriorityFeePerGas: '1',
       };
-      const signed = await signTestTransfer(f.runtime.transfers!, password,
+      const signed = await signTestTransfer(f.runtime.transfers!,
         unsigned,
         { assertCurrent() {}, signal: new AbortController().signal },
         intent

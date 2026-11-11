@@ -1,4 +1,4 @@
-import { enterPin, revealBackupPhrase, confirmFixtureBackup } from '../ui/operationAuthentication';
+import { authenticateNativeOperation, deviceAuthorizationPrompt, revealBackupPhrase, confirmFixtureBackup } from '../ui/operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 import { nativeAccountName, watchAccountName } from '../accountControlNames';
 const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
@@ -7,11 +7,15 @@ const fixture = (page: Page) => page.evaluate(() => window.__watchFixture.audit(
 async function openNative(page: Page) {
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
+  await waitForPublicWallet(page);
 }
-async function unlock(page: Page) {
-  await enterPin(page, '123456');
+async function waitForPublicWallet(page: Page) {
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
+}
+async function reopenPublicWallet(page: Page) {
+  await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
+  await waitForPublicWallet(page);
 }
 async function lockWallet(page: Page) {
   await page.getByRole('tab', { name: 'Settings', exact: true }).click();
@@ -28,7 +32,7 @@ async function expectWatchOnly(page: Page) {
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'View recovery phrase', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /private key|biometric|Preview send|Explore the design/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'PIN digit 1', exact: true })).toHaveCount(0);
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -44,7 +48,7 @@ test('actual App switches HD to watch to HD; shared address never inherits autho
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
   await openNative(page);
-  await unlock(page);
+  await waitForPublicWallet(page);
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await expect(page.getByRole('button', { name: nativeAccountName('Account 1', 'Recovery phrase account', ADDRESS) })).toContainText(ADDRESS);
   await expect(page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Public EVM address', ADDRESS) })).toContainText(ADDRESS);
@@ -58,29 +62,26 @@ test('actual App switches HD to watch to HD; shared address never inherits autho
   await expect(page.getByRole('button', { name: nativeAccountName('Account 1', 'Recovery phrase account', ADDRESS) })).toHaveCount(0);
   await expect(page.getByText(SECOND, { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
-  expect((await fixture(page)).unlocks).toBe(1);
-  await unlock(page);
+  await waitForPublicWallet(page);
   expect((await fixture(page)).unlocks).toBe(2);
   expect((await fixture(page)).signs).toBe(0);
   expect(errors).toEqual([]);
 });
 
-test('HD account choice survives watch navigation and reload but still requires a PIN', async ({ page }) => {
-  await page.goto('/'); await openNative(page); await unlock(page);
+test('HD account choice survives watch navigation and reload into its public view', async ({ page }) => {
+  await page.goto('/'); await openNative(page);
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await page.getByRole('button', { name: nativeAccountName('Account 2', 'Recovery phrase account', SECOND) }).click();
   await expect(page.getByText('Account 2 · Ethereum', { exact: true })).toBeVisible();
   await selectWatchFromNative(page);
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
-  await unlock(page);
+  await waitForPublicWallet(page);
   await expect(page.getByText('Account 2 · Ethereum', { exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
-  expect((await fixture(page)).unlocks).toBe(0);
-  await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
+  await waitForPublicWallet(page);
+  await expect(page.getByText('Account 2 · Ethereum', { exact: true })).toBeVisible();
+  expect((await fixture(page)).unlocks).toBe(1);
 });
 
 for (const change of ['select', 'create', 'shared-select', 'stale-create'] as const) {
@@ -88,12 +89,8 @@ for (const change of ['select', 'create', 'shared-select', 'stale-create'] as co
     const initialId = change === 'stale-create' ? 'hd:60:2' : 'hd:60:1';
     await page.addInitScript((id) => localStorage.setItem('pali-public-selection-fixture-v1', JSON.stringify({ kind: 'hd', id })), initialId);
     await page.goto('/');
-    if (change === 'select') {
-      await enterPin(page, '000000');
-      await expect(page.getByText('That PIN is incorrect. Please try again.', { exact: true })).toBeVisible();
-    }
-    await unlock(page);
-    // A failed password retains a valid hint; a missing account hint is ignored.
+    await waitForPublicWallet(page);
+    // A valid public hint selects its account; a missing account hint is ignored.
     await expect(page.getByText(`${change === 'stale-create' ? 'Account 1' : 'Account 2'} · Ethereum`, { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Accounts', exact: true }).click();
     if (change === 'shared-select') {
@@ -109,7 +106,7 @@ for (const change of ['select', 'create', 'shared-select', 'stale-create'] as co
       await page.getByRole('button', { name: 'Create account', exact: true }).click();
       await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('Savings');
       await page.getByRole('button', { name: 'Create account', exact: true }).click();
-      await enterPin(page, '123456');
+      await authenticateNativeOperation(page);
     }
     if (change === 'stale-create') {
       await expect(page.getByRole('button', { name: 'Select Savings', exact: true })).toContainText('Selected');
@@ -123,20 +120,19 @@ for (const change of ['select', 'create', 'shared-select', 'stale-create'] as co
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await expect(page.getByText(`${name} · Ethereum`, { exact: true })).toBeVisible();
     await lockWallet(page);
-    await unlock(page);
+    await reopenPublicWallet(page);
     await expect(page.getByText(`${name} · Ethereum`, { exact: true })).toBeVisible();
     expect(await page.evaluate(() => window.__watchFixture.selection())).toEqual({ kind: 'hd', id });
     await page.getByRole('button', { name: 'Receive', exact: true }).click();
     await expect(page.getByTestId('native-receive-address')).toHaveText(address);
-    expect((await fixture(page)).unlocks).toBe(change === 'select' ? 3 : 2);
+    expect((await fixture(page)).unlocks).toBe(2);
     expect((await fixture(page)).signs).toBe(0);
   });
 }
 
-test('backup-required authentication consumes the hint before backup completion and account creation', async ({ page }) => {
+test('backup-required public entry consumes the hint before backup completion and account creation', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('pali-public-selection-fixture-v1', JSON.stringify({ kind: 'hd', id: 'hd:60:0' })));
   await page.goto('/?backup-required=1');
-  await enterPin(page, '123456');
   await page.getByRole('button', { name: 'Back up your wallet. Protect access if this phone is lost.', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Back Up Now', exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.nativePhase())).toBe('backup-required');
@@ -153,13 +149,13 @@ test('backup-required authentication consumes the hint before backup completion 
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
   await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('Savings');
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
-  await enterPin(page, '123456');
+  await authenticateNativeOperation(page);
   await expect(page.getByRole('button', { name: 'Select Savings', exact: true })).toContainText('Selected');
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByText('Savings · Ethereum', { exact: true })).toBeVisible();
   await lockWallet(page);
-  await unlock(page);
+  await reopenPublicWallet(page);
   await expect(page.getByText('Savings · Ethereum', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.selection())).toEqual({ kind: 'hd', id: 'hd:60:1' });
   await page.getByRole('button', { name: 'Receive', exact: true }).click();
@@ -167,23 +163,26 @@ test('backup-required authentication consumes the hint before backup completion 
   expect((await fixture(page)).signs).toBe(0);
 });
 
-test('cancelled native authentication retains the initial account hint for the next unlock', async ({ page }) => {
+test('interrupted native public reopen retains the selected account without a signing prompt', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('pali-public-selection-fixture-v1', JSON.stringify({ kind: 'hd', id: 'hd:60:1' })));
-  await page.goto('/');
+  await page.goto('/'); await waitForPublicWallet(page);
   await page.evaluate(() => window.__watchFixture.delayUnlock(true));
-  await enterPin(page, '123456');
+  await lockWallet(page);
+  await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
   await expect(page.getByText('Unlocking your wallet securely…', { exact: true })).toBeVisible();
-  await page.evaluate(() => { window.__watchFixture.lifecycle('background'); window.__watchFixture.lifecycle('active'); window.__watchFixture.releaseUnlock(); });
-  await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
-  await unlock(page);
+  await page.evaluate(() => { window.__watchFixture.lifecycle('background'); window.__watchFixture.releaseUnlock(); });
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
+  await page.evaluate(() => window.__watchFixture.lifecycle('active'));
+  await waitForPublicWallet(page);
   await expect(page.getByText('Account 2 · Ethereum', { exact: true })).toBeVisible();
   expect((await fixture(page)).signs).toBe(0);
 });
 
-test('pending native authentication cannot revive signing after exit and watch selection', async ({ page }) => {
+test('pending native public reopen cannot revive signing after exit and watch selection', async ({ page }) => {
   await page.goto('/'); await openNative(page);
   await page.evaluate(() => window.__watchFixture.delayUnlock(true));
-  await enterPin(page, '123456');
+  await lockWallet(page);
+  await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
   await expect(page.getByText('Unlocking your wallet securely…', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
@@ -196,7 +195,7 @@ test('pending native authentication cannot revive signing after exit and watch s
 });
 
 test('an unconfirmed native review cannot authorize after switching to a public watch address', async ({ page }) => {
-  await page.goto('/'); await openNative(page); await unlock(page);
+  await page.goto('/'); await openNative(page);
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.getByRole('textbox', { name: 'Ethereum address', exact: true }).fill(SECOND);
   await page.getByRole('textbox', { name: 'Amount in ETH', exact: true }).fill('0.001');
@@ -215,25 +214,25 @@ test('an unconfirmed native review cannot authorize after switching to a public 
 });
 
 test('review and pending signing are revoked before a watch account becomes active', async ({ page }) => {
-  await page.goto('/'); await openNative(page); await unlock(page);
+  await page.goto('/'); await openNative(page);
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.getByRole('textbox', { name: 'Ethereum address', exact: true }).fill(SECOND);
   await page.getByRole('textbox', { name: 'Amount in ETH', exact: true }).fill('0.001');
   await page.getByRole('button', { name: 'Review transfer', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Confirm and send', exact: true })).toBeVisible();
   await page.evaluate(() => window.__watchFixture.delaySign(true));
-  await expect(page.getByRole('button', { name: 'PIN digit 1', exact: true })).toHaveCount(0);
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
   await page.getByRole('button', { name: 'Confirm and send', exact: true }).click();
-  await enterPin(page, '123456');
+  await authenticateNativeOperation(page);
   await expect.poll(async () => (await fixture(page)).signs).toBe(1);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   // Cancelling an in-flight secret operation locks the native source immediately.
-  await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open wallet', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
   await page.evaluate(() => window.__watchFixture.releaseSign());
   expect((await fixture(page)).broadcasts).toBe(0);
   expect(await page.evaluate(() => window.__watchFixture.events().includes('sign:finish'))).toBe(false);
-  await unlock(page);
+  await reopenPublicWallet(page);
   await selectWatchFromNative(page);
   await expect.poll(() => page.evaluate(() => window.__watchFixture.oldPhases()[0])).toBe('disposed');
   await expectWatchOnly(page);
@@ -275,7 +274,7 @@ test('read failure is visible, preserves saved records, and prevents an empty re
   await expect(page.getByRole('button', { name: 'Watch an account', exact: true })).toHaveCount(0);
   expect((await fixture(page)).writes).toBe(0);
   await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
-  await unlock(page);
+  await waitForPublicWallet(page);
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await expect(page.getByText('Watch accounts unavailable', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Watch an account', exact: true })).toBeDisabled();
@@ -305,13 +304,13 @@ test('watch Receive copies full address and never adds native signing or preview
   expect((await fixture(page)).unlocks).toBe(0);
 });
 
-test('background hides HD names and addresses; watch-only chooser and large type remain usable', async ({ page }, testInfo) => {
-  await page.goto('/'); await openNative(page); await unlock(page);
+test('background closes the native public view; watch-only chooser and large type remain usable', async ({ page }, testInfo) => {
+  await page.goto('/'); await openNative(page);
   await page.evaluate(() => window.__watchFixture.lifecycle('background'));
-  await page.evaluate(() => window.__watchFixture.lifecycle('active'));
-  await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
   await expect(page.getByText(SECOND, { exact: true })).toHaveCount(0);
-  await unlock(page);
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
+  await page.evaluate(() => window.__watchFixture.lifecycle('active'));
+  await waitForPublicWallet(page);
   await selectWatchFromNative(page);
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await expect(page.getByRole('button', { name: nativeAccountName('Account 2', 'Recovery phrase account', SECOND) })).toHaveCount(0);

@@ -30,7 +30,6 @@ import {
 import { NativeLedgerConnectionModal } from './NativeLedger';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { IdleTextInput } from './IdleActivityBoundary';
-import { TransactionAuthentication } from './TransactionAuthentication';
 import { UtxoRecipientQrScanner } from './UtxoRecipientQrScanner';
 import type { NativeOperationCredential } from '../custody/types';
 import type { NativeUnsignedSendDraft } from './sendNetworkDraft';
@@ -71,9 +70,9 @@ function summarizeReview(review: NativeUtxoReview): ReviewedTransferSummary {
 
 function describe(error: unknown): string {
   const code = error instanceof Error ? error.message : '';
-  if (code === 'INVALID_CREDENTIAL') return 'That PIN is incorrect. Please try again.';
-  if (code === 'DEVICE_UNLOCK_UNAVAILABLE') return 'Biometric confirmation was not completed. Try again or use your PIN.';
-  if (code === 'AUTH_THROTTLED') return 'Too many incorrect PINs. Wait a few minutes, then try again. Your review remains available until it expires.';
+  if (code === 'INVALID_CREDENTIAL') return 'Device authentication was not completed. Please try again.';
+  if (code === 'DEVICE_UNLOCK_UNAVAILABLE') return 'Device authentication was not completed. Please try again.';
+  if (code === 'AUTH_THROTTLED') return 'Too many unsuccessful authorization attempts. Wait a few minutes, then try again. Your review remains available until it expires.';
   if (code === 'INVALID_INPUT')
     return 'Enter a valid address and amount for this network.';
   if (code === 'CANCELLED' || code === 'NOT_READY')
@@ -102,9 +101,7 @@ export function NativeUtxoSendScreen({
   onChangeNetwork,
   draftNotice,
   onViewTransaction,
-  authenticationMethod,
 }: {
-  authenticationMethod: NativeOperationCredential['method'];
   accountLabel: string;
   ledgerConnection?: NativeLedgerConnectionView;
   initialDraft?: Readonly<{ recipient: string; amount: string; max?: boolean; rbf?: boolean }>;
@@ -144,8 +141,6 @@ export function NativeUtxoSendScreen({
   >([]);
   const [savedLimit, setSavedLimit] = useState(6);
   const [error, setError] = useState('');
-  const [authentication, setAuthentication] = useState<{ review: NativeUtxoReview; identity: string; method: NativeOperationCredential['method'] } | null>(null);
-  if (authentication && authentication.review !== review) setAuthentication(null);
   const currentReview = useRef<NativeUtxoReview | null>(null);
   useLayoutEffect(() => {
     currentReview.current = review;
@@ -201,7 +196,7 @@ export function NativeUtxoSendScreen({
   }, [open]);
   const leave = (done: () => void) => {
     if (closing.current) return;
-    closeScanner(); setAuthentication(null); Keyboard.dismiss();
+    closeScanner(); Keyboard.dismiss();
     screenActive.current = false;
     send?.cancel();
     if (!beforeClose) { done(); return; }
@@ -221,7 +216,7 @@ export function NativeUtxoSendScreen({
   };
   const close = () => {
     if (review && !busy) {
-      closeScanner(); setAuthentication(null); send?.cancel(); setReview(null); setError(''); return;
+      closeScanner(); send?.cancel(); setReview(null); setError(''); return;
     }
     leave(onBack);
   };
@@ -322,11 +317,11 @@ export function NativeUtxoSendScreen({
     run(async (current) => {
       try {
         const { txid } = await send.confirm(approved, credential);
-        if (current()) { setAuthentication(null); setReview(null); setOutcome({ txid, phase: 'submitted', summary }); }
+        if (current()) { setReview(null); setOutcome({ txid, phase: 'submitted', summary }); }
       } catch (cause) {
         const code = cause instanceof Error ? cause.message : '';
         if (current() && !['INVALID_CREDENTIAL', 'DEVICE_UNLOCK_UNAVAILABLE', 'AUTH_THROTTLED'].includes(code)) {
-          setAuthentication(null); setReview(null);
+          setReview(null);
           void send.list().then(records => { if (current()) setSaved([...records].reverse()); }).catch(() => undefined);
         }
         throw cause;
@@ -339,7 +334,7 @@ export function NativeUtxoSendScreen({
       disabled={busy || !review.retryTxid && !ledgerReady}
       onPress={() => {
         if (!review.retryTxid && ledgerConnection && !ledgerConnection.isConnected()) return;
-        setError(''); setAuthentication({ review, identity: `${owner.current.revision}:${draftRevision.current}:${review.retryTxid ?? 'new'}`, method: authenticationMethod });
+        setError(''); confirmAuthenticated({ method: 'device' });
       }}
       testID="native-utxo-confirm"
     />
@@ -640,15 +635,6 @@ export function NativeUtxoSendScreen({
           invalidateDraft(); setAddress(value);
         }} />
       </Modal>}
-      {authentication && authentication.review === review && review && <TransactionAuthentication
-        identity={authentication.identity}
-        method={authentication.method} busy={busy} error={error}
-        onConfirm={confirmAuthenticated} onCancel={() => {
-          if (currentReview.current !== review) return;
-          if (inFlight.current) { close(); return; }
-          setAuthentication(null); setError('');
-        }}
-      />}
       {ledgerPicker && ledgerPicker === ledgerConnection && <NativeLedgerConnectionModal
         controller={ledgerPicker}
         onClose={() => setLedgerPicker(null)}

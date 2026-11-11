@@ -74,7 +74,7 @@ function fixture() {
     if (!current) throw new Error('revoked');
   };
   const host: jest.Mocked<Host> = {
-    hardwareConcurrency: 1,
+    leafConcurrency: 1,
     forsConcurrency: 6,
     allocateTree: jest.fn(() => ({
       id: ++id,
@@ -423,7 +423,7 @@ describe('portable custom SLH execution', () => {
 
   it('drains started setup lanes on failure, erases seeds and releases every owned resource', async () => {
     const f = fixture();
-    f.host.hardwareConcurrency = 3;
+    f.host.leafConcurrency = 2;
     const pending = gate<{
       count: number;
       leaves: Uint8Array;

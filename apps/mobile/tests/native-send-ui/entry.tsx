@@ -43,8 +43,7 @@ import type { CustodyErrorCode } from '../../src/custody/types';
 import { Header, Screen, Text } from '../../src/ui';
 import { TransactionDetailLayout } from '../../src/screens/TransactionDetailLayout';
 import { NativeAccounts } from '../../src/screens/NativeAccounts';
-import { NativeOperationAuthentication } from '../../src/screens/NativeOperationAuthentication';
-import { nativeOperationAuthentication } from '../../src/platform/operationAuthentication';
+import { FixtureDeviceAuthorization, fixtureDeviceAuthorization } from './fixtureDeviceAuthorization';
 import type {
   NativeAccountView,
   NativeAccountRequest,
@@ -62,7 +61,6 @@ import type {
 const recipient = '0x1111111111111111111111111111111111111111';
 const sender = '0x2222222222222222222222222222222222222222';
 const route = new URLSearchParams(window.location.search);
-const biometricAuth = route.get('biometric-auth') === '1';
 const ledgerConnection = route.has('ledger-send') && !route.has('utxo-send') ? createLedgerConnectionFixture(sender) : undefined;
 const replacementMode = route.has('cancel-transfer') ? 'cancel' : route.has('speed-up-transfer') ? 'speed-up' : undefined;
 const replacement = replacementMode && { mode: replacementMode, hash: '0x' + '3'.repeat(64) } as const;
@@ -89,6 +87,7 @@ const idle = (): NativeTransferSnapshot => ({
   intent: null,
 });
 let snapshot = idle();
+let deviceAuthorization: AbortController | undefined;
 let submittedReview: NativeTransferSnapshot['review'] = null;
 let sequence = 0;
 let expiry: ReturnType<typeof setTimeout> | undefined;
@@ -105,6 +104,7 @@ const controller: NativeTransferView = {
     return () => listeners.delete(listener);
   },
   cancel() {
+    deviceAuthorization?.abort();
     clearTimeout(expiry);
     publish(idle());
   },
@@ -156,11 +156,13 @@ const controller: NativeTransferView = {
     publishReview(to, parseDecimalAmount(amount, 18).toString(), undefined, nonce);
   },
   async confirm(id, credential) {
-    if (credential.method === 'biometric' && route.get('biometric-fallback') === '1')
-      throw Error('DEVICE_UNLOCK_UNAVAILABLE');
-    if (!(credential.method === 'pin' && credential.pin === '123456') &&
-        !(biometricAuth && credential.method === 'biometric')) throw Error('INVALID_CREDENTIAL');
-    if (snapshot.review?.id !== id) throw Error('Invalid fixture confirmation');
+    if (credential.method !== 'device') throw Error('INVALID_CREDENTIAL');
+    const review = snapshot.review;
+    if (review?.id !== id) throw Error('Invalid fixture confirmation');
+    const owner = new AbortController(); deviceAuthorization = owner;
+    const check = () => { if (owner.signal.aborted || snapshot.review !== review) throw Error('CANCELLED'); };
+    try { await fixtureDeviceAuthorization.request('transaction', owner.signal, check); check(); }
+    finally { if (deviceAuthorization === owner) deviceAuthorization = undefined; }
     if (route.has('storage-full')) {
       clearTimeout(expiry);
       publish({ ...snapshot, hash: route.has('speed-up-transfer') ? replacement!.hash : null, phase: route.has('speed-up-transfer') ? 'unknown' : 'idle', review: null, message: route.has('speed-up-transfer') ? 'This new transaction was not submitted because Pali could not save it within its local transaction storage limit. Check the earlier transaction in Activity.' : 'This transaction was not submitted because Pali could not save it within its local transaction storage limit. Check Activity.' });
@@ -195,8 +197,8 @@ const controller: NativeTransferView = {
       throw Error(expired ? 'EXPIRED' : 'FAILED');
     }
     confirmations.push({ id });
-    submittedReview = snapshot.review;
-    const { context, collectible } = snapshot.review;
+    submittedReview = review;
+    const { context, collectible } = review;
     clearTimeout(expiry);
     publish({
       context,
@@ -329,10 +331,7 @@ const accountController: NativeAccountView = {
       accountAuthentication = abort;
       const check = () => { if (abort.signal.aborted || accountSnapshot !== captured || accountContext !== revision) throw Error('CANCELLED'); };
       try {
-        await nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'account-change', biometricsEnabled: false }, abort.signal, check, async (credential, assertAttemptCurrent) => {
-          assertAttemptCurrent();
-          return credential.method === 'pin' && credential.pin === '123456' ? { accepted: true } : { accepted: false, reason: 'INVALID_CREDENTIAL' };
-        });
+        await fixtureDeviceAuthorization.request('account-change', abort.signal, check);
         check();
       } finally { if (accountAuthentication === abort) accountAuthentication = undefined; }
     }
@@ -515,10 +514,10 @@ function Fixture() {
           <><NativeAccounts
             controller={accountController}
             onBack={() => undefined}
-          /><NativeOperationAuthentication isProtectedPromptActive={() => false} /></>
+          /><FixtureDeviceAuthorization /></>
         )
       ) : (
-        <NativeSend
+        <><NativeSend
           key={selectedSendAsset?.contractAddress ?? 'native'}
           token={route.has('send-assets') ? selectedSendAsset : undefined}
           assetChoices={route.has('send-assets') ? cachedSendAssets : undefined}
@@ -526,7 +525,6 @@ function Fixture() {
           onChangeAsset={route.has('send-assets') ? (draft, asset) => {
             controller.cancel(); setSelectedSendAsset(asset); setAssetDraft({ kind: 'evm', recipient: draft.recipient, amount: '', nonce: '', max: false, advanced: false });
           } : undefined}
-          authenticationMethod={biometricAuth ? 'biometric' : 'pin'}
           account={{ address: sender, network: sendContext.networkId, revision: 1 }}
           savedHash={route.has('ledger-replay') ? '0x' + '3'.repeat(64) : undefined}
           controller={controller}
@@ -538,7 +536,7 @@ function Fixture() {
           availableAmount="1"
           onViewTransaction={setViewedTransaction}
           onBack={() => undefined}
-        />
+        /><FixtureDeviceAuthorization /></>
       )}
     </SafeAreaProvider>
   );

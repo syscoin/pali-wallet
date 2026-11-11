@@ -104,12 +104,11 @@ export async function qualifyNativeErc20Transfer(
     authority: NativeCustodyAuthority;
     runtime: KeyringRuntime;
     storage: Pick<OpenWalletStorage, 'keyringStorage' | 'signedRecords' | 'recovery' | 'getWalletFingerprint'>;
-    password: string;
-    expectedThirdAddress?: string;
+      expectedThirdAddress?: string;
     check: Check;
   }>
 ): Promise<Erc20QualificationEvidence> {
-  const { phase, authority, runtime, storage, password, check } = options;
+  const { phase, authority, runtime, storage, check } = options;
   // Keep imports after the caller's native cryptography/storage admission.
   const [
     { NativeTransfers },
@@ -299,7 +298,7 @@ export async function qualifyNativeErc20Transfer(
       expect(
         typeof init.body === 'string' &&
           init.body.length < 5000 &&
-          !init.body.includes(password) &&
+          !init.body.includes('Pali#1:') &&
           ++requests <= 64
       );
       const body = JSON.parse(init.body) as {
@@ -445,7 +444,7 @@ export async function qualifyNativeErc20Transfer(
               review.totalUnits === '180000' &&
               equalTransferIntent(review.intent, expectedIntent)
           );
-          await controller.confirm(review.id, { method: 'pin', pin: password });
+          await controller.confirm(review.id, { method: 'device' });
           guard();
           expect(
             controller.getSnapshot().phase === 'unknown' &&
@@ -476,7 +475,7 @@ export async function qualifyNativeErc20Transfer(
               review.amountUnits === amountUnits &&
               equalTransferIntent(review.intent, expectedIntent)
           );
-          await controller.confirm(review.id, { method: 'pin', pin: password });
+          await controller.confirm(review.id, { method: 'device' });
           guard();
           expect(
             controller.getSnapshot().phase === 'pending' &&

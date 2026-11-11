@@ -343,8 +343,15 @@ const checkedOutput = (
 
 const createExecution = (signer: WasmSignerExports) => {
   const host: SlhDsaExecutionHost<TreeHandle, Uint8Array> = {
-    hardwareConcurrency:
-      typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 1 : 1,
+    leafConcurrency: Math.min(
+      6,
+      Math.max(
+        1,
+        (typeof navigator !== 'undefined'
+          ? navigator.hardwareConcurrency || 1
+          : 1) - 1
+      )
+    ),
     forsConcurrency: 6,
     allocateTree: () => ({
       ptr: signer._malloc(SLH_DSA_XMSS_TREE_CACHE_LENGTH),

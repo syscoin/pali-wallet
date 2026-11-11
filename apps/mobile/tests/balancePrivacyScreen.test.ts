@@ -3,6 +3,7 @@ import test from 'node:test';
 import { createBalancePrivacy } from '../src/core/balancePrivacy.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
+import * as privateAuthenticationLifecycle from '../src/screens/privateAuthenticationLifecycle.ts';
 
 function privacyControl(preference: ReturnType<typeof createBalancePrivacy>) {
   return screenFixture(new URL('../src/screens/BalancePrivacySetting.tsx', import.meta.url), 'BalancePrivacySetting', {
@@ -16,18 +17,18 @@ function withPrivacy(tree: unknown, control: ReturnType<typeof privacyControl>) 
   return [...elements, ...elements.filter(element => element.type === 'BalancePrivacySetting').flatMap(() => screenElements(control.render({})))];
 }
 
-async function fixture(failSave = false, changePinAvailable = false) {
+async function fixture(failSave = false, restoreAccessAvailable = false) {
   let raw: string | null = null;
   const preference = createBalancePrivacy({ async get() { return raw; }, async set(value) { if (failSave) throw Error('unavailable'); raw = value; } });
   await preference.reload();
   const privacy = privacyControl(preference);
-  let autoLock = 0, recovery = 0, changePin = 0, cancelled = 0;
+  let autoLock = 0, recovery = 0, restoreAccess = 0, cancelled = 0;
   const f = screenFixture(new URL('../src/screens/NativeSecurity.tsx', import.meta.url), 'NativeSecurity', {
     '../platform/balancePrivacy': { useBalancePrivacy: preference.getSnapshot, saveBalancePrivacy: preference.save, reloadBalancePrivacy: preference.reload },
     './BalancePrivacySetting': { BalancePrivacySetting: 'BalancePrivacySetting' },
     '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'biometrics', icon: 'fingerprint' }) },
     '../platform/localization': nativeTranslationFixture,
-    './PinEntry': { PinField: 'PinField' },
+    './privateAuthenticationLifecycle': privateAuthenticationLifecycle,
     'react-native': { ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'Switch', 'View'].map(name => [name, name])),
       AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
       BackHandler: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} }, Platform: { OS: 'ios' }, StyleSheet: { create: (value: unknown) => value } },
@@ -36,9 +37,9 @@ async function fixture(failSave = false, changePinAvailable = false) {
   });
   const props = { keyExport: { onClear: () => () => {}, cancel() { cancelled++; }, isCurrent: () => false, isAuthenticating: () => false }, keyFormat: null,
     accountId: 'hd:60:0', accountType: 'HDAccount', accountLabel: 'Account 1', address: '0x1111111111111111111111111111111111111111',
-    onViewRecovery() { recovery++; }, onAutoLock() { autoLock++; }, ...(changePinAvailable ? { onChangePin() { changePin++; } } : {}), onLock() {}, onBack() {}, captureFailureHandler: () => () => {} };
+    onViewRecovery() { recovery++; }, onAutoLock() { autoLock++; }, ...(restoreAccessAvailable ? { onRestoreAccess() { restoreAccess++; } } : {}), onLock() {}, onBack() {}, captureFailureHandler: () => () => {} };
   return { preference, render(backupConfirmed = true) { return withPrivacy(f.render({ ...props, backupConfirmed }), privacy); }, close() { f.close(); privacy.close(); },
-    counts: () => ({ autoLock, recovery }), pinCounts: () => ({ changePin, cancelled }), raw: () => raw };
+    counts: () => ({ autoLock, recovery }), restoreCounts: () => ({ restoreAccess, cancelled }), raw: () => raw };
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
@@ -79,12 +80,12 @@ test('failed privacy save stays hidden and Security offers an honest reload acti
 });
 
 
-test('Security exposes Change PIN only with a real action and clears private presentation before navigation', async () => {
+test('Security exposes Restore secure access only with a real action and clears private presentation before navigation', async () => {
   const f = await fixture(false, true);
   try {
-    const row = f.render().find(element => element.type === 'Row' && element.props.title === 'Change PIN'); assert(row);
+    const row = f.render().find(element => element.type === 'Row' && element.props.title === 'Restore secure access'); assert(row);
     row.props.onPress();
-    assert.deepEqual(f.pinCounts(), { changePin: 1, cancelled: 1 });
+    assert.deepEqual(f.restoreCounts(), { restoreAccess: 1, cancelled: 1 });
   } finally { f.close(); }
 });
 

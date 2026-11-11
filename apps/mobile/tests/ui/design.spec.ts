@@ -167,6 +167,10 @@ test('note-vault package restoration previews a merge without accepting secrets'
   await page.getByTestId('design-primary-action').click();
   await expect(
     phone.getByText('Destination wallet password', { exact: true })
+  ).toHaveCount(0);
+  await expect(phone.getByRole('textbox')).toHaveCount(0);
+  await expect(
+    phone.getByText('Your device asks for biometrics or your system passcode before restoring the reviewed notes.', { exact: true })
   ).toBeVisible();
   await page.getByTestId('design-primary-action').click();
   await expect(
@@ -192,6 +196,10 @@ test('local key administration and relayed note recovery are separate from accou
   const phone = page.getByTestId('design-phone');
   await expect(
     phone.getByText('Wallet password', { exact: true })
+  ).toHaveCount(0);
+  await expect(phone.getByRole('textbox')).toHaveCount(0);
+  await expect(
+    phone.getByText('Local protected actions use OS biometrics or your system passcode. Hardware and Smart accounts use their required signer approval.', { exact: true })
   ).toBeVisible();
   await expect(
     phone.getByText('Check your device.', { exact: true })

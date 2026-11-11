@@ -8,7 +8,10 @@
     "scheme": "pali",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.paliwallet.mobile"
+      "bundleIdentifier": "com.paliwallet.mobile",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Allow Pali to authorize sensitive wallet actions with Face ID."
+      }
     },
     "android": {
       "package": "com.paliwallet.mobile",
@@ -29,7 +32,7 @@
       [
         "expo-secure-store",
         {
-          "faceIDPermission": "Allow Pali to unlock your wallet with Face ID."
+          "faceIDPermission": "Allow Pali to authorize sensitive wallet actions with Face ID."
         }
       ],
       "./plugins/withMobileSafety.cjs",

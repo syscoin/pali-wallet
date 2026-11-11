@@ -8,6 +8,7 @@ const { Buffer } = require('node:buffer');
 const { spawnSync } = require('node:child_process');
 const { performance } = require('node:perf_hooks');
 const { PHYSICAL_BUNDLES } = require('./physical-contract.ts');
+const { FULL_SLH_PHASE_TIMEOUT_MS } = require('./native-slh-full.ts');
 const {
   decodePhysicalReport,
   assertPhysicalRestart,
@@ -149,12 +150,20 @@ function parseOptions(argv) {
     '--generate-app',
     '--import-cdhash',
     '--generate-cdhash',
+    '--full-slh-app',
+    '--full-slh-cdhash',
     '--output',
   ]);
   const values = {};
   let reset = false;
+  let fullSlh = false;
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
+    if (flag === '--full-slh') {
+      if (fullSlh) fail('INVALID_ARGUMENTS');
+      fullSlh = true;
+      continue;
+    }
     if (flag === '--reset-fixtures') {
       if (reset) fail('INVALID_ARGUMENTS');
       reset = true;
@@ -170,11 +179,16 @@ function parseOptions(argv) {
     values[flag] = argv[++i];
   }
   if (
-    Object.keys(values).length !== flags.size ||
+    Object.keys(values).length !== (fullSlh ? 5 : 7) ||
     !/^[a-f0-9-]{20,64}$/i.test(values['--device']) ||
     !/^[a-f0-9]{40}$/.test(values['--source-revision']) ||
-    !/^[a-f0-9]{40}$/.test(values['--import-cdhash']) ||
-    !/^[a-f0-9]{40}$/.test(values['--generate-cdhash'])
+    typeof values['--output'] !== 'string' ||
+    (fullSlh ?
+      typeof values['--full-slh-app'] !== 'string' || !/^[a-f0-9]{40}$/.test(values['--full-slh-cdhash']) ||
+      ['--import-app', '--generate-app', '--import-cdhash', '--generate-cdhash'].some(flag => own(values, flag)) :
+      typeof values['--import-app'] !== 'string' || typeof values['--generate-app'] !== 'string' ||
+      !/^[a-f0-9]{40}$/.test(values['--import-cdhash']) || !/^[a-f0-9]{40}$/.test(values['--generate-cdhash']) ||
+      ['--full-slh-app', '--full-slh-cdhash'].some(flag => own(values, flag)))
   )
     fail('INVALID_ARGUMENTS');
   return Object.freeze({
@@ -182,13 +196,18 @@ function parseOptions(argv) {
     sourceRevision: values['--source-revision'],
     output: path.resolve(values['--output']),
     reset,
+    ...(fullSlh ? { fullSlh: true } : {}),
     apps: Object.freeze({
-      import: path.resolve(values['--import-app']),
-      generate: path.resolve(values['--generate-app']),
+      ...(fullSlh ? { full_slh: path.resolve(values['--full-slh-app']) } : {
+        import: path.resolve(values['--import-app']),
+        generate: path.resolve(values['--generate-app']),
+      }),
     }),
     cdhashes: Object.freeze({
-      import: values['--import-cdhash'],
-      generate: values['--generate-cdhash'],
+      ...(fullSlh ? { full_slh: values['--full-slh-cdhash'] } : {
+        import: values['--import-cdhash'],
+        generate: values['--generate-cdhash'],
+      }),
     }),
   });
 }
@@ -296,6 +315,7 @@ function inspectArtifact(app, scenario, options, execute, lockfileSha256) {
     info.DTPlatformName !== 'iphoneos' ||
     info.PaliQualificationMode !== 'physical' ||
     info.PaliQualificationScenario !== scenario ||
+    (scenario === 'full_slh' ? info.PaliQualificationFullSLH !== true : own(info, 'PaliQualificationFullSLH')) ||
     info.PaliQualificationSourceRevision !== options.sourceRevision ||
     info.PaliQualificationLockfileSHA256 !== lockfileSha256 ||
     !/^[A-Za-z0-9_-]{1,100}$/.test(info.CFBundleExecutable || '')
@@ -615,9 +635,10 @@ async function runPhysical(options, dependencies = {}) {
     }
   };
   const awaitReport = async (artifact, phase, runId) => {
-    const deadline = now() + 300000;
+    const phaseTimeout = artifact.scenario === 'full_slh' && phase !== 'reset' ? FULL_SLH_PHASE_TIMEOUT_MS : 300000;
+    const deadline = now() + phaseTimeout;
     let attempt = 0;
-    while (now() < deadline && attempt < 301) {
+    while (now() < deadline && attempt < Math.ceil(phaseTimeout / 1000) + 1) {
       const name = `pali-native-qualification-${phase}-${runId}.json`;
       const bytes = readFile(
         artifact,
@@ -656,6 +677,7 @@ async function runPhysical(options, dependencies = {}) {
               runId,
               bundleIdentifier: artifact.bundle,
               sourceRevision: options.sourceRevision,
+              lockfileSha256,
             });
             if (value.osVersion !== device.osVersion)
               fail('PHYSICAL_OS_VERSION_CHANGED');
@@ -702,7 +724,9 @@ async function runPhysical(options, dependencies = {}) {
   const lockfileSha256 = sha256(
     fs.readFileSync(path.join(mobile, 'package-lock.json'))
   );
-  const originalArtifacts = ['import', 'generate'].map((scenario) =>
+  if (options.fullSlh !== undefined && options.fullSlh !== true) fail('INVALID_ARGUMENTS');
+  const scenarios = options.fullSlh ? ['full_slh'] : ['import', 'generate'];
+  const originalArtifacts = scenarios.map((scenario) =>
     inspectArtifact(
       options.apps[scenario],
       scenario,
@@ -712,8 +736,7 @@ async function runPhysical(options, dependencies = {}) {
     )
   );
   if (
-    originalArtifacts[0].signingTeamSha256 !==
-    originalArtifacts[1].signingTeamSha256
+    originalArtifacts.some(artifact => artifact.signingTeamSha256 !== originalArtifacts[0].signingTeamSha256)
   )
     fail('SIGNING_TEAM_CHANGED');
   if (
@@ -821,7 +844,7 @@ async function runPhysical(options, dependencies = {}) {
         const ack = await awaitReport(artifact, 'reset', runId);
         persist(`${artifact.scenario}-explicit-reset.json`, ack);
         stopOwned();
-        // Only these two literal fixture bundles can reach this operation.
+        // Only the selected literal fixture bundles can reach this operation.
         if (artifact.bundle !== PHYSICAL_BUNDLES[artifact.scenario])
           fail('INVALID_RESET_TARGET');
         checkDevice();
@@ -888,6 +911,8 @@ async function runPhysical(options, dependencies = {}) {
         processRestartVerified: true,
         hdAccountsRestored: true,
         erc20TransferRestored: true,
+        ...(artifact.scenario === 'full_slh' ? { fullSlhExecutionVerified: true,
+          resources: { create: created.fullSlhResources, restart: restored.fullSlhResources } } : {}),
       });
     }
     const report = {
@@ -902,6 +927,7 @@ async function runPhysical(options, dependencies = {}) {
       uiQualified: false,
       liveNetworkQualified: false,
       physicalPrivacyQualified: false,
+      ...(options.fullSlh ? { fullSlhExecutionVerified: true, fullSlhResourcesQualified: false } : {}),
       summaries,
     };
     persist('physical-ios-qualification.json', report);

@@ -101,7 +101,7 @@ export function NativeImportWallet({ preview, onConfirmed, onBack }: NativeImpor
   return <SafeAreaView edges={['top', 'bottom']} style={s.root}>
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen scrollResetKey={addresses ? 'confirm-wallet' : 'phrase'} footer={addresses
-        ? <Button title="Continue to security setup" onPress={confirm} />
+        ? <Button title="Continue" onPress={confirm} />
         : <Button title={busy ? 'Checking phrase…' : 'Check phrase'} disabled={busy || !complete} onPress={() => void checkPhrase()} />}>
         <Header title={addresses ? 'Confirm wallet' : 'Import wallet'} onBack={back} />
         {addresses ? <>

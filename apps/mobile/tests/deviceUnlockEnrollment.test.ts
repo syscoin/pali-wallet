@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createDeviceUnlockEnrollment, deviceUnlockUserRefusal, isDeviceUnlockUserRefusal } from '../../../source/wallet/deviceUnlockEnrollment.ts';
-import { createDeviceUnlockCredentialStore } from '../src/storage/deviceUnlockCredential.ts';
-import type { DeviceUnlockEnrollmentSnapshot } from '../../../source/wallet/deviceUnlockEnrollment.ts';
+import type { DeviceUnlockCredentialScope, DeviceUnlockEnrollmentSnapshot } from '../../../source/wallet/deviceUnlockEnrollment.ts';
 
 const scope = { installationId: '11'.repeat(16), walletBindingId: '22'.repeat(32), pairFingerprint: '33'.repeat(32) };
 const first = '44'.repeat(16), second = '55'.repeat(16);
@@ -22,12 +21,23 @@ function fixture() {
   let enrollmentError: Error | undefined;
   let reads = 0, mutations = 0, decoded: Uint8Array | null = null;
   const items = new Map<string, string>();
-  const protectedItems = createDeviceUnlockCredentialStore({
+  // The shared extension enrollment contract is still supported. Its platform
+  // adapter is simulated here; mobile now has a separate OS-only credential port.
+  const protectedItems = {
     async available() { return available; },
-    async read(alias) { reads++; const item = items.get(alias) ?? null; await afterRead(); return item; },
-    async write(alias, raw) { items.set(alias, raw); afterWrite(); },
-    async remove(alias) { items.delete(alias); },
-  });
+    async read(scope: DeviceUnlockCredentialScope, guard: () => void, _owner: AbortSignal | null) {
+      guard(); reads++; const item = items.get(name(scope.enrollmentId)) ?? null;
+      try { await afterRead(); } catch (error) { if (isDeviceUnlockUserRefusal(error)) throw error; throw Error('DEVICE_UNLOCK_UNAVAILABLE'); } guard();
+      if (item === null) return null;
+      const decoded: unknown = JSON.parse(item);
+      if (!Array.isArray(decoded) || decoded.length !== 32 || decoded.some(value => !Number.isInteger(value) || value < 0 || value > 255)) throw Error('DEVICE_UNLOCK_UNAVAILABLE');
+      return Uint8Array.from(decoded);
+    },
+    async stage(scope: DeviceUnlockCredentialScope, key: Uint8Array, guard: () => void) {
+      guard(); items.set(name(scope.enrollmentId), JSON.stringify([...key])); afterWrite(); guard();
+    },
+    async remove(scope: DeviceUnlockCredentialScope, guard: () => void) { guard(); items.delete(name(scope.enrollmentId)); },
+  };
   const enrollment = {
     async read() { if (enrollmentError) throw enrollmentError; return record; },
     async compareAndSet(expected: DeviceUnlockEnrollmentSnapshot, enrollmentId: string | null, guard: () => void) {

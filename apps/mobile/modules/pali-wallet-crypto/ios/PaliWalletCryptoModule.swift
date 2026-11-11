@@ -114,10 +114,12 @@ public final class PaliWalletCryptoModule: Module {
     "com.paliwallet.qualification",
     "com.paliwallet.qualification.physical.import",
     "com.paliwallet.qualification.physical.generate",
+    "com.paliwallet.qualification.physical.slh",
   ]
   private let queue = DispatchQueue(label: "org.paliwallet.crypto", qos: .userInitiated)
   private let publicMerkleOwner = PaliPublicMerkleBatchOwner()
   private let slhOwner = PaliSlhOperationOwner()
+  private let slhQualificationResources = PaliSlhQualificationResources()
 
   private func operation<T>(_ body: () throws -> T) throws -> T {
     do { return try body() } catch { throw PaliCryptoOperationException() }
@@ -126,11 +128,20 @@ public final class PaliWalletCryptoModule: Module {
     if Thread.isMainThread { return UIApplication.shared.applicationState == .active }
     return DispatchQueue.main.sync { UIApplication.shared.applicationState == .active }
   }
+  private func slhResourceDefinition(_ make: @autoclosure () -> AnyDefinition) -> AnyDefinition {
+    // Expo's module builder has no conditional branches. Its empty definition
+    // exports nothing; do not even construct these functions in other bundles.
+    guard Bundle.main.bundleIdentifier == PaliSlhQualificationResources.bundleIdentifier else {
+      return ModuleDefinitionBuilder.buildBlock()
+    }
+    return make()
+  }
 
   public func definition() -> ModuleDefinition {
     Name("PaliWalletCrypto")
     Function("info") { ["apiVersion": 1, "implementation": "apple-cryptokit-commoncrypto"] as [String: Any] }
     Function("createContext") { PaliCryptoContext() }
+    Function("slhParallelism") { PaliSlhLeafWorker.shared.parallelism }
     Function("createSlhContext") { (namespace: String) in try self.operation {
       guard self.slhForeground() else { throw PaliSlhFailure.unavailable }
       return try PaliSlhContext(namespace: namespace, owner: self.slhOwner)
@@ -139,9 +150,19 @@ public final class PaliWalletCryptoModule: Module {
       guard self.slhForeground() else { throw PaliSlhFailure.unavailable }
       return try PaliSlhCachePurge(namespace: namespace, owner: self.slhOwner)
     } }
-    OnDestroy { self.publicMerkleOwner.retire(); self.slhOwner.retire() }
-    OnAppEntersBackground { self.slhOwner.background() }
+    OnDestroy { self.publicMerkleOwner.retire(); self.slhOwner.retire(); self.slhQualificationResources.cancel(dispose: true) }
+    OnAppContextDestroys { self.slhQualificationResources.cancel(dispose: true) }
+    OnAppEntersBackground { self.slhOwner.background(); self.slhQualificationResources.cancel() }
     OnAppEntersForeground { self.slhOwner.resume() }
+    slhResourceDefinition(Function("beginSlhQualificationResources") { () throws -> String in
+        guard self.slhForeground() else { throw PaliSlhFailure.unavailable }
+        return try self.slhQualificationResources.begin()
+      })
+    slhResourceDefinition(Function("finishSlhQualificationResources") { (id: String) throws -> [String: Any] in
+        guard self.slhForeground() else { self.slhQualificationResources.cancel(id); throw PaliSlhFailure.unavailable }
+        return try self.slhQualificationResources.finish(id)
+      })
+    slhResourceDefinition(Function("cancelSlhQualificationResources") { (id: String) in self.slhQualificationResources.cancel(id) })
     AsyncFunction("publicMerkleBatch") { (program: Data, promise: Promise) in
       PaliPublicMerkleBatch.shared.execute(program, owner: self.publicMerkleOwner) { result in
         switch result {

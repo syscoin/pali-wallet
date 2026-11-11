@@ -185,7 +185,8 @@ final class PaliSlhTree: SharedObject, @unchecked Sendable {
   var name: String, published: Bool
   private let lock = NSLock()
   private let mappingLock = NSLock()
-  private var closed = false, released = false
+  private var closed = false, released = false, releaseStarted = false
+  private var releaseWaiters: [@Sendable (Bool) -> Void] = []
   private var cleanupGood = true
   init(context: PaliSlhContext, files: PaliSlhFiles, descriptor: Int32, name: String, published: Bool) throws {
     var info = stat()
@@ -226,16 +227,20 @@ final class PaliSlhTree: SharedObject, @unchecked Sendable {
     try check(); try validate(); return try result.get()
   }
   func release(_ complete: @escaping @Sendable (Bool) -> Void) {
-    lock.lock(); closed = true; lock.unlock()
+    lock.lock(); closed = true
+    if released { let good = cleanupGood; lock.unlock(); complete(good); return }
+    releaseWaiters.append(complete)
+    if releaseStarted { lock.unlock(); return }
+    releaseStarted = true; lock.unlock()
     PaliSlhLeafWorker.shared.cleanup { [self] in
-      mappingLock.lock(); defer { mappingLock.unlock() }
-      lock.lock(); defer { lock.unlock() }
-      if !released {
-        do { try files.abort(self) } catch { cleanupGood = false }
-        if Darwin.close(descriptor) != 0 { cleanupGood = false }; released = true
-      }
-      context.releaseTreeOwnership(self, clean: cleanupGood)
-      complete(cleanupGood)
+      mappingLock.lock()
+      lock.lock()
+      do { try files.abort(self) } catch { cleanupGood = false }
+      if Darwin.close(descriptor) != 0 { cleanupGood = false }; released = true
+      let good = cleanupGood, callbacks = releaseWaiters; releaseWaiters.removeAll()
+      lock.unlock(); mappingLock.unlock()
+      context.releaseTreeOwnership(self, clean: good)
+      callbacks.forEach { $0(good) }
     }
   }
   override func sharedObjectDidRelease() { release { _ in } }
@@ -334,17 +339,19 @@ final class PaliSlhContext: SharedObject, @unchecked Sendable {
     let group = DispatchGroup()
     for tree in live { group.enter(); tree.release { [self] good in lock.lock(); disposalGood = disposalGood && good; lock.unlock(); group.leave() } }
     group.notify(queue: .global(qos: .userInitiated)) { [self] in
-      lock.lock(); do { try files.close() } catch { disposalGood = false }; disposed = true; let callbacks = waiters; waiters.removeAll(); let clean = disposalGood; lock.unlock()
-      owner.closeNamespace(namespace, clean: clean)
-      callbacks.forEach { finishPromise($0) }
+      PaliSlhLeafWorker.shared.cleanup { [self] in
+        lock.lock(); do { try files.close() } catch { disposalGood = false }; disposed = true; let callbacks = waiters; waiters.removeAll(); let clean = disposalGood; lock.unlock()
+        owner.closeNamespace(namespace, clean: clean)
+        callbacks.forEach { finishPromise($0) }
+      }
     }
   }
   private func tree(_ value: PaliSlhTree) throws { try check(); guard value.context === self else { throw PaliSlhFailure.unavailable } }
   private func key(_ value: PaliCryptoKey, seed: Bool) throws -> Data {
     try check(); return try value.copyMaterial(owner: crypto, kind: seed ? "SLH-DSA-SEED" : "SLH-DSA-SK", usage: seed ? "derivePublic" : "sign")
   }
-  private func operation(_ bytes: [Data] = [], material: PaliCryptoKey?, seed: Bool = false, _ body: @escaping @Sendable ([Data]) throws -> PaliSlhValue) throws -> PaliSlhOperation {
-    let operation = PaliSlhOperation(context: self, material: material, seed: seed, bytes: bytes, body: body); try track(operation); return operation
+  private func operation(_ bytes: [Data] = [], material: PaliCryptoKey?, seed: Bool = false, kind: PaliSlhWorkKind = .exclusive, _ body: @escaping @Sendable ([Data]) throws -> PaliSlhValue) throws -> PaliSlhOperation {
+    let operation = PaliSlhOperation(context: self, material: material, seed: seed, bytes: bytes, kind: kind, body: body); try track(operation); return operation
   }
   func allocateTree() throws -> PaliSlhOperation { try operation(material: nil) { [self] _ in
     let value = try files.allocate(self); lock.lock(); trees.append(value); lock.unlock(); return .tree(value)
@@ -374,7 +381,7 @@ final class PaliSlhContext: SharedObject, @unchecked Sendable {
   }
   func leafChunk(_ material: PaliCryptoKey, start: Double, count: Double) throws -> PaliSlhOperation {
     let size = try slhIndex(count, 1, 8192), first = try slhIndex(start, 0, slhLeaves - size)
-    return try operation(material: material, seed: true) { [self] _ in
+    return try operation(material: material, seed: true, kind: .independent) { [self] _ in
       var seed = try key(material, seed: true), output = Data(count: size * 16)
       defer { seed.resetBytes(in: 0..<seed.count); output.resetBytes(in: 0..<output.count) }
       let status = seed.withUnsafeBytes { source in output.withUnsafeMutableBytes { target in pali_slh_leaf_chunk(source.baseAddress!.assumingMemoryBound(to: UInt8.self), source.count, UInt32(first), UInt32(size), target.baseAddress!.assumingMemoryBound(to: UInt8.self), target.count) } }
@@ -398,7 +405,7 @@ final class PaliSlhContext: SharedObject, @unchecked Sendable {
   }
   func fors(_ material: PaliCryptoKey, prelude: String, index: Double) throws -> PaliSlhOperation {
     let tree = try slhIndex(index, 0, 5)
-    return try signing(material, bytes: [slhHex(prelude, bytes: 46)], length: 416) { key, input, output in
+    return try signing(material, bytes: [slhHex(prelude, bytes: 46)], length: 416, kind: .independent) { key, input, output in
       key.withUnsafeBytes { source in input[0].withUnsafeBytes { prefix in output.withUnsafeMutableBytes { target in pali_slh_fors_tree(source.baseAddress!.assumingMemoryBound(to: UInt8.self), source.count, prefix.baseAddress!.assumingMemoryBound(to: UInt8.self), prefix.count, UInt32(tree), target.baseAddress!.assumingMemoryBound(to: UInt8.self), target.count) } } }
     }
   }
@@ -414,9 +421,9 @@ final class PaliSlhContext: SharedObject, @unchecked Sendable {
       try value.access(write: false) { tree in key.withUnsafeBytes { source in input[0].withUnsafeBytes { action in input[1].withUnsafeBytes { prefix in input[2].withUnsafeBytes { shards in input[3].withUnsafeBytes { roots in output.withUnsafeMutableBytes { target in pali_slh_finish(source.baseAddress!.assumingMemoryBound(to: UInt8.self), source.count, action.baseAddress!.assumingMemoryBound(to: UInt8.self), action.count, prefix.baseAddress!.assumingMemoryBound(to: UInt8.self), prefix.count, shards.baseAddress!.assumingMemoryBound(to: UInt8.self), shards.count, roots.baseAddress!.assumingMemoryBound(to: UInt8.self), roots.count, tree, slhTreeBytes, target.baseAddress!.assumingMemoryBound(to: UInt8.self), target.count) } } } } } } }
     }
   }
-  private func signing(_ material: PaliCryptoKey, bytes: [Data], length: Int,
+  private func signing(_ material: PaliCryptoKey, bytes: [Data], length: Int, kind: PaliSlhWorkKind = .exclusive,
                        _ call: @escaping @Sendable (Data, [Data], inout Data) throws -> pali_slh_status) throws -> PaliSlhOperation {
-    try operation(bytes, material: material) { [self] input in
+    try operation(bytes, material: material, kind: kind) { [self] input in
       var key = try self.key(material, seed: false), output = Data(count: length)
       defer { key.resetBytes(in: 0..<key.count); output.resetBytes(in: 0..<output.count) }
       guard try call(key, input, &output) == PALI_SLH_OK else { throw PaliSlhFailure.unavailable }; return .text(slhText(output))
@@ -431,15 +438,16 @@ final class PaliSlhOperation: SharedObject, @unchecked Sendable {
   private let lock = NSLock()
   private var started = false, cancelled = false
   private var bytes: [Data]
+  private let kind: PaliSlhWorkKind
   private let body: @Sendable ([Data]) throws -> PaliSlhValue
-  init(context: PaliSlhContext, material: PaliCryptoKey?, seed: Bool, bytes: [Data], body: @escaping @Sendable ([Data]) throws -> PaliSlhValue) { self.context = context; self.material = material; self.seed = seed; self.bytes = bytes; self.body = body; super.init() }
-  func cancel() { lock.lock(); cancelled = true; lock.unlock() }
+  init(context: PaliSlhContext, material: PaliCryptoKey?, seed: Bool, bytes: [Data], kind: PaliSlhWorkKind = .exclusive, body: @escaping @Sendable ([Data]) throws -> PaliSlhValue) { self.kind = kind; self.context = context; self.material = material; self.seed = seed; self.bytes = bytes; self.body = body; super.init() }
+  func cancel() { lock.lock(); cancelled = true; if !started { clear() }; lock.unlock() }
   private func check() throws { lock.lock(); let live = !cancelled; lock.unlock(); guard live else { throw PaliSlhFailure.unavailable }; try context.check(); if let material { try context.checkMaterial(material, seed: seed) } }
   func run(_ promise: Promise) {
     lock.lock(); let admitted = !started && !cancelled; if admitted { started = true }; lock.unlock()
     do { guard admitted else { throw PaliSlhFailure.unavailable }; try check(); try context.begin() }
-    catch { promise.reject("ERR_SLH_EXECUTION", "Native SLH execution unavailable"); return }
-    let accepted = PaliSlhLeafWorker.shared.enqueue({ [self] () -> (Result<PaliSlhValue, PaliSlhFailure>, PaliSlhTree?) in
+    catch { if admitted { clear() }; promise.reject("ERR_SLH_EXECUTION", "Native SLH execution unavailable"); return }
+    let accepted = PaliSlhLeafWorker.shared.enqueue(kind: kind, { [self] () -> (Result<PaliSlhValue, PaliSlhFailure>, PaliSlhTree?) in
       defer { clear() }
       var produced: PaliSlhValue?
       do { try check(); let result = try body(bytes); produced = result; try check(); return (.success(result), nil) }

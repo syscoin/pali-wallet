@@ -14,7 +14,7 @@ type Props = {
   onBack(): void;
   onLock(): void;
 };
-type State = { phase: 'password'; feedback?: 'failed' | 'expired' } |
+type State = { phase: 'protected'; feedback?: 'failed' | 'expired' } |
   { phase: 'working' } | { phase: 'shown'; secret: string };
 type Attempt = { timer?: ReturnType<typeof setTimeout>; authentication: NativePrivateAuthenticationScope };
 type Owner = { live: boolean; attempt?: Attempt };
@@ -28,14 +28,14 @@ function clearAttempt(owner: Owner) {
 
 export function NativeNoteReveal({ inventory, note, authentication, onSecretVisibilityChange, onBack, onLock }: Props) {
   const life = useRef<Owner>({ live: false });
-  const [state, setState] = useState<State>({ phase: 'password' });
+  const [state, setState] = useState<State>({ phase: 'protected' });
 
   const clear = useCallback(() => {
     const owner = life.current;
     owner.live = false;
     clearAttempt(owner);
     onSecretVisibilityChange(false);
-    setState({ phase: 'password' });
+    setState({ phase: 'protected' });
     Keyboard.dismiss();
   }, [onSecretVisibilityChange]);
 
@@ -88,7 +88,7 @@ export function NativeNoteReveal({ inventory, note, authentication, onSecretVisi
         if (remaining > 0) { attempt.timer = setTimeout(expire, remaining); return; }
         clearAttempt(owner);
         onSecretVisibilityChange(false);
-        setState({ phase: 'password', feedback: 'expired' });
+        setState({ phase: 'protected', feedback: 'expired' });
       };
       attempt.timer = setTimeout(expire, REVEAL_MS);
       onSecretVisibilityChange(true);
@@ -98,7 +98,7 @@ export function NativeNoteReveal({ inventory, note, authentication, onSecretVisi
       if (life.current !== owner || !owner.live || owner.attempt !== attempt) return;
       clearAttempt(owner);
       onSecretVisibilityChange(false);
-      setState({ phase: 'password', feedback: 'failed' });
+      setState({ phase: 'protected', feedback: 'failed' });
     } finally { attempt.authentication.retire(); }
   };
 
@@ -107,7 +107,7 @@ export function NativeNoteReveal({ inventory, note, authentication, onSecretVisi
       <Screen footer={<>
         {state.phase === 'shown' ? <Button title="Hide note" icon="eye" onPress={back} /> :
           <Button title={state.phase === 'working' ? 'Authorizing…' : 'Reveal private note'}
-            disabled={state.phase !== 'password'} onPress={() => void reveal()} />}
+            disabled={state.phase !== 'protected'} onPress={() => void reveal()} />}
         <Button title="Lock wallet" icon="lock" variant="secondary" onPress={() => { clear(); onLock(); }} />
       </>}>
         <Header title="Back up this note" onBack={back} />
@@ -116,10 +116,10 @@ export function NativeNoteReveal({ inventory, note, authentication, onSecretVisi
           <Card style={s.secret}><Text style={s.note}>{state.secret}</Text></Card>
           <Text style={styles.muted}>This note is hidden after 30 seconds.</Text>
         </> : <>
-          {state.phase === 'password' && state.feedback === 'failed' && <Text accessibilityRole="alert" style={s.error}>
+          {state.phase === 'protected' && state.feedback === 'failed' && <Text accessibilityRole="alert" style={s.error}>
             Could not show this note. Try again.
           </Text>}
-          {state.phase === 'password' && state.feedback === 'expired' && <Text accessibilityLiveRegion="polite" style={styles.muted}>
+          {state.phase === 'protected' && state.feedback === 'expired' && <Text accessibilityLiveRegion="polite" style={styles.muted}>
             Private note hidden. Authorize again to view it.
           </Text>}
         </>}

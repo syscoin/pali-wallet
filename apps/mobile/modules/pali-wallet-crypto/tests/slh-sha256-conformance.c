@@ -80,6 +80,21 @@ static int vectors(void *unused) {
         emit("counter-carry", state, sizeof(state));
     }
 
+    /* Every non-block input must leave all chaining state and surrounding
+     * bytes untouched, including unaligned state and overlapping input. */
+    for (size_t offset = 0; offset < 4; ++offset) {
+        for (size_t length = 0; length < 64; ++length) {
+            for (size_t overlap = 0; overlap < 2; ++overlap) {
+                uint8_t arena[128], before[128];
+                pattern(arena, sizeof(arena), (unsigned int)length);
+                memcpy(before, arena, sizeof(arena));
+                const uint8_t *message = overlap ? arena + offset : input + offset;
+                assert(crypto_hashblocks_sha256(arena + offset, message, length) == length);
+                assert(memcmp(arena, before, sizeof(arena)) == 0);
+            }
+        }
+    }
+
     const size_t lengths[] = {0, 1, 63, 64, 65, 127, 128, 129, 191, 192, 193, 511};
     for (size_t offset = 0; offset < 4; ++offset) {
         uint8_t unaligned[44];

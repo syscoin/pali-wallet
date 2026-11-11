@@ -9,8 +9,10 @@ const helper = path.resolve(__dirname, '../configure-playwright-apt-mirror.py');
 // Exact bytes emitted by runner-images ubuntu24/20261101.360 configure-apt-sources.sh.
 const original =
   'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://archive.ubuntu.com/ubuntu/\tpriority:2\nhttps://security.ubuntu.com/ubuntu/\tpriority:3\n';
-const preferred =
+const kernelFirst =
   'https://mirrors.kernel.org/ubuntu/\tpriority:1\nhttp://azure.archive.ubuntu.com/ubuntu/\tpriority:2\nhttps://archive.ubuntu.com/ubuntu/\tpriority:3\nhttps://security.ubuntu.com/ubuntu/\tpriority:4\n';
+const preferred =
+  'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://mirrors.kernel.org/ubuntu/\tpriority:2\nhttps://archive.ubuntu.com/ubuntu/\tpriority:3\nhttps://security.ubuntu.com/ubuntu/\tpriority:4\n';
 const runner =
   'import importlib.util,sys; s=importlib.util.spec_from_file_location("mirror",sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); print(m.configure(sys.argv[2],sys.argv[3]))';
 function fixture(t) {
@@ -30,7 +32,7 @@ function fixture(t) {
       }),
   };
 }
-test('adds only the fixed preferred mirror, preserving canonical fallbacks and file permissions', (t) => {
+test('prefers Azure, preserving the fixed fallback, canonical mirrors and file permissions', (t) => {
   const f = fixture(t),
     before = fs.statSync(f.file);
   fs.writeFileSync(path.join(f.directory, 'unrelated'), 'unchanged');
@@ -47,6 +49,19 @@ test('adds only the fixed preferred mirror, preserving canonical fallbacks and f
   assert.equal(repeat.status, 0, repeat.stderr);
   assert.equal(repeat.stdout.trim(), 'False');
   assert.equal(fs.statSync(f.file).ino, after.ino);
+});
+test('reorders the exact previous kernel-first list without changing its mirror set', (t) => {
+  const f = fixture(t);
+  fs.writeFileSync(f.file, kernelFirst);
+  assert.equal(f.run().status, 0);
+  assert.equal(fs.readFileSync(f.file, 'utf8'), preferred);
+  const urls = (value) =>
+    value
+      .trim()
+      .split('\n')
+      .map((line) => line.split('\t')[0])
+      .sort();
+  assert.deepEqual(urls(kernelFirst), urls(preferred));
 });
 for (const [name, change] of [
   [

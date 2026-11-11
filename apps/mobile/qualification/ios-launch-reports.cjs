@@ -9,8 +9,8 @@ const OUTPUT_LIMIT = 8192;
 const STAGES = new Set(['parameters', 'Hermes text and string capabilities', 'native crypto bridge and full vectors',
   'native factory handles reject direct construction', 'native public Merkle and HMAC vectors', 'native SLH leaf setup vector',
   'native HTTP transport', 'native WalletConnect lifecycle', 'native POST transport', 'open SQLCipher and device key', 'load software SDK',
-  'initialize native custody', 'create or import real SDK wallet', 'fresh password-backed seed confirmation',
-  'unlock wallet after process restart', 'synchronous lock and wrong password refusal',
+  'initialize native custody', 'create or import real SDK wallet', 'public-fixture authorized seed confirmation',
+  'public session after process restart', 'synchronous lock and OS authorization refusal',
   'seed reauthentication after cold restart', 'lock and drain native database close']);
 
 /** This projection cannot authorize success or copy arbitrary app-provided strings. */

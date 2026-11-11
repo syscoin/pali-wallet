@@ -1,9 +1,9 @@
-import { prepareRecoveryPin } from './fixtures/recoveryPin.ts';
-import { OperationAuthentication } from '../src/core/operationAuthentication.ts';
+import { operationAuthenticationCancellation } from '../src/core/operationAuthentication.ts';
+import { prepareRecoveryCredential } from './fixtures/recoveryCredential.ts';
 import { createTestPrivateAuthentication, readTestNoteInventory, testInventoryAuthentication } from './fixtures/privateAuthentication.ts';
 import { createPrivateVaultSession } from '../../../source/wallet/privateVault.ts';
-import { createTestPinRecordKeyring } from './fixtures/pinOperation.ts';
-import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { createTestCredentialRecordKeyring } from './fixtures/credentialOperation.ts';
+import { createTestCredentialPort } from './fixtures/credential.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -36,12 +36,11 @@ import { PRIVACY_SERVICE_ORIGIN_STORAGE_KEY } from '../../../source/shared/priva
 import { createNoteBackupCodec } from '../../../source/wallet/noteBackup.ts';
 import { readPrivateVaultBundle } from '../../../source/wallet/privateVaultInspection.ts';
 
-const pinCredential = createTestPinCredentialPort();
+const credentialPort = createTestCredentialPort();
 
 const sdk = await loadNativeKeyringSdk();
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = '123456';
 const noop = () => undefined;
 const depositAbi = new Interface([
   'function deposit(bytes32) payable',
@@ -161,23 +160,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       headers: { 'content-type': 'application/json' },
     });
   };
-  let refuseNextAuthorization = false;
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (request, signal, check, verify) => {
-    check();
-    if (!refuseNextAuthorization) {
-      const result = await verify({ method: 'pin', pin: PASSWORD }, check);
-      if (!result.accepted) throw Error(result.reason);
-      return;
-    }
-    refuseNextAuthorization = false;
-    const broker = new OperationAuthentication();
-    const detach = broker.attach(prompt => {
-      if (!prompt || prompt.busy) return;
-      queueMicrotask(() => prompt.error ? prompt.cancel() : prompt.confirm({ method: 'pin', pin: '000000' }));
-    });
-    try { await broker.request(request, signal, check, verify); }
-    finally { detach(); }
-  }, privacyServiceSettings: { getOrigin: () => privacySettings.getOrigin(), changeOrigin: (...args) => privacySettings.changeOrigin(...args) }, passkeys: null, slhExecution: null,
+  const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: { getOrigin: () => privacySettings.getOrigin(), changeOrigin: (...args) => privacySettings.changeOrigin(...args) }, passkeys: null, slhExecution: null,
     readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
@@ -307,7 +290,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     },
   });
   runtime = (await factory.open()) as KeyringRuntime;
-  await runtime.session.importWallet(PHRASE, PASSWORD);
+  await runtime.session.importWallet(PHRASE);
   return {
     get runtime() {
       return runtime;
@@ -325,7 +308,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       ] = true;
     },
     posted,
-    refuseNextAuthorization() { refuseNextAuthorization = true; },
+    refuseNextAuthorization() { credentialPort.refuseNext(operationAuthenticationCancellation()); },
     rpcMethods,
     relayedPosts,
     poolReads,
@@ -360,7 +343,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
           row.value,
           createPrivateVaultSession({
             generation: 0,
-            keyring: createTestPinRecordKeyring(storage.pin, pinCredential, keyring, () => PASSWORD, () => { assert(keyring.hasPublicSession()); }),
+            keyring: createTestCredentialRecordKeyring(storage.credential, credentialPort, keyring, () => { assert(keyring.hasPublicSession()); }),
             assertCurrent() {
               assert(keyring.hasPublicSession());
             },
@@ -373,7 +356,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     async reopen() {
       await runtime.storage.close();
       runtime = (await factory.open()) as KeyringRuntime;
-      await runtime.session.unlock(PASSWORD);
+      await runtime.session.unlock();
     },
     async restore() {
       const backupPassword = 'Private note backup fixture';
@@ -693,7 +676,7 @@ for (const change of ['account', 'lock-unlock'] as const) {
       if (change === 'account') await f.select('hd:60:1');
       else {
         await f.runtime.session.lock();
-        await f.runtime.session.unlock(PASSWORD);
+        await f.runtime.session.unlock();
       }
       release();
       await confirming;
@@ -936,7 +919,7 @@ test('native maintenance clears only shared-verified completed notes and preserv
     assert(f.runtime.catalogue.getSnapshot());
     assert.equal(f.posted.length, 2, 'maintenance does not sign or broadcast');
     route.abort(); await maintenance.dispose();
-    await f.runtime.session.lock(); await f.runtime.session.unlock(PASSWORD);
+    await f.runtime.session.lock(); await f.runtime.session.unlock();
     assert.deepEqual((await f.privateNotes()).map(note => note.id), [unspent.id]);
   } finally { route.abort(); await f.close(); }
 });
@@ -960,7 +943,7 @@ for (const cancel of ['route', 'lock'] as const) test(`native maintenance rolls 
     if (cancel === 'lock') retired = f.runtime.session.lock();
     else { route.abort(); retired = maintenance.dispose(); }
     release.resolve(); await removed; await retired; hold = false;
-    if (cancel === 'lock') await f.runtime.session.unlock(PASSWORD);
+    if (cancel === 'lock') await f.runtime.session.unlock();
     assert.deepEqual((await f.privateNotes()).map(saved => saved.id), [note.id]);
     route.abort(); await maintenance.dispose(); await f.reopen();
     assert.deepEqual((await f.privateNotes()).map(saved => saved.id), [note.id]);
@@ -980,7 +963,7 @@ test('native service-origin changes are guarded in the real protected SQL transa
     const controls = await f.runtime.openPrivacyControls!(route.signal, noop), origin = await controls.getOrigin();
     hold = true; const change = assert.rejects(controls.changeOrigin('https://private.example', origin));
     await entered.promise; const locked = f.runtime.session.lock(); release.resolve(); await change; await locked; hold = false;
-    await f.runtime.session.unlock(PASSWORD);
+    await f.runtime.session.unlock();
     assert.equal(await f.storage.keyringStorage.get(PRIVACY_SERVICE_ORIGIN_STORAGE_KEY), undefined);
     assert.deepEqual(await f.privateNotes(), before);
     const next = await f.runtime.openPrivacyControls!(route.signal, noop);
@@ -1071,7 +1054,7 @@ for (const fault of ['release', 'quarantine-and-release'] as const) for (const r
   } });
   const route = new AbortController();
   let recoveryOpens = 0, proof: unknown;
-  const recovery = new NativeRecoveryCoordinator({ pinCredential,
+  const recovery = new NativeRecoveryCoordinator({ isAuthenticationActive: () => false, credentialPort,
     owner: {
       getSnapshot: () => ({ phase: 'locked', revision: 1, presence: 'existing', backup: 'unconfirmed', account: null, error: null }),
       retireForRecovery: () => f.runtime.storage.retireForRecovery!(),
@@ -1096,12 +1079,12 @@ for (const fault of ['release', 'quarantine-and-release'] as const) for (const r
     }
     const previousDisposals = f.disposed; f.failPoolCleanup();
     if (retirement === 'close') await assert.rejects(f.runtime.storage.close(), { code: 'CLEANUP_FAILED' });
-    await assert.rejects(prepareRecoveryPin(recovery, PHRASE, '654321', noop).then(value => { proof = value; }), { code: 'UNAVAILABLE' });
+    await assert.rejects(prepareRecoveryCredential(recovery, PHRASE, noop).then(value => { proof = value; }), { code: 'UNAVAILABLE' });
     assert.equal(proof, undefined); assert.equal(recoveryOpens, 0, 'failed retirement never grants a new storage/snapshot lease');
     await assert.rejects(f.runtime.storage.retireForRecovery!(), { code: 'CLEANUP_FAILED' });
     await assert.rejects(f.runtime.storage.close(), { code: 'CLEANUP_FAILED' });
     await assert.rejects(f.storage.readState(), { code: 'STORAGE_CLOSED' });
-    await assert.rejects(f.runtime.session.unlock(PASSWORD));
+    await assert.rejects(f.runtime.session.unlock());
     assert.equal(f.disposed, previousDisposals + 1, 'failed exact cleanup is not repeated or hidden');
     assert.equal(f.posted.length, fault === 'release' ? 0 : 2);
   } finally { failRead = false; route.abort(); await recovery.dispose(); await f.close(); }

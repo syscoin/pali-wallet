@@ -107,12 +107,11 @@ export async function qualifyNativeNevmTransfer(
     authority: NativeCustodyAuthority;
     runtime: KeyringRuntime;
     storage: Pick<OpenWalletStorage, 'signedRecords' | 'recovery' | 'getWalletFingerprint'>;
-    password: string;
-    expectedFourthAddress?: string;
+      expectedFourthAddress?: string;
     check: Check;
   }>
 ): Promise<NevmQualificationEvidence> {
-  const { phase, authority, runtime, storage, password, check } = options;
+  const { phase, authority, runtime, storage, check } = options;
   expect(phase === 'create' || phase === 'restart');
   if (options.expectedFourthAddress !== undefined)
     expect(
@@ -253,7 +252,7 @@ export async function qualifyNativeNevmTransfer(
   ) => {
     const guard = guardFor(account.id, address, network);
     guard();
-    const signed = await signQualificationTransfer(transfer, password,
+    const signed = await signQualificationTransfer(transfer,
       {
         type: 2, accessList: [],
         from: address,

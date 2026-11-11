@@ -1,4 +1,4 @@
-import { authenticateNativeOperation } from './operationAuthentication';
+import { authenticateNativeOperation, deviceAuthorizationPrompt } from './operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 
 test.use({ baseURL: 'http://127.0.0.1:4179' });
@@ -157,10 +157,10 @@ test('UTXO reconnect keeps the existing review and its expiry', async ({
     await page.evaluate(() => window.__nativeUtxoLedgerFixture.opens())
   ).toBe(1);
   await page.getByTestId('native-utxo-confirm').click();
-  await authenticateNativeOperation(page);
   await expect(page.getByRole('alert')).toContainText(
     'This review is no longer available'
   );
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
   expect(
     await page.evaluate(() => window.__nativeUtxoLedgerFixture.confirmations())
   ).toBe(0);

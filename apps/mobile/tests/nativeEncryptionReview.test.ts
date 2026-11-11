@@ -95,14 +95,14 @@ test('same-ID scope changes clear local crypto errors instead of reviving them',
   f.close();
 });
 
-test('own OS prompt preserves pending decryption until the screen returns active and focused', async () => {
+for (const interruption of ['inactive', 'background'] as const) test(`own credential prompt preserves pending decryption across ${interruption} until active and focused`, async () => {
   const f = fixture(), held = Promise.withResolvers<string>();
   const binding = privateAuthentication.bindNativePrivateAuthentication(f.authentication, { assertCurrent() {}, isPromptActive: () => true });
   const proof = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, () => held.promise);
   f.hold(proof);
   try {
     f.button('transactions.decryptMessage').props.onPress();
-    f.emit('change', 'inactive'); f.emit('blur');
+    f.emit('change', interruption); f.emit('blur');
     assert.deepEqual(f.rejected, []);
     f.emit('change', 'active'); f.emit('focus');
     held.resolve('Returned plaintext'); await proof; await f.tick();
@@ -143,11 +143,14 @@ for (const boundary of ['inactive-result', 'unfocused-result'] as const) test(`d
 for (const boundary of ['foreign-prompt', 'background', 'back'] as const) test(`${boundary} still retires decryption while an OS prompt is open`, async () => {
   const f = fixture(), held = Promise.withResolvers<string>();
   const scope = boundary === 'foreign-prompt' ? privateAuthentication.createNativePrivateAuthenticationScope() : f.authentication;
-  const binding = privateAuthentication.bindNativePrivateAuthentication(scope, { assertCurrent() {}, isPromptActive: () => true });
+  let promptActive = true;
+  const binding = privateAuthentication.bindNativePrivateAuthentication(scope, { assertCurrent() {}, isPromptActive: () => promptActive });
   const proof = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, () => held.promise);
   f.hold(proof);
   try {
     f.button('transactions.decryptMessage').props.onPress();
+    // A normal app departure has no native-owned credential Activity marker.
+    if (boundary === 'background') promptActive = false;
     if (boundary === 'back') f.emit('hardwareBackPress'); else f.emit('change', boundary === 'background' ? 'background' : 'inactive');
     f.emit('change', 'active'); f.emit('focus'); held.resolve('Late plaintext'); await proof; await f.tick();
     assert.deepEqual(f.rejected, ['encryption-1']);

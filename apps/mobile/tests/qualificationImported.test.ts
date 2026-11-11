@@ -37,6 +37,6 @@ test('imported qualification refuses an unready authority before accessing a run
   const authority = { getCatalogue() { return null; } } as unknown as NativeCustodyAuthority;
   const runtime = { get imports() { accessed++; throw Error('must not access'); } } as unknown as KeyringRuntime;
   await assert.rejects(qualifyNativeImportedEvm({ phase: 'create', authority, runtime, storage: {} as OpenWalletStorage,
-    password: 'public', check: async (_name, operation) => operation() }), /QUALIFICATION_IMPORTED_EVM_FAILED/);
+    check: async (_name, operation) => operation() }), /QUALIFICATION_IMPORTED_EVM_FAILED/);
   assert.equal(accessed, 0);
 });

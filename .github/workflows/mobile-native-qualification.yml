@@ -155,6 +155,8 @@ jobs:
       - run: xcodebuild -version
       - name: Verify native passkey input and cancellation ownership
         run: sh modules/pali-passkeys/tests/run-ios-inputs.sh
+      - name: Verify native SLH scheduler ordering and retirement
+        run: python3 modules/pali-wallet-crypto/tests/run-slh-swift-scheduler.py
       - name: Run Swift public snapshot loopback
         if: env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION != '1' && env.PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION != '1'
         run: |
@@ -186,6 +188,9 @@ jobs:
           export TMPDIR="$RUNNER_TEMP/pali-native-ios/slh-sha256"
           export PALI_SLH_OPENSSL_ROOT="$PWD/node_modules/react-native-quick-crypto/ios/openssl"
           sh modules/pali-wallet-crypto/tests/run-slh-sha256-conformance.sh 2>&1 | tee "$RUNNER_TEMP/pali-native-ios/slh-sha256/conformance.log"
+          if [ "$PALI_SLH_FULL_EQUIVALENCE" = 1 ]; then
+            python3 modules/pali-wallet-crypto/tests/run-slh-fors-concurrency.py 2>&1 | tee "$RUNNER_TEMP/pali-native-ios/slh-sha256/fors-concurrency.log"
+          fi
       - name: Build real iOS simulator binary
         env:
           SOURCEMAP_FILE: ${{ runner.temp }}/pali-native-ios/ios-main.jsbundle.map
@@ -296,6 +301,21 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/pali-native-android/websocket-ownership.log"
       - name: Verify native passkey input and cancellation ownership
         run: cd android && ./gradlew :pali-passkeys:testDebugUnitTest --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64
+      - name: Verify native SLH queue and resource retirement
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pali-native-android"
+          export KOTLIN_COMPILER_LIB="$(python3 - <<'PYTHON'
+          import os
+          from pathlib import Path
+          root = Path(os.environ.get('GRADLE_USER_HOME', str(Path.home() / '.gradle')))
+          matches = [p for p in root.glob('wrapper/dists/gradle-9.4.1-bin/*/gradle-9.4.1/lib') if (p / 'kotlin-compiler-embeddable-2.3.0.jar').is_file()]
+          if len(matches) != 1:
+              raise SystemExit('Pinned Gradle Kotlin compiler was not found uniquely')
+          print(matches[0])
+          PYTHON
+          )"
+          python3 modules/pali-wallet-crypto/tests/run-slh-native-resources.py 2>&1 | tee "$RUNNER_TEMP/pali-native-android/slh-queue-ownership.log"
       - name: Build real Android binary
         run: |
           (cd android && ./gradlew :app:assembleRelease --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64)

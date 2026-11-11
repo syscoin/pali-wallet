@@ -1,4 +1,4 @@
-import { enterPin } from '../ui/operationAuthentication';
+import { waitForNativePublicSession } from '../ui/operationAuthentication';
 import { expect, test } from '@playwright/test';
 
 test('320px SYSX review preserves exact amounts and leaves on Back, lock, account or network change', async ({
@@ -16,7 +16,7 @@ test('320px SYSX review preserves exact amounts and leaves on Back, lock, accoun
   const heading = (name: string) =>
     page.getByRole('heading', { name, exact: true });
   const unlock = async () => {
-    await enterPin(page, '123456');
+    await waitForNativePublicSession(page);
     await expect(page.getByRole('button', { name: /^SYSX(?:\s|$)/ })).toBeVisible();
   };
   await button('Accounts').click();
@@ -83,7 +83,7 @@ test('320px SYSX review preserves exact amounts and leaves on Back, lock, accoun
   await expect(confirm).toBeVisible();
   await page.evaluate(() => window.__watchFixture.lifecycle('background'));
   await expect(confirm).toHaveCount(0);
-  await expect(button('PIN digit 1')).toBeVisible();
+  await expect(button('Open wallet')).toBeVisible();
   await page.evaluate(() => window.__watchFixture.lifecycle('active'));
   await unlock();
 

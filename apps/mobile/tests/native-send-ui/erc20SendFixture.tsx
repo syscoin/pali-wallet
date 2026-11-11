@@ -21,6 +21,7 @@ import { createNativeSignedRecordView } from '../../src/custody/sharedSignedReco
 import { historicalSignedBundle, signedRecordTestSession, submitFixtureEvmTransaction } from '../signedRecordTestSession';
 import { assertTransferIntentEnvelope } from '../../src/custody/transferIntent';
 import { NativeSend } from '../../src/screens/NativeSend';
+import { FixtureDeviceAuthorization, fixtureDeviceAuthorization } from './fixtureDeviceAuthorization';
 import { Button, Text } from '../../src/ui';
 import type { Erc20Metadata } from '../../../../source/shared/erc20';
 
@@ -43,6 +44,7 @@ let state: CustodySnapshot = Object.freeze<CustodySnapshot>({
   account: { network: 'ethereum', address: wallet.address },
   error: null,
 });
+let deviceOwner: AbortController | undefined;
 const listeners = new Set<(snapshot: CustodySnapshot) => void>();
 const publish = () => {
   for (const listener of [...listeners]) listener(state);
@@ -56,6 +58,7 @@ const source = {
     };
   },
   lock() {
+    deviceOwner?.abort();
     state = Object.freeze({
       ...state,
       phase: 'locked',
@@ -163,17 +166,22 @@ const rpc = new NativeTransferRpc({
     );
   },
 });
-const operationAuthorization = createTestOperationAuthorizer((credential, check) => runtime.authenticateOperation(credential, check), unsignedTransferBytes);
+const operationAuthorization = createTestOperationAuthorizer((credential, check) => runtime.authenticateOperation(credential, check, new AbortController().signal), unsignedTransferBytes);
 const authenticationRefusals = new WeakSet<object>();
 const runtime: NativeTransferRuntime = {
   isAuthenticationRefusal: error => !!error && typeof error === 'object' && authenticationRefusals.has(error),
     authorizeOperation: operationAuthorization.authorizeOperation,
     releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
-  async authenticateOperation(credential, check) {
+  async authenticateOperation(credential, check, signal) {
     check();
-    if (credential.method !== 'pin' || credential.pin !== '123456') {
+    if (credential.method !== 'device') {
       const error = Error('INVALID_CREDENTIAL'); authenticationRefusals.add(error); throw error;
     }
+    const owner = new AbortController(); deviceOwner = owner;
+    const abort = () => owner.abort(); signal.addEventListener('abort', abort, { once: true }); if (signal.aborted) abort();
+    try { await fixtureDeviceAuthorization.request('transaction', owner.signal, check); check(); }
+    catch (error) { if (error && typeof error === 'object') authenticationRefusals.add(error); throw error; }
+    finally { signal.removeEventListener('abort', abort); if (deviceOwner === owner) deviceOwner = undefined; }
   },
   replay(guard, transport, options) {
     return new EvmSignedReplay(signedRecords, () => ({authorizeReplay: (entry) => authorizePrivateNoteReplay(entry, guard, async () => { throw Error('Unexpected private replay'); }, async () => { throw new Error('Unexpected private withdrawal'); }),recordSession:signedRecordTestSession(guard),assertCurrent:guard,
@@ -221,6 +229,7 @@ const runtime: NativeTransferRuntime = {
   },
 };
 const controller = new NativeTransfers(source, () => runtime, { rpc });
+const controllerView = { ...controller.view, cancel() { deviceOwner?.abort(); controller.view.cancel(); } };
 
 declare global {
   interface Window {
@@ -372,15 +381,14 @@ export function Erc20SendFixture() {
       if (first) setRoute({ revision: snapshot.revision, open: true, hash: keccak256(first) });
     }} />
   </> : <Text>Wallet closed</Text>;
-  return <NativeSend
-    authenticationMethod="pin"
+  return <><NativeSend
     account={{ address: wallet.address, network: 'ethereum', revision: state.revision }}
     key={snapshot.revision}
-    controller={controller.view}
+    controller={controllerView}
     context={getNativeSendContext('ethereum')}
     token={token}
     tokenView={tokenView}
     savedHash={route.hash}
     onBack={() => setRoute({ revision: snapshot.revision, open: false })}
-  />;
+  /><FixtureDeviceAuthorization /></>;
 }
