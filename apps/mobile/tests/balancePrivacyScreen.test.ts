@@ -100,6 +100,7 @@ test('watch Settings can recover a failed privacy read without opening a custody
   const settings = screenFixture(new URL('../src/screens/RealSettings.tsx', import.meta.url), 'RealSettings', {
     './BalancePrivacySetting': { BalancePrivacySetting: 'BalancePrivacySetting' },
     './DisplayCurrency': { DisplayCurrency: 'DisplayCurrency' }, './HelpAbout': { HelpAbout: 'HelpAbout' },
+    './WalletUpdatePanel': { WalletUpdatePanel: 'WalletUpdatePanel' },
     './NativePreferences': { NativePreferences: 'NativePreferences' }, './WalletBackupBadge': { WalletBackupBadge: 'WalletBackupBadge' },
     './ActivityNotifications': { ActivityNotifications: 'ActivityNotifications' },
     '../platform/localization': nativeTranslationFixture,
