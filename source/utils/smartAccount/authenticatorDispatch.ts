@@ -64,7 +64,7 @@ export type SmartAccountAuthenticatorPorts = Readonly<{
         actionHash: string;
         credentialId?: string;
         expectedCredentialIdHash?: string;
-        expectedPublicKey?: SmartAccountP256WebAuthnConfig['publicKey'];
+        expectedPublicKey: SmartAccountP256WebAuthnConfig['publicKey'];
       }>
     ): Promise<SmartAccountAuthenticatorSignature>;
   }> | null;

@@ -8,6 +8,7 @@ export type NativeSmartLocalAction =
   | Readonly<{kind:'operation';intent:Exclude<NativeSmartAccountIntent,{kind:'guardian-policy' | 'authenticator' | 'modules' | 'dapp-call' | 'dapp-batch'}>}>
   | Readonly<{kind:'guardian-policy';draft:NativeGuardianPolicyDraft}>
   | Readonly<{kind:'wallet-authenticator'}>
+  | Readonly<{kind:'passkey-authenticator';credentialIdHash:string}>
   | Readonly<{kind:'modules';draft:NativeSmartModuleDraft}>
   | Readonly<{kind:'slh-installation';keyId:string}>;
 

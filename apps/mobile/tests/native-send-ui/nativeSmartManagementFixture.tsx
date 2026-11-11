@@ -70,7 +70,8 @@ export function NativeSmartManagementFixture({ kind }: { kind: 'modules' | 'auth
     assertCurrent(); if (signal.aborted) throw new Error('CANCELLED');
     if (query.get('modules-mode') === 'unavailable') throw new Error('Preview unavailable state');
     return {
-      accountAddress: account, networkName: 'Ethereum',
+      accountAddress: account, networkName: 'Ethereum', passkeysAvailable: false,
+      async openPasskey() { throw Error('Native credentials are outside this browser fixture'); },
       async read() { assertCurrent(); return query.get('modules-mode') === 'empty' ? { ...metadata, installedModules: [] } : metadata; },
       async preflightCustom() { assertCurrent(); return { ok: true, failures: [], compositeCompatible: true }; },
       async openChange(draft, nextSignal, check) {

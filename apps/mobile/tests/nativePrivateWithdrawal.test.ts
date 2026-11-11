@@ -177,7 +177,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     });
     try { await broker.request(request, signal, check, verify); }
     finally { detach(); }
-  }, privacyServiceSettings: { getOrigin: () => privacySettings.getOrigin(), changeOrigin: (...args) => privacySettings.changeOrigin(...args) }, slhExecution: null,
+  }, privacyServiceSettings: { getOrigin: () => privacySettings.getOrigin(), changeOrigin: (...args) => privacySettings.changeOrigin(...args) }, passkeys: null, slhExecution: null,
     readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),

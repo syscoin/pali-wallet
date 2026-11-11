@@ -85,7 +85,7 @@ test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows
     Object.defineProperty(response, 'url', { value: url });
     return response;
   });
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: class extends sdk.HostKeyring {
       constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) {
         super(...args);

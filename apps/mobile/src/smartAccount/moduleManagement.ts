@@ -7,6 +7,8 @@ import type { NativeSmartModuleDraft } from './modules.ts';
 export type NativeSmartModuleManagement = Readonly<{
   accountAddress: string;
   networkName: string;
+  passkeysAvailable: boolean;
+  openPasskey(recreate: boolean, signal: AbortSignal, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   read(): Promise<ISmartAccountMetadata>;
   preflightCustom(address: string): Promise<CustomValidatorPreflightResult>;
   openChange(

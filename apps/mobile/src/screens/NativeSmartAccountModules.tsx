@@ -30,7 +30,7 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
   const [epoch, setEpoch] = useState(0), [manager, setManager] = useState<NativeSmartModuleManagement>(), [metadata, setMetadata] = useState<ISmartAccountMetadata>();
   const [operation, setOperation] = useState<NativeSmartAccountOperation>(), [busy, setBusy] = useState(false), [failure, setFailure] = useState<string>(), [closing, setClosing] = useState(false);
   const [operationAuthentication, setOperationAuthentication] = useState<NativePrivateAuthenticationScope>();
-  const [mode, setMode] = useState<'installed' | 'custom' | 'composite'>('installed');
+  const [mode, setMode] = useState<'installed' | 'custom' | 'composite' | 'passkey'>('installed');
   const modeRef = useRef(mode);
   useLayoutEffect(() => { modeRef.current = mode; }, [mode]);
   const [address, setAddress] = useState(''), [name, setName] = useState(''), [initData, setInitData] = useState('0x');
@@ -96,6 +96,18 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
     try { check(owner); owner.operation = next; setOperationAuthentication(owner.authentication); setOperation(next); }
     catch (error) { await next.dispose(); throw error; }
   });
+  const openPasskey = (recreate: boolean) => action(async (owner, value) => {
+    let next: NativeSmartAccountOperation;
+    try { next = await value.openPasskey(recreate, owner.abort.signal, () => check(owner)); }
+    catch (error) {
+      if ((error as { code?: string })?.code === 'PASSKEY_POSSESSION_FAILED' && !recreate) {
+        check(owner); setMode('passkey'); return;
+      }
+      throw error;
+    }
+    try { check(owner); owner.operation = next; setOperationAuthentication(owner.authentication); setOperation(next); }
+    catch (error) { await next.dispose(); throw error; }
+  });
   const validators = (metadata?.installedModules ?? []).filter((module): module is SmartAccountValidatorModule => module.type === 'validator');
   const candidates = metadata ? listCompositeChildCandidates(metadata) : [];
   const label = (module: SmartAccountValidatorModule) => module.id === 'custom' ? module.config.name || t('smartAccountHub.customModule') : t(module.id === 'composite' ? 'settings.compositeAuthenticator' : module.id === 'slh-dsa' ? 'settings.slhDsaAuthenticator' : module.id === 'p256-webauthn' ? 'settings.passkeyAuthenticator' : 'settings.ecdsaAuthenticator');
@@ -110,10 +122,11 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
 {!closing && metadata && mode === 'custom' && (<Button title={t('smartAccountHub.install')} icon="plus" disabled={blocked || !checked?.ok || !validInit} onPress={() => {
             if (checked?.ok && validInit) review({ kind: 'install-custom', address: address.trim(), name: name.trim(), initData: initData.trim() });
           }} />)}
+{!closing && metadata && mode === 'passkey' && <Button title={t('settings.smartAccountPasskeyRecreateConfirmButton')} icon="fingerprint" disabled={blocked} onPress={() => openPasskey(true)} />}
 {!closing && metadata && mode === 'composite' && (<Button title={t('smartAccountHub.compositeSavePolicy')} icon="check" disabled={blocked || !validComposite} onPress={() => { if (validComposite) review({ kind: 'composite', children: [...children], threshold: Number(threshold) }); }} />)}
 <Button title={t('buttons.close')} icon="close" variant="secondary" size="compact" disabled={closing} onPress={close} />
 </>}>
-      <Header title={t(mode === 'custom' ? 'smartAccountHub.customModule' : mode === 'composite' ? 'settings.compositeAuthenticator' : 'mobile.smartAccountModules.title')}
+      <Header title={t(mode === 'custom' ? 'smartAccountHub.customModule' : mode === 'composite' ? 'settings.compositeAuthenticator' : mode === 'passkey' ? 'settings.passkeyAuthenticator' : 'mobile.smartAccountModules.title')}
         onBack={() => { if (shownOwner) navigateBack(shownOwner); }} />
       {manager && <Card style={s.card}><Text>{manager.networkName}</Text><Text selectable style={s.address}>{manager.accountAddress}</Text></Card>}
       {closing ? <ActivityIndicator accessibilityLabel={t('buttons.close')} color={colors.pink} /> : <>
@@ -139,9 +152,11 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
               if (canRemoveValidatorModule(metadata, module.address, 'all-installed-composites')) review({ kind: 'uninstall', address: module.address });
             }} />}
           </Card>)}
+          {manager?.passkeysAvailable && <Button title={t('settings.passkeyAuthenticator')} icon="fingerprint" variant="secondary" size="compact" disabled={blocked} onPress={() => openPasskey(false)} />}
           <Button title={t('smartAccountHub.customModule')} icon="plus" variant="secondary" size="compact" disabled={blocked} onPress={() => setMode('custom')} />
           <Button title={t('settings.compositeAuthenticator')} icon="grid" variant="secondary" size="compact" disabled={blocked} onPress={() => setMode('composite')} />
         </>}
+        {metadata && mode === 'passkey' && <Notice title={t('settings.smartAccountPasskeyRecreateConfirmTitle')} body={t('settings.smartAccountPasskeyRecreateConfirmDescription')} />}
         {metadata && mode === 'custom' && <Card style={s.card}>
           <Text>{t('smartAccountHub.customModuleHint')}</Text>
           <NativeSendInput label={t('smartAccountHub.moduleAddress')} value={address} busy={blocked} onChange={value => { setAddress(value); setPreflight(undefined); }} />

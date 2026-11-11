@@ -26,7 +26,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) { super(...args); ring = this; }
     } }), pinCredential: createTestPinCredentialPort(),
     async requestOperationCredential() { throw Error('Detached cleanup must not request credentials'); },
-    readEvmRetirement: null, privacyServiceSettings: null, slhExecution: null,
+    readEvmRetirement: null, privacyServiceSettings: null, passkeys: null, slhExecution: null,
   }).open() as KeyringRuntime;
   await runtime.session.importWallet('abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about', '123456');
   const identity = (await storage.recovery.readIdentity())!;

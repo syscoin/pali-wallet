@@ -31,15 +31,17 @@ function metadata(): ISmartAccountMetadata {
     ] };
 }
 const ui = { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} };
-function fixture() {
-  let returned = 0, reads = 0, opens = 0, disposed = 0;
+function fixture(passkeys = false) {
+  let returned = 0, reads = 0, opens = 0, disposed = 0, failPasskey = false;
+  const passkeyRequests: boolean[] = [];
   let readWait: Promise<void> = Promise.resolve(), openWait: Promise<void> = Promise.resolve();
   const drafts: any[] = [], preflights: string[] = [], events = new Map<string, (...args: any[]) => void>();
   const native = { AppState: { currentState: 'active', addEventListener(event: string, callback: (...args: any[]) => void) { events.set(event, callback); return { remove() { events.delete(event); } }; } },
     BackHandler: { addEventListener(_event: string, callback: () => boolean) { events.set('back', callback); return { remove() { events.delete('back'); } }; } }, Platform: { OS: 'android' }, StyleSheet: { create: (value: unknown) => value }, View: 'View', Switch: 'Switch', ActivityIndicator: 'ActivityIndicator' };
   const operation = { async dispose() { disposed++; } };
   let authentication!: privateAuthentication.NativePrivateAuthenticationScope, guard!: () => void;
-  const manager = { accountAddress: ownerAddress, networkName: 'Ethereum', async read() { reads++; await readWait; return metadata(); },
+  const manager = { accountAddress: ownerAddress, networkName: 'Ethereum', passkeysAvailable: passkeys,
+    async openPasskey(recreate: boolean, signal: AbortSignal, guard: () => void) { guard(); assert(!signal.aborted); passkeyRequests.push(recreate); if (failPasskey && !recreate) throw Object.assign(Error('Unavailable'), {code:'PASSKEY_POSSESSION_FAILED'}); await openWait; return operation; }, async read() { reads++; await readWait; return metadata(); },
     async preflightCustom(address: string) { preflights.push(address); return { ok: true, failures: [], compositeCompatible: true }; },
     async openChange(draft: any, signal: AbortSignal, guard: () => void) { assert.equal(signal.aborted, false); guard(); drafts.push(draft); await openWait; return operation; } };
   const open = async (_signal: AbortSignal, check: () => void, scope: privateAuthentication.NativePrivateAuthenticationScope) => { authentication = scope; guard = check; guard(); opens++; return manager; };
@@ -56,7 +58,7 @@ function fixture() {
   const button = (title: string) => { const value = render().find(element => element.type === 'Button' && element.props.title === title); assert(value, `Missing button ${title}`); return value; };
   const edit = (label: string, value: string) => { const field = render().find(element => element.type === 'Input' && element.props.label === label); assert(field); field.props.onChange(value); };
   const switchValue = (label: string, value: boolean) => { const field = render().find(element => element.type === 'Switch' && element.props.accessibilityLabel === label); assert(field); field.props.onValueChange(value); };
-  return { render, button, edit, switchValue, drafts, preflights, operation, close: screen.close,
+  return { render, button, edit, switchValue, drafts, preflights, operation, passkeyRequests, failPasskey() { failPasskey = true; }, close: screen.close,
     get authentication() { return authentication; }, guard: () => guard(),
     event(state: string) { native.AppState.currentState = state; events.get('change')?.(state); },
     get returned() { return returned; }, get disposed() { return disposed; }, get opens() { return opens; }, get reads() { return reads; },
@@ -85,6 +87,20 @@ test('Modules lists only observed validators and protects active and composite-r
     assert(uninstalls.every(element => element.props.icon === 'trash'));
     uninstalls[1]!.props.onPress(); await tick();
     assert.deepEqual(JSON.parse(JSON.stringify(f.drafts)), [{ kind: 'uninstall', address: spareAddress }]);
+    assert.equal(f.render()[0]!.type, 'Operation');
+  } finally { f.close(); }
+});
+
+test('Passkey setup opens the normal operation review and never silently recreates a credential', async () => {
+  const f = fixture(true); f.render(); await tick();
+  try {
+    assert.equal(f.button(t('settings.passkeyAuthenticator')).props.icon, 'fingerprint');
+    f.failPasskey(); f.button(t('settings.passkeyAuthenticator')).props.onPress(); await tick();
+    assert.deepEqual(f.passkeyRequests, [false]);
+    assert(contents(f.render()).includes(t('settings.smartAccountPasskeyRecreateConfirmTitle')) ||
+      f.render().some(element => element.type === 'Notice' && element.props.title === t('settings.smartAccountPasskeyRecreateConfirmTitle')));
+    f.button(t('settings.smartAccountPasskeyRecreateConfirmButton')).props.onPress(); await tick();
+    assert.deepEqual(f.passkeyRequests, [false, true]);
     assert.equal(f.render()[0]!.type, 'Operation');
   } finally { f.close(); }
 });

@@ -122,7 +122,7 @@ function fixture() {
     null
   );
   const ports = {
-    slhDsa: null, allowReservedSLHDSASignature: false, accountId: 0,
+    p256WebAuthn: null, slhDsa: null, allowReservedSLHDSASignature: false, accountId: 0,
     localOwners,
     assertCurrent: check,
     assertOwnerCurrent(owner: NativeSmartAccountSigningOwner) {
@@ -278,6 +278,30 @@ test('ordinary ECDSA and threshold signatures use the actual owner-bound SDK dig
         : coder.encode(['bytes[]'], [f.calls.map((call) => call.signature)])
     );
   }
+});
+
+test('native P256 uses the same selected-validator dispatcher and never opens an ECDSA owner', async () => {
+  const f = fixture(), metadata = f.composite();
+  const module = metadata.installedModules!.find(module => module.id === 'p256-webauthn')!;
+  assert(module.id === 'p256-webauthn');
+  metadata.auth = { module: module.id, validator: module.address, data: module.data! };
+  const calls: unknown[] = [];
+  assert(canSignNativeSmartAccountActionHash(metadata, f.localOwners, { p256WebAuthn: true, slhDsa: false }));
+  const result = await signNativeSmartAccountActionHash({ ...f.ports, metadata, actionHash: HASH,
+    p256WebAuthn: { async signActionHash(request) { calls.push(request); return { signature: '0xab' }; } },
+  });
+  assert.deepEqual(calls, [{ actionHash: HASH, credentialId: undefined, expectedCredentialIdHash: undefined, expectedPublicKey: module.config.publicKey }]);
+  assert.equal(result.validator, module.address); assert.equal(result.signature, '0xab'); assert.equal(f.calls.length, 0);
+});
+
+test('native P256 discards a signature when the request is retired while the OS prompt waits', async () => {
+  const f = fixture(), metadata = f.composite();
+  const module = metadata.installedModules!.find(module => module.id === 'p256-webauthn')!;
+  metadata.auth = { module: 'p256-webauthn', validator: module.address, data: module.data! };
+  await assert.rejects(signNativeSmartAccountActionHash({ ...f.ports, metadata, actionHash: HASH,
+    p256WebAuthn: { async signActionHash() { await Promise.resolve(); f.retire(); return { signature: '0xab' }; } },
+  }), /CANCELLED/);
+  assert.equal(f.calls.length, 0);
 });
 
 test('the shared collector keeps contract child slots and ECDSA owner thresholds with unavailable siblings', async () => {
@@ -631,11 +655,11 @@ test('aliases cannot satisfy a missing owner threshold or replace a rejected own
 
 test('native capability uses the shared available-port threshold and never advertises absent platform signers or duplicate owners', () => {
   const f = fixture();
-  assert(canSignNativeSmartAccountActionHash(f.ecdsa(2), f.localOwners, { slhDsa: false }));
-  assert(canSignNativeSmartAccountActionHash(f.composite(1, false, 2), f.localOwners, { slhDsa: false }));
-  assert.equal(canSignNativeSmartAccountActionHash(f.composite(2), f.localOwners, { slhDsa: false }), false);
-  assert.equal(canSignNativeSmartAccountActionHash(f.composite(1, false, 2), [f.localOwners[0]!, { ...f.localOwners[0]!, id: 17, type: 'Imported' }], { slhDsa: false }), false);
-  assert.equal(canSignNativeSmartAccountActionHash(f.ecdsa(2), f.localOwners.slice(0, 1), { slhDsa: false }), false);
+  assert(canSignNativeSmartAccountActionHash(f.ecdsa(2), f.localOwners, { p256WebAuthn: false, slhDsa: false }));
+  assert(canSignNativeSmartAccountActionHash(f.composite(1, false, 2), f.localOwners, { p256WebAuthn: false, slhDsa: false }));
+  assert.equal(canSignNativeSmartAccountActionHash(f.composite(2), f.localOwners, { p256WebAuthn: false, slhDsa: false }), false);
+  assert.equal(canSignNativeSmartAccountActionHash(f.composite(1, false, 2), [f.localOwners[0]!, { ...f.localOwners[0]!, id: 17, type: 'Imported' }], { p256WebAuthn: false, slhDsa: false }), false);
+  assert.equal(canSignNativeSmartAccountActionHash(f.ecdsa(2), f.localOwners.slice(0, 1), { p256WebAuthn: false, slhDsa: false }), false);
   assert.equal(f.calls.length, 0);
 });
 
@@ -683,7 +707,7 @@ test('injected SLH uses the same composite collector, configured action and rese
   assert.deepEqual(seen[0], { accountId: 0, actionHash: HASH, allowReservedSignature: false,
     keyId: module.config.keyId, parameterSet: module.config.parameterSet, pkRoot: module.config.pkRoot, pkSeed: module.config.pkSeed });
   assert.equal(result.signature, coder.encode(['bytes[]'], [['0x', f.calls[0]!.signature, signature]]));
-  assert(canSignNativeSmartAccountActionHash(metadata, f.localOwners, { slhDsa: true }));
+  assert(canSignNativeSmartAccountActionHash(metadata, f.localOwners, { p256WebAuthn: false, slhDsa: true }));
 });
 
 test('an ECDSA-satisfied composite does not touch an unused injected SLH key', async () => {
@@ -698,13 +722,13 @@ test('an ECDSA-satisfied composite does not touch an unused injected SLH key', a
 
 test('native ordered plan permits separate ECDSA Trezor owner steps and gates uncheckpointed selected drivers',()=>{
   const f=fixture(), one=f.localOwners.map((owner,index)=>index===0?{...owner,type:'Trezor' as const}:owner);
-  assert(canSignNativeSmartAccountActionHash(f.ecdsa(1),one,{slhDsa:false}));
-  assert(canSignNativeSmartAccountActionHash(f.ecdsa(2),one,{slhDsa:false}));
+  assert(canSignNativeSmartAccountActionHash(f.ecdsa(1),one,{p256WebAuthn:false,slhDsa:false}));
+  assert(canSignNativeSmartAccountActionHash(f.ecdsa(2),one,{p256WebAuthn:false,slhDsa:false}));
   const two=one.map((owner,index)=>index===1?{...owner,type:'Trezor' as const}:owner);
-  assert(canSignNativeSmartAccountActionHash(f.ecdsa(2),two,{slhDsa:false}));
-  const plan=getNativeSmartAccountSigningPlan(f.ecdsa(2),one,{slhDsa:false});assert(plan);
+  assert(canSignNativeSmartAccountActionHash(f.ecdsa(2),two,{p256WebAuthn:false,slhDsa:false}));
+  const plan=getNativeSmartAccountSigningPlan(f.ecdsa(2),one,{p256WebAuthn:false,slhDsa:false});assert(plan);
   assert.deepEqual(plan.authenticators[0]!.owners.map(owner=>owner.type),['Trezor','HDAccount']);
-  assert(canSignNativeSmartAccountActionHash(f.composite(1,false,2),two,{slhDsa:true}),'an unused SLH child does not restrict the selected ECDSA plan');
-  assert.equal(canSignNativeSmartAccountActionHash(f.composite(2,false,2),two,{slhDsa:true}),false,'selected SLH proofs need a separate resume contract');
-  assert(canSignNativeSmartAccountActionHash(f.composite(2,false,2),f.localOwners,{slhDsa:true}),'software-only composite signing retains the existing path');
+  assert(canSignNativeSmartAccountActionHash(f.composite(1,false,2),two,{p256WebAuthn:false,slhDsa:true}),'an unused SLH child does not restrict the selected ECDSA plan');
+  assert.equal(canSignNativeSmartAccountActionHash(f.composite(2,false,2),two,{p256WebAuthn:false,slhDsa:true}),false,'selected SLH proofs need a separate resume contract');
+  assert(canSignNativeSmartAccountActionHash(f.composite(2,false,2),f.localOwners,{p256WebAuthn:false,slhDsa:true}),'software-only composite signing retains the existing path');
 });

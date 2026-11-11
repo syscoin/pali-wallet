@@ -1,14 +1,14 @@
-import { PasskeyBackupStatus } from '../../types/network';
-import { id as hashText, toUtf8Bytes } from '../ethersV6Compat';
+import { PasskeyBackupStatus } from '../../types/passkey.ts';
+import { id as hashText, toUtf8Bytes } from '../ethersV6Compat.ts';
 
 import {
   base64UrlToBytes,
   bytesToBase64Url,
   bytesToHex,
   hexToBytes,
-} from './base64url';
-import { asCborBytes, asCborMap, decodeCbor } from './cbor';
-import { readPasskeyClientDataJSON } from './clientData';
+} from './base64url.ts';
+import { asCborBytes, asCborMap, decodeCbor } from './cbor.ts';
+import { readPasskeyClientDataJSON } from './clientData.ts';
 import {
   admitPasskeyAuthenticatorData,
   capturePasskeyExpectation,
@@ -20,15 +20,18 @@ import {
   type PasskeyCeremonyExpectation,
   type RawPasskeyAssertion,
   type RawPasskeyRegistration,
-} from './credentialResponse';
-import { P256_ORDER as P256_N, parseP256DerSignature } from './p256Signature';
-import { validatePasskeyClientDataJSON } from './validation';
+} from './credentialResponse.ts';
+import {
+  P256_ORDER as P256_N,
+  parseP256DerSignature,
+} from './p256Signature.ts';
+import { validatePasskeyClientDataJSON } from './validation.ts';
 
 export type {
   PasskeyCeremonyExpectation,
   RawPasskeyAssertion,
   RawPasskeyRegistration,
-} from './credentialResponse';
+} from './credentialResponse.ts';
 
 export type PasskeyPublicKey = {
   backupStatus: PasskeyBackupStatus;
@@ -310,7 +313,7 @@ export const getPasskeyBackupStatus = (
     return PasskeyBackupStatus.Unavailable;
   }
 
-  const flags = authenticatorData[32];
+  const flags = authenticatorData[32]!;
   const backupEligible = (flags & BACKUP_ELIGIBLE_FLAG) !== 0;
   const backedUp = (flags & BACKUP_STATE_FLAG) !== 0;
 
@@ -399,7 +402,7 @@ const extractAttestedCredential = (attestationObject: Uint8Array) => {
   if (authData.length < offset + 2) {
     throw new Error('Missing attested credential ID');
   }
-  const credentialIdLength = (authData[offset] << 8) | authData[offset + 1];
+  const credentialIdLength = (authData[offset]! << 8) | authData[offset + 1]!;
   offset += 2;
   if (
     !credentialIdLength ||
@@ -424,7 +427,7 @@ const extractAttestedCredential = (attestationObject: Uint8Array) => {
     throw new Error('Passkey must use ES256 / P-256');
   }
   if (
-    (authData[32] & 0x80) !== 0
+    (authData[32]! & 0x80) !== 0
       ? decodedKey.offset >= authData.length
       : decodedKey.offset !== authData.length
   ) {
@@ -845,11 +848,27 @@ export const recoverExistingPasskeyProfile = async ({
   expectedCredentialIdHash?: string;
   expectedPublicKey?: { x: string; y: string };
   rpId?: string;
-} = {}): Promise<RecoveredPasskeyProfile> => {
-  const firstAssertion = await getDiscoverablePasskeyAssertion(
-    randomChallengeHex(),
-    rpId
-  );
+} = {}): Promise<RecoveredPasskeyProfile> =>
+  recoverPasskeyProfile({
+    expectedCredentialIdHash,
+    expectedPublicKey,
+    acquireAssertion: (credentialId) =>
+      credentialId
+        ? getPasskeyAssertion(credentialId, randomChallengeHex(), rpId)
+        : getDiscoverablePasskeyAssertion(randomChallengeHex(), rpId),
+  });
+
+/** Reuse the same key-recovery checks for genuine browser and native assertions. */
+export const recoverPasskeyProfile = async ({
+  expectedCredentialIdHash,
+  expectedPublicKey,
+  acquireAssertion,
+}: {
+  acquireAssertion(credentialId?: string): Promise<PasskeyAssertionResult>;
+  expectedCredentialIdHash?: string;
+  expectedPublicKey?: { x: string; y: string };
+}): Promise<RecoveredPasskeyProfile> => {
+  const firstAssertion = await acquireAssertion();
   if (
     expectedCredentialIdHash &&
     firstAssertion.credentialIdHash.toLowerCase() !==
@@ -871,11 +890,7 @@ export const recoverExistingPasskeyProfile = async ({
       );
     }
   } else {
-    const secondAssertion = await getPasskeyAssertion(
-      firstAssertion.credentialId,
-      randomChallengeHex(),
-      rpId
-    );
+    const secondAssertion = await acquireAssertion(firstAssertion.credentialId);
     if (
       secondAssertion.credentialIdHash.toLowerCase() !==
       firstAssertion.credentialIdHash.toLowerCase()
@@ -893,7 +908,7 @@ export const recoverExistingPasskeyProfile = async ({
     }
   }
 
-  const [publicKey] = candidates;
+  const publicKey = candidates[0]!;
   return {
     backupStatus: firstAssertion.backupStatus,
     credentialId: firstAssertion.credentialId,

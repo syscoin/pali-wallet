@@ -61,7 +61,7 @@ async function fixture(requester?: NativeOperationCredentialRequester) {
       return pinCredential.readSecret(input, check);
     } },
     deviceUnlock: { credentials, randomId: () => (++nextEnrollment).toString(16).padStart(32, '0') },
-    privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+    privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
     async ensureCryptoReady() { assert(globalThis.crypto?.subtle); },
     async openStorage() { storage = await SqliteWalletStorage.open(nodeConnection(filename).connection, digest, INSTALLATION, first); first = false; return storage; },
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),

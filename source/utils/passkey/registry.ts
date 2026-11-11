@@ -1,6 +1,5 @@
-import type { IPasskeyCredentialProfile } from 'types/network';
-
 import type { PasskeyRegistrationResult } from './webauthn';
+import type { IPasskeyCredentialProfile } from '../../types/network.ts';
 
 // Durable (localStorage) registry of WebAuthn credentials per smart account.
 // Records only hold public material (credential id, public key) — no secrets.
@@ -22,10 +21,24 @@ export type PasskeyAccountRecords = {
 };
 
 const ACCOUNT_RECORDS_KEY_PREFIX = 'pali-smart-account-passkey:v1:';
-const CREATION_PENDING_KEY = 'pali-smart-account-passkey:v1:creation-pending';
+export const PASSKEY_CREATION_PENDING_KEY =
+  'pali-smart-account-passkey:v1:creation-pending';
 
-const accountRecordsKey = (accountAddress: string): string =>
+export const passkeyAccountRecordsKey = (accountAddress: string): string =>
   `${ACCOUNT_RECORDS_KEY_PREFIX}${accountAddress.toLowerCase()}`;
+
+/** Same public record transitions for browser and protected native storage. */
+export const withPendingPasskey = (
+  records: PasskeyAccountRecords,
+  profile: IPasskeyCredentialProfile,
+  createdAt = Date.now()
+): PasskeyAccountRecords => ({
+  ...records,
+  pending: { createdAt, profile },
+});
+export const withActivePasskey = (
+  profile: IPasskeyCredentialProfile
+): PasskeyAccountRecords => ({ active: profile });
 
 const getLocalStorage = (): Storage | null => {
   try {
@@ -93,26 +106,31 @@ export const passkeyRegistrationToProfile = (
 export const getPasskeyAccountRecords = (
   accountAddress: string
 ): PasskeyAccountRecords =>
-  readJson<PasskeyAccountRecords>(accountRecordsKey(accountAddress)) || {};
+  readJson<PasskeyAccountRecords>(passkeyAccountRecordsKey(accountAddress)) ||
+  {};
 
 export const setActivePasskeyRecord = (
   accountAddress: string,
   profile: IPasskeyCredentialProfile
-) => writeJson(accountRecordsKey(accountAddress), { active: profile });
+) =>
+  writeJson(
+    passkeyAccountRecordsKey(accountAddress),
+    withActivePasskey(profile)
+  );
 
 export const setPendingPasskeyRecord = (
   accountAddress: string,
   profile: IPasskeyCredentialProfile
 ) => {
   const records = getPasskeyAccountRecords(accountAddress);
-  return writeJson(accountRecordsKey(accountAddress), {
-    ...records,
-    pending: { createdAt: Date.now(), profile },
-  });
+  return writeJson(
+    passkeyAccountRecordsKey(accountAddress),
+    withPendingPasskey(records, profile)
+  );
 };
 
 export const clearPasskeyAccountRecords = (accountAddress: string) => {
-  removeKey(accountRecordsKey(accountAddress));
+  removeKey(passkeyAccountRecordsKey(accountAddress));
 };
 
 export const clearPendingPasskeyRecord = (accountAddress: string) => {
@@ -122,9 +140,9 @@ export const clearPendingPasskeyRecord = (accountAddress: string) => {
   }
   delete records.pending;
   if (records.active) {
-    writeJson(accountRecordsKey(accountAddress), records);
+    writeJson(passkeyAccountRecordsKey(accountAddress), records);
   } else {
-    removeKey(accountRecordsKey(accountAddress));
+    removeKey(passkeyAccountRecordsKey(accountAddress));
   }
 };
 
@@ -132,10 +150,10 @@ export const clearPendingPasskeyRecord = (accountAddress: string) => {
 // final, so the pending record is kept in a single slot until the account
 // exists and the record can be promoted under its address.
 export const getPendingCreationPasskey = (): PasskeyPendingRecord | null =>
-  readJson<PasskeyPendingRecord>(CREATION_PENDING_KEY);
+  readJson<PasskeyPendingRecord>(PASSKEY_CREATION_PENDING_KEY);
 
 export const setPendingCreationPasskey = (profile: IPasskeyCredentialProfile) =>
-  writeJson(CREATION_PENDING_KEY, { createdAt: Date.now(), profile });
+  writeJson(PASSKEY_CREATION_PENDING_KEY, { createdAt: Date.now(), profile });
 
 export const clearPendingCreationPasskey = (credentialId?: string) => {
   if (
@@ -144,5 +162,5 @@ export const clearPendingCreationPasskey = (credentialId?: string) => {
   ) {
     return;
   }
-  removeKey(CREATION_PENDING_KEY);
+  removeKey(PASSKEY_CREATION_PENDING_KEY);
 };

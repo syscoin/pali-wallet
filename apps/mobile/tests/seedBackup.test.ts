@@ -23,6 +23,8 @@ async function fixture() {
   const refusals = new WeakSet<object>();
   const refuse = (code: KeyringRuntimeError['code']) => { const error = new KeyringRuntimeError(code); refusals.add(error); return error; };
   const runtime: KeyringRuntime = {
+    canUsePasskeys: () => false,
+    async openPasskeyAuthenticator() { throw Error('Passkey is outside this fixture'); },
     async resumeSmartAccountOperation() { throw Error('Smart resume is outside this fixture'); },
     trezor: { background() {}, getSnapshot: () => ({ phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, signer: null, error: null }),
       subscribe: () => () => {}, async startImport() { throw new Error('Hardware is outside this fixture'); },

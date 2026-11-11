@@ -58,7 +58,7 @@ async function fixture(trezorSessions?: KeyringRuntimeDependencies['trezorSessio
   const factory = createKeyringRuntimeFactory({ pinCredential: { ...pinCredential, async readSecret(...args) { secretReads++; return pinCredential.readSecret(...args); } }, requestOperationCredential: requestCredential ?? (async (_request, _signal, check, verify) => {
     const result = await verify({ method: 'pin', pin: PASSWORD }, check);
     if (!result.accepted) throw Error(result.reason);
-  }), privacyServiceSettings: null, slhExecution: null,
+  }), privacyServiceSettings: null, passkeys: null, slhExecution: null,
     ensureCryptoReady: async () => undefined, readEvmRetirement: null,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
     trezorSessions,

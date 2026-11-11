@@ -833,7 +833,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     });
   });
   t.after(detachAuthentication);
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: authentication.request, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: authentication.request, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     openStorage,
     loadSdk: async () => ({ ...sdk, HostKeyring: class extends sdk.HostKeyring {

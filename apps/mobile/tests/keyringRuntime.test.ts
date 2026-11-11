@@ -234,7 +234,7 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
   const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: requestCredential ?? (async (_request, _signal, check, verify) => {
     const result = await verify({ method: 'pin', pin: PASSWORD }, check);
     if (!result.accepted) throw Error(result.reason);
-  }), privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => {
+  }), privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => {
     assert.ok(globalThis.crypto.subtle, 'Node supplies real WebCrypto for this control');
   }, openStorage: open, loadSdk, assertActive, connectionFetch, trezorSessions, utxoFetch, prepareSmartAccount });
   return {
@@ -563,7 +563,7 @@ test('a committed wallet with lost acknowledgment is quarantined and reopened in
 test('native qualification fails before storage or SDK loading', async () => {
   let opened = false;
   let loaded = false;
-  const factory = createKeyringRuntimeFactory({ pinCredential: null, requestOperationCredential: null, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential: null, requestOperationCredential: null, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
     async ensureCryptoReady() { throw new Error('provider unavailable'); },
     async openStorage() { opened = true; throw new Error('must not open'); },
     async loadSdk() { loaded = true; throw new Error('must not load'); },

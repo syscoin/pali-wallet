@@ -153,6 +153,8 @@ jobs:
           cp apps/mobile/modules/pali-private-prover/generated/pali-private-prover/proof-assets.json "$RUNNER_TEMP/pali-native-ios/proof-assets.json"
       - run: node --import ./scripts/register-shared-test-dependencies.mjs --test qualification/*.test.cjs
       - run: xcodebuild -version
+      - name: Verify native passkey input and cancellation ownership
+        run: sh modules/pali-passkeys/tests/run-ios-inputs.sh
       - name: Run Swift public snapshot loopback
         if: env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION != '1' && env.PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION != '1'
         run: |
@@ -292,6 +294,8 @@ jobs:
             --tests org.syscoin.pali.websocket.SocketRegistryTest \
             --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64) \
             2>&1 | tee "$RUNNER_TEMP/pali-native-android/websocket-ownership.log"
+      - name: Verify native passkey input and cancellation ownership
+        run: cd android && ./gradlew :pali-passkeys:testDebugUnitTest --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64
       - name: Build real Android binary
         run: |
           (cd android && ./gradlew :app:assembleRelease --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64)
