@@ -1,5 +1,5 @@
 import * as pairingLinks from '../src/connections/pairingLinks.ts';
-import * as sharedHistory from '../../../source/shared/evmHistory.ts';
+import * as activityFiltering from '../src/activity/activityFiltering.ts';
 import * as syscoinAssetIds from '../../../source/shared/syscoinAssetIds.ts';
 import * as sptInventory from '../../../source/shared/sptInventory.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
@@ -129,7 +129,7 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         react: render.api, 'react-native': native, '../ui': ui, './IdleActivityBoundary': idle.components,
       });
       let privacyHidden = false;
-      const dependencies = { '../platform/localization': nativeTranslationFixture, '../../../../source/shared/evmHistory': sharedHistory, './IdleActivityBoundary': idle.components, react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+      const dependencies = { '../platform/localization': nativeTranslationFixture, '../activity/activityFiltering': activityFiltering, './IdleActivityBoundary': idle.components, react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
         'expo-clipboard': { async setStringAsync(value: string) { copied.push(value); return true; } }, 'react-native-qrcode-svg': 'QRCode', '../ui': ui, '../core/amounts': core, '../core/networks': core,
         '../core/utxoAddresses': { canUseUtxoCustodyAddress },
         '../core/utxoNetworks': { findUtxoNetwork, getUtxoNetwork }, '../core/watchOnlyAuthority': core,

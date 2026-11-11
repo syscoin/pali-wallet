@@ -1,4 +1,4 @@
-import { getEvmHistoryDirection } from '../../../../source/shared/evmHistory.ts';
+import { matchesActivityView } from './activityFiltering.ts';
 import { NativeActivity, type ActivityRow, type NativeActivityRuntime, type ActivityExplorerPort, type ActivityReceiptPort } from './nativeActivity.ts';
 import { DEFAULT_ACTIVITY_VIEW, type ActivityViewState } from './types.ts';
 import { ActivityReadConcurrency } from './readConcurrency.ts';
@@ -40,15 +40,7 @@ const initial = (): AccountActivitySnapshot => Object.freeze({
   status: 'loading', accountId: null, filter: null, choices: [], rows: [], view: DEFAULT_ACTIVITY_VIEW,
   refreshing: false, loadingMore: false, hasMore: false, partial: false, error: null,
 });
-export function accountActivityDirection(row: ActivityRow, owner: string) {
-  const collectible = row.local?.collectibleTransfer;
-  if (collectible) return getEvmHistoryDirection({ from: collectible.from, to: collectible.recipient }, owner);
-  if (row.indexed) return getEvmHistoryDirection(row.indexed, owner);
-  if (row.local) return getEvmHistoryDirection({ from: owner, to: row.local.recipient }, owner);
-  return row.observation ? getEvmHistoryDirection(row.observation, owner, row.observation.events) : 'unknown';
-}
-const zeroOnly = (row: ActivityRow) => row.indexed ? row.zeroValueToken === true
-  : !row.local && row.observation?.valueUnits === '0' && row.observation.events.length > 0 && row.observation.events.every(event => event.amountUnits === '0');
+export { activityRowDirection as accountActivityDirection } from './activityFiltering.ts';
 
 /** Compose the established per-network Activity model; no new history backend,
  * account derivation, selection change, signing or persistent cache mutation.
@@ -118,11 +110,8 @@ export class AccountActivityController {
     const values = [...this.children.values()];
     const rows = values.flatMap(child => child.controller.getSnapshot().rows.map(row => ({
       key: `${scopeKey(child.choice)}:${row.hash}`, choice: child.choice, row, controller: child.controller,
-    }))).filter(({ row, choice }) => {
-      const direction = accountActivityDirection(row, choice.scope.accountAddress);
-      return (this.state.view.showZero || !zeroOnly(row)) &&
-        (this.state.view.filter === 'all' || (this.state.view.filter === 'sent' ? direction === 'sent' || direction === 'self' : direction === 'received' || direction === 'self'));
-    }).sort((a, b) => (b.row.observation?.timestamp ?? b.row.candidate?.timestamp ?? b.row.local?.createdAt ?? 0) -
+    }))).filter(({ row, choice }) => matchesActivityView(row, choice.scope.accountAddress, this.state.view, 'exclude'))
+    .sort((a, b) => (b.row.observation?.timestamp ?? b.row.candidate?.timestamp ?? b.row.local?.createdAt ?? 0) -
       (a.row.observation?.timestamp ?? a.row.candidate?.timestamp ?? a.row.local?.createdAt ?? 0) || a.key.localeCompare(b.key));
     const snapshots = values.map(child => child.controller.getSnapshot());
     const partial = snapshots.some(snapshot => snapshot.status === 'unavailable' || !!snapshot.error || snapshot.discoveryAvailable === false);

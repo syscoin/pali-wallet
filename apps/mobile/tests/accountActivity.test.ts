@@ -12,7 +12,7 @@ const hash = '0x' + 'a'.repeat(64);
 const networks = [getNativeNetwork('ethereum'), getNativeNetwork('rollux')];
 const tick = async () => { for (let i = 0; i < 8; i++) await new Promise<void>(resolve => setImmediate(resolve)); };
 
-function fixture(initialFilter: string | Promise<string> = 'all') {
+function fixture(initialFilter: string | Promise<string> = 'all', direction: 'received' | 'self' = 'received') {
   let currentId = 'hd:60:0', revision = 1;
   const listeners = new Set<(snapshot: any) => void>();
   const calls: { id: string; account: string; signal: AbortSignal }[] = [], loads: string[] = [], savedLoads: string[] = [];
@@ -53,7 +53,7 @@ function fixture(initialFilter: string | Promise<string> = 'all') {
       if (held) await held;
       guard();
       if (feed === 'tokentx') return [];
-      return decodeActivityPage({ status: '1', result: [{ hash, from: outsider, to: scope.address, value: '1',
+      return decodeActivityPage({ status: '1', result: [{ hash, from: direction === 'self' ? scope.address : outsider, to: scope.address, value: '1',
         timeStamp: '1700000000', blockNumber: '10', confirmations: '1', nonce: '0', txreceipt_status: '1' }] }, feed, scope.address, Number(scope.network.chainId));
     } },
     receipts: { async read() { throw Error('List rendering must not request receipts'); } },
@@ -101,6 +101,21 @@ test('all-network rows retain distinct identities for an identical hash and shar
   assert.equal(f.model.getSnapshot().view.filter, 'received');
   assert.equal(f.model.getSnapshot().view.showZero, true);
   stopAgain();
+});
+
+test('self transfers remain in both Sent and Received across all networks', async () => {
+  const f = fixture('all', 'self'), stop = f.model.connect();
+  try {
+    await tick();
+    const initial = f.model.getSnapshot().rows.map(row => row.key);
+    assert.equal(initial.length, 2);
+    const reads = f.calls.length;
+    for (const filter of ['sent', 'received'] as const) {
+      await f.model.setView({ filter });
+      assert.deepEqual(f.model.getSnapshot().rows.map(row => row.key), initial);
+    }
+    assert.equal(f.calls.length, reads);
+  } finally { stop(); }
 });
 
 test('saved inventory opens only an existing visible account/network child and includes older journal rows', async () => {

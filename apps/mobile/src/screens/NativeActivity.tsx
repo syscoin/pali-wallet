@@ -22,7 +22,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Button, Card, colors, Header, IconButton, Notice, SegmentedControl, styles, Text } from '../ui';
 import { formatBaseUnits } from '../core/amounts';
 import { formatTokenUnits } from '../../../../source/shared/erc20';
-import { getEvmHistoryDirection } from '../../../../source/shared/evmHistory';
+import { activityRowDirection as direction, matchesActivityView, zeroOnlyActivity as zeroOnly } from '../activity/activityFiltering';
 import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
 import { ActivityListRow, activityDate } from './ActivityListRow';
 import { activityAssetIcon } from '../activity/assetIcon';
@@ -91,33 +91,6 @@ function savedPendingStatus(row: ActivityRow) {
   if (row.local.phase === 'signed') return 'Signed · submission not confirmed';
   if (row.local.phase === 'submitted') return 'Submitted · waiting for confirmation';
   return 'Submission unconfirmed';
-}
-function direction(
-  row: ActivityRow,
-  owner: string
-): 'sent' | 'received' | 'self' | 'unknown' {
-  const collectible = row.local?.collectibleTransfer;
-  if (collectible)
-    return getEvmHistoryDirection({ from: collectible.from, to: collectible.recipient }, owner);
-  if (row.indexed) return getEvmHistoryDirection(row.indexed, owner);
-  if (row.local)
-    return getEvmHistoryDirection(
-      { from: owner, to: row.local.recipient },
-      owner
-    );
-  const tx = row.observation;
-  if (!tx) return 'unknown';
-  return getEvmHistoryDirection(tx, owner, tx.events);
-}
-function zeroOnly(row: ActivityRow) {
-  if (row.indexed) return row.zeroValueToken === true;
-  return (
-    !row.local &&
-    row.observation &&
-    row.observation.valueUnits === '0' &&
-    row.observation.events.length > 0 &&
-    row.observation.events.every((event) => event.amountUnits === '0')
-  );
 }
 function amount(row: ActivityRow, symbol: string): string {
   if (row.local?.collectibleTransfer) return 'Collectible transfer';
@@ -323,13 +296,8 @@ function NativeActivityContent({
   }, []);
   const owner = snapshot.accountAddress ?? '';
   const savedPending = snapshot.savedPending ?? (savedPendingOnly ? { rows: [], status: 'loading' as const, hasMore: false } : undefined);
-  const rows = savedPending?.rows ?? snapshot.rows.filter(
-    (row) =>
-      (snapshot.view.showZero || !zeroOnly(row)) &&
-      (snapshot.view.filter === 'all' ||
-        direction(row, owner) === 'unknown' ||
-        direction(row, owner) === snapshot.view.filter)
-  );
+  // Keep unclassified rows visible in this single-network fallback view.
+  const rows = savedPending?.rows ?? snapshot.rows.filter(row => matchesActivityView(row, owner, snapshot.view, 'include'));
   const findRow = (predicate: (row: ActivityRow) => boolean) =>
     savedPending?.rows.find(predicate) ?? snapshot.rows.find(predicate);
   const displayStatus = savedPending ? savedPendingStatus : status;

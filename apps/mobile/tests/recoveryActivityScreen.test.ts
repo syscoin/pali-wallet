@@ -10,6 +10,7 @@ import { DEFAULT_ACTIVITY_VIEW } from '../src/activity/types.ts';
 import { activityAssetIcon } from '../src/activity/assetIcon.ts';
 import { getEvmTransactionDisplayInfo } from '../../../source/shared/evmTransactionDisplay.ts';
 import { mapEvmExplorerTokenTransfer } from '../../../source/shared/evmHistory.ts';
+import { activityRowDirection, matchesActivityView, zeroOnlyActivity } from '../src/activity/activityFiltering.ts';
 
 type Element = { type: any; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; dependencies?: unknown[]; cleanup?: () => void };
@@ -114,7 +115,7 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
       inspected.push(value);
     },
     closeSavedPending() { closedPending++; snapshot = { ...snapshot, savedPending: undefined }; },
-    async setView() {},
+    async setView(update: object) { snapshot = { ...snapshot, view: { ...snapshot.view, ...update } }; },
   };
   const ui = Object.fromEntries(
     ['Button', 'Card', 'Header', 'IconButton', 'Notice', 'SegmentedControl', 'Text'].map((name) => [name, name])
@@ -143,8 +144,8 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
     './TransactionDetailLayout': { TransactionDetailLayout: 'TransactionDetailLayout' },
     '../activity/assetIcon': { activityAssetIcon },
     '../../../../source/shared/erc20': { formatTokenUnits: () => '0' },
-    '../../../../source/shared/evmHistory': {
-      getEvmHistoryDirection: () => 'unknown',
+    '../activity/activityFiltering': {
+      activityRowDirection, matchesActivityView, zeroOnlyActivity,
     },
   };
   const module = {
@@ -289,14 +290,14 @@ test('privacy masks Activity list quantities and accessibility labels but keeps 
   f.rows([row]);
   try {
     let list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
-    assert.equal(list.props.renderItem({ item: row, index: 0 }).props.amount, '1.25 ETH');
+    assert.equal(list.props.renderItem({ item: row, index: 0 }).props.amount, '-1.25 ETH');
     f.privacy(true);
     list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
     const preview = list.props.renderItem({ item: row, index: 0 });
     assert.equal(preview.props.amount, '••••'); assert(!preview.props.label.includes('1.25'));
     preview.props.onPress(); await settle();
     const detail = all(f.render()).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
-    assert.equal(detail.props.amount, '1.25 ETH');
+    assert.equal(detail.props.amount, '-1.25 ETH');
   } finally { f.dispose(); }
 });
 
@@ -338,6 +339,24 @@ const pendingScopedRow = (reviewNavigation?: { speedUp: boolean }) => ({ hash, c
     phase: 'submitted', transactionType: 2, inspectionOnly: true, reviewNavigation },
   observation: { status: 'pending', timestamp: null, valueUnits: '1', feeUnits: null, nonce: '0',
     from: '0x' + '22'.repeat(20), to: '0x' + '44'.repeat(20), events: [] } });
+
+test('single-network Activity retains self transfers in Sent and Received and preserves unknown rows', () => {
+  const owner = '0x' + '22'.repeat(20), other = '0x' + '44'.repeat(20);
+  const row = (digit: string, from: string, to: string) => ({ hash: '0x' + digit.repeat(64),
+    indexed: { from, to }, checking: false, unavailable: false });
+  const self = row('1', owner, owner), sent = row('2', owner, other), received = row('3', other, owner), unknown = row('4', other, other);
+  const f = fixture();
+  try {
+    f.rows([self, sent, received, unknown]);
+    for (const [filter, expected] of [['sent', [self, sent, unknown]], ['received', [self, received, unknown]]] as const) {
+      const before = all(f.render()).find(node => node.type === 'FlatList'); assert(before);
+      const control = all(before.props.ListHeaderComponent).find(node => node.type === 'SegmentedControl'); assert(control);
+      control.props.onChange(filter);
+      const list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+      assert.deepEqual(list.props.data.map((item: { hash: string }) => item.hash), expected.map(item => item.hash));
+    }
+  } finally { f.dispose(); }
+});
 
 async function openFixtureRow(f: ReturnType<typeof fixture>, row: unknown) {
   f.rows([row]);
