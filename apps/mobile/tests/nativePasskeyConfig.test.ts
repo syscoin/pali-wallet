@@ -1,9 +1,23 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { URL } from 'node:url';
+import { fileURLToPath, URL } from 'node:url';
 import test from 'node:test';
+
+test('Expo registers the iOS passkey module, not only its native pod', () => {
+  const require = createRequire(import.meta.url);
+  const cli = join(dirname(require.resolve('expo-modules-autolinking/package.json')), 'bin/expo-modules-autolinking.js');
+  const resolved = JSON.parse(execFileSync(process.execPath, [cli, 'resolve', '--platform', 'apple', '--json'], {
+    cwd: fileURLToPath(new URL('../', import.meta.url)), encoding: 'utf8', timeout: 15_000,
+  })) as { modules: { packageName: string; pods: { podName: string }[]; modules: { class: string }[] }[] };
+  const passkeys = resolved.modules.find((entry) => entry.packageName === 'pali-passkeys');
+  assert(passkeys, 'Expo must include passkeys in its generated module provider');
+  assert(passkeys.pods.some((pod) => pod.podName === 'PaliPasskeys'));
+  assert(passkeys.modules.some((module) => module.class === 'PaliPasskeysModule'));
+});
 
 test('passkey associations are fixed, idempotent and preserve other native configuration', async () => {
   type Metadata = { $: Record<string, string> };
