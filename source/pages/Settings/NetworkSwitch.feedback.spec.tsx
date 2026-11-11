@@ -146,7 +146,7 @@ describe.each([
       for (const icon of icons)
         expect(icon).toHaveAttribute(
           'data-size',
-          label === 'Ethereum' ? '100' : '18'
+          label === 'Ethereum' ? '80' : '18'
         );
     });
 
