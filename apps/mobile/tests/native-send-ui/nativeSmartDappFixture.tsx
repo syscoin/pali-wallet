@@ -149,6 +149,7 @@ export function NativeSmartDappFixture() {
     throw new Error('Outside Smart review fixture');
   };
   const controller: NativeConnectionsView = {
+    isRequestAuthenticating: () => false,
   ...unsupportedDappViews,
     async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
     dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },

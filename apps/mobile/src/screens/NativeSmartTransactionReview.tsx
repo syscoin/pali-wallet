@@ -1,6 +1,6 @@
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { useDappLedgerConnection } from './useDappLedgerConnection';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BackHandler, StyleSheet } from 'react-native';
 import type {
   NativeConnectionsView,
@@ -22,6 +22,8 @@ export function NativeSmartTransactionReviewScreen({
   controller: NativeConnectionsView;
 }) {
   const ledger = useDappLedgerConnection({review, controller, ledgerConnection});
+  const requestId = review.id;
+  const authentication = useMemo(() => ({ isAuthenticating: () => controller.isRequestAuthenticating(requestId) }), [controller, requestId]);
   const [acknowledged, setAcknowledged] = useState<object | null>(null);
   const [editing, setEditing] = useState<object | null>(null);
   const editingRef = useRef(editing);
@@ -43,6 +45,7 @@ export function NativeSmartTransactionReviewScreen({
     !review.requiresWarningAcknowledgement || acknowledged === intent;
   return (
     <NativeSmartAccountOperationContent
+      authentication={authentication}
       state={review.operation}
       assetTransfer={review.assetTransfer}
       batchAssetTransfers={review.batchAssetTransfers}

@@ -1,3 +1,5 @@
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { bindTestRequestAuthentication } from './fixtures/privateAuthentication.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
@@ -13,7 +15,8 @@ const envelope = PsbtUtils.toPali(psbt);
 const origin = 'https://reported.example', topic = 'a1'.repeat(32);
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 
-function fixture(method: PsbtApprovalMethod = 'sys_sign') {
+function fixture(method: PsbtApprovalMethod = 'sys_sign', authenticate = false) {
+  let promptActive = false;
   let current = true, foreground = true, blocked = false, preparations = 0, signatures = 0, disposals = 0, dispatched = false;
   let prepareWait = Promise.resolve(), signWait = Promise.resolve(), responseWait = Promise.resolve();
   let responseError: Error | undefined, signError: Error | undefined;
@@ -30,12 +33,13 @@ function fixture(method: PsbtApprovalMethod = 'sys_sign') {
     inputs: [{ txid: 'aa'.repeat(32), vout: 0, valueSatoshis: '1000', scriptHex: '51' }],
     outputs: [{ index: 0, address: null, scriptHex: '51', valueSatoshis: '900', assets: [] }] });
   const manager = new NativePsbtRequests({
+    bindAuthentication: (scope, check) => authenticate ? privateAuthentication.bindNativePrivateAuthentication(scope, { assertCurrent: check, isPromptActive: () => promptActive }) : bindTestRequestAuthentication(scope, check),
     foreground: () => foreground, changed() {}, checkSite: async () => ({ isBlacklisted: blocked }),
-    host: () => ({ async cancelHandoff() {}, async prepare(request, signal, guard) {
+    host: () => ({ async cancelHandoff() {}, async prepare(request, signal, guard, _handoff, authentication) {
       preparations++; requests.push(request); lifetime.push(signal); await prepareWait;
       const prepared: PreparedPsbtApproval = { review: details, assertCurrent: guard,
         disposition: () => dispatched ? { transactionNotBroadcast: false, txid: 'ef'.repeat(32) } : { transactionNotBroadcast: true },
-        async approve() { guard(); signatures++; await signWait; guard(); if (signError) throw signError; return method === 'sys_sign' ? envelope : { txid: 'dd'.repeat(32) }; },
+        async approve() { guard(); signatures++; if (authenticate) { assert(authentication); await privateAuthentication.withNativePrivateAuthentication(authentication, signal, guard, async promptSignal => { promptActive = true; try { await signWait; assert(!promptSignal.aborted); } finally { promptActive = false; } }); } else await signWait; guard(); if (signError) throw signError; return method === 'sys_sign' ? envelope : { txid: 'dd'.repeat(32) }; },
         dispose() { disposals++; } };
       return prepared;
     } }),
@@ -45,7 +49,7 @@ function fixture(method: PsbtApprovalMethod = 'sys_sign') {
       if (responseError) throw responseError;
     },
   });
-  const enqueue = () => manager.enqueue(wire, { order: 1, accountLabel: 'Account', address: 'stable-address', networkLabel: 'Bitcoin',
+  const enqueue = (order = 1) => manager.enqueue(order === 1 ? wire : { ...wire, id: order }, { order, accountLabel: 'Account', address: 'stable-address', networkLabel: 'Bitcoin',
     chainId: wire.chainId, symbol: 'BTC', decimals: 8, resumeScope: { adapter: 1, wallet: 'public-wallet', unlockGeneration: 1, accountId: 'hd:0:0', address: 'stable-address', type: 'HDAccount', trezor: false, signing: 'software-fixture', xpub: 'public-xpub', registration: 'public-registration', grant: 'public-grant' }, assertCurrent: check, assertSessionCurrent: check });
   return { manager, wire, details, enqueue, requests, responses, handoffs, lifetime,
     review: () => manager.review(7), preparations: () => preparations, signatures: () => signatures, disposals: () => disposals,
@@ -144,4 +148,24 @@ for (const dispatched of [false, true]) test(`Close while signing uses the share
   assert.equal(f.responses.length, dispatched ? 0 : 1);
   if (!dispatched) assert.deepEqual(f.responses[0], { topic, id: 1, response: { error: { code: 4001, message: 'User rejected' } } });
   await f.manager.dispose();
+});
+
+
+for (const retirement of ['reject', 'expire'] as const) test(`PSBT request owns its credential interruption across review revisions and clears on ${retirement}`, async () => {
+  const f = fixture('sys_sign', true), held = Promise.withResolvers<void>();
+  f.holdSign(held.promise); f.enqueue(); await tick(); f.enqueue(2);
+  const id = f.review()!.id, work = f.manager.approve(id), rejected = assert.rejects(work);
+  try {
+    await tick();
+    assert.equal(f.manager.isRequestAuthenticating(id), true);
+    assert.equal(f.manager.isRequestAuthenticating('psbt-2'), false);
+    assert.equal(f.manager.review(99)!.revision, 99);
+    assert.equal(f.manager.isRequestAuthenticating(id), true);
+    assert(!JSON.stringify(f.review()).includes('authentication'));
+    if (retirement === 'reject') f.manager.reject(id); else f.manager.expire(f.wire.id);
+    assert.equal(f.manager.isRequestAuthenticating(id), false);
+    held.resolve(); await rejected;
+    assert.equal(f.signatures(), 1);
+    assert(!f.responses.some((row: any) => 'result' in row.response));
+  } finally { held.resolve(); await f.manager.dispose(); }
 });

@@ -1,3 +1,5 @@
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { bindTestRequestAuthentication } from './fixtures/privateAuthentication.ts';
 import type { NativeSmartCreationAllocation } from '../src/smartAccount/preparation.ts';
 import { getSmartAccountModulesProjection } from '../../../source/shared/smartAccountModules.ts';
 import { SMART_ACCOUNT_MODULE_REQUEST_METHODS, type SmartAccountModuleRequest } from '../../../source/shared/smartAccountModuleRequest.ts';
@@ -65,6 +67,7 @@ const ADDRESS = '0x' + '11'.repeat(20),
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fixture(
   options: {
+    requestAuthentication?: boolean;
     utxo?: boolean;
     hardware?: 'Ledger' | 'Trezor';
     capabilities?: boolean;
@@ -99,6 +102,7 @@ function fixture(
     account: { network: 'ethereum', address: ADDRESS },
     error: null,
   };
+  let promptActive = false, credentialWait: Promise<void> = Promise.resolve();
   const listeners = new Set<() => void>();
   const rows = new Map<string, unknown>();
   const signatures: unknown[] = [];
@@ -226,6 +230,15 @@ function fixture(
       }
       return true;
     },
+  };
+  const authenticate = async <T>(authentication: privateAuthentication.NativePrivateAuthentication | null, signal: AbortSignal, check: () => void, work: () => T): Promise<T> => {
+    if (!options.requestAuthentication) return work();
+    assert(authentication);
+    return privateAuthentication.withNativePrivateAuthentication(authentication, signal, check, async promptSignal => {
+      promptActive = true;
+      try { await credentialWait; assert(!promptSignal.aborted); check(); return work(); }
+      finally { promptActive = false; }
+    });
   };
   const host: Omit<NativeConnectionHost, 'repository' | 'calls'> = {
     async allocateSmartAccount(input, signal, check, onCommitted) {
@@ -394,19 +407,20 @@ function fixture(
     assertOwner() {},
     verifyPersonalMessage() { throw new Error('Public recovery is outside this fixture'); },
     sessionGeneration: () => snapshot.revision,
-    encryptionSdk(input) {
+    encryptionSdk(input, authentication) {
       input.approval.assertCurrent();
       assert.equal(input.accountId, selectedAccountId);
       return {
-        getEncryptedPubKey() { input.approval.assertCurrent(); signatures.push('encryption-key'); return 'public-encryption-key'; },
-        decryptMessage(params) { input.approval.assertCurrent(); signatures.push(params); return '  public plaintext\n'; },
+        getEncryptedPubKey() { input.approval.assertCurrent(); signatures.push('encryption-key'); return authenticate(authentication, input.approval.signal, input.approval.assertCurrent, () => 'public-encryption-key'); },
+        decryptMessage(params) { input.approval.assertCurrent(); signatures.push(params); return authenticate(authentication, input.approval.signal, input.approval.assertCurrent, () => '  public plaintext\n'); },
       };
     },
-    async signMessage(input) {
+    async signMessage(input, authentication) {
       signingHandoff = input.handoff;
       input.approval.assertCurrent();
       assert.equal(input.accountId, selectedAccountId);
       signatures.push(input.request);
+      await authenticate(authentication, input.approval.signal, input.approval.assertCurrent, () => undefined);
       await signWait;
       input.approval.assertCurrent();
       if (options.hardware || options.smartTrezor) input.handoff.beforeSignature();
@@ -612,6 +626,7 @@ function fixture(
     return value;
   });
   const controller = new NativeConnectionsController({
+    bindAuthentication: (scope, check) => options.requestAuthentication ? privateAuthentication.bindNativePrivateAuthentication(scope, { assertCurrent: check, isPromptActive: () => promptActive }) : bindTestRequestAuthentication(scope, check),
     openExternalUrl: async url => { externalUrls.push(url); },
     async activateAccount(accountId, expectedRevision, guard) {
       guard();
@@ -768,6 +783,7 @@ function fixture(
     },
   });
   return {
+    setCredentialWait(wait: Promise<void>) { credentialWait = wait; },
     controller, creationRequests, preparedAccountUpdates, creationGrantPublications,
     failCreationUpdate() { creationUpdateFailure = true; },
     beforeCreationGrantWrite(callback: () => void) { beforeCreationGrant = callback; },
@@ -1845,6 +1861,7 @@ for (const retirement of [
 
 async function connectedFixture(
   options: {
+    requestAuthentication?: boolean;
     utxo?: boolean;
     hardware?: 'Ledger' | 'Trezor';
     capabilities?: boolean;
@@ -5407,4 +5424,40 @@ test('Smart controller publishes ordered transfer summaries for a mixed call bun
     await f.view.rejectRequest(review.id);
     assert.equal(f.view.getSnapshot().signingReview, null);
   } finally { await f.controller.dispose(); }
+});
+
+
+for (const method of ['eth_decrypt', 'personal_sign'] as const) test(`dapp ${method} status follows the exact credential request and retires on lock`, async () => {
+  const f = await connectedFixture({ requestAuthentication: true }), held = Promise.withResolvers<void>();
+  try {
+    const first = await messageRequest(f, method, method === 'eth_decrypt' ? ['0xab', ADDRESS] : ['0x6869', ADDRESS]); assert(first);
+    await messageRequest(f, 'personal_sign', ['Queued', ADDRESS], 11);
+    const review = f.view.getSnapshot().signingReview!;
+    f.setCredentialWait(held.promise);
+    const work = method === 'eth_decrypt' ? f.view.previewEncryption(review.id, review.revision) : f.view.approveRequest(review.id, review.revision, false);
+    const rejected = assert.rejects(work); await settle();
+    assert.equal(f.view.isRequestAuthenticating(review.id), true);
+    assert.equal(f.view.isRequestAuthenticating(first.id.replace(/\d+$/, value => String(Number(value) + 1))), false, 'queued request cannot borrow the foreground prompt');
+    assert(!JSON.stringify(f.view.getSnapshot()).includes('authenticationScope'));
+    f.lock(); assert.equal(f.view.isRequestAuthenticating(review.id), false);
+    held.resolve(); await rejected;
+    assert(!f.responses.some(response => 'result' in (response as { result: object }).result));
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+
+test('dapp prompt binding follows an explicitly activated request account without following a replacement', async () => {
+  const f = await connectedFixture({ requestAuthentication: true, secondAccount: true, accountId: 'hd:60:1' });
+  const held = Promise.withResolvers<void>();
+  try {
+    const first = await messageRequest(f, 'personal_sign', ['Hello', '0x' + '22'.repeat(20)]); assert(first?.needsAccountSwitch);
+    await f.view.activateRequestAccount(first.id, first.revision);
+    const review = f.view.getSnapshot().signingReview!; assert.equal(review.needsAccountSwitch, false);
+    f.setCredentialWait(held.promise);
+    const work = f.view.approveRequest(review.id, review.revision, false); await settle();
+    assert.equal(f.view.isRequestAuthenticating(review.id), true);
+    held.resolve(); await work;
+    assert.equal(f.view.isRequestAuthenticating(review.id), false);
+    assert.equal(f.signatures.length, 1);
+  } finally { held.resolve(); await f.controller.dispose(); }
 });

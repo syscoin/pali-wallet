@@ -273,6 +273,17 @@ export function createNativeWalletControllers() {
       return runtime.readConnectionUtxoPublic(method, owner, isChange, signal, check);
     } });
   const connections = new NativeConnectionsController({
+    bindAuthentication(scope, check) {
+      const captured = runtime;
+      if (!captured) throw new CustodyOperationError('NOT_READY');
+      return bindNativePrivateAuthentication(scope, {
+        assertCurrent() {
+          if (runtime !== captured || !captured.catalogue.getSnapshot()) throw new CustodyOperationError('CANCELLED');
+          assertSynchronousEvmFeeGuard(check);
+        },
+        isPromptActive: () => deviceUnlock.prompt.isActive(),
+      });
+    },
     source: authority,
     activateAccount: (accountId, revision, guard) => authority.selectConnectionAccount(accountId, revision, guard),
     preparePlatform: prepareWalletConnectRuntime,
@@ -288,18 +299,18 @@ export function createNativeWalletControllers() {
       return Object.freeze({ ...connection, controls, reads, syscoin, sentry: sentryRequests,
         allocateSmartAccount: (...args: Parameters<typeof connection.allocateSmartAccount>) => {
           if (runtime !== captured) return Promise.reject(new CustodyOperationError('CANCELLED'));
-          const [input, signal, check, committed] = args;
+          const [input, signal, check, committed, authentication] = args;
           return authority.allocateConnectionSmartAccount(input, signal, () => {
             assertSynchronousEvmFeeGuard(check); if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
-          }, committed);
+          }, committed, authentication);
         },
         psbt: { cancelHandoff: (job: object) => {
           return connection.cancelSigningHandoff(job);
-        }, prepare: (request: NativePsbtRequest, signal: AbortSignal, check: () => void, handoff: import('../connections/signingHandoff.ts').NativeSigningHandoff) => {
+        }, prepare: (request: NativePsbtRequest, signal: AbortSignal, check: () => void, handoff: import('../connections/signingHandoff.ts').NativeSigningHandoff, authentication: import('../custody/privateAuthentication.ts').NativePrivateAuthentication | null) => {
           if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
           return captured.prepareConnectionPsbt(request, signal, () => {
             check(); if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
-          }, handoff);
+          }, handoff, authentication);
         } } });
     },
     openExternalUrl: (url) => Linking.openURL(url),

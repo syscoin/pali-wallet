@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AppState, BackHandler, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNativeTranslation } from '../platform/localization';
@@ -9,11 +9,14 @@ import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
 import { DappSiteStatus } from './DappSiteStatus';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { useDappLedgerConnection } from './useDappLedgerConnection';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 /** Only the common engine's verified public review enters this screen. */
-export function NativePsbtReview({ review, controller, ledgerConnection }: { review: Review; controller: Pick<NativeConnectionsView, 'approvePsbt' | 'rejectPsbt' | 'getSnapshot' | 'backgroundSigning'>; ledgerConnection?: NativeLedgerConnectionView }) {
+export function NativePsbtReview({ review, controller, ledgerConnection }: { review: Review; controller: Pick<NativeConnectionsView, 'approvePsbt' | 'rejectPsbt' | 'getSnapshot' | 'backgroundSigning' | 'isRequestAuthenticating'>; ledgerConnection?: NativeLedgerConnectionView }) {
   const ledger = useDappLedgerConnection({ review, controller, ledgerConnection });
   const { t } = useNativeTranslation();
+  const requestId = review.id;
+  const authentication = useMemo(() => ({ isAuthenticating: () => controller.isRequestAuthenticating(requestId) }), [controller, requestId]);
   const identity = `${review.id}:${review.expiresAt}`, details = review.details;
   const [retired, setRetired] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<string | null>(null);
@@ -33,7 +36,7 @@ export function NativePsbtReview({ review, controller, ledgerConnection }: { rev
     const retained = owner.current;
     retained.active = true; busy.current = false; attempt.current = null;
     const timer = setTimeout(reject, Math.max(0, review.expiresAt - Date.now()));
-    const app = AppState.addEventListener('change', state => { if (state !== 'active') {
+    const app = AppState.addEventListener('change', state => { if (state !== 'active' && !allowsPrivateAuthenticationInterruption(authentication, state)) {
       if (owner.current.identity === identity) { owner.current.active = false; attempt.current = null; }
       setRetired(identity); controller.backgroundSigning();
     } });
@@ -41,10 +44,10 @@ export function NativePsbtReview({ review, controller, ledgerConnection }: { rev
     return () => {
       retained.active = false; attempt.current = null;
       clearTimeout(timer); app.remove(); back.remove();
-      if (AppState.currentState !== 'active') controller.backgroundSigning();
+      if (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(authentication, AppState.currentState)) controller.backgroundSigning();
       else void controller.rejectPsbt(review.id).catch(() => undefined);
     };
-  }, [controller, review.id, review.expiresAt, reject, identity]);
+  }, [controller, review.id, review.expiresAt, reject, identity, authentication]);
   const unavailable = !details || !!review.error || retired === identity;
   const blocked = unavailable || ledger.blocked || review.busy || review.attempted || submitting === identity;
   const approve = async () => {

@@ -1,6 +1,6 @@
 import { testHdKeyExportRuntime } from './fixtures/hdKeyExport.ts';
 import { NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
-import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
+import { createTestPrivateAuthentication, bindTestRequestAuthentication } from './fixtures/privateAuthentication.ts';
 import { nonSuiteSigningHandoff } from './nonSuiteSigningHandoff.ts';
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import type { NativePinRecord } from '../src/custody/pinVault.ts';
@@ -466,18 +466,18 @@ test('connection external PSBT runtime captures the selected account and aborts 
     psbt.addUnknownKeyValToInput(0, { key: Buffer.from('address'), value: Buffer.from(account.address) });
     psbt.addOutput({ script, value: BigInt(9000) });
     const request = { method: 'sys_sign' as const, origin: 'https://original.example', psbt: PsbtUtils.toPali(psbt) };
-    const review = await runtime.prepareConnectionPsbt(request, new AbortController().signal, () => undefined, softwarePsbtHandoff);
+    const review = await runtime.prepareConnectionPsbt(request, new AbortController().signal, () => undefined, softwarePsbtHandoff, createTestPrivateAuthentication(() => undefined));
     assert.equal(review.review.origin, request.origin); assert.equal(review.review.feeSatoshis, '1000');
     const signed = await review.approve();
     assert('psbt' in signed, 'the actual software SDK signs only after its owned credential request');
     await owner.selectNetwork('ethereum', owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
     assert.throws(review.assertCurrent); await assert.rejects(review.approve()); review.dispose();
     const before = calls;
-    await assert.rejects(runtime.prepareConnectionPsbt(request, new AbortController().signal, () => undefined, softwarePsbtHandoff), /NOT_READY/);
+    await assert.rejects(runtime.prepareConnectionPsbt(request, new AbortController().signal, () => undefined, softwarePsbtHandoff, createTestPrivateAuthentication(() => undefined)), /NOT_READY/);
     assert.equal(calls, before);
     await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
     held = true; const lifetime = new AbortController();
-    const opening = runtime.prepareConnectionPsbt(request, lifetime.signal, () => undefined, softwarePsbtHandoff);
+    const opening = runtime.prepareConnectionPsbt(request, lifetime.signal, () => undefined, softwarePsbtHandoff, createTestPrivateAuthentication(() => undefined));
     const rejected = assert.rejects(opening); await entered.promise; lifetime.abort();
     await rejected; assert.equal(readSignal?.aborted, true);
     release.resolve();
@@ -947,7 +947,7 @@ test('owned Smart creation authority publishes the actual private selection befo
   try {
     const allocation = await f.authority.allocateConnectionSmartAccount(f.request, lifetime.signal, () => undefined, receipt => {
       committed = receipt; assert.equal(f.authority.getSnapshot().account!.address, before.account!.address);
-    });
+    }, createTestPrivateAuthentication(() => undefined));
     assert.equal(allocation, committed); assert(published); assert(f.authority.getSnapshot().revision > before.revision);
     assert.equal(f.authority.getSnapshot().account!.address, allocation.account.address);
     assert.equal(f.authority.getCatalogue()!.active.accountId, allocation.account.id);
@@ -964,7 +964,7 @@ test('owned Smart creation authority refuses a stale request before its held pri
   const f = await readySmartCreationAuthority(async () => { entered.resolve(); await release.promise; });
   let current = true;
   try {
-    const allocating = f.authority.allocateConnectionSmartAccount(f.request, new AbortController().signal, () => { if (!current) throw Error('Retired request'); }, () => assert.fail('Stale allocation committed'));
+    const allocating = f.authority.allocateConnectionSmartAccount(f.request, new AbortController().signal, () => { if (!current) throw Error('Retired request'); }, () => assert.fail('Stale allocation committed'), createTestPrivateAuthentication(() => undefined));
     const rejected = assert.rejects(allocating); await entered.promise; current = false; release.resolve(); await rejected;
     assert.notEqual(f.authority.getSnapshot().phase, 'ready'); assert.equal(f.authority.getSnapshot().account, null);
     await f.authority.unlock(PASSWORD); assert.equal(f.authority.getCatalogue()!.accounts.filter(account => account.type === 'SmartAccount').length, 0);
@@ -980,7 +980,7 @@ for (const stop of ['abort-at-commit', 'lock-during-adoption'] as const) test(`o
   try {
     const allocating = f.authority.allocateConnectionSmartAccount(f.request, lifetime.signal, () => undefined, receipt => {
       committed = receipt; if (stop === 'abort-at-commit') lifetime.abort();
-    });
+    }, createTestPrivateAuthentication(() => undefined));
     const rejected = assert.rejects(allocating);
     if (stop === 'lock-during-adoption') { await entered.promise; f.authority.lock(); release.resolve(); }
     await rejected; assert(committed); assert.notEqual(f.authority.getSnapshot().phase, 'ready'); assert.equal(f.authority.getSnapshot().account, null);
@@ -1038,7 +1038,7 @@ test('connection encryption captures the actual software SDK and preserves plain
       const host = await f.runtime.openConnectionHost();
       const address = f.authority.getSnapshot().account!.address;
       const input = approveRuntimeMessage(f, host, { method: 'personal_sign', message: 'Public approval fixture', address });
-      const primitive = host.encryptionSdk(input);
+      const primitive = host.encryptionSdk(input, createTestPrivateAuthentication(() => undefined));
       const publicKey = await primitive.getEncryptedPubKey();
       assert.equal(Buffer.from(publicKey, 'base64').length, 32);
       for (const plaintext of ['', ' \t\n ', 'Public Unicode: ☃ 👋']) {
@@ -1052,7 +1052,7 @@ test('connection encryption captures the actual software SDK and preserves plain
     }
     const host = await f.runtime.openConnectionHost();
     const input = approveRuntimeMessage(f, host, { method: 'personal_sign', message: 'Public approval fixture', address: f.authority.getSnapshot().account!.address });
-    const primitive = host.encryptionSdk(input);
+    const primitive = host.encryptionSdk(input, createTestPrivateAuthentication(() => undefined));
     f.authority.lock();
     await assert.rejects(async () => primitive.getEncryptedPubKey());
     input.approval.dispose();
@@ -1074,13 +1074,13 @@ test('explicit broker cancellation preserves the real public wallet without auth
     const host = await f.runtime.openConnectionHost(), before = f.authority.getSnapshot();
     const input = approveRuntimeMessage(f, host, { method: 'personal_sign', message: 'No signature on cancellation', address: before.account!.address });
     try {
-      const cancelled = host.signMessage(input);
+      const cancelled = host.signMessage(input, null);
       const prompt = await Promise.race([nextPrompt(), cancelled.then(() => { throw Error('Missing credential request'); })]);
       prompt.cancel();
       await assert.rejects(cancelled, /CANCELLED/);
       assert.equal(f.authority.getSnapshot(), before);
       assert.equal(await f.runtime.session.readSelectedAddress(), before.account!.address);
-      const next = host.signMessage(input);
+      const next = host.signMessage(input, null);
       const retry = await Promise.race([nextPrompt(), next.then(() => { throw Error('Missing credential request'); })]);
       retry.confirm({ method: 'pin', pin: PASSWORD });
       assert.match(await next, /^0x[0-9a-f]+$/i);
@@ -1126,7 +1126,7 @@ test('connection message signing uses the published SDK for personal and typed V
         assert(request);
         const input = approveRuntimeMessage(f, host, request);
         try {
-          const signature = await host.signMessage({ ...input, handoff: nonSuiteSigningHandoff });
+          const signature = await host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }, createTestPrivateAuthentication(() => undefined));
           const recovered =
             request.method === 'personal_sign'
               ? recoverPersonalSignature({ data: request.message, signature })
@@ -1165,17 +1165,17 @@ test('message signing requires an explicit account switch and a new approval aft
       ADDRESS
     )!;
     const old = approveRuntimeMessage(f, host, request, 'hd:60:0');
-    await assert.rejects(host.signMessage(old), /INVALID_INPUT/);
+    await assert.rejects(host.signMessage(old, null), /INVALID_INPUT/);
     assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:1');
     const generation = host.sessionGeneration();
     await f.authority.selectConnectionAccount('hd:60:0', f.authority.getSnapshot().revision, () => undefined);
     assert(host.sessionGeneration() > generation);
     assert.throws(old.approval.assertCurrent);
-    assert.throws(() => host.signMessage(old), { code: 4001 });
+    assert.throws(() => host.signMessage(old, null), { code: 4001 });
     old.approval.dispose();
     const next = approveRuntimeMessage(f, host, request);
     try {
-      assert.match(await host.signMessage(next), /^0x[0-9a-f]{130}$/i);
+      assert.match(await host.signMessage(next, null), /^0x[0-9a-f]{130}$/i);
     } finally {
       next.approval.dispose();
     }
@@ -1213,10 +1213,10 @@ test('a message signature completing after lock is discarded and shares the priv
       ADDRESS
     )!;
     const input = approveRuntimeMessage(f, host, request);
-    const signing = host.signMessage({ ...input, handoff: nonSuiteSigningHandoff });
+    const signing = host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }, null);
     const rejected = assert.rejects(signing, /CANCELLED/);
     await entered.promise;
-    await assert.rejects(host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }), /BUSY/);
+    await assert.rejects(host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }, null), /BUSY/);
     f.authority.lock();
     release.resolve();
     await rejected;
@@ -3114,7 +3114,7 @@ test('connection transactions use real SDK signing and durable shared submission
       const message = readDappMessageRequest('personal_sign', ['0x6162', ADDRESS], ADDRESS)!;
       const { request: _message, ...scope } = approveRuntimeMessage(f, host, message);
       try {
-        const review = await host.prepareTransaction({ ...scope, transaction }, () => undefined);
+        const review = await host.prepareTransaction({ ...scope, transaction }, () => undefined, createTestPrivateAuthentication(() => undefined));
         assert(!('operation' in review));
         const hash = await review.submit(() => undefined, value => { reported.push(value); }, submission);
         await assert.rejects(review.submit(() => undefined, () => undefined, { kind: 'transaction' }), /REVIEW_REQUIRED/);
@@ -3128,7 +3128,7 @@ test('connection transactions use real SDK signing and durable shared submission
     assert.equal(Transaction.from(submitted[1]!).accessList?.[0]?.storageKeys[0], `0x${'44'.repeat(32)}`);
     const message = readDappMessageRequest('personal_sign', ['0x6162', ADDRESS], ADDRESS)!;
     const { request: _message, ...scope } = approveRuntimeMessage(f, host, message);
-    const revoked = await host.prepareTransaction({ ...scope, transaction: { from: ADDRESS, to: `0x${'55'.repeat(20)}`, data: '0x6000' } }, () => undefined);
+    const revoked = await host.prepareTransaction({ ...scope, transaction: { from: ADDRESS, to: `0x${'55'.repeat(20)}`, data: '0x6000' } }, () => undefined, createTestPrivateAuthentication(() => undefined));
     assert(!('operation' in revoked));
     f.authority.lock();
     await assert.rejects(revoked.submit(() => undefined, () => assert.fail('Revoked review cannot dispatch'), { kind: 'transaction' }));
@@ -3194,6 +3194,7 @@ for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject
     let event!: (value: WalletConnectTransportEvent) => void;
     const responses: WalletConnectResponse[] = [];
     controller = new NativeConnectionsController({
+    bindAuthentication: bindTestRequestAuthentication,
       async openExternalUrl() { throw Error('Website returns are outside this fixture'); },
       source: f.authority,
       activateAccount: (id, revision, guard) => f.authority.selectConnectionAccount(id, revision, guard),
@@ -3456,7 +3457,7 @@ test('Trezor dapp host adopts only its owned SDK transfer and preserves signed b
     for (const method of ['personal_sign', 'eth_signTypedData_v3', 'eth_signTypedData_v4'] as const) {
       const request = readDappMessageRequest(method, method === 'personal_sign' ? ['0x6162', account.address] : [account.address, typed], account.address)!;
       const input = approveHardwareDappRequest(owner, host, request);
-      try { assert.match(await host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }), /^0x[0-9a-f]{130}$/i); }
+      try { assert.match(await host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }, null), /^0x[0-9a-f]{130}$/i); }
       finally { input.approval.dispose(); }
       assert.equal(fixture.sessions.getSnapshot(), null, 'successful request finishes its exact device job');
       assert.equal(runtime.trezor.getSnapshot().phase, 'idle');
@@ -3466,7 +3467,7 @@ test('Trezor dapp host adopts only its owned SDK transfer and preserves signed b
     const input = approveHardwareDappRequest(owner, host, request);
     try {
       const review = await host.prepareTransaction({ handoff: nonSuiteSigningHandoff, ...input, transaction: { from: account.address,
-        to: '0x' + '22'.repeat(20), data: '0x6000' } }, () => undefined);
+        to: '0x' + '22'.repeat(20), data: '0x6000' } }, () => undefined, null);
       assert(!('operation' in review));
       assert.equal(fixture.signatures(), 3, 'review creates no device signature');
       rpc.onAdmission(async (hash, raw) => {
@@ -3505,7 +3506,7 @@ test('retired Trezor dapp request drains its exact job without offering ordinary
     fixture.holdSignature(async () => { entered.resolve(); await release.promise; });
     fixture.holdCancellation(async () => { cancelEntered.resolve(); await cancelRelease.promise; });
     let settled = false;
-    const work = host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }).finally(() => { settled = true; });
+    const work = host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }, null).finally(() => { settled = true; });
     const rejected = assert.rejects(work);
     await entered.promise;
     input.approval.retire();

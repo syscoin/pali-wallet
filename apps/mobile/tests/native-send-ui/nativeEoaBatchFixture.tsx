@@ -132,6 +132,7 @@ export function NativeEoaBatchFixture() {
     throw new Error('Outside EOA batch presentation fixture');
   };
   const controller: NativeConnectionsView = {
+    isRequestAuthenticating: () => false,
   ...unsupportedDappViews,
     getSnapshot: () => ({
       revision: review?.revision ?? 0,

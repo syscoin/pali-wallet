@@ -20,6 +20,7 @@ function fixture() {
     operation: { phase: 'authorize', network: getNativeNetwork('ethereum'), intent: { kind: 'dapp-call', recipient: '0x' + '11'.repeat(20), amountUnits: '0', data: '0x1234' } },
   };
   const controller = {
+    isRequestAuthenticating: (id: string) => id === current.id,
     getSnapshot: () => ({ signingReview: current }),
     approveRequest: async (...args: unknown[]) => { calls.push(['approve', ...args]); },
     confirmSmartPayer: async (...args: unknown[]) => { calls.push(['payer', ...args]); },
@@ -30,6 +31,7 @@ function fixture() {
     createElement: (type: unknown, props: object, ...children: unknown[]) => ({ type, props: props ?? {}, children }),
     Fragment: 'Fragment',
     useEffect() {},
+    useMemo(create: () => unknown, deps: unknown[]) { const index = cursor++; if (!(index in hooks) || deps.some((value, i) => value !== hooks[index].deps[i])) hooks[index] = { value: create(), deps }; return hooks[index].value; },
     useState(initial: unknown) { const index = cursor++; if (!(index in hooks)) hooks[index] = initial; return [hooks[index], (value: unknown) => { hooks[index] = value; }]; },
     useRef(initial: unknown) { const index = cursor++; if (!(index in hooks)) hooks[index] = { current: initial }; return hooks[index]; },
   };
@@ -94,4 +96,12 @@ test('Smart wrapper forwards only the current public transfer summaries without 
   assert.equal(next.props.assetTransfer, null);
   assert.equal(next.props.batchAssetTransfers, undefined);
   assert.deepEqual(f.calls, []);
+});
+
+test('Smart dapp operation receives a stable request-only authentication status adapter', () => {
+  const f = fixture(), first = f.render().props.authentication;
+  assert.deepEqual(Object.keys(first), ['isAuthenticating']); assert.equal(first.isAuthenticating(), true);
+  f.replaceIntent(); assert.equal(f.render().props.authentication, first);
+  f.current().id = 'request-2'; const next = f.render().props.authentication;
+  assert.notEqual(next, first); assert.equal(first.isAuthenticating(), false); assert.equal(next.isAuthenticating(), true);
 });

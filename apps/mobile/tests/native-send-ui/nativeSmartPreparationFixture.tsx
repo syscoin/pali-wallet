@@ -38,6 +38,7 @@ export function NativeSmartPreparationFixture() {
   const [closed, setClosed] = useState(false);
   const alive = useRef(true), calls = useRef<Call[]>([]);
   const controller = useMemo<Controller>(() => ({
+    isRequestAuthenticating: () => false,
     getSnapshot: () => ({ ...baseSnapshot, preparationReview: alive.current ? initialReview : null }),
     async approveSmartPreparation(id, revision, externalOwnersAcknowledged) {
       if (!alive.current || id !== initialReview.id || revision !== initialReview.revision || initialReview.error ||

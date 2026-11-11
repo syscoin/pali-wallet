@@ -22,7 +22,7 @@ function fixture(kind: 'message' | 'transaction' | 'psbt' | 'smart-transaction' 
   if (kind === 'smart-transaction') Object.assign(review, {operation: {phase:'authorize', revision:3, intent:{kind:'dapp-call'}}, batchApprovals:undefined});
   if (kind === 'psbt') Object.assign(review, { attempted: false, details: {} });
   current = review;
-  const controller: any = { getSnapshot: () => ({ signingReview: kind === 'psbt' ? null : current, psbtReview: kind === 'psbt' ? current : null }),
+  const controller: any = { isRequestAuthenticating: () => false, getSnapshot: () => ({ signingReview: kind === 'psbt' ? null : current, psbtReview: kind === 'psbt' ? current : null }),
     async approveRequest(...args: unknown[]) { approvals.push(args); }, async rejectRequest() {}, async activateRequestAccount() {} };
   const ledgerConnection: any = { purpose: 'connect', subscribe: () => () => {}, isConnected: () => connected,
     async close() { closes++; }, async start() { deviceActions.push('start'); },

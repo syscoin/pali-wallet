@@ -835,7 +835,7 @@ test('creation allocation saves the canonical bootstrap before publication witho
     const allocation = await host.allocateSmartAccount({ networkId: 'ethereum', label: 'Dapp savings', target: { id: 'ecdsa', config: undefined }, externalOwnersAcknowledged: false }, lifetime.signal, () => undefined, receipt => {
       committed = receipt; receipt.assertCurrent();
       assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.some(account => account.type === 'SmartAccount'), false, 'request adopts its receipt before catalogue publication');
-    });
+    }, null);
     assert.equal(allocation, committed); allocation.assertCurrent();
     assert(Object.isFrozen(allocation)); assert(Object.isFrozen(allocation.account)); assert(Object.isFrozen(allocation.target));
     assert.equal(allocation.account.id, 'smart:60:0'); assert.equal(host.context().activeAccountId, allocation.account.id);
@@ -843,7 +843,7 @@ test('creation allocation saves the canonical bootstrap before publication witho
     assert.equal(saved.address, allocation.account.address);
     assert.equal(saved.smartAccount.auth.data, encodeEcdsaValidatorInitData([management.address], 1));
     assert.equal(saved.smartAccount.isDeployed, false);
-    await assert.rejects(host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined), { code: 'INVALID_INPUT' });
+    await assert.rejects(host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined, null), { code: 'INVALID_INPUT' });
     assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
     lifetime.abort(); assert.throws(allocation.assertCurrent, { code: 'CANCELLED' });
     await f.reopen(); await f.owner.unlock(PASSWORD);
@@ -857,14 +857,14 @@ test('creation allocation snapshots its target and rejects forged receipts or an
     const host = await f.runtime.openConnectionHost(), target = { id: 'ecdsa' as const, config: { owners: ['0x' + '66'.repeat(20)], threshold: 1 } };
     const request = { networkId: 'ethereum', label: 'External owner', target, externalOwnersAcknowledged: false };
     const calls = f.calls.length;
-    await assert.rejects(host.allocateSmartAccount(request, lifetime.signal, () => undefined, () => undefined), { code: 'INVALID_INPUT' });
+    await assert.rejects(host.allocateSmartAccount(request, lifetime.signal, () => undefined, () => undefined, null), { code: 'INVALID_INPUT' });
     assert.equal(f.calls.length, calls); assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.length, 1);
-    const allocation = await host.allocateSmartAccount({ ...request, externalOwnersAcknowledged: true }, lifetime.signal, () => undefined, () => undefined);
+    const allocation = await host.allocateSmartAccount({ ...request, externalOwnersAcknowledged: true }, lifetime.signal, () => undefined, () => undefined, null);
     target.config.owners[0] = '0x' + '77'.repeat(20);
     assert(allocation.target.id === 'ecdsa' && allocation.target.config);
     assert.deepEqual(allocation.target.config.owners, ['0x' + '66'.repeat(20)]);
-    await assert.rejects(host.prepareSmartAccountCreationOperation({ ...allocation }, nonSuiteSigningHandoff, () => undefined), { code: 'INVALID_INPUT' });
-    await assert.rejects(host.prepareSmartAccountCreationOperation({ ...allocation, target }, nonSuiteSigningHandoff, () => undefined), { code: 'INVALID_INPUT' });
+    await assert.rejects(host.prepareSmartAccountCreationOperation({ ...allocation }, nonSuiteSigningHandoff, () => undefined, null), { code: 'INVALID_INPUT' });
+    await assert.rejects(host.prepareSmartAccountCreationOperation({ ...allocation, target }, nonSuiteSigningHandoff, () => undefined, null), { code: 'INVALID_INPUT' });
     assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
   } finally { await f.close(); }
 });
@@ -876,7 +876,7 @@ test('creation allocation retains a committed account when its request cancels d
     const host = await f.runtime.openConnectionHost();
     await assert.rejects(host.allocateSmartAccount({ networkId: 'ethereum', label: 'Cancelled after save', target: { id: 'ecdsa', config: undefined }, externalOwnersAcknowledged: false }, lifetime.signal, () => undefined, receipt => {
       committed = receipt; lifetime.abort();
-    }), { code: 'CANCELLED' });
+    }, null), { code: 'CANCELLED' });
     assert(committed); assert.throws(committed.assertCurrent, { code: 'CANCELLED' });
     assert.equal(savedSmartAccount((await f.inspectRecovery()).record).address, committed.account.address);
     assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
@@ -888,7 +888,7 @@ test('creation allocation rejects an invalid label or unselected network before 
   try {
     const host = await f.runtime.openConnectionHost(), calls = f.calls.length;
     for (const [networkId, label] of [['ethereum', ' padded '], ['ethereum', 'x'.repeat(65)], ['nevm', 'Wrong network']])
-      await assert.rejects(host.allocateSmartAccount({ networkId: networkId!, label: label!, target: { id: 'ecdsa', config: undefined }, externalOwnersAcknowledged: false }, new AbortController().signal, () => undefined, () => undefined));
+      await assert.rejects(host.allocateSmartAccount({ networkId: networkId!, label: label!, target: { id: 'ecdsa', config: undefined }, externalOwnersAcknowledged: false }, new AbortController().signal, () => undefined, () => undefined, null));
     assert.equal(f.calls.length, calls); assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.length, 1);
   } finally { await f.close(); }
 });
@@ -897,7 +897,7 @@ for (const target of [{ id: 'p256-webauthn' }, { id: 'slh-dsa' }] as const) test
   const f = await fixture();
   try {
     const host = await f.runtime.openConnectionHost(), calls = f.calls.length;
-    await assert.rejects(host.allocateSmartAccount({ networkId: 'ethereum', label: 'Unavailable credential', target, externalOwnersAcknowledged: false }, new AbortController().signal, () => undefined, () => undefined));
+    await assert.rejects(host.allocateSmartAccount({ networkId: 'ethereum', label: 'Unavailable credential', target, externalOwnersAcknowledged: false }, new AbortController().signal, () => undefined, () => undefined, null));
     assert.equal(f.calls.length, calls); assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.length, 1);
     assert.equal(f.submitted.length, 0);
   } finally { await f.close(); }
@@ -908,10 +908,10 @@ test('creation allocation serializes the real allocator and cancellation before 
   try {
     const host = await f.runtime.openConnectionHost(), input = { networkId: 'ethereum', label: 'Held allocation', target: { id: 'ecdsa' as const, config: undefined }, externalOwnersAcknowledged: false };
     f.hold(async () => { entered.resolve(); await release.promise; });
-    const allocating = host.allocateSmartAccount(input, lifetime.signal, () => undefined, () => assert.fail('Cancelled allocation committed'));
+    const allocating = host.allocateSmartAccount(input, lifetime.signal, () => undefined, () => assert.fail('Cancelled allocation committed'), null);
     const rejected = assert.rejects(allocating);
     await entered.promise;
-    await assert.rejects(host.allocateSmartAccount(input, lifetime.signal, () => undefined, () => undefined), /BUSY/);
+    await assert.rejects(host.allocateSmartAccount(input, lifetime.signal, () => undefined, () => undefined, null), /BUSY/);
     lifetime.abort(); release.resolve(); await rejected;
     f.owner.lock(); await f.owner.unlock(PASSWORD);
     assert.equal(f.owner.getCatalogue()!.accounts.length, 1); assert.equal(f.submitted.length, 0);
@@ -923,11 +923,11 @@ for (const change of ['owner', 'network', 'source-auth'] as const) test(`creatio
   try {
     const host = await f.runtime.openConnectionHost(), owner = host.context().accounts.find(account => account.id === 'hd:60:0')!.address;
     let current = true;
-    const allocation = await host.allocateSmartAccount({ networkId: 'ethereum', label: 'Bound creation', target: { id: 'ecdsa', config: { owners: [owner], threshold: 1 } }, externalOwnersAcknowledged: false }, new AbortController().signal, () => { if (!current) throw Error('REQUEST_RETIRED'); }, () => undefined);
+    const allocation = await host.allocateSmartAccount({ networkId: 'ethereum', label: 'Bound creation', target: { id: 'ecdsa', config: { owners: [owner], threshold: 1 } }, externalOwnersAcknowledged: false }, new AbortController().signal, () => { if (!current) throw Error('REQUEST_RETIRED'); }, () => undefined, null);
     if (change === 'owner') current = false;
     else if (change === 'network') await f.selectNetwork('syscoin-nevm');
     else { f.guardianStatus('no-policy'); f.observedEcdsaOwners(['0x' + '77'.repeat(20)], 1); }
-    await assert.rejects(host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined));
+    await assert.rejects(host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined, null));
     assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
   } finally { await f.close(); }
 });
@@ -937,12 +937,12 @@ test('creation allocation retries the same saved address after a later read fail
   let deployment: NativeSmartAccountOperation | undefined, configuration: NativeSmartAccountOperation | undefined, noOp: NativeSmartAccountOperation | undefined;
   try {
     const host = await f.runtime.openConnectionHost(), requestedOwner = '0x' + '66'.repeat(20);
-    const allocation = await host.allocateSmartAccount({ networkId: 'ethereum', label: 'Configured creation', target: { id: 'ecdsa', config: { owners: [requestedOwner], threshold: 1 } }, externalOwnersAcknowledged: true }, new AbortController().signal, () => undefined, () => undefined);
+    const allocation = await host.allocateSmartAccount({ networkId: 'ethereum', label: 'Configured creation', target: { id: 'ecdsa', config: { owners: [requestedOwner], threshold: 1 } }, externalOwnersAcknowledged: true }, new AbortController().signal, () => undefined, () => undefined, null);
     f.guardianStatus('unavailable');
-    await assert.rejects(host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined));
+    await assert.rejects(host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined, null));
     allocation.assertCurrent(); assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.filter(account => account.type === 'SmartAccount').length, 1);
     f.deployed(); f.undeployed();
-    deployment = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined);
+    deployment = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined, null);
     assert.equal(deployment.getSnapshot().intent.kind, 'deploy'); await deployment.prepare();
     const deploying = deployment.authorize(deployment.getSnapshot().revision);
     for (let i = 0; i < 300 && !['complete', 'failed'].includes(deployment.getSnapshot().phase); i++) {
@@ -952,7 +952,7 @@ test('creation allocation retries the same saved address after a later read fail
     await deploying; assert.equal(deployment.getSnapshot().phase, 'complete', JSON.stringify(deployment.getSnapshot()));
     await deployment.dispose(); deployment = undefined;
     f.guardianStatus('no-policy'); f.fundedSmart();
-    configuration = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined);
+    configuration = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined, null);
     await configuration.prepare(); const intent = configuration.getSnapshot().intent;
     assert(intent.kind === 'authenticator'); assert.equal(intent.command.executions.length, 1);
     const rotate = paliSmartAccountInterface.decodeFunctionData('rotateValidator', intent.command.executions[0]!.data);
@@ -965,7 +965,7 @@ test('creation allocation retries the same saved address after a later read fail
     assert.equal(configuration.getSnapshot().phase, 'complete'); assert.equal(configuration.getSnapshot().metadataRefresh, 'complete');
     await configuration.dispose(); configuration = undefined;
     const signed = f.signatures.length, submitted = f.submitted.length;
-    noOp = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined); await noOp.prepare();
+    noOp = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined, null); await noOp.prepare();
     assert.equal(noOp.getSnapshot().phase, 'complete'); assert.equal(noOp.getSnapshot().metadataRefresh, 'complete');
     assert.equal(f.signatures.length, signed); assert.equal(f.submitted.length, submitted);
     assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === allocation.account.id)!.address, allocation.account.address);
@@ -1789,7 +1789,7 @@ for (const [data, self] of [['0x', false], ['0x12345678', false], ['0x', true]] 
     }), subscribe: (changed) => f.owner.subscribe(() => { changed(); }) });
     const recipient = self ? selected.address : '0x2222222222222222222222222222222222222222';
     const request = { from: selected.address, to: recipient, value: '0x0', data, maxFeePerGas: '0x3', maxPriorityFeePerGas: '0x1' };
-    const prepared = await host.prepareTransaction({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', transaction: request, approval }, () => undefined);
+    const prepared = await host.prepareTransaction({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', transaction: request, approval }, () => undefined, null);
     assert('operation' in prepared); operation = prepared.operation;
     await operation.prepare(); const ready = operation.getSnapshot();
     assert.equal(ready.phase, 'authorize', JSON.stringify(ready));
@@ -1919,7 +1919,7 @@ for (const outcome of ['success', 'revert', 'lock-after-broadcast']) test(`real 
     approval = createDappSigningApproval({ readScope: () => ({ account: { id: selected.index, type: selected.type, address: selected.address, xpub: selected.xpub }, grant, network: host.context().network, isBitcoinBased: false, sessionGeneration: host.sessionGeneration() }), subscribe: changed => f.owner.subscribe(() => changed()) });
     assert.equal(await host.calls.reserveSendCallsBundle(origin, bundleId, { atomic: true, smartAccount: true, chainId: 1 }, reservationId, selected.address), true);
     const calls = [{ to: '0x' + '22'.repeat(20), value: '0x9', data: '0x12345678' }, { to: '0x' + '33'.repeat(20), value: '0x0', data: '0x' }];
-    const prepared = await host.prepareCalls({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', calls: { version: '2.0.0', from: selected.address, chainId: '0x1', atomicRequired: true, calls }, origin, bundleId, reservationId, approval }, () => undefined);
+    const prepared = await host.prepareCalls({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', calls: { version: '2.0.0', from: selected.address, chainId: '0x1', atomicRequired: true, calls }, origin, bundleId, reservationId, approval }, () => undefined, null);
     operation = prepared.operation; await operation.prepare();
     assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
     assert.equal(f.submitted.length, 0);
@@ -2805,7 +2805,7 @@ for (const deployed of [false, true]) test(`real SDK Smart personal and V4 messa
     ];
     for (const request of requests) {
       const prepared = prepareSmartAccountMessage({ accountAddress: selected.address, chainId: 1, request });
-      const result = await host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', request, approval });
+      const result = await host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', request, approval }, null);
       const signed = f.signatures.at(-1)!;
       assert.equal(signed.address.toLowerCase(), owner.toLowerCase());
       assert.equal(signed.digest, prepared.actionHash);
@@ -2832,7 +2832,7 @@ test('Smart message signing refuses a freshly observed external validator owner'
     const { host, selected, approval } = connection;
     assert.equal(host.supportsSmartAccountMessages(selected.id), true, 'local capability is revalidated from the chain during signing');
     await assert.rejects(host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', approval,
-      request: { method: 'personal_sign', address: selected.address, message: 'Stale owner' } }));
+      request: { method: 'personal_sign', address: selected.address, message: 'Stale owner' } }, null));
     assert.equal(f.signatures.length, 0);
     assert.equal(f.submitted.length, 0);
   } finally { connection?.approval.dispose(); await f.close(); }
@@ -2851,7 +2851,7 @@ for (const phase of ['metadata', 'signing'] as const) test(`Smart message signin
     const stop = async () => { entered = true; await held; };
     if (phase === 'metadata') f.onSmartCodeRead(stop); else f.onSignature(stop);
     const signing = host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', approval,
-      request: { method: 'personal_sign', address: selected.address, message: 'Requires live approval' } });
+      request: { method: 'personal_sign', address: selected.address, message: 'Requires live approval' } }, null);
     const rejected = assert.rejects(signing);
     for (let i = 0; !entered && i < 300; i++) await new Promise(resolve => setTimeout(resolve, 5));
     assert(entered);
@@ -2874,7 +2874,7 @@ for (const method of ['eth_signTypedData', 'eth_signTypedData_v3'] as const) tes
         domain: { name: 'Dapp' }, types: { EIP712Domain: [{ name: 'name', type: 'string' }], Mail: [{ name: 'contents', type: 'string' }] },
         primaryType: 'Mail', message: { contents: 'hello' },
       } };
-    await assert.rejects(host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', approval, request }));
+    await assert.rejects(host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', approval, request }, null));
     assert.equal(f.signatures.length, 0);
     assert.equal(f.submitted.length, 0);
   } finally { connection?.approval.dispose(); await f.close(); }
@@ -2930,7 +2930,7 @@ test('Smart message signing assembles the configured local ECDSA threshold using
     const { host, selected, approval } = connection;
     const request: DappMessageRequest = { method: 'personal_sign', address: selected.address, message: 'Both local owners approve' };
     const prepared = prepareSmartAccountMessage({ accountAddress: selected.address, chainId: 1, request });
-    const result = await host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', request, approval });
+    const result = await host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', request, approval }, null);
     assert.equal(f.signatures.length, 2);
     const [signatures] = coder.decode(['bytes[]'], '0x' + result.slice(42));
     assert.equal(signatures.length, 2);
@@ -2950,7 +2950,7 @@ test('Smart message signing refuses an RPC chain change before signing', async (
     f.wrongChain();
     const { host, selected, approval } = connection;
     await assert.rejects(host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', approval,
-      request: { method: 'personal_sign', address: selected.address, message: 'Original chain' } }));
+      request: { method: 'personal_sign', address: selected.address, message: 'Original chain' } }, null));
     assert.equal(f.signatures.length, 0);
   } finally { connection?.approval.dispose(); await f.close(); }
 });
@@ -3098,7 +3098,7 @@ for (const ecdsaFirst of [false, true]) test(`composite Smart messages preserve 
     ];
     for (const request of requests) {
       const start = f.signatures.length, prepared = prepareSmartAccountMessage({ accountAddress: selected.address, chainId: 1, request });
-      const result = await host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', request, approval });
+      const result = await host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', request, approval }, null);
       const signatures = f.signatures.slice(start);
       assert.equal(signatures.length, 2);
       assert.deepEqual(signatures.map(signature => signature.address.toLowerCase()), owners.map(owner => owner.address.toLowerCase()));
@@ -3133,7 +3133,7 @@ for (const failure of ['reject', 'lock', 'owner-replaced'] as const) test(`compo
   const { host, selected, approval } = connection;
   try {
     const work = host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', approval,
-      request: { method: 'personal_sign', address: selected.address, message: 'Original owner only' } });
+      request: { method: 'personal_sign', address: selected.address, message: 'Original owner only' } }, null);
     const rejected = assert.rejects(work); await entered.promise;
     const locking = failure === 'lock' ? f.owner.lock() : undefined;
     if (failure === 'owner-replaced') f.replaceSoftwareOwner('HDAccount', 0);
@@ -3149,13 +3149,13 @@ test('composite Smart messages bind only the actually-used owner until final del
   approval.bindSigner = (key, current) => { bound.push(key); bind(key, current); };
   try {
     const request: DappMessageRequest = { method: 'personal_sign', address: selected.address, message: 'Retain the owner through delivery' };
-    await host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', approval, request });
+    await host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', approval, request }, null);
     assert.deepEqual(bound.filter(key => key.startsWith('native-smart-message:')), ['native-smart-message:HDAccount:0']);
     f.replaceSoftwareOwner('HDAccount', 1); approval.assertCurrent();
     f.replaceSoftwareOwner('HDAccount', 0); assert.throws(approval.assertCurrent);
     const next = await smartMessageApproval(f);
     try {
-      await next.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: next.selected.id, networkId: 'ethereum', approval: next.approval, request });
+      await next.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: next.selected.id, networkId: 'ethereum', approval: next.approval, request }, null);
       await f.selectNetwork('syscoin-nevm');
       assert.throws(next.approval.assertCurrent);
       assert.equal(f.signatures.length, 2); assert.equal(f.submitted.length, 0);
@@ -3177,7 +3177,7 @@ for (const threshold of [1, 2]) test(`plain ECDSA Smart messages keep configured
     approval.bindSigner = (key, current) => { bound.push(key); bind(key, current); };
     const request: DappMessageRequest = { method: 'personal_sign', address: selected.address, message: 'Configured owner order is authoritative' };
     const prepared = prepareSmartAccountMessage({ accountAddress: selected.address, chainId: 1, request });
-    const signature = await host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', approval, request });
+    const signature = await host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: selected.id, networkId: 'ethereum', approval, request }, null);
     const expected = owners.slice(0, threshold);
     assert.deepEqual(f.signatures.map(signed => signed.address.toLowerCase()), expected.map(owner => owner.address.toLowerCase()));
     assert.deepEqual(bound.filter(key => key.startsWith('native-smart-message:')), expected.map(owner => `native-smart-message:HDAccount:${owner.index}`));
@@ -3371,7 +3371,7 @@ test('SLH repeated signing and cold status retain only encrypted state and publi
     connection = await smartMessageApproval(f);
     for (const message of ['First bounded SLH action', 'Second bounded SLH action']) {
       await connection.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: connection.selected.id, networkId: 'ethereum', approval: connection.approval,
-        request: { method: 'personal_sign', address: connection.selected.address, message } });
+        request: { method: 'personal_sign', address: connection.selected.address, message } }, null);
       assert.equal(backend.active, 0, 'no reusable native signer remains'); f.assertNoSigningKeys();
     }
     connection.approval.dispose(); connection = undefined;
@@ -3393,7 +3393,7 @@ test('previously used uninstalled SLH key explicitly rebuilds missing cache with
     const key = await provisionSlhSmart(f);
     connection = await smartMessageApproval(f);
     await connection.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: connection.selected.id, networkId: 'ethereum', approval: connection.approval,
-      request: { method: 'personal_sign', address: connection.selected.address, message: 'Retained prepared usage' } });
+      request: { method: 'personal_sign', address: connection.selected.address, message: 'Retained prepared usage' } }, null);
     connection.approval.dispose(); connection = undefined;
     f.clearObservedSlh();
     await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
@@ -3548,7 +3548,7 @@ for (const method of ['personal_sign', 'eth_signTypedData_v4'] as const) test(`a
       : { method, address: connection.selected.address, version: 'V4', typedData: { domain: { name: 'Original dapp', chainId: 10 }, types: { EIP712Domain: [{ name: 'name', type: 'string' }, { name: 'chainId', type: 'uint256' }], Mail: [{ name: 'body', type: 'string' }] }, primaryType: 'Mail', message: { body: 'Original typed message' } } };
     const prepared = prepareSmartAccountMessage({ accountAddress: connection.selected.address, chainId: 1, request });
     armed = true; let settled = false;
-    const work = connection.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: connection.selected.id, networkId: 'ethereum', approval: connection.approval, request }).then(value => { settled = true; return value; });
+    const work = connection.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: connection.selected.id, networkId: 'ethereum', approval: connection.approval, request }, null).then(value => { settled = true; return value; });
     await entered.promise;
     assert.equal(settled, false); assert.deepEqual(backend.actions, [prepared.actionHash]);
     assert.equal(f.submitted.length, 0); assert.equal(f.signatures.length, 0);
@@ -3603,7 +3603,7 @@ for (const method of ['message', 'operation'] as const) test(`actual Smart ${met
     await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
     if (method === 'message') {
       connection = await smartMessageApproval(f);
-      await assert.rejects(connection.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: connection.selected.id, networkId: 'ethereum', approval: connection.approval, request: { method: 'personal_sign', address: connection.selected.address, message: 'Missing key' } }), { code: 'OPERATION_FAILED' });
+      await assert.rejects(connection.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: connection.selected.id, networkId: 'ethereum', approval: connection.approval, request: { method: 'personal_sign', address: connection.selected.address, message: 'Missing key' } }, null), { code: 'OPERATION_FAILED' });
     } else {
       operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
       await operation.prepare(); await operation.authorize(operation.getSnapshot().revision);
@@ -3631,7 +3631,7 @@ for (const retirement of ['revoke-before', 'network-before', 'lock-before', 'rev
     if (retirement === 'network-before') await f.selectNetwork('syscoin-nevm');
     if (retirement === 'lock-before') f.owner.lock();
     if (retirement === 'revoke-after-dispatch') armed = true;
-    const work = Promise.resolve().then(() => connection!.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: connection!.selected.id, networkId: 'ethereum', approval: connection!.approval, request }));
+    const work = Promise.resolve().then(() => connection!.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: connection!.selected.id, networkId: 'ethereum', approval: connection!.approval, request }, null));
     const rejected = assert.rejects(work);
     if (retirement === 'revoke-after-dispatch') {
       await entered.promise; connection.revoke(); release.resolve();
@@ -3657,7 +3657,7 @@ test('actual Smart password reset preserves SLH encrypted high-water state and s
     const key = await provisionSlhSmart(f);
     connection = await smartMessageApproval(f);
     await connection.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: connection.selected.id, networkId: 'ethereum', approval: connection.approval,
-      request: { method: 'personal_sign', address: connection.selected.address, message: 'Before password reset' } });
+      request: { method: 'personal_sign', address: connection.selected.address, message: 'Before password reset' } }, null);
     const before = await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId));
     await f.resetPassword(password);
     assert.deepEqual(await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId)), before);
@@ -3666,7 +3666,7 @@ test('actual Smart password reset preserves SLH encrypted high-water state and s
     assert.deepEqual(f.slhDerivations, [0]);
     connection.approval.dispose(); connection = await smartMessageApproval(f);
     await connection.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: connection.selected.id, networkId: 'ethereum', approval: connection.approval,
-      request: { method: 'personal_sign', address: connection.selected.address, message: 'After password reset' } });
+      request: { method: 'personal_sign', address: connection.selected.address, message: 'After password reset' } }, null);
     assert.equal((await facade.hydrateInstalled(key.keyId)).signatureCount, 2);
     assert.equal(backend.actions.length, 2); assert.equal(f.submitted.length, 0);
   } finally { connection?.approval.dispose(); await f.close(); }
@@ -3777,7 +3777,7 @@ test('Ledger Smart owner dapp personal and V4 signing uses exact typed intents w
       readDappMessageRequest('eth_signTypedData_v4', [selected.address, {types: {EIP712Domain: [], Message: [{name:'text',type:'string'}]}, primaryType:'Message', domain:{}, message:{text:'Ledger Smart typed'}}], selected.address)!];
     for(const request of requests) {
       const prepared = prepareSmartAccountMessage({accountAddress:selected.address,chainId:1,request});
-      const signature = await connection.host.signMessage({ handoff: nonSuiteSigningHandoff,accountId:selected.id, networkId:connection.host.context().networkId, request, approval:connection.approval});
+      const signature = await connection.host.signMessage({ handoff: nonSuiteSigningHandoff,accountId:selected.id, networkId:connection.host.context().networkId, request, approval:connection.approval}, null);
       assert.match(signature, /^0x[0-9a-f]+$/i);
       assert.equal(device.signatures.at(-1)!.digest, prepared.actionHash);
       assert.equal(f.owner.getCatalogue()!.active.accountId, selected.id);
@@ -3815,7 +3815,7 @@ for (const boundary of ['grant revocation', 'wallet lock'] as const) test(`Ledge
     await connectLedgerSmart(owned); connection = await smartMessageApproval(f);
     device.holdSignature(async () => {enter(); await held;});
     const request = readDappMessageRequest('personal_sign', ['Held Ledger proof', connection.selected.address], connection.selected.address)!;
-    const signing = connection.host.signMessage({ handoff: nonSuiteSigningHandoff,accountId:connection.selected.id, networkId:connection.host.context().networkId, request, approval:connection.approval});
+    const signing = connection.host.signMessage({ handoff: nonSuiteSigningHandoff,accountId:connection.selected.id, networkId:connection.host.context().networkId, request, approval:connection.approval}, null);
     const rejected = assert.rejects(signing);
     await entered;
     if (boundary === 'wallet lock') f.owner.lock(); else connection.revoke();
@@ -3859,7 +3859,7 @@ test('multiple native Trezor owners sign in the exact shared threshold order thr
     const selected=f.owner.getCatalogue()!.active.accountId;
     const request:DappMessageRequest={method:'personal_sign',address:connection.selected.address,message:'Both reviewed Trezor owners'};
     const prepared=prepareSmartAccountMessage({accountAddress:connection.selected.address,chainId:1,request});
-    const result=await connection.host.signMessage({handoff:continuation.handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval});
+    const result=await connection.host.signMessage({handoff:continuation.handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval}, null);
     assert.deepEqual(device.signatures.map(value=>value.index),[1,0]);
     for(const entry of device.signatures)assert.equal(recoverAddress(prepared.actionHash,entry.signature).toLowerCase(),device.wallets[entry.index]!.address.toLowerCase());
     assert.equal(result,encodeSmartAccountMessageSignature(prepared,{validator:getConfiguredAuthenticatorAddress(1,'ecdsa'),signature:coder.encode(['bytes[]'],[device.signatures.map(entry=>entry.signature)])}));
@@ -3896,7 +3896,7 @@ for(const change of ['none','message','policy'] as const)test(`partial native Tr
     continuation=ownedSmartSdkHandoff(connection,'partial-two-owners',Date.now()+120000,'personal_sign');
     device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'&&device.signatures.length===2){entered.resolve();await release.promise;}});
     const request:DappMessageRequest={method:'personal_sign',address:connection.selected.address,message:'Approved by each device'};
-    const signing=connection.host.signMessage({handoff:continuation.handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval});
+    const signing=connection.host.signMessage({handoff:continuation.handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval}, null);
     const rejected=assert.rejects(signing);
     await Promise.race([entered.promise,signing.then(()=>{throw Error('Expected the second owner callback');})]);
     assert.deepEqual(device.signatures.map(value=>value.index),[1,0]);
@@ -3909,7 +3909,7 @@ for(const change of ['none','message','policy'] as const)test(`partial native Tr
     const handoff=continuation.resume(connection),opened=device.urls.length;
     if(change==='policy')f.observedEcdsaOwners(device.wallets.map(wallet=>wallet.address),2);
     const work=connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',approval:connection.approval,
-      request:change==='message'?{...request,message:'Different unapproved operation'}:request});
+      request:change==='message'?{...request,message:'Different unapproved operation'}:request}, null);
     if(change==='none'){
       const result=await work,prepared=prepareSmartAccountMessage({accountAddress:connection.selected.address,chainId:1,request});
       assert.equal(result,encodeSmartAccountMessageSignature(prepared,{validator:getConfiguredAuthenticatorAddress(1,'ecdsa'),signature:coder.encode(['bytes[]'],[device.signatures.map(value=>value.signature)])}));
@@ -3965,7 +3965,7 @@ test('native Smart Trezor dapp typed signing preserves selected Smart and the or
     continuation=ownedSmartSdkHandoff(connection,'fresh-smart-dapp',Date.now()+60000,'personal_sign');
     const handoff=continuation.handoff;
     const request = readDappMessageRequest('personal_sign',['0x6162',connection.selected.address],connection.selected.address)!;
-    const signature=await host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval});
+    const signature=await host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval}, null);
     assert.match(signature,/^0x[0-9a-f]+$/i); continuation.terminal(); assert.equal(device.signatures.length,1);
     assert.equal(f.owner.getCatalogue()!.active.accountId,selected); assert.equal(host.context().activeAccountId,selected);
     assert.deepEqual(await journal.read(true),[]); assert.equal(f.submitted.length,0);
@@ -3982,7 +3982,7 @@ test('native Smart Trezor UserOperation keeps original expiry and requires payer
     const deadline=Date.now()+60000;
     continuation=ownedSmartSdkHandoff(connection,'fresh-smart-uo',deadline,'eth_sendTransaction');
     const handoff=continuation.handoff;
-    const result=await connection.host.prepareTransaction({handoff,accountId:selected,networkId:'ethereum',transaction:{from:connection.selected.address,to:'0x'+'55'.repeat(20),value:'0x1',data:'0x'},approval:connection.approval},connection.approval.assertCurrent);
+    const result=await connection.host.prepareTransaction({handoff,accountId:selected,networkId:'ethereum',transaction:{from:connection.selected.address,to:'0x'+'55'.repeat(20),value:'0x1',data:'0x'},approval:connection.approval},connection.approval.assertCurrent, null);
     assert('operation' in result); operation=result.operation;
     await operation.prepare(); assert.equal(operation.getSnapshot().phase,'authorize'); assert(operation.authorizationExpiresAt<=deadline);
     const signing=operation.authorize(operation.getSnapshot().revision);
@@ -4011,7 +4011,7 @@ for(const failure of ['wrong key','changed policy','cancelled raw callback'] as 
       if(request.method==='ethereumSignTypedData'){entered.resolve();await released.promise;}
     });
     const request=readDappMessageRequest('personal_sign',['0x6162',connection.selected.address],connection.selected.address)!;
-    const signing=connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval}),rejected=assert.rejects(signing);
+    const signing=connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval}, null),rejected=assert.rejects(signing);
     if(failure==='cancelled raw callback'){
       await entered.promise;f.owner.lock();await new Promise(resolve=>setImmediate(resolve));
       released.resolve();
@@ -4032,13 +4032,13 @@ test('native Smart Trezor return creates a fresh private message approval after 
     continuation=ownedSmartSdkHandoff(connection,'original-smart-message',deadline,'personal_sign');let handoff=continuation.handoff;
     device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'){entered.resolve();await release.promise;}});
     const request=readDappMessageRequest('personal_sign',['0x6162',connection.selected.address],connection.selected.address)!;
-    const signing=connection.host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval}),rejected=assert.rejects(signing);
+    const signing=connection.host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval}, null),rejected=assert.rejects(signing);
     await entered.promise;continuation.suspend();f.owner.lock();await rejected;
     release.resolve();await new Promise(resolve=>setImmediate(resolve));assert.equal(device.sessions.getSnapshot()?.phase,'response-ready');
     connection.approval.dispose();await f.owner.unlock(PASSWORD);connection=await smartMessageApproval(f);
     const resume=await f.runtime.trezor.resumeSend();assert.equal(resume.kind,'external-signing');assert.equal(resume.accountId,selected);assert.equal(resume.id,handoff.id);
     const opened=device.urls.length;handoff=continuation.resume(connection);
-    const result=await connection.host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval});
+    const result=await connection.host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval}, null);
     assert.match(result,/^0x[0-9a-f]+$/i);continuation.terminal();assert.equal(device.urls.length,opened);assert.equal(f.owner.getCatalogue()!.active.accountId,selected);
     assert.equal(device.sessions.getSnapshot(),null);assert.equal(f.submitted.length,0);
   }finally{release.resolve();await continuation?.dispose();connection?.approval.dispose();await close();}
@@ -4054,7 +4054,7 @@ test('native Smart Trezor return after network change discards the old public tr
     continuation=ownedSmartSdkHandoff(connection,'network-bound-smart-message',Date.now()+120000,'personal_sign');const handoff=continuation.handoff;
     device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'){entered.resolve();await release.promise;}});
     const request=readDappMessageRequest('personal_sign',['0x6162',connection.selected.address],connection.selected.address)!;
-    const signing=connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval}),rejected=assert.rejects(signing);
+    const signing=connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval}, null),rejected=assert.rejects(signing);
     await entered.promise;continuation.suspend();f.owner.lock();await rejected;release.resolve();await new Promise(resolve=>setImmediate(resolve));
     connection.approval.dispose();await f.owner.unlock(PASSWORD);await f.selectNetwork('base');
     await assert.rejects(f.runtime.trezor.resumeSend());assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
@@ -4216,7 +4216,7 @@ for (const deployed of [false, true]) test(`dapp custom module consent uses the 
     connection = await smartMessageApproval(f);
     const prepared = await connection.host.prepareModuleChange({ accountId: connection.selected.id, networkId: 'ethereum',
       request: normalizeSmartAccountModuleRequest('wallet_requestSmartAccountModuleInstall', [{ address: CUSTOM_MODULE, initData: '0x1234', name: 'Fixture module', riskAcknowledged: true }]),
-      approval: connection.approval, handoff: nonSuiteSigningHandoff }, connection.approval.assertCurrent);
+      approval: connection.approval, handoff: nonSuiteSigningHandoff }, connection.approval.assertCurrent, null);
     operation = prepared.operation;
     await operation.prepare();
     const review = operation.getSnapshot();
@@ -4257,7 +4257,7 @@ test('dapp Trezor module installation preserves private approval through signed 
     const handoff=continuation.handoff;
     const prepared = await connection.host.prepareModuleChange({ accountId: connection.selected.id, networkId: 'ethereum',
       request: normalizeSmartAccountModuleRequest('wallet_requestSmartAccountModuleInstall', [{ address: CUSTOM_MODULE, name: 'Trezor module', initData: '0x1234' }]),
-      approval: connection.approval, handoff }, connection.approval.assertCurrent);
+      approval: connection.approval, handoff }, connection.approval.assertCurrent, null);
     operation = prepared.operation;
     await operation.prepare();
     assert.equal(operation.getSnapshot().phase, 'authorize');

@@ -22,3 +22,8 @@ export function testInventoryAuthentication(inventory: NativeNoteInventory): Nat
   assert(scope, 'Withdrawal must use its captured inventory authentication scope');
   return createNativePrivateAuthenticationChild(scope);
 }
+
+/** Queue fixtures own a stable request scope without an OS prompt. */
+export function bindTestRequestAuthentication(scope: NativePrivateAuthenticationScope, assertCurrent: () => void) {
+  return bindNativePrivateAuthentication(scope, { assertCurrent, isPromptActive: () => false });
+}

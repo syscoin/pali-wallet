@@ -1,3 +1,4 @@
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope, type NativePrivateAuthentication } from '../custody/privateAuthentication.ts';
 import { getAddress } from '../../../../source/utils/ethersV6Compat.ts';
 import { buildECDSAAuthenticator } from '../../../../source/utils/smartAccount/authenticators.ts';
 import { DAPP_REQUEST_LIMITS } from '../../../../source/utils/requestPayloadBudget.ts';
@@ -5,7 +6,7 @@ import { projectSmartAccountPreparationResult, resolveSmartAccountPreparationTar
 import { NativeOperationDrain } from '../custody/operationDrain.ts';
 import type { NativeSmartCreationAllocation } from '../smartAccount/preparation.ts';
 import type { NativeSmartAccountOperation, NativeSmartAccountOperationSnapshot } from '../smartAccount/operation.ts';
-import type { NativeConnectionSigningHost } from './host.ts';
+import type { NativeConnectionSigningHost, NativeRequestAuthenticationBinder } from './host.ts';
 import type { NativeSigningHandoff } from './signingHandoff.ts';
 import type { WalletConnectRequest, WalletConnectVerification } from './walletConnect.ts';
 
@@ -22,6 +23,7 @@ export type NativeSmartPreparationReview = Readonly<{
   requestedOwners: readonly string[]; requestedThreshold: number | null; canRetry: boolean;
 }>;
 type Pending = {
+  authenticationScope: NativePrivateAuthenticationScope; authentication: NativePrivateAuthentication | null;
   id: string; wire: WalletConnectRequest; request: NativeSmartPreparationRequest; owner: NativeSmartPreparationAdmission;
   target?: Extract<SmartAccountPreparationTarget, { id: 'ecdsa' }>; lifetime: AbortController; expiresAt: number; timer: ReturnType<typeof setTimeout>;
   busy: boolean; allocating: boolean; consentAccepted: boolean; externalOwners: readonly string[];
@@ -30,6 +32,7 @@ type Pending = {
   stages: number; deploymentSeen: boolean; connectionAttempted: boolean; responseAttempted: boolean; dispatched: boolean; work?: Promise<void>; retiring?: Promise<void>;
 };
 type Options = Readonly<{
+  bindAuthentication: NativeRequestAuthenticationBinder;
   host(): Pick<NativeConnectionSigningHost, 'context' | 'allocateSmartAccount' | 'prepareSmartAccountCreationOperation'>; foreground(order: number): boolean; changed(): void;
   checkSite(origin: string): Promise<Readonly<{ isBlacklisted: boolean }>>;
   connect(wire: WalletConnectRequest, allocation: NativeSmartCreationAllocation, signal: AbortSignal, assertCurrent: () => void): Promise<void>;
@@ -47,6 +50,15 @@ export class NativeSmartPreparationRequests {
   private first(): Pending | undefined { return this.pending.values().next().value; }
   private retirementOrder() { return Math.min(Infinity, ...this.retirements.values()); }
   get firstOrder() { return Math.min(this.first()?.owner.order ?? Infinity, this.retirementOrder()); }
+  isRequestAuthenticating(id: string): boolean {
+    const entry = this.first();
+    if (!entry || entry.id !== id || !this.foreground(entry)) return false;
+    try { this.check(entry); return entry.authenticationScope.isAuthenticating(); } catch { return false; }
+  }
+  private authentication(entry: Pending): NativePrivateAuthentication {
+    if (!entry.authentication) throw Error('REQUEST_EXPIRED');
+    return entry.authentication;
+  }
   get size() { return this.pending.size; }
   count(topic: string) { return [...this.pending.values()].filter(entry => entry.wire.session.binding.topic === topic).length; }
   has(wire: WalletConnectRequest) { return [...this.pending.values()].some(entry => entry.wire.id === wire.id && entry.wire.session.binding.topic === wire.session.binding.topic); }
@@ -83,11 +95,14 @@ export class NativeSmartPreparationRequests {
       if (selected.id !== 'ecdsa') throw Error('UNSUPPORTED_AUTHENTICATOR');
       target = selected;
     } catch { error ??= 'PREPARATION_UNAVAILABLE'; }
-    const entry: Pending = { id, wire, request: captured, owner, target, lifetime: new AbortController(), expiresAt,
+    const entry: Pending = { authenticationScope: createNativePrivateAuthenticationScope(), authentication: null, id, wire, request: captured, owner, target, lifetime: new AbortController(), expiresAt,
       timer: setTimeout(() => { void this.retire(entry, true); }, expiresAt - Date.now()), busy: false, allocating: false,
       consentAccepted: false, externalOwners: this.externalOwners(target), error, signingAttempted: false, broadcast: false,
       stages: 0, deploymentSeen: false, connectionAttempted: false, responseAttempted: false, dispatched: false };
-    this.pending.set(id, entry); this.options.changed();
+    this.pending.set(id, entry);
+    try { entry.authentication = this.options.bindAuthentication(entry.authenticationScope, () => this.sessionCurrent(entry)); }
+    catch (error) { void this.retire(entry, false); throw error; }
+    this.options.changed();
   }
   review(revision: number): NativeSmartPreparationReview | null {
     const entry = this.first();
@@ -135,7 +150,7 @@ export class NativeSmartPreparationRequests {
   private async prepareNext(entry: Pending) {
     if (!entry.allocation || !entry.target?.config || entry.stages >= 3) throw Error('Creation stages unavailable');
     this.check(entry);
-    const operation = await this.options.host().prepareSmartAccountCreationOperation(entry.allocation, this.handoff(entry), () => this.check(entry));
+    const operation = await this.options.host().prepareSmartAccountCreationOperation(entry.allocation, this.handoff(entry), () => this.check(entry), this.authentication(entry));
     try {
       this.check(entry);
       await operation.prepare(); this.check(entry);
@@ -206,7 +221,7 @@ export class NativeSmartPreparationRequests {
               target: entry.target!, externalOwnersAcknowledged: externalOwnersAck }, entry.lifetime.signal, () => this.sessionCurrent(entry), committed => {
                 if (entry.allocation && entry.allocation !== committed) throw Error('Creation allocation changed');
                 entry.allocation = committed;
-              });
+              }, this.authentication(entry));
             if (entry.allocation && entry.allocation !== allocation) throw Error('Creation allocation changed');
             entry.allocation = allocation;
           } finally { entry.allocating = false; }
@@ -256,7 +271,7 @@ export class NativeSmartPreparationRequests {
   private retire(entry: Pending, respond: boolean, joinWork = true): Promise<void> {
     if (entry.retiring) return entry.retiring;
     if (this.pending.get(entry.id) !== entry) return Promise.resolve();
-    this.pending.delete(entry.id); clearTimeout(entry.timer); entry.lifetime.abort(); entry.unsubscribe?.();
+    this.pending.delete(entry.id); entry.authenticationScope.retire(); clearTimeout(entry.timer); entry.lifetime.abort(); entry.unsubscribe?.();
     const operation = entry.operation?.dispose();
     const retiring = Promise.allSettled([operation, joinWork ? entry.work : undefined]).then(async () => {
       if (respond && !entry.connectionAttempted && !entry.responseAttempted && !entry.broadcast && !this.closed) await this.options.respond(entry.wire,

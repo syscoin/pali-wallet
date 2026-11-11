@@ -98,7 +98,7 @@ export class NativeCustodyAuthority {
 
   /** Adopt only the allocation produced by this authority's live private host. */
   allocateConnectionSmartAccount(input: NativeSmartCreationRequest, signal: AbortSignal,
-    assertRequestCurrent: () => void, onCommitted: (allocation: NativeSmartCreationAllocation) => void): Promise<NativeSmartCreationAllocation> {
+    assertRequestCurrent: () => void, onCommitted: (allocation: NativeSmartCreationAllocation) => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartCreationAllocation> {
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
     const runtime = this.runtime;
     if (!runtime || this.snapshot.phase !== 'ready' || !this.snapshot.account ||
@@ -132,7 +132,7 @@ export class NativeCustodyAuthority {
           // The request records its durable account before either the runtime
           // or the authority publishes the deliberate selection transition.
           assertSynchronousEvmFeeGuard(() => onCommitted(receipt));
-        });
+        }, authentication);
         current();
         if (!committed || allocation !== committed || allocation.networkId !== request.networkId ||
             JSON.stringify(allocation.target) !== JSON.stringify(request.target)) throw new CustodyOperationError('UNAVAILABLE');

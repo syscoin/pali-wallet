@@ -596,7 +596,7 @@ test('Ledger dapp host signs messages and journals the reviewed transaction befo
     for (const method of ['personal_sign', 'eth_signTypedData_v3', 'eth_signTypedData_v4'] as const) {
       const request = readDappMessageRequest(method, method === 'personal_sign' ? ['0x6162', deviceWallet.address] : [deviceWallet.address, typed], deviceWallet.address)!;
       const input = approveHardwareDappRequest(f.owner, host, request);
-      try { assert.match(await host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }), /^0x[0-9a-f]{130}$/i); }
+      try { assert.match(await host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }, null), /^0x[0-9a-f]{130}$/i); }
       finally { input.approval.dispose(); }
     }
     assert.equal(f.messageCount, 3);
@@ -604,7 +604,7 @@ test('Ledger dapp host signs messages and journals the reviewed transaction befo
     const input = approveHardwareDappRequest(f.owner, host, request);
     try {
       const review = await host.prepareTransaction({ handoff: nonSuiteSigningHandoff, ...input, transaction: { from: deviceWallet.address,
-        to: '0x' + '22'.repeat(20), data: '0x6000' } }, () => undefined);
+        to: '0x' + '22'.repeat(20), data: '0x6000' } }, () => undefined, null);
       assert(!('operation' in review));
       assert.equal(f.signedCount, 0, 'review performs no device signing');
       rpc.onAdmission(async (hash, raw) => {
@@ -638,7 +638,7 @@ test('Ledger dapp request retirement drains its device and withholds a held sign
     const input = approveHardwareDappRequest(f.owner, host, request);
     const disposedBefore = f.disposedCount;
     f.holdSignature(async () => { entered.resolve(); await release.promise; });
-    const work = host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }), rejected = assert.rejects(work);
+    const work = host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }, null), rejected = assert.rejects(work);
     // Fail immediately if the SDK rejects before reaching the held device call.
     // A stale fixture must not leave the whole test worker waiting forever.
     await Promise.race([entered.promise, work.then(() => assert.fail('Signing settled before device entry'))]);

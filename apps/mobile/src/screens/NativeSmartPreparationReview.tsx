@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Platform, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeSmartPreparationReview as Review } from '../connections/smartPreparationRequests';
@@ -7,12 +7,15 @@ import { useNativeTranslation } from '../platform/localization';
 import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
 import { DappSiteStatus } from './DappSiteStatus';
 import { NativeSmartAccountOperationContent } from './NativeSmartAccountOperation';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
-type Controller = Pick<NativeConnectionsView, 'getSnapshot' | 'approveSmartPreparation' | 'confirmSmartPreparationPayer' | 'retrySmartPreparationMetadata' | 'rejectSmartPreparation'>;
+type Controller = Pick<NativeConnectionsView, 'getSnapshot' | 'approveSmartPreparation' | 'confirmSmartPreparationPayer' | 'retrySmartPreparationMetadata' | 'rejectSmartPreparation' | 'isRequestAuthenticating'>;
 
 /** Creation intent precedes account allocation; the existing operation review owns every signature and payer consent. */
 export function NativeSmartPreparationReview({ review, controller }: { review: Review; controller: Controller }) {
   const { t } = useNativeTranslation();
+  const requestId = review.id;
+  const authentication = useMemo(() => ({ isAuthenticating: () => controller.isRequestAuthenticating(requestId) }), [controller, requestId]);
   const [acknowledged, setAcknowledged] = useState<string | null>(null), [expired, setExpired] = useState<string | null>(null);
   const live = useRef(false), current = useRef(review), busy = useRef<object | null>(null), acknowledgement = useRef<string | null>(null);
   useLayoutEffect(() => { current.current = review; }, [review]);
@@ -31,11 +34,11 @@ export function NativeSmartPreparationReview({ review, controller }: { review: R
     live.current = true; busy.current = null;
     const retire = () => { if (!live.current || current.current.id !== review.id || current.current.expiresAt !== review.expiresAt) return; live.current = false; acknowledgement.current = null; setAcknowledged(null); void controller.rejectSmartPreparation(review.id).catch(() => undefined); };
     const timer = setTimeout(() => { setExpired(review.id); retire(); }, Math.max(0, review.expiresAt - Date.now()));
-    const change = AppState.addEventListener('change', state => { if (state !== 'active') retire(); });
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', retire) : undefined;
+    const change = AppState.addEventListener('change', state => { if (state !== 'active' && !allowsPrivateAuthenticationInterruption(authentication, state)) retire(); });
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { if (!allowsPrivateAuthenticationInterruption(authentication, 'blur')) retire(); }) : undefined;
     const back = BackHandler.addEventListener('hardwareBackPress', () => { retire(); return true; });
     return () => { live.current = false; acknowledgement.current = null; clearTimeout(timer); change.remove(); blur?.remove(); back.remove(); };
-  }, [controller, review.id, review.expiresAt]);
+  }, [controller, review.id, review.expiresAt, authentication]);
   const assent = acknowledged === identity;
   const blocked = review.busy || expired === review.id;
   const approve = () => {
@@ -52,7 +55,7 @@ export function NativeSmartPreparationReview({ review, controller }: { review: R
   const error = review.error && <Notice title={t(review.error === 'DELIVERY_UNCERTAIN' ? 'mobile.connections.psbt.deliveryTitle' : 'settings.unavailable')}
     body={t(review.error === 'BLOCKED_SITE' ? 'mobile.connections.blocked' : review.error === 'DELIVERY_UNCERTAIN' ? 'mobile.connections.psbt.deliveryBody' : 'connections.smartAccountPrepareFailed')} tone="amber" />;
   const retry = review.canRetry && <Button title={t('settings.smartAccountMetadataRetry')} disabled={blocked} onPress={approve} />;
-  if (review.operation) return <NativeSmartAccountOperationContent state={review.operation} onBack={reject} disabled={blocked && review.operation.phase === 'authorize' || !!review.error}
+  if (review.operation) return <NativeSmartAccountOperationContent authentication={authentication} state={review.operation} onBack={reject} disabled={blocked && review.operation.phase === 'authorize' || !!review.error}
     authorize={() => approve()}
     confirmPayer={payerId => { if (isCurrent()) void controller.confirmSmartPreparationPayer(review.id, review.revision, payerId).catch(() => undefined); }}
     retryMetadata={() => { if (isCurrent() && !blocked) void controller.retrySmartPreparationMetadata(review.id, review.revision).catch(() => undefined); }}

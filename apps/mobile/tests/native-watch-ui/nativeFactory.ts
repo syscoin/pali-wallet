@@ -1,3 +1,4 @@
+import { bindTestRequestAuthentication } from '../fixtures/privateAuthentication.ts';
 import { unsignedTransferBytes } from '../../src/custody/evmFeeContracts.ts';
 import { nativeOperationAuthentication } from '../../src/platform/operationAuthentication';
 import { isOperationAuthenticationCancellation } from '../../src/core/operationAuthentication';
@@ -456,6 +457,7 @@ export function createNativeWalletControllers() {
     throw Error('Synthetic watch fixture has no WalletConnect transport');
   };
   const connections = new NativeConnectionsController({
+    bindAuthentication: bindTestRequestAuthentication,
     source: authority,
     activateAccount: (id, revision, guard) => authority.selectConnectionAccount(id, revision, guard),
     preparePlatform: unavailableConnection,

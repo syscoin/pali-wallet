@@ -30,6 +30,7 @@ const publish = (next: NativeConnectionsSnapshot) => {
   for (const listener of listeners) listener();
 };
 const controller: NativeConnectionsView = {
+    isRequestAuthenticating: () => false,
   ...unsupportedDappViews,
     async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
     dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },

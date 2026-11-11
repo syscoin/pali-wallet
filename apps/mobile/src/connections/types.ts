@@ -170,6 +170,8 @@ export type NativeConnectionsSnapshot = Readonly<{
 
 /** Public view commands carry identifiers only, never transport or keyring handles. */
 export type NativeConnectionsView = Readonly<{
+  /** Status only for the exact current request; never grants signing authority. */
+  isRequestAuthenticating(id: string): boolean;
   approveSmartPreparation(id: string, revision: number, externalOwnersAck: boolean): Promise<void>;
   confirmSmartPreparationPayer(id: string, revision: number, payerId: number): Promise<void>;
   retrySmartPreparationMetadata(id: string, revision: number): Promise<void>;

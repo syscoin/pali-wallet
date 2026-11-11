@@ -152,6 +152,7 @@ export function NativeSmartBatchFixture() {
       throw new Error('Outside batch presentation fixture');
     };
     return {
+      isRequestAuthenticating: () => false,
       ...unsupportedDappViews,
       getSnapshot: () => ({
         revision: current.current.review?.revision ?? 0,

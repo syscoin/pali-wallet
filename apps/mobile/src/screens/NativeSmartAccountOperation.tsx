@@ -239,7 +239,7 @@ export function NativeSmartAccountOperationContent({
   disabled = false,
   authentication,
 }: {
-  authentication?: NativePrivateAuthenticationScope;
+  authentication?: Pick<NativePrivateAuthenticationScope, 'isAuthenticating'>;
   state: NativeSmartAccountOperationSnapshot;
   onBack(): void;
   authorize(acknowledgedCustomRisk: boolean): void;

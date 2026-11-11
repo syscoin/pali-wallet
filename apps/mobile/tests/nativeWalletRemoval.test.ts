@@ -1,5 +1,5 @@
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
-import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
+import { createTestPrivateAuthentication, bindTestRequestAuthentication } from './fixtures/privateAuthentication.ts';
 import { signingFixtureHost } from './unsupportedDappPorts.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -298,6 +298,7 @@ for (const interruption of ['cancel', 'cancel-during-retirement', 'lock', 'expir
     let created = 0, pairs = 0;
     let nextRuntime: KeyringRuntime | undefined, nextStorage: OpenWalletStorage | undefined;
     const connect = (owner: NativeCustodyAuthority, runtime: () => KeyringRuntime) => new NativeConnectionsController({
+    bindAuthentication: bindTestRequestAuthentication,
       async openExternalUrl() { throw Error('Website returns are outside this fixture'); },
       source: owner, activateAccount: (id, revision, guard) => owner.selectConnectionAccount(id, revision, guard), openHost: async () => signingFixtureHost(await runtime().openConnectionHost()), preparePlatform: async () => undefined,
       checkSite: async () => ({ isBlacklisted: false }),

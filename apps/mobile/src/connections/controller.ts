@@ -1,3 +1,4 @@
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope, type NativePrivateAuthentication } from '../custody/privateAuthentication.ts';
 import { NativeSmartPreparationRequests } from './smartPreparationRequests.ts';
 import { getRequestedSmartAccountAuthenticator, type SmartAccountPreparationRequest } from '../../../../source/shared/smartAccountPreparation.ts';
 import type { NativeSmartCreationAllocation } from '../smartAccount/preparation.ts';
@@ -60,7 +61,7 @@ import { createDappApprovalLifetime } from '../../../../source/utils/dappApprova
 import type { DappSessionEvent } from '../../../../source/wallet/dappSessions.ts';
 import type { KeyringAccountType } from '../../../../source/types/network.ts';
 import type { CustodySnapshot } from '../custody/types.ts';
-import type { NativeConnectionHost } from './host.ts';
+import type { NativeConnectionHost, NativeRequestAuthenticationBinder } from './host.ts';
 import type { NativeConnectionRepository } from './storage.ts';
 import {
   openWalletConnectTransport,
@@ -175,6 +176,8 @@ type PrivateSigningReview =
       'revision' | 'needsAccountSwitch' | 'busy' | 'dispatched'
     >;
 type PendingSigning = {
+  authenticationScope: NativePrivateAuthenticationScope;
+  authentication: NativePrivateAuthentication | null;
   queueOrder: number;
   resumeId: string;
   handoff: NativeSigningHandoff;
@@ -208,6 +211,7 @@ type PendingSigning = {
 };
 const MESSAGE_REVIEW_LIFETIME_MS = 5 * 60_000;
 type Options = {
+  bindAuthentication: NativeRequestAuthenticationBinder;
   source: Source;
   activateAccount(
     accountId: string,
@@ -324,6 +328,7 @@ export class NativeConnectionsController {
       respond: (wire, response, check, handedOff) => this.transport!.respond(wire.session.binding, wire.id, response, check, handedOff),
     });
     this.psbt = new NativePsbtRequests({
+      bindAuthentication: options.bindAuthentication,
       host: () => this.host!.psbt,
       foreground: order => order < Math.min(this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.controls.firstOrder, this.sentry.firstOrder, this.preparations?.firstOrder ?? Infinity),
       changed: () => { this.publish(); void this.prepareForegroundRequest(); },
@@ -331,6 +336,7 @@ export class NativeConnectionsController {
       respond: (wire, response, check, handedOff) => this.transport!.respond(wire.session.binding, wire.id, response, check, handedOff),
     });
     this.preparations = new NativeSmartPreparationRequests({
+      bindAuthentication: options.bindAuthentication,
       host: () => this.host!,
       foreground: order => order < Math.min(this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder),
       changed: () => { this.publish(); void this.controls.prepare(); void this.sentry.prepare(); void this.psbt.prepare(); void this.prepareForegroundRequest(); },
@@ -340,6 +346,7 @@ export class NativeConnectionsController {
     });
     this.snapshot = this.project();
     this.view = Object.freeze({
+      isRequestAuthenticating: id => this.isRequestAuthenticating(id),
       approveSmartPreparation: async (id, revision, acknowledged) => {
         if (revision !== this.revision) return failure('REQUEST_EXPIRED');
         await this.preparations.approve(id, acknowledged);
@@ -1999,6 +2006,21 @@ export class NativeConnectionsController {
       return null;
     }
   }
+  private isRequestAuthenticating(id: string): boolean {
+    const message = this.requests.get(id);
+    if (!message) return this.psbt.isRequestAuthenticating(id) || this.preparations.isRequestAuthenticating(id);
+    if (this.requests.values().next().value !== message ||
+        Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder) return false;
+    try {
+      if (!this.requestConnectionCurrent(message)) return false;
+      message.approval?.assertCurrent();
+      return message.authenticationScope.isAuthenticating();
+    } catch { return false; }
+  }
+  private requestAuthentication(message: PendingSigning): NativePrivateAuthentication {
+    if (!message.authentication) return failure('REQUEST_EXPIRED');
+    return message.authentication;
+  }
   private dismissStatus() {
     if (!this.callsStatus && !this.statusResponse) return;
     const respond = this.statusResponse;
@@ -2114,6 +2136,7 @@ export class NativeConnectionsController {
   ): Promise<void> {
     if (this.requests.get(message.id) !== message) return this.requestRetirement;
     this.requests.delete(message.id);
+    message.authenticationScope.retire();
     retireNativeSigningHandoff(message.handoff);
     const reservation = message.request.method === 'wallet_sendCalls'
       ? this.host?.calls
@@ -2368,6 +2391,7 @@ export class NativeConnectionsController {
     const next = ++this.serial, queueOrder = saved?.order ?? next;
     const id = `request-${next}`;
     const message: PendingSigning = {
+      authenticationScope: createNativePrivateAuthenticationScope(), authentication: null,
       queueOrder,
       resumeId: saved?.id ?? id,
       handoff: undefined as unknown as NativeSigningHandoff,
@@ -2446,6 +2470,10 @@ export class NativeConnectionsController {
         for (const [key, value] of waiting) this.requests.set(key, value);
       } else this.requests.set(id, message);
       message.approval = this.captureSigningApproval(message);
+      message.authentication = this.options.bindAuthentication(message.authenticationScope, () => {
+        if (this.requests.get(message.id) !== message || !this.requestConnectionCurrent(message)) return failure('REQUEST_EXPIRED');
+        message.approval?.assertCurrent();
+      });
       if (saved) this.handoffs.discard(saved, false);
       message.approval.assertCurrent();
       handoffAdopted = true;
@@ -2599,7 +2627,7 @@ export class NativeConnectionsController {
         advisories = [];
         warning = false;
         const prepared = await this.host!.prepareTransaction({ accountId: message.accountId,
-          networkId: message.networkId, transaction, approval, handoff: message.handoff }, approval.assertCurrent);
+          networkId: message.networkId, transaction, approval, handoff: message.handoff }, approval.assertCurrent, this.requestAuthentication(message));
         approval.assertCurrent();
         if ('operation' in prepared) { await prepared.operation.dispose(); throw new Error('Expected an EOA review'); }
         const result = await reviewDappAddressAdvisories({
@@ -2674,7 +2702,7 @@ export class NativeConnectionsController {
             request: message.request,
             approval,
             handoff: message.handoff,
-          }, approval.assertCurrent)
+          }, approval.assertCurrent, this.requestAuthentication(message))
         : message.request.method === 'wallet_sendCalls'
         ? await this.host!.prepareCalls(
             {
@@ -2687,7 +2715,7 @@ export class NativeConnectionsController {
               approval,
               handoff: message.handoff,
             },
-            approval.assertCurrent
+            approval.assertCurrent, this.requestAuthentication(message)
           )
         : await this.host!.prepareTransaction(
             {
@@ -2697,7 +2725,7 @@ export class NativeConnectionsController {
               approval,
               handoff: message.handoff,
             },
-            approval.assertCurrent
+            approval.assertCurrent, this.requestAuthentication(message)
           );
     try {
       approval.assertCurrent();
@@ -3011,7 +3039,7 @@ export class NativeConnectionsController {
         account: { type: this.host!.context().accounts.find(account => account.id === message.accountId)?.type },
         request: message.request as DappEncryptionRequest,
         approval,
-        sdk: this.host!.encryptionSdk({ accountId: message.accountId, networkId: message.networkId, approval }),
+        sdk: this.host!.encryptionSdk({ accountId: message.accountId, networkId: message.networkId, approval }, this.requestAuthentication(message)),
         assertCurrent: () => { approval.assertCurrent(); if (!this.requestConnectionCurrent(message) || this.host!.context().activeAccountId !== message.accountId) failure('CONTEXT_CHANGED'); },
         checkDocument: async () => { approval.assertCurrent(); },
         deliver: async (result, assertCurrent, onDispatch) => {
@@ -3193,7 +3221,7 @@ export class NativeConnectionsController {
           request: message.request,
           approval,
           handoff: message.handoff,
-        });
+        }, this.requestAuthentication(message));
       }
       await this.deliverSigningResult(message, result);
     } catch (error) {

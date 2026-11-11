@@ -1,3 +1,5 @@
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope, type NativePrivateAuthentication } from '../custody/privateAuthentication.ts';
+import type { NativeRequestAuthenticationBinder } from './host.ts';
 import { capturePsbtEnvelope, type PsbtEnvelope } from '../../../../source/shared/psbtEnvelope.ts';
 import type { PsbtApprovalMethod, PsbtApprovalReview, PreparedPsbtApproval } from '../../../../source/wallet/psbtApprovals.ts';
 import { assertProviderRequestBudget } from '../../../../source/utils/requestPayloadBudget.ts';
@@ -9,7 +11,7 @@ export const PSBT_DAPP_METHODS = Object.freeze(['sys_sign', 'sys_signAndSend'] a
 export type NativePsbtRequest = Readonly<{ method: PsbtApprovalMethod; psbt: PsbtEnvelope; origin: string }>;
 export type NativeConnectionPsbtHost = Readonly<{
   cancelHandoff(job: object): Promise<void>;
-  prepare(request: NativePsbtRequest, signal: AbortSignal, assertCurrent: () => void, handoff: NativeSigningHandoff): Promise<PreparedPsbtApproval>;
+  prepare(request: NativePsbtRequest, signal: AbortSignal, assertCurrent: () => void, handoff: NativeSigningHandoff, authentication: NativePrivateAuthentication | null): Promise<PreparedPsbtApproval>;
 }>;
 export type NativePsbtReview = Readonly<{
   id: string; revision: number; method: PsbtApprovalMethod; appName: string; origin: string; verification: WalletConnectVerification;
@@ -20,7 +22,7 @@ export type NativePsbtReview = Readonly<{
 }>;
 type Owner = Readonly<{ order: number; accountLabel: string; address: string; networkLabel: string; chainId: string;
   symbol: string; decimals: number; resumeScope: SigningResumeScope; assertCurrent(): void; assertSessionCurrent(): void }>;
-type Pending = { id: string; wire: WalletConnectRequest; request: NativePsbtRequest; owner: Owner; signal: AbortController;
+type Pending = { authenticationScope: NativePrivateAuthenticationScope; authentication: NativePrivateAuthentication | null; id: string; wire: WalletConnectRequest; request: NativePsbtRequest; owner: Owner; signal: AbortController;
   expiresAt: number; timer: ReturnType<typeof setTimeout>; busy: boolean; attempted: boolean; handedOff: boolean; resultReady: boolean;
   resumeId: string; handoff?: NativeSigningHandoff;
   txid: string | null; prepared?: PreparedPsbtApproval; work?: ReturnType<PreparedPsbtApproval['approve']>; error: NativePsbtReview['error'] };
@@ -52,15 +54,21 @@ export class NativePsbtRequests {
     });
   }
   private readonly options: Readonly<{
+    bindAuthentication: NativeRequestAuthenticationBinder;
     host(): NativeConnectionPsbtHost; foreground(order: number): boolean; changed(): void;
     checkSite(origin: string): Promise<Readonly<{ isBlacklisted: boolean }>>;
     respond(wire: WalletConnectRequest, response: { result: unknown } | { error: { code: number; message: string } }, check: () => void, handedOff: () => void): Promise<void>;
   }>;
   constructor(options: NativePsbtRequests['options']) {
-    if (['host', 'foreground', 'changed', 'checkSite', 'respond'].some(key => typeof options[key as keyof typeof options] !== 'function'))
+    if (['host', 'foreground', 'changed', 'checkSite', 'respond', 'bindAuthentication'].some(key => typeof options[key as keyof typeof options] !== 'function'))
       throw new Error('PSBT_REQUEST_PORTS_REQUIRED');
     this.options = options;
     this.handoffs = new NativeSigningHandoffs({ cancel: job => this.options.host().cancelHandoff(job), changed: () => { this.options.changed(); void this.prepare(); } });
+  }
+  isRequestAuthenticating(id: string): boolean {
+    const entry = this.first();
+    if (!entry || entry.id !== id || this.handoffs.active || !this.options.foreground(entry.owner.order)) return false;
+    try { this.check(entry); return entry.authenticationScope.isAuthenticating(); } catch { return false; }
   }
   get size() { return this.pending.size + this.handoffs.size; }
   get firstOrder() { return Math.min(this.first()?.owner.order ?? Infinity, this.handoffs.firstOrder); }
@@ -84,7 +92,7 @@ export class NativePsbtRequests {
     const expiresAt = Math.min(wire.expiresAt, wire.session.expiry * 1000, Date.now() + 10 * 60_000, saved?.expiresAt ?? Infinity);
     if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now()) throw new Error('REQUEST_EXPIRED');
     const id = `psbt-${++this.serial}`;
-    const entry: Pending = { id, resumeId: resumeId ?? id, wire, owner: saved ? { ...owner, order: saved.order } : owner, signal: new AbortController(), expiresAt, busy: false, attempted: false, handedOff: false, resultReady: false, txid: null,
+    const entry: Pending = { authenticationScope: createNativePrivateAuthenticationScope(), authentication: null, id, resumeId: resumeId ?? id, wire, owner: saved ? { ...owner, order: saved.order } : owner, signal: new AbortController(), expiresAt, busy: false, attempted: false, handedOff: false, resultReady: false, txid: null,
       request: Object.freeze({ method: wire.method as PsbtApprovalMethod, psbt, origin: wire.session.binding.origin }),
       timer: setTimeout(() => this.retire(entry, !entry.handedOff), expiresAt - Date.now()),
       error: wire.verification.isScam ? 'BLOCKED_SITE' : wire.verification.validation === 'INVALID' ? 'SITE_MISMATCH' : null };
@@ -93,6 +101,8 @@ export class NativePsbtRequests {
       for (const [key, value] of waiting) this.pending.set(key, value);
       this.handoffs.discard(saved, false);
     } else this.pending.set(id, entry);
+    try { entry.authentication = this.options.bindAuthentication(entry.authenticationScope, () => this.check(entry)); }
+    catch (error) { this.retire(entry, false); throw error; }
     this.options.changed(); void this.prepare();
   }
   review(revision: number): NativePsbtReview | null {
@@ -111,7 +121,8 @@ export class NativePsbtRequests {
       await this.handoffs.retired();
       this.check(entry); const site = await this.options.checkSite(entry.request.origin); this.check(entry);
       if (site.isBlacklisted) throw new Error('BLOCKED_SITE');
-      const prepared = await this.options.host().prepare(entry.request, entry.signal.signal, () => this.check(entry), this.handoff(entry));
+      if (!entry.authentication) throw new Error('REQUEST_EXPIRED');
+      const prepared = await this.options.host().prepare(entry.request, entry.signal.signal, () => this.check(entry), this.handoff(entry), entry.authentication);
       try {
         this.check(entry); prepared.assertCurrent();
         if (typeof prepared.disposition !== 'function') throw new Error('PSBT_REQUEST_PORTS_REQUIRED');
@@ -156,7 +167,7 @@ export class NativePsbtRequests {
   revalidate() { for (const entry of [...this.pending.values()]) { try { this.check(entry); } catch { this.retire(entry, true); } } }
   private retire(entry: Pending, respond: boolean) {
     if (this.pending.get(entry.id) !== entry) return;
-    this.pending.delete(entry.id); clearTimeout(entry.timer); entry.signal.abort(); entry.prepared?.dispose(); this.options.changed();
+    this.pending.delete(entry.id); entry.authenticationScope.retire(); clearTimeout(entry.timer); entry.signal.abort(); entry.prepared?.dispose(); this.options.changed();
     if (respond && !this.closed) {
       const finish = this.drain.begin();
       void (async () => {

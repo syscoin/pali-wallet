@@ -345,7 +345,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   canManageSlhDsa(): boolean;
   openSlhDsaInstallation(keyId: string, signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
   prepareConnectionPsbt(request: import('../connections/psbtRequests.ts').NativePsbtRequest,
-    signal: AbortSignal, assertCurrent: () => void, handoff: import('../connections/signingHandoff.ts').NativeSigningHandoff): Promise<import('../../../../source/wallet/psbtApprovals.ts').PreparedPsbtApproval>;
+    signal: AbortSignal, assertCurrent: () => void, handoff: import('../connections/signingHandoff.ts').NativeSigningHandoff, authentication: NativePrivateAuthentication | null): Promise<import('../../../../source/wallet/psbtApprovals.ts').PreparedPsbtApproval>;
   readConnectionUtxoPublic(method: 'getChangeAddress' | 'getCurrentAddressPubkey' | 'getBip32Path',
     owner: Readonly<{ accountId: string; xpub: string }>, isChangeAddress: boolean,
     signal: AbortSignal, assertCurrent: () => void): Promise<string>;
@@ -3103,9 +3103,9 @@ export function createKeyringRuntimeFactory(
         };
         const allocateSmartAccountRecord = async (label: string, expectedRevision: number, lifetime: AbortSignal | null,
           assertOwner: () => void, onCommitted: (next: NativeWalletCatalogueSnapshot, created: IKeyringAccountState) => void,
-          credential: NativeOperationCredential | null, beforeCommit: () => void) => {
+          credential: NativeOperationCredential | null, beforeCommit: () => void, authentication: NativePrivateAuthentication | null) => {
             checkGuard(assertOwner);
-            const before = catalogueSnapshot, ring = keyring, selected = selectedAccount();
+            const before = catalogueSnapshot, ring = keyring, selected = selectedAccount(), captured = generation;
             const prepare = dependencies.prepareSmartAccount, managementOwner = state.accounts.HDAccount[0];
             if (!before || before.revision !== expectedRevision || !ring.hasPublicSession() || !prepare ||
                 findUtxoNetwork(before.active.networkId, before.utxoNetworks) || !managementOwner?.address)
@@ -3131,7 +3131,9 @@ export function createKeyringRuntimeFactory(
               const next = await withSoftwareSecret('account-change', signal.signal, check, async () => {
                 beforeCommit(); check();
                 return catalogue.mutate(expectedRevision, { kind: 'create-smart', account: created }, check);
-              }, credential, null);
+              }, credential, null, authentication ? { authentication, assertCurrent() {
+                current(captured); if (keyring !== ring || !ring.hasPublicSession()) throw new KeyringRuntimeError('CANCELLED');
+              } } : null);
               check();
               // The request records its durable allocation before publication
               // invalidates observers of the previous selected account.
@@ -3247,7 +3249,7 @@ export function createKeyringRuntimeFactory(
                     return null;
                   } else if (request.kind === 'create-smart') {
                     await allocateSmartAccountRecord(request.label, expectedRevision, cancellation.signal,
-                      guard, () => undefined, null, () => { guard(); committing = true; });
+                      guard, () => undefined, null, () => { guard(); committing = true; }, null);
                     return null;
                   } else if (requiresUtxoApproval) {
                     if (!approval || approval.signal.aborted || approval.snapshot !== before)
@@ -5675,7 +5677,8 @@ export function createKeyringRuntimeFactory(
               calls: repository.calls,
               supportsAtomicCalls: supportsLocalSmartAccount,
               supportsSmartAccountMessages: supportsLocalSmartAccount,
-              async allocateSmartAccount(input, signal, assertRequestCurrent, onCommitted) {
+              async allocateSmartAccount(input, signal, assertRequestCurrent, onCommitted, authentication) {
+                if (authentication !== null) assertNativePrivateAuthentication(authentication);
                 assertOwner(); checkGuard(assertRequestCurrent);
                 if (typeof onCommitted !== 'function' || !signal || typeof signal.addEventListener !== 'function' || signal.aborted)
                   throw new KeyringRuntimeError('INVALID_INPUT');
@@ -5749,13 +5752,14 @@ export function createKeyringRuntimeFactory(
                       bootstrapAuthHash: getSmartAccountAuthHash(created.smartAccount.auth) }));
                     allocation = receipt;
                     checkGuard(() => onCommitted(receipt));
-                  }, null, () => undefined);
+                  }, null, () => undefined, authentication);
                   publishing = false;
                 });
                 if (!allocation) throw new KeyringRuntimeError('OPERATION_FAILED');
                 allocation.assertCurrent(); return allocation;
               },
-              async prepareSmartAccountCreationOperation(allocation, handoff, assertRequestCurrent) {
+              async prepareSmartAccountCreationOperation(allocation, handoff, assertRequestCurrent, authentication) {
+                if (authentication !== null) assertNativePrivateAuthentication(authentication);
                 const owned = smartCreationAllocations.get(allocation);
                 if (!owned || owned.target.id !== 'ecdsa' || !owned.target.config) throw new KeyringRuntimeError('INVALID_INPUT');
                 requireNativeSigningHandoff(handoff);
@@ -5774,10 +5778,11 @@ export function createKeyringRuntimeFactory(
                 };
                 await refreshSmartAccountMetadata(owned.signal, check); assertSource();
                 if (!state.accounts.SmartAccount[allocation.account.index]!.smartAccount!.isDeployed)
-                  return openSmartAccountOperation({ kind: 'deploy' }, assertSource, { kind: 'dapp', handoff }, null);
-                return openSmartAccountAuthenticator(target, owned.signal, assertSource, { kind: 'dapp', handoff }, null);
+                  return openSmartAccountOperation({ kind: 'deploy' }, assertSource, { kind: 'dapp', handoff }, authentication);
+                return openSmartAccountAuthenticator(target, owned.signal, assertSource, { kind: 'dapp', handoff }, authentication);
               },
-              async prepareModuleChange(input, assertRequestCurrent) {
+              async prepareModuleChange(input, assertRequestCurrent, authentication) {
+                if (authentication !== null) assertNativePrivateAuthentication(authentication);
                 assertOwner(); input.approval.assertCurrent(); checkGuard(assertRequestCurrent);
                 requireNativeSigningHandoff(input.handoff);
                 const ring = keyring, captured = generation, initial = catalogueSnapshot;
@@ -5802,7 +5807,7 @@ export function createKeyringRuntimeFactory(
                 const draft: NativeSmartModuleDraft = request.action === 'install'
                   ? { kind: 'install-custom', address: request.module.address ?? '', name: request.module.name ?? '', initData: request.module.initData ?? '0x' }
                   : { kind: 'uninstall', address: request.module.address ?? '' };
-                const operation = await openSmartAccountModuleChange(draft, input.approval.signal, check, { kind: 'dapp', handoff: input.handoff }, null);
+                const operation = await openSmartAccountModuleChange(draft, input.approval.signal, check, { kind: 'dapp', handoff: input.handoff }, authentication);
                 try { check(); return { operation, approval: null }; }
                 catch (error) { await operation.dispose(); throw error; }
               },
@@ -5880,7 +5885,8 @@ export function createKeyringRuntimeFactory(
                   id
                 );
               },
-              async prepareCalls(input, assertRequestCurrent) {
+              async prepareCalls(input, assertRequestCurrent, authentication) {
+                if (authentication !== null) assertNativePrivateAuthentication(authentication);
                 requireNativeSigningHandoff(input.handoff);
                 const { selected, network, approval, check } = captureTransaction(
                   { ...input, transaction: {} },
@@ -5904,7 +5910,7 @@ export function createKeyringRuntimeFactory(
                 let previousSubmissionId: string | undefined;
                 const operation = await openSmartAccountOperation(
                   { kind: 'dapp-batch', calls: calls.calls },
-                  check, {kind:'dapp',handoff:input.handoff}, null,
+                  check, {kind:'dapp',handoff:input.handoff}, authentication,
                   async (prepared, submit) => {
                     check();
                     const submissionId = repository.calls.generateWalletBundleId();
@@ -5991,7 +5997,8 @@ export function createKeyringRuntimeFactory(
                   throw error;
                 }
               },
-              async prepareTransaction(input, assertRequestCurrent) {
+              async prepareTransaction(input, assertRequestCurrent, authentication) {
+                if (authentication !== null) assertNativePrivateAuthentication(authentication);
                 requireNativeSigningHandoff(input.handoff);
                 const { selected, network, approval, check, binding } = captureTransaction(
                   input,
@@ -6024,7 +6031,7 @@ export function createKeyringRuntimeFactory(
                             ).toString(),
                           }),
                     },
-                    check, {kind:'dapp',handoff:input.handoff}, null
+                    check, {kind:'dapp',handoff:input.handoff}, authentication
                   );
                   try {
                     const metadata = (decodeApprovalData(request.data ?? '0x').isApproval || decodeAssetTransfer(request.data ?? '0x', request.to))
@@ -6060,20 +6067,26 @@ export function createKeyringRuntimeFactory(
                   check,
                   undefined,
                   NATIVE_EVM_FEE_FUNDING,
-                  { kind: 'estimate' }, hardwareDappSigner(selected, network, approval, check, binding, input.handoff), null
+                  { kind: 'estimate' }, hardwareDappSigner(selected, network, approval, check, binding, input.handoff), null, authentication
                 );
               },
-              encryptionSdk(input) {
+              encryptionSdk(input, authentication) {
+                if (authentication !== null) assertNativePrivateAuthentication(authentication);
                 const { selected, account, check, binding } = captureTransaction({ ...input, transaction: {} }, input.approval.assertCurrent);
                 if (!supportsDappEncryptionAccount({ ...account, type: selected.type })) throw new KeyringRuntimeError('INVALID_INPUT');
                 const ring = binding.current(), transaction = ring.ethereumTransaction;
                 input.approval.bindSigner('native-encryption-sdk', () => binding.matches() && binding.current().ethereumTransaction === transaction);
                 return {
-                  getEncryptedPubKey() { return withSoftwareSecret('secret-read', input.approval.signal, check, () => transaction.getEncryptedPubKey(), null, null); },
-                  decryptMessage(params) { return withSoftwareSecret('secret-read', input.approval.signal, check, () => transaction.decryptMessage(params), null, null); },
+                  getEncryptedPubKey() { return withSoftwareSecret('secret-read', input.approval.signal, check, () => transaction.getEncryptedPubKey(), null, null, authentication ? { authentication, assertCurrent() {
+                    assertOwner(); if (keyring !== ring || !ring.hasPublicSession()) throw new KeyringRuntimeError('CANCELLED');
+                  } } : null); },
+                  decryptMessage(params) { return withSoftwareSecret('secret-read', input.approval.signal, check, () => transaction.decryptMessage(params), null, null, authentication ? { authentication, assertCurrent() {
+                    assertOwner(); if (keyring !== ring || !ring.hasPublicSession()) throw new KeyringRuntimeError('CANCELLED');
+                  } } : null); },
                 };
               },
-              signMessage(input) {
+              signMessage(input, authentication) {
+                if (authentication !== null) assertNativePrivateAuthentication(authentication);
                 requireNativeSigningHandoff(input.handoff);
                 assertOwner();
                 const approval = input.approval;
@@ -6192,7 +6205,7 @@ export function createKeyringRuntimeFactory(
                     const signature = await signNativeSmartAccountActionHash({
                       metadata, actionHash: prepared.actionHash, localOwners, assertCurrent: guard,
                       accountId: account.id, allowReservedSLHDSASignature: false,
-                      slhDsa: slhCapability === null ? null : slhDsaSigningPort(captured, metadata, account.id, prepared.actionHash, guard, { assertCurrent: guard, async checkDocument() { guard(); } }, approval.signal, null),
+                      slhDsa: slhCapability === null ? null : slhDsaSigningPort(captured, metadata, account.id, prepared.actionHash, guard, { assertCurrent: guard, async checkDocument() { guard(); } }, approval.signal, authentication),
                       assertOwnerCurrent(owner) {
                         const original = ownerRecords.get(`${owner.type}:${owner.id}`), currentOwner = findLocalEcdsaOwner(owner.address);
                         if (!original || !currentOwner || currentOwner.id !== owner.id || currentOwner.type !== owner.type ||
@@ -6218,7 +6231,7 @@ export function createKeyringRuntimeFactory(
                             intent: prepared.ownerSigningIntent,
                             selectedSmart: { id: selected.index, type: selected.type, expectedAddress: selected.address },
                             owner: { ...owner, address }, authority: { assertCurrent: ownerGuard, signal: approval.signal },
-                            sdk: smartOwnerSigningPorts({ ...owner, address }, approval.signal, ownerGuard, ring, trezorPort, null),
+                            sdk: smartOwnerSigningPorts({ ...owner, address }, approval.signal, ownerGuard, ring, trezorPort, authentication),
                           });
                         });
                         ownerGuard(); return result;
@@ -6249,7 +6262,9 @@ export function createKeyringRuntimeFactory(
                             typeof transactions.signTypedData
                           >[2],
                           { assertCurrent: guard, signal: approval.signal }
-                        ), null, null);
+                        ), null, null, authentication ? { authentication, assertCurrent() {
+                          current(ownerGeneration); if (keyring !== ring || !ring.hasPublicSession()) throw new KeyringRuntimeError('CANCELLED');
+                        } } : null);
                   guard();
                   if (
                     typeof signature !== 'string' ||
@@ -6717,7 +6732,8 @@ export function createKeyringRuntimeFactory(
             const lifetime = (contextReadLifetime ??= new AbortController()).signal;
             return openSentryApprovals(lifetime, () => current(captured), null);
           },
-          async prepareConnectionPsbt(request, signal, assertOwner, handoff) {
+          async prepareConnectionPsbt(request, signal, assertOwner, handoff, authentication) {
+            if (authentication !== null) assertNativePrivateAuthentication(authentication);
             const captured = generation, snapshot = catalogueSnapshot, admittedTrezorEpoch = trezorEpoch;
             let ring = keyring;
             let trezorAttempt: Awaited<ReturnType<typeof openTrezorAttempt>> | undefined;
@@ -6782,7 +6798,9 @@ export function createKeyringRuntimeFactory(
                           const prepared = await ring.syscoinTransaction.preparePSBTForSigning(input, read); guard();
                           return run(async () => {
                           admittedSigning = active;
-                          try { return await withSoftwareSecret('transaction', signal, guard, () => ring.syscoinTransaction.signPSBT({ psbt: prepared }, read), null, null); }
+                          try { return await withSoftwareSecret('transaction', signal, guard, () => ring.syscoinTransaction.signPSBT({ psbt: prepared }, read), null, null, authentication ? { authentication, assertCurrent() {
+                            current(captured); if (keyring !== ring || !ring.hasPublicSession()) throw new KeyringRuntimeError('CANCELLED');
+                          } } : null); }
                           finally { admittedSigning = null; }
                           });
                         })();
