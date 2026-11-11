@@ -400,6 +400,24 @@ module.exports = {
           minChunks: 2,
           enforce: true,
         },
+        // Both UI entrypoints already include these views. Emit their shared
+        // bytes once; keep the worker and lazy hardware entrypoint isolated.
+        uiSharedViews: {
+          test: /[\\/]source[\\/](?:components[\\/]|utils[\\/]transactions\.ts$)/,
+          chunks(chunk) {
+            return (
+              chunk.canBeInitial() &&
+              [...chunk.groupsIterable].some(
+                (group) => group.name === 'app' || group.name === 'external'
+              )
+            );
+          },
+          name: 'ui-shared-views',
+          priority: 20,
+          usedExports: false,
+          minChunks: 2,
+          enforce: true,
+        },
         // Share only identical privacy modules across pre-registered background chunks.
         privacyBackgroundShared: {
           test(module) {
