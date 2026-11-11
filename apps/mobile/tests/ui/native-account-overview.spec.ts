@@ -71,3 +71,25 @@ for (const filter of ['all', 'ethereum']) test(`unbacked ${filter} Send opens ba
   expect(await page.evaluate(() => window.__accountPortfolio.sends)).toEqual([]);
   await expect(page.getByRole('heading', { name: 'Send from', exact: true })).toHaveCount(0);
 });
+
+for (const width of [390, 320]) test(`cached balances and filter errors remain clear at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: width === 390 ? 844 : 740 });
+  await page.goto('/?account-portfolio&filter=ethereum');
+  await expect(page.getByTestId('account-portfolio-value')).toContainText('1,012.00');
+  await page.evaluate(() => window.__accountPortfolio.failBalances(true));
+  await expect(page.getByText('Last known balance', { exact: true })).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'ETH, Ethereum, 1.0, Last known balance', exact: true })).toBeVisible();
+  await expect(page.getByTestId('account-portfolio-value')).toHaveText('—');
+  await page.screenshot({ path: info.outputPath(`cached-balance-${width}.png`), animations: 'disabled' });
+  await page.evaluate(() => window.__accountPortfolio.failFilter(true));
+  await page.getByRole('button', { name: 'Choose network filter, Ethereum', exact: true }).click();
+  const sheet = page.getByTestId('network-source-sheet');
+  await sheet.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
+  await expect(sheet.getByRole('alert')).toHaveText('Could not complete this request. Try again.');
+  await expect(sheet.getByRole('alert')).toBeInViewport({ ratio: 1 });
+  await page.screenshot({ path: info.outputPath(`filter-error-${width}.png`), animations: 'disabled' });
+  await page.evaluate(() => window.__accountPortfolio.failFilter(false));
+  await sheet.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Choose network filter, Base', exact: true })).toBeVisible();
+});

@@ -985,7 +985,9 @@
     "smartAccountGuardianRecoveryFinalized": "Recuperación finalizada y esta cuenta está lista.",
     "smartAccountGuardianRecoveryFinalizeFailed": "No se pudo finalizar la recuperación.",
     "smartAccountGuardianRecoveryExpired": "Esta solicitud de recuperación expiró antes de finalizarse. Inicie la recuperación de nuevo.",
-    "invalidAddress": "Dirección inválida"
+    "invalidAddress": "Dirección inválida",
+    "changeHardwareDevice": "Cambiar dispositivo",
+    "closeHardwareSetup": "Cerrar configuración"
   },
   "start": {
     "eraseAndStartFresh": "Borrar y empezar de nuevo",
@@ -1054,7 +1056,10 @@
     "tokenIdIsRequired": "Se requiere el ID del token",
     "tokenIdMustBeNumber": "El ID del token debe ser un número",
     "erc1155ZeroBalanceNote": "Nota: ERC-1155 devuelve saldo 0 para tokens inexistentes. Verifique que este ID de token exista antes de agregarlo.",
-    "verifyTokenExists": "(verificar que existe el token)"
+    "verifyTokenExists": "(verificar que existe el token)",
+    "marketDataSource": "Fuente de datos de mercado",
+    "listedOnCoinGecko": "Listado en CoinGecko",
+    "coinGeckoListingUnavailable": "Listado no disponible"
   },
   "transactions": {
     "labelCopied": "{{label}} copiado al portapapeles",
@@ -2340,7 +2345,9 @@
       "activityNetwork": "Ver transacciones en {{network}}",
       "activityAll": "Ver actividad en las redes añadidas",
       "collectibles": "Coleccionables guardados: {{count}} · {{network}}",
-      "refresh": "Actualizar cartera"
+      "refresh": "Actualizar cartera",
+      "lastKnownBalance": "Último saldo conocido",
+      "balanceUnavailable": "Saldo no disponible"
     },
     "sendAssets": {
       "choose": "Elegir activo",

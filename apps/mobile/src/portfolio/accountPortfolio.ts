@@ -6,6 +6,7 @@ import type { NotificationChoice } from '../notifications/choices.ts';
 import type { NativeNotificationScope } from '../notifications/types.ts';
 import { formatTokenUnits, type Erc20Metadata } from '../../../../source/shared/erc20.ts';
 import type { SavedCollectible } from './tokenRegistry.ts';
+import { abortable } from '../../../../source/shared/boundedHttp.ts';
 
 export type PortfolioAssets = Readonly<{
   tokens: readonly Readonly<{ metadata: Erc20Metadata; status: 'available' | 'error'; units: string | null }>[];
@@ -45,6 +46,7 @@ type Ports = {
 };
 const empty = (): AccountPortfolioSnapshot => ({ status: 'loading', accountId: null, filter: null, choices: [], rows: [], refreshing: false, knownValue: null, partial: true, currency: null });
 const scopeKey = (choice: NotificationChoice) => JSON.stringify(choice.scope);
+const QUOTE_PHASE_BUDGET_MS = 8_000;
 
 /** Selected-account reads only. Restoring the filter always precedes the first request. */
 export class AccountPortfolioController {
@@ -207,9 +209,21 @@ export class AccountPortfolioController {
       const next = this.context();
       if (!this.connection || this.request !== request || request.signal.aborted || this.generation !== generation ||
           !next || next.owner !== current.owner || next.state.revision !== current.state.revision || this.state.filter !== filter ||
+          this.state.currency !== currency ||
           JSON.stringify(next.choices) !== JSON.stringify(current.choices)) throw Error('CANCELLED');
     };
     this.publish({ refreshing: choices.length > 0 });
+    const quotes: ((signal: AbortSignal) => Promise<void>)[] = [];
+    const queueQuote = (read: (signal: AbortSignal) => Promise<number | null>, apply: (price: number | null) => void) => {
+      quotes.push(async signal => {
+        check();
+        const price = await abortable(read(signal), signal);
+        check();
+        if (signal.aborted) return;
+        apply(price);
+        this.synchronize();
+      });
+    };
     let index = 0;
     const worker = async () => {
       while (index < choices.length && !request.signal.aborted) {
@@ -222,23 +236,29 @@ export class AccountPortfolioController {
           check();
           this.cache.set(key, { ...original, status: 'available', units, updatedAt: (this.ports.now ?? Date.now)(), price: null, tokens: [], collectibles: [], assetsAvailable: false });
           this.synchronize();
-          const testnet = 'testnet' in choice.scope.network && choice.scope.network.testnet;
-          const price = !testnet && currency && units !== '0' && this.ports.nativePrice ? await this.ports.nativePrice(choice, currency, request.signal) : null;
-          check();
           let assets: PortfolioAssets = { tokens: [], collectibles: [] }, assetsAvailable = false;
           if (this.ports.assets) {
             try { assets = await this.ports.assets(choice.scope, request.signal, check); assetsAvailable = true; } catch { check(); }
           }
-          const tokens = [];
-          for (const token of assets.tokens) {
-            check();
-            const tokenPrice = !testnet && currency && token.status === 'available' && token.units !== null && token.units !== '0' && this.ports.tokenPrice
-              ? await this.ports.tokenPrice(choice, token.metadata, currency, request.signal) : null;
-            tokens.push({ ...token, price: tokenPrice });
-          }
           check();
-          this.cache.set(key, { choice, status: 'available', units, decimals: original.decimals, updatedAt: (this.ports.now ?? Date.now)(), price, tokens, collectibles: assets.collectibles, assetsAvailable });
+          this.cache.set(key, { choice, status: 'available', units, decimals: original.decimals, updatedAt: (this.ports.now ?? Date.now)(), price: null,
+            tokens: assets.tokens.map(token => ({ ...token, price: null })), collectibles: assets.collectibles, assetsAvailable });
           this.synchronize();
+          const testnet = 'testnet' in choice.scope.network && choice.scope.network.testnet;
+          if (!testnet && currency) {
+            const nativePrice = this.ports.nativePrice, tokenPrice = this.ports.tokenPrice;
+            if (units !== '0' && nativePrice) queueQuote(signal => nativePrice(choice, currency, signal), price => {
+              const row = this.cache.get(key)!;
+              this.cache.set(key, { ...row, price });
+            });
+            if (tokenPrice) assets.tokens.forEach((token, tokenIndex) => {
+              if (token.status === 'available' && token.units !== null && token.units !== '0')
+                queueQuote(signal => tokenPrice(choice, token.metadata, currency, signal), price => {
+                  const row = this.cache.get(key)!;
+                  this.cache.set(key, { ...row, tokens: row.tokens.map((value, index) => index === tokenIndex ? { ...value, price } : value) });
+                });
+            });
+          }
         } catch {
           if (request.signal.aborted || this.generation !== generation) return;
           this.cache.set(key, { ...original, status: 'error' }); this.synchronize();
@@ -246,6 +266,25 @@ export class AccountPortfolioController {
       }
     };
     await Promise.all([worker(), worker()]);
+    // Market availability never holds a balance worker or hides observed assets.
+    // All optional quotes share one deadline, including readers that ignore abort.
+    if (quotes.length && !request.signal.aborted) {
+      const quoteRequest = new AbortController(), cancel = () => quoteRequest.abort();
+      request.signal.addEventListener('abort', cancel, { once: true });
+      const timer = setTimeout(cancel, QUOTE_PHASE_BUDGET_MS);
+      let quoteIndex = 0;
+      const quoteWorker = async () => {
+        while (quoteIndex < quotes.length && !quoteRequest.signal.aborted) {
+          try { await quotes[quoteIndex++]!(quoteRequest.signal); }
+          catch {
+            if (quoteRequest.signal.aborted) return;
+            try { check(); } catch { return; }
+          }
+        }
+      };
+      try { await Promise.all([quoteWorker(), quoteWorker()]); }
+      finally { clearTimeout(timer); request.signal.removeEventListener('abort', cancel); cancel(); }
+    }
     if (this.request === request) { this.request = null; this.publish({ refreshing: false }); }
   };
 }

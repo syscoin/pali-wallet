@@ -43,8 +43,11 @@ export const DeviceWaitingBanner: React.FC<{
       <div
         className="flex items-center gap-3 w-full max-w-[22rem] px-4 py-3 rounded-[10px] bg-brand-blue600 border border-alpha-whiteAlpha300 shadow-lg animate-fadeIn"
         data-testid="device-waiting-banner"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
       >
-        <span className="relative flex h-3 w-3 shrink-0">
+        <span aria-hidden="true" className="relative flex h-3 w-3 shrink-0">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-royalblue opacity-75" />
           <span className="relative inline-flex rounded-full h-3 w-3 bg-brand-royalblue" />
         </span>

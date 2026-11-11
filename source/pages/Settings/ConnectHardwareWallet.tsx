@@ -2,7 +2,16 @@ import React, { FC, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { DefaultModal, Button } from 'components/index';
+import {
+  CenterPanel,
+  DialogActionButton,
+  DialogActions,
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  DialogPrimitive,
+} from 'components/Dialog';
+import { Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useToastFooter } from 'hooks/useToastFooter';
@@ -12,8 +21,12 @@ import { handleTransactionError } from 'utils/errorHandling';
 
 const ConnectHardwareWalletView: FC = () => {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [setupCompleted, setSetupCompleted] = useState(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const importPending = useRef(false);
+  const trezorButton = useRef<HTMLButtonElement>(null);
+  const ledgerButton = useRef<HTMLButtonElement>(null);
+  const focusDevice = useRef<string>();
   const actionFooter = useToastFooter({ includeInFlow: true });
   const [selectedHardwareWallet, setSelectedHardwareWallet] = useState<
     string | undefined
@@ -29,8 +42,13 @@ const ConnectHardwareWalletView: FC = () => {
   const trezorAccounts = Object.values(accounts.Trezor);
   const ledgerAccounts = Object.values(accounts.Ledger);
 
-  const modalTitle = t('settings.walletSelected');
-  const modalDescription = t('settings.walletSelectedMessage');
+  useEffect(() => {
+    if (selectedHardwareWallet || !focusDevice.current) return;
+    const button =
+      focusDevice.current === HardWallets.TREZOR ? trezorButton : ledgerButton;
+    focusDevice.current = undefined;
+    button.current?.focus();
+  }, [selectedHardwareWallet]);
 
   const trezorSelectedButtonStyle = `${
     selectedHardwareWallet === HardWallets.TREZOR
@@ -60,6 +78,7 @@ const ConnectHardwareWalletView: FC = () => {
             300000 // 5 minutes timeout for hardware wallet operations
           );
 
+          setSetupCompleted(true);
           setIsModalOpen(true);
           break;
         case HardWallets.LEDGER:
@@ -71,6 +90,7 @@ const ConnectHardwareWalletView: FC = () => {
             300000 // 5 minutes timeout for hardware wallet operations
           );
 
+          setSetupCompleted(true);
           setIsModalOpen(true);
           break;
       }
@@ -192,7 +212,7 @@ const ConnectHardwareWalletView: FC = () => {
           )}
 
           {/* Instructions for after setup */}
-          {!isLoading && isModalOpen && (
+          {!isLoading && setupCompleted && (
             <div className="mx-4 mb-4 p-3 bg-green-500/20 border border-green-500/40 rounded-lg">
               <div className="flex items-start gap-2">
                 <svg
@@ -242,21 +262,34 @@ const ConnectHardwareWalletView: FC = () => {
               </div>
             </div>
           )}
-          <DefaultModal
+          <DialogPrimitive
             show={isModalOpen}
-            title={modalTitle}
-            description={modalDescription}
-            onClose={() => {
-              // Give user clear instructions about next steps
-              const shouldClose = window.confirm(
-                t('settings.hardwareWalletSetupConfirm')
-              );
-              if (shouldClose) {
-                // Close the entire browser window/tab
-                window.close();
-              }
-            }}
-          />
+            onClose={() => setIsModalOpen(false)}
+          >
+            <CenterPanel
+              padded={false}
+              scroll={false}
+              className="flex flex-col"
+            >
+              <DialogHeader
+                title={t('settings.hardwareWalletSuccess')}
+                onClose={() => setIsModalOpen(false)}
+              />
+              <DialogBody>
+                <p>{t('settings.hardwareWalletInstructions')}</p>
+              </DialogBody>
+              <DialogFooter>
+                <DialogActions>
+                  <DialogActionButton
+                    type="button"
+                    onClick={() => window.close()}
+                  >
+                    {t('settings.closeHardwareSetup')}
+                  </DialogActionButton>
+                </DialogActions>
+              </DialogFooter>
+            </CenterPanel>
+          </DialogPrimitive>
           <div className="flex flex-col items-center justify-center w-full flex-1">
             <div className="w-16 h-16 relative p-4 mb-6 rounded-[100px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]">
               <img
@@ -291,6 +324,7 @@ const ConnectHardwareWalletView: FC = () => {
                   </p>
 
                   <button
+                    ref={trezorButton}
                     className={`${trezorSelectedButtonStyle} mt-6 rounded-full py-2 w-full max-w-80 mx-auto text-center text-base font-medium mb-[6px] hover:bg-brand-blue400 hover:border-brand-blue400 hover:cursor-pointer`}
                     onClick={() =>
                       setSelectedHardwareWallet(HardWallets.TREZOR)
@@ -301,6 +335,7 @@ const ConnectHardwareWalletView: FC = () => {
                     Trezor
                   </button>
                   <button
+                    ref={ledgerButton}
                     className={`${ledgerSelectedButtonStyle} rounded-full py-2 w-full max-w-80 mx-auto text-center text-base font-medium hover:bg-brand-blue400 hover:border-brand-blue400 hover:cursor-pointer`}
                     onClick={() =>
                       setSelectedHardwareWallet(HardWallets.LEDGER)
@@ -314,6 +349,21 @@ const ConnectHardwareWalletView: FC = () => {
               )}
             </div>
             <div ref={actionFooter} className="mt-8 w-full max-w-md">
+              {selectedHardwareWallet && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="mb-4 w-full"
+                  disabled={isLoading}
+                  onClick={() => {
+                    if (importPending.current) return;
+                    focusDevice.current = selectedHardwareWallet;
+                    setSelectedHardwareWallet(undefined);
+                  }}
+                >
+                  {t('settings.changeHardwareDevice')}
+                </Button>
+              )}
               {selectedHardwareWallet && (
                 <div className="w-full gap-3 flex flex-col mb-6 mx-auto p-4 text-brand-white text-xs bg-alpha-whiteAlpha100 border border-dashed border-alpha-whiteAlpha300 rounded-[20px]">
                   <p className="font-medium">{t('settings.dontHaveWallet')}</p>
@@ -365,7 +415,11 @@ const ConnectHardwareWalletView: FC = () => {
                   if (!importPending.current) window.close();
                 }}
               >
-                {t('buttons.cancel')}
+                {t(
+                  setupCompleted
+                    ? 'settings.closeHardwareSetup'
+                    : 'buttons.cancel'
+                )}
               </Button>
             </div>
           </div>

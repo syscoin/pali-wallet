@@ -289,18 +289,18 @@ export const EvmAssetDetails = ({
 
         <AssetMarketLinks marketData={tokenData} t={t} />
 
-        {/* Verification Status */}
+        {/* Market-data provenance */}
         <div className="flex items-center justify-between mb-4">
           <span className="text-gray-400 text-xs">
-            {t('tokens.verification')}
+            {t('tokens.marketDataSource')}
           </span>
           {tokenData.isVerified ? (
             <span className="px-2 py-1 bg-green-500 bg-opacity-20 text-green-500 text-xs rounded flex items-center">
-              ✓ {t('tokens.verifiedByCoinGecko')}
+              {t('tokens.listedOnCoinGecko')}
             </span>
           ) : (
             <span className="px-2 py-1 bg-yellow-500 bg-opacity-20 text-yellow-500 text-xs rounded">
-              ⚠ {t('tokens.unverifiedToken')}
+              {t('tokens.coinGeckoListingUnavailable')}
             </span>
           )}
         </div>

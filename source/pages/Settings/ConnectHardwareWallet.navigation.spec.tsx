@@ -35,9 +35,24 @@ jest.mock('hooks/useController', () => ({
 jest.mock('utils/errorHandling', () => ({
   handleTransactionError: () => true,
 }));
+jest.mock('components/Dialog', () => ({
+  DialogPrimitive: ({ show, onClose, children }: any) =>
+    show ? (
+      <div role="dialog">
+        <button onClick={onClose}>Dismiss completion</button>
+        {children}
+      </div>
+    ) : null,
+  CenterPanel: ({ children }: any) => <div>{children}</div>,
+  DialogHeader: ({ title }: any) => <h2>{title}</h2>,
+  DialogBody: ({ children }: any) => <div>{children}</div>,
+  DialogFooter: ({ children }: any) => <footer>{children}</footer>,
+  DialogActions: ({ children }: any) => <div>{children}</div>,
+  DialogActionButton: ({ children, ...props }: any) => (
+    <button {...props}>{children}</button>
+  ),
+}));
 jest.mock('components/index', () => ({
-  DefaultModal: ({ show, onClose }: any) =>
-    show ? <button onClick={onClose}>Finish setup</button> : null,
   Button: ({ children, variant, loading, ...props }: any) => {
     if (props.id === 'connect-btn') mockConnect = props.onClick;
     if (children === 'buttons.cancel') mockCancel = props.onClick;
@@ -59,6 +74,47 @@ describe('hardware setup navigation', () => {
     mockEmitter.mockReset().mockResolvedValue(undefined);
   });
   afterEach(() => jest.restoreAllMocks());
+
+  it('changes an idle device choice without importing or closing and restores focus', () => {
+    const close = jest
+      .spyOn(window, 'close')
+      .mockImplementation(() => undefined);
+    render(<ConnectHardwareWallet />);
+    fireEvent.click(screen.getByRole('button', { name: 'Trezor' }));
+    expect(screen.queryByRole('button', { name: 'Ledger' })).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'settings.changeHardwareDevice' })
+    );
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Trezor' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ledger' }));
+    expect(mockEmitter).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it('dismisses successful setup without a browser confirmation and offers a direct close action', async () => {
+    const close = jest
+      .spyOn(window, 'close')
+      .mockImplementation(() => undefined);
+    const confirm = jest.spyOn(window, 'confirm');
+    render(<ConnectHardwareWallet />);
+    fireEvent.click(screen.getByRole('button', { name: 'Ledger' }));
+    await act(async () => {
+      await mockConnect();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss completion' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(
+      screen.getByText('settings.hardwareWalletInstructions')
+    ).toBeTruthy();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'settings.closeHardwareSetup' })
+    );
+    expect(close).toHaveBeenCalledTimes(1);
+  });
 
   it('lets idle setup close without adding fake browser history or blocking navigation', () => {
     const close = jest
@@ -131,6 +187,11 @@ describe('hardware setup navigation', () => {
         .getByRole('button', { name: 'buttons.cancel' })
         .hasAttribute('disabled')
     ).toBe(true);
+    expect(
+      screen
+        .getByRole('button', { name: 'settings.changeHardwareDevice' })
+        .hasAttribute('disabled')
+    ).toBe(true);
     expect(addListener).toHaveBeenCalledWith(
       'beforeunload',
       expect.any(Function)
@@ -145,10 +206,12 @@ describe('hardware setup navigation', () => {
     );
     expect(
       screen
-        .getByRole('button', { name: 'buttons.cancel' })
+        .getAllByRole('button', { name: 'settings.closeHardwareSetup' })[0]
         .hasAttribute('disabled')
     ).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'settings.closeHardwareSetup' })[0]
+    );
     expect(close).toHaveBeenCalledTimes(1);
   });
 
@@ -204,7 +267,7 @@ describe('hardware setup navigation', () => {
       await act(async () => {
         rejectImport(new Error('Ledger import failed'));
       });
-      expect(screen.queryByRole('button', { name: 'Finish setup' })).toBeNull();
+      expect(screen.queryByRole('dialog')).toBeNull();
       expect(removeListener).toHaveBeenCalledWith('beforeunload', beforeUnload);
       expect(
         screen
@@ -229,9 +292,7 @@ describe('hardware setup navigation', () => {
         [],
         300000
       );
-      expect(
-        screen.getByRole('button', { name: 'Finish setup' })
-      ).toBeDefined();
+      expect(screen.getByRole('dialog')).toBeDefined();
     } finally {
       if (originalHid) Object.defineProperty(navigator, 'hid', originalHid);
       else delete (navigator as any).hid;
@@ -293,7 +354,7 @@ describe('hardware setup navigation', () => {
       expect(mockEmitter).toHaveBeenCalledTimes(1);
       expect(mockAlert.info).toHaveBeenCalledWith('send.canceled');
       expect(mockAlert.error).not.toHaveBeenCalled();
-      expect(screen.queryByRole('button', { name: 'Finish setup' })).toBeNull();
+      expect(screen.queryByRole('dialog')).toBeNull();
       expect(
         screen
           .getByRole('button', { name: 'buttons.connect' })
@@ -317,9 +378,7 @@ describe('hardware setup navigation', () => {
         [],
         300000
       );
-      expect(
-        screen.getByRole('button', { name: 'Finish setup' })
-      ).toBeDefined();
+      expect(screen.getByRole('dialog')).toBeDefined();
     } finally {
       if (originalHid) Object.defineProperty(navigator, 'hid', originalHid);
       else delete (navigator as any).hid;
@@ -344,12 +403,10 @@ describe('hardware setup navigation', () => {
 
       expect(mockEmitter).toHaveBeenCalledTimes(1);
       expect(mockEmitter).toHaveBeenCalledWith(['wallet', method], [], 300000);
-      expect(
-        screen.getByRole('button', { name: 'Finish setup' })
-      ).toBeDefined();
+      expect(screen.getByRole('dialog')).toBeDefined();
       expect(
         screen
-          .getByRole('button', { name: 'buttons.cancel' })
+          .getAllByRole('button', { name: 'settings.closeHardwareSetup' })[0]
           .hasAttribute('disabled')
       ).toBe(false);
     } finally {

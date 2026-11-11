@@ -26,6 +26,7 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
   const [savedNetwork, setSavedNetwork] = useState<AccountActivityNetwork | null>(null);
   const [sheet, setSheet] = useState<'filter' | 'options' | 'saved-networks' | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const openSheet = (next: 'filter' | 'options' | 'saved-networks') => { setError(''); setSheet(next); };
   const lifetime = useRef({ alive: true, generation: 0, busy: false });
   const arrival = useRef('');
   const list = useRef<FlatList<AccountActivityRow>>(null);
@@ -119,13 +120,13 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
   return <SafeAreaView edges={navigation ? ['top'] : ['top', 'bottom']} style={s.root}>
     <View style={s.header}><Header title="Activity" subtitle={accountLabel} right={<View style={s.toolbar}>
       <IconButton label="Refresh activity" icon="refresh" disabled={busy || snapshot.refreshing || snapshot.status === 'loading'} onPress={() => void run(async () => { await controller.refresh(); })} />
-      <IconButton label="Activity options" icon="settings" selected={sheet === 'options'} onPress={() => setSheet('options')} />
+      <IconButton label="Activity options" icon="settings" selected={sheet === 'options'} onPress={() => openSheet('options')} />
     </View>} /></View>
     <FlatList ref={list} testID="account-activity-list" data={snapshot.rows} keyExtractor={entry => entry.key} contentContainerStyle={s.content}
       scrollEventThrottle={16} onScroll={event => { if (!scrollPosition.current.restore) scrollPosition.current.offset = event.nativeEvent.contentOffset.y; }}
       onLayout={restoreScroll} onContentSizeChange={(_width, height) => { scrollPosition.current.height = height; restoreScroll(); }}
       ListHeaderComponent={<View style={s.section}>
-        <IdlePressable accessibilityRole="button" accessibilityLabel={`Activity network: ${filterName}`} disabled={busy || snapshot.status === 'loading'} onPress={() => setSheet('filter')} style={s.filter}>
+        <IdlePressable accessibilityRole="button" accessibilityLabel={`Activity network: ${filterName}`} disabled={busy || snapshot.status === 'loading'} onPress={() => openSheet('filter')} style={s.filter}>
           <View style={s.filterChoice}>
             <View testID={`activity-filter-icon-${filterChoice?.scope.network.id ?? 'all'}`} accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
               {filterChoice ? <Coin id={filterChoice.scope.network.id} fallbackSymbol={filterChoice.symbol} size={18} /> : <Icon name="globe" size={18} color={colors.blue} />}
@@ -159,13 +160,14 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
         disabled={busy || snapshot.loadingMore} onPress={() => void run(async () => { await controller.loadMore(); })} />}</View>} />
     <Modal visible={sheet !== null} transparent animationType="slide" onRequestClose={closeSheet}>
       {sheet === 'filter' || sheet === 'saved-networks' ? <NetworkSourceSheet purpose="filter" overContent busy={busy} selectedId={sheet === 'filter' ? snapshot.filter ?? '' : ''}
+        error={error ? t('mobile.accountPortfolio.error') : undefined}
         title={sheet === 'saved-networks' ? 'Saved pending' : undefined}
         options={sheet === 'saved-networks' ? savedNetworks.map(choice => ({ id: choice.scope.network.id, name: choice.networkName, symbol: choice.symbol }))
           : [{ id: 'all', name: t('mobile.accountPortfolio.allNetworks'), symbol: '' }, ...snapshot.choices.map(choice => ({ id: choice.scope.network.id, name: choice.networkName, symbol: choice.symbol }))]}
         onSelect={id => { if (sheet === 'saved-networks') openSavedPending(id); else void run(async check => { await controller.selectFilter(id); check(); setSheet(null); }); }} onClose={closeSheet} />
         : <View style={s.modal}><Card style={s.options}><Text style={s.emptyTitle}>Activity options</Text>
           {savedNetworks.length > 0 && <Button title="Saved pending" icon="clock" variant="secondary" onPress={() => {
-            if (snapshot.filter && snapshot.filter !== 'all') openSavedPending(snapshot.filter); else setSheet('saved-networks');
+            if (snapshot.filter && snapshot.filter !== 'all') openSavedPending(snapshot.filter); else openSheet('saved-networks');
           }} />}
           <Button title={snapshot.view.showZero ? 'Hide zero-value token activity' : 'Show zero-value token activity'} variant="secondary" onPress={() => { void controller.setView({ showZero: !snapshot.view.showZero }); setSheet(null); }} />
           <Button title="Close" variant="quiet" onPress={closeSheet} />

@@ -985,7 +985,9 @@
     "smartAccountGuardianRecoveryFinalized": "恢复已完成，此账户已可使用。",
     "smartAccountGuardianRecoveryFinalizeFailed": "完成恢复失败。",
     "smartAccountGuardianRecoveryExpired": "此恢复请求在完成前已过期。请重新开始恢复。",
-    "invalidAddress": "无效地址"
+    "invalidAddress": "无效地址",
+    "changeHardwareDevice": "更换设备",
+    "closeHardwareSetup": "关闭设置"
   },
   "start": {
     "eraseAndStartFresh": "清除并重新开始",
@@ -1054,7 +1056,10 @@
     "tokenIdIsRequired": "需要代币ID",
     "tokenIdMustBeNumber": "代币ID必须是数字",
     "erc1155ZeroBalanceNote": "注意：ERC-1155对不存在的代币返回0余额。添加前请验证此代币ID是否存在。",
-    "verifyTokenExists": "（验证代币存在）"
+    "verifyTokenExists": "（验证代币存在）",
+    "marketDataSource": "市场数据来源",
+    "listedOnCoinGecko": "已收录于 CoinGecko",
+    "coinGeckoListingUnavailable": "暂无法获取收录信息"
   },
   "transactions": {
     "labelCopied": "已将{{label}}复制到剪贴板",
@@ -2340,7 +2345,9 @@
       "activityNetwork": "查看 {{network}} 上的交易",
       "activityAll": "查看已添加网络的动态",
       "collectibles": "已保存藏品：{{count}} · {{network}}",
-      "refresh": "刷新投资组合"
+      "refresh": "刷新投资组合",
+      "lastKnownBalance": "上次已知余额",
+      "balanceUnavailable": "余额暂不可用"
     },
     "sendAssets": {
       "choose": "选择资产",

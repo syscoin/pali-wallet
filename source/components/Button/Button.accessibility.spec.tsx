@@ -37,6 +37,27 @@ it('preserves an explicit accessible name for icon controls', () => {
   expect(screen.getByRole('button', { name: 'Close dialog' })).toBeDefined();
 });
 
+it.each(['primary', 'unstyled'] as const)(
+  'retains composed child text while a %s button is busy',
+  (variant) => {
+    const ActionLabel = () => <p>Connect Ledger</p>;
+    const { rerender } = render(
+      <Button variant={variant}>
+        <ActionLabel />
+      </Button>
+    );
+    const button = screen.getByRole('button', { name: 'Connect Ledger' });
+    rerender(
+      <Button variant={variant} loading>
+        <ActionLabel />
+      </Button>
+    );
+    expect(screen.getByRole('button', { name: 'Connect Ledger' })).toBe(button);
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(button.querySelector('[aria-hidden="true"] svg')).toBeTruthy();
+  }
+);
+
 it.each([
   'primary',
   'secondary',

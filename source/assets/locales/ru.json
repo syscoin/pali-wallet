@@ -985,7 +985,9 @@
     "smartAccountGuardianRecoveryFinalized": "Восстановление завершено, аккаунт готов.",
     "smartAccountGuardianRecoveryFinalizeFailed": "Не удалось завершить восстановление.",
     "smartAccountGuardianRecoveryExpired": "Срок этого запроса на восстановление истёк до его завершения. Начните восстановление заново.",
-    "invalidAddress": "Недействительный адрес"
+    "invalidAddress": "Недействительный адрес",
+    "changeHardwareDevice": "Сменить устройство",
+    "closeHardwareSetup": "Закрыть настройку"
   },
   "start": {
     "eraseAndStartFresh": "Удалить и начать заново",
@@ -1054,7 +1056,10 @@
     "tokenIdIsRequired": "Требуется ID токена",
     "tokenIdMustBeNumber": "ID токена должен быть числом",
     "erc1155ZeroBalanceNote": "Примечание: ERC-1155 возвращает баланс 0 для несуществующих токенов. Проверьте, что этот ID токена существует, перед добавлением.",
-    "verifyTokenExists": "(проверить существование токена)"
+    "verifyTokenExists": "(проверить существование токена)",
+    "marketDataSource": "Источник рыночных данных",
+    "listedOnCoinGecko": "Есть в каталоге CoinGecko",
+    "coinGeckoListingUnavailable": "Данные каталога недоступны"
   },
   "transactions": {
     "labelCopied": "{{label}} скопировано в буфер обмена",
@@ -2340,7 +2345,9 @@
       "activityNetwork": "Показать транзакции в {{network}}",
       "activityAll": "Показать активность в добавленных сетях",
       "collectibles": "Сохранённые коллекционные активы: {{count}} · {{network}}",
-      "refresh": "Обновить портфель"
+      "refresh": "Обновить портфель",
+      "lastKnownBalance": "Последний известный баланс",
+      "balanceUnavailable": "Баланс недоступен"
     },
     "sendAssets": {
       "choose": "Выбрать актив",

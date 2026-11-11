@@ -985,7 +985,9 @@
     "smartAccountGuardianRecoveryFinalized": "復元が完了し、このアカウントを使用できます。",
     "smartAccountGuardianRecoveryFinalizeFailed": "復元を完了できませんでした。",
     "smartAccountGuardianRecoveryExpired": "この復元リクエストは完了前に期限切れになりました。もう一度復元を開始してください。",
-    "invalidAddress": "無効なアドレスです"
+    "invalidAddress": "無効なアドレスです",
+    "changeHardwareDevice": "デバイスを変更",
+    "closeHardwareSetup": "設定を閉じる"
   },
   "start": {
     "eraseAndStartFresh": "消去して最初から始める",
@@ -1054,7 +1056,10 @@
     "tokenIdIsRequired": "トークンIDが必要です",
     "tokenIdMustBeNumber": "トークンIDは数値である必要があります",
     "erc1155ZeroBalanceNote": "注意：ERC-1155は存在しないトークンに対して0の残高を返します。追加する前にこのトークンIDが存在するか確認してください。",
-    "verifyTokenExists": "（トークンの存在を確認）"
+    "verifyTokenExists": "（トークンの存在を確認）",
+    "marketDataSource": "市場データの提供元",
+    "listedOnCoinGecko": "CoinGeckoに掲載",
+    "coinGeckoListingUnavailable": "掲載情報を取得できません"
   },
   "transactions": {
     "labelCopied": "{{label}}をクリップボードにコピーしました",
@@ -2340,7 +2345,9 @@
       "activityNetwork": "{{network}} の取引を見る",
       "activityAll": "追加したネットワークの履歴を見る",
       "collectibles": "保存済みコレクション：{{count}} · {{network}}",
-      "refresh": "ポートフォリオを更新"
+      "refresh": "ポートフォリオを更新",
+      "lastKnownBalance": "最後に確認した残高",
+      "balanceUnavailable": "残高を取得できません"
     },
     "sendAssets": {
       "choose": "資産を選択",

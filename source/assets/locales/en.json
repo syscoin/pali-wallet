@@ -985,7 +985,9 @@
     "smartAccountGuardianRecoveryFinalized": "Recovery finished and this account is ready.",
     "smartAccountGuardianRecoveryFinalizeFailed": "Failed to finish recovery.",
     "smartAccountGuardianRecoveryExpired": "This recovery request expired before it was finished. Start recovery again.",
-    "invalidAddress": "Invalid address"
+    "invalidAddress": "Invalid address",
+    "changeHardwareDevice": "Change device",
+    "closeHardwareSetup": "Close setup"
   },
   "start": {
     "eraseAndStartFresh": "Erase and start fresh",
@@ -1054,7 +1056,10 @@
     "tokenIdIsRequired": "Token ID is required",
     "tokenIdMustBeNumber": "Token ID must be a number",
     "erc1155ZeroBalanceNote": "Note: ERC-1155 returns 0 balance for non-existent tokens. Verify this token ID exists before adding.",
-    "verifyTokenExists": "(verify token exists)"
+    "verifyTokenExists": "(verify token exists)",
+    "marketDataSource": "Market data source",
+    "listedOnCoinGecko": "Listed on CoinGecko",
+    "coinGeckoListingUnavailable": "Listing unavailable"
   },
   "transactions": {
     "labelCopied": "{{label}} copied to clipboard",
@@ -2340,7 +2345,9 @@
       "activityNetwork": "View transactions on {{network}}",
       "activityAll": "View activity across added networks",
       "collectibles": "Saved collectibles: {{count}} · {{network}}",
-      "refresh": "Refresh portfolio"
+      "refresh": "Refresh portfolio",
+      "lastKnownBalance": "Last known balance",
+      "balanceUnavailable": "Balance unavailable"
     },
     "sendAssets": {
       "choose": "Choose asset",

@@ -985,7 +985,9 @@
     "smartAccountGuardianRecoveryFinalized": "복구가 완료되었고 이 계정을 사용할 수 있습니다.",
     "smartAccountGuardianRecoveryFinalizeFailed": "복구를 완료하지 못했습니다.",
     "smartAccountGuardianRecoveryExpired": "이 복구 요청은 완료되기 전에 만료되었습니다. 복구를 다시 시작하세요.",
-    "invalidAddress": "유효하지 않은 주소입니다"
+    "invalidAddress": "유효하지 않은 주소입니다",
+    "changeHardwareDevice": "기기 변경",
+    "closeHardwareSetup": "설정 닫기"
   },
   "start": {
     "eraseAndStartFresh": "지우고 새로 시작",
@@ -1054,7 +1056,10 @@
     "tokenIdIsRequired": "토큰 ID가 필요합니다",
     "tokenIdMustBeNumber": "토큰 ID는 숫자여야 합니다",
     "erc1155ZeroBalanceNote": "참고: ERC-1155는 존재하지 않는 토큰에 대해 0 잔액을 반환합니다. 추가하기 전에 이 토큰 ID가 존재하는지 확인하세요.",
-    "verifyTokenExists": "(토큰 존재 확인)"
+    "verifyTokenExists": "(토큰 존재 확인)",
+    "marketDataSource": "시장 데이터 출처",
+    "listedOnCoinGecko": "CoinGecko에 등록됨",
+    "coinGeckoListingUnavailable": "등록 정보를 확인할 수 없습니다"
   },
   "transactions": {
     "labelCopied": "{{label}} 클립보드에 복사됨",
@@ -2340,7 +2345,9 @@
       "activityNetwork": "{{network}} 거래 보기",
       "activityAll": "추가된 네트워크의 활동 보기",
       "collectibles": "저장된 수집품: {{count}} · {{network}}",
-      "refresh": "포트폴리오 새로고침"
+      "refresh": "포트폴리오 새로고침",
+      "lastKnownBalance": "마지막으로 확인된 잔액",
+      "balanceUnavailable": "잔액을 확인할 수 없습니다"
     },
     "sendAssets": {
       "choose": "자산 선택",

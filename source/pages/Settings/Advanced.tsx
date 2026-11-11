@@ -340,7 +340,7 @@ const Advanced = () => {
                       min={0}
                       max={120}
                       step={1}
-                      className="text-center text-white outline-none"
+                      className="text-center text-white outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2 focus-visible:ring-offset-bkg-3"
                       style={{
                         width: '60px',
                         height: '32px',
