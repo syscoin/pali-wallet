@@ -6,7 +6,7 @@ import { useNativeTranslation } from '../platform/localization';
 import type { NativeSlhDsaManagement } from '../smartAccount/slhDsaManagement';
 import type { NativeSlhPublicState } from '../smartAccount/slhDsaRuntime';
 import type { NativeSmartAccountOperation } from '../smartAccount/operation';
-import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
+import { Button, Card, colors, Header, Icon, Notice, Screen, Text } from '../ui';
 import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation';
 
 type Props = { ledgerConnection?: NativeLedgerConnectionView; open(signal: AbortSignal, assertCurrent: () => void): Promise<NativeSlhDsaManagement>; onBack(): void };
@@ -90,7 +90,16 @@ export function NativeSlhDsaManagementScreen({ open, onBack, ledgerConnection }:
     catch (error) { await next.dispose(); throw error; }
   });
   const keyCard = (keyId: string, state: NativeSlhPublicState | null, installed: boolean) => <Card key={keyId} style={s.card}>
-    <Text>{t(installed ? 'settings.installed' : 'settings.smartAccountInfrastructureReadyStatus')}</Text>
+    <View style={s.moduleHeading}>
+      <View style={s.moduleIdentity}>
+        <View style={s.moduleIcon}><Icon name="shield" size={21} color={colors.blue} /></View>
+        <Text style={s.moduleName}>SLH-DSA</Text>
+      </View>
+      <View accessible accessibilityRole="text" accessibilityLabel={t(installed ? 'settings.installed' : 'settings.smartAccountInfrastructureReadyStatus')} style={s.statusBadge}>
+        {installed && <Icon name="check" size={15} color={colors.green} />}
+        <Text style={s.statusText}>{t(installed ? 'settings.installed' : 'settings.smartAccountInfrastructureReadyStatus')}</Text>
+      </View>
+    </View>
     <Text selectable style={s.key}>{state?.pkRoot ?? keyId}</Text>
     {state && <Text accessibilityLabel={`SLH-DSA ${state.signatureCount} / ${state.signatureLimit}`}>SLH-DSA · {state.signatureCount} / {state.signatureLimit}</Text>}
     {!state && <Text>{t('settings.slhDsaLocalSignerMissing')}</Text>}
@@ -120,4 +129,11 @@ export function NativeSlhDsaManagementScreen({ open, onBack, ledgerConnection }:
     </Screen>
   </SafeAreaView>;
 }
-const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: colors.bg }, card: { padding: 16, gap: 12 }, key: { fontFamily: 'monospace', fontSize: 12, color: colors.muted }, actions: { gap: 8 } });
+const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: colors.bg }, card: { padding: 16, gap: 12 }, key: { fontFamily: 'monospace', fontSize: 12, color: colors.muted }, actions: { gap: 8 },
+  moduleHeading: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
+  moduleIdentity: { flex: 1, minWidth: 130, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  moduleIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' },
+  moduleName: { flex: 1, fontWeight: '600', fontSize: 17 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#12312d' },
+  statusText: { color: colors.green, fontSize: 12, fontWeight: '600' },
+});
