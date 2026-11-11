@@ -120,7 +120,7 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
   const amount = hidden ? HIDDEN_BALANCE : snapshot.knownValue === null || !snapshot.currency ? '—' : snapshot.knownValue >= 1e9
     ? `≈ ${compactActivityAmountLabel(String(snapshot.knownValue))} ${snapshot.currency.toUpperCase()}` : formatIndicativeFiat(snapshot.knownValue, snapshot.currency) ?? '—';
   const selectSource = (id: string) => {
-    if (sheet === 'filter') { void run(async () => { await controller.selectFilter(id); setSheet(null); }); return; }
+    if (sheet === 'filter') { void run(async check => { await controller.selectFilter(id); check(); setSheet(null); }); return; }
     const source = sources.find(entry => entry.id === id); if (!source) return;
     if (sheet === 'send') void run(async check => { await send(source.row.choice, undefined, check); check(); setSheet(null); });
     else void openDetail(source.row.choice, true);

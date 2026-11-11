@@ -28,6 +28,7 @@ function fixture(screen: 'wallet' | 'activity', failed = false) {
     refreshing: false, knownValue: failed ? null : 1005, partial: failed, currency: 'usd',
     view: { filter: 'all', showZero: false }, hasMore: false };
   let rejectSelection = true, hidden = false, writes = 0, cursor = 0;
+  let selectionGate: Promise<void> | undefined;
   const cells: Cell[] = [], effects: (() => void)[] = [];
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const effect = (run: () => void | (() => void), deps?: readonly unknown[]) => {
@@ -49,7 +50,7 @@ function fixture(screen: 'wallet' | 'activity', failed = false) {
     AppState: { currentState: 'active' }, StyleSheet: { create: (value: unknown) => value } };
   const controller = { subscribe: () => () => undefined, getSnapshot: () => snapshot, connect: () => () => undefined,
     setCurrency() {}, cachedBalances: () => [], findRow: () => undefined, getNetwork: () => undefined,
-    async selectFilter(value: string) { writes++; if (rejectSelection) throw Error('Storage unavailable'); snapshot.filter = value; },
+    async selectFilter(value: string) { writes++; await selectionGate; if (rejectSelection) throw Error('Storage unavailable'); snapshot.filter = value; },
     async refresh() { throw Error('Activity unavailable'); },
   };
   const imports: Record<string, unknown> = {
@@ -100,6 +101,8 @@ function fixture(screen: 'wallet' | 'activity', failed = false) {
   return { render, nodes, modal, row,
     setHidden(value: boolean) { hidden = value; },
     permitSelection() { rejectSelection = false; },
+    holdSelection(value: Promise<void>) { selectionGate = value; },
+    selectedFilter: () => snapshot.filter,
     writes: () => writes,
     openFilter() { const label = screen === 'wallet' ? 'Choose network filter, All networks' : 'Activity network: All networks';
       nodes(render()).find(node => node.props.accessibilityLabel === label)!.props.onPress(); },
@@ -147,6 +150,20 @@ for (const source of ['Send', 'Receive'] as const) test(`Wallet ${source} opens 
     assert(f.modal());
     assert(!f.nodes(f.modal()).some(node => node.props.accessibilityRole === 'alert'));
   } finally { f.close(); }
+});
+
+for (const source of ['Send', 'Receive'] as const) test(`a closed filter save cannot dismiss a reopened ${source} chooser`, async () => {
+  const f = fixture('wallet'), held = Promise.withResolvers<void>();
+  try {
+    f.permitSelection(); f.holdSelection(held.promise);
+    f.openFilter(); f.chooseEthereum(); await tick();
+    f.modal()!.props.onRequestClose(); f.openSource(source);
+    assert(f.modal());
+    held.resolve(); await tick();
+    const modal = f.modal(); assert(modal, 'the newer chooser remains open');
+    assert(f.nodes(modal).some(node => node.type === 'Text' && node.children.includes(source === 'Send' ? 'Send from' : 'Receive on')));
+    assert.equal(f.writes(), 1); assert.equal(f.selectedFilter(), 'ethereum', 'the selected preference still persists');
+  } finally { held.resolve(); f.close(); }
 });
 
 test('failed network observations retain their amounts, label them as last known, and hide stale fiat values', () => {
