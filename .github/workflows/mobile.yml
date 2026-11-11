@@ -73,8 +73,7 @@ on:
       - '.github/workflows/mobile.yml'
       - '.github/scripts/configure-chromium-sandbox.sh'
       - '.github/scripts/verify-playwright-apt-cache.sh'
-      - '.github/scripts/configure-playwright-apt-sources.py'
-      - '.github/scripts/tests/configure-playwright-apt-sources.test.cjs'
+      - '.github/scripts/with-playwright-apt-diagnostics.sh'
       - '.github/scripts/tests/configure-chromium-sandbox.test.cjs'
       - '.nvmrc'
 
@@ -123,7 +122,7 @@ jobs:
 
   browser:
     name: Mobile browser (${{ matrix.suite }})
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -178,16 +177,16 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /var/cache/pali-playwright-apt/*.deb
-          key: playwright-apt-v1-${{ steps.apt-cache-key.outputs.platform }}-${{ steps.apt-cache-key.outputs.image }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('yarn.lock', 'package.json', '.github/workflows/main.yml', '.github/scripts/verify-playwright-apt-cache.sh', '.github/scripts/configure-playwright-apt-sources.py') }}-${{ steps.apt-cache-key.outputs.week }}
+          key: playwright-apt-v1-${{ steps.apt-cache-key.outputs.platform }}-${{ steps.apt-cache-key.outputs.image }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('yarn.lock', 'package.json', '.github/workflows/main.yml', '.github/scripts/verify-playwright-apt-cache.sh') }}-${{ steps.apt-cache-key.outputs.week }}
       - name: Verify restored archives against fresh apt metadata
-        run: bash ../../.github/scripts/verify-playwright-apt-cache.sh
+        run: bash ../../.github/scripts/with-playwright-apt-diagnostics.sh bash ../../.github/scripts/verify-playwright-apt-cache.sh
       - name: Configure temporary apt download archive
         run: |
           printf 'Dir::Cache::archives "%s";\nAPT::Keep-Downloaded-Packages "true";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
             /var/cache/pali-playwright-apt | sudo tee /etc/apt/apt.conf.d/99pali-playwright-cache >/dev/null
       # The existing extension cache stores downloads only. Installation and
       # sandbox admission still run on every mobile job.
-      - run: npx --no-install playwright install --with-deps chromium
+      - run: bash ../../.github/scripts/with-playwright-apt-diagnostics.sh npx --no-install playwright install --with-deps chromium
       - name: Remove temporary apt configuration
         if: always()
         run: sudo rm -f /etc/apt/apt.conf.d/99pali-playwright-cache

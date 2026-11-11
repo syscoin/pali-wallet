@@ -67,7 +67,7 @@ jobs:
           retention-days: 14
   visual:
     name: visual regression shard ${{ matrix.shard }}/4
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     # Isolated runners retain one worker and all required evidence.
     # The 150-test shards can finish near 30 minutes; retain time for artifact uploads.
     timeout-minutes: 45
@@ -108,9 +108,9 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /var/cache/pali-playwright-apt/*.deb
-          key: playwright-apt-v1-${{ steps.apt-cache-key.outputs.platform }}-${{ steps.apt-cache-key.outputs.image }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('yarn.lock', 'package.json', '.github/workflows/main.yml', '.github/scripts/verify-playwright-apt-cache.sh', '.github/scripts/configure-playwright-apt-sources.py') }}-${{ steps.apt-cache-key.outputs.week }}
+          key: playwright-apt-v1-${{ steps.apt-cache-key.outputs.platform }}-${{ steps.apt-cache-key.outputs.image }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('yarn.lock', 'package.json', '.github/workflows/main.yml', '.github/scripts/verify-playwright-apt-cache.sh') }}-${{ steps.apt-cache-key.outputs.week }}
       - name: Verify restored archives against fresh apt metadata
-        run: bash .github/scripts/verify-playwright-apt-cache.sh
+        run: bash .github/scripts/with-playwright-apt-diagnostics.sh bash .github/scripts/verify-playwright-apt-cache.sh
       - name: Configure temporary apt download archive
         run: |
           # Cache only package archives, never apt lists or installed dpkg state.
@@ -119,7 +119,7 @@ jobs:
             /var/cache/pali-playwright-apt | sudo tee /etc/apt/apt.conf.d/99pali-playwright-cache >/dev/null
       # Still refreshes signed apt indexes and installs current dependencies on
       # every runner. Cache hits do not skip package installation or verification.
-      - run: npx playwright install --with-deps chromium
+      - run: bash .github/scripts/with-playwright-apt-diagnostics.sh npx playwright install --with-deps chromium
       - name: Remove temporary apt configuration
         if: always()
         run: sudo rm -f /etc/apt/apt.conf.d/99pali-playwright-cache
@@ -183,7 +183,7 @@ jobs:
         run: test '${{ needs.visual.result }}' = 'success'
   conformance:
     name: test dapp conformance
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     # A cold Chromium and wallet build can take eleven minutes before tests start.
     timeout-minutes: 30
     permissions:
@@ -222,9 +222,9 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /var/cache/pali-playwright-apt/*.deb
-          key: playwright-apt-v1-${{ steps.apt-cache-key.outputs.platform }}-${{ steps.apt-cache-key.outputs.image }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('yarn.lock', 'package.json', '.github/workflows/main.yml', '.github/scripts/verify-playwright-apt-cache.sh', '.github/scripts/configure-playwright-apt-sources.py') }}-${{ steps.apt-cache-key.outputs.week }}
+          key: playwright-apt-v1-${{ steps.apt-cache-key.outputs.platform }}-${{ steps.apt-cache-key.outputs.image }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('yarn.lock', 'package.json', '.github/workflows/main.yml', '.github/scripts/verify-playwright-apt-cache.sh') }}-${{ steps.apt-cache-key.outputs.week }}
       - name: Verify restored archives against fresh apt metadata
-        run: bash .github/scripts/verify-playwright-apt-cache.sh
+        run: bash .github/scripts/with-playwright-apt-diagnostics.sh bash .github/scripts/verify-playwright-apt-cache.sh
       - name: Configure temporary apt download archive
         run: |
           # Cache only package archives, never apt lists or installed dpkg state.
@@ -233,7 +233,7 @@ jobs:
             /var/cache/pali-playwright-apt | sudo tee /etc/apt/apt.conf.d/99pali-playwright-cache >/dev/null
       # Still refreshes signed apt indexes and installs current dependencies on
       # every runner. Cache hits do not skip package installation or verification.
-      - run: npx playwright install --with-deps chromium
+      - run: bash .github/scripts/with-playwright-apt-diagnostics.sh npx playwright install --with-deps chromium
       - name: Remove temporary apt configuration
         if: always()
         run: sudo rm -f /etc/apt/apt.conf.d/99pali-playwright-cache

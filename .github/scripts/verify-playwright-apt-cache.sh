@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Apply on cold caches too, before Playwright's own apt update/install.
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-sudo -n python3 "$script_dir/configure-playwright-apt-sources.py"
-
 archive_dir=/var/cache/pali-playwright-apt
 # Check the sandbox identity through every parent, including on a cold cache.
 sudo -u _apt test -x "$archive_dir"
