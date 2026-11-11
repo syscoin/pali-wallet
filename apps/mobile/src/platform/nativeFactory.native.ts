@@ -572,26 +572,31 @@ export function createNativeWalletControllers() {
       verifyExport: (...args) => observeFailure(() => notes.verifyExport(...args)),
     });
   };
-  const openSmartAccountDeployment = async (assertOwner: () => void) => {
-    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
-    return observeFailure(() => selected.openSmartAccountDeployment(assertCurrent));
+  const openSmartAccountDeployment = async (assertOwner: () => void, signal: AbortSignal, authentication: NativePrivateAuthenticationScope) => {
+    const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
+    const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
+    return observeFailure(() => selected.openSmartAccountDeployment(check, binding));
   };
-  const openResumedSmartAccountOperation = async (id: string, signal: AbortSignal, assertOwner: () => void) => {
-    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+  const openResumedSmartAccountOperation = async (id: string, signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
+    const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
     const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
     check();
-    const operation = await observeFailure(() => selected.resumeSmartAccountOperation(id, signal, check));
+    const operation = await observeFailure(() => selected.resumeSmartAccountOperation(id, signal, check, binding));
     try { check(); return operation; } catch (error) { await operation.dispose(); throw error; }
   };
-  const openSmartInfrastructure = async (signal: AbortSignal, assertOwner: () => void) => {
-    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+  const openSmartInfrastructure = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
+    const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
     const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
     check();
-    const value = await observeFailure(() => selected.openSmartInfrastructure(signal, check));
+    const value = await observeFailure(() => selected.openSmartInfrastructure(signal, check, binding));
     try { check(); return value; } catch (error) { value.dispose(); throw error; }
   };
-  const openSmartAccountModules = async (signal: AbortSignal, assertOwner: () => void): Promise<NativeSmartModuleManagement> => {
-    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+  const openSmartAccountModules = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeSmartModuleManagement> => {
+    const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
     const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
     check();
     const snapshot = authority.getSnapshot(), catalogue = authority.getCatalogue();
@@ -605,16 +610,17 @@ export function createNativeWalletControllers() {
       async openChange(draft, operationSignal, assertView) {
         const guard = () => { check(); assertSynchronousEvmFeeGuard(assertView); if (operationSignal.aborted) throw Error('CANCELLED'); };
         guard();
-        const operation = await observeFailure(() => selected.openSmartAccountModuleChange(draft, operationSignal, guard));
+        const operation = await observeFailure(() => selected.openSmartAccountModuleChange(draft, operationSignal, guard, binding));
         try { guard(); return operation; } catch (error) { await operation.dispose(); throw error; }
       },
     });
   };
-  const openSlhDsaManagement = async (signal: AbortSignal, assertOwner: () => void): Promise<NativeSlhDsaManagement> => {
-    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+  const openSlhDsaManagement = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeSlhDsaManagement> => {
+    const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
     const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
     check();
-    const account = await selected.openSlhDsaAccount(check, signal); check();
+    const account = await selected.openSlhDsaAccount(check, signal, binding); check();
     const catalogue = authority.getCatalogue(), snapshot = authority.getSnapshot();
     if (!catalogue || !snapshot.account) throw Error('CANCELLED');
     const network = catalogue.networks.find(network => network.id === catalogue.active.networkId);
@@ -631,29 +637,33 @@ export function createNativeWalletControllers() {
       async openInstall(keyId, operationSignal, assertView) {
         const guard = () => { assertSynchronousEvmFeeGuard(check); assertSynchronousEvmFeeGuard(assertView); if (operationSignal.aborted) throw Error('CANCELLED'); };
         guard();
-        const operation = await observeFailure(() => selected.openSlhDsaInstallation(keyId, operationSignal, guard));
+        const operation = await observeFailure(() => selected.openSlhDsaInstallation(keyId, operationSignal, guard, binding));
         try { guard(); return operation; } catch (error) { await operation.dispose(); throw error; }
       },
     });
   };
-  const openWalletAuthenticator = async (signal: AbortSignal, assertOwner: () => void) => {
-    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
-    return observeFailure(() => selected.openWalletAuthenticator(signal, assertCurrent));
+  const openWalletAuthenticator = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
+    const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
+    return observeFailure(() => selected.openWalletAuthenticator(signal, assertCurrent, binding));
   };
-  const openSmartAccountSend = async (recipient: string, amount: Parameters<KeyringRuntime['openSmartAccountSend']>[1], assertOwner: () => void) => {
-    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
-    return observeFailure(() => selected.openSmartAccountSend(recipient, amount, assertCurrent));
+  const openSmartAccountSend = async (recipient: string, amount: Parameters<KeyringRuntime['openSmartAccountSend']>[1], assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
+    const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
+    return observeFailure(() => selected.openSmartAccountSend(recipient, amount, assertCurrent, binding));
   };
   const guardianRecovery = Object.freeze({
     hasIntent: () => authority.getSnapshot().phase === 'ready' && !!runtime?.getGuardianRecoveryIntent(),
-    async open(draft: Parameters<KeyringRuntime['openGuardianRecovery']>[0], signal: AbortSignal, assertOwner: () => void) {
-      const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
-      return observeFailure(() => selected.openGuardianRecovery(draft, signal, assertCurrent));
+    async open(draft: Parameters<KeyringRuntime['openGuardianRecovery']>[0], signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) {
+      const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+      const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
+      return observeFailure(() => selected.openGuardianRecovery(draft, signal, assertCurrent, binding));
     },
   });
-  const openGuardianPolicy = async (draft: Parameters<KeyringRuntime['openGuardianPolicy']>[0], signal: AbortSignal, assertOwner: () => void) => {
-    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
-    return observeFailure(() => selected.openGuardianPolicy(draft, signal, assertCurrent));
+  const openGuardianPolicy = async (draft: Parameters<KeyringRuntime['openGuardianPolicy']>[0], signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
+    const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
+    return observeFailure(() => selected.openGuardianPolicy(draft, signal, assertCurrent, binding));
   };
   const inspectGuardianRemoval = async (signal: AbortSignal, assertOwner: () => void) => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);

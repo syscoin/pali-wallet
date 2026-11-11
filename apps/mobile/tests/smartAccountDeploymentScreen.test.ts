@@ -1,3 +1,5 @@
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { resolveAssetTransferDisplay } from '../../../source/shared/assetTransferDisplay.ts';
 import { formatTokenUnits } from '../../../source/shared/erc20.ts';
 import assert from 'node:assert/strict';
@@ -86,6 +88,8 @@ function fixture() {
   const module = { exports: {} as Record<string, unknown> };
   const imports: Record<string, unknown> = {
     react,
+    '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     '../platform/localization': nativeTranslationFixture,
     './useDappLedgerConnection': {useOwnedLedgerConnection: () => ({blocked: false, showConnect: false, modal: null, canApprove: () => true})},
     'react-native': {

@@ -1,3 +1,5 @@
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Interface } from 'ethers/abi';
@@ -22,6 +24,8 @@ function fixture() {
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Icon', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
     '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay },
     '../../../../source/shared/erc20': { formatTokenUnits }, '../core/amounts': { formatBaseUnits }, '../custody/networkContext': { getNativeSendContext },
+    '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     '../platform/localization': nativeTranslationFixture, './NativeTransactionReview': { TransactionDetails: 'TransactionDetails' }, './guardianPolicyLabels': { guardianDelayLabel: () => '' },
     './useDappLedgerConnection': { useOwnedLedgerConnection: () => ({}) },
   });

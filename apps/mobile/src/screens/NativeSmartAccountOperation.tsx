@@ -34,11 +34,14 @@ import type {
 import { TransactionDetails } from './NativeTransactionReview';
 import { Button, Card, Coin, colors, Header, Notice, Screen, Text } from '../ui';
 import { guardianDelayLabel } from './guardianPolicyLabels';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 type DeploymentOwner = {
   live: boolean;
   returning: boolean;
   lifetime: AbortController;
+  authentication: NativePrivateAuthenticationScope;
   operation?: NativeSmartAccountOperation;
   opening?: Promise<void>;
   disposing?: Promise<void>;
@@ -56,7 +59,7 @@ export function NativeSmartAccountOperationRoute({
   ledgerConnection,
 }: {
   ledgerConnection?: NativeLedgerConnectionView;
-  open(assertCurrent: () => void, signal: AbortSignal): Promise<NativeSmartAccountOperation>;
+  open(assertCurrent: () => void, signal: AbortSignal, authentication: NativePrivateAuthenticationScope): Promise<NativeSmartAccountOperation>;
   onBack(): void;
 }) {
   const owner = useRef<DeploymentOwner | undefined>(undefined);
@@ -64,6 +67,7 @@ export function NativeSmartAccountOperationRoute({
   const [opened, setOpened] = useState<{
     source: typeof open;
     controller?: NativeSmartAccountOperation;
+    authentication?: NativePrivateAuthenticationScope;
     failed?: true;
     closing?: true;
   }>();
@@ -77,6 +81,7 @@ export function NativeSmartAccountOperationRoute({
     try { if (background === true) current.operation?.background(); }
     catch { /* A failed suspension still retires this route's custody. */ }
     current.live = false;
+    current.authentication.retire();
     current.returning = true;
     current.lifetime.abort();
     const close = callbacks.current.onBack;
@@ -88,27 +93,27 @@ export function NativeSmartAccountOperationRoute({
       });
   }, [open]);
   useEffect(() => {
-    const current: DeploymentOwner = { live: true, returning: false, lifetime: new AbortController() };
+    const current: DeploymentOwner = { live: true, returning: false, lifetime: new AbortController(), authentication: createNativePrivateAuthenticationScope() };
     owner.current = current;
     const check = () => {
       if (
         owner.current !== current ||
         !current.live ||
         current.lifetime.signal.aborted ||
-        AppState.currentState !== 'active'
+        (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, AppState.currentState))
       )
         throw new Error('DEPLOYMENT_EXPIRED');
     };
     current.opening = Promise.resolve()
       .then(() => {
         check();
-        return open(check, current.lifetime.signal);
+        return open(check, current.lifetime.signal, current.authentication);
       })
       .then((operation) => {
         current.operation = operation;
         if (current.live) {
           check();
-          setOpened({ source: open, controller: operation });
+          setOpened({ source: open, controller: operation, authentication: current.authentication });
         }
       })
       .catch(() => {
@@ -119,11 +124,12 @@ export function NativeSmartAccountOperationRoute({
       return true;
     });
     const appState = AppState.addEventListener('change', state => {
-      if (state !== 'active') back(true);
+      if (state !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, state)) back(true);
     });
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => back(true)) : undefined;
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { if (!allowsPrivateAuthenticationInterruption(current.authentication, 'blur')) back(true); }) : undefined;
     return () => {
       current.live = false;
+      current.authentication.retire();
       current.returning = false;
       current.lifetime.abort();
       void disposeDeployment(current).catch(() => undefined);
@@ -136,6 +142,7 @@ export function NativeSmartAccountOperationRoute({
   if (current?.controller)
     return (
       <NativeSmartAccountOperationScreen
+        authentication={current.authentication}
         controller={current.controller}
         ledgerConnection={ledgerConnection}
         onBack={() => back()}
@@ -170,7 +177,9 @@ export function NativeSmartAccountOperationScreen({
   controller,
   onBack,
   ledgerConnection,
+  authentication,
 }: {
+  authentication?: NativePrivateAuthenticationScope;
   ledgerConnection?: NativeLedgerConnectionView;
   controller: NativeSmartAccountOperation;
   onBack(): void;
@@ -195,11 +204,13 @@ export function NativeSmartAccountOperationScreen({
   }, [controller]);
   return (
     <NativeSmartAccountOperationContent
+      authentication={authentication}
       state={state}
       onBack={onBack}
       disabled={state.phase === 'authorize' && ledger.blocked}
       before={<>{ledger.showConnect && <Button title="Connect Ledger" variant="secondary" size="compact" onPress={ledger.connect} />}{ledger.modal}</>}
       authorize={(acknowledgedCustomRisk) => {
+        if (AppState.currentState !== 'active') return;
         if (!ledger.canApprove()) return;
         if (state.intent.kind !== 'modules') { void controller.authorize(state.revision); return; }
         if (!isReviewCurrent()) return;
@@ -209,8 +220,8 @@ export function NativeSmartAccountOperationScreen({
             void controller.authorizeModuleChange(state.revision, { kind, riskAcknowledged: true });
         } else void controller.authorizeModuleChange(state.revision, { kind });
       }}
-      confirmPayer={(id) => controller.confirmPayer(id)}
-      retryMetadata={() => void controller.retryMetadata()}
+      confirmPayer={(id) => { if (AppState.currentState === 'active') return controller.confirmPayer(id); }}
+      retryMetadata={() => { if (AppState.currentState === 'active') void controller.retryMetadata(); }}
     />
   );
 }
@@ -226,7 +237,9 @@ export function NativeSmartAccountOperationContent({
   assetTransfer,
   batchAssetTransfers,
   disabled = false,
+  authentication,
 }: {
+  authentication?: NativePrivateAuthenticationScope;
   state: NativeSmartAccountOperationSnapshot;
   onBack(): void;
   authorize(acknowledgedCustomRisk: boolean): void;
@@ -253,17 +266,17 @@ export function NativeSmartAccountOperationContent({
   useLayoutEffect(() => {
     live.current = true;
     const retire = () => { live.current = false; clearRisk(); };
-    const change = AppState.addEventListener('change', next => { if (next !== 'active') retire(); });
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', retire) : undefined;
+    const change = AppState.addEventListener('change', next => { if (next !== 'active' && !(authentication && allowsPrivateAuthenticationInterruption(authentication, next))) retire(); });
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { if (!(authentication && allowsPrivateAuthenticationInterruption(authentication, 'blur'))) retire(); }) : undefined;
     return () => { live.current = false; risk.current = null; change.remove(); blur?.remove(); };
-  }, [clearRisk]);
+  }, [clearRisk, authentication]);
   const reviewCurrent = () => live.current && AppState.currentState === 'active' &&
     latest.current.intent === intent && latest.current.hash === hash &&
     latest.current.phase === 'authorize' && phase === 'authorize';
   const customInstall = intent.kind === 'modules' && intent.command.draft.kind === 'install-custom';
   const riskAcknowledged = phase === 'authorize' && riskAcknowledgement?.intent === intent && riskAcknowledgement.hash === hash;
   const authorizeCurrent = () => {
-    if (disabled) return;
+    if (disabled || !live.current || AppState.currentState !== 'active') return;
     if (intent.kind !== 'modules') { authorize(false); return; }
     if (!reviewCurrent()) return;
     const acknowledged = risk.current?.intent === intent && risk.current.hash === hash;
@@ -373,7 +386,7 @@ export function NativeSmartAccountOperationContent({
                   : 'Confirm deployment'
               }
               disabled={disabled}
-              onPress={() => confirmPayer(payer.id)}
+              onPress={() => { if (live.current && AppState.currentState === 'active') confirmPayer(payer.id); }}
             />
   ) : null;
   return (
@@ -838,7 +851,7 @@ export function NativeSmartAccountOperationContent({
               <Button
                 title={modules ? t('mobile.smartAccountModules.refresh') : 'Refresh account status'}
                 disabled={disabled || !retryMetadata}
-                onPress={() => retryMetadata?.()}
+                onPress={() => { if (live.current && AppState.currentState === 'active') retryMetadata?.(); }}
               />
             </>
           )}

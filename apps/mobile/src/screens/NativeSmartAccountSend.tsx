@@ -49,6 +49,8 @@ import { SendAssetSelector, type SendAssetItem } from './SendAssetSelector';
 import type { NativeUnsignedSendDraft } from './sendNetworkDraft';
 import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation';
 import { Button, Card, Coin, colors, Header, IconButton, Notice, Screen, styles, Text } from '../ui';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 const emptySubscribe = () => () => undefined;
 const emptyInventory = () => null;
@@ -57,6 +59,7 @@ type SendOwner = {
   returning: boolean;
   operation: NativeSmartAccountOperation | null;
   busy: boolean;
+  authentication: NativePrivateAuthenticationScope | null;
   opening?: Promise<void>;
   disposing?: Promise<void>;
 };
@@ -102,7 +105,8 @@ export function NativeSmartAccountSend({
   open(
     recipient: string,
     amount: NativeSmartAccountAmount,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    authentication: NativePrivateAuthenticationScope
   ): Promise<NativeSmartAccountOperation>;
   context: NativeSendContext;
   accountLabel: string;
@@ -172,6 +176,7 @@ export function NativeSmartAccountSend({
   const [error, setError] = useState('');
   const [controller, setController] =
     useState<NativeSmartAccountOperation | null>(null);
+  const [operationAuthentication, setOperationAuthentication] = useState<NativePrivateAuthenticationScope>();
   const [closing, setClosing] = useState(false);
   const [resolvedRecipient, setResolvedRecipient] = useState<NativeRecipientResolution | null>(null);
   const [scanner, setScanner] = useState<ScannerOwner | null>(null);
@@ -208,15 +213,17 @@ export function NativeSmartAccountSend({
     callbacks.current = { onBack };
   }, [onBack]);
   const owner = useRef<SendOwner>({
-    active: true,
+    active: false,
     returning: false,
     operation: null as NativeSmartAccountOperation | null,
     busy: false,
+    authentication: null,
   });
   const back = useCallback(() => {
     const current = owner.current;
     if (!current.active) return;
     current.active = false;
+    current.authentication?.retire();
     current.returning = true;
     closeScanner();
     retireRecipient();
@@ -234,16 +241,18 @@ export function NativeSmartAccountSend({
       returning: false,
       operation: null,
       busy: false,
+      authentication: createNativePrivateAuthenticationScope(),
     };
     owner.current = current;
     const hardware = BackHandler.addEventListener('hardwareBackPress', () => {
       back();
       return true;
     });
-    const background = AppState.addEventListener('change', state => { if (state !== 'active') closeScanner(); });
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', closeScanner) : undefined;
+    const background = AppState.addEventListener('change', state => { if (state !== 'active' && !(current.authentication && allowsPrivateAuthenticationInterruption(current.authentication, state))) back(); });
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { if (!(current.authentication && allowsPrivateAuthenticationInterruption(current.authentication, 'blur'))) back(); }) : undefined;
     return () => {
       current.active = false;
+      current.authentication?.retire();
       current.returning = false;
       closeScanner();
       retireRecipient();
@@ -251,10 +260,10 @@ export function NativeSmartAccountSend({
       hardware.remove();
       background.remove(); blur?.remove();
     };
-  }, [back, retireRecipient, closeScanner]);
+  }, [back, retireRecipient, closeScanner, open, account.address, account.network, account.revision, context.registrationHash, token, collectible]);
   const review = async () => {
     const current = owner.current;
-    if (!current.active || current.busy) return;
+    if (!current.active || current.busy || !current.authentication || AppState.currentState !== 'active') return;
     current.busy = true;
     closeScanner();
     setBusy(true);
@@ -270,6 +279,7 @@ export function NativeSmartAccountSend({
     const checkOwner = () => {
       const actual = latestOwner.current;
       if (!current.active || owner.current !== current || recipientRequest.current !== held || held.abort.signal.aborted ||
+          (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication!, AppState.currentState)) ||
           actual.open !== captured.open || actual.recipient !== captured.recipient || actual.recipientResolver !== captured.recipientResolver ||
           actual.account.address !== captured.account.address || actual.account.network !== captured.account.network ||
           actual.account.revision !== captured.account.revision || actual.context.registrationHash !== captured.context.registrationHash)
@@ -332,7 +342,8 @@ export function NativeSmartAccountSend({
             : maximum
             ? { kind: 'maximum' }
             : { kind: 'exact', amount }),
-        check
+        check,
+        current.authentication
       ).then(async (operation) => {
         current.operation = operation;
         try {
@@ -359,6 +370,7 @@ export function NativeSmartAccountSend({
             held.unsubscribe = operation.subscribe(releaseRecipientReview);
             releaseRecipientReview();
           }
+          setOperationAuthentication(current.authentication!);
           setController(operation);
         } catch (error) {
           await operation.dispose();
@@ -411,7 +423,7 @@ export function NativeSmartAccountSend({
       </SafeAreaView>
     );
   if (controller && !resolvedRecipient)
-    return <NativeSmartAccountOperationScreen ledgerConnection={ledgerConnection} controller={controller} onBack={back} />;
+    return <NativeSmartAccountOperationScreen authentication={operationAuthentication} ledgerConnection={ledgerConnection} controller={controller} onBack={back} />;
   if (controller)
     return (
       <>
@@ -419,7 +431,7 @@ export function NativeSmartAccountSend({
           <Text selectable style={styles.muted}>ENS name: {resolvedRecipient.input}</Text>
           <Text selectable style={styles.muted}>Resolved address: {resolvedRecipient.address}</Text>
         </SafeAreaView>}
-        <NativeSmartAccountOperationScreen ledgerConnection={ledgerConnection} controller={controller} onBack={back} />
+        <NativeSmartAccountOperationScreen authentication={operationAuthentication} ledgerConnection={ledgerConnection} controller={controller} onBack={back} />
       </>
     );
   return (

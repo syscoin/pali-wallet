@@ -1,3 +1,5 @@
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { NativeSigningHandoffs, type NativeSigningHandoff } from '../src/connections/signingHandoff.ts';
 import assert from 'node:assert/strict';
 import { snapshotNativeSmartLocalAction } from '../src/smartAccount/localAction.ts';
@@ -160,6 +162,8 @@ function harness(
         canApprove: () => true,
       }),
     },
+    '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     '../platform/localization': { useNativeTranslation: () => ({ t: (key: string) => {
       const dictionary = JSON.parse(readFileSync(new NodeURL(`../../../source/assets/locales/${language}.json`, import.meta.url), 'utf8'));
       return key.split('.').reduce((value: any, part) => value?.[part], dictionary) ?? key;
@@ -568,7 +572,7 @@ for (const route of [
       let finishDisposal!: () => void;
       let guard!: () => void;
       const open = (...args: unknown[]) => {
-        guard = (route === 'deployment' ? args[0] : args.at(-1)) as () => void;
+        guard = (route === 'deployment' ? args[0] : args.at(-2)) as () => void;
         return new Promise<object>((resolve) => {
           resolveOpen = resolve;
         });
@@ -839,3 +843,64 @@ for (const action of ['header-event', 'close-event', 'review-event', 'app-backgr
       assert.deepEqual(canceled, background ? [] : [job]);
     } finally { manager.cancelLocal(); await manager.retired(); f.dispose(); }
   });
+
+type AuthenticationRoute = 'authenticator' | 'deployment' | 'send' | 'guardian' | 'slh';
+async function authenticationRoute(route: AuthenticationRoute) {
+  const name = route === 'authenticator' ? 'NativeSmartAccountAuthenticator' : route === 'deployment' ? 'NativeSmartAccountOperation'
+    : route === 'send' ? 'NativeSmartAccountSend' : route === 'guardian' ? 'NativeGuardianPolicy' : 'NativeSlhDsaManagement';
+  const component = route === 'deployment' ? 'NativeSmartAccountOperationRoute' : route === 'slh' ? 'NativeSlhDsaManagementScreen' : name;
+  const f = harness(name);
+  let authentication!: privateAuthentication.NativePrivateAuthenticationScope, guard!: () => void, returned = 0;
+  const operation = { async dispose() {} };
+  const open = async (...args: unknown[]) => {
+    authentication = args.at(-1) as privateAuthentication.NativePrivateAuthenticationScope;
+    guard = (route === 'deployment' ? args[0] : args.at(-2)) as () => void;
+    guard();
+    return route === 'slh' ? slhManager().manager : operation;
+  };
+  const props = { open, onBack() { returned++; }, context: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
+    accountLabel: 'Smart account', source: {}, reader: {}, account: { address: account, network: 'ethereum', revision: 1 },
+    action: 'set', address: account, networkLabel: 'Ethereum', observation: { exists: true, guardians: [owner], threshold: 1, delaySeconds: 259200, pending: null },
+    manage: { chainId: 1, open }, lifetime: new AbortController().signal };
+  let tree = f.render(component, props);
+  if (route === 'send') {
+    all(tree).find(node => node.props.label === 'Recipient address')!.props.onChange(owner);
+    all(tree).find(node => node.props.label === 'Amount in ETH')!.props.onChange('1');
+    tree = f.render(component, props); one(tree, 'Button', 'Review transfer').props.onPress();
+  } else if (route === 'guardian') one(tree, 'Button', 'Review policy').props.onPress();
+  await settle();
+  tree = f.render(component, props);
+  assert(authentication); guard();
+  if (route !== 'slh') assert.equal(tree.props.authentication, authentication, 'The operation child receives the same genuine scope');
+  return { f, authentication, guard, props, component, get returned() { return returned; } };
+}
+function holdAuthentication(scope: privateAuthentication.NativePrivateAuthenticationScope) {
+  const held = Promise.withResolvers<void>();
+  const binding = privateAuthentication.bindNativePrivateAuthentication(scope, { assertCurrent() {}, isPromptActive: () => true });
+  const completed = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, () => held.promise);
+  return { binding, finish: async () => { held.resolve(); await completed.catch(() => undefined); } };
+}
+for (const route of ['authenticator', 'deployment', 'send', 'guardian', 'slh'] as const) {
+  test(`${route} retains only its own OS interruption and still retires on Back`, async () => {
+    const f = await authenticationRoute(route), prompt = holdAuthentication(f.authentication);
+    try {
+      f.f.event('change', 'inactive'); f.f.event('blur'); f.guard(); assert.equal(f.returned, 0);
+      f.f.event('change', 'active'); await prompt.finish(); f.guard();
+      const retry = holdAuthentication(f.authentication);
+      f.f.back(); await settle(); assert.throws(f.guard, /CANCELLED|EXPIRED/);
+      assert.equal(f.authentication.isAuthenticating(), false); await retry.finish();
+      assert.equal(f.returned, 1);
+    } finally { await prompt.finish(); f.f.dispose(); }
+  });
+  for (const boundary of ['foreign-prompt', 'background', 'unmount'] as const) test(`${route} retires on ${boundary} even while an OS prompt is active`, async () => {
+    const f = await authenticationRoute(route);
+    const own = boundary !== 'foreign-prompt';
+    const prompt = holdAuthentication(own ? f.authentication : privateAuthentication.createNativePrivateAuthenticationScope());
+    try {
+      if (boundary === 'unmount') f.f.dispose();
+      else f.f.event('change', boundary === 'background' ? 'background' : 'inactive');
+      await settle(); assert.throws(f.guard, /CANCELLED|EXPIRED/);
+      assert.throws(() => privateAuthentication.bindNativePrivateAuthentication(f.authentication, { assertCurrent() {}, isPromptActive: () => true }), /CANCELLED/);
+    } finally { await prompt.finish(); f.f.dispose(); }
+  });
+}

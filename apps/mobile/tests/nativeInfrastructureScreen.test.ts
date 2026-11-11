@@ -1,3 +1,5 @@
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PALI_INFRASTRUCTURE_METADATA } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
@@ -39,6 +41,8 @@ function nativeScreen(clock = { wall: 100_000, monotonic: 0 }) {
   }, globals);
   let connectionProps: Parameters<typeof useOwnedLedgerConnection>[0] | undefined;
   const fixture = screenFixture(new URL('../src/screens/NativeInfrastructure.tsx', import.meta.url), 'NativeInfrastructure', {
+    '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     '../platform/localization': nativeTranslationFixture,
     '../core/amounts': { formatBaseUnits },
     'react-native': { ActivityIndicator: 'ActivityIndicator', AppState: appState, BackHandler: { addEventListener: add }, Platform: { OS: 'android' }, StyleSheet: { create: (value: unknown) => value } },
@@ -508,3 +512,26 @@ for (const mode of ['all-present', 'pending-optional', 'missing-create2'] as con
       assert.equal(value.counts.submissions, 0);
     } finally { screen.close(); }
   });
+
+for (const boundary of ['back', 'background', 'unmount', 'foreign-prompt'] as const) test(`infrastructure keeps only its own OS interruption and retires on ${boundary}`, async () => {
+  const screen = nativeScreen();
+  let scope!: privateAuthentication.NativePrivateAuthenticationScope, guard!: () => void, value!: ReturnType<typeof runtime>, returned = 0;
+  const props = { async open(signal: AbortSignal, check: () => void, authentication: privateAuthentication.NativePrivateAuthenticationScope) {
+    scope = authentication; guard = check; value = runtime(signal, check); return value.controller;
+  }, onBack() { returned++; } };
+  screen.render(props); await tick(); screen.render(props);
+  const held = Promise.withResolvers<void>();
+  const promptScope = boundary === 'foreign-prompt' ? privateAuthentication.createNativePrivateAuthenticationScope() : scope;
+  const binding = privateAuthentication.bindNativePrivateAuthentication(promptScope, { assertCurrent() {}, isPromptActive: () => true });
+  const proof = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, () => held.promise);
+  try {
+    if (boundary !== 'foreign-prompt') {
+      screen.emit('change', 'inactive'); screen.emit('blur'); guard(); assert.equal(returned, 0);
+      screen.emit('change', 'active');
+    }
+    if (boundary === 'unmount') screen.close();
+    else screen.emit(boundary === 'back' ? 'hardwareBackPress' : 'change', boundary === 'background' ? 'background' : 'inactive');
+    assert.throws(guard, /CANCELLED/); assert.equal(scope.isAuthenticating(), false);
+    assert.equal(returned, boundary === 'unmount' ? 0 : 1);
+  } finally { held.resolve(); await proof.catch(() => undefined); promptScope.retire(); screen.close(); }
+});

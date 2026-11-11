@@ -1,3 +1,5 @@
+import type { NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import { NativeInfrastructure as NativeInfrastructureScreen } from './NativeInfrastructure';
 import { PALI_RECOVERY_ALERTS_URL } from '../../../../source/shared/smartAccountLinks.ts';
 import { getNativeGuardianRecoveryChoices } from '../smartAccount/guardianRecovery';
@@ -350,17 +352,18 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     const local = controllersRef.current;
     return custodyContext(local?.authority.getSnapshot(), local?.authority.getCatalogue());
   }, [controllersRef]);
-  const openResumedSmartOperation = useCallback(async (assertView: () => void, signal: AbortSignal) => {
+  const openResumedSmartOperation = useCallback(async (assertView: () => void, signal: AbortSignal, authentication: NativePrivateAuthenticationScope) => {
+    if (AppState.currentState !== 'active') throw new Error('CANCELLED');
     const local = controllersRef.current, origin = rootOrigin.current, id = smartResumeId;
     const check = () => {
       assertView();
       if (!local || !id || !origin || origin.stage !== 'smart-resume' || signal.aborted ||
           !mounted.current || controllersRef.current !== local || rootOrigin.current !== origin ||
-          epoch.current !== origin.epoch || AppState.currentState !== 'active' || readyContext()?.identity !== origin.identity)
+          epoch.current !== origin.epoch || (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(authentication, AppState.currentState)) || readyContext()?.identity !== origin.identity)
         throw new Error('CANCELLED');
     };
     check();
-    const operation = await local!.openResumedSmartAccountOperation(id!, signal, check);
+    const operation = await local!.openResumedSmartAccountOperation(id!, signal, check, authentication);
     try { check(); return operation; } catch (error) { await operation.dispose(); throw error; }
   }, [readyContext, smartResumeId, controllersRef]);
   const currentShellScope = () => {
@@ -390,11 +393,11 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         if (!mounted.current || epoch.current !== guardianEpoch || AppState.currentState !== 'active' || readyContext()?.context !== guardianContext)
           throw new Error('CANCELLED');
       }),
-      open: (draft: Parameters<Controllers['openGuardianPolicy']>[0], signal: AbortSignal, assertView: () => void) => openGuardianPolicy(draft, signal, () => {
+      open: (draft: Parameters<Controllers['openGuardianPolicy']>[0], signal: AbortSignal, assertView: () => void, authentication: NativePrivateAuthenticationScope) => openGuardianPolicy(draft, signal, () => {
         assertView();
-        if (!mounted.current || epoch.current !== guardianEpoch || AppState.currentState !== 'active' || readyContext()?.context !== guardianContext)
+        if (!mounted.current || epoch.current !== guardianEpoch || (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(authentication, AppState.currentState)) || readyContext()?.context !== guardianContext)
           throw new Error('CANCELLED');
-      }),
+      }, authentication),
     } : undefined,
     recovery: guardianRecoveryController ? {
       chainId: Number(getNativeNetwork(snapshot.account.network, catalogue?.networks).chainId),
@@ -407,11 +410,11 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       },
       hasIntent: guardianRecoveryController.hasIntent(),
       onActivity: (payerId: string, chainId: number, hash: string) => openRecoveryActivity(payerId, chainId, hash),
-      open: (draft: Parameters<Controllers['guardianRecovery']['open']>[0], signal: AbortSignal, assertView: () => void) => guardianRecoveryController.open(draft, signal, () => {
+      open: (draft: Parameters<Controllers['guardianRecovery']['open']>[0], signal: AbortSignal, assertView: () => void, authentication: NativePrivateAuthenticationScope) => guardianRecoveryController.open(draft, signal, () => {
         assertView();
-        if (!mounted.current || epoch.current !== guardianEpoch || AppState.currentState !== 'active' || readyContext()?.context !== guardianContext)
+        if (!mounted.current || epoch.current !== guardianEpoch || (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(authentication, AppState.currentState)) || readyContext()?.context !== guardianContext)
           throw new Error('CANCELLED');
-      }),
+      }, authentication),
     } : undefined,
     read: (signal: AbortSignal, assertView: () => void) => readGuardianRecovery(signal, () => {
       assertView();
@@ -893,53 +896,57 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const attach = useCallback((local: Controllers) => {
     detachSubscriptions.current(); controllersRef.current = local;
     setCanRemoveWallet(!!local.removal);
-    setOpenSlhDsaManagement(() => async (signal: AbortSignal, assertView: () => void) => {
+    setOpenSlhDsaManagement(() => async (signal: AbortSignal, assertView: () => void, authentication: NativePrivateAuthenticationScope) => {
+      if (AppState.currentState !== 'active') throw new Error('CANCELLED');
       const origin = rootOrigin.current, address = local.authority.getSnapshot().account?.address;
       const check = () => {
         assertView();
         if (!origin || origin.stage !== 'slh-dsa' || !address || !mounted.current || controllersRef.current !== local ||
-            rootOrigin.current !== origin || epoch.current !== origin.epoch || AppState.currentState !== 'active' ||
+            rootOrigin.current !== origin || epoch.current !== origin.epoch || (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(authentication, AppState.currentState)) ||
             readyContext()?.identity !== origin.identity || local.authority.getSnapshot().account?.address !== address)
           throw new Error('CANCELLED');
       };
-      check(); const manager = await local.openSlhDsaManagement(signal, check); check(); return manager;
+      check(); const manager = await local.openSlhDsaManagement(signal, check, authentication); check(); return manager;
     });
-    setOpenSmartInfrastructure(() => async (signal: AbortSignal, assertView: () => void) => {
+    setOpenSmartInfrastructure(() => async (signal: AbortSignal, assertView: () => void, authentication: NativePrivateAuthenticationScope) => {
+      if (AppState.currentState !== 'active') throw new Error('CANCELLED');
       const origin = rootOrigin.current, address = local.authority.getSnapshot().account?.address;
       const check = () => {
         assertView();
         if (!origin || origin.stage !== 'smart-infrastructure' || !address || !mounted.current || controllersRef.current !== local ||
-            rootOrigin.current !== origin || epoch.current !== origin.epoch || AppState.currentState !== 'active' ||
+            rootOrigin.current !== origin || epoch.current !== origin.epoch || (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(authentication, AppState.currentState)) ||
             readyContext()?.identity !== origin.identity || local.authority.getSnapshot().account?.address !== address)
           throw new Error('CANCELLED');
       };
-      check(); const manager = await local.openSmartInfrastructure(signal, check);
+      check(); const manager = await local.openSmartInfrastructure(signal, check, authentication);
       try { check(); return manager; } catch (error) { manager.dispose(); throw error; }
     });
-    setOpenSmartAccountModules(() => async (signal: AbortSignal, assertView: () => void) => {
+    setOpenSmartAccountModules(() => async (signal: AbortSignal, assertView: () => void, authentication: NativePrivateAuthenticationScope) => {
+      if (AppState.currentState !== 'active') throw new Error('CANCELLED');
       const origin = rootOrigin.current, address = local.authority.getSnapshot().account?.address;
       const check = () => {
         assertView();
         if (!origin || origin.stage !== 'smart-modules' || !address || !mounted.current || controllersRef.current !== local ||
-            rootOrigin.current !== origin || epoch.current !== origin.epoch || AppState.currentState !== 'active' ||
+            rootOrigin.current !== origin || epoch.current !== origin.epoch || (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(authentication, AppState.currentState)) ||
             readyContext()?.identity !== origin.identity || local.authority.getSnapshot().account?.address !== address)
           throw new Error('CANCELLED');
       };
-      check(); const manager = await local.openSmartAccountModules(signal, check); check(); return manager;
+      check(); const manager = await local.openSmartAccountModules(signal, check, authentication); check(); return manager;
     });
-    setOpenWalletAuthenticator(() => async (signal: AbortSignal, assertView: () => void) => {
+    setOpenWalletAuthenticator(() => async (signal: AbortSignal, assertView: () => void, authentication: NativePrivateAuthenticationScope) => {
+      if (AppState.currentState !== 'active') throw new Error('CANCELLED');
       const origin = rootOrigin.current;
       const address = local.authority.getSnapshot().account?.address;
       const check = () => {
         assertView();
         if (!origin || origin.stage !== 'smart-authenticator' || !address ||
             !mounted.current || controllersRef.current !== local || rootOrigin.current !== origin ||
-            epoch.current !== origin.epoch || AppState.currentState !== 'active' ||
+            epoch.current !== origin.epoch || (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(authentication, AppState.currentState)) ||
             readyContext()?.identity !== origin.identity || local.authority.getSnapshot().account?.address !== address)
           throw new Error('CANCELLED');
       };
       check();
-      const operation = await local.openWalletAuthenticator(signal, check);
+      const operation = await local.openWalletAuthenticator(signal, check, authentication);
       try {
         check();
         return operation;
@@ -985,22 +992,24 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       setAccountActivity(allActivity);
       setGuardianRecoveryController({
         hasIntent: () => local.guardianRecovery.hasIntent(),
-        open: (draft, signal, assertView) => {
+        open: async (draft, signal, assertView, authentication) => {
+          if (AppState.currentState !== 'active') throw new Error('CANCELLED');
           const capturedEpoch = epoch.current;
           return local.guardianRecovery.open(draft, signal, () => {
             assertView();
-            if (!mounted.current || controllersRef.current !== local || epoch.current !== capturedEpoch || AppState.currentState !== 'active')
+            if (!mounted.current || controllersRef.current !== local || epoch.current !== capturedEpoch || (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(authentication, AppState.currentState)))
               throw new Error('CANCELLED');
-          });
+          }, authentication);
         },
       });
-      setOpenGuardianPolicy(() => local.canManageGuardianPolicy() ? (draft: Parameters<Controllers['openGuardianPolicy']>[0], signal: AbortSignal, assertView: () => void) => {
+      setOpenGuardianPolicy(() => local.canManageGuardianPolicy() ? async (draft: Parameters<Controllers['openGuardianPolicy']>[0], signal: AbortSignal, assertView: () => void, authentication: NativePrivateAuthenticationScope) => {
+        if (AppState.currentState !== 'active') throw new Error('CANCELLED');
         const capturedEpoch = epoch.current;
         return local.openGuardianPolicy(draft, signal, () => {
           assertView();
-          if (!mounted.current || controllersRef.current !== local || epoch.current !== capturedEpoch || AppState.currentState !== 'active')
+          if (!mounted.current || controllersRef.current !== local || epoch.current !== capturedEpoch || (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(authentication, AppState.currentState)))
             throw new Error('CANCELLED');
-        });
+        }, authentication);
       } : null);
       setInspectGuardianRemoval(() => local.canManageGuardianPolicy() ? (signal: AbortSignal, assertView: () => void) => {
         const capturedEpoch = epoch.current;

@@ -441,7 +441,7 @@ export async function qualifyNativeSlhFull(
       // Includes SDK/seed derivation, XMSS cache generation and durable setup.
       state = await runtime.prepareFresh(0, owner, () => {
         owner();
-      }, ports.signal);
+      }, ports.signal, null);
       prepareFreshMs = elapsed(start);
       owner();
       if (
@@ -462,7 +462,7 @@ export async function qualifyNativeSlhFull(
           null,
           owner,
           ports.signal
-        )
+        , null)
         .then(
           () => {
             delivered = true;
@@ -522,7 +522,7 @@ export async function qualifyNativeSlhFull(
         null,
         owner,
         ports.signal
-      );
+      , null);
       // Includes signer state/cache I/O and usage persistence; excludes the
       // following verifier calls, mutation checks, readback and report digest.
       const signMs = elapsed(start);

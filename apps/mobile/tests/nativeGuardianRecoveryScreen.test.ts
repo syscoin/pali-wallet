@@ -1,3 +1,5 @@
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import {
   guardianRecoveryTerminalNotice,
   guardianRecoveryTerminalReason,
@@ -81,8 +83,11 @@ const imports = {
   '../../../../source/utils/smartAccount/guardianRecoveryLifecycle': {
     guardianRecoveryTerminalNotice,
   },
-  '../platform/localization': nativeTranslationFixture,
+  '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+    '../platform/localization': nativeTranslationFixture,
   'react-native': {
+    AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
     ActivityIndicator: 'ActivityIndicator',
     BackHandler: { addEventListener: () => ({ remove() {} }) },
     FlatList: 'FlatList',
@@ -569,3 +574,34 @@ for (const [status, reason, title] of [
       controller.dispose();
     }
   });
+
+for (const boundary of ['back', 'background', 'unmount', 'foreign-prompt'] as const) test(`guardian recovery keeps only its own prompt and retires on ${boundary}`, async () => {
+  const events = new Map<string, (state: string) => void>();
+  const native = { ...imports['react-native'], AppState: { currentState: 'active', addEventListener(event: string, callback: (state: string) => void) {
+    events.set(event, callback); return { remove() { events.delete(event); } };
+  } } };
+  const f = screenFixture(new URL('../src/screens/NativeGuardianRecovery.tsx', import.meta.url), 'NativeGuardianRecovery', { ...imports, 'react-native': native });
+  let authentication!: privateAuthentication.NativePrivateAuthenticationScope, guard!: () => void, returned = 0;
+  const props = { address, networkLabel: 'Ethereum', observation, lifetime: new AbortController().signal, onBack() { returned++; },
+    recovery: { chainId: 1, currency: 'ETH', guardians: [guardian], replacements: [replacement], payers: [payer], hasIntent: true,
+      async open(_draft: unknown, _signal: AbortSignal, check: () => void, scope: privateAuthentication.NativePrivateAuthenticationScope) {
+        authentication = scope; guard = check; return { dispose() {} };
+      }, async onActivity() {}, async openRecoveryAlerts() {} } };
+  f.render(props); await tick(); f.render(props); guard();
+  const promptScope = boundary === 'foreign-prompt' ? privateAuthentication.createNativePrivateAuthenticationScope() : authentication;
+  const held = Promise.withResolvers<void>();
+  const binding = privateAuthentication.bindNativePrivateAuthentication(promptScope, { assertCurrent() {}, isPromptActive: () => true });
+  const proof = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, () => held.promise);
+  const emit = (event: string, state = '') => { if (event === 'change') native.AppState.currentState = state; events.get(event)?.(state); };
+  try {
+    if (boundary !== 'foreign-prompt') { emit('change', 'inactive'); emit('blur'); guard(); assert.equal(returned, 0); emit('change', 'active'); }
+    if (boundary === 'unmount') f.close();
+    else if (boundary !== 'back') emit('change', boundary === 'background' ? 'background' : 'inactive');
+    if (boundary === 'back') {
+      const child = screenElements(f.render(props)).find(node => typeof node.type === 'function' && node.props.controller);
+      assert(child); child.props.onBack();
+    }
+    assert.throws(guard, /CANCELLED/); assert.equal(authentication.isAuthenticating(), false);
+    assert.equal(returned, boundary === 'unmount' ? 0 : 1);
+  } finally { held.resolve(); await proof.catch(() => undefined); promptScope.retire(); f.close(); }
+});

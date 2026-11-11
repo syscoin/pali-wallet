@@ -12,11 +12,13 @@ import type { NativeSmartAccountOperation } from '../smartAccount/operation';
 import { Button, Card, colors, Header, Icon, Notice, Screen, Text } from '../ui';
 import { NativeSendInput } from './NativeSend';
 import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
-type Props = { ledgerConnection?: NativeLedgerConnectionView; open(signal: AbortSignal, assertCurrent: () => void): Promise<NativeSmartModuleManagement>; onBack(): void };
-type Owner = { live: boolean; busy: boolean; abort: AbortController; work?: Promise<void>; closing?: Promise<void>; manager?: NativeSmartModuleManagement; operation?: NativeSmartAccountOperation };
+type Props = { ledgerConnection?: NativeLedgerConnectionView; open(signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeSmartModuleManagement>; onBack(): void };
+type Owner = { live: boolean; busy: boolean; abort: AbortController; authentication: NativePrivateAuthenticationScope; work?: Promise<void>; closing?: Promise<void>; manager?: NativeSmartModuleManagement; operation?: NativeSmartAccountOperation };
 function retire(owner: Owner) {
-  owner.live = false; owner.abort.abort();
+  owner.live = false; owner.authentication.retire(); owner.abort.abort();
   owner.closing ??= Promise.allSettled([owner.work, owner.operation?.dispose()]).then(() => undefined);
   return owner.closing;
 }
@@ -27,6 +29,7 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
   const selected = useRef<Owner | undefined>(undefined), mounted = useRef(false), callbacks = useRef({ onBack });
   const [epoch, setEpoch] = useState(0), [manager, setManager] = useState<NativeSmartModuleManagement>(), [metadata, setMetadata] = useState<ISmartAccountMetadata>();
   const [operation, setOperation] = useState<NativeSmartAccountOperation>(), [busy, setBusy] = useState(false), [failure, setFailure] = useState<string>(), [closing, setClosing] = useState(false);
+  const [operationAuthentication, setOperationAuthentication] = useState<NativePrivateAuthenticationScope>();
   const [mode, setMode] = useState<'installed' | 'custom' | 'composite'>('installed');
   const modeRef = useRef(mode);
   useLayoutEffect(() => { modeRef.current = mode; }, [mode]);
@@ -34,7 +37,8 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
   const [preflight, setPreflight] = useState<{ address: string; result: CustomValidatorPreflightResult }>();
   const [children, setChildren] = useState<readonly string[]>([]), [threshold, setThreshold] = useState('1');
   useLayoutEffect(() => { callbacks.current = { onBack }; }, [onBack]);
-  const current = useCallback((owner: Owner) => mounted.current && selected.current === owner && owner.live && !owner.abort.signal.aborted && AppState.currentState === 'active', []);
+  const current = useCallback((owner: Owner) => mounted.current && selected.current === owner && owner.live && !owner.abort.signal.aborted &&
+    (AppState.currentState === 'active' || allowsPrivateAuthenticationInterruption(owner.authentication, AppState.currentState)), []);
   const check = useCallback((owner: Owner) => { if (!current(owner)) throw Error('CANCELLED'); }, [current]);
   const back = useCallback((owner: Owner) => {
     if (!mounted.current || selected.current !== owner || !owner.live) return;
@@ -53,7 +57,7 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
     setThreshold(String(installed?.id === 'composite' ? installed.config.threshold : 1));
   }, [check]);
   const run = useCallback((owner: Owner, task: () => Promise<void>) => {
-    if (!current(owner) || owner.busy) return;
+    if (!current(owner) || owner.busy || AppState.currentState !== 'active') return;
     owner.busy = true; setBusy(true); setFailure(undefined);
     owner.work = Promise.resolve().then(() => { check(owner); return task(); }).catch(error => {
       if (current(owner)) setFailure(error?.code === 'COMPOSITE_LOCKOUT' ? 'smartAccountHub.compositeLockout' : error?.code === 'COMPOSITE_UNAVAILABLE' ? 'smartAccountHub.compositeUnavailable' : error?.code === 'INVALID_COMPOSITE' ? 'smartAccountHub.compositeInvalid' : 'mobile.smartAccountModules.unavailable');
@@ -61,16 +65,16 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
   }, [check, current]);
   useEffect(() => {
     mounted.current = true;
-    const owner: Owner = { live: true, busy: false, abort: new AbortController() };
+    const owner: Owner = { live: true, busy: false, abort: new AbortController(), authentication: createNativePrivateAuthenticationScope() };
     selected.current = owner;
     void Promise.resolve().then(() => run(owner, async () => {
       setManager(undefined); setMetadata(undefined); setOperation(undefined); setClosing(false); setFailure(undefined); setMode('installed');
       setAddress(''); setName(''); setInitData('0x'); setPreflight(undefined);
-      const value = await open(owner.abort.signal, () => check(owner)); check(owner);
+      const value = await open(owner.abort.signal, () => check(owner), owner.authentication); check(owner);
       owner.manager = value; setManager(value); await load(owner);
     }));
-    const change = AppState.addEventListener('change', state => { if (state !== 'active') back(owner); });
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => back(owner)) : undefined;
+    const change = AppState.addEventListener('change', state => { if (state !== 'active' && !allowsPrivateAuthenticationInterruption(owner.authentication, state)) back(owner); });
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { if (!allowsPrivateAuthenticationInterruption(owner.authentication, 'blur')) back(owner); }) : undefined;
     const hardware = BackHandler.addEventListener('hardwareBackPress', () => { navigateBack(owner); return true; });
     return () => { mounted.current = false; void retire(owner); change.remove(); blur?.remove(); hardware.remove(); };
   }, [back, check, epoch, load, navigateBack, open, run]);
@@ -81,7 +85,7 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
   }, [current]);
   const shownOwner = selected.current;
   const close = () => { if (shownOwner) back(shownOwner); };
-  if (operation) return <NativeSmartAccountOperationScreen ledgerConnection={ledgerConnection} controller={operation} onBack={() => { if (shownOwner) returnToStatus(shownOwner, operation); }} />;
+  if (operation) return <NativeSmartAccountOperationScreen authentication={operationAuthentication} ledgerConnection={ledgerConnection} controller={operation} onBack={() => { if (shownOwner) returnToStatus(shownOwner, operation); }} />;
   const action = (task: (owner: Owner, value: NativeSmartModuleManagement) => Promise<void>) => {
     const owner = shownOwner, value = manager;
     if (!owner || !value || !current(owner) || owner.manager !== value) return;
@@ -89,7 +93,7 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
   };
   const review = (draft: NativeSmartModuleDraft) => action(async (owner, value) => {
     const next = await value.openChange(draft, owner.abort.signal, () => check(owner));
-    try { check(owner); owner.operation = next; setOperation(next); }
+    try { check(owner); owner.operation = next; setOperationAuthentication(owner.authentication); setOperation(next); }
     catch (error) { await next.dispose(); throw error; }
   });
   const validators = (metadata?.installedModules ?? []).filter((module): module is SmartAccountValidatorModule => module.type === 'validator');

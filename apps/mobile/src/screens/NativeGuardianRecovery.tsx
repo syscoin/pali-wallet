@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   BackHandler,
   FlatList,
   KeyboardAvoidingView,
@@ -37,6 +38,8 @@ import {
 } from '../ui';
 import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
 import { TransactionDetails } from './NativeTransactionReview';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 export type NativeGuardianRecoveryTool = NativeGuardianRecoveryChoices & {
   chainId: number;
@@ -45,7 +48,8 @@ export type NativeGuardianRecoveryTool = NativeGuardianRecoveryChoices & {
   open(
     draft: NativeGuardianRecoveryDraft,
     signal: AbortSignal,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    authentication: NativePrivateAuthenticationScope
   ): Promise<NativeGuardianRecoveryController>;
   onActivity(payerId: string, chainId: number, hash: string): Promise<void>;
   openRecoveryAlerts(): Promise<void>;
@@ -92,23 +96,40 @@ export function NativeGuardianRecovery({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const owner = useRef({
-    live: true,
+    live: false,
     busy: false,
     controller: null as NativeGuardianRecoveryController | null,
+    authentication: null as NativePrivateAuthenticationScope | null,
   });
-  useLayoutEffect(() => {
+  const latestBack = useRef(onBack);
+  useLayoutEffect(() => { latestBack.current = onBack; }, [onBack]);
+  const back = useCallback(() => {
     const current = owner.current;
+    if (!current.live) return;
+    current.live = false;
+    current.authentication?.retire();
+    current.controller?.dispose();
+    latestBack.current();
+  }, []);
+  useLayoutEffect(() => {
+    const current = { live: !lifetime.aborted, busy: false, controller: null as NativeGuardianRecoveryController | null,
+      authentication: createNativePrivateAuthenticationScope() };
+    owner.current = current;
     const retire = () => {
       current.live = false;
+      current.authentication.retire();
       current.controller?.dispose();
     };
     lifetime.addEventListener('abort', retire, { once: true });
     if (lifetime.aborted) retire();
+    const change = AppState.addEventListener('change', state => { if (state !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, state)) back(); });
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { if (!allowsPrivateAuthenticationInterruption(current.authentication, 'blur')) back(); }) : undefined;
     return () => {
       lifetime.removeEventListener('abort', retire);
       retire();
+      change.remove(); blur?.remove();
     };
-  }, [lifetime]);
+  }, [lifetime, back]);
   const openRecoveryAlerts = useCallback(async () => {
     if (!owner.current.live || lifetime.aborted) throw Error('CANCELLED');
     await port.openRecoveryAlerts();
@@ -140,15 +161,16 @@ export function NativeGuardianRecovery({
           !port.payers.some((account) => account.id === draft.payerId))
       )
         return;
-      if (!current.live || current.busy || lifetime.aborted) return;
+      if (!current.live || current.busy || !current.authentication || lifetime.aborted || AppState.currentState !== 'active') return;
       current.busy = true;
       setBusy(true);
       setError('');
       const check = () => {
-        if (!current.live || lifetime.aborted) throw Error('CANCELLED');
+        if (!current.live || lifetime.aborted ||
+            (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication!, AppState.currentState))) throw Error('CANCELLED');
       };
       try {
-        const next = await port.open(draft, lifetime, check);
+        const next = await port.open(draft, lifetime, check, current.authentication);
         if (!current.live || lifetime.aborted) {
           next.dispose();
           return;
@@ -269,7 +291,7 @@ export function NativeGuardianRecovery({
         networkLabel={networkLabel}
         onActivity={onActivity}
         openRecoveryAlerts={openRecoveryAlerts}
-        onBack={onBack}
+        onBack={back}
       />
     );
   return (
@@ -301,7 +323,7 @@ export function NativeGuardianRecovery({
               title="Close"
               variant="secondary"
               size="compact"
-              onPress={onBack}
+              onPress={back}
             />
           </>
         }
@@ -309,7 +331,7 @@ export function NativeGuardianRecovery({
         <Header
           title="Recover smart account"
           subtitle={networkLabel}
-          onBack={onBack}
+          onBack={back}
         />
         <Card style={s.card}>
           <Text style={s.label}>Smart account · Chain ID {port.chainId}</Text>
@@ -523,8 +545,9 @@ export function NativeGuardianRecoveryView({
     []
   );
   useEffect(() => {
-    void controller.prepare();
+    if (AppState.currentState === 'active') void controller.prepare();
   }, [controller]);
+  const act = (action: () => unknown) => { if (live.current && AppState.currentState === 'active') return action(); };
   const amount = (units: string) => (
     <>
       <Text selectable style={s.amount}>
@@ -538,7 +561,7 @@ export function NativeGuardianRecoveryView({
     : null;
   const pending = state.phase === 'preparing' || state.phase === 'submitting';
   const clear = async () => {
-    if (!acknowledged) return;
+    if (!acknowledged || !live.current || AppState.currentState !== 'active') return;
     await controller.abandon();
   };
   return (
@@ -553,7 +576,7 @@ export function NativeGuardianRecoveryView({
                     ? 'Review finalization fee'
                     : 'Authorize recovery'
                 }
-                onPress={() => void controller.review()}
+                onPress={() => void act(() => controller.review())}
               />
             )}
             {state.phase === 'review' && state.feeReview && (
@@ -563,7 +586,7 @@ export function NativeGuardianRecoveryView({
                     ? 'Confirm finalization'
                     : 'Confirm schedule'
                 }
-                onPress={() => void controller.confirm(state.feeReview!.id)}
+                onPress={() => void act(() => controller.confirm(state.feeReview!.id))}
               />
             )}
             {state.phase === 'complete' &&
@@ -571,7 +594,7 @@ export function NativeGuardianRecoveryView({
                 <Button
                   title="Refresh account metadata"
                   onPress={() =>
-                    void controller.retryMetadata().catch(() => undefined)
+                    void act(() => controller.retryMetadata().catch(() => undefined))
                   }
                 />
               )}
@@ -580,7 +603,7 @@ export function NativeGuardianRecoveryView({
                 title={
                   terminalNotice ? 'Refresh current policy' : 'Check status'
                 }
-                onPress={() => void controller.refresh()}
+                onPress={() => void act(() => controller.refresh())}
               />
             )}
             <Button

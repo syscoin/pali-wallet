@@ -8,12 +8,14 @@ import type { NativeSlhPublicState } from '../smartAccount/slhDsaRuntime';
 import type { NativeSmartAccountOperation } from '../smartAccount/operation';
 import { Button, Card, colors, Header, Icon, Notice, Screen, Text } from '../ui';
 import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
-type Props = { ledgerConnection?: NativeLedgerConnectionView; open(signal: AbortSignal, assertCurrent: () => void): Promise<NativeSlhDsaManagement>; onBack(): void };
+type Props = { ledgerConnection?: NativeLedgerConnectionView; open(signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeSlhDsaManagement>; onBack(): void };
 type Snapshot = { prepared: readonly NativeSlhPublicState[]; installed: readonly { keyId: string; state: NativeSlhPublicState | null }[] };
-type Owner = { live: boolean; busy: boolean; abort: AbortController; work?: Promise<void>; closing?: Promise<void>; manager?: NativeSlhDsaManagement; operation?: NativeSmartAccountOperation };
+type Owner = { live: boolean; busy: boolean; abort: AbortController; authentication: NativePrivateAuthenticationScope; work?: Promise<void>; closing?: Promise<void>; manager?: NativeSlhDsaManagement; operation?: NativeSmartAccountOperation };
 function retire(owner: Owner) {
-  owner.live = false; owner.abort.abort();
+  owner.live = false; owner.authentication.retire(); owner.abort.abort();
   owner.closing ??= Promise.allSettled([owner.work, owner.operation?.dispose()]).then(() => undefined);
   return owner.closing;
 }
@@ -24,9 +26,11 @@ export function NativeSlhDsaManagementScreen({ open, onBack, ledgerConnection }:
   const selected = useRef<Owner | undefined>(undefined), mounted = useRef(false), callbacks = useRef({ onBack });
   const [epoch, setEpoch] = useState(0), [manager, setManager] = useState<NativeSlhDsaManagement>(), [snapshot, setSnapshot] = useState<Snapshot>();
   const [operation, setOperation] = useState<NativeSmartAccountOperation>(), [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
+  const [operationAuthentication, setOperationAuthentication] = useState<NativePrivateAuthenticationScope>();
   const [progress, setProgress] = useState<number | null>(null), [closing, setClosing] = useState(false);
   useLayoutEffect(() => { callbacks.current = { onBack }; }, [onBack]);
-  const current = useCallback((owner: Owner) => mounted.current && selected.current === owner && owner.live && !owner.abort.signal.aborted && AppState.currentState === 'active', []);
+  const current = useCallback((owner: Owner) => mounted.current && selected.current === owner && owner.live && !owner.abort.signal.aborted &&
+    (AppState.currentState === 'active' || allowsPrivateAuthenticationInterruption(owner.authentication, AppState.currentState)), []);
   const check = useCallback((owner: Owner) => { if (!current(owner)) throw Error('CANCELLED'); }, [current]);
   const back = useCallback((owner: Owner) => {
     if (!mounted.current || selected.current !== owner || !owner.live) return;
@@ -45,7 +49,7 @@ export function NativeSlhDsaManagementScreen({ open, onBack, ledgerConnection }:
     check(owner); setSnapshot({ prepared, installed });
   }, [check]);
   const run = useCallback((owner: Owner, task: () => Promise<void>) => {
-    if (!current(owner) || owner.busy) return;
+    if (!current(owner) || owner.busy || AppState.currentState !== 'active') return;
     owner.busy = true; setBusy(true); setFailed(false);
     const work = Promise.resolve().then(() => { check(owner); return task(); }).catch(() => {
       if (current(owner)) setFailed(true);
@@ -54,15 +58,15 @@ export function NativeSlhDsaManagementScreen({ open, onBack, ledgerConnection }:
   }, [check, current]);
   useEffect(() => {
     mounted.current = true;
-    const owner: Owner = { live: true, busy: false, abort: new AbortController() };
+    const owner: Owner = { live: true, busy: false, abort: new AbortController(), authentication: createNativePrivateAuthenticationScope() };
     selected.current = owner;
     void Promise.resolve().then(() => run(owner, async () => {
       setManager(undefined); setSnapshot(undefined); setOperation(undefined); setClosing(false); setFailed(false);
-      const value = await open(owner.abort.signal, () => check(owner)); check(owner);
+      const value = await open(owner.abort.signal, () => check(owner), owner.authentication); check(owner);
       owner.manager = value; setManager(value); await load(owner);
     }));
-    const change = AppState.addEventListener('change', state => { if (state !== 'active') back(owner); });
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => back(owner)) : undefined;
+    const change = AppState.addEventListener('change', state => { if (state !== 'active' && !allowsPrivateAuthenticationInterruption(owner.authentication, state)) back(owner); });
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { if (!allowsPrivateAuthenticationInterruption(owner.authentication, 'blur')) back(owner); }) : undefined;
     const hardware = BackHandler.addEventListener('hardwareBackPress', () => { back(owner); return true; });
     return () => { mounted.current = false; void retire(owner); change.remove(); blur?.remove(); hardware.remove(); };
   }, [back, check, epoch, load, open, run]);
@@ -73,7 +77,7 @@ export function NativeSlhDsaManagementScreen({ open, onBack, ledgerConnection }:
   }, [current]);
   const shownOwner = selected.current;
   const close = () => { if (shownOwner) back(shownOwner); };
-  if (operation) return <NativeSmartAccountOperationScreen ledgerConnection={ledgerConnection} controller={operation} onBack={() => { if (shownOwner) returnToStatus(shownOwner, operation); }} />;
+  if (operation) return <NativeSmartAccountOperationScreen authentication={operationAuthentication} ledgerConnection={ledgerConnection} controller={operation} onBack={() => { if (shownOwner) returnToStatus(shownOwner, operation); }} />;
   const action = (task: (owner: Owner, manager: NativeSlhDsaManagement) => Promise<void>) => {
     const owner = shownOwner, capturedManager = manager;
     if (!owner || !capturedManager || !current(owner) || owner.manager !== capturedManager) return;
@@ -86,7 +90,7 @@ export function NativeSlhDsaManagementScreen({ open, onBack, ledgerConnection }:
   const reportProgress = (owner: Owner) => (value: { completed: number; total: number }) => { check(owner); setProgress(Math.floor(value.completed * 100 / value.total)); };
   const install = (keyId: string) => action(async (owner, value) => {
     const next = await value.openInstall(keyId, owner.abort.signal, () => check(owner));
-    try { check(owner); owner.operation = next; setOperation(next); }
+    try { check(owner); owner.operation = next; setOperationAuthentication(owner.authentication); setOperation(next); }
     catch (error) { await next.dispose(); throw error; }
   });
   const keyCard = (keyId: string, state: NativeSlhPublicState | null, installed: boolean) => <Card key={keyId} style={s.card}>

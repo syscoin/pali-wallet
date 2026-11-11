@@ -151,7 +151,7 @@ test('SLH failed native acquisition releases authorization before draining the o
       storage: f.storage.keyringStorage, assertCurrent: f.wallet, now: Date.now, onStorageFault() { f.stopWallet(); },
       openExecution(owner) { return { ...f.openExecution(owner), isRetired: () => true }; },
     });
-    work = runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
+    work = runtime.prepareFresh(0, f.wallet, () => undefined, f.signal, null);
     void work.catch(() => undefined);
     await entered.promise;
     assert.equal(f.authorization().open, false);
@@ -166,15 +166,15 @@ test('SLH failed native acquisition releases authorization before draining the o
 test('SLH native cleanup failure remains fail-closed after authorization releases', async () => {
   const f = await nativeFixture();
   try {
-    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
+    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal, null);
     f.holdRetire(async () => {
       assert.equal(f.authorization().open, false);
       assert.equal(f.authorization().access, false);
       throw Error('native cleanup failed');
     });
-    await assert.rejects(f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal), /native cleanup failed/);
+    await assert.rejects(f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal, null), /native cleanup failed/);
     assert.equal(f.counts().faults, 1);
-    assert.throws(() => f.runtime.signActionHash({ ...state, actionHash: `0x${'bb'.repeat(32)}` }, null, f.wallet, f.signal), /retired/);
+    assert.throws(() => f.runtime.signActionHash({ ...state, actionHash: `0x${'bb'.repeat(32)}` }, null, f.wallet, f.signal, null), /retired/);
     assert.equal(f.counts().signatures, 1);
   } finally { await f.close(); }
 });
@@ -270,7 +270,7 @@ test('native composition uses the real SDK derivation and complete profile-encry
     for (const accountIndex of [0, 1]) {
       const expected = await f.keyring.deriveSLHDSASetupSecretForAccount({ accountIndex });
       const material = await deriveSLHDSASeedMaterial(expected.setupSecretHex);
-      const state = await f.runtime.prepareFresh(accountIndex, f.wallet, () => undefined, f.signal);
+      const state = await f.runtime.prepareFresh(accountIndex, f.wallet, () => undefined, f.signal, null);
       assert.equal(state.accountIndex, accountIndex);
       assert.equal(state.derivationLabel, expected.derivationLabel);
       assert.equal(bytesToHex(f.seedInputs[accountIndex]!), material.seed48Hex);
@@ -293,11 +293,11 @@ test('native composition uses the real SDK derivation and complete profile-encry
 test('signature delivery waits for the real guarded SQLite COMMIT and restores saved high-water state', async () => {
   const f = await nativeFixture(); const held = gate<void>(), entered = gate<void>();
   try {
-    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
+    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal, null);
     let armed = true;
     f.hooks.before = async (kind, sql) => { if (armed && kind === 'exec' && sql === 'COMMIT') { armed = false; entered.resolve(); await held.promise; } };
     let delivered = false;
-    const signing = f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal).then(value => { delivered = true; return value; });
+    const signing = f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal, null).then(value => { delivered = true; return value; });
     await entered.promise; await tick();
     assert.equal(delivered, false);
     held.resolve();
@@ -307,7 +307,7 @@ test('signature delivery waits for the real guarded SQLite COMMIT and restores s
       assertCurrent: f.wallet, openExecution: f.openExecution, now: Date.now, onStorageFault() { throw Error('unexpected storage fault'); } });
     try {
       assert.equal((await reopened.hydrateInstalled(state, f.wallet)).signatureCount, 1);
-      await reopened.signActionHash({ ...state, actionHash: `0x${'bb'.repeat(32)}` }, null, f.wallet, f.signal);
+      await reopened.signActionHash({ ...state, actionHash: `0x${'bb'.repeat(32)}` }, null, f.wallet, f.signal, null);
       const row = await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(state.keyId)) as { cipherText: string };
       assert.equal(JSON.parse(await f.crypto.decrypt(row.cipherText, state.keyId)).signatureCount, 2);
     } finally { await reopened.retire(); }
@@ -317,13 +317,13 @@ test('signature delivery waits for the real guarded SQLite COMMIT and restores s
 test('a different raw row read during held encryption cannot authorize a stale counter overwrite', async () => {
   const f = await nativeFixture(); const held = gate<void>(), entered = gate<void>();
   try {
-    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
+    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal, null);
     const key = getSLHDSAStateStorageKey(state.keyId);
     const before = await f.storage.keyringStorage.get(key) as { cipherText: string; updatedAt: number };
     const plain = JSON.parse(await f.crypto.decrypt(before.cipherText, state.keyId));
     const advanced = { ...before, cipherText: await f.crypto.encrypt(JSON.stringify({ ...plain, signatureCount: 10 }), state.keyId), updatedAt: before.updatedAt + 1 };
     f.holdEncrypt(async () => { entered.resolve(); await held.promise; });
-    const signing = f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal);
+    const signing = f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal, null);
     await entered.promise;
     assert.equal(await f.storage.keyringStorage.compareAndSet(key, before, advanced, undefined, f.wallet), true);
     await assert.rejects(f.runtime.hydrateInstalled(state, f.wallet), /STORAGE_CHANGED|retired wallet|session/i);
@@ -337,10 +337,10 @@ test('a different raw row read during held encryption cannot authorize a stale c
 test('lost COMMIT acknowledgement preserves the record and suppresses signature release', async () => {
   const f = await nativeFixture();
   try {
-    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
+    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal, null);
     let armed = true;
     f.hooks.after = (kind, sql) => { if (armed && kind === 'exec' && sql === 'COMMIT') { armed = false; throw Error('acknowledgement lost'); } };
-    await assert.rejects(f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal));
+    await assert.rejects(f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal, null));
     assert.equal(f.counts().faults, 1);
     assert.equal(f.counts().signatures, 1);
     await assert.rejects(f.storage.keyringStorage.get(getSLHDSAStateStorageKey(state.keyId)), /STORAGE_REOPEN_REQUIRED/);
@@ -350,13 +350,13 @@ test('lost COMMIT acknowledgement preserves the record and suppresses signature 
 test('request retirement after dispatch persists usage but cannot deliver the signature', async () => {
   const f = await nativeFixture(); const held = gate<Uint8Array>(), entered = gate<void>();
   try {
-    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
+    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal, null);
     let requestCurrent = true;
     const request = () => { if (!requestCurrent) throw Error('retired request'); };
     f.holdFinish(() => { entered.resolve(); return held.promise; });
     const signing = f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, {
       assertCurrent: request, checkDocument: async () => { request(); },
-    }, request, f.signal);
+    }, request, f.signal, null);
     await entered.promise; requestCurrent = false;
     held.resolve(new Uint8Array(3856).fill(9));
     await assert.rejects(signing, /retired request/);
@@ -369,11 +369,11 @@ test('request retirement after dispatch persists usage but cannot deliver the si
 test('pre-dispatch rejection starts no primitive and changes no durable usage', async () => {
   const f = await nativeFixture();
   try {
-    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
+    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal, null);
     const before = await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(state.keyId));
     await assert.rejects(f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, {
       assertCurrent: () => undefined, checkDocument: async () => { throw Error('consent retired'); },
-    }, f.wallet, f.signal), /consent retired/);
+    }, f.wallet, f.signal, null), /consent retired/);
     assert.equal(f.counts().signatures, 0);
     assert.deepEqual(await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(state.keyId)), before);
   } finally { await f.close(); }
@@ -382,9 +382,9 @@ test('pre-dispatch rejection starts no primitive and changes no durable usage', 
 test('wallet retirement synchronously revokes the context and joins started execution', async () => {
   const f = await nativeFixture(); const held = gate<Uint8Array>(), entered = gate<void>();
   try {
-    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
+    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal, null);
     f.holdFinish(() => { entered.resolve(); return held.promise; });
-    const signing = f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal);
+    const signing = f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal, null);
     await entered.promise;
     f.stopWallet();
     let closed = false;
@@ -400,13 +400,13 @@ test('missing installed state refuses hydration and rebuild without invoking nat
   const f = await nativeFixture();
   let reopened: ReturnType<typeof createNativeSlhDsaRuntime> | undefined;
   try {
-    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
+    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal, null);
     await f.runtime.retire();
     const key = getSLHDSAStateStorageKey(state.keyId), before = await f.storage.keyringStorage.get(key);
     assert.equal(await f.storage.keyringStorage.compareAndSetMany([{ key, expected: before, value: undefined }], f.wallet), true);
     reopened = await f.reopenRuntime();
     await assert.rejects(reopened.hydrateInstalled(state, f.wallet), /INSTALLED_STATE_MISSING/);
-    await assert.rejects(reopened.rebuildInstalled(state, f.wallet, () => undefined, f.signal), /INSTALLED_STATE_MISSING/);
+    await assert.rejects(reopened.rebuildInstalled(state, f.wallet, () => undefined, f.signal, null), /INSTALLED_STATE_MISSING/);
     assert.equal(f.counts().opened, 1);
     assert.equal(f.seedInputs.length, 1);
   } finally { await reopened?.retire(); await f.close(); }
@@ -416,15 +416,15 @@ test('cache loss rebuilds only the verified saved key and preserves its durable 
   const f = await nativeFixture();
   let reopened: ReturnType<typeof createNativeSlhDsaRuntime> | undefined;
   try {
-    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
-    await f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal);
+    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal, null);
+    await f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal, null);
     await f.runtime.retire(); f.dropCache();
     reopened = await f.reopenRuntime();
     assert.equal((await reopened.hydrateInstalled(state, f.wallet)).signatureCount, 1);
-    await assert.rejects(reopened.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal), /cache is missing/);
-    const rebuilt = await reopened.rebuildInstalled(state, f.wallet, () => undefined, f.signal);
+    await assert.rejects(reopened.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal, null), /cache is missing/);
+    const rebuilt = await reopened.rebuildInstalled(state, f.wallet, () => undefined, f.signal, null);
     assert.equal(rebuilt.keyId, state.keyId); assert.equal(rebuilt.signatureCount, 1);
-    await reopened.signActionHash({ ...state, actionHash: `0x${'bb'.repeat(32)}` }, null, f.wallet, f.signal);
+    await reopened.signActionHash({ ...state, actionHash: `0x${'bb'.repeat(32)}` }, null, f.wallet, f.signal, null);
     const row = await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(state.keyId)) as { cipherText: string };
     assert.equal(JSON.parse(await f.crypto.decrypt(row.cipherText, state.keyId)).signatureCount, 2);
   } finally { await reopened?.retire(); await f.close(); }
@@ -434,7 +434,7 @@ test('a record encrypted for another real SDK profile cannot become native signi
   const a = await nativeFixture();
   const b = await nativeFixture('legal winner thank year wave sausage worth useful legal winner thank yellow');
   try {
-    const state = await a.runtime.prepareFresh(0, a.wallet, () => undefined, a.signal);
+    const state = await a.runtime.prepareFresh(0, a.wallet, () => undefined, a.signal, null);
     const key = getSLHDSAStateStorageKey(state.keyId), row = await a.storage.keyringStorage.get(key);
     assert.notEqual(a.namespace, b.namespace);
     assert.equal(await b.storage.keyringStorage.compareAndSetMany([{ key, expected: undefined, value: row }], b.wallet), true);
@@ -449,8 +449,8 @@ test('cold SQLite and real SDK unlock recover the saved private record without d
   let hydrated: ReturnType<typeof createNativeSlhDsaRuntime> | undefined;
   let ring: typeof f.keyring;
   try {
-    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
-    await f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal);
+    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal, null);
+    await f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal, null);
     await f.runtime.retire(); await f.keyring.lockWallet(); await f.storage.close();
     reopened = await SqliteWalletStorage.open(nodeConnection(f.file).connection, digest, INSTALLATION, false);
     const { SoftwareKeyring, createKeyringHost } = require('@sidhujag/sysweb3-keyring/cjs/software');
@@ -476,8 +476,8 @@ test('an installed saved key that cannot match SDK derivation refuses rebuild wi
   const f = await nativeFixture();
   let reopened: ReturnType<typeof createNativeSlhDsaRuntime> | undefined;
   try {
-    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
-    await f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal);
+    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal, null);
+    await f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal, null);
     await f.runtime.retire(); f.dropCache();
     const key = getSLHDSAStateStorageKey(state.keyId), before = await f.storage.keyringStorage.get(key) as { cipherText: string };
     const imported = JSON.parse(await f.crypto.decrypt(before.cipherText, state.keyId));
@@ -487,7 +487,7 @@ test('an installed saved key that cannot match SDK derivation refuses rebuild wi
     assert.equal(await f.storage.keyringStorage.compareAndSetMany([{ key, expected: before, value: next }], f.wallet), true);
     reopened = await f.reopenRuntime();
     assert.equal((await reopened.hydrateInstalled(state, f.wallet)).signatureCount, 1);
-    await assert.rejects(reopened.rebuildInstalled(state, f.wallet, () => undefined, f.signal), /does not match/);
+    await assert.rejects(reopened.rebuildInstalled(state, f.wallet, () => undefined, f.signal, null), /does not match/);
     assert.deepEqual(await f.storage.keyringStorage.get(key), next);
   } finally { await reopened?.retire(); await f.close(); }
 });
@@ -495,19 +495,19 @@ test('an installed saved key that cannot match SDK derivation refuses rebuild wi
 test('retired native contexts never retry old work and reopen only for a new explicit review', async () => {
   const f = await nativeFixture(); const held = gate<Uint8Array>(), entered = gate<void>();
   try {
-    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
+    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal, null);
     let first = true;
     f.holdFinish(() => {
       if (first) { first = false; entered.resolve(); return held.promise; }
       return Promise.resolve(new Uint8Array(3856).fill(9));
     });
-    const old = f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal);
+    const old = f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal, null);
     await entered.promise; f.background(); held.resolve(new Uint8Array(3856).fill(9));
     await assert.rejects(old, /EXECUTION_RETIRED/);
     assert.equal(f.counts().opened, 2); assert.equal(f.counts().signatures, 1);
     assert.equal((await f.runtime.hydrateInstalled(state, f.wallet)).signatureCount, 0);
     assert.equal(f.counts().opened, 2);
-    await f.runtime.signActionHash({ ...state, actionHash: `0x${'bb'.repeat(32)}` }, null, f.wallet, f.signal);
+    await f.runtime.signActionHash({ ...state, actionHash: `0x${'bb'.repeat(32)}` }, null, f.wallet, f.signal, null);
     assert.equal(f.counts().opened, 3); assert.equal(f.counts().signatures, 2);
     assert.equal((await f.runtime.hydrateInstalled(state, f.wallet)).signatureCount, 1);
   } finally { held.resolve(new Uint8Array(3856)); await f.close(); }
@@ -516,11 +516,11 @@ test('retired native contexts never retry old work and reopen only for a new exp
 test('local consent retired during a held state read cannot dispatch native signing', async () => {
   const f = await nativeFixture(); const held = gate<void>(), entered = gate<void>();
   try {
-    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
+    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal, null);
     let current = true;
     const review = () => { if (!current) throw Error('local review retired'); };
     f.holdRead(async () => { entered.resolve(); await held.promise; });
-    const signing = f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, review, f.signal);
+    const signing = f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, review, f.signal, null);
     await entered.promise; current = false; held.resolve();
     await assert.rejects(signing, /local review retired/);
     assert.equal(f.counts().signatures, 0); assert.equal(f.counts().faults, 0);
@@ -530,18 +530,18 @@ test('local consent retired during a held state read cannot dispatch native sign
 test('an old pre-dispatch review cannot adopt a replacement execution context', async () => {
   const f = await nativeFixture(); const held = gate<void>(), entered = gate<void>();
   try {
-    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
+    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal, null);
     let first = true;
     f.holdRead(async () => { if (first) { first = false; entered.resolve(); await held.promise; } });
     let current = true;
     const originalReview = () => { if (!current) throw Error('original review retired'); };
-    const old = f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, originalReview, f.signal);
+    const old = f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, originalReview, f.signal, null);
     await entered.promise; current = false;
     await f.runtime.hydrateInstalled(state, f.wallet);
     held.resolve();
     await assert.rejects(old, /original review retired/);
     assert.equal(f.counts().opened, 1); assert.equal(f.counts().signatures, 0);
-    await f.runtime.signActionHash({ ...state, actionHash: `0x${'bb'.repeat(32)}` }, null, f.wallet, f.signal);
+    await f.runtime.signActionHash({ ...state, actionHash: `0x${'bb'.repeat(32)}` }, null, f.wallet, f.signal, null);
     assert.equal(f.counts().opened, 2); assert.equal(f.counts().signatures, 1);
   } finally { held.resolve(); await f.close(); }
 });

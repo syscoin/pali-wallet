@@ -1,3 +1,5 @@
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { PALI_RECOVERY_ALERTS_URL } from '../../../source/shared/smartAccountLinks.ts';
 import { getNativeGuardianRecoveryChoices } from '../src/smartAccount/guardianRecovery.ts';
 import assert from 'node:assert/strict';
@@ -61,6 +63,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     async resumeSigning() { throw Error('PSBT resume is outside this fixture'); },
   } satisfies Pick<NativeConnectionsView, 'backgroundSigning' | 'cancelSigningHandoff' | 'resumeSigning'>;
   const authenticatorGuards: (() => void)[] = [];
+  let promptActive = false;
   let incoming: NativePairingEntry | null = smartAccount || !withPairing
     ? null
     : {
@@ -191,6 +194,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     for (const listener of authorityListeners) listener(snapshot);
   };
   const controllers = {
+    authentication: { isActive: () => promptActive, cancel() { promptActive = false; } },
     authority: {
       getSnapshot: () => snapshot,
       getCatalogue: () => (snapshot.phase === 'ready' ? catalogue : null),
@@ -339,6 +343,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     '../portfolio/nativePortfolio': { NativePortfolioController: class { getSnapshot = () => null; subscribe = () => () => {}; connect() { return () => {}; } }, sameNativePortfolioAccount: () => false },
     '../../../../source/shared/smartAccountLinks.ts': { PALI_RECOVERY_ALERTS_URL },
     '../smartAccount/guardianRecovery': { getNativeGuardianRecoveryChoices },
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     react,
     'react-native': native,
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
@@ -479,6 +484,11 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     connections(patch: object) {
       connectionSnapshot = { ...connectionSnapshot, ...patch };
       for (const listener of connectionListeners) listener();
+    },
+    prompt(active: boolean) { promptActive = active; },
+    inactive() {
+      native.AppState.currentState = 'inactive';
+      for (const listener of appListeners.get('change') ?? []) listener('inactive');
     },
     background() {
       native.AppState.currentState = 'background';
@@ -702,12 +712,12 @@ test('controlled Smart accounts expose the existing guardian-status tool through
   await tools.props.guardianRecovery.recovery.openRecoveryAlerts();
   assert.deepEqual(f.openedLinks(), [PALI_RECOVERY_ALERTS_URL]);
   const draft = { action: 'set', guardian: '0x' + '55'.repeat(20), delaySeconds: 259200, acknowledgedPendingOperationId: null };
-  await tools.props.guardianRecovery.manage.open(draft, new AbortController().signal, () => undefined);
+  await tools.props.guardianRecovery.manage.open(draft, new AbortController().signal, () => undefined, privateAuthentication.createNativePrivateAuthenticationScope());
   assert.equal(f.guardianOpens(), 1);
   f.ready();
   await assert.rejects(tools.props.guardianRecovery.read(new AbortController().signal, () => undefined), /CANCELLED/);
   assert.equal(f.guardianReads(), 1);
-  await assert.rejects(tools.props.guardianRecovery.manage.open(draft, new AbortController().signal, () => undefined), /CANCELLED/);
+  await assert.rejects(tools.props.guardianRecovery.manage.open(draft, new AbortController().signal, () => undefined, privateAuthentication.createNativePrivateAuthenticationScope()), /CANCELLED/);
   assert.equal(f.guardianOpens(), 1);
   await assert.rejects(tools.props.guardianRecovery.recovery.openRecoveryAlerts(), /CANCELLED/);
   assert.equal(f.openedLinks().length, 1);
@@ -775,10 +785,10 @@ test('recovery remains available for a verified Smart account without its origin
     const tool = find(f.render(), node => node.type === 'RealTools')!.props.guardianRecovery;
     assert.equal(tool.manage, undefined);
     assert.equal(tool.recovery.hasIntent, true);
-    await tool.recovery.open({ kind: 'resume' }, new AbortController().signal, () => undefined);
+    await tool.recovery.open({ kind: 'resume' }, new AbortController().signal, () => undefined, privateAuthentication.createNativePrivateAuthenticationScope());
     assert.equal(f.recoveryOpens(), 1);
     f.background();
-    await assert.rejects(tool.recovery.open({ kind: 'resume' }, new AbortController().signal, () => undefined), /CANCELLED/);
+    await assert.rejects(tool.recovery.open({ kind: 'resume' }, new AbortController().signal, () => undefined, privateAuthentication.createNativePrivateAuthenticationScope()), /CANCELLED/);
     assert.equal(f.recoveryOpens(), 1);
   } finally { f.dispose(); }
 });
@@ -819,7 +829,7 @@ test('Pali wallet authenticator entry uses runtime eligibility and retains owner
     portfolio.props.onUseWalletAuthenticator();
     const route = f.render();
     assert.equal(route.type, 'NativeSmartAccountAuthenticator');
-    await route.props.open(new AbortController().signal, () => undefined);
+    await route.props.open(new AbortController().signal, () => undefined, privateAuthentication.createNativePrivateAuthenticationScope());
     assert.equal(f.authenticatorGuards().length, 1);
     f.readyAtRevision(3);
     const refreshedRoute = f.render();
@@ -851,7 +861,7 @@ test('Pali wallet authenticator owner is revoked when the wallet backgrounds', a
     f.readyAtRevision(2);
     find(f.render(), node => node.type === 'NativePortfolio')!.props.onUseWalletAuthenticator();
     const route = f.render();
-    await route.props.open(new AbortController().signal, () => undefined);
+    await route.props.open(new AbortController().signal, () => undefined, privateAuthentication.createNativePrivateAuthenticationScope());
     f.background();
     assert.throws(f.authenticatorGuards()[0]!, /CANCELLED/);
     assert.notEqual(f.render().type, 'NativeSmartAccountAuthenticator');
@@ -868,7 +878,7 @@ test('SLH management and Smart send use runtime signer availability independentl
     assert.equal(portfolio.props.onUseWalletAuthenticator, undefined, 'fixture deliberately withholds that separate target route');
     portfolio.props.onManageSlhDsa(); const route = f.render();
     assert.equal(route.type, 'NativeSlhDsaManagementScreen');
-    await route.props.open(new AbortController().signal, () => undefined);
+    await route.props.open(new AbortController().signal, () => undefined, privateAuthentication.createNativePrivateAuthenticationScope());
     assert.equal(f.authenticatorGuards().length, 1); f.authenticatorGuards()[0]!();
     assert.equal(f.hardwareBack(), false, 'management leaf owns its drain-before-Back');
     route.props.onBack(); assert(find(f.render(), node => node.type === 'NativePortfolio'));
@@ -883,7 +893,7 @@ test('SLH management is hidden behind the runtime qualification capability and r
   const f = await mounted(true, true, false, false, false, true);
   try {
     find(f.render(), node => node.type === 'NativePortfolio')!.props.onManageSlhDsa();
-    const route = f.render(); await route.props.open(new AbortController().signal, () => undefined);
+    const route = f.render(); await route.props.open(new AbortController().signal, () => undefined, privateAuthentication.createNativePrivateAuthenticationScope());
     f.background(); assert.throws(f.authenticatorGuards()[0]!, /CANCELLED/);
     assert.notEqual(f.render().type, 'NativeSlhDsaManagementScreen');
   } finally { f.dispose(); }
@@ -902,7 +912,7 @@ test('Trezor Continue opens a fresh Smart review through a stable guarded opener
     assert.equal(route.type, 'NativeSmartAccountOperationRoute');
     assert.equal(f.hardwareBack(), false, 'the operation route owns cancellation and disposal');
     const lifetime = new AbortController();
-    await route.props.open(() => undefined, lifetime.signal);
+    await route.props.open(() => undefined, lifetime.signal, privateAuthentication.createNativePrivateAuthenticationScope());
     assert.equal(f.resumedSmart().length, 1);
     assert.equal(f.resumedSmart()[0]!.id, 'public-smart-resume');
     assert.equal(f.resumedSmart()[0]!.signal, lifetime.signal);
@@ -912,7 +922,7 @@ test('Trezor Continue opens a fresh Smart review through a stable guarded opener
     route.props.onBack();
     assert(find(f.render(), node => node.type === 'NativePortfolio'));
     assert.throws(f.resumedSmart()[0]!.check, /CANCELLED/);
-    await assert.rejects(route.props.open(() => undefined, lifetime.signal), /CANCELLED/);
+    await assert.rejects(route.props.open(() => undefined, lifetime.signal, privateAuthentication.createNativePrivateAuthenticationScope()), /CANCELLED/);
     assert.equal(f.resumedSmart().length, 1);
   } finally {f.dispose();}
 });
@@ -923,7 +933,7 @@ test('wallet background records the local Trezor departure before locking a resu
     find(f.render(), node => node.type === 'NativePortfolio')!.props.hardwareRequest.props.onResume();
     await f.render().props.onResumeSend({kind: 'smart-operation', id: 'public-smart-resume', accountId: 'smart:60:0', networkId: 'ethereum'});
     const route = f.render(), lifetime = new AbortController();
-    await route.props.open(() => undefined, lifetime.signal);
+    await route.props.open(() => undefined, lifetime.signal, privateAuthentication.createNativePrivateAuthenticationScope());
     const offset = f.lifecycle().length;
     f.background();
     assert.deepEqual(f.lifecycle().slice(offset), ['trezor-background', 'psbt-background', 'lock']);
@@ -940,4 +950,29 @@ test('manual wallet lock cancels local Trezor work before locking custody', asyn
     portfolio.props.onLock();
     assert.deepEqual(f.lifecycle().slice(offset), ['trezor-cancel', 'psbt-cancel', 'lock']);
   } finally {f.dispose();}
+});
+
+
+for (const routeKind of ['authenticator', 'slh'] as const) test(`actual NativeWallet ${routeKind} parent preserves only its owned prompt interruption`, async () => {
+  const f = await mounted(true, true, false, routeKind === 'authenticator', false, routeKind === 'slh');
+  const scope = privateAuthentication.createNativePrivateAuthenticationScope();
+  const binding = privateAuthentication.bindNativePrivateAuthentication(scope, { assertCurrent() {}, isPromptActive: () => true });
+  try {
+    f.completeDeployment(); f.readyAtRevision(2);
+    const portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    if (routeKind === 'authenticator') portfolio.props.onUseWalletAuthenticator(); else portfolio.props.onManageSlhDsa();
+    const route = f.render();
+    await route.props.open(new AbortController().signal, () => undefined, scope);
+    const guard = f.authenticatorGuards()[0]!;
+    const before = f.lifecycle().length;
+    await privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => undefined, async () => {
+      f.prompt(true); f.inactive(); guard(); f.blur(); guard();
+      assert.equal(f.render().type, route.type);
+      assert.equal(f.lifecycle().length, before, 'the native prompt must not lock custody');
+      f.foreground(); f.prompt(false); guard();
+    });
+    f.inactive();
+    assert.throws(guard, /CANCELLED/);
+    assert.notEqual(f.render().type, route.type);
+  } finally { scope.retire(); f.dispose(); }
 });

@@ -8,14 +8,16 @@ import type { NativeInfrastructureController, NativeInfrastructureSnapshot } fro
 import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
 import { TransactionDetails } from './NativeTransactionReview';
 import { useOwnedLedgerConnection } from './useDappLedgerConnection';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 type Props = {
-  open(signal: AbortSignal, assertCurrent: () => void): Promise<NativeInfrastructureController>;
+  open(signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeInfrastructureController>;
   onBack(): void;
   ledgerConnection?: NativeLedgerConnectionView;
 };
 type Scope = Readonly<{ source: Props['open'] }>;
-type Owner = { scope: Scope; live: boolean; abort: AbortController; controller?: NativeInfrastructureController };
+type Owner = { scope: Scope; live: boolean; abort: AbortController; authentication: NativePrivateAuthenticationScope; controller?: NativeInfrastructureController };
 const empty: NativeInfrastructureSnapshot = Object.freeze({ phase: 'loading', revision: 0, status: null, feeReview: null, error: null });
 const emptySnapshot = () => empty;
 const emptySubscribe = () => () => {};
@@ -38,17 +40,19 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
   const [openingError, setOpeningError] = useState<Scope>();
   const [detailsId, setDetailsId] = useState<number | null>(null);
   useLayoutEffect(() => { back.current = onBack; }, [onBack]);
-  const isCurrent = useCallback((current: Owner) => owner.current === current && current.scope === scope && current.live && !current.abort.signal.aborted && AppState.currentState === 'active', [scope]);
+  const isCurrent = useCallback((current: Owner) => owner.current === current && current.scope === scope && current.live && !current.abort.signal.aborted &&
+    (AppState.currentState === 'active' || allowsPrivateAuthenticationInterruption(current.authentication, AppState.currentState)), [scope]);
   const close = useCallback(() => {
     const current = owner.current;
     if (!current || current.scope !== scope || !current.live) return;
     current.live = false;
+    current.authentication.retire();
     current.abort.abort();
     current.controller?.dispose();
     back.current();
   }, [scope]);
   useLayoutEffect(() => {
-    const current: Owner = { scope, live: true, abort: new AbortController() };
+    const current: Owner = { scope, live: true, abort: new AbortController(), authentication: createNativePrivateAuthenticationScope() };
     owner.current = current;
     const check = () => {
       if (!isCurrent(current)) throw new Error('CANCELLED');
@@ -57,7 +61,7 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
       let controller: NativeInfrastructureController | undefined;
       try {
         check();
-        controller = await open(current.abort.signal, check);
+        controller = await open(current.abort.signal, check, current.authentication);
         check();
         current.controller = controller;
         setSession({ owner: current, controller });
@@ -67,11 +71,12 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
         if (isCurrent(current)) setOpeningError(scope);
       }
     })();
-    const change = AppState.addEventListener('change', next => { if (next !== 'active') close(); });
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', close) : undefined;
+    const change = AppState.addEventListener('change', next => { if (next !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, next)) close(); });
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { if (!allowsPrivateAuthenticationInterruption(current.authentication, 'blur')) close(); }) : undefined;
     const hardwareBack = BackHandler.addEventListener('hardwareBackPress', () => { close(); return true; });
     return () => {
       current.live = false;
+      current.authentication.retire();
       current.abort.abort();
       current.controller?.dispose();
       change.remove(); blur?.remove(); hardwareBack.remove();
@@ -81,7 +86,7 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
   const controller = current ? session?.controller : undefined;
   const state = useSyncExternalStore(controller?.subscribe ?? emptySubscribe, controller?.getSnapshot ?? emptySnapshot, controller?.getSnapshot ?? emptySnapshot);
   const act = (action: () => Promise<void>) => {
-    if (!controller || !current || current.controller !== controller || !isCurrent(current)) return;
+    if (!controller || !current || current.controller !== controller || !isCurrent(current) || AppState.currentState !== 'active') return;
     void action().catch(() => undefined);
   };
   const busy = ['loading', 'preparing', 'submitting'].includes(state.phase);

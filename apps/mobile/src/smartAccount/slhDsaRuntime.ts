@@ -1,3 +1,4 @@
+import type { NativePrivateAuthentication } from '../custody/privateAuthentication.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import { getSLHDSAKeyId, getSLHDSAStateStorageKey, SLH_DSA_PARAMETER_SET } from '../../../../source/utils/slhDsa/constants.ts';
 import { normalizeSLHDSAPublicKeyField } from '../../../../source/utils/slhDsa/hex.ts';
@@ -80,7 +81,7 @@ const captureInstalled = (input: NativeSlhInstalledKey): NativeSlhInstalledKey =
 export function createNativeSlhDsaRuntime(ports: Readonly<{
   namespace: string;
   publicStates: NativeSlhPublicStates;
-  authorize<T>(purpose: 'setup' | 'sign', accountIndex: number | null, signal: AbortSignal, assertCurrent: () => void, work: (secrets: NativeSlhActionSecrets) => Promise<T>): Promise<T>;
+  authorize<T>(purpose: 'setup' | 'sign', accountIndex: number | null, signal: AbortSignal, assertCurrent: () => void, work: (secrets: NativeSlhActionSecrets) => Promise<T>, authentication: NativePrivateAuthentication | null): Promise<T>;
   storage: KeyringStoragePort;
   assertCurrent(): void;
   openExecution: NativeSlhExecutionFactory;
@@ -253,7 +254,7 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
   type Signer = ReturnType<typeof createSigner>;
   let actionTail: Promise<void> = Promise.resolve();
   const owned = <T>(purpose: 'setup' | 'sign', accountIndex: number | null, signal: AbortSignal, assertRequest: () => void,
-    operation: (signer: Signer, crypto: SlhDsaStateCrypto, setup: NativeSlhActionSecrets['setup']) => Promise<T>): Promise<T> => {
+    operation: (signer: Signer, crypto: SlhDsaStateCrypto, setup: NativeSlhActionSecrets['setup']) => Promise<T>, authentication: NativePrivateAuthentication | null): Promise<T> => {
     wallet();
     const finish = drain.begin();
     const work = actionTail.then(async () => {
@@ -288,7 +289,7 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
               secrets.dispose();
             }
           }
-        });
+        }, authentication);
         if (!entered || !completed) throw new Error('SLH_DSA_SESSION_RETIRED');
       } finally {
         admitted = false;
@@ -321,7 +322,7 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
     return signer.putRuntimeSLHDSAState(state, signer.getSLHDSASessionGeneration());
   };
   return Object.freeze({
-    prepareFresh(accountIndex: number, assertRequest: () => void, onProgress: Progress, signal: AbortSignal): Promise<NativeSlhPublicState> {
+    prepareFresh(accountIndex: number, assertRequest: () => void, onProgress: Progress, signal: AbortSignal, authentication: NativePrivateAuthentication | null): Promise<NativeSlhPublicState> {
       if (!Number.isSafeInteger(accountIndex) || accountIndex < 0) return Promise.reject(new Error('SLH_DSA_ACCOUNT_CHANGED'));
       assertSynchronousEvmFeeGuard(assertRequest);
       if (preparing) return Promise.reject(new Error('SLH_DSA_SETUP_BUSY'));
@@ -338,7 +339,7 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
           wallet(); assertSynchronousEvmFeeGuard(assertRequest);
           return publicState(state);
         } finally { progress = () => undefined; setupCheck = wallet; }
-      }).finally(() => { preparing = false; });
+      }, authentication).finally(() => { preparing = false; });
     },
     inspectPrepared(keyId: string, accountIndex: number, assertRequest: () => void): Promise<NativeSlhPublicState | null> {
       wallet(); assertSynchronousEvmFeeGuard(assertRequest);
@@ -369,7 +370,7 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
         return saved.state;
       })().finally(finish);
     },
-    rebuildInstalled(input: NativeSlhInstalledKey, assertRequest: () => void, onProgress: Progress, signal: AbortSignal): Promise<NativeSlhPublicState> {
+    rebuildInstalled(input: NativeSlhInstalledKey, assertRequest: () => void, onProgress: Progress, signal: AbortSignal, authentication: NativePrivateAuthentication | null): Promise<NativeSlhPublicState> {
       const key = captureInstalled(input);
       assertSynchronousEvmFeeGuard(assertRequest);
       if (preparing) return Promise.reject(new Error('SLH_DSA_SETUP_BUSY'));
@@ -393,9 +394,9 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
             throw new Error('SLH_DSA_INSTALLED_STATE_CHANGED');
           return publicState(restored);
         } finally { progress = () => undefined; setupCheck = wallet; }
-      }).finally(() => { preparing = false; });
+      }, authentication).finally(() => { preparing = false; });
     },
-    signActionHash(input: SLHDSASignActionHashParams, approval: SLHDSADispatchApproval | null, assertDelivery: () => void, signal: AbortSignal): Promise<string> {
+    signActionHash(input: SLHDSASignActionHashParams, approval: SLHDSADispatchApproval | null, assertDelivery: () => void, signal: AbortSignal, authentication: NativePrivateAuthentication | null): Promise<string> {
       const request = Object.freeze({ ...input });
       const approved = approval && Object.freeze({ assertCurrent: approval.assertCurrent.bind(approval), checkDocument: approval.checkDocument.bind(approval) });
       assertSynchronousEvmFeeGuard(assertDelivery);
@@ -413,7 +414,7 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
         const signature = await signer.signSLHDSAActionHashLocal(request, signer.getSLHDSASessionGeneration(), assent);
         wallet(); assertSynchronousEvmFeeGuard(assertDelivery);
         return signature;
-      });
+      }, authentication);
     },
     retire(): Promise<void> {
       let closing: Promise<void> | undefined;

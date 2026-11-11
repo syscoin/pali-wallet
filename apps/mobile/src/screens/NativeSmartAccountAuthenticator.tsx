@@ -17,12 +17,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeSmartAccountOperation } from '../smartAccount/operation';
 import { Button, colors, Header, Notice, Screen, Text } from '../ui';
 import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 type Props = {
   ledgerConnection?: NativeLedgerConnectionView;
   open(
     signal: AbortSignal,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    authentication: NativePrivateAuthenticationScope
   ): Promise<NativeSmartAccountOperation>;
   onBack(): void;
 };
@@ -31,6 +34,7 @@ type Owner = {
   live: boolean;
   returning: boolean;
   abort: AbortController;
+  authentication: NativePrivateAuthenticationScope;
   controller?: NativeSmartAccountOperation;
   opening?: Promise<void>;
   disposing?: Promise<void>;
@@ -49,6 +53,7 @@ export function NativeSmartAccountAuthenticator({ open, onBack, ledgerConnection
   const [opened, setOpened] = useState<{
     source: Props['open'];
     controller?: NativeSmartAccountOperation;
+    authentication?: NativePrivateAuthenticationScope;
     failed?: true;
     closing?: true;
   }>();
@@ -59,6 +64,7 @@ export function NativeSmartAccountAuthenticator({ open, onBack, ledgerConnection
     const current = owner.current;
     if (!current?.live) return;
     current.live = false;
+    current.authentication.retire();
     current.returning = true;
     current.abort.abort();
     const onBack = callbacks.current.onBack;
@@ -75,6 +81,7 @@ export function NativeSmartAccountAuthenticator({ open, onBack, ledgerConnection
       live: true,
       returning: false,
       abort: new AbortController(),
+      authentication: createNativePrivateAuthenticationScope(),
     };
     owner.current = current;
     const check = () => {
@@ -82,14 +89,14 @@ export function NativeSmartAccountAuthenticator({ open, onBack, ledgerConnection
         owner.current !== current ||
         !current.live ||
         current.abort.signal.aborted ||
-        AppState.currentState !== 'active'
+        (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, AppState.currentState))
       )
         throw new Error('CANCELLED');
     };
     current.opening = Promise.resolve()
       .then(() => {
         check();
-        return open(current.abort.signal, check);
+        return open(current.abort.signal, check, current.authentication);
       })
       .then(
         (controller) => {
@@ -97,9 +104,10 @@ export function NativeSmartAccountAuthenticator({ open, onBack, ledgerConnection
           if (current.live) {
             try {
               check();
-              setOpened({ source: open, controller });
+              setOpened({ source: open, controller, authentication: current.authentication });
             } catch {
               current.live = false;
+              current.authentication.retire();
               current.abort.abort();
               void disposeOwner(current).catch(() => undefined);
             }
@@ -110,11 +118,11 @@ export function NativeSmartAccountAuthenticator({ open, onBack, ledgerConnection
         }
       );
     const change = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') back();
+      if (state !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, state)) back();
     });
     const blur =
       Platform.OS === 'android'
-        ? AppState.addEventListener('blur', back)
+        ? AppState.addEventListener('blur', () => { if (!allowsPrivateAuthenticationInterruption(current.authentication, 'blur')) back(); })
         : undefined;
     const hardware = BackHandler.addEventListener('hardwareBackPress', () => {
       back();
@@ -122,6 +130,7 @@ export function NativeSmartAccountAuthenticator({ open, onBack, ledgerConnection
     });
     return () => {
       current.live = false;
+      current.authentication.retire();
       current.returning = false;
       current.abort.abort();
       void disposeOwner(current).catch(() => undefined);
@@ -134,6 +143,7 @@ export function NativeSmartAccountAuthenticator({ open, onBack, ledgerConnection
   if (current?.controller)
     return (
       <NativeSmartAccountOperationScreen
+        authentication={current.authentication}
         controller={current.controller}
         ledgerConnection={ledgerConnection}
         onBack={back}

@@ -1,3 +1,5 @@
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { resolveAssetTransferDisplay } from '../../../source/shared/assetTransferDisplay.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -36,14 +38,17 @@ function fixture() {
   const native = { AppState: { currentState: 'active', addEventListener(event: string, callback: (...args: any[]) => void) { events.set(event, callback); return { remove() { events.delete(event); } }; } },
     BackHandler: { addEventListener(_event: string, callback: () => boolean) { events.set('back', callback); return { remove() { events.delete('back'); } }; } }, Platform: { OS: 'android' }, StyleSheet: { create: (value: unknown) => value }, View: 'View', Switch: 'Switch', ActivityIndicator: 'ActivityIndicator' };
   const operation = { async dispose() { disposed++; } };
+  let authentication!: privateAuthentication.NativePrivateAuthenticationScope, guard!: () => void;
   const manager = { accountAddress: ownerAddress, networkName: 'Ethereum', async read() { reads++; await readWait; return metadata(); },
     async preflightCustom(address: string) { preflights.push(address); return { ok: true, failures: [], compositeCompatible: true }; },
     async openChange(draft: any, signal: AbortSignal, guard: () => void) { assert.equal(signal.aborted, false); guard(); drafts.push(draft); await openWait; return operation; } };
-  const open = async (_signal: AbortSignal, guard: () => void) => { guard(); opens++; return manager; };
+  const open = async (_signal: AbortSignal, check: () => void, scope: privateAuthentication.NativePrivateAuthenticationScope) => { authentication = scope; guard = check; guard(); opens++; return manager; };
   const screen = screenFixture(new URL('../src/screens/NativeSmartAccountModules.tsx', import.meta.url), 'NativeSmartAccountModulesScreen', {
     'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
     '../../../../source/utils/smartAccount/custom': { listCompositeChildCandidates },
     '../../../../source/utils/smartAccount/moduleCommands': { canRemoveValidatorModule },
+    '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     '../platform/localization': nativeTranslationFixture,
     './NativeSend': { NativeSendInput: 'Input' }, './NativeSmartAccountOperation': { NativeSmartAccountOperationScreen: 'Operation' },
   }, { AbortController });
@@ -52,6 +57,8 @@ function fixture() {
   const edit = (label: string, value: string) => { const field = render().find(element => element.type === 'Input' && element.props.label === label); assert(field); field.props.onChange(value); };
   const switchValue = (label: string, value: boolean) => { const field = render().find(element => element.type === 'Switch' && element.props.accessibilityLabel === label); assert(field); field.props.onValueChange(value); };
   return { render, button, edit, switchValue, drafts, preflights, operation, close: screen.close,
+    get authentication() { return authentication; }, guard: () => guard(),
+    event(state: string) { native.AppState.currentState = state; events.get('change')?.(state); },
     get returned() { return returned; }, get disposed() { return disposed; }, get opens() { return opens; }, get reads() { return reads; },
     holdRead(value: Promise<void>) { readWait = value; }, holdOpen(value: Promise<void>) { openWait = value; },
     back: () => events.get('back')?.(), blur: () => events.get('blur')?.(),
@@ -167,6 +174,8 @@ test('module review displays exact public changes, both authorization stages and
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
     '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay },
     '../../../../source/shared/erc20': { formatTokenUnits: () => '' }, '../core/amounts': { formatBaseUnits }, '../custody/networkContext': { getNativeSendContext },
+    '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     '../platform/localization': nativeTranslationFixture, './NativeTransactionReview': { TransactionDetails: 'TransactionDetails' }, './guardianPolicyLabels': { guardianDelayLabel: () => '' },
     './useDappLedgerConnection': { useOwnedLedgerConnection: () => ({}) },
   });
@@ -199,23 +208,25 @@ function customReviewState(): NativeSmartAccountOperationSnapshot {
     intent: { kind: 'modules', command: { accountAddress: ownerAddress, chainId: 1, targetAddress: customAddress, deploymentAdmission: 'deployed-only', removalPolicy: 'all-installed-composites', sourceIsDeployed: true, sourceAuthHash: '0x', sourceAuthModule: 'ecdsa', sourceModuleFingerprint: 'public', executions: [], draft: { kind: 'install-custom', address: customAddress, name: 'Reviewed validator', initData: '0xabcd' } } } };
 }
 
-function consentReviewFixture() {
-  const events = new Map<string, () => void>(), acknowledgements: boolean[] = [];
+function consentReviewFixture(authentication?: privateAuthentication.NativePrivateAuthenticationScope) {
+  const events = new Map<string, (next?: string) => void>(), acknowledgements: boolean[] = [];
   const native = { StyleSheet: { create: (value: unknown) => value }, View: 'View', Switch: 'Switch', Platform: { OS: 'android' },
-    AppState: { currentState: 'active', addEventListener(event: string, callback: () => void) { events.set(event, callback); return { remove() { events.delete(event); } }; } } };
+    AppState: { currentState: 'active', addEventListener(event: string, callback: (next?: string) => void) { events.set(event, callback); return { remove() { events.delete(event); } }; } } };
   const screen = screenFixture(new URL('../src/screens/NativeSmartAccountOperation.tsx', import.meta.url), 'NativeSmartAccountOperationContent', {
     'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
     '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay },
     '../../../../source/shared/erc20': { formatTokenUnits: () => '' }, '../core/amounts': { formatBaseUnits }, '../custody/networkContext': { getNativeSendContext },
+    '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     '../platform/localization': nativeTranslationFixture, './NativeTransactionReview': { TransactionDetails: 'TransactionDetails' }, './guardianPolicyLabels': { guardianDelayLabel: () => '' },
     './useDappLedgerConnection': { useOwnedLedgerConnection: () => ({}) },
   });
   let state = customReviewState(), disabled = false;
-  const render = (value = state) => { state = value; return screenElements(screen.render({ state, disabled, onBack() {}, authorize(acknowledged: boolean) { acknowledgements.push(acknowledged); }, confirmPayer() {} })); };
+  const render = (value = state) => { state = value; return screenElements(screen.render({ state, disabled, authentication, onBack() {}, authorize(acknowledged: boolean) { acknowledgements.push(acknowledged); }, confirmPayer() {} })); };
   const button = () => { const result = render().find(element => element.type === 'Button' && element.props.title === t('mobile.smartAccountModules.authorize')); assert(result); return result; };
   const checkbox = () => { const result = render().find(element => element.type === 'Switch' && element.props.accessibilityLabel === t('smartAccountHub.customRiskAck')); assert(result); return result; };
   return { render, button, checkbox, acknowledgements, close: screen.close, state: () => state, block(value: boolean) { disabled = value; },
-    background() { native.AppState.currentState = 'background'; events.get('change')?.(); }, active() { native.AppState.currentState = 'active'; }, blur() { events.get('blur')?.(); } };
+    background() { native.AppState.currentState = 'background'; events.get('change')?.('background'); }, inactive() { native.AppState.currentState = 'inactive'; events.get('change')?.('inactive'); }, active() { native.AppState.currentState = 'active'; }, blur() { events.get('blur')?.(); } };
 }
 
 test('shared custom authorization requires the current local checkbox and revokes a cleared acknowledgment synchronously', () => {
@@ -281,9 +292,11 @@ test('wallet wrapper routes only checked current module consent through the expl
     async prepare() {}, async dispose() {}, async authorize(revision: number) { ordinaryAuthorizations.push(revision); },
     async authorizeModuleChange(...args: unknown[]) { moduleAuthorizations.push(args); }, async confirmPayer() {}, async retryMetadata() {} };
   const screen = screenFixture(new URL('../src/screens/NativeSmartAccountOperation.tsx', import.meta.url), 'NativeSmartAccountOperationScreen', {
-    'react-native': { StyleSheet: { create: (value: unknown) => value }, View: 'View', Switch: 'Switch' }, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
+    'react-native': { AppState: { currentState: 'active' }, StyleSheet: { create: (value: unknown) => value }, View: 'View', Switch: 'Switch' }, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
     '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay },
     '../../../../source/shared/erc20': { formatTokenUnits: () => '' }, '../core/amounts': { formatBaseUnits }, '../custody/networkContext': { getNativeSendContext },
+    '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     '../platform/localization': nativeTranslationFixture, './NativeTransactionReview': { TransactionDetails: 'TransactionDetails' }, './guardianPolicyLabels': { guardianDelayLabel: () => '' },
     './useDappLedgerConnection': { useOwnedLedgerConnection: () => ({ blocked: !connected, canApprove: () => connected, showConnect: false, modal: null }) },
   });
@@ -301,4 +314,35 @@ test('wallet wrapper routes only checked current module consent through the expl
     }
     state = { ...state, intent: { kind: 'deploy' } }; render().props.authorize(false); assert.deepEqual(ordinaryAuthorizations, [7]);
   } finally { screen.close(); }
+});
+
+test('Modules keeps only its own prompt interruption and starts no action while inactive', async () => {
+  const f = fixture(); f.render(); await tick();
+  const held = Promise.withResolvers<void>();
+  const binding = privateAuthentication.bindNativePrivateAuthentication(f.authentication, { assertCurrent() {}, isPromptActive: () => true });
+  const proof = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, () => held.promise);
+  try {
+    f.event('inactive'); f.blur(); f.guard();
+    const uninstall = f.render().filter(node => node.type === 'Button' && node.props.title === t('smartAccountHub.uninstall'))[1]!;
+    uninstall.props.onPress(); await tick(); assert.equal(f.drafts.length, 0);
+    f.event('active'); held.resolve(); await proof;
+    uninstall.props.onPress(); await tick();
+    assert.equal(f.render()[0]!.props.authentication, f.authentication);
+    f.back(); await tick();
+    assert.throws(() => privateAuthentication.assertNativePrivateAuthentication(binding), /CANCELLED/);
+  } finally { held.resolve(); await proof.catch(() => undefined); f.close(); }
+});
+
+test('shared module content preserves acknowledgement only for its own prompt and still blocks inactive authorization', async () => {
+  const authentication = privateAuthentication.createNativePrivateAuthenticationScope(), held = Promise.withResolvers<void>();
+  const binding = privateAuthentication.bindNativePrivateAuthentication(authentication, { assertCurrent() {}, isPromptActive: () => true });
+  const f = consentReviewFixture(authentication);
+  const proof = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, () => held.promise);
+  try {
+    f.checkbox().props.onValueChange(true); f.inactive(); f.blur();
+    f.button().props.onPress(); assert.deepEqual(f.acknowledgements, []);
+    f.active(); held.resolve(); await proof;
+    assert.equal(f.checkbox().props.value, true); f.button().props.onPress(); assert.deepEqual(f.acknowledgements, [true]);
+    f.background(); f.active(); f.button().props.onPress(); assert.deepEqual(f.acknowledgements, [true]);
+  } finally { held.resolve(); await proof.catch(() => undefined); authentication.retire(); f.close(); }
 });

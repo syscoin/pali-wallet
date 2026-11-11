@@ -1,3 +1,5 @@
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { freshSmartOperationDeadline } from './nonSuiteSigningHandoff.ts';
 import { normalizeNftTokenId } from '../../../source/utils/nftTokenId.ts';
 import type { SavedCollectible } from '../src/portfolio/tokenRegistry.ts';
@@ -89,6 +91,8 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
   };
   const imports: Record<string, any> = {
     react,
+    '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     'react-native': {
       ActivityIndicator: 'ActivityIndicator',
       AppState: { currentState: 'active', addEventListener(event: string, callback: (...args: any[]) => void) { events.set(event, callback); return { remove() { events.delete(event); } }; } },
@@ -222,7 +226,8 @@ for (const boundary of ['close', 'account', 'network', 'draft', 'background', 'u
     if (boundary === 'background') f.background();
     if (boundary === 'unmount') f.close();
     previous.props.onScan('0x2222222222222222222222222222222222222222');
-    assert.equal(all(f.render()).find(node => node.type === 'Input' && node.props.label === 'Recipient address')!.props.value, '');
+    if (boundary === 'background') assert(all(f.render()).some(node => node.children.includes('Closing transfer review…')));
+    else assert.equal(all(f.render()).find(node => node.type === 'Input' && node.props.label === 'Recipient address')!.props.value, '');
     assert.equal(opened, 0); f.close();
   });
 
