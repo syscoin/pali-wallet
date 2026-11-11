@@ -93,6 +93,7 @@ export interface CustodyRuntime {
   };
   readonly deviceUnlock?: {
     status(): Promise<Readonly<{ available: boolean; enabled: boolean }>>;
+    configure(enabled: boolean, signal: AbortSignal, authentication: NativePrivateAuthentication, assertCurrent: () => void): Promise<void>;
     enroll(password: string, assertCurrent: () => void): Promise<Readonly<{ authenticated: boolean }>>;
     disable(password: string, assertCurrent: () => void): Promise<Readonly<{ authenticated: boolean }>>;
     unlock(assertCurrent: () => void): Promise<Readonly<{ authenticated: boolean }>>;

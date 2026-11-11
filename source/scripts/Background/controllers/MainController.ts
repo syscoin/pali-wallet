@@ -5076,25 +5076,29 @@ class MainController {
           assertSynchronousEvmFeeGuard(assertCurrent);
           if (!keyring.isUnlocked()) throw localPasskeyError();
           const accepted = await withSdk(enrollment, (controls) =>
-            enrollment.issue(async (guard) => {
-              const result = await controls.issue(password, guard);
-              if (
-                result === false &&
-                walletGeneration === this.walletStateGeneration
-              ) {
-                // A definitive password verdict is charged once to the same vault,
-                // even if its document retired while the KDF was running.
-                const observed = await readBrowserDeviceUnlockVaultPair(
-                  chrome.storage.local
-                );
+            enrollment.issue(
+              async (guard) => {
+                const result = await controls.issue(password, guard);
                 if (
-                  walletGeneration === this.walletStateGeneration &&
-                  observed?.pairFingerprint === pairFingerprint
-                )
-                  await this.recordFailedAttempt();
-              }
-              return result;
-            }, assertCurrent)
+                  result === false &&
+                  walletGeneration === this.walletStateGeneration
+                ) {
+                  // A definitive password verdict is charged once to the same vault,
+                  // even if its document retired while the KDF was running.
+                  const observed = await readBrowserDeviceUnlockVaultPair(
+                    chrome.storage.local
+                  );
+                  if (
+                    walletGeneration === this.walletStateGeneration &&
+                    observed?.pairFingerprint === pairFingerprint
+                  )
+                    await this.recordFailedAttempt();
+                }
+                return result;
+              },
+              assertCurrent,
+              null
+            )
           );
           check();
           await readPair();

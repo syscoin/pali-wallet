@@ -12,6 +12,10 @@ import { ACCOUNT_SELECTION_KEY, createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY 
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { NativeWalletRemoval } from '../src/custody/walletRemoval.ts';
+import { createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
+import { OperationAuthentication, isOperationAuthenticationCancellation, type OperationAuthenticationPrompt } from '../src/core/operationAuthentication.ts';
+import { createDeviceUnlockCredentialStore } from '../src/storage/deviceUnlockCredential.ts';
+import type { NativeOperationCredential } from '../src/custody/types.ts';
 import { captureNativePinRecord, type NativePinCredentialPort, type NativePinRecord } from '../src/custody/pinVault.ts';
 import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecycle.ts';
 import { NativeConnectionsController } from '../src/connections/controller.ts';
@@ -43,14 +47,50 @@ async function fixture(withSlhCache = false) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-native-wallet-removal-'));
   const file = path.join(directory, 'wallet.sqlite');
   let exists = false, held = false, key: string | null = null;
-  let opens = 0, unlocks = 0, now = 0, active = true, removalCommits = 0;
+  let opens = 0, unlocks = 0, now = 0, active = true, removalCommits = 0, secretReads = 0, privateAccesses = 0;
+  let automaticCredential: NativeOperationCredential | null = { method: 'pin', pin: PASSWORD };
+  let prompt: OperationAuthenticationPrompt | null = null;
+  let promptEvent = Promise.withResolvers<OperationAuthenticationPrompt>();
+  let refusalEvent = Promise.withResolvers<OperationAuthenticationPrompt>();
+  const broker = new OperationAuthentication(() => now);
+  const detachBroker = broker.attach(next => {
+    prompt = next;
+    if (!next) return;
+    const event = promptEvent; promptEvent = Promise.withResolvers<OperationAuthenticationPrompt>(); event.resolve(next);
+    if (next.error) {
+      const refused = refusalEvent; refusalEvent = Promise.withResolvers<OperationAuthenticationPrompt>(); refused.resolve(next);
+    } else if (!next.busy && automaticCredential) {
+      const credential = automaticCredential;
+      queueMicrotask(() => next.confirm(credential));
+    }
+  });
+  const authenticationScopes: ReturnType<typeof createNativePrivateAuthenticationScope>[] = [];
+  const protectedItems = new Map<string, string>();
+  const biometricReadOwners: (AbortSignal | null)[] = [];
+  let biometricReadGate: ReturnType<typeof pause> | undefined;
+  let nextEnrollment = 1;
+  const deviceCredentials = createDeviceUnlockCredentialStore({
+    async available() { return true; },
+    async read(name, owner) {
+      biometricReadOwners.push(owner);
+      const value = protectedItems.get(name) ?? null;
+      const gate = biometricReadGate; biometricReadGate = undefined;
+      if (gate) await gate.hold();
+      return value;
+    },
+    async write(name, value) { protectedItems.set(name, value); },
+    async remove(name) { protectedItems.delete(name); },
+  });
   let droppingRemovalAck: 'before' | 'after' | undefined, loseHintAck = false;
   let pauseUnlock: ReturnType<typeof pause> | undefined, afterRemovalCommit: SqlHook | undefined;
   const purgedNamespaces: string[] = [];
   let purgeFailure = false, pausePurge: ReturnType<typeof pause> | undefined;
   let credentialFailure: 'before' | 'after' | undefined;
   const removedCredentials: NativePinRecord[] = [];
-  const credentials: NativePinCredentialPort = { ...pinCredential, async remove(record) {
+  const credentials: NativePinCredentialPort = { ...pinCredential, async readSecret(...args) {
+    secretReads++;
+    return pinCredential.readSecret(...args);
+  }, async remove(record) {
     removedCredentials.push(record);
     if (credentialFailure === 'before') throw Error('Protected credential deletion failed');
     await pinCredential.remove(record);
@@ -61,7 +101,11 @@ async function fixture(withSlhCache = false) {
   const rings: InstanceType<typeof sdk.HostKeyring>[] = [];
   const statements: string[] = [];
   class ObservedRing extends sdk.HostKeyring {
-    constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) { super(...options); rings.push(this); }
+    constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) {
+      super(...options); rings.push(this);
+      const createAccess = this.createPrivateRecordAccess.bind(this);
+      this.createPrivateRecordAccess = (...args: Parameters<typeof createAccess>) => { privateAccesses++; return createAccess(...args); };
+    }
   }
   const ports: NativeStoragePorts = {
     digest,
@@ -108,7 +152,9 @@ async function fixture(withSlhCache = false) {
       return attempt;
     },
   }) });
-  const factory = createKeyringRuntimeFactory({ pinCredential: credentials, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: withSlhCache ? {
+  const factory = createKeyringRuntimeFactory({ pinCredential: credentials, requestOperationCredential: broker.request,
+    deviceUnlock: { credentials: deviceCredentials, randomId: () => (nextEnrollment++).toString(16).padStart(32, '0') },
+    privacyServiceSettings: null, slhExecution: withSlhCache ? {
     open() { throw Error('No signing context belongs to this removal fixture'); },
     async purgePublicCache(namespace, guard) {
       guard(); assert.equal(owner.getSnapshot().phase, 'disposed'); assert.equal(rings.some(ring => ring.isUnlocked()), false);
@@ -139,6 +185,7 @@ async function fixture(withSlhCache = false) {
   });
   const removal = new NativeWalletRemoval({
     owner,
+    bindAuthentication: bindTestRequestAuthentication,
     source: () => ({ runtime, storage }),
     async reopen(installation) { reopenedIdentity = installation; return openWalletStorage(ports, installation); },
     assertActive() { if (!active) throw new Error('CANCELLED'); },
@@ -148,6 +195,29 @@ async function fixture(withSlhCache = false) {
   });
   return {
     owner, runtime, storage, removal, values, statements, ports, file, initialPin, credentials, removedCredentials,
+    authorize(guard = current, signal = new AbortController().signal) {
+      const authentication = createNativePrivateAuthenticationScope(); authenticationScopes.push(authentication);
+      return removal.authorize(signal, authentication, guard);
+    },
+    async refuse(pin: string, expected: string) {
+      automaticCredential = { method: 'pin', pin };
+      const refused = refusalEvent.promise;
+      const authentication = createNativePrivateAuthenticationScope(); authenticationScopes.push(authentication);
+      const pending = removal.authorize(new AbortController().signal, authentication, current);
+      const rejection = assert.rejects(pending, isOperationAuthenticationCancellation);
+      const shown = await refused;
+      assert.equal(shown.error, expected);
+      shown.cancel(); await rejection;
+      automaticCredential = { method: 'pin', pin: PASSWORD };
+    },
+    setAutomaticCredential(value: NativeOperationCredential | null) { automaticCredential = value; },
+    nextPrompt: () => promptEvent.promise,
+    nextRefusal: () => refusalEvent.promise,
+    get prompt() { return prompt; },
+    get secretReads() { return secretReads; },
+    get privateAccesses() { return privateAccesses; },
+    biometricReadOwners,
+    holdBiometricRead() { return biometricReadGate = pause(); },
     failCredentialRemoval(value: 'before' | 'after' | undefined) { credentialFailure = value; },
     async reopenRuntime() {
       return await createKeyringRuntimeFactory({ pinCredential: credentials, requestOperationCredential: null,
@@ -184,11 +254,137 @@ async function fixture(withSlhCache = false) {
       } finally { bytes.fill(0); }
     },
     async close() {
+      detachBroker(); authenticationScopes.forEach(scope => scope.retire());
       await removal.dispose().catch(() => undefined);
       try { await owner.dispose(); } finally { await rm(directory, { recursive: true, force: true }); }
     },
   };
 }
+
+test('shared removal prompt retries a wrong PIN and issues a ticket without opening software secrets', async () => {
+  const f = await fixture();
+  try {
+    f.setAutomaticCredential(null);
+    let retired = 0;
+    f.beforeSnapshot(async check => { check(); retired++; });
+    const owner = f.owner.getSnapshot(), secrets = f.secretReads, privateAccesses = f.privateAccesses;
+    const shown = f.nextPrompt(), pending = f.authorize();
+    const prompt = await shown;
+    assert.equal(prompt.request.biometricsEnabled, false);
+    assert.equal(retired, 0);
+    const refused = f.nextRefusal();
+    prompt.confirm({ method: 'pin', pin: WRONG });
+    const retry = await refused;
+    assert.equal(retry.error, 'PIN not accepted. Try again.');
+    assert.equal(retired, 0);
+    assert.equal(f.owner.getSnapshot(), owner);
+    assert.equal(f.removalCommits, 0);
+    retry.confirm({ method: 'pin', pin: PASSWORD });
+    const ticket = await pending;
+    assert.deepEqual(Reflect.ownKeys(ticket), []);
+    assert.equal(retired, 1);
+    assert.equal(f.prompt, null);
+    assert.equal(f.secretReads, secrets);
+    assert.equal(f.privateAccesses, privateAccesses);
+    assert.equal(f.unlocked, false);
+    assert.equal(f.removalCommits, 0);
+  } finally { await f.close(); }
+});
+
+test('explicit shared-prompt Cancel preserves the wallet and does not retire producers', async () => {
+  const f = await fixture();
+  try {
+    f.setAutomaticCredential(null);
+    let retired = 0;
+    f.beforeSnapshot(async check => { check(); retired++; });
+    const before = await f.storage.recovery!.readSnapshot(), owner = f.owner.getSnapshot();
+    const secrets = f.secretReads, privateAccesses = f.privateAccesses;
+    const shown = f.nextPrompt(), pending = f.authorize();
+    const rejection = assert.rejects(pending, isOperationAuthenticationCancellation);
+    (await shown).cancel();
+    await rejection;
+    assert.equal(f.prompt, null);
+    assert.equal(f.owner.getSnapshot(), owner);
+    assert.equal(f.removal.requiresControllerReopen(), false);
+    assert.equal(retired, 0);
+    assert.equal(f.removalCommits, 0);
+    assert.equal(f.secretReads, secrets);
+    assert.equal(f.privateAccesses, privateAccesses);
+    assert.deepEqual(await f.storage.recovery!.readSnapshot(), before);
+    assert.equal(f.values.get(ACCOUNT_SELECTION_KEY), NATIVE_HINT);
+    f.setAutomaticCredential({ method: 'pin', pin: PASSWORD });
+    assert.deepEqual(Reflect.ownKeys(await f.authorize()), []);
+  } finally { await f.close(); }
+});
+
+test('enrolled biometric removal uses the protected public credential without releasing software secrets', async () => {
+  const f = await fixture();
+  try {
+    await f.owner.setDeviceUnlock(true, PASSWORD, current);
+    f.setAutomaticCredential(null);
+    const secrets = f.secretReads, privateAccesses = f.privateAccesses, reads = f.biometricReadOwners.length;
+    const shown = f.nextPrompt(), pending = f.authorize();
+    const prompt = await shown;
+    assert.equal(prompt.request.biometricsEnabled, true);
+    prompt.confirm({ method: 'biometric' });
+    const ticket = await pending;
+    assert.deepEqual(Reflect.ownKeys(ticket), []);
+    assert.equal(f.biometricReadOwners.length, reads + 1);
+    assert.ok(f.biometricReadOwners.at(-1) instanceof AbortSignal);
+    assert.equal(f.secretReads, secrets);
+    assert.equal(f.privateAccesses, privateAccesses);
+    assert.equal(f.unlocked, false);
+    assert.equal(f.removalCommits, 0);
+    assert.equal(await f.removal.confirm(ticket, current), 'wallet-records-removed');
+  } finally { await f.close(); }
+});
+
+test('locking while the shared removal prompt is pending clears it before any producer or secret access', async () => {
+  const f = await fixture();
+  try {
+    f.setAutomaticCredential(null);
+    let retired = 0;
+    f.beforeSnapshot(async check => { check(); retired++; });
+    const secrets = f.secretReads, privateAccesses = f.privateAccesses;
+    const shown = f.nextPrompt(), pending = f.authorize();
+    const rejection = assert.rejects(pending, { code: 'CANCELLED' });
+    await shown;
+    f.owner.lock();
+    await rejection;
+    assert.equal(f.prompt, null);
+    assert.equal(f.owner.getSnapshot().phase, 'locked');
+    assert.equal(retired, 0);
+    assert.equal(f.removal.requiresControllerReopen(), false);
+    assert.equal(f.secretReads, secrets);
+    assert.equal(f.privateAccesses, privateAccesses);
+    assert.equal(f.removalCommits, 0);
+  } finally { await f.close(); }
+});
+
+test('aborting a held biometric removal proof cannot issue a ticket or retire producers', async () => {
+  const f = await fixture();
+  let gate: ReturnType<typeof pause> | undefined;
+  try {
+    await f.owner.setDeviceUnlock(true, PASSWORD, current);
+    f.setAutomaticCredential({ method: 'biometric' });
+    let retired = 0;
+    f.beforeSnapshot(async check => { check(); retired++; });
+    const secrets = f.secretReads, privateAccesses = f.privateAccesses;
+    gate = f.holdBiometricRead();
+    const lifetime = new AbortController(), pending = f.authorize(current, lifetime.signal);
+    const rejection = assert.rejects(pending, { code: 'CANCELLED' });
+    await gate.reached;
+    lifetime.abort();
+    gate.release();
+    await rejection;
+    assert.equal(f.prompt, null);
+    assert.equal(retired, 0);
+    assert.equal(f.removal.requiresControllerReopen(), false);
+    assert.equal(f.secretReads, secrets);
+    assert.equal(f.privateAccesses, privateAccesses);
+    assert.equal(f.removalCommits, 0);
+  } finally { gate?.release(); await f.close(); }
+});
 
 test('real SDK authorization issues an empty one-use ticket and only explicit confirmation removes records', async () => {
   const f = await fixture();
@@ -196,7 +392,7 @@ test('real SDK authorization issues an empty one-use ticket and only explicit co
     await f.savedNotes();
     const owner = f.owner.getSnapshot(), key = f.key;
     const unlocks = f.unlocks;
-    const ticket = await f.removal.authorize(PASSWORD, current);
+    const ticket = await f.authorize();
     assert.ok(Object.isFrozen(ticket));
     assert.deepEqual(Reflect.ownKeys(ticket), []);
     assert.equal(f.unlocks, unlocks + 1);
@@ -231,7 +427,7 @@ for (const failure of ['before', 'after'] as const) {
       const unrelated = captureNativePinRecord({ ...f.initialPin, enrollmentId: 'f'.repeat(32) });
       await f.credentials.stage(unrelated, { secret: '1'.repeat(64), publicKey: new Uint8Array(32).fill(2), pepper: new Uint8Array(32).fill(1) }, current);
       f.failCredentialRemoval(failure);
-      const ticket = await f.removal.authorize(PASSWORD, current);
+      const ticket = await f.authorize();
       await assert.rejects(f.removal.confirm(ticket, current), { code: 'REOPEN_REQUIRED' });
       assert.equal(f.removal.hasVerifiedRemoval(), false);
       assert.equal(f.removalCommits, 1);
@@ -257,7 +453,7 @@ for (const alteration of ['different-installation', 'new-wallet-row'] as const) 
     const f = await fixture();
     try {
       f.failCredentialRemoval('before');
-      const ticket = await f.removal.authorize(PASSWORD, current);
+      const ticket = await f.authorize();
       await assert.rejects(f.removal.confirm(ticket, current), { code: 'REOPEN_REQUIRED' });
       const { connection } = nodeConnection(f.file);
       try {
@@ -279,11 +475,11 @@ for (const alteration of ['different-installation', 'new-wallet-row'] as const) 
 test('wrong credentials use the existing durable throttle and never clear selection or delete data', async () => {
   const f = await fixture();
   try {
-    for (let count = 0; count < 5; count++) await assert.rejects(f.removal.authorize(WRONG, current), { code: 'INVALID_CREDENTIAL' });
+    for (let count = 0; count < 5; count++) await f.refuse(WRONG, 'PIN not accepted. Try again.');
     const snapshot = await f.storage.recovery!.readSnapshot();
     assert.equal(JSON.parse(snapshot.metadata.find(({ key }) => key === 'auth')!.value).failures, 5);
     const unlocks = f.unlocks;
-    await assert.rejects(f.removal.authorize(PASSWORD, current), { code: 'AUTH_THROTTLED' });
+    await f.refuse(PASSWORD, 'Too many attempts. Wait before trying again.');
     assert.equal(f.unlocks, unlocks);
     assert.equal(f.values.get(ACCOUNT_SELECTION_KEY), NATIVE_HINT);
     assert.equal(f.removalCommits, 0);
@@ -346,7 +542,7 @@ for (const interruption of ['cancel', 'cancel-during-retirement', 'lock', 'expir
           return nextRuntime;
         } });
         const connections = connect(authority, () => nextRuntime!);
-        const removal = new NativeWalletRemoval({ owner: authority,
+        const removal = new NativeWalletRemoval({ owner: authority, bindAuthentication: bindTestRequestAuthentication,
           source: () => nextRuntime && nextStorage ? { runtime: nextRuntime, storage: nextStorage } : undefined,
           reopen: async (installation) => openWalletStorage(f.ports, installation),
           async clearNativeSelection() { throw new Error('Unexpected wallet deletion'); },
@@ -362,9 +558,9 @@ for (const interruption of ['cancel', 'cancel-during-retirement', 'lock', 'expir
       await firstConnections.view.pair('wc:fixture');
       assert.equal(pairs, 1);
       assert.equal(f.removal.requiresControllerReopen(), false);
-      await assert.rejects(f.removal.authorize(WRONG, current), { code: 'INVALID_CREDENTIAL' });
+      await f.refuse(WRONG, 'PIN not accepted. Try again.');
       assert.equal(f.removal.requiresControllerReopen(), false);
-      const authorizing = f.removal.authorize(PASSWORD, current);
+      const authorizing = f.authorize();
       let ticket;
       if (interruption === 'cancel-during-retirement') await held.reached;
       else ticket = await authorizing;
@@ -415,7 +611,7 @@ test('authenticated producer cleanup finishes before the exact removal snapshot 
       await f.storage.keyringStorage.set('utf8Error', { hasUtf8Error: false });
       check();
     });
-    const ticket = await f.removal.authorize(PASSWORD, current);
+    const ticket = await f.authorize();
     assert.equal(cleanupCalls, 1);
     const snapshot = await f.storage.recovery!.readSnapshot();
     assert.equal(snapshot.records.some(({ key }) => key === 'utf8Error'), true);
@@ -434,11 +630,11 @@ test('cleanup is not invoked for a wrong password and cancellation during cleanu
       await gate.hold();
       check();
     });
-    await assert.rejects(f.removal.authorize(WRONG, current), { code: 'INVALID_CREDENTIAL' });
+    await f.refuse(WRONG, 'PIN not accepted. Try again.');
     assert.equal(cleanupCalls, 0);
     f.owner.lock();
     await f.owner.unlock(PASSWORD);
-    const pending = assert.rejects(f.removal.authorize(PASSWORD, current), { code: 'CANCELLED' });
+    const pending = assert.rejects(f.authorize(), { code: 'CANCELLED' });
     await gate.reached;
     f.owner.lock();
     gate.release();
@@ -452,14 +648,14 @@ test('cleanup is not invoked for a wrong password and cancellation during cleanu
 test('ticket expiry, wallet A-B-A and asynchronous confirmation guards cannot admit deletion', async () => {
   const f = await fixture();
   try {
-    const expired = await f.removal.authorize(PASSWORD, current);
+    const expired = await f.authorize();
     f.advance(30_000);
     await assert.rejects(f.removal.confirm(expired, current), { code: 'CANCELLED' });
-    const obsolete = await f.removal.authorize(PASSWORD, current);
+    const obsolete = await f.authorize();
     f.owner.lock();
     await f.owner.unlock(PASSWORD);
     await assert.rejects(f.removal.confirm(obsolete, current), { code: 'STATE_CHANGED' });
-    const currentTicket = await f.removal.authorize(PASSWORD, current);
+    const currentTicket = await f.authorize();
     await assert.rejects(f.removal.confirm(currentTicket, async () => undefined), { code: 'CANCELLED' });
     assert.equal(f.owner.getSnapshot().phase, 'backup-required');
     assert.equal(f.removalCommits, 0);
@@ -471,7 +667,7 @@ test('late SDK password success after lock cannot authorize or reactivate remova
   const f = await fixture();
   const gate = f.holdUnlock();
   try {
-    const pending = assert.rejects(f.removal.authorize(PASSWORD, current), { code: 'CANCELLED' });
+    const pending = assert.rejects(f.authorize(), { code: 'CANCELLED' });
     await gate.reached;
     f.owner.lock();
     gate.release();
@@ -486,7 +682,7 @@ test('late SDK password success after lock cannot authorize or reactivate remova
 test('runtime retirement alone invalidates a ticket even before the public authority updates', async () => {
   const f = await fixture();
   try {
-    const ticket = await f.removal.authorize(PASSWORD, current);
+    const ticket = await f.authorize();
     await f.runtime.session.lock();
     assert.equal(f.owner.getSnapshot().phase, 'backup-required');
     await assert.rejects(f.removal.confirm(ticket, current), { code: 'CANCELLED' });
@@ -498,7 +694,7 @@ test('runtime retirement alone invalidates a ticket even before the public autho
 test('an unreadable advisory selection refuses deletion and preserves the existing wallet', async () => {
   const f = await fixture();
   try {
-    const ticket = await f.removal.authorize(PASSWORD, current);
+    const ticket = await f.authorize();
     const before = await f.storage.recovery!.readSnapshot();
     f.values.set(ACCOUNT_SELECTION_KEY, 'invalid selection fixture');
     await assert.rejects(f.removal.confirm(ticket, current), { code: 'SELECTION_UNAVAILABLE' });
@@ -512,7 +708,7 @@ test('an unreadable advisory selection refuses deletion and preserves the existi
 test('a changed storage generation aborts confirmed deletion and preserves an independent watch hint', async () => {
   const f = await fixture();
   try {
-    const ticket = await f.removal.authorize(PASSWORD, current);
+    const ticket = await f.authorize();
     await f.storage.keyringStorage.set('fixture-removal-generation', 'changed');
     await f.storage.keyringStorage.deleteItem('fixture-removal-generation');
     const before = await f.storage.recovery!.readSnapshot();
@@ -531,7 +727,7 @@ for (const when of ['before', 'after'] as const) {
     const f = await fixture();
     try {
       f.values.set(ACCOUNT_SELECTION_KEY, WATCH_HINT);
-      const ticket = await f.removal.authorize(PASSWORD, current);
+      const ticket = await f.authorize();
       f.loseRemovalAck(when);
       assert.equal(await f.removal.confirm(ticket, current), when === 'after' ? 'wallet-records-removed' : 'wallet-records-unchanged');
       assert.equal(f.removal.hasVerifiedRemoval(), when === 'after');
@@ -551,7 +747,7 @@ test('a lost protected installation during reconciliation never provisions or re
   const f = await fixture();
   const gate = f.holdCommit();
   try {
-    const ticket = await f.removal.authorize(PASSWORD, current);
+    const ticket = await f.authorize();
     const confirmation = assert.rejects(f.removal.confirm(ticket, current), { code: 'REOPEN_REQUIRED' });
     await gate.reached;
     f.key = null;
@@ -569,7 +765,7 @@ test('cancelling after dispatch still drains and verifies removal without replay
   const f = await fixture();
   const gate = f.holdCommit();
   try {
-    const ticket = await f.removal.authorize(PASSWORD, current);
+    const ticket = await f.authorize();
     const confirmation = f.removal.confirm(ticket, current);
     await gate.reached;
     f.hide();
@@ -588,7 +784,7 @@ test('public SLH cache cleanup is confirmation-only and bound to the captured pr
   const f = await fixture(true);
   try {
     const namespace = (await f.storage.recovery!.readIdentity())!.root!.profileId;
-    const ticket = await f.removal.authorize(PASSWORD, current);
+    const ticket = await f.authorize();
     assert.deepEqual(f.purgedNamespaces, []);
     assert.equal(await f.removal.confirm(ticket, current), 'wallet-records-removed');
     assert.deepEqual(f.purgedNamespaces, [namespace]);
@@ -599,11 +795,11 @@ test('public SLH cache cleanup is confirmation-only and bound to the captured pr
 test('forged, expired and cancelled removal tickets never purge public SLH caches', async () => {
   const f = await fixture(true);
   try {
-    const ticket = await f.removal.authorize(PASSWORD, current);
+    const ticket = await f.authorize();
     await assert.rejects(f.removal.confirm({ ...ticket }, current), { code: 'STATE_CHANGED' });
     f.advance(30000);
     await assert.rejects(f.removal.confirm(ticket, current), { code: 'CANCELLED' });
-    const cancelled = await f.removal.authorize(PASSWORD, current);
+    const cancelled = await f.authorize();
     f.removal.cancel();
     await assert.rejects(f.removal.confirm(cancelled, current), { code: 'STATE_CHANGED' });
     assert.deepEqual(f.purgedNamespaces, []); assert.equal(f.removalCommits, 0);
@@ -613,7 +809,7 @@ test('forged, expired and cancelled removal tickets never purge public SLH cache
 test('failed public SLH cache cleanup prevents native selection clearing and SQL deletion', async () => {
   const f = await fixture(true);
   try {
-    const ticket = await f.removal.authorize(PASSWORD, current);
+    const ticket = await f.authorize();
     const before = await f.storage.recovery!.readSnapshot();
     f.failPurge();
     await assert.rejects(f.removal.confirm(ticket, current), { code: 'UNAVAILABLE' });
@@ -627,7 +823,7 @@ test('failed public SLH cache cleanup prevents native selection clearing and SQL
 test('public SLH cache cleanup waits for the existing owner retirement boundary', async () => {
   const f = await fixture(true), drain = f.holdRetirement();
   try {
-    const ticket = await f.removal.authorize(PASSWORD, current);
+    const ticket = await f.authorize();
     const removing = f.removal.confirm(ticket, current);
     await drain.reached;
     assert.equal(f.unlocked, false); assert.deepEqual(f.purgedNamespaces, []);
@@ -641,7 +837,7 @@ test('public SLH cache cleanup waits for the existing owner retirement boundary'
 test('retirement of a removal request during public-cache purge cannot delete SQL records', async () => {
   const f = await fixture(true), purge = f.holdPurge();
   try {
-    const ticket = await f.removal.authorize(PASSWORD, current);
+    const ticket = await f.authorize();
     const removing = f.removal.confirm(ticket, current);
     const rejected = assert.rejects(removing, { code: 'CANCELLED' });
     await purge.reached; f.removal.cancel(); purge.release(); await rejected;

@@ -255,7 +255,7 @@ export function createNativeWalletControllers() {
     const error = new KeyringRuntimeError(code); credentialRefusals.add(error); return error;
   };
   const requestFixtureCredential = async (binding: NativePrivateAuthentication, signal: AbortSignal, guard: () => void,
-    purpose: 'secret-read' | 'account-change') => {
+    purpose: 'secret-read' | 'account-change', preserveExplicitCancel = false) => {
     try {
       await withNativePrivateAuthentication(binding, signal, () => { if (!sessionUnlocked) throw refused('CANCELLED'); }, proofSignal =>
         nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose,
@@ -270,7 +270,7 @@ export function createNativeWalletControllers() {
           }
         }));
     } catch (error) {
-      if (isOperationAuthenticationCancellation(error)) throw refused('CANCELLED');
+      if (isOperationAuthenticationCancellation(error) && !preserveExplicitCancel) throw refused('CANCELLED');
       throw error;
     }
   };
@@ -282,6 +282,13 @@ export function createNativeWalletControllers() {
     },
     ...(authentication ? { deviceUnlock: {
       async status() { return { available: true, enabled: visualDeviceUnlockEnabled }; },
+      async configure(enabled, signal, scope, check) {
+        check();
+        await requestFixtureCredential(scope, signal, check, 'account-change', true);
+        check();
+        if (enabled) await withNativePrivateAuthentication(scope, signal, check, owner => authentication.run(owner, unlockGate));
+        check(); visualDeviceUnlockEnabled = enabled;
+      },
       async enroll(password, check) {
         check();
         if (!sessionUnlocked || password !== fixturePassword) return { authenticated: false };
@@ -609,7 +616,13 @@ export function createNativeWalletControllers() {
     signal: AbortSignal, scope: NativePrivateAuthenticationScope, check: () => void) => authority.saveIdlePreference(expected, minutes, signal,
       bindNativePrivateAuthentication(scope, { assertCurrent: () => { if (!sessionUnlocked || signal.aborted) throw refused('CANCELLED'); },
         isPromptActive: owner => authentication?.isActive(owner) === true }), check);
-  return { authority, saveIdlePreference, getNotificationChoices, getScopedActivityRuntime, activityReaders, connections: connections.view, keyExport, imports,
+  const configureDeviceUnlock = (enabled: boolean, signal: AbortSignal, scope: NativePrivateAuthenticationScope, check: () => void) => {
+    if (!runtime.deviceUnlock) throw refused('DEVICE_UNLOCK_UNAVAILABLE');
+    const binding = bindNativePrivateAuthentication(scope, { assertCurrent: () => { if (!sessionUnlocked || signal.aborted) throw refused('CANCELLED'); },
+      isPromptActive: owner => authentication?.isActive(owner) === true });
+    return runtime.deviceUnlock.configure(enabled, signal, binding, check);
+  };
+  return { authority, saveIdlePreference, configureDeviceUnlock, getNotificationChoices, getScopedActivityRuntime, activityReaders, connections: connections.view, keyExport, imports,
     ...(authentication ? { authentication } : {}),
     trezor: {background() {}, async cancel() {}, subscribe: () => () => undefined,
       getSnapshot: () => idleTrezorSnapshot,

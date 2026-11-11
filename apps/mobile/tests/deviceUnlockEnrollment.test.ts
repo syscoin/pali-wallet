@@ -62,11 +62,11 @@ function fixture() {
 
 test('enrollment needs actual SDK proof and only delivers a credential within its owned resume', async () => {
   const f = fixture(), c = f.coordinator;
-  assert.equal(await c.issue(async () => false, current), false);
-  await assert.rejects(c.issue(async () => true, current), unavailable);
+  assert.equal(await c.issue(async () => false, current, null), false);
+  await assert.rejects(c.issue(async () => true, current, null), unavailable);
   assert.equal(f.items.size, 0);
   assert.equal(f.mutations, 0);
-  assert.equal(await c.issue(f.prove, current), true);
+  assert.equal(await c.issue(f.prove, current, null), true);
   assert.equal(f.record.enrollmentId, first);
   assert.equal(await c.sdkPort.readCredential(scope.pairFingerprint), null);
   assert.equal(await c.resume(async () => {
@@ -85,26 +85,26 @@ test('enrollment needs actual SDK proof and only delivers a credential within it
 
 test('revoked or definitively refused enrollment cleans only the new inactive alias', async () => {
   const f = fixture(), c = f.coordinator;
-  assert.equal(await c.issue(f.prove, current), true);
+  assert.equal(await c.issue(f.prove, current, null), true);
   f.choose(second);
   let live = true;
   f.onWrite(() => { live = false; });
-  await assert.rejects(c.issue(f.prove, () => { if (!live) throw Error('CANCELLED'); }), { message: 'CANCELLED' });
+  await assert.rejects(c.issue(f.prove, () => { if (!live) throw Error('CANCELLED'); }, null), { message: 'CANCELLED' });
   assert.deepEqual([...f.items.keys()], [name(first)]);
   assert.equal(f.record.enrollmentId, first);
   f.onWrite(current);
   f.fail('refused');
-  await assert.rejects(c.issue(f.prove, current), unavailable);
+  await assert.rejects(c.issue(f.prove, current, null), unavailable);
   assert.deepEqual([...f.items.keys()], [name(first)]);
   assert.equal(f.mutations, 1);
 });
 
 test('unacknowledged activation keeps both aliases until the durable owner can be reopened', async () => {
   const f = fixture(), c = f.coordinator;
-  assert.equal(await c.issue(f.prove, current), true);
+  assert.equal(await c.issue(f.prove, current, null), true);
   f.choose(second);
   f.fail('ack');
-  await assert.rejects(c.issue(f.prove, current), { message: 'STORAGE_REOPEN_REQUIRED' });
+  await assert.rejects(c.issue(f.prove, current, null), { message: 'STORAGE_REOPEN_REQUIRED' });
   assert.equal(f.record.enrollmentId, second);
   assert.deepEqual([...f.items.keys()], [name(first), name(second)]);
   f.fail(null);
@@ -122,7 +122,7 @@ test('unacknowledged activation keeps both aliases until the durable owner can b
 
 test('a changed reference after OS access rejects and clears bytes before SDK delivery', async () => {
   const f = fixture(), c = f.coordinator;
-  assert.equal(await c.issue(f.prove, current), true);
+  assert.equal(await c.issue(f.prove, current, null), true);
   f.onRead(() => f.replace(second));
   await assert.rejects(c.resume(async () => {
     await c.sdkPort.readCredential(scope.pairFingerprint);
@@ -134,7 +134,7 @@ test('a changed reference after OS access rejects and clears bytes before SDK de
 test('a reference changed during SDK proof retires the exact captured session', async () => {
   const f = fixture(), c = f.coordinator;
   let retired = 0;
-  assert.equal(await c.issue(f.prove, current), true);
+  assert.equal(await c.issue(f.prove, current, null), true);
   await assert.rejects(c.resume(async () => {
     const read = await c.sdkPort.readCredential(scope.pairFingerprint);
     assert.deepEqual(read?.key, bytes);
@@ -147,7 +147,7 @@ test('a reference changed during SDK proof retires the exact captured session', 
 
 test('presence verification reads the protected current enrollment and erases its key without SDK delivery', async () => {
   const f = fixture(), c = f.coordinator;
-  await c.issue(f.prove, current);
+  await c.issue(f.prove, current, null);
   const record = f.record, saved = [...f.items], before = f.reads;
   assert.equal(await c.verifyPresence(current, null), undefined);
   assert.equal(f.reads, before + 1);
@@ -162,7 +162,7 @@ test('presence verification refuses disabled, unavailable, missing and failed pr
   const f = fixture(), c = f.coordinator;
   await assert.rejects(c.verifyPresence(current, null), unavailable);
   assert.equal(f.reads, 0);
-  await c.issue(f.prove, current);
+  await c.issue(f.prove, current, null);
   const before = f.reads;
   f.availability(false);
   await assert.rejects(c.verifyPresence(current, null), unavailable);
@@ -185,7 +185,7 @@ test('presence verification binds every enrollment field across the protected re
   ];
   for (const change of changes) {
     const f = fixture(), c = f.coordinator;
-    await c.issue(f.prove, current);
+    await c.issue(f.prove, current, null);
     f.onRead(() => f.replaceReference(change));
     await assert.rejects(c.verifyPresence(current, null), unavailable);
     assert.deepEqual(f.decoded, new Uint8Array(32));
@@ -194,7 +194,7 @@ test('presence verification binds every enrollment field across the protected re
 
 test('revoked presence verification erases already-read bytes and rejects non-synchronous guards', async () => {
   const f = fixture(), c = f.coordinator;
-  await c.issue(f.prove, current);
+  await c.issue(f.prove, current, null);
   let live = true;
   const check = () => { if (!live) throw Error('CANCELLED'); };
   f.onDecode(() => { live = false; });
@@ -208,13 +208,13 @@ test('revoked presence verification erases already-read bytes and rejects non-sy
 
 test('presence verification shares the single active operation with issue, resume and disable', async () => {
   const f = fixture(), c = f.coordinator;
-  await c.issue(f.prove, current);
+  await c.issue(f.prove, current, null);
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   f.onRead(() => { entered.resolve(); return release.promise; });
   const pending = c.verifyPresence(current, null);
   await entered.promise;
   await assert.rejects(c.verifyPresence(current, null), unavailable);
-  await assert.rejects(c.issue(f.prove, current), unavailable);
+  await assert.rejects(c.issue(f.prove, current, null), unavailable);
   await assert.rejects(c.resume(async () => assert.fail('SDK must not run'), current, retire), unavailable);
   await assert.rejects(c.disable(current), unavailable);
   assert.equal(await c.sdkPort.readCredential(scope.pairFingerprint), null);
@@ -226,18 +226,18 @@ test('presence verification shares the single active operation with issue, resum
 });
 
 test('presence keeps genuine user refusal distinct from enrollment and protected-record failures', async () => {
-  const f = fixture(); await f.coordinator.issue(f.prove, current);
+  const f = fixture(); await f.coordinator.issue(f.prove, current, null);
   f.onRead(() => { throw deviceUnlockUserRefusal(); });
   await assert.rejects(f.coordinator.verifyPresence(current, null), error => isDeviceUnlockUserRefusal(error));
   f.onRead(current);
   const failure = Error('SQL read failed');
   f.failEnrollment(failure);
   await assert.rejects(f.coordinator.verifyPresence(current, null), error => error === failure && !isDeviceUnlockUserRefusal(error));
-  const stale = fixture(); await stale.coordinator.issue(stale.prove, current);
+  const stale = fixture(); await stale.coordinator.issue(stale.prove, current, null);
   stale.onRead(() => stale.replace(second));
   await assert.rejects(stale.coordinator.verifyPresence(current, null), error => !isDeviceUnlockUserRefusal(error));
   assert.deepEqual(stale.decoded, new Uint8Array(32));
-  const corrupt = fixture(); await corrupt.coordinator.issue(corrupt.prove, current);
+  const corrupt = fixture(); await corrupt.coordinator.issue(corrupt.prove, current, null);
   corrupt.items.set(name(first), 'corrupt');
   await assert.rejects(corrupt.coordinator.verifyPresence(current, null), error => !isDeviceUnlockUserRefusal(error));
 });

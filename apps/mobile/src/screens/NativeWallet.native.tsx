@@ -22,7 +22,7 @@ import { walletFetch } from '../platform/http';
 import { custodyIdle, securityPreferences } from '../platform/security';
 import { useNativeTranslation } from '../platform/localization';
 import { AutoLockSettings, type IdlePreferenceSave } from './AutoLockSettings';
-import { isWalletPin, PinSetup, PinEntryScreen, PinField } from './PinEntry';
+import { isWalletPin, PinSetup, PinEntryScreen } from './PinEntry';
 import { useBiometricPresentation } from '../platform/useBiometricPresentation';
 import { BackupVerification } from './BackupVerification';
 import { nativeAccountSelection } from '../core/accountDirectory';
@@ -58,6 +58,7 @@ import { NativeSend, type NativeRecipientPicker } from './NativeSend';
 import { NativeUtxoSendScreen } from './NativeUtxoSend';
 import { NativeSecurity } from './NativeSecurity';
 import { NativeWalletRemovalScreen, type RemovalScreenOutcome } from './NativeWalletRemoval';
+import { NativeDeviceUnlockSettings } from './NativeDeviceUnlockSettings';
 import { WalletRemovalError, type WalletRemovalTicket } from '../custody/walletRemoval';
 import { NativeImport } from './NativeImport';
 import { NativeImportWallet } from './NativeImportWallet';
@@ -287,7 +288,6 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     setStage(target);
   }, [snapshot.phase, snapshot.presence, stage]);
   const closePrivateLeaf = useCallback(() => setStage('private-notes'), []);
-  const [pin, setPin] = useState('');
   const [pinChangeAttempt, setPinChangeAttempt] = useState(0);
   const [pinChangeOwner, setPinChangeOwner] = useState<object | null>(null);
   const [deviceUnlockStatus, setDeviceUnlockStatus] = useState<Readonly<{ available: boolean; enabled: boolean }> | null>(null);
@@ -307,7 +307,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const clearSecrets = useCallback(() => {
     pinChangeRef.current = null;
     setPinChangeOwner(null);
-    setPin(''); setPhrase(''); setPresentation(null);
+    setPhrase(''); setPresentation(null);
   }, []);
   const revoke = useCallback((background = false) => {
     // The AppState owner records exact Suite suspension before authority.lock
@@ -841,10 +841,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         closeStage();
         return true;
       }
-      if (stage === 'device-unlock') {
-        closeDeviceUnlock();
-        return true;
-      }
+      if (stage === 'device-unlock') return false;
       if ((stage === 'change-pin' || stage === 'change-pin-new') && snapshot.phase === 'ready') return false;
       // Full-screen leaf flows own their Back behavior regardless of listener order.
       if (snapshot.phase === 'ready' && (stage === 'choose' || stage === 'connections') && (signingReview || connectionSnapshot?.preparationReview || connectionSnapshot?.controlReview || connectionSnapshot?.sentryReview || connectionSnapshot?.psbtReview)) return false;
@@ -1144,12 +1141,13 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     removalRef.current = scope; setRemovalScope(scope); setStage('remove-wallet');
   };
 
-  const removalCurrent = (scope: RemovalScope) => {
+  const removalOwned = (scope: RemovalScope) => {
     if (!mounted.current || removalRef.current !== scope || controllersRef.current !== scope.local || scope.epoch !== epoch.current ||
-        AppState.currentState !== 'active' || nativeLifecycle.current(screenToken.current) !== scope.local) return false;
+        nativeLifecycle.current(screenToken.current) !== scope.local) return false;
     const now = scope.local.authority.getSnapshot();
     return now === scope.authority || scope.phase === 'working' && now.phase === 'disposed' && now.revision === scope.authority.revision + 1;
   };
+  const removalCurrent = (scope: RemovalScope) => AppState.currentState === 'active' && removalOwned(scope);
 
   const confirmRemoval = async (scope: RemovalScope, ticket: WalletRemovalTicket, check: () => void): Promise<RemovalScreenOutcome> => {
     if (scope.phase !== 'reviewing') return 'unconfirmed';
@@ -1242,7 +1240,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     catch (cause) { if (mounted.current && epoch.current === captured) setError(message(cause)); }
     finally {
       submitting.current = false;
-      if (mounted.current) { setBusy(false); setPin(''); setPhrase(''); }
+      if (mounted.current) { setBusy(false); setPhrase(''); }
     }
   };
 
@@ -1477,7 +1475,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       closeStage();
     }} />;
   if (stage === 'remove-wallet' && removalScope) return <NativeWalletRemovalScreen removal={removalScope.local.removal} backupConfirmed={removalScope.authority.backup === 'confirmed'}
-    isCurrent={() => removalCurrent(removalScope)} confirm={(ticket, check) => confirmRemoval(removalScope, ticket, check)}
+    isCurrent={() => removalOwned(removalScope)} confirm={(ticket, check) => confirmRemoval(removalScope, ticket, check)}
     onBack={() => {
       if (removalRef.current !== removalScope || removalScope.phase !== 'reviewing') return;
       removalRef.current = null; setRemovalScope(null);
@@ -1557,6 +1555,22 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       }, onSelected: receipt => finishNetworkSelection(networkReturn, receipt) } : undefined} />;
   if (sentryRoute && sentry) return <NativeSentryHub key={sentryScope!.context}
     networkLabel={utxo!.name} openKeys={sentry.openKeys} openNodes={sentry.openNodes} onBack={closeStage} />;
+  if (stage === 'device-unlock' && snapshot.phase === 'ready' && deviceUnlockStatus && controllerOwner?.configureDeviceUnlock) {
+    const local = controllerOwner, expected = snapshot;
+    const ownerCurrent = () => {
+      if (!mounted.current || controllersRef.current !== local || local.authority.getSnapshot() !== expected)
+        throw new Error('CANCELLED');
+    };
+    return <NativeDeviceUnlockSettings enabled={deviceUnlockStatus.enabled} available={deviceUnlockStatus.available} label={title}
+      configure={(enabled, signal, authentication, assertView) => local.configureDeviceUnlock(enabled, signal, authentication, () => { ownerCurrent(); assertView(); })}
+      onBack={closeDeviceUnlock} onConfigured={async (assertCurrent) => {
+        ownerCurrent(); assertCurrent();
+        const status = await local.authority.getDeviceUnlockStatus();
+        ownerCurrent(); assertCurrent();
+        if (AppState.currentState !== 'active' || !status) throw new Error('CANCELLED');
+        setDeviceUnlockStatus(status); setStage('security');
+      }} />;
+  }
   if (stage === 'auto-lock' && snapshot.phase === 'ready' && saveIdle) return <AutoLockSettings mode="custody" save={saveIdle} onBack={closeStage} />;
   if (stage === 'private-notes' && snapshot.phase === 'ready') return <NativeNoteFilesMenu onBack={closeStage}
     onDeposit={canDeposit ? () => {
@@ -1673,29 +1687,6 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     <Notice title="Wallet unavailable" body="Your saved wallet has been preserved. Close and reopen Pali to try again." tone="amber" />;
   else if (!protectedScreen || snapshot.phase === 'opening') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Opening your wallet securely…</Text></View>;
   else if (snapshot.phase === 'authenticating') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Unlocking your wallet securely…</Text></View>;
-  else if (stage === 'device-unlock' && deviceUnlockStatus) {
-    footer = <>
-      <Button title={deviceUnlockStatus.enabled ? `Turn off ${biometrics.label === 'biometrics' ? 'biometric unlock' : biometrics.label === 'fingerprint' ? 'fingerprint unlock' : biometrics.label}` : `Enable ${biometrics.label === 'biometrics' ? 'biometric unlock' : biometrics.label === 'fingerprint' ? 'fingerprint unlock' : biometrics.label}`} disabled={busy || !isWalletPin(pin) || !deviceUnlockStatus.enabled && !deviceUnlockStatus.available} onPress={() => {
-      const entered = pin, enabled = !deviceUnlockStatus.enabled;
-      setPin('');
-      void perform(async (local) => {
-        const captured = epoch.current;
-        await local.authority.setDeviceUnlock(enabled, entered, () => {
-          if (!mounted.current || controllersRef.current !== local || epoch.current !== captured || AppState.currentState !== 'active') throw new Error('CANCELLED');
-        });
-        if (local.authority.getSnapshot().phase === 'ready') setStage('security');
-      });
-    }} />
-      <Button title="Cancel" variant="secondary" onPress={closeDeviceUnlock} />
-    </>;
-    body = <>
-    <Text style={{ fontSize: 22, fontWeight: '600' }}>{biometrics.label === 'biometrics' ? 'Biometric unlock' : biometrics.label === 'fingerprint' ? 'Fingerprint unlock' : biometrics.label} is {deviceUnlockStatus.enabled ? 'on' : 'off'}</Text>
-    <Text style={styles.muted}>{deviceUnlockStatus.enabled ? `Confirm your PIN to turn off ${biometrics.label === 'biometrics' ? 'biometric unlock' : biometrics.label === 'fingerprint' ? 'fingerprint unlock' : biometrics.label}.` : `Confirm your PIN and ${biometrics.label} to enable faster unlock.`} Your PIN remains available.</Text>
-    <PinField label="Confirm PIN" value={pin} onChange={setPin} busy={busy} />
-
-
-  </>;
-  }
   else if (stage === 'words' && presentation) {
     footer = <Button title="Continue" disabled={busy} onPress={() => setStage('backup-verify')} />;
     body = <>

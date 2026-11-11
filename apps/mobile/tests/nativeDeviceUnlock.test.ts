@@ -6,27 +6,38 @@ import test from 'node:test';
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime, type KeyringRuntimeDependencies } from '../src/custody/keyringRuntime.ts';
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { createDeviceUnlockCredentialStore } from '../src/storage/deviceUnlockCredential.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 import { deviceUnlockUserRefusal } from '../../../source/wallet/deviceUnlockEnrollment.ts';
 import { SeedBackupFlow } from '../src/custody/seedBackup.ts';
 import { DeviceUnlockPrompt } from '../src/platform/deviceUnlockPrompt.ts';
-import { OperationAuthentication, type OperationAuthenticationPrompt } from '../src/core/operationAuthentication.ts';
+import { OperationAuthentication, isOperationAuthenticationCancellation, type OperationAuthenticationPrompt } from '../src/core/operationAuthentication.ts';
 import { bindNativePrivateAuthentication, createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = '123456';
 process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
+const sdk = await loadNativeKeyringSdk();
 
 async function fixture(trezorSessions?: KeyringRuntimeDependencies['trezorSessions'], requestCredential?: KeyringRuntimeDependencies['requestOperationCredential'], prompt?: DeviceUnlockPrompt) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-device-unlock-test-'));
   const file = path.join(directory, 'wallet.sqlite');
   const protectedItems = new Map<string, string>();
   const readOwners: (AbortSignal | null)[] = [], writeOwners: (AbortSignal | null)[] = [];
-  let initialized = false, nextId = 1;
+  let initialized = false, nextId = 1, secretReads = 0, privateAccesses = 0;
+  const pinCredential = createTestPinCredentialPort();
+  class ObservedKeyring extends sdk.HostKeyring {
+    constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) {
+      super(...args);
+      const createAccess = this.createPrivateRecordAccess.bind(this);
+      this.createPrivateRecordAccess = (...input: Parameters<typeof createAccess>) => { privateAccesses++; return createAccess(...input); };
+    }
+  }
   let afterRead: () => Promise<void> = async () => undefined;
   let failEnrollmentRead = false;
   let store!: SqliteWalletStorage, runtime!: KeyringRuntime;
@@ -37,14 +48,19 @@ async function fixture(trezorSessions?: KeyringRuntimeDependencies['trezorSessio
       const read = async () => { const result = protectedItems.get(name) ?? null; await afterRead(); return result; };
       return prompt ? prompt.run(owner, read) : read();
     },
-    async write(name, value, owner) { writeOwners.push(owner); protectedItems.set(name, value); },
+    async write(name, value, owner) {
+      writeOwners.push(owner);
+      const write = async () => { protectedItems.set(name, value); };
+      return prompt ? prompt.run(owner, write) : write();
+    },
     async remove(name) { protectedItems.delete(name); },
   });
-  const factory = createKeyringRuntimeFactory({ pinCredential: createTestPinCredentialPort(), requestOperationCredential: requestCredential ?? (async (_request, _signal, check, verify) => {
+  const factory = createKeyringRuntimeFactory({ pinCredential: { ...pinCredential, async readSecret(...args) { secretReads++; return pinCredential.readSecret(...args); } }, requestOperationCredential: requestCredential ?? (async (_request, _signal, check, verify) => {
     const result = await verify({ method: 'pin', pin: PASSWORD }, check);
     if (!result.accepted) throw Error(result.reason);
   }), privacyServiceSettings: null, slhExecution: null,
     ensureCryptoReady: async () => undefined, readEvmRetirement: null,
+    loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
     trezorSessions,
     async openStorage() {
       store = await SqliteWalletStorage.open(nodeConnection(file, { before(_kind, sql) {
@@ -64,12 +80,220 @@ async function fixture(trezorSessions?: KeyringRuntimeDependencies['trezorSessio
   await owner.importPhrase(PHRASE, PASSWORD);
   return {
     get owner() { return owner; }, get runtime() { return runtime; }, get store() { return store; }, protectedItems, readOwners, writeOwners,
+    get secretReads() { return secretReads; }, get privateAccesses() { return privateAccesses; },
     afterRead(operation: () => Promise<void>) { afterRead = operation; },
     failEnrollmentRead() { failEnrollmentRead = true; },
     async reopen() { await owner.dispose(); owner = await open(); },
     async close() { await owner.dispose(); await rm(directory, { recursive: true, force: true }); },
   };
 }
+
+async function settingsFixture() {
+  let activity = 'active';
+  const activityListeners = new Set<(state: string) => void>();
+  const protectedPrompt = new DeviceUnlockPrompt({
+    state: () => activity,
+    subscribe(listener) { activityListeners.add(listener); return () => { activityListeners.delete(listener); }; },
+  });
+  const broker = new OperationAuthentication();
+  let shown: OperationAuthenticationPrompt | null = null;
+  let nextPrompt = Promise.withResolvers<OperationAuthenticationPrompt>();
+  let nextRefusal = Promise.withResolvers<OperationAuthenticationPrompt>();
+  let requestOwner: AbortSignal | undefined;
+  const detach = broker.attach(prompt => {
+    shown = prompt;
+    if (!prompt) return;
+    const next = nextPrompt; nextPrompt = Promise.withResolvers<OperationAuthenticationPrompt>(); next.resolve(prompt);
+    if (prompt.error) {
+      const refused = nextRefusal; nextRefusal = Promise.withResolvers<OperationAuthenticationPrompt>(); refused.resolve(prompt);
+    }
+  });
+  const f = await fixture(undefined, (request, signal, check, verify) => {
+    requestOwner = signal;
+    return broker.request(request, signal, check, verify);
+  }, protectedPrompt);
+  const scopes: ReturnType<typeof createNativePrivateAuthenticationScope>[] = [];
+  let activeScope: ReturnType<typeof createNativePrivateAuthenticationScope> | undefined;
+  return {
+    ...f,
+    get secretReads() { return f.secretReads; }, get privateAccesses() { return f.privateAccesses; },
+    get shown() { return shown; }, get requestOwner() { return requestOwner; }, get activeScope() { return activeScope; },
+    nextPrompt: () => nextPrompt.promise,
+    nextRefusal: () => nextRefusal.promise,
+    activity(state: string) { activity = state; for (const listener of activityListeners) listener(state); },
+    configure(enabled: boolean, signal = new AbortController().signal) {
+      const owner = f.owner.getSnapshot(), runtime = f.runtime;
+      const scope = createNativePrivateAuthenticationScope(); scopes.push(scope); activeScope = scope;
+      const assertOwner = () => { if (f.owner.getSnapshot() !== owner || f.runtime !== runtime) throw Error('CANCELLED'); };
+      const binding = bindNativePrivateAuthentication(scope, { assertCurrent: assertOwner, isPromptActive: owner => protectedPrompt.isActive(owner) });
+      return runtime.deviceUnlock!.configure(enabled, signal, binding, () => {
+        assertOwner();
+        if (activity !== 'active' && !allowsPrivateAuthenticationInterruption(scope, activity)) throw Error('CANCELLED');
+      });
+    },
+    async close() { broker.cancel(); detach(); scopes.forEach(scope => scope.retire()); await f.close(); },
+  };
+}
+
+test('shared biometric settings uses PIN-only enrollment with retry and no spending-key access', async () => {
+  const f = await settingsFixture();
+  try {
+    const secrets = f.secretReads, accesses = f.privateAccesses, owner = f.owner.getSnapshot();
+    const promptReady = f.nextPrompt(), pending = f.configure(true);
+    const prompt = await promptReady;
+    assert.equal(prompt.request.biometricsEnabled, false);
+    const refused = f.nextRefusal();
+    prompt.confirm({ method: 'pin', pin: '000000' });
+    const retry = await refused;
+    assert.equal(retry.error, 'PIN not accepted. Try again.');
+    assert.equal(f.protectedItems.size, 0);
+    assert.equal((await f.store.deviceUnlockEnrollment.read())?.enrollmentId, null);
+    retry.confirm({ method: 'pin', pin: PASSWORD });
+    await pending;
+    assert.equal((await f.owner.getDeviceUnlockStatus())?.enabled, true);
+    assert.equal(f.owner.getSnapshot(), owner);
+    assert.equal(f.secretReads, secrets);
+    assert.equal(f.privateAccesses, accesses);
+    assert.equal(f.shown, null);
+    assert.equal(f.protectedItems.size, 1);
+  } finally { await f.close(); }
+});
+
+test('enabled biometric settings offers the enrolled credential and can disable without spending-key access', async () => {
+  const f = await settingsFixture();
+  try {
+    await f.owner.setDeviceUnlock(true, PASSWORD, () => undefined);
+    const secrets = f.secretReads, accesses = f.privateAccesses, reads = f.readOwners.length, owner = f.owner.getSnapshot();
+    const promptReady = f.nextPrompt(), pending = f.configure(false);
+    const prompt = await promptReady;
+    assert.equal(prompt.request.biometricsEnabled, true);
+    prompt.confirm({ method: 'biometric' });
+    await pending;
+    assert.equal((await f.owner.getDeviceUnlockStatus())?.enabled, false);
+    assert.equal(f.protectedItems.size, 0);
+    assert.equal(f.readOwners.length, reads + 1);
+    assert.equal(f.readOwners.at(-1), f.requestOwner);
+    assert.equal(f.secretReads, secrets);
+    assert.equal(f.privateAccesses, accesses);
+    assert.equal(f.owner.getSnapshot(), owner);
+  } finally { await f.close(); }
+});
+
+test('a refused biometric settings proof keeps enrollment and allows PIN fallback in the same prompt', async () => {
+  const f = await settingsFixture();
+  try {
+    await f.owner.setDeviceUnlock(true, PASSWORD, () => undefined);
+    const enrollment = await f.store.deviceUnlockEnrollment.read(), owner = f.owner.getSnapshot();
+    const secrets = f.secretReads, accesses = f.privateAccesses;
+    f.afterRead(async () => { throw deviceUnlockUserRefusal(); });
+    const promptReady = f.nextPrompt(), pending = f.configure(false);
+    const prompt = await promptReady, refused = f.nextRefusal();
+    prompt.confirm({ method: 'biometric' });
+    const retry = await refused;
+    assert.equal(retry.error, 'Authentication was not completed. Enter your PIN or try again.');
+    assert.deepEqual(await f.store.deviceUnlockEnrollment.read(), enrollment);
+    assert.equal(f.protectedItems.size, 1);
+    f.afterRead(async () => undefined);
+    retry.confirm({ method: 'pin', pin: PASSWORD });
+    await pending;
+    assert.equal((await f.owner.getDeviceUnlockStatus())?.enabled, false);
+    assert.equal(f.owner.getSnapshot(), owner);
+    assert.equal(f.secretReads, secrets);
+    assert.equal(f.privateAccesses, accesses);
+  } finally { await f.close(); }
+});
+
+for (const enabled of [false, true]) test(`shared settings Cancel preserves the ${enabled ? 'enabled' : 'disabled'} enrollment`, async () => {
+  const f = await settingsFixture();
+  try {
+    if (enabled) await f.owner.setDeviceUnlock(true, PASSWORD, () => undefined);
+    const before = await f.store.recovery.readSnapshot(), owner = f.owner.getSnapshot();
+    const secrets = f.secretReads, accesses = f.privateAccesses;
+    const promptReady = f.nextPrompt(), pending = f.configure(!enabled);
+    const rejection = assert.rejects(pending, isOperationAuthenticationCancellation);
+    (await promptReady).cancel();
+    await rejection;
+    assert.equal(f.shown, null);
+    assert.equal(f.owner.getSnapshot(), owner);
+    assert.deepEqual(await f.store.recovery.readSnapshot(), before);
+    assert.equal(f.secretReads, secrets);
+    assert.equal(f.privateAccesses, accesses);
+  } finally { await f.close(); }
+});
+
+test('enrollment protected readback owns its exact inactive OS prompt', async () => {
+  const f = await settingsFixture();
+  try {
+    f.afterRead(async () => {
+      f.activity('inactive');
+      assert.equal(f.activeScope?.isAuthenticating(), true);
+      assert.equal(f.readOwners.at(-1), f.requestOwner);
+      assert.equal(f.writeOwners.at(-1), f.requestOwner);
+      f.activity('active');
+    });
+    const promptReady = f.nextPrompt(), pending = f.configure(true);
+    (await promptReady).confirm({ method: 'pin', pin: PASSWORD });
+    await pending;
+    assert.equal((await f.owner.getDeviceUnlockStatus())?.enabled, true);
+    assert.equal(f.activeScope?.isAuthenticating(), false);
+  } finally { await f.close(); }
+});
+
+test('a changed enrollment reference cannot be overwritten by an older shared settings prompt', async () => {
+  const f = await settingsFixture();
+  try {
+    const before = await f.store.deviceUnlockEnrollment.read(); assert(before);
+    const promptReady = f.nextPrompt(), pending = f.configure(true);
+    const rejection = assert.rejects(pending, /CANCELLED/);
+    const prompt = await promptReady;
+    const externalId = 'ab'.repeat(16);
+    assert.equal(await f.store.deviceUnlockEnrollment.compareAndSet(before, externalId, () => undefined), true);
+    prompt.confirm({ method: 'pin', pin: PASSWORD });
+    await rejection;
+    assert.equal((await f.store.deviceUnlockEnrollment.read())?.enrollmentId, externalId);
+    assert.equal(f.writeOwners.length, 0);
+    assert.equal(f.protectedItems.size, 0);
+  } finally { await f.close(); }
+});
+
+test('backgrounding the owned enrollment readback never publishes its new protected credential', async () => {
+  const f = await settingsFixture();
+  try {
+    const before = await f.store.deviceUnlockEnrollment.read();
+    const secrets = f.secretReads, accesses = f.privateAccesses;
+    f.afterRead(async () => { f.activity('background'); });
+    const promptReady = f.nextPrompt(), pending = f.configure(true);
+    const rejection = assert.rejects(pending, /CANCELLED|DEVICE_UNLOCK_UNAVAILABLE|OPERATION_FAILED/);
+    (await promptReady).confirm({ method: 'pin', pin: PASSWORD });
+    await rejection;
+    assert.deepEqual(await f.store.deviceUnlockEnrollment.read(), before);
+    assert.equal(f.protectedItems.size, 0);
+    assert.equal(f.activeScope?.isAuthenticating(), false);
+    assert.equal(f.secretReads, secrets);
+    assert.equal(f.privateAccesses, accesses);
+  } finally { f.activity('active'); await f.close(); }
+});
+
+for (const interruption of ['inactive', 'lock', 'abort'] as const) test(`${interruption} outside an owned OS proof cannot change biometric enrollment`, async () => {
+  const f = await settingsFixture();
+  try {
+    const before = await f.store.deviceUnlockEnrollment.read(), secrets = f.secretReads, accesses = f.privateAccesses;
+    const lifetime = new AbortController(), promptReady = f.nextPrompt(), pending = f.configure(true, lifetime.signal);
+    const rejection = assert.rejects(pending, interruption === 'inactive' ? /CANCELLED|OPERATION_FAILED/ : /CANCELLED/);
+    const prompt = await promptReady;
+    if (interruption === 'inactive') f.activity('inactive');
+    else if (interruption === 'lock') f.owner.lock();
+    else lifetime.abort();
+    prompt.confirm({ method: 'pin', pin: PASSWORD });
+    await rejection;
+    assert.equal(f.shown, null);
+    assert.equal(f.activeScope?.isAuthenticating(), false);
+    assert.deepEqual(await f.store.deviceUnlockEnrollment.read(), before);
+    assert.equal(f.protectedItems.size, 0);
+    assert.equal(f.secretReads, secrets);
+    assert.equal(f.privateAccesses, accesses);
+  } finally { f.activity('active'); await f.close(); }
+});
 
 test('published SDK device unlock survives cold reopen and keeps backup gating and password fallback', async () => {
   const f = await fixture();

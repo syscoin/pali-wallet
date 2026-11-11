@@ -26,14 +26,14 @@ import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecy
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { NativeRecoveryFlow } from '../src/custody/recoveryFlow.ts';
 import { createNativeNoteRestore } from '../src/custody/nativeNoteRestore.ts';
-import { createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
+import { createNativePrivateAuthenticationScope, createNativePrivateAuthenticationChild, type NativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { createNoteBackupCodec } from '../../../source/wallet/noteBackup.ts';
 import * as networkContext from '../src/custody/networkContext.ts';
 import { isAllowedSentryKeyRoleScheme, type SentryKeySummary } from '../../../source/wallet/sentryKeyVault.ts';
 import { containsSentryPrivateKey, parseSentryKeyBatch } from '../../../source/utils/sentry/importBatch.ts';
 import { createNativeSentryKeyManagement, type NativeSentryKeyManagement } from '../src/custody/sentryKeyManagement.ts';
-import { OperationAuthentication, type OperationAuthenticationPrompt } from '../src/core/operationAuthentication.ts';
+import { OperationAuthentication, isOperationAuthenticationCancellation, type OperationAuthenticationPrompt } from '../src/core/operationAuthentication.ts';
 import type { NativeConnectionsView } from '../src/connections/types.ts';
 import type { NativeTrezorView } from '../src/custody/trezorAccounts.ts';
 import { quietActivityNotifications, type NotificationTestPort } from './notificationFixture.ts';
@@ -75,6 +75,7 @@ const walletScreenPorts = {
   '../activity/accountActivity': { AccountActivityController: class {} },
   './BackupIntroduction': { BackupIntroduction: 'BackupIntroduction' },
   './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
+  './NativeDeviceUnlockSettings': { NativeDeviceUnlockSettings: 'NativeDeviceUnlockSettings' },
   './NativeImportWallet': { NativeImportWallet: 'NativeImportWallet' },
   './PinEntry': { PinEntryScreen: 'PinEntryScreen', PinSetup: 'PinSetup', PinField: 'PinField', isWalletPin: isNativePin },
   './BackupVerification': { BackupVerification: 'BackupVerification' },
@@ -334,7 +335,9 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   let locks = 0;
   const lifecycle: string[] = [];
   const notificationRoutes: { tab: string; identity: string }[] = [];
-  const enrollments: { enabled: boolean; password: string }[] = [];
+  const enrollments: { enabled: boolean; password?: string }[] = [];
+  const configurations: { enabled: boolean; signal: AbortSignal; authentication: NativePrivateAuthenticationScope }[] = [];
+  let biometricsEnabled = deviceUnlock && (setting?.enabled ?? !empty);
   const backupAcknowledgements: string[] = [];
   const authentication = new DeviceUnlockPrompt({
     state: () => root.native.AppState.currentState,
@@ -356,6 +359,12 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     canUseWalletAuthenticator: () => false,
     guardianRecovery: { hasIntent: () => false, async open() { throw Error('Unavailable in this fixture'); } },
     ...(deviceUnlock ? { authentication } : {}),
+    async configureDeviceUnlock(enabled: boolean, signal: AbortSignal, authentication: NativePrivateAuthenticationScope, check: () => void) {
+      check(); configurations.push({ enabled, signal, authentication });
+      if (setting) await setting.wait;
+      check(); if (signal.aborted) throw Error('CANCELLED');
+      biometricsEnabled = enabled; enrollments.push({ enabled });
+    },
     ...(depositMode ? { async openPrivateDeposit() { throw Error('Deposit child owns opening in the dedicated screen test'); } } : {}),
     ...(networkMode ? { async openUtxoSend() { throw Error('UTXO child owns opening'); } } : {}),
     authority: { getSnapshot: () => state, getCatalogue: () => ['ready', 'backup-required'].includes(state.phase) ? catalogue : null, supportsAccountManagement: () => false,
@@ -382,12 +391,13 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
         assert(pinChange); check(); pinChange.calls.push([current, next]);
         if (current !== '123456') throw new Error(pinChange.refusal);
       },
-      async getAuthenticationStatus() { return { pinConfigured: !empty, biometricsAvailable: deviceUnlock, biometricsEnabled: deviceUnlock && (setting?.enabled ?? !empty) }; },
+      async getAuthenticationStatus() { return { pinConfigured: !empty, biometricsAvailable: deviceUnlock, biometricsEnabled }; },
+      async getDeviceUnlockStatus() { return { available: deviceUnlock, enabled: biometricsEnabled }; },
       async create() { publish({ phase: 'backup-required', presence: 'existing', backup: 'unconfirmed' }); },
       async setDeviceUnlock(enabled: boolean, password: string, check: () => void) {
         check();
         if (setting) { publish({ phase: 'authenticating', account: null }); await setting.wait; }
-        check(); enrollments.push({ enabled, password });
+        check(); biometricsEnabled = enabled; enrollments.push({ enabled, password });
         if (setting) publish({ phase: 'ready', account: { address, network: 'ethereum' } });
       },
       async unlockWithDevice(check: () => void) {
@@ -527,7 +537,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     await new Promise((resolve) => setImmediate(resolve));
     return render();
   };
-  return { render, unlock, publish, noteRestore, notificationRoutes, selectedNetwork: () => state.account?.network, authority: realAuthority, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, backupAcknowledgements, lifecycle, get locks() { return locks; } };
+  return { render, unlock, publish, noteRestore, notificationRoutes, selectedNetwork: () => state.account?.network, authority: realAuthority, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, configurations, backupAcknowledgements, lifecycle, get locks() { return locks; } };
 }
 
 for (const refusal of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED'] as const) test(`Change PIN returns to a fresh current-PIN entry after ${refusal}`, async () => {
@@ -670,31 +680,69 @@ for (const interruption of ['inactive', 'blur']) test(`native wallet discards a 
   } finally { f.dispose(); }
 });
 
+function deviceUnlockSettingsLeaf(route: Element) {
+  assert.equal(route.type, 'NativeDeviceUnlockSettings');
+  const leaf = setup();
+  const loaded = evaluate(readFileSync(new NodeURL('../src/screens/NativeDeviceUnlockSettings.tsx', import.meta.url), 'utf8'), {
+    react: leaf.hook, 'react-native': leaf.native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+    '../ui': { ...leaf.ui, Header: 'Header' },
+    '../custody/privateAuthentication': { createNativePrivateAuthenticationScope, createNativePrivateAuthenticationChild },
+    '../core/operationAuthentication': { isOperationAuthenticationCancellation },
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+  });
+  return { render: () => leaf.renderOwner(loaded.NativeDeviceUnlockSettings as (props: object) => Element, route.props), dispose: leaf.dispose };
+}
+
 for (const enabled of [false, true]) test(`a queued settings Cancel revokes pending biometric ${enabled ? 'disable' : 'enrollment'}`, async () => {
   let finish!: () => void;
   const f = await walletFeedbackFixture(true, false, { enabled, wait: new Promise(resolve => { finish = resolve; }) });
+  let leaf: ReturnType<typeof deviceUnlockSettingsLeaf> | undefined;
   try {
     const portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
     (portfolio.props.onSecurity as () => void)();
     const security = f.render();
     assert.equal(security.type, 'NativeSecurity');
     (security.props.onDeviceUnlock as () => void)();
-    let tree = f.render();
+    const route = f.render();
+    assert.equal(route.type, 'NativeDeviceUnlockSettings');
+    assert.equal(route.props.enabled, enabled); assert.equal(route.props.available, true);
+    assert.equal(all(route).some(node => node.type === 'PinField'), false);
+    leaf = deviceUnlockSettingsLeaf(route);
+    let tree = leaf.render();
     const cancel = button(tree, 'Cancel');
-    const input = all(tree).find(node => node.type === 'PinField'); assert(input);
-    (input.props.onChange as (value: string) => void)('123456');
-    tree = f.render();
-    press(button(tree, enabled ? 'Turn off biometric unlock' : 'Enable biometric unlock'));
-    // Authentication replaces the form, but an already queued callback remains callable.
-    assert.equal(all(f.render()).some(node => node.props.title === 'Cancel'), false);
+    assert.equal(all(tree).some(node => node.type === 'PinField'), false);
+    press(button(tree, `${enabled ? 'Turn off' : 'Enable'} ${String(route.props.label)}`));
+    tree = leaf.render();
+    assert.equal(button(tree, 'Updating…').props.disabled, true);
+    assert.equal(f.render().type, 'NativeDeviceUnlockSettings', 'Public configuration keeps the settings route mounted');
+    assert.equal(f.configurations.length, 1); assert.equal(f.configurations[0]!.enabled, !enabled);
     const lifecycleOffset = f.lifecycle.length;
     press(cancel);
-    assert.equal(f.locks, 1);
-    assert.deepEqual(f.lifecycle.slice(lifecycleOffset), ['psbt-cancel', 'lock']);
+    assert.equal(f.configurations[0]!.signal.aborted, true);
+    assert.equal(f.locks, 0);
+    assert.deepEqual(f.lifecycle.slice(lifecycleOffset), []);
     finish(); await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(f.enrollments, []);
-    assert.equal(f.render().type, 'PinEntryScreen');
-  } finally { finish(); f.dispose(); }
+    assert.equal(f.render().type, 'NativeSecurity');
+  } finally { finish(); leaf?.dispose(); f.dispose(); }
+});
+
+for (const enabled of [false, true]) test(`shared biometric ${enabled ? 'disable' : 'enable'} refreshes the parent status after configuration`, async () => {
+  let finish!: () => void;
+  const f = await walletFeedbackFixture(true, false, { enabled, wait: new Promise(resolve => { finish = resolve; }) });
+  let leaf: ReturnType<typeof deviceUnlockSettingsLeaf> | undefined;
+  try {
+    const portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
+    (portfolio.props.onSecurity as () => void)();
+    (f.render().props.onDeviceUnlock as () => void)();
+    const route = f.render(); leaf = deviceUnlockSettingsLeaf(route);
+    press(button(leaf.render(), `${enabled ? 'Turn off' : 'Enable'} ${String(route.props.label)}`));
+    assert.equal(f.render().type, 'NativeDeviceUnlockSettings');
+    finish(); await new Promise(resolve => setImmediate(resolve));
+    const security = f.render(); assert.equal(security.type, 'NativeSecurity');
+    assert.equal(security.props.deviceUnlockEnabled, !enabled);
+    assert.deepEqual(f.enrollments, [{ enabled: !enabled }]);
+  } finally { finish(); leaf?.dispose(); f.dispose(); }
 });
 
 test('native wallet background revokes a pending biometric prompt', async () => {

@@ -1,9 +1,11 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { AppState, BackHandler, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WalletRemovalError, type NativeWalletRemoval as Removal, type WalletRemovalTicket } from '../custody/walletRemoval';
 import { Button, colors, Header, Icon, Notice, Screen, styles, Text } from '../ui';
-import { PinField } from './PinEntry';
+import { createNativePrivateAuthenticationScope, createNativePrivateAuthenticationChild, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { isOperationAuthenticationCancellation } from '../core/operationAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 export type RemovalScreenOutcome = 'removed' | 'unchanged' | 'unconfirmed';
 type Props = {
@@ -14,17 +16,18 @@ type Props = {
   onBack(): void;
   onContinue(outcome: 'removed' | 'unchanged'): Promise<void>;
 };
-type Step = { phase: 'password'; error?: string } | { phase: 'authorizing' } |
-  { phase: 'review' } | { phase: 'working'; cancelling?: true } |
+type Step = { phase: 'intro'; error?: string } | { phase: 'authorizing' } |
+  { phase: 'review'; attempt: Attempt } | { phase: 'working'; cancelling?: true } |
   { phase: 'outcome'; outcome: RemovalScreenOutcome } | { phase: 'blocked' };
-type Attempt = { cancelled: boolean; confirming: boolean; ticket?: WalletRemovalTicket; timer?: ReturnType<typeof setTimeout> };
-type Owner = { live: boolean; attempt?: Attempt; finishing: boolean };
+type Attempt = { cancelled: boolean; confirming: boolean; lifetime: AbortController; authentication: NativePrivateAuthenticationScope;
+  ticket?: WalletRemovalTicket; timer?: ReturnType<typeof setTimeout> };
+type Owner = { live: boolean; authentication: NativePrivateAuthenticationScope; attempt?: Attempt; finishing: boolean };
 const CONFIRM_MS = 30_000;
 const failure = (cause: unknown) => {
   const code = cause instanceof WalletRemovalError ? cause.code : undefined;
   if (code === 'INVALID_CREDENTIAL') return 'That PIN is incorrect.';
   if (code === 'AUTH_THROTTLED') return 'Too many incorrect PINs. Wait before trying again.';
-  return 'Could not verify your PIN for removal.';
+  return 'Could not authorize wallet removal. Try again.';
 };
 
 function discardTicket(attempt: Attempt) {
@@ -34,46 +37,49 @@ function discardTicket(attempt: Attempt) {
 }
 
 export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack, onContinue, backupConfirmed }: Props) {
-  const life = useRef<Owner>({ live: false, finishing: false });
-  const [password, setPassword] = useState('');
-  const [step, setStep] = useState<Step>({ phase: 'password' });
+  const life = useRef<Owner | undefined>(undefined);
+  const [step, setStep] = useState<Step>({ phase: 'intro' });
   const [finishing, setFinishing] = useState(false);
 
   const cancel = useCallback((owner: Owner) => {
     const attempt = owner.attempt;
     if (attempt) {
       attempt.cancelled = true;
+      attempt.lifetime.abort();
+      attempt.authentication.retire();
       discardTicket(attempt);
       if (!attempt.confirming) owner.attempt = undefined;
     }
     removal.cancel();
   }, [removal]);
 
-  const clearInput = useCallback(() => { setPassword(''); Keyboard.dismiss(); }, []);
   useLayoutEffect(() => {
-    const owner: Owner = { live: true, finishing: false };
+    const owner: Owner = { live: true, authentication: createNativePrivateAuthenticationScope(), finishing: false };
     life.current = owner;
     const hide = () => {
       if (life.current !== owner || !owner.live) return;
       cancel(owner);
-      clearInput();
       setStep((current) => current.phase === 'working' ? { phase: 'working', cancelling: true }
-        : current.phase === 'outcome' || current.phase === 'blocked' ? current : { phase: 'password' });
+        : current.phase === 'outcome' || current.phase === 'blocked' ? current : { phase: 'intro' });
     };
-    const change = AppState.addEventListener('change', (state) => { if (state !== 'active') hide(); });
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', hide) : null;
-    return () => { owner.live = false; cancel(owner); change.remove(); blur?.remove(); };
-  }, [cancel, clearInput]);
+    const change = AppState.addEventListener('change', (state) => {
+      if (state !== 'active' && !allowsPrivateAuthenticationInterruption(owner.authentication, state)) hide();
+    });
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
+      if (!allowsPrivateAuthenticationInterruption(owner.authentication, 'blur')) hide();
+    }) : null;
+    return () => { owner.live = false; cancel(owner); owner.authentication.retire(); change.remove(); blur?.remove(); };
+  }, [cancel]);
 
   const back = useCallback(() => {
     if (step.phase === 'outcome' || step.phase === 'blocked') return;
     const owner = life.current;
+    if (!owner?.live) return;
     const confirming = owner.attempt?.confirming;
     cancel(owner);
-    clearInput();
     if (confirming) setStep({ phase: 'working', cancelling: true });
     else onBack();
-  }, [cancel, clearInput, onBack, step.phase]);
+  }, [cancel, onBack, step.phase]);
   useLayoutEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => { back(); return true; });
     return () => subscription.remove();
@@ -81,34 +87,38 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
 
   const authorize = async () => {
     const owner = life.current;
-    if (!owner.live || owner.attempt || !password || !isCurrent()) return;
-    const attempt: Attempt = { cancelled: false, confirming: false };
+    if (!owner?.live || owner.attempt || AppState.currentState !== 'active' || !isCurrent()) return;
+    const attempt: Attempt = { cancelled: false, confirming: false, lifetime: new AbortController(),
+      authentication: createNativePrivateAuthenticationChild(owner.authentication) };
     owner.attempt = attempt;
-    const entered = password;
-    clearInput();
     setStep({ phase: 'authorizing' });
-    const current = () => owner.live && owner.attempt === attempt && !attempt.cancelled && isCurrent();
+    const current = () => life.current === owner && owner.live && owner.attempt === attempt && !attempt.cancelled && !attempt.lifetime.signal.aborted && isCurrent();
     const check = () => { if (!current()) throw new Error('CANCELLED'); };
     try {
-      const ticket = await removal.authorize(entered, check);
+      const ticket = await removal.authorize(attempt.lifetime.signal, attempt.authentication, check);
       check();
+      if (AppState.currentState !== 'active') throw new Error('CANCELLED');
       attempt.ticket = ticket;
       attempt.timer = setTimeout(() => {
         if (!current() || attempt.confirming) return;
         cancel(owner);
-        setStep({ phase: 'password', error: 'Confirmation expired. Enter your PIN again.' });
+        setStep({ phase: 'intro', error: 'Confirmation expired. Authorize again to continue.' });
       }, CONFIRM_MS);
-      setStep({ phase: 'review' });
+      setStep({ phase: 'review', attempt });
     } catch (cause) {
       if (!current()) return;
+      attempt.lifetime.abort();
+      attempt.authentication.retire();
       owner.attempt = undefined;
-      setStep({ phase: 'password', error: failure(cause) });
+      setStep({ phase: 'intro', ...(isOperationAuthenticationCancellation(cause) ? {} : { error: failure(cause) }) });
     }
   };
 
-  const remove = async () => {
-    const owner = life.current, attempt = owner.attempt, ticket = attempt?.ticket;
-    if (!owner.live || !attempt || !ticket || attempt.cancelled || attempt.confirming || !isCurrent()) return;
+  const remove = async (reviewed: Attempt) => {
+    const owner = life.current;
+    if (!owner?.live) return;
+    const attempt = owner.attempt, ticket = attempt?.ticket;
+    if (!attempt || attempt !== reviewed || !ticket || attempt.cancelled || attempt.confirming || AppState.currentState !== 'active' || !isCurrent()) return;
     discardTicket(attempt);
     attempt.confirming = true;
     setStep({ phase: 'working' });
@@ -118,6 +128,8 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
     let outcome: RemovalScreenOutcome;
     try { outcome = await confirm(ticket, check); } catch { outcome = 'unconfirmed'; }
     if (owner.live && owner.attempt === attempt) {
+      attempt.lifetime.abort();
+      attempt.authentication.retire();
       owner.attempt = undefined;
       setStep({ phase: 'outcome', outcome });
     }
@@ -125,7 +137,7 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
 
   const finish = async (outcome: 'removed' | 'unchanged') => {
     const owner = life.current;
-    if (!owner.live || owner.finishing || AppState.currentState !== 'active') return;
+    if (!owner?.live || owner.finishing || AppState.currentState !== 'active') return;
     owner.finishing = true;
     setFinishing(true);
     try { await onContinue(outcome); }
@@ -135,12 +147,12 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
 
   const title = step.phase === 'outcome' ? step.outcome === 'removed' ? 'Wallet removed' : step.outcome === 'unchanged' ? 'Wallet kept' : 'Removal could not be confirmed'
     : step.phase === 'blocked' ? 'Wallet storage unavailable' : 'Remove wallet';
-  const footer = step.phase === 'password' ? <>
-    <Button title="Continue" disabled={!password} onPress={() => void authorize()} />
+  const footer = step.phase === 'intro' ? <>
+    <Button title="Continue" onPress={() => void authorize()} />
     <Button title="Cancel" variant="secondary" onPress={back} />
   </> : step.phase === 'review' ? <>
     {!backupConfirmed && <Notice title="Backup not verified" body="This wallet has not been verified as backed up." tone="red" />}
-    <Button title="Remove wallet" variant="danger" onPress={() => void remove()} />
+    <Button title="Remove wallet" variant="danger" onPress={() => void remove(step.attempt)} />
     <Button title="Cancel" variant="secondary" onPress={back} />
   </> : step.phase === 'authorizing' ? <Button title="Cancel" variant="secondary" onPress={back} />
     : step.phase === 'working' && !step.cancelling ? <Button title="Cancel removal" variant="secondary" onPress={back} />
@@ -148,18 +160,17 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
       if (step.outcome !== 'unconfirmed') void finish(step.outcome);
     }} /> : undefined;
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
-    <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={s.fill}>
       <Screen gap={16} footer={footer}>
         <Header title={title} onBack={step.phase === 'outcome' || step.phase === 'blocked' ? undefined : back} />
-        {step.phase === 'password' && <>
+        {step.phase === 'intro' && <>
           <Text>Removing this wallet deletes its accounts, Sentry keys, private notes, and saved transaction records from this device.</Text>
           <Notice title="Check your backups" body="Your recovery phrase restores derived accounts. Imported accounts, Sentry keys, and private notes need their own backups." tone="amber" />
           <Text style={styles.muted}>Transfers already sent can still complete. Watch accounts and device settings stay saved.</Text>
-          <PinField label="Confirm your wallet PIN" value={password} onChange={setPassword} busy={false} />
           {step.error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{step.error}</Text>}
         </>}
         {step.phase === 'authorizing' && <>
-          <Text accessibilityLiveRegion="polite">Confirming your PIN…</Text>
+          <Text accessibilityLiveRegion="polite">Authorizing wallet removal…</Text>
         </>}
         {step.phase === 'review' && <>
           <View style={s.reviewHero}>
@@ -178,7 +189,7 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
         </>}
         {step.phase === 'blocked' && <Text accessibilityRole="alert">Close and reopen Pali to check this device.</Text>}
       </Screen>
-    </KeyboardAvoidingView>
+    </View>
   </SafeAreaView>;
 }
 

@@ -1,4 +1,5 @@
-import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
+import { createTestPrivateAuthentication, bindTestRequestAuthentication } from './fixtures/privateAuthentication.ts';
+import { createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { storageOnlyPublicSession } from './fixtures/publicSessionRecord.ts';
 import { prepareRecoveryPin } from './fixtures/recoveryPin.ts';
 import { createPrivateVaultSession } from '../../../source/wallet/privateVault.ts';
@@ -1371,6 +1372,7 @@ test('Sentry buckets survive cold unlock and recovery, then explicit wallet remo
   const removalForCurrentOwner = () =>
     new NativeWalletRemoval({
       owner: f.owner,
+      bindAuthentication: bindTestRequestAuthentication,
       source: () => ({ runtime: f.runtime, storage: f.store }),
       reopen: f.open,
       clearNativeSelection: async () => {
@@ -1391,7 +1393,7 @@ test('Sentry buckets survive cold unlock and recovery, then explicit wallet remo
     ] as const;
     for (const [networkId] of networks) await selectNetwork(f, networkId);
     removal = removalForCurrentOwner();
-    const ticket = await removal.authorize(OLD, current);
+    const ticket = await removal.authorize(new AbortController().signal, createNativePrivateAuthenticationScope(), current);
     for (const [, network] of networks) {
       const catalogue = await accountRecord(f);
       const vaultId = await deriveSentryVaultId(sentryRootPublicIdentity(catalogue, network), digest);
@@ -1458,7 +1460,7 @@ test('Sentry buckets survive cold unlock and recovery, then explicit wallet remo
     );
 
     removal = removalForCurrentOwner();
-    await removal.authorize(OLD, current);
+    await removal.authorize(new AbortController().signal, createNativePrivateAuthenticationScope(), current);
     assert.equal(f.owner.getSnapshot().phase, 'ready');
     assert.equal(cleared, 0);
     await removal.dispose();
@@ -1521,7 +1523,7 @@ test('Sentry buckets survive cold unlock and recovery, then explicit wallet remo
     await f.reopen();
     await f.owner.unlock(NEXT);
     removal = removalForCurrentOwner();
-    const confirmed = await removal.authorize(NEXT, current);
+    const confirmed = await removal.authorize(new AbortController().signal, createNativePrivateAuthenticationScope(), current);
     assert.equal(await removal.confirm(confirmed, current), 'wallet-records-removed');
     assert.equal(cleared, 1);
     assert.deepEqual(f.read().records, []);

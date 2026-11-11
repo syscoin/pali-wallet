@@ -1,4 +1,4 @@
-import { enterPin, pinField, fillPinField } from '../ui/operationAuthentication';
+import { enterPin } from '../ui/operationAuthentication';
 import { expect, test, type Page } from '@playwright/test';
 import { nativeAccountName } from '../accountControlNames';
 
@@ -11,7 +11,6 @@ const WATCH_ACCOUNTS = [{
 }];
 const button = (page: Page, name: string | RegExp) => page.getByRole('button', { name, exact: typeof name === 'string' });
 const title = (page: Page, name: string) => page.getByRole('heading', { name, exact: true });
-const password = (page: Page) => pinField(page, 'Confirm your wallet PIN');
 const audit = (page: Page) => page.evaluate(() => window.__watchFixture.removal.audit());
 const selection = (page: Page) => page.evaluate(() => window.__watchFixture.selection());
 const ready = (page: Page) => title(page, 'Security & backups');
@@ -48,10 +47,11 @@ async function openRemoval(page: Page) {
 }
 
 async function authorize(page: Page) {
-  await fillPinField(password(page), PASSWORD);
   await button(page, 'Continue').click();
+  await expect(title(page, 'Authorize change')).toBeVisible();
+  await enterPin(page, PASSWORD);
   await expect(button(page, 'Remove wallet')).toBeVisible();
-  await expect(password(page)).toHaveCount(0);
+  await expect(title(page, 'Authorize change')).toHaveCount(0);
 }
 
 async function verifiedRemoval(page: Page) {
@@ -66,7 +66,7 @@ function doublePress(element: Element) {
   element.click();
 }
 
-test('actual removal route separates password from destructive confirmation at 320px and at large type', async ({ page }, testInfo) => {
+test('actual removal route separates shared authentication from destructive confirmation at 320px and at large type', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 680 });
   await openWallet(page);
   await openRemoval(page);
@@ -75,35 +75,37 @@ test('actual removal route separates password from destructive confirmation at 3
   await expect(page.locator('body')).toContainText(/saved transaction records/i);
   await expect(page.locator('body')).toContainText(/recovery phrase/i);
   await expect(button(page, 'Remove wallet')).toHaveCount(0);
-  await expect(button(page, 'Continue')).toBeDisabled();
+  await expect(button(page, 'Continue')).toBeEnabled();
+  await expect(button(page, 'PIN digit 1')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('wallet-removal-review-320.png') });
 
   await page.evaluate(() => window.__watchFixture.removal.hold('authorize'));
-  await fillPinField(password(page), '000000');
   await button(page, 'Continue').evaluate(doublePress);
+  await expect(title(page, 'Authorize change')).toBeVisible();
+  await enterPin(page, '000000');
   await expect.poll(async () => (await audit(page)).authorizations).toBe(1);
   await page.evaluate(() => window.__watchFixture.removal.release());
   await expect(page.getByRole('alert')).toContainText(/PIN/i);
-  await expect(password(page)).toHaveText('Enter PIN');
+  await expect(title(page, 'Authorize change')).toBeVisible();
   expect((await audit(page)).commits).toBe(0);
 
   // Synthetic large text and reduced viewport with the PIN control focused.
   // This exercises browser layout, not a native system keyboard.
   await page.setViewportSize({ width: 320, height: 520 });
   await page.addStyleTag({ content: '[dir="auto"] { font-size: 22px !important; line-height: 1.4 !important; } input { font-size: 22px !important; }' });
-  await password(page).focus();
-  await expect(password(page)).toBeFocused();
-  const field = await password(page).boundingBox();
+  const digit = button(page, 'PIN digit 1');
+  await digit.focus();
+  await expect(digit).toBeFocused();
+  const field = await digit.boundingBox();
   expect(field).not.toBeNull();
   expect(field!.y).toBeGreaterThanOrEqual(0);
   expect(field!.y + field!.height).toBeLessThanOrEqual(520);
   await page.screenshot({ path: testInfo.outputPath('wallet-removal-focused-large-text.png') });
-  await fillPinField(password(page), PASSWORD);
-  await button(page, 'Continue').click();
+  await enterPin(page, PASSWORD);
   await expect(button(page, 'Remove wallet')).toBeVisible();
   await expect(page.getByText('Remove wallet from this phone?', { exact: true })).toBeVisible();
   await expect(page.locator('body')).toContainText(/separate key or note backups.*cannot be undone/i);
-  await expect(password(page)).toHaveCount(0);
+  await expect(title(page, 'Authorize change')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   expect((await audit(page)).confirmationAttempts).toBe(0);
   expect((await audit(page)).commits).toBe(0);
@@ -123,14 +125,19 @@ test('late authorization after Back and a backgrounded ticket cannot reach confi
   await openWallet(page, { android: true });
   await openRemoval(page);
   await page.evaluate(() => window.__watchFixture.removal.hold('authorize'));
-  await fillPinField(password(page), PASSWORD);
   await button(page, 'Continue').click();
+  await enterPin(page, PASSWORD);
   await expect.poll(async () => (await audit(page)).authorizations).toBe(1);
   expect(await page.evaluate(() => window.__watchFixture.back())).toBe(true);
-  await expect(ready(page)).toBeVisible();
+  await expect(title(page, 'Remove wallet')).toBeVisible();
+  await expect(title(page, 'Authorize change')).toHaveCount(0);
   await page.evaluate(() => window.__watchFixture.removal.release());
+  await expect(button(page, 'Remove wallet')).toHaveCount(0);
+  await button(page, 'Cancel').click();
+  await expect(ready(page)).toBeVisible();
   await button(page, /^Remove wallet from this device/).click();
-  await expect(password(page)).toHaveText('Enter PIN');
+  await expect(button(page, 'Continue')).toBeVisible();
+  await expect(button(page, 'PIN digit 1')).toHaveCount(0);
   await expect(button(page, 'Remove wallet')).toHaveCount(0);
   await authorize(page);
   await page.evaluate(() => window.__watchFixture.blur());
@@ -140,17 +147,19 @@ test('late authorization after Back and a backgrounded ticket cannot reach confi
   expect((await audit(page)).commits).toBe(0);
   await unlock(page);
   await openRemoval(page);
-  await expect(password(page)).toHaveText('Enter PIN');
+  await expect(button(page, 'Continue')).toBeVisible();
+  await expect(button(page, 'PIN digit 1')).toHaveCount(0);
   await expect(button(page, 'Remove wallet')).toHaveCount(0);
 });
 
-test('an expired ticket requires fresh password authorization', async ({ page }) => {
+test('an expired ticket requires fresh shared authorization', async ({ page }) => {
   await page.clock.install();
   await openWallet(page);
   await openRemoval(page);
   await authorize(page);
   await page.clock.runFor(30_001);
-  await expect(password(page)).toHaveText('Enter PIN');
+  await expect(button(page, 'Continue')).toBeVisible();
+  await expect(button(page, 'PIN digit 1')).toHaveCount(0);
   await expect(button(page, 'Remove wallet')).toHaveCount(0);
   await authorize(page);
   expect((await audit(page)).authorizations).toBe(2);

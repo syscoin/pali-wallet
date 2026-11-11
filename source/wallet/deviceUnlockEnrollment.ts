@@ -50,6 +50,7 @@ type Operation = {
   check: Guard;
   completed?: boolean;
   kind: 'issue' | 'resume' | 'disable' | 'presence';
+  owner: AbortSignal | null;
   scope?: DeviceUnlockCredentialScope;
 };
 
@@ -101,6 +102,7 @@ export function createDeviceUnlockEnrollment(
     if (active) throw unavailable();
     const operation: Operation = {
       kind,
+      owner: null,
       check() {
         if (active !== operation) throw unavailable();
         checked(guard);
@@ -149,7 +151,7 @@ export function createDeviceUnlockEnrollment(
           checked(sdkGuard);
           operation.check();
         },
-        null
+        operation.owner
       );
       operation.check();
       operation.completed = true;
@@ -220,8 +222,13 @@ export function createDeviceUnlockEnrollment(
     ): Promise<void> {
       await this.withPresenceCredential(guard, async () => undefined, owner);
     },
-    issue: (prove: (assertCurrent: Guard) => Promise<boolean>, guard: Guard) =>
+    issue: (
+      prove: (assertCurrent: Guard) => Promise<boolean>,
+      guard: Guard,
+      owner: AbortSignal | null
+    ) =>
       run('issue', guard, async (operation) => {
+        operation.owner = owner;
         const { check } = operation;
         if (!(await ports.credentials.available())) throw unavailable();
         check();

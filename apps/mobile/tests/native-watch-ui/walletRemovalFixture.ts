@@ -2,7 +2,9 @@
 // No SQLite, SecureStore, keys or personal wallet records are used by this fixture.
 import type { NativeCustodyAuthority } from '../../src/custody/authority';
 import type { KeyringRuntime } from '../../src/custody/keyringRuntime';
-import { NativeWalletRemoval, WalletRemovalError } from '../../src/custody/walletRemoval';
+import { NativeWalletRemoval } from '../../src/custody/walletRemoval';
+import { bindNativePrivateAuthentication, withNativePrivateAuthentication } from '../../src/custody/privateAuthentication';
+import { nativeOperationAuthentication } from '../../src/platform/operationAuthentication';
 import type { OpenWalletStorage, RecoveryStorageSnapshot } from '../../src/storage/types';
 import { clearNativeAccountSelection, saveAccountSelection } from './platform';
 
@@ -85,11 +87,15 @@ export function createWalletRemovalFixture(
   const runtime: Pick<KeyringRuntime, 'authorizeWalletRemoval' | 'catalogue'> = {
     catalogue: { ...catalogue, getControlSnapshot: () => null, getMonitoringSnapshot: () => null,
       previewNetworkSelection() { throw Error('Dapp network control is outside this removal fixture'); } },
-    async authorizeWalletRemoval(password, guard, beforeSnapshot) {
+    async authorizeWalletRemoval(signal, authentication, guard, beforeSnapshot) {
       guard();
-      audit.authorizations++;
-      await gate('authorize');
-      if (!passwordMatches(password)) throw new WalletRemovalError('INVALID_CREDENTIAL');
+      await withNativePrivateAuthentication(authentication, signal, guard, ownedSignal =>
+        nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'account-change', biometricsEnabled: false }, ownedSignal, guard, async (credential, check) => {
+          check(); audit.authorizations++;
+          await gate('authorize'); check();
+          return credential.method === 'pin' ? passwordMatches(credential.pin) ? { accepted: true } : { accepted: false, reason: 'INVALID_CREDENTIAL' }
+            : { accepted: false, reason: 'DEVICE_UNLOCK_UNAVAILABLE' };
+        }));
       guard();
       await beforeSnapshot(guard);
       guard();
@@ -97,6 +103,7 @@ export function createWalletRemovalFixture(
     },
   };
   const flow = new NativeWalletRemoval({
+    bindAuthentication: (scope, check) => bindNativePrivateAuthentication(scope, { assertCurrent: check, isPromptActive: () => false }),
     beforeSnapshot: async () => undefined,
     owner,
     source: () => ({ runtime, storage }),
