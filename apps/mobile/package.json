@@ -80,6 +80,7 @@
     "bitcoinjs-lib": "7.0.5",
     "eslint": "9.39.5",
     "eslint-config-expo": "58.0.4",
+    "jsdom": "31.0.0",
     "typescript": "~5.9.3"
   },
   "overrides": {
