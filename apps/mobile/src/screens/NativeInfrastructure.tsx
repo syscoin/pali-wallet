@@ -184,7 +184,7 @@ export function NativeInfrastructure({ mode, open, onBack, ledgerConnection }: P
     </>}
     {(pending && state.phase !== 'review' || state.phase === 'unknown') && <Notice title={t('settings.smartAccountInfrastructure')} tone="amber"
       body={t(state.phase === 'unknown' ? 'mobile.infrastructure.unknown' : 'mobile.infrastructure.pending')} />}
-    {pending && <Card style={s.card}>
+    {pending && state.phase !== 'review' && <Card style={s.card}>
       <Text>{state.status?.observation.contracts.find(contract => contract.id === pending.contractId)?.displayName}</Text>
       {pending.transactionHash && <><Text style={s.label}>{t('transactions.replay.hash')}</Text><Text selectable style={s.address}>{pending.transactionHash}</Text></>}
     </Card>}
