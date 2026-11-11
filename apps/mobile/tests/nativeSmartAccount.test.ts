@@ -3475,6 +3475,7 @@ test('healthy wallet lock waits for the captured SLH execution to drain', async 
     const signing = facade.signActionHash({ ...key, actionHash: `0x${'42'.repeat(32)}` }, null, () => undefined);
     const rejected = assert.rejects(signing);
     await entered.promise;
+    f.assertNoSigningKeys();
     let settled = false;
     const locked = f.runtime.session.lock().finally(() => { settled = true; });
     await entered.promise;

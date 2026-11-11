@@ -57,6 +57,8 @@ async function nativeFixture(phrase = PHRASE) {
   let finish: (() => Promise<Uint8Array>) | undefined;
   let holdEncrypt: (() => Promise<void>) | undefined;
   let holdRead: (() => Promise<void>) | undefined;
+  let holdRetire: (() => Promise<void>) | undefined;
+  let authorizationOpen = false, scopedAccessOpen = false;
   const seedInputs: Uint8Array[] = [];
   const trees = new Map<string, Uint8Array>();
   const roots = new WeakMap<NativeSlhTree, Uint8Array>();
@@ -84,7 +86,9 @@ async function nativeFixture(phrase = PHRASE) {
     check(); if (signal.aborted) throw Error('SLH_DSA_EXECUTION_RETIRED');
     const setup = purpose === 'setup' ? await boundKeyring.deriveSLHDSASetupSecretForAccount({ accountIndex: accountIndex! }) : null;
     check(); if (signal.aborted) throw Error('SLH_DSA_EXECUTION_RETIRED');
-    return work({ setup, crypto: boundKeyring, dispose() {} });
+    authorizationOpen = true; scopedAccessOpen = true;
+    try { return await work({ setup, crypto: boundKeyring, dispose() { scopedAccessOpen = false; } }); }
+    finally { authorizationOpen = false; }
   };
   const openExecution: NativeSlhExecutionFactory = owner => {
     wallet(); assert.equal(owner.namespace, namespace); opened++;
@@ -113,7 +117,7 @@ async function nativeFixture(phrase = PHRASE) {
       signCached() { throw Error('cached fallback must not occur in this fixture'); },
       randomFill: bytes => { bytes.fill(0x77); }, yield: async () => undefined,
     };
-    return { host, retire() { contextClosed = true; retired++; return Promise.allSettled([...pending]).then(() => undefined); }, isRetired: () => contextClosed, async verify() { throw Error('Signature verification requires a qualified native backend'); } };
+    return { host, retire() { contextClosed = true; retired++; return Promise.allSettled([...pending]).then(() => holdRetire?.()); }, isRetired: () => contextClosed, async verify() { throw Error('Signature verification requires a qualified native backend'); } };
   };
   const runtime = createNativeSlhDsaRuntime({ namespace, publicStates: await readPublicStates(), authorize, storage: { ...storage.keyringStorage, async get(key) { const value = await storage.keyringStorage.get(key); await holdRead?.(); return value; } },
     assertCurrent: wallet, openExecution, now: () => 1234,
@@ -126,6 +130,8 @@ async function nativeFixture(phrase = PHRASE) {
     holdFinish: (next: () => Promise<Uint8Array>) => { finish = next; },
     holdEncrypt: (next: () => Promise<void>) => { holdEncrypt = next; },
     holdRead: (next: () => Promise<void>) => { holdRead = next; },
+    holdRetire: (next: () => Promise<void>) => { holdRetire = next; },
+    authorization: () => ({ open: authorizationOpen, access: scopedAccessOpen }),
     stopWallet() { valid = false; lifetime.abort(); void keyring.lockWallet(); },
     async close() { lifetime.abort(); await runtime.retire(); await keyring.lockWallet(); await storage.close(); await rm(directory, { recursive: true, force: true }); },
     async fileBytes() { return readFile(file); },
@@ -135,6 +141,43 @@ async function nativeFixture(phrase = PHRASE) {
     openExecution,
   };
 }
+
+test('SLH failed native acquisition releases authorization before draining the orphan context', async () => {
+  const f = await nativeFixture(), cleanup = gate<void>(), entered = gate<void>();
+  let runtime: ReturnType<typeof createNativeSlhDsaRuntime> | undefined, work: Promise<unknown> | undefined;
+  try {
+    f.holdRetire(async () => { entered.resolve(); await cleanup.promise; });
+    runtime = createNativeSlhDsaRuntime({ namespace: f.namespace, publicStates: await f.readPublicStates(), authorize: f.authorize,
+      storage: f.storage.keyringStorage, assertCurrent: f.wallet, now: Date.now, onStorageFault() { f.stopWallet(); },
+      openExecution(owner) { return { ...f.openExecution(owner), isRetired: () => true }; },
+    });
+    work = runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
+    void work.catch(() => undefined);
+    await entered.promise;
+    assert.equal(f.authorization().open, false);
+    assert.equal(f.authorization().access, false);
+    cleanup.resolve();
+    await assert.rejects(work, /SLH_DSA_EXECUTION_RETIRED/);
+    assert.equal(f.counts().retired, 1);
+    assert.equal(f.counts().signatures, 0);
+  } finally { cleanup.resolve(); await Promise.allSettled([work]); await runtime?.retire(); await f.close(); }
+});
+
+test('SLH native cleanup failure remains fail-closed after authorization releases', async () => {
+  const f = await nativeFixture();
+  try {
+    const state = await f.runtime.prepareFresh(0, f.wallet, () => undefined, f.signal);
+    f.holdRetire(async () => {
+      assert.equal(f.authorization().open, false);
+      assert.equal(f.authorization().access, false);
+      throw Error('native cleanup failed');
+    });
+    await assert.rejects(f.runtime.signActionHash({ ...state, actionHash: `0x${'aa'.repeat(32)}` }, null, f.wallet, f.signal), /native cleanup failed/);
+    assert.equal(f.counts().faults, 1);
+    assert.throws(() => f.runtime.signActionHash({ ...state, actionHash: `0x${'bb'.repeat(32)}` }, null, f.wallet, f.signal), /retired/);
+    assert.equal(f.counts().signatures, 1);
+  } finally { await f.close(); }
+});
 
 test('shared SLH state round trips directly without browser globals or a module resolver', async () => {
   assert.equal(typeof (globalThis as { chrome?: unknown }).chrome, 'undefined');
