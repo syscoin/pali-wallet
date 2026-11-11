@@ -96,10 +96,17 @@ export function PinSetup({ onComplete, onBack, available = false, biometrics, bu
   const previousError = useRef(error);
   const captured = generation.current.value;
   useLayoutEffect(() => {
-    if (!busy && error && (previousBusy.current || previousError.current !== error)) submitted.current = false;
+    if (!busy && error && (previousBusy.current || previousError.current !== error)) {
+      if (submitted.current && step === 'confirm' && !offerBiometrics) {
+        // A retry needs a fresh confirmation, including a new keypad owner.
+        generation.current.value++;
+        setAttempt(value => value + 1);
+      }
+      submitted.current = false;
+    }
     previousBusy.current = busy;
     previousError.current = error;
-  }, [busy, error]);
+  }, [busy, error, offerBiometrics, step]);
   useLayoutEffect(() => {
     const current = generation.current;
     const clear = () => { current.value++; pin.current = ''; submitted.current = false; setStep('create'); setLocalError(''); setAttempt(value => value + 1); };

@@ -38,3 +38,7 @@ Validation: 28 mobile controller/component tests, 68 extension tests, eight brow
 | --- | --- |
 | ![Hardware chooser](400x620-chooser.png) | ![Short hardware chooser](320x360-chooser.png) |
 | ![Hardware completion](400x620-success.png) | ![Short hardware completion](320x360-success.png) |
+
+## Second independent pass
+
+The follow-up source review rechecked shared button callers, hardware focus and dismissal, portfolio ownership/cancellation/work limits, and mobile onboarding/recovery/send/settings/advanced flows. It found one additional product defect: after a failed PIN-only setup submission, the confirmation keypad could remain sealed. The correction opens a fresh confirmation attempt and retires the old callback, retaining duplicate-submission protection. Two regressions cover delayed and immediate failures; all 76 related PIN/recovery tests pass. Mobile typecheck and targeted lint pass. This changes retry state only, not credential storage or authorization policy.

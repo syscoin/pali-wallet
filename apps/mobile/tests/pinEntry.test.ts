@@ -121,6 +121,41 @@ for (const renderedBusy of [true, false]) test(`failed PIN setup permits return 
   f.close();
 });
 
+for (const renderedBusy of [true, false]) test(`PIN-only setup clears a failed confirmation for a fresh keypad retry ${renderedBusy ? 'after busy' : 'after an immediate failure'}`, () => {
+  const setup = fixture('PinSetup'), pad = fixture('PinPad'), completed: string[] = [];
+  let props = { offerBiometrics: false, busy: false, error: '', onBack() {}, onComplete: (pin: string) => completed.push(pin) };
+  const currentEntry = () => {
+    setup.render(props);
+    return entry(setup.render(props));
+  };
+  const keypad = () => {
+    const current = currentEntry();
+    return pad.render({ onComplete: current.props.onComplete, resetKey: current.props.resetKey, disabled: current.props.busy, error: current.props.error });
+  };
+  const enter = (pin: string) => { for (const digit of pin) key(keypad(), digit).props.onPress(); };
+  enter('123456');
+  assert.equal(currentEntry().props.title, 'Confirm your PIN');
+  const previousConfirmation = currentEntry();
+  enter('123456');
+  assert.deepEqual(completed, ['123456']);
+  enter('123456');
+  assert.deepEqual(completed, ['123456'], 'A submitted confirmation cannot run twice');
+  if (renderedBusy) { props = { ...props, busy: true }; keypad(); }
+  props = { ...props, busy: false, error: 'Could not save the PIN. Try again.' };
+  const retry = keypad();
+  assert(retry.some(element => element.props.accessibilityLabel === 'PIN, 0 of 6 digits entered'));
+  previousConfirmation.props.onComplete('123456');
+  assert.deepEqual(completed, ['123456'], 'The previous confirmation callback is retired');
+  enter('654321');
+  assert.match(currentEntry().props.error, /do not match/);
+  assert.deepEqual(completed, ['123456']);
+  enter('123456');
+  assert.deepEqual(completed, ['123456', '123456']);
+  enter('123456');
+  assert.deepEqual(completed, ['123456', '123456'], 'The retried confirmation still submits once');
+  setup.close(); pad.close();
+});
+
 test('PIN field cancellation retires the modal callback and another field cannot inherit it', () => {
   const f = fixture('PinField'), changes: string[] = [], other: string[] = [];
   const props = { label: 'Wallet PIN', value: '', busy: false, onChange: (pin: string) => changes.push(pin) };
