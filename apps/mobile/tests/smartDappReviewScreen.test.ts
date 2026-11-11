@@ -4,6 +4,7 @@ import { runInNewContext } from 'node:vm';
 import { URL as NodeURL } from 'node:url';
 import test from 'node:test';
 import ts from 'typescript';
+import { getNativeNetwork } from '../src/custody/networkContext.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 function fixture() {
@@ -14,8 +15,9 @@ function fixture() {
     kind: 'smart-transaction', id: 'request-1', revision: 7, error: null,
     needsAccountSwitch: false, busy: false, dispatched: false,
     appName: 'Fixture app', origin: 'https://fixture.example', verification: { validation: 'UNKNOWN', isScam: false },
+    chainId: '1',
     approval: { canEditAmount: true }, advisories: [], requiresWarningAcknowledgement: false,
-    operation: { phase: 'authorize', intent: { kind: 'dapp-call', recipient: '0x' + '11'.repeat(20), amountUnits: '0', data: '0x1234' } },
+    operation: { phase: 'authorize', network: getNativeNetwork('ethereum'), intent: { kind: 'dapp-call', recipient: '0x' + '11'.repeat(20), amountUnits: '0', data: '0x1234' } },
   };
   const controller = {
     getSnapshot: () => ({ signingReview: current }),
@@ -67,6 +69,8 @@ test('Smart dapp review routes public request and payer identifiers only', () =>
   assert.deepEqual(f.calls, [['approve', 'request-1', 7, true], ['payer', 'request-1', 7, 12], ['reject', 'request-1']]);
   const view = nodes(tree.props.before);
   assert(view.some(node => node.children.includes('https://fixture.example')));
+  assert.equal(approval(tree).props.chainId, '1');
+  assert.equal(approval(tree).props.registrationHash, getNativeNetwork('ethereum').registrationHash);
 });
 test('dirty Smart allowance cannot authorize and a stale editor callback cannot clear the newer edit', () => {
   const f = fixture(); const first = f.render(); const old = approval(first);
