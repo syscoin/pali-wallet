@@ -8,6 +8,8 @@ for (const viewport of [{ width: 320, height: 480 }, { width: 390, height: 844 }
     await page.route('**/*', route => new URL(route.request().url()).origin === 'http://127.0.0.1:4179' ? route.continue() : route.abort());
     await page.goto('/?sentry-consent');
     await expect(page.getByText('https://app.example.test', { exact: true })).toBeVisible();
+    await expect(page.getByText('Unverified website', { exact: true })).toBeInViewport();
+    await expect(page.getByText('Check the website address before continuing.', { exact: true })).toBeInViewport();
     await expect(page.getByText('new.example.test:8369', { exact: true })).toBeVisible();
     await expect(page.getByText('new.example.test:8369', { exact: true })).toBeInViewport();
     await expect(page.getByText('sys1qwamhwamhwamhwamhwamhwamhwamhwamhjx836v', { exact: true })).toBeVisible();
