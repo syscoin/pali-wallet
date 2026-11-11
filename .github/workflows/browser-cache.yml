@@ -14,6 +14,9 @@ on:
       - .github/scripts/configure-playwright-apt-mirror.py
       - .github/scripts/tests/configure-playwright-apt-mirror.test.cjs
       - .github/scripts/with-playwright-apt-diagnostics.sh
+      - .github/scripts/playwright-apt-sudo.sh
+      - .github/scripts/tests/playwright-apt-bounds.test.cjs
+      - .github/scripts/tests/playwright-apt-sudo.test.cjs
   # Refresh the strict image/week key even when dependency files do not change.
   schedule:
     - cron: '23 6 * * *'
