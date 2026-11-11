@@ -136,7 +136,6 @@ test('whole-note backup is a separately identified shared enhancement with a res
   assert.deepEqual(inventory('privacy.bundle-verified'), inventory('privacy.bundle-export'));
 });
 
-
 test('reviewed software transfers confirm without a password screen while external signers retain their approval', () => {
   for (const id of ['transfer.review', 'transfer.eth-review', 'transfer.btc-review', 'transfer.nevm-review', 'transfer.nft-review', 'transfer.psbt']) {
     const review = getScreen(id), approval = getScreen(review.primary!.to);
@@ -148,4 +147,56 @@ test('reviewed software transfers confirm without a password screen while extern
   }
   const secret = getScreen('settings.phrase');
   assert.equal(resolveDesignAction(secret.primary!.to, 'personal'), secret.primary!.to);
+});
+
+test('mobile previews use public entry and OS approval without collecting an app password', () => {
+  for (const screen of screens) {
+    for (const field of screen.fields ?? []) {
+      if (!/password|\bpin\b/i.test(field.label)) continue;
+      assert.ok(
+        [
+          'privacy.bundle-password',
+          'privacy.bundle-verify',
+          'privacy.bundle-import',
+        ].includes(screen.id),
+        `${screen.id} still collects an app credential`
+      );
+      assert.match(field.label, /backup.*password/i);
+    }
+    if (screen.authorization) {
+      assert.equal(
+        screen.fields?.some((field) => field.secret) ?? false,
+        false
+      );
+      assert.match(
+        screen.description!,
+        /biometrics or your system passcode/
+      );
+    }
+  }
+  for (const id of [
+    'onboarding.password',
+    'onboarding.unlock',
+    'onboarding.recover-password',
+  ])
+    assert.equal(getScreen(id).fields, undefined);
+  assert.equal(getScreen('onboarding.unlock').primary!.label, 'Open wallet');
+  assert.equal(getScreen('onboarding.biometrics').secondary, undefined);
+  assert.equal(
+    getScreen('settings.device-auth').primary!.to,
+    'settings.security'
+  );
+});
+
+test('portable note backups keep their separate file password', () => {
+  assert.deepEqual(
+    getScreen('privacy.bundle-password').fields!.map((field) => field.label),
+    ['Backup file password', 'Confirm backup password']
+  );
+  for (const id of ['privacy.bundle-verify', 'privacy.bundle-import'])
+    assert.ok(
+      getScreen(id).fields!.some(
+        (field) => field.label === 'Backup file password' && field.secret
+      )
+    );
 });

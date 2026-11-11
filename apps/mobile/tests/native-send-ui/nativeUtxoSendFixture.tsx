@@ -7,7 +7,7 @@ import { getUtxoNetwork } from '../../src/core/utxoNetworks';
 import { CustodyRuntimeError } from '../../src/custody/types';
 import { NativeUtxoSendScreen } from '../../src/screens/NativeUtxoSend';
 
-import type { NativeUtxoSend } from '../../src/custody/utxoSend';
+import type { NativeUtxoReview, NativeUtxoSend } from '../../src/custody/utxoSend';
 import { SYSX_ASSET_DECIMALS, SYSX_ASSET_GUID } from '../../../../source/shared/syscoinAssetIds';
 
 const knownSysx = new URLSearchParams(window.location.search).get('known-icon') === 'sysx';
@@ -17,8 +17,8 @@ const recipient = knownSysx ? 'sys1qpqyqszqgpqyqszqgpqyqszqgpqyqszqgzp6ll8' : 'b
 const txid = 'a'.repeat(64);
 const ledgerConnection = new URLSearchParams(window.location.search).has('ledger-send') ? createLedgerConnectionFixture(recipient) : undefined;
 let confirmations = 0, opens = 0, expired = false;
-window.__nativeUtxoLedgerFixture = { confirmations: () => confirmations, opens: () => opens, expire: () => { expired = true; } };
-declare global { interface Window { __nativeUtxoLedgerFixture: { confirmations(): number; opens(): number; expire(): void; }; } }
+window.__nativeUtxoLedgerFixture = { confirmations: () => confirmations, opens: () => opens, expire: () => { expired = true; }, attemptPreviousReview: async () => { throw Error('NOT_READY'); }, attemptInvalidPreparation: async () => { throw Error('NOT_READY'); } };
+declare global { interface Window { __nativeUtxoLedgerFixture: { confirmations(): number; opens(): number; expire(): void; attemptPreviousReview(): Promise<void>; attemptInvalidPreparation(): Promise<void>; }; } }
 const request = {
   transactionOptions: { rbf: true },
   feeSatoshis: '452',
@@ -34,11 +34,24 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
   const options = new URLSearchParams(window.location.search);
   const expireAfterSave = options.has('saved-before-expiry');
   let owner: AbortController | undefined;
-  let cancelled = false;
+  let revision = 0;
+  const prepared = new WeakMap<NativeUtxoReview, number>();
+  let currentReview: NativeUtxoReview | undefined;
+  let previousReview: NativeUtxoReview | undefined;
+  const beginPreparation = () => {
+    revision++; owner?.abort(); owner = undefined;
+    previousReview = currentReview;
+    currentReview = undefined;
+  };
+  const remember = (view: NativeUtxoReview) => {
+    currentReview = view;
+    prepared.set(view, revision);
+    return view;
+  };
   let saved = !expireAfterSave;
   let seen = false;
-  return {
-    cancel() { cancelled = true; owner?.abort(); },
+  const send: NativeUtxoSend = {
+    cancel() { revision++; owner?.abort(); },
     async list() {
       return saved ? [{ txid, accepted: false }] : [];
     },
@@ -50,44 +63,57 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
     },
     async prepare(input) {
       assertCurrent();
+      beginPreparation();
       try {
         if (input.recipient !== recipient) throw new Error('Invalid recipient');
         const amount = parseDecimalAmount(input.amount, network.decimals);
-        return {
+        return remember({
           ...request,
           outputs: [
             { address: recipient, amountSatoshis: asset ? '294' : amount.toString(), ...(asset ? { asset: { assetGuid: asset.assetGuid, rawAmount: amount.toString() } } : {}) },
             request.outputs[1]!,
           ],
-        };
+        });
       } catch {
         throw new CustodyRuntimeError('INVALID_INPUT');
       }
     },
     async prepareRetry() {
-      return {
+      assertCurrent();
+      beginPreparation();
+      return remember({
         ...request,
         ...(options.has('alternate-provider')
           ? { retryProviderOrigin: 'https://previous-provider.example:8443' }
           : {}),
         retryTxid: txid,
-      };
+      });
     },
-    async confirm(_review, credential) {
+    async confirm(review, credential) {
       assertCurrent();
-      if (credential.method !== 'device' || cancelled) throw Error('CANCELLED');
+      const approvedRevision = revision;
+      if (credential.method !== 'device' || prepared.get(review) !== approvedRevision || review !== currentReview || expired || owner) throw Error('CANCELLED');
       const current = new AbortController(); owner = current;
-      const check = () => { assertCurrent(); if (cancelled || owner !== current || current.signal.aborted) throw Error('CANCELLED'); };
+      const check = () => { assertCurrent(); if (revision !== approvedRevision || owner !== current || current.signal.aborted) throw Error('CANCELLED'); };
       try { await fixtureDeviceAuthorization.request('transaction', current.signal, check); check(); }
       finally { if (owner === current) owner = undefined; }
       if (expired) throw new CustodyRuntimeError('CANCELLED');
-          confirmations++;
+      currentReview = undefined;
+      confirmations++;
       saved = true;
       if (expireAfterSave) throw new CustodyRuntimeError('CANCELLED');
       seen = true;
       return { txid };
     },
   };
+  window.__nativeUtxoLedgerFixture.attemptPreviousReview = async () => {
+    if (!previousReview) throw Error('NOT_READY');
+    await send.confirm(previousReview, { method: 'device' });
+  };
+  window.__nativeUtxoLedgerFixture.attemptInvalidPreparation = async () => {
+    await send.prepare({ recipient: 'invalid', amount: '0.1' });
+  };
+  return send;
 }
 
 export function NativeUtxoSendFixture() {

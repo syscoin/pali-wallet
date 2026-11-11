@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { authenticateNativeOperation } from './operationAuthentication';
+import { authenticateNativeOperation, deviceAuthorizationPrompt } from './operationAuthentication';
 
 test.use({
   baseURL: process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179',
@@ -99,4 +99,34 @@ test('an expired confirmation exposes newly saved bytes in the same composer', a
     page.getByRole('button', { name: 'Check transfer aaaaaaaa…' })
   ).toBeVisible();
   await expect(page.getByText('Submitted', { exact: true })).toHaveCount(0);
+});
+
+test('editing invalidates the prior review while a new review can be approved once', async ({ page }) => {
+  await page.goto('/?utxo-send');
+  await page.getByLabel('Recipient address', { exact: true }).fill('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
+  await page.getByLabel('Amount in BTC', { exact: true }).fill('0.1');
+  await page.getByTestId('native-utxo-review').click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByLabel('Amount in BTC', { exact: true }).fill('0.2');
+  await page.getByTestId('native-utxo-review').click();
+  await expect(page.evaluate(() => window.__nativeUtxoLedgerFixture.attemptPreviousReview())).rejects.toThrow('CANCELLED');
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
+  expect(await page.evaluate(() => window.__nativeUtxoLedgerFixture.confirmations())).toBe(0);
+  await page.getByTestId('native-utxo-confirm').click();
+  await expect(deviceAuthorizationPrompt(page)).toBeVisible();
+  await authenticateNativeOperation(page);
+  await expect(page.getByText('Submitted', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeUtxoLedgerFixture.confirmations())).toBe(1);
+});
+
+test('a failed new preparation cannot revive the prior reviewed transaction', async ({ page }) => {
+  await page.goto('/?utxo-send');
+  await page.getByLabel('Recipient address', { exact: true }).fill('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
+  await page.getByLabel('Amount in BTC', { exact: true }).fill('0.1');
+  await page.getByTestId('native-utxo-review').click();
+  // Invoke the newer invalid request without Back/edit cancellation masking its ownership effect.
+  await expect(page.evaluate(() => window.__nativeUtxoLedgerFixture.attemptInvalidPreparation())).rejects.toThrow('INVALID_INPUT');
+  await expect(page.evaluate(() => window.__nativeUtxoLedgerFixture.attemptPreviousReview())).rejects.toThrow('CANCELLED');
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
+  expect(await page.evaluate(() => window.__nativeUtxoLedgerFixture.confirmations())).toBe(0);
 });

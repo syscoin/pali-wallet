@@ -318,19 +318,23 @@ const baseScreens: ScreenSpec[] = [
       ),
     ],
   }),
-  make('onboarding', 'onboarding.password', 'Protect your wallet', 'form', {
+  make('onboarding', 'onboarding.password', 'Secure with your device', 'hub', {
     purpose:
-      'Preserve an app-password path; native biometrics gate established key access. A six-digit UI PIN is not a new vault encryption scheme.',
-    fields: [
-      {
-        label: 'Wallet password',
-        value: 'Password field',
-        secret: true,
-        hint: 'Use a strong password you do not use elsewhere.',
-      },
-      { label: 'Confirm password', value: 'Confirm password', secret: true },
+      'Mobile opens public wallet state without app authentication; protected operations require OS biometrics or system passcode bound to the credential. Extension password and PRF unlock remain unchanged.',
+    description:
+      'Use OS biometrics or your system passcode to protect sensitive wallet actions. Pali does not ask you to create an app password.',
+    rows: [
+      row('Device protection', 'OS biometrics or system passcode'),
+      row(
+        'Public wallet view',
+        'Balances and activity open without app authentication'
+      ),
+      row('Wallet recovery', 'Keep your recovery phrase and separate backups'),
     ],
-    primary: { label: 'Continue', to: 'onboarding.backup-intro' },
+    primary: {
+      label: 'Continue with device protection',
+      to: 'onboarding.backup-intro',
+    },
   }),
   make('onboarding', 'onboarding.backup-intro', 'Back up your wallet', 'hub', {
     purpose:
@@ -377,21 +381,14 @@ const baseScreens: ScreenSpec[] = [
     primary: { label: 'Confirm backup', to: 'onboarding.biometrics' },
     secondary: { label: 'View phrase again', to: 'onboarding.phrase' },
   }),
-  make(
-    'onboarding',
-    'onboarding.biometrics',
-    'Unlock with your device',
-    'hub',
-    {
-      purpose:
-        'Only offer supported OS authentication after durable vault creation. Password remains available for backup and secret export.',
-      headline: 'A familiar way to unlock.',
-      description:
-        'Use your device’s authentication to open Pali. You can still use your wallet password.',
-      primary: { label: 'Enable device unlock', to: 'wallet.home' },
-      secondary: { label: 'Not now', to: 'wallet.home' },
-    }
-  ),
+  make('onboarding', 'onboarding.biometrics', 'Wallet protected', 'success', {
+    purpose:
+      'Device protection is required for sensitive actions; public wallet entry does not enable or disable it.',
+    headline: 'Your device protects sensitive actions.',
+    description:
+      'Open balances and activity directly. Sending, revealing secrets and protected changes ask for OS biometrics or your system passcode.',
+    primary: { label: 'Open wallet', to: 'wallet.home' },
+  }),
   make('onboarding', 'onboarding.import', 'Restore a wallet', 'form', {
     purpose:
       'Only a trusted native secret-entry surface receives real phrases; the design has inert fields.',
@@ -424,13 +421,12 @@ const baseScreens: ScreenSpec[] = [
     primary: { label: 'Continue', to: 'onboarding.password' },
     secondary: { label: 'Go back', to: 'onboarding.import' },
   }),
-  make('onboarding', 'onboarding.unlock', 'Welcome back', 'form', {
+  make('onboarding', 'onboarding.unlock', 'Your wallet', 'hub', {
     purpose:
       'Locked, inaccessible storage and empty wallet are distinct. No stale UI unlocked flag can authorize operations.',
-    fields: [
-      { label: 'Wallet password', value: 'Enter your password', secret: true },
-    ],
-    primary: { label: 'Unlock', to: 'wallet.home' },
+    description:
+      'Open your public balances and activity. Sensitive actions require OS biometrics or your system passcode when you approve them.',
+    primary: { label: 'Open wallet', to: 'wallet.home' },
     secondary: { label: 'Restore access', to: 'onboarding.recover' },
   }),
   make('onboarding', 'onboarding.recover', 'Restore access', 'hub', {
@@ -514,7 +510,7 @@ const baseScreens: ScreenSpec[] = [
   }),
   make('accounts', 'accounts.import-key', 'Import private key', 'form', {
     purpose:
-      'Password-confirmed trusted native entry and separate backup notice; never store key in a UI snapshot.',
+      'OS-authorized trusted native entry and separate backup notice; never store key in a UI snapshot.',
     fields: [
       { label: 'Account name', value: 'Imported account' },
       {
@@ -581,7 +577,7 @@ const baseScreens: ScreenSpec[] = [
       body: 'The Pali recovery phrase does not restore separately imported keys.',
       tone: 'amber',
     },
-    primary: { label: 'Confirm with password', to: 'settings.authorize' },
+    primary: { label: 'Authorize removal', to: 'settings.authorize' },
     secondary: { label: 'Keep account', to: 'accounts.details' },
   }),
   make('accounts', 'accounts.hardware', 'Connect hardware wallet', 'list', {
@@ -1639,14 +1635,14 @@ const baseScreens: ScreenSpec[] = [
   }),
   make('privacy', 'privacy.note', 'Private note', 'hub', {
     purpose:
-      'Bearer secrets are password-gated, document-scoped and cleared on background. Copy/export must be deliberate.',
+      'Bearer secrets require OS authorization, are document-scoped and cleared on background. Copy/export must be deliberate.',
     rows: [
       row('Value', '0.1 ETH'),
       row('Status', 'Available'),
       row('Backup', 'Individual private-note backup'),
       row(
         'Reveal secret',
-        'Requires fresh password confirmation',
+        'Requires fresh OS authorization',
         'privacy.backup',
         'lock'
       ),
@@ -1661,14 +1657,11 @@ const baseScreens: ScreenSpec[] = [
   }),
   make('privacy', 'privacy.backup', 'Reveal private note', 'form', {
     purpose:
-      'Match source password-gated reveal of one raw note. There is no encrypted-file export or copy/download button in this flow.',
+      'Match source OS-authorized reveal of one raw note. There is no encrypted-file export or copy/download button in this flow.',
+    description:
+      'Your device asks for biometrics or your system passcode before revealing this note.',
     fields: [
       { label: 'Selected note', value: 'Note 01 · Ethereum 0.1 ETH pool' },
-      {
-        label: 'Wallet password',
-        value: 'Confirm your password',
-        secret: true,
-      },
     ],
     notice: {
       title: 'Back up this note separately',
@@ -1840,7 +1833,7 @@ const baseScreens: ScreenSpec[] = [
       row('Public key', 'Sample public identifier'),
       row(
         'Remove local key',
-        'Requires backup and password confirmation',
+        'Requires backup and OS authorization',
         'sentry.remove-key',
         'trash'
       ),
@@ -1971,7 +1964,7 @@ const baseScreens: ScreenSpec[] = [
       row('Lock Pali', 'Lock immediately', 'onboarding.unlock', 'lock'),
       row(
         'Device authentication',
-        'Manage optional biometric unlock',
+        'OS biometrics or system passcode for protected actions',
         'settings.device-auth',
         'shield'
       ),
@@ -1997,19 +1990,19 @@ const baseScreens: ScreenSpec[] = [
   }),
   make('settings', 'settings.device-auth', 'Device authentication', 'hub', {
     purpose:
-      'Biometric enrollment, revoked credentials, lockout and password fallback are independently tested native behavior.',
-    headline: 'Unlock your way.',
+      'OS protection is required for sensitive wallet actions. Missing device credentials require matching-wallet recovery, not an unprotected fallback.',
+    headline: 'Protected by your device.',
     description:
-      'Use a supported device authentication method after setting up your wallet password.',
+      'Sending and secret access use OS biometrics or your system passcode. Public wallet views open without app authentication.',
     rows: [
+      row('Device authentication', 'OS biometrics or system passcode'),
       row(
-        'Device authentication',
-        'Supported on this device in the target build'
+        'Recovery',
+        'Restore device authorization with the matching recovery phrase'
       ),
-      row('Password fallback', 'Always keep your wallet password'),
-      row('Secret exports', 'Require fresh password confirmation'),
+      row('Secret exports', 'Require fresh OS authorization'),
     ],
-    primary: { label: 'Set up device unlock', to: 'onboarding.biometrics' },
+    primary: { label: 'Back to security', to: 'settings.security' },
   }),
   make('settings', 'settings.autolock', 'Auto-lock', 'list', {
     purpose:
@@ -2064,14 +2057,9 @@ const baseScreens: ScreenSpec[] = [
   }),
   make('settings', 'settings.phrase', 'Reveal recovery phrase', 'form', {
     purpose:
-      'Require current password and short-lived purpose-bound authorization; native protected display follows.',
-    fields: [
-      {
-        label: 'Wallet password',
-        value: 'Confirm your password',
-        secret: true,
-      },
-    ],
+      'Require fresh OS authorization bound to this reveal; native protected display follows.',
+    description:
+      'Your device asks for biometrics or your system passcode before revealing the recovery phrase.',
     notice: {
       title: 'Keep your backup private',
       body: 'Only reveal it when you need to record or verify your own backup.',
@@ -2082,14 +2070,9 @@ const baseScreens: ScreenSpec[] = [
   make('settings', 'settings.private-key', 'Export account key', 'form', {
     purpose:
       'Only eligible software accounts can reveal/export keys; hardware and watch-only accounts present public identifiers instead.',
-    fields: [
-      { label: 'Account', value: 'Imported account' },
-      {
-        label: 'Wallet password',
-        value: 'Confirm your password',
-        secret: true,
-      },
-    ],
+    fields: [{ label: 'Account', value: 'Imported account' }],
+    description:
+      'Your device asks for biometrics or your system passcode before revealing this account key.',
     notice: {
       title: 'This key controls this account',
       body: 'An exported private key requires its own secure backup.',
@@ -2110,16 +2093,9 @@ const baseScreens: ScreenSpec[] = [
   }),
   make('settings', 'settings.authorize', 'Confirm it’s you', 'form', {
     purpose:
-      'Purpose-bound current password authorization is not generic permission to execute a future unrelated action.',
-    fields: [
-      {
-        label: 'Wallet password',
-        value: 'Password entry — disabled in design',
-        secret: true,
-      },
-    ],
+      'Purpose-bound OS authorization applies only to the reviewed action, never to a future unrelated action.',
     description:
-      'Confirm the action you just reviewed. A changed or expired request must be reviewed again.',
+      'Continue to OS biometrics or your system passcode for the action you just reviewed. A changed or expired request must be reviewed again.',
     primary: { label: 'Confirm reviewed action', to: 'activity.list' },
     secondary: { label: 'Cancel', to: 'wallet.home' },
   }),
@@ -2221,7 +2197,7 @@ const baseScreens: ScreenSpec[] = [
       tone: 'red',
     },
     primary: {
-      label: 'Confirm removal with password',
+      label: 'Authorize wallet removal',
       to: 'settings.authorize',
     },
     secondary: { label: 'Keep wallet', to: 'settings.security' },
@@ -2262,7 +2238,7 @@ const baseScreens: ScreenSpec[] = [
     'review',
     {
       purpose:
-        'The authority checks the matching stored HD identity and explains what remains separately backed up before password reset.',
+        'The authority checks the matching stored HD identity and explains what remains separately backed up before restoring device authorization.',
       headline: 'This is your wallet.',
       rows: [
         row('Stored wallet identity', 'Matched by wallet authority'),
@@ -2272,7 +2248,7 @@ const baseScreens: ScreenSpec[] = [
         ),
       ],
       primary: {
-        label: 'Set a new password',
+        label: 'Restore device authorization',
         to: 'onboarding.recover-password',
       },
       secondary: { label: 'Cancel recovery', to: 'onboarding.unlock' },
@@ -2281,19 +2257,13 @@ const baseScreens: ScreenSpec[] = [
   make(
     'onboarding',
     'onboarding.recover-password',
-    'Set a new password',
-    'form',
+    'Restore device authorization',
+    'hub',
     {
       purpose:
         'Journaled recovery commits and reconciles the existing encrypted wallet pair before reporting success.',
-      fields: [
-        { label: 'New password', value: 'New password', secret: true },
-        {
-          label: 'Confirm new password',
-          value: 'Confirm password',
-          secret: true,
-        },
-      ],
+      description:
+        'Use OS biometrics or your system passcode to protect this wallet again. The verified recovery keeps existing wallet records and separate backup requirements.',
       primary: { label: 'Restore access', to: 'onboarding.unlock' },
     }
   ),
@@ -2486,7 +2456,7 @@ const baseScreens: ScreenSpec[] = [
     'review',
     {
       purpose:
-        'Manual release is explicit and password-gated; explain the consequence of spending an active collateral output.',
+        'Manual release is explicit and OS-authorized; explain the consequence of spending an active collateral output.',
       rows: [
         row('Output', 'Sample transaction ID and vout'),
         row('Registration', 'Sample registration identifier'),
@@ -2496,7 +2466,7 @@ const baseScreens: ScreenSpec[] = [
         body: 'Removing local protection makes this output available for selection.',
         tone: 'red',
       },
-      primary: { label: 'Confirm with password', to: 'settings.authorize' },
+      primary: { label: 'Authorize release', to: 'settings.authorize' },
       secondary: { label: 'Keep protected', to: 'sentry.collateral' },
       accountContext: true,
     }
@@ -2504,7 +2474,7 @@ const baseScreens: ScreenSpec[] = [
 
   make('sentry', 'sentry.import', 'Import Sentry keys', 'form', {
     purpose:
-      'Protected single or batch import preserves role, algorithm, labels, backup acknowledgement and password-confirmed durable storage.',
+      'Protected single or batch import preserves role, algorithm, labels, backup acknowledgement and OS-authorized durable storage.',
     fields: [
       { label: 'Import type', value: 'Single key / batch keys' },
       {
@@ -2516,11 +2486,6 @@ const baseScreens: ScreenSpec[] = [
         value: 'Protected key entry — disabled in design',
         secret: true,
         multiline: true,
-      },
-      {
-        label: 'Wallet password',
-        value: 'Confirm your password',
-        secret: true,
       },
     ],
     notice: {
@@ -2859,11 +2824,6 @@ const baseScreens: ScreenSpec[] = [
         'A prepared deposit keeps its existing note and intent while backup is completed, before authorization and broadcast.',
       fields: [
         { label: 'Prepared note', value: 'Ethereum Mainnet · 0.1 ETH pool' },
-        {
-          label: 'Wallet password',
-          value: 'Confirm your password',
-          secret: true,
-        },
       ],
       primary: { label: 'Reveal prepared note', to: 'privacy.deposit-note' },
       secondary: { label: 'Cancel deposit', to: 'privacy.home' },
@@ -3045,7 +3005,7 @@ const baseScreens: ScreenSpec[] = [
       ),
       row(
         'Reveal one note',
-        'Existing password-gated note backup',
+        'OS-authorized individual note backup',
         'privacy.backup',
         'lock'
       ),
@@ -3080,11 +3040,18 @@ const baseScreens: ScreenSpec[] = [
   make('privacy', 'privacy.bundle-password', 'Protect note backup', 'form', {
     scope: 'shared-enhancement',
     purpose:
-      'Fresh wallet-password confirmation authorizes secret export. A separate portable backup password encrypts the file without relying on this device’s key store.',
+      'Fresh OS authorization permits secret export. A separate portable backup password encrypts the file without relying on this device’s key store.',
     fields: [
-      { label: 'Wallet password', value: 'Confirm access to this wallet', secret: true },
-      { label: 'Backup file password', value: 'Choose a strong password for this file', secret: true },
-      { label: 'Confirm backup password', value: 'Repeat backup password', secret: true },
+      {
+        label: 'Backup file password',
+        value: 'Choose a strong password for this file',
+        secret: true,
+      },
+      {
+        label: 'Confirm backup password',
+        value: 'Repeat backup password',
+        secret: true,
+      },
     ],
     notice: {
       title: 'Keep the backup password safe',
@@ -3170,7 +3137,7 @@ const baseScreens: ScreenSpec[] = [
   make('privacy', 'privacy.bundle-merge', 'Review notes to restore', 'review', {
     scope: 'shared-enhancement',
     purpose:
-      'Authenticate and validate the entire import before a single mutation. Default merge deduplicates commitments and never replaces newer spend state. Bind the next wallet-password authorization to this file, destination and frozen merge preview.',
+      'Authenticate and validate the entire import before a single mutation. Default merge deduplicates commitments and never replaces newer spend state. Bind the next OS authorization to this file, destination and frozen merge preview.',
     rows: [
       ...sampleNoteBackupInventory(),
       row('New notes', '1 sample record · 0.1 ETH pool'),
@@ -3183,33 +3150,44 @@ const baseScreens: ScreenSpec[] = [
       title: 'Restoring is not a balance check',
       body: 'Imported notes stay unverified until Pali checks their current status.',
     },
-    primary: { label: 'Confirm with wallet password', to: 'privacy.bundle-authorize' },
+    primary: {
+      label: 'Authorize note restore',
+      to: 'privacy.bundle-authorize',
+    },
     secondary: { label: 'Cancel', to: 'privacy.backup-center' },
     accountContext: true,
   }),
-  make('privacy', 'privacy.bundle-authorize', 'Authorize note restore', 'form', {
-    scope: 'shared-enhancement',
-    authorization: true,
-    requiresAccountSigner: false,
-    purpose:
-      'Fresh destination-wallet password authentication authorizes this exact validated backup merge. The file password does not authorize mutation. Recheck destination generation, snapshot and capacity before one atomic commit.',
-    fields: [
-      { label: 'Destination wallet password', value: 'Confirm this wallet’s password', secret: true },
-    ],
-    rows: [
-      row('Destination', 'Current initialized Pali wallet · sample'),
-      row('Backup snapshot', 'PN-0941 · 2 retained notes'),
-      row('Import', '1 new note · keep 1 existing duplicate'),
-      row('Existing records', 'No replacement, deletion or reservation changes'),
-    ],
-    notice: {
-      title: 'Check the destination',
-      body: 'Changing the wallet or the validated file returns you to a fresh merge review.',
-    },
-    primary: { label: 'Import reviewed note', to: 'privacy.bundle-restored' },
-    secondary: { label: 'Cancel', to: 'privacy.bundle-merge' },
-    accountContext: true,
-  }),
+  make(
+    'privacy',
+    'privacy.bundle-authorize',
+    'Authorize note restore',
+    'form',
+    {
+      scope: 'shared-enhancement',
+      authorization: true,
+      requiresAccountSigner: false,
+      purpose:
+        'Fresh OS authentication authorizes this exact validated backup merge. The file password does not authorize mutation. Recheck destination generation, snapshot and capacity before one atomic commit.',
+      description:
+        'Your device asks for biometrics or your system passcode before restoring the reviewed notes.',
+      rows: [
+        row('Destination', 'Current initialized Pali wallet · sample'),
+        row('Backup snapshot', 'PN-0941 · 2 retained notes'),
+        row('Import', '1 new note · keep 1 existing duplicate'),
+        row(
+          'Existing records',
+          'No replacement, deletion or reservation changes'
+        ),
+      ],
+      notice: {
+        title: 'Check the destination',
+        body: 'Changing the wallet or the validated file returns you to a fresh merge review.',
+      },
+      primary: { label: 'Import reviewed note', to: 'privacy.bundle-restored' },
+      secondary: { label: 'Cancel', to: 'privacy.bundle-merge' },
+      accountContext: true,
+    }
+  ),
   make('privacy', 'privacy.bundle-restored', 'Notes restored', 'success', {
     scope: 'shared-enhancement',
     purpose:
@@ -3292,7 +3270,7 @@ const baseScreens: ScreenSpec[] = [
       row('Status', 'Available'),
       row(
         'Reveal note',
-        'Password-confirmed individual backup',
+        'OS-authorized individual backup',
         'privacy.backup-1',
         'lock'
       ),
@@ -3302,16 +3280,13 @@ const baseScreens: ScreenSpec[] = [
   }),
   make('privacy', 'privacy.backup-1', 'Reveal private note', 'form', {
     purpose:
-      'Fresh password confirmation reveals the specifically selected one-ETH note, not an arbitrary note.',
+      'Fresh OS authorization reveals the specifically selected one-ETH note, not an arbitrary note.',
+    description:
+      'Your device asks for biometrics or your system passcode before revealing this note.',
     fields: [
       {
         label: 'Selected note',
         value: 'Note 02 · Ethereum Mainnet · 1 ETH pool',
-      },
-      {
-        label: 'Wallet password',
-        value: 'Confirm your password',
-        secret: true,
       },
     ],
     primary: { label: 'Reveal selected note', to: 'privacy.reveal-1' },
@@ -3586,13 +3561,8 @@ for (const [sourceId, destination] of Object.entries(operationDestinations)) {
           'Purpose-bound authorization for ' +
           source.title +
           '. Keep the same origin, account, network and reviewed payload; cancel returns to this review.',
-        fields: [
-          {
-            label: 'Wallet password',
-            value: 'Protected authorization — disabled in design',
-            secret: true,
-          },
-        ],
+        description:
+          'Local protected actions use OS biometrics or your system passcode. Hardware and Smart accounts use their required signer approval.',
         rows: [row('Reviewed operation', source.title), ...summary],
         primary: {
           label: 'Confirm reviewed action',
