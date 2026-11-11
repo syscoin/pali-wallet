@@ -1,4 +1,18 @@
 {
+  "assetTransfer": {
+    "summary": "資産送信の詳細",
+    "token-transfer": "トークン送信",
+    "nft-transfer": "NFT送信",
+    "transfer-call": "送信呼び出し",
+    "rawUnits": "最小単位 / トークンID",
+    "units": "単位",
+    "unverified": "トークン規格は未検証です",
+    "contractMetadata": "トークンのメタデータはコントラクトによって提供されます。",
+    "recipient": "受取人",
+    "contract": "トークンコントラクト",
+    "owner": "資産の所有者",
+    "nativeValue": "送信するネイティブ通貨"
+  },
   "localPasskey": {
     "title": "パスキーでロック解除",
     "description": "対応するパスキーでこの Pali をロック解除します。パスワードとリカバリーフレーズは変わりません。",

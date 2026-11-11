@@ -2723,7 +2723,8 @@ export class NativeConnectionsController {
           operation: snapshot,
           batchApprovals: prepared.batchApprovals,
           approval: prepared.approval,
-      ...("assetTransfer" in prepared ? { assetTransfer: prepared.assetTransfer } : {}),
+          assetTransfer: prepared.assetTransfer,
+          batchAssetTransfers: prepared.batchAssetTransfers,
         });
         this.publish();
       };

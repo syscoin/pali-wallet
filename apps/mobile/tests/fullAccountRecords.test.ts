@@ -3,6 +3,7 @@ import { createTestPrivateAuthentication } from './fixtures/privateAuthenticatio
 import { createNativePublicSessionRecord, NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
 import { signTestTransfer } from './fixtures/operationAuthorization.ts';
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { createNativePinVault } from '../src/custody/pinVault.ts';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import assert from 'node:assert/strict';
@@ -258,7 +259,8 @@ test('an actual SDK HD4096 record survives nonactive cold loading, selection and
       async () => {
         const derived = await ring.deriveEvmHdRuntimeAccount({index: 4096}, {assertCurrent: check});
         group.accounts.HDAccount[4096] = derived;
-        const checkpoint = await createNativePublicSessionRecord(ring, record, identity, new Map(), check);
+        const checkpoint = await createNativePinVault(f.storage.pin, pinCredential).withPublicKey(check,
+          key => createNativePublicSessionRecord(ring, record, identity, new Map(), key, check));
         assert.equal(await f.storage.keyringStorage.compareAndSetMany([
           { key: WALLET_CATALOGUE_KEY, expected: previous, value: record },
           { key: NATIVE_PUBLIC_SESSION_KEY, expected: previousCheckpoint, value: checkpoint },

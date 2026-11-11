@@ -2,6 +2,7 @@
 import '@testing-library/jest-dom';
 import { getErc20Abi, getErc21Abi, getErc55Abi } from '@sidhujag/sysweb3-utils';
 import {
+  within,
   fireEvent,
   render,
   screen,
@@ -297,6 +298,41 @@ it('retains normalized composite integers and exact hex through actual decoder a
   fireEvent.click(screen.getByRole('tab', { name: 'send.hex' }));
   expect(document.querySelector('#hexTab')!.textContent).toBe(data);
   expect(global.fetch).not.toHaveBeenCalled();
+});
+
+it('shows exact transfer recipient and token units while retaining native call value and consent', async () => {
+  const previous = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation(async (path: string[], args: any[] = []) => {
+    if (path.join('.') === 'wallet.checkContractType')
+      return { type: 'ERC-20' };
+    if (path.join('.') === 'wallet.getERC20TokenInfo')
+      return { name: 'Synthetic Token', symbol: 'TOK', decimals: 6 };
+    return previous(path, args);
+  });
+  try {
+    const data = new Interface([
+      'function transfer(address,uint256)',
+    ]).encodeFunctionData('transfer', [RECIPIENT, '2500001']);
+    await prepare('1', data);
+    const summary = screen.getByRole('region', {
+      name: 'assetTransfer.summary',
+    });
+    expect(await within(summary).findByText('TOK')).toBeVisible();
+    expect(within(summary).getByText('2.500001')).toBeVisible();
+    expect(within(summary).getByText(RECIPIENT)).toBeVisible();
+    expect(within(summary).getByText(TO)).toBeVisible();
+    expect(screen.getByText('0.000000000000000001 ETH')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'buttons.confirm' })
+    ).toBeEnabled();
+    expect(
+      mockEmitter.mock.calls.some(([path]) =>
+        /sign|sendAndSave/.test(path.join('.'))
+      )
+    ).toBe(false);
+  } finally {
+    mockEmitter.mockImplementation(previous);
+  }
 });
 
 it('retains contract deployment bytes without falsely decoding initcode parameters', async () => {

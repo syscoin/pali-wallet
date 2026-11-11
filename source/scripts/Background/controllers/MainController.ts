@@ -14226,11 +14226,26 @@ class MainController {
 
   // Direct EVM methods for cleaner UI access
 
-  public async checkContractType(contractAddress: string) {
-    return this.evmAssetsController.checkContractType(
-      contractAddress,
-      this.ethereumTransaction.web3Provider
+  public async checkContractType(
+    contractAddress: string,
+    accountAddress: string,
+    expectedContext: IEvmTransactionContext
+  ) {
+    if (typeof accountAddress !== 'string' || !expectedContext)
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const context = this.captureApprovalMetadataContext(
+      accountAddress,
+      expectedContext
     );
+    context.assertCurrent();
+    try {
+      return await this.evmAssetsController.checkContractType(
+        contractAddress,
+        context.provider
+      );
+    } finally {
+      context.assertCurrent();
+    }
   }
 
   private captureApprovalMetadataContext(

@@ -6,6 +6,7 @@ import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 import type { DappEncryptionSdk } from '../../../../source/wallet/dappEncryptionApproval.ts';
 import type { NativeSmartAccountOperation } from '../smartAccount/operation.ts';
 import type { ApprovalSummary } from '../../../../source/shared/approval.ts';
+import type { AssetTransferCall } from '../../../../source/shared/assetTransfer.ts';
 import type { NativePreparedConnectionTransaction } from './transactionRuntime.ts';
 import type { INetwork } from '../../../../source/types/network.ts';
 import type { NativeConnectionRepository } from './storage.ts';
@@ -40,6 +41,8 @@ export type NativePreparedSmartConnectionTransaction = Readonly<{
   operation: NativeSmartAccountOperation;
   approval: ApprovalSummary | null;
   batchApprovals?: readonly (ApprovalSummary | null)[];
+  assetTransfer?: AssetTransferCall | null;
+  batchAssetTransfers?: readonly (AssetTransferCall | null)[];
 }>;
 
 export type NativeConnectionAccount = Readonly<{

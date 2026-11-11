@@ -110,6 +110,8 @@ export type NativeSmartTransactionReview = NativeSigningReviewBase &
     operation: NativeSmartAccountOperationSnapshot;
     approval: ApprovalSummary | null;
     batchApprovals?: readonly (ApprovalSummary | null)[];
+    assetTransfer?: AssetTransferCall | null;
+    batchAssetTransfers?: readonly (AssetTransferCall | null)[];
   }>;
 
 export type NativeEncryptionReview = NativeSigningReviewBase & Readonly<{

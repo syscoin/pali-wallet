@@ -1,4 +1,6 @@
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
+import type { AssetTransferCall } from '../../../../source/shared/assetTransfer';
+import { resolveAssetTransferDisplay, type AssetTransferDisplay } from '../../../../source/shared/assetTransferDisplay';
 import { useOwnedLedgerConnection } from './useDappLedgerConnection';
 import {
   formatTokenUnits,
@@ -30,7 +32,7 @@ import type {
   NativeSmartAccountOperationSnapshot,
 } from '../smartAccount/operation';
 import { TransactionDetails } from './NativeTransactionReview';
-import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
+import { Button, Card, colors, Header, Icon, Notice, Screen, Text } from '../ui';
 import { guardianDelayLabel } from './guardianPolicyLabels';
 
 type DeploymentOwner = {
@@ -221,6 +223,8 @@ export function NativeSmartAccountOperationContent({
   confirmPayer,
   retryMetadata,
   before,
+  assetTransfer,
+  batchAssetTransfers,
   disabled = false,
 }: {
   state: NativeSmartAccountOperationSnapshot;
@@ -229,6 +233,8 @@ export function NativeSmartAccountOperationContent({
   confirmPayer(id: number): void;
   retryMetadata?(): void;
   before?: React.ReactNode;
+  assetTransfer?: AssetTransferCall | null;
+  batchAssetTransfers?: readonly (AssetTransferCall | null)[];
   disabled?: boolean;
 }) {
   const { t } = useNativeTranslation();
@@ -285,6 +291,23 @@ export function NativeSmartAccountOperationContent({
     );
   };
   const payer = state.payerReview;
+  const assetSummary = (display: AssetTransferDisplay, nativeUnits: string) => <>
+    <View style={s.transferHeading}>
+      <View style={s.transferIcon}><Icon name="arrow-up-right" size={22} color={colors.pink} /></View>
+      <View style={s.transferTitle}>
+        <Text style={s.value}>{t(`assetTransfer.${display.heading}`)}</Text>
+        <Text style={s.label}>{t(display.standardVerified ? 'assetTransfer.contractMetadata' : 'assetTransfer.unverified')}</Text>
+      </View>
+    </View>
+    {display.items.map((item, index) => <View key={index} style={s.transferItem}>
+      <Text selectable style={[s.transferValue, item.value.length > 20 && s.preciseValue]} accessibilityLabel={item.symbol ? `${item.value} ${item.symbol}` : item.tokenId !== null ? `Token ID ${item.tokenId}, quantity ${item.units}` : `${item.units} base units or token ID`}>{item.value}</Text>
+      <Text style={s.unit}>{item.symbol ?? (item.tokenId !== null ? `${item.units} NFT${item.units === '1' ? '' : 's'}` : t('assetTransfer.rawUnits'))}</Text>
+    </View>)}
+    <View style={s.transferFact}><Text style={s.label}>{t('assetTransfer.recipient')}</Text><Text selectable style={s.transferAddress}>{display.recipient}</Text></View>
+    <View style={s.transferFact}><Text style={s.label}>{t('assetTransfer.contract')}</Text><Text selectable style={s.transferAddress}>{display.contract}</Text></View>
+    {display.from && <View style={s.transferFact}><Text style={s.label}>{t('assetTransfer.owner')}</Text><Text selectable style={s.transferAddress}>{display.from}</Text></View>}
+    {nativeUnits !== '0' && <View style={s.transferFact}><Text style={s.label}>Also sending</Text><Text selectable style={s.transferAddress}>{formatBaseUnits(nativeUnits, network.decimals)} {network.symbol}</Text></View>}
+  </>;
   const batch = state.intent.kind === 'dapp-batch' ? state.intent : null;
   const guardian =
     state.intent.kind === 'guardian-policy' ? state.intent.command : null;
@@ -300,6 +323,9 @@ export function NativeSmartAccountOperationContent({
     state.intent.kind !== 'modules'
       ? state.intent
       : null;
+  const dappTransfer = transfer?.kind === 'dapp-call'
+    ? resolveAssetTransferDisplay({ data: transfer.data, contract: transfer.recipient, transfer: assetTransfer })
+    : null;
   const waiting = ['preparing', 'preparing-fee', 'waiting'].includes(
     state.phase
   );
@@ -482,15 +508,20 @@ export function NativeSmartAccountOperationContent({
           </Card>
         )}
         {batch &&
-          batch.calls.map((call, index) => (
+          batch.calls.map((call, index) => {
+            const display = resolveAssetTransferDisplay({ data: call.data, contract: call.to, transfer: batchAssetTransfers?.[index] });
+            return (
             <Card key={index} style={s.card}>
               <Text style={s.label}>
                 Call {index + 1} of {batch.calls.length}
               </Text>
-              <Text selectable style={s.address}>
-                {call.to}
-              </Text>
-              {amount(BigInt(call.value).toString())}
+              {display ? assetSummary(display, BigInt(call.value).toString()) : <>
+                <Text style={s.label}>{call.data === '0x' ? 'To' : 'Contract'}</Text>
+                <Text selectable style={s.address}>{call.to}</Text>
+                <Text style={s.label}>Native currency sent</Text>
+                {amount(BigInt(call.value).toString())}
+                {call.data !== '0x' && <Text style={s.label}>This amount excludes any tokens or NFTs the contract may move.</Text>}
+              </>}
               <TransactionDetails
                 transaction={{
                   to: call.to!,
@@ -499,8 +530,9 @@ export function NativeSmartAccountOperationContent({
                 }}
               />
             </Card>
-          ))}
-        {transfer && (
+          );})}
+        {dappTransfer && transfer?.kind === 'dapp-call' && <Card style={s.card}>{assetSummary(dappTransfer, transfer.amountUnits)}</Card>}
+        {transfer && !dappTransfer && (
           <Card style={s.card}>
             {transfer.kind === 'erc20-transfer' && (
               <>
@@ -513,7 +545,7 @@ export function NativeSmartAccountOperationContent({
                 <Text style={s.label}>Decimals {transfer.token.decimals}</Text>
               </>
             )}
-            <Text style={s.label}>To</Text>
+            <Text style={s.label}>{transfer.kind === 'dapp-call' && transfer.data !== '0x' ? 'Contract' : 'To'}</Text>
             <Text selectable style={s.address}>
               {transfer.recipient}
             </Text>
@@ -530,7 +562,7 @@ export function NativeSmartAccountOperationContent({
               </>
             )}
             <Text style={s.label}>
-              {transfer.kind === 'nft-transfer' ? 'Quantity' : 'Amount'}
+              {transfer.kind === 'nft-transfer' ? 'Quantity' : transfer.kind === 'dapp-call' && transfer.data !== '0x' ? 'Native currency sent' : 'Amount'}
             </Text>
             {transfer.kind === 'nft-transfer' ? (
               <Text selectable style={s.value}>
@@ -544,6 +576,7 @@ export function NativeSmartAccountOperationContent({
                 transfer.kind === 'erc20-transfer' ? transfer.token : undefined
               )
             )}
+            {transfer.kind === 'dapp-call' && transfer.data !== '0x' && <Text style={s.label}>This amount excludes any tokens or NFTs the contract may move.</Text>}
           </Card>
         )}
         {transfer?.kind === 'dapp-call' && (
@@ -849,6 +882,13 @@ export function NativeSmartAccountOperationContent({
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   card: { padding: 16, gap: 10 },
+  transferHeading: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  transferTitle: { flex: 1, gap: 3 },
+  transferIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.raised },
+  transferItem: { gap: 4, paddingVertical: 8 },
+  transferValue: { color: colors.text, fontSize: 28, lineHeight: 36, fontWeight: '600' },
+  transferFact: { gap: 4, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  transferAddress: { color: colors.text, fontSize: 13, lineHeight: 20 },
   label: { color: colors.muted, fontSize: 13, lineHeight: 19 },
   address: { color: colors.text, fontSize: 13, lineHeight: 20 },
   amount: {

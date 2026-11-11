@@ -1,4 +1,18 @@
 {
+  "assetTransfer": {
+    "summary": "资产转账详情",
+    "token-transfer": "代币转账",
+    "nft-transfer": "NFT 转账",
+    "transfer-call": "转账调用",
+    "rawUnits": "基本单位 / 代币 ID",
+    "units": "单位",
+    "unverified": "代币标准未经验证",
+    "contractMetadata": "代币元数据由合约提供。",
+    "recipient": "接收方",
+    "contract": "代币合约",
+    "owner": "资产所有者",
+    "nativeValue": "发送的原生货币"
+  },
   "localPasskey": {
     "title": "通行密钥解锁",
     "description": "使用受支持的通行密钥解锁此 Pali 安装。你的密码和恢复助记词保持不变。",

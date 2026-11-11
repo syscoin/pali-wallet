@@ -1,4 +1,18 @@
 {
+  "assetTransfer": {
+    "summary": "Détails du transfert d’actifs",
+    "token-transfer": "Transfert de jetons",
+    "nft-transfer": "Transfert de NFT",
+    "transfer-call": "Appel de transfert",
+    "rawUnits": "Unités de base / ID du jeton",
+    "units": "unités",
+    "unverified": "Standard du jeton non vérifié",
+    "contractMetadata": "Les métadonnées du jeton sont fournies par le contrat.",
+    "recipient": "Destinataire",
+    "contract": "Contrat du jeton",
+    "owner": "Propriétaire de l’actif",
+    "nativeValue": "Monnaie native envoyée"
+  },
   "localPasskey": {
     "title": "Déverrouillage par clé d’accès",
     "description": "Déverrouillez cette installation de Pali avec une clé d’accès compatible. Votre mot de passe et votre phrase de récupération restent inchangés.",

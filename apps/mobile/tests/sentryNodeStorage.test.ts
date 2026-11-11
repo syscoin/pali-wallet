@@ -350,14 +350,15 @@ test('matching recovery preserves both domains, stale removal refuses, and Forge
       f.storage.recovery.prepareReplacement!(snapshot, pair, {
         ...f.root,
         profileId: '0x' + 'fe'.repeat(32),
-      }),
+      }, current),
       changed
     );
     const matching = await f.storage.recovery.readSnapshot();
     const plan = await f.storage.recovery.prepareReplacement!(
       matching,
       pair,
-      f.root
+      f.root,
+      current
     );
     await f.storage.recovery.commitReplacement!(plan, current);
     await f.storage.removal.settlePinCredential(async record => {

@@ -41,6 +41,7 @@ import type { NativeSigningReview } from '../src/connections/types.ts';
 import { snapshotPreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { Interface } from 'ethers/abi';
 import { summarizeApproval, type ApprovalContractMetadata } from '../../../source/shared/approval.ts';
+import { decodeAssetTransfer } from '../../../source/shared/assetTransfer.ts';
 const ROTATED_SYSCOIN_ADDRESS = parseUtxoPublicIdentifier(XPUB, 'syscoin').address;
 const externalPsbt = new syscoinUtils.bitcoinjs.Psbt();
 externalPsbt.addInput({ hash: 'ab'.repeat(32), index: 0 });
@@ -364,7 +365,8 @@ function fixture(
           guard(); transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash, 'submit-operation'); return hash;
         },
       });
-      return { operation, approval: null, batchApprovals: intent.calls.map(call => summarizeApproval(call.data, call.to!, approvalMetadata)) };
+      return { operation, approval: null, batchApprovals: intent.calls.map(call => summarizeApproval(call.data, call.to!, approvalMetadata)),
+        batchAssetTransfers: intent.calls.map(call => decodeAssetTransfer(call.data, call.to!, approvalMetadata)) };
     },
     async readCallsStatus(origin, id, guard) {
       callsStatusReads.push({ origin, id });
@@ -444,7 +446,8 @@ function fixture(
         const dispose = operation.dispose.bind(operation);
         operation.dispose = () => { smartDisposals++; return dispose(); };
         beforePreparedReturn?.();
-        return { operation, approval: summarizeApproval(intent.data, intent.recipient, approvalMetadata) };
+        return { operation, approval: summarizeApproval(intent.data, intent.recipient, approvalMetadata),
+          assetTransfer: decodeAssetTransfer(intent.data, intent.recipient, approvalMetadata) };
       }
       const legacy = value.type === '0x0' || value.type === 0 || value.gasPrice !== undefined;
       const transaction = snapshotPreparedEvmTransaction({
@@ -5365,4 +5368,41 @@ for (const boundary of ['Reject', 'lock', 'request expiry'] as const) test(`Smar
     assert.equal(f.responses.some(response => (response as { id: number; result: { result?: unknown } }).id === 10 &&
       Object.hasOwn((response as { result: object }).result, 'result')), false);
   } finally { held.resolve(); unsubscribe(); await rejecting; await f.controller.dispose(); }
+});
+
+test('Smart controller publishes exact single transfer enrichment and retires it on network change', async () => {
+  const f = await pairedSmart();
+  try {
+    const contract = '0x' + '22'.repeat(20), recipient = '0x' + '44'.repeat(20);
+    f.setApprovalMetadata({ standard: 'ERC-20', token: { contractAddress: contract, name: 'Exact token', symbol: 'TOK', decimals: 6 } });
+    requestSmart(f, 880, { to: contract, data: new Interface(['function transfer(address,uint256)']).encodeFunctionData('transfer', [recipient, 1234567]) });
+    await settle();
+    const review = f.view.getSnapshot().signingReview;
+    assert(review?.kind === 'smart-transaction');
+    assert.equal(review.assetTransfer?.recipient.toLowerCase(), recipient);
+    assert.equal(review.assetTransfer?.items[0]?.units, '1234567');
+    assert.equal(review.assetTransfer?.token?.symbol, 'TOK');
+    assert.equal(f.signatures.length, 0);
+    f.selectChain(2); await settle();
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('Smart controller publishes ordered transfer summaries for a mixed call bundle', async () => {
+  const f = await connectedFixture({ smart: true, batch: true, accountId: 'smart:60:0' });
+  try {
+    const contract = '0x' + '22'.repeat(20), recipient = '0x' + '44'.repeat(20);
+    const data = new Interface(['function safeTransferFrom(address,address,uint256)']).encodeFunctionData('safeTransferFrom', [ADDRESS, recipient, 91]);
+    const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0xb123', from: ADDRESS, atomicRequired: true,
+      calls: [{ to: contract, data }, { to: recipient, value: '0x1', data: '0x' }] }]);
+    assert(review?.kind === 'smart-transaction');
+    assert.equal(review.batchAssetTransfers?.length, 2);
+    assert.equal(review.batchAssetTransfers?.[0]?.recipient.toLowerCase(), recipient);
+    assert.equal(review.batchAssetTransfers?.[0]?.items[0]?.tokenId, '91');
+    assert.equal(review.batchAssetTransfers?.[1], null);
+    assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0);
+    await f.view.rejectRequest(review.id);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+  } finally { await f.controller.dispose(); }
 });

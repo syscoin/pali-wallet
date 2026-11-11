@@ -13,6 +13,7 @@ export async function createTestPinRecord(
     '123456',
     { walletBindingId, pairFingerprint },
     `Pali#1:${'ab'.repeat(32)}`,
+    new Uint8Array(32).fill(7),
     () => undefined
   );
 }

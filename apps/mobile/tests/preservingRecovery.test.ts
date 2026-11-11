@@ -263,6 +263,15 @@ async function fixture(
     async close() { detachOperationBroker(); hook = undefined; afterHook = undefined; await owner.dispose().catch(() => undefined); if (leased) await store.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); },
   };
 }
+const PENDING_PIN_REMOVAL = 'removed-pin-credential';
+function withoutPendingPinRemoval(state: ReturnType<Awaited<ReturnType<typeof fixture>>['read']>) {
+  return { ...state, metadata: state.metadata.filter(row => row.key !== PENDING_PIN_REMOVAL) };
+}
+function assertOnlyStagedPinReceipt(state: ReturnType<Awaited<ReturnType<typeof fixture>>['read']>, before: typeof state) {
+  assert.equal(before.metadata.some(row => row.key === PENDING_PIN_REMOVAL), false);
+  assert.equal(state.metadata.filter(row => row.key === PENDING_PIN_REMOVAL).length, 1);
+  assert.deepEqual(withoutPendingPinRemoval(state), before, 'staging only adds the retryable credential cleanup receipt');
+}
 function retained(
   state: ReturnType<Awaited<ReturnType<typeof fixture>>['read']>
 ) {
@@ -329,7 +338,7 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     const before = f.read(); f.owner.lock(); recovery = f.coordinator();
     const proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
     assert.deepEqual(Object.keys(proof), []); assert.equal(f.owner.getSnapshot().phase, 'disposed'); assert.equal(f.retires, 1);
-    assert.deepEqual(f.read(), before, 'preparation must not mutate live records');
+    assertOnlyStagedPinReceipt(f.read(), before);
     await assert.rejects(recovery.commit({}), { code: 'STATE_CHANGED' });
     assert.equal(await recovery.commit(proof), 'committed-locked');
     await assert.rejects(recovery.commit(proof), { code: 'STATE_CHANGED' });
@@ -574,7 +583,7 @@ test('changed snapshot and unknown data refuse replacement without overwriting t
     f.write(WALLET_CATALOGUE_KEY, catalogue);
     const changed = f.read();
     await assert.rejects(recovery.commit(proof), { code: 'STATE_CHANGED' });
-    assert.deepEqual(f.read(), changed);
+    assert.deepEqual(f.read(), withoutPendingPinRemoval(changed));
     f.write('unsupported-private-note-domain', {});
     const unknown = f.read();
     await assert.rejects(
@@ -653,11 +662,7 @@ test('retired imported signed bytes survive recovery without resurrecting an acc
     recovery = f.coordinator();
     const state = f.read();
     const proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
-    assert.deepEqual(
-      f.read(),
-      state,
-      'verification does not rewrite the retained bundle'
-    );
+    assertOnlyStagedPinReceipt(f.read(), state);
     await recovery.commit(proof);
     assert.deepEqual(f.read().signedRecords, state.signedRecords);
     assert.equal(state.signedRecords.length, 1);
@@ -761,7 +766,7 @@ test('normal unlock verifies the declared profile and stale data operations reje
     await f.reopen(); await f.owner.unlock(NEXT);
     const identity = (await f.store.recovery.readIdentity())!;
     const before = await f.store.recovery.readSnapshot(), pair = validPair(77);
-    const write = await f.store.recovery.prepareReplacement!(before, { publicSession: storageOnlyPublicSession(identity.walletBindingId), vault: pair.vault, keys: pair['vault-keys'], pin: await createTestPinRecord(f.store, { vault: pair.vault, keys: pair['vault-keys'] }, identity.walletBindingId) }, identity.root!);
+    const write = await f.store.recovery.prepareReplacement!(before, { publicSession: storageOnlyPublicSession(identity.walletBindingId), vault: pair.vault, keys: pair['vault-keys'], pin: await createTestPinRecord(f.store, { vault: pair.vault, keys: pair['vault-keys'] }, identity.walletBindingId) }, identity.root!, () => undefined);
     await f.store.recovery.commitReplacement!(write, () => undefined);
     await f.store.removal!.settlePinCredential(record => pinCredential.remove(record));
     await assert.rejects(f.runtime.tokens!.load(() => undefined), { code: 'CANCELLED' });
@@ -974,7 +979,7 @@ for (const boundary of ['cancellation', 'expiry'] as const) {
       f.setAfter((_kind, sql) => { if (sql.startsWith('INSERT INTO wallet_metadata')) metadataWrites++; });
       await assert.rejects(recovery.commit(proof), { code: 'CANCELLED' });
       assert.equal(revoked, true);
-      assert.equal(f.dispatched.includes('COMMIT'), false, 'revoked recovery must not dispatch a commit');
+      assert.equal(f.dispatched.slice(0, f.dispatched.indexOf('ROLLBACK')).includes('COMMIT'), false, 'revoked wallet replacement must roll back before any later cleanup commit');
       assert.equal(f.dispatched.includes('ROLLBACK'), true);
       assert.deepEqual(f.read(), before);
     } finally { f.setAfter(); await recovery.dispose(); await f.close(); }
@@ -1238,7 +1243,7 @@ test('a changed note row after proof invalidates the whole replacement CAS', asy
     const binding = await f.store.getWalletFingerprint(); f.notes(data.profile, data.bundle, binding); f.owner.lock(); recovery = f.coordinator();
     const proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
     data.bundle.root.ciphertext = (data.bundle.root.ciphertext[0] === 'A' ? 'B' : 'A') + data.bundle.root.ciphertext.slice(1); f.notes(data.profile, data.bundle, binding); const changed = f.read();
-    await assert.rejects(recovery.commit(proof), { code: 'STATE_CHANGED' }); assert.deepEqual(f.read(), changed);
+    await assert.rejects(recovery.commit(proof), { code: 'STATE_CHANGED' }); assert.deepEqual(f.read(), withoutPendingPinRemoval(changed));
   } finally { await data.keyring.lockWallet(); await recovery?.dispose(); await f.close(); }
 });
 
@@ -2253,7 +2258,7 @@ for (const field of ['chain', 'account'] as const) {
   });
 }
 
-test('cancel closes the prepared recovery database even when staged PIN deletion fails', async () => {
+test('cancel retains a failed staged PIN deletion receipt and cold reopen retries it', async () => {
   const f = await fixture();
   f.owner.lock();
   const before = f.read();
@@ -2268,6 +2273,70 @@ test('cancel closes the prepared recovery database even when staged PIN deletion
     recovery.cancel();
     await assert.rejects(recovery.dispose(), { code: 'REOPEN_REQUIRED' });
     assert.equal(f.leased, false);
-    assert.deepEqual(f.read(), before);
+    const pending = f.read();
+    assertOnlyStagedPinReceipt(pending, before);
+    const staged = JSON.parse(pending.metadata.find(row => row.key === PENDING_PIN_REMOVAL)!.value);
+    assert.notEqual(await pinCredential.readSecret(staged, () => undefined), null);
+    await f.reopen();
+    assert.deepEqual(f.read(), before, 'cold open removes only the failed staged alias and its receipt');
+    assert.equal(await pinCredential.readSecret(staged, () => undefined), null);
+    await f.owner.unlock(OLD);
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
   } finally { await recovery.dispose().catch(() => undefined); await f.close(); }
+});
+
+test('recovery without a current PIN record cancels without orphaning a receipt or candidate credential', async () => {
+  const f = await fixture();
+  let recovery: NativeRecoveryCoordinator | undefined;
+  try {
+    f.owner.lock();
+    // Fault injection: the encrypted wallet and public catalogue survive, but
+    // their current local PIN metadata is missing and needs phrase recovery.
+    const db = Reflect.get(f.store, 'db') as { runAsync(sql: string, params: string[]): Promise<unknown> };
+    await db.runAsync('DELETE FROM wallet_metadata WHERE key = ?', ['local-pin-v1']);
+    const before = f.read();
+    assert.equal(before.metadata.some(row => row.key === 'local-pin-v1'), false);
+    recovery = f.coordinator();
+    const proof = await recovery.prepare(PHRASE, () => undefined);
+    await recovery.setPin(proof, NEXT);
+    const pending = f.read();
+    assertOnlyStagedPinReceipt(pending, before);
+    const staged = JSON.parse(pending.metadata.find(row => row.key === PENDING_PIN_REMOVAL)!.value);
+    assert.notEqual(await pinCredential.readSecret(staged, () => undefined), null);
+    assert.notEqual(await pinCredential.readPublic(staged, () => undefined), null);
+    recovery.cancel();
+    await recovery.dispose();
+    await f.reopen();
+    assert.equal(f.owner.getSnapshot().phase, 'locked');
+    assert.deepEqual(f.read(), before, 'cancellation retains the entire existing wallet without the temporary receipt');
+    assert.equal(await pinCredential.readSecret(staged, () => undefined), null);
+    assert.equal(await pinCredential.readPublic(staged, () => undefined), null);
+  } finally { await recovery?.dispose().catch(() => undefined); await f.close(); }
+});
+
+test('recovery without a current PIN record commits a usable replacement and clears its candidate receipt', async () => {
+  const f = await fixture();
+  let recovery: NativeRecoveryCoordinator | undefined;
+  try {
+    const address = f.owner.getSnapshot().account!.address;
+    f.owner.lock();
+    const db = Reflect.get(f.store, 'db') as { runAsync(sql: string, params: string[]): Promise<unknown> };
+    await db.runAsync('DELETE FROM wallet_metadata WHERE key = ?', ['local-pin-v1']);
+    const before = f.read();
+    recovery = f.coordinator();
+    const proof = await recovery.prepare(PHRASE, () => undefined);
+    await recovery.setPin(proof, NEXT);
+    assertOnlyStagedPinReceipt(f.read(), before);
+    assert.equal(await recovery.commit(proof), 'committed-locked');
+    const committed = f.read();
+    assert.equal(committed.metadata.some(row => row.key === PENDING_PIN_REMOVAL), false);
+    assert.equal(committed.metadata.filter(row => row.key === 'local-pin-v1').length, 1);
+    assert.deepEqual(retained(committed), retained(before));
+    await f.reopen();
+    await f.owner.unlock(NEXT);
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
+    assert.equal(f.owner.getSnapshot().account!.address, address);
+    assert.equal((await f.runtime.backup.readPhrase(NEXT)).join(' '), PHRASE);
+    assert.equal(f.unlockedKeyrings(), 0);
+  } finally { await recovery?.dispose().catch(() => undefined); await f.close(); }
 });

@@ -178,7 +178,7 @@ export interface OpenWalletStorage {
     prepareReplacement?(snapshot: RecoveryStorageSnapshot, pair: Readonly<{ vault: unknown; keys: unknown; pin: NativePinRecord;
         accountRecords?: unknown;
         publicSession: unknown;
-      }>, root: RecoveryRoot): Promise<RecoveryWritePlan>;
+      }>, root: RecoveryRoot, assertCurrent: () => void): Promise<RecoveryWritePlan>;
     plannedSnapshot?(plan: RecoveryWritePlan): RecoveryStorageSnapshot;
     commitReplacement?(plan: unknown, assertCurrent: () => void): Promise<void>;
     /** Known credential failure still counts after UI cancellation, but never for another pair. */

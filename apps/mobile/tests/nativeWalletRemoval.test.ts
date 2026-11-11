@@ -219,7 +219,7 @@ test('real SDK authorization issues an empty one-use ticket and only explicit co
     assert.equal(f.values.get(PUBLIC_ACCOUNTS_KEY), 'independent watch records fixture bytes');
     assert.equal(f.removalCommits, 1);
     assert.deepEqual(f.removedCredentials, [f.initialPin]);
-    assert.equal(await f.credentials.read(f.initialPin, current), null);
+    assert.equal(await f.credentials.readPublic(f.initialPin, current), null);
   } finally { await f.close(); }
 });
 
@@ -229,7 +229,7 @@ for (const failure of ['before', 'after'] as const) {
     let reopened: KeyringRuntime | undefined;
     try {
       const unrelated = captureNativePinRecord({ ...f.initialPin, enrollmentId: 'f'.repeat(32) });
-      await f.credentials.stage(unrelated, { secret: '1'.repeat(64), pepper: new Uint8Array(32).fill(1) }, current);
+      await f.credentials.stage(unrelated, { secret: '1'.repeat(64), publicKey: new Uint8Array(32).fill(2), pepper: new Uint8Array(32).fill(1) }, current);
       f.failCredentialRemoval(failure);
       const ticket = await f.removal.authorize(PASSWORD, current);
       await assert.rejects(f.removal.confirm(ticket, current), { code: 'REOPEN_REQUIRED' });
@@ -245,8 +245,8 @@ for (const failure of ['before', 'after'] as const) {
       reopened = await f.reopenRuntime();
       assert.deepEqual(await reopened.storage.readState(), { presence: 'empty', backup: 'unconfirmed' });
       assert.deepEqual(f.removedCredentials, [f.initialPin, f.initialPin]);
-      assert.equal(await f.credentials.read(f.initialPin, current), null);
-      const retained = await f.credentials.read(unrelated, current);
+      assert.equal(await f.credentials.readPublic(f.initialPin, current), null);
+      const retained = await f.credentials.readPublic(unrelated, current);
       assert.ok(retained); retained.pepper.fill(0);
     } finally { await reopened?.storage.close(); await f.close(); }
   });
@@ -270,7 +270,7 @@ for (const alteration of ['different-installation', 'new-wallet-row'] as const) 
       f.failCredentialRemoval(undefined);
       await assert.rejects(f.reopenRuntime(), { code: 'STORAGE_CORRUPT' });
       assert.deepEqual(f.removedCredentials, [f.initialPin]);
-      const retained = await f.credentials.read(f.initialPin, current);
+      const retained = await f.credentials.readPublic(f.initialPin, current);
       assert.ok(retained); retained.pepper.fill(0);
     } finally { await f.close(); }
   });
@@ -539,7 +539,7 @@ for (const when of ['before', 'after'] as const) {
       assert.equal(f.removalCommits, 1);
       assert.equal(f.values.get(ACCOUNT_SELECTION_KEY), WATCH_HINT);
       assert.deepEqual(f.removedCredentials, when === 'after' ? [f.initialPin] : []);
-      const retained = await f.credentials.read(f.initialPin, current);
+      const retained = await f.credentials.readPublic(f.initialPin, current);
       assert.equal(retained === null, when === 'after');
       retained?.pepper.fill(0);
     } finally { await f.close(); }

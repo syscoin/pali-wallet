@@ -1,4 +1,18 @@
 {
+  "assetTransfer": {
+    "summary": "Detalles de la transferencia de activos",
+    "token-transfer": "Transferencia de tokens",
+    "nft-transfer": "Transferencia de NFT",
+    "transfer-call": "Llamada de transferencia",
+    "rawUnits": "Unidades base / ID del token",
+    "units": "unidades",
+    "unverified": "Estándar del token no verificado",
+    "contractMetadata": "Los metadatos del token los proporciona el contrato.",
+    "recipient": "Destinatario",
+    "contract": "Contrato del token",
+    "owner": "Propietario del activo",
+    "nativeValue": "Moneda nativa enviada"
+  },
   "localPasskey": {
     "title": "Desbloqueo con clave de acceso",
     "description": "Desbloquea esta instalación de Pali con una clave de acceso compatible. Tu contraseña y frase de recuperación no cambian.",

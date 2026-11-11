@@ -1,3 +1,4 @@
+import { resolveAssetTransferDisplay } from '../../../source/shared/assetTransferDisplay.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {screenFixture, type ScreenElement} from './screenFixture.ts';
@@ -30,6 +31,7 @@ function fixture() {
     'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},
     '../ui':{colors:{},...Object.fromEntries(['Button','Card','Header','Notice','Screen','Text'].map(name=>[name,name]))},
     './NativeTransactionReview':{TransactionDetails:'TransactionDetails'},'../core/amounts':{formatBaseUnits},
+    '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay },
     '../../../../source/shared/erc20':{formatTokenUnits},'../custody/networkContext':{getNativeSendContext},
     './guardianPolicyLabels':{guardianDelayLabel},
   },globals);

@@ -1,4 +1,18 @@
 {
+  "assetTransfer": {
+    "summary": "Asset transfer details",
+    "token-transfer": "Token transfer",
+    "nft-transfer": "NFT transfer",
+    "transfer-call": "Transfer call",
+    "rawUnits": "Base units / token ID",
+    "units": "units",
+    "unverified": "Token standard unverified",
+    "contractMetadata": "Token metadata is supplied by the contract.",
+    "recipient": "Recipient",
+    "contract": "Token contract",
+    "owner": "Asset owner",
+    "nativeValue": "Native currency sent"
+  },
   "localPasskey": {
     "title": "Passkey unlock",
     "description": "Unlock this Pali installation with a supported passkey. Your password and recovery phrase stay the same.",

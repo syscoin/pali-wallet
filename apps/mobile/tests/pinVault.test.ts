@@ -84,18 +84,18 @@ test('PIN attempts commit before OS read, persist cancellation and throttle acro
   try {
     await runtime.session.createWallet('123456');
     const pin = await f.storage.pin.read(); assert.ok(pin);
-    const vault = createNativePinVault(f.storage.pin, { ...f.port, async read(record, check) {
+    const vault = createNativePinVault(f.storage.pin, { ...f.port, async readPublic(record, check) {
       const snapshot = await f.storage.recovery!.readSnapshot();
       assert.equal(JSON.parse(snapshot.metadata.find(row => row.key === 'auth')!.value).failures, 1);
-      return f.port.read(record, check);
+      return f.port.readPublic(record, check);
     } });
     let current = true;
-    await assert.rejects(vault.authenticate('123456', () => { if (!current) throw Error('cancelled'); }, async () => { current = false; return true; }), /cancelled/);
-    for (let index = 0; index < 4; index++) assert.equal(await createNativePinVault(f.storage.pin, f.port).authenticate('000000', () => {}, async () => { throw Error('wrong PIN released secret'); }), false);
+    await assert.rejects(vault.withVerifiedPublicKey('123456', () => { if (!current) throw Error('cancelled'); }, async () => { current = false; return true; }), /cancelled/);
+    for (let index = 0; index < 4; index++) assert.equal(await createNativePinVault(f.storage.pin, f.port).authenticate('000000', () => {}), false);
     await runtime.storage.close(); await f.open();
-    await assert.rejects(createNativePinVault(f.storage.pin, f.port).authenticate('123456', () => {}, async () => true), /AUTH_THROTTLED/);
+    await assert.rejects(createNativePinVault(f.storage.pin, f.port).authenticate('123456', () => {}), /AUTH_THROTTLED/);
     f.advance(30000);
-    assert.equal(await createNativePinVault(f.storage.pin, f.port).authenticate('123456', () => {}, async () => true), true);
+    assert.equal(await createNativePinVault(f.storage.pin, f.port).authenticate('123456', () => {}), true);
     await f.storage.close();
   } finally { await runtime.storage.close().catch(() => {}); await f.cleanup(); }
 });
@@ -175,7 +175,8 @@ for (const mode of ['cancel-after-write', 'lost-write-ack'] as const) test(`fres
   const removed: Parameters<NativePinCredentialPort['remove']>[0][] = [];
   const guard = () => { if (!current) throw Error('CANCELLED'); };
   const credentials: NativePinCredentialPort = {
-    async read() { return null; },
+    async readPublic() { return null; },
+    async readSecret() { return null; },
     async stage(record, _value, check) {
       reached.resolve(); await released.promise;
       stored = record;
@@ -187,7 +188,7 @@ for (const mode of ['cancel-after-write', 'lost-write-ack'] as const) test(`fres
   const storage = await f.open();
   try {
     const pin = createNativePinVault(storage.pin, credentials);
-    const pending = pin.stage('123456', { walletBindingId: '1'.repeat(64), pairFingerprint: '2'.repeat(64) }, pin.createSecret(), guard);
+    const pending = pin.stage('123456', { walletBindingId: '1'.repeat(64), pairFingerprint: '2'.repeat(64) }, pin.createSecret(), pin.createPublicKey(), guard);
     await reached.promise;
     if (mode === 'cancel-after-write') current = false;
     released.resolve();
@@ -214,11 +215,11 @@ test('PIN replacement atomically retains the old alias after COMMIT acknowledgem
     const metadata = f.metadata();
     assert.deepEqual(JSON.parse(metadata.find(row => row.key === 'removed-pin-credential')!.value), before);
     assert.deepEqual(JSON.parse(metadata.find(row => row.key === 'local-pin-v1')!.value), staged);
-    assert.ok(await f.port.read(before, () => {})); assert.ok(await f.port.read(staged, () => {}));
+    assert.ok(await f.port.readPublic(before, () => {})); assert.ok(await f.port.readPublic(staged, () => {}));
     await assert.rejects(f.storage.pin.read(), /STORAGE_REOPEN_REQUIRED/);
     await runtime.storage.close(); runtime = await f.factory(credentials).open() as KeyringRuntime;
-    assert.equal(await f.port.read(before, () => {}), null);
-    assert.ok(await f.port.read(staged, () => {}), 'uncertain commit retains the now-active alias');
+    assert.equal(await f.port.readPublic(before, () => {}), null);
+    assert.ok(await f.port.readPublic(staged, () => {}), 'uncertain commit retains the now-active alias');
     assert.equal(f.metadata().some(row => row.key === 'removed-pin-credential'), false);
     assert.equal((await runtime.session.unlock('654321')).authenticated, true);
     assert.equal((await runtime.session.unlock('123456')).authenticated, false);
@@ -247,7 +248,7 @@ for (const removalFault of ['before', 'after'] as const) test(`obsolete-alias de
     await assert.rejects(f.factory(credentials).open());
     assert.ok(f.metadata().some(row => row.key === 'removed-pin-credential'));
     failRemoval = false; runtime = await f.factory(credentials).open() as KeyringRuntime;
-    assert.equal(await f.port.read(before, () => {}), null);
+    assert.equal(await f.port.readPublic(before, () => {}), null);
     assert.equal((await f.storage.deviceUnlockEnrollment!.read())!.enrollmentId, 'bb'.repeat(16));
     assert.equal((await f.storage.readState()).backup, 'confirmed');
     assert.equal((await runtime.session.unlock('654321')).authenticated, true);
@@ -270,8 +271,8 @@ for (const afterCommit of [false, true]) test(`PIN replacement cancellation ${af
     await assert.rejects(runtime.security!.changePin('123456', '654321', () => { if (!current) throw Error('App backgrounded'); }));
     f.onSql(); assert.ok(staged); current = true;
     assert.equal((await f.storage.pin.read())!.enrollmentId, afterCommit ? staged.enrollmentId : before.enrollmentId);
-    assert.equal(await f.port.read(afterCommit ? before : staged, () => {}), null);
-    assert.ok(await f.port.read(afterCommit ? staged : before, () => {}));
+    assert.equal(await f.port.readPublic(afterCommit ? before : staged, () => {}), null);
+    assert.ok(await f.port.readPublic(afterCommit ? staged : before, () => {}));
     assert.equal(f.metadata().some(row => row.key === 'removed-pin-credential'), false);
     await runtime.storage.close(); runtime = await f.factory(credentials).open() as KeyringRuntime;
     assert.equal((await runtime.session.unlock(afterCommit ? '654321' : '123456')).authenticated, true);
@@ -289,7 +290,7 @@ test('wrong PIN and cancellation before replacement leave the original credentia
     await assert.rejects(runtime.security!.changePin('000000', '654321', () => {}), /INVALID_CREDENTIAL/);
     await assert.rejects(runtime.security!.changePin('123456', '654321', () => { throw Error('App backgrounded'); }));
     assert.deepEqual(await f.storage.pin.read(), before); assert.equal(stages, 1); assert.equal(removals, 0);
-    assert.ok(await f.port.read(before, () => {})); assert.equal(f.metadata().some(row => row.key === 'removed-pin-credential'), false);
+    assert.ok(await f.port.readPublic(before, () => {})); assert.equal(f.metadata().some(row => row.key === 'removed-pin-credential'), false);
   } finally { await runtime.storage.close().catch(() => {}); await f.cleanup(); }
 });
 
@@ -322,11 +323,11 @@ for (const fault of ['rollback-remove-failure', 'commit-not-dispatched'] as cons
     const metadata = f.metadata();
     assert.deepEqual(JSON.parse(metadata.find(row => row.key === 'local-pin-v1')!.value), before);
     assert.deepEqual(JSON.parse(metadata.find(row => row.key === 'removed-pin-credential')!.value), staged);
-    assert.ok(await f.port.read(staged, () => {}));
+    assert.ok(await f.port.readPublic(staged, () => {}));
     await assert.rejects(f.storage.pin.read(), /STORAGE_REOPEN_REQUIRED/);
     f.onSql(); f.beforeSql(); await runtime.storage.close(); failRemoval = false;
     runtime = await f.factory(credentials).open() as KeyringRuntime;
-    assert.equal(await f.port.read(staged, () => {}), null); assert.ok(await f.port.read(before, () => {}));
+    assert.equal(await f.port.readPublic(staged, () => {}), null); assert.ok(await f.port.readPublic(before, () => {}));
     assert.equal(f.metadata().some(row => row.key === 'removed-pin-credential'), false);
     assert.equal((await runtime.session.unlock('123456')).authenticated, true);
   } finally { f.onSql(); f.beforeSql(); failRemoval = false; await runtime.storage.close().catch(() => {}); await f.cleanup(); }

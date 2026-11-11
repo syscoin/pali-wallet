@@ -1,4 +1,18 @@
 {
+  "assetTransfer": {
+    "summary": "자산 전송 세부 정보",
+    "token-transfer": "토큰 전송",
+    "nft-transfer": "NFT 전송",
+    "transfer-call": "전송 호출",
+    "rawUnits": "기본 단위 / 토큰 ID",
+    "units": "단위",
+    "unverified": "토큰 표준이 확인되지 않았습니다",
+    "contractMetadata": "토큰 메타데이터는 컨트랙트에서 제공합니다.",
+    "recipient": "수신자",
+    "contract": "토큰 컨트랙트",
+    "owner": "자산 소유자",
+    "nativeValue": "전송되는 네이티브 통화"
+  },
   "localPasskey": {
     "title": "패스키 잠금 해제",
     "description": "지원되는 패스키로 이 Pali 설치의 잠금을 해제합니다. 비밀번호와 복구 문구는 변경되지 않습니다.",

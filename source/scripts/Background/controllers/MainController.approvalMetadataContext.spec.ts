@@ -61,6 +61,7 @@ beforeEach(() => {
     ethereumTransaction: { web3Provider: provider },
   }));
   wallet.evmAssetsController = {
+    checkContractType: read,
     getERC20TokenInfo: read,
     getTokenDetails: read,
   };
@@ -83,27 +84,49 @@ beforeEach(() => {
   };
 });
 
-describe.each(['getERC20TokenInfo', 'getTokenDetails'])(
+describe.each(['getERC20TokenInfo', 'getTokenDetails', 'checkContractType'])(
   '%s approval metadata admission',
   (method) => {
     const request = (context: any = expectedContext) =>
       wallet[method](TOKEN, ADDRESS, context);
+    const lowerArgs = (captured: any) =>
+      method === 'checkContractType'
+        ? [TOKEN, captured]
+        : [TOKEN, ADDRESS, captured];
 
     it('preserves a healthy scoped read and captures its provider', async () => {
       const captured = provider;
       await expect(request()).resolves.toBe(METADATA);
-      expect(read).toHaveBeenCalledWith(TOKEN, ADDRESS, captured);
+      expect(read).toHaveBeenCalledWith(...lowerArgs(captured));
     });
 
-    it('preserves a legacy unscoped caller in its current context', async () => {
-      mockState.vault.activeNetwork = {
-        chainId: 2,
-        url: 'https://rpc-b.example',
-      };
-      provider = { name: 'provider-b' };
-      await expect(wallet[method](TOKEN, ADDRESS)).resolves.toBe(METADATA);
-      expect(read).toHaveBeenCalledWith(TOKEN, ADDRESS, provider);
-    });
+    it(
+      method === 'checkContractType'
+        ? 'requires the approved owner and context before any classification read'
+        : 'preserves a legacy unscoped caller in its current context',
+      async () => {
+        if (method === 'checkContractType') {
+          for (const args of [
+            [TOKEN],
+            [TOKEN, ADDRESS],
+            [TOKEN, undefined, expectedContext],
+          ])
+            await expect(wallet[method](...args)).rejects.toThrow(
+              EVM_TRANSACTION_CONTEXT_CHANGED
+            );
+          expect(read).not.toHaveBeenCalled();
+          expect(wallet.getActiveKeyring).not.toHaveBeenCalled();
+          return;
+        }
+        mockState.vault.activeNetwork = {
+          chainId: 2,
+          url: 'https://rpc-b.example',
+        };
+        provider = { name: 'provider-b' };
+        await expect(wallet[method](TOKEN, ADDRESS)).resolves.toBe(METADATA);
+        expect(read).toHaveBeenCalledWith(TOKEN, ADDRESS, provider);
+      }
+    );
 
     it('accepts an internal approved context without a serialized session generation', async () => {
       const internalContext = {
@@ -174,7 +197,7 @@ describe.each(['getERC20TokenInfo', 'getTokenDetails'])(
       read.mockImplementationOnce(() => held.promise);
       const captured = provider;
       const pending = request();
-      expect(read).toHaveBeenCalledWith(TOKEN, ADDRESS, captured);
+      expect(read).toHaveBeenCalledWith(...lowerArgs(captured));
       provider = { name: 'replacement-provider-a' };
       held.resolve(METADATA);
       await expect(pending).rejects.toThrow(EVM_TRANSACTION_CONTEXT_CHANGED);

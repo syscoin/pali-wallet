@@ -1,4 +1,18 @@
 {
+  "assetTransfer": {
+    "summary": "Details zur Asset-Übertragung",
+    "token-transfer": "Token-Übertragung",
+    "nft-transfer": "NFT-Übertragung",
+    "transfer-call": "Übertragungsaufruf",
+    "rawUnits": "Basiseinheiten / Token-ID",
+    "units": "Einheiten",
+    "unverified": "Token-Standard nicht verifiziert",
+    "contractMetadata": "Token-Metadaten werden vom Vertrag bereitgestellt.",
+    "recipient": "Empfänger",
+    "contract": "Token-Vertrag",
+    "owner": "Asset-Eigentümer",
+    "nativeValue": "Gesendete native Währung"
+  },
   "localPasskey": {
     "title": "Mit Passkey entsperren",
     "description": "Entsperre diese Pali-Installation mit einem unterstützten Passkey. Dein Passwort und deine Wiederherstellungsphrase bleiben unverändert.",

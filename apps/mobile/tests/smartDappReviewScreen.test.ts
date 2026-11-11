@@ -76,3 +76,18 @@ test('dirty Smart allowance cannot authorize and a stale editor callback cannot 
   f.render().props.authorize(); assert.equal(f.calls.length, 0);
   approval(f.render()).props.onEditingChange(false); f.render().props.authorize(); assert.equal(f.calls.length, 1);
 });
+test('Smart wrapper forwards only the current public transfer summaries without adding consent actions', () => {
+  const f = fixture();
+  const single = { contract: 'first' }, batch = [single, null];
+  Object.assign(f.current(), { assetTransfer: single, batchAssetTransfers: batch });
+  const tree = f.render();
+  assert.equal(tree.props.assetTransfer, single);
+  assert.equal(tree.props.batchAssetTransfers, batch);
+  assert.deepEqual(f.calls, []);
+  f.replaceIntent();
+  Object.assign(f.current(), { assetTransfer: null, batchAssetTransfers: undefined });
+  const next = f.render();
+  assert.equal(next.props.assetTransfer, null);
+  assert.equal(next.props.batchAssetTransfers, undefined);
+  assert.deepEqual(f.calls, []);
+});

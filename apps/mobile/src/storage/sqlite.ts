@@ -349,8 +349,9 @@ export class SqliteWalletStorage implements OpenWalletStorage {
           publicSession: unknown;
           pin: NativePinRecord;
         }>,
-        root: RecoveryRoot
-      ) => this.prepareReplacement(snapshot, pair, root),
+        root: RecoveryRoot,
+        assertCurrent: () => void
+      ) => this.prepareReplacement(snapshot, pair, root, assertCurrent),
       plannedSnapshot: (plan: RecoveryWritePlan) => { const value = this.recoveryWrites.get(plan); if (!value) throw new WalletStorageError('STORAGE_CHANGED'); return value.after; },
       commitReplacement: (plan: unknown, guard: () => void) => this.commitReplacement(plan, guard),
       recordFailureForPair: (fingerprint: string) => this.recordAuthentication(false, fingerprint),
@@ -1359,11 +1360,13 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         if (state.presence === 'empty') {
           if (identity || metadata.length !== 2 || records.length || notes.length || signedRecords.length) throw failure();
         } else {
-          if (!identity || !pin) throw failure();
-          const current = captureNativePinRecord(decodeStorageValue(pin.value));
-          // Recovery changes the pair; a PIN rotation deliberately keeps it.
-          // Both retire a distinct alias under this installation and wallet.
-          if (record.walletBindingId !== identity.walletBindingId || record.enrollmentId === current.enrollmentId) throw failure();
+          if (!identity || record.walletBindingId !== identity.walletBindingId) throw failure();
+          // A recovery candidate belongs to a different encrypted pair. If the
+          // current PIN record is missing, its receipt must still be removable.
+          if (pin) {
+            const current = captureNativePinRecord(decodeStorageValue(pin.value));
+            if (record.enrollmentId === current.enrollmentId) throw failure();
+          } else if (record.pairFingerprint === identity.pairFingerprint) throw failure();
         }
       }
       const utxo = records.find(({ key }) => key === UTXO_SIGNED_RECORD_KEY);
@@ -1500,8 +1503,10 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       publicSession: unknown;
       pin: NativePinRecord;
     }>,
-    root: RecoveryRoot
+    root: RecoveryRoot,
+    assertCurrent: () => void
   ): Promise<RecoveryWritePlan> {
+    const check = storageGuard(assertCurrent);
     if (!this.recoverySnapshots.has(before)) return Promise.reject(new WalletStorageError('STORAGE_CHANGED'));
     this.recoverySnapshots.delete(before);
     const capturedCandidate = {
@@ -1596,8 +1601,26 @@ export class SqliteWalletStorage implements OpenWalletStorage {
             .map(([key, value]) => Object.freeze({ key, value }))
         ),
       });
+      if (before.metadata.some(row => row.key === REMOVED_PIN_KEY)) throw new WalletStorageError('STORAGE_CHANGED');
+      const prepared = Object.freeze({ ...before, metadata: Object.freeze([
+        ...before.metadata,
+        Object.freeze({ key: REMOVED_PIN_KEY, value: encodeStorageValue(capturedCandidate.pin) }),
+      ].sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0)) });
+      // The candidate alias may be written only after this receipt is durable.
+      // A successful replacement swaps this receipt to the obsolete old alias.
+      await this.transaction(async () => {
+        check();
+        if (!sameRecoverySnapshot(await this.captureSnapshot(), before)) throw new WalletStorageError('STORAGE_CHANGED');
+        check();
+        await this.db.runAsync('INSERT INTO wallet_metadata (key, value) VALUES (?, ?)',
+          [REMOVED_PIN_KEY, encodeStorageValue(capturedCandidate.pin)]);
+        check();
+      }, check).catch(error => this.requireReopenIfPoisoned(error));
+      this.pendingPinRemoval = true;
+      if (!sameRecoverySnapshot(await this.captureSnapshot(), prepared)) throw new WalletStorageError('STORAGE_CHANGED');
+      check();
       const plan = Object.freeze({}) as RecoveryWritePlan;
-      this.recoveryWrites.set(plan, { before, after });
+      this.recoveryWrites.set(plan, { before: prepared, after });
       return plan;
     });
   }
@@ -1734,6 +1757,10 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       for (const row of value.after.metadata.filter((row) => ['identity', 'auth', 'backup', PIN_KEY, REMOVED_PIN_KEY].includes(row.key))) {
         await this.db.runAsync('INSERT INTO wallet_metadata (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [row.key, row.value]); check();
       }
+        if (!value.after.metadata.some(row => row.key === REMOVED_PIN_KEY)) {
+          await this.db.runAsync('DELETE FROM wallet_metadata WHERE key = ?', [REMOVED_PIN_KEY]);
+          check();
+        }
         if (current.metadata.some((row) => row.key === ENROLLMENT_KEY)) {
           await this.db.runAsync('DELETE FROM wallet_metadata WHERE key = ?', [ENROLLMENT_KEY]);
           if (await this.db.getFirstAsync('SELECT 1 FROM wallet_metadata WHERE key = ?', [ENROLLMENT_KEY])) throw failure();
@@ -1744,7 +1771,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         this.authenticationWindow = null;
         this.pendingPinRemoval = value.after.metadata.some(row => row.key === REMOVED_PIN_KEY);
       })
-    );
+    , true);
   }
 
   getWalletFingerprint(): Promise<string> {

@@ -44,6 +44,8 @@ export function NativeSmartTransactionReviewScreen({
   return (
     <NativeSmartAccountOperationContent
       state={review.operation}
+      assetTransfer={review.assetTransfer}
+      batchAssetTransfers={review.batchAssetTransfers}
       onBack={close}
       disabled={
         (review.operation.phase === 'authorize' && ledger.blocked) || review.error !== null ||

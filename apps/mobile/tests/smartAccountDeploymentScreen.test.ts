@@ -1,3 +1,4 @@
+import { resolveAssetTransferDisplay } from '../../../source/shared/assetTransferDisplay.ts';
 import { formatTokenUnits } from '../../../source/shared/erc20.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -106,6 +107,7 @@ function fixture() {
     },
     './NativeTransactionReview': { TransactionDetails: () => null },
     '../core/amounts': { formatBaseUnits },
+    '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay },
     '../../../../source/shared/erc20': { formatTokenUnits },
     '../custody/networkContext': { getNativeSendContext },
     './guardianPolicyLabels': { guardianDelayLabel },

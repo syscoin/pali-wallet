@@ -1,3 +1,4 @@
+import { resolveAssetTransferDisplay } from '../../../source/shared/assetTransferDisplay.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { screenElements, screenFixture } from './screenFixture.ts';
@@ -164,6 +165,7 @@ test('module review displays exact public changes, both authorization stages and
   const screen = screenFixture(new URL('../src/screens/NativeSmartAccountOperation.tsx', import.meta.url), 'NativeSmartAccountOperationContent', {
     'react-native': { StyleSheet: { create: (value: unknown) => value }, View: 'View', Switch: 'Switch', AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'android' } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
+    '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay },
     '../../../../source/shared/erc20': { formatTokenUnits: () => '' }, '../core/amounts': { formatBaseUnits }, '../custody/networkContext': { getNativeSendContext },
     '../platform/localization': nativeTranslationFixture, './NativeTransactionReview': { TransactionDetails: 'TransactionDetails' }, './guardianPolicyLabels': { guardianDelayLabel: () => '' },
     './useDappLedgerConnection': { useOwnedLedgerConnection: () => ({}) },
@@ -203,6 +205,7 @@ function consentReviewFixture() {
     AppState: { currentState: 'active', addEventListener(event: string, callback: () => void) { events.set(event, callback); return { remove() { events.delete(event); } }; } } };
   const screen = screenFixture(new URL('../src/screens/NativeSmartAccountOperation.tsx', import.meta.url), 'NativeSmartAccountOperationContent', {
     'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
+    '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay },
     '../../../../source/shared/erc20': { formatTokenUnits: () => '' }, '../core/amounts': { formatBaseUnits }, '../custody/networkContext': { getNativeSendContext },
     '../platform/localization': nativeTranslationFixture, './NativeTransactionReview': { TransactionDetails: 'TransactionDetails' }, './guardianPolicyLabels': { guardianDelayLabel: () => '' },
     './useDappLedgerConnection': { useOwnedLedgerConnection: () => ({}) },
@@ -279,6 +282,7 @@ test('wallet wrapper routes only checked current module consent through the expl
     async authorizeModuleChange(...args: unknown[]) { moduleAuthorizations.push(args); }, async confirmPayer() {}, async retryMetadata() {} };
   const screen = screenFixture(new URL('../src/screens/NativeSmartAccountOperation.tsx', import.meta.url), 'NativeSmartAccountOperationScreen', {
     'react-native': { StyleSheet: { create: (value: unknown) => value }, View: 'View', Switch: 'Switch' }, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
+    '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay },
     '../../../../source/shared/erc20': { formatTokenUnits: () => '' }, '../core/amounts': { formatBaseUnits }, '../custody/networkContext': { getNativeSendContext },
     '../platform/localization': nativeTranslationFixture, './NativeTransactionReview': { TransactionDetails: 'TransactionDetails' }, './guardianPolicyLabels': { guardianDelayLabel: () => '' },
     './useDappLedgerConnection': { useOwnedLedgerConnection: () => ({ blocked: !connected, canApprove: () => connected, showConnect: false, modal: null }) },

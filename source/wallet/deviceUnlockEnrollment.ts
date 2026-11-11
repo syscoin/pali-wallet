@@ -81,7 +81,7 @@ const same = (
   next.pairFingerprint === scope.pairFingerprint &&
   next.enrollmentId === scope.enrollmentId;
 
-/** Private host bridge. The SDK owns password verification and the derived key. */
+/** Scoped credential enrollment. The calling host owns credential purpose and authentication. */
 export function createDeviceUnlockEnrollment(
   ports: Readonly<{
     credentials: DeviceUnlockCredentialPort;
@@ -174,9 +174,12 @@ export function createDeviceUnlockEnrollment(
   });
   return Object.freeze({
     sdkPort,
-    /** The guard owns the unlocked session; this verifies presence without releasing its key. */
-    async verifyPresence(guard: Guard): Promise<void> {
-      await run('presence', guard, async (operation) => {
+    /** The host chooses the enrolled capability; it is consumed only while this proof remains current. */
+    async withPresenceCredential<T>(
+      guard: Guard,
+      consume: (key: Uint8Array) => Promise<T>
+    ): Promise<T> {
+      return run('presence', guard, async (operation) => {
         const { check } = operation;
         let key: Uint8Array | null = null;
         try {
@@ -194,10 +197,16 @@ export function createDeviceUnlockEnrollment(
           const latest = await ports.enrollment.read();
           check();
           if (!same(latest, scope)) throw unavailable();
+          const result = await consume(key);
+          check();
+          return result;
         } finally {
           if (key instanceof Uint8Array) key.fill(0);
         }
       });
+    },
+    async verifyPresence(guard: Guard): Promise<void> {
+      await this.withPresenceCredential(guard, async () => undefined);
     },
     issue: (prove: (assertCurrent: Guard) => Promise<boolean>, guard: Guard) =>
       run('issue', guard, async (operation) => {

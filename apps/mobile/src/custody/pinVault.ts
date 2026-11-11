@@ -4,9 +4,12 @@ export type NativePinRecord = Readonly<{
   version: 1; installationId: string; walletBindingId: string; pairFingerprint: string;
   enrollmentId: string; salt: string; verifier: string;
 }>;
-export type NativePinCredential = Readonly<{ secret: string; pepper: Uint8Array }>;
+/** This credential can open only the authenticated public checkpoint. */
+export type NativePinPublicCredential = Readonly<{ publicKey: Uint8Array; pepper: Uint8Array }>;
+export type NativePinCredential = NativePinPublicCredential & Readonly<{ secret: string }>;
 export type NativePinCredentialPort = Readonly<{
-  read(record: NativePinRecord, check: () => void): Promise<NativePinCredential | null>;
+  readPublic(record: NativePinRecord, check: () => void): Promise<NativePinPublicCredential | null>;
+  readSecret(record: NativePinRecord, check: () => void): Promise<string | null>;
   stage(record: NativePinRecord, value: NativePinCredential, check: () => void): Promise<void>;
   remove(record: NativePinRecord): Promise<void>;
 }>;
@@ -47,9 +50,13 @@ function guard(check: () => void) {
   const result: unknown = check();
   if (result !== undefined) { void Promise.resolve(result).catch(() => undefined); throw unavailable(); }
 }
-function credential(value: NativePinCredential | null): asserts value is NativePinCredential {
-  if (!value || !/^Pali#1:[0-9a-f]{64}$/.test(value.secret) || !(value.pepper instanceof Uint8Array) || value.pepper.length !== 32) throw unavailable();
+function publicCredential(value: NativePinPublicCredential | null): asserts value is NativePinPublicCredential {
+  if (!value || !(value.publicKey instanceof Uint8Array) || value.publicKey.length !== 32 || !(value.pepper instanceof Uint8Array) || value.pepper.length !== 32) throw unavailable();
 }
+const clearPublicCredential = (value: NativePinPublicCredential | null) => {
+  if (value?.pepper instanceof Uint8Array) value.pepper.fill(0);
+  if (value?.publicKey instanceof Uint8Array) value.publicKey.fill(0);
+};
 async function verifier(pin: string, record: NativePinRecord, pepper: Uint8Array, check: () => void): Promise<string> {
   if (!isNativePin(pin)) throw unavailable();
   guard(check);
@@ -69,38 +76,46 @@ export function createNativePinVault(storage: NativePinStorage, port: NativePinC
   const random = (length: number) => globalThis.crypto.getRandomValues(new Uint8Array(length));
   const read = async (check: () => void) => {
     guard(check); const record = await storage.read(); guard(check); if (!record) throw unavailable();
-    const value = await port.read(record, check);
-    try { guard(check); credential(value); return { record, value }; }
-    catch (error) { value?.pepper.fill(0); throw error; }
+    const value = await port.readPublic(record, check);
+    try { guard(check); publicCredential(value); return { record, value }; }
+    catch (error) { clearPublicCredential(value); throw error; }
   };
-  const withVerifiedSecret = async <T>(pin: string, check: () => void, consume: (secret: string, authenticated: () => Promise<void>) => Promise<T>): Promise<T> => {
+  const readSecret = async (record: NativePinRecord, check: () => void) => {
+    guard(check); const secret = await port.readSecret(record, check); guard(check);
+    if (typeof secret !== 'string' || !/^Pali#1:[0-9a-f]{64}$/.test(secret)) throw unavailable();
+    return secret;
+  };
+  const withVerifiedPublicKey = async <T>(pin: string, check: () => void, consume: (key: Uint8Array, authenticated: () => Promise<void>, record: NativePinRecord) => Promise<T>): Promise<T> => {
     if (!isNativePin(pin)) throw new Error('INVALID_CREDENTIAL');
     guard(check); const record = await storage.read(); guard(check); if (!record) throw unavailable();
     const attempt = await storage.beginAttempt(record, check); guard(check);
-    let value: NativePinCredential | null = null, completed = false;
+    let value: NativePinPublicCredential | null = null, completed = false;
     try {
-      value = await port.read(record, check); guard(check); credential(value);
+      value = await port.readPublic(record, check); guard(check); publicCredential(value);
       if (!equal(await verifier(pin, record, value.pepper, check), record.verifier)) throw new Error('INVALID_CREDENTIAL');
       guard(check);
-      const result = await consume(value.secret, async () => {
+      const result = await consume(value.publicKey, async () => {
         guard(check); if (completed) throw unavailable();
         await storage.completeAttempt(attempt, check); guard(check); completed = true;
-      });
+      }, record);
       guard(check); if (!completed) throw unavailable(); return result;
-    } finally { if (value?.pepper instanceof Uint8Array) value.pepper.fill(0); }
+    } finally { clearPublicCredential(value); }
   };
-  const stage = async (pin: string, scope: Pick<NativePinRecord, 'walletBindingId' | 'pairFingerprint'>, secret: string, check: () => void,
+  const withVerifiedSecret = <T>(pin: string, check: () => void, consume: (secret: string, authenticated: () => Promise<void>) => Promise<T>): Promise<T> =>
+    withVerifiedPublicKey(pin, check, async (_key, authenticated, record) => consume(await readSecret(record, check), authenticated));
+  const stage = async (pin: string, scope: Pick<NativePinRecord, 'walletBindingId' | 'pairFingerprint'>, secret: string, publicKey: Uint8Array, check: () => void,
     prepare?: (record: NativePinRecord) => Promise<void>): Promise<NativePinRecord> => {
     if (!isNativePin(pin)) throw unavailable(); guard(check);
     const pepper = random(32), salt = random(16), id = random(16);
     try {
       const base = captureNativePinRecord({ version: 1, installationId: storage.installationId, ...scope, enrollmentId: hex(id), salt: hex(salt), verifier: '0'.repeat(128) });
       const record = captureNativePinRecord({ ...base, verifier: await verifier(pin, base, pepper, check) });
-      credential({ secret, pepper });
+      publicCredential({ publicKey, pepper });
+      if (!/^Pali#1:[0-9a-f]{64}$/.test(secret)) throw unavailable();
       // Rotation records the next alias before any OS write. Generic initial
       // enrollment keeps its existing stage/cleanup behavior.
       if (prepare) { await prepare(record); guard(check); }
-      try { await port.stage(record, { secret, pepper }, check); guard(check); return record; }
+      try { await port.stage(record, { secret, publicKey, pepper }, check); guard(check); return record; }
       catch (error) {
         if (!prepare) await port.remove(record);
         throw error;
@@ -109,26 +124,33 @@ export function createNativePinVault(storage: NativePinStorage, port: NativePinC
   };
   return Object.freeze({
     withVerifiedSecret,
+    withVerifiedPublicKey,
     createSecret() { const value = random(32); try { return `Pali#1:${hex(value)}`; } finally { value.fill(0); } },
-    stage: (pin: string, scope: Pick<NativePinRecord, 'walletBindingId' | 'pairFingerprint'>, secret: string, check: () => void) => stage(pin, scope, secret, check),
-    async authenticate(pin: string, check: () => void, prove: (secret: string) => Promise<boolean>): Promise<boolean> {
+    createPublicKey: () => random(32),
+    stage: (pin: string, scope: Pick<NativePinRecord, 'walletBindingId' | 'pairFingerprint'>, secret: string, publicKey: Uint8Array, check: () => void,
+      prepare?: (record: NativePinRecord) => Promise<void>) => stage(pin, scope, secret, publicKey, check, prepare),
+    async authenticate(pin: string, check: () => void): Promise<boolean> {
       try {
-        return await withVerifiedSecret(pin, check, async (secret, authenticated) => {
-          if (!(await prove(secret))) throw new Error('INVALID_CREDENTIAL'); guard(check); await authenticated(); return true;
+        return await withVerifiedPublicKey(pin, check, async (_key, authenticated) => {
+          guard(check); await authenticated(); return true;
         });
       } catch (error) { if (error instanceof Error && error.message === 'INVALID_CREDENTIAL') return false; throw error; }
     },
+    async withPublicKey<T>(check: () => void, consume: (key: Uint8Array) => Promise<T>): Promise<T> {
+      const { value } = await read(check);
+      try { guard(check); const result = await consume(value.publicKey); guard(check); return result; }
+      finally { value.pepper.fill(0); value.publicKey.fill(0); }
+    },
     /** Private custody only, after a fresh PIN or protected biometric proof in the same guarded operation. */
     async withSecret<T>(check: () => void, consume: (secret: string) => Promise<T>): Promise<T> {
-      const { value } = await read(check);
-      try { guard(check); const result = await consume(value.secret); guard(check); return result; }
-      finally { value.pepper.fill(0); }
+      guard(check); const record = await storage.read(); guard(check); if (!record) throw unavailable();
+      const result = await consume(await readSecret(record, check)); guard(check); return result;
     },
     async changePin(currentPin: string, nextPin: string, check: () => void): Promise<void> {
       if (!isNativePin(nextPin)) throw unavailable();
-      const accepted = await this.authenticate(currentPin, check, async () => true);
+      const accepted = await this.authenticate(currentPin, check);
       if (!accepted) throw new Error('INVALID_CREDENTIAL');
-      await this.withSecret(check, async secret => {
+      await this.withPublicKey(check, publicKey => this.withSecret(check, async secret => {
         const expected = await storage.read(); guard(check); if (!expected) throw unavailable();
         let staged: NativePinRecord | undefined;
         const removeTransitionCredential = (record: NativePinRecord) => {
@@ -136,7 +158,7 @@ export function createNativePinVault(storage: NativePinStorage, port: NativePinC
           return port.remove(record);
         };
         try {
-          const next = await stage(nextPin, expected, secret, check, record => {
+          const next = await stage(nextPin, expected, secret, publicKey, check, record => {
             staged = record;
             return storage.prepareReplacement(expected, record, check);
           });
@@ -155,7 +177,7 @@ export function createNativePinVault(storage: NativePinStorage, port: NativePinC
         // leaves the durable receipt and blocks this owner until settlement.
         await storage.settleCredentialRemoval(removeTransitionCredential);
         guard(check);
-      });
+      }));
     },
   });
 }

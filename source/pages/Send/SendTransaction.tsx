@@ -74,9 +74,11 @@ import {
   TransactionDataComponent,
   TransactionHexComponent,
 } from './components';
+import { AssetTransferSummary } from './components/AssetTransferSummary';
 import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 import { EditPriorityModal } from './EditPriority';
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
+import { useAssetTransferSummaries } from './useAssetTransferSummaries';
 
 type GenericFeeQuote = Readonly<{
   feeComparison: EvmDappFeeComparison;
@@ -642,6 +644,15 @@ export const SendTransaction = () => {
   const hasCurrentGenericFee =
     isSmartAccountApproval ||
     Boolean(genericFeeView && genericFeeView.key === genericFeeKey);
+  const transferTransaction =
+    !isSmartAccountApproval && genericFeeView?.key === genericFeeKey
+      ? genericFeeView.quote.transaction
+      : txForEstimation;
+  const [assetTransfer] = useAssetTransferSummaries(
+    [{ to: transferTransaction.to, data: transferTransaction.data }],
+    approvedContext,
+    JSON.stringify([host, eventName, isExternal])
+  );
 
   const smartAccountFeeOverrides = useMemo<
     SmartAccountFeeOverrides | undefined
@@ -2071,10 +2082,24 @@ export const SendTransaction = () => {
                       alt=""
                     />
                   </div>
-                  <p className="text-brand-gray200 text-xs font-light">
-                    {t('buttons.send')}
-                  </p>
-                  <p className="text-white text-base">{valueAndCurrency}</p>
+                  {assetTransfer ? (
+                    <AssetTransferSummary transfer={assetTransfer} />
+                  ) : (
+                    <>
+                      <p className="text-brand-gray200 text-xs font-light">
+                        {t('buttons.send')}
+                      </p>
+                      <p className="text-white text-base">{valueAndCurrency}</p>
+                    </>
+                  )}
+                  {assetTransfer && (
+                    <p className="text-brand-gray200 text-xs mt-3">
+                      {t('assetTransfer.nativeValue')}:{' '}
+                      <span className="text-brand-white">
+                        {valueAndCurrency}
+                      </span>
+                    </p>
+                  )}
                 </div>
 
                 <div className="py-2 text-white text-xs flex w-full justify-between border-b border-dashed border-alpha-whiteAlpha300">

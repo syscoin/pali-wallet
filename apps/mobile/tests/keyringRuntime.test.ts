@@ -86,7 +86,7 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
   const pinAttempts = new WeakMap<object, { record: string; failures: number }>();
   const storedPins = createTestPinCredentialPort();
   let afterPinRead: () => Promise<void> = async () => {};
-  const pinCredential = { ...storedPins, async read(record: NativePinRecord, check: () => void) { const value = await storedPins.read(record, check); await afterPinRead(); return value; } };
+  const pinCredential = { ...storedPins, async readPublic(record: NativePinRecord, check: () => void) { const value = await storedPins.readPublic(record, check); await afterPinRead(); return value; } };
   const records = new Map<string, unknown>();
   let confirmation: string | undefined;
   let failures = 0;

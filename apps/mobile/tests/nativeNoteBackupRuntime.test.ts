@@ -101,8 +101,8 @@ async function fixture(openPrivacyPool?: KeyringRuntimeDependencies['openPrivacy
       return access;
     }
   }
-  const credentials = { ...pinCredential, async read(...args: Parameters<typeof pinCredential.read>) {
-    const value = await pinCredential.read(...args), gate = afterPinRead; afterPinRead = undefined;
+  const credentials = { ...pinCredential, async readPublic(...args: Parameters<typeof pinCredential.readPublic>) {
+    const value = await pinCredential.readPublic(...args), gate = afterPinRead; afterPinRead = undefined;
     if (gate) await gate.wait();
     return value;
   } };

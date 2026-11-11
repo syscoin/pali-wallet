@@ -39,6 +39,7 @@ type CheckpointKeyring = Readonly<{
       publicState: Uint8Array;
       recordDomains: readonly string[];
     }>,
+    wrappingKey: Uint8Array,
     guard: () => void
   ): Promise<IEncryptedPrivateRecord>;
 }>;
@@ -90,7 +91,7 @@ export function captureNativePublicSessionRecord(
   ]);
   if (
     checkpoint.version !== 1 ||
-    checkpoint.domain !== 'sysweb3.public-session.v1' ||
+    checkpoint.domain !== 'sysweb3.public-view.v1' ||
     !/^[0-9a-f]{64}$/.test(checkpoint.recordId) ||
     !/^0x[0-9a-f]{64}$/.test(checkpoint.profileId) ||
     typeof checkpoint.nonce !== 'string' ||
@@ -206,6 +207,7 @@ export async function createNativePublicSessionRecord(
   records: NativeAccountRecord,
   identity: WalletIdentityRead,
   states: NativeSlhPublicStates,
+  wrappingKey: Uint8Array,
   guard: () => void
 ): Promise<NativePublicSessionRecord> {
   assertSynchronousEvmFeeGuard(guard);
@@ -218,6 +220,7 @@ export async function createNativePublicSessionRecord(
         publicState,
         recordDomains: NATIVE_PUBLIC_RECORD_DOMAINS,
       },
+      wrappingKey,
       guard
     );
     assertSynchronousEvmFeeGuard(guard);
