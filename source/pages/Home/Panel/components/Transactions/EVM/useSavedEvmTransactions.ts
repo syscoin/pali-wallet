@@ -37,6 +37,9 @@ export const savedTransactionHistoryRow = (
     isCancel: tx.operation === 'cancel',
     isSpeedUp: tx.operation === 'speed-up',
     ...(tx.originalHash ? { replacesHash: tx.originalHash } : {}),
+    ...(tx.collectibleTransfer
+      ? { collectibleTransfer: tx.collectibleTransfer }
+      : {}),
     ...(tx.tokenTransfer
       ? {
           tokenRecipient: tx.tokenTransfer.recipient,

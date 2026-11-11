@@ -38,6 +38,7 @@ function setup(component = 'HelpAbout', watchOnly = true, options: { backupRequi
     'expo-clipboard': { async setStringAsync(value: string) { actions.push({ kind: 'copy', value }); if (blocked) return false; return await pending; } },
     '../../../../source/shared/paliInformation': { PALI_INFORMATION }, '../../app.json': JSON.parse(source('../app.json')), '../ui': ui, './HelpAbout': { HelpAbout: 'HelpAbout' }, './DisplayCurrency': { DisplayCurrency: 'DisplayCurrency' },
     './NativePreferences': { NativePreferences: 'NativePreferences' }, './WalletBackupBadge': { WalletBackupBadge: 'WalletBackupBadge' },
+    './BalancePrivacySetting': { BalancePrivacySetting: 'BalancePrivacySetting' },
     './ActivityNotifications': { ActivityNotifications: 'ActivityNotifications' }, '../platform/localization': nativeTranslationFixture };
   const module = { exports: {} as Record<string, (props: object) => Element> };
   const code = ts.transpileModule(source(`../src/screens/${component}.tsx`), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;

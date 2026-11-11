@@ -23,6 +23,7 @@ export const getTransactionDisplayCacheKey = ({
     transaction.historySource,
     transaction.tokenRecipient,
     transaction.tokenTransfer,
+    transaction.collectibleTransfer,
     tokenMeta?.contractAddress,
     tokenMeta?.decimals,
     tokenMeta?.tokenSymbol ?? tokenMeta?.symbol,

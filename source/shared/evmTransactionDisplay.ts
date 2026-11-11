@@ -6,10 +6,13 @@ import {
   parseErc20Units,
 } from './erc20.ts';
 import { EVM_TRANSACTION_HISTORY_SOURCE } from './evmHistory.ts';
+import { snapshotNftTransferIntent } from './nftTransfer.ts';
 
 /** Public display facts only; no wallet, provider, storage or signing authority. */
 export type EvmDisplayTransaction = {
   chainId?: unknown;
+  collectibleTransfer?: unknown;
+  from?: unknown;
   historySource?: unknown;
   input?: string;
   to?: string | null;
@@ -123,6 +126,44 @@ export const getEvmTransactionDisplayInfo = async (
   currency: string,
   context: EvmDisplayContext = {}
 ): Promise<EvmTransactionDisplayInfo> => {
+  if (
+    tx?.historySource === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
+    tx.collectibleTransfer
+  ) {
+    try {
+      const intent = snapshotNftTransferIntent(tx.collectibleTransfer);
+      if (
+        Number(tx.chainId) !== Number(intent.chainId) ||
+        typeof tx.from !== 'string' ||
+        tx.from.toLowerCase() !== intent.from.toLowerCase() ||
+        tx.to?.toLowerCase() !== intent.contractAddress.toLowerCase() ||
+        !(typeof tx.value === 'string' && /^0+$/.test(tx.value))
+      )
+        throw new Error('Invalid retained NFT display context');
+      return {
+        actualRecipient: intent.recipient,
+        displaySymbol: 'NFT',
+        displayValue: intent.amountUnits,
+        formattedValue: intent.amountUnits,
+        isErc20Transfer: true,
+        isNft: true,
+        tokenId: intent.tokenId,
+        ...(intent.tokenStandard === 'ERC-1155'
+          ? { nftQuantity: intent.amountUnits }
+          : {}),
+      };
+    } catch {
+      return {
+        actualRecipient: '',
+        displaySymbol: 'NFT',
+        displayValue: '?',
+        formattedValue: '?',
+        isErc20Transfer: true,
+        isNft: true,
+        amountUnavailable: true,
+      };
+    }
+  }
   // A retained ERC-20 summary contains facts decoded from the signed call,
   // but deliberately has no input/calldata. Keep this path distinct from
   // explorer events and never interpret its token units as native currency.

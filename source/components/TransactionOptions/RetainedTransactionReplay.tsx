@@ -356,6 +356,27 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
               ],
             ]
           : []),
+        ...(review.collectibleTransfer
+          ? [
+              [
+                t('transactions.tokenStandard'),
+                review.collectibleTransfer.tokenStandard,
+              ],
+              [
+                t('settings.contractAddress'),
+                review.collectibleTransfer.contractAddress,
+              ],
+              [
+                t('transactions.replay.tokenRecipient'),
+                review.collectibleTransfer.recipient,
+              ],
+              [t('send.tokenId'), review.collectibleTransfer.tokenId],
+              [
+                t('transactions.replay.tokenAmount'),
+                review.collectibleTransfer.amountUnits,
+              ],
+            ]
+          : []),
         ...(review.dataBytes
           ? [
               [

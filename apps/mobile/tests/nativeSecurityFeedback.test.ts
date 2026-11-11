@@ -15,6 +15,7 @@ for (const ending of ['failure', 'back', 'background', 'account-change', 'cancel
       'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
       '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map(x => [x, x])), colors: {}, styles: {} },
       '../platform/balancePrivacy': { useBalancePrivacy: () => ({ status: 'ready', hidden: false }), reloadBalancePrivacy() {}, saveBalancePrivacy() {} },
+      './BalancePrivacySetting': { BalancePrivacySetting: 'BalancePrivacySetting' },
       '../platform/localization': { useNativeTranslation: () => ({ t: (key: string) => key }) },
       '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'Face ID', icon: 'face-id' }) },
     });

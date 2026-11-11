@@ -1,5 +1,6 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { DisplayCurrency } from './DisplayCurrency';
+import { BalancePrivacySetting } from './BalancePrivacySetting';
 import { HelpAbout } from './HelpAbout';
 import { NativePreferences } from './NativePreferences';
 import { WalletBackupBadge } from './WalletBackupBadge';
@@ -91,6 +92,7 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
         const next = { leaf: 'notifications' as const, scope: notifications.scope }; notificationsOwner.current = next; setOpened(next);
       }} dense />}
       {watchOnly && onAutoLock && <Row title="Auto-lock" subtitle="Choose when watch accounts hide" icon="clock" onPress={onAutoLock} dense />}
+      {watchOnly && <BalancePrivacySetting />}
       <Row title={t('generalMenu.languages')} subtitle={t('settings.currentLanguage')} icon="globe" dense onPress={() => {
         const next = { leaf: 'language' as const }; languageOwner.current = next; setOpened(next);
       }} />

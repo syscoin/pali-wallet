@@ -416,11 +416,16 @@ export const EvmTransactionDetailsEnhanced = ({
     (transactionTx as any)?.historySource ===
       EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
     Boolean((transactionTx as any)?.tokenTransfer);
+  const localSignedCollectible =
+    (transactionTx as any)?.historySource ===
+      EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
+    Boolean((transactionTx as any)?.collectibleTransfer);
   const decodeScope = JSON.stringify([
     scope,
     transactionTx?.to,
     decodeInput,
     localSignedToken,
+    localSignedCollectible,
   ]);
   const [decodedTxData, setDecodedTxData] =
     useContextualState<IDecodedTx | null>(decodeScope, null);
@@ -614,7 +619,11 @@ export const EvmTransactionDetailsEnhanced = ({
             // intent still identifies a token transfer before display metadata
             // arrives; plain native summaries remain Send.
             decodedData = {
-              method: localSignedToken ? 'Token Transfer' : 'Send',
+              method: localSignedCollectible
+                ? 'NFT Transfer'
+                : localSignedToken
+                ? 'Token Transfer'
+                : 'Send',
               types: [],
               inputs: [],
               names: [],
@@ -670,6 +679,7 @@ export const EvmTransactionDetailsEnhanced = ({
     scope,
     decodeScope,
     localSignedToken,
+    localSignedCollectible,
     matchingTx,
     enhancedDetails,
     transactionDisplayInfo,

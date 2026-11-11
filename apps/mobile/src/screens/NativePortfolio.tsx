@@ -143,17 +143,19 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
       receiveWarningOwner.current = null; receiveAcknowledgement.current = null; subscription.remove();
     };
   }, [invalidateActions]);
+  const handleBack = () => {
+    if (receiveWarningOwner.current) { invalidateActions(); return true; }
+    if (receiving) { setReceiveScope(null); invalidateActions(); return true; }
+    if (nativeDetail) { setNativeDetailScope(null); return true; }
+    if (tokenBack.current?.()) return true;
+    if (onOverviewBack) { onOverviewBack(); return true; }
+    return false;
+  };
   useLayoutEffect(() => {
-    const back = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (receiveWarningOwner.current) { invalidateActions(); return true; }
-      if (receiving) { setReceiveScope(null); invalidateActions(); return true; }
-      if (nativeDetail) { setNativeDetailScope(null); return true; }
-      return false;
-    });
+    const back = BackHandler.addEventListener('hardwareBackPress', handleBack);
     return () => back.remove();
-  }, [receiving, nativeDetail, invalidateActions]);
+  });
 
-  const handleBack = () => { if (receiveWarningOwner.current) { invalidateActions(); return true; } if (receiving) { setReceiveScope(null); invalidateActions(); return true; } if (nativeDetail) { setNativeDetailScope(null); return true; } return tokenBack.current?.() ?? false; };
   const back = () => { if (!handleBack()) onExit(); };
   useLayoutEffect(() => navigation?.registerBack(handleBack));
   useLayoutEffect(() => { navigation?.setImmersive(receiving || nativeDetail || !!tokenTitle); return () => navigation?.setImmersive(false); }, [navigation, receiving, nativeDetail, tokenTitle]);

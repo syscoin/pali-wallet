@@ -67,6 +67,7 @@ async function fixture(language = 'en') {
     '../custody/importedAccounts': { isUtxoAccountPrivateKey: () => false },
     '../platform/balancePrivacy': { useBalancePrivacy: () => ({ status: 'ready', hidden: false }),
       async reloadBalancePrivacy() {}, async saveBalancePrivacy() {} },
+    './BalancePrivacySetting': { BalancePrivacySetting: 'BalancePrivacySetting' },
     '../core/utxoAddresses': { UTXO_IMPORT_TYPES: ['p2wpkh'], UTXO_IMPORT_LABELS: { p2wpkh: 'Native SegWit' } },
     '../../../../source/shared/chainCatalogue': { rankChainSuggestions: () => [] }, '../custody/networkContext': {},
     './TrustedSiteLookup': { TrustedSiteLookup: 'TrustedSiteLookup' }, './WatchGuardianRecovery': { WatchGuardianRecovery: 'WatchGuardianRecovery' },

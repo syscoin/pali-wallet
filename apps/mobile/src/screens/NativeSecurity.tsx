@@ -1,8 +1,8 @@
-import { reloadBalancePrivacy, saveBalancePrivacy, useBalancePrivacy } from '../platform/balancePrivacy';
+import { BalancePrivacySetting } from './BalancePrivacySetting';
 import { useNativeTranslation } from '../platform/localization';
 import { useBiometricPresentation } from '../platform/useBiometricPresentation';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { HdKeyExportFlow, HdKeyExportPresentation } from '../custody/hdKeyExport';
 import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
@@ -29,7 +29,6 @@ type Props = {
 /** Private presentation stays in this mounted, protected native screen only. */
 export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, accountLabel, address, onViewRecovery, onRemoveWallet, onDeviceUnlock, onAutoLock, onChangePin, deviceUnlockEnabled, backupConfirmed, onLock, onBack, captureFailureHandler }: Props) {
   const { t } = useNativeTranslation();
-  const privacy = useBalancePrivacy();
   const biometrics = useBiometricPresentation();
   const [mode, setMode] = useState<'hub' | 'key' | 'recovery'>('hub');
   const [presentation, setPresentation] = useState<HdKeyExportPresentation | null>(null);
@@ -113,15 +112,8 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
             {onChangePin && <Row title="Change PIN" subtitle="Update your wallet PIN" icon="lock" onPress={() => { hide(); onChangePin(); }} />}
             {onDeviceUnlock && <Row title={biometrics.label === 'biometrics' ? t('mobile.security.biometric') : biometrics.label === 'fingerprint' ? 'Fingerprint unlock' : biometrics.label} subtitle={deviceUnlockEnabled ? t('mobile.security.on') : t('mobile.security.off')} icon="lock" onPress={() => { hide(); onDeviceUnlock(); }} />}
             {onAutoLock && <Row title="Auto-lock" subtitle="Choose when Pali locks" icon="lock" onPress={() => { hide(); onAutoLock(); }} />}
-            <Row title="Privacy mode" subtitle="Hide balances and Activity summaries" icon="eye" right={<Switch
-              accessibilityLabel="Hide balances and Activity summaries" value={privacy.hidden}
-              disabled={privacy.status !== 'ready'} trackColor={{ true: colors.pink }}
-              onValueChange={hidden => { if (privacy.status === 'ready') void saveBalancePrivacy(hidden); }} />} />
+            <BalancePrivacySetting />
             <Row title={t('mobile.security.recoveryGuide')} subtitle={t('mobile.security.backupsRestore')} icon="help" onPress={() => { hide(); setMode('recovery'); }} last /></Card>
-          {privacy.status === 'unavailable' && <>
-            <Text accessibilityRole="alert" style={s.error}>Privacy setting unavailable. Balances stay hidden until the saved setting can be read.</Text>
-            <Button icon="refresh" title="Retry privacy setting" variant="secondary" onPress={() => void reloadBalancePrivacy()} />
-          </>}
           {onRemoveWallet && <Button title={t('mobile.security.removeWallet')} variant="danger" size="compact" onPress={() => { hide(); onRemoveWallet(); }} />}
         </> : mode === 'recovery' ? <>
           <Text style={s.heading}>{t('mobile.security.keepPhraseOffline')}</Text>
