@@ -163,29 +163,33 @@ final class PaliCredentialRequest: SharedObject, @unchecked Sendable {
       var output: String?, failure: Error?
       do {
         try check()
-        // The same per-request context was authorized for this ACL. An item
-        // without that authorization still fails; there is no unprotected read.
+        // This service has one native writer, which always inserts under the
+        // fixed policy evaluated by this fresh context. Keychain also enforces
+        // the stored item's ACL; opaque ACLs cannot be compared because their
+        // private binding state may change when Keychain stores them.
         authentication.interactionNotAllowed = true
         var query = binding.query
-        query[authorizationOnly ? kSecReturnAttributes as String : kSecReturnData as String] = true
+        query[kSecReturnAttributes as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         query[kSecUseAuthenticationContext as String] = authentication
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if authorizationOnly {
-          guard status == errSecSuccess, let attributes = result as? NSDictionary,
-            let access = attributes[kSecAttrAccessControl as String], CFGetTypeID(access as CFTypeRef) == SecAccessControlGetTypeID() else {
-            result = nil; if status == errSecItemNotFound { throw PaliCredentialError.missing }; throw PaliCredentialError.unavailable
-          }
-          lock.lock(); let expectedAccess = accessControl; lock.unlock()
-          guard let expectedAccess, CFEqual(access as CFTypeRef, expectedAccess) else { throw PaliCredentialError.unavailable }
-          result = nil; try check()
-        } else {
-        plaintext = result as? Data; result = nil
-        try check()
-        if status == errSecItemNotFound { throw PaliCredentialError.missing }
-        guard status == errSecSuccess, plaintext != nil, validCredentialSecret(plaintext!) else { throw PaliCredentialError.unavailable }
-        if let staged { guard staged == plaintext! else { throw PaliCredentialError.unavailable } }
-        if staged == nil { output = String(data: plaintext!, encoding: .utf8) }
+        let metadataStatus = SecItemCopyMatching(query as CFDictionary, &result)
+        if metadataStatus == errSecItemNotFound { throw PaliCredentialError.missing }
+        guard metadataStatus == errSecSuccess, let attributes = result as? NSDictionary, attributes.count <= 32,
+          attributes[kSecAttrService as String] as? String == credentialService,
+          attributes[kSecAttrAccount as String] as? String == binding.account,
+          attributes[kSecAttrAccessible as String] as? String == kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly as String,
+          let access = attributes[kSecAttrAccessControl as String], CFGetTypeID(access as CFTypeRef) == SecAccessControlGetTypeID() else { throw PaliCredentialError.unavailable }
+        result = nil; try check()
+        if !authorizationOnly {
+          query.removeValue(forKey: kSecReturnAttributes as String)
+          query[kSecReturnData as String] = true
+          let status = SecItemCopyMatching(query as CFDictionary, &result)
+          plaintext = result as? Data; result = nil
+          try check()
+          if status == errSecItemNotFound { throw PaliCredentialError.missing }
+          guard status == errSecSuccess, plaintext != nil, validCredentialSecret(plaintext!) else { throw PaliCredentialError.unavailable }
+          if let staged { guard staged == plaintext! else { throw PaliCredentialError.unavailable } }
+          if staged == nil { output = String(data: plaintext!, encoding: .utf8) }
         }
       } catch { failure = error }
       if plaintext != nil { plaintext!.resetBytes(in: 0..<plaintext!.count) }; plaintext = nil
@@ -222,25 +226,12 @@ final class PaliCredentialRequest: SharedObject, @unchecked Sendable {
     credentialQueue.async { [self] in
       do {
         try check()
-        let access: SecAccessControl
+        var error: Unmanaged<CFError>?
+        guard let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, .userPresence, &error) else { throw PaliCredentialError.unavailable }
         if let staged {
-          var error: Unmanaged<CFError>?
-          guard let createdAccess = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, .userPresence, &error) else { throw PaliCredentialError.unavailable }
-          access = createdAccess
           var insertion = binding.query; insertion[kSecAttrAccessControl as String] = access; insertion[kSecValueData as String] = staged
           guard SecItemAdd(insertion as CFDictionary, nil) == errSecSuccess else { throw PaliCredentialError.unavailable }
           lock.lock(); added = true; lock.unlock()
-        } else {
-          let inspection = LAContext(); inspection.interactionNotAllowed = true
-          defer { inspection.invalidate() }
-          var query = binding.query; query[kSecReturnAttributes as String] = true
-          query[kSecMatchLimit as String] = kSecMatchLimitOne; query[kSecUseAuthenticationContext as String] = inspection
-          var result: CFTypeRef?
-          let status = SecItemCopyMatching(query as CFDictionary, &result)
-          if status == errSecItemNotFound { throw PaliCredentialError.missing }
-          guard status == errSecSuccess, let attributes = result as? NSDictionary, attributes.count <= 32,
-            let rawAccess = attributes[kSecAttrAccessControl as String], CFGetTypeID(rawAccess as CFTypeRef) == SecAccessControlGetTypeID() else { throw PaliCredentialError.unavailable }
-          access = rawAccess as! SecAccessControl; result = nil
         }
         try check()
         lock.lock(); accessControl = access; nativeWork = false; lock.unlock()
