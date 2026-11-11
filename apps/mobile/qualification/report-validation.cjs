@@ -11,7 +11,7 @@ const { isWalletConnectQualificationDiagnostic } = require('./walletconnect-nati
 const { readPrivateProofDiagnostic, PRIVATE_PROOF_CHECK } = require('./private-proof-diagnostics.ts');
 const { readSentryIsolatedDiagnostic } = require('./sentry-isolated-diagnostics.ts');
 const { SENTRY_ISOLATED_CHECK } = require('./native-sentry-isolated.ts');
-const { fullSlhBuild, readFullSlhEvidence, matchesFullSlhRestart, FULL_SLH_CHECK, FULL_SLH_PHASE_TIMEOUT_MS } = require('./native-slh-full.ts');
+const { fullSlhBuild, readFullSlhEvidence, readFullSlhDiagnostic, matchesFullSlhRestart, FULL_SLH_CHECK, FULL_SLH_PHASE_TIMEOUT_MS } = require('./native-slh-full.ts');
 const { PHYSICAL_BUNDLES } = require('./physical-contract.ts');
 const { readSlhResourceEvidence } = require('./slh-resource-evidence.ts');
 const {
@@ -66,6 +66,7 @@ const FIELDS = new Set([
   'privateProofDiagnostic',
   'sentryIsolatedDiagnostic',
   'fullSlh',
+  'fullSlhDiagnostic',
   'mnemonicEntropyVerified',
   'storageDiagnostic',
   'nativeHdAccountsVerified',
@@ -130,6 +131,11 @@ function decodeNativeReport(
       throw Error('Unexpected qualification report schema');
     readFullSlhEvidence(report.fullSlh, report.phase, fullSlhBuild({ version: report.fullSlh.version,
       sourceRevision: report.fullSlh.sourceRevision, lockfileSha256: report.fullSlh.lockfileSha256 }));
+  }
+  if (report?.fullSlhDiagnostic !== undefined) {
+    if (report.status !== 'failed' || report.failedStage !== FULL_SLH_CHECK)
+      throw Error('Unexpected qualification report schema');
+    readFullSlhDiagnostic(report.fullSlhDiagnostic);
   }
   if (report?.privateProofDiagnostic !== undefined) {
     if (report.status !== 'failed' || report.failedStage !== PRIVATE_PROOF_CHECK)

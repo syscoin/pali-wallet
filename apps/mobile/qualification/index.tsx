@@ -26,7 +26,7 @@ import { SENTRY_ISOLATED_CHECK } from './native-sentry-isolated.ts';
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import type { NativeKeyringSdk } from '../src/custody/keyringSdk.ts';
-import type { FullSlhEvidence } from './native-slh-full.ts';
+import type { FullSlhEvidence, FullSlhDiagnostic } from './native-slh-full.ts';
 import type { SeedBackupFlow } from '../src/custody/seedBackup.ts';
 import {
   ensureNativeCryptoReady,
@@ -132,6 +132,7 @@ function QualificationApp() {
       let capturedHostStorage: OpenWalletStorage['keyringStorage'] | undefined;
       const hostStorage = new WeakMap<object, OpenWalletStorage['keyringStorage']>();
       let fullSlh: FullSlhEvidence | undefined;
+      let fullSlhDiagnostic: FullSlhDiagnostic | undefined;
       let fullSlhResources: import('./slh-resource-evidence.ts').SlhResourceEvidence | undefined;
       let authority: NativeCustodyAuthority | undefined;
       let backup: SeedBackupFlow | undefined;
@@ -687,6 +688,7 @@ function QualificationApp() {
               pinCredential: qualificationPinCredential, signal: owner.signal,
               productionCapability: qualificationSlhExecution, nativeModule, previous,
               assertCurrent, onStorageFault: () => { custody.lock(); },
+              onDiagnostic: value => { fullSlhDiagnostic = value; },
               randomFill: bytes => { nativeCrypto.getRandomValues(bytes); },
               yield: () => new Promise(resolve => setTimeout(resolve, 0)),
               digest: async bytes => new Uint8Array(await nativeCrypto.subtle.digest('SHA-256', new Uint8Array(bytes).buffer)),
@@ -844,6 +846,7 @@ function QualificationApp() {
           checks,
           networkCalls,
           failedStage: stage,
+          ...(fullSlhDiagnostic && !fullSlh ? { fullSlhDiagnostic } : {}),
           ...(fullSlh ? { fullSlh } : {}),
           ...(fullSlhResources ? { fullSlhResources } : {}),
           ...(privateProofDiagnostic.report() ? { privateProofDiagnostic: privateProofDiagnostic.report() } : {}),
