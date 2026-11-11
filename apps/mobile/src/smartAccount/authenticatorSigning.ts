@@ -120,9 +120,9 @@ function captureNativeSmartAccountSigningContext(inputMetadata: ISmartAccountMet
 
 function supportsNativeTrezorPlan(plan: ReturnType<typeof getSmartAccountSigningPlan>) {
   if (!plan?.authenticators.some(entry => entry.owners.some(owner => owner.type === 'Trezor'))) return true;
-  // Suite continuation checkpoints ECDSA owner proofs. Other selected drivers
-  // need their own reviewed resume contract before crossing a device departure.
-  return plan.authenticators.every(entry => entry.validator.id === 'ecdsa');
+  // The private Suite continuation retains ECDSA and admitted native P256 proofs.
+  // SLH consumption/state recovery remains a separate signing contract.
+  return plan.authenticators.every(entry => entry.validator.id === 'ecdsa' || entry.validator.id === 'p256-webauthn');
 }
 export function getNativeSmartAccountSigningPlan(metadata: ISmartAccountMetadata, localOwners: readonly NativeSmartAccountSigningOwner[], available: Readonly<{ p256WebAuthn: boolean; slhDsa: boolean }>) {
   if (typeof available?.slhDsa !== 'boolean' || typeof available?.p256WebAuthn !== 'boolean') throw new Error('Explicit native signing availability is required');

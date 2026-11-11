@@ -25,6 +25,7 @@ import type { NativeSmartAccountOperation } from '../src/smartAccount/operation.
 import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
 import { decodeNftSafeTransferData } from '../../../source/shared/nftTransfer.ts';
 import { decodeErc20Transfer } from '../../../source/shared/erc20.ts';
+import { encodePasskeyWebAuthnProof } from '../../../source/utils/passkey/validation.ts';
 import { getSmartAccountUserOpHash } from '../../../source/utils/smartAccount/userOperationHash.ts';
 import { encodeEcdsaValidatorInitData, encodeSmartAccountValidatorNonceKey, getConfiguredAuthenticatorAddress } from '../../../source/utils/smartAccount/account.ts';
 import assert from 'node:assert/strict';
@@ -3931,8 +3932,8 @@ for (const mutation of ['Ledger public key', 'Smart policy'] as const) test(`Led
 });
 
 
-async function readyTrezorSmartOwner(slhFactory: NativeSlhExecutionCapability | null = null, count: 1 | 2 = 1) {
-  const device = nativeSmartTrezorDevice(), f = await fixture({}, true, slhFactory, undefined, device.sessions);
+async function readyTrezorSmartOwner(slhFactory: NativeSlhExecutionCapability | null = null, count: 1 | 2 = 1, passkeys: KeyringRuntimeDependencies['passkeys'] = null) {
+  const device = nativeSmartTrezorDevice(), f = await fixture({}, true, slhFactory, undefined, device.sessions, passkeys);
   try {
     for(let index=0;index<count;index++){
       await f.runtime.trezor.startImport(`Trezor owner ${index+1}`);
@@ -3944,6 +3945,130 @@ async function readyTrezorSmartOwner(slhFactory: NativeSlhExecutionCapability | 
     return {f,device,async close(){await f.close();await device.dispose();}};
   } catch(error) {await f.close();await device.dispose();throw error;}
 }
+
+async function readyLedgerTrezorSmartOwners(ledgerFirst: boolean) {
+  const ledger=nativeSmartLedgerDevice(),trezor=nativeSmartTrezorDevice();
+  // Give the semantic Ledger a different seed at logical account 0; the
+  // stock fixtures otherwise return the same keys and correctly refuse import.
+  const ledgerFactory: NonNullable<KeyringRuntimeDependencies['createLedgerTransport']> = async owner => {
+    const transport=await ledger.factory(owner), evm=transport.host.evm;
+    return {...transport,host:{...transport.host,evm:{...evm,
+      getAddress: request=>evm.getAddress({...request,accountIndex:request.accountIndex+1}),
+      signTypedData: (request,authority)=>evm.signTypedData({...request,accountIndex:request.accountIndex+1},authority),
+    }}};
+  };
+  const f=await fixture({},true,null,ledgerFactory,trezor.sessions);
+  const picker=new NativeLedgerAccounts(f.owner,()=>f.runtime.ledger,'import');
+  let connection: NativeLedgerAccounts<'connect'> | undefined;
+  const close=async()=>{await connection?.dispose();await picker.dispose();await f.close();await trezor.dispose();};
+  try{
+    await picker.start();await picker.select(picker.getSnapshot().devices[0]!.id);await picker.importAccount('Ledger owner');
+    await picker.dispose();
+    const saved = (await f.inspectRecovery()).record as { groups: { accounts: { Ledger: Record<string, { xpub: string }> } }[] };
+    assert.equal(saved.groups.flatMap(group => Object.values(group.accounts.Ledger))[0]!.xpub, ledger.wallets[1]!.signingKey.publicKey.slice(2), 'exercise the actual SDK bare-SEC storage form');
+    await f.runtime.trezor.startImport('Trezor owner');
+    await f.change({kind:'import-trezor',label:'Trezor owner'});
+    await f.change({kind:'create-smart',label:'Mixed hardware Smart account'});f.guardianStatus('no-policy');f.fundedSmart();
+    // Both catalogue indices are zero, but the two physical-device fixtures
+    // now have distinct public keys.
+    const owners=ledgerFirst?[ledger.wallets[1]!.address,trezor.wallets[0]!.address]:[trezor.wallets[0]!.address,ledger.wallets[1]!.address];
+    f.observedEcdsaOwners(owners,2);await f.runtime.refreshSmartAccountMetadata(new AbortController().signal,()=>undefined);
+    const connect=async()=>{
+      await connection?.dispose();connection=new NativeLedgerAccounts(f.owner,()=>f.runtime.ledger,'connect');
+      await connection.start();await connection.select(connection.getSnapshot().devices[0]!.id);await connection.finishConnection();
+    };
+    await connect();return {f,ledger,trezor,owners,connect,close};
+  }catch(error){await close();throw error;}
+}
+for(const ledgerFirst of [false,true]) test(`Ledger and Trezor Smart owners follow the shared order (Ledger first ${ledgerFirst})`,async()=>{
+  const {f,ledger,trezor,owners,close}=await readyLedgerTrezorSmartOwners(ledgerFirst);
+  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined,continuation:ReturnType<typeof ownedSmartSdkHandoff>|undefined;
+  try{
+    connection=await smartMessageApproval(f);continuation=ownedSmartSdkHandoff(connection,'mixed-hardware-order',Date.now()+120000,'personal_sign');
+    const request:DappMessageRequest={method:'personal_sign',address:connection.selected.address,message:'Two hardware owners'};
+    const prepared=prepareSmartAccountMessage({accountAddress:connection.selected.address,chainId:1,request});
+    const result=await connection.host.signMessage({handoff:continuation.handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval},null);
+    const proofs=owners.map(owner=>owner===ledger.wallets[1]!.address?ledger.wallets[1]!.signingKey.sign(prepared.actionHash).serialized:trezor.signatures[0]!.signature);
+    assert.equal(result,encodeSmartAccountMessageSignature(prepared,{validator:getConfiguredAuthenticatorAddress(1,'ecdsa'),signature:coder.encode(['bytes[]'],[proofs])}));
+    assert.equal(ledger.signatures.length,1);assert.equal(ledger.signatures[0]!.digest,prepared.actionHash);
+    assert.equal(trezor.signatures.length,1);assert.equal(trezor.signatures[0]!.index,0);assert.equal(f.submitted.length,0);
+    continuation.terminal();
+  }finally{await continuation?.dispose();connection?.approval.dispose();await close();}
+});
+for(const ledgerFirst of [false,true]) test(`Ledger and Trezor Smart owners resume after unlock and Ledger reconnect (Ledger first ${ledgerFirst})`,async()=>{
+  const {f,ledger,trezor,connect,close}=await readyLedgerTrezorSmartOwners(ledgerFirst),entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
+  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined,continuation:ReturnType<typeof ownedSmartSdkHandoff>|undefined;
+  try{
+    connection=await smartMessageApproval(f);continuation=ownedSmartSdkHandoff(connection,'mixed-hardware-resume',Date.now()+120000,'personal_sign');
+    const request:DappMessageRequest={method:'personal_sign',address:connection.selected.address,message:'Resume two hardware owners'};
+    trezor.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'){entered.resolve();await release.promise;}});
+    const signing=connection.host.signMessage({handoff:continuation.handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval},null);
+    const rejected=assert.rejects(signing);await Promise.race([entered.promise,signing.then(()=>{throw Error('Expected Suite departure');})]);
+    assert.equal(ledger.signatures.length,ledgerFirst?1:0);
+    continuation.suspend();f.owner.lock();await rejected;release.resolve();await new Promise(resolve=>setImmediate(resolve));
+    connection.approval.dispose();await f.owner.unlock(PASSWORD);await connect();connection=await smartMessageApproval(f);
+    await f.runtime.trezor.resumeSend();const handoff=continuation.resume(connection);
+    await connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval},null);
+    assert.equal(ledger.signatures.length,1,'an admitted Ledger proof is reused instead of signing twice');
+    assert.equal(trezor.signatures.length,1);assert.equal(trezor.signatures[0]!.index,0);assert.equal(f.submitted.length,0);
+    continuation.terminal();
+  }finally{release.resolve();await continuation?.dispose();connection?.approval.dispose();await close();}
+});
+
+const mixedPasskeyProof = encodePasskeyWebAuthnProof({authenticatorData:'0x'+'01'.repeat(37),clientDataJSON:'0x'+'02'.repeat(128),
+  typeOffset:1,challengeOffset:2,originOffset:3,r:'0x'+'03'.repeat(32),s:'0x'+'04'.repeat(32)});
+async function mixedTrezorPasskeyFixture(ecdsaFirst: boolean) {
+  let f!: Awaited<ReturnType<typeof fixture>>, calls=0, prompt=false;
+  const scope=createNativePrivateAuthenticationScope();
+  const binding=bindNativePrivateAuthentication(scope,{assertCurrent(){},isPromptActive:()=>prompt});
+  const capability: NonNullable<KeyringRuntimeDependencies['passkeys']>={
+    async create(){throw Error('No new credential during signing');},async recover(){throw Error('No discovery during signing');},
+    async sign(request){prompt=true;try{request.assertCurrent();f.assertNoSigningKeys();calls++;return {signature:mixedPasskeyProof};}finally{prompt=false;}},
+  };
+  const owned=await readyTrezorSmartOwner(null,2,capability);f=owned.f;
+  f.observedComposite(2,ecdsaFirst);await f.runtime.refreshSmartAccountMetadata(new AbortController().signal,()=>undefined);
+  return {...owned,binding,scope,calls:()=>calls};
+}
+for(const ecdsaFirst of [false,true]) test(`native P256 and Trezor Smart message shares the exact ordered plan (ECDSA first ${ecdsaFirst})`,async()=>{
+  const {f,device,close,binding,scope,calls}=await mixedTrezorPasskeyFixture(ecdsaFirst);
+  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined,continuation:ReturnType<typeof ownedSmartSdkHandoff>|undefined;
+  try{
+    connection=await smartMessageApproval(f);continuation=ownedSmartSdkHandoff(connection,'mixed-message',Date.now()+120000,'personal_sign');
+    const request:DappMessageRequest={method:'personal_sign',address:connection.selected.address,message:'Mixed passkey and Trezor'};
+    const result=await connection.host.signMessage({handoff:continuation.handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval},binding);
+    const prepared=prepareSmartAccountMessage({accountAddress:connection.selected.address,chainId:1,request});
+    const ecdsa=coder.encode(['bytes[]'],[device.signatures.map(entry=>entry.signature)]);
+    assert.equal(result,encodeSmartAccountMessageSignature(prepared,{validator:getConfiguredAuthenticatorAddress(1,'composite'),signature:coder.encode(['bytes[]'],[ecdsaFirst?[ecdsa,mixedPasskeyProof]:[mixedPasskeyProof,ecdsa]])}));
+    assert.equal(calls(),1);assert.deepEqual(device.signatures.map(entry=>entry.index),[0,1]);f.assertNoSigningKeys();continuation.terminal();
+  }finally{scope.retire();await continuation?.dispose();connection?.approval.dispose();await close();}
+});
+for(const ecdsaFirst of [false,true]) test(`mixed P256 Trezor continuation survives Suite departure without repeating passkey (ECDSA first ${ecdsaFirst})`,async()=>{
+  const {f,device,close,binding,scope,calls}=await mixedTrezorPasskeyFixture(ecdsaFirst),entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
+  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined,continuation:ReturnType<typeof ownedSmartSdkHandoff>|undefined;
+  try{
+    connection=await smartMessageApproval(f);continuation=ownedSmartSdkHandoff(connection,'mixed-resume',Date.now()+120000,'personal_sign');
+    device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'&&device.signatures.length===2){entered.resolve();await release.promise;}});
+    const request:DappMessageRequest={method:'personal_sign',address:connection.selected.address,message:'Resume mixed proof'};
+    const signing=connection.host.signMessage({handoff:continuation.handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval},binding);
+    const rejected=assert.rejects(signing);await Promise.race([entered.promise,signing.then(()=>{throw Error('Expected Suite departure');})]);
+    continuation.suspend();f.owner.lock();await rejected;release.resolve();await new Promise(resolve=>setImmediate(resolve));
+    connection.approval.dispose();await f.owner.unlock(PASSWORD);connection=await smartMessageApproval(f);
+    await f.runtime.trezor.resumeSend();const handoff=continuation.resume(connection);
+    await connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval},binding);
+    assert.equal(calls(),1);assert.equal(device.signatures.length,2);f.assertNoSigningKeys();continuation.terminal();
+  }finally{release.resolve();scope.retire();await continuation?.dispose();connection?.approval.dispose();await close();}
+});
+for(const ecdsaFirst of [false,true]) test(`mixed P256 Trezor UserOperation reaches separate payer consent (ECDSA first ${ecdsaFirst})`,async()=>{
+  const {f,device,close,binding,scope,calls}=await mixedTrezorPasskeyFixture(ecdsaFirst);let operation:NativeSmartAccountOperation|undefined;
+  try{
+    operation=await f.runtime.openSmartAccountSend('0x'+'55'.repeat(20),{kind:'exact',amount:'0.000001'},()=>undefined,binding);
+    await operation.prepare();assert.equal(operation.getSnapshot().phase,'authorize');const signing=operation.authorize(operation.getSnapshot().revision);
+    for(let i=0;i<3000&&!operation.getSnapshot().payerReview&&!['failed','complete'].includes(operation.getSnapshot().phase);i++)await new Promise(resolve=>setTimeout(resolve,5));
+    const review=operation.getSnapshot().payerReview;assert(review,JSON.stringify(operation.getSnapshot()));
+    assert.equal(calls(),1);assert.equal(device.signatures.length,2);assert.equal(f.submitted.length,0);
+    operation.cancel();await signing;f.assertNoSigningKeys();
+  }finally{scope.retire();await operation?.dispose();await close();}
+});
 
 test('multiple native Trezor owners sign in the exact shared threshold order through separate terminal jobs',async()=>{
   const {f,device,close}=await readyTrezorSmartOwner(null,2);
