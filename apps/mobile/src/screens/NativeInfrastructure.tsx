@@ -2,23 +2,36 @@ import React, { useCallback, useLayoutEffect, useMemo, useRef, useState, useSync
 import { ActivityIndicator, AppState, BackHandler, Platform, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatBaseUnits } from '../core/amounts';
+import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { useNativeTranslation } from '../platform/localization';
 import type { NativeInfrastructureController, NativeInfrastructureSnapshot } from '../smartAccount/infrastructure';
 import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
 import { TransactionDetails } from './NativeTransactionReview';
+import { useOwnedLedgerConnection } from './useDappLedgerConnection';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 type Props = {
-  open(signal: AbortSignal, assertCurrent: () => void): Promise<NativeInfrastructureController>;
+  open(signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeInfrastructureController>;
   onBack(): void;
+  ledgerConnection?: NativeLedgerConnectionView;
 };
 type Scope = Readonly<{ source: Props['open'] }>;
-type Owner = { scope: Scope; live: boolean; abort: AbortController; controller?: NativeInfrastructureController };
+type Owner = { scope: Scope; live: boolean; abort: AbortController; authentication: NativePrivateAuthenticationScope; controller?: NativeInfrastructureController };
 const empty: NativeInfrastructureSnapshot = Object.freeze({ phase: 'loading', revision: 0, status: null, feeReview: null, error: null });
 const emptySnapshot = () => empty;
 const emptySubscribe = () => () => {};
 
 /** Each presentation owns one bounded host; no pending open can adopt a replacement mount. */
-export function NativeInfrastructure({ open, onBack }: Props) {
+const setupPurpose: Record<string, string> = {
+  entryPoint: 'Process smart-account transactions', accountImplementation: 'Create smart accounts',
+  ecdsaValidator: 'Approve with wallet owners', p256WebAuthnValidator: 'Approve with passkeys',
+  slhDsaVerifier: 'Verify post-quantum approvals', slhDsaValidator: 'Use post-quantum approval keys',
+  compositeValidator: 'Combine approval methods', guardianRecoveryModule: 'Recover accounts with a guardian',
+  factory: 'Deploy smart accounts', multicall3: 'Read account data efficiently',
+};
+
+export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) {
   const { t } = useNativeTranslation();
   const scope = useMemo<Scope>(() => ({ source: open }), [open]);
   const owner = useRef<Owner | null>(null);
@@ -27,17 +40,19 @@ export function NativeInfrastructure({ open, onBack }: Props) {
   const [openingError, setOpeningError] = useState<Scope>();
   const [detailsId, setDetailsId] = useState<number | null>(null);
   useLayoutEffect(() => { back.current = onBack; }, [onBack]);
-  const isCurrent = useCallback((current: Owner) => owner.current === current && current.scope === scope && current.live && !current.abort.signal.aborted && AppState.currentState === 'active', [scope]);
+  const isCurrent = useCallback((current: Owner) => owner.current === current && current.scope === scope && current.live && !current.abort.signal.aborted &&
+    (AppState.currentState === 'active' || allowsPrivateAuthenticationInterruption(current.authentication, AppState.currentState)), [scope]);
   const close = useCallback(() => {
     const current = owner.current;
     if (!current || current.scope !== scope || !current.live) return;
     current.live = false;
+    current.authentication.retire();
     current.abort.abort();
     current.controller?.dispose();
     back.current();
   }, [scope]);
   useLayoutEffect(() => {
-    const current: Owner = { scope, live: true, abort: new AbortController() };
+    const current: Owner = { scope, live: true, abort: new AbortController(), authentication: createNativePrivateAuthenticationScope() };
     owner.current = current;
     const check = () => {
       if (!isCurrent(current)) throw new Error('CANCELLED');
@@ -46,7 +61,7 @@ export function NativeInfrastructure({ open, onBack }: Props) {
       let controller: NativeInfrastructureController | undefined;
       try {
         check();
-        controller = await open(current.abort.signal, check);
+        controller = await open(current.abort.signal, check, current.authentication);
         check();
         current.controller = controller;
         setSession({ owner: current, controller });
@@ -56,11 +71,12 @@ export function NativeInfrastructure({ open, onBack }: Props) {
         if (isCurrent(current)) setOpeningError(scope);
       }
     })();
-    const change = AppState.addEventListener('change', next => { if (next !== 'active') close(); });
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', close) : undefined;
+    const change = AppState.addEventListener('change', next => { if (next !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, next)) close(); });
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { if (!allowsPrivateAuthenticationInterruption(current.authentication, 'blur')) close(); }) : undefined;
     const hardwareBack = BackHandler.addEventListener('hardwareBackPress', () => { close(); return true; });
     return () => {
       current.live = false;
+      current.authentication.retire();
       current.abort.abort();
       current.controller?.dispose();
       change.remove(); blur?.remove(); hardwareBack.remove();
@@ -70,12 +86,32 @@ export function NativeInfrastructure({ open, onBack }: Props) {
   const controller = current ? session?.controller : undefined;
   const state = useSyncExternalStore(controller?.subscribe ?? emptySubscribe, controller?.getSnapshot ?? emptySnapshot, controller?.getSnapshot ?? emptySnapshot);
   const act = (action: () => Promise<void>) => {
-    if (!controller || !current || current.controller !== controller || !isCurrent(current)) return;
+    if (!controller || !current || current.controller !== controller || !isCurrent(current) || AppState.currentState !== 'active') return;
     void action().catch(() => undefined);
   };
   const busy = ['loading', 'preparing', 'submitting'].includes(state.phase);
   const review = state.feeReview;
+  const [setupDetails, setSetupDetails] = useState(false);
+  const required = state.status?.observation.contracts.filter(contract => !contract.optional) ?? [];
+  const completed = required.filter(contract => contract.deployed).length;
+  const next = state.status?.observation.contracts.find(contract => !contract.deployed && !contract.optional) ?? state.status?.observation.contracts.find(contract => !contract.deployed);
   const pending = state.status?.pending;
+  // Adapt once for this immutable quote. Monotonic checks below remain the authority.
+  const connectionDeadline = useMemo(() => review
+    // eslint-disable-next-line react-hooks/purity -- Snapshot the wall-clock adapter once; the monotonic guard below owns authorization.
+    ? Date.now() + Math.max(0, review.expiresAtMonotonicMilliseconds - performance.now())
+    : 0, [review]);
+  const isReviewCurrent = useCallback(() => {
+    if (!controller || !current || !isCurrent(current) || !review || performance.now() >= review.expiresAtMonotonicMilliseconds) return false;
+    const latest = controller.getSnapshot();
+    return latest.revision === state.revision && latest.phase === 'review' && latest.feeReview === review &&
+      !latest.status?.pending && !latest.error;
+  }, [controller, current, isCurrent, review, state.revision]);
+  // eslint-disable-next-line react-hooks/refs -- Hide expired/retired approvals as well as rejecting them in the event handler.
+  const reviewAvailable = state.phase === 'review' && isReviewCurrent();
+  const ledger = useOwnedLedgerConnection({ owner: controller ?? empty, revision: state.revision,
+    expiresAt: connectionDeadline, available: reviewAvailable,
+    isReviewCurrent, ledgerConnection });
   const create2Missing = state.status?.observation.create2Deployer.deployed === false;
   const canReview = !!controller && !busy && !pending && !['review', 'unknown'].includes(state.phase) &&
     !!state.status?.observation.create2Deployer.deployed && !!state.status.observation.missing.length;
@@ -83,34 +119,47 @@ export function NativeInfrastructure({ open, onBack }: Props) {
   const reviewLabel = state.status?.observation.ready ? 'mobile.infrastructure.reviewOptional' : 'mobile.infrastructure.reviewNext';
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}><Screen key={review && state.phase === 'review' ? `review:${review.id}` : 'status'} footer={<>
     {review && state.phase === 'review'
-      ? <Button title={t('buttons.confirm')} disabled={busy} onPress={() => act(() => controller!.confirm(review.id))} />
+      ? ledger.showConnect
+        ? <Button title={t('mobile.accounts.connectLedger')} variant="secondary" size="compact" onPress={ledger.connect} />
+        : <Button title={t('buttons.confirm')} disabled={busy || ledger.blocked || !reviewAvailable} onPress={() => {
+          if (!ledger.blocked && isReviewCurrent() && ledger.canApprove()) act(() => controller!.confirm(review.id));
+        }} />
       : readyToReview
       ? <Button title={t(reviewLabel)} onPress={() => act(() => controller!.reviewNext(state.revision))} />
-      : <Button title={t('mobile.infrastructure.refresh')} variant="secondary" disabled={!controller || busy} onPress={() => act(() => controller!.refresh(state.revision))} />}
-    <Button title={t('buttons.close')} variant="quiet" onPress={close} />
+      : <Button title={t('mobile.infrastructure.refresh')} variant="secondary" size="compact" disabled={!controller || busy} onPress={() => act(() => controller!.refresh(state.revision))} />}
+    <Button title={t('buttons.close')} variant="secondary" size="compact" onPress={close} />
   </>}>
     <Header title={t('settings.smartAccountInfrastructure')} onBack={close} />
+    {state.status && state.phase !== 'review' && <Card style={s.card}>
+      <Text accessibilityRole="header">{state.status.observation.ready && !create2Missing ? 'Required setup complete' : 'Set up smart-account support'}</Text>
+      <Text>{`${completed} of ${required.length} required setup contracts available`}</Text>
+      {next && <>
+        <Text style={s.label}>{next.optional ? t('settings.optional') : 'Next step'}</Text>
+        <Text>{setupPurpose[next.id] ?? next.displayName}</Text>
+      </>}
+      {!state.status.observation.ready && <Text style={s.label}>Review and confirm one setup transaction at a time. Each step adds shared smart-account support on this network.</Text>}
+    </Card>}
     {controller && <Card style={s.card}>
       <Text accessibilityRole="header">{controller.networkLabel}</Text>
       <Text style={s.label}>{t('mobile.infrastructure.feePayer')}</Text>
       <Text>{controller.payerLabel}</Text>
       <Text selectable style={s.address}>{controller.payerAddress}</Text>
     </Card>}
-    {readyToReview && <Button title={t('mobile.infrastructure.refresh')} variant="quiet" onPress={() => act(() => controller!.refresh(state.revision))} />}
+    {readyToReview && <Button title={t('mobile.infrastructure.refresh')} icon="refresh" variant="secondary" size="compact" onPress={() => act(() => controller!.refresh(state.revision))} />}
     {busy && <ActivityIndicator color={colors.pink} accessibilityLabel={t('buttons.loading')} />}
     {review && state.phase === 'review' && <>
       <Card style={s.card}>
         <Text accessibilityRole="header">{review.contract.displayName}</Text>
         {review.contract.optional && <Text style={s.label}>{t('settings.optional')}</Text>}
-        <Text selectable style={s.address}>{review.contract.address}</Text>
+        <Text>{setupPurpose[review.contract.id] ?? review.contract.displayName}</Text>
         <Text style={s.label}>{t('transactions.replay.maximumFee')}</Text>
         <Text selectable style={s.amount}>{formatBaseUnits(review.maximumFeeUnits, 18)} {controller?.currencySymbol}</Text>
         <Text style={s.label}>{t('mobile.infrastructure.maximumTotal')}</Text>
         <Text selectable style={s.amount}>{formatBaseUnits(review.maximumTotalUnits, 18)} {controller?.currencySymbol}</Text>
       </Card>
-      <Button title={t(detailsId === review.id ? 'send.hideDetails' : 'send.showDetails')} variant="quiet" expanded={detailsId === review.id}
+      <Button title={t(detailsId === review.id ? 'send.hideDetails' : 'send.showDetails')} icon={detailsId === review.id ? 'chevron-up' : 'chevron-down'} variant="quiet" size="compact" expanded={detailsId === review.id}
         onPress={() => { if (current && isCurrent(current) && controller?.getSnapshot().feeReview?.id === review.id) setDetailsId(detailsId === review.id ? null : review.id); }} />
-      {detailsId === review.id && <TransactionDetails key={review.id} transaction={review.transaction} />}
+      {detailsId === review.id && <><Text style={s.label}>Contract address</Text><Text selectable style={s.address}>{review.contract.address}</Text><TransactionDetails key={review.id} transaction={review.transaction} /></>}
     </>}
     {(pending || state.phase === 'unknown') && <Notice title={t('settings.smartAccountInfrastructure')} tone="amber"
       body={t(state.phase === 'unknown' ? 'mobile.infrastructure.unknown' : 'mobile.infrastructure.pending')} />}
@@ -122,7 +171,8 @@ export function NativeInfrastructure({ open, onBack }: Props) {
       {t(create2Missing ? 'settings.smartAccountCreate2Missing' : 'settings.smartAccountInfrastructureReady')}
     </Text>}
     {(openingError === scope || state.error) && <Text accessibilityRole="alert" style={s.error}>{t(openingError === scope ? 'mobile.infrastructure.unavailable' : state.error!)}</Text>}
-    {state.status && state.phase !== 'review' && <Card style={s.card}>
+    {state.status && state.phase !== 'review' && <Button title={setupDetails ? 'Hide setup details' : 'View setup details'} variant="quiet" size="compact" expanded={setupDetails} onPress={() => setSetupDetails(!setupDetails)} />}
+    {state.status && state.phase !== 'review' && setupDetails && <Card style={s.card}>
       <Text style={s.label}>{t('mobile.infrastructure.create2Deployer')}</Text>
       <Text selectable style={s.address}>{state.status.observation.create2Deployer.address}</Text>
       <Text>{t(state.status.observation.create2Deployer.deployed ? 'mobile.infrastructure.codePresent' : 'mobile.infrastructure.codeMissing')}</Text>
@@ -133,7 +183,7 @@ export function NativeInfrastructure({ open, onBack }: Props) {
         <Text>{t(contract.deployed ? 'mobile.infrastructure.codePresent' : 'mobile.infrastructure.codeMissing')}</Text>
       </Card>)}
     </Card>}
-  </Screen></SafeAreaView>;
+  </Screen>{ledger.modal}</SafeAreaView>;
 }
 
 const s = StyleSheet.create({

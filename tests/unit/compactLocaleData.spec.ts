@@ -86,6 +86,42 @@ const leafKeys = (node: any, prefix = ''): string[] =>
       ? [prefix + key]
       : leafKeys(value, prefix + key + '.')
   );
+const flatten = (node: any): string[] =>
+  typeof node === 'string' ? [node] : Object.values(node).flatMap(flatten);
+// The previous encoder is the size floor: substring sharing must beat its
+// whole-value pool, not merely beat an unpooled JSON array.
+const wholeValueModule = (values: string[], structureName: string) => {
+  const counts = new Map<string, number>();
+  for (const value of values) counts.set(value, (counts.get(value) || 0) + 1);
+  const names = new Map<string, string>(),
+    declarations: string[] = [];
+  for (const [value, count] of counts) {
+    const name = `p${declarations.length}`,
+      literal = JSON.stringify(value);
+    if (
+      count > 1 &&
+      count * (Buffer.byteLength(literal) - name.length) >
+        name.length + Buffer.byteLength(literal) + 2
+    ) {
+      names.set(value, name);
+      declarations.push(`${name}=${literal}`);
+    }
+  }
+  const plain = JSON.stringify(values);
+  const prefix = `const ${declarations.join(',')};`;
+  const pooled = `[${values
+    .map((value) => names.get(value) || JSON.stringify(value))
+    .join(',')}]`;
+  const usePool =
+    declarations.length > 0 &&
+    Buffer.byteLength(prefix + pooled) < Buffer.byteLength(plain);
+  return (
+    (usePool ? prefix : '') +
+    `module.exports=require("utils/restoreLocale").restoreLocale(require("assets/locales/en.json?${structureName}"),` +
+    (usePool ? pooled : plain) +
+    ');'
+  );
+};
 
 it.each(languages)(
   '%s preserves every translation, key, order, object property and independent mutation',
@@ -196,7 +232,7 @@ it.each(languages)(
     expect(compile(lng, 'base').generated).not.toContain(
       original.privacy.noteSecret
     );
-    expect(compile(lng, 'privacy').generated).toContain(
+    expect((compile(lng, 'privacy').packed.privacy as any).noteSecret).toBe(
       original.privacy.noteSecret
     );
   }
@@ -260,15 +296,13 @@ it('shares repeated English base values only when the full generated expression 
   const original = JSON.parse(source('en'));
   const base = { ...original, privacy: { title: original.privacy.title } };
   delete base.mobile;
-  const flatten = (node: any): string[] =>
-    typeof node === 'string' ? [node] : Object.values(node).flatMap(flatten);
   const oldGenerated =
     'module.exports=require("utils/restoreLocale").restoreLocale(require("assets/locales/en.json?baseStructure"),' +
     JSON.stringify(flatten(base)) +
     ');';
   const { packed, generated } = compile('en', 'base');
   expectExact(base, packed);
-  expect(generated).toContain('const p0=');
+  expect(generated).toContain('p0=');
   expect(Buffer.byteLength(generated)).toBeLessThan(
     Buffer.byteLength(oldGenerated)
   );
@@ -278,8 +312,6 @@ it.each(languages)(
   '%s never grows the complete generated locale module in any projection',
   (lng) => {
     const original = JSON.parse(source(lng));
-    const flatten = (node: any): string[] =>
-      typeof node === 'string' ? [node] : Object.values(node).flatMap(flatten);
     for (const scope of ['', 'base', 'privacy']) {
       const projection =
         scope === 'base'
@@ -295,10 +327,7 @@ it.each(languages)(
           : original;
       if (scope === 'base') delete projection.mobile;
       const structureName = scope ? `${scope}Structure` : 'localeStructure';
-      const before =
-        `module.exports=require("utils/restoreLocale").restoreLocale(require("assets/locales/en.json?${structureName}"),` +
-        JSON.stringify(flatten(projection)) +
-        ');';
+      const before = wholeValueModule(flatten(projection), structureName);
       const { packed, generated } = compile(lng, scope);
       expectExact(projection, packed);
       expect(Buffer.byteLength(generated)).toBeLessThanOrEqual(
@@ -337,6 +366,65 @@ it.each(['unique', 'repeated'] as const)(
       throw Error(`Unexpected locale dependency: ${name}`);
     });
     expectExact(fixture, packed);
-    expect(generated.startsWith('const p0=')).toBe(mode === 'repeated');
+    expect(
+      generated.startsWith(mode === 'repeated' ? 'const p0=' : 'const s0=')
+    ).toBe(true);
   }
 );
+
+it('saves at least 25 KB beyond whole-value pooling across packaged extension locales', () => {
+  let saved = 0;
+  for (const lng of languages) {
+    const original = JSON.parse(source(lng));
+    const base = { ...original, privacy: { title: original.privacy.title } };
+    delete base.mobile;
+    const privacy = { privacy: { ...original.privacy } };
+    delete privacy.privacy.title;
+    for (const [scope, projection] of [
+      ['base', base],
+      ['privacy', privacy],
+    ] as const) {
+      saved +=
+        Buffer.byteLength(
+          wholeValueModule(flatten(projection), `${scope}Structure`)
+        ) - Buffer.byteLength(compile(lng, scope).generated);
+    }
+  }
+  expect(saved).toBeGreaterThan(25_000);
+});
+
+it('preserves empty, surrogate, code-looking and scan-boundary text during factoring', () => {
+  const samples = [
+    '',
+    '\ud800',
+    '\udfff',
+    '🪙雪\u2028\u2029',
+    'module.exports=VALUES("quoted") \\ literal {{name}}',
+    `shared exact prefix ${'🪙'.repeat(2050)} tail A`,
+    `shared exact prefix ${'🪙'.repeat(2050)} tail B`,
+  ];
+  let index = 0;
+  const replaceLeaves = (node: any): any =>
+    typeof node === 'string'
+      ? samples[index++ % samples.length]
+      : Object.fromEntries(
+          Object.entries(node).map(([key, value]) => [
+            key,
+            replaceLeaves(value),
+          ])
+        );
+  const fixture = replaceLeaves(JSON.parse(source('en')));
+  const generated = compactLocaleJson.call(
+    { resourcePath: resourcePath('en'), addDependency: jest.fn() },
+    JSON.stringify(fixture)
+  );
+  const packed = execute(generated, (name) => {
+    if (name === 'utils/restoreLocale') return { restoreLocale };
+    if (name === 'assets/locales/en.json?localeStructure') return schema();
+    throw Error(`Unexpected locale dependency: ${name}`);
+  });
+  expectExact(fixture, packed);
+  expect(Buffer.byteLength(generated)).toBeLessThanOrEqual(
+    Buffer.byteLength(wholeValueModule(flatten(fixture), 'localeStructure'))
+  );
+});

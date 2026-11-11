@@ -1,3 +1,4 @@
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { isStrongWalletPassword } from '../../../source/shared/passwordPolicy.ts';
@@ -50,9 +51,10 @@ test('native input bounds remain separate from shared password strength', () => 
   assert.equal(isNativeNewPassword('old password'), false);
 });
 
-test('recovery rejects a weak new password before retiring the wallet or opening storage', async () => {
+test('recovery rejects malformed phrase input before retiring the wallet or opening storage', async () => {
   let externalCalls = 0;
   const coordinator = new NativeRecoveryCoordinator({
+    pinCredential: createTestPinCredentialPort(),
     owner: {
       getSnapshot: () => ({ phase: 'locked', revision: 1 } as never),
       retireForRecovery: async () => { externalCalls++; throw new Error('Must not retire'); },
@@ -61,8 +63,8 @@ test('recovery rejects a weak new password before retiring the wallet or opening
     ensureCryptoReady: async () => { externalCalls++; },
     openStorage: async () => { externalCalls++; throw new Error('Must not open'); },
   });
-  for (const password of ['only twelve lowercase letters', 'Abcdefghijk1', 'Abcdefghijk!', valid + 'x'.repeat(1013)]) {
-    await assert.rejects(coordinator.prepare('abandon '.repeat(11) + 'about', password, () => undefined), { code: 'INVALID_INPUT' });
+  for (const phrase of [42 as never, '\ud800', 'x'.repeat(4097)]) {
+    await assert.rejects(coordinator.prepare(phrase, () => undefined), { code: 'INVALID_INPUT' });
   }
   assert.equal(externalCalls, 0);
   coordinator.cancel();

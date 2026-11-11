@@ -20,6 +20,7 @@ jest.mock('components/AddressText', () => ({
     <span data-address={value}>{value}</span>
   ),
 }));
+jest.mock('./ReviewedAssetIcon', () => ({ ReviewedAssetIcon: () => null }));
 
 const AUTHORITY = '0x1111111111111111111111111111111111111111';
 const TOKEN_CONTRACT = '0x2222222222222222222222222222222222222222';

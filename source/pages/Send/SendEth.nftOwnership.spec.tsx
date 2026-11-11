@@ -11,7 +11,7 @@ import userEvent from '@testing-library/user-event';
 import { AbiCoder, Interface } from 'ethers/abi';
 import React from 'react';
 
-import { verifyERC721OwnershipHelper } from 'scripts/Background/controllers/assets/nft-utils';
+import { verifyERC721OwnershipHelper } from '../../shared/nftReads';
 
 import { SendEth } from './SendEth';
 

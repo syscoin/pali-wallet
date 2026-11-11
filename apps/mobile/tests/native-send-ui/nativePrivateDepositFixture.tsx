@@ -6,6 +6,7 @@ import { NativeNoteInventory } from '../../src/screens/NativeNoteInventory';
 import { PRIVACY_POOLS } from '../../../../source/utils/privacy/registry';
 import type { IPrivacyDepositReview } from '../../../../source/utils/privacy/transactionTypes';
 import type { NativeNoteInventory as NoteInventory } from '../../src/custody/noteBackupRuntime';
+import type { NativePrivateAuthenticationScope } from '../../src/custody/privateAuthentication';
 import { Button, Screen, Text } from '../../src/ui';
 
 const query = new URLSearchParams(window.location.search);
@@ -37,7 +38,7 @@ const wait = () => new Promise<void>((resolve) => setTimeout(resolve, 30));
 
 export function NativePrivateDepositFixture() {
   const [closed, setClosed] = useState('');
-  const open = useCallback(async (signal: AbortSignal, check: () => void) => {
+  const open = useCallback(async (signal: AbortSignal, check: () => void, _authentication: NativePrivateAuthenticationScope) => {
     events.push('open');
     check();
     const controller = new DepositController(
@@ -164,7 +165,7 @@ export function NativePrivateDepositFixture() {
 export function NativeNoteStatusFixture() {
   const [closed, setClosed] = useState(false);
   const read = useCallback(
-    async (check: () => void): Promise<NoteInventory> => {
+    async (check: () => void, _authentication: NativePrivateAuthenticationScope): Promise<NoteInventory> => {
       check();
       const note = Object.freeze({ amount: '1', createdAt: 1762000000000 });
       return {

@@ -35,6 +35,13 @@ import {
   createPrivacySettings,
   fetchConfiguredPrivacySnapshot,
 } from './privacySettings';
+import type { WalletAuthentication } from '../../../shared/walletAuthentication.ts';
+
+const extensionPassword = (value: WalletAuthentication): string => {
+  if (typeof value !== 'string')
+    throw new Error('Password authentication is required');
+  return value;
+};
 
 export interface IMasterController {
   appRoute: (newRoute?: string, external?: boolean) => string;
@@ -370,9 +377,9 @@ const MasterController = (
     },
     privateVault: {
       reviewRestoredNote: (id, password) =>
-        wallet.reviewRestoredPrivateNote(id, password),
+        wallet.reviewRestoredPrivateNote(id, extensionPassword(password)),
       recoverFailedWithdrawal: (id, password) =>
-        wallet.recoverFailedPrivateWithdrawal(id, password),
+        wallet.recoverFailedPrivateWithdrawal(id, extensionPassword(password)),
       clearCompletedNotes: (ids) => wallet.clearPrivateVaultCompletedNotes(ids),
       createDepositNote: (poolId) =>
         wallet.createPrivateVaultDepositNote(poolId),
@@ -380,7 +387,8 @@ const MasterController = (
       getCapacity: () => wallet.getPrivateVaultCapacity(),
       setCapacity: (capacity) => wallet.setPrivateVaultCapacity(capacity),
       importNote: (note) => wallet.importPrivateVaultNote(note),
-      revealNote: (id, password) => wallet.revealPrivateVaultNote(id, password),
+      revealNote: (id, password) =>
+        wallet.revealPrivateVaultNote(id, extensionPassword(password)),
     },
     privacyTransactions: {
       prepareDeposit: (request) => wallet.preparePrivacyDeposit(request),

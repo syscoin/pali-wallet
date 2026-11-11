@@ -21,11 +21,13 @@ import type { NativePrivateWithdrawalView as WithdrawalView } from '../custody/p
 import { formatBaseUnits } from '../core/amounts';
 import { Button, Card, colors, Header, Screen, styles, Text } from '../ui';
 import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
-import { NoteBackupPasswordField } from './NoteBackupPasswordField';
+import { createNativePrivateAuthenticationChild, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 type Props = {
   note: NativeSavedNote;
-  open(signal: AbortSignal, assertCurrent: () => void): Promise<WithdrawalView>;
+  open(signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthenticationScope): Promise<WithdrawalView>;
+  authentication: NativePrivateAuthenticationScope;
   onBack(): void;
 };
 type Owner = {
@@ -35,6 +37,9 @@ type Owner = {
   controller?: WithdrawalView;
   opening?: Promise<void>;
   disposing?: Promise<void>;
+  authentication: NativePrivateAuthenticationScope;
+  parentAuthentication: NativePrivateAuthenticationScope;
+  source: Props['open'];
 };
 function disposeOwner(owner: Owner): Promise<void> {
   owner.disposing ??= Promise.resolve(owner.opening).then(async () => {
@@ -55,7 +60,7 @@ const recipientValid = (value: string) => {
 };
 const amount = (value: string) => `${formatBaseUnits(value, 18)} ETH`;
 
-export function NativePrivateWithdrawal({ note, open, onBack }: Props) {
+export function NativePrivateWithdrawal({ note, open, onBack, authentication }: Props) {
   const owner = useRef<Owner | undefined>(undefined);
   const [opened, setOpened] = useState<{
     source: Props['open'];
@@ -65,8 +70,9 @@ export function NativePrivateWithdrawal({ note, open, onBack }: Props) {
   }>();
   const back = useCallback(() => {
     const current = owner.current;
-    if (!current?.live) return;
+    if (!current?.live || current.source !== open || current.parentAuthentication !== authentication) return;
     current.live = false;
+    current.authentication.retire();
     current.returning = true;
     current.abort.abort();
     setOpened({ source: open, closing: true });
@@ -76,33 +82,35 @@ export function NativePrivateWithdrawal({ note, open, onBack }: Props) {
       .then(() => {
         if (owner.current === current && current.returning) onBack();
       });
-  }, [onBack, open]);
+  }, [authentication, onBack, open]);
   useEffect(() => {
-    const current: Owner = { live: true, abort: new AbortController() };
+    const current: Owner = { live: true, abort: new AbortController(), source: open,
+      parentAuthentication: authentication, authentication: createNativePrivateAuthenticationChild(authentication) };
     owner.current = current;
     const check = () => {
       if (
-        !current.live ||
+        owner.current !== current || !current.live ||
         current.abort.signal.aborted ||
-        AppState.currentState !== 'active'
+        (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, AppState.currentState))
       )
         throw new Error('privacy_cancelled');
     };
-    current.opening = open(current.abort.signal, check).then(
+    current.opening = Promise.resolve().then(() => { check(); return open(current.abort.signal, check, current.authentication); }).then(
       (controller) => {
         current.controller = controller;
-        if (current.live) setOpened({ source: open, controller });
+        if (current.live && AppState.currentState === 'active') setOpened({ source: open, controller });
+        else { current.live = false; current.abort.abort(); return controller.dispose().catch(() => undefined); }
       },
       () => {
-        if (current.live) setOpened({ source: open, failed: true });
+        if (current.live && AppState.currentState === 'active') setOpened({ source: open, failed: true });
       }
     );
     const change = AppState.addEventListener('change', (next) => {
-      if (next !== 'active') back();
+      if (next !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, next)) back();
     });
     const blur =
       Platform.OS === 'android'
-        ? AppState.addEventListener('blur', back)
+        ? AppState.addEventListener('blur', () => { if (!allowsPrivateAuthenticationInterruption(current.authentication, 'blur')) back(); })
         : undefined;
     const hardware = BackHandler.addEventListener('hardwareBackPress', () => {
       back();
@@ -110,6 +118,7 @@ export function NativePrivateWithdrawal({ note, open, onBack }: Props) {
     });
     return () => {
       current.live = false;
+      current.authentication.retire();
       current.returning = false;
       current.abort.abort();
       void disposeOwner(current).catch(() => undefined);
@@ -117,7 +126,7 @@ export function NativePrivateWithdrawal({ note, open, onBack }: Props) {
       blur?.remove();
       hardware.remove();
     };
-  }, [back, open]);
+  }, [authentication, back, open]);
   const current = opened?.source === open ? opened : undefined;
   if (current?.controller)
     return (
@@ -133,7 +142,7 @@ export function NativePrivateWithdrawal({ note, open, onBack }: Props) {
         footer={
           <Button
             title="Cancel"
-            variant="quiet"
+            variant="secondary" size="compact"
             disabled={current?.closing}
             onPress={back}
           />
@@ -164,13 +173,8 @@ function WithdrawalContent({
   note: NativeSavedNote;
   onBack(): void;
 }) {
-  const [password, setPassword] = useState('');
   const subscribe = useCallback(
-    (notify: () => void) =>
-      controller.subscribe(() => {
-        setPassword('');
-        notify();
-      }),
+    (notify: () => void) => controller.subscribe(notify),
     [controller]
   );
   const state = useSyncExternalStore(
@@ -212,7 +216,6 @@ function WithdrawalContent({
     if (!review) return;
     const timer = setTimeout(() => {
       setExpired(review.intentId);
-      setPassword('');
     }, Math.max(0, review.expiresAt - Date.now()));
     return () => clearTimeout(timer);
   }, [review]);
@@ -276,11 +279,9 @@ function WithdrawalContent({
     }
   };
   const reviewRestored = () => {
-    if (busy || !password) return;
-    const entered = password;
-    setPassword('');
+    if (busy) return;
     Keyboard.dismiss();
-    void controller.reviewRestored(entered).catch(() => undefined);
+    void controller.reviewRestored().catch(() => undefined);
   };
   const title = submitted
     ? spent
@@ -307,7 +308,7 @@ function WithdrawalContent({
       : state.error === 'verification'
       ? 'Check the pool data before preparing this withdrawal.'
       : state.error === 'restored'
-      ? 'Could not review this restored note. Confirm your password and try again.'
+      ? 'Could not review this restored note. Try again.'
       : state.error === 'unavailable'
       ? 'This withdrawal is unavailable in the current account or network.'
       : state.error === 'failed'
@@ -319,7 +320,7 @@ function WithdrawalContent({
   ) : state.restored ? (
     <Button
       title={busy ? 'Reviewing note…' : 'Review restored note'}
-      disabled={busy || !password}
+      disabled={busy}
       onPress={reviewRestored}
     />
   ) : showReview ? (
@@ -355,11 +356,12 @@ function WithdrawalContent({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <Screen
+          scrollResetKey={`${state.phase}:${showReview ? review?.intentId : submitted ? 'result' : 'draft'}`}
           footer={
             <>
               {primary}
               {!submitted && (
-                <Button title="Cancel" variant="quiet" onPress={onBack} />
+                <Button title="Cancel" variant="secondary" size="compact" onPress={onBack} />
               )}
             </>
           }
@@ -377,12 +379,6 @@ function WithdrawalContent({
               <Text style={styles.muted}>
                 Review this restored note before withdrawing.
               </Text>
-              <NoteBackupPasswordField
-                label="Confirm your wallet password"
-                value={password}
-                onChange={setPassword}
-                busy={busy}
-              />
             </>
           ) : !showReview && !submitted ? (
             <>
@@ -485,9 +481,9 @@ function WithdrawalContent({
                       onPress={() => setRelayerId(relayer.id)}
                     />
                   ))}
-                  <Button
+                  <Button icon="refresh"
                     title="Refresh relayers"
-                    variant="quiet"
+                    variant="secondary" size="compact"
                     disabled={busy}
                     onPress={() => {
                       setRelayerId('');
@@ -502,7 +498,7 @@ function WithdrawalContent({
                     title={
                       state.checking ? 'Checking pool…' : 'Check pool status'
                     }
-                    variant="secondary"
+                    variant="secondary" size="compact"
                     disabled={busy}
                     onPress={() => {
                       void controller.refresh().catch(() => undefined);
@@ -572,9 +568,9 @@ function WithdrawalContent({
                   This review expired. Prepare a fresh review before confirming.
                 </Text>
               )}
-              <Button
+              <Button icon="edit"
                 title="Edit withdrawal"
-                variant="quiet"
+                variant="secondary" size="compact"
                 disabled={busy}
                 onPress={() => setEditing(true)}
               />
@@ -609,7 +605,7 @@ function WithdrawalContent({
               )}
               <Button
                 title={state.checking ? 'Checking status…' : 'Check status'}
-                variant="secondary"
+                variant="secondary" size="compact"
                 disabled={busy}
                 onPress={() => {
                   void controller.refresh().catch(() => undefined);

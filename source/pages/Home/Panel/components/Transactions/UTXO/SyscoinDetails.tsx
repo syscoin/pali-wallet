@@ -447,7 +447,13 @@ export const SyscoinTransactionDetails = ({
               const decimals = intent.decimals ?? 8;
               const logo =
                 tokenAsset?.image ||
-                getTokenLogo(tokenSymbol, true, intentGuid);
+                getTokenLogo(
+                  tokenSymbol,
+                  true,
+                  intentGuid,
+                  activeNetwork.chainId,
+                  decimals
+                );
 
               return (
                 <div className="flex items-center justify-center gap-2 max-w-full">
@@ -458,6 +464,8 @@ export const SyscoinTransactionDetails = ({
                     <TokenIcon
                       key={`${activeNetwork.chainId}:${intentGuid}:${logo}`}
                       assetGuid={intentGuid}
+                      chainId={activeNetwork.chainId}
+                      decimals={decimals}
                       logo={logo || undefined}
                       symbol={tokenSymbol}
                       size={24}

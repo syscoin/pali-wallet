@@ -9,6 +9,8 @@ on:
       - 'scripts/apply-quickcrypto-sentry.cjs'
       - 'scripts/quickcrypto-sentry.json'
       - 'apps/mobile/**'
+      - 'package.json'
+      - 'yarn.lock'
       - '.github/workflows/mobile-native-qualification.yml'
       - 'source/shared/**'
       - 'source/scripts/privacyProver/**'
@@ -22,7 +24,6 @@ on:
       - 'source/types/network.ts'
       - 'source/types/security.ts'
       - 'source/types/utxoTransaction.ts'
-      - 'source/scripts/Background/controllers/assets/nft-utils.ts'
       - 'source/utils/accountCompatibility.ts'
       - 'source/utils/asyncMutex.ts'
       - 'source/utils/cleanErrorStack.ts'
@@ -86,7 +87,8 @@ jobs:
   foundation:
     name: Mobile types, behavior and native bundles
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The measured full suite plus Android/iOS exports exceeds 30 minutes on hosted runners.
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: apps/mobile

@@ -1,3 +1,6 @@
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
+import { resolveAssetTransferDisplay } from '../../../source/shared/assetTransferDisplay.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {screenFixture, type ScreenElement} from './screenFixture.ts';
@@ -25,11 +28,14 @@ function fixture() {
   let connection!: Connection;
   const screen = screenFixture(new URL('../src/screens/NativeSmartAccountOperation.tsx',import.meta.url),'NativeSmartAccountOperationScreen',{
     './useDappLedgerConnection':{useOwnedLedgerConnection:(props:any)=>connection=hook.render(props) as unknown as Connection},
+    '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     '../platform/localization':nativeTranslationFixture,
-    'react-native':{ActivityIndicator:'ActivityIndicator',View:'View',StyleSheet:{create:(value:unknown)=>value}},
+    'react-native':{AppState:{currentState:'active'},ActivityIndicator:'ActivityIndicator',View:'View',StyleSheet:{create:(value:unknown)=>value}},
     'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},
     '../ui':{colors:{},...Object.fromEntries(['Button','Card','Header','Notice','Screen','Text'].map(name=>[name,name]))},
     './NativeTransactionReview':{TransactionDetails:'TransactionDetails'},'../core/amounts':{formatBaseUnits},
+    '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay },
     '../../../../source/shared/erc20':{formatTokenUnits},'../custody/networkContext':{getNativeSendContext},
     './guardianPolicyLabels':{guardianDelayLabel},
   },globals);

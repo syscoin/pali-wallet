@@ -3,6 +3,7 @@ import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
 import type { NativeTransferRuntime } from '../src/custody/transfers.ts';
+import { bindNativePrivateAuthentication, createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 
 // Public offline fixtures only. Do not fund them; the harness never uses a real RPC.
 const RETIRED_KEY = '0x' + '1'.padStart(64, '0');
@@ -69,16 +70,22 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
   });
   const older = retainedSignedEntries((await readSignedRecordEvidence(storage)).entries, olderAddresses);
   const manage = (id: string) => authority.manageAccounts({ kind: 'select', id }, state().revision, catalogue().revision);
+  const importAccount = async (input: Parameters<typeof authority.importAccount>[0]) => {
+    const scope = createNativePrivateAuthenticationScope(), abort = new AbortController();
+    try {
+      await authority.importAccount(input, state().revision, catalogue().revision, abort.signal,
+        bindNativePrivateAuthentication(scope, { assertCurrent: () => {}, isPromptActive: () => false }));
+    } finally { scope.retire(); abort.abort(); }
+  };
   if (phase === 'create') {
     await check('native imported key allocation and retirement', async () => {
       expect(!catalogue().accounts.some((a) => a.type === 'Imported'));
-      await authority.importAccount({ privateKey: RETIRED_KEY, expectedAddress: importedKeyIdentity(RETIRED_KEY, 0).address,
-        label: 'Qualification retired imported key' }, password, state().revision, catalogue().revision);
+      await importAccount({ privateKey: RETIRED_KEY, expectedAddress: importedKeyIdentity(RETIRED_KEY, 0).address,
+        label: 'Qualification retired imported key' });
       expect(catalogue().active.accountId === 'imported:60:0');
       await manage(hd1.id);
-      await authority.manageAccounts({ kind: 'remove', id: 'imported:60:0', password }, state().revision, catalogue().revision);
-      await authority.importAccount({ privateKey: FIXTURE_KEY, expectedAddress: ADDRESS, label: 'Qualification imported key' },
-        password, state().revision, catalogue().revision);
+      await authority.manageAccounts({ kind: 'remove', id: 'imported:60:0',}, state().revision, catalogue().revision);
+      await importAccount({ privateKey: FIXTURE_KEY, expectedAddress: ADDRESS, label: 'Qualification imported key' });
     });
   }
   const imported = catalogue().accounts.find(account => account.type === 'Imported' && account.address === ADDRESS);
@@ -95,11 +102,15 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
     const registration = getNativeNetwork(network);
     let expectedRaw: string | undefined, requests = 0;
     const wrapped: NativeTransferRuntime = {
+    isAuthenticationRefusal: (error) => transfer.isAuthenticationRefusal(error),
+    authenticateOperation: (...args) => transfer.authenticateOperation(...args),
+    authorizeOperation: (...args) => transfer.authorizeOperation(...args),
+    releaseOperationAuthorization: (...args) => transfer.releaseOperationAuthorization(...args),
     replay: (...args) => transfer.replay(...args),
       submit: (...args) => transfer.submit(...args),
       journal: (assertCurrent) => transfer.journal(assertCurrent),
       async sign(...args) { expect(phase === 'create'); signatures++; return transfer.sign(...args); },
-      // The report counts unlocked-session admission; retry never reauthenticates.
+      // The report counts the replay admission check separately from fresh operation authentication.
       assertUnlocked(...args) { expect(phase === 'restart'); authorizations++; return transfer.assertUnlocked(...args); },
     };
     const rpc = new NativeTransferRpc({ networkId: network, fetch: async (url, init) => {
@@ -145,7 +156,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
         }
         guard(); const review = controller.getSnapshot().review;
         expect(review && review.retry === (phase === 'restart') && review.context.chainId === registration.chainId);
-        await controller.confirm(review.id); guard();
+        await controller.confirm(review.id, { method: 'pin', pin: password }); guard();
         expect(controller.getSnapshot().phase === (phase === 'create' ? 'unknown' : 'pending'));
         const saved = await (await transfer.journal(guard)).load(); guard();
         expect(saved && saved.rawTransaction === expectedRaw && saved.phase === (phase === 'create' ? 'signed' : 'submitted'));
@@ -154,9 +165,16 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
     } finally { controller.dispose(); }
   }
   await check('native imported private key reveal and clear', async () => {
-    const flow = new HdKeyExportFlow(authority, () => runtime.keyExport);
+    const raw = runtime.keyExport; expect(raw);
+    const adapter = {
+      isAuthenticationRefusal: (error: unknown) => raw.isAuthenticationRefusal(error),
+      readSelected: (scope: Parameters<typeof raw.readSelected>[0], signal: AbortSignal, guard: () => void,
+        authentication: import('../src/custody/privateAuthentication.ts').NativePrivateAuthenticationScope) =>
+        raw.readSelected(scope, signal, guard, bindNativePrivateAuthentication(authentication, { assertCurrent: guard, isPromptActive: () => false })),
+    };
+    const flow = new HdKeyExportFlow(authority, () => adapter);
     try {
-      const shown = await flow.begin(password); const id = shown.id;
+      const shown = await flow.begin(); const id = shown.id;
       expect(shown.accountId === imported.id && shown.address === ADDRESS && shown.privateKey === FIXTURE_KEY && flow.isCurrent(id));
       flow.cancel(); expect(!flow.isCurrent(id));
     } finally { flow.dispose(); }

@@ -8,6 +8,7 @@ import {
 import {
   setupNotificationListeners,
   showTransactionNotification,
+  showActivityNotification,
   showNetworkChangeNotification,
   showAccountChangeNotification,
   showDappConnectionNotification,
@@ -23,6 +24,8 @@ import {
 } from 'utils/syscoinTransactionUtils';
 import { getTransactionDisplayInfo } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
+
+import type { ActivityNotificationFact } from '../../shared/activityNotifications';
 
 const getSummaryAccountDelta = (tx: any): string | null => {
   if (tx?.addressValueIn === undefined && tx?.addressValueOut === undefined) {
@@ -42,6 +45,9 @@ const getSummaryAccountDelta = (tx: any): string | null => {
 };
 
 class NotificationManager {
+  private activityKeys = new Set<string>();
+  private localTransactionKinds = new Set<string>();
+  private activityTransactionKinds = new Set<string>();
   constructor() {
     // Set up notification click handlers
     setupNotificationListeners();
@@ -61,11 +67,38 @@ class NotificationManager {
   // MainController determines when to call this and with what type
   public notifyTransaction(params: {
     account: { address: string; label?: string };
+    fact?: ActivityNotificationFact;
+    isCurrent?: () => boolean;
     isEvm: boolean;
     network: INetwork;
     transaction: any;
     type: 'pending' | 'confirmed' | 'failed';
   }) {
+    const transactionKey = JSON.stringify([
+      params.network.chainId,
+      params.network.url ?? '',
+      params.account.address.toLowerCase(),
+      String(
+        params.transaction.hash || params.transaction.txid || ''
+      ).toLowerCase(),
+      params.type,
+    ]);
+    if (params.fact) {
+      this.activityTransactionKinds.add(transactionKey);
+      if (this.activityTransactionKinds.size > 4096)
+        this.activityTransactionKinds.delete(
+          this.activityTransactionKinds.values().next().value!
+        );
+      if (this.localTransactionKinds.delete(transactionKey)) return;
+      void this.notifyActivity(params.fact, params.isCurrent);
+      return;
+    }
+    if (this.activityTransactionKinds.has(transactionKey)) return;
+    this.localTransactionKinds.add(transactionKey);
+    if (this.localTransactionKinds.size > 4096)
+      this.localTransactionKinds.delete(
+        this.localTransactionKinds.values().next().value!
+      );
     const { transaction, type, account, network, isEvm } = params;
 
     // Simply show the notification based on what MainController tells us
@@ -73,6 +106,21 @@ class NotificationManager {
       this.showEvmTransactionNotification(transaction, type, account, network);
     } else {
       this.showUtxoTransactionNotification(transaction, type, account, network);
+    }
+  }
+
+  public async notifyActivity(
+    fact: ActivityNotificationFact,
+    isCurrent: () => boolean = () => true
+  ) {
+    if (!isCurrent() || this.activityKeys.has(fact.key)) return;
+    this.activityKeys.add(fact.key);
+    if (this.activityKeys.size > 4096)
+      this.activityKeys.delete(this.activityKeys.values().next().value!);
+    try {
+      await showActivityNotification(fact, isCurrent);
+    } catch {
+      // An OS notification failure must not interrupt wallet observation.
     }
   }
 
@@ -232,7 +280,9 @@ class NotificationManager {
 
   // Public cleanup method
   public cleanup() {
-    // Currently no cleanup needed
+    this.activityKeys.clear();
+    this.localTransactionKinds.clear();
+    this.activityTransactionKinds.clear();
   }
 
   // Public methods for manual notification triggering

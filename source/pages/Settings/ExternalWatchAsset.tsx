@@ -287,6 +287,12 @@ const ExternalWatchAsset = () => {
                       }
                       symbol={assetInfo.symbol}
                       contractAddress={receivedAsset?.options?.address}
+                      chainId={assetInfo.chainId}
+                      decimals={
+                        assetInfo.decimals === undefined
+                          ? undefined
+                          : Number(assetInfo.decimals)
+                      }
                       isNft={
                         receivedAsset?.type === 'ERC721' ||
                         receivedAsset?.type === 'ERC1155'

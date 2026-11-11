@@ -213,11 +213,13 @@ const setRecipient = () =>
 const clickMax = () =>
   fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
 const submitPreview = async () => {
+  await waitFor(() => expect(next()).toBeEnabled());
   fireEvent.click(next());
   await waitFor(() => expect(mockNavigateWithContext).toHaveBeenCalledTimes(1));
   return mockNavigateWithContext.mock.calls[0][2].tx;
 };
 const expectValidation = async (message: string) => {
+  await waitFor(() => expect(next()).toBeEnabled());
   fireEvent.click(next());
   await waitFor(() =>
     expect(screen.getAllByText(message).length).toBeGreaterThan(0)
@@ -316,9 +318,11 @@ describe('native MAX classification after balance changes', () => {
     expect(next()).toBeDisabled();
     changeBalance('10.0000000000001');
     view.rerender(<SendEth />);
+    const validation = expectValidation('send.insufficientFundsForGas');
+    expect(next()).toBeDisabled();
     await act(async () => quote.resolve(QUOTE));
     expect(feeCalls()).toHaveLength(1);
-    await expectValidation('send.insufficientFundsForGas');
+    await validation;
   });
 
   it.each([

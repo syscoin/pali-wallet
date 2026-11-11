@@ -126,26 +126,76 @@ export async function pendingGuardianRecoveryTransaction(
   return null;
 }
 
-/** A fresh policy revision can retire an unsent intent only after its full signed-byte scan. */
-export function guardianRecoveryIntentResolved(
+export type GuardianRecoveryTerminalReason =
+  | 'executed'
+  | 'cancelled'
+  | 'expired'
+  | 'policy-changed'
+  | 'inactive';
+
+/** Preserve why the existing terminal predicate resolves a tracked intent. */
+export function guardianRecoveryTerminalReason(
   operation: SmartAccountGuardianRecoveryOperation,
   observation: GuardianRecoveryObservation,
   pendingHash: string | null | undefined
-): boolean {
+): GuardianRecoveryTerminalReason | null {
   if (
     observation.account !== operation.account ||
     observation.chainId !== operation.chainId ||
     observation.moduleAddress.toLowerCase() !==
       operation.recoveryModule.toLowerCase()
   )
-    return false;
-  if (observation.knownOperation?.status === 'executed') return true;
+    return null;
+  if (observation.knownOperation?.status === 'executed') return 'executed';
+  if (pendingHash !== null) return null;
+  if (!observation.exists || observation.policyEpoch !== operation.policyEpoch)
+    return 'policy-changed';
+  switch (observation.knownOperation?.status) {
+    case 'canceled':
+      return 'cancelled';
+    case 'expired':
+      return 'expired';
+    case 'inactive':
+      return 'inactive';
+    default:
+      return null;
+  }
+}
+
+/** A fresh policy revision can retire an unsent intent only after its full signed-byte scan. */
+export function guardianRecoveryIntentResolved(
+  operation: SmartAccountGuardianRecoveryOperation,
+  observation: GuardianRecoveryObservation,
+  pendingHash: string | null | undefined
+): boolean {
   return (
-    pendingHash === null &&
-    (!observation.exists ||
-      observation.policyEpoch !== operation.policyEpoch ||
-      ['canceled', 'expired', 'inactive'].includes(
-        observation.knownOperation?.status ?? ''
-      ))
+    guardianRecoveryTerminalReason(operation, observation, pendingHash) !== null
   );
+}
+
+export function guardianRecoveryTerminalNotice(
+  reason: Exclude<GuardianRecoveryTerminalReason, 'executed'>
+) {
+  switch (reason) {
+    case 'expired':
+      return {
+        title: 'Recovery expired',
+        body: 'This recovery expired before it was completed. Clear local tracking to start a new recovery.',
+      };
+    case 'cancelled':
+      return {
+        title: 'Recovery was cancelled',
+        body: 'This recovery was cancelled on the network. Clear local tracking to start a new recovery.',
+      };
+    case 'policy-changed':
+      return {
+        title: 'Guardian policy changed',
+        body: 'The saved recovery no longer matches the current guardian policy. Refresh the policy before starting again.',
+      };
+    case 'inactive':
+      return {
+        title: 'Recovery is no longer active',
+        body: 'This saved recovery is no longer active on the network. Refresh the policy before starting again.',
+      };
+  }
 }

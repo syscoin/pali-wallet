@@ -21,6 +21,7 @@ import {
 import { reviewSavedUtxoOutputs } from '../../../../source/wallet/utxoSavedReview.ts';
 import {
   observeRetainedUtxo,
+  reconcileRetainedUtxo,
   submitRetainedUtxo,
   submitReviewedUtxo,
 } from '../../../../source/wallet/utxoSubmission.ts';
@@ -30,6 +31,7 @@ import {
   normalizeUtxoAddress,
 } from '../core/utxoAddresses.ts';
 import { CustodyRuntimeError } from './types.ts';
+import type { NativeOperationCredential, NativeOperationAuthorization } from './types.ts';
 
 import type {
   IKeyringManager,
@@ -85,6 +87,11 @@ export function createNativeUtxoSend(
   fetch: typeof globalThis.fetch,
   getAddress: IKeyringManager['getAddress'],
   collateral: ReturnType<typeof createNativeSentryCollateral> | null,
+  authorization: Readonly<{
+    authorize(credential: NativeOperationCredential, input: Parameters<ISyscoinTransactions['signPSBT']>[0] | null, assertCurrent: () => void): Promise<NativeOperationAuthorization>;
+    sign(receipt: NativeOperationAuthorization, input: Parameters<ISyscoinTransactions['signPSBT']>[0], read: Parameters<ISyscoinTransactions['signPSBT']>[1], assertCurrent: () => void): ReturnType<ISyscoinTransactions['signPSBT']>;
+    release(receipt: NativeOperationAuthorization): void;
+  }>,
   now = () => performance.now()
 ) {
   const sentryChain = Object.values(SENTRY_NETWORKS).some(item=>
@@ -347,6 +354,23 @@ export function createNativeUtxoSend(
     list() {
       return records.list(session, owner);
     },
+    async refreshSaved() {
+      return run(async () => {
+        const check = capture(revision, now() + REVIEW_MS);
+        const controller = new AbortController();
+        readController = controller;
+        try {
+          check();
+          await reconcileRetainedUtxo({ backendChain: network.backendChain, fetch, owner, records,
+            session: { ...session, assertCurrent: check }, signal: controller.signal });
+          check();
+          return await records.list({ ...session, assertCurrent: check }, owner);
+        } finally {
+          controller.abort();
+          if (readController === controller) readController = undefined;
+        }
+      });
+    },
     async check(txid: string): Promise<'confirmed' | 'seen' | 'unknown'> {
       return run(async () => {
         const check = capture(revision, now() + REVIEW_MS);
@@ -430,14 +454,18 @@ export function createNativeUtxoSend(
         return view;
       });
     },
-    async confirm(view: NativeUtxoReview): Promise<Readonly<{ txid: string }>> {
+    async confirm(view: NativeUtxoReview, credential: NativeOperationCredential): Promise<Readonly<{ txid: string }>> {
       return run(async () => {
         const selected = review;
         if (!selected || view !== selected.view)
           throw new CustodyRuntimeError('NOT_READY');
-        review = undefined;
         const check = capture(revision, selected.expires);
         check();
+        const receipt = await authorization.authorize(credential, 'retained' in selected ? null : { psbt: selected.binding.psbt }, check);
+        try {
+        check();
+        if (review !== selected) throw new CustodyRuntimeError('CANCELLED');
+        review = undefined;
         const currentSession = { ...session, assertCurrent: check };
         if ('retained' in selected)
           return submitProtected(selected.retained.outpoints,check,transport=>submitRetainedUtxo({
@@ -450,9 +478,9 @@ export function createNativeUtxoSend(
         try {
           await assertUnprotected(selected.binding.review.outpoints,check);
           const read = await ownedRead(check);
-          const signed = await sdk.signPSBT(
+          const signed = await authorization.sign(receipt,
             { psbt: selected.binding.psbt },
-            read
+            read, check
           );
           check();
           const { record } = selected.binding.bindSigned(signed);
@@ -476,6 +504,7 @@ export function createNativeUtxoSend(
           readController?.abort();
           readController = undefined;
         }
+        } finally { authorization.release(receipt); }
       });
     },
   });

@@ -1,3 +1,9 @@
+import { withTestPinOperation } from './fixtures/pinOperation.ts';
+import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
+import { createNativePublicSessionRecord, NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
+import { signTestTransfer } from './fixtures/operationAuthorization.ts';
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { createNativePinVault } from '../src/custody/pinVault.ts';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import assert from 'node:assert/strict';
@@ -17,10 +23,12 @@ import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
+const pinCredential = createTestPinCredentialPort();
+
 process.env.NODE_ENV = 'production';
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'Public full SDK records fixture 1!';
+const PASSWORD = '123456';
 
 async function fixture() {
   const sdk = await loadNativeKeyringSdk();
@@ -69,7 +77,7 @@ async function fixture() {
   }
   let runtime!: KeyringRuntime;
   let storage!: SqliteWalletStorage;
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     async ensureCryptoReady() {
       assert(globalThis.crypto.subtle);
     },
@@ -100,7 +108,7 @@ async function fixture() {
   await authority.unlock(PASSWORD);
   return {
     calls,
-    get keyring() { return keyrings.find((keyring) => keyring.isUnlocked())!; },
+    get keyring() { return keyrings.find((keyring) => keyring.hasPublicSession())!; },
     get authority() {
       return authority;
     },
@@ -166,7 +174,7 @@ test('complete SDK records survive normal unlock without deriving or importing a
 test('the existing SDK reuses a deleted HD ID and the canonical map preserves a legal imported alias', async () => {
   const f = await fixture();
   try {
-    await f.execute({ kind: 'create', label: 'Second', password: PASSWORD });
+    await f.execute({ kind: 'create', label: 'Second',});
     const second = f.authority
       .getCatalogue()!
       .accounts.find(
@@ -178,18 +186,19 @@ test('the existing SDK reuses a deleted HD ID and the canonical map preserves a 
       "m/44'/60'/0'/0/1"
     ).privateKey;
     await f.execute({ kind: 'select', id: 'hd:60:0' });
-    await f.execute({ kind: 'remove', id: second.id, password: PASSWORD });
+    await f.execute({ kind: 'remove', id: second.id,});
     await f.authority.importAccount(
       {
         privateKey: secret,
         label: 'Imported alias',
         expectedAddress: second.address,
       },
-      PASSWORD,
       f.authority.getSnapshot().revision,
-      f.authority.getCatalogue()!.revision
+      f.authority.getCatalogue()!.revision,
+      new AbortController().signal,
+      createTestPrivateAuthentication(() => undefined)
     );
-    await f.execute({ kind: 'create', label: 'HD alias', password: PASSWORD });
+    await f.execute({ kind: 'create', label: 'HD alias',});
     const aliases = f.authority
       .getCatalogue()!
       .accounts.filter((account) => account.address === second.address);
@@ -206,7 +215,7 @@ test('the existing SDK reuses a deleted HD ID and the canonical map preserves a 
     await f.reopen();
     assert.deepEqual(f.calls, counters);
     assert.deepEqual(await f.record(), before);
-    const signed = await f.runtime.transfers!.sign(
+    const signed = await signTestTransfer(f.runtime.transfers!, PASSWORD,
       {
         type: 2, accessList: [],
         from: second.address,
@@ -240,20 +249,34 @@ test('the existing SDK reuses a deleted HD ID and the canonical map preserves a 
 test('an actual SDK HD4096 record survives nonactive cold loading, selection and signing', async () => {
   const f = await fixture();
   try {
-    const record = await f.record(), group = record.groups[0];
-    const account = await f.keyring.deriveEvmHdRuntimeAccount({index: 4096}, {assertCurrent() {}});
-    group.accounts.HDAccount[4096] = account;
-    await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY, record);
+    const record = await f.record(), previous = structuredClone(record), group = record.groups[0];
+    const ring = f.keyring;
+    const check = ring.capturePublicSessionGuard();
+    const identity = await f.storage.recovery.readIdentity();
+    assert(identity); assert(identity.root);
+    const previousCheckpoint = await f.storage.keyringStorage.get(NATIVE_PUBLIC_SESSION_KEY);
+    const account = await withTestPinOperation(f.storage.pin, pinCredential, ring, PASSWORD, check,
+      async () => {
+        const derived = await ring.deriveEvmHdRuntimeAccount({index: 4096}, {assertCurrent: check});
+        group.accounts.HDAccount[4096] = derived;
+        const checkpoint = await createNativePinVault(f.storage.pin, pinCredential).withPublicKey(check,
+          key => createNativePublicSessionRecord(ring, record, identity, new Map(), key, check));
+        assert.equal(await f.storage.keyringStorage.compareAndSetMany([
+          { key: WALLET_CATALOGUE_KEY, expected: previous, value: record },
+          { key: NATIVE_PUBLIC_SESSION_KEY, expected: previousCheckpoint, value: checkpoint },
+        ], check), true);
+        return derived;
+      });
     await f.reopen();
     assert(f.authority.getCatalogue()!.accounts.some((row) => row.id === 'hd:60:4096'));
     assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:0');
     await f.execute({kind: 'select', id: 'hd:60:4096'});
-    const signed = await f.runtime.transfers!.sign({type: 2, accessList: [], from: account.address, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1'}, { assertCurrent: () => undefined, signal: new AbortController().signal });
+    const signed = await signTestTransfer(f.runtime.transfers!, PASSWORD, {type: 2, accessList: [], from: account.address, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1'}, { assertCurrent: () => undefined, signal: new AbortController().signal });
     assert.equal(Transaction.from(signed.rawTransaction).from, account.address);
     const current = f.authority.getCatalogue()!;
     const secret = await f.runtime.keyExport!.readSelected({ authorityRevision: f.authority.getSnapshot().revision, catalogueRevision: current.revision,
       accountId: 'hd:60:4096', index: 4096, address: account.address, networkId: current.active.networkId,
-      registrationHash: getNativeNetwork(current.active.networkId, current.networks).registrationHash }, PASSWORD, () => undefined);
+      registrationHash: getNativeNetwork(current.active.networkId, current.networks).registrationHash }, new AbortController().signal, () => undefined, createTestPrivateAuthentication(() => undefined));
     assert.equal(new Wallet(secret).address, account.address);
 
   } finally { await f.close(); }

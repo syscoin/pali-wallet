@@ -35,6 +35,7 @@ const namespaces = {
 };
 const rawProposal = {
   id: 7,
+  expiryTimestamp: Math.floor(Date.now() / 1000) + 300,
   pairingTopic: PAIRING,
   proposer: { publicKey: PEER, metadata: peerMetadata },
   requiredNamespaces: {},
@@ -337,6 +338,26 @@ async function proposal(
   assert(event?.type === 'proposal');
   return event.proposal;
 }
+
+test('proposal public expiry comes from the SDK timestamp and expired proposals are never emitted', async () => {
+  const f = fixture(); const transport = await openWalletConnectTransport(f.options);
+  try {
+    const accepted = await proposal(f);
+    assert.equal(accepted.expiresAt, rawProposal.expiryTimestamp * 1000);
+    const { expiryTimestamp: _expiry, ...withoutExpiry } = rawProposal;
+    f.proposals.set(9, { ...withoutExpiry, id: 9 });
+    f.emit('session_proposal', { id: 9, params: f.proposals.get(9) });
+    await settle();
+    const unknown = f.events.find(event => event.type === 'proposal' && event.proposal.id === 9);
+    assert(unknown?.type === 'proposal'); assert.equal(unknown.proposal.expiresAt, null);
+    f.events.length = 0;
+    f.proposals.set(8, { ...rawProposal, id: 8, expiryTimestamp: Math.floor(Date.now() / 1000) - 1 });
+    f.emit('session_proposal', { id: 8, params: f.proposals.get(8) });
+    await settle();
+    assert.equal(f.events.some(event => event.type === 'proposal'), false);
+    assert(f.calls.includes('reject'));
+  } finally { await transport.close(); }
+});
 async function request(
   f: ReturnType<typeof fixture>
 ): Promise<WalletConnectRequest> {

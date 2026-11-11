@@ -113,6 +113,7 @@ function createDeviceHost() {
       getStatus: () => ({ connected: true }),
       connect: jest.fn(),
       disconnect: jest.fn(),
+      retire: jest.fn(async () => () => undefined),
       utxo: {} as any,
       evm: { signPersonalMessage: sign } as any,
     },

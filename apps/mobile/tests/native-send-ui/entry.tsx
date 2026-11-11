@@ -5,6 +5,7 @@ import { NativeSmartBatchFixture } from './nativeSmartBatchFixture';
 import { NativeSentryNodesFixture } from './nativeSentryNodesFixture';
 import { NativeDappConsentFixture } from './nativeDappConsentFixture';
 import { NativeSentryFixture } from './nativeSentryFixture';
+import { NativeNoteAuthFixture } from './nativeNoteAuthFixture';
 import { NativeSmartCurrencyFixture } from './nativeSmartCurrencyFixture';
 import { NativeNoteImportFixture } from './nativeNoteImportFixture';
 import { NativePrivateDepositFixture, NativeNoteStatusFixture } from './nativePrivateDepositFixture';
@@ -13,13 +14,14 @@ import { NativeSmartDappFixture } from './nativeSmartDappFixture';
 import { UTXO_NETWORKS } from '../../src/core/utxoNetworks.ts';
 import './fixturePlatform';
 // Isolated browser fixture: the production app never imports this entrypoint.
-import React, { useSyncExternalStore } from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
 import { NativeNetworkPortfolioFixture } from './nativeNetworkPortfolioFixture';
 import { NativeFaucetFixture } from './nativeFaucetFixture';
 import { NativeTokenPortfolioFixture } from './nativeTokenPortfolioFixture';
 import { NativeUtxoSendFixture } from './nativeUtxoSendFixture';
 import { Erc20SendFixture } from './erc20SendFixture';
 import { NetworkPickerFixture } from './networkPickerFixture';
+import { NativeAccountOverviewFixture } from './nativeAccountOverviewFixture';
 import { NativeConnectionsFixture } from './nativeConnectionsFixture';
 import { createLedgerConnectionFixture } from './nativeLedgerConnectionFixture';
 import { NativeLedgerFixture } from './nativeLedgerFixture';
@@ -27,6 +29,9 @@ import { NativeTrezorFixture } from './nativeTrezorFixture';
 import { NativeMessageReviewFixture } from './nativeMessageReviewFixture';
 import { NativeTransactionReviewFixture } from './nativeTransactionReviewFixture';
 import { NativeSmartAccountOperationFixture } from './nativeSmartAccountDeploymentFixture';
+import { NativeSmartManagementFixture } from './nativeSmartManagementFixture';
+import { NativeSmartPreparationFixture } from './nativeSmartPreparationFixture';
+import { NativeInfrastructureFixture } from './nativeInfrastructureFixture';
 import { registerRootComponent } from 'expo';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
@@ -35,15 +40,20 @@ import {
 } from '../../src/custody/networkContext';
 import { NativeCustodyFeedback } from '../../src/screens/NativeCustodyFeedback';
 import type { CustodyErrorCode } from '../../src/custody/types';
-import { Text } from '../../src/ui';
+import { Header, Screen, Text } from '../../src/ui';
+import { TransactionDetailLayout } from '../../src/screens/TransactionDetailLayout';
 import { NativeAccounts } from '../../src/screens/NativeAccounts';
+import { NativeOperationAuthentication } from '../../src/screens/NativeOperationAuthentication';
+import { nativeOperationAuthentication } from '../../src/platform/operationAuthentication';
 import type {
   NativeAccountView,
   NativeAccountRequest,
 } from '../../src/custody/accounts';
 import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCatalogue';
 import { NativeSend, type NativeRecipientPicker } from '../../src/screens/NativeSend';
-import { parseDecimalAmount } from '../../src/core/amounts';
+import type { NativeUnsignedSendDraft } from '../../src/screens/sendNetworkDraft';
+import type { Erc20Metadata } from '../../../../source/shared/erc20';
+import { formatBaseUnits, parseDecimalAmount } from '../../src/core/amounts';
 import type {
   NativeTransferSnapshot,
   NativeTransferView,
@@ -52,6 +62,7 @@ import type {
 const recipient = '0x1111111111111111111111111111111111111111';
 const sender = '0x2222222222222222222222222222222222222222';
 const route = new URLSearchParams(window.location.search);
+const biometricAuth = route.get('biometric-auth') === '1';
 const ledgerConnection = route.has('ledger-send') && !route.has('utxo-send') ? createLedgerConnectionFixture(sender) : undefined;
 const replacementMode = route.has('cancel-transfer') ? 'cancel' : route.has('speed-up-transfer') ? 'speed-up' : undefined;
 const replacement = replacementMode && { mode: replacementMode, hash: '0x' + '3'.repeat(64) } as const;
@@ -78,6 +89,7 @@ const idle = (): NativeTransferSnapshot => ({
   intent: null,
 });
 let snapshot = idle();
+let submittedReview: NativeTransferSnapshot['review'] = null;
 let sequence = 0;
 let expiry: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<(value: NativeTransferSnapshot) => void>();
@@ -105,6 +117,10 @@ const controller: NativeTransferView = {
   async loadMorePredecessors() {},
   async prepareToken() {
     throw Error('Token path uses its dedicated fixture');
+  },
+  async prepareMaximum(to, nonce) {
+    // Public fixture balance is one coin; its fixed review fee is 63,000 units.
+    publishReview(to, (10n ** 18n - 63_000n).toString(), undefined, nonce);
   },
   async prepareCollectible(saved, to, tokenId, amountUnits) {
     if (saved !== collectible) throw Error('Unexpected fixture draft');
@@ -139,7 +155,11 @@ const controller: NativeTransferView = {
   async prepare(to, amount, nonce) {
     publishReview(to, parseDecimalAmount(amount, 18).toString(), undefined, nonce);
   },
-  async confirm(id) {
+  async confirm(id, credential) {
+    if (credential.method === 'biometric' && route.get('biometric-fallback') === '1')
+      throw Error('DEVICE_UNLOCK_UNAVAILABLE');
+    if (!(credential.method === 'pin' && credential.pin === '123456') &&
+        !(biometricAuth && credential.method === 'biometric')) throw Error('INVALID_CREDENTIAL');
     if (snapshot.review?.id !== id) throw Error('Invalid fixture confirmation');
     if (route.has('storage-full')) {
       clearTimeout(expiry);
@@ -175,6 +195,7 @@ const controller: NativeTransferView = {
       throw Error(expired ? 'EXPIRED' : 'FAILED');
     }
     confirmations.push({ id });
+    submittedReview = snapshot.review;
     const { context, collectible } = snapshot.review;
     clearTimeout(expiry);
     publish({
@@ -287,6 +308,7 @@ let accountContext = 0;
 let accountFailure: CustodyErrorCode | null = null;
 const accountListeners = new Set<() => void>();
 const accountRequests: NativeAccountRequest[] = [];
+let accountAuthentication: AbortController | undefined;
 const accountController: NativeAccountView = {
   getSnapshot: () => accountSnapshot,
   getContextRevision: () => accountContext,
@@ -294,7 +316,7 @@ const accountController: NativeAccountView = {
     accountListeners.add(listener);
     return () => accountListeners.delete(listener);
   },
-  cancel() {},
+  cancel() { accountAuthentication?.abort(); },
   async execute(request, contextRevision, catalogueRevision) {
     if (
       !accountSnapshot ||
@@ -302,6 +324,18 @@ const accountController: NativeAccountView = {
       catalogueRevision !== accountSnapshot.revision
     )
       throw Error('CANCELLED');
+    if (request.kind === 'create' || request.kind === 'create-smart' || request.kind === 'remove') {
+      const captured = accountSnapshot, revision = accountContext, abort = new AbortController();
+      accountAuthentication = abort;
+      const check = () => { if (abort.signal.aborted || accountSnapshot !== captured || accountContext !== revision) throw Error('CANCELLED'); };
+      try {
+        await nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'account-change', biometricsEnabled: false }, abort.signal, check, async (credential, assertAttemptCurrent) => {
+          assertAttemptCurrent();
+          return credential.method === 'pin' && credential.pin === '123456' ? { accepted: true } : { accepted: false, reason: 'INVALID_CREDENTIAL' };
+        });
+        check();
+      } finally { if (accountAuthentication === abort) accountAuthentication = undefined; }
+    }
     accountRequests.push(request);
     const injectedFailure = new URLSearchParams(window.location.search).get(
       'failure'
@@ -378,6 +412,15 @@ window.__nativeAccountsFixture = {
 };
 
 function Fixture() {
+  const [viewedTransaction, setViewedTransaction] = useState<string | null>(null);
+  const [selectedSendAsset, setSelectedSendAsset] = useState<Erc20Metadata | undefined>(undefined);
+  const [assetDraft, setAssetDraft] = useState<Extract<NativeUnsignedSendDraft, { kind: 'evm' }> | undefined>(undefined);
+  const cachedSendAssets = [
+    { metadata: { name: 'USD Coin', symbol: 'USDC', decimals: 6, contractAddress: '0x' + 'ab'.repeat(20) }, units: '12000000', status: 'available' as const },
+    { metadata: { name: 'Dai', symbol: 'DAI', decimals: 18, contractAddress: '0x' + 'cd'.repeat(20) }, units: '4000000000000000000', status: 'available' as const },
+    ...(route.has('many-assets') ? Array.from({ length: 300 }, (_, index) => ({ metadata: { name: `Saved token ${index}`, symbol: `T${index}`, decimals: 6,
+      contractAddress: '0x' + (index + 1).toString(16).padStart(40, '0') }, units: '1000000', status: 'available' as const })) : []),
+  ];
   const failure = useSyncExternalStore(
     accountController.subscribe,
     () => accountFailure,
@@ -390,7 +433,27 @@ function Fixture() {
   );
   return (
     <SafeAreaProvider>
-      {new URLSearchParams(window.location.search).has('guardian-recovery') ? (
+      {new URLSearchParams(window.location.search).has('account-portfolio') ? <NativeAccountOverviewFixture /> : viewedTransaction && submittedReview ? (
+        <Screen><Header title="Transaction details" subtitle={`Account 1 · ${sendContext.name}`} onBack={() => setViewedTransaction(null)} />
+          <TransactionDetailLayout amount={`${formatBaseUnits(submittedReview.amountUnits, 18)} ${sendContext.symbol}`}
+            direction="Sent" status="Pending" tone="pending" rows={[
+              { label: 'Network', value: sendContext.name },
+              { label: 'From', value: submittedReview.from },
+              { label: 'To', value: submittedReview.recipient },
+              { label: 'Transaction ID', value: viewedTransaction },
+            ]} />
+        </Screen>
+      ) : route.has('note-auth-leaf') ? (
+        <NativeNoteAuthFixture />
+      ) : route.has('smart-modules') ? (
+        <NativeSmartManagementFixture kind="modules" />
+      ) : route.has('smart-authenticator') ? (
+        <NativeSmartManagementFixture kind="authenticator" />
+      ) : route.has('smart-preparation') ? (
+        <NativeSmartPreparationFixture />
+      ) : route.has('smart-infrastructure') ? (
+        <NativeInfrastructureFixture />
+      ) : new URLSearchParams(window.location.search).has('guardian-recovery') ? (
         <NativeGuardianRecoveryFixture />
       ) : new URLSearchParams(window.location.search).has('guardian-policy') ? (
         <NativeGuardianPolicyFixture />
@@ -449,13 +512,21 @@ function Fixture() {
             <NativeCustodyFeedback error={failure} />
           </>
         ) : (
-          <NativeAccounts
+          <><NativeAccounts
             controller={accountController}
             onBack={() => undefined}
-          />
+          /><NativeOperationAuthentication isProtectedPromptActive={() => false} /></>
         )
       ) : (
         <NativeSend
+          key={selectedSendAsset?.contractAddress ?? 'native'}
+          token={route.has('send-assets') ? selectedSendAsset : undefined}
+          assetChoices={route.has('send-assets') ? cachedSendAssets : undefined}
+          initialDraft={route.has('send-assets') ? assetDraft : undefined}
+          onChangeAsset={route.has('send-assets') ? (draft, asset) => {
+            controller.cancel(); setSelectedSendAsset(asset); setAssetDraft({ kind: 'evm', recipient: draft.recipient, amount: '', nonce: '', max: false, advanced: false });
+          } : undefined}
+          authenticationMethod={biometricAuth ? 'biometric' : 'pin'}
           account={{ address: sender, network: sendContext.networkId, revision: 1 }}
           savedHash={route.has('ledger-replay') ? '0x' + '3'.repeat(64) : undefined}
           controller={controller}
@@ -464,6 +535,8 @@ function Fixture() {
           replacement={replacement}
           recipientPicker={recipientPicker}
           collectible={collectible}
+          availableAmount="1"
+          onViewTransaction={setViewedTransaction}
           onBack={() => undefined}
         />
       )}

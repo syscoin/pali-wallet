@@ -1,4 +1,6 @@
 import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard.ts';
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import { createNativePrivacyServiceSettings } from '../src/platform/privacyServiceSettings.native.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -82,7 +84,12 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
   });
   class PassiveController { readonly view = {}; dispose() {} }
   const unexpectedFeature = () => assert.fail('unexpected feature operation in native factory fixture');
+  const pinCredential = createTestPinCredentialPort();
   const dependencies: Record<string, unknown> = {
+    '../notifications/service': { nativeActivityNotifications: { replaceAccountTypes: unexpectedFeature, disableOwner: unexpectedFeature } },
+    '../custody/accountIdentity': { parseNativeAccountId: unexpectedFeature },
+    '../notifications/choices': { nativeNotificationChoices: unexpectedFeature },
+    '../portfolio/scopedPortfolioAssets.ts': { createScopedPortfolioAssetReader: unexpectedFeature },
     './privacyServiceSettings.native': { createNativePrivacyServiceSettings },
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
     'react-native': { Linking: { openURL: unexpectedFeature } },
@@ -106,9 +113,14 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
     },
     '../portfolio/nativeRecipientResolver': { createNativeRecipientResolver: () => ({ resolve: unexpectedFeature }) },
     './security': security,
+    './pinCredential.native': { createNativePinCredentialPort: () => pinCredential },
+    '../custody/privateAuthentication.ts': privateAuthentication,
+    './operationAuthentication': {
+      nativeOperationAuthentication: { request: unexpectedFeature, cancel() {} },
+    },
     './deviceUnlockCredential.native': {
       createNativeDeviceUnlockCapability() {
-        return { credentials: {}, prompt: { cancel() {} } };
+        return { credentials: {}, prompt: { cancel() {}, isActive: () => false } };
       },
     },
     './walletConnectRuntime': {
@@ -157,7 +169,10 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
     '../activity/receiptReader.ts': { ActivityReceiptReader: PassiveController },
     '../portfolio/erc20ReadRpc.ts': { createErc20Reader: () => ({}) },
     '../portfolio/ownedTokenReader.ts': { createOwnedTokenReader: () => () => assert.fail('inventory must not discover tokens') },
-    '../portfolio/nftOwnershipReadRpc.ts': { createNftOwnershipReader: () => () => assert.fail('inventory must not check collectibles') },
+    '../portfolio/nftOwnershipReadRpc.ts': {
+      createNftOwnershipReader: () => () => assert.fail('inventory must not check collectibles'),
+      createNftEnumerationReader: () => () => assert.fail('inventory must not enumerate collectibles'),
+    },
     '../core/utxoBalanceReader.ts': { createUtxoBalanceReader: () => assert.fail('inventory must not read UTXO balances') },
     '../core/utxoNetworks.ts': { isCustomUtxoNetworkId },
     '../core/utxoReadSession.ts': { exactUtxoResponseFetch },
@@ -200,18 +215,19 @@ test('the native factory delivers guarded withdrawal and status routes to the in
   const f = await fixture(true, inventory), controllers = f.factory.createNativeWalletControllers();
   try {
     await controllers.authority.initialize(); await controllers.authority.unlock('fixture password');
-    const view = await controllers.readNoteInventory(() => undefined);
+    const authentication = privateAuthentication.createNativePrivateAuthenticationScope();
+    const view = await controllers.readNoteInventory(() => undefined, authentication);
     assert.equal(typeof view.openWithdrawal, 'function');
     assert.equal(view.notes[0], note);
     const assertScreen = () => { if (!screenCurrent) throw new Error('screen retired'); };
-    assert.equal(await view.openWithdrawal!(view.notes[0]!, signal, assertScreen), model);
+    assert.equal(await view.openWithdrawal!(view.notes[0]!, signal, assertScreen, privateAuthentication.createNativePrivateAuthenticationChild(authentication)), model);
     assert.equal(openings, 1);
     screenCurrent = false;
     assert.throws(() => checkModel!(), /screen retired/);
     screenCurrent = true;
     const opening = deferred<void>(); holdOpen = opening.promise;
     const closing = deferred<void>(); holdDispose = closing.promise;
-    const lateView = view.openWithdrawal!(note, signal, assertScreen);
+    const lateView = view.openWithdrawal!(note, signal, assertScreen, privateAuthentication.createNativePrivateAuthenticationChild(authentication));
     let lateSettled = false;
     void lateView.catch(() => { lateSettled = true; });
     screenCurrent = false; opening.resolve();
@@ -223,9 +239,9 @@ test('the native factory delivers guarded withdrawal and status routes to the in
     screenCurrent = true; holdOpen = undefined; holdDispose = undefined;
     controllers.authority.lock();
     assert.throws(() => checkModel!(), cancelled);
-    await assert.rejects(view.openWithdrawal!(note, signal, assertScreen), cancelled);
+    await assert.rejects(view.openWithdrawal!(note, signal, assertScreen, privateAuthentication.createNativePrivateAuthenticationChild(authentication)), cancelled);
     await controllers.authority.unlock('fixture password');
-    await assert.rejects(view.openWithdrawal!(note, signal, assertScreen), cancelled);
+    await assert.rejects(view.openWithdrawal!(note, signal, assertScreen, privateAuthentication.createNativePrivateAuthenticationChild(authentication)), cancelled);
     assert.equal(openings, 2);
   } finally { await controllers.authority.dispose(); }
 });
@@ -235,7 +251,7 @@ test('the native inventory facade preserves absence of an unsupported withdrawal
   const controllers = f.factory.createNativeWalletControllers();
   try {
     await controllers.authority.initialize(); await controllers.authority.unlock('fixture password');
-    assert.equal((await controllers.readNoteInventory(() => undefined)).openWithdrawal, undefined);
+    assert.equal((await controllers.readNoteInventory(() => undefined, privateAuthentication.createNativePrivateAuthenticationScope())).openWithdrawal, undefined);
   } finally { await controllers.authority.dispose(); }
 });
 

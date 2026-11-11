@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { currencyFlag } from '../../shared/currencyFlags';
 import { FIAT_QUOTE_CURRENCIES } from '../../shared/nativeCoinQuotes';
 import { ArrowDownSvg } from 'components/Icon/Icon';
 import { Button, DefaultModal, PageActionFooter } from 'components/index';
@@ -72,66 +73,6 @@ const CurrencyView = () => {
   const [saveError, setSaveError] = useState(false);
   const savingRef = useRef(false);
   const draftEdited = useRef(false);
-
-  // Currency to flag mapping for all supported currencies
-  const currencyFlags = {
-    // Fiat currencies
-    usd: '🇺🇸',
-    eur: '🇪🇺',
-    gbp: '🇬🇧',
-    jpy: '🇯🇵',
-    cad: '🇨🇦',
-    aud: '🇦🇺',
-    chf: '🇨🇭',
-    cny: '🇨🇳',
-    sek: '🇸🇪',
-    nzd: '🇳🇿',
-    mxn: '🇲🇽',
-    sgd: '🇸🇬',
-    hkd: '🇭🇰',
-    nok: '🇳🇴',
-    dkk: '🇩🇰',
-    krw: '🇰🇷',
-    inr: '🇮🇳',
-    brl: '🇧🇷',
-    rub: '🇷🇺',
-    zar: '🇿🇦',
-    try: '🇹🇷',
-    pln: '🇵🇱',
-    ils: '🇮🇱',
-    czk: '🇨🇿',
-    twd: '🇹🇼',
-    thb: '🇹🇭',
-    php: '🇵🇭',
-    clp: '🇨🇱',
-    aed: '🇦🇪',
-    ars: '🇦🇷',
-    bdt: '🇧🇩',
-    bhd: '🇧🇭',
-    bmd: '🇧🇲',
-    gel: '🇬🇪',
-    huf: '🇭🇺',
-    idr: '🇮🇩',
-    kwd: '🇰🇼',
-    lkr: '🇱🇰',
-    mmk: '🇲🇲',
-    myr: '🇲🇾',
-    ngn: '🇳🇬',
-    pkr: '🇵🇰',
-    sar: '🇸🇦',
-    uah: '🇺🇦',
-    vef: '🇻🇪',
-    vnd: '🇻🇳',
-    // Cryptocurrencies (only official symbols)
-    btc: '₿',
-    ltc: 'Ł',
-    bits: '₿',
-    // Others will use the default 💰 fallback
-    // Precious metals & special
-    xag: '🥈',
-    xau: '🥇',
-    xdr: '🏦',
-  };
 
   const filteredCoins = FIAT_QUOTE_CURRENCIES.filter((code) =>
     code.toLowerCase().includes(inputValue.toLowerCase())
@@ -203,7 +144,7 @@ const CurrencyView = () => {
               >
                 <div className="flex items-center gap-2 ml-2">
                   <span className="text-lg transform transition-transform duration-300 group-hover:scale-110">
-                    {currencyFlags[selectedCoin.toLowerCase()] || '💰'}
+                    {currencyFlag(selectedCoin)}
                   </span>
                   <div className="flex flex-col items-start">
                     <span className="text-sm font-medium">
@@ -264,7 +205,7 @@ const CurrencyView = () => {
                           selectedCoin === coin.toLowerCase() ? 'scale-110' : ''
                         }`}
                       >
-                        {currencyFlags[coin.toLowerCase()] || '💰'}
+                        {currencyFlag(coin)}
                       </span>
                       <div className="flex flex-col items-start text-left">
                         <span className="text-sm font-medium">
@@ -304,7 +245,7 @@ const CurrencyView = () => {
           </p>
           <div className="flex items-center gap-4 w-full">
             <span className="text-4xl transform transition-transform duration-200 group-hover:scale-110">
-              {currencyFlags[initialCurrency] || '💰'}
+              {currencyFlag(initialCurrency)}
             </span>
             <div className="flex flex-col items-start min-w-0 w-full">
               <div className="flex flex-wrap gap-x-1 items-baseline min-w-0 w-full">

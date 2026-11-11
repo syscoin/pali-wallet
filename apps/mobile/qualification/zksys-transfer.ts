@@ -180,7 +180,7 @@ export async function qualifyNativeZksysTransfer(
     expect(!before.entries.some(entry => entry.signer.type === 'HDAccount' && entry.signer.id === 4));
     initialGuard();
     await check('native zkSYS dedicated HD4 account', () =>
-      manage({ kind: 'create', label: 'Qualification zkSYS account', password })
+      manage({ kind: 'create', label: 'Qualification zkSYS account',})
     );
   } else
     await check('native zkSYS select retained HD4 after cold restart', () =>
@@ -254,6 +254,10 @@ export async function qualifyNativeZksysTransfer(
     requests = 0;
   let expectedRaw: string | undefined, expectedHash: string | undefined;
   const wrapped: NativeTransferRuntime = {
+    isAuthenticationRefusal: (error) => transfer.isAuthenticationRefusal(error),
+    authenticateOperation: (...args) => transfer.authenticateOperation(...args),
+    authorizeOperation: (...args) => transfer.authorizeOperation(...args),
+    releaseOperationAuthorization: (...args) => transfer.releaseOperationAuthorization(...args),
     replay: (...args) => transfer.replay(...args),
       submit: (...args) => transfer.submit(...args),
     journal: (checkCurrent) => transfer.journal(checkCurrent),
@@ -410,7 +414,7 @@ export async function qualifyNativeZksysTransfer(
               review.context.chainId === '57057' &&
               review.totalUnits === '900789'
           );
-          await controller.confirm(review.id);
+          await controller.confirm(review.id, { method: 'pin', pin: password });
           guard();
           expect(controller.getSnapshot().phase === 'unknown');
         }
@@ -430,7 +434,7 @@ export async function qualifyNativeZksysTransfer(
               review.context.chainId === '57057' &&
               controller.getSnapshot().hash === entry.hash
           );
-          await controller.confirm(review.id);
+          await controller.confirm(review.id, { method: 'pin', pin: password });
           guard();
           expect(controller.getSnapshot().phase === 'pending');
         }

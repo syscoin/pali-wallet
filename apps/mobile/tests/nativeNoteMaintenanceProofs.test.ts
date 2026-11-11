@@ -3,7 +3,7 @@ import test from 'node:test';
 import { AbiCoder, Interface } from 'ethers/abi';
 import { keccak256 } from 'ethers/crypto';
 import { getPrivacyPool } from '../../../source/utils/privacy/registry.ts';
-import type { IPrivateVaultSession } from '../../../source/wallet/privateVault.ts';
+import { createPrivateVaultSession } from '../../../source/wallet/privateVault.ts';
 import { createNativeNetwork } from '../src/custody/networkContext.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { createNativeNoteMaintenanceProofs } from '../src/custody/noteMaintenance.ts';
@@ -24,7 +24,8 @@ function fixture(reverted = false) {
   const network = createNativeNetwork({ id: 'saved-ethereum', name: 'Saved Ethereum', kind: 'evm', chainId: '1', slip44: 60,
     rpcUrl: 'https://privacy-fixture.invalid/rpc', symbol: 'ETH', decimals: 18, testnet: false });
   const check = () => { if (!current) throw Error('session changed'); };
-  const session = { assertCurrent: check, generation: 1, keyring: {} } as IPrivateVaultSession;
+  const unused = async (): Promise<never> => { throw Error('Proof reader cannot access private record codecs'); };
+  const session = createPrivateVaultSession({ assertCurrent: check, generation: 1, keyring: { getPrivateRecordProfileId: unused, encryptPrivateRecord: unused, decryptPrivateRecord: unused } });
   const encoded = abi.encodeEventLog(abi.getEvent('Withdrawal')!, [recipient, identity.nullifierHash, zero, 0]);
   const rpc = new EvmTransferReadRpc(network, { fetch: async (_url, init) => {
     const { id, method, params } = JSON.parse(String(init?.body)); calls.push({ method, params });

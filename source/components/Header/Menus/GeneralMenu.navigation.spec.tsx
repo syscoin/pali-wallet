@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import {
@@ -15,6 +15,13 @@ import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
 import { GeneralMenu } from './GeneralMenu';
 
 const mockEmitter = jest.fn();
+let mockHasWalletUpdate = false;
+jest.mock('hooks/useWalletUpdate', () => ({
+  useWalletUpdate: () => ({
+    release: mockHasWalletUpdate ? { version: '1.1.0' } : null,
+    pendingVersion: null,
+  }),
+}));
 const mockState = {
   vault: {
     activeAccount: { id: 0, type: 'HDAccount' },
@@ -73,6 +80,7 @@ jest.mock('components/Icon/Icon', () => ({
 
 const originalChrome = global.chrome;
 beforeEach(() => {
+  mockHasWalletUpdate = false;
   mockEmitter.mockReset().mockResolvedValue(undefined);
   global.chrome = {
     ...originalChrome,
@@ -142,6 +150,7 @@ const destinations = [
   ['privacy.title', '/privacy'],
   ['sentry.sentryOperators', '/settings/sentry'],
   ['generalMenu.walletSeedPhrase', '/settings/seed'],
+  ['localPasskey.title', '/settings/local-passkey'],
   ['generalMenu.forget', '/settings/forget-wallet'],
   ['Languages', '/settings/languages'],
   ['generalMenu.currency', '/settings/currency'],
@@ -230,4 +239,25 @@ it('keeps logout outside the browsing navigation helper', async () => {
   expect(mockEmitter).toHaveBeenCalledWith(['wallet', 'lock']);
   expect(location.pathname).toBe('/');
   expect(location.state).toBeNull();
+});
+
+it('keeps the update badge inside a keyboardable Info and Help action', async () => {
+  mockHasWalletUpdate = true;
+  const user = userEvent.setup();
+  render(
+    <MemoryRouter initialEntries={['/home?tab=activity']}>
+      <Layout />
+    </MemoryRouter>
+  );
+  await user.click(
+    screen.getByRole('button', { name: 'generalMenu.generalOptions' })
+  );
+  const item = screen.getByRole('menuitem', {
+    name: 'generalMenu.infoHelp updates.available',
+  });
+  expect(item.tagName).toBe('BUTTON');
+  act(() => item.focus());
+  await user.keyboard('{Enter}');
+  expect(location.pathname).toBe('/settings/about');
+  expect(mockEmitter).not.toHaveBeenCalled();
 });

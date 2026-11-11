@@ -1,3 +1,7 @@
+import { Interface } from 'ethers/abi';
+import { resolveAssetTransferDisplay } from '../../../source/shared/assetTransferDisplay.ts';
+import { decodeAssetTransfer } from '../../../source/shared/assetTransfer.ts';
+import { formatTokenUnits } from '../../../source/shared/erc20.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { useDappLedgerConnection } from '../src/screens/useDappLedgerConnection';
@@ -18,7 +22,7 @@ function fixture(kind: 'message' | 'transaction' | 'psbt' | 'smart-transaction' 
   if (kind === 'smart-transaction') Object.assign(review, {operation: {phase:'authorize', revision:3, intent:{kind:'dapp-call'}}, batchApprovals:undefined});
   if (kind === 'psbt') Object.assign(review, { attempted: false, details: {} });
   current = review;
-  const controller: any = { getSnapshot: () => ({ signingReview: kind === 'psbt' ? null : current, psbtReview: kind === 'psbt' ? current : null }),
+  const controller: any = { isRequestAuthenticating: () => false, getSnapshot: () => ({ signingReview: kind === 'psbt' ? null : current, psbtReview: kind === 'psbt' ? current : null }),
     async approveRequest(...args: unknown[]) { approvals.push(args); }, async rejectRequest() {}, async activateRequestAccount() {} };
   const ledgerConnection: any = { purpose: 'connect', subscribe: () => () => {}, isConnected: () => connected,
     async close() { closes++; }, async start() { deviceActions.push('start'); },
@@ -37,8 +41,9 @@ function fixture(kind: 'message' | 'transaction' | 'psbt' | 'smart-transaction' 
       'react-native': { ActivityIndicator: 'ActivityIndicator', View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView',
         Platform: { OS: 'ios' }, StyleSheet: { create: (value: unknown) => value }, BackHandler: { addEventListener: () => ({ remove() {} }) } },
       'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
-      '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
+      '../ui': { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
       './IdleActivityBoundary': { IdlePressable: 'Pressable' }, './DappSiteStatus': { DappSiteStatus: 'DappSiteStatus' },
+      '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay }, '../../../../source/shared/assetTransfer': { decodeAssetTransfer }, '../../../../source/shared/erc20': { formatTokenUnits },
       '../core/amounts': { formatBaseUnits }, './ApprovalReview': { ApprovalReview: 'ApprovalReview' },
     }, globals);
   return { review, controller, ledgerConnection, state, approvals, deviceActions,
@@ -53,7 +58,7 @@ const modal = (state: LedgerState) => { assert(state.modal); return state.modal 
 
 for (const kind of ['message', 'transaction'] as const) test(`${kind} consent connects Ledger without automatically signing, then requires a fresh approval press`, async () => {
   const f = fixture(kind);
-  const approveTitle = kind === 'message' ? 'Sign message' : 'Confirm transaction';
+  const approveTitle = kind === 'message' ? 'Sign message' : 'Confirm';
   let values = f.render();
   const oldApprove = values.find(value => value.type === 'Button' && value.props.title === approveTitle)!;
   assert(oldApprove.props.disabled); oldApprove.props.onPress(); assert.deepEqual(f.approvals, []);
@@ -142,4 +147,75 @@ test('Smart dapp review connects before approveRequest and keeps payer confirmat
     assert(!content.props.disabled, 'owner device may disconnect after its proof; payer review retains its own controls');
     assert(!f.state().showConnect);
   } finally {f.close();}
+});
+
+
+test('long message keeps one bordered rejection and approval action in the fixed footer', () => {
+  const f = fixture('message');
+  try {
+    f.review.message = 'Long public signing message. '.repeat(500);
+    const rendered = f.render();
+    const screen = rendered.find(node => node.type === 'Screen'); assert(screen);
+    const footer = screenElements(screen.props.footer);
+    const reject = footer.find(node => node.type === 'Button' && node.props.title === 'Reject'); assert(reject);
+    assert.equal(reject.props.variant, 'secondary');
+    assert(footer.some(node => node.type === 'Button' && node.props.title === 'Sign message'));
+    assert.equal(rendered.filter(node => node.type === 'Button' && node.props.title === 'Reject').length, 1);
+    assert(!JSON.stringify(screen.props.footer).includes(f.review.message));
+    assert(rendered.some(node => node.type === 'Text' && node.children.includes(f.review.message)));
+    f.review.dispatched = true;
+    const complete = f.render().find(node => node.type === 'Screen'); assert(complete);
+    assert.equal(screenElements(complete.props.footer).find(node => node.type === 'Button' && node.props.title === 'Close')?.props.variant, 'secondary');
+  } finally { f.close(); }
+});
+
+for (const kind of ['erc20', 'erc721', 'unknown'] as const) test(`dapp ${kind} transfer displays recipient and asset in the primary review`, () => {
+  const f = fixture('transaction');
+  try {
+    const recipient = '0x3333333333333333333333333333333333333333';
+    const nft = kind === 'erc721';
+    const iface = new Interface([nft ? 'function safeTransferFrom(address,address,uint256)' : 'function transfer(address,uint256)']);
+    const data = iface.encodeFunctionData(nft ? 'safeTransferFrom' : 'transfer', nft ? [f.review.address, recipient, 91] : [recipient, 2500000]);
+    f.review.transaction = { ...f.review.transaction, data, value: '0' };
+    const metadata = kind === 'unknown' ? undefined : nft ? { standard: 'ERC-721' as const } : {
+      standard: 'ERC-20' as const, token: { contractAddress: f.review.transaction.to, name: 'USD token', symbol: 'USDT', decimals: 6 },
+    };
+    f.review.assetTransfer = decodeAssetTransfer(data, f.review.transaction.to, metadata);
+    const values = f.render();
+    const text = values.flatMap(element => element.children.filter(value => typeof value === 'string')).join(' ');
+    assert(text.includes(recipient)); assert(text.includes('Recipient')); assert(text.includes('Token contract'));
+    assert(text.includes(nft ? '#91' : kind === 'erc20' ? '2.5' : '2500000'));
+    const icon = values.find(value => value.type === 'Coin');
+    assert.equal(icon?.props.asset.contractAddress, f.review.transaction.to);
+    assert.equal(icon?.props.asset.chainId, f.review.chainId);
+    assert(!text.includes('Contract interaction'));
+    assert(!values.some(value => value.type === 'TransactionDetails'));
+  } finally { f.close(); }
+});
+
+test('unknown contract call identifies native value separately from possible asset effects', () => {
+  const f = fixture('transaction');
+  try {
+    f.review.transaction = { ...f.review.transaction, value: '0', data: '0x12345678' };
+    const text = f.render().flatMap(element => element.children.filter(value => typeof value === 'string')).join(' ');
+    assert(text.includes('Native currency sent'));
+    assert(text.includes('This amount excludes any tokens or NFTs the contract may move.'));
+    assert(text.includes('Maximum ETH debit'));
+  } finally { f.close(); }
+});
+
+
+test('transaction review keeps the canonical asset recipient before account detail and refuses stale enrichment', () => {
+  const f = fixture('transaction');
+  try {
+    const token = `0x${'33'.repeat(20)}`, recipient = `0x${'44'.repeat(20)}`, stale = `0x${'55'.repeat(20)}`;
+    const abi = new Interface(['function transfer(address,uint256)']);
+    f.review.transaction = { ...f.review.transaction, to: token, data: abi.encodeFunctionData('transfer', [recipient, 123]), value: '0' };
+    f.review.assetTransfer = decodeAssetTransfer(abi.encodeFunctionData('transfer', [stale, 999]), token,
+      { standard: 'ERC-20', token: { contractAddress: token, name: 'Token', symbol: 'TOK', decimals: 2 } });
+    const nodes = f.render(), strings = nodes.flatMap(node => node.children.filter(value => typeof value === 'string'));
+    assert(strings.includes(recipient)); assert(!strings.includes(stale)); assert(strings.includes('123')); assert(!strings.includes('9.99'));
+    assert(strings.indexOf('Recipient') < strings.indexOf('From'));
+    assert(nodes.some(node => node.type === 'DappSiteStatus'));
+  } finally { f.close(); }
 });

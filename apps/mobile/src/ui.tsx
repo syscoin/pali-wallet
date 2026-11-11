@@ -1,7 +1,11 @@
 import { IdlePressable } from './screens/IdleActivityBoundary';
-import React from 'react';
+import { useWelcomeBackdropMotion } from './screens/useWelcomeBackdropMotion';
+import React, { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
+import { knownAssetIcon, type AssetIconIdentity } from '../../../source/shared/assetIconIdentity';
+import { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, subscribeNativeAssetIcon } from './portfolio/assetIconCache';
 import {
   Image,
+  Animated,
   ScrollView,
   StyleSheet,
   Text as NativeText,
@@ -10,22 +14,59 @@ import {
   ViewProps,
   StyleProp,
   ViewStyle,
+  useWindowDimensions,
 } from 'react-native';
-import Svg, { Circle, G, Path, Polygon } from 'react-native-svg';
+import Svg, { Circle, Defs, Ellipse, G, Mask, Path, Pattern, Polygon, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 export const colors = {
-  bg: '#071325',
-  surface: '#101f34',
-  raised: '#172940',
+  bg: '#07152a',
+  surface: '#111e33',
+  raised: '#162742',
   border: '#263950',
+  controlBorder: '#657d9b',
   text: '#f5f7fb',
   muted: '#9caec5',
-  pink: '#ff4797',
+  pink: '#ff3e91',
   blue: '#75c8ed',
   green: '#74d5b1',
   red: '#ff8a9a',
   amber: '#edc58c',
 } as const;
+
+/** Native vector decoration with low-amplitude, accessibility-aware welcome motion. */
+export function WelcomeBackdrop() {
+  const motion = useWelcomeBackdropMotion();
+  return <Animated.View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[StyleSheet.absoluteFill, motion]}>
+    <Svg width="100%" height="100%" viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice">
+      <Defs>
+        <RadialGradient id="welcome-glow" cx="50%" cy="50%" r="50%">
+          <Stop offset="0" stopColor="#8c5f9c" stopOpacity="0.25" />
+          <Stop offset="0.5" stopColor="#6b5f91" stopOpacity="0.18" />
+          <Stop offset="1" stopColor="#6b5f91" stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id="welcome-blue-glow" cx="50%" cy="50%" r="50%">
+          <Stop offset="0" stopColor="#4f91bd" stopOpacity="0.09" />
+          <Stop offset="0.5" stopColor="#4f91bd" stopOpacity="0.045" />
+          <Stop offset="1" stopColor="#4f91bd" stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id="welcome-dot-fade" cx="50%" cy="50%" r="50%">
+          <Stop offset="0" stopColor="white" stopOpacity="0.55" />
+          <Stop offset="0.5" stopColor="white" stopOpacity="0.25" />
+          <Stop offset="1" stopColor="white" stopOpacity="0" />
+        </RadialGradient>
+        <Pattern id="welcome-dots" width="18.7" height="18.7" patternUnits="userSpaceOnUse">
+          <Circle cx="9.35" cy="9.35" r="0.9" fill={colors.blue} />
+        </Pattern>
+        <Mask id="welcome-mask" x="0" y="0" width="390" height="844" maskUnits="userSpaceOnUse">
+          <Ellipse cx="195" cy="336" rx="143" ry="205" fill="url(#welcome-dot-fade)" />
+        </Mask>
+      </Defs>
+      <Ellipse cx="195" cy="340" rx="140" ry="260" fill="url(#welcome-glow)" />
+      <Ellipse cx="195" cy="340" rx="85" ry="230" fill="url(#welcome-blue-glow)" />
+      <Rect width="390" height="844" fill="url(#welcome-dots)" mask="url(#welcome-mask)" />
+    </Svg>
+  </Animated.View>;
+}
 
 export function Text({ style, ...props }: TextProps) {
   return (
@@ -42,6 +83,11 @@ const iconPaths: Record<string, string[]> = {
   'arrow-down-left': ['M18 6 6 18', 'M6 6v12h12'],
   'chevron-right': ['m9 5 7 7-7 7'],
   'chevron-down': ['m6 9 6 6 6-6'],
+  'chevron-up': ['m6 15 6-6 6 6'],
+  edit: ['m16 3 5 5-12 12-6 1 1-6L16 3Z', 'm14 5 5 5'],
+  clock: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0', 'M12 7v5l3 2'],
+  filter: ['M4 6h16', 'M7 12h10', 'M10 18h4'],
+  more: ['M5 12h.01', 'M12 12h.01', 'M19 12h.01'],
   close: ['m6 6 12 12', 'M18 6 6 18'],
   plus: ['M12 5v14', 'M5 12h14'],
   wallet: [
@@ -65,7 +111,13 @@ const iconPaths: Record<string, string[]> = {
   ],
   check: ['m5 12 4 4L19 6'],
   lock: ['M7 10V7a5 5 0 0 1 10 0v3', 'M5 10h14v11H5z', 'M12 14v3'],
+  key: ['M14 4a6 6 0 1 1-4.6 9.9L3 20v-4l3-3h3.2A6 6 0 0 1 14 4Z', 'M16 8h.01'],
+  backspace: ['M9 5h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-7-7 7-7Z', 'm12 9 6 6', 'm18 9-6 6'],
+  'face-id': ['M4 9V5a1 1 0 0 1 1-1h4', 'M15 4h4a1 1 0 0 1 1 1v4', 'M20 15v4a1 1 0 0 1-1 1h-4', 'M9 20H5a1 1 0 0 1-1-1v-4', 'M8 9v2', 'M16 9v2', 'M12 9v5h-1', 'M8 16c2 2 6 2 8 0'],
+  fingerprint: ['M4 9a8 8 0 0 1 16 0', 'M7 21c2-3 2-6 2-9a3 3 0 0 1 6 0c0 4-1 7-2 10', 'M3 16c1-1 1-3 1-4', 'M6 17c1-2 0-4 0-5a6 6 0 0 1 12 0c0 3 0 5-1 8', 'M10 22c2-4 2-6 2-10', 'M21 12c0 2 0 3-1 5'],
   shield: ['M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6z', 'm8 12 3 3 5-6'],
+  'shield-warning': ['M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6z', 'M12 8v5', 'M12 16h.01'],
+  torch: ['M8 3h8v4l-2 3v10h-4V10L8 7V3Z', 'M8 7h8', 'M10 13h4'],
   eye: [
     'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12',
     'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
@@ -131,12 +183,23 @@ export function PaliMark({ size = 34 }: { size?: number }) {
   );
 }
 
-export function Coin({ id, size = 42, fallbackSymbol }: { id: string; size?: number; fallbackSymbol?: string }) {
+export function NativeAssetIcon({ identity, registrationHash, size = 42, symbol }: { identity: AssetIconIdentity; registrationHash?: string; size?: number; symbol?: string }) {
+  const key = nativeAssetIconKey(identity, registrationHash);
+  const uri = useSyncExternalStore(listener => subscribeNativeAssetIcon(key, listener), () => readNativeAssetIcon(key), () => null);
+  const artwork = knownAssetIcon(identity);
+  if (artwork) return <Coin id={artwork === 'zksys' ? 'zksys-testnet' : artwork} size={size} />;
+  if (uri) return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} resizeMode="contain"
+    accessible={false} onError={() => markNativeAssetIconFailed(key, uri)} />;
+  return <Coin id="unknown-asset" size={size} fallbackSymbol={symbol} />;
+}
+
+export function Coin({ id, size = 42, fallbackSymbol, asset, registrationHash }: { id: string; size?: number; fallbackSymbol?: string; asset?: AssetIconIdentity; registrationHash?: string }) {
+  if (asset) return <NativeAssetIcon identity={asset} registrationHash={registrationHash} size={size} symbol={fallbackSymbol} />;
   const token = id.toLowerCase();
   if (['syscoin', 'syscoin-nevm', 'syscoin-nevm-testnet', 'sys', 'tsys', 'nevm'].includes(token)) {
     return (
       <Image
-        source={require('../assets/syscoin.png')}
+        source={require('../../../source/assets/all_assets/syscoin.png')}
         style={{ width: size, height: size, borderRadius: size / 2 }}
         resizeMode="contain"
         accessible={false}
@@ -249,6 +312,7 @@ type ButtonProps = {
   icon?: string | React.ReactNode;
   style?: StyleProp<ViewStyle>;
   testID?: string;
+  size?: 'regular' | 'compact';
 };
 
 export function Button({
@@ -260,6 +324,7 @@ export function Button({
   icon,
   style,
   testID,
+  size = 'regular',
 }: ButtonProps) {
   const foreground =
     variant === 'primary'
@@ -279,13 +344,14 @@ export function Button({
       testID={testID}
       style={({ pressed }) => [
         styles.button,
+        size === 'compact' && styles.compactButton,
         variant === 'primary' && { backgroundColor: colors.pink },
         variant === 'secondary' && {
           backgroundColor: colors.raised,
           borderWidth: 1,
-          borderColor: colors.border,
+          borderColor: colors.controlBorder,
         },
-        variant === 'quiet' && { backgroundColor: 'transparent' },
+        variant === 'quiet' && [styles.compactButton, { backgroundColor: 'transparent' }],
         variant === 'danger' && {
           backgroundColor: '#302032',
           borderWidth: 1,
@@ -318,6 +384,35 @@ export function Button({
   );
 }
 
+/** A mutually exclusive view filter, kept together even on narrow screens. */
+export function SegmentedControl<T extends string>({
+  label, value, options, onChange,
+}: {
+  label: string;
+  value: T;
+  options: readonly { value: T; label: string }[];
+  onChange(value: T): void;
+}) {
+  return <View accessibilityRole="tablist" accessibilityLabel={label} style={styles.segments}>
+    {options.map((option) => <IdlePressable key={option.value} accessibilityRole="tab"
+      accessibilityLabel={option.label} accessibilityState={{ selected: value === option.value }}
+      aria-selected={value === option.value} onPress={() => onChange(option.value)}
+      style={({ pressed }) => [styles.segment, value === option.value && styles.segmentSelected, pressed && { opacity: 0.75 }]}>
+      <Text style={[styles.segmentLabel, value === option.value && { color: colors.bg }]}>{option.label}</Text>
+    </IdlePressable>)}
+  </View>;
+}
+
+export function IconButton({ label, icon, onPress, disabled = false, selected = false, testID }: {
+  label: string; icon: string; onPress(): void | Promise<void>; disabled?: boolean; selected?: boolean; testID?: string;
+}) {
+  return <IdlePressable accessibilityRole="button" accessibilityLabel={label}
+    accessibilityState={{ disabled, selected }} disabled={disabled} onPress={onPress} testID={testID}
+    style={({ pressed }) => [styles.iconButton, selected && { backgroundColor: colors.raised }, (pressed || disabled) && { opacity: disabled ? 0.42 : 0.7 }]}>
+    <Icon name={icon} color={selected ? colors.blue : colors.muted} size={21} />
+  </IdlePressable>;
+}
+
 export function Card({ children, style, ...props }: ViewProps) {
   return (
     <View {...props} style={[styles.card, style]}>
@@ -331,18 +426,25 @@ export function Screen({
   footer,
   footerScrollable = false,
   gap = 22,
+  scrollResetKey,
 }: {
   children: React.ReactNode;
   footer?: React.ReactNode;
   footerScrollable?: boolean;
   gap?: number;
+  scrollResetKey?: string;
 }) {
+  const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  useLayoutEffect(() => { scroll.current?.scrollTo({ y: 0, animated: false }); }, [scrollResetKey]);
+  const { width } = useWindowDimensions();
+  const gutter = width < 370 ? 16 : 20;
   return (
     <View style={styles.screen}>
       <ScrollView
+        ref={scroll}
         style={{ flex: 1 }}
         contentContainerStyle={{
-          paddingHorizontal: 22,
+          paddingHorizontal: gutter,
           paddingTop: 10,
           paddingBottom: 26,
           gap,
@@ -357,12 +459,12 @@ export function Screen({
         footerScrollable ? (
           <ScrollView
             style={{ flexGrow: 0, maxHeight: '60%' }}
-            contentContainerStyle={styles.footer}
+            contentContainerStyle={[styles.footer, { paddingHorizontal: gutter }]}
             keyboardShouldPersistTaps="handled"
           >
             {footer}
           </ScrollView>
-        ) : <View style={styles.footer}>{footer}</View>
+        ) : <View style={[styles.footer, { paddingHorizontal: gutter }]}>{footer}</View>
       ) : null}
     </View>
   );
@@ -373,14 +475,17 @@ export function Header({
   onBack,
   right,
   subtitle,
+  brand = false,
 }: {
   title: string;
   onBack?: () => void;
   right?: React.ReactNode;
   subtitle?: string;
+  brand?: boolean;
 }) {
   return (
     <View style={styles.header}>
+      {brand && <PaliMark size={32} />}
       {onBack ? (
         <IdlePressable
           onPress={onBack}
@@ -395,12 +500,12 @@ export function Header({
           <Icon name="arrow-left" />
         </IdlePressable>
       ) : null}
-      <View style={{ flex: 1, gap: 3 }}>
+      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
         <Text
           accessibilityRole="header"
           style={{
-            fontSize: onBack ? 21 : 28,
-            lineHeight: onBack ? 28 : 34,
+            fontSize: onBack || brand ? 21 : 28,
+            lineHeight: onBack || brand ? 28 : 34,
             fontWeight: '700',
             letterSpacing: -0.7,
           }}
@@ -408,7 +513,7 @@ export function Header({
           {title}
         </Text>
         {subtitle ? (
-          <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
+          <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>
             {subtitle}
           </Text>
         ) : null}
@@ -446,12 +551,12 @@ export function Row({
           )}
         </View>
       ) : null}
-      <View style={{ flex: 1, gap: 3 }}>
+      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
         <Text style={{ fontSize: 15, lineHeight: 22, fontWeight: '500' }}>
           {title}
         </Text>
         {subtitle ? (
-          <Text style={{ fontSize: 12, lineHeight: 18, color: colors.muted }}>
+          <Text style={{ fontSize: 13, lineHeight: 19, color: colors.muted }}>
             {subtitle}
           </Text>
         ) : null}
@@ -487,16 +592,19 @@ export function Notice({
   title,
   body,
   tone = 'blue',
+  compact = false,
 }: {
   title: string;
   body?: string;
   tone?: 'blue' | 'amber' | 'red';
+  compact?: boolean;
 }) {
   const accent = colors[tone];
   return (
     <View
       style={[
         styles.notice,
+        compact && { padding: 0, borderWidth: 0, backgroundColor: 'transparent' },
         {
           borderColor:
             tone === 'red'
@@ -543,24 +651,29 @@ export const styles = StyleSheet.create({
   walletBalancePrecise: { fontSize: 19, lineHeight: 29, letterSpacing: -0.2 },
   screen: { flex: 1, backgroundColor: colors.bg },
   button: {
-    minHeight: 54,
+    minHeight: 52,
     paddingHorizontal: 19,
-    paddingVertical: 15,
-    borderRadius: 16,
+    paddingVertical: 14,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 9,
   },
+  compactButton: { minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12 },
+  segments: { flexDirection: 'row', padding: 4, gap: 4, borderRadius: 16, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 },
+  segment: { flex: 1, minWidth: 0, minHeight: 44, paddingHorizontal: 6, paddingVertical: 10, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  segmentSelected: { backgroundColor: colors.blue },
+  segmentLabel: { fontSize: 14, lineHeight: 20, fontWeight: '600', textAlign: 'center' },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 22,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
   },
   footer: {
-    paddingHorizontal: 22,
+    paddingHorizontal: 20,
     paddingVertical: 16,
     borderTopWidth: 1,
     borderTopColor: colors.border,
@@ -608,7 +721,7 @@ export const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     color: colors.text,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.controlBorder,
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 15,

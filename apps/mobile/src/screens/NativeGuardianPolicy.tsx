@@ -8,6 +8,7 @@ import React, {
   useState,
 } from 'react';
 import {
+  AppState,
   BackHandler,
   KeyboardAvoidingView,
   Platform,
@@ -30,6 +31,8 @@ import { IdlePressable } from './IdleActivityBoundary';
 import { NativeSendInput } from './NativeSend';
 import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation';
 import { guardianDelayLabel } from './guardianPolicyLabels';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 export type NativeGuardianPolicyTool = {
   ledgerConnection?: NativeLedgerConnectionView;
@@ -41,7 +44,8 @@ export type NativeGuardianPolicyTool = {
   open(
     draft: NativeGuardianPolicyDraft,
     signal: AbortSignal,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    authentication: NativePrivateAuthenticationScope
   ): Promise<NativeSmartAccountOperation>;
 };
 
@@ -55,6 +59,7 @@ type PolicyOwner = {
   returning: boolean;
   busy: boolean;
   abort: AbortController;
+  authentication: NativePrivateAuthenticationScope | null;
   operation: NativeSmartAccountOperation | null;
   opening?: Promise<void>;
   disposing?: Promise<void>;
@@ -102,22 +107,25 @@ export function NativeGuardianPolicy({
   const [busy, setBusy] = useState(false);
   const [operation, setOperation] =
     useState<NativeSmartAccountOperation | null>(null);
+  const [operationAuthentication, setOperationAuthentication] = useState<NativePrivateAuthenticationScope>();
   const [closing, setClosing] = useState(false);
   const callbacks = useRef({ onBack });
   useLayoutEffect(() => {
     callbacks.current = { onBack };
   }, [onBack]);
   const owner = useRef<PolicyOwner>({
-    live: true,
+    live: false,
     returning: false,
     busy: false,
     abort: new AbortController(),
+    authentication: null,
     operation: null,
   });
   const back = useCallback(() => {
     const current = owner.current;
     if (!current.live) return;
     current.live = false;
+    current.authentication?.retire();
     current.returning = true;
     current.abort.abort();
     const close = callbacks.current.onBack;
@@ -135,17 +143,21 @@ export function NativeGuardianPolicy({
       returning: false,
       busy: false,
       abort: new AbortController(),
+      authentication: createNativePrivateAuthenticationScope(),
       operation: null,
     };
     owner.current = current;
     const retire = () => {
       current.live = false;
+      current.authentication?.retire();
       current.returning = false;
       current.abort.abort();
       void disposePolicy(current).catch(() => undefined);
     };
     lifetime.addEventListener('abort', retire, { once: true });
     if (lifetime.aborted) retire();
+    const change = AppState.addEventListener('change', state => { if (state !== 'active' && !(current.authentication && allowsPrivateAuthenticationInterruption(current.authentication, state))) back(); });
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { if (!(current.authentication && allowsPrivateAuthenticationInterruption(current.authentication, 'blur'))) back(); }) : undefined;
     const hardware = BackHandler.addEventListener('hardwareBackPress', () => {
       back();
       return true;
@@ -153,12 +165,13 @@ export function NativeGuardianPolicy({
     return () => {
       lifetime.removeEventListener('abort', retire);
       retire();
+      change.remove(); blur?.remove();
       hardware.remove();
     };
   }, [back, lifetime]);
   const inspect = useCallback(async () => {
     const current = owner.current;
-    if (!current.live || current.busy) return;
+    if (!current.live || current.busy || AppState.currentState !== 'active') return;
     current.busy = true;
     setBusy(true);
     const check = () => {
@@ -193,7 +206,7 @@ export function NativeGuardianPolicy({
   const acknowledged = pendingId === null || acknowledgedId === pendingId;
   const review = async () => {
     const current = owner.current;
-    if (!current.live || current.busy || !acknowledged) return;
+    if (!current.live || current.busy || !current.authentication || AppState.currentState !== 'active' || !acknowledged) return;
     let draft: NativeGuardianPolicyDraft;
     if (action === 'remove') {
       if (inspection?.status !== 'retry-ready' || !recoveryLossAcknowledged)
@@ -226,17 +239,19 @@ export function NativeGuardianPolicy({
         owner.current !== current ||
         !current.live ||
         current.abort.signal.aborted ||
-        lifetime.aborted
+        lifetime.aborted ||
+        (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication!, AppState.currentState))
       )
         throw new Error('CANCELLED');
     };
     try {
       current.opening = port
-        .open(draft, current.abort.signal, check)
+        .open(draft, current.abort.signal, check, current.authentication)
         .then((next) => {
           current.operation = next;
           if (current.live) {
             check();
+            setOperationAuthentication(current.authentication!);
             setOperation(next);
           }
         });
@@ -261,7 +276,7 @@ export function NativeGuardianPolicy({
     );
   if (operation)
     return (
-      <NativeSmartAccountOperationScreen ledgerConnection={port.ledgerConnection} controller={operation} onBack={back} />
+      <NativeSmartAccountOperationScreen authentication={operationAuthentication} ledgerConnection={port.ledgerConnection} controller={operation} onBack={back} />
     );
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
@@ -269,7 +284,28 @@ export function NativeGuardianPolicy({
         style={s.safe}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Screen>
+        <Screen footer={<>
+          {(action === 'set' || inspection?.status === 'retry-ready') && (
+            <Button
+              title={
+                busy
+                  ? 'Preparing policy…'
+                  : action === 'remove'
+                  ? 'Review removal'
+                  : 'Review policy'
+              }
+              disabled={
+                busy ||
+                !acknowledged ||
+                (action === 'remove' && !recoveryLossAcknowledged)
+              }
+              onPress={() => {
+                void review();
+              }}
+            />
+          )}
+          <Button title="Cancel" variant="secondary" size="compact" onPress={back} />
+        </>}>
           <Header
             title={
               action === 'remove'
@@ -389,7 +425,7 @@ export function NativeGuardianPolicy({
               )}
               <Button
                 title={busy ? 'Checking status…' : 'Check removal status'}
-                variant="quiet"
+                variant="secondary" size="compact" icon="refresh"
                 disabled={busy}
                 onPress={() => {
                   void inspect();
@@ -452,26 +488,7 @@ export function NativeGuardianPolicy({
           {!!error && (
             <Notice title="Check guardian policy" body={error} tone="amber" />
           )}
-          {(action === 'set' || inspection?.status === 'retry-ready') && (
-            <Button
-              title={
-                busy
-                  ? 'Preparing policy…'
-                  : action === 'remove'
-                  ? 'Review removal'
-                  : 'Review policy'
-              }
-              disabled={
-                busy ||
-                !acknowledged ||
-                (action === 'remove' && !recoveryLossAcknowledged)
-              }
-              onPress={() => {
-                void review();
-              }}
-            />
-          )}
-          <Button title="Cancel" variant="quiet" onPress={back} />
+
         </Screen>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -480,7 +497,7 @@ export function NativeGuardianPolicy({
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  card: { padding: 20, gap: 10 },
+  card: { padding: 16, gap: 10 },
   label: { color: colors.muted, fontSize: 13, lineHeight: 19 },
   address: { color: colors.text, fontSize: 13, lineHeight: 20 },
   body: { color: colors.muted, fontSize: 14, lineHeight: 22 },

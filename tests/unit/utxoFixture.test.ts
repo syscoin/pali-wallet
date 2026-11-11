@@ -53,7 +53,9 @@ async function signWithCurrentKeyring(f: ReturnType<typeof createUtxoFixture>) {
     },
     () => state as never,
     {},
-    () => () => undefined
+    () => () => undefined,
+    'session',
+    () => undefined
   );
   mockBlockbookLookup.mockClear();
   const result = await transactions.signPSBT(

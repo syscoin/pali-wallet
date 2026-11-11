@@ -1,6 +1,9 @@
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+concurrency:
+  group: pali-main-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 jobs:
   test:
     name: yarn test-all
@@ -14,8 +17,8 @@ jobs:
       - run: yarn install --frozen-lockfile
       - run: yarn type-check
       - run: yarn test-all
-      - name: Validate Chromium sandbox helper admission
-        run: node --test .github/scripts/tests/configure-chromium-sandbox.test.cjs
+      - name: Validate CI helper admission
+        run: node --test .github/scripts/tests/*.test.cjs
   recovery-enrollment:
     name: Pali recovery enrollment interoperability
     runs-on: ubuntu-latest

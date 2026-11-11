@@ -69,14 +69,29 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      # If invoked from a PR comment, work on the PR branch so triage and
-      # fixes apply to the code under review.
-      - name: Checkout PR branch when invoked from a PR
+      # A trusted commenter does not make an external contributor's code
+      # trusted. Resolve an immutable same-repository head before executing it.
+      - name: Resolve trusted PR revision
+        id: revision
         if: github.event_name == 'issue_comment' && github.event.issue.pull_request
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr checkout "${{ github.event.issue.number }}"
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          sha=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" |
+            node .github/scripts/agent-pr-revision.cjs "$GITHUB_REPOSITORY_ID")
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout trusted PR revision
+        if: steps.revision.outputs.sha != ''
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.revision.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-node@v7
         with:
@@ -136,7 +151,9 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node e2e/scripts/post-results.mjs /tmp/agent-report-comment.md
+        run: |
+          gh auth setup-git
+          node e2e/scripts/post-results.mjs /tmp/agent-report-comment.md
 
       - name: Open PR if the agent changed code
         id: agent_pr

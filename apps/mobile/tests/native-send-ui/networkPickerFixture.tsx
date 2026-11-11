@@ -163,9 +163,15 @@ window.__nativeNetworksFixture = {
 export function NetworkPickerFixture() {
   const [open, setOpen] = useState(true);
   const [activeController, setActiveController] = useState<NativeNetworkView>(controller);
+  const source = new URLSearchParams(window.location.search).get('source');
   useLayoutEffect(() => {
     swapController = (restore) => setActiveController(restore ? controller : replacementController);
     return () => { swapController = undefined; };
   }, []);
-  return open ? <NativeNetworks controller={activeController} onBack={() => setOpen(false)} /> : <Text>Picker closed</Text>;
+  return open ? <NativeNetworks controller={activeController} onBack={() => setOpen(false)}
+    selection={source === 'send' || source === 'receive' ? { purpose: source,
+      assertCurrent() { if (!snapshot) throw Error('CANCELLED'); },
+      onSelected(receipt) { receipt.assertCurrent(); setOpen(false); },
+      balance: { networkId: 'ethereum', available: '1.234', loading: false },
+    } : undefined} /> : <Text>Picker closed</Text>;
 }

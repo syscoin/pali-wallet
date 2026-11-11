@@ -155,6 +155,42 @@ describe('canonical encryption requests', () => {
 });
 
 describe('one prepared encryption approval', () => {
+  it.each(['eth_decrypt', 'eth_getEncryptionPublicKey'] as const)(
+    'accepts an asynchronous native secret operation for %s',
+    async (method) => {
+      const f = fixture(method);
+      f.ports.sdk = {
+        decryptMessage: async () => 'native plaintext',
+        getEncryptedPubKey: async () => 'native public key',
+      };
+      await f.prepared.approve();
+      expect(f.received).toEqual([
+        method === 'eth_decrypt' ? 'native plaintext' : 'native public key',
+      ]);
+    }
+  );
+  it.each(['resolve', 'reject'] as const)(
+    'refuses an asynchronous SDK %s after approval retirement',
+    async (outcome) => {
+      const f = fixture();
+      let resolve!: (value: string) => void, reject!: (error: Error) => void;
+      f.ports.sdk = {
+        ...f.ports.sdk,
+        decryptMessage: () =>
+          new Promise<string>((yes, no) => {
+            resolve = yes;
+            reject = no;
+          }),
+      };
+      const pending = f.prepared.approve();
+      while (!resolve) await Promise.resolve();
+      f.prepared.retire();
+      if (outcome === 'resolve') resolve('late plaintext');
+      else reject(new Error('Native operation cancelled'));
+      await expect(pending).rejects.toThrow('no longer current');
+      expect(f.received).toEqual([]);
+    }
+  );
   it('keeps preview optional and reruns SDK on Confirm without exposing a result to the renderer', async () => {
     const f = fixture();
     expect(await f.prepared.preview()).toBe('  plaintext\n');

@@ -132,7 +132,7 @@ export function WatchNetworks({ controller, onChanged, onBack }: {
             maxLength={64} value={draft.name} onChangeText={(name) => { setDraft({ ...draft, name }); setError(''); }} />
         </Card>
         <Button title={busy ? 'Checking network…' : 'Save network'} disabled={busy || !saved || !draft.endpoint.trim()} onPress={save} />
-        {draft.original && <Button title="Remove network" variant="quiet" disabled={busy || !saved} onPress={remove} />}
+        {draft.original && <Button title="Remove network" icon="trash" variant="danger" disabled={busy || !saved} onPress={remove} />}
       </> : <>
         {saved && custom.length === 0 && <Notice title="No custom networks" body="Add a Blockbook endpoint to watch accounts on another UTXO network." />}
         {custom.length > 0 && <Card>{custom.map((network, index) => <Row key={network.id}

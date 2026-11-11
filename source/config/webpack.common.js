@@ -239,6 +239,7 @@ module.exports = {
         removeComments: true,
         collapseWhitespace: true,
         removeAttributeQuotes: true,
+        minifyCSS: true,
       },
     }),
     new HtmlWebpackPlugin({
@@ -263,6 +264,7 @@ module.exports = {
         removeComments: true,
         collapseWhitespace: true,
         removeAttributeQuotes: true,
+        minifyCSS: true,
       },
     }),
 
@@ -367,7 +369,7 @@ module.exports = {
           transform: function (content) {
             try {
               const manifestObject = JSON.parse(content.toString());
-              return Buffer.from(JSON.stringify(manifestObject, null, 2));
+              return Buffer.from(JSON.stringify(manifestObject));
             } catch (e) {
               console.error('Error transforming manifest.json:', e);
               return content;
@@ -396,6 +398,24 @@ module.exports = {
           priority: 20,
           // Share these dependencies across both UI runtimes without
           // partitioning the group by per-entrypoint export usage.
+          usedExports: false,
+          minChunks: 2,
+          enforce: true,
+        },
+        // Both UI entrypoints already include these views. Emit their shared
+        // bytes once; keep the worker and lazy hardware entrypoint isolated.
+        uiSharedViews: {
+          test: /[\\/]source[\\/](?:components[\\/]|utils[\\/]transactions\.ts$)/,
+          chunks(chunk) {
+            return (
+              chunk.canBeInitial() &&
+              [...chunk.groupsIterable].some(
+                (group) => group.name === 'app' || group.name === 'external'
+              )
+            );
+          },
+          name: 'ui-shared-views',
+          priority: 20,
           usedExports: false,
           minChunks: 2,
           enforce: true,

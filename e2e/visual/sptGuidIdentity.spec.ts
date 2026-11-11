@@ -19,6 +19,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 const PADDED_GUID = `000${SPT_GUID}`;
 const ZERO_GUID = '456';
@@ -82,7 +83,7 @@ const publicAssets = (page: Page) =>
   });
 
 const numericHolding = (
-  assets: Array<{ guid: string; balance: string; chainId: number }>
+  assets: Array<{ balance: string; chainId: number; guid: string }>
 ) => assets.filter((asset) => BigInt(asset.guid).toString() === SPT_GUID);
 
 for (const mode of ['padded first', 'canonical first'] as const) {
@@ -193,7 +194,9 @@ for (const mode of ['padded first', 'canonical first'] as const) {
       // Browser/platform connections caught by the launch-time deny proxy are
       // evidence-only. Unfulfilled HTTP from this wallet context is a distinct
       // fixture failure and is asserted absent, never silently allowlisted.
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         const url = new URL(request.url());
         if (['http:', 'https:'].includes(url.protocol))
           unexpectedWalletHttpFailures.push({

@@ -1,3 +1,4 @@
+import { enterPin } from '../ui/operationAuthentication';
 import { expect, test } from '@playwright/test';
 
 test('320px SYSX review preserves exact amounts and leaves on Back, lock, account or network change', async ({
@@ -15,10 +16,7 @@ test('320px SYSX review preserves exact amounts and leaves on Back, lock, accoun
   const heading = (name: string) =>
     page.getByRole('heading', { name, exact: true });
   const unlock = async () => {
-    await page
-      .getByRole('textbox', { name: 'Password', exact: true })
-      .fill('public-password');
-    await button('Unlock wallet').click();
+    await enterPin(page, '123456');
     await expect(page.getByRole('button', { name: /^SYSX(?:\s|$)/ })).toBeVisible();
   };
   await button('Accounts').click();
@@ -43,7 +41,7 @@ test('320px SYSX review preserves exact amounts and leaves on Back, lock, accoun
     await expect(heading('Send SYSX')).toBeVisible();
     await expect(address).toHaveValue('');
     await expect(amount).toHaveValue('');
-    await expect(button('Use maximum')).toBeVisible();
+    await expect(button('MAX')).toBeVisible();
     await expect(review).toBeDisabled();
     await address.fill(recipient);
     await amount.fill('0.12345678');
@@ -85,7 +83,7 @@ test('320px SYSX review preserves exact amounts and leaves on Back, lock, accoun
   await expect(confirm).toBeVisible();
   await page.evaluate(() => window.__watchFixture.lifecycle('background'));
   await expect(confirm).toHaveCount(0);
-  await expect(button('Unlock wallet')).toBeVisible();
+  await expect(button('PIN digit 1')).toBeVisible();
   await page.evaluate(() => window.__watchFixture.lifecycle('active'));
   await unlock();
 

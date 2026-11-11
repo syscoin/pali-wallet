@@ -253,6 +253,22 @@ export class WatchOnlyAuthority implements WalletAuthority, UtxoActivityOwner {
   }
 
   getNetwork = (id: NetworkId): WalletNetwork => getNetwork(id, this.utxoNetworks);
+  /** Public monitoring enrollment only; no account or network selection changes. */
+  getMonitoringEntries() {
+    if (this.getSnapshot().status !== 'ready') throw new Error('Watch accounts are locked');
+    // Enrollment exports endpoint authority just like a public read. Retire a
+    // saved custom registration before exposing a stale monitoring target.
+    this.recordSession?.assertNetworkCurrent();
+    return this.accounts.flatMap(account => Object.entries(account.addresses).map(([id, address]) => {
+      const network = this.getNetwork(id as NetworkId);
+      const source = this.recordSession?.sources.get(account.id);
+      return Object.freeze({ accountId: account.id, label: account.name, address: address!,
+        network: network.kind === 'utxo' ? getUtxoNetwork(network.id, this.utxoNetworks) : getNativeNetwork(network.id),
+        identifier: network.kind === 'utxo' ? source?.identifier ?? address! : address!,
+        isAccount: network.kind === 'utxo' && !!source });
+    }));
+  }
+
   getUtxoExplorer = (id: UtxoNetworkId): string => {
     if (isCustomUtxoNetworkId(id)) {
       if (!this.recordSession) throw new Error('Missing UTXO registration owner');
@@ -261,6 +277,13 @@ export class WatchOnlyAuthority implements WalletAuthority, UtxoActivityOwner {
     return getUtxoNetwork(id, this.utxoNetworks).explorer;
   };
   getAccountNetworks = (account: PublicAccount | undefined): readonly WalletNetwork[] => getWatchNetworks(account, this.utxoNetworks);
+
+  /** UI scope only: account keys and descriptors stay inside the authority. */
+  getUtxoWatchScope = (): 'address' | 'account' | null => {
+    const snapshot = this.getSnapshot();
+    if (snapshot.status !== 'ready' || this.getNetwork(snapshot.selectedNetworkId).kind !== 'utxo') return null;
+    return this.currentSource() ? 'account' : 'address';
+  };
 
   getSnapshot(): PublicSnapshot {
     if (!this.locked && this.idle && !this.checkingIdle) { this.checkingIdle = true; try { if (!this.idle.check()) this.lock(); } finally { this.checkingIdle = false; } }

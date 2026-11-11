@@ -1,0 +1,797 @@
+{
+  "schema_version": 1,
+  "pdf": "Pali-Wallet-Review.pdf",
+  "pdf_sha256": "b31809bfb9a2b0ddc293280d3f0dafd0cf02c433e6be3a4c1dd31943acb16374",
+  "contact_sheet": "contact-sheet.png",
+  "pages": [
+    {
+      "page": 1,
+      "component": "Onboarding.Welcome",
+      "status": "implemented",
+      "actual_label": "Welcome",
+      "note": "Centered Pali identity, subtle native-vector glow and dot pattern, direct Create/Import actions, and quiet watch-account entry.",
+      "title": "Welcome",
+      "comparison": "01-welcome.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-01.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "ff8a9e606da324157c2fbda20c252569a2c3d65c33457bb649ba251cb4c012d2",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-01-320.png",
+      "comparison_sha256": "d0aa4998d47b400b64c5c85ff0b8c6ef80adad0d7a87dc025bfe36dcb4e34695"
+    },
+    {
+      "page": 2,
+      "component": "NativeWalletScreen",
+      "status": "implemented",
+      "actual_label": "Create Pali PIN",
+      "note": "Dedicated six-digit keypad. The PIN authorizes a device-protected random vault secret; it is not used as the SDK encryption password.",
+      "title": "Create PIN",
+      "comparison": "02-create-pin.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-02.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "9e1f4752f8a43ac473459a2b7238168386c2a0967d9e54e38848bf12c9187472",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-02-320.png",
+      "comparison_sha256": "58a9a19c4fd96543489cfe773a7280a773f407d9c19b3b90b1c924d804aa8135"
+    },
+    {
+      "page": 3,
+      "component": "NativeWalletScreen",
+      "status": "implemented",
+      "actual_label": "Confirm Pali PIN",
+      "note": "Separate matching-PIN step; mismatch resets confirmation for a fresh attempt.",
+      "title": "Confirm PIN",
+      "comparison": "03-confirm-pin.png",
+      "comparison_size": [
+        852,
+        1134
+      ],
+      "actual": "actual/actual-03.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "4f98740f3655fe16589fb9141ccb8d40eebc28b56f01ca096e1c1588745636d6",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-03-320.png",
+      "comparison_sha256": "de6f1d69271c391b1a47c5e9710461fb1b74202cbb4fcfdc0775b120d74ae503"
+    },
+    {
+      "page": 4,
+      "component": "NativeWalletScreen",
+      "status": "implemented",
+      "actual_label": "Enable biometric access",
+      "note": "Separate optional enrollment with Not now and Pali PIN fallback. Native wording follows eligible Face ID, Touch ID or Android biometrics; browser adapter cannot demonstrate the OS prompt.",
+      "title": "Fingerprint",
+      "comparison": "04-fingerprint.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-04.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "fed214ad8dad9410484e8e8250ee5047a3626792f721cd233cbf93033e82f1ad",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-04-320.png",
+      "comparison_sha256": "c5257e7cf49c60900bb775fc905ebf738efff0dad6626fd13c2c077324d6b129"
+    },
+    {
+      "page": 5,
+      "component": "NativeWalletScreen",
+      "status": "implemented",
+      "actual_label": "Import recovery phrase",
+      "note": "Numbered 12/24-word entry. Phrase verification uses the existing shared SDK; no automatic clipboard read.",
+      "title": "Import wallet",
+      "comparison": "05-import-wallet.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-05.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "c3a09674e524510715618de8756fe9cbcc39b50eaaa1a783093974311c885951",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-05-320.png",
+      "comparison_sha256": "ed242333a974f7359531bda41755d74d464a5206c6ceb3da2acdda557f4c245c"
+    },
+    {
+      "page": 6,
+      "component": "NativeWalletScreen",
+      "status": "implemented",
+      "actual_label": "Confirm wallet addresses",
+      "note": "Public address preview precedes security setup. This fixture displays a public synthetic EVM address; the production preview uses shared EVM/UTXO derivation.",
+      "title": "Confirm restored wallet",
+      "comparison": "06-confirm-restored-wallet.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-06.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "f0189384bf2acfd2beb1b227b44ddda5dd5d978582b2ee2e31f7fdfb2895a2de",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-06-320.png",
+      "comparison_sha256": "06efb4ab250449e424ef9f9ee6eb7918db009a3942e9adca6d3b2b6bb3dfeadf"
+    },
+    {
+      "page": 7,
+      "component": "NativeWalletScreen",
+      "status": "implemented",
+      "actual_label": "Locked wallet",
+      "note": "Pali PIN keypad, enrolled biometric entry and Forgot PIN. No watch-account bypass of the locked wallet.",
+      "title": "Locked",
+      "comparison": "07-locked.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-07.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "9607553560ebe9897d32cc6a84f2560ce256363fa8aa50b47c2fc0f6d7b1b0d5",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-07-320.png",
+      "comparison_sha256": "d0628573be00d08b711cee8120f7b6ea247127466c002a9c02b8265d153794b3"
+    },
+    {
+      "page": 8,
+      "component": "NativeRecovery",
+      "status": "implemented",
+      "actual_label": "Recover access",
+      "note": "Phrase verification, wallet confirmation and new PIN setup. Retained independent keys/notes still depend on their recovery material; a seed does not derive unrelated keys.",
+      "title": "Recover access",
+      "comparison": "08-recover-access.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-08.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "bf157d5d8c647387cb18950dd4c7069c3a45c2b6abd0e931ddd20f76f3a65eac",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-08-320.png",
+      "comparison_sha256": "c8df3c41a7b18e02a99d6cb51d2ca33465f2e95718f23422774d8e089140b3e9",
+      "source_commit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "narrow_actual_sha256": "5a034a9789ec6f87bd6d66d571abf21ef45585cf253193920461043679294b07"
+    },
+    {
+      "page": 9,
+      "component": "NativeAccountOverview + AccountPortfolioController + RealAppShell",
+      "status": "implemented",
+      "actual_label": "Wallet home",
+      "note": "The selected EVM account across its added networks. Account and network-filter controls are separate. Concrete filters restore before reads and never fetch sibling accounts or hidden networks; UTXO retains its own network view.",
+      "video": {
+        "file": "video-0.png",
+        "label": "0.0 s - Wallet home"
+      },
+      "title": "Wallet Home",
+      "comparison": "09-wallet-home.png",
+      "comparison_size": [
+        1196,
+        1400
+      ],
+      "actual": "actual/actual-09.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "39ae8531d53064df2a05b3030d796e28d8a5bfe72b7daeda5c6ba7c8d3a1663c",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": "video-0.png",
+      "narrow_actual": "actual/actual-09-320.png",
+      "comparison_sha256": "eeaf93b4a19dcfc77b515a5cb5f82b44bfd48910610eb4c4e08b02b8c91cf2a1",
+      "previous_implementation": {
+        "source_commit": "04466c2e9498dfd250ac575e393db72fceec0e1f",
+        "actual_sha256": "b7419e59f9e84efd28322ad194ab616cdc9789854d6e4fbfb2cb0249aeb2a770",
+        "comparison_sha256": "ec621c8386ab4f12a5ecb024d0da59f8c36344768c9ed0ba57bf126546585ca6"
+      },
+      "source_commit": "b85f64614c047f7778345097b0c3d983479db1e3",
+      "narrow_actual_sha256": "c71c17751190da40ac8de6e7f21c971a531198634deefca1cef86ff939cea310"
+    },
+    {
+      "page": 10,
+      "component": "NetworkSourceSheet",
+      "status": "implemented",
+      "actual_label": "Choose send network",
+      "note": "All networks opens the compact network-only Send from sheet with known native balances. A concrete network and UTXO Send enter directly. The fixed-network form has a searchable saved-asset picker; asset changes preserve only the same-network recipient and clear amount/review.",
+      "title": "Choose Send network",
+      "comparison": "10-choose-send-network.png",
+      "comparison_size": [
+        852,
+        1400
+      ],
+      "actual": "actual/actual-10.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "a0085079e4fe75e991e61be2da6bfa8f8fc540f481f36e1fe4761bf426cb70bd",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-10-320.png",
+      "comparison_sha256": "86860c26646f78a081a53615d91d77f29fa44bd3346e4729adcf133a4d01f09a",
+      "previous_implementation": {
+        "source_commit": "04466c2e9498dfd250ac575e393db72fceec0e1f",
+        "actual_sha256": "91d80cfd6b3a0f9d204dc8b1f320397be44a1ab7b639cdea762b976432745207",
+        "comparison_sha256": "adb403dec986030260e5990fb0ffd2ee85eece15b8f1eb5e9b427eb97ff908bc"
+      },
+      "source_commit": "b85f64614c047f7778345097b0c3d983479db1e3",
+      "narrow_actual_sha256": "c6b7814344d13c214a52a99d8b0d5f42e4972520be171b01fbc32c793f9e61a2"
+    },
+    {
+      "page": 11,
+      "component": "NativeSend",
+      "status": "implemented",
+      "actual_label": "Send details",
+      "note": "Selected asset and network, available amount, recipient scan and bounded MAX/advanced controls. Exact balance and fee semantics remain.",
+      "video": {
+        "file": "video-5.png",
+        "label": "16.7 s - Send form"
+      },
+      "title": "Send details",
+      "comparison": "11-send-details.png",
+      "comparison_size": [
+        1196,
+        1159
+      ],
+      "actual": "actual/actual-11.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "ff33248cd91ca703468fc18555bf9ad7f96dc76366b74720bed2d0c71807620b",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": "video-5.png",
+      "narrow_actual": "actual/actual-11-320.png",
+      "comparison_sha256": "910a8549dbcbf8108358879701574f3d34b7001105be9800acd96b3fecc1c192"
+    },
+    {
+      "page": 12,
+      "component": "NativeSend",
+      "status": "adapted",
+      "actual_label": "Review send",
+      "note": "Recipient, network, amount, fee and total precede extended fee explanations. One primary Send action and Back to edit.",
+      "title": "Review Send",
+      "comparison": "12-review-send.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-12.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "500dcda5e59ca96873b4a653f0fff81aed52c314e501cabfbd5c560447c34d8b",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-12-320.png",
+      "comparison_sha256": "8fe8233a3b5adbff9b2a2e63cdb6c78e113aaca97d5f47f8611da4a406c8579f"
+    },
+    {
+      "page": 13,
+      "component": "NativeSend",
+      "status": "implemented",
+      "actual_label": "Authorize send",
+      "note": "When enabled, biometrics are requested automatically once. The same authorization page keeps PIN fallback and a biometric retry button. This capture shows the fallback after a simulated refusal; no real OS prompt is represented.",
+      "title": "Authorize Send",
+      "comparison": "13-authorize-send.png",
+      "comparison_size": [
+        852,
+        1184
+      ],
+      "actual": "actual/actual-13.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "617e312beed38354134d518bdbd43a3460a33873d3b6d86472e8356c19522f40",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-13-320.png",
+      "comparison_sha256": "af7d959edef160baec630d78c8b48f235cf6e52412902b01e2aa228f25056766"
+    },
+    {
+      "page": 14,
+      "component": "NativeSend",
+      "status": "implemented",
+      "actual_label": "Transaction submitted",
+      "note": "Amount, asset, recipient and network remain visible with View transaction and Done. View transaction opens in-app detail; explorer is a separate action. Cancellation/replacement and uncertain outcomes retain their own wording.",
+      "title": "Send submitted",
+      "comparison": "14-send-submitted.png",
+      "comparison_size": [
+        852,
+        1184
+      ],
+      "actual": "actual/actual-14.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "8c63934975bff26daa76754ef99b89bf585f4e3995524432759052c7faa1ded1",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-14-320.png",
+      "comparison_sha256": "0d5f83d0d67d640f27c91668e4ebe6affc36fa9b7ed8e622dc129637fbc00517"
+    },
+    {
+      "page": 15,
+      "component": "NativeNetworks",
+      "status": "implemented",
+      "actual_label": "Choose receive network",
+      "note": "Contextual shared catalogue picker; Cancel restores Receive. A changed network projects its own current address and resets backup-warning acknowledgement.",
+      "title": "Choose Receive network",
+      "comparison": "15-choose-receive-network.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-15.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "f6e5fd07fa208cb58fac640c377e5421644b8f34fc433b6754302cd318c2db93",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-15-320.png",
+      "comparison_sha256": "a3f645855ea1813fa03c640a1795931d6b842941ea6ff17a49a7e5b8de07bf6c"
+    },
+    {
+      "page": 16,
+      "component": "NativeWalletScreen",
+      "status": "implemented",
+      "actual_label": "Receive backup warning",
+      "note": "Bottom sheet with warning shield, Back Up Now and Receive Anyway. Acknowledgement is bound to the selected account/network.",
+      "title": "Receive backup warning",
+      "comparison": "16-receive-backup-warning.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-16.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "aa7c552e8508e581cccdcbc885ba3c907e71abb6f25af6443d04afe37bbc984a",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-16-320.png",
+      "comparison_sha256": "ae4dc697a9ccea06e37ec935a579e854a6532a4087a1c44a9511676b5d862674"
+    },
+    {
+      "page": 17,
+      "component": "NativePortfolio",
+      "status": "implemented",
+      "actual_label": "Receive",
+      "note": "Actual address, generated QR and Copy/Share actions for the selected account and network.",
+      "video": {
+        "file": "video-8.png",
+        "label": "26.7 s - Receive"
+      },
+      "title": "Receive",
+      "comparison": "17-receive.png",
+      "comparison_size": [
+        1196,
+        1134
+      ],
+      "actual": "actual/actual-17.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "b5f73e88930a43dccae0ef29cee533239ec9e0e5e68ff874b6393f5ae451cfe9",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": "video-8.png",
+      "narrow_actual": "actual/actual-17-320.png",
+      "comparison_sha256": "5d864f54a1340fa5d73381de116d5a4008c4b2ed62b7392f696c12888c4afba9"
+    },
+    {
+      "page": 18,
+      "component": "AllNetworksActivity + AccountActivityController + RealAppShell",
+      "status": "implemented",
+      "actual_label": "Activity",
+      "note": "Activity follows the selected account and network filter. All merges added EVM networks newest first with network badges; every detail remains bound to its original network and transaction.",
+      "video": {
+        "file": "video-11.png",
+        "label": "36.7 s - Activity"
+      },
+      "title": "Activity",
+      "comparison": "18-activity.png",
+      "comparison_size": [
+        1196,
+        1400
+      ],
+      "actual": "actual/actual-18.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "cbf82152a47d8b11caa4244a26cdf4bc9258e47f0794aff77dacd71ec58dc074",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": "video-11.png",
+      "narrow_actual": "actual/actual-18-320.png",
+      "comparison_sha256": "31cec1b9a6cce88fb42a1922f38592beacdb1cbd5e3ac8cde7b661acc7187f61",
+      "previous_implementation": {
+        "source_commit": "04466c2e9498dfd250ac575e393db72fceec0e1f",
+        "actual_sha256": "5c0383beccd5004d03b1e06cd855964b28cd4c0d933df0a3a80f2f2303da1d85",
+        "comparison_sha256": "1160b091129e66aaab7fa8b838fac580b807eeec807b53cc5706d4f0b83c78da"
+      },
+      "source_commit": "b85f64614c047f7778345097b0c3d983479db1e3",
+      "narrow_actual_sha256": "0993b330a7d71675d99112f6e054ae91fc0c718af30a8ba75986167a031eb86a"
+    },
+    {
+      "page": 19,
+      "component": "NativeActivityScreen",
+      "status": "adapted",
+      "actual_label": "Transaction details",
+      "note": "Centered status/amount and compact facts. Applicable retry, speed-up and cancellation actions remain outside expandable technical details.",
+      "title": "Transaction details",
+      "comparison": "19-transaction-details.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-19.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "8cb07e1b9b9119395f4524def26f98cb24845bf40acc902b13c1964ad0df31ce",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-19-320.png",
+      "comparison_sha256": "deb3c9a2a6d56b3096adc6fdb054832c55be41d6fb601b5fc578e4645e7a86c5"
+    },
+    {
+      "page": 20,
+      "component": "NativeWalletScreen",
+      "status": "implemented",
+      "actual_label": "Backup introduction",
+      "note": "Shield hero, three concise steps and fixed Back Up Now / Do It Later. Phrase access is authenticated after this introduction.",
+      "title": "Backup introduction",
+      "comparison": "20-backup-introduction.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-20.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "4a33b7d6cb1870bb2c2287d4059a407c2e8ea25ef197a6da39996622564a0542",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-20-320.png",
+      "comparison_sha256": "59ed6ea6f5fa28b9e18f66d820adffb5efe11bb84d7d8060ee8a2122d9906371"
+    },
+    {
+      "page": 21,
+      "component": "NativeWalletScreen",
+      "status": "implemented",
+      "actual_label": "Recovery phrase",
+      "note": "Bounded protected phrase display using a public known test phrase in this fixture. Continue leads to actual ordered-word verification.",
+      "title": "Recovery phrase",
+      "comparison": "21-recovery-phrase.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-21.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "3736b6e2bd676b9cd6221b2c9bc94f9023979cb326e9c25d4493e331695adbf3",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-21-320.png",
+      "comparison_sha256": "f5244cbad3b507b1ad5152ab54e24d529891b9b7280da244bc1a80e3963e6964"
+    },
+    {
+      "page": 22,
+      "component": "NativeWalletScreen",
+      "status": "implemented",
+      "actual_label": "Verify backup",
+      "note": "Shuffled word choices and ordered answer slots. Completion requires the actual matching answer and current presentation; acknowledgement alone cannot mark backup verified.",
+      "title": "Verify backup",
+      "comparison": "22-verify-backup.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-22.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "2a11dc45fe15d23ebbdf56d07b372d8f3778ed7726658b7b60a4ab2d31405c7a",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-22-320.png",
+      "comparison_sha256": "f979639d8907d629430fe4171a02ec312a6ca5516972e01dc2c7e5fedb5bbd8e"
+    },
+    {
+      "page": 23,
+      "component": "NativeWalletScreen",
+      "status": "implemented",
+      "actual_label": "Backup complete",
+      "note": "Centered success state, one Done action, no redundant Back control.",
+      "title": "Backup complete",
+      "comparison": "23-backup-complete.png",
+      "comparison_size": [
+        852,
+        1134
+      ],
+      "actual": "actual/actual-23.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "b806218058603cf4b5873bfc7441aaf3b626aa1685138a1550fbe5872fd1ee72",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-23-320.png",
+      "comparison_sha256": "9d121b58abb76e760b35530fe4c16f965e4303959318891f78b79aeeda20edd8"
+    },
+    {
+      "page": 24,
+      "component": "RealSettings",
+      "status": "adapted",
+      "actual_label": "Settings",
+      "note": "Root tab without Back, backup badge when needed, connection management and Security access. Notifications remain a separately tracked implementation gap; this screen is not full parity signoff.",
+      "title": "Settings",
+      "comparison": "24-settings.png",
+      "comparison_size": [
+        852,
+        1184
+      ],
+      "actual": "actual/actual-24.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "6872a8d1eb7875f99caa580e09b138fd67bdc0ff47ece6eff59e67a2d75b91d9",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-24-320.png",
+      "comparison_sha256": "e2b949bcb1ff13a39fbb558d92d1e0369de462a48d9a5b5ca87d198a6e5637b7"
+    },
+    {
+      "page": 25,
+      "component": "NativeSecurity",
+      "status": "implemented",
+      "actual_label": "Security",
+      "note": "Change PIN, optional native biometric access, Auto-lock and Privacy mode. Auto-lock lives here, with fresh authorization for security-reducing changes.",
+      "title": "Security",
+      "comparison": "25-security.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-25.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "64cc8e31844dfc2b442c0cec7dde32e75412aea6490ba88bce01bde40596658e",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-25-320.png",
+      "comparison_sha256": "eee48eb484818042673923d4620e5f425ae885817724cc12d65e5ec620ce016e"
+    },
+    {
+      "page": 26,
+      "component": "NativeWalletRemovalScreen",
+      "status": "adapted",
+      "actual_label": "Remove wallet",
+      "note": "Reference-style destructive review with bottom actions and conditional red backup warning. The countdown is removed from presentation; expiry and authorization remain enforced. Confirmed-backup variant is linked separately.",
+      "title": "Remove wallet",
+      "comparison": "26-remove-wallet.png",
+      "comparison_size": [
+        852,
+        1184
+      ],
+      "actual": "actual/actual-26.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "07448f97c1dd63d0c17a55d85ab1adc6a3267e0b912263701413298b095b84b4",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-26-320.png",
+      "comparison_sha256": "ceb84d09aa609ab42b2e03bb4857d5332b7e08901013c036f5e8898e61157814"
+    },
+    {
+      "page": 27,
+      "component": "NativeConnections",
+      "status": "implemented",
+      "actual_label": "WalletConnect",
+      "note": "Scan/paste entry and Active connections. Populated-list captures are linked beside the empty-state capture; clipboard is read only on tap.",
+      "title": "WalletConnect",
+      "comparison": "27-walletconnect.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-27.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "a1d57b357bcbe7afac5b8cc625885f16dbea6ee18b815c60e965e3e94aefb7ff",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-27-320.png",
+      "comparison_sha256": "11ce5573f7c9dfa8118de7efb865d0b24b22911f25eb2c86c2b966e834f547e6"
+    },
+    {
+      "page": 28,
+      "component": "ConnectionQrScanner.web",
+      "status": "native-only",
+      "actual_label": "Scan WalletConnect QR",
+      "note": "Native scanner implements camera ownership, close, flashlight and review reassurance. Browser capture is its fallback; native camera and permission behavior require device/emulator evidence.",
+      "title": "Scan WalletConnect QR",
+      "comparison": "28-scan-walletconnect-qr.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-28.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "44cf22948fc9cfe8487a18d3ae399c6df19f28f0120448b7f83d1fbbc7ab7bf6",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-28-320.png",
+      "comparison_sha256": "77a12f4005b718bb297b00454701a5e1204f395cc1398b6ddc2882b4e862e2a9"
+    },
+    {
+      "page": 29,
+      "component": "NativeConnections",
+      "status": "adapted",
+      "actual_label": "Waiting for app request",
+      "note": "Spinner, selected network and authoritative expiry; no invented app identity before its proposal. Pairing does not grant account access.",
+      "title": "Pairing preview",
+      "comparison": "29-pairing-preview.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-29.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "ab51138356beb7c388d485ef5d76e6faa00694b4ac13fe55398b4c63d1a921a4",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-29-320.png",
+      "comparison_sha256": "d9bf8671a77b0fa38552dc09e6a1eb5894e63178c80e2ce76f0a43268fad75b2"
+    },
+    {
+      "page": 30,
+      "component": "NativeConnections",
+      "status": "adapted",
+      "actual_label": "Connection request",
+      "note": "Reported origin and site verification, selected account/network, then requested permissions. Fixed Reject/Connect actions; browser state is synthetic.",
+      "title": "Connection request",
+      "comparison": "30-connection-request.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-30.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "b0f7694342078d3df6bd5293cfceb63386c9839d856d2878975d428fc3629f0c",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-30-320.png",
+      "comparison_sha256": "11536fd4920df800ee69b53062222fc38ef18337befe9238339fbac9f8077c4b"
+    },
+    {
+      "page": 31,
+      "component": "NativeConnections",
+      "status": "implemented",
+      "actual_label": "Connected app",
+      "note": "Isolated app detail with network, account, permissions, expiry and bottom Disconnect. Last-used is omitted because the wallet has no authoritative measurement.",
+      "title": "Connected app details",
+      "comparison": "31-connected-app-details.png",
+      "comparison_size": [
+        852,
+        1159
+      ],
+      "actual": "actual/actual-31.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "04d3a8cbc58080ec7c8397c3de0ed62e255da090b8fc0797ff07cd67fb39871a",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-31-320.png",
+      "comparison_sha256": "7ac3d00197f22eadc3ac274302f4859c58695376abee04b1b643f5e355341b92"
+    },
+    {
+      "page": 32,
+      "component": "NativeTransactionReviewScreen",
+      "status": "adapted",
+      "actual_label": "Transaction request",
+      "note": "Exact asset amount, recipient before account detail, contract and separate native fee; compact origin and persistent Reject/Confirm.",
+      "title": "Transaction request",
+      "comparison": "32-transaction-request.png",
+      "comparison_size": [
+        864,
+        1080
+      ],
+      "actual": "actual/actual-32.png",
+      "actual_size": [
+        390,
+        844
+      ],
+      "actual_sha256": "f5f4ff9f4efab2183fe359b34d3b681fa0e53f72c18276fe6bf222e22d4d61a3",
+      "reference": "PDF reference embedded in comparison image",
+      "video_source": null,
+      "narrow_actual": "actual/actual-32-320.png",
+      "comparison_sha256": "a81b72195006857caed2d2f3c26b125d64857866a53f76a3b1ebbccf86237a1d",
+      "source_commit": "dff877f472192f1597112d7c8ca154355fbf3a3f",
+      "narrow_actual_sha256": "ef4d8497a8272d0f2f2e4d92194884bdf379b8c1e2f2a1910dd2f5253b051b95"
+    }
+  ],
+  "source_commit": "04466c2e9498dfd250ac575e393db72fceec0e1f",
+  "capture_method": "Actual React Native components with synthetic adapters at 390x844 and 320x568. No native-device qualification.",
+  "targeted_flow_updates": {
+    "manifest": "flow-updates/manifest.json",
+    "exports": {
+      "watch": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "send": "a7c370a22656574043007ccc8d15fe2af342351a"
+    },
+    "frames": 65
+  },
+  "current_account_updates": "account-updates/manifest.json",
+  "contact_sheet_sha256": "b501b7384cfd0ddb5d4bc6aeb4c19d9d4fb02f8092646fdd0867fcc98741c4bd"
+}

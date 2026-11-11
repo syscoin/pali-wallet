@@ -1,3 +1,5 @@
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { freshSmartOperationDeadline } from './nonSuiteSigningHandoff.ts';
 import { normalizeNftTokenId } from '../../../source/utils/nftTokenId.ts';
 import type { SavedCollectible } from '../src/portfolio/tokenRegistry.ts';
@@ -23,7 +25,7 @@ const all = (node: any): Element[] =>
   Array.isArray(node)
     ? node.flatMap(all)
     : node && typeof node === 'object' && 'children' in node
-    ? [node, ...node.children.flatMap(all)]
+    ? [node, ...node.children.flatMap(all), ...all(node.props.footer), ...all(node.props.trailing)]
     : [];
 const source = readFileSync(
   new URL('../src/screens/NativeSmartAccountSend.tsx', import.meta.url),
@@ -38,6 +40,10 @@ const code = ts.transpileModule(source, {
   },
 }).outputText;
 function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, collectible?: SavedCollectible, recipientResolver?: NativeRecipientResolver) {
+  let account={ address: '0x1111111111111111111111111111111111111111', network: 'ethereum', revision: 1 };
+  const balance = { account, status: 'available', units: '5000000000000000000' };
+  const inventory = { status: 'ready', account, items: token ? [{ metadata: token, status: 'available', units: '100' }] : [] };
+  const events = new Map<string, (...args: any[]) => void>();
   const cells: any[] = [],
     cleanups: (() => void)[] = [];
   let index = 0;
@@ -56,7 +62,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
       return [
         value.value,
         (next: unknown) => {
-          value.value = next;
+          value.value = typeof next === 'function' ? next(value.value) : next;
         },
       ];
     },
@@ -85,10 +91,15 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
   };
   const imports: Record<string, any> = {
     react,
+    '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     'react-native': {
       ActivityIndicator: 'ActivityIndicator',
+      AppState: { currentState: 'active', addEventListener(event: string, callback: (...args: any[]) => void) { events.set(event, callback); return { remove() { events.delete(event); } }; } },
       BackHandler: { addEventListener: () => ({ remove() {} }) },
+      Keyboard: { dismiss() {} },
       KeyboardAvoidingView: 'KeyboardAvoidingView',
+      Modal: 'Modal', View: 'View', StyleSheet: { create: (value: unknown) => value },
       Platform: { OS: 'android' },
     },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
@@ -98,17 +109,21 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
           return () => {};
         }
         getSnapshot() {
-          return { status: 'available', units: '5000000000000000000' };
+          return balance;
         }
         connect() {
           return () => {};
         }
       },
+      sameNativePortfolioAccount: (left: any, right: any) => left?.address === right?.address && left?.network === right?.network && left?.revision === right?.revision,
     },
     '../core/amounts': { formatBaseUnits },
     '../../../../source/shared/erc20': { formatTokenUnits, parseErc20Units },
     '../../../../source/utils/nftTokenId': { normalizeNftTokenId },
-    './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum' },
+    './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum', nativeTokenAvailableAmount: (asset: Erc20Metadata) => formatTokenUnits('100', asset.decimals) },
+    './SendNetworkCard': { SendNetworkCard: 'SendNetworkCard' },
+    './SendAssetSelector': { SendAssetSelector: 'SendAssetSelector' },
+    './RecipientQrScanner': { RecipientQrScanner: 'RecipientQrScanner' },
     './NativeSend': {
       NativeSendInput: 'Input',
       nativeTransferFailure: (error: Error) =>
@@ -121,6 +136,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
     },
     '../ui': {
       Button: 'Button',
+      Card: 'Card', Coin: 'Coin', IconButton: 'IconButton',
       Header: 'Header',
       Notice: 'Notice',
       Screen: 'Screen',
@@ -139,7 +155,6 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
       return imports[name];
     },
   });
-  let account={ address: '0x1111111111111111111111111111111111111111', network: 'ethereum', revision: 1 };
   const render = () => {
     index = 0;
     return module.exports.NativeSmartAccountSend({
@@ -150,7 +165,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
       source: {},
       reader: {},
       token, collectible, tokenView: token ? { subscribe: () => () => {}, connect: () => () => {},
-        getSnapshot: () => ({ items: [{ metadata: token, status: 'available', units: '100' }] }) } : undefined,
+        getSnapshot: () => inventory } : undefined,
       onBack() {},
     }) as Element;
   };
@@ -172,12 +187,49 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
     render,
     edit,
     press,
-    changeAccount(){account={...account,revision:account.revision+1};},
+    changeAccount(){account={...account,revision:account.revision+1};balance.account=account;inventory.account=account;},
     changeNetwork(){account={...account,network:'sepolia'};},
+    background(){(imports['react-native'].AppState as any).currentState='background';events.get('change')?.('background');},
     close: () => cleanups.forEach((close) => close()),
   };
 }
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+function scanner(f: ReturnType<typeof fixture>) {
+  const input = all(f.render()).find(node => node.type === 'Input' && node.props.label === 'Recipient address');
+  assert(input); input.props.trailing.props.onPress();
+  const view = all(f.render()).find(node => node.type === 'RecipientQrScanner'); assert(view); return view;
+}
+
+test('Smart recipient scan fills only the address and preserves amount without opening an operation', () => {
+  let opened = 0;
+  const f = fixture(async () => { opened++; return { dispose() {} }; });
+  try {
+    f.edit('Amount in ETH', '0.25');
+    scanner(f).props.onScan('0x2222222222222222222222222222222222222222');
+    const fields = all(f.render()).filter(node => node.type === 'Input');
+    assert.equal(fields.find(node => node.props.label === 'Recipient address')!.props.value, '0x2222222222222222222222222222222222222222');
+    assert.equal(fields.find(node => node.props.label === 'Amount in ETH')!.props.value, '0.25');
+    assert.equal(all(f.render()).some(node => node.type === 'RecipientQrScanner'), false);
+    assert.equal(opened, 0);
+  } finally { f.close(); }
+});
+
+for (const boundary of ['close', 'account', 'network', 'draft', 'background', 'unmount'] as const)
+  test(`Smart recipient scan refuses a late result after ${boundary}`, () => {
+    let opened = 0;
+    const f = fixture(async () => { opened++; return { dispose() {} }; });
+    const previous = scanner(f);
+    if (boundary === 'close') previous.props.onClose();
+    if (boundary === 'account') { f.changeAccount(); f.render(); }
+    if (boundary === 'network') { f.changeNetwork(); f.render(); }
+    if (boundary === 'draft') f.edit('Amount in ETH', '0.5');
+    if (boundary === 'background') f.background();
+    if (boundary === 'unmount') f.close();
+    previous.props.onScan('0x2222222222222222222222222222222222222222');
+    if (boundary === 'background') assert(all(f.render()).some(node => node.children.includes('Closing transfer review…')));
+    else assert.equal(all(f.render()).find(node => node.type === 'Input' && node.props.label === 'Recipient address')!.props.value, '');
+    assert.equal(opened, 0); f.close();
+  });
 
 test('Smart send form displays the shared balance and binds exact fields to its operation', async () => {
   const requests: any[][] = [];
@@ -187,13 +239,13 @@ test('Smart send form displays the shared balance and binds exact fields to its 
     return operation;
   });
   try {
-    assert(
-      all(f.render()).some((node) =>
-        node.children.some((value) => String(value).includes('Balance 5.0 ETH'))
-      )
-    );
+    const initial = all(f.render());
+    assert.equal(initial.find(node => node.type === 'Header')!.props.title, 'Send ETH');
+    assert.equal(initial.find(node => node.type === 'Header')!.props.subtitle, 'Smart account · Ethereum');
+    assert.equal(initial.find(node => node.type === 'SendNetworkCard')!.props.context.name, 'Ethereum');
+    assert.match(initial.find(node => node.props.accessibilityLabel === 'Available balance')!.children.join(''), /Available 5\.0 ETH/);
     f.edit('Recipient address', '0x2222222222222222222222222222222222222222');
-    f.edit('Amount (ETH)', '0.000000000000000009');
+    f.edit('Amount in ETH', '0.000000000000000009');
     f.press();
     await tick();
     assert.deepEqual(JSON.parse(JSON.stringify(requests[0]!.slice(0, 2))), [
@@ -217,7 +269,7 @@ test('leaving during Smart operation opening disposes the late result', async ()
       })
   );
   f.edit('Recipient address', '0x2222222222222222222222222222222222222222');
-  f.edit('Amount (ETH)', '1');
+  f.edit('Amount in ETH', '1');
   f.press();
   assert(
     all(f.render())
@@ -242,7 +294,7 @@ for (const message of ['INVALID_INPUT', 'NOT_READY'])
     });
     try {
       f.edit('Recipient address', '0x2222222222222222222222222222222222222222');
-      f.edit('Amount (ETH)', '1');
+      f.edit('Amount in ETH', '1');
       f.press();
       await tick();
       const notice = all(f.render()).find((node) => node.type === 'Notice');
@@ -268,7 +320,7 @@ for (const editAmount of [false, true]) test(`MAX selection ${editAmount ? 'clea
     assert.equal(maximum.props.disabled, false);
     maximum.props.onPress();
     assert(all(f.render()).some(node => node.type === 'Button' && node.props.title === 'MAX selected'));
-    if (editAmount) f.edit('Amount (ETH)', '1');
+    if (editAmount) f.edit('Amount in ETH', '1');
     f.press(); await tick();
     assert.equal(selected.kind, editAmount ? 'exact' : 'maximum');
     if (editAmount) assert.equal(selected.amount, '1');
@@ -281,11 +333,12 @@ test('Smart token form presents the selected contract and routes exact decimal i
   let request: any;
   const f = fixture(async (_recipient, amount) => { request = amount; return { dispose() {} }; }, token);
   try {
+    const details = all(f.render()).find(node => node.type === 'Button' && node.props.title === 'Details'); assert(details); details.props.onPress();
     assert(all(f.render()).some(node => node.children.includes(token.contractAddress)));
     assert(all(f.render()).some(node => node.type === 'TokenMaximum'));
     f.edit('Recipient address', '0x2222222222222222222222222222222222222222');
     const amount = '0.' + '0'.repeat(254) + '9';
-    f.edit('Amount (EXACT)', amount);
+    f.edit('Amount in EXACT', amount);
     f.press(); await tick();
     assert.equal(request.kind, 'erc20');
     assert.equal(request.contractAddress, token.contractAddress);
@@ -333,7 +386,7 @@ for (const editAmount of [false, true]) test(`Smart token MAX remains an exact E
     const maximum = all(f.render()).find(node => node.type === 'TokenMaximum')!;
     maximum.props.onSelect(formatTokenUnits('1', 255));
     assert(all(f.render()).find(node => node.type === 'TokenMaximum')!.props.selected);
-    if (editAmount) f.edit('Amount (EXACT)', formatTokenUnits('2', 255));
+    if (editAmount) f.edit('Amount in EXACT', formatTokenUnits('2', 255));
     assert.equal(all(f.render()).find(node => node.type === 'TokenMaximum')!.props.selected, !editAmount);
     f.press(); await tick(); assert.equal(request.kind, 'erc20');
     assert.equal(request.amount, formatTokenUnits(editAmount ? '2' : '1', 255));
@@ -350,7 +403,7 @@ test('Smart ENS resolves once, displays the binding and retains it for operation
   let requests:any[][]=[],lookups=0,current!:ReturnType<typeof heldTicket>;
   const f=fixture(async(...args)=>{requests.push(args);return{dispose(){},getSnapshot(){return{userOperationSubmissionStarted:false};},subscribe(){return()=>{};}};},undefined,undefined,
     {async resolve(input,_owner,_signal,guard){lookups++;current=heldTicket(input,guard);return current.ticket;}});
-  f.edit('Recipient address','recipient.eth');f.edit('Amount (ETH)','1');f.press();await tick();
+  f.edit('Recipient address','recipient.eth');f.edit('Amount in ETH','1');f.press();await tick();
   assert.equal(requests[0]![0],current.ticket.address);requests[0]![2]();assert.equal(lookups,1);
   const text=all(f.render()).flatMap(node=>node.children).join(' ');assert.match(text,/recipient.eth/);assert.match(text,/Resolved address/);
   current.expire();assert.throws(requests[0]![2],/RECIPIENT_EXPIRED/);f.close();
@@ -359,7 +412,7 @@ for(const change of ['edit','account','close'] as const)test(`Smart held ENS can
   let complete!:(ticket:NativeRecipientResolution)=>void,guard!:()=>void,opened=0;
   const f=fixture(async()=>{opened++;return{dispose(){}};},undefined,undefined,
     {resolve(_input,_owner,_signal,check){guard=check;return new Promise(resolve=>{complete=resolve;});}});
-  f.edit('Recipient address','old.eth');f.edit('Amount (ETH)','1');f.press();
+  f.edit('Recipient address','old.eth');f.edit('Amount in ETH','1');f.press();
   if(change==='edit')f.edit('Recipient address','0x3333333333333333333333333333333333333333');
   if(change==='account'){f.changeAccount();f.render();}
   if(change==='close')f.close();
@@ -367,7 +420,7 @@ for(const change of ['edit','account','close'] as const)test(`Smart held ENS can
 });
 test('Smart lookup refusal keeps custody operation unopened',async()=>{
   let opened=0;const f=fixture(async()=>{opened++;return{dispose(){}};},undefined,undefined,{async resolve(){throw new Error('ENS_UNAVAILABLE');}});
-  f.edit('Recipient address','missing.eth');f.edit('Amount (ETH)','1');f.press();await tick();assert.equal(opened,0);f.close();
+  f.edit('Recipient address','missing.eth');f.edit('Amount in ETH','1');f.press();await tick();assert.equal(opened,0);f.close();
 });
 
 const operationHash = `0x${'ab'.repeat(32)}`;
@@ -437,7 +490,7 @@ async function ensOperation(fundFirst = false, loseReply = false) {
     },
   });
   f.edit('Recipient address', 'recipient.eth');
-  f.edit('Amount (ETH)', '0.000000000000000001');
+  f.edit('Amount in ETH', '0.000000000000000001');
   f.press(); await tick();
   await model.prepare();
   sending = model.authorize(model.getSnapshot().revision);

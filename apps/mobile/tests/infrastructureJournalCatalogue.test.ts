@@ -6,7 +6,7 @@ import test from 'node:test';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import {
   NativeWalletCatalogue, WALLET_CATALOGUE_KEY, replaceRecoveredAccountRecords, catalogueEvmNetworks,
-  type CatalogueMutation, type NativeInfrastructurePending,
+  captureNativeInfrastructurePayerReference, type CatalogueMutation, type NativeInfrastructurePending,
 } from '../src/custody/walletCatalogue.ts';
 import { createNativeNetwork, getNativeNetwork } from '../src/custody/networkContext.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
@@ -55,6 +55,64 @@ const store = (f: Awaited<ReturnType<typeof fixture>>) => f.change({
 });
 const clear = (f: Awaited<ReturnType<typeof fixture>>, expectedAttemptId = f.pending.entry.attemptId) => f.change({
   kind: 'set-infrastructure-pending', chainId: f.pending.chainId, expectedAttemptId, pending: null,
+});
+
+async function ledgerPayer(f: Awaited<ReturnType<typeof fixture>>) {
+  const derived = await f.sdk.derive(2, 'Ledger fee payer');
+  // Public metadata only. Device ownership is verified by the runtime, not this catalogue test.
+  const account = { ...derived, id: 0, xprv: '', isLedgerWallet: true, isImported: false, isTrezorWallet: false, isSmartAccount: false };
+  await f.change({ kind: 'import-ledger', account });
+  return { account, reference: { id: 'ledger:60:0', address: account.address, xpub: `0x${account.xpub.replace(/^0x/, '')}`.toLowerCase() } };
+}
+
+test('Ledger infrastructure reservations persist, retain their exact public payer and protect removal', async () => {
+  const f = await fixture();
+  try {
+    const { account, reference } = await ledgerPayer(f);
+    f.pending = { ...f.pending, payer: reference, entry: { ...f.pending.entry, payerAddress: reference.address } };
+    await store(f); await f.reopen();
+    assert.deepEqual(f.catalogue.privateRecords.infrastructurePending, [f.pending]);
+    assert.equal(f.catalogue.privateRecords.groups[0]!.accounts.Ledger[0]!.xprv, '');
+    await f.change({ kind: 'rename', id: reference.id, label: 'Renamed Ledger fee payer' });
+    await f.change({ kind: 'select', id: 'hd:60:0' });
+    await assert.rejects(f.change({ kind: 'remove', id: reference.id }));
+    const before = f.catalogue.privateRecords;
+    const recovered = replaceRecoveredAccountRecords(before, f.identity.walletFingerprint, before.groups);
+    assert.deepEqual(recovered.infrastructurePending, [f.pending]);
+    assert.equal(recovered.groups[0]!.accounts.Ledger[0]!.address, account.address);
+    await clear(f);
+    await f.change({ kind: 'remove', id: reference.id });
+    assert.equal(f.catalogue.privateRecords.groups[0]!.accounts.Ledger[0], undefined);
+  } finally { await f.cleanup(); }
+});
+
+test('infrastructure payer capture verifies public identity and does not turn hardware into software', async () => {
+  const f = await fixture();
+  try {
+    const { reference } = await ledgerPayer(f);
+    const record = f.catalogue.privateRecords;
+    const captured = captureNativeInfrastructurePayerReference(reference, record);
+    assert.deepEqual(captured, reference); assert(Object.isFrozen(captured));
+    assert.deepEqual(captureNativeInfrastructurePayerReference({ ...reference, xpub: reference.xpub.slice(2) }, record), reference);
+    assert.deepEqual(captureNativeInfrastructurePayerReference(f.pending.payer, record), f.pending.payer);
+    for (const invalid of [
+      { ...reference, id: 'ledger:0:0' }, { ...reference, id: 'ledger:60:1' },
+      { ...reference, id: 'hd:60:0' }, { ...reference, id: 'trezor:60:0' },
+      { ...reference, address: f.identity.address }, { ...reference, xpub: f.identity.publicKey },
+      { ...reference, secret: 'not public metadata' },
+    ]) assert.throws(() => captureNativeInfrastructurePayerReference(invalid, record));
+    for (const invalid of [
+      { id: 1 }, { isLedgerWallet: false }, { isImported: true }, { isTrezorWallet: true },
+      { isSmartAccount: true }, { xprv: 'software ciphertext must not enter hardware records' },
+    ]) {
+      const changed = structuredClone(record);
+      Object.assign(changed.groups[0]!.accounts.Ledger[0]!, invalid);
+      assert.throws(() => captureNativeInfrastructurePayerReference(reference, changed));
+    }
+    const missingSoftwareSecret = structuredClone(record);
+    missingSoftwareSecret.groups[0]!.accounts.HDAccount[1]!.xprv = '';
+    assert.throws(() => captureNativeInfrastructurePayerReference(f.pending.payer, missingSoftwareSecret));
+  } finally { await f.cleanup(); }
 });
 
 test('infrastructure attempts reopen durably, stay private and survive account labels and recovery replacement', async () => {

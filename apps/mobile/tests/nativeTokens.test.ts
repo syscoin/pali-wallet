@@ -7,7 +7,7 @@ import {
   type CollectibleQuery,
   type NativeTokenRuntime,
 } from '../src/portfolio/nativeTokens.ts';
-import { createNftOwnershipReader } from '../src/portfolio/nftOwnershipReadRpc.ts';
+import { createNftEnumerationReader, createNftOwnershipReader } from '../src/portfolio/nftOwnershipReadRpc.ts';
 import type { Erc20Reader } from '../src/portfolio/erc20ReadRpc.ts';
 import type { SavedCollectible } from '../src/portfolio/tokenRegistry.ts';
 import type {
@@ -46,6 +46,7 @@ function fixture(
     reader?: Erc20Reader;
     readHoldings?: OwnedTokenReader;
     readNft?: ReturnType<typeof createNftOwnershipReader>;
+    enumerateNft?: ReturnType<typeof createNftEnumerationReader>;
     getCatalogue?: () => NativeWalletCatalogueSnapshot | null;
     collectibles?: SavedCollectible[];
     beforeCollectibleWrite?: () => Promise<void>;
@@ -135,7 +136,8 @@ function fixture(
     () => 123,
     undefined,
     options.readHoldings,
-    options.readNft
+    options.readNft,
+    options.enumerateNft
   );
   const change = (
     address: string | null,
@@ -160,6 +162,125 @@ function fixture(
     listenerCount: () => listeners.size,
   };
 }
+
+test('ERC721 enumeration is selected-account RPC work and never creates a save or ownership result', async () => {
+  const requests: unknown[] = [];
+  let checks = 0;
+  const f = fixture({ collectibles: [],
+    readHoldings: async () => { assert.fail('Enumeration must not use an explorer'); },
+    enumerateNft: async (selection, signal, guard) => {
+      guard(); assert(!signal.aborted); requests.push(selection);
+      return { tokenIds: ['0', '0xff'], hasMore: true, method: 'enumeration' };
+    },
+    readNft: async (selection, _signal, guard) => {
+      guard(); checks++; return { tokenId: selection.tokenId, units: '1' };
+    },
+  });
+  const disconnect = f.model.connect();
+  try {
+    await tick();
+    const account = f.model.getSnapshot().account!;
+    assert.equal(f.model.getSnapshot().canEnumerateCollectible, true);
+    const query = { contractAddress: B, tokenStandard: 'ERC-721' as const };
+    const result = await f.model.view.enumerateCollectible(account, query, new AbortController().signal);
+    assert.deepEqual(result, { tokenIds: ['0', '255'], hasMore: true, method: 'enumeration' });
+    assert(Object.isFrozen(result)); assert(Object.isFrozen(result.tokenIds));
+    assert.deepEqual(requests, [{ networkId: 'ethereum', owner: A, ...query }]);
+    assert.equal(checks, 0); assert.deepEqual(f.collectibleWrites, []); assert.deepEqual(f.mutations, []);
+    assert.equal(await f.model.view.saveCollectible({} as never), false);
+    const verified = await f.model.view.checkManualCollectible(account, { ...query, tokenId: result.tokenIds[0]! }, new AbortController().signal);
+    assert.equal(checks, 1); assert(verified.saveTicket);
+    assert.equal(await f.model.view.saveCollectible(verified.saveTicket), true);
+    assert.equal(f.collectibleWrites.length, 1);
+  } finally { disconnect(); }
+});
+
+test('enumeration requires the exact current account and validates the contract and ERC721 standard before IO', async () => {
+  let calls = 0;
+  const f = fixture({ enumerateNft: async () => { calls++; return { tokenIds: [], hasMore: false, method: 'manual' }; } });
+  const disconnect = f.model.connect();
+  try {
+    await tick(); const account = f.model.getSnapshot().account!;
+    const query = { contractAddress: B, tokenStandard: 'ERC-721' as const };
+    await assert.rejects(f.model.view.enumerateCollectible({ ...account }, query, new AbortController().signal), /CANCELLED/);
+    for (const invalid of [{ ...query, contractAddress: 'collection.eth' }, { ...query, tokenStandard: 'ERC-1155' as never }])
+      await assert.rejects(f.model.view.enumerateCollectible(account, invalid, new AbortController().signal), { code: 'INVALID_INPUT' });
+    f.change(B); f.change(A);
+    await assert.rejects(f.model.view.enumerateCollectible(account, query, new AbortController().signal), /CANCELLED/);
+    assert.equal(calls, 0);
+  } finally { disconnect(); }
+});
+
+test('enumeration cancellation retires uncooperative readers and permits a fresh ownership check', async () => {
+  for (const change of ['abort', 'account', 'lock', 'disconnect']) {
+    let readSignal: AbortSignal | undefined;
+    const held = deferred<{ tokenIds: string[]; hasMore: boolean; method: 'enumeration' }>();
+    const f = fixture({ enumerateNft: async (_selection, signal) => { readSignal = signal; return held.promise; },
+      readNft: async selection => ({ tokenId: selection.tokenId, units: '1' }),
+    });
+    const disconnect = f.model.connect();
+    await tick(); const account = f.model.getSnapshot().account!, request = new AbortController();
+    const query = { contractAddress: B, tokenStandard: 'ERC-721' as const };
+    const pending = f.model.view.enumerateCollectible(account, query, request.signal);
+    await assert.rejects(f.model.view.checkManualCollectible(account, { ...query, tokenId: '0' }, new AbortController().signal), /CANCELLED/);
+    const rejected = assert.rejects(pending, /CANCELLED/);
+    if (change === 'abort') request.abort();
+    else if (change === 'account') f.change(B);
+    else if (change === 'lock') f.change(null);
+    else disconnect();
+    await rejected; assert(readSignal?.aborted);
+    held.resolve({ tokenIds: ['0'], hasMore: false, method: 'enumeration' }); await tick();
+    assert.deepEqual(f.collectibleWrites, []);
+    if (change === 'abort') assert.equal((await f.model.view.checkManualCollectible(account, { ...query, tokenId: '0' }, new AbortController().signal)).units, '1');
+    disconnect();
+  }
+});
+
+test('enumeration capability requires its port and invalid output cannot become candidate IDs', async () => {
+  const absent = fixture(); const stop = absent.model.connect(); await tick();
+  assert.equal(absent.model.getSnapshot().canEnumerateCollectible, undefined); stop();
+  const f = fixture({ enumerateNft: async () => ({ tokenIds: Array(11).fill('0'), hasMore: true, method: 'enumeration' }) });
+  const disconnect = f.model.connect();
+  try {
+    await tick();
+    await assert.rejects(f.model.view.enumerateCollectible(f.model.getSnapshot().account!,
+      { contractAddress: B, tokenStandard: 'ERC-721' }, new AbortController().signal), { code: 'INVALID_RESPONSE' });
+  } finally { disconnect(); }
+});
+
+test('enumeration preserves exact zero and huge collection counts, and leaves missing counts unavailable', async () => {
+  let totalOwned: string | undefined, method: 'enumeration' | 'manual' = 'enumeration';
+  const f = fixture({ enumerateNft: async () => ({ tokenIds: [], hasMore: false, method,
+    ...(totalOwned === undefined ? {} : { totalOwned }) }) });
+  const disconnect = f.model.connect();
+  try {
+    await tick();
+    const account = f.model.getSnapshot().account!, query = { contractAddress: B, tokenStandard: 'ERC-721' as const };
+    const missing = await f.model.view.enumerateCollectible(account, query, new AbortController().signal);
+    assert(!Object.hasOwn(missing, 'totalOwned'));
+    for (const count of ['0', (2n ** 256n - 1n).toString()]) {
+      totalOwned = count;
+      for (method of ['enumeration', 'manual'] as const) {
+        const result = await f.model.view.enumerateCollectible(account, query, new AbortController().signal);
+        assert.equal(result.totalOwned, count);
+        assert.equal(typeof result.totalOwned, 'string');
+        assert.equal(result.method, method);
+      }
+    }
+  } finally { disconnect(); }
+});
+
+test('enumeration rejects noncanonical, unsafe and out-of-range collection counts', async () => {
+  let totalOwned: unknown;
+  const f = fixture({ enumerateNft: async () => ({ tokenIds: [], hasMore: false, method: 'enumeration', totalOwned: totalOwned as string }) });
+  const disconnect = f.model.connect();
+  try {
+    await tick();
+    for (totalOwned of [0, Number.MAX_SAFE_INTEGER + 1, '01', '-1', '1e3', '1.5', (2n ** 256n).toString()])
+      await assert.rejects(f.model.view.enumerateCollectible(f.model.getSnapshot().account!,
+        { contractAddress: B, tokenStandard: 'ERC-721' }, new AbortController().signal), { code: 'INVALID_RESPONSE' });
+  } finally { disconnect(); }
+});
 
 test('manual collectible checks use the selected registered RPC without an explorer or token mutation', async () => {
   const selected = createNativeNetwork({

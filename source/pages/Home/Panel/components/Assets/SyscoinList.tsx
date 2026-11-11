@@ -133,9 +133,15 @@ export const SyscoinAssetsList = ({
                   <TokenIcon
                     logo={
                       asset.image ||
-                      getTokenLogo(asset.symbol, true, asset.assetGuid)
+                      getTokenLogo(asset.symbol, true, asset.assetGuid, chainId)
                     }
                     assetGuid={String(asset.assetGuid)}
+                    chainId={chainId}
+                    decimals={
+                      asset.decimals === undefined
+                        ? undefined
+                        : Number(asset.decimals)
+                    }
                     symbol={asset.symbol}
                     size={24}
                     className="hover:shadow-md hover:scale-110 transition-all duration-200"

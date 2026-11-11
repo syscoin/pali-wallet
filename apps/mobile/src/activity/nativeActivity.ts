@@ -34,8 +34,11 @@ import {
   type EvmSettlementStatus,
 } from '../../../../source/utils/evmReplacement.ts';
 import type { EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
+import type { NativeTokenPortfolioScope } from '../portfolio/tokenRegistry.ts';
 
 export interface NativeActivityRuntime {
+  /** Selected-account public reads on an explicit saved network. */
+  forScope?(scope: NativeTokenPortfolioScope, assertCurrent: () => void): NativeActivityRuntime;
   load(
     guard: () => void,
     signal?: AbortSignal
@@ -89,6 +92,7 @@ export type NativeActivitySnapshot = Readonly<{
   accountAddress: string | null;
   scopeKey: string | null;
   chainId: string | null;
+  registrationHash?: string | null;
   networkName?: string | null;
   nativeSymbol?: string | null;
   explorerUrl: string | null;
@@ -97,6 +101,7 @@ export type NativeActivitySnapshot = Readonly<{
   error: string | null;
   coverage: string;
   truncated: boolean;
+  discoveryAvailable?: boolean;
   canViewSavedPending?: boolean;
   savedPending?: Readonly<{
     rows: readonly ActivityRow[];
@@ -140,6 +145,7 @@ const initial = (): NativeActivitySnapshot =>
     accountAddress: null,
     scopeKey: null,
     chainId: null,
+    registrationHash: null,
     networkName: null,
     nativeSymbol: null,
     explorerUrl: null,
@@ -149,6 +155,7 @@ const initial = (): NativeActivitySnapshot =>
     coverage:
       'Direct transactions and ERC20 transfer events from the selected network are included.',
     truncated: false,
+    discoveryAvailable: false,
     canViewSavedPending: false,
     savedPending: undefined,
   });
@@ -219,7 +226,7 @@ export class NativeActivity {
       const state = this.source.getSnapshot();
       if (state.revision === revision) return;
       revision = state.revision;
-      if (state.phase !== 'ready') {
+      if (!['ready', 'backup-required'].includes(state.phase)) {
         this.stop();
         this.publish(initial());
       } else void this.refresh();
@@ -250,7 +257,7 @@ export class NativeActivity {
     if (
       generation !== this.generation ||
       signal?.aborted ||
-      this.source.getSnapshot().phase !== 'ready' ||
+      !['ready', 'backup-required'].includes(this.source.getSnapshot().phase) ||
       this.source.getSnapshot().revision !== revision
     )
       throw new ActivityError('CANCELLED');
@@ -300,10 +307,12 @@ export class NativeActivity {
         accountAddress: scope.address,
         scopeKey: scope.key,
         chainId: scope.network.chainId,
+        registrationHash: scope.network.registrationHash,
         networkName: scope.network.name,
         nativeSymbol: scope.network.symbol,
         explorerUrl: scope.explorerUrl,
         truncated: saved.truncated,
+        discoveryAvailable: !!scope.apiUrl,
         canViewSavedPending: !!runtime.loadSavedPending,
       });
       this.renderRows(true);

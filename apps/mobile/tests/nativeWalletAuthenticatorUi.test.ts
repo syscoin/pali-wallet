@@ -1,3 +1,5 @@
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { NativeSigningHandoffs, type NativeSigningHandoff } from '../src/connections/signingHandoff.ts';
 import assert from 'node:assert/strict';
 import { snapshotNativeSmartLocalAction } from '../src/smartAccount/localAction.ts';
@@ -7,6 +9,8 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import type { NativeSmartAccountOperationSnapshot } from '../src/smartAccount/operation.ts';
+import { resolveAssetTransferDisplay } from '../../../source/shared/assetTransferDisplay.ts';
+import { getNativeNetwork } from '../src/custody/networkContext.ts';
 
 type Element = {
   type: unknown;
@@ -145,6 +149,8 @@ function harness(
     ActivityIndicator: 'ActivityIndicator',
     View: 'View',
     KeyboardAvoidingView: 'KeyboardAvoidingView',
+    Keyboard: { dismiss() {} },
+    Modal: 'Modal',
   };
   const dependencies: Record<string, unknown> = {
     react,
@@ -156,6 +162,8 @@ function harness(
         canApprove: () => true,
       }),
     },
+    '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     '../platform/localization': { useNativeTranslation: () => ({ t: (key: string) => {
       const dictionary = JSON.parse(readFileSync(new NodeURL(`../../../source/assets/locales/${language}.json`, import.meta.url), 'utf8'));
       return key.split('.').reduce((value: any, part) => value?.[part], dictionary) ?? key;
@@ -164,7 +172,7 @@ function harness(
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': {
       ...Object.fromEntries(
-        ['Button', 'Card', 'Header', 'Notice', 'Screen', 'Text'].map(
+        ['Button', 'Card', 'Coin', 'IconButton', 'Header', 'Notice', 'Screen', 'Text'].map(
           (value) => [value, value]
         )
       ),
@@ -181,13 +189,17 @@ function harness(
       normalizeNftTokenId: (value: string) => value,
     },
     '../portfolio/nativePortfolio': {
+      sameNativePortfolioAccount: () => false,
       NativePortfolioController: class {
         getSnapshot = () => ({ status: 'available', units: '1' });
         subscribe = () => () => undefined;
         connect = () => () => undefined;
       },
     },
-    './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum' },
+    './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum', nativeTokenAvailableAmount: () => null },
+    './SendNetworkCard': { SendNetworkCard: 'SendNetworkCard' },
+    './SendAssetSelector': { SendAssetSelector: 'SendAssetSelector' },
+    './RecipientQrScanner': { RecipientQrScanner: 'RecipientQrScanner' },
     './NativeSend': {
       NativeSendInput: 'Input',
       nativeTransferFailure: () => 'Error',
@@ -199,6 +211,7 @@ function harness(
       formatTokenUnits: (value: string) => value,
       parseErc20Units: (value: string) => value,
     },
+    '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay },
     '../core/amounts': { formatBaseUnits: (value: string) => value },
     '../custody/networkContext': {
       getNativeSendContext: () => ({
@@ -416,10 +429,7 @@ function operationState(): NativeSmartAccountOperationSnapshot {
         executions: [],
       },
     },
-    network: {
-      id: 'ethereum',
-      chainId: '1',
-    } as NativeSmartAccountOperationSnapshot['network'],
+    network: getNativeNetwork('ethereum'),
     phase: 'authorize',
     revision: 1,
     account,
@@ -441,24 +451,27 @@ function operationState(): NativeSmartAccountOperationSnapshot {
 test('authenticator review discloses full owner, threshold and rotation before authorization', () => {
   const f = harness('NativeSmartAccountOperation');
   let authorized = 0;
-  const tree = f.render('NativeSmartAccountOperationContent', {
+  const props = {
     state: operationState(),
     onBack() {},
     authorize() {
       authorized++;
     },
     confirmPayer() {},
-  });
+  };
+  let tree = f.render('NativeSmartAccountOperationContent', props);
   const text = all(tree)
     .flatMap((node) => node.children)
     .filter((value) => typeof value === 'string')
     .join(' ');
   assert.match(text, new RegExp(owner));
-  assert.match(text, /Approvals required/);
-  assert(all(tree).some(node => node.type === 'Text' && node.children.includes(1)));
-  assert.match(text, /0x3333333333333333333333333333333333333333/);
-  assert.match(one(tree, 'Notice', 'Use this method').props.body, /owner and threshold shown above/);
-  one(tree, 'Button', 'Authorize authenticator change').props.onPress();
+  assert.match(text, /1 of 1 owners can approve/);
+  assert.match(text, /Current approval method.*New approval method/);
+  one(tree, 'Button', 'View approval details').props.onPress();
+  tree = f.render('NativeSmartAccountOperationContent', props);
+  assert.match(all(tree).flatMap(node => node.children).join(' '), /0x3333333333333333333333333333333333333333/);
+  assert.match(one(tree, 'Notice', 'Authorize approval change').props.body, /owner and threshold shown above/);
+  one(tree, 'Button', 'Authorize approval change').props.onPress();
   assert.equal(authorized, 1);
   assert(
     !all(tree).some((node) =>
@@ -489,7 +502,7 @@ test('confirmed authenticator with stale metadata exposes its hash and refresh-o
       refreshed++;
     },
   });
-  one(tree, 'Notice', 'Authenticator transaction confirmed');
+  one(tree, 'Notice', 'Approval method changed');
   assert(all(tree).some((node) => node.children.includes(hash)));
   assert(
     all(tree).some((node) => node.children.includes('Confirmed transaction'))
@@ -500,7 +513,7 @@ test('confirmed authenticator with stale metadata exposes its hash and refresh-o
     all(tree)
       .filter((node) => node.type === 'Button')
       .map((node) => node.props.title),
-    ['Refresh account status', 'Close']
+    ['View approval details', 'Refresh account status', 'Close']
   );
   f.dispose();
 });
@@ -526,7 +539,7 @@ test('already-configured authenticator reports its owner without a transaction',
     all(tree)
       .filter((node) => node.type === 'Button')
       .map((node) => node.props.title),
-    ['Close']
+    ['View approval details', 'Close']
   );
   f.dispose();
 });
@@ -559,7 +572,7 @@ for (const route of [
       let finishDisposal!: () => void;
       let guard!: () => void;
       const open = (...args: unknown[]) => {
-        guard = (route === 'deployment' ? args[0] : args.at(-1)) as () => void;
+        guard = (route === 'deployment' ? args[0] : args.at(-2)) as () => void;
         return new Promise<object>((resolve) => {
           resolveOpen = resolve;
         });
@@ -601,7 +614,7 @@ for (const route of [
           .find((node) => node.props.label === 'Recipient address')!
           .props.onChange(owner);
         all(tree)
-          .find((node) => node.props.label === 'Amount (ETH)')!
+          .find((node) => node.props.label === 'Amount in ETH')!
           .props.onChange('1');
         tree = f.render(component, props);
         one(tree, 'Button', 'Review transfer').props.onPress();
@@ -753,11 +766,14 @@ test('SLH target review discloses exact public fields without an ECDSA owner cla
   const f = harness('NativeSmartAccountOperation'), state = operationState();
   if (state.intent.kind !== 'authenticator') throw Error('Wrong fixture');
   const root = `0x${'44'.repeat(32)}`, seed = `0x${'33'.repeat(32)}`;
-  const tree = f.render('NativeSmartAccountOperationContent', { state: { ...state, intent: { ...state.intent, command: { ...state.intent.command,
-    target: { module:'slh-dsa',validator: account,data:'0x' }, targetModule: {id:'slh-dsa',type:'validator',address:account,config:{pkRoot:root,pkSeed:seed}} } } }, onBack() {}, authorize() {}, confirmPayer() {} });
+  const props = { state: { ...state, intent: { ...state.intent, command: { ...state.intent.command,
+    target: { module:'slh-dsa',validator: account,data:'0x' }, targetModule: {id:'slh-dsa',type:'validator',address:account,config:{pkRoot:root,pkSeed:seed}} } } }, onBack() {}, authorize() {}, confirmPayer() {} };
+  let tree = f.render('NativeSmartAccountOperationContent', props);
+  one(tree, 'Button', 'View approval details').props.onPress();
+  tree = f.render('NativeSmartAccountOperationContent', props);
   const text = all(tree).flatMap(node => node.children).filter(value => typeof value === 'string').join(' ');
   assert(text.includes(root)); assert(text.includes(seed)); assert(!text.includes(owner));
-  assert.match(one(tree, 'Notice', 'Use this method').props.body, /post-quantum approval/); f.dispose();
+  assert.match(one(tree, 'Notice', 'Authorize approval change').props.body, /post-quantum approval/); f.dispose();
 });
 
 for (const language of ['en','es','pt','fr','de','zh','ja','ko','ru']) test(`SLH management uses the canonical packaged ${language} dictionary`, async () => {
@@ -778,9 +794,9 @@ test('SLH payer review describes the exact approved target without claiming ECDS
   if (state.intent.kind !== 'authenticator') throw Error('Wrong fixture');
   const tree = f.render('NativeSmartAccountOperationContent', {state:{...state,phase:'review-fee',payerReview:{id:1,purpose:'submit-operation',transaction:{from:owner,to:account,value:'0',data:'0x',chainId:'1',nonce:'0',gasLimit:'21000',type:2,maxFeePerGas:'2',maxPriorityFeePerGas:'1'},maximumFeeUnits:'42000',coveredFeeUnits:'0',maximumTotalUnits:'42000'},
     intent:{...state.intent,command:{...state.intent.command,target:{module:'slh-dsa',validator:account,data:'0x'},targetModule:{id:'slh-dsa',type:'validator',address:account,config:{pkRoot:hash,pkSeed:hash}}}}},onBack(){},authorize(){},confirmPayer(){} });
-  const notice = one(tree,'Notice','Submit the authorized authenticator change');
+  const notice = one(tree,'Notice','Change approval method');
   assert.equal(notice.props.body,'Saving updates your account on-chain and may require a network fee.');
-  assert(!notice.props.body.includes('Pali wallet owner')); one(tree,'Button','Confirm authenticator change'); f.dispose();
+  assert(!notice.props.body.includes('Pali wallet owner')); one(tree,'Button','Change approval method'); f.dispose();
 });
 
 
@@ -827,3 +843,64 @@ for (const action of ['header-event', 'close-event', 'review-event', 'app-backgr
       assert.deepEqual(canceled, background ? [] : [job]);
     } finally { manager.cancelLocal(); await manager.retired(); f.dispose(); }
   });
+
+type AuthenticationRoute = 'authenticator' | 'deployment' | 'send' | 'guardian' | 'slh';
+async function authenticationRoute(route: AuthenticationRoute) {
+  const name = route === 'authenticator' ? 'NativeSmartAccountAuthenticator' : route === 'deployment' ? 'NativeSmartAccountOperation'
+    : route === 'send' ? 'NativeSmartAccountSend' : route === 'guardian' ? 'NativeGuardianPolicy' : 'NativeSlhDsaManagement';
+  const component = route === 'deployment' ? 'NativeSmartAccountOperationRoute' : route === 'slh' ? 'NativeSlhDsaManagementScreen' : name;
+  const f = harness(name);
+  let authentication!: privateAuthentication.NativePrivateAuthenticationScope, guard!: () => void, returned = 0;
+  const operation = { async dispose() {} };
+  const open = async (...args: unknown[]) => {
+    authentication = args.at(-1) as privateAuthentication.NativePrivateAuthenticationScope;
+    guard = (route === 'deployment' ? args[0] : args.at(-2)) as () => void;
+    guard();
+    return route === 'slh' ? slhManager().manager : operation;
+  };
+  const props = { open, onBack() { returned++; }, context: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
+    accountLabel: 'Smart account', source: {}, reader: {}, account: { address: account, network: 'ethereum', revision: 1 },
+    action: 'set', address: account, networkLabel: 'Ethereum', observation: { exists: true, guardians: [owner], threshold: 1, delaySeconds: 259200, pending: null },
+    manage: { chainId: 1, open }, lifetime: new AbortController().signal };
+  let tree = f.render(component, props);
+  if (route === 'send') {
+    all(tree).find(node => node.props.label === 'Recipient address')!.props.onChange(owner);
+    all(tree).find(node => node.props.label === 'Amount in ETH')!.props.onChange('1');
+    tree = f.render(component, props); one(tree, 'Button', 'Review transfer').props.onPress();
+  } else if (route === 'guardian') one(tree, 'Button', 'Review policy').props.onPress();
+  await settle();
+  tree = f.render(component, props);
+  assert(authentication); guard();
+  if (route !== 'slh') assert.equal(tree.props.authentication, authentication, 'The operation child receives the same genuine scope');
+  return { f, authentication, guard, props, component, get returned() { return returned; } };
+}
+function holdAuthentication(scope: privateAuthentication.NativePrivateAuthenticationScope) {
+  const held = Promise.withResolvers<void>();
+  const binding = privateAuthentication.bindNativePrivateAuthentication(scope, { assertCurrent() {}, isPromptActive: () => true });
+  const completed = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, () => held.promise);
+  return { binding, finish: async () => { held.resolve(); await completed.catch(() => undefined); } };
+}
+for (const route of ['authenticator', 'deployment', 'send', 'guardian', 'slh'] as const) {
+  test(`${route} retains only its own OS interruption and still retires on Back`, async () => {
+    const f = await authenticationRoute(route), prompt = holdAuthentication(f.authentication);
+    try {
+      f.f.event('change', 'inactive'); f.f.event('blur'); f.guard(); assert.equal(f.returned, 0);
+      f.f.event('change', 'active'); await prompt.finish(); f.guard();
+      const retry = holdAuthentication(f.authentication);
+      f.f.back(); await settle(); assert.throws(f.guard, /CANCELLED|EXPIRED/);
+      assert.equal(f.authentication.isAuthenticating(), false); await retry.finish();
+      assert.equal(f.returned, 1);
+    } finally { await prompt.finish(); f.f.dispose(); }
+  });
+  for (const boundary of ['foreign-prompt', 'background', 'unmount'] as const) test(`${route} retires on ${boundary} even while an OS prompt is active`, async () => {
+    const f = await authenticationRoute(route);
+    const own = boundary !== 'foreign-prompt';
+    const prompt = holdAuthentication(own ? f.authentication : privateAuthentication.createNativePrivateAuthenticationScope());
+    try {
+      if (boundary === 'unmount') f.f.dispose();
+      else f.f.event('change', boundary === 'background' ? 'background' : 'inactive');
+      await settle(); assert.throws(f.guard, /CANCELLED|EXPIRED/);
+      assert.throws(() => privateAuthentication.bindNativePrivateAuthentication(f.authentication, { assertCurrent() {}, isPromptActive: () => true }), /CANCELLED/);
+    } finally { await prompt.finish(); f.f.dispose(); }
+  });
+}

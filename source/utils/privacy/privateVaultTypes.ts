@@ -1,5 +1,6 @@
 import type { IClassicNoteIdentity } from './note';
 import type { PrivacyPoolId } from './types';
+import type { WalletAuthentication } from '../../shared/walletAuthentication.ts';
 
 export interface IPrivateNoteStatus {
   blockNumber?: number;
@@ -48,9 +49,15 @@ export interface IPrivateVaultController {
   getCapacity: () => Promise<IPrivateVaultCapacity>;
   getNotes: () => Promise<IPrivateVaultView>;
   importNote: (note: string) => Promise<IPrivateNoteView>;
-  recoverFailedWithdrawal: (id: string, password: string) => Promise<void>;
-  revealNote: (id: string, password: string) => Promise<string>;
-  reviewRestoredNote: (id: string, password: string) => Promise<void>;
+  recoverFailedWithdrawal: (
+    id: string,
+    password: WalletAuthentication
+  ) => Promise<void>;
+  revealNote: (id: string, password: WalletAuthentication) => Promise<string>;
+  reviewRestoredNote: (
+    id: string,
+    password: WalletAuthentication
+  ) => Promise<void>;
   setCapacity: (
     capacity: PrivateVaultCapacity
   ) => Promise<IPrivateVaultCapacity>;

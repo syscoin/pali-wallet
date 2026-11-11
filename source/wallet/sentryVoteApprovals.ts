@@ -10,6 +10,7 @@ import type {
   SentryRequestScope,
   SentryRequestLifetime,
 } from './sentryApprovalTypes.ts';
+import type { WalletAuthentication } from '../shared/walletAuthentication.ts';
 import type {
   SentryAuthorityKey,
   SentryGovernanceVoteContext,
@@ -226,7 +227,7 @@ export class SharedSentryVoteApprovals {
     this.approvals.delete(id);
   }
 
-  public async sign(params: { id: string; password: string }) {
+  public async sign(params: { id: string; password: WalletAuthentication }) {
     const pending = this.pending(params.id);
     if (pending.signing)
       throw new Error('This vote approval is already being signed');
@@ -244,12 +245,6 @@ export class SharedSentryVoteApprovals {
           throw new Error(
             'SENTRY_VOTING_KEY_MISSING: Import matching voting keys in Pali and start again.'
           );
-        const seed = await this.host.getSeed(
-          params.password,
-          scope,
-          assertPending
-        );
-        assertPending();
         const fresh = await this.context(scope, approval.request, lifetime);
         await this.host.runCrypto<SentryGovernanceVoteReview>(
           {
@@ -272,75 +267,102 @@ export class SharedSentryVoteApprovals {
           throw new Error(
             'Proposal or voting key changed. Review the vote again.'
           );
-        const votes: SentryGovernanceVoteResponse[] = [];
-        for (const node of approval.nodes) {
-          if (this.pending(params.id) !== pending)
-            throw new Error('Vote approval was cancelled');
-          let key: SentryAuthorityKey;
-          if (node.keyId === 'wallet-voting') {
-            const address = syscoinUtils.bitcoinjs.address.toBase58Check(
+        const walletAuthorities = approval.nodes
+          .filter((node) => node.keyId === 'wallet-voting')
+          .map((node) => ({
+            address: syscoinUtils.bitcoinjs.address.toBase58Check(
               Buffer.from(node.votingKeyId, 'hex'),
               SENTRY_NETWORKS[approval.network].encoding.pubKeyHash
-            );
-            const secret = await this.host.resolveWalletAuthority(
-              { address, password: params.password },
-              scope
-            );
-            if (!secret)
-              throw new Error(
-                'Selected wallet has no private Sentry authority key'
-              );
-            key = await this.host.runCrypto<SentryAuthorityKey>(
-              {
-                type: 'import',
-                role: 'voting',
-                scheme: 'secp256k1',
-                secretKey: secret.secretKey,
-              },
-              assertPending
-            );
-          } else {
-            key = await this.host.loadKey({
-              scope,
-              network: approval.network,
-              id: node.keyId,
-              seed,
-              assertCurrent: assertPending,
-            });
+            ),
+            purpose: 'voting' as const,
+          }));
+        const response = await this.host.withSigningMaterial(
+          {
+            authentication: params.password,
+            scope,
+            walletAuthorities,
+            signal: lifetime.signal,
+            assertCurrent: assertPending,
+          },
+          async (material) => {
+            const votes: SentryGovernanceVoteResponse[] = [];
+            for (const node of approval.nodes) {
+              if (this.pending(params.id) !== pending)
+                throw new Error('Vote approval was cancelled');
+              let key: SentryAuthorityKey | undefined;
+              try {
+                if (node.keyId === 'wallet-voting') {
+                  const address = syscoinUtils.bitcoinjs.address.toBase58Check(
+                    Buffer.from(node.votingKeyId, 'hex'),
+                    SENTRY_NETWORKS[approval.network].encoding.pubKeyHash
+                  );
+                  const secret = material.resolveWalletAuthority({
+                    address,
+                    purpose: 'voting',
+                  });
+                  if (!secret)
+                    throw new Error(
+                      'Selected wallet has no private Sentry authority key'
+                    );
+                  key = await this.host.runCrypto<SentryAuthorityKey>(
+                    {
+                      type: 'import',
+                      role: 'voting',
+                      scheme: 'secp256k1',
+                      secretKey: secret.secretKey,
+                    },
+                    assertPending
+                  );
+                } else {
+                  key = await this.host.loadKey({
+                    scope,
+                    network: approval.network,
+                    id: node.keyId,
+                    seed: material.seed,
+                    assertCurrent: assertPending,
+                  });
+                }
+                assertPending();
+                if (
+                  key.role !== 'voting' ||
+                  key.scheme !== 'secp256k1' ||
+                  (node.publicKey && node.publicKey !== key.publicKey)
+                )
+                  throw new Error(
+                    'The selected key is not this node’s registered voting key'
+                  );
+                const vote =
+                  await this.host.runCrypto<SentryGovernanceVoteResponse>(
+                    {
+                      type: 'signVote',
+                      request: approval.request,
+                      context: fresh.context,
+                      proTxHash: node.proTxHash,
+                      key,
+                    },
+                    assertPending
+                  );
+                if (this.pending(params.id) !== pending)
+                  throw new Error('Vote approval was cancelled');
+                votes.push(vote);
+              } finally {
+                if (key) key.secretKey = '';
+              }
+            }
+            return {
+              version: 1,
+              chain: approval.request.chain,
+              proposalHash: approval.request.proposalHash,
+              signal: approval.request.signal,
+              outcome: approval.request.outcome,
+              timestamp: approval.request.timestamp,
+              votes,
+            };
           }
-          assertPending();
-          if (
-            key.role !== 'voting' ||
-            key.scheme !== 'secp256k1' ||
-            (node.publicKey && node.publicKey !== key.publicKey)
-          )
-            throw new Error(
-              'The selected key is not this node’s registered voting key'
-            );
-          const vote = await this.host.runCrypto<SentryGovernanceVoteResponse>(
-            {
-              type: 'signVote',
-              request: approval.request,
-              context: fresh.context,
-              proTxHash: node.proTxHash,
-              key,
-            },
-            assertPending
-          );
-          if (this.pending(params.id) !== pending)
-            throw new Error('Vote approval was cancelled');
-          votes.push(vote);
-        }
+        );
+        assertPending();
         this.approvals.delete(params.id);
-        return {
-          version: 1,
-          chain: approval.request.chain,
-          proposalHash: approval.request.proposalHash,
-          signal: approval.request.signal,
-          outcome: approval.request.outcome,
-          timestamp: approval.request.timestamp,
-          votes,
-        };
+        return response;
       });
     } finally {
       pending.signing = false;

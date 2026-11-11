@@ -6,8 +6,8 @@ import React from 'react';
 import { Provider } from 'react-redux';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
+import { verifyERC1155OwnershipHelper } from '../../shared/nftReads';
 import { DetailsView } from 'pages/Home/Panel/components/Details';
-import { verifyERC1155OwnershipHelper } from 'scripts/Background/controllers/assets/nft-utils';
 import vaultReducer from 'state/vault';
 import vaultGlobalReducer from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';

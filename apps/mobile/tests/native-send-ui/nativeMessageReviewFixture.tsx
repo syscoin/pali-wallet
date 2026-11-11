@@ -50,8 +50,10 @@ export function NativeMessageReviewFixture() {
     };
   }, []);
   const controller: NativeConnectionsView = {
+    isRequestAuthenticating: () => false,
   ...unsupportedDappViews,
     async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
+    async refreshCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     async retrySmartMetadata() { throw new Error('Smart metadata refresh is outside this fixture'); },
     async confirmSmartPayer() { throw new Error('No Smart payer review in this fixture'); },

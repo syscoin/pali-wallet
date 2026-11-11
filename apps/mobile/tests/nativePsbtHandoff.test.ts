@@ -1,3 +1,4 @@
+import { bindTestRequestAuthentication } from './fixtures/privateAuthentication.ts';
 import { requireNativeSigningHandoff, NativeSigningHandoffs, type NativeSigningHandoff, type SigningResumeScope } from '../src/connections/signingHandoff.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -21,7 +22,7 @@ function fixture() {
   const scope = (): SigningResumeScope => ({ adapter: 1, wallet: 'wallet', unlockGeneration: generation, accountId: 'trezor:0:0', address: 'address', type: 'Trezor', trezor: true, signing: 'trezor-signing', xpub: 'xpub', registration: 'full-registration', grant: 'grant' });
   const owner = () => ({ order: 1, accountLabel: 'Trezor', address: 'address', networkLabel: 'Bitcoin', chainId: wire.chainId, symbol: 'BTC', decimals: 8, resumeScope: scope(),
     assertCurrent() { if (!live) throw Error('CONTEXT_CHANGED'); }, assertSessionCurrent() {} });
-  const manager = new NativePsbtRequests({ foreground: () => true, changed() {}, checkSite: async () => ({ isBlacklisted: false }),
+  const manager = new NativePsbtRequests({ bindAuthentication: bindTestRequestAuthentication, foreground: () => true, changed() {}, checkSite: async () => ({ isBlacklisted: false }),
     host: () => ({ async cancelHandoff(job) { canceled.push(job); await cancelWait; },
       async prepare(request, signal, check, control) {
         prepares++; handoff = control;

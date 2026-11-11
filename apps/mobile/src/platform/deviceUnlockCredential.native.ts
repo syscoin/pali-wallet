@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { AppState, Platform } from 'react-native';
-import { createDeviceUnlockCredentialStore } from '../storage/deviceUnlockCredential.ts';
+import { createDeviceUnlockCredentialStore, isNativeDeviceUnlockRefusal } from '../storage/deviceUnlockCredential.ts';
+import { deviceUnlockUserRefusal } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
 import { DeviceUnlockPrompt } from './deviceUnlockPrompt.ts';
 
 // Keep this namespace separate from the database key and every unprotected item.
@@ -8,7 +9,7 @@ const protectedItem = Object.freeze<SecureStore.SecureStoreOptions>({
   keychainService: 'org.pali.mobile.device-unlock.v1',
   keychainAccessible: SecureStore.WHEN_PASSCODE_SET_THIS_DEVICE_ONLY,
   requireAuthentication: true,
-  authenticationPrompt: 'Confirm biometrics for Pali',
+  authenticationPrompt: 'Confirm access to Pali',
 });
 
 export function createNativeDeviceUnlockCapability() {
@@ -25,8 +26,14 @@ export function createNativeDeviceUnlockCapability() {
   });
   const credentials = createDeviceUnlockCredentialStore({
     async available() { return await SecureStore.isAvailableAsync() && SecureStore.canUseBiometricAuthentication(); },
-    read: (name) => prompt.run(() => SecureStore.getItemAsync(name, protectedItem)),
-    write: (name, value) => prompt.run(() => SecureStore.setItemAsync(name, value, protectedItem)),
+    async read(name, owner) {
+      try { return await prompt.run(owner, () => SecureStore.getItemAsync(name, protectedItem)); }
+      catch (error) {
+        if (isNativeDeviceUnlockRefusal(Platform.OS, error)) throw deviceUnlockUserRefusal();
+        throw error;
+      }
+    },
+    write: (name, value, owner) => prompt.run(owner, () => SecureStore.setItemAsync(name, value, protectedItem)),
     remove: (name) => SecureStore.deleteItemAsync(name, protectedItem),
   });
   return { credentials, prompt,

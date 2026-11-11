@@ -1,7 +1,7 @@
 import { UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { accountIdentity, parseAccountSelection, projectAccounts } from '../src/core/accountDirectory.ts';
+import { accountIdentity, nativeAccountSelection, parseAccountSelection, projectAccounts } from '../src/core/accountDirectory.ts';
 import { WatchAccounts } from '../src/core/watchAccounts.ts';
 import { createEvmWatchAccount, WatchOnlyAuthority } from '../src/core/watchOnlyAuthority.ts';
 import type { PublicAccount } from '../src/core/types.ts';
@@ -75,6 +75,21 @@ test('persisted selection is bounded navigation data, never capability or keyrin
     { kind: 'watch', id: '__proto__', capabilities: { signing: true } }, { kind: 'hd', id: 'hd:60:-1' }]) {
     assert.throws(() => parseAccountSelection(value));
   }
+});
+
+test('Trezor chooser identity stays hardware-specific without granting signing authority', () => {
+  const catalogue: NativeWalletCatalogueSnapshot = {
+    revision: 0, networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS,
+    active: { accountId: 'trezor:60:0', networkId: 'ethereum' },
+    accounts: [{ id: 'trezor:60:0', type: 'Trezor', slip44: 60, index: 0, label: 'Hardware', address: ADDRESS }],
+  };
+  const entry = projectAccounts(catalogue, [])[0]!;
+  assert.deepEqual(entry.selection, { kind: 'trezor', id: 'trezor:60:0' });
+  assert.deepEqual(nativeAccountSelection('trezor:60:0'), entry.selection);
+  assert.deepEqual(parseAccountSelection(entry.selection), entry.selection);
+  assert.equal(entry.capabilities.signing, 'hardware-connection-required');
+  assert.throws(() => parseAccountSelection({ kind: 'smart', id: 'trezor:60:0' }));
+  assert.throws(() => parseAccountSelection({ kind: 'trezor', id: 'hd:60:0' }));
 });
 
 test('a public storage read failure preserves known accounts and cannot overwrite them with an empty replacement', async () => {

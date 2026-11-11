@@ -7,6 +7,9 @@ import { UtxoTransactionsListComponent } from './UtxoList';
 const mockNavigate = jest.fn();
 const mockEmitter = jest.fn();
 const mockTokenIcon = jest.fn();
+const mockTokenLogo = jest.fn((...args: any[]) =>
+  jest.requireActual('utils/tokens').getTokenLogo(...args)
+);
 let mockActiveAssets: { syscoin: any[] };
 let mockScope: { account: string; network: string };
 let mockUrl: string;
@@ -68,7 +71,7 @@ jest.mock('components/TokenIcon', () => ({
   },
 }));
 jest.mock('utils/index', () => ({
-  getTokenLogo: () => undefined,
+  getTokenLogo: (...args: any[]) => mockTokenLogo(...args),
   ellipsis: (value: string) => value,
 }));
 
@@ -171,4 +174,29 @@ it('uses the matching imported asset symbol instead of the Blockbook symbol', ()
   expect(screen.getByText(`${rawQuantity} SAVED`)).toBeTruthy();
   expect(screen.queryByText(/\bBIG\b/)).toBeNull();
   expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('threads the displayed precision through history logo lookup and rendering', () => {
+  mockActiveAssets = {
+    syscoin: [
+      { assetGuid: '123456', chainId: 5700, symbol: 'SYSX', decimals: 8 },
+    ],
+  };
+  const tx = {
+    ...baseTx(),
+    accountAssetTransfers: [
+      { assetGuid: '123456', value: '100000000', decimals: 6, symbol: 'SYSX' },
+    ],
+  };
+  render(<UtxoTransactionsListComponent tx={tx as any} />);
+  expect(screen.getByText('100.0000 SYSX')).toBeTruthy();
+  expect(mockTokenLogo).toHaveBeenCalledWith('SYSX', true, '123456', 5700, 6);
+  expect(mockTokenIcon).toHaveBeenCalledWith(
+    expect.objectContaining({ assetGuid: '123456', chainId: 5700, decimals: 6 })
+  );
+  expect(
+    jest
+      .requireActual('utils/tokens')
+      .getKnownTokenLogo(undefined, undefined, '123456', 5700, 6)
+  ).toBeNull();
 });

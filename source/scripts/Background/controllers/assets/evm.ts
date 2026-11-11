@@ -22,6 +22,11 @@ import {
   readCoinGeckoNativeQuote,
 } from '../../../../shared/nativeCoinQuotes';
 import {
+  discoverNftTokens,
+  verifyERC1155OwnershipHelper,
+  verifyERC721OwnershipHelper,
+} from '../../../../shared/nftReads';
+import {
   hasInvisibleOwnedTokenName,
   projectOwnedNftRow,
 } from '../../../../shared/ownedNftRow';
@@ -38,11 +43,6 @@ import { formatUnits, isAddress } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
 import { fetchOwnedTokenRows, TokenDiscoveryError } from 'utils/tokenDiscovery';
 
-import {
-  discoverNftTokens,
-  verifyERC1155OwnershipHelper,
-  verifyERC721OwnershipHelper,
-} from './nft-utils';
 import { IEvmAssetsController } from './types';
 import { validateAndManageUserAssets } from './utils';
 

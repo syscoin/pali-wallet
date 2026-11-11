@@ -90,7 +90,7 @@ for (const committed of [false, true]) test(`real authority ${committed ? 'held 
     session: { async createWallet() { assert.fail('No wallet creation'); }, async importWallet() { assert.fail('No wallet import'); }, async unlock() { unlocked = true; return { authenticated: true }; },
       async lock() { unlocked = false; }, async readSelectedAddress() { assert(unlocked); return accounts.find(account => account.id === catalogue.active.accountId)!.address; } },
     storage: { async close() {}, async readState() { if (persisted) { readEntered.resolve(); await readGate.promise; } return { presence: 'existing', backup: 'confirmed' }; } },
-    accounts: { supported: () => true, getSnapshot: () => catalogue, reserve() { throw Error('No account mutation'); } },
+    accounts: { isAuthenticationRefusal: () => false, supported: () => true, getSnapshot: () => catalogue, reserve() { throw Error('No account mutation'); } },
     networks: { getSelectedId: () => catalogue.active.networkId, reserve(id, revision) { assert.equal(id, target.id); assert.equal(revision, 1); return { cancel() {}, async execute(check) {
       check(); if (!committed) throw new CustodyRuntimeError('OPERATION_FAILED');
       catalogue = { ...catalogue, revision: 2, active: { accountId: accounts[1]!.id, networkId: target.id } }; persisted = true;

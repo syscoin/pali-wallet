@@ -1,3 +1,4 @@
+import { authenticateNativeOperation } from './operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 
 test.use({ baseURL: 'http://127.0.0.1:4179' });
@@ -44,6 +45,7 @@ test('connecting a Ledger preserves the EVM review and still requires Confirm', 
     await page.evaluate(() => window.__nativeSendFixture.confirmations())
   ).toEqual([]);
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   expect(
     await page.evaluate(() => window.__nativeSendFixture.confirmations())
   ).toEqual([{ id: review }]);
@@ -127,6 +129,7 @@ test('UTXO prepares from saved public data and still requires confirmation after
     await page.evaluate(() => window.__nativeUtxoLedgerFixture.opens())
   ).toBe(1);
   await page.getByTestId('native-utxo-confirm').click();
+  await authenticateNativeOperation(page);
   expect(
     await page.evaluate(() => window.__nativeUtxoLedgerFixture.confirmations())
   ).toBe(1);
@@ -154,6 +157,7 @@ test('UTXO reconnect keeps the existing review and its expiry', async ({
     await page.evaluate(() => window.__nativeUtxoLedgerFixture.opens())
   ).toBe(1);
   await page.getByTestId('native-utxo-confirm').click();
+  await authenticateNativeOperation(page);
   await expect(page.getByRole('alert')).toContainText(
     'This review is no longer available'
   );
@@ -173,6 +177,7 @@ test('saved EVM signed bytes replay without connecting Ledger', async ({
     page.getByRole('button', { name: 'Connect Ledger', exact: true })
   ).toHaveCount(0);
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   expect(
     await page.evaluate(() => window.__nativeSendFixture.confirmations())
   ).toHaveLength(1);
@@ -198,6 +203,7 @@ test('saved UTXO signed bytes replay without connecting Ledger', async ({
     page.getByRole('button', { name: 'Connect Ledger', exact: true })
   ).toHaveCount(0);
   await page.getByTestId('native-utxo-confirm').click();
+  await authenticateNativeOperation(page);
   expect(
     await page.evaluate(() => window.__nativeUtxoLedgerFixture.confirmations())
   ).toBe(1);

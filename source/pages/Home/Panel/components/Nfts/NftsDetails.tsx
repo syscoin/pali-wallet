@@ -16,6 +16,7 @@ import { Icon } from 'components/Icon/Icon';
 import { TokenIcon } from 'components/TokenIcon';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { ExplorerLink } from 'pages/Home/Panel/components/ExplorerLink';
 import { RootState } from 'state/store';
 import { INetworkType } from 'types/network';
 import { INftTokenIdsResult } from 'types/tokens';
@@ -23,7 +24,6 @@ import { ellipsis } from 'utils/index';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 import { getNftQuantity } from 'utils/nftQuantity';
 import { normalizeNftTokenId } from 'utils/nftTokenId';
-import { ExplorerLink } from 'pages/Home/Panel/components/ExplorerLink';
 import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 
 const renderNftSection = (title: string, children: React.ReactNode) => (
@@ -450,6 +450,8 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
               <TokenIcon
                 logo={getNftImage()}
                 contractAddress={currentNft.contractAddress}
+                chainId={currentNft.chainId}
+                decimals={0}
                 symbol={currentNft.name || 'NFT'}
                 isNft={true}
                 size={153}
@@ -514,6 +516,8 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                   <TokenIcon
                     logo={currentNft.logo}
                     contractAddress={currentNft.contractAddress}
+                    chainId={currentNft.chainId}
+                    decimals={0}
                     symbol={currentNft.name || 'NFT'}
                     isNft={true}
                     size={24}

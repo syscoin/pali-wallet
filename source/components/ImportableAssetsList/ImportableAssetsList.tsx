@@ -88,6 +88,10 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
       <TokenIcon
         logo={asset.logo}
         contractAddress={asset.contractAddress}
+        chainId={asset.chainId}
+        decimals={
+          asset.decimals === undefined ? undefined : Number(asset.decimals)
+        }
         assetGuid={asset.assetGuid}
         symbol={asset.symbol}
         size={24}

@@ -1,3 +1,8 @@
+import {
+  nativeLedgerFailureCategory,
+  nativeLedgerFailureMessage,
+  type NativeLedgerFailureCategory,
+} from '../hardware/ledgerFailure.ts';
 import type { NativeCustodyAuthority } from './authority.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 export type NativeLedgerDevice = Readonly<{
@@ -20,6 +25,7 @@ export type NativeLedgerSnapshot = Readonly<{
   devices: readonly NativeLedgerDevice[];
   selectedName: string | null;
   error: string | null;
+  failure?: NativeLedgerFailureCategory | null;
 }>;
 
 /** Public account-import controls. Device handles cannot sign or export keys. */
@@ -49,7 +55,10 @@ export interface NativeLedgerRuntime {
   isConnected(): boolean;
   getConnectionTargets(): readonly string[];
   scan(
-    request: Readonly<{ purpose: 'import' } | {purpose: 'connect'; accountIds: readonly string[]}>,
+    request: Readonly<
+      | { purpose: 'import' }
+      | { purpose: 'connect'; accountIds: readonly string[] }
+    >,
     signal: AbortSignal,
     assertCurrent: () => void,
     onDevices: (devices: readonly NativeLedgerDevice[]) => void,
@@ -87,6 +96,7 @@ const empty = (): NativeLedgerSnapshot =>
     devices: Object.freeze([]),
     selectedName: null,
     error: null,
+    failure: null,
   });
 
 export class NativeLedgerAccounts<Purpose extends 'import' | 'connect'> {
@@ -173,14 +183,22 @@ export class NativeLedgerAccounts<Purpose extends 'import' | 'connect'> {
   private assertActive() {
     if (this.disposed) throw new Error('CANCELLED');
   }
-  private async fail(session: Session, message: string) {
+  private async fail(
+    session: Session,
+    message: string,
+    failure: NativeLedgerFailureCategory = 'retry'
+  ) {
     if (this.disposed || this.session !== session) return;
     const closing = this.close();
     try {
       await closing;
     } finally {
       if (!this.disposed && !this.session && this.closing === closing)
-        this.publish({ phase: 'error', error: message });
+        this.publish({
+          phase: 'error',
+          error: nativeLedgerFailureMessage(failure, message),
+          failure,
+        });
     }
   }
   async start() {
@@ -230,11 +248,12 @@ export class NativeLedgerAccounts<Purpose extends 'import' | 'connect'> {
             this.check(session);
             this.publish({ devices });
           },
-          () => {
+          (error) => {
             this.check(session);
             void this.fail(
               session,
-              'Could not find your Ledger. Check Bluetooth and try again.'
+              'Could not find your Ledger. Keep it nearby and try again.',
+              nativeLedgerFailureCategory(error)
             ).catch(() => undefined);
           }
         )
@@ -245,7 +264,8 @@ export class NativeLedgerAccounts<Purpose extends 'import' | 'connect'> {
       if (this.session === session)
         await this.fail(
           session,
-          'Could not connect to Ledger. Check Bluetooth and try again.'
+          'Could not connect to Ledger. Keep it nearby and try again.',
+          nativeLedgerFailureCategory(error)
         );
       else await this.closing;
       throw error;
@@ -269,9 +289,11 @@ export class NativeLedgerAccounts<Purpose extends 'import' | 'connect'> {
     } catch (error) {
       await this.fail(
         session,
-        (error as {code?: unknown})?.code === 'LEDGER_SMART_OWNERS_UNAVAILABLE'
+        (error as { code?: unknown })?.code ===
+          'LEDGER_SMART_OWNERS_UNAVAILABLE'
           ? 'Connect the Ledger containing every required owner. Switching between multiple Ledger devices is not supported in this review.'
-          : 'Could not read this Ledger account. Open the matching app on your Ledger and try again.'
+          : 'Could not read this Ledger account. Open the matching app on your Ledger and try again.',
+        nativeLedgerFailureCategory(error)
       );
       throw error;
     }

@@ -207,6 +207,14 @@ export class UtxoSignedRecords {
   private unavailable = false;
   private readonly observations: Map<string, object>;
   private readonly admissionOwner: object;
+  private readonly reconciliations = new Map<
+    string,
+    { assertCurrent(): void; work: Promise<string> }
+  >();
+  private readonly reconciliationCursors = new Map<
+    string,
+    { confirmed?: string; pending?: string }
+  >();
   get requiresReopen(): boolean {
     return this.unavailable;
   }
@@ -651,8 +659,101 @@ export class UtxoSignedRecords {
     const identity = ownerId(owner);
     const { entries } = await this.load(session);
     return entries
-      .filter((entry) => entry.owner === identity)
+      .filter(
+        (entry) => entry.owner === identity && entry.phase !== 'confirmed'
+      )
       .map(({ txid, phase }) => ({ txid, accepted: phase !== 'pending' }));
+  }
+
+  /** Refresh a bounded, rotating selection without discarding recovery bytes.
+   * Confirmed entries remain candidates so a later reorg can expose them again. */
+  async reconcile(
+    session: UtxoRecordSession,
+    owner: UtxoRecordOwner,
+    observe: (txid: string) => Promise<unknown>
+  ): Promise<void> {
+    const identity = ownerId(owner);
+    guard(session);
+    const running = this.reconciliations.get(identity);
+    if (running) {
+      let previousProfile: string;
+      try {
+        previousProfile = await running.work;
+      } catch (error) {
+        guard(session);
+        try {
+          running.assertCurrent();
+        } catch {
+          // A fresh unlocked session must not inherit the old view's cancellation.
+          return this.reconcile(session, owner, observe);
+        }
+        throw error;
+      }
+      guard(session);
+      const profile = await session.keyring.getPrivateRecordProfileId();
+      guard(session);
+      if (profile !== previousProfile)
+        return this.reconcile(session, owner, observe);
+      return;
+    }
+    // Reserve before the asynchronous manifest read so concurrent host refreshes
+    // cannot launch the same status pass while that read is still in flight.
+    const work = (async () => {
+      const { entries, profile } = await this.load(session);
+      const key = `${profile}:${identity}`;
+      // Background work must not supersede an explicit check already in flight.
+      const available = entries.filter(
+        (entry) => entry.owner === identity && !this.observations.has(entry.key)
+      );
+      const pending = available.filter((entry) => entry.phase !== 'confirmed');
+      const confirmed = available.filter(
+        (entry) => entry.phase === 'confirmed'
+      );
+      if (!pending.length && !confirmed.length) return profile;
+      const cursor = this.reconciliationCursors.get(key) ?? {};
+      const selected: string[] = [];
+      for (const [phase, candidates] of [
+        ['pending', pending],
+        ['confirmed', confirmed],
+      ] as const) {
+        if (!candidates.length) continue;
+        const limit = pending.length && confirmed.length ? 1 : 2;
+        const start =
+          (candidates.findIndex((entry) => entry.txid === cursor[phase]) + 1) %
+          candidates.length;
+        for (
+          let offset = 0;
+          offset < Math.min(limit, candidates.length);
+          offset++
+        )
+          selected.push(candidates[(start + offset) % candidates.length]!.txid);
+        cursor[phase] = selected[selected.length - 1];
+      }
+      this.reconciliationCursors.delete(key);
+      this.reconciliationCursors.set(key, cursor);
+      if (this.reconciliationCursors.size > MAX_RECORDS)
+        this.reconciliationCursors.delete(
+          this.reconciliationCursors.keys().next().value!
+        );
+      const results = await Promise.allSettled(
+        selected.map(async (txid) => {
+          guard(session);
+          await observe(txid);
+        })
+      );
+      guard(session);
+      for (const result of results)
+        if (result.status === 'rejected') throw result.reason;
+      return profile;
+    })();
+    const admission = { assertCurrent: () => guard(session), work };
+    this.reconciliations.set(identity, admission);
+    try {
+      await work;
+    } finally {
+      if (this.reconciliations.get(identity) === admission)
+        this.reconciliations.delete(identity);
+    }
   }
 
   /** Keep the original endpoint reachable until its pending transfers resolve. */

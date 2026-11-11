@@ -8,6 +8,7 @@ import { formatSyscoinValue } from 'utils/formatSyscoinValue';
 import type { SavedUtxoReviewOutput } from '../../wallet/utxoSavedReview';
 
 type Saved = Readonly<{ accepted: boolean; txid: string }>;
+const STATUS_READ_TIMEOUT_MS = 30_000;
 type Review = Readonly<{
   feeSatoshis: string;
   id: string;
@@ -73,8 +74,9 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
         }
         run(async (owns) => {
           const rows = (await controllerEmitter(
-            ['wallet', 'listRetainedUtxoTransfers'],
-            []
+            ['wallet', 'refreshRetainedUtxoTransfers'],
+            [],
+            STATUS_READ_TIMEOUT_MS
           )) as readonly Saved[];
           if (owns()) setSaved([...rows].reverse());
         });
@@ -171,9 +173,16 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
                   run(async (owns) => {
                     const state = await controllerEmitter(
                       ['wallet', 'checkRetainedUtxoTransfer'],
-                      [txid]
+                      [txid],
+                      STATUS_READ_TIMEOUT_MS
                     );
                     if (!owns()) return;
+                    const rows = (await controllerEmitter(
+                      ['wallet', 'listRetainedUtxoTransfers'],
+                      []
+                    )) as readonly Saved[];
+                    if (!owns()) return;
+                    setSaved([...rows].reverse());
                     setStatus(
                       state === 'confirmed'
                         ? t('notifications.confirmed')
@@ -181,7 +190,11 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
                         ? t('send.savedUtxo.seen')
                         : t('transactions.replay.unknown')
                     );
-                    if (state === 'unknown') setSelected(txid);
+                    if (
+                      state === 'unknown' &&
+                      rows.some((row) => row.txid === txid)
+                    )
+                      setSelected(txid);
                   });
                 }}
               >

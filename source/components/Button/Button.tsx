@@ -170,7 +170,16 @@ export const Button = React.forwardRef<HTMLButtonElement, IButtonProps>(
           type={type}
           id={id}
         >
-          {loading ? <LoadingIconPrimary inherit /> : children}
+          {loading ? (
+            <>
+              <span aria-hidden="true">
+                <LoadingIconPrimary inherit />
+              </span>
+              <span className="sr-only">{children}</span>
+            </>
+          ) : (
+            children
+          )}
         </button>
       );
     }
@@ -203,11 +212,16 @@ export const Button = React.forwardRef<HTMLButtonElement, IButtonProps>(
         id={id}
       >
         {loading ? (
-          variant === 'neutral' ? (
-            <LoadingIconPrimary />
-          ) : (
-            <LoadingIconForeground />
-          )
+          <>
+            <span aria-hidden="true">
+              {variant === 'neutral' ? (
+                <LoadingIconPrimary />
+              ) : (
+                <LoadingIconForeground />
+              )}
+            </span>
+            <span className="sr-only">{children}</span>
+          </>
         ) : (
           <>
             {icon}

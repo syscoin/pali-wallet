@@ -13,6 +13,17 @@ export const QUOTE_EARLY_REJECTIONS = Object.freeze([
 export const STALLED_QUOTE_ROUTE = 'quote-stalled';
 export type HttpCase = typeof HTTP_CASES[number];
 export type HttpFailureCase = HttpCase | 'host-verification' | 'unavailable';
+export const HTTP_SNAPSHOT_STAGES = ['prepare', 'start', 'metadata', 'first-pull', 'last-pull', 'eof', 'release'] as const;
+export const HTTP_SNAPSHOT_REJECTIONS = ['assertion', 'abort', 'timeout', 'other', 'ERR_UNEXPECTED', 'ERR_FUNCTION_CALL',
+  'PUBLIC_SNAPSHOT_BUSY', 'PUBLIC_SNAPSHOT_CANCELLED', 'PUBLIC_SNAPSHOT_TIMEOUT',
+  'PUBLIC_SNAPSHOT_INVALID', 'PUBLIC_SNAPSHOT_TOO_LARGE', 'PUBLIC_SNAPSHOT_UNAVAILABLE'] as const;
+export type HttpSnapshotFailureDetail = Readonly<{
+  stage: typeof HTTP_SNAPSHOT_STAGES[number];
+  status: number | null; byteCount: number | null;
+  chunkKind: 'unobserved' | 'null' | 'undefined' | 'uint8array' | 'arraybuffer' | 'other';
+  chunkBytes: number | null; mismatchIndex: number | null;
+  rejection: typeof HTTP_SNAPSHOT_REJECTIONS[number];
+}>;
 export type HttpLaunch = Readonly<{ port: number; token: string }>;
 export type HttpBuild = Readonly<{ version: 1; sourceRevision: string; lockfileSha256: string }>;
 export type HttpReport = Readonly<{
@@ -47,10 +58,22 @@ export function assertHttpReport(value: unknown, expected: Omit<HttpReport, 'ver
 
 /** Diagnostics are a distinct schema and can never satisfy assertHttpReport. */
 export function httpDiagnosticCase(value: unknown, expected: Record<string, unknown>): HttpCase | undefined {
-  if (!exact(value, ['version', 'kind', 'status', 'diagnosticOnly', 'failedCase', 'sourceRevision', 'lockfileSha256', 'token', 'phase', 'scenario', 'platform', 'sessionId']) ||
+  if (!exact(value, ['version', 'kind', 'status', 'diagnosticOnly', 'failedCase', 'failureDetail', 'sourceRevision', 'lockfileSha256', 'token', 'phase', 'scenario', 'platform', 'sessionId']) ||
       value.version !== 1 || value.kind !== 'native-http-diagnostic' || value.status !== 'failed' || value.diagnosticOnly !== true ||
       Object.entries(expected).some(([key, entry]) => value[key] !== entry) ||
       typeof value.sessionId !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.sessionId) ||
-      !HTTP_CASES.includes(value.failedCase as HttpCase)) return undefined;
+      !HTTP_CASES.includes(value.failedCase as HttpCase) ||
+      (value.failedCase === 'public-snapshot-bridge' ? !validHttpSnapshotFailureDetail(value.failureDetail) : value.failureDetail !== null)) return undefined;
   return value.failedCase as HttpCase;
+}
+
+export function validHttpSnapshotFailureDetail(value: unknown): value is HttpSnapshotFailureDetail {
+  const bounded = (entry: unknown, maximum: number) => entry === null ||
+    typeof entry === 'number' && Number.isInteger(entry) && entry >= 0 && entry <= maximum;
+  return exact(value, ['stage', 'status', 'byteCount', 'chunkKind', 'chunkBytes', 'mismatchIndex', 'rejection']) &&
+    HTTP_SNAPSHOT_STAGES.includes(value.stage as HttpSnapshotFailureDetail['stage']) &&
+    HTTP_SNAPSHOT_REJECTIONS.includes(value.rejection as HttpSnapshotFailureDetail['rejection']) &&
+    ['unobserved', 'null', 'undefined', 'uint8array', 'arraybuffer', 'other'].includes(value.chunkKind as string) &&
+    bounded(value.status, 599) && bounded(value.byteCount, 16 * 1024 * 1024) &&
+    bounded(value.chunkBytes, 16 * 1024 * 1024) && bounded(value.mismatchIndex, 16 * 1024 * 1024);
 }

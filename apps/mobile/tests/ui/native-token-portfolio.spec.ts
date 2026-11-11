@@ -14,6 +14,42 @@ const token = '0x1111111111111111111111111111111111111111';
 const zero = '0x2222222222222222222222222222222222222222';
 const long = '0x3333333333333333333333333333333333333333';
 
+test('ERC721 enumeration suggests bounded exact IDs without an explorer or automatic save', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto('/?token-portfolio&collectible-check&collectible-enumeration');
+  await page.getByRole('button', { name: 'Collectibles', exact: true }).click();
+  await page.getByRole('button', { name: 'Check by contract', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Collectible contract address', exact: true }).fill(zero);
+  await page.getByRole('button', { name: 'ERC-721', exact: true }).click();
+  expect(await page.evaluate(() => window.__nativeTokenPortfolio.requests())).toEqual([]);
+  await page.getByRole('button', { name: 'Find token IDs', exact: true }).click();
+  const results = page.getByTestId('native-collectible-enumeration');
+  await expect(results.getByRole('button')).toHaveCount(10);
+  await expect(results.getByTestId('native-collection-balance')).toHaveText('Collection balance: 12 NFTs');
+  const maximum = ((1n << 256n) - 1n).toString();
+  await expect(results.getByRole('button', { name: `Token ID ${maximum}`, exact: true })).toBeVisible();
+  await expect(results.getByText('Showing the first 10 token IDs. Enter another token ID manually.', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(await page.evaluate(() => localStorage.getItem('pali-native-token-ui:native-token-registry-v1'))).toBeNull();
+  await results.getByTestId('native-collection-balance').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('enumeration-320.png') });
+  await results.getByRole('button', { name: 'Token ID 0', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Token ID', exact: true })).toHaveValue('0');
+  await expect(page.getByTestId('native-collectible-quantity')).toHaveText('This account owns this item.');
+  await page.getByTestId('native-collectible-quantity').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('enumeration-verified-320.png') });
+  await expect(results.getByTestId('native-collection-balance')).toHaveText('Collection balance: 12 NFTs');
+  await results.getByRole('button', { name: `Token ID ${maximum}`, exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Token ID', exact: true })).toHaveValue(maximum);
+  await expect(page.getByTestId('native-collectible-quantity')).toHaveText('This account owns this item.');
+  expect((await page.evaluate(() => window.__nativeTokenPortfolio.requests())).filter(request => request.startsWith('nft:tokenOfOwnerByIndex:'))).toHaveLength(10);
+  expect(await page.evaluate(() => window.__nativeTokenPortfolio.collectibleSends())).toEqual([]);
+  expect(await page.evaluate(() => localStorage.getItem('pali-native-token-ui:native-token-registry-v1'))).toBeNull();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await results.evaluate(element => element.scrollIntoView({ block: 'start' }));
+  await page.screenshot({ path: testInfo.outputPath('enumeration-current-390.png') });
+});
+
 async function enlargeText(page: Page) {
   await page.evaluate(() => {
     for (const node of Array.from(
@@ -461,7 +497,7 @@ test('real native token controller imports, persists, shows exact units, receive
     fullPage: true,
   });
   await page
-    .getByRole('button', { name: 'Receive token', exact: true })
+    .getByRole('button', { name: 'Receive', exact: true })
     .click();
   await expect(page.getByTestId('native-receive-address')).toHaveText(
     '0x52908400098527886E0F7030069857D2E4169EE7'
@@ -514,7 +550,7 @@ test('zero and unavailable stay distinct, and the list is scoped to the selected
     page.getByText('No custom tokens added', { exact: true })
   ).toBeVisible();
   await expect(
-    page.getByText('Custom tokens for this account on Base.', { exact: true })
+    page.getByText('Account 1 · Base', { exact: true })
   ).toBeVisible();
   await page.evaluate(() => {
     window.__nativeTokenPortfolio.failBalances(false);

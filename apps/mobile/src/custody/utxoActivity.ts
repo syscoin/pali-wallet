@@ -15,7 +15,7 @@ export function createNativeUtxoActivity(
 ): UtxoActivityOwner {
   const capture = () => {
     const snapshot = authority.getSnapshot(), catalogue = authority.getCatalogue(), selected = runtime();
-    if (snapshot.phase !== 'ready' || !snapshot.account || !catalogue || !selected ||
+    if (!['ready', 'backup-required'].includes(snapshot.phase) || !snapshot.account || !catalogue || !selected ||
         snapshot.account.network !== catalogue.active.networkId) return null;
     const account = catalogue.accounts.find((item) => item.id === catalogue.active.accountId);
     const network = findUtxoNetwork(catalogue.active.networkId, catalogue.utxoNetworks);
@@ -26,16 +26,16 @@ export function createNativeUtxoActivity(
     return { context, catalogue, network, selected };
   };
   const getUtxoActivityContext = () => capture()?.context ?? null;
-  const rows = new UtxoActivityRows(reader, getUtxoActivityContext, (signal, assertView, read) => {
+  const rows = new UtxoActivityRows(reader, getUtxoActivityContext, (signal, assertView, read, refresh) => {
     const owner = capture();
     if (!owner) return Promise.reject(new CustodyOperationError('NOT_READY'));
     const assertOwner = () => {
       const live = authority.getSnapshot(), { generation, networkId, address } = owner.context;
       if (owner.selected !== runtime() || owner.catalogue !== authority.getCatalogue() ||
-          live.phase !== 'ready' || live.revision !== generation || live.account?.network !== networkId ||
+          !['ready', 'backup-required'].includes(live.phase) || live.revision !== generation || live.account?.network !== networkId ||
           live.account.address !== address) throw new CustodyOperationError('CANCELLED');
     };
-    return owner.selected.withUtxoActivityRead(owner.context, signal, assertOwner, assertView, read);
+    return owner.selected.withUtxoActivityRead(owner.context, signal, assertOwner, assertView, read, refresh);
   });
   return Object.freeze<UtxoActivityOwner>({
     getUtxoActivityContext,

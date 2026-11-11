@@ -5,10 +5,13 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import type { NativeRecipientResolver, NativeRecipientResolution } from '../src/portfolio/nativeRecipientResolver.ts';
+import type { NativeUnsignedSendDraft } from '../src/screens/sendNetworkDraft.ts';
+import type { NativeOperationCredential } from '../src/custody/types.ts';
+import { formatBaseUnits } from '../src/core/amounts.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (next: unknown) => void };
-function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>, recipientResolver?: NativeRecipientResolver) {
+function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>, recipientResolver?: NativeRecipientResolver, onChangeNetwork?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>) => void, onViewTransaction?: (hash: string) => void, onChangeAsset?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>, token?: unknown) => void) {
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
@@ -25,13 +28,18 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   let hardware: (()=>boolean)|undefined, backs=0, cancels=0;
   const native={Platform:{OS:'android'},BackHandler:{addEventListener(_name:string, cb:()=>boolean){hardware=cb;return{remove(){hardware=undefined;}};}},Keyboard:{dismiss(){}},StyleSheet:{create:(styles:unknown)=>styles},
     ...Object.fromEntries(['ActivityIndicator','KeyboardAvoidingView','Modal','ScrollView','View'].map(name=>[name,name]))};
-  const ui={...Object.fromEntries(['Button','Card','Coin','Header','Notice','Screen','Text'].map(name=>[name,name])),colors:{},styles:{}};
+  const ui={...Object.fromEntries(['Button','Card','Coin','Header','Icon','IconButton','Notice','Screen','Text'].map(name=>[name,name])),colors:{},styles:{}};
   const deps: Record<string,unknown> = {
+    './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
+    './RecipientQrScanner': { RecipientQrScanner: 'RecipientQrScanner' },
+    './SendNetworkCard': { SendNetworkCard: 'SendNetworkCard' },
+    './SendAssetSelector': { SendAssetSelector: 'SendAssetSelector' },
+    '../portfolio/nativePortfolio': { sameNativePortfolioAccount: (left: any, right: any) => left?.address === right?.address && left?.network === right?.network && left?.revision === right?.revision },
     './NativeLedger': { NativeLedgerConnectionModal: 'NativeLedgerConnectionModal' },
-    './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum' },
+    './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum', nativeTokenAvailableAmount: (token: { balance?: string }) => token.balance },
     react,'react-native':native,'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},'../ui':ui,
     './IdleActivityBoundary':{IdlePressable:'IdlePressable',IdleTextInput:'IdleTextInput'},
-    '../core/amounts':{formatBaseUnits:()=>''},
+    '../core/amounts':{formatBaseUnits},
     '../../../../source/shared/erc20':{formatTokenUnits:()=>'',parseErc20Units:()=>''},
     '../../../../source/shared/evmRecipientChoices':{findLocalEvmRecipientChoices:()=>[]},
     '../../../../source/utils/nftTokenId':{normalizeNftTokenId:()=>''},
@@ -44,23 +52,258 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   let snapshot: any={phase:'submitting',review:null,hash:null,message:null,intent:null,collectible:undefined};
   const prepared: unknown[] = [];
   const confirmed: string[] = [];
+  const credentials: NativeOperationCredential[] = [];
+  let authenticationMethod: NativeOperationCredential['method'] = 'pin';
+  let confirmationFailure: Error | undefined;
+  let confirmationGate: Promise<void> | undefined, signatures = 0;
   const prepare = async (recipient: string, amount: string, nonce?: string) => {
     prepared.push([recipient, amount, nonce]); snapshot = { ...snapshot, phase: 'review', review: {
       id: 'review', recipient, context, amountUnits: '1', maximumFeeUnits: '1', totalUnits: '2' } };
   };
+  const maximumPrepared: unknown[] = [];
   const controller={getSnapshot:()=>snapshot,subscribe:()=>()=>{},cancel(){cancels++;snapshot={...snapshot,phase:'idle',review:null};},prepare,
-    async confirm(id: string) { confirmed.push(id); }, async prepareToken(...args: unknown[]) { prepared.push(args); }};
-  const context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false};
+    async prepareMaximum(recipient: string, nonce?: string) {
+      maximumPrepared.push([recipient, nonce]); await prepare(recipient, 'maximum', nonce);
+      snapshot = { ...snapshot, review: { ...snapshot.review, amountUnits: '1999999999999937000', maximumFeeUnits: '63000', totalUnits: '2000000000000000000' } };
+    },
+    async confirm(id: string, credential: NativeOperationCredential) {
+      const approved = snapshot.review; confirmed.push(id); credentials.push(credential);
+      if (confirmationFailure) { const failure = confirmationFailure; confirmationFailure = undefined; throw failure; }
+      if (confirmationGate) await confirmationGate;
+      if (snapshot.review !== approved) throw Error('CANCELLED');
+      signatures++;
+    }, async prepareToken(...args: unknown[]) { prepared.push(args); }};
+  let context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false,registrationHash:'ethereum-registration'};
   let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
-  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,beforeClose,recipientResolver,account,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
-  return {render,prepared,confirmed,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
+  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,beforeClose,recipientResolver,account,authenticationMethod,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
+  return {render,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
+    useBiometrics() { authenticationMethod = 'biometric'; },
+    failConfirmation(message: string) { confirmationFailure = new Error(message); },
+    holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
+    refreshProps(){account={...account};context={...context};},
+    changeNetwork(){account={...account,network:'sepolia'};context={...context,networkId:'sepolia'};},
+    changeRegistration(){context={...context,registrationHash:'replacement-registration'};},
     changeAccount(){account={...account,revision:2};},hardware:()=>{assert.ok(hardware);return hardware();},counts:()=>({backs,cancels}),dispose:()=>cells.forEach(c=>c.cleanup?.())};
 }
-function all(node: unknown): Element[] {if(!node||typeof node!=='object'||!('children' in node))return [];const e=node as Element;return [e,...e.children.flat(Infinity).flatMap(all)];}
+function all(node: unknown): Element[] {if(!node||typeof node!=='object'||!('children' in node))return [];const e=node as Element;return [e,...e.children.flat(Infinity).flatMap(all),...all(e.props.footer),...all(e.props.trailing)];}
 function one(tree:Element,type:string,predicate:(e:Element)=>boolean=()=>true) {const matches=all(tree).filter(e=>e.type===type&&predicate(e));assert.equal(matches.length,1);return matches[0]!;}
 function modal(tree:Element){return one(tree,'Modal');}
 function button(tree:Element,title:string){return one(tree,'Button',e=>e.props.title===title);}
 function headerBack(tree:Element){one(tree,'Header').props.onBack();}
+function authenticateSend(f: ReturnType<typeof setup>) {
+  one(f.render(), 'TransactionAuthentication').props.onConfirm({ method: 'pin', pin: '123456' });
+}
+function openRecipientScanner(f: ReturnType<typeof setup>) {
+  const field = all(f.render()).find(node => node.props.label === 'Ethereum address'); assert(field);
+  assert.equal(field.props.trailing.props.label, 'Scan recipient address');
+  field.props.trailing.props.onPress();
+  return one(f.render(), 'RecipientQrScanner');
+}
+
+for (const fallback of ['pin', 'biometric'] as const) test(`biometric refusal keeps the same EVM authorization page for ${fallback} retry`, async () => {
+  const f = setup(); f.useBiometrics(); f.snapshot.phase = 'idle';
+  editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+  editSend(f, 'Amount in ETH', '1'); reviewSend(f); await settle();
+  const review = f.snapshot.review;
+  assert.equal(all(f.render()).some(node => node.props.title === 'Use PIN instead'), false);
+  button(f.render(), 'Confirm and send').props.onPress();
+  const initial = one(f.render(), 'TransactionAuthentication');
+  assert.equal(initial.props.method, 'biometric');
+  f.failConfirmation('DEVICE_UNLOCK_UNAVAILABLE');
+  initial.props.onConfirm({ method: 'biometric' }); await settle();
+  const retry = one(f.render(), 'TransactionAuthentication');
+  assert.equal(retry.props.identity, initial.props.identity);
+  assert.equal(retry.props.method, 'biometric'); assert.equal(retry.props.busy, false);
+  assert(retry.props.error); assert.strictEqual(f.snapshot.review, review);
+  assert.equal(f.signatures(), 0); assert.equal(f.confirmed.length, 1);
+  retry.props.onConfirm(fallback === 'pin' ? { method: 'pin', pin: '123456' } : { method: 'biometric' });
+  await settle();
+  assert.deepEqual(f.credentials.map(value => value.method), ['biometric', fallback]);
+  assert.equal(f.signatures(), 1); f.dispose();
+});
+
+test('submitted transfer shows a checkmark and exact Activity action without manual refresh', () => {
+  const viewed: string[] = [];
+  const f = setup(undefined, undefined, undefined, undefined, hash => viewed.push(hash));
+  f.setSnapshot({ ...f.snapshot, phase: 'pending', review: null, hash: '0xsubmitted' });
+  const tree = f.render();
+  assert.match(all(tree).flatMap(node => node.children.filter(child => typeof child === 'string')).join(' '), /Transaction submitted/);
+  assert(one(tree, 'Icon', node => node.props.name === 'check'));
+  assert.equal(all(tree).some(node => node.props.title === 'Check status' || node.props.title === 'Review retry'), false);
+  button(tree, 'View transaction').props.onPress(); assert.deepEqual(viewed, ['0xsubmitted']);
+  button(tree, 'Done').props.onPress(); assert.equal(f.counts().backs, 1); f.dispose();
+});
+
+test('uncertain submission retains explicit status and retry recovery controls', () => {
+  const f = setup(); f.setSnapshot({ ...f.snapshot, phase: 'unknown', review: null, hash: '0xunknown' });
+  const tree = f.render(); assert(button(tree, 'Check status')); assert(button(tree, 'Review retry'));
+  assert.equal(all(tree).some(node => node.props.title === 'Done'), false); f.dispose();
+});
+
+for (const phase of ['confirmed', 'reverted']) test(`${phase} transfer keeps its actions in the footer`, () => {
+  const viewed: string[] = [];
+  const f = setup(undefined, undefined, undefined, undefined, hash => viewed.push(hash));
+  f.setSnapshot({ ...f.snapshot, phase, review: null, hash: '0xcomplete' });
+  const tree = f.render();
+  const screen = one(tree, 'Screen');
+  const footer = { type: 'footer', props: {}, children: [screen.props.footer] };
+  button(footer, 'View transaction').props.onPress();
+  assert.deepEqual(viewed, ['0xcomplete']);
+  assert(button(footer, 'Done'));
+  assert.equal(all(tree).some(node => node.props.title === 'Check status' || node.props.title === 'New transfer'), false);
+  f.dispose();
+});
+
+test('recipient scan fills only the current draft and leaves amount and preparation unchanged', () => {
+  const f = setup(); f.snapshot.phase = 'idle';
+  editSend(f, 'Amount in ETH', '0.25');
+  const scanner = openRecipientScanner(f);
+  scanner.props.onScan('0x2222222222222222222222222222222222222222');
+  const tree = f.render();
+  assert.equal(all(tree).find(node => node.props.label === 'Ethereum address')!.props.value, '0x2222222222222222222222222222222222222222');
+  assert.equal(all(tree).find(node => node.props.label === 'Amount in ETH')!.props.value, '0.25');
+  assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []);
+  assert.equal(all(tree).some(node => node.type === 'RecipientQrScanner'), false); f.dispose();
+});
+
+test('recipient scan survives equal account and network props from a balance refresh', () => {
+  const f = setup(); f.snapshot.phase = 'idle';
+  try {
+    editSend(f, 'Amount in ETH', '0.25');
+    const scanner = openRecipientScanner(f);
+    f.refreshProps();
+    assert(all(f.render()).some(node => node.type === 'RecipientQrScanner'));
+    scanner.props.onScan('0x2222222222222222222222222222222222222222');
+    const tree = f.render();
+    assert.equal(all(tree).find(node => node.props.label === 'Ethereum address')!.props.value, '0x2222222222222222222222222222222222222222');
+    assert.equal(all(tree).find(node => node.props.label === 'Amount in ETH')!.props.value, '0.25');
+    assert(!all(tree).some(node => node.type === 'RecipientQrScanner'));
+    assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []);
+  } finally { f.dispose(); }
+});
+
+for (const boundary of ['close', 'account', 'network', 'registration', 'draft', 'review'] as const) test(`recipient scan cannot fill after ${boundary} changes`, () => {
+  const f = setup(); f.snapshot.phase = 'idle';
+  const scanner = openRecipientScanner(f);
+  if (boundary === 'close') scanner.props.onClose();
+  if (boundary === 'account') { f.changeAccount(); f.render(); }
+  if (boundary === 'network') { f.changeNetwork(); f.render(); }
+  if (boundary === 'registration') { f.changeRegistration(); f.render(); }
+  if (boundary === 'draft') editSend(f, 'Amount in ETH', '0.5');
+  if (boundary === 'review') f.setSnapshot({ ...f.snapshot, phase: 'review', review: {} });
+  scanner.props.onScan('0x2222222222222222222222222222222222222222');
+  if (boundary === 'review') f.setSnapshot({ ...f.snapshot, phase: 'idle', review: null });
+  assert.equal(all(f.render()).find(node => node.props.label === 'Ethereum address')!.props.value, '');
+  assert.deepEqual(f.prepared, []); f.dispose();
+});
+
+test('draft network card exposes Change only when the parent provides it', () => {
+  let changes = 0;
+  const f = setup(undefined, undefined, undefined, () => { changes++; }); f.snapshot.phase = 'idle';
+  assert.equal(one(f.render(), 'SendNetworkCard').props.context.name, 'Ethereum');
+  openRecipientScanner(f); one(f.render(), 'SendNetworkCard').props.onChange();
+  assert.equal(changes, 1); assert.equal(all(f.render()).some(node => node.type === 'RecipientQrScanner'), false);
+  assert.deepEqual(f.prepared, []); f.dispose();
+  const unavailable = setup(); unavailable.snapshot.phase = 'idle';
+  assert.equal(one(unavailable.render(), 'SendNetworkCard').props.onChange, undefined); unavailable.dispose();
+});
+
+test('network Change captures unsigned form text without preparing or authorizing a transfer', () => {
+  const captured: NativeUnsignedSendDraft[] = [];
+  const f = setup(undefined, undefined, undefined, draft => captured.push(draft)); f.snapshot.phase = 'idle';
+  editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+  editSend(f, 'Amount in ETH', '1.234567890123456789');
+  one(f.render(), 'SendNetworkCard').props.onChange();
+  assert.equal(captured.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(captured[0])), { kind: 'evm', recipient: '0x2222222222222222222222222222222222222222', amount: '1.234567890123456789', nonce: '', tokenId: '', max: false, advanced: false });
+  assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []); f.dispose();
+});
+
+test('asset selector captures same-network unsigned text without preparing or authorizing', () => {
+  const captured: unknown[] = [];
+  const f = setup(undefined, undefined, undefined, undefined, undefined, (draft, token) => captured.push([draft, token])); f.snapshot.phase = 'idle';
+  editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+  editSend(f, 'Amount in ETH', '1.5');
+  const asset = { contractAddress: '0x' + 'ab'.repeat(20), name: 'Saved token', symbol: 'TOK', decimals: 6 };
+  one(f.render(), 'SendAssetSelector').props.onSelect(asset);
+  assert.equal((captured[0] as any[])[0].recipient, '0x2222222222222222222222222222222222222222');
+  assert.equal((captured[0] as any[])[1], asset); assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []); f.dispose();
+});
+
+test('review has one primary action and Header Back returns to the unchanged draft', async () => {
+  const f = setup(); f.snapshot.phase = 'idle';
+  editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+  editSend(f, 'Amount in ETH', '0.5'); reviewSend(f); await settle();
+  let tree = f.render();
+  assert.equal(all(tree).some(node => node.props.title === 'Edit transfer' || node.props.title === 'Close review'), false);
+  assert(button(tree, 'Confirm and send')); headerBack(tree); tree = f.render();
+  assert.equal(f.snapshot.review, null); assert.equal(f.counts().backs, 0);
+  assert.equal(all(tree).find(node => node.props.label === 'Amount in ETH')!.props.value, '0.5');
+  f.dispose();
+});
+
+test('send review opens authentication without confirming and cancellation preserves the exact review', async () => {
+  const f = setup(); f.snapshot.phase = 'idle';
+  editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+  editSend(f, 'Amount in ETH', '1'); reviewSend(f); await settle();
+  const review = f.snapshot.review;
+  button(f.render(), 'Confirm and send').props.onPress();
+  const authentication = one(f.render(), 'TransactionAuthentication');
+  assert.equal(authentication.props.method, 'pin');
+  assert.deepEqual(f.confirmed, []);
+  authentication.props.onCancel();
+  assert.equal(all(f.render()).some(node => node.type === 'TransactionAuthentication'), false);
+  assert.strictEqual(f.snapshot.review, review); assert.equal(f.counts().cancels, 0);
+  authentication.props.onConfirm({ method: 'pin', pin: 'stale' }); await settle();
+  assert.deepEqual(f.confirmed, []); f.dispose();
+});
+
+test('authentication captured for a replaced review cannot confirm its successor', async () => {
+  const f = setup(); f.snapshot.phase = 'idle';
+  editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+  editSend(f, 'Amount in ETH', '1'); reviewSend(f); await settle();
+  button(f.render(), 'Confirm and send').props.onPress();
+  const authentication = one(f.render(), 'TransactionAuthentication');
+  f.setSnapshot({ ...f.snapshot, review: { ...f.snapshot.review } }); f.render();
+  authentication.props.onConfirm({ method: 'pin', pin: 'stale' }); await settle();
+  assert.deepEqual(f.confirmed, []); f.dispose();
+});
+
+test('Back in a held authentication cancels the controller and discards its late outcome', async () => {
+  const f = setup(), held = Promise.withResolvers<void>(); f.snapshot.phase = 'idle';
+  try {
+    editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+    editSend(f, 'Amount in ETH', '1'); reviewSend(f); await settle();
+    f.holdConfirmation(held.promise); button(f.render(), 'Confirm and send').props.onPress();
+    const authentication = one(f.render(), 'TransactionAuthentication');
+    authentication.props.onConfirm({ method: 'pin', pin: '123456' });
+    assert.equal(one(f.render(), 'TransactionAuthentication').props.busy, true);
+    authentication.props.onCancel();
+    assert.equal(f.counts().cancels, 1); assert.equal(f.snapshot.review, null);
+    assert.equal(all(f.render()).some(node => node.type === 'TransactionAuthentication'), false);
+    held.resolve(); await settle();
+    assert.equal(f.signatures(), 0);
+    assert.equal(all(f.render()).some(node => node.props.accessibilityRole === 'alert'), false);
+  } finally { held.resolve(); f.dispose(); }
+});
+
+test('signing and submitting retire authentication so submission Back uses the existing Leave prompt', async () => {
+  const f = setup(), held = Promise.withResolvers<void>(); f.snapshot.phase = 'idle';
+  try {
+    editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+    editSend(f, 'Amount in ETH', '1'); reviewSend(f); await settle();
+    f.holdConfirmation(held.promise); button(f.render(), 'Confirm and send').props.onPress();
+    const authentication = one(f.render(), 'TransactionAuthentication');
+    authentication.props.onConfirm({ method: 'pin', pin: '123456' });
+    f.snapshot.phase = 'signing';
+    assert.equal(all(f.render()).some(node => node.type === 'TransactionAuthentication'), false);
+    f.snapshot.phase = 'submitting'; let tree = f.render();
+    assert.equal(all(tree).some(node => node.type === 'TransactionAuthentication'), false);
+    authentication.props.onCancel(); assert.equal(f.counts().cancels, 0);
+    headerBack(tree); tree = f.render(); assert.equal(modal(tree).props.visible, true);
+    assert(button(tree, 'Stay')); assert(button(tree, 'Leave'));
+  } finally { held.resolve(); await settle(); f.dispose(); }
+});
 
 test('header and Android Back request a dismissible warning while submitting',()=>{
  const f=setup();let tree=f.render();headerBack(tree);tree=f.render();assert.equal(modal(tree).props.visible,true);
@@ -145,7 +388,7 @@ test('ENS review and final confirmation keep the exact resolved address and name
   const tree=f.render();const text=all(tree).flatMap(node=>node.children).join(' ');
   assert.match(text,/recipient.eth/);assert.match(text,/RESOLVED ADDRESS/);
   assert.equal(one(tree,'Text',node=>node.props.testID==='native-send-recipient').children[0],'0x2222222222222222222222222222222222222222');
-  button(tree,'Confirm and send').props.onPress();await settle();assert.deepEqual(f.confirmed,['review']);assert.equal(lookups,1);f.dispose();
+  button(tree,'Confirm and send').props.onPress();authenticateSend(f);await settle();assert.deepEqual(f.confirmed,['review']);assert.equal(lookups,1);f.dispose();
 });
 
 for(const change of ['edit','account','close'] as const)test(`held ENS result cannot prepare after ${change}`,async()=>{
@@ -178,7 +421,7 @@ for (const edit of ['amount', 'nonce', 'controller cancellation'] as const) test
   reviewSend(f); await settle();
   const staleConfirm = button(f.render(), 'Confirm and send');
   if (edit === 'controller cancellation') f.controller.cancel();
-  else button(f.render(), 'Edit transfer').props.onPress();
+  else headerBack(f.render());
   f.render();
   assert.equal(tickets[0]!.signal.aborted, true);
   staleConfirm.props.onPress(); await settle(); assert.equal(f.confirmed.length, 0);
@@ -191,7 +434,7 @@ for (const edit of ['amount', 'nonce', 'controller cancellation'] as const) test
   assert.equal(tickets.length, 2); assert.equal(f.prepared.length, 2);
   assert.equal((f.prepared[1] as string[])[1], edit === 'amount' ? '2' : '1');
   if (edit === 'nonce') assert.equal((f.prepared[1] as string[])[2], '7');
-  button(f.render(), 'Confirm and send').props.onPress(); await settle();
+  button(f.render(), 'Confirm and send').props.onPress(); authenticateSend(f); await settle();
   assert.deepEqual(f.confirmed, ['review']); f.dispose();
 });
 
@@ -204,7 +447,7 @@ test('retiring an ENS review does not cancel its successor review or an authoriz
     const f = setup(undefined, undefined, resolver); f.snapshot.phase = 'idle';
     editSend(f, 'Ethereum address', 'recipient.eth'); editSend(f, 'Amount in ETH', '1');
     reviewSend(f); await settle();
-    if (authorized) { button(f.render(), 'Confirm and send').props.onPress(); await settle(); }
+    if (authorized) { button(f.render(), 'Confirm and send').props.onPress(); authenticateSend(f); await settle(); }
     const cancels = f.counts().cancels;
     const successor = authorized ? null : { ...f.snapshot.review, id: 'successor' };
     f.setSnapshot({ ...f.snapshot, phase: authorized ? 'submitting' : 'review', review: successor });
@@ -219,4 +462,44 @@ test('unresolved ENS gives feedback without entering fee preparation',async()=>{
   const f=setup(undefined,undefined,{async resolve(){throw new Error('ENS_UNAVAILABLE');}});f.snapshot.phase='idle';
   editSend(f,'Ethereum address','missing.eth');editSend(f,'Amount in ETH','1');reviewSend(f);await settle();
   assert.equal(f.prepared.length,0);assert.match(all(f.render()).flatMap(node=>node.children).join(' '),/could not be resolved/);f.dispose();
+});
+
+test('native coin MAX is inline, selects the dedicated review, and editing returns to fixed amount', async () => {
+  const f = setup();
+  f.snapshot.phase = 'idle';
+  editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+  const amount = all(f.render()).find(node => node.props.label === 'Amount in ETH');
+  assert(amount);
+  assert.equal(amount.props.trailing.props.title, 'MAX');
+  amount.props.trailing.props.onPress();
+  assert.equal(button(f.render(), 'MAX selected').props.disabled, false);
+  assert.equal(all(f.render()).find(node => node.props.label === 'Amount in ETH')!.props.value, '2');
+  reviewSend(f); await settle();
+  assert.deepEqual(f.maximumPrepared, [['0x2222222222222222222222222222222222222222', undefined]]);
+  assert.equal(one(f.render(), 'Text', node => node.props.testID === 'native-send-amount').children[0], '1.999999999999937');
+  f.controller.cancel(); f.render();
+  editSend(f, 'Amount in ETH', '0.5');
+  assert.equal(button(f.render(), 'MAX').props.disabled, false);
+  reviewSend(f); await settle();
+  assert.deepEqual(f.prepared.at(-1), ['0x2222222222222222222222222222222222222222', '0.5', undefined]);
+  f.dispose();
+});
+
+
+test('ERC20 review hero retains the reviewed token identity and symbol fallback', () => {
+  const token = { contractAddress: '0x' + 'ab'.repeat(20), decimals: 6, name: 'Saved token', symbol: 'TOK' };
+  const f = setup(token);
+  try {
+    f.setSnapshot({ ...f.snapshot, phase: 'review', review: {
+      id: 'token-review', recipient: '0x' + '2'.repeat(40), amountUnits: '2500000', maximumFeeUnits: '1', totalUnits: '1',
+      context: { networkId: 'ethereum', name: 'Ethereum', symbol: 'ETH', chainId: '1', rpcUrl: 'https://example.invalid', testnet: false, registrationHash: 'reviewed-registration' },
+      intent: { token },
+    } });
+    const hero = one(f.render(), 'Coin', node => node.props.size === 46);
+    assert.deepEqual(JSON.parse(JSON.stringify(hero.props.asset)), {
+      kind: 'evm', chainId: '1', contractAddress: token.contractAddress, decimals: token.decimals,
+    });
+    assert.equal(hero.props.registrationHash, 'reviewed-registration');
+    assert.equal(hero.props.fallbackSymbol, 'TOK');
+  } finally { f.dispose(); }
 });

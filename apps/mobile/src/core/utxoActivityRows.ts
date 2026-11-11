@@ -17,7 +17,8 @@ import {
 export type WithUtxoActivityRead = <T>(
   signal: AbortSignal,
   assertCurrent: () => void,
-  read: (source: UtxoActivitySource, owned: AbortSignal, check: () => void) => Promise<T>
+  read: (source: UtxoActivitySource, owned: AbortSignal, check: () => void) => Promise<T>,
+  refresh?: 'page',
 ) => Promise<T>;
 
 function createWindow() {
@@ -131,7 +132,7 @@ export class UtxoActivityRows {
         check();
         if (!sameUtxoActivityContext(value.context, owner) || value.page !== page) throw cancelled();
         return value;
-      }), request.signal);
+      }, 'page'), request.signal);
       current();
       for (const row of result.rows) {
         if (window.rows.has(row)) continue;

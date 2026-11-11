@@ -14,7 +14,7 @@ export function screenElements(value: unknown): ScreenElement[] {
 }
 
 /** Execute actual screen handlers/effects with public DTOs and explicit native ports. */
-export function screenFixture(file: URL, exported: string, imports: Record<string, unknown>, globals: Record<string, unknown> = {}) {
+export function screenFixture(file: URL, exported: string, imports: Record<string, unknown>, globals: Record<string, unknown> = {}, compilerOptions: Pick<ts.CompilerOptions, 'target'> = {}) {
   const cells: Cell[] = [], effects: (() => void)[] = [];
   let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
@@ -33,7 +33,10 @@ export function screenFixture(file: URL, exported: string, imports: Record<strin
       return c.value as T;
     },
     useCallback<T>(callback: T, deps: readonly unknown[]) { return react.useMemo(() => callback, deps); },
-    useSyncExternalStore<T>(_subscribe: unknown, getSnapshot: () => T) { return getSnapshot(); },
+    useSyncExternalStore<T>(subscribe: (listener: () => void) => () => void, getSnapshot: () => T) {
+      react.useLayoutEffect(() => subscribe(() => {}), [subscribe]);
+      return getSnapshot();
+    },
     useLayoutEffect(callback: () => void | (() => void), deps?: readonly unknown[]) {
       const c = cell();
       if (deps && c.deps && deps.length === c.deps.length && deps.every((d, i) => Object.is(d, c.deps![i]))) return;
@@ -41,12 +44,12 @@ export function screenFixture(file: URL, exported: string, imports: Record<strin
     },
     useEffect(callback: () => void | (() => void), deps?: readonly unknown[]) { react.useLayoutEffect(callback, deps); },
   };
-  const module = { exports: {} as Record<string, (props: any) => ScreenElement> };
-  const code = ts.transpileModule(readFileSync(new NodeURL(file.href), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
+  const module = { exports: {} as Record<string, (props: any, ...args: any[]) => ScreenElement> };
+  const code = ts.transpileModule(readFileSync(new NodeURL(file.href), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true, ...compilerOptions } }).outputText;
   runInNewContext(code, { module, exports: module.exports, Error, Date, setTimeout, clearTimeout, ...globals,
     require(name: string) { if (name === 'react') return react; assert(Object.hasOwn(imports, name), `Missing screen port: ${name}`); return imports[name]; } });
   return {
-    render(props: any) { cursor = 0; const tree = module.exports[exported]!(props); effects.splice(0).forEach(run => run()); return tree; },
+    render(props: any, ...args: any[]) { cursor = 0; const tree = module.exports[exported]!(props, ...args); effects.splice(0).forEach(run => run()); return tree; },
     close() { cells.forEach(c => c.cleanup?.()); },
   };
 }

@@ -18,6 +18,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // Ordinary-history presentation regression. Only public HTTP/RPC read
 // replies are synthetic. No transaction is signed, sent, imported or approved.
@@ -879,7 +880,9 @@ for (const viewport of [
 
       const page = wallet.page;
       page.on('pageerror', (error) => pageErrors.push(error.message));
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         if (/^https?:/.test(request.url()))
           unknownHttpFailures.push({
             method: request.method(),

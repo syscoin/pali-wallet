@@ -35,6 +35,7 @@ export type WalletConnectVerification = Readonly<{
 }>;
 export type WalletConnectProposal = Readonly<{
   id: number;
+  expiresAt: number | null;
   pairingTopic: string;
   peerPublicKey: string;
   metadata: Metadata;
@@ -607,8 +608,11 @@ export async function openWalletConnectTransport(options: {
   ): Omit<WalletConnectProposal, 'verification'> => {
     const data = record(copy(raw));
     const proposer = record(data.proposer);
+    const expiry = data.expiryTimestamp;
+    if (expiry !== undefined && (typeof expiry !== 'number' || !Number.isSafeInteger(expiry) || expiry <= 0 || !Number.isSafeInteger(expiry * 1000))) return fail();
     return Object.freeze({
       id: checkedId(data.id),
+      expiresAt: typeof expiry === 'number' ? expiry * 1000 : null,
       pairingTopic: checkedTopic(data.pairingTopic),
       peerPublicKey: checkedTopic(proposer.publicKey),
       metadata: metadata(proposer.metadata),
@@ -618,6 +622,7 @@ export async function openWalletConnectTransport(options: {
   };
   const currentProposal = (proposal: WalletConnectProposal) => {
     if (
+      proposal.expiresAt !== null && proposal.expiresAt <= Date.now() ||
       proposals.get(proposal.id) !== proposal ||
       JSON.stringify({
         ...readProposal(client!.proposal.get(proposal.id)),
@@ -689,6 +694,10 @@ export async function openWalletConnectTransport(options: {
         let event: WalletConnectTransportEvent;
         if (name === 'session_proposal') {
           const decoded = readProposal(data.params);
+          if (decoded.expiresAt !== null && decoded.expiresAt <= Date.now()) {
+            await rejectPeerEvent(name, raw);
+            return;
+          }
           const proposal = Object.freeze({
             ...decoded,
             verification: readVerification(
@@ -918,6 +927,7 @@ export async function openWalletConnectTransport(options: {
             parsed.relay.protocol !== 'irn' ||
             (parsed.expiryTimestamp !== undefined &&
               (!Number.isSafeInteger(parsed.expiryTimestamp) ||
+                !Number.isSafeInteger(parsed.expiryTimestamp * 1000) ||
                 parsed.expiryTimestamp * 1000 <= Date.now()))
           )
             return fail();
@@ -937,12 +947,11 @@ export async function openWalletConnectTransport(options: {
           onPairing(pairing);
           guard(assertPairingCurrent);
           const paired = await client!.pair({ uri });
-          if (
-            paired &&
-            typeof paired === 'object' &&
-            Number.isSafeInteger((paired as { expiry?: unknown }).expiry)
-          )
-            expiresAt = Number((paired as { expiry: number }).expiry) * 1000;
+          if (paired && typeof paired === 'object' && 'expiry' in paired) {
+            const expiry = (paired as { expiry: unknown }).expiry;
+            if (typeof expiry !== 'number' || !Number.isSafeInteger(expiry) || !Number.isSafeInteger(expiry * 1000) || expiry * 1000 <= Date.now()) return fail();
+            expiresAt = Math.min(expiresAt, expiry * 1000);
+          }
           return pairing;
         }, assertPairingCurrent).catch(() => {
           if (topic) {

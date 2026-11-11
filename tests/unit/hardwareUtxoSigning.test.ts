@@ -173,6 +173,7 @@ describe.each(['Ledger', 'Trezor'] as const)(
         getStatus: () => ({ connected: true }),
         connect: jest.fn(),
         disconnect: jest.fn(),
+        retire: jest.fn(async () => () => undefined),
         evm: {} as any,
         utxo: { signPsbt: (...args: unknown[]) => device(...args) } as any,
       });
@@ -199,7 +200,9 @@ describe.each(['Ledger', 'Trezor'] as const)(
         () => () => {
           if (!sessionCurrent)
             throw new Error('Wallet signing context changed');
-        }
+        },
+        'session',
+        () => undefined
       );
       const internal = sdk as any;
       const actual = internal.signPSBTWithMethod;

@@ -11,8 +11,8 @@ import {
 } from './dappSigningApproval.ts';
 
 export type DappEncryptionSdk = Readonly<{
-  decryptMessage(params: [string, string]): string;
-  getEncryptedPubKey(): string;
+  decryptMessage(params: [string, string]): string | Promise<string>;
+  getEncryptedPubKey(): string | Promise<string>;
 }>;
 
 /** Prepared private operation. No plaintext is retained in observable state. */
@@ -55,26 +55,21 @@ export function prepareDappEncryptionApproval(ports: {
       check();
     }
   };
-  const execute = () => {
+  const execute = async () => {
     check();
     let result: unknown;
     try {
-      result =
-        ports.request.method === 'eth_decrypt'
-          ? ports.sdk.decryptMessage([
-              ports.request.ciphertext,
-              ports.request.address,
-            ])
-          : ports.sdk.getEncryptedPubKey();
+      result = await (ports.request.method === 'eth_decrypt'
+        ? ports.sdk.decryptMessage([
+            ports.request.ciphertext,
+            ports.request.address,
+          ])
+        : ports.sdk.getEncryptedPubKey());
     } finally {
       check();
     }
     if (typeof result !== 'string') {
-      if (result && typeof result === 'object')
-        void Promise.resolve(result).catch(() => undefined);
-      throw new Error(
-        'Encryption SDK operation must return a string synchronously'
-      );
+      throw new Error('Encryption SDK operation must return a string');
     }
     return result;
   };
@@ -86,7 +81,7 @@ export function prepareDappEncryptionApproval(ports: {
     busy = true;
     try {
       await document();
-      const value = execute();
+      const value = await execute();
       await document();
       if (!approve) return value;
       await ports.deliver(value, check, () => {

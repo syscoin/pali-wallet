@@ -132,10 +132,12 @@ export function NativeEoaBatchFixture() {
     throw new Error('Outside EOA batch presentation fixture');
   };
   const controller: NativeConnectionsView = {
+    isRequestAuthenticating: () => false,
   ...unsupportedDappViews,
     getSnapshot: () => ({
       revision: review?.revision ?? 0,
       status: 'ready',
+      pairingExpiresAt: null,
       accounts: [],
       selectedAccountId: null,
       network: null,
@@ -158,6 +160,7 @@ export function NativeEoaBatchFixture() {
     async retrySmartMetadata() { throw new Error('Smart metadata refresh is outside this fixture'); },
     confirmSmartPayer: unavailable,
     callsStatusShown: unavailable,
+    refreshCallsStatus: unavailable,
     dismissCallsStatus: unavailable,
     async approveRequest(...args) {
       if (

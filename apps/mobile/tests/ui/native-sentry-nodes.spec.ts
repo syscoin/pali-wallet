@@ -1,3 +1,4 @@
+import { enterPin } from './operationAuthentication';
 import { expect, test } from '@playwright/test';
 test.use({
   baseURL: process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179',
@@ -33,15 +34,12 @@ test('linked-node review and release remain reachable on a narrow, short screen'
   await expect(
     page.getByRole('heading', { name: 'Release collateral', exact: true })
   ).toBeInViewport({ ratio: 1 });
-  const password = page.getByLabel('Wallet password', { exact: true });
-  await expect(password).toHaveAttribute('type', 'password');
   const release = page.getByRole('button', {
     name: 'Release collateral',
     exact: true,
   });
   await expect(release).toBeDisabled();
   await page.getByLabel('Allow collateral spending', { exact: true }).check();
-  await password.fill('Fixture password 1!');
   await release.scrollIntoViewIfNeeded();
   await expect(release).toBeInViewport({ ratio: 1 });
   await page.screenshot({
@@ -54,10 +52,11 @@ test('linked-node review and release remain reachable on a narrow, short screen'
     )
   ).toBe(true);
   await release.click();
+  await enterPin(page, '123456');
   await expect(
     page.getByText('Collateral protection released.', { exact: true })
   ).toBeVisible();
-  await expect(password).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'PIN digit 1', exact: true })).toHaveCount(0);
   expect(
     await page.evaluate(() => window.__nativeSentryNodesFixture.calls())
   ).toEqual(['lookup', 'link', 'release']);

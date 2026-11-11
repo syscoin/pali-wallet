@@ -23,7 +23,7 @@ for (const smart of [false, true]) {
         ? '/?smart-currency&token&max-token-dust'
         : '/?erc20-send&max-token-dust'
     );
-    const amount = page.getByLabel(smart ? 'Amount (TOK)' : 'Amount in FIX', {
+    const amount = page.getByLabel(smart ? 'Amount in TOK' : 'Amount in FIX', {
       exact: true,
     });
     await expect(
@@ -72,7 +72,7 @@ for (const smart of [false, true]) {
     page,
   }) => {
     await page.goto(smart ? '/?smart-currency&token' : '/?erc20-send');
-    const amount = page.getByLabel(smart ? 'Amount (TOK)' : 'Amount in FIX', {
+    const amount = page.getByLabel(smart ? 'Amount in TOK' : 'Amount in FIX', {
       exact: true,
     });
     await page.getByRole('button', { name: 'MAX', exact: true }).click();

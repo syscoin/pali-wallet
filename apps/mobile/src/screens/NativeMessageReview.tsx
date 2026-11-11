@@ -55,7 +55,14 @@ export function NativeMessageReviewScreen({ review, controller, ledgerConnection
     void action.catch(() => undefined);
   };
 
-  return <SafeAreaView edges={['top']} style={s.container}><Screen>
+  return <SafeAreaView edges={['top', 'bottom']} style={s.container}><Screen footer={<>
+    {ledger.showConnect && <Button title="Connect Ledger" variant="secondary" onPress={ledger.connect} />}
+    <View style={s.actions}>
+      <Button title={review.dispatched ? 'Close' : 'Reject'} variant="secondary" style={s.action} onPress={reject} />
+      {!review.dispatched && <Button title={review.busy ? 'Please wait…' : review.needsAccountSwitch ? 'Switch account' : personal ? 'Sign message' : 'Sign typed data'}
+        disabled={blocked || review.busy || !review.needsAccountSwitch && (ledger.blocked || review.requiresWarningAcknowledgement && !acknowledged)} onPress={perform} style={s.action} />}
+    </View>
+  </>}>
     <Header title={personal ? 'Sign message' : 'Sign typed data'} onBack={reject} />
     <Card style={s.card}>
       <Text style={s.appName}>{review.appName}</Text>
@@ -96,17 +103,14 @@ export function NativeMessageReviewScreen({ review, controller, ledgerConnection
     {showError && review.error && <Notice title="Signing unavailable" body={reviewErrors[review.error]} />}
     {review.needsAccountSwitch && !blocked && <Text style={s.body}>Switch to {review.accountLabel} to review and sign this request.</Text>}
     {review.dispatched && review.busy && <View style={s.sending}><ActivityIndicator color={colors.blue} /><Text>Sending signature…</Text></View>}
-    {ledger.showConnect && <Button title="Connect Ledger" variant="secondary" onPress={ledger.connect} />}
-    {!review.dispatched && <Button title={review.busy ? 'Please wait…' : review.needsAccountSwitch ? 'Switch account' : personal ? 'Sign message' : 'Sign typed data'}
-      disabled={blocked || review.busy || !review.needsAccountSwitch && (ledger.blocked || review.requiresWarningAcknowledgement && !acknowledged)} onPress={perform} />
-    }
-    <Button title={review.dispatched ? 'Close' : 'Reject'} variant="quiet" onPress={reject} />
   </Screen>{ledger.modal}</SafeAreaView>;
 }
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   card: { gap: 10, padding: 20 },
+  actions: { flexDirection: 'row', gap: 10 },
+  action: { flex: 1, minWidth: 0 },
   appName: { fontSize: 22, lineHeight: 29, fontWeight: '700' },
   label: { fontSize: 12, lineHeight: 17, color: colors.muted },
   origin: { fontSize: 16, lineHeight: 23, color: colors.blue },

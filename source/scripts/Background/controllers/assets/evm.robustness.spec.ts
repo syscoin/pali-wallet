@@ -19,7 +19,9 @@ jest.mock('utils/ethersV6Compat', () => ({
   ...jest.requireActual('utils/ethersV6Compat'),
   Contract: jest.fn(),
 }));
-jest.mock('./nft-utils', () => ({ verifyERC1155OwnershipHelper: jest.fn() }));
+jest.mock('../../../../shared/nftReads', () => ({
+  verifyERC1155OwnershipHelper: jest.fn(),
+}));
 
 import {
   cleanTokenSymbol,
@@ -27,12 +29,12 @@ import {
   getTokenStandardMetadata,
 } from '@sidhujag/sysweb3-utils';
 
+import { verifyERC1155OwnershipHelper } from '../../../../shared/nftReads';
 import { BatchBalanceController } from '../balances/BatchBalanceController';
 import store from 'state/store';
 import { Contract } from 'utils/ethersV6Compat';
 
 import EvmAssetsController from './evm';
-import { verifyERC1155OwnershipHelper } from './nft-utils';
 
 const TOKEN = `0x${'33'.repeat(20)}`;
 const ACCOUNT = `0x${'11'.repeat(20)}`;

@@ -25,6 +25,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // All interaction is ordinary UI; evaluate only observes public state, focus,
 // painted text, geometry, computed styles and hit testing. No quote is held or
@@ -409,9 +410,9 @@ for (const viewport of [
     let status: 'passed' | 'failed' = 'failed';
     const reads: Array<{ method: string; url: string }> = [];
     const unexpectedWalletHttpFailures: Array<{
+      failure: string | null;
       method: string;
       url: string;
-      failure: string | null;
     }> = [];
     const forbiddenRequests: string[] = [];
     const pageErrors: string[] = [];
@@ -455,7 +456,9 @@ for (const viewport of [
           /* Read-only GETs and local HTML have no JSON body. */
         }
       });
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         if (/^https?:/.test(request.url()))
           unexpectedWalletHttpFailures.push({
             method: request.method(),
@@ -484,8 +487,8 @@ for (const viewport of [
         approval
           .locator('[role="button"][tabindex="0"]')
           .filter({ has: approval.getByText(label, { exact: true }) });
-      let first: { id: number; label: string; address: string };
-      let second: { id: number; label: string; address: string };
+      let first: { address: string; id: number; label: string };
+      let second: { address: string; id: number; label: string };
       let requestId: number;
       await step(
         'verify runtime and create two ordinary HD accounts',

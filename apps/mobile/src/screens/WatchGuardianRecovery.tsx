@@ -98,10 +98,10 @@ export function WatchGuardianRecovery({ address, networkLabel, read, manage, rec
       </Text>}
     </Card>}
     {manage && observation && <Button title={observation.exists ? 'Update guardian' : 'Set guardian'} onPress={() => setEditing('set')} />}
-    {manage && observation?.exists && <Button title="Remove guardian" variant="quiet" onPress={() => setEditing('remove')} />}
+    {manage && observation?.exists && <Button title="Remove guardian" variant="danger" size="compact" icon="trash" onPress={() => setEditing('remove')} />}
     {recovery && (recovery.hasIntent || observation?.exists) && <Button title={recovery.hasIntent ? 'Resume recovery' : 'Recover account'} onPress={() => setEditing('recover')} />}
     {recovery && observation?.exists && <>
-      <Button title={t('settings.smartAccountRecoveryEmailAlerts')} variant="quiet" onPress={() => {
+      <Button title={t('settings.smartAccountRecoveryEmailAlerts')} variant="secondary" size="compact" icon="external" onPress={() => {
         if (!live.current || lifetime.aborted) return;
         setAlertError(false);
         void recovery.openRecoveryAlerts().catch(() => {
@@ -111,7 +111,7 @@ export function WatchGuardianRecovery({ address, networkLabel, read, manage, rec
       <Text style={styles.body}>{t('settings.smartAccountRecoveryEmailAlertsDescription')}</Text>
       {alertError && <Text accessibilityRole="alert" style={styles.body}>Recovery alerts could not be opened. Try again.</Text>}
     </>}
-    <Button title={state.status === 'idle' ? 'Check status' : 'Check again'} onPress={() => { void check(); }} disabled={state.status === 'loading'} />
+    <Button title={state.status === 'idle' ? 'Check status' : 'Check again'} variant={state.status === 'idle' ? 'primary' : 'secondary'} size={state.status === 'idle' ? 'regular' : 'compact'} icon="refresh" onPress={() => { void check(); }} disabled={state.status === 'loading'} />
   </Screen></SafeAreaView>;
 }
 

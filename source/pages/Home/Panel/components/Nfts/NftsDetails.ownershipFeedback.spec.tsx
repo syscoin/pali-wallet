@@ -4,7 +4,7 @@ import { AbiCoder } from 'ethers/abi';
 import { JsonRpcProvider } from 'ethers/providers';
 import React from 'react';
 
-import { verifyERC721OwnershipHelper } from 'scripts/Background/controllers/assets/nft-utils';
+import { verifyERC721OwnershipHelper } from '../../../../../shared/nftReads';
 import { Interface } from 'utils/ethersV6Compat';
 
 import { NftsDetails } from './NftsDetails';

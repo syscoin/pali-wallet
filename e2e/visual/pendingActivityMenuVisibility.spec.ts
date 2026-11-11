@@ -22,6 +22,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // Public synthetic HTTP rows enter the real ordinary history pipeline;
 // no transaction is created, signed, broadcast or replaced by this probe.
@@ -692,7 +693,9 @@ for (const viewport of [
       });
       const page = wallet.page;
       page.on('pageerror', (error) => pageErrors.push(error.message));
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         if (/^https?:/.test(request.url()))
           unknownHttpFailures.push({
             method: request.method(),

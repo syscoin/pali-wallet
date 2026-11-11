@@ -2,12 +2,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import {
+  assetIconIdentityKey,
+  trustedAssetIconUri,
+  type AssetIconIdentity,
+} from '../shared/assetIconIdentity';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { NftFallbackSvg } from 'components/Icon/Icon';
 import { Tooltip } from 'components/Tooltip/Tooltip';
 import { ISlip44State } from 'state/vault/types';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
-import { getKnownTokenLogo, sanitizeUtxoTokenLogo } from 'utils/tokens';
+import { getKnownTokenLogo, sanitizeTokenLogo } from 'utils/tokens';
 
 // Cache for actual image data URLs (base64) to prevent any network requests
 // Add a simple LRU cap to prevent unbounded growth
@@ -20,6 +25,10 @@ const tokenImageFailureTs = new Map<string, number>();
 const FAILURE_RETRY_MS = 5 * 60 * 1000; // 5 minutes
 // If an image is too large to safely base64-cache, fall back to rendering the URL directly
 const MAX_CACHED_BLOB_BYTES = 256 * 1024; // 256KB
+const isReviewImage = (url: string | null | undefined): url is string =>
+  typeof url === 'string' &&
+  url.length <= Math.ceil((MAX_CACHED_BLOB_BYTES * 4) / 3) + 128 &&
+  /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(url);
 
 // Track in-flight requests to prevent duplicate fetches
 const pendingTokenRequests = new Map<
@@ -46,11 +55,16 @@ const pruneTokenImageCache = () => {
 interface ITokenIconProps {
   // UTXO specific
   assetGuid?: string;
+  /** Approval reviews may reuse cached raster bytes, but never start image requests. */
+  cacheOnly?: boolean;
+  chainId?: number | string;
   // Common props
   className?: string;
   // EVM specific
   contractAddress?: string;
+  decimals?: number;
   fallbackClassName?: string;
+  identity?: AssetIconIdentity;
   isNft?: boolean;
   logo?: string;
   size?: number | string;
@@ -64,24 +78,69 @@ interface ITokenIconProps {
 export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
   ({
     assetGuid,
+    cacheOnly = false,
+    chainId,
     className = '',
     contractAddress,
+    decimals,
     fallbackClassName = 'rounded-full',
     isNft = false,
+    identity,
     logo,
     size = 24,
     symbol,
   }) => {
     const { t } = useTranslation();
-    const knownLogo = getKnownTokenLogo(symbol, contractAddress, assetGuid);
-    const safeProvidedLogo =
-      assetGuid !== undefined ? sanitizeUtxoTokenLogo(logo, assetGuid) : logo;
-    const resolvedLogo = knownLogo || safeProvidedLogo;
+    const scopedIdentity =
+      identity ??
+      (chainId === undefined
+        ? undefined
+        : contractAddress
+        ? {
+            kind: 'evm' as const,
+            chainId,
+            contractAddress,
+            ...(decimals === undefined ? {} : { decimals }),
+          }
+        : assetGuid
+        ? {
+            kind: 'spt' as const,
+            chainId,
+            assetGuid,
+            ...(decimals === undefined ? {} : { decimals }),
+          }
+        : undefined);
+    const identityKey = scopedIdentity
+      ? assetIconIdentityKey(scopedIdentity)
+      : null;
+    const knownLogo = getKnownTokenLogo(
+      undefined,
+      scopedIdentity?.kind === 'evm'
+        ? scopedIdentity.contractAddress
+        : undefined,
+      scopedIdentity?.kind === 'spt' ? scopedIdentity.assetGuid : undefined,
+      scopedIdentity?.chainId,
+      scopedIdentity?.decimals
+    );
+    const safeProvidedLogo = cacheOnly
+      ? trustedAssetIconUri(logo) ?? undefined
+      : sanitizeTokenLogo(
+          logo,
+          scopedIdentity?.kind === 'evm'
+            ? scopedIdentity.contractAddress
+            : undefined,
+          scopedIdentity?.kind === 'spt' ? scopedIdentity.assetGuid : undefined,
+          scopedIdentity?.chainId,
+          scopedIdentity?.decimals
+        );
+    const resolvedLogo =
+      cacheOnly && !identityKey ? undefined : knownLogo || safeProvidedLogo;
 
     // Create a unique cache key
     const getCacheKey = () => {
       // If we have a logo URL, use that as the key (most specific)
       if (resolvedLogo) return resolvedLogo;
+      if (cacheOnly) return `review:${identityKey ?? 'unknown'}`;
       // For EVM tokens, use contract address
       if (contractAddress) return contractAddress.toLowerCase();
       // For UTXO tokens, use asset GUID
@@ -104,6 +163,15 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
 
     // Determine initial state based on cache
     const getInitialState = () => {
+      if (cacheOnly) {
+        const cached = tokenImageCache.get(cacheKey);
+        const resource = knownLogo
+          ? { url: knownLogo }
+          : isReviewImage(cached?.url)
+          ? cached
+          : undefined;
+        return { error: !resource, loading: false, resource, key: cacheKey };
+      }
       // Check cache first
       if (tokenImageCache.has(cacheKey)) {
         const cached = tokenImageCache.get(cacheKey);
@@ -180,13 +248,28 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
           });
       };
       setIconState(getInitialState());
+      if (cacheOnly) {
+        const pending = resolvedLogo
+          ? pendingTokenRequests.get(cacheKey)
+          : undefined;
+        pending?.then(
+          (resource) =>
+            applyResult(isReviewImage(resource?.url) ? resource : null),
+          () => applyResult(null)
+        );
+        return cleanup;
+      }
       // Skip if no logo URL or already cached
       if (!resolvedLogo || tokenImageCache.has(cacheKey)) {
         return cleanup;
       }
 
       // Skip if it's a Pali logo (already local)
-      if (resolvedLogo === PaliLogo || resolvedLogo === NFT_FALLBACK_IMAGE) {
+      if (
+        knownLogo ||
+        resolvedLogo === PaliLogo ||
+        resolvedLogo === NFT_FALLBACK_IMAGE
+      ) {
         applyResult({ url: resolvedLogo });
         // Don't cache local assets
         return cleanup;
@@ -260,12 +343,17 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
           pendingTokenRequests.delete(cacheKey); // Clean up
         });
       return cleanup;
-    }, [resolvedLogo, cacheKey]);
+    }, [resolvedLogo, cacheKey, cacheOnly, knownLogo, identityKey]);
 
     // Check if we have a cached image to use immediately
     const cachedImage = tokenImageCache.get(cacheKey);
     const imageResource = iconResource?.url ? iconResource : cachedImage;
-    const imageToRender = imageResource?.url;
+    const imageToRender = cacheOnly
+      ? knownLogo ||
+        (identityKey && isReviewImage(imageResource?.url)
+          ? imageResource.url
+          : undefined)
+      : imageResource?.url;
     const iconStyle = { width: size, height: size };
 
     // Show loading state only if we truly have nothing to show
@@ -290,7 +378,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
       }
 
       // For fungible tokens, show symbol initial or Pali logo
-      if (symbol) {
+      if (symbol && !cacheOnly) {
         return (
           <div
             className={`bg-gradient-to-br from-brand-royalblue to-brand-pink200 
@@ -322,7 +410,11 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
       <img
         key={cacheKey}
         src={imageToRender}
-        alt={symbol || t('tokens.genericToken')}
+        alt={
+          cacheOnly
+            ? t('tokens.genericToken')
+            : symbol || t('tokens.genericToken')
+        }
         className={`${fallbackClassName} ${className}`}
         style={iconStyle}
         loading="lazy"
@@ -354,7 +446,12 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
     prevProps.size === nextProps.size &&
     prevProps.className === nextProps.className &&
     prevProps.fallbackClassName === nextProps.fallbackClassName &&
-    prevProps.isNft === nextProps.isNft
+    prevProps.isNft === nextProps.isNft &&
+    prevProps.cacheOnly === nextProps.cacheOnly &&
+    prevProps.chainId === nextProps.chainId &&
+    prevProps.decimals === nextProps.decimals &&
+    (prevProps.identity ? assetIconIdentityKey(prevProps.identity) : null) ===
+      (nextProps.identity ? assetIconIdentityKey(nextProps.identity) : null)
 );
 
 TokenIcon.displayName = 'TokenIcon';
@@ -376,7 +473,16 @@ export const getAccountReviewTokens = (
 
 // Shared across connection approvals; React.memo retains stable-prop skips.
 export const TokenIconStack = React.memo(
-  ({ tokens, maxVisible = 3 }: { maxVisible?: number; tokens: any[] }) => {
+  ({
+    tokens,
+    maxVisible = 3,
+    chainId,
+  }: {
+    chainId?: number | string;
+    decimals?: number;
+    maxVisible?: number;
+    tokens: any[];
+  }) => {
     if (!tokens || tokens.length === 0) return null;
 
     const getVisualKey = (token: any) => {
@@ -422,6 +528,12 @@ export const TokenIconStack = React.memo(
                   logo={token.logo}
                   contractAddress={token.contractAddress}
                   assetGuid={token.assetGuid}
+                  chainId={token.chainId ?? chainId}
+                  decimals={
+                    token.decimals === undefined
+                      ? undefined
+                      : Number(token.decimals)
+                  }
                   symbol={token.symbol}
                   size={16}
                   className="border border-bkg-3 rounded-full"

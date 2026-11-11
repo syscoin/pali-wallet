@@ -16,6 +16,7 @@ import {
   LockIconSvg,
 } from 'components/Icon/Icon';
 import { Icon, Tooltip, AccountMenu } from 'components/index';
+import { WalletUpdateBadge } from 'components/WalletUpdateBadge';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -272,6 +273,19 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   </Menu.Item>
 
                   <Menu.Item>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleSettingsNavigation('/settings/local-passkey')
+                      }
+                      className={MENU_ACTION_CLASS_NAME}
+                    >
+                      <LockIconSvg className="text-brand-white" />
+                      <span>{t('localPasskey.title')}</span>
+                    </button>
+                  </Menu.Item>
+
+                  <Menu.Item>
                     <li
                       onClick={() =>
                         handleSettingsNavigation('/settings/forget-wallet')
@@ -321,11 +335,12 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   </Menu.Item>
 
                   <Menu.Item>
-                    <li
+                    <button
+                      type="button"
                       onClick={() =>
                         handleSettingsNavigation('/settings/about')
                       }
-                      className={MENU_ITEM_CLASS_NAME}
+                      className={MENU_ACTION_CLASS_NAME}
                     >
                       <HelpIconSvg
                         id="info-help-btn"
@@ -333,7 +348,8 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                       />
 
                       <span>{t('generalMenu.infoHelp')}</span>
-                    </li>
+                      <WalletUpdateBadge />
+                    </button>
                   </Menu.Item>
 
                   <Menu.Item>

@@ -1,6 +1,6 @@
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { useDappLedgerConnection } from './useDappLedgerConnection';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BackHandler, StyleSheet } from 'react-native';
 import type {
   NativeConnectionsView,
@@ -22,6 +22,8 @@ export function NativeSmartTransactionReviewScreen({
   controller: NativeConnectionsView;
 }) {
   const ledger = useDappLedgerConnection({review, controller, ledgerConnection});
+  const requestId = review.id;
+  const authentication = useMemo(() => ({ isAuthenticating: () => controller.isRequestAuthenticating(requestId) }), [controller, requestId]);
   const [acknowledged, setAcknowledged] = useState<object | null>(null);
   const [editing, setEditing] = useState<object | null>(null);
   const editingRef = useRef(editing);
@@ -43,7 +45,10 @@ export function NativeSmartTransactionReviewScreen({
     !review.requiresWarningAcknowledgement || acknowledged === intent;
   return (
     <NativeSmartAccountOperationContent
+      authentication={authentication}
       state={review.operation}
+      assetTransfer={review.assetTransfer}
+      batchAssetTransfers={review.batchAssetTransfers}
       onBack={close}
       disabled={
         (review.operation.phase === 'authorize' && ledger.blocked) || review.error !== null ||
@@ -67,7 +72,7 @@ export function NativeSmartTransactionReviewScreen({
       }}
       before={
         <>
-          {ledger.showConnect && <Button title="Connect Ledger" variant="secondary" onPress={ledger.connect} />}
+          {ledger.showConnect && <Button title="Connect Ledger" variant="secondary" size="compact" onPress={ledger.connect} />}
           {ledger.modal}
           <Card style={styles.site}>
             <Text>{review.appName}</Text>
@@ -78,6 +83,8 @@ export function NativeSmartTransactionReviewScreen({
             <ApprovalReview
               summary={review.approval}
               transaction={intent}
+              chainId={review.chainId}
+              registrationHash={review.operation.network.registrationHash}
               disabled={
                 review.busy ||
                 review.operation.phase !== 'authorize' ||
@@ -113,6 +120,8 @@ export function NativeSmartTransactionReviewScreen({
                   <ApprovalReview
                     summary={{ ...summary, canEditAmount: false }}
                     transaction={intent}
+                    chainId={review.chainId}
+                    registrationHash={review.operation.network.registrationHash}
                     disabled
                     edit={async () => {
                       throw new Error('Batch approval is read-only');
@@ -174,4 +183,4 @@ export function NativeSmartTransactionReviewScreen({
   );
 }
 
-const styles = StyleSheet.create({ site: { padding: 20, gap: 8 } });
+const styles = StyleSheet.create({ site: { padding: 16, gap: 8 } });

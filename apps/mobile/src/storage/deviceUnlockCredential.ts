@@ -1,9 +1,9 @@
-import type { DeviceUnlockCredentialScope } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
+import { isDeviceUnlockUserRefusal, type DeviceUnlockCredentialScope } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
 
 type ProtectedItemPort = Readonly<{
   available(): Promise<boolean>;
-  read(name: string): Promise<string | null>;
-  write(name: string, value: string): Promise<void>;
+  read(name: string, owner: AbortSignal | null): Promise<string | null>;
+  write(name: string, value: string, owner: AbortSignal | null): Promise<void>;
   remove(name: string): Promise<void>;
 }>;
 
@@ -28,17 +28,34 @@ function check(assertCurrent: () => void) {
 }
 
 async function native<T>(operation: () => Promise<T>): Promise<T> {
-  try { return await operation(); } catch { throw unavailable(); }
+  try { return await operation(); } catch (error) {
+    if (isDeviceUnlockUserRefusal(error)) throw error;
+    throw unavailable();
+  }
+}
+
+/** Match only Expo's explicit native user-cancel taxonomy, never a storage error. */
+export function isNativeDeviceUnlockRefusal(platform: string, error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const fields = Object.getOwnPropertyDescriptors(error);
+  const code = fields.code && 'value' in fields.code ? fields.code.value : null;
+  const message = fields.message && 'value' in fields.message ? fields.message.value : null;
+  if (platform === 'ios') return code === 'ERR_KEY_CHAIN' && (message === 'User canceled the operation.' ||
+    message === 'Authentication failed. Provided passphrase/PIN is incorrect or there is no user authentication method configured for this device.');
+  return platform === 'android' && code === 'ERR_AUTHENTICATION' && typeof message === 'string' && [
+    'User canceled the authentication', 'Hardware not present', 'Hardware unavailable',
+    'No biometrics enrolled', 'No device credential', 'Lockout', 'Lockout permanent', 'Timeout', 'Unable to process',
+  ].some(reason => message.startsWith(`Could not authenticate the user: ${reason}. `));
 }
 
 /** Trusted custody only. The caller owns the fresh enrollment ID and publishes its pointer separately. */
 export function createDeviceUnlockCredentialStore(port: ProtectedItemPort) {
   return Object.freeze({
     async available() { try { return await port.available() === true; } catch { return false; } },
-    async read(scope: DeviceUnlockCredentialScope, assertCurrent: () => void): Promise<Uint8Array | null> {
+    async read(scope: DeviceUnlockCredentialScope, assertCurrent: () => void, owner: AbortSignal | null): Promise<Uint8Array | null> {
       check(assertCurrent);
       const { name, header } = item(scope);
-      const raw = await native(() => port.read(name));
+      const raw = await native(() => port.read(name, owner));
       check(assertCurrent);
       if (raw === null) return null;
       if (typeof raw !== 'string' || raw.length !== header.length + 64 || !raw.startsWith(header)) throw unavailable();
@@ -48,16 +65,16 @@ export function createDeviceUnlockCredentialStore(port: ProtectedItemPort) {
       for (let i = 0; i < key.length; i++) key[i] = Number.parseInt(keyHex.slice(i * 2, i * 2 + 2), 16);
       return key;
     },
-    async stage(scope: DeviceUnlockCredentialScope, key: Uint8Array, assertCurrent: () => void): Promise<void> {
+    async stage(scope: DeviceUnlockCredentialScope, key: Uint8Array, assertCurrent: () => void, owner: AbortSignal | null): Promise<void> {
       check(assertCurrent);
       const { name, header } = item(scope);
       if (!(key instanceof Uint8Array) || key.length !== 32) throw unavailable();
       const raw = header + Array.from(key, (byte) => byte.toString(16).padStart(2, '0')).join('');
-      await native(() => port.write(name, raw));
+      await native(() => port.write(name, raw, owner));
       check(assertCurrent);
       // On iOS a new protected item can be created without an authentication prompt.
       // Confirm a protected read before the host can publish the enrollment.
-      const saved = await native(() => port.read(name));
+      const saved = await native(() => port.read(name, owner));
       check(assertCurrent);
       if (saved !== raw) throw unavailable();
     },

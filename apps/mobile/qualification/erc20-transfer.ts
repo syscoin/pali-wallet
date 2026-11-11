@@ -159,7 +159,6 @@ export async function qualifyNativeErc20Transfer(
       await manage({
         kind: 'create',
         label: 'Qualification ERC20 account',
-        password,
       });
     });
   } else
@@ -259,6 +258,10 @@ export async function qualifyNativeErc20Transfer(
     return saved;
   };
   const wrapped: NativeTransferRuntime = {
+    isAuthenticationRefusal: (error) => transfer.isAuthenticationRefusal(error),
+    authenticateOperation: (...args) => transfer.authenticateOperation(...args),
+    authorizeOperation: (...args) => transfer.authorizeOperation(...args),
+    releaseOperationAuthorization: (...args) => transfer.releaseOperationAuthorization(...args),
     replay: (...args) => transfer.replay(...args),
       submit: (...args) => transfer.submit(...args),
     token: (contract, assertCurrent) => {
@@ -442,7 +445,7 @@ export async function qualifyNativeErc20Transfer(
               review.totalUnits === '180000' &&
               equalTransferIntent(review.intent, expectedIntent)
           );
-          await controller.confirm(review.id);
+          await controller.confirm(review.id, { method: 'pin', pin: password });
           guard();
           expect(
             controller.getSnapshot().phase === 'unknown' &&
@@ -473,7 +476,7 @@ export async function qualifyNativeErc20Transfer(
               review.amountUnits === amountUnits &&
               equalTransferIntent(review.intent, expectedIntent)
           );
-          await controller.confirm(review.id);
+          await controller.confirm(review.id, { method: 'pin', pin: password });
           guard();
           expect(
             controller.getSnapshot().phase === 'pending' &&

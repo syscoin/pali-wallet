@@ -2,6 +2,8 @@
 import { act, renderHook } from '@testing-library/react';
 import React from 'react';
 
+import { getEvmTransactionDisplayInfo } from '../../../../../../shared/evmTransactionDisplay';
+
 import {
   savedTransactionHistoryRow,
   useSavedEvmTransactions,
@@ -214,3 +216,40 @@ test('projects signed ERC-20 units and recipient with or without token metadata 
     expect(tx.tokenTransfer.symbol).toBe(token?.symbol);
   }
 });
+
+test.each(['ERC-721', 'ERC-1155'] as const)(
+  'projects saved %s intent into the shared display without inventing calldata',
+  async (tokenStandard) => {
+    const collectibleTransfer = {
+      kind: 'nft-transfer' as const,
+      chainId: '57057',
+      from: `0x${'11'.repeat(20)}`,
+      contractAddress: `0x${'22'.repeat(20)}`,
+      recipient: `0x${'33'.repeat(20)}`,
+      tokenStandard,
+      tokenId: '0',
+      amountUnits: tokenStandard === 'ERC-721' ? '1' : '9007199254740993',
+    };
+    const tx: any = savedTransactionHistoryRow({
+      ...row('4'),
+      from: collectibleTransfer.from,
+      to: collectibleTransfer.contractAddress,
+      value: '0',
+      operation: tokenStandard === 'ERC-721' ? 'erc721' : 'erc1155',
+      collectibleTransfer,
+    } as any);
+    expect(tx.collectibleTransfer).toEqual(collectibleTransfer);
+    expect(tx.input).toBeUndefined();
+    expect(tx.tokenTransfer).toBeUndefined();
+    expect(await getEvmTransactionDisplayInfo(tx, 'SYS')).toMatchObject({
+      actualRecipient: collectibleTransfer.recipient,
+      formattedValue: collectibleTransfer.amountUnits,
+      displaySymbol: 'NFT',
+      isNft: true,
+      tokenId: '0',
+      ...(tokenStandard === 'ERC-1155'
+        ? { nftQuantity: collectibleTransfer.amountUnits }
+        : {}),
+    });
+  }
+);

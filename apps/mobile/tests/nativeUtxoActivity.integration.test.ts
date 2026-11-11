@@ -1,3 +1,5 @@
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -10,22 +12,45 @@ import { exactUtxoResponseFetch } from '../src/core/utxoReadSession.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
+import { UtxoSignedRecords } from '../../../source/wallet/utxoSignedRecords.ts';
 import { createNativeUtxoActivity } from '../src/custody/utxoActivity.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { deferred, metadata } from './publicWatchFixtures.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
+const pinCredential = createTestPinCredentialPort();
+
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'Public activity fixture password 1!';
+const PASSWORD = '123456';
 const TXID = 'a'.repeat(64), BLOCK = 'b'.repeat(64);
 const statusPath = '/api/v2/', genesisPath = '/api/v2/block-index/0';
 
-test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows and details', async (t) => {
+test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows and details', { timeout: 30_000 }, async (t) => {
   t.mock.method(globalThis, 'fetch', () => { throw Error('Ambient network forbidden'); });
   const directory = await mkdtemp(join(tmpdir(), 'pali-native-utxo-activity-'));
   const connection = nodeConnection(join(directory, 'wallet.sqlite')).connection;
   const { bitcoinjs: bitcoin } = utils;
   const network = getUtxoNetwork('bitcoin');
+  const sdk = await loadNativeKeyringSdk();
+  let rejectRootAccess = false, allowBalance = false;
+  const reconciled: Parameters<UtxoSignedRecords['reconcile']>[1][] = [];
+  const reconciliationSessions: Parameters<UtxoSignedRecords['reconcile']>[0][] = [];
+  let heldReconciliation: ReturnType<typeof deferred<void>> | undefined, completedReconciliations = 0;
+  const waitForReconciliation = async (check: () => boolean) => {
+    for (let index = 0; index < 100; index++) {
+      if (check()) return;
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
+    assert.fail('Reconciliation did not reach the expected boundary');
+  };
+  const originalReconcile = UtxoSignedRecords.prototype.reconcile;
+  t.mock.method(UtxoSignedRecords.prototype, 'reconcile', async function (this: UtxoSignedRecords, ...args: Parameters<UtxoSignedRecords['reconcile']>) {
+    reconciled.push(args[1]);
+    reconciliationSessions.push(args[0]);
+    try { await heldReconciliation?.promise; return await originalReconcile.apply(this, args); }
+    finally { completedReconciliations++; }
+  });
   const calls: string[] = [];
   let held: { detail: ReturnType<typeof deferred<AbortSignal>>; release: ReturnType<typeof deferred<void>> } | undefined;
   const holdNextDetail = () => held = { detail: deferred<AbortSignal>(), release: deferred<void>() };
@@ -60,10 +85,27 @@ test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows
     Object.defineProperty(response, 'url', { value: url });
     return response;
   });
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
+    loadSdk: async () => ({ ...sdk, HostKeyring: class extends sdk.HostKeyring {
+      constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) {
+        super(...args);
+        for (const name of ['withSecretOperation', 'getPrivateRecordProfileId', 'encryptPrivateRecord', 'decryptPrivateRecord'] as const) {
+          const method = Reflect.get(this, name);
+          Object.defineProperty(this, name, { value: (...input: unknown[]) => {
+            assert.equal(rejectRootAccess, false, `Public refresh invoked ${name}`);
+            return Reflect.apply(method, this, input);
+          } });
+        }
+      }
+    } }),
     openStorage: () => SqliteWalletStorage.open(connection, digest, INSTALLATION, true),
     async utxoFetch() { throw Error('Activity does not use signing transport'); },
-    async readUtxoBalance() { throw Error('Activity does not fetch balances'); },
+    async readUtxoBalance() {
+      assert(allowBalance, 'Activity does not fetch balances');
+      return { kind: 'utxo', networkId: network.id, chainId: network.chainId, genesisHash: network.genesisHash,
+        confirmedUnits: '2000', pendingDeltaUnits: '0', unconfirmedTransactions: 0, observedHeight: 120 };
+    },
+    async readUtxoAccount(...args) { return this.readUtxoBalance!(...args); },
   });
   let runtime: KeyringRuntime | undefined;
   const authority = new NativeCustodyAuthority({ async open() {
@@ -76,8 +118,8 @@ test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows
   const submit = async (privateKey: string, utxoAddressType?: 'p2wpkh') => {
     const input = { privateKey, ...(utxoAddressType && { utxoAddressType }) };
     const expectedAddress = await authority.previewUtxoImport(input, authority.getSnapshot().revision, authority.getCatalogue()!.revision, () => undefined);
-    await authority.importAccount({ ...input, expectedAddress, label: 'Public fixture' }, PASSWORD,
-      authority.getSnapshot().revision, authority.getCatalogue()!.revision);
+    await authority.importAccount({ ...input, expectedAddress, label: 'Public fixture' },
+      authority.getSnapshot().revision, authority.getCatalogue()!.revision, new AbortController().signal, createTestPrivateAuthentication(() => undefined));
     return expectedAddress;
   };
   const settle = async () => {
@@ -104,6 +146,44 @@ test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows
     assert.equal(hd.context.accountId, 'hd:0:0');
     assert.equal(hd.rows[0]?.netUnits, '2000');
     assert.equal(JSON.stringify(hd).includes('zpub'), false);
+    await waitForReconciliation(() => reconciled.length === 1 && completedReconciliations === 1);
+    const beforeRefresh = reconciled.length;
+    rejectRootAccess = true;
+    try {
+      const pageGate = heldReconciliation = deferred<void>();
+      const refreshed = await readPage();
+      assert.equal(refreshed.rows[0]?.txid, TXID, 'A held status pass cannot delay valid history');
+      await waitForReconciliation(() => reconciled.length === beforeRefresh + 1);
+      assert.equal(reconciled.length, beforeRefresh + 1);
+      assert.equal(completedReconciliations, beforeRefresh);
+      assert.equal(reconciled.at(-1)?.account.type, 'HDAccount');
+      assert.equal(reconciled.at(-1)?.chainId, network.chainId);
+      assert.match(reconciled.at(-1)!.account.xpub, /^zpub/);
+      heldReconciliation = undefined; pageGate.resolve();
+      await waitForReconciliation(() => completedReconciliations === beforeRefresh + 1);
+      allowBalance = true;
+      const selected = authority.getSnapshot().account!;
+      const balanceGate = heldReconciliation = deferred<void>();
+      const balance = await runtime!.readUtxoBalance!(network.id, selected.address, new AbortController().signal);
+      assert.equal(balance.confirmedUnits, '2000', 'A held status pass cannot delay valid balance');
+      await waitForReconciliation(() => reconciled.length === beforeRefresh + 2);
+      assert.equal(reconciled.length, beforeRefresh + 2);
+      assert.equal(completedReconciliations, beforeRefresh + 1);
+      heldReconciliation = undefined; balanceGate.resolve();
+      await waitForReconciliation(() => completedReconciliations === beforeRefresh + 2);
+      const cancelled = new AbortController(); cancelled.abort();
+      await assert.rejects(runtime!.readUtxoBalance!(network.id, selected.address, cancelled.signal));
+      assert.equal(reconciled.length, beforeRefresh + 2);
+    } finally { rejectRootAccess = false; allowBalance = false; }
+    const retiredGate = heldReconciliation = deferred<void>();
+    await readPage();
+    await waitForReconciliation(() => reconciled.length === beforeRefresh + 3);
+    const retiredSession = reconciliationSessions.at(-1)!;
+    await authority.selectNetwork('ethereum', authority.getSnapshot().revision, authority.getCatalogue()!.revision, () => {});
+    assert.throws(retiredSession.assertCurrent, { name: 'AbortError' });
+    heldReconciliation = undefined; retiredGate.resolve();
+    await waitForReconciliation(() => completedReconciliations === beforeRefresh + 3);
+    await authority.selectNetwork(network.id, authority.getSnapshot().revision, authority.getCatalogue()!.revision, () => {});
 
     const account = bitcoin.bip32.fromSeed(Buffer.alloc(32, 9), network.addressNetwork).derivePath("m/84'/0'/7'");
     const zprv = convertExtendedKeyVersion(account.toBase58(), '04b2430c');
@@ -132,7 +212,9 @@ test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows
     await settle();
     assert.equal(model.getSnapshot().context?.accountId, 'hd:0:0');
     assert.equal(model.getSnapshot().detail, null);
+    const beforeDetail = reconciled.length;
     await model.selectDetail(TXID);
+    assert.equal(reconciled.length, beforeDetail, 'Opening a detail does not run recovery reconciliation');
     assert.equal(model.getSnapshot().detail?.status, 'ready');
     assert.equal(model.getSnapshot().detail?.readSentryNode, undefined);
 
@@ -153,6 +235,7 @@ test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows
     assert.equal(calls.length, before);
     assert.equal(calls.some((path) => path.includes(wif) || path.includes(zprv)), false);
   } finally {
+    heldReconciliation?.resolve();
     held?.release.resolve();
     model.dispose();
     await authority.dispose();

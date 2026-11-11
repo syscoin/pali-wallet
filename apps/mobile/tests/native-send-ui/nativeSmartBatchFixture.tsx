@@ -152,10 +152,12 @@ export function NativeSmartBatchFixture() {
       throw new Error('Outside batch presentation fixture');
     };
     return {
+      isRequestAuthenticating: () => false,
       ...unsupportedDappViews,
       getSnapshot: () => ({
         revision: current.current.review?.revision ?? 0,
         status: 'ready',
+        pairingExpiresAt: null,
         accounts: [],
         selectedAccountId: null,
         network: null,
@@ -253,6 +255,10 @@ export function NativeSmartBatchFixture() {
       async callsStatusShown(...args) {
         if (args[0] !== current.current.status?.id) unavailable();
         recorded.current.push({ method: 'callsStatusShown', args });
+      },
+      async refreshCallsStatus(...args) {
+        if (args[0] !== current.current.status?.id) unavailable();
+        recorded.current.push({ method: 'refreshCallsStatus', args });
       },
       dismissCallsStatus(...args) {
         recorded.current.push({ method: 'dismissCallsStatus', args });

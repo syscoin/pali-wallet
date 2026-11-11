@@ -60,6 +60,8 @@ export type LocalActivityRecord = Omit<
     recipient: string | null;
     inspectionOnly?: true;
     speedUpEligible?: true;
+    /** Public navigation hint only; the selected-network host rebuilds every review. */
+    reviewNavigation?: Readonly<{ speedUp: boolean }>;
     operation?: import('../../../../source/wallet/evmSignedRecords.ts').EvmSignedRecordSummary['operation'];
     originalHash?: string;
     transactionType?: number | null;

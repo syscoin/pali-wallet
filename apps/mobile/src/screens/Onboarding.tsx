@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 
-import { colors, Icon, PaliMark } from '../ui';
+import { colors, Icon, PaliMark, WelcomeBackdrop } from '../ui';
 import { useNativeTranslation } from '../platform/localization';
 import { createWatchAccount, type WatchAccountNetwork } from '../core/watchOnlyAuthority';
 import { parseUtxoPublicIdentifier } from '../core/utxoIdentifier';
@@ -35,7 +35,8 @@ type WelcomeProps = {
   onPreview: () => void;
   onDesign?: () => void;
   onWatch: () => void;
-  onWallet?: () => void;
+  onCreateWallet?: () => void;
+  onImportWallet?: () => void;
 };
 
 type AddWatchAccountProps = {
@@ -47,72 +48,29 @@ type AddWatchAccountProps = {
   onNetworksChanged?(): Promise<void>;
 };
 
-function BrandMark({ small = false }: { small?: boolean }) {
-  return <PaliMark size={small ? 32 : 112} />;
-}
-
 export function Welcome({
   onPreview,
   onWatch,
   onDesign,
-  onWallet,
+  onCreateWallet,
+  onImportWallet,
 }: WelcomeProps) {
   const { t } = useNativeTranslation();
   const compact = useWindowDimensions().height < 740;
   return (
     <View style={styles.screen}>
+      <WelcomeBackdrop />
       <ScrollView
         style={styles.welcomeScroll}
         contentContainerStyle={styles.welcomeContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.brandRow}>
-          <BrandMark small />
-          <Text style={styles.brandName}>pali</Text>
+        <View style={[styles.welcomeBrand, { transform: [{ translateY: compact ? 8 : 52 }] }]}>
+          <PaliMark size={compact ? 96 : 128} />
+          <Text accessibilityRole="header" style={styles.welcomeName}>Pali Wallet</Text>
         </View>
 
-        <View
-          style={[styles.hero, compact && styles.heroCompact]}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-        >
-          <View style={styles.haloOuter} />
-          <View style={styles.haloInner} />
-          <View style={styles.heroPlate}>
-            <BrandMark />
-          </View>
-          <View style={[styles.orbitDot, styles.orbitDotBlue]} />
-          <View style={[styles.orbitDot, styles.orbitDotPink]} />
-          <View style={styles.heroChip}>
-            <Icon name="eye" size={16} color={colors.blue} />
-            <Text style={styles.heroChipText}>A little more clarity</Text>
-          </View>
-        </View>
-
-        <View style={styles.intro}>
-          <Text accessibilityRole="header" style={styles.welcomeTitle}>
-            {t('mobile.welcome.titleFirst')}{'\n'}
-            <Text style={styles.titleAccent}>{t('mobile.welcome.titleAccent')}</Text>
-          </Text>
-          <Text style={styles.welcomeDescription}>
-            {onWallet
-              ? t('mobile.welcome.nativeDescription')
-              : t('mobile.welcome.watchDescription')}
-          </Text>
-        </View>
-
-        <View style={styles.trustRow}>
-          <View style={styles.trustIcon}>
-            <Icon name="shield" size={18} color={colors.green} />
-          </View>
-          <Text style={styles.trustText}>
-            {onWallet
-              ? t('mobile.welcome.nativeControl')
-              : t('mobile.welcome.watchControl')}
-          </Text>
-        </View>
-
-        {!onWallet && (
+        {!onCreateWallet && !onImportWallet && (
           <View style={styles.previewActions}>
             {onDesign && (
               <IdlePressable
@@ -147,17 +105,22 @@ export function Welcome({
         )}
       </ScrollView>
       <View style={styles.welcomeActions}>
-        {onWallet && (
+        {onCreateWallet && (
           <IdlePressable
             accessibilityRole="button"
-            onPress={onWallet}
+            onPress={onCreateWallet}
             style={({ pressed }) => [
               styles.primaryButton,
               pressed && styles.pressed,
             ]}
           >
-            <Text style={styles.primaryButtonText}>{t('mobile.welcome.setup')}</Text>
-            <Icon name="arrow-right" size={21} color={colors.bg} />
+            <Text style={styles.primaryButtonText}>Create wallet</Text>
+          </IdlePressable>
+        )}
+        {onImportWallet && (
+          <IdlePressable accessibilityRole="button" onPress={onImportWallet}
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+            <Text style={styles.secondaryButtonText}>Import existing wallet</Text>
           </IdlePressable>
         )}
         <IdlePressable
@@ -165,18 +128,18 @@ export function Welcome({
           accessibilityHint={t('mobile.welcome.watchHint')}
           onPress={onWatch}
           style={({ pressed }) => [
-            onWallet ? styles.secondaryButton : styles.primaryButton,
+            onCreateWallet || onImportWallet ? styles.quietButton : styles.primaryButton,
             pressed && styles.pressed,
           ]}
         >
           <Text
             style={
-              onWallet ? styles.secondaryButtonText : styles.primaryButtonText
+              onCreateWallet || onImportWallet ? styles.quietButtonText : styles.primaryButtonText
             }
           >
             {t('mobile.welcome.watch')}
           </Text>
-          {!onWallet && <Icon name="arrow-right" size={21} color={colors.bg} />}
+          {!onCreateWallet && !onImportWallet && <Icon name="arrow-right" size={21} color={colors.bg} />}
         </IdlePressable>
       </View>
     </View>
@@ -235,7 +198,7 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks, utxoNetwor
   if (managingNetworks && networkSettings && onNetworksChanged)
     return <WatchNetworks controller={networkSettings} onChanged={onNetworksChanged} onBack={closeNetworks} />;
   return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <ScrollView ref={scroll} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+    <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <View style={styles.formNavigation}>
         <IdlePressable accessibilityRole="button" accessibilityLabel="Back" disabled={submitting} onPress={back} hitSlop={8} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}><Icon name="arrow-left" size={22} color={colors.text} /></IdlePressable>
         <Text style={styles.navigationLabel}>{review ? 'REVIEW ACCOUNT' : 'ADD ACCOUNT'}</Text><View style={styles.navigationBalance} />
@@ -276,18 +239,18 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks, utxoNetwor
         </View>
       </View>}
       {error && <View accessibilityLiveRegion="polite" style={styles.errorCard}><Text accessibilityRole="alert" style={styles.errorText}>{error}</Text></View>}
+    </ScrollView>
       <View style={styles.formFooter}><IdlePressable accessibilityRole="button" accessibilityState={{ disabled: submitting, busy: submitting }} disabled={submitting}
         onPress={() => review ? void confirm() : prepare()} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, submitting && styles.disabled]}>
         {submitting ? <ActivityIndicator color={colors.bg} /> : <Icon name={review ? 'plus' : 'eye'} size={21} color={colors.bg} />}
         <Text style={styles.primaryButtonText}>{submitting ? 'Adding account…' : review ? 'Confirm watch account' : 'Review account'}</Text>
       </IdlePressable><Text style={styles.footerNote}>Use public information only. Never enter a recovery phrase or private key.</Text></View>
-    </ScrollView>
   </KeyboardAvoidingView>;
 }
 
 const styles = StyleSheet.create({
-  networkChoices: { gap: 8 },
-  networkChoice: { borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 14, gap: 4 },
+  networkChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  networkChoice: { flexBasis: '47%', flexGrow: 1, minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, gap: 4 },
   networkChoiceSelected: { borderColor: colors.blue, backgroundColor: colors.surface },
   networkChoiceTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
   reviewText: { color: colors.text, fontSize: 17, lineHeight: 26 },
@@ -296,10 +259,13 @@ const styles = StyleSheet.create({
   welcomeScroll: { flex: 1 },
   welcomeContent: {
     flexGrow: 1,
+    justifyContent: 'center',
     paddingHorizontal: 26,
     paddingTop: 20,
     paddingBottom: 20,
   },
+  welcomeBrand: { alignItems: 'center', gap: 16, paddingVertical: 28 },
+  welcomeName: { color: colors.text, fontSize: 34, lineHeight: 40, fontWeight: '400' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   brandName: {
     color: colors.text,
@@ -365,7 +331,7 @@ const styles = StyleSheet.create({
     marginTop: 7,
     marginBottom: 8,
   },
-  heroCompact: { height: 180, transform: [{ scale: 0.75 }] },
+  heroCompact: { height: 160, transform: [{ scale: 0.75 }] },
   haloOuter: {
     position: 'absolute',
     width: 218,
@@ -454,9 +420,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 26,
     paddingTop: 12,
     paddingBottom: 20,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
   },
+  quietButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, paddingVertical: 12 },
+  quietButtonText: { color: colors.blue, fontSize: 15, lineHeight: 22, fontWeight: '500', textAlign: 'center' },
   primaryButton: {
     minHeight: 56,
     paddingVertical: 15,
@@ -480,7 +446,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: 18,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.blue,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
@@ -525,7 +491,7 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   navigationBalance: { width: 38 },
-  formIntro: { paddingTop: 25, paddingBottom: 31 },
+  formIntro: { paddingTop: 12, paddingBottom: 18 },
   largeEye: {
     width: 61,
     height: 61,
@@ -550,7 +516,7 @@ const styles = StyleSheet.create({
     lineHeight: 25,
     marginTop: 10,
   },
-  fields: { gap: 24 },
+  fields: { gap: 16 },
   fieldGroup: { gap: 10 },
   fieldLabel: { color: colors.text, fontSize: 13, fontWeight: '600' },
   input: {
@@ -596,7 +562,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   errorText: { color: colors.red, fontSize: 13, lineHeight: 21 },
-  formFooter: { marginTop: 'auto', paddingTop: 32, gap: 15 },
+  formFooter: { paddingHorizontal: 24, paddingVertical: 14, gap: 10, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bg },
   footerNote: {
     color: colors.muted,
     fontSize: 11,

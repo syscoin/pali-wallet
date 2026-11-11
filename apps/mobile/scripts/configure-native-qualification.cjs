@@ -125,6 +125,7 @@ app.expo.extra = {
   ...(sdk.quickCryptoIdentity ? { paliQuickCryptoSentryIdentity: sdk.quickCryptoIdentity } : {}),
   ...(walletConnectIdentity ? { paliWalletConnectIdentity: walletConnectIdentity } : {}),
 };
+delete app.expo.extra.paliQualificationSdkDigest;
 app.expo.name = 'PaliQualification';
 app.expo.slug = 'pali-native-qualification';
 app.expo.scheme = 'pali-wallet-qualification';

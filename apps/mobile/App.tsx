@@ -37,6 +37,8 @@ import {
 } from './src/ui';
 import { Welcome, AddWatchAccount } from './src/screens/Onboarding';
 import { NativeWalletScreen } from './src/screens/NativeWallet';
+import { NetworkSourceSheet } from './src/screens/NetworkSourceSheet';
+import { isNotificationPermissionPromptActive, nativeActivityNotifications } from './src/notifications/service';
 import { WalletAccounts } from './src/screens/WalletAccounts';
 import { WatchSession } from './src/screens/WatchSession';
 import { WatchAccounts } from './src/core/watchAccounts';
@@ -206,6 +208,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const watchState = useSyncExternalStore(watchAccounts.subscribe, watchAccounts.getSnapshot, watchAccounts.getSnapshot);
   const [catalogue, setCatalogue] = useState<NativeWalletCatalogueSnapshot | null>(null);
   const [requestedHdId, setRequestedHdId] = useState<string | undefined>();
+  const [initialSetup, setInitialSetup] = useState<'create' | 'import' | undefined>();
   const lastSelection = useRef<AccountSelection | null>(null);
   const [selectionError, setSelectionError] = useState('');
   const [requestedRoute, setRoute] = useState<Route>('welcome');
@@ -236,6 +239,8 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const [snapshot, setSnapshot] = useState(blankSnapshot);
   useEffect(() => { if (snapshot.status !== 'ready') watchIdle.allowNewInput(); }, [snapshot.status]);
   const [watchAuthority, setWatchAuthority] = useState<WatchOnlyAuthority | null>(null);
+  const notificationSnapshot = useSyncExternalStore(nativeActivityNotifications.subscribe, nativeActivityNotifications.getSnapshot, nativeActivityNotifications.getSnapshot);
+  const routedNotification = useRef<string | null>(null);
   const route: Route =
     !preview &&
     !['welcome', 'add', 'locked', 'design', 'native', 'accounts'].includes(requestedRoute) &&
@@ -265,6 +270,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const go = useCallback((next: Route) => {
     navigationGeneration.current++;
     if (next !== 'native') {
+      setInitialSetup(undefined);
       const pending = pairingInbox.getSnapshot();
       if (pending) pairingInbox.consume(pending.id);
     }
@@ -278,6 +284,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       if (!entry) return;
       // A link opens connection review without choosing or persisting an account.
       setRequestedHdId(undefined);
+      setInitialSetup(undefined);
       authority.current?.lock();
       setPreview(false);
       setSheet(null);
@@ -289,26 +296,54 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       if (pending) pairingInbox.consume(pending.id);
     };
   }, [go, pairingInbox, setSheet]);
-  const rememberSelection = (selection: AccountSelection | null) => {
+  const rememberSelection = useCallback((selection: AccountSelection | null) => {
     if ((!selection && !lastSelection.current) || (selection && lastSelection.current?.kind === selection.kind && lastSelection.current.id === selection.id)) return;
     lastSelection.current = selection;
     void saveAccountSelection(selection).then(() => setSelectionError('')).catch(() => {
       if (selection && lastSelection.current?.kind === selection.kind && lastSelection.current.id === selection.id) lastSelection.current = null;
       setSelectionError('Your last account choice could not be saved. Your accounts are unchanged.');
     });
-  };
-  const openWallet = (id?: unknown) => {
+  }, []);
+  const openWallet = useCallback((id?: unknown) => {
+    setInitialSetup(undefined);
     const selectedId = typeof id === 'string' ? id : requestedHdId ?? catalogue?.active.accountId;
     setRequestedHdId(selectedId);
     if (selectedId) rememberSelection(nativeAccountSelection(selectedId));
     authority.current?.lock(); setSheet(null); setPreview(false); go('native');
+  }, [requestedHdId, catalogue, rememberSelection, go, setSheet]);
+  const startWalletSetup = (kind: 'create' | 'import') => {
+    setRequestedHdId(undefined); setInitialSetup(kind);
+    authority.current?.lock(); setSheet(null); setPreview(false); go('native');
   };
-  const openWatch = (selection: AccountSelection) => {
+  const openWatch = useCallback((selection: AccountSelection) => {
     if (!foreground.current || selection.kind !== 'watch' || watchAccounts.getSnapshot().status !== 'ready' || !authority.current?.getSnapshot().accounts.some((account) => account.id === selection.id)) return;
     authority.current.unlock(); authority.current.selectAccount(selection.id);
     rememberSelection(selection); setPreview(false); setSheet(null); go('home');
     void authority.current.refresh();
-  };
+  }, [watchAccounts, rememberSelection, go, setSheet]);
+  useEffect(() => {
+    const eventId = notificationSnapshot.pendingEventId;
+    if (!eventId || Platform.OS === 'web' || !foreground.current || routedNotification.current === eventId || loading) return;
+    let current = true;
+    const navigation = navigationGeneration.current, lifecycle = lifecycleGeneration.current;
+    void nativeActivityNotifications.getPendingOwner().then(owner => {
+      if (!current || !owner || !foreground.current || navigationGeneration.current !== navigation || lifecycleGeneration.current !== lifecycle ||
+          nativeActivityNotifications.getSnapshot().pendingEventId !== eventId) return;
+      if (owner.accountType === 'watch') {
+        if (watchAccounts.getSnapshot().status !== 'ready' || !authority.current?.getSnapshot().accounts.some(account => account.id === owner.accountId)) return;
+        routedNotification.current = eventId;
+        if (route !== 'home' || preview || authority.current.getSnapshot().status !== 'ready' || authority.current.getSnapshot().selectedAccountId !== owner.accountId)
+          openWatch({ kind: 'watch', id: owner.accountId });
+      } else {
+        // Cold-start native membership is checked after unlock against its complete catalogue.
+        try { nativeAccountSelection(owner.accountId); } catch { return; }
+        routedNotification.current = eventId;
+        if (route !== 'native' || preview)
+          openWallet(catalogue?.accounts.some(account => account.id === owner.accountId) ? owner.accountId : undefined);
+      }
+    }).catch(() => undefined);
+    return () => { current = false; };
+  }, [notificationSnapshot.pendingEventId, loading, watchState.status, watchAuthority, route, preview, catalogue, openWallet, openWatch, watchAccounts]);
   const announce = (message: string) => {
     setToast(message);
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -364,10 +399,14 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     };
   }, [watchAccounts]);
   useEffect(() => {
-    const hide = () => { lifecycleGeneration.current++; authority.current?.lock(); setSheet(null); setAmount(''); setRecipient(''); };
+    const hide = () => {
+      if (isNotificationPermissionPromptActive()) return;
+      lifecycleGeneration.current++; authority.current?.lock(); setSheet(null); setAmount(''); setRecipient('');
+    };
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', hide) : null;
     const sub = AppState.addEventListener('change', (state) => {
       foreground.current = state === 'active';
+      if (state === 'inactive' && isNotificationPermissionPromptActive()) return;
       if (state !== 'active') {
         lifecycleGeneration.current++;
         authority.current?.lock();
@@ -492,7 +531,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     } finally { addingAccount.current = false; }
   };
   const renameWatch = async (id: string, name: string) => { await changeWatch({ kind: 'rename', id, name }); };
-  const removeWatch = async (id: string) => { await changeWatch({ kind: 'remove', id }); };
+  const removeWatch = async (id: string) => { await nativeActivityNotifications.disableOwner('watch', id); await changeWatch({ kind: 'remove', id }); };
   const chooseAsset = (asset: Asset, action: 'send' | 'receive' | 'filter') => {
     setSheet(null);
     if (action === 'filter') {
@@ -555,7 +594,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   } : {};
   const accountActions = { ...watchNetworkActions, watch: watchState, onAdd: addAccount, onRename: renameWatch, onRemove: removeWatch, onRetry: async () => { await loadAccounts(); setStartupError(''); }, availableWatchNetworks };
   const selectionNotice = selectionError ? <Notice title="Account choice not saved" body={selectionError} tone="amber" /> : null;
-  if (route === 'native') return <><NativeWalletScreen onExit={exit} incomingPairing={incomingPairing} onPairingHandled={pairingHandled} initialAccountId={requestedHdId} onWalletRemoved={walletRemoved} onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection(nativeAccountSelection(id)); }} accounts={{ ...accountActions, onSelectWatch: openWatch, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
+  if (route === 'native') return <><NativeWalletScreen onExit={exit} incomingPairing={incomingPairing} onPairingHandled={pairingHandled} initialAccountId={requestedHdId} initialSetup={initialSetup} onWalletRemoved={walletRemoved} onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection(nativeAccountSelection(id)); }} accounts={{ ...accountActions, onSelectWatch: openWatch, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
   if (!preview && route === 'accounts') return <><WalletAccounts {...accountActions} catalogue={null}
     active={snapshot.selectedAccountId ? { kind: 'watch', id: snapshot.selectedAccountId } : null}
     onSelect={(selection) => { if (selection.kind !== 'watch') openWallet(selection.id); else openWatch(selection); }}
@@ -608,7 +647,8 @@ function AppContent({ availableWatchNetworks }: AppProps) {
         onPreview={startPreview}
         onWatch={() => go('add')}
         onDesign={openDesign}
-        onWallet={Platform.OS !== 'web' ? openWallet : undefined}
+        onCreateWallet={Platform.OS !== 'web' ? () => startWalletSetup('create') : undefined}
+        onImportWallet={Platform.OS !== 'web' ? () => startWalletSetup('import') : undefined}
       />
     );
   else if (route === 'add')
@@ -1411,7 +1451,12 @@ function AppContent({ availableWatchNetworks }: AppProps) {
           animationType={reducedMotion ? 'none' : 'slide'}
           onRequestClose={() => setSheet(null)}
         >
-          <View style={s.modal}>
+          {displayedSheet === 'send' || displayedSheet === 'receive' ? <NetworkSourceSheet
+            purpose={displayedSheet} selectedId={current.id} overContent
+            options={networkChoices.map(asset => ({ id: asset.id, name: asset.network, symbol: asset.symbol, iconId: asset.id,
+              available: preview ? asset.amount : asset.networkId === liveNetwork.id && liveAmount !== null ? liveAmount : undefined }))}
+            onSelect={id => { const asset = networkChoices.find(choice => choice.id === id); if (asset) chooseAsset(asset, displayedSheet); }}
+            onClose={() => setSheet(null)} /> : <View style={s.modal}>
             <IdlePressable
               accessibilityLabel="Close sheet"
               accessibilityRole="button"
@@ -1433,11 +1478,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
                         lineHeight: 30,
                       }}
                     >
-                      {displayedSheet === 'send'
-                        ? 'Send from'
-                        : displayedSheet === 'receive'
-                        ? 'Receive on'
-                        : displayedSheet === 'accounts'
+                      {displayedSheet === 'accounts'
                         ? 'Your accounts'
                         : 'Networks'}
                     </Text>
@@ -1534,14 +1575,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
                               announce('Could not switch networks. Select your account and try again.');
                             }
                           } else
-                            chooseAsset(
-                              a,
-                              displayedSheet === 'send'
-                                ? 'send'
-                                : displayedSheet === 'receive'
-                                ? 'receive'
-                                : 'filter'
-                            );
+                            chooseAsset(a, 'filter');
                         }}
                         style={[
                           s.assetRow,
@@ -1565,7 +1599,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
                 )}
               </ScrollView>
             </View>
-          </View>
+          </View>}
         </Modal>
       </SafeAreaView>
     </View>

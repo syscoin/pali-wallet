@@ -7,9 +7,11 @@ import type { SptBalance } from '../../../source/shared/sptInventory.ts';
 
 const holding = (id: number): SptBalance => ({ assetGuid: String(id), decimals: 3, symbol: `SPT ${id}`, confirmedUnits: '9007199254740993', pendingDeltaUnits: '-125' });
 function fixture() {
+  let hidden = false;
   const f = screenFixture(new URL('../src/screens/NativeSptAssets.tsx', import.meta.url), 'NativeSptAssets', {
+    '../platform/balancePrivacy': { HIDDEN_BALANCE: '••••', useBalancePrivacy: () => ({ hidden, status: 'ready' }) },
     'react-native': { View: 'View', StyleSheet: { create: (v: unknown) => v } },
-    '../ui': { ...Object.fromEntries(['Button', 'Card', 'Row', 'Text'].map(name => [name, name])), colors: {} },
+    '../ui': { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Row', 'Text'].map(name => [name, name])), colors: {} },
     '../core/amounts': { formatBalanceDelta, formatBaseUnits },
     '../../../../source/shared/sptInventory': inventory, './IdleActivityBoundary': { IdleTextInput: 'Input' },
   });
@@ -18,15 +20,17 @@ function fixture() {
   const sent: SptBalance[] = [];
   const props = { onSend: (asset: SptBalance) => sent.push(asset), onRefresh() {}, onModeChange: (value: string | null) => { title = value; },
     onBackHandlerChange: (value: (() => boolean) | null) => { back = value; } };
-  const render = () => screenElements(f.render({ ...props, holdings, loading }));
+  const render = () => screenElements(f.render({ ...props, chainId: 57, holdings, loading }));
   const press = (type: string, name: string) => {
     const element = render().find(e => e.type === type && e.props.title === name); assert(element, name); assert(!element.props.disabled, name); element.props.onPress();
   };
-  return { render, press, sent, state: () => ({ title, back }), replace(value: readonly SptBalance[] | null, pending = false) { holdings = value; loading = pending; }, close: f.close };
+  return { render, press, sent, privacy(value: boolean) { hidden = value; }, state: () => ({ title, back }), replace(value: readonly SptBalance[] | null, pending = false) { holdings = value; loading = pending; }, close: f.close };
 }
 
 test('SPT list bounds visible rows, searches every asset and retains exact generic precision', () => {
   const f = fixture(); assert.equal(f.render().filter(e => e.type === 'Row').length, 20);
+  const icon = f.render().find(e => e.type === 'Row')!.props.icon;
+  assert.deepEqual(JSON.parse(JSON.stringify(icon.props.asset)), { kind: 'spt', chainId: 57, assetGuid: '1', decimals: 3 });
   f.press('Button', 'Next'); assert.equal(f.render().find(e => e.type === 'Row')!.props.title, 'SPT 21');
   f.press('Button', 'Next'); assert.equal(f.render().filter(e => e.type === 'Row').length, 5);
   f.render().find(e => e.type === 'Input')!.props.onChangeText('45');
@@ -52,4 +56,19 @@ test('unknown inventory is distinct from a verified empty inventory and inventor
   assert.equal(f.render().find(e => e.type === 'Row')!.props.title, 'SPT 1');
   f.replace([]); assert.match(f.render().flatMap(e => e.children).join(' '), /No token holdings/);
   f.replace(null); assert.match(f.render().flatMap(e => e.children).join(' '), /Token balances unavailable/); f.close();
+});
+
+
+test('privacy mode masks list and selected SPT quantities without changing send payloads', () => {
+  const f = fixture(); f.privacy(true);
+  const list = f.render();
+  assert(!JSON.stringify(list).includes('9007199254740.993'));
+  assert.match(String(list.find(e => e.type === 'Row')?.props.subtitle), /••••/);
+  f.press('Row', 'SPT 1');
+  assert(!JSON.stringify(f.render()).includes('9007199254740.993'));
+  assert(!JSON.stringify(f.render()).includes('0.125'));
+  f.press('Button', 'Send'); assert.deepEqual(f.sent, [holding(1)]);
+  f.privacy(false);
+  assert.match(f.render().flatMap(e => e.children).join(' '), /9007199254740\.993/);
+  f.close();
 });

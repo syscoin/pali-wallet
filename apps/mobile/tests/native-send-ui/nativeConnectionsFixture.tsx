@@ -12,6 +12,7 @@ const accounts = [
 let snapshot: NativeConnectionsSnapshot = {
   revision: 7,
   status: 'ready',
+  pairingExpiresAt: null,
   accounts,
   selectedAccountId: accounts[0].id,
   network: { id: 'ethereum', label: 'Ethereum', chainId: '1' },
@@ -29,8 +30,10 @@ const publish = (next: NativeConnectionsSnapshot) => {
   for (const listener of listeners) listener();
 };
 const controller: NativeConnectionsView = {
+    isRequestAuthenticating: () => false,
   ...unsupportedDappViews,
     async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
+    async refreshCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     async retrySmartMetadata() { throw new Error('Smart metadata refresh is outside this fixture'); },
     async confirmSmartPayer() { throw new Error('No Smart payer review in this fixture'); },
@@ -38,11 +41,11 @@ const controller: NativeConnectionsView = {
   async editApprovalAmount() { throw new Error('Transaction editing is outside this fixture'); },
   getSnapshot: () => snapshot,
   subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-  async pair(uri) { calls.push({ method: 'pair', args: [uri] }); publish({ ...snapshot, status: 'pairing' }); },
+  async pair(uri) { calls.push({ method: 'pair', args: [uri] }); publish({ ...snapshot, status: 'pairing', pairingExpiresAt: Date.now() + 120_000 }); },
   async approve(...args) {
     calls.push({ method: 'approve', args });
     publish({ ...snapshot, revision: snapshot.revision + 1, proposals: [], sessions: [
-      { returnTarget: null, id: 'connection-1', name: 'Example app', origin: 'https://example.invalid', accountLabel: 'Savings', networkLabel: 'Ethereum' },
+      { returnTarget: null, id: 'connection-1', name: 'Example app', origin: 'https://example.invalid', accountLabel: 'Savings', networkLabel: 'Ethereum', address: accounts[1].address, methods: ['eth_accounts', 'eth_sendTransaction'], expiresAt: Date.now() + 7 * 86_400_000 },
     ] });
   },
   async reject(id) { calls.push({ method: 'reject', args: [id] }); publish({ ...snapshot, proposals: [] }); },
@@ -51,7 +54,7 @@ const controller: NativeConnectionsView = {
   async rejectRequest() { throw new Error('Message signing is outside this fixture'); },
   async activateRequestAccount() { throw new Error('Message signing is outside this fixture'); },
   async retry() { calls.push({ method: 'retry', args: [] }); publish({ ...snapshot, status: 'ready', error: null }); },
-  cancel() { calls.push({ method: 'cancel', args: [] }); publish({ ...snapshot, status: 'ready', proposals: [] }); },
+  cancel() { calls.push({ method: 'cancel', args: [] }); publish({ ...snapshot, status: 'ready', pairingExpiresAt: null, proposals: [] }); },
 };
 
 declare global {
@@ -69,8 +72,9 @@ declare global {
 window.__nativeConnectionsFixture = {
   calls: () => calls,
   proposal(allowed = true) {
-    publish({ ...snapshot, revision: snapshot.revision + 1, status: 'ready', proposals: [
-      { id: 42, name: 'Example app', origin: 'https://example.invalid', verification: { validation: 'VALID', isScam: false }, requiredMethods: ['eth_accounts'], canApprove: allowed },
+    publish({ ...snapshot, revision: snapshot.revision + 1, status: 'ready', pairingExpiresAt: null, proposals: [
+      { id: 42, name: 'Example app', origin: 'https://example.invalid', verification: { validation: 'VALID', isScam: false }, requiredMethods: ['eth_accounts'], canApprove: allowed, expiresAt: Date.now() + 120_000,
+        methodsByAccount: accounts.map(account => ({ accountId: account.id, methods: ['eth_accounts', 'eth_sendTransaction'], canApprove: allowed })) },
     ] });
   },
   fail() { publish({ ...snapshot, error: 'CONTEXT_CHANGED' }); },

@@ -166,6 +166,7 @@ describe.each(['Ledger', 'Trezor'] as const)(
         getStatus: () => ({ connected: true }),
         connect: jest.fn(),
         disconnect: jest.fn(),
+        retire: jest.fn(async () => () => undefined),
         utxo: {},
         evm: {
           getAddress: jest.fn(async () => ({

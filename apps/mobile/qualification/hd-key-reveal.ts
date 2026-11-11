@@ -3,6 +3,7 @@ import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import type { HdKeyExportPresentation } from '../src/custody/hdKeyExport.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
+import { bindNativePrivateAuthentication } from '../src/custody/privateAuthentication.ts';
 
 export type HdKeyRevealEvidence = Readonly<{ nativeHdKeyRevealVerified: true }>;
 
@@ -34,7 +35,7 @@ export async function qualifyNativeHdKeyReveal(options: Readonly<{
   expectedAddress: string;
   check: <T>(name: string, operation: () => Promise<T>) => Promise<T>;
 }>): Promise<HdKeyRevealEvidence> {
-  const { authority, runtime, storage, password, expectedAddress, check } = options;
+  const { authority, runtime, storage, expectedAddress, check } = options;
   const [{ HdKeyExportFlow }, { computeAddress }] = await Promise.all([
     import('../src/custody/hdKeyExport.ts'), import('ethers/transaction'),
   ]);
@@ -53,7 +54,15 @@ export async function qualifyNativeHdKeyReveal(options: Readonly<{
       JSON.stringify(authority.getCatalogue()) === catalogueBefore);
   };
   const journals = async () => (await readSignedRecordEvidence(storage)).raw;
-  const flow = new HdKeyExportFlow(authority, () => runtime.keyExport);
+  const raw = runtime.keyExport;
+  requireEvidence(raw);
+  const adapter = {
+    isAuthenticationRefusal: (error: unknown) => raw.isAuthenticationRefusal(error),
+    readSelected: (scope: Parameters<typeof raw.readSelected>[0], signal: AbortSignal, guard: () => void,
+      authentication: import('../src/custody/privateAuthentication.ts').NativePrivateAuthenticationScope) =>
+      raw.readSelected(scope, signal, guard, bindNativePrivateAuthentication(authentication, { assertCurrent: guard, isPromptActive: () => false })),
+  };
+  const flow = new HdKeyExportFlow(authority, () => adapter);
   let presentation: HdKeyExportPresentation | undefined;
   try {
     await check('native selected-HD private key reveal', async () => {
@@ -61,7 +70,7 @@ export async function qualifyNativeHdKeyReveal(options: Readonly<{
       const before = await journals();
       const fingerprint = await storage.getWalletFingerprint();
       current();
-      presentation = await flow.begin(password);
+      presentation = await flow.begin();
       current();
       requireEvidence(presentation.accountId === 'hd:60:1' && presentation.address === expectedAddress &&
         flow.isCurrent(presentation.id) && computeAddress(presentation.privateKey) === expectedAddress);

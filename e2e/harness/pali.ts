@@ -8,6 +8,7 @@ import { E2E_CONFIG } from './config';
 import { type LaunchOptions, launchExtension } from './launch';
 import { verifyExecutingWorker } from './runtimeIdentity';
 import { type Finding, JourneySummary } from './summary';
+import { installOfflineWalletRelease } from './walletReleaseFixture';
 
 // High-level driver for the Pali extension UI. Journeys compose these
 // primitives inside `step()` blocks so every action is screenshotted and
@@ -52,6 +53,7 @@ export class PaliWallet {
         (value) => summary.setWorkerIdentity(value)
       );
       const page = context.pages()[0] || (await context.newPage());
+      if (options.offlineHttpProxy) await installOfflineWalletRelease(page);
       const wallet = new PaliWallet(
         context,
         launched.extensionId,

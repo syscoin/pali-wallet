@@ -1,6 +1,7 @@
 import { unsupportedDappViews } from '../unsupportedDappPorts';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Interface } from 'ethers/abi';
+import { decodeAssetTransfer } from '../../../../source/shared/assetTransfer';
 import {
   parseApprovalAmount,
   summarizeApproval,
@@ -32,11 +33,25 @@ const metadata = {
     decimals: 6,
   },
 };
-const data = query.has('allowance')
+const assetKind = query.get('asset-transfer');
+const assetAbi = new Interface([
+  'function transfer(address,uint256)',
+  'function safeTransferFrom(address,address,uint256)',
+  'function safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)',
+]);
+const assetData = assetKind === 'nft'
+  ? assetAbi.encodeFunctionData('safeTransferFrom', [account, spender, (1n << 256n) - 1n])
+  : assetKind ? assetAbi.encodeFunctionData('transfer', [spender, 1250000]) : undefined;
+const data = assetData ?? (query.has('allowance')
   ? approvalAbi.encodeFunctionData('approve', [spender, (1n << 256n) - 1n])
   : query.has('long-data')
   ? '0x' + 'ab'.repeat(8192) + 'cd'
-  : '0x12345678';
+  : '0x12345678');
+const batchCalls = assetKind === 'batch' ? [
+  { to: target, value: '0x0', data },
+  { to: target, value: '0x0', data: assetAbi.encodeFunctionData('safeBatchTransferFrom', [account, spender, [0, 91], [2, 3], '0x']) },
+  { to: spender, value: '0x1', data: '0x' },
+] : undefined;
 const initial: NativeSmartTransactionReview = {
   kind: 'smart-transaction',
   method: 'eth_sendTransaction',
@@ -71,12 +86,16 @@ const initial: NativeSmartTransactionReview = {
   approval: query.has('allowance')
     ? summarizeApproval(data, target, metadata)
     : null,
+  assetTransfer: assetKind && !batchCalls ? decodeAssetTransfer(data, target,
+    assetKind === 'unknown' ? undefined : assetKind === 'nft' ? { standard: 'ERC-721' } : metadata) : null,
+  batchAssetTransfers: batchCalls?.map((call, index) => decodeAssetTransfer(call.data, call.to,
+    index === 0 ? metadata : index === 1 ? { standard: 'ERC-1155' } : undefined)),
   operation: {
     phase: 'authorize',
     revision: 1,
     account,
     network: getNativeNetwork('ethereum'),
-    intent: { kind: 'dapp-call', recipient: target, amountUnits: '9', data },
+    intent: batchCalls ? { kind: 'dapp-batch', calls: batchCalls } : { kind: 'dapp-call', recipient: target, amountUnits: '9', data },
     maximumPrefundUnits: '210000000000000',
     userOperationHash: hash,
     authorization: {
@@ -130,12 +149,15 @@ export function NativeSmartDappFixture() {
     throw new Error('Outside Smart review fixture');
   };
   const controller: NativeConnectionsView = {
+    isRequestAuthenticating: () => false,
   ...unsupportedDappViews,
     async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
+    async refreshCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     getSnapshot: () => ({
       revision: latest.current?.revision ?? 0,
       status: 'ready',
+      pairingExpiresAt: null,
       accounts: [],
       selectedAccountId: null,
       network: null,

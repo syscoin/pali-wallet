@@ -1,7 +1,8 @@
+import { BalancePrivacySetting } from './BalancePrivacySetting';
 import { useNativeTranslation } from '../platform/localization';
-import { IdleTextInput } from './IdleActivityBoundary';
+import { useBiometricPresentation } from '../platform/useBiometricPresentation';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { HdKeyExportFlow, HdKeyExportPresentation } from '../custody/hdKeyExport';
 import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
@@ -16,17 +17,20 @@ type Props = {
   onViewRecovery(): void;
   onRemoveWallet?(): void;
   onDeviceUnlock?(): void;
+  onAutoLock?(): void;
+  onChangePin?(): void;
   deviceUnlockEnabled?: boolean;
+  backupConfirmed: boolean;
   onLock(): void;
   onBack(): void;
   captureFailureHandler(): (error: unknown) => void;
 };
 
 /** Private presentation stays in this mounted, protected native screen only. */
-export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, accountLabel, address, onViewRecovery, onRemoveWallet, onDeviceUnlock, deviceUnlockEnabled, onLock, onBack, captureFailureHandler }: Props) {
+export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, accountLabel, address, onViewRecovery, onRemoveWallet, onDeviceUnlock, onAutoLock, onChangePin, deviceUnlockEnabled, backupConfirmed, onLock, onBack, captureFailureHandler }: Props) {
   const { t } = useNativeTranslation();
+  const biometrics = useBiometricPresentation();
   const [mode, setMode] = useState<'hub' | 'key' | 'recovery'>('hub');
-  const [password, setPassword] = useState('');
   const [presentation, setPresentation] = useState<HdKeyExportPresentation | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -34,18 +38,24 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
   const latestBack = useRef<() => void>(() => undefined);
   const clear = useCallback(() => {
     lifecycle.current.operation++;
-    setPassword(''); setPresentation(null); setError('');
+    setPresentation(null); setError('');
     Keyboard.dismiss();
   }, []);
   useLayoutEffect(() => {
     const state = lifecycle.current;
     state.mounted = true;
     const unsubscribe = keyExport.onClear(clear);
-    return () => {
-      state.mounted = false; state.operation++;
-      unsubscribe(); keyExport.cancel();
+    const interrupted = (next: string) => {
+      if (next === 'active' || (next === 'inactive' || next === 'blur') && keyExport.isAuthenticating()) return;
+      state.request++; keyExport.cancel(); clear();
     };
-  }, [keyExport, clear]);
+    const app = AppState.addEventListener('change', interrupted);
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => interrupted('blur')) : null;
+    return () => {
+      state.mounted = false; state.operation++; state.request++;
+      unsubscribe(); app.remove(); blur?.remove(); keyExport.cancel();
+    };
+  }, [keyExport, clear, accountId, address]);
   const hide = () => { lifecycle.current.request++; keyExport.cancel(); clear(); };
   const back = () => {
     hide();
@@ -59,23 +69,25 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
 
   const reveal = async () => {
     const state = lifecycle.current;
-    if (!keyFormat || !state.mounted || state.busy || !password) return;
+    if (!keyFormat || !state.mounted || state.busy || AppState.currentState !== 'active') return;
     state.busy = true; setBusy(true); setError('');
-    const entered = password; setPassword(''); Keyboard.dismiss();
+    Keyboard.dismiss();
     const request = ++state.request;
     const reportFailure = captureFailureHandler();
     // begin synchronously clears any previous presentation before its first await.
-    const pending = keyExport.begin(entered);
+    const pending = keyExport.begin();
     const operation = state.operation;
     try {
       const shown = await pending;
-      if (state.mounted && state.operation === operation && keyExport.isCurrent(shown.id) &&
+      if (state.mounted && state.operation === operation && AppState.currentState === 'active' && keyExport.isCurrent(shown.id) &&
           shown.accountId === accountId && shown.address === address) setPresentation(shown);
     } catch (cause) {
-      if (state.mounted && state.operation === operation) {
+      const code = cause instanceof Error ? cause.message : '';
+      // The flow clears its own failed presentation before rejecting. Preserve
+      // feedback only for this still-active request, never a departure or cancel.
+      if (state.mounted && state.request === request && AppState.currentState === 'active' && code !== 'CANCELLED') {
         setError(t('mobile.security.revealFailed'));
       }
-      const code = cause instanceof Error ? cause.message : '';
       // The flow's own failure lock can unmount this screen before the promise
       // settles. Its captured parent handler checks the actual locked context.
       if (state.request === request && (code === 'INVALID_CREDENTIAL' || code === 'AUTH_THROTTLED')) {
@@ -89,27 +101,20 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
   const shown = presentation && presentation.accountId === accountId && presentation.address === address &&
     keyExport.isCurrent(presentation.id) ? presentation : null;
   const utxo = keyFormat !== 'evm' ? keyFormat : null;
-  let backupTitle = t('mobile.security.phraseBackedUp');
-  let backupBody = t('mobile.security.phraseBackup');
-  if (accountType === 'Ledger' || accountType === 'Trezor') {
-    backupTitle = t('mobile.security.hardwareTitle', { device: accountType });
-    backupBody = t('mobile.security.hardwareBody', { device: accountType });
-  } else if (accountType === 'Imported') {
-    backupTitle = t('mobile.security.importBackupTitle');
-    backupBody = t('mobile.security.importBackupBody');
-  }
+  const backupStatus = backupConfirmed ? 'Backed up' : 'Back up needed';
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen><Header title={mode === 'key' ? t('mobile.security.accountKey') : mode === 'recovery' ? t('mobile.security.recoveryGuide') : t('mobile.security.title')} subtitle={t('mobile.common.development')} onBack={back} />
+      <Screen gap={16} footer={mode === 'key' ? <Button title={shown ? t('mobile.security.hide') : t('mobile.security.reveal')} disabled={!shown && busy} onPress={shown ? hide : reveal} /> : mode === 'hub' ? <Button title={t('mobile.settings.lock')} variant="secondary" size="compact" icon="lock" onPress={() => { hide(); onLock(); }} /> : undefined}><Header title={mode === 'key' ? t('mobile.security.accountKey') : mode === 'recovery' ? t('mobile.security.recoveryGuide') : t('mobile.security.title')} onBack={back} />
         {mode === 'hub' ? <>
-          <Notice title={backupTitle} body={backupBody} />
-          <Card><Row title={accountType === 'Ledger' || accountType === 'Trezor' ? t('mobile.security.viewPaliPhrase') : t('mobile.security.viewPhrase')} subtitle={t('mobile.security.passwordWords')} icon="shield" onPress={() => { hide(); onViewRecovery(); }} />
+          <Card><Row title={accountType === 'Ledger' || accountType === 'Trezor' ? t('mobile.security.viewPaliPhrase') : t('mobile.security.viewPhrase')} subtitle={backupStatus} icon="shield" onPress={() => { hide(); onViewRecovery(); }} />
             {keyFormat && (accountType === 'HDAccount' || accountType === 'Imported') && <Row title={t('mobile.security.revealAccountKey')} subtitle={accountLabel} icon="eye" onPress={() => { hide(); setMode('key'); }} />}
-            {onDeviceUnlock && <Row title={t('mobile.security.biometric')} subtitle={deviceUnlockEnabled ? t('mobile.security.on') : t('mobile.security.off')} icon="lock" onPress={() => { hide(); onDeviceUnlock(); }} />}
+            {onChangePin && <Row title="Change PIN" subtitle="Update your wallet PIN" icon="lock" onPress={() => { hide(); onChangePin(); }} />}
+            {onDeviceUnlock && <Row title={biometrics.label === 'biometrics' ? t('mobile.security.biometric') : biometrics.label === 'fingerprint' ? 'Fingerprint unlock' : biometrics.label} subtitle={deviceUnlockEnabled ? t('mobile.security.on') : t('mobile.security.off')} icon="lock" onPress={() => { hide(); onDeviceUnlock(); }} />}
+            {onAutoLock && <Row title="Auto-lock" subtitle="Choose when Pali locks" icon="lock" onPress={() => { hide(); onAutoLock(); }} />}
+            <BalancePrivacySetting />
             <Row title={t('mobile.security.recoveryGuide')} subtitle={t('mobile.security.backupsRestore')} icon="help" onPress={() => { hide(); setMode('recovery'); }} last /></Card>
-          <Button title={t('mobile.settings.lock')} variant="secondary" icon="lock" onPress={() => { hide(); onLock(); }} />
-          {onRemoveWallet && <Button title={t('mobile.security.removeWallet')} variant="danger" onPress={() => { hide(); onRemoveWallet(); }} />}
+          {onRemoveWallet && <Button title={t('mobile.security.removeWallet')} variant="danger" size="compact" onPress={() => { hide(); onRemoveWallet(); }} />}
         </> : mode === 'recovery' ? <>
           <Text style={s.heading}>{t('mobile.security.keepPhraseOffline')}</Text>
           {(accountType === 'Ledger' || accountType === 'Trezor') && <Text style={styles.muted}>{t('mobile.security.hardwareGuide', { device: accountType })}</Text>}
@@ -127,16 +132,8 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
             : <Notice title={t('mobile.security.evmTitle')} body={t('mobile.security.evmBody')} tone="amber" />}
           {shown ? <>
             <View style={s.secret}><Text style={s.key}>{shown.privateKey}</Text></View>
-            <Button title={t('mobile.security.hide')} onPress={hide} />
             <Text style={styles.muted}>{t('mobile.security.sessionOnly')}</Text>
           </> : <>
-            <View style={s.field}><Text style={s.label}>{t('mobile.security.confirmPassword')}</Text><IdleTextInput
-              accessibilityLabel={t('mobile.security.confirmPassword')} value={password} onChangeText={setPassword} editable={!busy}
-              autoCapitalize="none" autoCorrect={false} spellCheck={false} autoComplete="off"
-              importantForAutofill="noExcludeDescendants" textContentType="none" secureTextEntry contextMenuHidden={false}
-              maxLength={1024} selectionColor={colors.pink} placeholderTextColor={colors.muted} style={s.input}
-            /></View>
-            <Button title={t('mobile.security.reveal')} disabled={busy || !password} onPress={reveal} />
             {busy && <ActivityIndicator accessibilityLabel={t('mobile.security.confirming')} color={colors.pink} />}
           </>}
           {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}

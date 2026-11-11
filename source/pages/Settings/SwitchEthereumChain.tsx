@@ -25,6 +25,7 @@ const SwitchChain: React.FC = () => {
   const previousNetwork = useRef([
     activeNetwork.chainId,
     activeNetwork.kind,
+    activeNetwork.label,
   ] as const).current;
   const networks = useSelector(
     (state: RootState) => state.vaultGlobal.networks
@@ -62,20 +63,50 @@ const SwitchChain: React.FC = () => {
   };
 
   const CurrentChains = () => (
-    <div className="w-4/5 gap-4 flex items-center align-center flex-row">
-      <ChainIcon
-        chainId={previousNetwork[0]}
-        size={100}
-        networkKind={previousNetwork[1]}
-        fallbackClassName="rounded-full flex items-center justify-center text-white text-sm bg-brand-blue200 p-5"
-      />{' '}
-      <Icon name="arrowright" isSvg size={50} />{' '}
-      <ChainIcon
-        chainId={network.chainId}
-        size={100}
-        networkKind={INetworkType.Ethereum}
-        fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
-      />
+    <div className="grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-4">
+      <section
+        aria-label={t('settings.previousChain')}
+        className="flex min-w-0 flex-col items-center gap-2"
+      >
+        <p className="text-xs text-content-secondary [overflow-wrap:anywhere]">
+          {t('settings.previousChain')}
+        </p>
+        <ChainIcon
+          chainId={previousNetwork[0]}
+          size={80}
+          networkKind={previousNetwork[1]}
+          fallbackClassName="rounded-full flex items-center justify-center text-white text-sm bg-brand-blue200 p-5"
+        />
+        <p className="w-full text-sm [overflow-wrap:anywhere]">
+          {previousNetwork[2] || t('settings.unavailable')}
+        </p>
+        <p className="w-full text-xs text-content-secondary [overflow-wrap:anywhere]">
+          {t('send.chainId')}: {previousNetwork[0]}
+        </p>
+        <NetworkTypeBadge kind={previousNetwork[1]} />
+      </section>
+      <Icon name="arrowright" isSvg size={24} />
+      <section
+        aria-label={t('settings.newChain')}
+        className="flex min-w-0 flex-col items-center gap-2"
+      >
+        <p className="text-xs text-content-secondary [overflow-wrap:anywhere]">
+          {t('settings.newChain')}
+        </p>
+        <ChainIcon
+          chainId={network.chainId}
+          size={80}
+          networkKind={INetworkType.Ethereum}
+          fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
+        />
+        <p className="w-full text-sm [overflow-wrap:anywhere]">
+          {network.label || t('settings.unavailable')}
+        </p>
+        <p className="w-full text-xs text-content-secondary [overflow-wrap:anywhere]">
+          {t('send.chainId')}: {network.chainId}
+        </p>
+        <NetworkTypeBadge kind={INetworkType.Ethereum} />
+      </section>
     </div>
   );
 
@@ -91,15 +122,6 @@ const SwitchChain: React.FC = () => {
           </div>
           <div className="flex flex-col pb-4 pt-4 w-full text-center items-center">
             <CurrentChains />
-            <div className="mt-2 flex items-center gap-2 text-brand-royalblue text-xs">
-              <span className="flex items-center gap-1">
-                <NetworkTypeBadge kind={previousNetwork[1]} />
-              </span>
-              <Icon name="arrowright" isSvg size={16} />
-              <span className="flex items-center gap-1">
-                <NetworkTypeBadge kind={INetworkType.Ethereum} />
-              </span>
-            </div>
           </div>
         </div>
 

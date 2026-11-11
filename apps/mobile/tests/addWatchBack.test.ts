@@ -1,5 +1,5 @@
 import * as pairingLinks from '../src/connections/pairingLinks.ts';
-import * as sharedHistory from '../../../source/shared/evmHistory.ts';
+import * as activityFiltering from '../src/activity/activityFiltering.ts';
 import * as syscoinAssetIds from '../../../source/shared/syscoinAssetIds.ts';
 import * as sptInventory from '../../../source/shared/sptInventory.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
@@ -18,6 +18,10 @@ import { UTXO_NETWORKS, findUtxoNetwork, getUtxoNetwork, isCustomUtxoNetworkId }
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { TabDeparture } from '../src/navigation/tabDeparture.ts';
 import type { ShellLeafNavigation, RealTab } from '../src/screens/RealAppShell';
+import type { NativeActivitySnapshot } from '../src/activity/nativeActivity.ts';
+import { activityAssetIcon } from '../src/activity/assetIcon.ts';
+import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
+import { quietActivityNotifications } from './notificationFixture.ts';
 
 const require = createRequire(import.meta.url);
 // Use the declared Expo Babel preset's toolchain to strip the installed RN Flow
@@ -105,6 +109,7 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
       const actual = back.api as BackApi;
       let owner: 'parent' | 'child' = 'parent';
       const subscriptions: { owner: 'parent' | 'child'; handler: () => boolean; actual: Subscription; removed: boolean }[] = [];
+      const copied: string[] = [], shared: string[] = [];
       const observedBack = { addEventListener(name: string, handler: () => boolean) {
         const subscription = { owner, handler, actual: actual.addEventListener(name, handler), removed: false };
         subscriptions.push(subscription);
@@ -112,23 +117,33 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
       } };
       const native = { Platform: { OS: 'android' }, BackHandler: observedBack,
         AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
-        StyleSheet: { create: (value: unknown) => value }, Share: {}, Linking: {},
+        StyleSheet: { create: (value: unknown) => value }, Share: { sharedAction: 'shared', async share(value: { message: string }) { shared.push(value.message); return { action: 'shared' }; } }, Linking: {},
         useWindowDimensions: () => ({ width: 390, fontScale: 1 }),
         ...Object.fromEntries(['View', 'ActivityIndicator', 'FlatList', 'Modal', 'Pressable', 'ScrollView'].map((name) => [name, name])),
       };
-      const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
+      const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Icon', 'IconButton', 'Notice', 'Row', 'Screen', 'SegmentedControl', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
       const load = (name: string) => readFileSync(new NodeURL(`../${name}`, import.meta.url), 'utf8');
       const hooks = evaluate(load('src/screens/useRealShell.ts'), { react: render.api, 'react-native': native, '../navigation/tabDeparture': { TabDeparture } });
       const idle = createIdleComponentFixture(render.api, native);
-      const dependencies = { '../platform/localization': nativeTranslationFixture, '../../../../source/shared/evmHistory': sharedHistory, './IdleActivityBoundary': idle.components, react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
-        'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', '../ui': ui, '../core/amounts': core, '../core/networks': core,
+      const activityListRow = evaluate(load('src/screens/ActivityListRow.tsx'), {
+        react: render.api, 'react-native': native, '../ui': ui, './IdleActivityBoundary': idle.components,
+      });
+      let privacyHidden = false;
+      const dependencies = { '../platform/localization': nativeTranslationFixture, '../activity/activityFiltering': activityFiltering, './IdleActivityBoundary': idle.components, react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+        'expo-clipboard': { async setStringAsync(value: string) { copied.push(value); return true; } }, 'react-native-qrcode-svg': 'QRCode', '../ui': ui, '../core/amounts': core, '../core/networks': core,
         '../core/utxoAddresses': { canUseUtxoCustodyAddress },
         '../core/utxoNetworks': { findUtxoNetwork, getUtxoNetwork }, '../core/watchOnlyAuthority': core,
         '../custody/networkContext': { getNativeNetwork: () => ({ id: 'ethereum' }), getNativeSendContext: () => ({ networkId: 'ethereum', name: 'Ethereum', symbol: 'ETH', decimals: 18 }), nativeSigningEnabled: () => kind === 'smart-signable' },
         '../custody/testnetFaucet': { getTestnetFaucet: () => null }, './TestnetFaucetCard': {},
         './PortfolioQuote': evaluate(load('src/screens/PortfolioQuote.tsx'), { react: render.api, 'react-native': native, '../ui': ui }),
         './NativeTokens': { NativeTokens: 'NativeTokens' }, '../platformRpc': {}, '../platform/http': {}, '../portfolio/nativePortfolio': {},
+        '../portfolio/AssetMarketCard': { AssetMarketCard: 'AssetMarketCard' },
+        '../platform/balancePrivacy': { HIDDEN_BALANCE: '••••', useBalancePrivacy: () => ({ hidden: privacyHidden, status: 'ready' }) },
         '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => ({ supported: false, quote: null }) },
+        './ActivityListRow': activityListRow,
+        './TransactionDetailLayout': { TransactionDetailLayout: 'TransactionDetailLayout' },
+        '../activity/activityAmountLabel': { compactActivityAmountLabel },
+        '../activity/assetIcon': { activityAssetIcon },
         '../../../../source/shared/erc20': {},
         '../../../../source/shared/syscoinAssetIds': syscoinAssetIds,
         '../../../../source/shared/sptInventory': sptInventory,
@@ -138,7 +153,9 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         : kind === 'activity' ? load('src/screens/NativeActivity.tsx') + '\nexport { NativeActivityContent };' : load('src/screens/WatchAccountPortfolio.tsx');
       const exports = evaluate(source, dependencies);
       const leaf = ((kind === 'native' || kind === 'smart' || kind === 'smart-signable') ? exports.NativePortfolioContent : kind === 'activity' ? exports.NativeActivityContent : exports.WatchAccountPortfolio) as Component;
-      let exits = 0, sent = 0, tokenSent = 0, collectibleSent = 0;
+      let exits = 0, sent = 0, tokenSent = 0, collectibleSent = 0, backupRequests = 0;
+      let retiredReceiveCopy: Element | undefined;
+      let backupRequired = false;
       let shell!: { tab: RealTab; goBack(): void; select(tab: RealTab): void; finishLeave(tab: RealTab): void; navigation: ShellLeafNavigation };
       const parent = render.instance(), child = render.instance();
       const Root = () => {
@@ -151,16 +168,31 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
       const account = core.createWatchAccount('watch', 'Public account', '0x1111111111111111111111111111111111111111');
       const authority = new core.WatchOnlyAuthority([account], { async readBalance() { return { chainId: 1, units: '0' }; } });
       authority.unlock(); await authority.refresh();
+      let accountRevision = 1;
+      const model = { isCurrent: (value: { revision: number }) => value.revision === accountRevision, getNetworkRegistration: () => ({ id: 'ethereum' }), getUtxoNetwork: () => findUtxoNetwork('ethereum') };
       const props = () => (kind === 'native' || kind === 'smart' || kind === 'smart-signable') ? {
-        model: { isCurrent: () => true, getNetworkRegistration: () => ({ id: 'ethereum' }), getUtxoNetwork: () => findUtxoNetwork('ethereum') }, snapshot: { account: { address: account.addresses.ethereum, network: 'ethereum', revision: 1 }, status: 'available', units: '0', updatedAt: 1 },
+        model, snapshot: { account: { address: account.addresses.ethereum, network: 'ethereum', revision: accountRevision }, status: 'available', units: '0', updatedAt: 1 },
+        backupRequired, requiresBackup: () => backupRequired, onBackup() { backupRequests++; },
         accountLabel: 'Public account', onExit() { exits++; }, onLock() {}, onViewRecovery() {}, navigation: shell.navigation,
         ...((kind === 'smart' || kind === 'smart-signable') ? { smartAccount: { chainId: 1, isDeployed: true, localEcdsa: false, managementAddress: '0x2222222222222222222222222222222222222222' }, onSend() { if (kind !== 'smart-signable') assert.fail('Smart account must not enter EOA send'); sent++; },
           ...(kind === 'smart-signable' ? { tokenView: {}, onSendToken() { tokenSent++; }, onSendCollectible() { collectibleSent++; } } : {}) } : {}),
       } : kind === 'activity' ? { controller: { async setView() {} },
-        snapshot: { status: 'ready', rows: [], accountAddress: account.addresses.ethereum, view: { filter: 'all', showZero: false, anchor: null, offset: 0 }, truncated: false },
+        snapshot: { status: 'ready', rows: [], accountAddress: account.addresses.ethereum!, view: { filter: 'all', showZero: false, anchor: null, offset: 0 },
+          scopeKey: 'public-back-fixture', chainId: '1', networkName: 'Ethereum', nativeSymbol: 'ETH', explorerUrl: null,
+          loadingMore: false, hasMore: false, error: null, coverage: 'Direct transactions and ERC20 transfer events from the selected network are included.',
+          truncated: false, canViewSavedPending: false, savedPending: undefined } satisfies NativeActivitySnapshot,
         accountLabel: 'Public account', onBack: () => shell.finishLeave('wallet'), navigation: shell.navigation,
       } : { authority, onAccounts() {}, onExit() { exits++; }, onLock() {}, navigation: shell.navigation };
       owner = 'child'; let tree = render.render(child, leaf, props()); render.flush(child);
+      if (kind === 'activity') assert.equal(get(tree, element => element.type === 'Header').props.onBack, undefined);
+      if (kind !== 'activity') {
+        privacyHidden = true;
+        tree = render.render(child, leaf, props()); render.flush(child);
+        assert.equal(get(tree, element => element.props.accessibilityLabel === 'Balance hidden').children.join(''), '••••');
+        assert(!JSON.stringify(tree).includes('balance 0 ETH'));
+        privacyHidden = false;
+        tree = render.render(child, leaf, props()); render.flush(child);
+      }
       if (kind === 'smart-signable') {
         press(get(tree, element => element.props.title === 'Send')); assert.equal(sent, 1);
         const tokens = get(tree, element => element.type === 'NativeTokens');
@@ -168,6 +200,60 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         tokens.props.onSend({symbol:'PUBLIC'}); tokens.props.onSendCollectible({contractAddress:'public'});
         assert.equal(tokenSent, 1); assert.equal(collectibleSent, 1);
         assert(!JSON.stringify(tree).includes('signing is not yet available'));
+        // Stale Home actions keep Send gated; Receive first needs its own warning.
+        backupRequired = true;
+        press(get(tree, element => element.props.title === 'Send'));
+        press(get(tree, element => element.props.title === 'Receive'));
+        tokens.props.onSend({symbol:'PUBLIC'}); tokens.props.onSendCollectible({contractAddress:'public'});
+        assert.equal(backupRequests, 3);
+        assert.equal(sent, 1); assert.equal(tokenSent, 1); assert.equal(collectibleSent, 1);
+        tree = render.render(child, leaf, props()); render.flush(child);
+        assert.equal(find(tree, element => element.type === 'QRCode'), undefined);
+        assert.equal(get(tree, element => element.type === 'Modal').props.transparent, true);
+        press(get(tree, element => element.props.title === 'Back Up Now'));
+        assert.equal(backupRequests, 4);
+        tree = render.render(child, leaf, props()); render.flush(child);
+        assert.equal(find(tree, element => element.type === 'Modal'), undefined);
+        press(named(tree, 'Back up your wallet'));
+        assert.equal(backupRequests, 5);
+
+        press(get(tree, element => element.props.title === 'Receive'));
+        tree = render.render(child, leaf, props()); render.flush(child);
+        (get(tree, element => element.type === 'Modal').props.onRequestClose as () => void)();
+        tree = render.render(child, leaf, props()); render.flush(child);
+        assert.equal(find(tree, element => element.type === 'Modal'), undefined);
+        assert.equal(exits, 0);
+        press(get(tree, element => element.props.title === 'Receive'));
+        tree = render.render(child, leaf, props()); render.flush(child);
+        const staleAllowance = get(tree, element => element.props.title === 'Receive Anyway');
+        accountRevision++;
+        tree = render.render(child, leaf, props()); render.flush(child);
+        press(staleAllowance);
+        tree = render.render(child, leaf, props()); render.flush(child);
+        assert.equal(find(tree, element => element.type === 'QRCode'), undefined);
+        const guardedSend = get(tree, element => element.props.title === 'Send');
+        press(get(tree, element => element.props.title === 'Receive'));
+        tree = render.render(child, leaf, props()); render.flush(child);
+        press(get(tree, element => element.props.title === 'Receive Anyway'));
+        tree = render.render(child, leaf, props()); render.flush(child);
+        assert.equal(get(tree, element => element.type === 'QRCode').props.value, account.addresses.ethereum);
+        const footer = get(tree, element => element.type === 'Screen').props.footer as Element;
+        const copy = get(footer, element => element.props.title === 'Copy address');
+        retiredReceiveCopy = copy;
+        await press(copy); await press(get(footer, element => element.props.title === 'Share address'));
+        assert.deepEqual(copied, [account.addresses.ethereum]);
+        assert.equal(shared.length, 1); assert(shared[0]!.includes(account.addresses.ethereum!));
+        press(guardedSend); assert.equal(sent, 1); assert.equal(backupRequests, 6);
+        (get(tree, element => element.type === 'Header').props.onBack as () => void)();
+        await press(copy);
+        assert.equal(copied.length, 1);
+        accountRevision++;
+        tree = render.render(child, leaf, props()); render.flush(child);
+        assert.equal(find(tree, element => element.type === 'QRCode'), undefined);
+        backupRequired = false;
+        tree = render.render(child, leaf, props()); render.flush(child);
+        assert.equal(find(tree, element => element.props.accessibilityLabel === 'Back up your wallet. Protect access if this phone is lost.'), undefined);
+
         tree = render.render(child, leaf, {...props(),onSend:undefined,onSendToken:undefined,onSendCollectible:undefined}); render.flush(child);
         assert.equal(find(tree, element => element.props.title === 'Send'), undefined);
         assert.equal(get(tree, element => element.type === 'NativeTokens').props.onSend, undefined);
@@ -180,6 +266,31 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         tree = render.render(child, leaf, props()); render.flush(child);
         if (kind === 'smart') assert.equal(get(tree, (element) => element.type === 'QRCode').props.value, account.addresses.ethereum);
       }
+      if (kind === 'native') {
+        const originalBackup = backupRequired;
+        backupRequired = true;
+        const unbackedReceive = render.instance();
+        let unbackedTree = render.render(unbackedReceive, leaf, { ...props(), openReceive: true }); render.flush(unbackedReceive);
+        unbackedTree = render.render(unbackedReceive, leaf, { ...props(), openReceive: true }); render.flush(unbackedReceive);
+        assert.equal(find(unbackedTree, element => element.type === 'QRCode'), undefined);
+        assert.equal(get(unbackedTree, element => element.type === 'Modal').props.transparent, true);
+        assert(get(unbackedTree, element => element.props.title === 'Receive Anyway'));
+        render.dispose(unbackedReceive);
+        const continuation = { account: { address: account.addresses.ethereum, network: 'ethereum', revision: accountRevision }, backupAcknowledged: true };
+        const resumed = render.instance(), captured: unknown[] = [];
+        const resumedProps = { ...props(), initialReceive: continuation, onChangeReceiveNetwork(value: unknown) { captured.push(value); } };
+        let resumedTree = render.render(resumed, leaf, resumedProps); render.flush(resumed);
+        assert.equal(get(resumedTree, element => element.type === 'QRCode').props.value, account.addresses.ethereum);
+        const change = get(resumedTree, element => element.props.title === 'Change');
+        press(change);
+        assert.deepEqual(JSON.parse(JSON.stringify(captured)), [continuation]);
+        render.dispose(resumed); press(change); assert.equal(captured.length, 1, 'retired receive cannot open a selector');
+        const stale = render.instance(); accountRevision++;
+        resumedTree = render.render(stale, leaf, { ...props(), initialReceive: continuation }); render.flush(stale);
+        assert.equal(find(resumedTree, element => element.type === 'QRCode'), undefined, 'acknowledgement is bound to the exact old scope');
+        render.dispose(stale); accountRevision--; backupRequired = originalBackup;
+        tree = render.render(child, leaf, props()); render.flush(child);
+      }
       const active = subscriptions.filter((subscription) => !subscription.removed);
       active.forEach((subscription) => subscription.actual.remove());
       active.sort((a, b) => (a.owner === (order === 'parent-first' ? 'parent' : 'child') ? -1 : 1) - (b.owner === (order === 'parent-first' ? 'parent' : 'child') ? -1 : 1));
@@ -190,12 +301,16 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         if (kind === 'activity') {
           render.render(parent, Root, {}); render.flush(parent); assert.equal(shell.tab, 'wallet'); render.dispose(child);
         } else {
-          tree = render.render(child, leaf, props()); render.flush(child); assert.ok(find(tree, (element) => element.props.title === 'Wallet'));
+          tree = render.render(child, leaf, props()); render.flush(child); assert.ok(find(tree, (element) => element.props.title === 'Receive'));
         }
         assert.equal(exits, 0);
         back.dispatch(); assert.equal(exits, 1); assert.equal(back.defaults(), 0);
       } finally {
-        render.dispose(child); render.dispose(parent); back.dispatch(); assert.equal(back.defaults(), 1);
+        render.dispose(child); render.dispose(parent);
+        const before = copied.length;
+        if (retiredReceiveCopy) await press(retiredReceiveCopy);
+        assert.equal(copied.length, before);
+        back.dispatch(); assert.equal(back.defaults(), 1);
       }
     });
   }
@@ -226,7 +341,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
     return { remove() { registration.removed = true; registration.actual.remove(); } };
   } };
   const parent = render.instance(); const child = render.instance();
-  const ui = Object.fromEntries(['Icon', 'PaliMark', 'Button', 'Card', 'Header', 'Notice', 'Screen', 'Text', 'Row', 'Label', 'Coin'].map((name) => [name, name]));
+  const ui = Object.fromEntries(['Icon', 'PaliMark', 'Button', 'Card', 'Header', 'IconButton', 'Notice', 'Screen', 'Text', 'Row', 'Label', 'Coin'].map((name) => [name, name]));
   Object.assign(ui, { colors: {}, styles: {} });
   const native = { Platform: { OS: 'android' }, BackHandler: observedBack,
     AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
@@ -258,6 +373,8 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
     'expo-status-bar': { StatusBar: 'StatusBar' }, 'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', './src/ui': ui,
     './src/screens/Onboarding': onboarding, './src/screens/NativeWallet': {}, './src/screens/WalletAccounts': accounts,
     './src/screens/WatchSession': {}, './src/core/watchAccounts': { WatchAccounts }, './src/core/accountDirectory': {},
+    './src/screens/NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' },
+    './src/notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
     './src/design/Studio': {}, './src/screens/Settings': {}, './src/core/index': core,
     './src/platform': { publicAccountRecords: { assertNetworkCurrent() {}, load: async () => ({ version: 1, records: [], accounts: [], utxoNetworks: UTXO_NETWORKS }), compareAndSet: async () => ({ version: 1, records: [], accounts: [], utxoNetworks: UTXO_NETWORKS }) },
       loadAccountSelection: async () => null, saveAccountSelection: async () => {}, balanceReader: {}, isNativePersistence: false },

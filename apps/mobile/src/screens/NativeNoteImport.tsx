@@ -14,9 +14,11 @@ import type {
 } from '../custody/noteImport';
 import { Button, colors, Header, Notice, Screen, styles, Text } from '../ui';
 import { IdleTextInput } from './IdleActivityBoundary';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 type Props = {
-  openImport(assertCurrent: () => void): Promise<NativeNoteImportRuntime>;
+  openImport(assertCurrent: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeNoteImportRuntime>;
   onBack(): void;
 };
 type State =
@@ -27,6 +29,7 @@ type Owner = {
   live: boolean;
   request?: object;
   importer?: NativeNoteImportRuntime;
+  authentication: NativePrivateAuthenticationScope;
 };
 
 function importError(error: unknown) {
@@ -45,7 +48,7 @@ function importError(error: unknown) {
 }
 
 export function NativeNoteImport({ openImport, onBack }: Props) {
-  const owner = useRef<Owner>({ live: false });
+  const owner = useRef<Owner>({ live: false, authentication: createNativePrivateAuthenticationScope() });
   const close = useRef(onBack);
   useLayoutEffect(() => {
     close.current = onBack;
@@ -54,6 +57,7 @@ export function NativeNoteImport({ openImport, onBack }: Props) {
   const [state, setState] = useState<State>({ phase: 'entry' });
   const retire = useCallback(() => {
     owner.current.live = false;
+    owner.current.authentication.retire();
     void owner.current.importer?.dispose().catch(() => undefined);
     setNote('');
     Keyboard.dismiss();
@@ -63,15 +67,15 @@ export function NativeNoteImport({ openImport, onBack }: Props) {
     close.current();
   }, [retire]);
   useLayoutEffect(() => {
-    const current: Owner = { live: true };
+    const current: Owner = { live: true, authentication: createNativePrivateAuthenticationScope() };
     owner.current = current;
     const hide = back;
     const change = AppState.addEventListener('change', (next) => {
-      if (next !== 'active') hide();
+      if (next !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, next)) hide();
     });
     const blur =
       Platform.OS === 'android'
-        ? AppState.addEventListener('blur', hide)
+        ? AppState.addEventListener('blur', () => { if (!allowsPrivateAuthenticationInterruption(current.authentication, 'blur')) hide(); })
         : undefined;
     const hardwareBack = BackHandler.addEventListener(
       'hardwareBackPress',
@@ -82,6 +86,7 @@ export function NativeNoteImport({ openImport, onBack }: Props) {
     );
     return () => {
       current.live = false;
+      current.authentication.retire();
       void current.importer?.dispose().catch(() => undefined);
       change.remove();
       blur?.remove();
@@ -106,22 +111,23 @@ export function NativeNoteImport({ openImport, onBack }: Props) {
     Keyboard.dismiss();
     const check = () => {
       if (
-        !current.live ||
+        owner.current !== current || !current.live ||
         current.request !== request ||
-        AppState.currentState !== 'active'
+        (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, AppState.currentState))
       )
         throw new Error('privacy_cancelled');
     };
     let importer: NativeNoteImportRuntime | undefined;
     try {
-      importer = await openImport(check);
+      importer = await openImport(check, current.authentication);
       current.importer = importer;
       check();
       const imported = await importer.importNote(raw);
       check();
+      if (AppState.currentState !== 'active') throw new Error('privacy_cancelled');
       setState({ phase: 'saved', note: imported });
     } catch (error) {
-      if (current.live && current.request === request)
+      if (current.live && current.request === request && AppState.currentState === 'active')
         setState({ phase: 'entry', error: importError(error) });
     } finally {
       await importer?.dispose().catch(() => undefined);
@@ -137,7 +143,13 @@ export function NativeNoteImport({ openImport, onBack }: Props) {
         style={s.fill}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Screen>
+        <Screen footer={state.phase === 'saved' ? <Button title="Done" onPress={back} /> : <> <Button
+                title={
+                  state.phase === 'working' ? 'Checking pool…' : 'Import note'
+                }
+                disabled={state.phase !== 'entry' || !note.trim()}
+                onPress={() => void submit()}
+              /> <Button title="Cancel" variant="secondary" onPress={back} /> </>}>
           <Header title="Import private note" onBack={back} />
           {state.phase === 'saved' ? (
             <>
@@ -151,7 +163,7 @@ export function NativeNoteImport({ openImport, onBack }: Props) {
                     : 'Status needs another check'
                 }`}
               />
-              <Button title="Done" onPress={back} />
+
             </>
           ) : (
             <>
@@ -187,14 +199,8 @@ export function NativeNoteImport({ openImport, onBack }: Props) {
                   {state.error}
                 </Text>
               )}
-              <Button
-                title={
-                  state.phase === 'working' ? 'Checking pool…' : 'Import note'
-                }
-                disabled={state.phase !== 'entry' || !note.trim()}
-                onPress={() => void submit()}
-              />
-              <Button title="Cancel" variant="quiet" onPress={back} />
+
+
             </>
           )}
         </Screen>

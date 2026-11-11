@@ -62,7 +62,7 @@ function snapshot(
   return Object.freeze({ account, status, units, updatedAt, ...(pendingDeltaUnits === undefined ? {} : { pendingDeltaUnits }), ...(assets ? { assets } : {}) });
 }
 
-/** Public balance observations, bound to the exact ready custody revision. */
+/** Public balance observations, bound to an authenticated custody revision. Backup-required remains read-only. */
 export class NativePortfolioController {
   private readonly source: PublicCustodySource;
   private readonly reader: BalanceReader;
@@ -88,7 +88,8 @@ export class NativePortfolioController {
     try {
       const current = this.source.getSnapshot();
       if (
-        current.phase !== 'ready' || !current.account ||
+        !['ready', 'backup-required'].includes(current.phase) || !current.account ||
+        current.phase === 'backup-required' && current.backup !== 'unconfirmed' ||
         !Number.isSafeInteger(current.revision) || current.revision < 0
       ) return null;
       const network = this.getUtxoNetwork(current.account.network) ??

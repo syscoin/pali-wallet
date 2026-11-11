@@ -192,6 +192,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
         return t('generalMenu.infoHelp').toUpperCase();
       if (path === '/settings/advanced') return t('settings.advancedTitle');
       if (path === '/settings/languages') return t('generalMenu.languages');
+      if (path === '/settings/local-passkey') return t('localPasskey.title');
       if (path === '/settings/currency') return t('settings.fiatCurrency');
       if (path === '/settings/forget-wallet') return t('generalMenu.forget');
       if (path === '/settings/seed') return t('settings.walletSeedPhrase');

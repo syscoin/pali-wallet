@@ -1,3 +1,8 @@
+import { bindNativePrivateAuthentication, createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
+import { createTestPrivateAuthentication, readTestNoteInventory } from './fixtures/privateAuthentication.ts';
+import { createPrivateVaultSession } from '../../../source/wallet/privateVault.ts';
+import { createTestPinRecordKeyring } from './fixtures/pinOperation.ts';
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -16,10 +21,12 @@ import type { IPrivateNoteStatus } from '../../../source/utils/privacy/privateVa
 import { getPrivacyPool } from '../../../source/utils/privacy/registry.ts';
 import { readPrivateVaultBundle } from '../../../source/wallet/privateVaultInspection.ts';
 
+const pinCredential = createTestPinCredentialPort();
+
 const sdk = await loadNativeKeyringSdk();
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'Public deposit fixture password 1!';
+const PASSWORD = '123456';
 const noop = () => undefined;
 const depositAbi = new Interface(['function deposit(bytes32) payable']);
 
@@ -30,10 +37,37 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   let initialized = false;
   let runtime!: KeyringRuntime;
   let keyring!: InstanceType<typeof sdk.HostKeyring>;
+  let secretLeases = 0, leasesAtBroadcast: number | undefined;
+  let signingFault = false;
+  let privateAccess: { released: Promise<void>; disposed: boolean } | undefined;
+  const credentialRequests: string[] = [];
+  let beforeCredential: () => Promise<void> = async () => {};
+  let beforeNoteEncryption: () => Promise<void> = async () => {};
   class ObservedKeyring extends sdk.HostKeyring {
     constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) {
       super(...args);
       keyring = this;
+    }
+    override withSecretOperation<T>(
+      credential: Parameters<InstanceType<typeof sdk.HostKeyring>['withSecretOperation']>[0],
+      options: Parameters<InstanceType<typeof sdk.HostKeyring>['withSecretOperation']>[1],
+      work: (secret: string) => T | Promise<T>
+    ): Promise<T> { secretLeases++; return super.withSecretOperation(credential, options, work); }
+    override signPreparedEvmTransaction(...args: Parameters<InstanceType<typeof sdk.HostKeyring>['signPreparedEvmTransaction']>) {
+      if (signingFault) throw Error('Synthetic unknown signing fault');
+      return super.signPreparedEvmTransaction(...args);
+    }
+    override async createPrivateRecordAccess(
+      domains: readonly string[], options: Parameters<InstanceType<typeof sdk.HostKeyring>['createPrivateRecordAccess']>[1]
+    ): Promise<Awaited<ReturnType<InstanceType<typeof sdk.HostKeyring>['createPrivateRecordAccess']>>> {
+      const access = await super.createPrivateRecordAccess(domains, options);
+      if (!domains.includes('org.syscoin.pali.privacy.notes.v1')) return access;
+      let release!: () => void;
+      const tracked = { released: new Promise<void>(resolve => { release = resolve; }), disposed: false };
+      privateAccess = tracked;
+      return Object.freeze({ getPrivateRecordProfileId: access.getPrivateRecordProfileId,
+        async encryptPrivateRecord(input: Parameters<typeof access.encryptPrivateRecord>[0]) { await beforeNoteEncryption(); return access.encryptPrivateRecord(input); }, decryptPrivateRecord: access.decryptPrivateRecord,
+        dispose() { access.dispose(); tracked.disposed = true; release(); } });
     }
   }
   let beforeResponse: () => Promise<void> = async () => undefined;
@@ -46,6 +80,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     disposed = 0,
     refreshes = 0;
   const connectionFetch: typeof fetch = async (_url, init) => {
+    assert.equal(keyring.isUnlocked(), false, 'public RPC and broadcast never hold signing keys');
     const { id, method, params } = JSON.parse(String(init?.body));
     let result: unknown;
     if (method === 'eth_chainId') result = '0x1';
@@ -77,6 +112,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
         )
       );
       posted.push(raw);
+      leasesAtBroadcast = secretLeases;
       await beforeResponse();
       if (lost) throw Error('synthetic response lost');
       result = transaction.hash;
@@ -85,7 +121,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       headers: { 'content-type': 'application/json' },
     });
   };
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (request, _signal, check, verify) => { check(); credentialRequests.push(request.purpose); await beforeCredential(); check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null,
     readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
@@ -106,6 +142,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
         },
         async readNote(identity: { poolId: string }) {
           check();
+          assert.equal(keyring.isUnlocked(), false, 'private pool reads use only the authorized record capability');
           assert(!signal.aborted);
           assert.equal(identity.poolId, poolId);
           poolReads.push(poolId);
@@ -138,6 +175,17 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       return storage;
     },
     posted,
+    credentialRequests,
+    get secretLeases() { return secretLeases; },
+    get privateAccess() { return privateAccess; },
+    assertNoSigningKeys() { assert.equal(keyring.isUnlocked(), false); },
+    beforeCredential(callback: () => Promise<void>) { beforeCredential = callback; },
+    failSigning() { signingFault = true; },
+    beforeNoteEncryption(callback: () => Promise<void>) { beforeNoteEncryption = callback; },
+    assertAcknowledgementKeyLifetime() {
+      assert.equal(secretLeases, leasesAtBroadcast, 'post-broadcast private acknowledgement must use only its retained record keys');
+      assert.equal(keyring.isUnlocked(), false);
+    },
     poolReads,
     beforeResponse(callback: () => Promise<void>) {
       beforeResponse = callback;
@@ -148,13 +196,13 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       return (
         await readPrivateVaultBundle(
           row.value,
-          {
+          createPrivateVaultSession({
             generation: 0,
-            keyring,
+            keyring: createTestPinRecordKeyring(storage.pin, pinCredential, keyring, () => PASSWORD, () => { assert(keyring.hasPublicSession()); }),
             assertCurrent() {
-              assert(keyring.isUnlocked());
+              assert(keyring.hasPublicSession());
             },
-          },
+          }),
           undefined,
           'serialized'
         )
@@ -166,11 +214,14 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
         .reserve({ kind: 'select', id }, accounts.getSnapshot()!.revision)
         .execute(noop);
     },
+    async selectNetwork(id: string) {
+      await runtime.networks!.reserve(id, runtime.catalogue.getSnapshot()!.revision).execute(noop);
+    },
     async addAccount() {
       const accounts = runtime.accounts!;
       await accounts
         .reserve(
-          { kind: 'create', label: 'Second', password: PASSWORD },
+          { kind: 'create', label: 'Second',},
           accounts.getSnapshot()!.revision
         )
         .execute(noop);
@@ -206,7 +257,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
 test('native deposit persists its generated note and exact reviewed metadata before actual SDK broadcast', async () => {
   const f = await fixture();
   const lifetime = new AbortController();
-  const operation = await f.runtime.openPrivateDeposit!(lifetime.signal, noop);
+  const operation = await f.runtime.openPrivateDeposit!(lifetime.signal, noop, createTestPrivateAuthentication(noop));
   try {
     await operation.prepare({ poolId: 'eth-1' });
     const view = operation.getSnapshot();
@@ -217,6 +268,7 @@ test('native deposit persists its generated note and exact reviewed metadata bef
     assert(f.poolReads.length > 0, 'operational checks use the real pool reader');
     await operation.confirm(view.review.intentId);
     assert.equal(operation.getSnapshot().phase, 'submitted');
+    f.assertAcknowledgementKeyLifetime();
     assert.equal(f.posted.length, 1);
     await operation.confirm(view.review.intentId);
     assert.equal(f.posted.length, 1);
@@ -224,7 +276,7 @@ test('native deposit persists its generated note and exact reviewed metadata bef
     await operation.refresh();
     assert.equal(operation.getSnapshot().status?.phase, 'verified');
     assert.equal(f.refreshes, 1);
-    const inventory = await f.runtime.readNoteInventory!(noop);
+    const inventory = await readTestNoteInventory(f.runtime, noop);
     assert.equal(inventory.notes.length, 1);
   } finally {
     await operation.dispose();
@@ -236,7 +288,7 @@ test('native deposit persists its generated note and exact reviewed metadata bef
 test('native deposit rejects a positive spent observation before any signature or POST', async () => {
   const f = await fixture();
   f.setStatus({ phase: 'spent', blockNumber: 16 });
-  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop);
+  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
   try {
     await operation.prepare({ poolId: 'eth-1' });
     assert.equal(operation.getSnapshot().phase, 'failed');
@@ -250,7 +302,7 @@ test('native deposit rejects a positive spent observation before any signature o
 test('a lost native deposit response remains unknown with its protected signed recovery hash', async () => {
   const f = await fixture();
   f.loseResponse(true);
-  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop);
+  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
   try {
     await operation.prepare({ poolId: 'eth-1' });
     await operation.confirm(operation.getSnapshot().review!.intentId);
@@ -284,7 +336,7 @@ test('cancelling a held reservation rolls it back before any signature or POST',
       }
     },
   });
-  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop);
+  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
   try {
     await operation.prepare({ poolId: 'eth-1' });
     const confirming = operation.confirm(operation.getSnapshot().review!.intentId);
@@ -293,7 +345,7 @@ test('cancelling a held reservation rolls it back before any signature or POST',
     held.release();
     await Promise.all([confirming, closing]);
     assert.equal(f.posted.length, 0);
-    assert.equal((await f.runtime.readNoteInventory!(noop)).notes.length, 1);
+    assert.equal((await readTestNoteInventory(f.runtime, noop)).notes.length, 1);
   } finally {
     held.release();
     await operation.dispose();
@@ -316,7 +368,7 @@ test('a lost private ACK write quarantines custody while preserving the acknowle
       }
     },
   });
-  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop);
+  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
   try {
     await operation.prepare({ poolId: 'eth-1' });
     await operation.confirm(operation.getSnapshot().review!.intentId);
@@ -336,7 +388,7 @@ test('a lost private ACK write quarantines custody while preserving the acknowle
 test('private saved-byte replay ignores stale cancel and confirm IDs', async () => {
   const f = await fixture();
   f.loseResponse(true);
-  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop);
+  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
   try {
     await operation.prepare({ poolId: 'eth-1' });
     await operation.confirm(operation.getSnapshot().review!.intentId);
@@ -345,29 +397,81 @@ test('private saved-byte replay ignores stale cancel and confirm IDs', async () 
     const replay = f.runtime.transfers!.replay(
       noop,
       {
-        observe: async () => ({ status: 'missing', latestNonce: '0' }),
+        observe: async () => { f.assertNoSigningKeys(); return { status: 'missing', latestNonce: '0' }; },
         dispatch: async (raw, admit) =>
-          admit(
+          { f.assertNoSigningKeys(); return admit(
             () => Promise.resolve(Transaction.from(raw).hash!),
             async () => undefined
-          ),
+          ); },
       },
       { now: () => 1000, randomBytes: (n) => new Uint8Array(n).fill(5) }
     );
-    const prepared = await replay.prepare(hash);
+    const beforeInspect = f.secretLeases;
+    const inspected = await replay.prepare(hash, 'inspect');
+    assert.equal(inspected.status, 'unknown');
+    assert.equal(f.secretLeases, beforeInspect, 'private transaction status is public-only');
+    const prepared = await replay.prepare(hash, 'resend');
+    assert.equal(f.credentialRequests.at(-1), 'private-reconciliation');
+    const beforeRetry = f.secretLeases;
     assert.equal(prepared.status, 'review');
     if (prepared.status !== 'review') throw Error('Expected review');
     const before = f.disposed;
     replay.cancel('stale');
     await assert.rejects(replay.confirm('stale'));
     assert.equal(f.disposed, before);
+    await f.runtime.security!.authenticateOperation({ method: 'pin', pin: PASSWORD }, noop);
     assert.deepEqual(await replay.confirm(prepared.review.id), { status: 'submitted', hash });
+    assert.equal(f.secretLeases, beforeRetry, 'private retry and ACK reuse only their authorized record capability');
+    f.assertNoSigningKeys();
     assert(f.poolReads.length > 0);
   } finally {
     await operation.dispose();
     await f.close();
   }
 });
+
+for (const retirement of ['cancel', 'account-change'] as const)
+  test(retirement === 'cancel' ? 'private replay reconciliation rejects cancel before releasing note or signing keys'
+    : 'private replay reconciliation blocks account changes until its credential prompt retires', { timeout: 30000 }, async () => {
+    const f = await fixture();
+    f.loseResponse(true);
+    const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
+    const release = deferred();
+    try {
+      await operation.prepare({ poolId: 'eth-1' });
+      await operation.confirm(operation.getSnapshot().review!.intentId);
+      const hash = operation.getSnapshot().result!.signedTransactionHash!;
+      await operation.dispose();
+      if (retirement === 'account-change') await f.addAccount();
+      if (retirement === 'account-change') await f.select('hd:60:0');
+      const replay = f.runtime.transfers!.replay(noop, {
+        observe: async () => ({ status: 'missing', latestNonce: '0' }),
+        dispatch: async () => { throw Error('Cancelled reconciliation must not dispatch'); },
+      }, { now: () => 1000, randomBytes: n => new Uint8Array(n).fill(5) });
+      const entered = deferred();
+      const leases = f.secretLeases;
+      f.beforeCredential(async () => { entered.release(); await release.promise; });
+      const preparing = replay.prepare(hash, 'resend');
+      const rejected = assert.rejects(preparing);
+      await entered.promise;
+      if (retirement === 'account-change') {
+        await assert.rejects(f.select('hd:60:1'), /BUSY/);
+        assert.equal(f.runtime.accounts!.getSnapshot()!.active.accountId, 'hd:60:0');
+      }
+      replay.cancel();
+      release.release(); await rejected;
+      assert.equal(f.secretLeases, leases, 'stale consent never opens a secret operation');
+      f.assertNoSigningKeys();
+      assert.equal(f.posted.length, 1);
+      if (retirement === 'account-change') {
+        f.beforeCredential(async () => {});
+        await f.runtime.session.unlock(PASSWORD);
+        f.assertNoSigningKeys();
+        await f.select('hd:60:1');
+        assert.equal(f.runtime.accounts!.getSnapshot()!.active.accountId, 'hd:60:1');
+      }
+    } finally { release.release(); f.beforeCredential(async () => {}); await operation.dispose(); await f.close(); }
+  });
 
 for (const change of ['account', 'lock-unlock'] as const)
   test(`native deposit ACK keeps wallet identity across ${change}`, async () => {
@@ -382,7 +486,7 @@ for (const change of ['account', 'lock-unlock'] as const)
       posted.release();
       await release.promise;
     });
-    const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop);
+    const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
     try {
       await operation.prepare({ poolId: 'eth-1' });
       const confirming = operation.confirm(operation.getSnapshot().review!.intentId);
@@ -406,18 +510,97 @@ for (const change of ['account', 'lock-unlock'] as const)
     }
   });
 
+test('cross-SLIP selection drains the dispatched private ACK before transferring its wallet', async () => {
+  const f = await fixture(), entered = deferred(), release = deferred();
+  let hold = false;
+  f.beforeResponse(async () => { hold = true; });
+  f.beforeNoteEncryption(async () => { if (hold) { hold = false; entered.release(); await release.promise; } });
+  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
+  try {
+    await operation.prepare({ poolId: 'eth-1' });
+    const confirming = operation.confirm(operation.getSnapshot().review!.intentId);
+    await entered.promise;
+    assert.equal(f.posted.length, 1, 'the SDK response precedes the held note acknowledgement');
+    let selected = false;
+    const selecting = f.selectNetwork('bitcoin').then(() => { selected = true; });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(selected, false);
+    assert.equal(f.runtime.networks!.getSelectedId(), 'ethereum');
+    release.release(); await confirming; await selecting;
+    assert.equal(f.runtime.networks!.getSelectedId(), 'bitcoin');
+    await f.selectNetwork('ethereum');
+    const note = (await f.privateNotes())[0]!;
+    assert.equal(note.deposit?.phase, 'submitted');
+    assert.equal(note.deposit?.transactionHash, Transaction.from(f.posted[0]!).hash);
+    assert.equal(f.posted.length, 1); f.assertNoSigningKeys();
+  } finally { release.release(); await operation.dispose(); await f.close(); }
+});
+
 test('already aborted native deposit creation leaves no pool owner', async () => {
   const f = await fixture(),
     abort = new AbortController();
   abort.abort();
   try {
-    await assert.rejects(f.runtime.openPrivateDeposit!(abort.signal, noop));
+    await assert.rejects(f.runtime.openPrivateDeposit!(abort.signal, noop, createTestPrivateAuthentication(noop)));
     assert.equal(f.opened, 0);
   } finally {
     await f.close();
   }
 });
 
+
+test('private replay keeps only its receipt capability after cancellation during dispatch', async () => {
+  const f = await fixture(); f.loseResponse(true);
+  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
+  const entered = deferred(), release = deferred();
+  try {
+    await operation.prepare({ poolId: 'eth-1' });
+    await operation.confirm(operation.getSnapshot().review!.intentId);
+    const hash = operation.getSnapshot().result!.signedTransactionHash!;
+    await operation.dispose();
+    const replay = f.runtime.transfers!.replay(noop, {
+      observe: async () => ({ status: 'missing', latestNonce: '0' }),
+      dispatch: (raw, admit) => admit(async () => {
+        f.assertNoSigningKeys(); entered.release(); await release.promise;
+        return Transaction.from(raw).hash!;
+      }, async () => undefined),
+    }, { now: () => 1000, randomBytes: n => new Uint8Array(n).fill(5) });
+    const prepared = await replay.prepare(hash, 'resend');
+    if (prepared.status !== 'review') throw Error('Expected replay review');
+    const leases = f.secretLeases;
+    const pending = replay.confirm(prepared.review.id);
+    await Promise.race([entered.promise, pending.then(() => { throw Error('Replay did not dispatch'); })]);
+    replay.cancel(); release.release();
+    await pending.catch(() => undefined);
+    assert.equal(f.secretLeases, leases, 'late receipt persistence cannot reopen signing material');
+    f.assertNoSigningKeys();
+    assert.equal((await f.privateNotes())[0]!.deposit?.transactionHash, hash);
+  } finally { release.release(); await operation.dispose(); await f.close(); }
+});
+
+for (const outcome of ['confirmed', 'reverted'] as const)
+  test(`terminal private replay ${outcome} releases its note capability after reconciliation`, async () => {
+    const f = await fixture(); f.loseResponse(true);
+    const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
+    try {
+      await operation.prepare({ poolId: 'eth-1' });
+      await operation.confirm(operation.getSnapshot().review!.intentId);
+      const hash = operation.getSnapshot().result!.signedTransactionHash!;
+      await operation.dispose();
+      const replay = f.runtime.transfers!.replay(noop, {
+        observe: async () => ({ status: 'mined', outcome, block: { hash: '0x' + 'ab'.repeat(32), number: '1' } }),
+        dispatch: async () => { throw Error('Mined records must not dispatch'); },
+      }, { now: () => 1000, randomBytes: n => new Uint8Array(n).fill(5) });
+      const terminal = await replay.prepare(hash, 'resend');
+      assert.equal(terminal.status, outcome);
+      const leases = f.secretLeases;
+      assert(f.privateAccess);
+      await f.privateAccess.released;
+      assert.equal(f.privateAccess.disposed, true);
+      assert.equal(f.secretLeases, leases);
+      f.assertNoSigningKeys();
+    } finally { await operation.dispose(); await f.close(); }
+  });
 
 test('private replay quarantines a failed ACK write even if its pool disposal also fails', async () => {
   let noteWrites = 0, changed = false;
@@ -429,7 +612,7 @@ test('private replay quarantines a failed ACK write even if its pool disposal al
     }
   } });
   f.loseResponse(true);
-  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop);
+  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
   try {
     await operation.prepare({ poolId: 'eth-1' });
     await operation.confirm(operation.getSnapshot().review!.intentId);
@@ -440,7 +623,7 @@ test('private replay quarantines a failed ACK write even if its pool disposal al
       observe: async () => ({ status: 'missing', latestNonce: '0' }),
       dispatch: async (raw, admit) => admit(() => Promise.resolve(Transaction.from(raw).hash!), async () => undefined),
     }, { now: () => 1000, randomBytes: n => new Uint8Array(n).fill(5) });
-    const prepared = await replay.prepare(hash);
+    const prepared = await replay.prepare(hash, 'resend');
     if (prepared.status !== 'review') throw Error('Expected replay review');
     await replay.confirm(prepared.review.id).catch(() => undefined);
     assert.equal(f.runtime.catalogue.getSnapshot(), null);
@@ -448,10 +631,10 @@ test('private replay quarantines a failed ACK write even if its pool disposal al
   } finally { await f.close(); }
 });
 
-test('older replay completion cannot close a newly prepared private reader', { timeout: 5000 }, async () => {
+test('older replay completion cannot close a newly prepared private reader', { timeout: 30000 }, async () => {
   const f = await fixture();
   f.loseResponse(true);
-  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop);
+  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
   try {
     await operation.prepare({ poolId: 'eth-1' });
     await operation.confirm(operation.getSnapshot().review!.intentId);
@@ -466,11 +649,11 @@ test('older replay completion cannot close a newly prepared private reader', { t
         return Transaction.from(raw).hash!;
       }, async () => undefined),
     }, { now: () => 1000, randomBytes: n => new Uint8Array(n).fill(5) });
-    const first = await replay.prepare(hash);
+    const first = await replay.prepare(hash, 'resend');
     if (first.status !== 'review') throw Error('Expected review');
     const old = replay.confirm(first.review.id);
     await Promise.race([posted.promise, old.then(() => { throw Error('Replay did not enter transport'); })]);
-    const next = await replay.prepare(hash);
+    const next = await replay.prepare(hash, 'resend');
     if (next.status !== 'review') throw Error('Expected second review');
     finish.release();
     await old;
@@ -481,7 +664,7 @@ test('older replay completion cannot close a newly prepared private reader', { t
 
 test('aborting during native deposit opening cannot attach late listeners or open a pool', async () => {
   const f = await fixture(), abort = new AbortController();
-  const opening = f.runtime.openPrivateDeposit!(abort.signal, noop);
+  const opening = f.runtime.openPrivateDeposit!(abort.signal, noop, createTestPrivateAuthentication(noop));
   abort.abort();
   try { await assert.rejects(opening); assert.equal(f.opened, 0); }
   finally { await f.close(); }
@@ -493,7 +676,7 @@ for (const poison of [false, true]) test(`a private-note read failure before rep
     if (failRead && kind === 'all' && sql.startsWith("SELECT 'note' AS source")) throw poison ? new WalletStorageError('STORAGE_REOPEN_REQUIRED') : Error('synthetic note read failure');
   } });
   f.loseResponse(true);
-  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop);
+  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
   try {
     await operation.prepare({ poolId: 'eth-1' });
     await operation.confirm(operation.getSnapshot().review!.intentId);
@@ -504,7 +687,7 @@ for (const poison of [false, true]) test(`a private-note read failure before rep
       dispatch: async () => { throw Error('must not broadcast'); },
     }, { now: () => 1000, randomBytes: n => new Uint8Array(n).fill(5) });
     failRead = true;
-    await assert.rejects(replay.prepare(hash));
+    await assert.rejects(replay.prepare(hash, 'resend'));
     assert.equal(f.runtime.catalogue.getSnapshot() === null, poison);
   } finally { failRead = false; await f.close(); }
 });
@@ -516,9 +699,9 @@ test('an imported EVM private key signs the exact native private-deposit review'
   const signer = new Wallet(key);
   let operation: Awaited<ReturnType<NonNullable<KeyringRuntime['openPrivateDeposit']>>> | undefined;
   try {
-    await f.runtime.imports!.reserve({ privateKey: key, label: 'Imported', expectedAddress: signer.address }, PASSWORD, f.runtime.catalogue.getSnapshot()!.revision).execute(noop);
+    await f.runtime.imports!.reserve({ privateKey: key, label: 'Imported', expectedAddress: signer.address }, f.runtime.catalogue.getSnapshot()!.revision, new AbortController().signal, createTestPrivateAuthentication(noop)).execute(noop);
     await f.select('imported:60:0');
-    operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop);
+    operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
     await operation.prepare({ poolId: 'eth-1' });
     const review = operation.getSnapshot().review!;
     assert.equal(review.account.address.toLowerCase(), signer.address.toLowerCase());
@@ -526,4 +709,55 @@ test('an imported EVM private key signs the exact native private-deposit review'
     assert.equal(operation.getSnapshot().phase, 'submitted');
     assert.equal(Transaction.from(f.posted[0]!).from, signer.address);
   } finally { await operation?.dispose(); await f.close(); }
+});
+
+for (const outcome of ['return', 'retire', 'view-abort', 'unknown-fault'] as const) test(`actual private deposit signing prompt ${outcome} preserves exact view ownership`, { timeout: 20000 }, async () => {
+  const f = await fixture();
+  const lifetime = new AbortController();
+  const scope = createNativePrivateAuthenticationScope();
+  let appState = 'active', osPrompt = false, stage = 'opening';
+  const binding = bindNativePrivateAuthentication(scope, { assertCurrent: noop, isPromptActive: () => osPrompt });
+  const guard = () => { if (appState !== 'active' && !(appState === 'inactive' && scope.isAuthenticating())) throw Error('view retired'); };
+  const operation = await f.runtime.openPrivateDeposit!(lifetime.signal, guard, binding);
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let signing: Promise<unknown> | undefined;
+  const bounded = async <T,>(work: Promise<T>): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try { return await Promise.race([work, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(Error(`Timed out at ${stage}`)), 5000); })]); }
+    finally { clearTimeout(timer); }
+  };
+  try {
+    await operation.prepare({ poolId: 'eth-1' });
+    const review = operation.getSnapshot().review;
+    assert(review);
+    f.beforeCredential(async () => {
+      if (f.credentialRequests.at(-1) !== 'transaction') return;
+      stage = 'credential held before SDK signing';
+      osPrompt = true; entered.resolve(); await release.promise;
+    });
+    if (outcome === 'unknown-fault') f.failSigning();
+    signing = operation.confirm(review.intentId).catch(() => undefined);
+    await bounded(entered.promise);
+    assert.equal(scope.isAuthenticating(), true);
+    f.assertNoSigningKeys();
+    appState = 'inactive'; guard();
+    if (outcome === 'retire' || outcome === 'view-abort') {
+      scope.retire();
+      if (outcome === 'view-abort') lifetime.abort();
+      assert.equal(scope.isAuthenticating(), false);
+    }
+    appState = 'active'; osPrompt = false;
+    stage = 'confirmation drain after credential release'; release.resolve();
+    await bounded(signing);
+    assert.equal(scope.isAuthenticating(), false);
+    assert.equal(f.posted.length, outcome === 'return' ? 1 : 0);
+    if (outcome !== 'return') assert.equal(f.runtime.catalogue.getSnapshot(), null);
+    f.assertNoSigningKeys();
+  } finally {
+    release.resolve();
+    if (signing) await bounded(signing);
+    scope.retire(); lifetime.abort();
+    stage = 'controller cleanup'; await bounded(operation.dispose());
+    stage = 'runtime cleanup'; await bounded(f.close());
+  }
 });

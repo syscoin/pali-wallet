@@ -1,3 +1,4 @@
+import type { AssetTransferCall } from '../../../../source/shared/assetTransfer.ts';
 import type { DappEncryptionMethod } from '../../../../source/shared/dappEncryptionRequest.ts';
 import type { SmartAccountModuleRequestMethod } from '../../../../source/shared/smartAccountModuleRequest.ts';
 import type { EvmDappFeeChoice, EvmDappFeeComparison } from '../../../../source/shared/evmDappFeePolicy.ts';
@@ -44,6 +45,7 @@ type NativeSigningReviewBase = Readonly<{
   accountLabel: string;
   address: string;
   networkLabel: string;
+  registrationHash?: string;
   chainId: string;
   expiresAt: number;
   error: NativeMessageReviewError | null;
@@ -89,6 +91,7 @@ export type NativeTransactionReview = NativeSigningReviewBase &
     decimals: number;
     broadcastHash: string | null;
     approval: ApprovalSummary | null;
+    assetTransfer?: AssetTransferCall | null;
     batch?: Readonly<{
       phase: 'preparing' | 'review' | 'submitting' | 'failed' | 'unknown' | 'complete';
       index: number;
@@ -108,6 +111,8 @@ export type NativeSmartTransactionReview = NativeSigningReviewBase &
     operation: NativeSmartAccountOperationSnapshot;
     approval: ApprovalSummary | null;
     batchApprovals?: readonly (ApprovalSummary | null)[];
+    assetTransfer?: AssetTransferCall | null;
+    batchAssetTransfers?: readonly (AssetTransferCall | null)[];
   }>;
 
 export type NativeEncryptionReview = NativeSigningReviewBase & Readonly<{
@@ -134,6 +139,7 @@ export type NativeConnectionsSnapshot = Readonly<{
   }> | null;
   revision: number;
   status: 'locked' | 'ready' | 'pairing' | 'approving' | 'unavailable';
+  pairingExpiresAt: number | null;
   selectedAccountId: string | null;
   accounts: readonly Readonly<{ id: string; label: string; address: string }>[];
   network: Readonly<{ id: string; label: string; chainId: string }> | null;
@@ -142,7 +148,9 @@ export type NativeConnectionsSnapshot = Readonly<{
     name: string;
     origin: string;
     verification: WalletConnectVerification;
+    expiresAt: number | null;
     requiredMethods: readonly string[];
+    methodsByAccount: readonly Readonly<{ accountId: string; methods: readonly string[]; canApprove: boolean }>[];
     canApprove: boolean;
   }>[];
   sessions: readonly Readonly<{
@@ -151,6 +159,9 @@ export type NativeConnectionsSnapshot = Readonly<{
     origin: string;
     accountLabel: string;
     networkLabel: string;
+    address: string | null;
+    expiresAt: number;
+    methods: readonly string[];
     returnTarget: NativeDappReturnTarget | null;
   }>[];
   signingReview: NativeSigningReview | null;
@@ -159,6 +170,8 @@ export type NativeConnectionsSnapshot = Readonly<{
 
 /** Public view commands carry identifiers only, never transport or keyring handles. */
 export type NativeConnectionsView = Readonly<{
+  /** Status only for the exact current request; never grants signing authority. */
+  isRequestAuthenticating(id: string): boolean;
   approveSmartPreparation(id: string, revision: number, externalOwnersAck: boolean): Promise<void>;
   confirmSmartPreparationPayer(id: string, revision: number, payerId: number): Promise<void>;
   retrySmartPreparationMetadata(id: string, revision: number): Promise<void>;
@@ -174,6 +187,7 @@ export type NativeConnectionsView = Readonly<{
   rejectControl(id: string): Promise<void>;
   returnToDapp(id: string, revision: number): Promise<void>;
   callsStatusShown(id: string): Promise<void>;
+  refreshCallsStatus(id: string): Promise<void>;
   dismissCallsStatus(id: string): void;
   getSnapshot(): NativeConnectionsSnapshot;
   subscribe(listener: () => void): () => void;

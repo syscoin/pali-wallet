@@ -1,3 +1,4 @@
+import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, {
   useCallback,
@@ -26,9 +27,14 @@ import type {
   NativeTokenView,
 } from '../portfolio/nativeTokens';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
-import { Button, Card, Coin, colors, Notice, styles, Text } from '../ui';
+import { Button, Card, Coin, colors, Icon, IconButton, Notice, styles, Text } from '../ui';
+import { AssetMarketCard } from '../portfolio/AssetMarketCard';
+import type { NativeNetworkRegistration } from '../custody/networkContext';
 
 type Props = {
+  initialContract?: string;
+  registration?: NativeNetworkRegistration | null;
+  nativeAsset?: React.ReactNode;
   controller: NativeTokenView;
   onReceive(): void;
   onSend?(token: Erc20Metadata): void;
@@ -72,13 +78,17 @@ export function NativeTokens({ controller, ...props }: Props) {
 function TokenContent({
   controller,
   snapshot,
+  registration,
+  nativeAsset,
   onReceive,
   onSend,
   onSendCollectible,
   onBackHandlerChange,
   onModeChange,
+  initialContract,
 }: Props & { snapshot: NativeTokenSnapshot }) {
-  const [route, setRoute] = useState<Route>({ kind: 'list' });
+  const { hidden: hideBalances } = useBalancePrivacy();
+  const [route, setRoute] = useState<Route>(initialContract ? { kind: 'detail', contract: initialContract } : { kind: 'list' });
   const [contract, setContract] = useState('');
   const [localError, setLocalError] = useState('');
   const lifetime = useRef({ alive: false, epoch: 0, running: false });
@@ -96,6 +106,7 @@ function TokenContent({
         )
       : undefined;
   const busy = snapshot.busy || snapshot.previewStatus === 'loading';
+  const hasNativeAsset = nativeAsset != null;
   const canSendToken = !!onSend && !!snapshot.account;
   const title =
     route.kind === 'import'
@@ -108,7 +119,7 @@ function TokenContent({
       ? 'Token details'
       : route.kind === 'remove'
       ? 'Remove token'
-      : 'Tokens';
+      : hasNativeAsset ? 'Assets' : 'Tokens';
   useLayoutEffect(() => {
     onModeChange?.(route.kind === 'list' ? null : title);
     return () => onModeChange?.(null);
@@ -210,7 +221,7 @@ function TokenContent({
     metadata: { decimals: number };
   }) =>
     item.status === 'available' && item.units !== null
-      ? formatTokenUnits(item.units, item.metadata.decimals)
+      ? hideBalances ? HIDDEN_BALANCE : formatTokenUnits(item.units, item.metadata.decimals)
       : item.status === 'loading'
       ? 'Loading…'
       : item.status === 'error'
@@ -220,7 +231,7 @@ function TokenContent({
     <Card style={s.identity}>
       <View style={s.identityTop}>
         <View style={s.coin}>
-          <Coin id="custom-token" size={34} />
+          <Coin id="custom-token" asset={snapshot.network ? { kind: 'evm', chainId: snapshot.network.chainId, contractAddress: metadata.contractAddress, decimals: metadata.decimals } : undefined} registrationHash={registration?.registrationHash} fallbackSymbol={metadata.symbol} size={34} />
         </View>
         <Text style={s.name}>{metadata.name}</Text>
       </View>
@@ -256,10 +267,18 @@ function TokenContent({
           <Text accessibilityRole="header" style={s.title}>
             {title}
           </Text>
+          {route.kind === 'list' && hasNativeAsset && (
+            <View style={s.actionRow}>
+              <Button title="Import token" icon="plus" size="compact" variant="secondary"
+                disabled={busy || snapshot.status !== 'ready'} onPress={openImport} testID="native-token-import" />
+              <IconButton label={snapshot.status === 'loading' ? 'Refreshing tokens' : 'Refresh tokens'} icon="refresh"
+                disabled={busy || snapshot.status === 'loading'} onPress={() => run(() => controller.refresh())} />
+            </View>
+          )}
           {route.kind !== 'list' && (
             <Button
               title={route.kind === 'collectible' ? 'Back to collectibles' : 'Back to tokens'}
-              variant="quiet"
+              variant="secondary" size="compact" icon="arrow-left"
               disabled={snapshot.busy}
               onPress={() => {
                 back();
@@ -268,6 +287,7 @@ function TokenContent({
           )}
         </View>
       )}
+      {route.kind === 'list' && nativeAsset}
       {!snapshot.account || snapshot.status === 'unavailable' ? (
         <Notice
           title="Tokens unavailable"
@@ -277,9 +297,6 @@ function TokenContent({
         <>
           {route.kind === 'list' ? (
             <>
-              <Text style={styles.muted}>
-                Custom tokens for this account on {network.name}.
-              </Text>
               {snapshot.status === 'loading' && (
                 <ActivityIndicator
                   color={colors.pink}
@@ -293,7 +310,7 @@ function TokenContent({
                   tone="amber"
                 />
               ) : snapshot.status === 'ready' && snapshot.items.length === 0 ? (
-                <Notice
+                hasNativeAsset ? <Text style={s.provenance}>No custom tokens added</Text> : <Notice
                   title="No custom tokens added"
                   body="Add a token by its contract address on this network."
                 />
@@ -314,41 +331,22 @@ function TokenContent({
                 >
                   <Card style={s.tokenRow}>
                     <View style={s.identityTop}>
-                      <View style={s.coin}>
-                        <Coin id="custom-token" size={32} />
-                      </View>
+                      <Coin id="custom-token" asset={snapshot.network ? { kind: 'evm', chainId: snapshot.network.chainId, contractAddress: item.metadata.contractAddress, decimals: item.metadata.decimals } : undefined} registrationHash={registration?.registrationHash} size={34} fallbackSymbol={item.metadata.symbol} />
                       <View style={s.tokenName}>
                         <Text style={s.name}>{item.metadata.name}</Text>
-                        <Text style={styles.muted}>
-                          {item.metadata.symbol} · {network.name}
-                        </Text>
+                        <Text style={s.provenance}>{item.metadata.symbol}</Text>
                       </View>
+                      <Text style={s.rowBalance} testID="native-token-row-balance">{balance(item)}</Text>
                     </View>
-                    <Text style={s.balance} testID="native-token-row-balance">
-                      {balance(item)}
-                    </Text>
-
                   </Card>
                 </IdlePressable>
               ))}
-              <Button
-                title="Import token"
-                icon="plus"
-                disabled={busy || snapshot.status !== 'ready'}
-                onPress={openImport}
-                testID="native-token-import"
-              />
-              <Button
-                title={
-                  snapshot.status === 'loading'
-                    ? 'Refreshing tokens…'
-                    : 'Refresh tokens'
-                }
-                icon="refresh"
-                variant="secondary"
-                disabled={busy || snapshot.status === 'loading'}
-                onPress={() => run(() => controller.refresh())}
-              />
+              {!hasNativeAsset && <View style={s.actionRow}>
+                <Button title="Import token" icon="plus" size="compact" variant="secondary"
+                  style={s.action} disabled={busy || snapshot.status !== 'ready'} onPress={openImport} testID="native-token-import" />
+                <IconButton label={snapshot.status === 'loading' ? 'Refreshing tokens' : 'Refresh tokens'} icon="refresh"
+                  disabled={busy || snapshot.status === 'loading'} onPress={() => run(() => controller.refresh())} />
+              </View>}
               {(discovery || snapshot.canCheckCollectible || !!snapshot.collectibles?.length) && (
                 <Button
                   title="Collectibles"
@@ -372,6 +370,7 @@ function TokenContent({
                   const label = id === undefined ? 'Saved collection' : `Saved token ${id}`;
                   return (
                     <Card key={`${item.contractAddress}:${id ?? ''}`} style={s.tokenRow}>
+                      <Coin id="collectible" asset={snapshot.network ? { kind: 'evm', chainId: snapshot.network.chainId, contractAddress: item.contractAddress } : undefined} registrationHash={registration?.registrationHash} fallbackSymbol="NFT" size={32} />
                       <Text style={s.name}>{label}</Text>
                       <Text style={styles.muted}>{item.tokenStandard}</Text>
                       <Text selectable style={s.contract}>{item.contractAddress}</Text>
@@ -381,7 +380,7 @@ function TokenContent({
                         style={s.collectibleLink}
                         onPress={() => openCollectible({ source: 'saved', item })}
                       >
-                        <Text style={s.provenance}>View collectible ›</Text>
+                        <Text style={s.collectibleAction}>View collectible</Text><Icon name="chevron-right" size={18} color={colors.text} />
                       </IdlePressable>
                     </Card>
                   );
@@ -405,17 +404,18 @@ function TokenContent({
               {discovery?.collectibles?.map((item) => {
                 const { contractAddress, name, tokenStandard, tokenId, units } = item;
                 return <Card key={`${contractAddress}:${tokenId ?? ''}`} style={s.tokenRow}>
+                  <Coin id="collectible" asset={snapshot.network ? { kind: 'evm', chainId: snapshot.network.chainId, contractAddress } : undefined} registrationHash={registration?.registrationHash} fallbackSymbol="NFT" size={32} />
                   <Text style={s.name}>{name}</Text>
                   <Text style={styles.muted}>{tokenStandard}</Text>
                   <Text selectable style={s.contract}>{contractAddress}</Text>
                   {tokenId !== undefined && <Text selectable style={s.contract}>Token ID {tokenId}</Text>}
                   <Text selectable style={s.contract}>
-                    {tokenStandard === 'ERC-721' ? 'Items reported' : 'Quantity reported'}: {units}
+                    {tokenStandard === 'ERC-721' ? 'Items reported' : 'Quantity reported'}: {hideBalances ? HIDDEN_BALANCE : units}
                   </Text>
                   {snapshot.canCheckCollectible && <IdlePressable accessibilityRole="button"
                     accessibilityLabel={`View ${name} ${tokenId === undefined ? 'collection' : `token ${tokenId}`}`}
                     style={s.collectibleLink}
-                    onPress={() => openCollectible({ source: 'explorer', item })}><Text style={s.provenance}>View collectible ›</Text></IdlePressable>}
+                    onPress={() => openCollectible({ source: 'explorer', item })}><Text style={s.collectibleAction}>View collectible</Text><Icon name="chevron-right" size={18} color={colors.text} /></IdlePressable>}
                 </Card>;
               })}
               {discovery?.limited && <Text style={styles.muted}>Showing up to 20 results.</Text>}
@@ -440,6 +440,8 @@ function TokenContent({
               network={network.name}
               busy={busy}
               canCheck={snapshot.canCheckCollectible === true}
+              enumerate={snapshot.canEnumerateCollectible ? (query, signal) =>
+                controller.enumerateCollectible(route.account, query, signal) : undefined}
               check={(query, signal) => route.source === 'explorer'
                 ? controller.checkCollectible(route.item, query.tokenId, signal)
                 : route.source === 'saved'
@@ -576,13 +578,13 @@ function TokenContent({
                   {identity}
                   <Text
                     style={s.balance}
-                    accessibilityLabel={`Token balance ${formatTokenUnits(
+                    accessibilityLabel={hideBalances ? 'Balance hidden' : `Token balance ${formatTokenUnits(
                       snapshot.preview.units,
                       snapshot.preview.metadata.decimals
                     )}`}
                     testID="native-token-preview-balance"
                   >
-                    {formatTokenUnits(
+                    {hideBalances ? HIDDEN_BALANCE : formatTokenUnits(
                       snapshot.preview.units,
                       snapshot.preview.metadata.decimals
                     )}{' '}
@@ -621,6 +623,18 @@ function TokenContent({
                 </>
               )}
             </>
+          ) : !token && snapshot.status === 'loading' ? (
+            <ActivityIndicator color={colors.pink} accessibilityLabel="Loading saved tokens" />
+          ) : !token && snapshot.status === 'error' ? (
+            <>
+              <Notice
+                title="Saved tokens unavailable"
+                body="Your saved token list has been preserved. Retry to load it again."
+                tone="amber"
+              />
+              <Button title="Retry" icon="refresh" variant="secondary" disabled={busy}
+                onPress={() => run(() => controller.refresh())} />
+            </>
           ) : !token ? (
             <Notice
               title="Token is no longer in this list"
@@ -628,9 +642,9 @@ function TokenContent({
             />
           ) : (
             <>
-              {identity}
               {route.kind === 'remove' ? (
                 <>
+                  {identity}
                   <Notice
                     title="Remove from this token list?"
                     body="This removes the saved token entry for this account and network. Your funds stay at this address, and you can add the contract again."
@@ -670,9 +684,12 @@ function TokenContent({
                 </>
               ) : (
                 <>
+                  <View style={s.assetHero}>
+                    <Coin id="custom-token" asset={snapshot.network ? { kind: 'evm', chainId: snapshot.network.chainId, contractAddress: token.metadata.contractAddress, decimals: token.metadata.decimals } : undefined} registrationHash={registration?.registrationHash} size={44} fallbackSymbol={token.metadata.symbol} />
+                    <Text style={s.name}>{token.metadata.name}</Text>
                   <Text
                     style={s.balance}
-                    accessibilityLabel={`Token balance ${balance(token)}`}
+                    accessibilityLabel={hideBalances ? 'Balance hidden' : `Token balance ${balance(token)}`}
                     testID="native-token-detail-balance"
                   >
                     {balance(token)}
@@ -689,20 +706,21 @@ function TokenContent({
                       })}
                     </Text>
                   )}
+                  </View>
                   {!canSendToken && <Notice
                     title="Receive only"
                     body="Sending this token is not available in this build."
                   />}
-                  {canSendToken && <Button title="Send token" icon="arrow-up-right" disabled={busy}
-                    onPress={() => onSend?.(token.metadata)} />}
-                  <Button
-                    title="Receive token"
-                    icon="arrow-down-left"
-                    disabled={busy}
-                    onPress={onReceive}
-                  />
+                  <View style={s.actionRow}>
+                    {canSendToken && <Button title="Send" icon="arrow-up-right" size="compact" style={s.action} disabled={busy}
+                      onPress={() => onSend?.(token.metadata)} />}
+                    <Button title="Receive" icon="arrow-down-left" size="compact" style={s.action} variant="secondary" disabled={busy} onPress={onReceive} />
+                  </View>
+                  <AssetMarketCard asset={{ kind: 'token', networkId: snapshot.account.network, contractAddress: token.metadata.contractAddress, registration }} />
+                  {identity}
                   <Button
                     title="Refresh token balance"
+                    size="compact"
                     icon="refresh"
                     variant="secondary"
                     disabled={busy || token.status === 'loading'}
@@ -714,7 +732,7 @@ function TokenContent({
                   />
                   <Button
                     title="Remove token"
-                    variant="quiet"
+                    variant="danger" size="compact" icon="trash"
                     disabled={busy}
                     onPress={() =>
                       setRoute({
@@ -751,17 +769,19 @@ function TokenContent({
 
 const collectibleStandards = ['ERC-721', 'ERC-1155'] as const;
 
-function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, onRemove, onSend, onLeaveChange }: {
+export function CollectibleOwnership({ item, network, check, enumerate, busy, canCheck, onSave, onRemove, onSend, onLeaveChange }: {
   item: OwnedCollectibleSuggestion | SavedCollectible | null;
   network: string;
   busy: boolean;
   canCheck: boolean;
   check(query: CollectibleQuery, signal: AbortSignal): ReturnType<NativeTokenView['checkCollectible']>;
+  enumerate?(query: { contractAddress: string; tokenStandard: 'ERC-721' }, signal: AbortSignal): ReturnType<NativeTokenView['enumerateCollectible']>;
   onSave(ticket: CollectibleSaveTicket): Promise<void>;
   onRemove?(): Promise<void>;
   onSend?(): void;
   onLeaveChange(leave: (() => void) | null): void;
 }) {
+  const { hidden: hideBalances } = useBalancePrivacy();
   const fixedId = item && 'tokenId' in item ? item.tokenId : undefined;
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [draft, setDraft] = useState<{
@@ -770,6 +790,13 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
     tokenStandard: CollectibleQuery['tokenStandard'] | null;
   }>({ contractAddress: item?.contractAddress ?? '', tokenId: fixedId ?? '', tokenStandard: item?.tokenStandard ?? null });
   const currentDraft = useRef(draft);
+  type Enumeration = { kind: 'idle' | 'loading' | 'error' } | {
+    kind: 'ready'; draft: typeof draft; tokenIds: readonly string[]; hasMore: boolean; method: 'enumeration' | 'manual'; totalOwned?: string;
+  };
+  const [enumeration, setEnumeration] = useState<Enumeration>({ kind: 'idle' });
+  const enumerationRequest = useRef<AbortController | null>(null);
+  const enumerationResult = useRef<Extract<Enumeration, { kind: 'ready' }> | null>(null);
+  const autoEnumerated = useRef<{ item: NonNullable<typeof item> } | null>(null);
   const [result, setResult] = useState<
     | { kind: 'idle' | 'loading' | 'error' }
     | { kind: 'invalid'; message: string }
@@ -778,18 +805,25 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
   const active = useRef<AbortController | null>(null);
   const reviewed = useRef<{ request: AbortController; ticket: CollectibleSaveTicket } | null>(null);
   const alive = useRef(false);
-  const cancel = useCallback(() => {
+  const cancel = useCallback((preserveEnumeration = false) => {
     const request = active.current;
     active.current = null;
     request?.abort();
     const review = reviewed.current;
     reviewed.current = null;
     review?.request.abort();
+    if (!preserveEnumeration) {
+      const enumeration = enumerationRequest.current;
+      enumerationRequest.current = null;
+      enumeration?.abort();
+      enumerationResult.current = null;
+    }
   }, []);
   useLayoutEffect(() => {
     alive.current = true;
     const leave = () => {
       alive.current = false;
+      autoEnumerated.current = null;
       cancel();
     };
     onLeaveChange(leave);
@@ -805,11 +839,14 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
     currentDraft.current = next;
     setDraft(next);
     setResult({ kind: 'idle' });
+    setEnumeration({ kind: 'idle' });
   };
-  const read = async () => {
-    if (!alive.current || active.current || busy || !canCheck) return;
-    cancel();
-    const { contractAddress: address, tokenId: id, tokenStandard } = currentDraft.current;
+  const read = async (selected?: CollectibleQuery) => {
+    if (!alive.current || active.current || enumerationRequest.current || busy || !canCheck) return;
+    const preserveEnumeration = enumerationResult.current?.draft === currentDraft.current;
+    cancel(preserveEnumeration);
+    if (!preserveEnumeration) setEnumeration({ kind: 'idle' });
+    const { contractAddress: address, tokenId: id, tokenStandard } = selected ?? currentDraft.current;
     if (!tokenStandard) return;
     let contractAddress: string, tokenId: string;
     try { contractAddress = normalizeErc20Address(address.trim()); }
@@ -832,6 +869,50 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
       if (active.current === request) active.current = null;
     }
   };
+  const findTokenIds = async () => {
+    if (!alive.current || busy || active.current || enumerationRequest.current || !enumerate) return;
+    const selected = currentDraft.current;
+    if (selected.tokenStandard !== 'ERC-721' || fixedId !== undefined) return;
+    let contractAddress: string;
+    try { contractAddress = normalizeErc20Address(selected.contractAddress.trim()); }
+    catch { setResult({ kind: 'invalid', message: 'Enter a valid contract address.' }); return; }
+    cancel();
+    setResult({ kind: 'idle' });
+    const request = new AbortController();
+    enumerationRequest.current = request;
+    setEnumeration({ kind: 'loading' });
+    Keyboard.dismiss();
+    try {
+      const result = await enumerate({ contractAddress, tokenStandard: 'ERC-721' }, request.signal);
+      if (!alive.current || enumerationRequest.current !== request || currentDraft.current !== selected) return;
+      const next = { kind: 'ready' as const, draft: selected, ...result };
+      enumerationResult.current = next;
+      setEnumeration(next);
+    } catch {
+      if (alive.current && enumerationRequest.current === request) setEnumeration({ kind: 'error' });
+    } finally {
+      if (enumerationRequest.current === request) enumerationRequest.current = null;
+      request.abort();
+    }
+  };
+  const selectTokenId = (listing: Extract<Enumeration, { kind: 'ready' }>, tokenId: string) => {
+    if (!alive.current || busy || active.current || enumerationResult.current !== listing || currentDraft.current !== listing.draft || !listing.tokenIds.includes(tokenId)) return;
+    const selected = { contractAddress: listing.draft.contractAddress, tokenStandard: 'ERC-721' as const, tokenId };
+    currentDraft.current = selected;
+    setDraft(selected);
+    const next = { ...listing, draft: selected };
+    enumerationResult.current = next;
+    setEnumeration(next);
+    void read(selected);
+  };
+  useEffect(() => {
+    if (!alive.current || !item || item.tokenStandard !== 'ERC-721' || fixedId !== undefined || !enumerate || busy || autoEnumerated.current?.item === item) return;
+    const request = { item };
+    autoEnumerated.current = request;
+    void Promise.resolve().then(() => {
+      if (alive.current && autoEnumerated.current === request) return findTokenIds();
+    });
+  });
   return <View style={s.section} testID="native-collectible-ownership">
     {item ? <Card style={s.tokenRow}>
       {'name' in item && <Text style={s.provenance}>Explorer-reported name</Text>}
@@ -877,9 +958,9 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
         </View>
       </View>
     </>}
-    {!confirmRemove && onSend && <Button title="Send collectible" icon="arrow-up-right" disabled={busy || result.kind === 'loading'}
+    {!confirmRemove && onSend && <Button title="Send collectible" icon="arrow-up-right" disabled={busy || result.kind === 'loading' || enumeration.kind === 'loading'}
       onPress={() => {
-        if (!alive.current || active.current || busy) return;
+        if (!alive.current || active.current || enumerationRequest.current || busy) return;
         cancel();
         setResult({ kind: 'idle' });
         onSend();
@@ -891,14 +972,34 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
         keyboardType="number-pad" autoCapitalize="none" autoCorrect={false}
         maxLength={256} style={s.input} />
     </View>}
+    {!confirmRemove && enumerate && draft.tokenStandard === 'ERC-721' && fixedId === undefined && <>
+      <Button title={enumeration.kind === 'loading' ? 'Finding token IDs…' : enumeration.kind === 'ready' ? 'Refresh token IDs' : 'Find token IDs'} variant="secondary"
+        disabled={busy || !draft.contractAddress.trim() || result.kind === 'loading' || enumeration.kind === 'loading'} onPress={() => void findTokenIds()} />
+      {enumeration.kind === 'loading' && <ActivityIndicator color={colors.pink} accessibilityLabel="Finding token IDs" />}
+      {enumeration.kind === 'error' && <Notice title="Token IDs unavailable" body="The network couldn’t list token IDs. Try again or enter a token ID manually." tone="amber" />}
+      {enumeration.kind === 'ready' && <Card style={s.tokenRow} testID="native-collectible-enumeration">
+        {enumeration.totalOwned !== undefined && <Text selectable style={s.contract} testID="native-collection-balance"
+          accessibilityLabel={hideBalances ? 'Collection balance hidden' : `Collection balance: ${enumeration.totalOwned} NFTs`}>
+          Collection balance: {hideBalances ? HIDDEN_BALANCE : `${enumeration.totalOwned} NFTs`}
+        </Text>}
+        {enumeration.method === 'manual' ? <Text style={styles.muted}>Token ID lookup is unavailable. Enter a token ID manually.</Text>
+          : !enumeration.tokenIds.length ? <Text style={styles.muted}>No token IDs found for this account. You can still enter a token ID manually.</Text>
+          : <>
+            <Text style={styles.muted}>Choose a token ID to check ownership.</Text>
+            {enumeration.tokenIds.map(tokenId => <Button key={tokenId} title={`Token ID ${tokenId}`} variant="secondary" size="compact"
+              icon={draft.tokenId === tokenId ? 'check' : undefined} disabled={busy || result.kind === 'loading'} onPress={() => selectTokenId(enumeration, tokenId)} />)}
+            {enumeration.hasMore && <Text style={styles.muted}>Showing the first 10 token IDs. Enter another token ID manually.</Text>}
+          </>}
+      </Card>}
+    </>}
     {result.kind === 'invalid' && <Text accessibilityRole="alert" style={s.error}>{result.message}</Text>}
     {result.kind === 'error' && <Notice title="Ownership unavailable" body="The network couldn’t confirm this item. Try again." tone="amber" />}
     {result.kind === 'ready' && <Text selectable accessibilityLiveRegion="polite" testID="native-collectible-quantity">
-      {draft.tokenStandard === 'ERC-721' ? (result.units === '0' ? 'This account doesn’t own this item.' : 'This account owns this item.') : `Quantity on network: ${result.units}`}
+      {hideBalances ? 'Balance hidden' : draft.tokenStandard === 'ERC-721' ? (result.units === '0' ? 'This account doesn’t own this item.' : 'This account owns this item.') : `Quantity on network: ${result.units}`}
     </Text>}
     {!confirmRemove && canCheck && <Button title={result.kind === 'loading' ? 'Checking ownership…' : 'Check ownership'}
       variant={onSend ? 'secondary' : 'primary'}
-      disabled={busy || !draft.contractAddress.trim() || !draft.tokenId.trim() || !draft.tokenStandard || result.kind === 'loading'}
+      disabled={busy || !draft.contractAddress.trim() || !draft.tokenId.trim() || !draft.tokenStandard || result.kind === 'loading' || enumeration.kind === 'loading'}
       onPress={() => void read()} />}
     {result.kind === 'loading' && <ActivityIndicator color={colors.pink} accessibilityLabel="Checking ownership" />}
     {result.kind === 'ready' && result.alreadySaved && <Text style={styles.muted}>Already in your saved list.</Text>}
@@ -913,17 +1014,22 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
     {onRemove && (confirmRemove ? <>
       <Notice title="Remove this collectible?" body="It will be removed from your saved list. Its ownership won’t change." />
       <Button title="Remove from saved list" variant="danger" disabled={busy} onPress={() => void onRemove()} />
-      <Button title="Cancel" variant="quiet" disabled={busy} onPress={() => setConfirmRemove(false)} />
-    </> : <Button title="Remove collectible" variant="quiet" disabled={busy} onPress={() => {
+      <Button title="Cancel" variant="secondary" size="compact" disabled={busy} onPress={() => setConfirmRemove(false)} />
+    </> : <Button title="Remove collectible" variant="danger" size="compact" icon="trash" disabled={busy} onPress={() => {
       cancel();
       setResult({ kind: 'idle' });
+      setEnumeration({ kind: 'idle' });
       setConfirmRemove(true);
     }} />)}
   </View>;
 }
 
 const s = StyleSheet.create({
-  section: { gap: 16 },
+  section: { gap: 12 },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  action: { flex: 1, minWidth: 0, paddingHorizontal: 10 },
+  assetHero: { alignItems: 'center', gap: 8, paddingVertical: 8 },
+  rowBalance: { fontSize: 14, lineHeight: 21, fontWeight: '600', textAlign: 'right', maxWidth: '45%', flexShrink: 1 },
   heading: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -967,12 +1073,13 @@ const s = StyleSheet.create({
   identity: { padding: 18, gap: 10 },
   identityTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   name: { fontSize: 17, lineHeight: 25, fontWeight: '600', flexShrink: 1 },
-  tokenRow: { padding: 16, gap: 9 },
-  collectibleLink: { minHeight: 44, justifyContent: 'center' },
+  tokenRow: { padding: 14, gap: 8 },
+  collectibleLink: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.raised },
+  collectibleAction: { color: colors.text, fontSize: 14, lineHeight: 20, fontWeight: '600' },
   tokenName: { gap: 3, flex: 1 },
   contract: { fontSize: 13, lineHeight: 22 },
   rowContract: { fontSize: 11, lineHeight: 18, color: colors.muted },
-  balance: { fontSize: 22, lineHeight: 32, fontWeight: '600', flexShrink: 1 },
+  balance: { textAlign: 'center', fontSize: 26, lineHeight: 36, fontWeight: '600', flexShrink: 1 },
   provenance: { color: colors.muted, fontSize: 12, lineHeight: 19 },
   error: { color: colors.red, fontSize: 14, lineHeight: 22 },
 });

@@ -11,6 +11,7 @@ const react = { createElement: (type: string, props: object, ...children: Elemen
 const dependencies: Record<string, unknown> = {
   './IdleActivityBoundary': { IdlePressable: 'IdlePressable' }, react,
   '../platform/localization': nativeTranslationFixture,
+  '../updates/service': { mobileUpdates: { getSnapshot: () => ({ release: null }), subscribe: () => () => undefined } },
   'react-native': { StyleSheet: { create: (value: unknown) => value }, View: 'View' },
   'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
   '../ui': { colors: {}, Header: 'Header', Icon: 'Icon', Notice: 'Notice', Screen: 'Screen', Text: 'Text' },
@@ -32,5 +33,7 @@ for (const watchOnly of [false, true]) test(`actual ${watchOnly ? 'watch' : 'cus
     ? 'Transaction history for this watch account is not available on the selected network yet. Balance and receive remain available.'
     : 'Transaction history is unavailable right now. Your account and receive address remain available.');
   assert.doesNotMatch(notice.props.body, /Ethereum|no transactions|empty/i);
-  assert.equal(header.props.subtitle, 'Current account · Current network'); header.props.onBack(); assert.equal(back, 1);
+  assert.equal(header.props.subtitle, 'Current account · Current network');
+  assert.equal(header.props.onBack, undefined, 'Activity is a bottom-tab root');
+  assert.equal(back, 0);
 });

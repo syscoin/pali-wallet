@@ -15,7 +15,6 @@ type Ports = Readonly<{
   imported: boolean;
   network: UtxoNetwork;
   readJson(url: string, limit: number, check: () => void): Promise<unknown>;
-  readPrivateAccount(password: string, check: () => void): Promise<string>;
 }>;
 
 /** Selected-account adapter for the same public-path and authenticated-key checks. */
@@ -65,23 +64,22 @@ export function createNativeSentryWalletAuthority(ports: Ports) {
           canDeferSentryWifMatch(address, addressScope))
       );
     },
-    async resolve(
-      params: { address: string; password: string },
+    async prepare(
+      address: string,
       purpose: 'management' | 'voting'
     ) {
-      const found = await find(params.address);
+      const found = await find(address);
       check();
       if (
         !found ||
         (found.path === undefined &&
-          !canDeferSentryWifMatch(params.address, addressScope))
+          !canDeferSentryWifMatch(address, addressScope))
       )
         return undefined;
-      let privateKey = await ports.readPrivateAccount(params.password, check);
-      try {
+      return (privateKey: string) => {
         check();
         const result = deriveSentryWalletAuthority(
-          params.address,
+          address,
           found.path ?? null,
           privateKey,
           addressScope,
@@ -89,9 +87,7 @@ export function createNativeSentryWalletAuthority(ports: Ports) {
         );
         check();
         return result;
-      } finally {
-        privateKey = '';
-      }
+      };
     },
     async owns(outpoint: { txid: string; vout: number }) {
       check();

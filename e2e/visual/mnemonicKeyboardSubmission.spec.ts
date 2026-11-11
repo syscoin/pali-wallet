@@ -13,6 +13,7 @@ import {
 import { PaliWallet } from '../harness/pali';
 import { extensionEvidence } from '../harness/testDappConformance';
 import { startUtxoFixtureServer } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // Deterministic disposable entropy, never used to create a wallet. Keep the
 // phrase out of screenshots, traces, video, ARIA failure context and evidence.
@@ -100,7 +101,9 @@ const enabled = async (locator: Locator, expected: boolean) => {
       wallet.context.once('close', () => {
         contextClosed = true;
       });
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         const url = new URL(request.url());
         if (['http:', 'https:'].includes(url.protocol))
           deniedHttp.push(`${request.method()} ${url.origin}${url.pathname}`);
@@ -137,7 +140,7 @@ const enabled = async (locator: Locator, expected: boolean) => {
         const observed = {
           validations: 0,
           forbidden: [] as string[],
-          events: [] as { type: string; defaultPrevented: boolean }[],
+          events: [] as { defaultPrevented: boolean; type: string }[],
         };
         (chrome.runtime.sendMessage as any) = (...args: any[]) => {
           const message = args[0];

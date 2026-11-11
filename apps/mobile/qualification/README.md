@@ -508,7 +508,7 @@ Strict report fields contain only the imported account identity, three chain IDs
 
 ### Exact SDK and simulator selection
 
-For an official SDK, configuration matches the installed package name and version to the exact manifest pin. A local Speed Up review archive must also match its manifest path, npm lock version and SHA-512 integrity. Configuration compares the installed package files byte for byte with the archive and adds its SHA-256 to the SDK identity embedded in the fixture. The loaded SDK must match the embedded package version, and the host validates the reported identity against the current checkout.
+Configuration matches the installed SDK package name and version to the exact manifest pin. Local archives, source URLs, tags and version ranges are rejected. Package installation uses the committed lockfile integrity, and qualification records bind the lockfile hash. The SDK identity combines the exact package version with the verified QuickCrypto patch identity; the loaded SDK must match the embedded version, and the host validates the reported identity against the current checkout. The separate WalletConnect patch identity and byte-verification gates also remain required.
 
 The local iOS runner selects the newest available standard iOS runtime and an installed iPhone device type. PALI_IOS_SIMULATOR_RUNTIME and PALI_IOS_SIMULATOR_DEVICE_TYPE can select exact installed identities; an unavailable explicit selection fails instead of falling back. The hosted workflow intentionally pins iOS26.5, while a local27.2 run binds its refusal report to27.2. Simulator refusal still proves no custody. All Node qualification commands use the existing shared-source dependency resolver so the mobile-only npm installation is authoritative.
 

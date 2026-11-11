@@ -17,7 +17,7 @@ import { clearTokenIconCache } from 'components/TokenIcon';
 import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { selectActiveAccountAssets } from 'state/vault/selectors';
 import { ellipsis } from 'utils/format';
-import { getKnownTokenLogo, getTokenLogo } from 'utils/tokens';
+import { getKnownTokenLogo } from 'utils/tokens';
 
 import {
   compactBridgeNativeOffset,
@@ -559,7 +559,7 @@ it.each([
 
 it('shows the canonical SYSX icon beside its amount without importing the token', async () => {
   const transaction = tokenTransaction();
-  const officialLogo = getKnownTokenLogo(undefined, undefined, '123456')!;
+  const officialLogo = getKnownTokenLogo(undefined, undefined, '123456', 57)!;
   mockEmitter.mockResolvedValue(transaction);
   expect(selectActiveAccountAssets(mockState).syscoin).toEqual([]);
 
@@ -582,13 +582,43 @@ it('shows the canonical SYSX icon beside its amount without importing the token'
   expect(shine.classList.contains('pointer-events-none')).toBe(true);
   expect(shine.classList.contains('group-hover:opacity-100')).toBe(true);
   expect(shine.classList.contains('motion-reduce:transition-none')).toBe(true);
-  expect(mockIconFetch).toHaveBeenCalledWith(officialLogo);
+  expect(mockIconFetch).not.toHaveBeenCalled();
+});
+
+it('does not brand SYSX history with a conflicting six-decimal precision', async () => {
+  const transaction = tokenTransaction();
+  (transaction.accountAssetTransfers as any)[0].decimals = 6;
+  (transaction.tokenTransfers as any)[0].decimals = 6;
+  const officialLogo = getKnownTokenLogo(
+    undefined,
+    undefined,
+    '123456',
+    57,
+    8
+  )!;
+  setAccountAssets([
+    {
+      assetGuid: '123456',
+      chainId: 57,
+      symbol: 'SYSX',
+      image: officialLogo,
+      decimals: 8,
+    },
+  ]);
+  mockEmitter.mockResolvedValue(transaction);
+  render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
+
+  const amount = await screen.findByText('100.0000 SYSX');
+  expect(
+    amount.parentElement!.querySelector(`img[src="${officialLogo}"]`)
+  ).toBeNull();
+  expect(mockIconFetch).not.toHaveBeenCalledWith(officialLogo);
 });
 
 it.each(['syscoinburntoallocation', 'SPTSyscoinBurnToAssetAllocation'])(
   'shows the canonical native-burn icon for %s without assetInfo or tokenTransfers',
   async (tokenType) => {
-    const officialLogo = getKnownTokenLogo(undefined, undefined, '123456')!;
+    const officialLogo = getKnownTokenLogo(undefined, undefined, '123456', 57)!;
     const transaction = rawTransaction({
       tokenType,
       fees: '226',
@@ -608,9 +638,7 @@ it.each(['syscoinburntoallocation', 'SPTSyscoinBurnToAssetAllocation'])(
     render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
 
     await expectAmountIcon('2.0000 SYSX', officialLogo);
-    expect(mockIconFetch.mock.calls.map(([url]) => url)).toEqual([
-      officialLogo,
-    ]);
+    expect(mockIconFetch).not.toHaveBeenCalled();
     expect(screen.queryByText('1.0000 SYSX')).toBeNull();
     expect(
       screen.getByText('send.nativeBalanceChange: -2.00000226 SYS')
@@ -688,13 +716,13 @@ it.each([undefined, 5700])(
     render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
 
     await waitFor(() => {
-      const icon = screen.getByAltText('SPT');
-      expect(icon.getAttribute('src')).toBe(
-        getTokenLogo('SPT', true, '900001')
-      );
-      expect(screen.getByText('1.0000 SPT').parentElement!.contains(icon)).toBe(
-        true
-      );
+      const amount = screen.getByText('1.0000 SPT');
+      // All image imports share Jest's file stub; the generic initial fallback
+      // still must remain inside this exact amount and never fetch the rejected URL.
+      expect(amount.parentElement!.textContent).toContain('S');
+      expect(
+        amount.parentElement!.querySelector(`img[src="${logo}"]`)
+      ).toBeNull();
     });
     expect(mockIconFetch).not.toHaveBeenCalled();
   }
@@ -737,7 +765,7 @@ it.each(['wrong-chain', 'other-account', 'same-symbol-other-guid'])(
 it.each([false, true])(
   'never awards an official SYSX logo to a symbol-only impostor (wrong-chain import: %s)',
   async (wrongChain) => {
-    const officialLogo = getKnownTokenLogo(undefined, undefined, '123456')!;
+    const officialLogo = getKnownTokenLogo(undefined, undefined, '123456', 57)!;
     setAccountAssets([
       {
         assetGuid: '900003',
@@ -765,7 +793,7 @@ it.each([false, true])(
 );
 
 it('does not infer the canonical GUID from a SYSX symbol or matching imported symbol', async () => {
-  const officialLogo = getKnownTokenLogo(undefined, undefined, '123456')!;
+  const officialLogo = getKnownTokenLogo(undefined, undefined, '123456', 57)!;
   setAccountAssets([
     { assetGuid: '123456', chainId: 57, symbol: 'SYSX', image: officialLogo },
   ]);
@@ -834,7 +862,7 @@ it('adds the canonical icon only after a compact transaction hydrates its GUID',
 
   await expectAmountIcon(
     '1.0000 SYSX',
-    getKnownTokenLogo(undefined, undefined, '123456')!
+    getKnownTokenLogo(undefined, undefined, '123456', 57)!
   );
 });
 

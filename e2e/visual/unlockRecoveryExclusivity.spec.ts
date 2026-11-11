@@ -229,8 +229,11 @@ test('pending Unlock excludes recovery until the genuine failure is delivered', 
           await page.setViewportSize(size);
           const unlock = page.locator('#unlock-btn');
           await expect(unlock).toHaveAttribute('aria-busy', 'true');
-          const spinner = unlock.locator(':scope > svg');
+          const spinner = unlock.locator(
+            ':scope > span[aria-hidden="true"] > svg'
+          );
           await expect(spinner).toHaveCount(1);
+          await expect(spinner).toBeVisible();
           await spinner.evaluate(async (element) => {
             await document.fonts.ready;
             const animations = new Set<Animation>();

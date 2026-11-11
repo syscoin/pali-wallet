@@ -170,6 +170,40 @@ it.each([
   }
 );
 
+it.each([
+  { chainId: 57 },
+  { from: RECIPIENT },
+  { to: RECIPIENT },
+  { value: '1' },
+])('keeps mismatched retained NFT intent unavailable %#', async (changed) => {
+  const tx = {
+    chainId: 1,
+    from: CONTRACT,
+    to: CONTRACT,
+    value: '0',
+    historySource: EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned,
+    collectibleTransfer: {
+      kind: 'nft-transfer',
+      chainId: '1',
+      from: CONTRACT,
+      contractAddress: CONTRACT,
+      recipient: RECIPIENT,
+      tokenStandard: 'ERC-1155',
+      tokenId: '0',
+      amountUnits: '9007199254740993',
+    },
+    ...changed,
+  };
+  const result = await getEvmTransactionDisplayInfo(tx, 'ETH');
+  expect(result).toMatchObject({
+    displaySymbol: 'NFT',
+    formattedValue: '?',
+    isNft: true,
+    amountUnavailable: true,
+    actualRecipient: '',
+  });
+});
+
 it('preserves accepted indexed NFT identifier and quantity text', async () => {
   const tx = indexed('0002');
   Object.assign(tx.tokenTransfer, {

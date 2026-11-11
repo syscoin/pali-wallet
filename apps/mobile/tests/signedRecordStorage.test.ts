@@ -1,3 +1,5 @@
+import { storageOnlyPublicSession } from './fixtures/publicSessionRecord.ts';
+import { createTestPinRecord } from './fixtures/pinRecord.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -92,15 +94,19 @@ test('recovery snapshots preserve signed bytes and reject a concurrent bundle re
   const f = await fixture(); try {
     await f.bind(); const raw = bundle(); await f.storage.signedRecords.compareAndSet(PROFILE, undefined, raw, () => undefined);
     const before = await f.storage.recovery.readSnapshot();
-    const plan = await f.storage.recovery.prepareReplacement!(before, { vault: validPair(2).vault, keys: validPair(2)['vault-keys'] }, ROOT);
+    const plan = await f.storage.recovery.prepareReplacement!(before, { publicSession: storageOnlyPublicSession(f.fingerprint), vault: validPair(2).vault, keys: validPair(2)['vault-keys'], pin: await createTestPinRecord(f.storage, { vault: validPair(2).vault, keys: validPair(2)['vault-keys'] }, f.fingerprint) }, ROOT, () => undefined);
     assert.equal(f.storage.recovery.plannedSnapshot!(plan).signedRecords[0]?.value, raw);
-    await f.storage.signedRecords.compareAndSet(PROFILE, raw, bundle(1), () => undefined);
+    await assert.rejects(f.storage.signedRecords.compareAndSet(PROFILE, raw, bundle(1), () => undefined), { code: 'STORAGE_REOPEN_REQUIRED' });
+    // Simulate another writer; the active recovery holder cannot admit ordinary writes.
+    f.db.prepare('UPDATE evm_signed_records SET value = ? WHERE profile_id = ?').run(bundle(1), PROFILE);
     await assert.rejects(f.storage.recovery.commitReplacement!(plan, () => undefined), { code: 'STORAGE_CHANGED' });
+    await f.storage.pin.settleCredentialRemoval(async () => undefined);
     assert.equal(await f.storage.keyringStorage.get('vault'), validPair().vault);
     const current = await f.storage.recovery.readSnapshot();
     assert.equal(sameRecoverySnapshot(before, current), false);
-    const accepted = await f.storage.recovery.prepareReplacement!(current, { vault: validPair(2).vault, keys: validPair(2)['vault-keys'] }, ROOT);
+    const accepted = await f.storage.recovery.prepareReplacement!(current, { publicSession: storageOnlyPublicSession(f.fingerprint), vault: validPair(2).vault, keys: validPair(2)['vault-keys'], pin: await createTestPinRecord(f.storage, { vault: validPair(2).vault, keys: validPair(2)['vault-keys'] }, f.fingerprint) }, ROOT, () => undefined);
     await f.storage.recovery.commitReplacement!(accepted, () => undefined);
+    await f.storage.pin.settleCredentialRemoval(async () => undefined);
     assert.equal(await f.storage.signedRecords.read(PROFILE), bundle(1));
     assert.equal((await f.storage.recovery.readSnapshot()).identity?.walletBindingId, f.fingerprint);
   } finally { await f.close(); }
@@ -147,9 +153,10 @@ test('post-commit cancellation retains bytes and recovery rollback leaves the wh
     await assert.rejects(f.storage.signedRecords.compareAndSet(PROFILE, undefined, raw, () => { if (!current) throw Error('revoked'); }));
     f.setAfter(); assert.equal(await f.storage.signedRecords.read(PROFILE), raw);
     const before = await f.storage.recovery.readSnapshot();
-    const plan = await f.storage.recovery.prepareReplacement!(before, { vault: validPair(2).vault, keys: validPair(2)['vault-keys'] }, ROOT);
+    const plan = await f.storage.recovery.prepareReplacement!(before, { publicSession: storageOnlyPublicSession(f.fingerprint), vault: validPair(2).vault, keys: validPair(2)['vault-keys'], pin: await createTestPinRecord(f.storage, { vault: validPair(2).vault, keys: validPair(2)['vault-keys'] }, f.fingerprint) }, ROOT, () => undefined);
     f.setHook((kind, sql) => { if (kind === 'run' && sql.startsWith('INSERT INTO wallet_metadata')) throw Error('rollback after pair update'); });
     await assert.rejects(f.storage.recovery.commitReplacement!(plan, () => undefined)); f.setHook();
+    await f.storage.pin.settleCredentialRemoval(async () => undefined);
     assert.ok(sameRecoverySnapshot(before, await f.storage.recovery.readSnapshot()));
     assert.equal(await f.storage.signedRecords.read(PROFILE), raw);
   } finally { await f.close(); }

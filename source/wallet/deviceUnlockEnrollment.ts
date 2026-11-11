@@ -27,7 +27,9 @@ type DeviceUnlockCredentialPort = Readonly<{
   available(): Promise<boolean>;
   read(
     scope: DeviceUnlockCredentialScope,
-    assertCurrent: Guard
+    assertCurrent: Guard,
+    /** Presentation identity only; never substitutes for the credential guard. */
+    owner: AbortSignal | null
   ): Promise<Uint8Array | null>;
   remove(
     scope: DeviceUnlockCredentialScope,
@@ -37,7 +39,8 @@ type DeviceUnlockCredentialPort = Readonly<{
   stage(
     scope: DeviceUnlockCredentialScope,
     key: Uint8Array,
-    assertCurrent: Guard
+    assertCurrent: Guard,
+    owner: AbortSignal | null
   ): Promise<void>;
 }>;
 
@@ -46,11 +49,22 @@ type Operation = {
   attempted?: boolean;
   check: Guard;
   completed?: boolean;
-  kind: 'issue' | 'resume' | 'disable';
+  kind: 'issue' | 'resume' | 'disable' | 'presence';
+  owner: AbortSignal | null;
   scope?: DeviceUnlockCredentialScope;
 };
 
 const unavailable = () => new Error('DEVICE_UNLOCK_UNAVAILABLE');
+const userRefusals = new WeakSet<object>();
+/** A trusted native adapter may classify only its platform's explicit user cancellation. */
+export function deviceUnlockUserRefusal(): Error {
+  const error = unavailable();
+  userRefusals.add(error);
+  return error;
+}
+export function isDeviceUnlockUserRefusal(error: unknown): error is Error {
+  return !!error && typeof error === 'object' && userRefusals.has(error);
+}
 const checked = (guard: Guard) => {
   const result: unknown = guard();
   if (result === undefined) return;
@@ -71,7 +85,7 @@ const same = (
   next.pairFingerprint === scope.pairFingerprint &&
   next.enrollmentId === scope.enrollmentId;
 
-/** Private host bridge. The SDK owns password verification and the derived key. */
+/** Scoped credential enrollment. The calling host owns credential purpose and authentication. */
 export function createDeviceUnlockEnrollment(
   ports: Readonly<{
     credentials: DeviceUnlockCredentialPort;
@@ -88,6 +102,7 @@ export function createDeviceUnlockEnrollment(
     if (active) throw unavailable();
     const operation: Operation = {
       kind,
+      owner: null,
       check() {
         if (active !== operation) throw unavailable();
         checked(guard);
@@ -128,11 +143,16 @@ export function createDeviceUnlockEnrollment(
       checked(sdkGuard);
       operation.check();
       operation.attempted = true;
-      await ports.credentials.stage(scope, credential.key, () => {
-        operation.check();
-        checked(sdkGuard);
-        operation.check();
-      });
+      await ports.credentials.stage(
+        scope,
+        credential.key,
+        () => {
+          operation.check();
+          checked(sdkGuard);
+          operation.check();
+        },
+        operation.owner
+      );
       operation.check();
       operation.completed = true;
     },
@@ -148,7 +168,7 @@ export function createDeviceUnlockEnrollment(
       )
         return null;
       operation.attempted = true;
-      const key = await ports.credentials.read(scope, operation.check);
+      const key = await ports.credentials.read(scope, operation.check, null);
       if (!key) return null;
       try {
         const reference = await ports.enrollment.read();
@@ -164,8 +184,51 @@ export function createDeviceUnlockEnrollment(
   });
   return Object.freeze({
     sdkPort,
-    issue: (prove: (assertCurrent: Guard) => Promise<boolean>, guard: Guard) =>
+    /** The host chooses the enrolled capability; it is consumed only while this proof remains current. */
+    async withPresenceCredential<T>(
+      guard: Guard,
+      consume: (key: Uint8Array) => Promise<T>,
+      owner: AbortSignal | null
+    ): Promise<T> {
+      return run('presence', guard, async (operation) => {
+        const { check } = operation;
+        let key: Uint8Array | null = null;
+        try {
+          if (!(await ports.credentials.available())) throw unavailable();
+          check();
+          const reference = await ports.enrollment.read();
+          check();
+          if (!reference?.enrollmentId) throw unavailable();
+          const scope = scopeOf(reference, reference.enrollmentId);
+          operation.scope = scope;
+          key = await ports.credentials.read(scope, check, owner);
+          check();
+          if (!(key instanceof Uint8Array) || key.length !== 32)
+            throw unavailable();
+          const latest = await ports.enrollment.read();
+          check();
+          if (!same(latest, scope)) throw unavailable();
+          const result = await consume(key);
+          check();
+          return result;
+        } finally {
+          if (key instanceof Uint8Array) key.fill(0);
+        }
+      });
+    },
+    async verifyPresence(
+      guard: Guard,
+      owner: AbortSignal | null
+    ): Promise<void> {
+      await this.withPresenceCredential(guard, async () => undefined, owner);
+    },
+    issue: (
+      prove: (assertCurrent: Guard) => Promise<boolean>,
+      guard: Guard,
+      owner: AbortSignal | null
+    ) =>
       run('issue', guard, async (operation) => {
+        operation.owner = owner;
         const { check } = operation;
         if (!(await ports.credentials.available())) throw unavailable();
         check();

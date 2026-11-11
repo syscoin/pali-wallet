@@ -20,3 +20,4 @@ export { default as RemoveEth } from './RemoveEth';
 export { default as Advanced } from './Advanced';
 export { default as ExternalWatchAsset } from './ExternalWatchAsset';
 export { default as Languages } from './Languages';
+export { default as LocalPasskeySettings } from './LocalPasskeySettings';

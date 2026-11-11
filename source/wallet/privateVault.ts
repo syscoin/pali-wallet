@@ -2,6 +2,7 @@ export {
   PRIVATE_VAULT_STORAGE_PREFIX,
   PRIVATE_VAULT_DOMAIN,
   PRIVATE_VAULT_FORMAT,
+  createPrivateVaultSession,
 } from './privateVaultInspection.ts';
 export type {
   IPrivateVaultSession,
@@ -68,6 +69,7 @@ import type {
   IShardReference,
   IVaultBundle,
 } from './privateVaultInspection.ts';
+import type { WalletAuthentication } from '../shared/walletAuthentication.ts';
 import type {
   generateClassicNote,
   identifyClassicNote,
@@ -205,11 +207,11 @@ export interface IPrivateVaultRestoreController {
   commitRestore: (
     plan: IPrivateVaultRestorePlan,
     entries: readonly IPrivateNoteRestoreEntry[],
-    password: string,
+    password: WalletAuthentication,
     session: IPrivateVaultSession
   ) => Promise<IPrivateNoteRestoreReceipt>;
   exportBackupSnapshot: (
-    password: string,
+    password: WalletAuthentication,
     session: IPrivateVaultSession
   ) => Promise<{
     createdAt: number;
@@ -228,7 +230,7 @@ export interface IPrivateVaultRestoreController {
 
 export interface IPrivateVaultHost {
   authenticate: (
-    password: string,
+    password: WalletAuthentication,
     session: IPrivateVaultSession,
     reveal: () => Promise<string>
   ) => Promise<string>;
@@ -254,7 +256,9 @@ export interface IPrivateVaultHost {
 }
 
 interface IContext {
+  assertOwnerCurrent: () => void;
   capacity: PrivateVaultCapacity;
+  owner: IPrivateVaultSession;
   profileId: string;
   restore: IPrivateNoteRestoreMetadata;
   session: IPrivateVaultSession;
@@ -453,7 +457,7 @@ export function createPrivateVaultController(
   const restoreFence = (context: IContext): (() => void) => {
     const epoch = epochs.get(context.profileId);
     return () => {
-      context.session.assertCurrent();
+      context.assertOwnerCurrent();
       if (epochs.get(context.profileId) !== epoch)
         throw new Error('privacy_note_restore_required');
     };
@@ -476,7 +480,9 @@ export function createPrivateVaultController(
   const capture = async (
     provided?: IPrivateVaultSession
   ): Promise<IContext> => {
-    const session = provided || host.captureSession();
+    const base = provided || host.captureSession();
+    assertSession(base);
+    const session = base.captureOperation(() => assertSession(base));
     assertSession(session);
     const profileId = await session.keyring.getPrivateRecordProfileId();
     assertSession(session);
@@ -487,6 +493,10 @@ export function createPrivateVaultController(
     )
       throw new Error('privacy_vault_unavailable');
     return {
+      // A retained restore fence carries only the original owner's public
+      // lifetime. Codec calls remain bound to the captured operation below.
+      assertOwnerCurrent: () => assertSession(base),
+      owner: base,
       session,
       profileId,
       capacity: DEFAULT_CAPACITY,
@@ -960,7 +970,7 @@ export function createPrivateVaultController(
   const pruneRestorePlans = () => {
     for (const [token, plan] of restorePlans) {
       try {
-        assertSession(plan.context.session);
+        plan.context.assertOwnerCurrent();
       } catch {
         restorePlans.delete(token);
         continue;
@@ -1032,11 +1042,11 @@ export function createPrivateVaultController(
         const admitted = snapshotPrivateNoteRestoreEntries(entries);
         if (privateNoteRestoreDigest(admitted) !== plan.receipt.sourceHash)
           throw new Error('privacy_restore_stale');
-        assertSession(plan.context.session);
+        plan.context.assertOwnerCurrent();
         assertSession(session);
         if (
-          session.generation !== plan.context.session.generation ||
-          session.keyring !== plan.context.session.keyring
+          session.generation !== plan.context.owner.generation ||
+          session.keyring !== plan.context.owner.keyring
         )
           throw new Error('privacy_restore_stale');
         const context = await capture(session);

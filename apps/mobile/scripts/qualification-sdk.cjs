@@ -15,8 +15,6 @@ function readQualificationSdkPin(root) {
   if (typeof version !== 'string' || !exactVersion.test(version))
     throw Error('Expected an exact shared keyring pin');
   const quickCryptoIdentity = readQuickCryptoSentryIdentity(root);
-  // Keep the published Keyring version separate from the native candidate.
-  // Existing app reports and host acceptance already compare this identity.
   return {
     version,
     identity: quickCryptoIdentity ? `${version}.${quickCryptoIdentity}` : version,
@@ -29,7 +27,7 @@ function verifyInstalledQualificationSdk(root, pin) {
   if (metadata.name !== name || metadata.version !== pin.version)
     throw Error('Installed shared keyring must match the exact manifest version');
   if (readQualificationSdkPin(root).identity !== pin.identity)
-    throw Error('Native qualification candidate identity mismatch');
+    throw Error('Native qualification SDK identity mismatch');
   readWalletConnectSdkIdentity(root);
 }
 

@@ -28,6 +28,7 @@ import { Button, Header, Notice, Screen } from '../../src/ui';
 import { RealAppShell } from '../../src/screens/RealAppShell';
 import { useRealShell } from '../../src/screens/useRealShell';
 import { freshStatusFixture } from './freshStatusFixture';
+import { AllNetworksActivityFixture } from './allNetworksFixture';
 
 const owner = `0x${'11'.repeat(20)}`,
   recipient = `0x${'22'.repeat(20)}`;
@@ -409,4 +410,4 @@ function Fixture() {
     </SafeAreaProvider>
   );
 }
-registerRootComponent(Fixture);
+registerRootComponent(new URLSearchParams(window.location.search).has('all-networks') ? AllNetworksActivityFixture : Fixture);

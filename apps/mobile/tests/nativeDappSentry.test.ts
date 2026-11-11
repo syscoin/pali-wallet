@@ -16,6 +16,7 @@ function fixture(wait = Promise.resolve()) {
     async openNodes(signal, owned) {
       const current = () => { owned(); if (signal.aborted) throw new Error('CANCELLED'); };
       const nodes: NativeSentryNodeManagement = {
+        isAuthenticating: () => false,
         async list() { current(); return { network: 'mainnet', serviceUrl: review.serviceUrl, linkedNodes: [], collateral: [] }; },
         async prepareLink(request, requestOrigin) { current(); prepared.push({ request, origin: requestOrigin }); return review; },
         async confirmLink(value) { current(); assert.equal(value, review); commits++; return { linked: true, version: 1, proTxHash: raw.proTxHash, genesisHash: raw.genesisHash }; },
@@ -33,7 +34,7 @@ test('Sentry linking retains exact untrusted origin, typed request and the origi
   const prepared = await f.host.prepare({ method: 'sys_linkSentryNode', raw, origin }, new AbortController().signal, f.check, f.check);
   assert.deepEqual(f.prepared, [{ request: raw, origin }]);
   assert.equal(prepared.details.kind, 'link'); assert.equal(prepared.details.approval, review);
-  await assert.rejects(prepared.approve({ kind: 'vote', password: 'unused' }, f.check));
+  await assert.rejects(prepared.approve({ kind: 'vote' }, f.check));
   assert.equal(f.commits(), 0);
   assert.deepEqual(await prepared.approve({ kind: 'link' }, f.check), { linked: true, version: 1, proTxHash: raw.proTxHash, genesisHash: raw.genesisHash });
   assert.equal(f.commits(), 1); prepared.dispose();

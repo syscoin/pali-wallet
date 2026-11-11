@@ -5,6 +5,7 @@ import { URL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import * as pairingLinks from '../src/connections/pairingLinks.ts';
+import { parseEvmRecipientQr } from '../src/core/recipientQr.ts';
 
 type Element = {
   type: unknown;
@@ -22,7 +23,7 @@ const URI = `wc:${'11'.repeat(32)}@2?relay-protocol=irn&symKey=${'22'.repeat(
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 const code = ts.transpileModule(
   readFileSync(
-    new URL('../src/screens/ConnectionQrScanner.native.tsx', import.meta.url),
+    new URL('../src/screens/QrScanner.native.tsx', import.meta.url),
     'utf8'
   ),
   {
@@ -45,7 +46,9 @@ function deferred<T>() {
 
 function fixture(
   permission: () => Promise<{ granted: boolean }>,
-  platform = 'android'
+  platform = 'android',
+  kind: 'connection' | 'recipient' = 'connection',
+  readPermission = permission
 ) {
   const cells: Cell[] = [];
   const effects: (() => void)[] = [];
@@ -54,6 +57,7 @@ function fixture(
   let cursor = 0,
     closes = 0,
     permissionRequests = 0,
+    permissionReads = 0,
     stateWrites = 0;
   let settings: () => Promise<void> = async () => undefined;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
@@ -72,7 +76,7 @@ function fixture(
         state.value,
         (value: unknown) => {
           stateWrites++;
-          state.value = value;
+          state.value = typeof value === 'function' ? value(state.value) : value;
         },
       ];
     },
@@ -126,6 +130,10 @@ function fixture(
           permissionRequests++;
           return permission();
         },
+        getCameraPermissionsAsync() {
+          permissionReads++;
+          return readPermission();
+        },
         requestMicrophonePermissionsAsync() {
           assert.fail('QR scanning must not request microphone access');
         },
@@ -135,6 +143,7 @@ function fixture(
     '../ui': {
       Button: 'Button',
       Header: 'Header',
+      IconButton: 'IconButton',
       Notice: 'Notice',
       Screen: 'Screen',
       Text: 'Text',
@@ -142,7 +151,7 @@ function fixture(
     },
   };
   const module = {
-    exports: {} as { ConnectionQrScanner(props: object): Element },
+    exports: {} as { QrScanner(props: object): Element },
   };
   runInNewContext(code, {
     module,
@@ -155,6 +164,16 @@ function fixture(
       return dependencies[name];
     },
   });
+  const wrapper = { exports: {} as Record<string, (props: object) => Element> };
+  const wrapperName = kind === 'connection' ? 'ConnectionQrScanner' : 'RecipientQrScanner';
+  const wrapperCode = ts.transpileModule(readFileSync(new URL(`../src/screens/${kind === 'connection' ? 'ConnectionQrScanner.shared' : 'RecipientQrScanner'}.tsx`, import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true },
+  }).outputText;
+  runInNewContext(wrapperCode, { module: wrapper, exports: wrapper.exports, require(name: string) {
+    if (name === './QrScanner') return { QrScanner: 'QrScanner' };
+    if (name === '../core/recipientQr') return { parseEvmRecipientQr };
+    assert(Object.hasOwn(dependencies, name), `Unexpected wrapper dependency ${name}`); return dependencies[name];
+  } });
   const props = {
     onScan: (uri: string) => scans.push(uri),
     onClose: () => {
@@ -163,7 +182,7 @@ function fixture(
   };
   const render = () => {
     cursor = 0;
-    const tree = module.exports.ConnectionQrScanner(props);
+    const tree = module.exports.QrScanner(wrapper.exports[wrapperName]!(props).props);
     effects.splice(0).forEach((effect) => effect());
     return tree;
   };
@@ -176,6 +195,9 @@ function fixture(
     },
     get permissionRequests() {
       return permissionRequests;
+    },
+    get permissionReads() {
+      return permissionReads;
     },
     get stateWrites() {
       return stateWrites;
@@ -213,6 +235,24 @@ const notice = (tree: Element, title: string) =>
     (element) => element.type === 'Notice' && element.props.title === title
   );
 
+test('flashlight is explicit, waits for the camera and resets after focus loss', async () => {
+  const f = fixture(async () => ({ granted: true }));
+  try {
+    await settle();
+    let tree = f.render();
+    assert.equal(elements(tree).some(node => node.props.title === 'Turn on flashlight'), false);
+    find(tree, 'CameraView')!.props.onCameraReady();
+    tree = f.render();
+    elements(tree).find(node => node.props.title === 'Turn on flashlight')!.props.onPress();
+    assert.equal(find(f.render(), 'CameraView')!.props.enableTorch, true);
+    f.emit('blur');
+    assert.equal(find(f.render(), 'CameraView'), undefined);
+    f.emit('focus');
+    await settle();
+    assert.equal(find(f.render(), 'CameraView')!.props.enableTorch, false);
+  } finally { f.unmount(); }
+});
+
 test('denied camera permission offers Settings and failed permission requests show an error without mounting a camera', async () => {
   const denied = fixture(async () => ({ granted: false }));
   try {
@@ -247,6 +287,79 @@ test('denied camera permission offers Settings and failed permission requests sh
   }
 });
 
+for (const platform of ['ios', 'android']) {
+  test(`${platform} scanner rereads a Settings grant on return without requesting permission again`, async () => {
+    let granted = false;
+    const f = fixture(async () => ({ granted }), platform);
+    try {
+      await settle();
+      assert(notice(f.render(), 'Camera access needed'));
+      elements(f.render()).find(element => element.props.title === 'Open Settings')!.props.onPress();
+      f.emit('change', 'background');
+      granted = true;
+      f.emit('change', 'active');
+      if (platform === 'android') f.emit('focus');
+      await settle();
+      assert(find(f.render(), 'CameraView'));
+      assert.equal(f.permissionRequests, 1);
+      assert.equal(f.permissionReads, 1);
+      assert.equal(notice(f.render(), 'Camera access needed'), false);
+    } finally { f.unmount(); }
+  });
+}
+
+test('returning from the initial permission prompt waits for its result', async () => {
+  const permission = deferred<{ granted: boolean }>();
+  const f = fixture(() => permission.promise);
+  try {
+    await settle();
+    f.emit('change', 'background'); f.emit('change', 'active'); f.emit('focus');
+    await settle();
+    assert.equal(f.permissionRequests, 1);
+    assert.equal(f.permissionReads, 0);
+    permission.resolve({ granted: true }); await settle();
+    assert(find(f.render(), 'CameraView'));
+    assert.equal(f.permissionReads, 0);
+  } finally { f.unmount(); }
+});
+
+test('permission refresh blocks retained scans and ignores a read from an earlier foreground', async () => {
+  const first = deferred<{ granted: boolean }>(), second = deferred<{ granted: boolean }>();
+  let reads = 0;
+  const f = fixture(async () => ({ granted: true }), 'android', 'connection', () => ++reads === 1 ? first.promise : second.promise);
+  try {
+    await settle();
+    const scan = find(f.render(), 'CameraView')!.props.onBarcodeScanned;
+    f.emit('blur'); f.emit('focus'); await settle();
+    scan({ data: URI });
+    assert.deepEqual(f.scans, []);
+    assert.equal(find(f.render(), 'CameraView'), undefined);
+    f.emit('blur'); f.emit('focus'); await settle();
+    first.resolve({ granted: true }); await settle();
+    assert.equal(find(f.render(), 'CameraView'), undefined);
+    second.resolve({ granted: false }); await settle();
+    assert(notice(f.render(), 'Camera access needed'));
+    scan({ data: URI }); assert.deepEqual(f.scans, []);
+    assert.equal(f.permissionRequests, 1);
+  } finally { f.unmount(); }
+});
+
+for (const boundary of ['close', 'unmount'] as const) {
+  test(`a permission refresh after ${boundary} cannot publish camera state`, async () => {
+    const read = deferred<{ granted: boolean }>();
+    const f = fixture(async () => ({ granted: false }), 'android', 'connection', () => read.promise);
+    await settle(); f.emit('blur'); f.emit('focus'); await settle();
+    if (boundary === 'close') find(f.render(), 'Header')!.props.right.props.onPress();
+    else f.unmount();
+    const writes = f.stateWrites;
+    read.resolve({ granted: true }); await settle();
+    assert.equal(f.stateWrites, writes);
+    assert.equal(find(f.render(), 'CameraView'), undefined);
+    assert.deepEqual(f.scans, []);
+    f.unmount();
+  });
+}
+
 test('the camera accepts only QR input and hands one valid connection to the controller', async () => {
   const f = fixture(async () => ({ granted: true }));
   try {
@@ -270,6 +383,29 @@ test('the camera accepts only QR input and hands one valid connection to the con
   } finally {
     f.unmount();
   }
+});
+
+test('recipient QR accepts only a validated raw address and never consumes a payment or connection link', async () => {
+  const f = fixture(async () => ({ granted: true }), 'android', 'recipient');
+  try {
+    await settle(); const camera = find(f.render(), 'CameraView')!;
+    const address = '0x52908400098527886E0F7030069857D2E4169EE7';
+    for (const value of [URI, `ethereum:${address}?value=100`, ` ${address}`, '0x' + '0'.repeat(40), address.slice(0, -1)])
+      camera.props.onBarcodeScanned({ data: value });
+    assert.deepEqual(f.scans, []); assert(notice(f.render(), 'Recipient address needed'));
+    camera.props.onBarcodeScanned({ data: address.toLowerCase() });
+    camera.props.onBarcodeScanned({ data: address });
+    assert.deepEqual(f.scans, [address]);
+  } finally { f.unmount(); }
+});
+
+test('a recipient scan is retired by Back before a queued camera result', async () => {
+  const f = fixture(async () => ({ granted: true }), 'android', 'recipient');
+  try {
+    await settle(); const scan = find(f.render(), 'CameraView')!.props.onBarcodeScanned;
+    f.emit('hardwareBackPress'); scan({ data: '0x1111111111111111111111111111111111111111' });
+    assert.equal(f.closes, 1); assert.deepEqual(f.scans, []);
+  } finally { f.unmount(); }
 });
 
 for (const boundary of ['background', 'blur', 'unmount'] as const) {
@@ -299,6 +435,7 @@ test('Android focus resumes QR scanning after a notification-shade blur', async 
     f.emit('blur');
     assert.equal(find(f.render(), 'CameraView'), undefined);
     f.emit('focus');
+    await settle();
     const camera = find(f.render(), 'CameraView');
     assert(camera);
     camera.props.onBarcodeScanned({ data: URI });
@@ -307,6 +444,32 @@ test('Android focus resumes QR scanning after a notification-shade blur', async 
     f.unmount();
   }
 });
+
+for (const boundary of ['background', 'blur'] as const) {
+  test(`callbacks from before ${boundary} cannot affect the resumed camera`, async () => {
+    const f = fixture(async () => ({ granted: true }));
+    try {
+      await settle();
+      const old = find(f.render(), 'CameraView')!;
+      old.props.onCameraReady();
+      const oldTorch = elements(f.render()).find(node => node.props.title === 'Turn on flashlight')!;
+      if (boundary === 'background') { f.emit('change', 'background'); f.emit('change', 'active'); }
+      else { f.emit('blur'); f.emit('focus'); }
+      await settle();
+      const current = find(f.render(), 'CameraView')!;
+      assert(current);
+      old.props.onCameraReady(); old.props.onMountError(); old.props.onBarcodeScanned({ data: URI }); oldTorch.props.onPress();
+      assert.deepEqual(f.scans, []);
+      assert.equal(find(f.render(), 'CameraView')!.props.enableTorch, false);
+      assert.equal(notice(f.render(), 'Camera unavailable'), false);
+      assert.equal(elements(f.render()).some(node => node.props.title === 'Turn on flashlight'), false);
+      current.props.onCameraReady();
+      assert(elements(f.render()).some(node => node.props.title === 'Turn on flashlight'));
+      current.props.onBarcodeScanned({ data: URI });
+      assert.deepEqual(f.scans, [URI]);
+    } finally { f.unmount(); }
+  });
+}
 
 test('a camera mount failure disables a queued scan before the error rerenders', async () => {
   const f = fixture(async () => ({ granted: true }));
@@ -327,7 +490,7 @@ test('a delayed permission response after Close cannot publish camera state or a
   const permission = deferred<{ granted: boolean }>();
   const f = fixture(() => permission.promise);
   await settle();
-  find(f.render(), 'Header')!.props.onBack();
+  find(f.render(), 'Header')!.props.right.props.onPress();
   const writes = f.stateWrites;
   permission.resolve({ granted: true });
   await settle();
@@ -354,7 +517,7 @@ test('a delayed permission response after unmount cannot update the scanner', as
 for (const boundary of ['close', 'unmount'] as const) {
   test(`camera permission is not requested after ${boundary} before the scheduled call`, async () => {
     const f = fixture(async () => ({ granted: true }));
-    if (boundary === 'close') find(f.render(), 'Header')!.props.onBack();
+    if (boundary === 'close') find(f.render(), 'Header')!.props.right.props.onPress();
     else f.unmount();
     await settle();
     assert.equal(f.permissionRequests, 0);

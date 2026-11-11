@@ -15,10 +15,11 @@ type Props = {
   busy: boolean;
   error: string;
   onChoose(): void;
-  onSave(walletPassword: string, backupPassword: string): void;
+  onSave(backupPassword: string): void;
   onShowVerify(): void;
   onVerify(backupPassword: string): void;
   onBack(): void;
+  doneLabel?: string;
 };
 
 export function NativeNoteFilesMenu({ onBack, onExport, onRestore, onCapacity, onInventory, onImport, onDeposit, onMaintenance, onPrivacySettings }: { onBack(): void; onExport(): void; onRestore(): void; onCapacity?(): void; onInventory?(): void; onImport?(): void; onDeposit?(): void; onMaintenance?(): void; onPrivacySettings?(): void }) {
@@ -30,14 +31,14 @@ export function NativeNoteFilesMenu({ onBack, onExport, onRestore, onCapacity, o
       {onImport && <Row title="Import one note" subtitle="Restore a raw private note" icon="plus" onPress={onImport} />}
       <Row title="Back up private notes" subtitle="Save an encrypted copy" icon="lock" onPress={onExport} />
       <Row title="Restore note backup" subtitle="Add notes from an encrypted file" icon="wallet" onPress={onRestore} last={!onCapacity && !onMaintenance && !onPrivacySettings} />
-      {onCapacity && <Row title="Note capacity" subtitle="Change the saved note limit" onPress={onCapacity} last={!onMaintenance && !onPrivacySettings} />}
-      {onMaintenance && <Row title="Manage completed notes" subtitle="Clear completed notes or recover a failed withdrawal" onPress={onMaintenance} last={!onPrivacySettings} />}
-      {onPrivacySettings && <Row title="Privacy service" subtitle="Service origin and public pool data" onPress={onPrivacySettings} last />}
+      {onCapacity && <Row title="Note capacity" icon="settings" subtitle="Change the saved note limit" onPress={onCapacity} last={!onMaintenance && !onPrivacySettings} />}
+      {onMaintenance && <Row title="Manage completed notes" icon="refresh" subtitle="Clear completed notes or recover a failed withdrawal" onPress={onMaintenance} last={!onPrivacySettings} />}
+      {onPrivacySettings && <Row title="Privacy service" icon="globe" subtitle="Service origin and public pool data" onPress={onPrivacySettings} last />}
     </Card>
   </Screen></SafeAreaView>;
 }
 
-export function NativeNoteExport({ step, busy, error, onChoose, onSave, onShowVerify, onVerify, onBack }: Props) {
+export function NativeNoteExport({ step, busy, error, onChoose, onSave, onShowVerify, onVerify, onBack, doneLabel = 'Done' }: Props) {
   useLayoutEffect(() => {
     const back = BackHandler.addEventListener('hardwareBackPress', () => { onBack(); return true; });
     return () => back.remove();
@@ -49,13 +50,13 @@ export function NativeNoteExport({ step, busy, error, onChoose, onSave, onShowVe
     case 'passwords':
     case 'verify':
       content = <BackupForm key={step.phase} verify={step.phase === 'verify'} busy={busy} header={header} feedback={feedback}
-        submit={step.phase === 'verify' ? (_wallet, backup) => onVerify(backup) : onSave} />;
+        submit={step.phase === 'verify' ? onVerify : onSave} />;
       break;
     case 'saved':
     case 'verified': {
       const count = step.noteCount === 1 ? '1 private note' : step.noteCount + ' private notes';
       const verified = step.phase === 'verified';
-      content = <Screen footer={<Button title="Done" onPress={onBack} />}>{header}
+      content = <Screen footer={<Button title={doneLabel} onPress={onBack} />}>{header}
         <Notice title={verified ? 'Backup verified' : 'Encrypted backup saved'} body={verified
           ? 'Pali opened the saved file and confirmed it contains ' + count + '.'
           : 'The file contains ' + count + '. Keep its password separate from the file.'} />
@@ -78,10 +79,10 @@ export function NativeNoteExport({ step, busy, error, onChoose, onSave, onShowVe
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>{content}</SafeAreaView>;
 }
 
-const empty = () => ({ wallet: '', backup: '', repeat: '' });
+const empty = () => ({ backup: '', repeat: '' });
 function BackupForm({ verify, busy, header, feedback, submit }: {
   verify: boolean; busy: boolean; header: React.ReactNode; feedback: React.ReactNode;
-  submit(wallet: string, backup: string): void;
+  submit(backup: string): void;
 }) {
   const [values, setValues] = useState(empty);
   const entered = useRef(values);
@@ -92,28 +93,26 @@ function BackupForm({ verify, busy, header, feedback, submit }: {
     return () => { entered.current = empty(); change.remove(); blur?.remove(); };
   }, []);
   const valid = (value: typeof values) => value.backup &&
-    (verify || (value.wallet && value.backup !== value.wallet && value.backup === value.repeat));
+    (verify || value.backup === value.repeat);
   const disabled = busy || !valid(values);
-  const field = (name: keyof typeof values, label: string) => <NoteBackupPasswordField
-    label={label} value={values[name]} onChange={value => {
+  const field = (name: keyof typeof values, label: string) => {
+    return <NoteBackupPasswordField label={label} value={values[name]} onChange={value => {
       entered.current = { ...entered.current, [name]: value };
       setValues(entered.current);
     }} busy={busy} />;
+  };
   return <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <Screen footer={<Button title={busy ? 'Working…' : verify ? 'Verify backup' : 'Save encrypted backup'}
       variant={disabled ? 'secondary' : 'primary'} disabled={disabled} onPress={() => {
         const value = entered.current;
         if (busy || !valid(value) || AppState.currentState !== 'active') return;
         reset();
-        submit(value.wallet, value.backup);
+        submit(value.backup);
       }} />}>
       {header}
       <Text style={styles.muted}>{verify ? 'Enter the password for this file to verify it can be opened.' : 'Use a separate backup password with at least 12 characters. Pali cannot recover it for you.'}</Text>
-      {!verify && field('wallet', 'Wallet password')}
       {field('backup', 'Backup password')}
       {!verify && field('repeat', 'Confirm backup password')}
-      {!verify && !!values.wallet && values.wallet === values.backup &&
-        <Text accessibilityLiveRegion="polite" style={s.error}>Use a different password for the backup.</Text>}
       {!verify && !!values.repeat && values.backup !== values.repeat &&
         <Text accessibilityLiveRegion="polite" style={s.error}>The backup passwords do not match.</Text>}
       {feedback}

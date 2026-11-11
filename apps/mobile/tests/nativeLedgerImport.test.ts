@@ -1,3 +1,6 @@
+import { prepareRecoveryPin } from './fixtures/recoveryPin.ts';
+import { signTestTransfer } from './fixtures/operationAuthorization.ts';
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import { nonSuiteSigningHandoff } from './nonSuiteSigningHandoff.ts';
 import { getNetworkConfig } from '@sidhujag/sysweb3-network';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
@@ -39,9 +42,11 @@ import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
+const pinCredential = createTestPinCredentialPort();
+
 const phrase =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const password = 'Public Ledger import fixture 1!';
+const password = '123456';
 const deviceWallet = new Wallet('0x' + '31'.repeat(32));
 
 function hardwareHd(slip44: number, currency: string, accountIndex: number) {
@@ -112,7 +117,8 @@ async function fixture() {
     initialized = true;
     return storage;
   };
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null,
+  let currentPin = password;
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: currentPin }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: CountedHost }),
     readEvmRetirement: null,
@@ -347,7 +353,7 @@ async function fixture() {
         },
       });
       await owner.initialize();
-      await owner.unlock(nextPassword);
+      await owner.unlock(nextPassword); currentPin = nextPassword;
     },
     get disposedCount() {
       return disposedCount;
@@ -367,7 +373,7 @@ async function fixture() {
   };
 }
 
-test('the shared SDK imports a public Ledger record, preserves it on unlock and password recovery', async () => {
+test('the shared SDK imports a public Ledger record, preserves it on unlock and PIN recovery', async () => {
   const f = await fixture();
   try {
     await f.view.start();
@@ -387,7 +393,7 @@ test('the shared SDK imports a public Ledger record, preserves it on unlock and 
     f.owner.lock();
     await f.owner.unlock(password);
     assert.equal(f.owner.getCatalogue()!.active.accountId, imported!.id);
-    const recovery = new NativeRecoveryCoordinator({
+    const recovery = new NativeRecoveryCoordinator({ pinCredential,
       owner: f.owner,
       async retireControllers() {},
       ensureCryptoReady: async () => undefined,
@@ -395,16 +401,12 @@ test('the shared SDK imports a public Ledger record, preserves it on unlock and 
     });
     try {
       f.owner.lock();
-      const proof = await recovery.prepare(
-        phrase,
-        'Replacement Ledger fixture password 2!',
-        () => undefined
-      );
+      const proof = await prepareRecoveryPin(recovery, phrase, '654321', () => undefined);
       assert.equal(await recovery.commit(proof), 'committed-locked');
     } finally {
       await recovery.dispose();
     }
-    await f.reopen('Replacement Ledger fixture password 2!');
+    await f.reopen('654321');
     assert.equal(
       f.owner
         .getCatalogue()!
@@ -563,7 +565,7 @@ test('Ledger connection reuses the saved public identity and shared EVM signing'
               maxPriorityFeePerGas: '1',
             }),
       };
-      const signed = await f.runtime.transfers!.sign(transaction, {
+      const signed = await signTestTransfer(f.runtime.transfers!, password, transaction, {
         assertCurrent() {},
         signal: new AbortController().signal,
       });
@@ -594,7 +596,7 @@ test('Ledger dapp host signs messages and journals the reviewed transaction befo
     for (const method of ['personal_sign', 'eth_signTypedData_v3', 'eth_signTypedData_v4'] as const) {
       const request = readDappMessageRequest(method, method === 'personal_sign' ? ['0x6162', deviceWallet.address] : [deviceWallet.address, typed], deviceWallet.address)!;
       const input = approveHardwareDappRequest(f.owner, host, request);
-      try { assert.match(await host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }), /^0x[0-9a-f]{130}$/i); }
+      try { assert.match(await host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }, null), /^0x[0-9a-f]{130}$/i); }
       finally { input.approval.dispose(); }
     }
     assert.equal(f.messageCount, 3);
@@ -602,7 +604,7 @@ test('Ledger dapp host signs messages and journals the reviewed transaction befo
     const input = approveHardwareDappRequest(f.owner, host, request);
     try {
       const review = await host.prepareTransaction({ handoff: nonSuiteSigningHandoff, ...input, transaction: { from: deviceWallet.address,
-        to: '0x' + '22'.repeat(20), data: '0x6000' } }, () => undefined);
+        to: '0x' + '22'.repeat(20), data: '0x6000' } }, () => undefined, null);
       assert(!('operation' in review));
       assert.equal(f.signedCount, 0, 'review performs no device signing');
       rpc.onAdmission(async (hash, raw) => {
@@ -636,8 +638,10 @@ test('Ledger dapp request retirement drains its device and withholds a held sign
     const input = approveHardwareDappRequest(f.owner, host, request);
     const disposedBefore = f.disposedCount;
     f.holdSignature(async () => { entered.resolve(); await release.promise; });
-    const work = host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }), rejected = assert.rejects(work);
-    await entered.promise;
+    const work = host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }, null), rejected = assert.rejects(work);
+    // Fail immediately if the SDK rejects before reaching the held device call.
+    // A stale fixture must not leave the whole test worker waiting forever.
+    await Promise.race([entered.promise, work.then(() => assert.fail('Signing settled before device entry'))]);
     input.approval.retire();
     release.resolve();
     await rejected;
@@ -751,12 +755,12 @@ for (const changedChain of [false, true])
             chainId = '0x2';
           });
         if (changedChain) {
-          await assert.rejects(transfers.confirm(review.id), {
+          await assert.rejects(transfers.confirm(review.id, { method: 'pin', pin: password }), {
             code: 'FAILED',
           });
           assert.equal(transfers.getSnapshot().phase, 'unavailable');
         } else {
-          await transfers.confirm(review.id);
+          await transfers.confirm(review.id, { method: 'pin', pin: password });
           assert.equal(transfers.getSnapshot().phase, 'pending');
         }
         assert.equal(f.signedCount, 1);
@@ -786,7 +790,7 @@ test('cancellation during a Ledger prompt rejects its late signature', async () 
       await release.promise;
     });
     const controller = new AbortController();
-    const signed = f.runtime.transfers!.sign(
+    const signed = signTestTransfer(f.runtime.transfers!, password,
       {
         type: 2,
         accessList: [],
@@ -882,7 +886,7 @@ test('Ledger UTXO review uses its saved xpub before connection and the shared si
     await f.connection.finishConnection();
     assert.equal(f.connection.isConnected(), true);
     assert.equal(f.psbtSignCount, 0);
-    await send.confirm(review);
+    await send.confirm(review, { method: 'pin', pin: password });
     assert.equal(f.psbtSignCount, 1);
     assert.equal(broadcasts, 1);
     send.cancel();
@@ -890,6 +894,7 @@ test('Ledger UTXO review uses its saved xpub before connection and the shared si
     await f.close();
   }
 });
+
 
 test('Ledger signs the same reviewed ERC20 and collectible envelopes through the shared helper', async () => {
   const f = await fixture();
@@ -943,7 +948,7 @@ test('Ledger signs the same reviewed ERC20 and collectible envelopes through the
         maxFeePerGas: '3',
         maxPriorityFeePerGas: '1',
       };
-      const signed = await f.runtime.transfers!.sign(
+      const signed = await signTestTransfer(f.runtime.transfers!, password,
         unsigned,
         { assertCurrent() {}, signal: new AbortController().signal },
         intent

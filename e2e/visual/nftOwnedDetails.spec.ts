@@ -15,6 +15,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 const CONTRACT = '0x000000000000000000000000000000000000e115';
 const SYMBOL = 'OWN1155';
@@ -159,7 +160,9 @@ for (const scenario of [
         offlineHttpProxy: server.url,
         viewport: { width: 400, height: 620 },
       });
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         if (/^https?:/.test(request.url()))
           failedRequests.push({ method: request.method(), url: request.url() });
       });

@@ -49,6 +49,7 @@ jest.mock('utils/tokens', () => ({
   getTokenTypeBadgeColor: () => '',
   getKnownTokenLogo: () => undefined,
   sanitizeUtxoTokenLogo: (value: string) => value,
+  sanitizeTokenLogo: (value: string) => value,
 }));
 jest.mock('utils/navigationState', () => ({
   createBrowsingNavigationContext: jest.fn(),

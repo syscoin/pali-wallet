@@ -25,6 +25,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // Ordinary imports and real controller storage establish the confirmation.
 // Only exact public HTTP/ABI reads are synthetic. No state, controller, DOM,
@@ -449,6 +450,7 @@ for (const scenario of ['different-symbol', 'same-symbol'] as const) {
           }
         });
         wallet.context.on('requestfailed', (request) => {
+          if (isOfflineWalletReleaseAbort(request, page)) return;
           if (/^https?:/.test(request.url()))
             httpFailures.push({
               method: request.method(),

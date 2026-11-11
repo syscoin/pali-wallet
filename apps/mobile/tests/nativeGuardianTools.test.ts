@@ -185,6 +185,7 @@ for (const available of [false, true])
       guardianRecovery: available ? tool : undefined,
     });
     const tree = tools.render();
+    assert.equal(all(tree).find(node => node.type === 'Header')?.props.onBack, undefined, 'Tools root has no redundant Back arrow');
     assert.equal(
       all(tree).some((node) => node.props.title === 'Guardian recovery'),
       available

@@ -490,6 +490,13 @@ export function createSelectedNftReadOperation(
   return createSelectedContractReadOperation(options, 2);
 }
 
+/** One enumeration probe, one balance and at most ten owner-index reads. */
+export function createSelectedNftEnumerationReadOperation(
+  options: SelectedNftReadOptions
+) {
+  return createSelectedContractReadOperation(options, 12);
+}
+
 /** Contract-type and metadata observation only; ownership keeps its two-call boundary. */
 export function createSelectedAssetReadOperation(
   options: SelectedNftReadOptions
@@ -499,7 +506,7 @@ export function createSelectedAssetReadOperation(
 
 function createSelectedContractReadOperation(
   options: SelectedNftReadOptions,
-  maximumCalls: 2 | 8
+  maximumCalls: 2 | 8 | 12
 ) {
   const { registrations } = options;
   if (

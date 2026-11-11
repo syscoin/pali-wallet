@@ -2,7 +2,9 @@
 // No SQLite, SecureStore, keys or personal wallet records are used by this fixture.
 import type { NativeCustodyAuthority } from '../../src/custody/authority';
 import type { KeyringRuntime } from '../../src/custody/keyringRuntime';
-import { NativeWalletRemoval, WalletRemovalError } from '../../src/custody/walletRemoval';
+import { NativeWalletRemoval } from '../../src/custody/walletRemoval';
+import { bindNativePrivateAuthentication, withNativePrivateAuthentication } from '../../src/custody/privateAuthentication';
+import { nativeOperationAuthentication } from '../../src/platform/operationAuthentication';
 import type { OpenWalletStorage, RecoveryStorageSnapshot } from '../../src/storage/types';
 import { clearNativeAccountSelection, saveAccountSelection } from './platform';
 
@@ -48,6 +50,7 @@ const unavailable = async (): Promise<never> => { throw Error('Unplanned wallet-
 
 function storagePort(read: () => RecoveryStorageSnapshot, removal?: OpenWalletStorage['removal']): OpenWalletStorage {
   return {
+    pin: { installationId: installation, read: unavailable, beginAttempt: unavailable, completeAttempt: unavailable, prepareReplacement: unavailable, replace: unavailable, settleCredentialRemoval: unavailable },
     keyringStorage: { get: unavailable, set: unavailable, deleteItem: unavailable, createManyIfAbsent: unavailable, compareAndSet: unavailable, compareAndSetMany: unavailable },
     signedRecords: { read: unavailable, compareAndSet: unavailable },
     authGuard: { checkAllowed: unavailable, recordFailure: unavailable, recordSuccess: unavailable },
@@ -67,6 +70,7 @@ export function createWalletRemovalFixture(
 ) {
   let dispatched: Result | undefined;
   const storage = storagePort(() => before, {
+    async settlePinCredential() {},
     async commit(snapshot, guard) {
       guard();
       if (snapshot !== before || owner.getSnapshot().phase !== 'disposed') throw Error('Unexpected removal admission');
@@ -81,27 +85,32 @@ export function createWalletRemovalFixture(
     },
   });
   const runtime: Pick<KeyringRuntime, 'authorizeWalletRemoval' | 'catalogue'> = {
-    catalogue: { ...catalogue, getControlSnapshot: () => null,
+    catalogue: { ...catalogue, getControlSnapshot: () => null, getMonitoringSnapshot: () => null,
       previewNetworkSelection() { throw Error('Dapp network control is outside this removal fixture'); } },
-    async authorizeWalletRemoval(password, guard, beforeSnapshot) {
+    async authorizeWalletRemoval(signal, authentication, guard, beforeSnapshot) {
       guard();
-      audit.authorizations++;
-      await gate('authorize');
-      if (!passwordMatches(password)) throw new WalletRemovalError('INVALID_CREDENTIAL');
+      await withNativePrivateAuthentication(authentication, signal, guard, ownedSignal =>
+        nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'account-change', biometricsEnabled: false }, ownedSignal, guard, async (credential, check) => {
+          check(); audit.authorizations++;
+          await gate('authorize'); check();
+          return credential.method === 'pin' ? passwordMatches(credential.pin) ? { accepted: true } : { accepted: false, reason: 'INVALID_CREDENTIAL' }
+            : { accepted: false, reason: 'DEVICE_UNLOCK_UNAVAILABLE' };
+        }));
       guard();
       await beforeSnapshot(guard);
       guard();
-      return { snapshot: before, assertCurrent: guard, async purgePublicCaches(check) { check(); } };
+      return { snapshot: before, assertCurrent: guard, async purgePublicCaches(check) { check(); }, removePinCredential: unavailable };
     },
   };
   const flow = new NativeWalletRemoval({
+    bindAuthentication: (scope, check) => bindNativePrivateAuthentication(scope, { assertCurrent: check, isPromptActive: () => false }),
     beforeSnapshot: async () => undefined,
     owner,
     source: () => ({ runtime, storage }),
     async reopen(expected) {
       audit.reopens++;
       if (expected !== installation || dispatched === 'unconfirmed') throw Error('Synthetic verification failure');
-      return storagePort(() => dispatched === 'removed' ? empty : before);
+      return storagePort(() => dispatched === 'removed' ? empty : before, { commit: unavailable, async settlePinCredential() {} });
     },
     clearNativeSelection: clearNativeAccountSelection,
     assertActive() {},

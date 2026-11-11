@@ -41,7 +41,9 @@ jest.mock('hooks/index', () => ({
 jest.mock('react-redux', () => ({
   useSelector: (select: any) =>
     select({
-      vault: { activeNetwork: { chainId: 57057, kind: 'ethereum' } },
+      vault: {
+        activeNetwork: { chainId: 57057, kind: 'ethereum', label: 'zkSYS' },
+      },
       vaultGlobal: {
         networkStatus: 'idle',
         networks: {
@@ -52,23 +54,17 @@ jest.mock('react-redux', () => ({
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, values?: { chainId?: number }) =>
-      key === 'components.chainWithId'
-        ? jest
-            .requireActual('../../source/assets/locales/en.json')
-            .components.chainWithId.replace(
-              '{{chainId}}',
-              String(values?.chainId)
-            )
-        : {
-            'settings.switchChain': 'Switch Chain',
-            'send.allow': 'Allow',
-            'settings.toSwitchNetwork': 'to switch the network',
-            'settings.thisWillSwitch':
-              'This will switch the selected network within Pali to a previously added network',
-            'buttons.reject': 'Reject',
-            'buttons.confirm': 'Confirm',
-          }[key] || key,
+    t: (key: string, values?: { chainId?: number }) => {
+      const value = key
+        .split('.')
+        .reduce(
+          (entry, part) => entry?.[part],
+          jest.requireActual('../../source/assets/locales/en.json')
+        );
+      if (typeof value !== 'string')
+        throw new Error(`Missing translation: ${key}`);
+      return value.replace(/{{chainId}}/g, String(values?.chainId));
+    },
   }),
 }));
 jest.mock('react-router-dom', () => ({

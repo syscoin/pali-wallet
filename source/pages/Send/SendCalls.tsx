@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { v4 as uuidv4 } from 'uuid';
 
+import { decodeAssetTransfer } from '../../shared/assetTransfer';
 import { createSmartAccountCallsExecutions } from '../../shared/dappCalls';
 import { createEoaCallsSequence } from '../../wallet/evmCallsSequence';
 import { Button, Icon, Tooltip } from 'components/index';
@@ -37,6 +38,9 @@ import {
   type SmartAccountExecutionIntent,
   type SmartAccountFeeQuote,
 } from 'utils/smartAccount';
+
+import { AssetTransferSummary } from './components/AssetTransferSummary';
+import { useAssetTransferSummaries } from './useAssetTransferSummaries';
 
 interface ISendCallsData {
   approvedContext: IEvmTransactionContext;
@@ -100,7 +104,7 @@ const COMMON_CALL_FIELDS: Record<string, [string, string]> = {
   ],
 };
 
-const decodeCommonCallData = (data?: string) => {
+const decodeCommonCallData = (data?: string, contract?: string) => {
   if (!data || data === '0x' || data.length < 10) {
     return null;
   }
@@ -110,6 +114,30 @@ const decodeCommonCallData = (data?: string) => {
   const fallback = fallbackName ? { name: fallbackName, params: null } : null;
   const fields = COMMON_CALL_FIELDS[selector];
   if (!fields) return fallback;
+
+  const transfer = decodeAssetTransfer(data, contract);
+  if (transfer)
+    return {
+      name: transfer.method,
+      params: Object.fromEntries(
+        fields[1]
+          .split(',')
+          .map((name, index) => [name, transfer.decoded.inputs[index]])
+      ),
+    };
+  // Transfer-shaped data is described only by the shared canonical decoder.
+  // It deliberately rejects trailing bytes and malformed batch lengths.
+  if (
+    [
+      '0xa9059cbb',
+      '0x23b872dd',
+      '0x42842e0e',
+      '0xb88d4fde',
+      '0xf242432a',
+      '0x2eb2c2d6',
+    ].includes(selector)
+  )
+    return fallback;
 
   try {
     const values = defaultAbiCoder.decode(
@@ -328,6 +356,28 @@ export const SendCalls = () => {
     Boolean(feeQuote?.key === feeQuoteKey && !feeQuoteNeedsRefresh);
   const currentFeeQuoteKeyRef = React.useRef(feeQuoteKey);
   currentFeeQuoteKeyRef.current = feeQuoteKey;
+  const assetTransfers = useAssetTransferSummaries(
+    (callsData.calls || []).map((call, index) => {
+      const exact =
+        eoaFeeReview?.index === index
+          ? eoaFeeReview.quote.transaction
+          : undefined;
+      const position = quoteCallIndices.indexOf(index);
+      const execution = hasCurrentFeeQuote
+        ? feeQuote?.executions[position]
+        : undefined;
+      return {
+        to:
+          exact?.to ??
+          execution?.target ??
+          reviewedDestinations[index] ??
+          call.to,
+        data: exact?.data ?? execution?.data ?? call.data,
+      };
+    }),
+    approvedContext,
+    JSON.stringify([host, eventName, callsData.bundleId])
+  );
 
   useEffect(() => {
     if (!requestSmartAccount.supportsAtomicBatch || !quoteCalls.length) return;
@@ -1437,7 +1487,14 @@ export const SendCalls = () => {
                     )}
                   </div>
 
-                  {call.to && (
+                  {assetTransfers[index] && (
+                    <AssetTransferSummary
+                      transfer={assetTransfers[index]!}
+                      context={approvedContext}
+                      compact
+                    />
+                  )}
+                  {call.to && !assetTransfers[index] && (
                     <div className="ml-6">
                       <p className="text-xs text-brand-gray200">
                         {t('send.to')}:
@@ -1487,13 +1544,20 @@ export const SendCalls = () => {
                     </div>
                   )}
 
-                  {call.value && call.value !== '0x0' && (
+                  {(assetTransfers[index] ||
+                    (call.value && call.value !== '0x0')) && (
                     <div className="ml-6 mt-2">
                       <p className="text-xs text-brand-gray200">
-                        {t('send.value')}:
+                        {t(
+                          assetTransfers[index]
+                            ? 'assetTransfer.nativeValue'
+                            : 'send.value'
+                        )}
+                        :
                       </p>
                       <p className="text-sm text-brand-white">
-                        {formatEther(call.value)} {activeNetwork.currency}
+                        {formatEther(call.value || '0x0')}{' '}
+                        {activeNetwork.currency}
                       </p>
                     </div>
                   )}
@@ -1504,7 +1568,10 @@ export const SendCalls = () => {
                         {t('send.data')}:
                       </p>
                       {(() => {
-                        const decodedCallData = decodeCommonCallData(call.data);
+                        const decodedCallData = decodeCommonCallData(
+                          call.data,
+                          assetTransfers[index]?.contract ?? call.to
+                        );
                         return (
                           <div>
                             {decodedCallData && (

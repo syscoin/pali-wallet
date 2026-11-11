@@ -176,6 +176,12 @@ const DefaultEvmAssets = React.memo(
                   <TokenIcon
                     logo={token.logo}
                     contractAddress={token.contractAddress}
+                    chainId={token.chainId}
+                    decimals={
+                      token.decimals === undefined
+                        ? undefined
+                        : Number(token.decimals)
+                    }
                     symbol={token.tokenSymbol}
                     size={24}
                     className="hover:shadow-md hover:scale-110 transition-all duration-200"

@@ -23,14 +23,20 @@ import { formatBaseUnits } from '../core/amounts';
 import { Button, Card, colors, Header, Screen, Text } from '../ui';
 import { recordIdleActivity } from '../platform/security';
 import { IdlePressable } from './IdleActivityBoundary';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
+
+export type NativePrivateDepositTask = Readonly<{ poolId: PrivacyPoolId; noteId: string }>;
 
 type Props = {
   open(
     signal: AbortSignal,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    authentication: NativePrivateAuthenticationScope
   ): Promise<DepositController>;
   onBack(): void;
-  onBackup(): void;
+  onBackup(task?: NativePrivateDepositTask): void;
+  initialTask?: NativePrivateDepositTask;
   onActivity?(hash: string): void;
 };
 type Owner = {
@@ -40,6 +46,7 @@ type Owner = {
   controller?: DepositController;
   opening?: Promise<void>;
   disposing?: Promise<void>;
+  authentication: NativePrivateAuthenticationScope;
 };
 function disposeOwner(owner: Owner): Promise<void> {
   owner.disposing ??= Promise.resolve(owner.opening).then(async () => {
@@ -53,6 +60,7 @@ export function NativePrivateDeposit({
   onBack,
   onBackup,
   onActivity,
+  initialTask,
 }: Props) {
   const owner = useRef<Owner | undefined>(undefined);
   const [opened, setOpened] = useState<{
@@ -70,6 +78,7 @@ export function NativePrivateDeposit({
       const current = owner.current;
       if (!current?.live) return;
       current.live = false;
+      current.authentication.retire();
       current.returning = true;
       current.abort.abort();
       setOpened({ source: open, closing: true });
@@ -84,8 +93,9 @@ export function NativePrivateDeposit({
   const back = useCallback(() => {
     leave(callbacks.current.onBack);
   }, [leave]);
-  const backup = useCallback(() => {
-    leave(callbacks.current.onBackup);
+  const backup = useCallback((task?: NativePrivateDepositTask) => {
+    const captured = task && Object.freeze({ poolId: task.poolId, noteId: task.noteId });
+    leave(() => callbacks.current.onBackup(captured));
   }, [leave]);
   const activity = useCallback(
     (hash: string) => {
@@ -95,31 +105,32 @@ export function NativePrivateDeposit({
     [leave]
   );
   useEffect(() => {
-    const current: Owner = { live: true, abort: new AbortController() };
+    const current: Owner = { live: true, abort: new AbortController(), authentication: createNativePrivateAuthenticationScope() };
     owner.current = current;
     const check = () => {
       if (
-        !current.live ||
+        owner.current !== current || !current.live ||
         current.abort.signal.aborted ||
-        AppState.currentState !== 'active'
+        (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, AppState.currentState))
       )
         throw new Error('privacy_cancelled');
     };
-    current.opening = open(current.abort.signal, check).then(
+    current.opening = open(current.abort.signal, check, current.authentication).then(
       (controller) => {
         current.controller = controller;
-        if (current.live) setOpened({ source: open, controller });
+        if (current.live && AppState.currentState === 'active') setOpened({ source: open, controller });
+        else { current.live = false; current.authentication.retire(); current.abort.abort(); return controller.dispose().catch(() => undefined); }
       },
       () => {
-        if (current.live) setOpened({ source: open, failed: true });
+        if (current.live && AppState.currentState === 'active') setOpened({ source: open, failed: true });
       }
     );
     const change = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') back();
+      if (state !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, state)) back();
     });
     const blur =
       Platform.OS === 'android'
-        ? AppState.addEventListener('blur', back)
+        ? AppState.addEventListener('blur', () => { if (!allowsPrivateAuthenticationInterruption(current.authentication, 'blur')) back(); })
         : undefined;
     const hardwareBack = BackHandler.addEventListener(
       'hardwareBackPress',
@@ -130,6 +141,7 @@ export function NativePrivateDeposit({
     );
     return () => {
       current.live = false;
+      current.authentication.retire();
       current.returning = false;
       current.abort.abort();
       void disposeOwner(current).catch(() => undefined);
@@ -145,6 +157,7 @@ export function NativePrivateDeposit({
         controller={current.controller}
         onBack={back}
         onBackup={backup}
+        initialTask={initialTask}
         onActivity={onActivity ? activity : undefined}
       />
     );
@@ -154,7 +167,7 @@ export function NativePrivateDeposit({
         footer={
           <Button
             title="Close"
-            variant="quiet"
+            variant="secondary" size="compact"
             disabled={current?.closing}
             onPress={back}
           />
@@ -184,10 +197,12 @@ function DepositContent({
   onBack,
   onBackup,
   onActivity,
+  initialTask,
 }: {
   controller: DepositController;
   onBack(): void;
-  onBackup(): void;
+  onBackup(task?: NativePrivateDepositTask): void;
+  initialTask?: NativePrivateDepositTask;
   onActivity?: Props['onActivity'];
 }) {
   const state = useSyncExternalStore(
@@ -195,7 +210,7 @@ function DepositContent({
     controller.getSnapshot,
     controller.getSnapshot
   );
-  const [poolId, setPoolId] = useState<PrivacyPoolId>(PRIVACY_POOLS[0]!.id);
+  const [poolId, setPoolId] = useState<PrivacyPoolId>(initialTask?.poolId ?? PRIVACY_POOLS[0]!.id);
   const [choosing, setChoosing] = useState(false);
   const [acknowledged, setAcknowledged] = useState<string | null>(null);
   const [details, setDetails] = useState<string | null>(null);
@@ -203,6 +218,9 @@ function DepositContent({
   const options = useRef(
     new Map<PrivacyPoolId, React.ComponentRef<typeof IdlePressable>>()
   );
+  useEffect(() => {
+    if (initialTask) void controller.prepare({ poolId: initialTask.poolId, noteId: initialTask.noteId }).catch(() => undefined);
+  }, [controller, initialTask]);
   const review = state.review;
   const result = state.result;
   const busy =
@@ -221,7 +239,7 @@ function DepositContent({
   const prepare = () => {
     setChoosing(false);
     setAcknowledged(null);
-    void controller.prepare({ poolId }).catch(() => undefined);
+    void controller.prepare({ poolId, ...(initialTask?.poolId === poolId ? { noteId: initialTask.noteId } : {}) }).catch(() => undefined);
   };
   const refresh = () => {
     setAcknowledged(null);
@@ -300,11 +318,12 @@ function DepositContent({
   return (
     <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
       <Screen
+        scrollResetKey={`${state.phase}:${showReview ? review?.intentId : result ? 'result' : 'pool'}`}
         footer={
           <>
             {primary}
             {!result && (
-              <Button title="Close" variant="quiet" onPress={onBack} />
+              <Button title="Close" variant="secondary" size="compact" onPress={onBack} />
             )}
           </>
         }
@@ -396,7 +415,7 @@ function DepositContent({
                     ? 'Hide transaction details'
                     : 'View transaction details'
                 }
-                variant="quiet"
+                variant="quiet" size="compact"
                 expanded={details === review.intentId}
                 onPress={() =>
                   setDetails(
@@ -438,11 +457,14 @@ function DepositContent({
                 Keep a private backup of this note. Your recovery phrase cannot
                 restore it.
               </Text>
-              <Button
+              <Button icon="shield"
                 title="Back up private notes"
-                variant="quiet"
+                variant="secondary" size="compact"
                 disabled={busy}
-                onPress={onBackup}
+                onPress={() => {
+                  if (busy || controller.getSnapshot().review !== review || controller.getSnapshot().phase !== 'review') return;
+                  onBackup(Object.freeze({ poolId: review.poolId, noteId: review.noteId }));
+                }}
               />
               <IdlePressable
                 accessibilityRole="checkbox"
@@ -482,9 +504,9 @@ function DepositContent({
               </IdlePressable>
             </View>
             {!busy && (
-              <Button
+              <Button icon="edit"
                 title="Change amount"
-                variant="quiet"
+                variant="secondary" size="compact"
                 onPress={() => {
                   setChoosing(true);
                   setAcknowledged(null);
@@ -539,7 +561,7 @@ function DepositContent({
             )}
             <Button
               title={busy ? 'Checking pool…' : 'Check pool status'}
-              variant="secondary"
+              variant="secondary" size="compact"
               disabled={busy}
               onPress={() => {
                 void controller.refresh().catch(() => undefined);
@@ -547,17 +569,17 @@ function DepositContent({
             />
             {feedback}
             {hash && onActivity && (
-              <Button
+              <Button icon="activity"
                 title="View in Activity"
-                variant="quiet"
+                variant="secondary" size="compact"
                 onPress={() => onActivity(hash)}
               />
             )}
-            <Button
+            <Button icon="shield"
               title="Back up private notes"
-              variant="quiet"
+              variant="secondary" size="compact"
               disabled={busy}
-              onPress={onBackup}
+              onPress={() => onBackup()}
             />
           </>
         )}
@@ -622,7 +644,7 @@ const s = StyleSheet.create({
     letterSpacing: -0.7,
   },
   review: { gap: 8 },
-  card: { gap: 8, padding: 18 },
+  card: { gap: 8, padding: 16 },
   label: { fontSize: 12, lineHeight: 17, color: colors.muted },
   address: { fontSize: 13, lineHeight: 20 },
   value: { fontSize: 16, lineHeight: 23 },

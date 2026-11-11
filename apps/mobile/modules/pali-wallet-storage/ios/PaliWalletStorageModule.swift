@@ -140,6 +140,12 @@ public final class PaliWalletStorageModule: Module {
 
   public func definition() -> ModuleDefinition {
     Name("PaliWalletStorage")
+    AsyncFunction("prepareNotificationStorage") { (create: Bool) throws -> [String: Any] in
+      try PaliNotificationStoragePolicy.prepare(create: create)
+    }
+    AsyncFunction("protectNotificationStorage") { () throws in
+      _ = try PaliNotificationStoragePolicy.prepare(create: false)
+    }
     #if os(iOS)
     Function("preparePublicSnapshot") { (pool: String, serviceOrigin: String) throws -> String in
       try self.publicSnapshots.prepare { completion in

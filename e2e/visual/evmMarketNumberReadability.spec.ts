@@ -26,6 +26,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // Four ordinary imported tokens avoid cache mutation and isolate healthy,
 // high-price, high-supply and missing-optional-data HTTP inputs.
@@ -1289,7 +1290,9 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
     });
     const page = wallet.page;
     page.on('pageerror', (error) => pageErrors.push(error.message));
+    const releasePage = wallet.page;
     wallet.context.on('requestfailed', (request) => {
+      if (isOfflineWalletReleaseAbort(request, releasePage)) return;
       if (/^https?:/.test(request.url()))
         unknownHttpFailures.push({
           method: request.method(),

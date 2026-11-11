@@ -1,3 +1,9 @@
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
+import {
+  guardianRecoveryTerminalNotice,
+  guardianRecoveryTerminalReason,
+} from '../../../source/utils/smartAccount/guardianRecoveryLifecycle.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { GuardianRecoveryObservation } from '../../../source/utils/smartAccount/guardianStatus.ts';
@@ -74,8 +80,14 @@ const intent: NativeGuardianRecoveryIntent = {
 };
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 const imports = {
-  '../platform/localization': nativeTranslationFixture,
+  '../../../../source/utils/smartAccount/guardianRecoveryLifecycle': {
+    guardianRecoveryTerminalNotice,
+  },
+  '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+    '../platform/localization': nativeTranslationFixture,
   'react-native': {
+    AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
     ActivityIndicator: 'ActivityIndicator',
     BackHandler: { addEventListener: () => ({ remove() {} }) },
     FlatList: 'FlatList',
@@ -436,4 +448,160 @@ test('saved review and Activity use the captured payer while proofs and submissi
     fixture.close();
     controller.dispose();
   }
+});
+
+for (const [status, reason, title] of [
+  ['expired', 'expired', 'Recovery expired'],
+  ['canceled', 'cancelled', 'Recovery was cancelled'],
+  ['policy-changed', 'policy-changed', 'Guardian policy changed'],
+  ['inactive', 'inactive', 'Recovery is no longer active'],
+] as const)
+  test(`terminal ${reason} recovery preserves its reason and offers safe next actions`, async () => {
+    const currentObservation: GuardianRecoveryObservation = {
+      ...observation,
+      policyEpoch: status === 'policy-changed' ? '2' : '1',
+      knownOperation:
+        status === 'policy-changed'
+          ? null
+          : {
+              operationId: hash,
+              status,
+              executableAt: 1,
+              expiresAt: 2,
+              scheduledAt: 1,
+            },
+    };
+    assert.equal(
+      guardianRecoveryTerminalReason(
+        intent.operation,
+        currentObservation,
+        null
+      ),
+      reason
+    );
+    assert.equal(
+      guardianRecoveryTerminalReason(
+        intent.operation,
+        currentObservation,
+        hash
+      ),
+      null,
+      'unresolved signed transaction retains tracking'
+    );
+    let prepared = 0,
+      refreshed = 0,
+      returned = 0;
+    const lifetime = new AbortController();
+    const controller = new NativeGuardianRecoveryController(
+      {
+        assertCurrent() {},
+        dispose() {},
+        submissionFailure() {
+          return undefined;
+        },
+        async observe() {
+          refreshed++;
+          return {
+            intent,
+            observation: currentObservation,
+            action: null,
+            terminal: 'obsolete',
+            transactionHash: null,
+            canAbandon: true,
+          };
+        },
+        async prepare() {
+          prepared++;
+          throw Error('terminal recovery must not prepare');
+        },
+        async reconcile() {},
+        async abandon() {},
+      },
+      lifetime.signal
+    );
+    const f = screen('NativeGuardianRecoveryView');
+    const props = {
+      controller,
+      address,
+      chainId: 1,
+      currency: 'ETH',
+      networkLabel: 'Ethereum',
+      onActivity: async () => undefined,
+      openRecoveryAlerts: async () => undefined,
+      onBack() {
+        returned++;
+      },
+    };
+    try {
+      f.render(props);
+      await tick();
+      let tree = screenElements(f.render(props));
+      assert.equal(controller.getSnapshot().terminalReason, reason);
+      assert(
+        tree.some(
+          (element) =>
+            element.type === 'Notice' && element.props.title === title
+        )
+      );
+      assert(
+        !tree.some(
+          (element) =>
+            element.type === 'Button' &&
+            /Confirm schedule|Authorize recovery/.test(element.props.title)
+        )
+      );
+      button(tree, 'Refresh current policy').props.onPress();
+      await tick();
+      tree = screenElements(f.render(props));
+      button(tree, 'Return to account').props.onPress();
+      assert.equal(returned, 1);
+      assert(refreshed >= 2);
+      await controller.review();
+      assert.equal(prepared, 0);
+      button(tree, 'Clear local recovery tracking').props.onPress();
+      const confirm = screenElements(f.render(props));
+      assert(
+        confirm.some(
+          (element) =>
+            element.type === 'Notice' &&
+            /does not cancel transactions or recovery scheduled/.test(
+              element.props.body
+            )
+        )
+      );
+    } finally {
+      f.close();
+      controller.dispose();
+    }
+  });
+
+for (const boundary of ['back', 'background', 'unmount', 'foreign-prompt'] as const) test(`guardian recovery keeps only its own prompt and retires on ${boundary}`, async () => {
+  const events = new Map<string, (state: string) => void>();
+  const native = { ...imports['react-native'], AppState: { currentState: 'active', addEventListener(event: string, callback: (state: string) => void) {
+    events.set(event, callback); return { remove() { events.delete(event); } };
+  } } };
+  const f = screenFixture(new URL('../src/screens/NativeGuardianRecovery.tsx', import.meta.url), 'NativeGuardianRecovery', { ...imports, 'react-native': native });
+  let authentication!: privateAuthentication.NativePrivateAuthenticationScope, guard!: () => void, returned = 0;
+  const props = { address, networkLabel: 'Ethereum', observation, lifetime: new AbortController().signal, onBack() { returned++; },
+    recovery: { chainId: 1, currency: 'ETH', guardians: [guardian], replacements: [replacement], payers: [payer], hasIntent: true,
+      async open(_draft: unknown, _signal: AbortSignal, check: () => void, scope: privateAuthentication.NativePrivateAuthenticationScope) {
+        authentication = scope; guard = check; return { dispose() {} };
+      }, async onActivity() {}, async openRecoveryAlerts() {} } };
+  f.render(props); await tick(); f.render(props); guard();
+  const promptScope = boundary === 'foreign-prompt' ? privateAuthentication.createNativePrivateAuthenticationScope() : authentication;
+  const held = Promise.withResolvers<void>();
+  const binding = privateAuthentication.bindNativePrivateAuthentication(promptScope, { assertCurrent() {}, isPromptActive: () => true });
+  const proof = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, () => held.promise);
+  const emit = (event: string, state = '') => { if (event === 'change') native.AppState.currentState = state; events.get(event)?.(state); };
+  try {
+    if (boundary !== 'foreign-prompt') { emit('change', 'inactive'); emit('blur'); guard(); assert.equal(returned, 0); emit('change', 'active'); }
+    if (boundary === 'unmount') f.close();
+    else if (boundary !== 'back') emit('change', boundary === 'background' ? 'background' : 'inactive');
+    if (boundary === 'back') {
+      const child = screenElements(f.render(props)).find(node => typeof node.type === 'function' && node.props.controller);
+      assert(child); child.props.onBack();
+    }
+    assert.throws(guard, /CANCELLED/); assert.equal(authentication.isAuthenticating(), false);
+    assert.equal(returned, boundary === 'unmount' ? 0 : 1);
+  } finally { held.resolve(); await proof.catch(() => undefined); promptScope.retire(); f.close(); }
 });

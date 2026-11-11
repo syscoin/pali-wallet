@@ -83,7 +83,11 @@ function fixture(purpose: 'import' | 'connect' = 'import') {
         async select() {
           await selectWait;
           check();
-          if (failSelect) throw Object.assign(Error('Device disconnected'), selectErrorCode ? {code: selectErrorCode} : {});
+          if (failSelect)
+            throw Object.assign(
+              Error('Device disconnected'),
+              selectErrorCode ? { code: selectErrorCode } : {}
+            );
           return { name: 'Ledger', address: '0x' + '11'.repeat(20) };
         },
         handoff() {
@@ -123,8 +127,8 @@ function fixture(purpose: 'import' | 'connect' = 'import') {
     get cancelled() {
       return cancelled;
     },
-    error() {
-      scanError?.(Error('scan failed'));
+    error(error: unknown = Error('scan failed')) {
+      scanError?.(error);
     },
     failSelect(code?: string) {
       failSelect = true;
@@ -413,17 +417,52 @@ test('a handed-off connection notifies subscribers immediately on disconnect', a
   }
 });
 
+for (const code of ['INVALID_INPUT', 'LEDGER_SMART_OWNERS_UNAVAILABLE'])
+  test(`Ledger wrong-key feedback stays specific to its account mode (${code})`, async () => {
+    const f = fixture('connect');
+    try {
+      await f.view.start();
+      f.failSelect(code);
+      await assert.rejects(f.view.select('1:0'), { code });
+      assert.equal(f.view.isConnected(), false);
+      const message = f.view.getSnapshot().error!;
+      if (code === 'INVALID_INPUT') {
+        assert.match(message, /Open the matching app on your Ledger/);
+        assert.doesNotMatch(message, /multiple Ledger|every required owner/);
+      } else assert.match(message, /every required owner.*multiple Ledger/);
+    } finally {
+      await f.view.dispose();
+    }
+  });
 
-for (const code of ['INVALID_INPUT', 'LEDGER_SMART_OWNERS_UNAVAILABLE']) test(`Ledger wrong-key feedback stays specific to its account mode (${code})`, async () => {
-  const f = fixture('connect');
-  try {
-    await f.view.start(); f.failSelect(code);
-    await assert.rejects(f.view.select('1:0'), {code});
-    assert.equal(f.view.isConnected(), false);
-    const message = f.view.getSnapshot().error!;
-    if (code === 'INVALID_INPUT') {
-      assert.match(message, /Open the matching app on your Ledger/);
-      assert.doesNotMatch(message, /multiple Ledger|every required owner/);
-    } else assert.match(message, /every required owner.*multiple Ledger/);
-  } finally {await f.view.dispose();}
-});
+for (const [error, category, text] of [
+  [
+    { _tag: 'BlePermissionsNotGranted' },
+    'permission',
+    /Open Settings and allow Bluetooth/,
+  ],
+  [{ _tag: 'BlePoweredOff' }, 'bluetooth-off', /Bluetooth is turned off/],
+  [{ errorCode: 201 }, 'disconnected', /Ledger disconnected/],
+  [
+    { _tag: 'OpeningConnectionError', err: { errorCode: 101 } },
+    'permission',
+    /Open Settings/,
+  ],
+  [Error('unclassified'), 'retry', /Could not find your Ledger/],
+] as const)
+  test(`Ledger discovery retains supported ${category} category`, async () => {
+    const f = fixture();
+    try {
+      await f.view.start();
+      f.error(error);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(f.view.getSnapshot().phase, 'error');
+      assert.equal(f.view.getSnapshot().failure, category);
+      assert.match(f.view.getSnapshot().error!, text);
+      await f.view.start();
+      assert.equal(f.scanCount, 2);
+      assert.equal(f.view.getSnapshot().failure, null);
+    } finally {
+      await f.view.dispose();
+    }
+  });

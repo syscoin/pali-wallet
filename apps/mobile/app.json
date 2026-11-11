@@ -2,7 +2,7 @@
   "expo": {
     "name": "Pali",
     "slug": "pali-mobile",
-    "version": "0.1.0",
+    "version": "5.0.0",
     "orientation": "default",
     "userInterfaceStyle": "dark",
     "scheme": "pali",
@@ -55,6 +55,14 @@
           "isBackgroundEnabled": false,
           "neverForLocation": true,
           "bluetoothAlwaysPermission": "Allow Pali to connect to your Ledger hardware wallet."
+        }
+      ],
+      "expo-background-task",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "pali-account-activity-v1",
+          "enableBackgroundRemoteNotifications": false
         }
       ]
     ],

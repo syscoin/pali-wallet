@@ -1,3 +1,6 @@
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
+import { resolveAssetTransferDisplay } from '../../../source/shared/assetTransferDisplay.ts';
 import { formatTokenUnits } from '../../../source/shared/erc20.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -85,6 +88,8 @@ function fixture() {
   const module = { exports: {} as Record<string, unknown> };
   const imports: Record<string, unknown> = {
     react,
+    '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     '../platform/localization': nativeTranslationFixture,
     './useDappLedgerConnection': {useOwnedLedgerConnection: () => ({blocked: false, showConnect: false, modal: null, canApprove: () => true})},
     'react-native': {
@@ -106,6 +111,7 @@ function fixture() {
     },
     './NativeTransactionReview': { TransactionDetails: () => null },
     '../core/amounts': { formatBaseUnits },
+    '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay },
     '../../../../source/shared/erc20': { formatTokenUnits },
     '../custody/networkContext': { getNativeSendContext },
     './guardianPolicyLabels': { guardianDelayLabel },
@@ -150,7 +156,7 @@ function all(value: unknown): Element[] {
   if (Array.isArray(value)) return value.flatMap(all);
   if (!value || typeof value !== 'object' || !('children' in value)) return [];
   const node = value as Element;
-  return [node, ...node.children.flatMap(all)];
+  return [node, ...node.children.flatMap(all), ...all(node.props.footer)];
 }
 function button(tree: Element, title: string) {
   const found = all(tree).find(
@@ -272,4 +278,24 @@ test('Smart NFT authorization shows contract, token ID and exact quantity', () =
   assert(text(tree).includes('ERC-1155'));
   button(tree, 'Authorize transfer')();
   assert.deepEqual(f.calls.authorize, [4]);
+});
+
+
+test('approval change separates the current method from proposed owners and keeps contract data in details', () => {
+  const f = fixture();
+  const validator = '0x5555555555555555555555555555555555555555';
+  const owners = ['0x6666666666666666666666666666666666666666', '0x7777777777777777777777777777777777777777'];
+  f.update({ intent: { kind: 'authenticator', command: {
+    accountAddress: '0x1111111111111111111111111111111111111111', chainId: 1, executions: [],
+    sourceAuthHash: '0x' + '88'.repeat(32), sourceModule: 'slh-dsa',
+    target: { module: 'ecdsa', validator, data: '0x1234' },
+    targetModule: { type: 'validator', id: 'ecdsa', address: validator, data: '0x1234', config: { owners, threshold: 1 } },
+  } } });
+  let tree = f.render();
+  assert.equal(all(tree).find(node => node.type === 'Header')!.props.title, 'Change approval method');
+  assert.match(text(tree), /Current approval method.*Post-quantum key.*New approval method.*Wallet owners/);
+  assert.match(text(tree), /1 of 2 owners can approve/);
+  assert(text(tree).includes(owners[0]!)); assert.doesNotMatch(text(tree), new RegExp(validator));
+  button(tree, 'View approval details')(); tree = f.render(); assert.match(text(tree), new RegExp(validator));
+  button(tree, 'Authorize approval change')(); assert.deepEqual(f.calls.authorize, [4]);
 });

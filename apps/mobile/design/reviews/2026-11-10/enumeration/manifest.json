@@ -1,0 +1,33 @@
+{
+  "sourceRevision": "1543eff47a78c90f5a3f3fa025cc49db16c4ef99",
+  "method": "Actual React Native Web using production shared enumeration and ownership readers with synthetic local RPC responses; external requests blocked and Chromium sandbox enabled. No physical-device qualification.",
+  "sourceFiles": {
+    "source/shared/nftReads.ts": "842c9f78ba76a5d2cad7309b4b6946558ea6a66ed8ae3505f69b92fecd75b2e2",
+    "apps/mobile/src/portfolio/nftOwnershipReadRpc.ts": "d7ad1313a38eebb50710aa88a99500ed048e0731d72a100b64dc88ba4f32590d",
+    "apps/mobile/src/portfolio/nativeTokens.ts": "1ca965cf0086bc8ce9929f0f6e442e7d22de5185da1c4f6a717206d49308add8",
+    "apps/mobile/src/portfolio/erc20ReadRpc.ts": "21e27d93455c0cf978df20cefa45116d6f925f27a1f2f256766db5b333fce99a",
+    "apps/mobile/src/screens/NativeTokens.tsx": "73686bb54a47a3d2afa1dcd9d31f44dc80aebf396ec634f2b50a610fadac0f2c",
+    "apps/mobile/tests/native-send-ui/nativeTokenPortfolioFixture.tsx": "adda16cd10a6ab9e564dd23de7f0d1cfe54259ed141af490f13b459f54aaf965",
+    "apps/mobile/tests/ui/native-token-portfolio.spec.ts": "c20e90984c34cbf6051d08dbfd46cc5a68f1de7eb2858ea8f33b900429065a5a"
+  },
+  "frames": [
+    {
+      "file": "enumeration-320.png",
+      "sha256": "fb5ec81ccaa36ed1e2261aa4380120575629b4c09bd585bec3234d0bbe124ab5",
+      "width": 320,
+      "height": 568
+    },
+    {
+      "file": "enumeration-verified-320.png",
+      "sha256": "92084f6f2801469c91d732b81cbdb33ee1e9c2b5d1533e2f47a41c9e64eff706",
+      "width": 320,
+      "height": 568
+    },
+    {
+      "file": "enumeration-current-390.png",
+      "sha256": "416cad6c1686247ec1e3dddbea8e77f75627a350e2cb4e6dcc5c729f8b21d798",
+      "width": 390,
+      "height": 844
+    }
+  ]
+}

@@ -16,11 +16,14 @@ type Keyring = InstanceType<Sdk['SoftwareKeyring']>;
 type RecoveryOptions = Readonly<{
   assertCurrent(): void;
   captureSession?: (keyring: Keyring) => () => void;
+  /** Enables checkpoint creation on this exact temporary pair; never an unlock fallback. */
+  fingerprintPair?: (pair: StagedAccountRecovery['pair']) => Promise<string>;
   loadSdk?: () => Promise<Sdk>;
   validateRetained?: (session: {
     assertCurrent(): void;
     keyring: Keyring;
     profileId: string;
+    staged: StagedAccountRecovery;
   }) => Promise<void>;
   verifyRoot?: (
     identity: Readonly<{
@@ -68,6 +71,7 @@ async function stageWallet(
     validateRetained,
     captureSession,
     verifyRoot,
+    fingerprintPair,
   } = options;
   const { password, phrase } = input;
   const check = () => {
@@ -108,6 +112,31 @@ async function stageWallet(
   };
   const keyring = new sdk.SoftwareKeyring(
     sdk.createKeyringHost({
+      ...(fingerprintPair
+        ? {
+            async readDeviceUnlockVaultPair() {
+              check();
+              const vault = values.get('vault'),
+                keys = values.get('vault-keys');
+              if (vault === undefined && keys === undefined) return null;
+              if (
+                typeof vault !== 'string' ||
+                !keys ||
+                typeof keys !== 'object'
+              )
+                return invalid();
+              const pair = Object.freeze({ vault, keys });
+              const pairFingerprint = await fingerprintPair(pair);
+              check();
+              if (
+                values.get('vault') !== vault ||
+                values.get('vault-keys') !== keys
+              )
+                return invalid();
+              return { ...pair, pairFingerprint };
+            },
+          }
+        : {}),
       async get(key) {
         allowed(key);
         return values.get(key);
@@ -339,8 +368,6 @@ async function stageWallet(
         invalid();
     }
     if (usedCopies.size !== imported.length) invalid();
-    await validateRetained?.({ keyring, profileId, assertCurrent: check });
-    check();
     const vault = values.get('vault');
     const keys = values.get('vault-keys');
     if (
@@ -355,6 +382,13 @@ async function stageWallet(
       profileId,
       pair: Object.freeze({ vault: vault as string, keys }),
     });
+    await validateRetained?.({
+      keyring,
+      profileId,
+      staged: recovered,
+      assertCurrent: check,
+    });
+    check();
   } finally {
     try {
       await keyring.destroy();

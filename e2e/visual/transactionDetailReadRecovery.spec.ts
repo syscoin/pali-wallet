@@ -16,6 +16,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 const hex = (value: number | bigint) => `0x${value.toString(16)}`;
 const hash = (value: number) => `0x${value.toString(16).padStart(64, '0')}`;
@@ -174,7 +175,9 @@ for (const mode of ['fast explorer', 'stalled explorer'] as const) {
       };
       wallet.context.pages().forEach(observe);
       wallet.context.on('page', observe);
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         if (/^https?:/.test(request.url()))
           requestFailures.push({
             method: request.method(),

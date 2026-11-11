@@ -1,3 +1,4 @@
+import type { NativePrivateAuthentication, NativePrivateAuthenticationScope } from '../custody/privateAuthentication.ts';
 import type { SmartAccountModulesProjection } from '../../../../source/shared/smartAccountModules.ts';
 import type { SmartAccountModuleRequest } from '../../../../source/shared/smartAccountModuleRequest.ts';
 import type { NativeSmartCreationAllocation, NativeSmartCreationRequest } from '../smartAccount/preparation.ts';
@@ -6,6 +7,7 @@ import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 import type { DappEncryptionSdk } from '../../../../source/wallet/dappEncryptionApproval.ts';
 import type { NativeSmartAccountOperation } from '../smartAccount/operation.ts';
 import type { ApprovalSummary } from '../../../../source/shared/approval.ts';
+import type { AssetTransferCall } from '../../../../source/shared/assetTransfer.ts';
 import type { NativePreparedConnectionTransaction } from './transactionRuntime.ts';
 import type { INetwork } from '../../../../source/types/network.ts';
 import type { NativeConnectionRepository } from './storage.ts';
@@ -19,6 +21,8 @@ import type { NativeConnectionReadHost } from '../custody/dappRpcReads.ts';
 import type { NativeConnectionSentryHost } from './sentryRequests.ts';
 import type { NativeConnectionUtxoHost } from '../custody/dappSyscoin.ts';
 import type { NativeConnectionPsbtHost } from './psbtRequests.ts';
+
+export type NativeRequestAuthenticationBinder = (scope: NativePrivateAuthenticationScope, assertCurrent: () => void) => NativePrivateAuthentication;
 
 export type NativeConnectionMessageSigning = Readonly<{
   accountId: string;
@@ -40,6 +44,8 @@ export type NativePreparedSmartConnectionTransaction = Readonly<{
   operation: NativeSmartAccountOperation;
   approval: ApprovalSummary | null;
   batchApprovals?: readonly (ApprovalSummary | null)[];
+  assetTransfer?: AssetTransferCall | null;
+  batchAssetTransfers?: readonly (AssetTransferCall | null)[];
 }>;
 
 export type NativeConnectionAccount = Readonly<{
@@ -70,13 +76,15 @@ export type NativeConnectionSigningHost = Readonly<{
     input: NativeSmartCreationRequest,
     signal: AbortSignal,
     assertRequestCurrent: () => void,
-    onCommitted: (allocation: NativeSmartCreationAllocation) => void
+    onCommitted: (allocation: NativeSmartCreationAllocation) => void,
+    authentication: NativePrivateAuthentication | null
   ): Promise<NativeSmartCreationAllocation>;
   /** Configured ECDSA only: deploy first, then configure using the same allocation. */
   prepareSmartAccountCreationOperation(
     allocation: NativeSmartCreationAllocation,
     handoff: NativeSigningHandoff,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    authentication: NativePrivateAuthentication | null
   ): Promise<NativeSmartAccountOperation>;
   /** Caller proves that the per-call consent sequence no longer exists. */
   recoverStoppedEoaCalls(origin: string, id: string, assertStopped: () => void): Promise<void>;
@@ -103,13 +111,15 @@ export type NativeConnectionSigningHost = Readonly<{
       approval: ReturnType<typeof createDappSigningApproval>;
   handoff: NativeSigningHandoff;
     }>,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    authentication: NativePrivateAuthentication | null
   ): Promise<NativePreparedSmartConnectionTransaction>;
-  encryptionSdk(input: Readonly<{ accountId: string; networkId: string; approval: ReturnType<typeof createDappSigningApproval> }>): DappEncryptionSdk;
-  signMessage(input: NativeConnectionMessageSigning): Promise<string>;
+  encryptionSdk(input: Readonly<{ accountId: string; networkId: string; approval: ReturnType<typeof createDappSigningApproval> }>, authentication: NativePrivateAuthentication | null): DappEncryptionSdk;
+  signMessage(input: NativeConnectionMessageSigning, authentication: NativePrivateAuthentication | null): Promise<string>;
   prepareTransaction(
     input: NativeConnectionTransactionSigning,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    authentication: NativePrivateAuthentication | null
   ): Promise<
     | NativePreparedConnectionTransaction
     | NativePreparedSmartConnectionTransaction
@@ -122,7 +132,8 @@ export type NativeConnectionSigningHost = Readonly<{
       approval: ReturnType<typeof createDappSigningApproval>;
       handoff: NativeSigningHandoff;
     }>,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    authentication: NativePrivateAuthentication | null
   ): Promise<NativePreparedSmartConnectionTransaction>;
   context(): Readonly<{
     network: INetwork;

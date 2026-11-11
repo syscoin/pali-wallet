@@ -1,3 +1,5 @@
+import { storageOnlyPublicSession } from './fixtures/publicSessionRecord.ts';
+import { createTestPinRecord } from './fixtures/pinRecord.ts';
 import {
   createNativeSentryNodeManagement,
   createNativeSentryCollateral,
@@ -342,22 +344,26 @@ test('matching recovery preserves both domains, stale removal refuses, and Forge
       current
     );
     const candidate = validPair(2),
-      pair = { vault: candidate.vault, keys: candidate['vault-keys'] },
+      pair = { publicSession: storageOnlyPublicSession((await f.storage.recovery.readIdentity())!.walletBindingId), vault: candidate.vault, keys: candidate['vault-keys'], pin: await createTestPinRecord(f.storage, { vault: candidate.vault, keys: candidate['vault-keys'] }, (await f.storage.recovery.readIdentity())!.walletBindingId) },
       snapshot = await f.storage.recovery.readSnapshot();
     await assert.rejects(
       f.storage.recovery.prepareReplacement!(snapshot, pair, {
         ...f.root,
         profileId: '0x' + 'fe'.repeat(32),
-      }),
+      }, current),
       changed
     );
     const matching = await f.storage.recovery.readSnapshot();
     const plan = await f.storage.recovery.prepareReplacement!(
       matching,
       pair,
-      f.root
+      f.root,
+      current
     );
     await f.storage.recovery.commitReplacement!(plan, current);
+    await f.storage.removal.settlePinCredential(async record => {
+      assert.deepEqual(record, JSON.parse(matching.metadata.find(row => row.key === 'local-pin-v1')!.value));
+    });
     assert.deepEqual([f.raw(), f.raw('testnet')], bytes);
     await assert.rejects(main.port.read(), changed);
     await f.reopen();
@@ -374,6 +380,7 @@ test('matching recovery preserves both domains, stale removal refuses, and Forge
     assert.equal(f.raw(), undefined);
     assert.equal(f.raw('testnet'), undefined);
     await f.reopen();
+    await f.storage.removal.settlePinCredential(async record => { assert.deepEqual(record, pair.pin); });
     assert.equal((await f.storage.recovery.readSnapshot()).records.length, 0);
   } finally {
     await f.close();
@@ -385,7 +392,7 @@ async function nodeManager(
   options: {
     network?: SentryNetwork;
     check?: () => void;
-    authenticate?: (password: string, check: () => void) => Promise<void>;
+    authenticate?: (check: () => void) => Promise<void>;
     fetch?: typeof fetch;
     readSettings?: () => Promise<unknown>;
   } = {}
@@ -401,6 +408,7 @@ async function nodeManager(
     storage: bound.port,
     coordinator: createSentryCollateralCoordinator(),
     assertCurrent: check,
+    isAuthenticating: () => false,
     lifetime: lifetime.signal,
     run: async (operation) => operation(),
     readSettings:
@@ -409,11 +417,10 @@ async function nodeManager(
         serviceUrl: 'https://sentry.test',
         maxFeeSatoshis: '1000',
       })),
-    async authenticate(password, guard) {
+    async authenticate(guard) {
       authCalls++;
       guard();
-      if (options.authenticate) return options.authenticate(password, guard);
-      assert.equal(password, 'confirmed');
+      if (options.authenticate) return options.authenticate(guard);
     },
     fetch:
       options.fetch ??
@@ -435,7 +442,8 @@ async function nodeManager(
 test('native manager uses shared fresh link workflow, atomic storage and exact acknowledged protection release', async () => {
   const f = await fixture();
   try {
-    const n = await nodeManager(f),
+    let authenticated = false;
+    const n = await nodeManager(f, { authenticate: async guard => { guard(); if (!authenticated) throw Error('Fixture authorization refused'); } }),
       identity = await f.storage.recovery.readIdentity();
     const empty = await n.manager.list();
     assert.deepEqual(empty.linkedNodes, []);
@@ -458,7 +466,6 @@ test('native manager uses shared fresh link workflow, atomic storage and exact a
     await assert.rejects(
       n.manager.releaseCollateral({
         reservation,
-        password: 'confirmed',
         acknowledgeNodeStops: false,
       } as any)
     );
@@ -466,14 +473,13 @@ test('native manager uses shared fresh link workflow, atomic storage and exact a
     await assert.rejects(
       n.manager.releaseCollateral({
         reservation,
-        password: 'wrong',
         acknowledgeNodeStops: true,
       })
     );
     assert.equal((await n.manager.list()).collateral.length, 1);
+    authenticated = true;
     await n.manager.releaseCollateral({
       reservation,
-      password: 'confirmed',
       acknowledgeNodeStops: true,
     });
     assert.equal((await n.manager.list()).collateral.length, 0);

@@ -1,3 +1,9 @@
+import { prepareRecoveryPin } from './fixtures/recoveryPin.ts';
+import { testHdKeyExportRuntime } from './fixtures/hdKeyExport.ts';
+import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
+import { OperationAuthentication } from '../src/core/operationAuthentication.ts';
+import { createTestOperationAuthorizer } from './fixtures/operationAuthorization.ts';
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import { createSentryCollateralCoordinator, createSentryCollateralRegistry, type SentryCollateralReservation } from '../../../source/wallet/sentryCollateral.ts';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import assert from 'node:assert/strict';
@@ -31,6 +37,7 @@ import { getUtxoNetwork, getUtxoSdkNetwork, projectUtxoRegistration, utxoRegistr
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
+import { NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
 import { HdKeyExportFlow, keyExportRegistrationHash } from '../src/custody/hdKeyExport.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -42,7 +49,10 @@ import { metadata } from './publicWatchFixtures.ts';
 import { SENTRY_TX_HEX } from './sentryNodeFixtures.ts';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 
+const pinCredential = createTestPinCredentialPort();
+
 const syntheticPassword = 'synthetic fixture password';
+const syntheticPin = '123456';
 const fixtureAccountStateKey = 'fixture-custody-catalogue';
 const phrase =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -261,6 +271,13 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
     },createSentryCollateralCoordinator());
     const protection=Object.values(SENTRY_NETWORKS).some(item=>item.chainId===network.chainId&&item.genesisHash===network.genesisHash)
       ? {scope:collateralScope,registry:collateralRegistry} : null;
+    let authenticationHook: (() => Promise<void>) | undefined;
+    let clockOffset = 0;
+    const operationAuthorization = createTestOperationAuthorizer(async (credential, check) => {
+      check();
+      assert.deepEqual(credential, { method: 'pin', pin: syntheticPin });
+      await authenticationHook?.();
+    }, (input: Parameters<Parameters<typeof createNativeUtxoSend>[8]['authorize']>[1]) => input === null ? 'utxo:retained-replay' : JSON.stringify([input.psbt.psbt, input.psbt.assets]));
     const openSend = (assertOwner: () => void, currentNetwork = network) => createNativeUtxoSend(
       currentNetwork,
       {
@@ -285,7 +302,17 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       records,
       fetcher,
       ring.getAddress,
-      protection
+      protection,
+      {
+        authorize: operationAuthorization.authorizeOperation,
+        release: operationAuthorization.releaseOperationAuthorization,
+        async sign(receipt, input, read, check) {
+          operationAuthorization.consume(receipt, input, check);
+          const result = await ring.syscoinTransaction.signPSBT(input, read);
+          check(); return result;
+        },
+      },
+      () => performance.now() + clockOffset,
     );
     const send = openSend(assertCurrent);
     const protectFunding=async()=>{
@@ -305,14 +332,14 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       });
       await assert.rejects(send.prepare(draft));excluded.mock.restore();await releaseFunding();
       const stale=await send.prepare(draft);await protectFunding();
-      await assert.rejects(send.confirm(stale),/protected Sentry Node collateral/);
+      await assert.rejects(send.confirm(stale, { method: 'pin', pin: syntheticPin }),/protected Sentry Node collateral/);
       assert.equal(sign.mock.callCount(),0);assert.deepEqual(posted,[]);await releaseFunding();
       const signOriginal=ring.syscoinTransaction.signPSBT.bind(ring.syscoinTransaction);sign.mock.restore();
       const hold=t.mock.method(ring.syscoinTransaction,'signPSBT',async(...args:Parameters<typeof signOriginal>)=>{
         const signed=await signOriginal(...args);await protectFunding();return signed;
       });
       const signedBeforeLink=await send.prepare(draft);
-      await assert.rejects(send.confirm(signedBeforeLink),/protected Sentry Node collateral/);
+      await assert.rejects(send.confirm(signedBeforeLink, { method: 'pin', pin: syntheticPin }),/protected Sentry Node collateral/);
       assert.equal(hold.mock.callCount(),1);assert.deepEqual(posted,[]);assert.deepEqual(await send.list(),[]);
       hold.mock.restore();await releaseFunding();calls.length=0;
     }
@@ -424,10 +451,10 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       assert.equal(change?.asset?.rawAmount, '187654322');
       assert.equal(change?.address === account.address, type === 'Imported');
       assert(BigInt(review.feeSatoshis) > 0n);
-      await assert.rejects(send.confirm({ ...review }), /NOT_READY/);
+      await assert.rejects(send.confirm({ ...review }, { method: 'pin', pin: syntheticPin }), /NOT_READY/);
       assert.equal(sign.mock.callCount(), 0);
       assert.deepEqual(posted, []);
-      await assert.rejects(send.confirm(review), { code: 'UTXO_SUBMISSION_UNKNOWN' });
+      await assert.rejects(send.confirm(review, { method: 'pin', pin: syntheticPin }), { code: 'UTXO_SUBMISSION_UNKNOWN' });
       assert.equal(sign.mock.callCount(), 1);
       assert.equal(posted.length, 1);
       const signed = bitcoin.Transaction.fromHex(posted[0]!);
@@ -495,11 +522,11 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       }
       const afterRestart = calls.length;
       assert.deepEqual(await reopened.list(), [{ txid: signed.getId(), accepted: false }]);
-      await assert.rejects(reopened.confirm(review), /NOT_READY/);
+      await assert.rejects(reopened.confirm(review, { method: 'pin', pin: syntheticPin }), /NOT_READY/);
       let retry = await reopened.prepareRetry(signed.getId());
       if(protection){
         await protectFunding();
-        await assert.rejects(reopened.confirm(retry),/protected Sentry Node collateral/);
+        await assert.rejects(reopened.confirm(retry, { method: 'pin', pin: syntheticPin }),/protected Sentry Node collateral/);
         assert.equal(posted.length,1);assert.equal(freshSign.mock.callCount(),0);
         await assert.rejects(reopened.prepareRetry(signed.getId()),/protected Sentry Node collateral/);
         await releaseFunding();retry=await reopened.prepareRetry(signed.getId());
@@ -507,7 +534,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       assert.deepEqual(retry.outputs, review.outputs);
       assert.equal(retry.feeSatoshis, review.feeSatoshis);
       assert.deepEqual(retry.transactionOptions, { rbf: false, zdag: true });
-      await reopened.confirm(retry);
+      await reopened.confirm(retry, { method: 'pin', pin: syntheticPin });
       assert.equal(sign.mock.callCount(), 1);
       assert.equal(freshSign.mock.callCount(), 0);
       assert.deepEqual(calls.slice(afterRestart), ['GET /api/v2/', 'GET /api/v2/block-index/0', 'POST /api/v2/sendtx/']);
@@ -525,6 +552,40 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       await assert.rejects(send.prepare({ amount: '0.0004', recipient: unsupported }), { code: 'INVALID_INPUT' });
       assert.equal(calls.length, 0);
     }
+    if (network.id === 'bitcoin' && type === 'HDAccount') {
+      const sign = t.mock.method(ring.syscoinTransaction, 'signPSBT');
+      const credential = { method: 'pin' as const, pin: syntheticPin };
+      const preserved = await send.prepare({ amount: '0.0004', recipient });
+      authenticationHook = async () => { throw Error('INVALID_CREDENTIAL'); };
+      await assert.rejects(send.confirm(preserved, credential), /INVALID_CREDENTIAL/);
+      assert.equal(sign.mock.callCount(), 0);
+      assert.deepEqual(posted, []);
+      try {
+        for (const retirement of ['cancel', 'expiry', 'owner'] as const) {
+          const reviewed = retirement === 'cancel' ? preserved : await send.prepare({ amount: '0.0004', recipient });
+          const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+          authenticationHook = async () => { entered.resolve(); await release.promise; };
+          const pending = send.confirm(reviewed, credential);
+          const rejected = assert.rejects(pending, /CANCELLED/);
+          await entered.promise;
+          if (retirement === 'cancel') send.cancel();
+          else if (retirement === 'expiry') clockOffset += 90_001;
+          else active = false;
+          release.resolve();
+          await rejected;
+          active = true;
+          authenticationHook = undefined;
+          assert.equal(sign.mock.callCount(), 0);
+          assert.deepEqual(posted, []);
+          assert.deepEqual(await send.list(), []);
+        }
+      } finally {
+        active = true;
+        authenticationHook = undefined;
+        sign.mock.restore();
+        send.cancel();
+      }
+    }
     let review = await send.prepare({ amount: '0.0004', recipient });
     assert.deepEqual(review.transactionOptions, { rbf: true });
     assert.equal(review.outputs[0]?.address, recipient);
@@ -534,7 +595,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
     assert.equal(bitcoin.address.fromOutputScript(bitcoin.address.toOutputScript(change.address, network.addressNetwork), network.addressNetwork), change.address);
     assert(BigInt(review.feeSatoshis) > 0n);
     assert.equal(calls.filter((entry) => entry.startsWith('POST')).length, 0);
-    await assert.rejects(send.confirm({ ...review }), /NOT_READY/);
+    await assert.rejects(send.confirm({ ...review }, { method: 'pin', pin: syntheticPin }), /NOT_READY/);
     const originalSign = ring.syscoinTransaction.signPSBT.bind(ring.syscoinTransaction);
     const dishonestSign = t.mock.method(ring.syscoinTransaction, 'signPSBT', async (...args: Parameters<typeof originalSign>) => {
       const signed = await originalSign(...args);
@@ -544,7 +605,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       witness.value += 1n;
       return PsbtUtils.toPali(psbt);
     });
-    await assert.rejects(send.confirm(review), {
+    await assert.rejects(send.confirm(review, { method: 'pin', pin: syntheticPin }), {
       code: 'UTXO_QUOTE_FEE_CHANGED',
       transactionNotBroadcast: true,
     });
@@ -558,11 +619,36 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
     wrongOptions.mock.restore();
     review = await send.prepare({ amount: '0.0004', recipient, rbf: false });
     assert.deepEqual(review.transactionOptions, { rbf: false });
-    const { txid } = await send.confirm(review);
+    const { txid } = await send.confirm(review, { method: 'pin', pin: syntheticPin });
     assert(bitcoin.Transaction.fromHex(published!).ins.every(({ sequence }: { sequence: number }) => sequence >= 0xfffffffe));
     assert.equal(txid, ackId);
     assert.equal(calls.filter((entry) => entry.startsWith('POST')).length, 1);
+    assert.deepEqual(await send.refreshSaved(), []);
     assert.equal(await send.check(txid), 'confirmed');
+    const afterStatus = calls.length;
+    showSavedTransfer = false;
+    assert.deepEqual(await send.list(), []);
+    assert.equal(calls.length, afterStatus, 'Stored-list reload must not re-observe a confirmed transaction');
+    showSavedTransfer = true;
+    if (network.id === 'bitcoin' && type === 'HDAccount') {
+      const sign = t.mock.method(ring.syscoinTransaction, 'signPSBT');
+      const credential = { method: 'pin' as const, pin: syntheticPin };
+      const original = published, beforePosts = posted.length;
+      const retry = await send.prepareRetry(txid);
+      authenticationHook = async () => { throw Error('INVALID_CREDENTIAL'); };
+      try {
+        await assert.rejects(send.confirm(retry, credential), /INVALID_CREDENTIAL/);
+        assert.equal(sign.mock.callCount(), 0);
+        assert.equal(posted.length, beforePosts);
+        authenticationHook = undefined;
+        assert.equal((await send.confirm(retry, credential)).txid, txid);
+        assert.equal(sign.mock.callCount(), 0);
+        assert.deepEqual(posted.slice(beforePosts), [original]);
+      } finally {
+        authenticationHook = undefined;
+        sign.mock.restore();
+      }
+    }
     if (network === litecoinRegistration) {
       const replacement = projectUtxoRegistration({
         ...utxoRegistrationData(network),
@@ -581,7 +667,7 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       assert.deepEqual(retry.transactionOptions, { rbf: false });
       assert.equal(calls.length, beforeReview);
       const exactRaw = published;
-      assert.equal((await reopened.confirm(retry)).txid, txid);
+      assert.equal((await reopened.confirm(retry, { method: 'pin', pin: syntheticPin })).txid, txid);
       assert.deepEqual(calls.slice(beforeReview), ['GET /api/v2/', 'GET /api/v2/block-index/0', 'POST /api/v2/sendtx/']);
       assert.deepEqual(posted, [exactRaw, exactRaw]);
       assert.equal(state.activeNetwork.url, replacement.endpoint);
@@ -608,7 +694,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   t.mock.method(globalThis, 'fetch', () => { throw new Error('Ambient network forbidden'); });
   const directory = await mkdtemp(join(tmpdir(), 'pali-utxo-wif-'));
   const file = join(directory, 'wallet.sqlite');
-  const password = 'PUBLIC WIF fixture password 1!';
+  const password = '123456';
   let initialized = false;
   let storage!: SqliteWalletStorage;
   let runtime!: KeyringRuntime;
@@ -736,7 +822,18 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   const sdk = await loadNativeKeyringSdk();
   let interceptExport: ((key: string) => Promise<string>) | undefined;
   let exports = 0;
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+  let currentPin = password;
+  const authentication = new OperationAuthentication();
+  let refusedPinAttempts = 0;
+  const detachAuthentication = authentication.attach(prompt => {
+    if (!prompt || prompt.busy) return;
+    queueMicrotask(() => {
+      if (prompt.error) { refusedPinAttempts++; prompt.cancel(); }
+      else prompt.confirm({ method: 'pin', pin: currentPin });
+    });
+  });
+  t.after(detachAuthentication);
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: authentication.request, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     openStorage,
     loadSdk: async () => ({ ...sdk, HostKeyring: class extends sdk.HostKeyring {
@@ -759,16 +856,24 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     return runtime;
   } });
   let owner = newOwner();
+  const reopenQuarantinedOwner = async () => {
+    assert.equal(owner.getSnapshot().phase, 'unavailable');
+    await assert.rejects(owner.unlock(password), { code: 'NOT_READY' });
+    await assert.rejects(owner.dispose(), { code: 'CLEANUP_FAILED' });
+    owner = newOwner();
+    await owner.initialize();
+    await owner.unlock(password);
+  };
   const current = () => undefined;
   const selectNetwork = () => owner.selectNetwork(network.id, owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
   const selectAccount = (id: string) => owner.manageAccounts({ kind: 'select', id }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
-  const removeAccount = (id: string, credential = password) => owner.manageAccounts({ kind: 'remove', id, password: credential }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+  const removeAccount = (id: string) => owner.manageAccounts({ kind: 'remove', id }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
   const preview = (privateKey: string, utxoAddressType?: UtxoImportAddressType) => owner.previewUtxoImport(
     { privateKey, ...(utxoAddressType && { utxoAddressType }) }, owner.getSnapshot().revision, owner.getCatalogue()!.revision, current
   );
   const submit = (privateKey: string, utxoAddressType: UtxoImportAddressType | undefined, expectedAddress: string) => owner.importAccount(
     { privateKey, ...(utxoAddressType && { utxoAddressType }), expectedAddress, label: `Imported ${utxoAddressType ?? 'BIP84'}` },
-    password, owner.getSnapshot().revision, owner.getCatalogue()!.revision
+    owner.getSnapshot().revision, owner.getCatalogue()!.revision, new AbortController().signal, createTestPrivateAuthentication(current)
   );
   try {
     await owner.initialize();
@@ -807,7 +912,8 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     release.resolve();
     await rejected;
     assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), oldCatalogue);
-    await owner.unlock(password);
+    await reopenQuarantinedOwner();
+    assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), oldCatalogue);
     const beforeAdd = calls.length;
     await owner.addUtxoNetwork({ endpoint, name: registration.name, explorer: '' },
       owner.getSnapshot().revision, owner.getCatalogue()!.revision, new AbortController().signal);
@@ -826,7 +932,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
       owner.getCatalogue()!.revision), { code: 'CANCELLED' });
     const removalEntered = Promise.withResolvers<void>(), releaseRemoval = Promise.withResolvers<void>();
     holdCatalogueUpdate = () => { removalEntered.resolve(); return releaseRemoval.promise; };
-    const interrupted = assert.rejects(removeNetwork(unused.id), { code: 'CANCELLED' });
+    const interrupted = assert.rejects(removeNetwork(unused.id), { code: 'UNAVAILABLE' });
     try {
       await Promise.race([removalEntered.promise, interrupted.then(() => { throw new Error('Removal did not reach SQLite'); })]);
       owner.lock();
@@ -835,7 +941,8 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     }
     await interrupted;
     assert.deepEqual((await storage.recovery.readSnapshot()).records, beforeRemoval.records);
-    await owner.unlock(password);
+    await reopenQuarantinedOwner();
+    assert.deepEqual((await storage.recovery.readSnapshot()).records, beforeRemoval.records);
     await removeNetwork(unused.id);
     assert.equal(calls.length, beforeRemovalRequests);
     await owner.dispose();
@@ -850,8 +957,13 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
       networks: beforeRemovalCatalogue.networks.filter(({ id }) => id !== unused.id),
       revision: beforeRemovalCatalogue.revision + 1,
     });
-    const withoutCatalogue = (snapshot: typeof beforeRemoval) => snapshot.records.filter(({ key }) => key !== WALLET_CATALOGUE_KEY);
-    assert.deepEqual(withoutCatalogue(afterRemoval), withoutCatalogue(beforeRemoval));
+    // The successful removal replaces its authenticated public checkpoint too;
+    // the fresh unlock above verifies it against the resulting catalogue.
+    const withoutCatalogueCheckpoint = (snapshot: typeof beforeRemoval) => snapshot.records.filter(({ key }) =>
+      key !== WALLET_CATALOGUE_KEY && key !== NATIVE_PUBLIC_SESSION_KEY);
+    assert.deepEqual(withoutCatalogueCheckpoint(afterRemoval), withoutCatalogueCheckpoint(beforeRemoval));
+    assert.notDeepEqual(afterRemoval.records.find(({ key }) => key === NATIVE_PUBLIC_SESSION_KEY),
+      beforeRemoval.records.find(({ key }) => key === NATIVE_PUBLIC_SESSION_KEY));
 
     await owner.addUtxoNetwork({ endpoint, name: registration.name, explorer: '' },
       owner.getSnapshot().revision, owner.getCatalogue()!.revision, new AbortController().signal);
@@ -973,7 +1085,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
           await owner.selectNetwork('ethereum', oldContext, oldCatalogue, () => {});
           await assert.rejects(owner.importAccount(
             { privateKey: wif, utxoAddressType: script, expectedAddress: address, label: 'Revoked review' },
-            password, oldContext, oldCatalogue
+            oldContext, oldCatalogue, new AbortController().signal, createTestPrivateAuthentication(current)
           ), { code: 'CANCELLED' });
           await selectNetwork();
         }
@@ -991,7 +1103,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
             const release = Promise.withResolvers<void>();
             holdCatalogueUpdate = () => { updated.resolve(); return release.promise; };
             const pending = submit(secret, undefined, address);
-            const rejected = assert.rejects(pending, { code: 'CANCELLED' });
+            const rejected = assert.rejects(pending, { code: 'UNAVAILABLE' });
             try {
               await Promise.race([updated.promise, pending]);
               assert.equal(holdCatalogueUpdate, undefined);
@@ -999,7 +1111,8 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
             } finally { release.resolve(); }
             await rejected;
             assert.equal(JSON.stringify(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY)), before);
-            await owner.unlock(password);
+            await reopenQuarantinedOwner();
+            assert.equal(JSON.stringify(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY)), before);
           }
         }
         await submit(secret, script, address);
@@ -1013,10 +1126,10 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
         assert.equal(saved.recovery.find((entry) => entry.identity.address === address)?.identity.slip44, network.slip44);
         assert.equal(JSON.stringify(saved).includes(secret), false);
         assert.equal(JSON.stringify(owner.getCatalogue()).includes('xprv'), false);
-        const keyFlow = new HdKeyExportFlow(owner, () => runtime.keyExport);
+        const keyFlow = new HdKeyExportFlow(owner, () => runtime.keyExport && testHdKeyExportRuntime(runtime.keyExport));
         try {
           const callsBeforeReveal = calls.length;
-          const shown = await keyFlow.begin(password);
+          const shown = await keyFlow.begin();
           assert.equal(shown.privateKey, secret);
           assert.equal(shown.address, address);
           assert.equal(shown.accountId, accountId);
@@ -1032,12 +1145,15 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
             const scope = { authorityRevision: owner.getSnapshot().revision, catalogueRevision: catalogue.revision,
               accountId, index, address, networkId: network.id,
               registrationHash: keyExportRegistrationHash(network.id, catalogue) };
-            await assert.rejects(runtime.keyExport!.readSelected({ ...scope, registrationHash: `0x${'f'.repeat(64)}` }, password, current), /CANCELLED/);
+            await assert.rejects(runtime.keyExport!.readSelected({ ...scope, registrationHash: `0x${'f'.repeat(64)}` }, new AbortController().signal, current, createTestPrivateAuthentication(current)), /CANCELLED/);
             assert.equal(exports, beforeExport);
             owner.lock(); await owner.unlock(password);
-            await assert.rejects(keyFlow.begin('wrong password'), /INVALID_CREDENTIAL/);
+            currentPin = '000000';
+            await assert.rejects(keyFlow.begin(), /CANCELLED/);
+            currentPin = password;
+            assert.equal(refusedPinAttempts, 1);
             assert.equal(exports, beforeExport);
-            await owner.unlock(password);
+            assert.equal(owner.getSnapshot().phase, 'ready');
 
             const anotherNetwork = UTXO_NETWORKS.find((candidate) => candidate.addressNetwork.wif !== network.addressNetwork.wif)!;
             for (const forged of [
@@ -1046,12 +1162,12 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
               bitcoin.ECPair.fromPrivateKey(Buffer.alloc(32, 13), { network: anotherNetwork.addressNetwork }).toWIF(),
             ]) {
               interceptExport = async () => forged;
-              await assert.rejects(keyFlow.begin(password), { message: 'KEY_EXPORT_UNAVAILABLE' });
+              await assert.rejects(keyFlow.begin(), { message: 'KEY_EXPORT_UNAVAILABLE' });
               await owner.unlock(password);
             }
             const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
             interceptExport = async (raw) => { entered.resolve(); await release.promise; return raw; };
-            const pending = keyFlow.begin(password);
+            const pending = keyFlow.begin();
             const rejection = assert.rejects(pending, { message: 'CANCELLED' });
             await entered.promise;
             owner.lock(); release.resolve();
@@ -1060,7 +1176,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
             await owner.unlock(password);
             await selectAccount(`hd:${network.slip44}:0`);
             const beforeHd = exports;
-            const extended = await keyFlow.begin(password);
+            const extended = await keyFlow.begin();
             assert.equal(extended.accountId, `hd:${network.slip44}:0`);
             assert(extended.privateKey.startsWith(network.testnet ? 'vprv' : 'zprv'));
             assert.equal(exports, beforeHd + 1);
@@ -1100,7 +1216,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
             .find((row) => row.key === UTXO_SIGNED_RECORD_KEY)?.value;
           blockBroadcast = true;
           const beforePosts = posts.length;
-          await assert.rejects(send.confirm(review), { code: 'UTXO_SUBMISSION_NOT_DISPATCHED', transactionNotBroadcast: true });
+          await assert.rejects(send.confirm(review, { method: 'pin', pin: password }), { code: 'UTXO_SUBMISSION_NOT_DISPATCHED', transactionNotBroadcast: true });
           assert.equal(posts.length, beforePosts);
           const [retained] = await send.list();
           assert(retained);
@@ -1137,7 +1253,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
             ]);
           }
         } else {
-          ({ txid } = await send.confirm(review));
+          ({ txid } = await send.confirm(review, { method: 'pin', pin: password }));
           raw = posts.at(-1)!;
         }
 
@@ -1156,7 +1272,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
         assert.equal(owner.getSnapshot().account?.address, address);
         send = await runtime.openUtxoSend!(current);
         assert.deepEqual((await send.list()).map((entry) => entry.txid), [txid]);
-        assert.equal((await send.confirm(await send.prepareRetry(txid))).txid, txid);
+        assert.equal((await send.confirm(await send.prepareRetry(txid), { method: 'pin', pin: password })).txid, txid);
         if (raw) assert.equal(posts.at(-1), raw);
         else assert.equal(bitcoin.Transaction.fromHex(posts.at(-1)!).getId(), txid);
         confirmed = true;
@@ -1182,7 +1298,10 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
           }
           await aborted;
           assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), catalogueBytes);
-          await owner.unlock(password);
+          await reopenQuarantinedOwner();
+          assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), catalogueBytes);
+          assert.equal((await storage.recovery.readSnapshot()).records
+            .find((row) => row.key === UTXO_SIGNED_RECORD_KEY)?.value, journalBytes);
 
           const beforeSave = routes.length;
           await replaceEndpoint(new AbortController().signal);
@@ -1215,7 +1334,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
           assert.equal(await reopened.check(txid), 'unknown');
           const retry = await reopened.prepareRetry(txid);
           assert.equal(retry.retryProviderOrigin, new URL(endpoint).origin);
-          assert.equal((await reopened.confirm(retry)).txid, txid);
+          assert.equal((await reopened.confirm(retry, { method: 'pin', pin: password })).txid, txid);
           missingSavedTransfer = false;
           assert.equal(posts.at(-1), exact);
           assert.deepEqual(routes.slice(beforeReorg), [
@@ -1236,13 +1355,13 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     assert.equal(owner.getCatalogue()!.accounts.some((account) => account.id === `imported:${network.slip44}:0`), false);
 
     const beforeReset = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
-    const nextPassword = 'PUBLIC changed WIF fixture password 2!';
+    const nextPassword = '654321';
     owner.lock();
-    const recovery = new NativeRecoveryCoordinator({
+    const recovery = new NativeRecoveryCoordinator({ pinCredential,
       owner, async retireControllers() {}, ensureCryptoReady: async () => undefined, openStorage,
     });
     try {
-      const proof = await recovery.prepare(phrase, nextPassword, current);
+      const proof = await prepareRecoveryPin(recovery, phrase, nextPassword, current);
       assert.equal(await recovery.commit(proof), 'committed-locked');
     } finally {
       await recovery.dispose();
@@ -1250,7 +1369,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     await owner.dispose();
     owner = newOwner();
     await owner.initialize();
-    await owner.unlock(nextPassword);
+    await owner.unlock(nextPassword); currentPin = nextPassword;
     const afterReset = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
     assert.deepEqual(afterReset.recovery, beforeReset.recovery);
     for (const previousGroup of beforeReset.groups) {
@@ -1264,17 +1383,22 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     }
     const restoredId = `imported:${network.slip44}:${UTXO_IMPORT_TYPES.length}`;
     await selectAccount(restoredId);
-    const keyFlow = new HdKeyExportFlow(owner, () => runtime.keyExport);
+    const keyFlow = new HdKeyExportFlow(owner, () => runtime.keyExport && testHdKeyExportRuntime(runtime.keyExport));
     try {
-      const shown = await keyFlow.begin(nextPassword);
+      const shown = await keyFlow.begin();
       assert.equal(shown.privateKey, lastExtendedKey);
       assert.equal(shown.accountId, restoredId);
     } finally { keyFlow.dispose(); }
     const restored = await runtime.openUtxoSend!(current);
+    assert.deepEqual(await restored.list(), [], 'Confirmed records are hidden from recovery after reopening');
+    const oldRaw = posts.at(-1);
+    missingSavedTransfer = true;
+    await restored.refreshSaved();
     const [previousSend] = await restored.list();
     assert(previousSend);
-    const oldRaw = posts.at(-1);
-    assert.equal((await restored.confirm(await restored.prepareRetry(previousSend.txid))).txid, previousSend.txid);
+    assert.equal(previousSend.txid, bitcoin.Transaction.fromHex(oldRaw!).getId());
+    missingSavedTransfer = false;
+    assert.equal((await restored.confirm(await restored.prepareRetry(previousSend.txid), { method: 'pin', pin: nextPassword })).txid, previousSend.txid);
     assert.equal(posts.at(-1), oldRaw);
   } finally {
     await owner.dispose();

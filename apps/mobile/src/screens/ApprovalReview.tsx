@@ -5,7 +5,7 @@ import {
   parseApprovalAmount,
   type ApprovalSummary,
 } from '../../../../source/shared/approval';
-import { Button, Card, colors, Text } from '../ui';
+import { Button, Card, Coin, colors, Text } from '../ui';
 import { IdleTextInput } from './IdleActivityBoundary';
 
 export function ApprovalReview({
@@ -14,12 +14,16 @@ export function ApprovalReview({
   disabled,
   edit,
   onEditingChange,
+  chainId,
+  registrationHash,
 }: {
   summary: ApprovalSummary;
   transaction: object;
   disabled: boolean;
   edit(value: string): Promise<void>;
   onEditingChange(editing: boolean): void;
+  chainId?: string;
+  registrationHash?: string;
 }) {
   const [editor, setEditor] = useState<{
     transaction: object;
@@ -94,9 +98,10 @@ export function ApprovalReview({
   };
   return (
     <Card style={s.card}>
-      <Text accessibilityRole="header" style={s.title}>
-        {title}
-      </Text>
+      <View style={s.heading}>
+        {chainId && <Coin id="approval-token" asset={{ kind: 'evm', chainId, contractAddress: summary.tokenContract, decimals: token?.decimals }} registrationHash={registrationHash} fallbackSymbol={token?.symbol ?? 'NFT'} size={30} />}
+        <Text accessibilityRole="header" style={s.title}>{title}</Text>
+      </View>
       <Text style={s.label}>{authority}</Text>
       <Text selectable style={s.address}>
         {summary.authority}
@@ -133,7 +138,7 @@ export function ApprovalReview({
       {summary.canEditAmount && token && !editing && (
         <Button
           title="Edit spending limit"
-          variant="quiet"
+          variant="secondary"
           disabled={disabled}
           onPress={() => {
             onEditingChange(true);
@@ -170,7 +175,7 @@ export function ApprovalReview({
           <Button title="Apply limit" disabled={disabled} onPress={apply} />
           <Button
             title="Keep current limit"
-            variant="quiet"
+            variant="secondary"
             disabled={disabled}
             onPress={() => {
               onEditingChange(false);
@@ -185,7 +190,8 @@ export function ApprovalReview({
 
 const s = StyleSheet.create({
   card: { gap: 10, padding: 20 },
-  title: { fontSize: 18, lineHeight: 25, fontWeight: '600' },
+  heading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  title: { fontSize: 18, lineHeight: 25, fontWeight: '600', flexShrink: 1 },
   label: { fontSize: 12, lineHeight: 17, color: colors.muted },
   address: { fontSize: 13, lineHeight: 20, color: colors.muted },
   secondary: { fontSize: 14, lineHeight: 21, color: colors.muted },

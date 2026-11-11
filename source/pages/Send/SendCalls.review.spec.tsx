@@ -1,7 +1,13 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
 import { getErc20Abi, getErc21Abi, getErc55Abi } from '@sidhujag/sysweb3-utils';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -14,18 +20,20 @@ import { SendCalls } from './SendCalls';
 let mockState: any;
 let mockQuery: any;
 let mockController: any;
-const mockEmitter = jest.fn(async ([, method]: string[], args: any[] = []) => {
-  if (method === 'getRecommendedNonceForBatch') return 0;
-  if (method === 'reviewDappEvmFee') return reviewedDappFeeFixture(args[0]);
-  if (method === 'discardNativeEvmFeeReview') return;
-  if (
-    method === 'recordSendCallsBundle' &&
-    args[2].failed &&
-    !args[2].submissionStarted
-  )
-    return;
-  throw new Error('Review must not sign, submit or start a transaction');
-});
+const mockEmitter = jest.fn(
+  async ([, method]: string[], args: any[] = []): Promise<any> => {
+    if (method === 'getRecommendedNonceForBatch') return 0;
+    if (method === 'reviewDappEvmFee') return reviewedDappFeeFixture(args[0]);
+    if (method === 'discardNativeEvmFeeReview') return;
+    if (
+      method === 'recordSendCallsBundle' &&
+      args[2].failed &&
+      !args[2].submissionStarted
+    )
+      return;
+    throw new Error('Review must not sign, submit or start a transaction');
+  }
+);
 const mockCleanup = jest.fn(async () => undefined);
 const mockDispatch = jest.fn();
 const mockPopup = jest.fn(async (options: any) => {
@@ -186,6 +194,8 @@ afterEach(() => {
   for (const [[, method], args] of mockEmitter.mock.calls) {
     expect([
       'getRecommendedNonceForBatch',
+      'getERC20TokenInfo',
+      'checkContractType',
       'reviewDappEvmFee',
       'discardNativeEvmFeeReview',
       'recordSendCallsBundle',
@@ -319,7 +329,8 @@ const selectorVectors: Array<{
       'safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)',
     method: 'safeBatchTransferFrom',
     args: [ACCOUNT, RECIPIENT, [], [], '0x'],
-    fields: { from: ACCOUNT, to: RECIPIENT, ids: '[]', amounts: '[]' },
+    // The shared decoder does not describe an empty ERC1155 batch as a transfer.
+    fields: {},
   },
   {
     selector: '0x2eb2c2d6',
@@ -436,6 +447,66 @@ it('retains decoded known-call parameters, exact bytes and the one-wei total', a
   });
   expect(values).toHaveLength(2);
   values.forEach((value) => expect(value).toBeVisible());
+});
+
+it('summarizes mixed token, NFT and native calls without changing the original call consent', async () => {
+  const previous = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation(async (path: string[], args: any[] = []) => {
+    if (path[1] === 'checkContractType') return { type: 'ERC-20' };
+    if (path[1] === 'getERC20TokenInfo')
+      return { name: 'Synthetic Token', symbol: 'TOK', decimals: 6 };
+    return previous(path, args);
+  });
+  try {
+    const erc20 = new Interface([
+      'function transfer(address,uint256)',
+    ]).encodeFunctionData('transfer', [RECIPIENT, '2500000']);
+    const erc1155 = new Interface([
+      'function safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)',
+    ]).encodeFunctionData('safeBatchTransferFrom', [
+      ACCOUNT,
+      RECIPIENT,
+      [0, 9],
+      [2, 3],
+      '0x',
+    ]);
+    await openReview([
+      call(erc20),
+      call(erc1155),
+      { to: RECIPIENT, value: '0x2', data: '0x' },
+    ]);
+    expect(await screen.findByText('TOK')).toBeVisible();
+    const summaries = screen.getAllByRole('region', {
+      name: 'assetTransfer.summary',
+    });
+    expect(summaries).toHaveLength(2);
+    expect(within(summaries[0]).getByText('2.5')).toBeVisible();
+    expect(within(summaries[0]).getByText(RECIPIENT)).toBeVisible();
+    expect(
+      within(summaries[1]).getByText('#0').parentElement
+    ).toHaveTextContent('2 assetTransfer.units');
+    expect(
+      within(summaries[1]).getByText('#9').parentElement
+    ).toHaveTextContent('3 assetTransfer.units');
+    expect(
+      screen.getByRole('button', { name: 'buttons.confirm 1/3' })
+    ).toBeEnabled();
+    expect(screen.getAllByRole('checkbox')).toHaveLength(3);
+    expect(
+      screen
+        .getAllByRole('checkbox')
+        .every(
+          (box) =>
+            (box as HTMLInputElement).checked &&
+            (box as HTMLInputElement).disabled
+        )
+    ).toBe(true);
+    expect(
+      mockEmitter.mock.calls.filter(([path]) => path[1] === 'getERC20TokenInfo')
+    ).toHaveLength(1);
+  } finally {
+    mockEmitter.mockImplementation(previous);
+  }
 });
 
 it('retains raw bytes when a recognized selector cannot decode its arguments', async () => {

@@ -21,6 +21,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseRequest } from '../harness/walletReleaseFixture';
 
 const address = (value: number) => `0x${value.toString(16).padStart(40, '0')}`;
 const outputDirectory =
@@ -194,7 +195,10 @@ test('Combined approvals: isolated real-extension interaction and layout', async
       createUtxoFixture(),
       server.url
     );
+    const releasePage = wallet.page;
     wallet.context.on('response', (response) => {
+      if (isOfflineWalletReleaseRequest(response.request(), releasePage))
+        return;
       const url = new URL(response.url());
       if (
         ['http:', 'https:'].includes(url.protocol) &&

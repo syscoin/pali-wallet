@@ -5,6 +5,8 @@ import test from 'node:test';
 import { screenElements, screenFixture } from './screenFixture.ts';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import type { NativePsbtReview } from '../src/connections/psbtRequests.ts';
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 
 const english = JSON.parse(readFileSync(new NodeURL('../../../source/assets/locales/en.json', import.meta.url), 'utf8'));
 const translation = (key: string, args: Record<string, unknown> = {}) => {
@@ -13,9 +15,11 @@ const translation = (key: string, args: Record<string, unknown> = {}) => {
   return value.replace(/{{(.*?)}}/g, (_: string, field: string) => String(args[field]));
 };
 function fixture(method: 'sys_sign' | 'sys_signAndSend' = 'sys_sign') {
-  let clock = 100, serial = 0, back: (() => boolean) | undefined, app: ((state: string) => void) | undefined;
+  let clock = 100, serial = 0, back: (() => boolean) | undefined;
+  const appListeners = new Map<string, (state: string) => void>();
   const timers = new Map<number, () => void>(), approvals: unknown[][] = [], rejections: string[] = [];
-  const native = { AppState: { currentState: 'active', addEventListener(_event: string, handler: (state: string) => void) { app = handler; return { remove() { app = undefined; } }; } },
+  const authentication = privateAuthentication.createNativePrivateAuthenticationScope();
+  const native = { AppState: { currentState: 'active', addEventListener(event: string, handler: (state: string) => void) { appListeners.set(event, handler); return { remove() { if (appListeners.get(event) === handler) appListeners.delete(event); } }; } },
     BackHandler: { addEventListener(_event: string, handler: () => boolean) { back = handler; return { remove() { back = undefined; } }; } },
     StyleSheet: { create: (value: unknown) => value } };
   const review: NativePsbtReview = { id: 'psbt-1', revision: 7, method, appName: 'Untrusted display name', origin: 'https://reported.example',
@@ -28,7 +32,7 @@ function fixture(method: 'sys_sign' | 'sys_signAndSend' = 'sys_sign') {
       outputs: [{ index: 0, address: 'bc1qrecipient', scriptHex: '0014' + '11'.repeat(20), valueSatoshis: '877',
         assets: [{ assetGuid: '123456', amount: '1.25', rawAmount: '125000000', symbol: 'SYSX', isBurn: false }] }] } };
   let approveWait = Promise.resolve();
-  const controller = { backgroundSigning() { rejections.push(review.id); }, getSnapshot: () => ({ psbtReview: review }), async approvePsbt(...args: unknown[]) { approvals.push(args); await approveWait; },
+  const controller = { isRequestAuthenticating: (id: string) => id === 'psbt-1' && authentication.isAuthenticating(), backgroundSigning() { rejections.push(review.id); }, getSnapshot: () => ({ psbtReview: review }), async approvePsbt(...args: unknown[]) { approvals.push(args); await approveWait; },
     async rejectPsbt(id: string) { rejections.push(id); } };
   const screen = screenFixture(new NodeURL('../src/screens/NativePsbtReview.tsx', import.meta.url), 'NativePsbtReview', {
     'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
@@ -36,13 +40,17 @@ function fixture(method: 'sys_sign' | 'sys_signAndSend' = 'sys_sign') {
     './useDappLedgerConnection': { useDappLedgerConnection: () => ({ blocked: false, canApprove: () => true, showConnect: false, modal: null }) },
     './DappSiteStatus': { DappSiteStatus: 'Site' }, '../core/amounts': { formatBaseUnits },
     '../platform/localization': { useNativeTranslation: () => ({ t: translation }) },
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
   }, { Date: { now: () => clock }, setTimeout: (fn: () => void) => { timers.set(++serial, fn); return serial; }, clearTimeout: (id: number) => timers.delete(id) });
   const render = () => screenElements(screen.render({ review, controller }));
   const button = () => render().find(element => element.props.testID === 'native-psbt-approve')!;
-  return { review, controller, render, button, approvals, rejections, close: screen.close,
+  return { review, controller, authentication, render, button, approvals, rejections, close: screen.close,
     hold: (wait: Promise<void>) => { approveWait = wait; }, back: () => back?.(),
     expire() { clock = 1001; [...timers.values()].forEach(run => run()); },
-    background() { native.AppState.currentState = 'background'; app?.('background'); } };
+    event(state: string) { native.AppState.currentState = state; appListeners.get('change')?.(state); },
+    blur() { appListeners.get('blur')?.('blur'); },
+    listenerCount: () => appListeners.size,
+    background() { native.AppState.currentState = 'background'; appListeners.get('change')?.('background'); } };
 }
 const text = (elements: ReturnType<ReturnType<typeof fixture>['render']>) => elements.flatMap(element => element.children.filter(value => typeof value === 'string')).join(' ');
 
@@ -71,8 +79,8 @@ test('busy double tap admits exactly one identifier-only approval', async () => 
   } finally { f.close(); }
 });
 
-test('Back, background and expiry retire consent before any late approval', () => {
-  for (const action of ['back', 'background', 'expire'] as const) {
+test('Back, Android blur, background and expiry retire consent before any late approval', () => {
+  for (const action of ['back', 'blur', 'background', 'expire'] as const) {
     const f = fixture(); const stalePress = f.button().props.onPress;
     try {
       if (action === 'back') assert.equal(f.back(), true); else f[action]();
@@ -80,6 +88,14 @@ test('Back, background and expiry retire consent before any late approval', () =
       assert.deepEqual(f.approvals, []); assert.deepEqual(f.rejections, ['psbt-1']);
     } finally { f.close(); }
   }
+});
+
+test('unmount removes both app-state and Android blur listeners', () => {
+  const f = fixture(); f.render();
+  assert.equal(f.listenerCount(), 2);
+  f.close(); assert.equal(f.listenerCount(), 0);
+  const retired = f.rejections.length;
+  f.blur(); f.background(); assert.equal(f.rejections.length, retired);
 });
 
 test('replacement and unmount make stale screen callbacks inert', async () => {
@@ -135,4 +151,38 @@ test('a child fee review shows the verified original Sentry changes alongside ex
     assert.equal(f.button().props.title, 'Sign only');
     assert(!f.render().some(element => element.type === 'Input' || element.type === 'TextInput'));
   } finally { f.close(); }
+});
+
+for (const boundary of ['inactive', 'blur'] as const) test(`own OS prompt ${boundary} does not hand off or reject an admitted PSBT and duplicate submission stays blocked`, async () => {
+  const f = fixture(), held = Promise.withResolvers<void>();
+  let promptOwner: AbortSignal | null = null;
+  const binding = privateAuthentication.bindNativePrivateAuthentication(f.authentication, { assertCurrent() {}, isPromptActive: owner => owner === promptOwner });
+  const proof = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, signal => { promptOwner = signal; return held.promise; });
+  f.hold(proof);
+  try {
+    const press = f.button().props.onPress, pending = press();
+    if (boundary === 'blur') f.blur(); else f.event('inactive');
+    press(); assert(f.button().props.disabled); assert.deepEqual(f.rejections, []);
+    f.event('active'); held.resolve(); await proof; await pending;
+    assert.deepEqual(f.approvals, [['psbt-1', 7]]); assert.deepEqual(f.rejections, []);
+  } finally { held.resolve(); await proof.catch(() => undefined); f.close(); }
+});
+
+for (const boundary of ['foreign-prompt', 'foreign-prompt-blur', 'foreign-signal-blur', 'background', 'back', 'expiry'] as const) test(`PSBT ${boundary} remains a cancellation boundary during a prompt`, async () => {
+  const f = fixture(), held = Promise.withResolvers<void>();
+  const scope = boundary.startsWith('foreign-prompt') ? privateAuthentication.createNativePrivateAuthenticationScope() : f.authentication;
+  let promptOwner: AbortSignal | null = null;
+  const binding = privateAuthentication.bindNativePrivateAuthentication(scope, { assertCurrent() {}, isPromptActive: owner => owner === promptOwner });
+  const proof = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, signal => {
+    promptOwner = boundary === 'foreign-signal-blur' ? new AbortController().signal : signal;
+    return held.promise;
+  });
+  f.hold(proof);
+  try {
+    const press = f.button().props.onPress, pending = press();
+    if (boundary === 'back') f.back(); else if (boundary === 'expiry') f.expire(); else if (boundary.endsWith('blur')) f.blur(); else f.event(boundary === 'background' ? 'background' : 'inactive');
+    assert(f.button().props.disabled); assert.deepEqual(f.rejections, ['psbt-1']);
+    f.event('active'); held.resolve(); await proof; await pending; press();
+    assert.deepEqual(f.approvals, [['psbt-1', 7]]);
+  } finally { held.resolve(); await proof.catch(() => undefined); scope.retire(); f.close(); }
 });

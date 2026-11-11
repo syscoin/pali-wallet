@@ -35,6 +35,7 @@ for (const id of ['bitcoin', 'syscoin', 'utxo:5700'] as const) {
     assert.equal(f.calls[2]?.url, `${getUtxoNetwork(id).endpoint}/api/v2/xpub/${identifier}?details=tokenBalances&tokens=nonzero`);
     assert.equal(f.calls.length, 3); assert.equal(f.writes.length, 0);
     assert.ok(!JSON.stringify(owner.getSnapshot()).includes(identifier));
+    assert.equal(owner.getUtxoWatchScope(), 'account');
     assert.equal(owner.getSnapshot().capabilities.send, false);
     await assert.rejects(owner.prepareTransfer({ recipient: owner.getSnapshot().accounts[0]!.addresses[id]!, amount: '1' }), /SIGNING_UNAVAILABLE/);
   });
@@ -44,6 +45,8 @@ test('public descriptor passes to existing Blockbook route without changing its 
   const owner = await WatchOnlyAuthority.openRecords(f.options); owner.unlock(); await owner.refresh();
   assert.equal(f.calls[2]?.url, `${getUtxoNetwork('bitcoin').endpoint}/api/v2/xpub/${encodeURIComponent(identifier)}?details=tokenBalances&tokens=nonzero`);
   assert.equal(owner.getSnapshot().balance.status, 'available');
+  assert.equal(owner.getUtxoWatchScope(), 'account');
+  assert.ok(!JSON.stringify(owner.getSnapshot()).includes(identifier));
 });
 test('Syscoin testnet public aliases and descriptors use the SDK network and canonical record without rewriting storage', async () => {
   const id = 'utxo:5700', sdk = getUtxoNetwork(id);

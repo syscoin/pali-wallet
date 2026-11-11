@@ -165,7 +165,7 @@ async function readRetainedJson(
   }
 }
 
-/** Explicit saved-transfer status check. Only the authenticated original route can answer. */
+/** Saved-transfer status check. Only the authenticated original route can answer. */
 export function observeRetainedUtxo({
   records,
   session,
@@ -244,6 +244,24 @@ export function observeRetainedUtxo({
         abort();
       }
     }
+  );
+}
+
+/** Shared active-wallet refresh: at most two original-route checks per pass.
+ * It uses the same exact-byte observation as an explicit recovery status check. */
+export function reconcileRetainedUtxo(
+  request: Omit<Parameters<typeof observeRetainedUtxo>[0], 'txid'>
+): Promise<void> {
+  const session = {
+    ...request.session,
+    assertCurrent() {
+      checkAborted(request.signal);
+      request.session.assertCurrent();
+      checkAborted(request.signal);
+    },
+  };
+  return request.records.reconcile(session, request.owner, (txid) =>
+    observeRetainedUtxo({ ...request, session, txid })
   );
 }
 

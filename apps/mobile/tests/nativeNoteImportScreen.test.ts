@@ -4,6 +4,8 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
+import { createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 
 type Element = {
   type: unknown;
@@ -91,6 +93,8 @@ function fixture() {
       styles: {},
     },
     './IdleActivityBoundary': { IdleTextInput: 'Input' },
+    '../custody/privateAuthentication': { createNativePrivateAuthenticationScope },
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
   };
   const module = { exports: {} as Record<string, any> };
   const source = readFileSync(
@@ -153,7 +157,7 @@ function fixture() {
 function nodes(value: any): Element[] {
   if (Array.isArray(value)) return value.flatMap(nodes);
   if (!value || typeof value !== 'object' || !('children' in value)) return [];
-  return [value, ...value.children.flatMap(nodes)];
+  return [value, ...value.children.flatMap(nodes), ...nodes(value.props.footer)];
 }
 const button = (tree: Element, title: string) =>
   nodes(tree).find(

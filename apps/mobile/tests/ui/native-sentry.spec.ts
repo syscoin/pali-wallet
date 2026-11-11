@@ -24,11 +24,7 @@ test('Sentry service settings are a secondary authenticated form with exact fee 
   await page
     .getByLabel('Maximum Sentry fee in satoshis', { exact: true })
     .fill('10000000');
-  const password = page.getByLabel('Confirm wallet password', { exact: true });
-  await password.scrollIntoViewIfNeeded();
-  await expect(password).toBeInViewport({ ratio: 1 });
-  await expect(password).toHaveAttribute('type', 'password');
-  await password.fill('Fixture password 1!');
+  await expect(page.getByLabel('Confirm wallet PIN', { exact: true })).toHaveCount(0);
   const save = page.getByRole('button', { name: 'Save settings', exact: true });
   await reachable(save);
   await contained(page);
@@ -36,7 +32,6 @@ test('Sentry service settings are a secondary authenticated form with exact fee 
     path: test.info().outputPath('sentry-service-settings-320.png'),
   });
   await save.click();
-  await expect(password).toHaveValue('');
   await expect(
     page.getByText('Service settings saved.', { exact: true })
   ).toBeVisible();
@@ -62,9 +57,6 @@ for (const stage of ['read', 'auth', 'write']) {
       .click();
     if (stage !== 'read') {
       await page
-        .getByLabel('Confirm wallet password', { exact: true })
-        .fill('Fixture password 1!');
-      await page
         .getByRole('button', { name: 'Save settings', exact: true })
         .click();
     }
@@ -81,7 +73,7 @@ for (const stage of ['read', 'auth', 'write']) {
       page.getByRole('button', { name: 'Import key', exact: true })
     ).toHaveCount(0);
     await expect(
-      page.getByLabel('Confirm wallet password', { exact: true })
+      page.getByLabel('Confirm wallet PIN', { exact: true })
     ).toHaveCount(0);
     expect(
       await page.evaluate(() => window.__nativeSentryFixture.pendingSettings())
@@ -154,9 +146,7 @@ test('single import stays masked and public review fits a short screen', async (
   await page.getByRole('button', { name: 'Review key', exact: true }).click();
   await expect(page.getByLabel('Private key', { exact: true })).toHaveCount(0);
   await expect(page.getByText('39'.repeat(48), { exact: true })).toBeVisible();
-  const password = page.getByLabel('Wallet password', { exact: true });
-  await expect(password).toHaveAttribute('type', 'password');
-  await password.fill('Fixture password 1!');
+  await expect(page.getByLabel('Wallet PIN', { exact: true })).toHaveCount(0);
   const save = page.getByRole('button', { name: 'Save key', exact: true });
   await reachable(save);
   await contained(page);
@@ -188,9 +178,6 @@ test('batch paste renders only ordered public keys and uses one confirmation', a
   expect(await page.locator('body').textContent()).not.toContain(
     '24'.repeat(32)
   );
-  await page
-    .getByLabel('Wallet password', { exact: true })
-    .fill('Fixture password 1!');
   const save = page.getByRole('button', { name: 'Save keys', exact: true });
   await reachable(save);
   await contained(page);
@@ -224,7 +211,7 @@ test('duplicates and oversized clipboard text cannot become a partial batch revi
   await page
     .getByRole('button', { name: 'Paste and review keys', exact: true })
     .click();
-  await expect(page.getByLabel('Wallet password', { exact: true })).toHaveCount(
+  await expect(page.getByLabel('Wallet PIN', { exact: true })).toHaveCount(
     0
   );
   expect(
@@ -236,21 +223,18 @@ test('duplicates and oversized clipboard text cannot become a partial batch revi
   await contained(page);
 });
 
-test('batch expiry clears the password and removes confirmation', async ({
+test('batch expiry removes the public confirmation', async ({
   page,
 }) => {
   await page.clock.install();
   await page.setViewportSize({ width: 320, height: 360 });
   await page.goto('/?sentry=1');
   await batch(page, `Node one | ${secret}\nNode two | ${'24'.repeat(32)}`);
-  await page
-    .getByLabel('Wallet password', { exact: true })
-    .fill('Fixture password 1!');
   await page.clock.runFor(90001);
   await expect(
     page.getByText('Review expired. Start again to continue.', { exact: true })
   ).toBeVisible();
-  await expect(page.getByLabel('Wallet password', { exact: true })).toHaveCount(
+  await expect(page.getByLabel('Wallet PIN', { exact: true })).toHaveCount(
     0
   );
   await expect(

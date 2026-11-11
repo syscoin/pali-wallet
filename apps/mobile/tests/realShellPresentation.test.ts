@@ -6,15 +6,21 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { createIdleComponentFixture, expandIdleElements } from './idleComponentFixture.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
+import { knownAssetIcon } from '../../../source/shared/assetIconIdentity.ts';
+import { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, subscribeNativeAssetIcon } from '../src/portfolio/assetIconCache.ts';
 
 type Element = { type: string | ((props: object) => Element); props: Record<string, unknown>; children: unknown[] };
 function shell() {
   const dependencies: Record<string, unknown> = {
-    react: { createElement: (type: string, props: Record<string, unknown>, ...children: unknown[]) => ({ type, props, children }) },
+    react: { createElement: (type: string, props: Record<string, unknown>, ...children: unknown[]) => ({ type, props, children }),
+      useSyncExternalStore: (_subscribe: unknown, read: () => unknown) => read() },
     'react-native': { Text: 'NativeText', Pressable: 'Pressable', View: 'View', StyleSheet: { create: (styles: unknown) => styles } },
     'react-native-svg': {},
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../platform/localization': nativeTranslationFixture,
+    '../updates/service': { mobileUpdates: { getSnapshot: () => ({ release: null }), subscribe: () => () => undefined } },
+    '../../../source/shared/assetIconIdentity': { knownAssetIcon },
+    './portfolio/assetIconCache': { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, subscribeNativeAssetIcon },
   };
   const load = (path: string) => {
     const module = { exports: {} as Record<string, (props: object) => Element> };
@@ -32,6 +38,7 @@ function shell() {
   const idle = createIdleComponentFixture(react, dependencies['react-native'] as Record<string, unknown>);
   dependencies['./screens/IdleActivityBoundary'] = idle.components;
   dependencies['./IdleActivityBoundary'] = idle.components;
+  dependencies['./screens/useWelcomeBackdropMotion'] = load('../src/screens/useWelcomeBackdropMotion.ts');
   dependencies['../ui'] = load('../src/ui.tsx');
   return expandIdleElements(load('../src/screens/RealAppShell.tsx').RealAppShell!({ tab: 'wallet', onTab() {}, children: null }));
 }

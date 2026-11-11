@@ -8,13 +8,60 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { fork, spawnSync } = require('node:child_process');
-const { HTTP_CASES, httpBuild, httpLaunch, assertHttpReport, httpDiagnosticCase } = require('./http-contract.ts');
+const { HTTP_CASES, httpBuild, httpLaunch, assertHttpReport, httpDiagnosticCase, validHttpSnapshotFailureDetail, PUBLIC_SNAPSHOT_FIXTURE_BODY } = require('./http-contract.ts');
 const { createCommandRunner } = require('./command-runner.cjs');
 const { createHttpFixture, ROUTES, HELD_ROUTES, snapshotFixtureControl } = require('./http-server.cjs');
 const { startHttpCompanion, assertAudit } = require('./http-companion.cjs');
-const { qualifyNativeHttp } = require('./http-native.ts');
+const { qualifyNativeHttp, qualifyNativeSnapshotBridge } = require('./http-native.ts');
 const { qualifyNativePost } = require('./post-native.ts');
 const { paliHttpHeaders } = require('../../../source/shared/paliHttpIdentity.ts');
+
+test('snapshot bridge diagnostics preserve exact failing substage without payloads or raw errors', async () => {
+  const bytes = new TextEncoder().encode(PUBLIC_SNAPSHOT_FIXTURE_BODY);
+  for (const scenario of ['success', 'start', 'metadata', 'first-type', 'first-bytes', 'last-size', 'eof', 'release']) {
+    let pulls = 0, releases = 0, detail;
+    const transport = { prepareSnapshot() { return {
+      async start(check) {
+        check();
+        if (scenario === 'start') throw Object.assign(Error('DO_NOT_EXPORT_RAW_ERROR'), { code: 'PUBLIC_SNAPSHOT_UNAVAILABLE' });
+        return { status: scenario === 'metadata' ? 503 : 200, byteCount: bytes.length };
+      },
+      async pull(check) {
+        check(); pulls++;
+        if (pulls === 3) return scenario === 'eof' ? undefined : null;
+        const chunk = pulls === 1 ? bytes.slice(0, 65536) : bytes.slice(65536);
+        if (scenario === 'first-type' && pulls === 1) return chunk.buffer;
+        if (scenario === 'first-bytes' && pulls === 1) chunk[5] ^= 1;
+        return scenario === 'last-size' && pulls === 2 ? chunk.slice(1) : chunk;
+      },
+      async release() { releases++; if (scenario === 'release') throw Error('DO_NOT_EXPORT_RAW_ERROR'); },
+    }; } };
+    const work = qualifyNativeSnapshotBridge(transport, 'https://DO_NOT_EXPORT_ORIGIN', new AbortController().signal, () => undefined);
+    if (scenario === 'success') { await work; assert.equal(pulls, 3); }
+    else await assert.rejects(work, error => {
+      assert.equal(error.failedCase, 'public-snapshot-bridge'); detail = error.failureDetail;
+      assert.equal(validHttpSnapshotFailureDetail(detail), true);
+      assert(!JSON.stringify(detail).includes('DO_NOT_EXPORT'));
+      return true;
+    });
+    assert.equal(releases, 1);
+    if (scenario === 'start') assert.deepEqual([detail.stage, detail.rejection], ['start', 'PUBLIC_SNAPSHOT_UNAVAILABLE']);
+    if (scenario === 'metadata') assert.deepEqual([detail.stage, detail.status, detail.byteCount], ['metadata', 503, bytes.length]);
+    if (scenario === 'first-type') assert.deepEqual([detail.stage, detail.chunkKind, detail.chunkBytes], ['first-pull', 'arraybuffer', 65536]);
+    if (scenario === 'first-bytes') assert.deepEqual([detail.stage, detail.mismatchIndex], ['first-pull', 5]);
+    if (scenario === 'last-size') assert.deepEqual([detail.stage, detail.chunkBytes], ['last-pull', bytes.length - 65537]);
+    if (scenario === 'eof') assert.deepEqual([detail.stage, detail.chunkKind], ['eof', 'undefined']);
+    if (scenario === 'release') assert.deepEqual([detail.stage, detail.rejection], ['release', 'other']);
+  }
+});
+
+test('snapshot diagnostic schema refuses arbitrary text, unknown fields and unbounded numbers', () => {
+  const detail = { stage: 'metadata', status: 200, byteCount: 65550, chunkKind: 'unobserved', chunkBytes: null, mismatchIndex: null, rejection: 'assertion' };
+  assert.equal(validHttpSnapshotFailureDetail(detail), true);
+  for (const patch of [{ stage: 'https://untrusted.example' }, { rejection: 'raw native error' }, { body: 'secret' },
+    { byteCount: Infinity }, { chunkBytes: 16 * 1024 * 1024 + 1 }, { status: -1 }, { mismatchIndex: 0.5 }])
+    assert.equal(validHttpSnapshotFailureDetail({ ...detail, ...patch }), false);
+});
 const { createNativeHttpFetch } = require('../src/platform/httpPolicy.ts');
 const { POST_CASES } = require('./post-contract.ts');
 const { POST_BODIES, POST_CONTROLS, POST_ROUTES, POST_RETRY_PAYLOAD } = require('./post-fixtures.ts');
@@ -332,7 +379,7 @@ test('real child partial diagnostics are bounded, source-bound and never pass ev
     const launch = httpLaunch(suffix.get('httpPort'), suffix.get('httpToken'));
     await (await fetch(`http://127.0.0.1:${launch.port}/${launch.token}/exact?q=exact`)).text();
     const failed = { ...build, lockfileSha256: createHash('sha256').update(readFileSync(require.resolve('../package-lock.json'))).digest('hex'),
-      kind: 'native-http-diagnostic', status: 'failed', diagnosticOnly: true, failedCase: 'abort-stream',
+      kind: 'native-http-diagnostic', status: 'failed', diagnosticOnly: true, failedCase: 'abort-stream', failureDetail: null,
       token: launch.token, phase: 'create', scenario: 'import', platform: 'ios', sessionId: report().sessionId };
     const { http: diagnostic } = await companion.diagnostics(() => JSON.stringify(failed));
     assert.equal(diagnostic.failedCase, 'abort-stream'); assert.equal(diagnostic.status, 'failed'); assert.equal(diagnostic.diagnosticOnly, true);
@@ -340,6 +387,12 @@ test('real child partial diagnostics are bounded, source-bound and never pass ev
     assert(Buffer.byteLength(JSON.stringify(diagnostic)) < 8192);
     assert.throws(() => companion.assertComplete(1)); assert.throws(() => assertHttpReport(failed, expected));
     assert.equal(httpDiagnosticCase({ ...failed, failedCase: 'untrusted arbitrary text' }, { ...expected, token: launch.token }), undefined);
+    const failureDetail = { stage: 'eof', status: 200, byteCount: 65550, chunkKind: 'undefined', chunkBytes: null, mismatchIndex: null, rejection: 'assertion' };
+    const snapshotFailed = { ...failed, failedCase: 'public-snapshot-bridge', failureDetail };
+    const projected = await companion.diagnostics(() => JSON.stringify(snapshotFailed));
+    assert.equal(projected.http.failedCase, 'public-snapshot-bridge');
+    assert.deepEqual(projected.http.failureDetail, failureDetail);
+    assert.equal(httpDiagnosticCase({ ...snapshotFailed, failureDetail: { ...failureDetail, rawError: 'unsafe' } }, { ...expected, token: launch.token }), undefined);
   } finally { await companion.close(); }
 });
 test('one owned inspection distinguishes unavailable counters from confirmed zero requests', async () => {

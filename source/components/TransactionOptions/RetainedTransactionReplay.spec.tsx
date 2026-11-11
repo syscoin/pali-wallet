@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import React from 'react';
 
 import { RetainedTransactionReplay } from './RetainedTransactionReplay';
@@ -487,5 +487,152 @@ test.each([81, 255])(
         (call) => call[0][1] === 'confirmEvmSignedReplay'
       )
     ).toBe(false);
+  }
+);
+
+test.each(['ERC-721', 'ERC-1155'] as const)(
+  'reviews the exact current %s intent, including after choosing a predecessor',
+  async (tokenStandard) => {
+    const original = {
+      kind: 'nft-transfer',
+      chainId: '57057',
+      from: `0x${'33'.repeat(20)}`,
+      contractAddress: `0x${'44'.repeat(20)}`,
+      recipient: `0x${'55'.repeat(20)}`,
+      tokenStandard,
+      tokenId: '17',
+      amountUnits: tokenStandard === 'ERC-721' ? '1' : '9007199254740993',
+    };
+    const predecessor = {
+      ...original,
+      contractAddress: `0x${'66'.repeat(20)}`,
+      recipient: `0x${'77'.repeat(20)}`,
+      tokenId: '29',
+      amountUnits: tokenStandard === 'ERC-721' ? '1' : '9007199254740995',
+    };
+    mockEmitter.mockImplementation(([, method]: string[], args: any[]) => {
+      if (method === 'getSavedEvmTransaction')
+        return Promise.resolve({ hash: HASH, collectibleTransfer: original });
+      if (method === 'prepareEvmSignedReplay') {
+        const isOriginal = args[0] === HASH;
+        const intent = isOriginal ? original : predecessor;
+        const result = review(
+          isOriginal ? 'original-review' : 'predecessor-review',
+          args[0]
+        );
+        Object.assign(result.review, {
+          operation: tokenStandard === 'ERC-721' ? 'erc721' : 'erc1155',
+          to: intent.contractAddress,
+          value: '0',
+          collectibleTransfer: intent,
+          ...(isOriginal
+            ? {
+                missingNonce: '3',
+                predecessors: [
+                  { hash: PREVIOUS, operation: 'erc721', nonce: 3 },
+                ],
+              }
+            : {}),
+        });
+        return Promise.resolve(result);
+      }
+      return Promise.resolve({ status: 'submitted', hash: PREVIOUS });
+    });
+    render(<RetainedTransactionReplay hash={HASH} />);
+    await flush();
+    fireEvent.click(screen.getByText('Review resend'));
+    await flush();
+    let dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByText(original.recipient)).toBeTruthy();
+    expect(dialog.getByText(original.tokenId)).toBeTruthy();
+    expect(dialog.getByText(original.amountUnits)).toBeTruthy();
+    expect(dialog.getByText(tokenStandard)).toBeTruthy();
+    fireEvent.click(dialog.getByText(/Review previous transaction/));
+    await flush();
+    dialog = within(screen.getByRole('dialog'));
+    expect(dialog.queryByText(original.recipient)).toBeNull();
+    expect(dialog.queryByText(original.tokenId)).toBeNull();
+    expect(dialog.getByText(predecessor.recipient)).toBeTruthy();
+    expect(dialog.getByText(predecessor.tokenId)).toBeTruthy();
+    expect(dialog.getByText(predecessor.amountUnits)).toBeTruthy();
+    expect(dialog.getAllByText(predecessor.contractAddress)).toHaveLength(2);
+    fireEvent.click(dialog.getByText('Resend'));
+    await flush();
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'confirmEvmSignedReplay'],
+      ['predecessor-review'],
+      30000,
+      false
+    );
+  }
+);
+
+test.each(['native', 'erc20'])(
+  'does not carry NFT fields into a %s predecessor review',
+  async (kind) => {
+    const recipient = `0x${'88'.repeat(20)}`;
+    const collectibleTransfer = {
+      kind: 'nft-transfer',
+      chainId: '57057',
+      from: `0x${'33'.repeat(20)}`,
+      contractAddress: `0x${'44'.repeat(20)}`,
+      recipient,
+      tokenStandard: 'ERC-721',
+      tokenId: '71',
+      amountUnits: '1',
+    };
+    mockEmitter.mockImplementation(([, method]: string[], args: any[]) => {
+      if (method !== 'prepareEvmSignedReplay')
+        return Promise.resolve({ hash: HASH, collectibleTransfer });
+      const result = review(
+        args[0] === HASH ? 'nft-review' : 'plain-review',
+        args[0]
+      );
+      if (args[0] === HASH) {
+        Object.assign(result.review, {
+          operation: 'erc721',
+          collectibleTransfer,
+          missingNonce: '3',
+          predecessors: [
+            {
+              hash: PREVIOUS,
+              operation: kind === 'native' ? 'send' : 'erc20',
+              nonce: 3,
+            },
+          ],
+        });
+      } else if (kind === 'erc20') {
+        Object.assign(result.review, {
+          operation: 'erc20',
+          tokenTransfer: {
+            recipient: 'current-token-recipient',
+            amountUnits: '6000000',
+            token: { decimals: 6, symbol: 'TOK' },
+          },
+        });
+      }
+      return Promise.resolve(result);
+    });
+    render(<RetainedTransactionReplay hash={HASH} />);
+    await flush();
+    fireEvent.click(screen.getByText('Review resend'));
+    await flush();
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByText(
+        /Review previous transaction/
+      )
+    );
+    await flush();
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.queryByText(recipient)).toBeNull();
+    expect(dialog.queryByText('71')).toBeNull();
+    expect(dialog.queryByText('ERC-721')).toBeNull();
+    expect(dialog.getByText('1.000000000000000001 SYS')).toBeTruthy();
+    if (kind === 'erc20') {
+      expect(dialog.getByText('6.0 TOK')).toBeTruthy();
+      expect(dialog.getByText('current-token-recipient')).toBeTruthy();
+    } else {
+      expect(dialog.queryByText('Token amount')).toBeNull();
+    }
   }
 );

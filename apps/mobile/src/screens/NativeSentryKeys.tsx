@@ -32,7 +32,7 @@ type Step =
   | { kind: 'list' }
   | {
       kind: 'settings';
-      manager: Pick<NativeSentryKeyManagement, 'getSettings' | 'saveSettings'>;
+      manager: Pick<NativeSentryKeyManagement, 'getSettings' | 'saveSettings' | 'cancel' | 'isAuthenticating'>;
       assertCurrent(): void;
     }
   | { kind: 'draft'; multiple: boolean }
@@ -82,7 +82,7 @@ function errorText(cause: unknown) {
     case 'DUPLICATE':
       return 'This key is already saved for this role.';
     case 'INVALID_CREDENTIAL':
-      return 'Incorrect password. Start a new review to try again.';
+      return 'Incorrect PIN. Start a new review to try again.';
     case 'AUTH_THROTTLED':
       return 'Too many attempts. Wait before trying again.';
     case 'CANCELLED':
@@ -158,7 +158,6 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
   const [scheme, setScheme] = useState<SentryAuthorityScheme>('bls-basic');
   const [label, setLabel] = useState('');
   const [privateKey, setPrivateKey] = useState('');
-  const [password, setPassword] = useState('');
   const [backedUp, setBackedUp] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error?: boolean }>();
 
@@ -166,7 +165,8 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
     (owner: Owner) =>
       ownerRef.current === owner &&
       !owner.lifetime.signal.aborted &&
-      AppState.currentState === 'active',
+      (AppState.currentState === 'active' ||
+        (AppState.currentState === 'inactive' && owner.manager?.isAuthenticating() === true)),
     []
   );
   const navigate = useCallback((owner: Owner, next: Step) => {
@@ -176,7 +176,6 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
   const clearFields = useCallback(() => {
     setLabel('');
     setPrivateKey('');
-    setPassword('');
     setBackedUp(false);
     Keyboard.dismiss();
   }, []);
@@ -254,11 +253,13 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
       setStep({ kind: 'list' });
     };
     const change = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') hide();
+      if (state !== 'active' && !(state === 'inactive' && owner.manager?.isAuthenticating() === true)) hide();
     });
     const blur =
       Platform.OS === 'android'
-        ? AppState.addEventListener('blur', hide)
+        ? AppState.addEventListener('blur', () => {
+            if (owner.manager?.isAuthenticating() !== true) hide();
+          })
         : null;
     return () => {
       retire(owner);
@@ -301,7 +302,6 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
   const expireReview = useCallback(
     (owner: Owner) => {
       owner.manager?.cancel();
-      setPassword('');
       setBackedUp(false);
       Keyboard.dismiss();
       if (!owner.busy) {
@@ -395,7 +395,6 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
     const owner = editable();
     if (
       !owner ||
-      !password ||
       (step.kind !== 'import' && step.kind !== 'remove')
     )
       return;
@@ -404,21 +403,18 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
       expireReview(owner);
       return;
     }
-    let entered = password;
     clearFields();
     const work = run(
       async (owner, check) => {
         if (step.kind === 'import') {
           const saved = await owner.manager!.confirmImport(
-            step.review,
-            entered
+            step.review
           );
           check();
           setKeys((before) => [...(before ?? []), ...saved]);
         } else {
           const removed = await owner.manager!.confirmRemoval(
             step.review,
-            entered,
             backedUp
           );
           check();
@@ -439,13 +435,10 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
         owner.manager?.cancel();
         navigate(owner, { kind: 'list' });
         const code = errorCode(cause);
-        if (code === 'INVALID_INPUT')
-          return 'This password could not be used. Start a new review to try again.';
         if (code !== 'INVALID_CREDENTIAL' && code !== 'AUTH_THROTTLED')
           setKeys(null);
       }
     );
-    entered = '';
     return work;
   }, [
     backedUp,
@@ -453,7 +446,6 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
     editable,
     expireReview,
     navigate,
-    password,
     run,
     step,
   ]);
@@ -503,7 +495,22 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
         style={s.fill}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Screen gap={16}>
+        <Screen gap={16} scrollResetKey={step.kind} footer={previewKeys.length > 0 ? (<Button
+                title={
+                  busy
+                    ? 'Confirming…'
+                    : step.kind === 'remove'
+                    ? 'Remove key'
+                    : previewKeys.length > 1
+                    ? 'Save keys'
+                    : 'Save key'
+                }
+                variant={step.kind === 'remove' ? 'danger' : 'primary'}
+                disabled={
+                  busy || (step.kind === 'remove' && !backedUp)
+                }
+                onPress={confirm}
+              />) : undefined}>
           <Header title={title} subtitle={networkLabel} onBack={back} />
           {step.kind === 'list' && (
             <>
@@ -534,9 +541,9 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
               )}
               {keys !== null && (
                 <>
-                  <Button
+                  <Button icon="settings"
                     title="Service settings"
-                    variant="secondary"
+                    variant="secondary" size="compact"
                     disabled={busy}
                     onPress={() => {
                       const owner = editable();
@@ -546,6 +553,8 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                           manager: {
                             getSettings: owner.manager.getSettings,
                             saveSettings: owner.manager.saveSettings,
+                            cancel: owner.manager.cancel,
+                            isAuthenticating: owner.manager.isAuthenticating,
                           },
                           assertCurrent() {
                             if (!current(owner) || owner.step !== next)
@@ -557,21 +566,21 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                       }
                     }}
                   />
-                  <Button
+                  <Button icon="plus"
                     title="Import key"
                     disabled={busy}
                     onPress={() => startDraft(false)}
                   />
-                  <Button
+                  <Button icon="plus"
                     title="Import multiple keys"
-                    variant="secondary"
+                    variant="secondary" size="compact"
                     disabled={busy}
                     onPress={() => startDraft(true)}
                   />
                 </>
               )}
               {canRetry && !busy && (
-                <Button title="Try again" variant="secondary" onPress={load} />
+                <Button icon="refresh" title="Try again" variant="secondary" size="compact" onPress={load} />
               )}
             </>
           )}
@@ -581,13 +590,13 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
               <Button
                 title="Copy public key"
                 icon="copy"
-                variant="secondary"
+                variant="secondary" size="compact"
                 disabled={busy}
                 onPress={copy}
               />
-              <Button
+              <Button icon="trash"
                 title="Remove key"
-                variant="quiet"
+                variant="secondary" size="compact"
                 disabled={busy}
                 onPress={startRemoval}
               />
@@ -633,7 +642,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                   <Text style={s.label}>
                     Copy up to 20 lines using Label | Private key.
                   </Text>
-                  <Button
+                  <Button icon="copy"
                     title="Paste and review keys"
                     disabled={busy}
                     onPress={pasteBatch}
@@ -717,30 +726,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                   </Text>
                 </IdlePressable>
               )}
-              <NoteBackupPasswordField
-                label="Wallet password"
-                value={password}
-                onChange={(value) => {
-                  if (editable()) setPassword(value);
-                }}
-                busy={busy}
-              />
-              <Button
-                title={
-                  busy
-                    ? 'Confirming…'
-                    : step.kind === 'remove'
-                    ? 'Remove key'
-                    : previewKeys.length > 1
-                    ? 'Save keys'
-                    : 'Save key'
-                }
-                variant={step.kind === 'remove' ? 'danger' : 'primary'}
-                disabled={
-                  busy || !password || (step.kind === 'remove' && !backedUp)
-                }
-                onPress={confirm}
-              />
+
             </>
           )}
           {notice && (

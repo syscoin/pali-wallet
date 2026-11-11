@@ -1,0 +1,78 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
+import { screenElements, screenFixture } from './screenFixture.ts';
+
+test('compact transaction facts retain full accessible amounts and identifiers with explicit status', () => {
+  let copies = 0, explorers = 0;
+  const fullAmount = '123456789012345678901234567890.000001 SYS';
+  const address = `0x${'1'.repeat(40)}`, hash = `0x${'2'.repeat(64)}`;
+  const f = screenFixture(new URL('../src/screens/TransactionDetailLayout.tsx', import.meta.url), 'TransactionDetailLayout', {
+    'react-native': { StyleSheet: { create: (value: unknown) => value }, View: 'View' },
+    '../activity/activityAmountLabel': { compactActivityAmountLabel },
+    '../ui': { colors: {}, ...Object.fromEntries(['Button', 'Card', 'Icon', 'Text'].map(name => [name, name])) },
+    './IdleActivityBoundary': { IdlePressable: 'Row' },
+  });
+  const nodes = screenElements(f.render({ amount: fullAmount, direction: 'Received', status: 'Submission unconfirmed', tone: 'unknown',
+    rows: [
+      { label: 'Network', value: 'Syscoin NEVM' }, { label: 'Date', value: 'Date unavailable' },
+      { label: 'From', value: address, actionLabel: 'Copy sender address', onPress: () => { copies++; } },
+      { label: 'To', value: 'Contract creation', actionLabel: 'Copy recipient', disabled: true, onPress: () => { copies++; } }, { label: 'Network fee', value: 'Actual fee not verified' },
+      { label: 'Transaction ID', value: hash },
+    ], onExplorer: () => { explorers++; } }));
+  const amount = nodes.find(node => node.type === 'Text' && node.props.accessibilityLabel === fullAmount); assert(amount);
+  assert.equal(amount.children[0], '≈1.23456e+29 SYS');
+  const transaction = nodes.find(node => node.type === 'Text' && node.props.accessibilityLabel === hash); assert(transaction);
+  assert(String(transaction.children[0]).length <= 42);
+  assert(nodes.some(node => node.children.includes('Submission unconfirmed')));
+  assert(nodes.some(node => node.children.includes('Actual fee not verified')));
+  const copy = nodes.find(node => node.type === 'Row'); assert(copy);
+  assert.equal(copy.props.accessibilityLabel, `Copy sender address: ${address}`);
+  assert.equal(copy.props.disabled, undefined);
+  assert.equal(copy.props.accessibilityState.disabled, false);
+  copy.props.onPress(); assert.equal(copies, 1);
+  const disabledCopy = nodes.find(node => node.type === 'Row' && node.props.accessibilityLabel === 'Copy recipient: Contract creation'); assert(disabledCopy);
+  assert.equal(disabledCopy.props.disabled, true);
+  assert.equal(disabledCopy.props.accessibilityState.disabled, true);
+  const explorer = nodes.find(node => node.type === 'Button'); assert(explorer);
+  assert.equal(explorer.props.title, 'View on explorer'); explorer.props.onPress(); assert.equal(explorers, 1);
+  f.close();
+});
+
+
+test('numeric-only transaction identifiers stay bounded as identifiers and copy exactly', () => {
+  const hash = '0'.repeat(63) + '1';
+  let copied = '';
+  const f = screenFixture(new URL('../src/screens/TransactionDetailLayout.tsx', import.meta.url), 'TransactionDetailLayout', {
+    'react-native': { StyleSheet: { create: (value: unknown) => value }, View: 'View' },
+    '../activity/activityAmountLabel': { compactActivityAmountLabel },
+    '../ui': { colors: {}, ...Object.fromEntries(['Button', 'Card', 'Icon', 'Text'].map(name => [name, name])) },
+    './IdleActivityBoundary': { IdlePressable: 'Row' },
+  });
+  const nodes = screenElements(f.render({ amount: '1 BTC', direction: 'Received', status: 'Confirmed', tone: 'confirmed',
+    rows: [{ label: 'Transaction ID', value: hash, actionLabel: 'Copy transaction ID', onPress: () => { copied = hash; } }],
+  }));
+  const value = nodes.find(node => node.type === 'Text' && node.props.accessibilityLabel === hash); assert(value);
+  assert.equal(value.children[0], `${hash.slice(0, 16)}…${hash.slice(-12)}`);
+  const copy = nodes.find(node => node.type === 'Row'); assert(copy);
+  assert.equal(copy.props.accessibilityLabel, `Copy transaction ID: ${hash}`);
+  copy.props.onPress(); assert.equal(copied, hash);
+  f.close();
+});
+
+test('asset icon in transaction details preserves visible status and has the exact public scope', () => {
+  const asset = { kind: 'spt', chainId: 57, assetGuid: '123456', decimals: 8 };
+  const f = screenFixture(new URL('../src/screens/TransactionDetailLayout.tsx', import.meta.url), 'TransactionDetailLayout', {
+    'react-native': { StyleSheet: { create: (value: unknown) => value }, View: 'View' },
+    '../activity/activityAmountLabel': { compactActivityAmountLabel },
+    '../ui': { colors: {}, ...Object.fromEntries(['Button', 'Card', 'Coin', 'Icon', 'Text'].map(name => [name, name])) },
+    './IdleActivityBoundary': { IdlePressable: 'Row' },
+  });
+  try {
+    const nodes = screenElements(f.render({ amount: '1 SYSX', direction: 'Received', status: 'Confirmed', tone: 'confirmed', asset, assetSymbol: 'SYSX', rows: [] }));
+    const icon = nodes.find(node => node.type === 'Coin'); assert(icon);
+    assert.deepEqual(icon.props.asset, asset);
+    assert(nodes.some(node => node.children.includes('Confirmed')));
+    assert(nodes.some(node => node.props.accessibilityLabel === '1 SYSX'));
+  } finally { f.close(); }
+});

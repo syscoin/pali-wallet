@@ -1,3 +1,4 @@
+import { pinField, enterPin } from './operationAuthentication';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const baseURL = process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179';
@@ -46,7 +47,7 @@ test('saved note opens direct by default and requires confirmation after proof',
   await expect(
     page.getByRole('radio', { name: 'Direct', exact: true })
   ).toBeChecked();
-  await expect(page.getByLabel('Confirm your wallet password')).toHaveCount(0);
+  await expect(pinField(page, 'Confirm your wallet PIN')).toHaveCount(0);
   await page.getByRole('radio', { name: 'Direct', exact: true }).focus();
   await page.keyboard.press('ArrowRight');
   await expect(
@@ -416,24 +417,19 @@ test('whole invalid recipient is rejected instead of accepting a truncated prefi
   ).toHaveLength(0);
 });
 
-test('restored prerequisite clears password and returns to ordinary explicit review', async ({
+test('restored prerequisite uses shared authentication and returns to ordinary explicit review', async ({
   page,
 }) => {
   await open(page, '&restored');
-  const password = page.getByLabel('Confirm your wallet password');
-  await password.fill('wrong');
   await page
     .getByRole('button', { name: 'Review restored note', exact: true })
     .click();
-  await expect(password).toHaveValue('');
+  await enterPin(page, '000000');
   await expect(page.getByRole('alert')).toHaveText(
-    'Could not review this restored note. Confirm your password and try again.'
+    'PIN not accepted. Try again.'
   );
-  await password.fill('Fixture password 1!');
-  await page
-    .getByRole('button', { name: 'Review restored note', exact: true })
-    .click();
-  await expect(password).toHaveCount(0);
+  await enterPin(page, '123456');
+  await expect(page.getByRole('button', { name: 'PIN digit 1', exact: true })).toHaveCount(0);
   await prepare(page);
   await expect(
     page.getByRole('button', { name: 'Confirm withdrawal', exact: true })
@@ -454,6 +450,7 @@ test('cancel waits for a pending open and late disposal before reloading invento
     .getByRole('button', { name: 'Check pool status', exact: true })
     .click();
   await page.getByRole('button', { name: 'Withdraw', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__privateWithdrawalFixture.events().includes('open'))).toBe(true);
   const inventories = await page.evaluate(
     () =>
       window.__privateWithdrawalFixture

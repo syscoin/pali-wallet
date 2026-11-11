@@ -23,7 +23,7 @@ for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: width === 320 ? 568 : 844 });
     await page.goto('/?smart-currency=1');
     await expect(
-      page.getByText('Balance 5.0 ETH', { exact: true })
+      page.getByText('Available 5.0 ETH', { exact: true })
     ).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Review transfer', exact: true })
@@ -33,7 +33,7 @@ for (const width of [390, 320]) {
     });
     await page.getByLabel('Recipient address', { exact: true }).fill(recipient);
     await page
-      .getByLabel('Amount (ETH)', { exact: true })
+      .getByLabel('Amount in ETH', { exact: true })
       .fill('0.000000000000000009');
     await page
       .getByRole('button', { name: 'Review transfer', exact: true })
@@ -119,12 +119,12 @@ test('invalid amount stays in the form with actionable feedback', async ({
 }) => {
   await page.goto('/?smart-currency=1');
   await page.getByLabel('Recipient address', { exact: true }).fill(recipient);
-  await page.getByLabel('Amount (ETH)', { exact: true }).fill('1e9');
+  await page.getByLabel('Amount in ETH', { exact: true }).fill('1e9');
   await page
     .getByRole('button', { name: 'Review transfer', exact: true })
     .click();
   await expect(page.getByText('Check transfer', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('Amount (ETH)', { exact: true })).toHaveValue(
+  await expect(page.getByLabel('Amount in ETH', { exact: true })).toHaveValue(
     '1e9'
   );
   await expect(
@@ -146,13 +146,13 @@ test('unavailable balance and preparation preserve readable failure states', asy
     '/?smart-currency=1&balance-unavailable=1&prepare-unavailable=1'
   );
   await expect(
-    page.getByText('Balance unavailable', { exact: true })
+    page.getByText('Available — ETH', { exact: true })
   ).toBeVisible();
   await page.screenshot({
     path: test.info().outputPath('smart-send-unavailable-balance.png'),
   });
   await page.getByLabel('Recipient address', { exact: true }).fill(recipient);
-  await page.getByLabel('Amount (ETH)', { exact: true }).fill('1');
+  await page.getByLabel('Amount in ETH', { exact: true }).fill('1');
   await page
     .getByRole('button', { name: 'Review transfer', exact: true })
     .click();
@@ -236,18 +236,18 @@ test('Smart ERC20 transfer keeps token identity and payer fee reviews separate o
   await page.setViewportSize({ width: 320, height: 568 });
   await page.goto('/?smart-currency=1&token=1');
   await expect(
-    page.getByText('Balance 100.0 TOK', { exact: true })
+    page.getByText('Available 100.0 TOK', { exact: true })
   ).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'MAX', exact: true })
   ).toBeEnabled();
   await page.getByRole('button', { name: 'MAX', exact: true }).click();
-  await expect(page.getByLabel('Amount (TOK)', { exact: true })).toHaveValue('100.0');
+  await expect(page.getByLabel('Amount in TOK', { exact: true })).toHaveValue('100.0');
   await expect(
     page.getByRole('button', { name: 'MAX selected', exact: true })
   ).toBeVisible();
   await page.getByLabel('Recipient address', { exact: true }).fill(recipient);
-  await page.getByLabel('Amount (TOK)', { exact: true }).fill('1.234567');
+  await page.getByLabel('Amount in TOK', { exact: true }).fill('1.234567');
   await page
     .getByRole('button', { name: 'Review transfer', exact: true })
     .click();

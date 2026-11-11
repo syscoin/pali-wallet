@@ -1,6 +1,6 @@
 # Mobile brand assets
 
-`syscoin.png` is the unmodified Syscoin image used by the extension through `source/utils/tokens.ts`. Both native SYS networks use this mark; network identity is conveyed by the network label. Never apply it to an arbitrary token based only on its symbol.
+`../../../source/assets/all_assets/syscoin.png` is the shared, unmodified Syscoin image used by native and extension. Both native SYS networks use this mark; network identity is conveyed by the network label. Never apply it to an arbitrary token based only on its symbol.
 
 Source: https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/syscoin/info/logo.png
 

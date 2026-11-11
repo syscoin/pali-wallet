@@ -21,6 +21,12 @@ jest.mock('hooks/index', () => ({
   }),
 }));
 jest.mock('utils/navigationState', () => ({ navigateBack: jest.fn() }));
+jest.mock('components/WalletUpdatePanel', () => ({
+  WalletUpdatePanel: () => <section aria-label="Update details" />,
+  WalletUpdateSummary: ({ onOpen }: { onOpen(): void }) => (
+    <button onClick={onOpen}>Wallet updates</button>
+  ),
+}));
 jest.mock('components/Icon/Icon', () => ({
   PaliWhiteSmallIconSvg: () => <svg />,
 }));
@@ -94,4 +100,15 @@ it('keeps the original documentation, attribution and copied support destination
     expect(mockCopy).toHaveBeenCalledWith('https://discord.com/invite/syscoin')
   );
   open.mockRestore();
+});
+
+it('opens update details from a compact entry and returns to About', () => {
+  render(<About />);
+  expect(screen.queryByRole('region', { name: 'Update details' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Wallet updates' }));
+  expect(screen.getByRole('region', { name: 'Update details' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Pali API' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.back' }));
+  expect(screen.getByRole('button', { name: 'Pali API' })).toBeTruthy();
+  expect(screen.queryByRole('region', { name: 'Update details' })).toBeNull();
 });

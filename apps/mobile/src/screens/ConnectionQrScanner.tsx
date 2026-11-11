@@ -1,1 +1,1 @@
-export { ConnectionQrScanner } from './ConnectionQrScanner.web';
+export { ConnectionQrScanner } from './ConnectionQrScanner.shared';

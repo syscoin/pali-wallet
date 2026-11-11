@@ -111,6 +111,8 @@ it.each(cases)(
         logo: token.logo,
         contractAddress: token.contractAddress,
         assetGuid: token.assetGuid,
+        chainId: undefined,
+        decimals: undefined,
         symbol: token.symbol,
         size: 16,
         className: 'border border-bkg-3 rounded-full',

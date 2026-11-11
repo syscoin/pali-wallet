@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { authenticateNativeOperation } from './operationAuthentication';
 
 test.use({
   baseURL: process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179',
@@ -39,13 +40,13 @@ test('narrow UTXO review puts the exact recipient and fee before consent', async
     page.getByText('Original provider', { exact: true })
   ).toHaveCount(0);
   const confirm = page.getByTestId('native-utxo-confirm');
-  await expect(confirm).not.toBeInViewport();
-  await confirm.scrollIntoViewIfNeeded();
+  // Consent remains reachable in the fixed footer while detail text scrolls.
   await expect(confirm).toBeInViewport();
   await page.screenshot({
     path: info.outputPath('utxo-confirm-320-large-text.png'),
   });
   await confirm.click();
+  await authenticateNativeOperation(page);
   await expect(page.getByText('Submitted', { exact: true })).toBeVisible();
 });
 
@@ -73,6 +74,7 @@ test('a saved UTXO retry reviews each output and the original provider before re
     )
   ).toBe(true);
   await page.getByRole('button', { name: 'Resend saved transfer' }).click();
+  await authenticateNativeOperation(page);
   await expect(page.getByText('Submitted', { exact: true })).toBeVisible();
 });
 
@@ -89,6 +91,7 @@ test('an expired confirmation exposes newly saved bytes in the same composer', a
   );
   await page.getByTestId('native-utxo-review').click();
   await page.getByTestId('native-utxo-confirm').click();
+  await authenticateNativeOperation(page);
   await expect(page.getByRole('alert')).toContainText(
     'This review is no longer available.'
   );

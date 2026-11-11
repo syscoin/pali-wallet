@@ -22,6 +22,7 @@ import {
 import {
   createUtxoSubmissionDisposition,
   observeRetainedUtxo,
+  reconcileRetainedUtxo,
   submitRetainedUtxo,
   submitReviewedUtxo,
 } from './utxoSubmission';
@@ -166,7 +167,9 @@ function context() {
         },
       } as never),
     {},
-    () => guard
+    () => guard,
+    'session',
+    guard
   );
   const response = (txid: string) => {
     const reply = Response.json({ result: txid });
@@ -1335,4 +1338,301 @@ it('reclaims an unobserved confirmed record when the journal needs space', async
   } finally {
     capacity.restore();
   }
+});
+
+it('hides confirmed recovery rows, retains their bytes, and restores them after a reorg and reopen', async () => {
+  const c = await retainedFixture();
+  await reconcileRetainedUtxo(savedStatusRequest(c));
+  expect(await c.records.list(c.session, c.transaction.owner)).toEqual([]);
+  expect(
+    await c.records.readExact(
+      c.session,
+      c.transaction.owner,
+      c.transaction.txid
+    )
+  ).toEqual(c.transaction);
+  const reopened = new UtxoSignedRecords(c.storage, c.storage);
+  const transport = c.fetch.getMockImplementation()!;
+  c.fetch.mockImplementation(async (target, init) =>
+    target === savedStatus + 'tx/' + c.transaction.txid
+      ? identityResponse(String(target), {
+          txid: c.transaction.txid,
+          hex: c.transaction.rawTransaction,
+          confirmations: 0,
+        })
+      : transport(target, init)
+  );
+  await reconcileRetainedUtxo({ ...savedStatusRequest(c), records: reopened });
+  expect(await reopened.list(c.session, c.transaction.owner)).toEqual([
+    { txid: c.transaction.txid, accepted: true },
+  ]);
+  expect(
+    (
+      await reopened.fundingExclusions(c.session, c.transaction.owner)
+    ).outpoints.map(({ txid, vout }) => `${txid}:${vout}`)
+  ).toEqual(c.transaction.outpoints);
+  c.fetch.mockImplementation(transport);
+  await reconcileRetainedUtxo({ ...savedStatusRequest(c), records: reopened });
+  expect(await reopened.list(c.session, c.transaction.owner)).toEqual([]);
+  expect(c.fetch.mock.calls.every(([, init]) => init?.method === 'GET')).toBe(
+    true
+  );
+});
+
+it('keeps recovery available when automatic original-route verification fails', async () => {
+  const c = await retainedFixture();
+  c.fetch.mockResolvedValue(
+    identityResponse(savedStatus, {
+      blockbook: { coin: 'Bitcoin', network: 'BTC', decimals: 8 },
+      backend: { chain: 'test' },
+    })
+  );
+  await reconcileRetainedUtxo(savedStatusRequest(c));
+  expect(await c.records.list(c.session, c.transaction.owner)).toEqual([
+    { txid: c.transaction.txid, accepted: false },
+  ]);
+  expect(
+    await c.records.readExact(
+      c.session,
+      c.transaction.owner,
+      c.transaction.txid
+    )
+  ).toEqual(c.transaction);
+  expect(c.fetch.mock.calls.map(([target]) => target)).toEqual([savedStatus]);
+});
+
+it('rotates bounded reconciliation across both unresolved and confirmed records', async () => {
+  const c = context();
+  const records = Array.from({ length: 6 }, (_, index) => ({
+    ...record(0xfffffff0 + index),
+    operation: 'external' as const,
+  }));
+  for (const transaction of records)
+    await c.records.persist(c.session, transaction);
+  for (const transaction of records.slice(3))
+    await c.records.observeRetained(
+      c.session,
+      owner,
+      transaction.txid,
+      async () => ({
+        txid: transaction.txid,
+        hex: transaction.rawTransaction,
+        confirmations: 1,
+        blockHash: 'f'.repeat(64),
+      })
+    );
+  const seen: string[] = [];
+  for (let pass = 0; pass < 3; pass++) {
+    const start = seen.length;
+    await c.records.reconcile(c.session, owner, async (txid) => {
+      seen.push(txid);
+    });
+    expect(seen.length - start).toBe(2);
+    expect(records.slice(0, 3).some((item) => item.txid === seen[start])).toBe(
+      true
+    );
+    expect(records.slice(3).some((item) => item.txid === seen[start + 1])).toBe(
+      true
+    );
+  }
+  expect(new Set(seen)).toEqual(new Set(records.map((item) => item.txid)));
+});
+
+it('coalesces overlapping reconciliation for the same wallet and account', async () => {
+  const c = context();
+  await c.records.persist(c.session, record());
+  const entered = deferred(),
+    release = deferred();
+  const observe = jest.fn(async () => {
+    entered.finish();
+    await release.promise;
+  });
+  const first = c.records.reconcile(c.session, owner, observe);
+  await entered.promise;
+  const second = c.records.reconcile(c.session, owner, observe);
+  await Promise.resolve();
+  release.finish();
+  await Promise.all([first, second]);
+  expect(observe).toHaveBeenCalledTimes(1);
+});
+
+it('admits a fresh session after an overlapping old refresh is cancelled', async () => {
+  const c = context();
+  await c.records.persist(c.session, record());
+  const entered = deferred(),
+    release = deferred();
+  let active = true;
+  const old = {
+    ...c.session,
+    assertCurrent() {
+      if (!active) throw Error('Old view closed');
+    },
+  };
+  const first = c.records.reconcile(old, owner, async () => {
+    entered.finish();
+    await release.promise;
+    old.assertCurrent();
+  });
+  const rejected = expect(first).rejects.toThrow('Old view closed');
+  await entered.promise;
+  const observe = jest.fn(async () => undefined);
+  const next = c.records.reconcile(c.session, owner, observe);
+  active = false;
+  release.finish();
+  await rejected;
+  await next;
+  expect(observe).toHaveBeenCalledTimes(1);
+});
+
+it('rejects an already aborted empty refresh before reading the wallet record key', async () => {
+  const c = context();
+  const readKey = jest.spyOn(c.session.keyring, 'getPrivateRecordProfileId');
+  const controller = new AbortController();
+  controller.abort();
+  const fetch = jest.fn();
+  await expect(
+    reconcileRetainedUtxo({
+      ...c,
+      owner,
+      backendChain: 'main',
+      fetch,
+      signal: controller.signal,
+    })
+  ).rejects.toThrow();
+  expect(readKey).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it('checks a joined view again before accessing its record key', async () => {
+  const c = context();
+  await c.records.persist(c.session, record());
+  const entered = deferred(),
+    release = deferred();
+  const first = c.records.reconcile(c.session, owner, async () => {
+    entered.finish();
+    await release.promise;
+  });
+  await entered.promise;
+  const key = jest.spyOn(c.session.keyring, 'getPrivateRecordProfileId');
+  const controller = new AbortController();
+  const joined = reconcileRetainedUtxo({
+    ...c,
+    owner,
+    backendChain: 'main',
+    fetch: jest.fn(),
+    signal: controller.signal,
+  });
+  const rejected = expect(joined).rejects.toThrow();
+  controller.abort();
+  release.finish();
+  await first;
+  await rejected;
+  expect(key).not.toHaveBeenCalled();
+});
+
+it('does not let background reconciliation supersede an explicit status check', async () => {
+  const c = context(),
+    transaction = record();
+  await c.records.persist(c.session, transaction);
+  const entered = deferred(),
+    release = deferred();
+  const explicit = c.records.observeRetained(
+    c.session,
+    owner,
+    transaction.txid,
+    async () => {
+      entered.finish();
+      await release.promise;
+      return {
+        txid: transaction.txid,
+        hex: transaction.rawTransaction,
+        confirmations: 1,
+        blockHash: 'f'.repeat(64),
+      };
+    }
+  );
+  await entered.promise;
+  const background = jest.fn(async () => undefined);
+  await c.records.reconcile(c.session, owner, background);
+  expect(background).not.toHaveBeenCalled();
+  release.finish();
+  await expect(explicit).resolves.toBe('confirmed');
+  expect(await c.records.list(c.session, owner)).toEqual([]);
+});
+
+it('lets a newer explicit status check retire an older background observation', async () => {
+  const c = context(),
+    transaction = record();
+  await c.records.persist(c.session, transaction);
+  const entered = deferred(),
+    release = deferred();
+  const background = c.records.reconcile(c.session, owner, (txid) =>
+    c.records.observeRetained(c.session, owner, txid, async () => {
+      entered.finish();
+      await release.promise;
+      return null;
+    })
+  );
+  const rejected = expect(background).rejects.toThrow(
+    'UTXO observation changed'
+  );
+  await entered.promise;
+  await expect(
+    c.records.observeRetained(c.session, owner, transaction.txid, async () => ({
+      txid: transaction.txid,
+      hex: transaction.rawTransaction,
+      confirmations: 1,
+      blockHash: 'f'.repeat(64),
+    }))
+  ).resolves.toBe('confirmed');
+  release.finish();
+  await rejected;
+  expect(await c.records.list(c.session, owner)).toEqual([]);
+});
+
+it('cannot publish automatic reconciliation after the wallet context changes', async () => {
+  const c = await retainedFixture();
+  const entered = deferred(),
+    release = deferred();
+  const transport = c.fetch.getMockImplementation()!;
+  c.fetch.mockImplementationOnce(async (...args) => {
+    entered.finish();
+    await release.promise;
+    return transport(...args);
+  });
+  let current = true;
+  const pending = reconcileRetainedUtxo({
+    ...savedStatusRequest(c),
+    session: {
+      ...c.session,
+      assertCurrent() {
+        if (!current) throw Error('Wallet changed');
+      },
+    },
+  });
+  const rejected = expect(pending).rejects.toThrow('Wallet changed');
+  await entered.promise;
+  current = false;
+  release.finish();
+  await rejected;
+  expect(c.fetch).toHaveBeenCalledTimes(1);
+  expect(c.cas).toHaveBeenCalledTimes(1);
+  expect(await c.records.list(c.session, c.transaction.owner)).toEqual([
+    { txid: c.transaction.txid, accepted: false },
+  ]);
+});
+
+it('does not make automatic requests for a different owner or an empty journal', async () => {
+  const c = await retainedFixture();
+  await reconcileRetainedUtxo({
+    ...savedStatusRequest(c),
+    owner: { ...owner, account: { ...owner.account, id: 1 } },
+  });
+  const empty = context();
+  await reconcileRetainedUtxo({
+    ...savedStatusRequest(c),
+    records: empty.records,
+    session: empty.session,
+  });
+  expect(c.fetch).not.toHaveBeenCalled();
 });

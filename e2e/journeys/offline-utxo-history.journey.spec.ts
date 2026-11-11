@@ -20,16 +20,7 @@ import {
 
 const SYSX_LOGO_URL =
   'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/syscoin/info/logo.png';
-// Synthetic local pixels distinguish the canonical identity lookup from an
-// initial/Pali fallback. No public logo bytes or network request are needed.
-const SYSX_FIXTURE_LOGO =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">' +
-  '<circle cx="12" cy="12" r="12" fill="#0082c6"/>' +
-  '<path d="M17 6H9a4 4 0 0 0 0 8h6a1 1 0 0 1 0 2H7v3h8a4 4 0 0 0 0-8H9a1 1 0 0 1 0-2h8z" fill="#fff"/>' +
-  '</svg>';
-const SYSX_FIXTURE_DATA_URL =
-  'data:image/svg+xml;base64,' +
-  Buffer.from(SYSX_FIXTURE_LOGO).toString('base64');
+const SYSX_ICON_PATH = '/assets/all_assets/syscoin.png';
 
 test('offline UTXO history: bridge value, native account change and pending detail units', async () => {
   test.setTimeout(180000);
@@ -127,19 +118,14 @@ test('offline UTXO history: bridge value, native account change and pending deta
         }),
       }
     );
-    // The later, exact-match handler wins only for this read. Everything else
-    // remains behind the fixture's deny route and the launch-time HTTP proxy.
+    // Canonical SYSX artwork is bundled. Count and block any legacy logo read;
+    // all other requests remain behind the fixture and launch-time proxy.
     await wallet.context.route(
       (url) => url.href === SYSX_LOGO_URL,
       async (route) => {
         if (route.request().method() !== 'GET') return route.fallback();
         fixtureLogoReads.push(route.request().url());
-        return route.fulfill({
-          status: 200,
-          contentType: 'image/svg+xml',
-          headers: { 'access-control-allow-origin': '*' },
-          body: SYSX_FIXTURE_LOGO,
-        });
+        return route.abort('blockedbyclient');
       }
     );
     const page = wallet.page;
@@ -189,7 +175,13 @@ test('offline UTXO history: bridge value, native account change and pending deta
       await expect(amount).toBeVisible();
       await expect(icon).toHaveCount(1);
       await expect(icon).toBeVisible();
-      await expect(icon).toHaveAttribute('src', SYSX_FIXTURE_DATA_URL);
+      await expect
+        .poll(() =>
+          icon.evaluate(
+            (element) => new URL((element as HTMLImageElement).src).href
+          )
+        )
+        .toBe(new URL(SYSX_ICON_PATH, page.url()).href);
       await expect
         .poll(() =>
           icon.evaluate((element) => {
@@ -201,7 +193,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
             };
           })
         )
-        .toEqual({ complete: true, width: 24, height: 24 });
+        .toEqual({ complete: true, width: 256, height: 256 });
       const iconBounds = await icon.boundingBox();
       const amountBounds = await amount.boundingBox();
       expect(iconBounds).not.toBeNull();
@@ -373,7 +365,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
           expect(
             routes.reads.filter((read) => read === '/api/v2/tx/' + bridge.txid)
           ).toHaveLength(1);
-        expect(fixtureLogoReads.length).toBeGreaterThan(0);
+        expect(fixtureLogoReads).toEqual([]);
         expect(routes.deniedWrites).toEqual([]);
       }
     );

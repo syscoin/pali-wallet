@@ -15,6 +15,11 @@ import { useLocation } from 'react-router-dom';
 import { assertSupportedEvmFees } from '../../shared/dappTransaction.ts';
 import { parseErc20Units } from '../../shared/erc20';
 import { EVM_FEE_APPROVAL_LIFETIME_MS } from '../../shared/evmFeeApproval';
+import {
+  nativeEvmMaximumReserve,
+  nativeEvmMaximumValue,
+  refineNativeEvmMaximum,
+} from '../../shared/evmNativeMaximum';
 import { getEvmTransferCost } from '../../shared/evmTransferCost';
 import {
   ICustomFeeParams,
@@ -84,11 +89,7 @@ import { useConfirmSubmission } from './useConfirmSubmission';
 import { openWalletTokenReview } from './walletTokenReviewPort';
 import type { WalletTokenReviewPayload } from '../../shared/walletTokenReview';
 
-const NON_SOFTWARE_MAX_SEND_RESERVE_WEI = parseUnits(
-  '0.000001',
-  'ether'
-).toBigInt();
-const NATIVE_EVM_MAX_SEND_INITIAL_GAS_RESERVE = BigNumber.from(500_000);
+const NON_SOFTWARE_MAX_SEND_RESERVE_WEI = nativeEvmMaximumReserve('hardware');
 const nativeMaxSendValue = (
   balance: string | number,
   gasLimit: BigNumber,
@@ -100,12 +101,14 @@ const nativeMaxSendValue = (
     fraction ? `${whole}.${fraction.slice(0, 18)}` : whole,
     'ether'
   );
-  const { maximumFee } = getEvmTransferCost(
-    BigInt(0),
-    gasLimit.toBigInt(),
-    feeRate.toBigInt()
+  return BigNumber.from(
+    nativeEvmMaximumValue(
+      balanceWei.toBigInt(),
+      gasLimit.toBigInt(),
+      feeRate.toBigInt(),
+      reserveWei
+    )
   );
-  return balanceWei.sub(maximumFee + reserveWei);
 };
 const transactionReviewDivider = (
   <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
@@ -1001,32 +1004,6 @@ export const SendConfirm = () => {
         throw error;
       }
 
-      const getSpendableMaxValue = (gasLimit: BigNumber) => {
-        if (!maxSendFeeRateWei || maxSendFeeRateWei.lte(0)) {
-          return null;
-        }
-
-        const { maximumFee } = getEvmTransferCost(
-          BigInt(0),
-          gasLimit.toBigInt(),
-          maxSendFeeRateWei.toBigInt()
-        );
-
-        const reserved =
-          maximumFee +
-          (isNativeSoftwareSend
-            ? BigInt(0)
-            : NON_SOFTWARE_MAX_SEND_RESERVE_WEI);
-        return value.gt(reserved) ? value.sub(reserved) : null;
-      };
-
-      let estimateValue = value;
-      if (basicTxValues.isMax && value.gt(0)) {
-        estimateValue =
-          getSpendableMaxValue(NATIVE_EVM_MAX_SEND_INITIAL_GAS_RESERVE) ||
-          BigNumber.from(1);
-      }
-
       const estimateGas = async (estimateWithValue: BigNumber) => {
         const transaction = {
           data: '0x',
@@ -1043,25 +1020,31 @@ export const SendConfirm = () => {
       };
 
       try {
-        let estimatedGasLimit = await estimateGas(estimateValue);
-
         if (basicTxValues.isMax && value.gt(0) && maxSendFeeRateWei) {
-          for (let i = 0; i < 2; i += 1) {
-            const refinedValue = getSpendableMaxValue(estimatedGasLimit);
-            if (!refinedValue || refinedValue.eq(estimateValue)) {
-              break;
-            }
-
-            estimateValue = refinedValue;
-            const refinedGasLimit = await estimateGas(estimateValue);
-            if (refinedGasLimit.eq(estimatedGasLimit)) {
-              break;
-            }
-            estimatedGasLimit = refinedGasLimit;
-          }
+          const feeSelection = feeSelectionRef.current;
+          const refined = await refineNativeEvmMaximum({
+            balanceUnits: value.toBigInt(),
+            feePerGas: maxSendFeeRateWei.toBigInt(),
+            reserveUnits: nativeEvmMaximumReserve(
+              isNativeSoftwareSend ? 'software' : 'hardware'
+            ),
+            estimateGas: async (amount) =>
+              (await estimateGas(BigNumber.from(amount))).toBigInt(),
+            assertCurrent: () => {
+              if (
+                !submission.isActive() ||
+                feeSelectionRef.current !== feeSelection
+              )
+                throw new Error(
+                  'Native maximum fee request is no longer current'
+                );
+            },
+          });
+          return BigNumber.from(refined.gasLimit);
         }
-
-        return estimatedGasLimit;
+        return await estimateGas(
+          basicTxValues.isMax && value.gt(0) ? BigNumber.from(1) : value
+        );
       } catch (error) {
         logError('error estimating native EVM gas limit', 'Transaction', error);
         throw error;

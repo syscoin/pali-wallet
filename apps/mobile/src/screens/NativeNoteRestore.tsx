@@ -19,7 +19,7 @@ type Props = {
   error: string;
   onChoose(): void;
   onOpen(password: string): void;
-  onRestore(id: string, password: string): void;
+  onRestore(id: string): void;
   onBack(): void;
 };
 
@@ -43,14 +43,15 @@ export function NativeNoteRestore({ step, busy, error, onChoose, onOpen, onResto
       detail="Enter the password you set when saving this file." busy={busy} onSubmit={onOpen} feedback={feedback} />;
   } else if (step.phase === 'review') {
     const { preview } = step;
-    content = <PasswordStep key={preview.id} header={header} label="Wallet password" button="Restore notes"
-      detail="Confirm your wallet password to add these notes." busy={busy} onSubmit={password => onRestore(preview.id, password)} feedback={feedback}>
+    content = <Screen footer={<Button title={busy ? 'Restoring…' : 'Restore notes'} disabled={busy}
+      onPress={() => { if (!busy && AppState.currentState === 'active') onRestore(preview.id); }} />}>{header}
       <Card style={s.counts}>
         <Count label="New notes" count={preview.added} />
         <Count label="Already in this wallet" count={preview.duplicates} />
       </Card>
       <Text style={styles.muted}>Existing notes are kept. The backup may flag notes that need a status check before use.</Text>
-    </PasswordStep>;
+      {feedback}
+    </Screen>;
   } else if (step.phase === 'restored' || step.phase === 'unconfirmed') {
     content = <Screen footer={<Button title="Done" onPress={onBack} />}>{header}
       {step.phase === 'restored'

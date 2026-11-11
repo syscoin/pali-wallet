@@ -3,6 +3,8 @@ import React, {
   Dispatch,
   SetStateAction,
   useCallback,
+  useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -17,6 +19,7 @@ import { dispatchBackgroundEvent } from 'utils/browser';
 import { extractErrorMessage } from 'utils/index';
 import { clearTransactionNavigationState } from 'utils/navigationState';
 
+import { LocalPasskeyUnlock } from './LocalPasskeyUnlock';
 import { StartFreshWallet } from './StartFreshWallet';
 
 const Unlock: React.FC<{
@@ -36,6 +39,7 @@ const Unlock: React.FC<{
   const { controllerEmitter } = useController();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
   const onResetOpenChange = useCallback(
     (open: boolean) => {
@@ -51,6 +55,41 @@ const Unlock: React.FC<{
   // Get query data to check if this is an authentication popup
   const queryData = useQueryData();
   const { host, eventName } = queryData;
+  const navigation = useMemo(
+    () => ({ isExternal, externalRoute, host, eventName }),
+    [isExternal, externalRoute, host, eventName]
+  );
+  const latestNavigation = useRef(navigation);
+  latestNavigation.current = navigation;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const finishUnlock = async () => {
+    const captured = navigation;
+    if (!(await refreshControllerStatus()))
+      throw new Error(t('start.unlockConfirmationFailed'));
+    if (!mounted.current || latestNavigation.current !== captured) return;
+    setErrorMessage(null);
+    if (!captured.isExternal) return navigate('/home');
+    if (
+      (!captured.externalRoute ||
+        captured.externalRoute.includes('/external/login')) &&
+      captured.host &&
+      captured.eventName
+    ) {
+      await clearTransactionNavigationState();
+      if (!mounted.current || latestNavigation.current !== captured) return;
+      dispatchBackgroundEvent(`${captured.eventName}.${captured.host}`, null);
+      window.close();
+      return;
+    }
+    return navigate(captured.externalRoute);
+  };
 
   const onSubmit = async ({ password }: { password: string }) => {
     if (submitting.current || isResetOpen) return;
@@ -63,35 +102,9 @@ const Unlock: React.FC<{
         [password]
       );
       if (unlocked !== true) throw new Error(t('start.wrongPassword'));
-      if (!(await refreshControllerStatus())) {
-        throw new Error(t('start.unlockConfirmationFailed'));
-      }
-
-      setErrorMessage(null);
-
-      if (!isExternal) {
-        return navigate('/home');
-      }
-
-      // Check if this is an authentication popup (external with login route or no externalRoute)
-      if (
-        isExternal &&
-        (!externalRoute || externalRoute.includes('/external/login')) &&
-        host &&
-        eventName
-      ) {
-        // This is an authentication popup - dispatch success
-        // Let the pipeline continue and close when the final response is ready
-        await clearTransactionNavigationState();
-        dispatchBackgroundEvent(`${eventName}.${host}`, null);
-        window.close();
-        // Note: Window will be closed by popup promise after pipeline completes
-        return;
-      }
-
-      // For external routes, navigate to the destination
-      return navigate(externalRoute as string);
+      return await finishUnlock();
     } catch (e) {
+      if (!mounted.current) return;
       setIsLoading(false);
 
       // Extract the actual error message
@@ -127,9 +140,10 @@ const Unlock: React.FC<{
           help={errorMessage}
         >
           <Input.Password
-            disabled={isResetOpen}
+            disabled={isResetOpen || isLoading || passkeyBusy}
             className="custom-input-password relative"
             placeholder={t('settings.enterYourPassword')}
+            aria-label={t('settings.enterYourPassword')}
             id="password"
             autoComplete="current-password"
           />
@@ -141,15 +155,30 @@ const Unlock: React.FC<{
             type="submit"
             className="bg-brand-deepPink100 w-[17.5rem] h-10 text-bkg-1 text-base	 font-base font-medium rounded-2xl"
             loading={isLoading}
-            disabled={isResetOpen}
+            disabled={isResetOpen || passkeyBusy}
           >
             {t('buttons.unlock')}
           </Button>
         </Form.Item>
       </Form>
+      <LocalPasskeyUnlock
+        key={`${isExternal}:${externalRoute}:${host}:${eventName}`}
+        disabled={isLoading || isResetOpen}
+        onStart={() => {
+          if (submitting.current || isResetOpen) return false;
+          submitting.current = true;
+          setPasskeyBusy(true);
+          return true;
+        }}
+        onSettled={() => {
+          submitting.current = false;
+          setPasskeyBusy(false);
+        }}
+        onUnlocked={finishUnlock}
+      />
       <button
         type="button"
-        disabled={isLoading || isResetOpen}
+        disabled={isLoading || passkeyBusy || isResetOpen}
         className={`mt-7 hover:text-brand-graylight text-[#A2A5AB] ${
           language === 'es' ? 'text-xs' : 'text-base'
         } font-light transition-all duration-300 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60`}
@@ -162,7 +191,7 @@ const Unlock: React.FC<{
       </button>
       {allowFreshStart && !isExternal && (
         <StartFreshWallet
-          disabled={isLoading}
+          disabled={isLoading || passkeyBusy}
           onOpenChange={onResetOpenChange}
         />
       )}

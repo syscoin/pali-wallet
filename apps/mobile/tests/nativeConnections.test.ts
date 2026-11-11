@@ -1,3 +1,5 @@
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { bindTestRequestAuthentication } from './fixtures/privateAuthentication.ts';
 import type { NativeSmartCreationAllocation } from '../src/smartAccount/preparation.ts';
 import { getSmartAccountModulesProjection } from '../../../source/shared/smartAccountModules.ts';
 import { SMART_ACCOUNT_MODULE_REQUEST_METHODS, type SmartAccountModuleRequest } from '../../../source/shared/smartAccountModuleRequest.ts';
@@ -41,6 +43,7 @@ import type { NativeSigningReview } from '../src/connections/types.ts';
 import { snapshotPreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { Interface } from 'ethers/abi';
 import { summarizeApproval, type ApprovalContractMetadata } from '../../../source/shared/approval.ts';
+import { decodeAssetTransfer } from '../../../source/shared/assetTransfer.ts';
 const ROTATED_SYSCOIN_ADDRESS = parseUtxoPublicIdentifier(XPUB, 'syscoin').address;
 const externalPsbt = new syscoinUtils.bitcoinjs.Psbt();
 externalPsbt.addInput({ hash: 'ab'.repeat(32), index: 0 });
@@ -64,6 +67,7 @@ const ADDRESS = '0x' + '11'.repeat(20),
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fixture(
   options: {
+    requestAuthentication?: boolean;
     utxo?: boolean;
     hardware?: 'Ledger' | 'Trezor';
     capabilities?: boolean;
@@ -98,6 +102,7 @@ function fixture(
     account: { network: 'ethereum', address: ADDRESS },
     error: null,
   };
+  let promptActive = false, credentialWait: Promise<void> = Promise.resolve();
   const listeners = new Set<() => void>();
   const rows = new Map<string, unknown>();
   const signatures: unknown[] = [];
@@ -130,6 +135,8 @@ function fixture(
   let moduleMetadataWait = Promise.resolve();
   let signWait: Promise<void> = Promise.resolve();
   let storageWait: Promise<void> = Promise.resolve();
+  let permissionPublished: ((hasGrant: boolean) => void) | undefined;
+  let permissionSettlement: (() => Promise<void>) | undefined;
   let preparationError: Error | undefined;
   let beforePreparedReturn: (() => void) | undefined;
   let smartDisposals = 0;
@@ -223,6 +230,15 @@ function fixture(
       }
       return true;
     },
+  };
+  const authenticate = async <T>(authentication: privateAuthentication.NativePrivateAuthentication | null, signal: AbortSignal, check: () => void, work: () => T): Promise<T> => {
+    if (!options.requestAuthentication) return work();
+    assert(authentication);
+    return privateAuthentication.withNativePrivateAuthentication(authentication, signal, check, async promptSignal => {
+      promptActive = true;
+      try { await credentialWait; assert(!promptSignal.aborted); check(); return work(); }
+      finally { promptActive = false; }
+    });
   };
   const host: Omit<NativeConnectionHost, 'repository' | 'calls'> = {
     async allocateSmartAccount(input, signal, check, onCommitted) {
@@ -362,7 +378,8 @@ function fixture(
           guard(); transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash, 'submit-operation'); return hash;
         },
       });
-      return { operation, approval: null, batchApprovals: intent.calls.map(call => summarizeApproval(call.data, call.to!, approvalMetadata)) };
+      return { operation, approval: null, batchApprovals: intent.calls.map(call => summarizeApproval(call.data, call.to!, approvalMetadata)),
+        batchAssetTransfers: intent.calls.map(call => decodeAssetTransfer(call.data, call.to!, approvalMetadata)) };
     },
     async readCallsStatus(origin, id, guard) {
       callsStatusReads.push({ origin, id });
@@ -390,19 +407,20 @@ function fixture(
     assertOwner() {},
     verifyPersonalMessage() { throw new Error('Public recovery is outside this fixture'); },
     sessionGeneration: () => snapshot.revision,
-    encryptionSdk(input) {
+    encryptionSdk(input, authentication) {
       input.approval.assertCurrent();
       assert.equal(input.accountId, selectedAccountId);
       return {
-        getEncryptedPubKey() { input.approval.assertCurrent(); signatures.push('encryption-key'); return 'public-encryption-key'; },
-        decryptMessage(params) { input.approval.assertCurrent(); signatures.push(params); return '  public plaintext\n'; },
+        getEncryptedPubKey() { input.approval.assertCurrent(); signatures.push('encryption-key'); return authenticate(authentication, input.approval.signal, input.approval.assertCurrent, () => 'public-encryption-key'); },
+        decryptMessage(params) { input.approval.assertCurrent(); signatures.push(params); return authenticate(authentication, input.approval.signal, input.approval.assertCurrent, () => '  public plaintext\n'); },
       };
     },
-    async signMessage(input) {
+    async signMessage(input, authentication) {
       signingHandoff = input.handoff;
       input.approval.assertCurrent();
       assert.equal(input.accountId, selectedAccountId);
       signatures.push(input.request);
+      await authenticate(authentication, input.approval.signal, input.approval.assertCurrent, () => undefined);
       await signWait;
       input.approval.assertCurrent();
       if (options.hardware || options.smartTrezor) input.handoff.beforeSignature();
@@ -442,7 +460,8 @@ function fixture(
         const dispose = operation.dispose.bind(operation);
         operation.dispose = () => { smartDisposals++; return dispose(); };
         beforePreparedReturn?.();
-        return { operation, approval: summarizeApproval(intent.data, intent.recipient, approvalMetadata) };
+        return { operation, approval: summarizeApproval(intent.data, intent.recipient, approvalMetadata),
+          assetTransfer: decodeAssetTransfer(intent.data, intent.recipient, approvalMetadata) };
       }
       const legacy = value.type === '0x0' || value.type === 0 || value.gasPrice !== undefined;
       const transaction = snapshotPreparedEvmTransaction({
@@ -548,6 +567,7 @@ function fixture(
   };
   const proposal: WalletConnectProposal = {
     id: 3,
+    expiresAt: null,
     pairingTopic: PAIRING,
     peerPublicKey: PEER,
     metadata: session.metadata,
@@ -606,6 +626,7 @@ function fixture(
     return value;
   });
   const controller = new NativeConnectionsController({
+    bindAuthentication: (scope, check) => options.requestAuthentication ? privateAuthentication.bindNativePrivateAuthentication(scope, { assertCurrent: check, isPromptActive: () => promptActive }) : bindTestRequestAuthentication(scope, check),
     openExternalUrl: async url => { externalUrls.push(url); },
     async activateAccount(accountId, expectedRevision, guard) {
       guard();
@@ -633,11 +654,19 @@ function fixture(
       const repository = await restoredRepository;
       const observed = { ...repository, permissions(binding: Parameters<typeof repository.permissions>[0]) {
         const port = repository.permissions(binding);
-        return { ...port, publish(frame: Parameters<typeof port.publish>[0]) {
+        return { ...port,
+          async exclusive<T>(work: () => Promise<T>): Promise<T> {
+            const settle = permissionSettlement;
+            const result = await port.exclusive(work);
+            await settle?.();
+            return result;
+          },
+          publish(frame: Parameters<typeof port.publish>[0]) {
           const grant = frame.dapps[ORIGIN];
           if (options.smartCreation && grant?.accountType === 'SmartAccount')
             creationGrantPublications.push(grant.accountId);
           port.publish(frame);
+          permissionPublished?.(!!grant);
         } };
       } };
       return { ...host, repository: observed, calls: repository.calls };
@@ -754,6 +783,7 @@ function fixture(
     },
   });
   return {
+    setCredentialWait(wait: Promise<void>) { credentialWait = wait; },
     controller, creationRequests, preparedAccountUpdates, creationGrantPublications,
     failCreationUpdate() { creationUpdateFailure = true; },
     beforeCreationGrantWrite(callback: () => void) { beforeCreationGrant = callback; },
@@ -806,6 +836,8 @@ function fixture(
     setApprovalMetadata(value: ApprovalContractMetadata) { approvalMetadata = value; },
     setPreparationWait(value: Promise<void>) { preparationWait = value; },
     setStorageWait(value: Promise<void>) { storageWait = value; },
+    onPermissionPublication(callback: typeof permissionPublished) { permissionPublished = callback; },
+    setPermissionSettlement(callback: typeof permissionSettlement) { permissionSettlement = callback; },
     failTransactionPreparation() { preparationError = new Error('Estimate unavailable'); },
     blockSite() {
       siteBlocked = true;
@@ -874,6 +906,7 @@ function fixture(
     expirePairing() {
       pairingExpiry = Date.now() - 1;
     },
+    setPairingExpiry(value: number) { pairingExpiry = value; },
     closed: () => closed,
     pairCanceled: () => pairCanceled,
     refresh() {
@@ -1176,6 +1209,30 @@ test('unsupported raw signing remains unavailable and cancel affects only the ne
   }
 });
 
+test('required calls expose connection eligibility for each account', async () => {
+  const f = fixture({ hardware: 'Ledger', secondAccount: true, batch: true });
+  try {
+    await settle();
+    await f.view.pair('wc:fixture');
+    f.event({ type: 'proposal', proposal: { ...f.proposal,
+      requiredNamespaces: { eip155: { chains: ['eip155:1'], methods: ['wallet_sendCalls'], events: [] } },
+    } });
+    const proposal = f.view.getSnapshot().proposals[0]!;
+    const ledger = proposal.methodsByAccount.find(account => account.accountId === 'ledger:60:0')!;
+    const software = proposal.methodsByAccount.find(account => account.accountId === 'hd:60:1')!;
+    assert.equal(ledger.canApprove, false);
+    assert.equal(ledger.methods.includes('wallet_sendCalls'), false);
+    assert.equal(software.canApprove, true);
+    assert.equal(software.methods.includes('wallet_sendCalls'), true);
+    await assert.rejects(f.view.approve(proposal.id, ledger.accountId, 'ethereum', f.view.getSnapshot().revision),
+      { message: 'UNSUPPORTED_REQUEST' });
+    assert.equal(f.approved(), 0);
+    await f.view.approve(proposal.id, software.accountId, 'ethereum', f.view.getSnapshot().revision);
+    assert.equal(f.approved(), 1);
+    assert.equal(f.view.getSnapshot().proposals.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
 test('ordinary unlock preparation stays local and unchanged custody updates do not emit duplicate events', async () => {
   const f = fixture();
   await settle();
@@ -1366,7 +1423,7 @@ test('a failed cancelled pairing cannot reset a newer pairing', async () => {
       })
     );
     const oldPair = f.view.pair('wc:old');
-    const rejected = assert.rejects(oldPair, { message: 'old SDK failure' });
+    const rejected = assert.rejects(oldPair, { message: 'CONTEXT_CHANGED' });
     await settle();
     f.view.cancel();
     f.setPairFailure(undefined);
@@ -1454,7 +1511,7 @@ test('a pairing failure preserves an unavailable transport state', async () => {
       })
     );
     const pairing = f.view.pair('wc:fixture');
-    const rejected = assert.rejects(pairing, { message: 'SDK failure' });
+    const rejected = assert.rejects(pairing, { message: 'CONTEXT_CHANGED' });
     await settle();
     f.event({ type: 'unavailable' });
     release();
@@ -1481,6 +1538,105 @@ test('a cancelled pairing cannot reappear as a late proposal', async () => {
   } finally {
     await f.controller.dispose();
   }
+});
+
+test('pairing deadline retires waiting UI, rejects late proposals and permits an explicit fresh pairing', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1_000_000 });
+  const f = fixture(); await settle();
+  try {
+    const expiry = Date.now() + 1000;
+    f.setPairingExpiry(expiry);
+    await f.view.pair('wc:fixture');
+    assert.equal(f.view.getSnapshot().pairingExpiresAt, expiry);
+    assert.equal(f.view.getSnapshot().status, 'pairing');
+    t.mock.timers.tick(1000); await settle();
+    assert.equal(f.view.getSnapshot().status, 'ready');
+    assert.equal(f.view.getSnapshot().pairingExpiresAt, null);
+    assert.equal(f.view.getSnapshot().error, 'REQUEST_EXPIRED');
+    assert.equal(f.pairCanceled(), 1);
+    f.event({ type: 'proposal', proposal: { ...f.proposal, expiresAt: Date.now() + 5000 } });
+    await settle(); assert.deepEqual(f.view.getSnapshot().proposals, []);
+    f.setPairingExpiry(Date.now() + 5000);
+    await f.view.pair('wc:fixture');
+    f.event({ type: 'proposal', proposal: f.proposal });
+    assert.equal(f.view.getSnapshot().proposals[0]?.canApprove, true);
+    assert.equal(JSON.stringify(f.view.getSnapshot()).includes(PAIRING), false);
+  } finally { await f.controller.dispose(); }
+});
+
+test('pairing expiry releases a held pair call without adopting its late result', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 2_000_000 });
+  const f = fixture(); await settle();
+  const held = Promise.withResolvers<void>(); f.setPairWait(held.promise); f.setPairingExpiry(Date.now() + 1000);
+  try {
+    const pending = f.view.pair('wc:fixture');
+    const rejected = assert.rejects(pending, { message: 'CONTEXT_CHANGED' });
+    await settle(); t.mock.timers.tick(1000); await rejected;
+    assert.equal(f.view.getSnapshot().pairingExpiresAt, null);
+    f.setPairWait(Promise.resolve()); f.setPairingExpiry(Date.now() + 10000);
+    await f.view.pair('wc:new');
+    held.resolve(); await settle();
+    assert.equal(f.view.getSnapshot().pairingExpiresAt, Date.now() + 10000);
+    assert.equal(f.view.getSnapshot().status, 'pairing');
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+test('proposal expiry removes its approval and public permissions exactly match the granted methods', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 3_000_000 });
+  const f = fixture(); await settle();
+  try {
+    await f.view.pair('wc:fixture');
+    const expiresAt = Date.now() + 1000;
+    f.event({ type: 'proposal', proposal: { ...f.proposal, expiresAt } });
+    const before = f.view.getSnapshot();
+    assert.equal(before.proposals[0]?.expiresAt, expiresAt);
+    assert.equal(before.proposals[0]?.methodsByAccount.find(value => value.accountId === 'hd:60:0')?.methods.includes('personal_sign'), true);
+    t.mock.timers.tick(1000); await settle();
+    assert.deepEqual(f.view.getSnapshot().proposals, []);
+    await assert.rejects(f.view.approve(f.proposal.id, 'hd:60:0', 'ethereum', f.view.getSnapshot().revision), { message: 'CONTEXT_CHANGED' });
+    assert.equal(f.approved(), 0);
+    f.event({ type: 'proposal', proposal: { ...f.proposal, expiresAt: Date.now() + 5000 } });
+    const next = f.view.getSnapshot();
+    const methods = next.proposals[0]!.methodsByAccount.find(value => value.accountId === 'hd:60:0')!.methods;
+    await f.view.approve(f.proposal.id, 'hd:60:0', 'ethereum', next.revision);
+    assert.deepEqual(f.session.namespaces.eip155!.methods, methods);
+    const connected = f.view.getSnapshot().sessions[0]!;
+    assert.deepEqual(connected.methods, methods);
+    assert.equal(connected.expiresAt, f.session.expiry * 1000);
+    assert.equal(connected.address, ADDRESS);
+  } finally { await f.controller.dispose(); }
+});
+
+test('late expired-approval revocation failure cannot invalidate a replacement transport', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 4_000_000 });
+  const f = fixture(); await settle();
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  try {
+    await f.view.pair('wc:fixture');
+    f.event({ type: 'proposal', proposal: { ...f.proposal, expiresAt: Date.now() + 1000 } });
+    f.onPermissionPublication(hasGrant => {
+      if (!hasGrant) return;
+      f.onPermissionPublication(undefined);
+      f.setPermissionSettlement(async () => {
+        f.setPermissionSettlement(undefined);
+        entered.resolve(); await release.promise;
+        throw Error('Late old revocation acknowledgement failure');
+      });
+      t.mock.timers.tick(1000);
+    });
+    const approving = f.view.approve(f.proposal.id, 'hd:60:0', 'ethereum', f.view.getSnapshot().revision);
+    const rejected = assert.rejects(approving);
+    await entered.promise;
+    f.event({ type: 'unavailable' }); await settle();
+    await f.view.retry(); f.setPairingExpiry(Date.now() + 10000);
+    await f.view.pair('wc:new');
+    assert.equal(f.view.getSnapshot().status, 'pairing');
+    const opened = f.opened();
+    release.resolve(); await rejected; await settle();
+    assert.equal(f.view.getSnapshot().status, 'pairing');
+    assert.equal(f.view.getSnapshot().error, null);
+    assert.equal(f.opened(), opened);
+  } finally { release.resolve(); await f.controller.dispose(); }
 });
 
 test('pairing reserves before transport initialization and stale cancellation errors stay dismissed', async () => {
@@ -1576,6 +1732,7 @@ test('an expired cancelled pairing no longer blocks a subsequent proposal', asyn
     f.view.cancel();
     await settle();
     f.expirePairing();
+    f.setPairingExpiry(Date.now() + 300000);
     await f.view.pair('wc:fixture');
     f.event({ type: 'proposal', proposal: f.proposal });
     assert.equal(f.view.getSnapshot().proposals[0]?.canApprove, true);
@@ -1728,6 +1885,7 @@ for (const retirement of [
 
 async function connectedFixture(
   options: {
+    requestAuthentication?: boolean;
     utxo?: boolean;
     hardware?: 'Ledger' | 'Trezor';
     capabilities?: boolean;
@@ -2212,7 +2370,7 @@ for (const method of SENTRY_DAPP_METHODS) test(`${method} retains its exact orig
     assert(review?.details); assert.equal(review.origin, ORIGIN);
     assert.deepEqual(f.sentryRequests, [{ method, raw, origin: ORIGIN }]);
     assert.equal(f.responses.length, 0); assert.equal(f.sentryAssents.length, 0);
-    const assent: NativeSentryAssent = review.details.kind === 'link' ? { kind: 'link' } : review.details.kind === 'vote' ? { kind: 'vote', password: 'Transient fixture password' } : { kind: 'operation', password: 'Transient fixture password', keyId: 'displayed-role-key' };
+    const assent: NativeSentryAssent = review.details.kind === 'link' ? { kind: 'link' } : review.details.kind === 'vote' ? { kind: 'vote' } : { kind: 'operation', keyId: 'displayed-role-key' };
     await f.view.approveSentry(review.id, review.revision, assent);
     assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { method } } });
     assert.equal(f.view.getSnapshot().sentryReview, null);
@@ -2230,8 +2388,8 @@ test('Sentry FIFO prepares the next request after rejection and a second approva
     await f.view.rejectSentry(first.id); await settle();
     const next = f.view.getSnapshot().sentryReview; assert(next?.details?.kind === 'vote');
     assert.equal(f.sentryRequests.length, 2);
-    const signing = f.view.approveSentry(next.id, next.revision, { kind: 'vote', password: 'Transient fixture' });
-    await assert.rejects(f.view.approveSentry(next.id, next.revision, { kind: 'vote', password: 'Transient fixture' }));
+    const signing = f.view.approveSentry(next.id, next.revision, { kind: 'vote' });
+    await assert.rejects(f.view.approveSentry(next.id, next.revision, { kind: 'vote' }));
     await signing;
     assert.equal(f.sentryAssents.length, 1);
     assert.deepEqual(f.responses.map(value => (value as { id: number }).id), [10, 11]);
@@ -5251,4 +5409,196 @@ for (const boundary of ['Reject', 'lock', 'request expiry'] as const) test(`Smar
     assert.equal(f.responses.some(response => (response as { id: number; result: { result?: unknown } }).id === 10 &&
       Object.hasOwn((response as { result: object }).result, 'result')), false);
   } finally { held.resolve(); unsubscribe(); await rejecting; await f.controller.dispose(); }
+});
+
+test('Smart controller publishes exact single transfer enrichment and retires it on network change', async () => {
+  const f = await pairedSmart();
+  try {
+    const contract = '0x' + '22'.repeat(20), recipient = '0x' + '44'.repeat(20);
+    f.setApprovalMetadata({ standard: 'ERC-20', token: { contractAddress: contract, name: 'Exact token', symbol: 'TOK', decimals: 6 } });
+    requestSmart(f, 880, { to: contract, data: new Interface(['function transfer(address,uint256)']).encodeFunctionData('transfer', [recipient, 1234567]) });
+    await settle();
+    const review = f.view.getSnapshot().signingReview;
+    assert(review?.kind === 'smart-transaction');
+    assert.equal(review.assetTransfer?.recipient.toLowerCase(), recipient);
+    assert.equal(review.assetTransfer?.items[0]?.units, '1234567');
+    assert.equal(review.assetTransfer?.token?.symbol, 'TOK');
+    assert.equal(review.registrationHash, createNativeNetwork({ id: 'ethereum', name: 'Ethereum', kind: 'evm', chainId: '1',
+      slip44: 60, rpcUrl: 'https://rpc.invalid', symbol: 'eth', decimals: 18, testnet: false }).registrationHash);
+    assert.equal(f.signatures.length, 0);
+    f.selectChain(2); await settle();
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('Smart controller publishes ordered transfer summaries for a mixed call bundle', async () => {
+  const f = await connectedFixture({ smart: true, batch: true, accountId: 'smart:60:0' });
+  try {
+    const contract = '0x' + '22'.repeat(20), recipient = '0x' + '44'.repeat(20);
+    const data = new Interface(['function safeTransferFrom(address,address,uint256)']).encodeFunctionData('safeTransferFrom', [ADDRESS, recipient, 91]);
+    const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0xb123', from: ADDRESS, atomicRequired: true,
+      calls: [{ to: contract, data }, { to: recipient, value: '0x1', data: '0x' }] }]);
+    assert(review?.kind === 'smart-transaction');
+    assert.equal(review.batchAssetTransfers?.length, 2);
+    assert.equal(review.batchAssetTransfers?.[0]?.recipient.toLowerCase(), recipient);
+    assert.equal(review.batchAssetTransfers?.[0]?.items[0]?.tokenId, '91');
+    assert.equal(review.batchAssetTransfers?.[1], null);
+    assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0);
+    await f.view.rejectRequest(review.id);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+  } finally { await f.controller.dispose(); }
+});
+
+
+for (const method of ['eth_decrypt', 'personal_sign'] as const) test(`dapp ${method} status follows the exact credential request and retires on lock`, async () => {
+  const f = await connectedFixture({ requestAuthentication: true }), held = Promise.withResolvers<void>();
+  try {
+    const first = await messageRequest(f, method, method === 'eth_decrypt' ? ['0xab', ADDRESS] : ['0x6869', ADDRESS]); assert(first);
+    await messageRequest(f, 'personal_sign', ['Queued', ADDRESS], 11);
+    const review = f.view.getSnapshot().signingReview!;
+    f.setCredentialWait(held.promise);
+    const work = method === 'eth_decrypt' ? f.view.previewEncryption(review.id, review.revision) : f.view.approveRequest(review.id, review.revision, false);
+    const rejected = assert.rejects(work); await settle();
+    assert.equal(f.view.isRequestAuthenticating(review.id), true);
+    assert.equal(f.view.isRequestAuthenticating(first.id.replace(/\d+$/, value => String(Number(value) + 1))), false, 'queued request cannot borrow the foreground prompt');
+    assert(!JSON.stringify(f.view.getSnapshot()).includes('authenticationScope'));
+    f.lock(); assert.equal(f.view.isRequestAuthenticating(review.id), false);
+    held.resolve(); await rejected;
+    assert(!f.responses.some(response => 'result' in (response as { result: object }).result));
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+
+test('dapp prompt binding follows an explicitly activated request account without following a replacement', async () => {
+  const f = await connectedFixture({ requestAuthentication: true, secondAccount: true, accountId: 'hd:60:1' });
+  const held = Promise.withResolvers<void>();
+  try {
+    const first = await messageRequest(f, 'personal_sign', ['Hello', '0x' + '22'.repeat(20)]); assert(first?.needsAccountSwitch);
+    await f.view.activateRequestAccount(first.id, first.revision);
+    const review = f.view.getSnapshot().signingReview!; assert.equal(review.needsAccountSwitch, false);
+    f.setCredentialWait(held.promise);
+    const work = f.view.approveRequest(review.id, review.revision, false); await settle();
+    assert.equal(f.view.isRequestAuthenticating(review.id), true);
+    held.resolve(); await work;
+    assert.equal(f.view.isRequestAuthenticating(review.id), false);
+    assert.equal(f.signatures.length, 1);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+async function showRefreshableCallsStatus(f: Awaited<ReturnType<typeof connectedFixture>>, hash?: string) {
+  const calls = (await f.repository).calls;
+  const descriptor = { atomic: false, smartAccount: false, chainId: 1 };
+  await calls.reserveSendCallsBundle(ORIGIN, '0xcafe', descriptor, 'refresh-reserved', ADDRESS);
+  if (hash) await calls.recordSendCallsBundle(ORIGIN, '0xcafe', {
+    ...descriptor, reservationId: 'refresh-reserved', txHashes: [hash], submissionCompleted: true,
+  });
+  f.setCallsStatusReceipts(1, new Map());
+  await messageRequest(f, 'wallet_showCallsStatus', ['0xcafe']);
+  const status = f.view.getSnapshot().callsStatus;
+  assert(status);
+  await f.view.callsStatusShown(status.id);
+  return status;
+}
+
+for (const receiptStatus of ['0x1', '0x0']) test(`manual calls status refresh observes ${receiptStatus} on the stored chain without another acknowledgement`, async () => {
+  const f = await connectedFixture({ batch: true });
+  const hash = '0x' + '43'.repeat(32);
+  try {
+    f.selectChain(2);
+    const shown = await showRefreshableCallsStatus(f, hash);
+    assert.equal(shown.status.status, 100);
+    f.setCallsStatusReceipts(1, new Map([[hash, {
+      transactionHash: hash, status: receiptStatus, blockHash: '0x' + 'ab'.repeat(32),
+      blockNumber: '0x7', gasUsed: '0x5208', logs: [],
+    }]]));
+    await f.view.refreshCallsStatus(shown.id);
+    const refreshed = f.view.getSnapshot().callsStatus;
+    assert.equal(refreshed?.id, shown.id);
+    assert.equal(refreshed?.status.status, receiptStatus === '0x1' ? 200 : 500);
+    assert.equal(refreshed?.status.chainId, '0x1');
+    assert.deepEqual(f.callsStatusChains, [1, 1]);
+    await f.view.callsStatusShown(shown.id);
+    assert.equal(f.responses.length, 1);
+    assert.equal(f.transactions.length, 0);
+    assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('manual calls status read errors preserve the last successful view', async () => {
+  const f = await connectedFixture({ batch: true });
+  try {
+    const shown = await showRefreshableCallsStatus(f);
+    f.failCallsStatus(Error('RPC unavailable'));
+    await assert.rejects(f.view.refreshCallsStatus(shown.id), /RPC unavailable/);
+    assert.equal(f.view.getSnapshot().callsStatus, shown);
+    assert.equal(f.responses.length, 1);
+  } finally { await f.controller.dispose(); }
+});
+
+test('manual calls status refresh rejects overlap and cannot replace a newer status after Close', async () => {
+  const f = await connectedFixture({ batch: true }), held = Promise.withResolvers<void>();
+  try {
+    const shown = await showRefreshableCallsStatus(f);
+    f.setCallsStatusWait(held.promise);
+    const pending = f.view.refreshCallsStatus(shown.id);
+    const rejected = assert.rejects(pending, { code: 'CONTEXT_CHANGED' });
+    await settle();
+    await assert.rejects(f.view.refreshCallsStatus(shown.id), { code: 'BUSY' });
+    assert.equal(f.callsStatusReads.length, 2);
+    f.view.dismissCallsStatus(shown.id);
+    f.setCallsStatusWait(Promise.resolve());
+    await messageRequest(f, 'wallet_showCallsStatus', ['0xcafe'], 11);
+    const newer = f.view.getSnapshot().callsStatus;
+    assert(newer && newer.id !== shown.id);
+    held.resolve(); await rejected;
+    assert.equal(f.view.getSnapshot().callsStatus, newer);
+    assert.equal(f.responses.length, 1);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+for (const retirement of ['lock', 'session', 'context', 'expiry'] as const) test(`manual calls status refresh retires after ${retirement}`, async () => {
+  const f = await connectedFixture({ batch: true }), held = Promise.withResolvers<void>();
+  const readNow = Date.now;
+  let now = readNow();
+  Date.now = () => now;
+  try {
+    const shown = await showRefreshableCallsStatus(f);
+    f.setCallsStatusWait(held.promise);
+    const pending = f.view.refreshCallsStatus(shown.id);
+    const rejected = assert.rejects(pending);
+    await settle();
+    if (retirement === 'lock') f.lock();
+    else if (retirement === 'session') f.event({ type: 'session-ended', topic: TOPIC });
+    else if (retirement === 'context') f.selectChain(2);
+    else now += 300001;
+    held.resolve(); await rejected;
+    assert.equal(f.view.getSnapshot().callsStatus, null);
+    assert.equal(f.responses.length, 1);
+    await assert.rejects(f.view.refreshCallsStatus(shown.id), { code: 'REQUEST_EXPIRED' });
+    assert(await (await f.repository).calls.getStoredSendCallsBundle(ORIGIN, '0xcafe'));
+  } finally { Date.now = readNow; held.resolve(); await f.controller.dispose(); }
+});
+
+test('manual calls status refresh preserves an active per-call consent sequence', async () => {
+  const f = await connectedFixture({ batch: true });
+  try {
+    const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0xa321',
+      calls: [{ to: ADDRESS }, { to: ADDRESS }], atomicRequired: false }]);
+    assert(review?.kind === 'transaction');
+    await f.view.approveRequest(review.id, review.revision, false);
+    const suffix = f.view.getSnapshot().signingReview;
+    assert(suffix?.kind === 'transaction' && suffix.batch?.index === 1);
+    f.setCallsStatusReceipts(1, new Map());
+    await messageRequest(f, 'wallet_showCallsStatus', ['0xa321'], 11);
+    const shown = f.view.getSnapshot().callsStatus;
+    assert(shown);
+    await f.view.callsStatusShown(shown.id);
+    await f.view.refreshCallsStatus(shown.id);
+    assert.deepEqual(f.callsRecoveries, []);
+    assert.equal(f.view.getSnapshot().signingReview?.id, suffix.id);
+    assert.equal(f.transactions.length, 1);
+    f.view.dismissCallsStatus(shown.id);
+    await f.view.rejectRequest(suffix.id);
+  } finally { await f.controller.dispose(); }
 });

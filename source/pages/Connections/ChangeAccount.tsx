@@ -579,7 +579,10 @@ export const ChangeAccount = () => {
                                   />
                                   {tokens && tokens.length > 0 && (
                                     <div className="mt-0.5 flex justify-start [@media(min-width:400px)]:justify-end">
-                                      <TokenIconStack tokens={tokens} />
+                                      <TokenIconStack
+                                        tokens={tokens}
+                                        chainId={activeNetwork.chainId}
+                                      />
                                     </div>
                                   )}
                                 </div>

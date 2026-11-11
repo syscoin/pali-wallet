@@ -5,6 +5,7 @@ import { normalizeSentryServiceSettings, parseSentrySettingsStorageKey } from '.
 import { NATIVE_CONNECTION_STORAGE_KEY, inspectNativeConnectionRecord } from '../connections/storage.ts';
 import { decodeConnectionRecord } from '../storage/connectionRecordKey.ts';
 import { decodeAccountRecord } from '../storage/accountRecordKey.ts';
+import { PUBLIC_SESSION_RECORD_KEY, decodePublicSessionRecord } from '../storage/publicSessionRecordKey.ts';
 import { inspectNoteDomain } from '../storage/noteDomain.ts';
 import { decodeStorageValue, STORAGE_LIMITS } from '../storage/json.ts';
 import type { OpenWalletStorage, RecoveryStorageSnapshot } from '../storage/types.ts';
@@ -38,6 +39,7 @@ const zero = (): RecoveryInventoryCounts => ({ hdAccounts: 0, importedKeys: 0,
 /** Canonical native record domains. Runtime and recovery share this admission check. */
 export function assertNativeRecordDomains(records: RecoveryStorageSnapshot['records'], profileId: string | null): void {
   for (const { key, value } of records) {
+    if (key === PUBLIC_SESSION_RECORD_KEY) { decodePublicSessionRecord(value); continue; }
     const slhKeyId = parseSLHDSAStateStorageKey(key);
     if (slhKeyId !== null) {
       const state = captureSLHDSAEncryptedStateEnvelope(decodeStorageValue(value), slhKeyId);

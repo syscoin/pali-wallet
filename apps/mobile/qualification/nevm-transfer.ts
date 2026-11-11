@@ -1,3 +1,4 @@
+import { signQualificationTransfer } from './authorized-transfer.ts';
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { NativeAccountRequest } from '../src/custody/accounts.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -174,7 +175,6 @@ export async function qualifyNativeNevmTransfer(
       manage({
         kind: 'create',
         label: 'Qualification NEVM account',
-        password,
       })
     );
   } else
@@ -253,7 +253,7 @@ export async function qualifyNativeNevmTransfer(
   ) => {
     const guard = guardFor(account.id, address, network);
     guard();
-    const signed = await transfer.sign(
+    const signed = await signQualificationTransfer(transfer, password,
       {
         type: 2, accessList: [],
         from: address,

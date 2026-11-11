@@ -5,9 +5,10 @@ import {
   type Erc20Metadata,
 } from '../../../../source/shared/erc20.ts';
 import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId.ts';
+import { MAX_ENUMERATED_NFTS } from '../../../../source/shared/nftReads.ts';
 import { normalizeErc20Address, parseErc20Metadata } from './erc20Metadata.ts';
 import { createErc20Reader, Erc20ReadError, type Erc20Reader } from './erc20ReadRpc.ts';
-import type { NativeTokenInventory, SavedCollectible } from './tokenRegistry.ts';
+import type { NativeTokenInventory, NativeTokenPortfolioScope, SavedCollectible } from './tokenRegistry.ts';
 import { NativeTokenRegistryError, snapshotSavedCollectible } from './tokenRegistry.ts';
 import {
   sameNativePortfolioAccount,
@@ -20,10 +21,11 @@ import type {
   OwnedTokenReader,
   OwnedTokenSuggestions,
 } from './ownedTokenReader.ts';
-import type { createNftOwnershipReader } from './nftOwnershipReadRpc.ts';
+import type { createNftEnumerationReader, createNftOwnershipReader, NftEnumerationResult } from './nftOwnershipReadRpc.ts';
 
 export interface NativeTokenRuntime {
   load(assertCurrent: () => void): Promise<NativeTokenInventory>;
+  loadScoped?(scope: NativeTokenPortfolioScope, assertCurrent: () => void): Promise<NativeTokenInventory>;
   add(
     expectedRevision: number,
     metadata: Erc20Metadata,
@@ -57,6 +59,10 @@ export type CollectibleQuery = Pick<
   OwnedCollectibleSuggestion,
   'contractAddress' | 'tokenStandard'
 > & Readonly<{ tokenId: string }>;
+export type CollectibleEnumerationQuery = Readonly<{
+  contractAddress: string;
+  tokenStandard: 'ERC-721';
+}>;
 declare const collectibleSaveBrand: unique symbol;
 export type CollectibleSaveTicket = Readonly<{ [collectibleSaveBrand]: true }>;
 export type CollectibleCheckResult = Readonly<{
@@ -89,6 +95,7 @@ export type NativeTokenSnapshot = Readonly<{
   previewStatus: 'idle' | 'loading' | 'ready' | 'error';
   discovery: TokenDiscovery | null;
   canCheckCollectible?: true;
+  canEnumerateCollectible?: true;
   busy: boolean;
   error: string | null;
 }>;
@@ -103,6 +110,7 @@ export type NativeTokenView = Readonly<
     | 'cancelPreview'
     | 'discover'
     | 'closeDiscovery'
+    | 'enumerateCollectible'
     | 'checkCollectible'
     | 'checkManualCollectible'
     | 'checkSavedCollectible'
@@ -156,6 +164,8 @@ export class NativeTokens {
     cancelPreview: () => this.cancelPreview(),
     discover: (kind?: 'collectibles') => this.discover(kind),
     closeDiscovery: () => this.closeDiscovery(),
+    enumerateCollectible: (account: NativePortfolioAccount, query: CollectibleEnumerationQuery, signal: AbortSignal) =>
+      this.enumerateCollectible(account, query, signal),
     checkCollectible: (item: OwnedCollectibleSuggestion, id: string, signal: AbortSignal) =>
       this.checkCollectible(item, id, signal),
     checkManualCollectible: (account: NativePortfolioAccount, query: CollectibleQuery, signal: AbortSignal) =>
@@ -188,6 +198,7 @@ export class NativeTokens {
   private readonly revoke: () => void;
   private readonly readHoldings?: OwnedTokenReader;
   private readonly readNft?: ReturnType<typeof createNftOwnershipReader>;
+  private readonly enumerateNft?: ReturnType<typeof createNftEnumerationReader>;
   constructor(
     source: PublicCustodySource,
     runtime: () => NativeTokenRuntime | undefined,
@@ -195,7 +206,8 @@ export class NativeTokens {
     now: () => number = Date.now,
     revoke: () => void = () => undefined,
     readHoldings?: OwnedTokenReader,
-    readNft?: ReturnType<typeof createNftOwnershipReader>
+    readNft?: ReturnType<typeof createNftOwnershipReader>,
+    enumerateNft?: ReturnType<typeof createNftEnumerationReader>
   ) {
     this.source = source;
     this.runtime = runtime;
@@ -204,6 +216,7 @@ export class NativeTokens {
     this.revoke = revoke;
     this.readHoldings = readHoldings;
     this.readNft = readNft;
+    this.enumerateNft = enumerateNft;
   }
   private runtimeFailed(error: unknown): void {
     if (
@@ -237,6 +250,7 @@ export class NativeTokens {
         }),
         network: getNativeSendContext(registration),
         canCheckCollectible: !!this.readNft && (!this.source.getCatalogue || !!catalogue),
+        canEnumerateCollectible: !!this.enumerateNft && (!this.source.getCatalogue || !!catalogue),
         apiUrl: this.readHoldings && (!this.source.getCatalogue || catalogue)
           ? findRegisteredEvmNetwork(registration)?.network.apiUrl ?? ''
           : '',
@@ -288,11 +302,13 @@ export class NativeTokens {
     const registrationHash = scope?.network.registrationHash ?? null;
     const apiUrl = scope?.apiUrl ?? '';
     const canCheckCollectible = scope?.canCheckCollectible ? true : undefined;
+    const canEnumerateCollectible = scope?.canEnumerateCollectible ? true : undefined;
     if (
       !sameNativePortfolioAccount(account, this.state.account) ||
       registrationHash !== this.registrationHash ||
       apiUrl !== this.discoveryApi ||
-      canCheckCollectible !== this.state.canCheckCollectible
+      canCheckCollectible !== this.state.canCheckCollectible ||
+      canEnumerateCollectible !== this.state.canEnumerateCollectible
     ) {
       this.cancel();
       this.inventoryRevision = null;
@@ -303,6 +319,7 @@ export class NativeTokens {
         network: scope?.network ?? null,
         discovery: this.discoveryApi ? idleDiscovery : null,
         ...(canCheckCollectible ? { canCheckCollectible } : {}),
+        ...(canEnumerateCollectible ? { canEnumerateCollectible } : {}),
       });
       this.unpublished = true;
       this.stopDiscovery();
@@ -544,6 +561,59 @@ export class NativeTokens {
     if (this.state.discovery && this.state.discovery !== idleDiscovery)
       this.publish({ discovery: idleDiscovery });
   };
+  async enumerateCollectible(
+    selected: NativePortfolioAccount,
+    query: CollectibleEnumerationQuery,
+    signal: AbortSignal
+  ): Promise<NftEnumerationResult> {
+    this.synchronize(false);
+    const { account, canEnumerateCollectible } = this.state;
+    const connection = this.connection, registration = this.registrationHash;
+    const read = this.enumerateNft;
+    if (!read || !canEnumerateCollectible || !account || selected !== account ||
+        !connection || !registration || signal.aborted || this.collectibleRequest || this.state.busy)
+      throw new Error('CANCELLED');
+    let contractAddress: string;
+    try {
+      if (query.tokenStandard !== 'ERC-721') throw new Error('INVALID');
+      contractAddress = normalizeErc20Address(query.contractAddress);
+    } catch { throw new Erc20ReadError('INVALID_INPUT'); }
+    this.clearCollectibleReview();
+    const request = new AbortController();
+    this.collectibleRequest = request;
+    const stop = () => {
+      if (this.collectibleRequest === request) this.collectibleRequest = null;
+      request.abort();
+    };
+    signal.addEventListener('abort', stop, { once: true });
+    const current = () => {
+      this.synchronize(false);
+      if (signal.aborted || request.signal.aborted || this.collectibleRequest !== request ||
+          this.connection !== connection || this.state.account !== account || this.registrationHash !== registration)
+        throw new Error('CANCELLED');
+    };
+    try {
+      current();
+      const result = await bounded(read({ networkId: account.network, owner: account.address,
+        contractAddress, tokenStandard: 'ERC-721' }, request.signal, current), request.signal);
+      current();
+      if (!Array.isArray(result.tokenIds) || result.tokenIds.length > MAX_ENUMERATED_NFTS ||
+          typeof result.hasMore !== 'boolean' || !['enumeration', 'manual'].includes(result.method))
+        throw new Erc20ReadError('INVALID_RESPONSE');
+      let tokenIds: string[], totalOwned: string | undefined;
+      try {
+        tokenIds = result.tokenIds.map(tokenId => normalizeNftTokenId(tokenId));
+        totalOwned = result.totalOwned === undefined ? undefined : parseErc20Units(result.totalOwned);
+      }
+      catch { throw new Erc20ReadError('INVALID_RESPONSE'); }
+      return Object.freeze({ tokenIds: Object.freeze(tokenIds),
+        ...(totalOwned === undefined ? {} : { totalOwned }), hasMore: result.hasMore, method: result.method });
+    } finally {
+      signal.removeEventListener('abort', stop);
+      if (this.collectibleRequest === request) this.collectibleRequest = null;
+      request.abort();
+    }
+  }
   checkCollectible = (item: OwnedCollectibleSuggestion, tokenId: string, signal: AbortSignal) =>
     this.readCollectible({ item, tokenId }, signal);
   checkManualCollectible = (account: NativePortfolioAccount, query: CollectibleQuery, signal: AbortSignal) =>

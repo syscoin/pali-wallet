@@ -65,6 +65,18 @@ test('language page previews a choice locally and applies the confirmed engine p
   assert.equal(f.engine.t('mobile.settings.title'), 'Ajustes'); f.close();
 });
 
+test('language rows use shared flags with readable language names', async () => {
+  const f = await fixture(), rows = all(f.render()).filter((node) => node.type === 'Row');
+  for (const language of PALI_LANGUAGE_OPTIONS) {
+    const row = rows.find((node) => node.props.title === language.nativeName)!;
+    assert.ok(row);
+    assert.equal(row.props.icon.children[0], language.flag);
+    assert.equal(row.props.icon.props.accessibilityElementsHidden, true);
+    assert.match(row.props.subtitle, new RegExp(language.name));
+  }
+  f.close();
+});
+
 test('the original Settings owner can retire a held Save before any mutation', async () => {
   const f = await fixture(); f.render(); f.choose('Español'); f.revoke(); f.save(); await tick();
   assert.equal(f.counts().writes, 0); assert.equal(f.engine.language, 'en'); f.close();

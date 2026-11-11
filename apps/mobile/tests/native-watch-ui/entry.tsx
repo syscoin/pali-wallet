@@ -12,7 +12,8 @@ import { createGuardianRecoveryFixture } from './guardianRecoveryFixture';
 import { WatchOnlyAuthority } from '../../src/core/watchOnlyAuthority';
 import { UTXO_NETWORKS } from '../../src/core/utxoNetworks';
 import App from '../../App';
-import { latestAuthority, retiredAuthorities, latestTransfers, fixtureFetch, fixtureCatalogue, noteInventoryFixture, recreateRemovalWallet } from './nativeFactory';
+import { latestAuthority, retiredAuthorities, latestTransfers, fixtureFetch, fixtureCatalogue, noteInventoryFixture, recreateRemovalWallet, visualReviewFixture } from './nativeFactory';
+import { UpdateFixture } from './UpdateFixture';
 import { ADDRESS, audit, events, publicShares, setWatchBalanceMode, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, releaseSign, setDelayActivityReset, failActivityReset, finishActivityReset, setDelayKeyRead, releaseKeyRead, setKeyFailure, setDelayImport, releaseImport, setImportFailure } from './state';
 import { recoveryAudit, holdRecovery, releaseRecovery } from './recoveryState';
 import { removalFixtureEnabled, walletRemovalFixture } from './walletRemovalFixture';
@@ -33,7 +34,7 @@ AppState.addEventListener = ((event: string, listener: (state: string) => void) 
 }) as typeof AppState.addEventListener;
 const backListeners = new Set<Parameters<typeof BackHandler.addEventListener>[1]>();
 const hasGuardianFixture = new URLSearchParams(window.location.search).has('guardian-fixture');
-if (removalFixtureEnabled || hasGuardianFixture || sysxSendFixture.enabled) {
+if (removalFixtureEnabled || hasGuardianFixture || sysxSendFixture.enabled || visualReviewFixture.enabled) {
   BackHandler.addEventListener = ((_event, listener) => {
     backListeners.add(listener);
     return { remove() { backListeners.delete(listener); } };
@@ -71,6 +72,7 @@ WatchOnlyAuthority.openRecords = async (options) => {
 declare global {
   interface Window {
     __watchFixture: {
+      visual: typeof visualReviewFixture;
       fontScale(): number;
       activity: typeof activityFixture;
       sysx: typeof sysxSendFixture;
@@ -120,6 +122,7 @@ declare global {
   }
 }
 window.__watchFixture = {
+  visual: visualReviewFixture,
   fontScale: () => Dimensions.get('window').fontScale,
   guardian: guardianFixture,
   sysx: sysxSendFixture,
@@ -149,7 +152,7 @@ window.__watchFixture = {
   oldPhases: () => retiredAuthorities.map((authority) => authority.getSnapshot().phase),
   transferPhase: () => latestTransfers?.getSnapshot().phase ?? null,
   reviewId: () => latestTransfers?.getSnapshot().review?.id ?? null,
-  async confirmReview(id) { try { await latestTransfers!.view.confirm(id); return 'accepted'; } catch (cause) { return cause instanceof Error ? cause.message : 'rejected'; } },
+  async confirmReview(id) { try { await latestTransfers!.view.confirm(id, { method: 'pin', pin: visualReviewFixture.enabled ? visualReviewFixture.password : '123456' }); return 'accepted'; } catch (cause) { return cause instanceof Error ? cause.message : 'rejected'; } },
   recoveryAudit: () => ({ ...recoveryAudit }), holdRecovery, releaseRecovery,
 };
-registerRootComponent(() => new URLSearchParams(window.location.search).has('slh-fixture') ? <SlhManagementFixture /> : new URLSearchParams(window.location.search).has('watch-receive-fixture') ? <WatchReceiveFixture /> : <App availableWatchNetworks={new URLSearchParams(window.location.search).has('disabled-utxo') ? ['evm'] : undefined} />);
+registerRootComponent(() => new URLSearchParams(window.location.search).has('update-fixture') ? <UpdateFixture /> : new URLSearchParams(window.location.search).has('slh-fixture') ? <SlhManagementFixture /> : new URLSearchParams(window.location.search).has('watch-receive-fixture') ? <WatchReceiveFixture /> : <App availableWatchNetworks={new URLSearchParams(window.location.search).has('disabled-utxo') ? ['evm'] : undefined} />);

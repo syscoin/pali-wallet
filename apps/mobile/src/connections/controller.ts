@@ -1,3 +1,4 @@
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope, type NativePrivateAuthentication } from '../custody/privateAuthentication.ts';
 import { NativeSmartPreparationRequests } from './smartPreparationRequests.ts';
 import { getRequestedSmartAccountAuthenticator, type SmartAccountPreparationRequest } from '../../../../source/shared/smartAccountPreparation.ts';
 import type { NativeSmartCreationAllocation } from '../smartAccount/preparation.ts';
@@ -60,7 +61,7 @@ import { createDappApprovalLifetime } from '../../../../source/utils/dappApprova
 import type { DappSessionEvent } from '../../../../source/wallet/dappSessions.ts';
 import type { KeyringAccountType } from '../../../../source/types/network.ts';
 import type { CustodySnapshot } from '../custody/types.ts';
-import type { NativeConnectionHost } from './host.ts';
+import type { NativeConnectionHost, NativeRequestAuthenticationBinder } from './host.ts';
 import type { NativeConnectionRepository } from './storage.ts';
 import {
   openWalletConnectTransport,
@@ -175,6 +176,8 @@ type PrivateSigningReview =
       'revision' | 'needsAccountSwitch' | 'busy' | 'dispatched'
     >;
 type PendingSigning = {
+  authenticationScope: NativePrivateAuthenticationScope;
+  authentication: NativePrivateAuthentication | null;
   queueOrder: number;
   resumeId: string;
   handoff: NativeSigningHandoff;
@@ -208,6 +211,7 @@ type PendingSigning = {
 };
 const MESSAGE_REVIEW_LIFETIME_MS = 5 * 60_000;
 type Options = {
+  bindAuthentication: NativeRequestAuthenticationBinder;
   source: Source;
   activateAccount(
     accountId: string,
@@ -256,6 +260,7 @@ export class NativeConnectionsController {
   }> | null = null;
   private statusSession: WalletConnectSession | undefined;
   private statusResponse: ((shown: boolean) => Promise<void>) | undefined;
+  private statusRefresh: { id: string; busy: boolean; check(): void; read(): Promise<CallsBundleStatus> } | undefined;
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
   private host: NativeConnectionHost | undefined;
   private repository: NativeConnectionRepository | undefined;
@@ -276,6 +281,9 @@ export class NativeConnectionsController {
   private serial = 0;
   private action: AbortController | undefined;
   private pairing: WalletConnectPairing | undefined;
+  private pairingAction: AbortController | undefined;
+  private pairingTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly proposalTimers = new Map<number, ReturnType<typeof setTimeout>>();
   private activeGrant: Connected | undefined;
   private activeProposalId: number | undefined;
   private readonly canceledPairings = new Map<string, WalletConnectPairing>();
@@ -321,6 +329,7 @@ export class NativeConnectionsController {
       respond: (wire, response, check, handedOff) => this.transport!.respond(wire.session.binding, wire.id, response, check, handedOff),
     });
     this.psbt = new NativePsbtRequests({
+      bindAuthentication: options.bindAuthentication,
       host: () => this.host!.psbt,
       foreground: order => order < Math.min(this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.controls.firstOrder, this.sentry.firstOrder, this.preparations?.firstOrder ?? Infinity),
       changed: () => { this.publish(); void this.prepareForegroundRequest(); },
@@ -328,6 +337,7 @@ export class NativeConnectionsController {
       respond: (wire, response, check, handedOff) => this.transport!.respond(wire.session.binding, wire.id, response, check, handedOff),
     });
     this.preparations = new NativeSmartPreparationRequests({
+      bindAuthentication: options.bindAuthentication,
       host: () => this.host!,
       foreground: order => order < Math.min(this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder),
       changed: () => { this.publish(); void this.controls.prepare(); void this.sentry.prepare(); void this.psbt.prepare(); void this.prepareForegroundRequest(); },
@@ -337,6 +347,7 @@ export class NativeConnectionsController {
     });
     this.snapshot = this.project();
     this.view = Object.freeze({
+      isRequestAuthenticating: id => this.isRequestAuthenticating(id),
       approveSmartPreparation: async (id, revision, acknowledged) => {
         if (revision !== this.revision) return failure('REQUEST_EXPIRED');
         await this.preparations.approve(id, acknowledged);
@@ -428,6 +439,28 @@ export class NativeConnectionsController {
         const respond = this.statusResponse;
         this.statusResponse = undefined;
         await respond?.(true);
+      },
+      refreshCallsStatus: async (id) => {
+        const owner = this.statusRefresh;
+        if (!owner || owner.id !== id) return failure('REQUEST_EXPIRED');
+        if (owner.busy) return failure('BUSY');
+        owner.busy = true;
+        const finish = this.disposal.begin();
+        try {
+          owner.check();
+          const status = await owner.read();
+          owner.check();
+          this.callsStatus = Object.freeze({ ...this.callsStatus!, status });
+          this.publish();
+        } catch (error) {
+          if (this.statusRefresh === owner) {
+            try { owner.check(); } catch { this.dismissStatus(); }
+          }
+          throw error;
+        } finally {
+          owner.busy = false;
+          finish();
+        }
       },
       dismissCallsStatus: (id) => {
         if (this.callsStatus?.id === id) this.dismissStatus();
@@ -548,6 +581,8 @@ export class NativeConnectionsController {
       this.action?.abort();
       this.action = undefined;
       this.pairing = undefined;
+      this.clearDeadlines();
+      this.canceledPairings.clear();
       this.activeGrant = undefined;
       this.activeProposalId = undefined;
       this.transportOwner = undefined;
@@ -640,6 +675,7 @@ export class NativeConnectionsController {
     proposal: WalletConnectProposal,
     accountId?: string
   ): boolean {
+    if (proposal.expiresAt !== null && proposal.expiresAt <= Date.now()) return false;
     if (
       proposal.verification.isScam ||
       proposal.verification.validation === 'INVALID'
@@ -667,6 +703,18 @@ export class NativeConnectionsController {
       );
     });
   }
+  private proposalPermissions(proposal: WalletConnectProposal, context: ReturnType<NativeConnectionHost['context']>, account: ReturnType<NativeConnectionHost['context']>['accounts'][number]) {
+    const scope = this.chainScope(context), chain = dappCaipChain(scope), family = dappNamespace(scope);
+    const requested = [
+      ...Object.entries(proposal.requiredNamespaces),
+      ...Object.entries(proposal.optionalNamespaces),
+    ].filter(([name]) => name === family || name === chain).map(([, value]) => value) as { methods?: string[]; events?: string[] }[];
+    const supported = this.supportedMethods(account.type, account.id);
+    return {
+      methods: [...new Set(requested.flatMap(value => value.methods ?? []).filter(value => supported.includes(value)))],
+      events: [...new Set(requested.flatMap(value => value.events ?? []).filter(value => EVENTS.includes(value)))],
+    };
+  }
   private project(): NativeConnectionsSnapshot {
     const ready =
       this.options.source.getSnapshot().phase === 'ready' && !this.disposed;
@@ -685,6 +733,7 @@ export class NativeConnectionsController {
       callsStatus: ready ? this.callsStatus : null,
       revision: this.revision,
       status: ready ? this.status : 'locked',
+      pairingExpiresAt: ready && this.pairing ? this.pairing.expiresAt : null,
       selectedAccountId: ready && evm ? context!.activeAccountId : null,
       accounts: Object.freeze(
         ready && evm
@@ -709,7 +758,13 @@ export class NativeConnectionsController {
                 name: proposal.metadata.name,
                 origin: new URL(proposal.metadata.url).origin,
                 verification: proposal.verification,
+                expiresAt: proposal.expiresAt,
                 requiredMethods: Object.freeze(this.requiredMethods(proposal)),
+                methodsByAccount: Object.freeze(context ? context.accounts.map(account => Object.freeze({
+                  accountId: account.id,
+                  methods: Object.freeze(this.proposalPermissions(proposal, context!, account).methods),
+                  canApprove: this.canApprove(proposal, account.id),
+                })) : []),
                 canApprove: this.canApprove(proposal),
               })
             )
@@ -736,6 +791,9 @@ export class NativeConnectionsController {
                       grant.chainId === context?.network.chainId
                         ? context.networkLabel
                         : `Chain ${grant.chainId}`,
+                    address: grant.chainId === context?.network.chainId && grant.chain === context.network.kind ? account?.address ?? null : null,
+                    expiresAt: session.expiry * 1000,
+                    methods: Object.freeze([...new Set(Object.values(session.namespaces).flatMap(namespace => namespace.methods))]),
                     returnTarget: createDappReturnTarget(session.binding.origin, { validation: 'UNKNOWN', isScam: false }),
                   }),
                 ];
@@ -748,6 +806,10 @@ export class NativeConnectionsController {
     });
   }
   private publish() {
+    if (this.statusRefresh) {
+      try { this.statusRefresh.check(); }
+      catch { this.dismissStatus(); return; }
+    }
     if (
       this.statusSession &&
       (this.connections.get(sessionKey(this.statusSession))?.session !==
@@ -963,22 +1025,26 @@ export class NativeConnectionsController {
   private onEvent(event: WalletConnectTransportEvent) {
     if (this.disposed) return;
     if (event.type === 'proposal') {
-      this.pruneCanceledPairings();
-      if (this.canceledPairings.has(event.proposal.pairingTopic)) {
-        void this.transport!.reject(event.proposal, {
+      if (this.pairing && this.pairing.expiresAt <= Date.now()) this.expirePairing(this.pairing);
+      if (this.canceledPairings.has(event.proposal.pairingTopic) || event.proposal.expiresAt !== null && event.proposal.expiresAt <= Date.now()) {
+        const transport = this.transport, owner = this.transportOwner;
+        if (!transport) return;
+        void transport.reject(event.proposal, {
           code: 5000,
           message: 'Connection cancelled',
         }).catch(() => {
+          if (this.disposed || this.transportOwner !== owner) return;
           this.error = 'CONNECTION_UNAVAILABLE';
           this.publish();
         });
         return;
       }
       this.proposals.set(event.proposal.id, event.proposal);
+      this.watchProposal(event.proposal);
       if (!this.action) this.status = 'ready';
     } else if (event.type === 'proposal-expired') {
-      this.proposals.delete(event.id);
-      this.error = 'REQUEST_EXPIRED';
+      const proposal = this.proposals.get(event.id);
+      if (proposal) this.expireProposal(proposal);
     } else if (event.type === 'session') this.connection(event.session);
     else if (event.type === 'session-ended') {
       for (const [key, value] of this.connections)
@@ -1036,17 +1102,81 @@ export class NativeConnectionsController {
       throw error;
     }
   }
-  private pruneCanceledPairings() {
-    for (const [topic, pairing] of this.canceledPairings)
-      if (pairing.expiresAt <= Date.now()) this.canceledPairings.delete(topic);
+  private clearPairingDeadline() {
+    if (this.pairingTimer !== undefined) clearTimeout(this.pairingTimer);
+    this.pairingTimer = undefined;
+    this.pairingAction = undefined;
+  }
+  private clearProposalDeadline(id: number) {
+    const timer = this.proposalTimers.get(id);
+    if (timer !== undefined) clearTimeout(timer);
+    this.proposalTimers.delete(id);
+  }
+  private clearDeadlines() {
+    this.clearPairingDeadline();
+    for (const id of this.proposalTimers.keys()) this.clearProposalDeadline(id);
+  }
+  private retireApproval(id: number) {
+    if (this.activeProposalId !== id) return;
+    this.actionEpoch++; this.action?.abort(); this.action = undefined;
+    this.activeProposalId = undefined;
+    const grant = this.activeGrant, owner = this.transportOwner; this.activeGrant = undefined;
+    if (grant) void grant.engine.revoke(grant.session.binding.origin, { allowAlreadyDisconnected: true }).catch(() => {
+      if (!this.disposed && this.transportOwner === owner) this.unavailable();
+    });
+    if (this.status !== 'unavailable') this.status = 'ready';
+  }
+  private expireProposal(proposal: WalletConnectProposal) {
+    if (this.proposals.get(proposal.id) !== proposal) return;
+    this.proposals.delete(proposal.id); this.clearProposalDeadline(proposal.id);
+    this.retireApproval(proposal.id);
+    this.error = 'REQUEST_EXPIRED'; this.publish();
+  }
+  private watchProposal(proposal: WalletConnectProposal) {
+    this.clearProposalDeadline(proposal.id);
+    if (proposal.expiresAt === null) return;
+    const check = () => {
+      if (this.disposed || this.proposals.get(proposal.id) !== proposal) return;
+      const remaining = proposal.expiresAt! - Date.now();
+      if (remaining <= 0) this.expireProposal(proposal);
+      else this.proposalTimers.set(proposal.id, setTimeout(check, Math.min(remaining, 2_147_483_647)));
+    };
+    check();
+  }
+  private expirePairing(pairing: WalletConnectPairing) {
+    if (this.pairing !== pairing) return;
+    if (this.action === this.pairingAction) { this.actionEpoch++; this.action?.abort(); this.action = undefined; }
+    this.pairing = undefined; this.clearPairingDeadline();
+    this.canceledPairings.set(pairing.topic, pairing);
+    for (const [id, proposal] of this.proposals) if (proposal.pairingTopic === pairing.topic) {
+      this.proposals.delete(id); this.clearProposalDeadline(id); this.retireApproval(id);
+    }
+    if (this.status === 'pairing') this.status = 'ready';
+    this.error = 'REQUEST_EXPIRED'; this.publish();
+    const owner = this.transportOwner;
+    void pairing.cancel().catch(() => { if (!this.disposed && this.transportOwner === owner) this.unavailable(); });
+  }
+  private watchPairing(pairing: WalletConnectPairing, action: AbortController) {
+    const previous = this.pairing;
+    if (previous && previous !== pairing && previous.topic !== pairing.topic) {
+      this.canceledPairings.set(previous.topic, previous);
+      const owner = this.transportOwner;
+      void previous.cancel().catch(() => { if (!this.disposed && this.transportOwner === owner) this.unavailable(); });
+    }
+    this.clearPairingDeadline(); this.pairing = pairing; this.pairingAction = action;
+    const check = () => {
+      if (this.disposed || this.pairing !== pairing) return;
+      const remaining = pairing.expiresAt - Date.now();
+      if (remaining <= 0) this.expirePairing(pairing);
+      else this.pairingTimer = setTimeout(check, Math.min(remaining, 2_147_483_647));
+    };
+    check();
   }
   private async pair(uri: string) {
-    this.pruneCanceledPairings();
-    if (
-      this.action ||
-      this.canceledPairings.size >= DAPP_REQUEST_LIMITS.pendingRequests
-    )
-      return failure('BUSY');
+    if (this.action) return failure('BUSY');
+    if (this.canceledPairings.size >= DAPP_REQUEST_LIMITS.pendingRequests) {
+      this.unavailable(); return failure('CONNECTION_UNAVAILABLE');
+    }
     if (!uri.startsWith('wc:') || uri.length > 4096)
       return failure('INVALID_LINK');
     const action = new AbortController(),
@@ -1072,14 +1202,24 @@ export class NativeConnectionsController {
       guard();
       await this.ensureTransport();
       guard();
-      const pairing = await this.transport!.pair(uri, guard, (pairing) => {
+      const pending = this.transport!.pair(uri, guard, (pairing) => {
         guard();
+        if (!Number.isSafeInteger(pairing.expiresAt) || pairing.expiresAt <= Date.now()) failure('REQUEST_EXPIRED');
+        this.canceledPairings.delete(pairing.topic);
         attemptedPairing = pairing;
-        this.pairing = pairing;
+        this.watchPairing(pairing, action);
+        this.publish();
+      });
+      const pairing = await new Promise<WalletConnectPairing>((resolve, reject) => {
+        const aborted = () => reject(new ConnectionActionError('CONTEXT_CHANGED'));
+        action.signal.addEventListener('abort', aborted, { once: true });
+        if (action.signal.aborted) aborted();
+        pending.then(resolve, reject).finally(() => action.signal.removeEventListener('abort', aborted));
       });
       try {
         guard();
-        this.pairing = pairing;
+        if (!Number.isSafeInteger(pairing.expiresAt) || pairing.expiresAt <= Date.now()) failure('REQUEST_EXPIRED');
+        this.watchPairing(pairing, action);
       } catch (error) {
         void pairing.cancel().catch(() => undefined);
         throw error;
@@ -1091,7 +1231,7 @@ export class NativeConnectionsController {
           for (const [id, proposal] of this.proposals)
             if (proposal.pairingTopic === attemptedPairing.topic)
               this.proposals.delete(id);
-          if (this.pairing === attemptedPairing) this.pairing = undefined;
+          if (this.pairing === attemptedPairing) { this.pairing = undefined; this.clearPairingDeadline(); }
         }
         if (this.snapshot.status !== 'unavailable') this.status = 'ready';
       }
@@ -1150,6 +1290,7 @@ export class NativeConnectionsController {
             value.xpub === account.xpub
         ) &&
         this.proposals.get(id) === proposal
+        && (proposal.expiresAt === null || proposal.expiresAt > Date.now())
       );
     }, action.signal);
     const guard = () => {
@@ -1168,26 +1309,7 @@ export class NativeConnectionsController {
       guard();
       if (site.isBlacklisted) return failure('BLOCKED_SITE');
       const scope = this.chainScope(context), chain = dappCaipChain(scope), family = dappNamespace(scope);
-      const requested = [
-        ...Object.entries(proposal.requiredNamespaces),
-        ...Object.entries(proposal.optionalNamespaces),
-      ].filter(([name]) => name === family || name === chain).map(([, value]) => value) as { methods?: string[]; events?: string[] }[];
-      const methods = [
-        ...new Set(
-          requested
-            .flatMap((value) => value.methods ?? [])
-            .filter((value) =>
-              this.supportedMethods(account.type, account.id).includes(value)
-            )
-        ),
-      ];
-      const events = [
-        ...new Set(
-          requested
-            .flatMap((value) => value.events ?? [])
-            .filter((value) => EVENTS.includes(value))
-        ),
-      ];
+      const { methods, events } = this.proposalPermissions(proposal, context, account);
       const session = await this.transport!.approve(
         proposal,
         {
@@ -1220,7 +1342,9 @@ export class NativeConnectionsController {
       );
       guard();
       this.proposals.delete(id);
+      this.clearProposalDeadline(id);
       this.pairing = undefined;
+      this.clearPairingDeadline();
     } catch (error) {
       if (connected) {
         await connected.engine.revoke(connected.session.binding.origin, {
@@ -1256,6 +1380,7 @@ export class NativeConnectionsController {
           .catch(() => this.unavailable());
     }
     this.proposals.delete(id);
+    this.clearProposalDeadline(id);
     this.status = 'ready';
     this.publish();
     await this.ensure();
@@ -1807,16 +1932,19 @@ export class NativeConnectionsController {
         const hasLiveSequence = () => [...this.requests.values()].some((message) =>
           message.session.binding.origin === request.session.binding.origin &&
           message.request.method === 'wallet_sendCalls' && message.request.bundleId === bundleId);
-        if (!hasLiveSequence()) await this.host!.recoverStoppedEoaCalls(
-          request.session.binding.origin, request.params[0], () => {
-            statusGuard();
-            if (hasLiveSequence()) throw new Error('Calls sequence is still active');
-          });
-        result = await this.host!.readCallsStatus(
-          request.session.binding.origin,
-          request.params[0],
-          statusGuard
-        );
+        const readStatus = async (check: () => void) => {
+          check();
+          if (!hasLiveSequence()) await this.host!.recoverStoppedEoaCalls(
+            request.session.binding.origin, bundleId, () => {
+              check();
+              if (hasLiveSequence()) throw new Error('Calls sequence is still active');
+            });
+          check();
+          const value = await this.host!.readCallsStatus(request.session.binding.origin, bundleId, check);
+          check();
+          return value;
+        };
+        result = await readStatus(statusGuard);
         statusGuard();
         if (request.method === 'wallet_showCallsStatus') {
           if (this.callsStatus)
@@ -1831,6 +1959,19 @@ export class NativeConnectionsController {
             origin: request.session.binding.origin,
             status: result as CallsBundleStatus,
           });
+          const refreshOwner: NonNullable<typeof this.statusRefresh> = {
+            id,
+            busy: false,
+            check: () => {
+              statusGuard();
+              if (this.statusRefresh !== refreshOwner || this.callsStatus?.id !== id ||
+                  this.options.source.getSnapshot().phase !== 'ready' || !this.host!.context().unlocked ||
+                  !connected.engine.isConnected(request.session.binding.origin) || session.expiry * 1000 <= Date.now())
+                failure('CONTEXT_CHANGED');
+            },
+            read: () => readStatus(refreshOwner.check),
+          };
+          this.statusRefresh = refreshOwner;
           this.statusResponse = async (shown) => {
             const assertStatusCurrent = () => {
               statusGuard();
@@ -1909,10 +2050,26 @@ export class NativeConnectionsController {
       return null;
     }
   }
+  private isRequestAuthenticating(id: string): boolean {
+    const message = this.requests.get(id);
+    if (!message) return this.psbt.isRequestAuthenticating(id) || this.preparations.isRequestAuthenticating(id);
+    if (this.requests.values().next().value !== message ||
+        Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder) return false;
+    try {
+      if (!this.requestConnectionCurrent(message)) return false;
+      message.approval?.assertCurrent();
+      return message.authenticationScope.isAuthenticating();
+    } catch { return false; }
+  }
+  private requestAuthentication(message: PendingSigning): NativePrivateAuthentication {
+    if (!message.authentication) return failure('REQUEST_EXPIRED');
+    return message.authentication;
+  }
   private dismissStatus() {
     if (!this.callsStatus && !this.statusResponse) return;
     const respond = this.statusResponse;
     this.statusResponse = undefined;
+    this.statusRefresh = undefined;
     this.callsStatus = null;
     this.statusSession = undefined;
     clearTimeout(this.statusTimer);
@@ -2024,6 +2181,7 @@ export class NativeConnectionsController {
   ): Promise<void> {
     if (this.requests.get(message.id) !== message) return this.requestRetirement;
     this.requests.delete(message.id);
+    message.authenticationScope.retire();
     retireNativeSigningHandoff(message.handoff);
     const reservation = message.request.method === 'wallet_sendCalls'
       ? this.host?.calls
@@ -2269,9 +2427,16 @@ export class NativeConnectionsController {
     }
     const scope = this.signingResumeScope(wire.session.binding, 'granted');
     if (!scope || saved && (saved.wire !== JSON.stringify(wire) || !sameSigningResumeOwner(saved.scope, scope) || scope.unlockGeneration <= saved.scope.unlockGeneration)) return failure('REQUEST_EXPIRED');
+    let iconRegistrationHash: string | undefined;
+    try {
+      const registration = this.host!.registration();
+      if (registration.id === context.networkId && registration.chainId === String(context.network.chainId) && registration.rpcUrl === context.network.url)
+        iconRegistrationHash = registration.registrationHash;
+    } catch { /* Missing public icon scope leaves the generic icon. */ }
     const next = ++this.serial, queueOrder = saved?.order ?? next;
     const id = `request-${next}`;
     const message: PendingSigning = {
+      authenticationScope: createNativePrivateAuthenticationScope(), authentication: null,
       queueOrder,
       resumeId: saved?.id ?? id,
       handoff: undefined as unknown as NativeSigningHandoff,
@@ -2299,6 +2464,7 @@ export class NativeConnectionsController {
         accountLabel: account.label,
         address: account.address,
         networkLabel: context.networkLabel,
+        registrationHash: iconRegistrationHash,
         chainId: String(context.network.chainId),
         expiresAt,
         error,
@@ -2349,6 +2515,10 @@ export class NativeConnectionsController {
         for (const [key, value] of waiting) this.requests.set(key, value);
       } else this.requests.set(id, message);
       message.approval = this.captureSigningApproval(message);
+      message.authentication = this.options.bindAuthentication(message.authenticationScope, () => {
+        if (this.requests.get(message.id) !== message || !this.requestConnectionCurrent(message)) return failure('REQUEST_EXPIRED');
+        message.approval?.assertCurrent();
+      });
       if (saved) this.handoffs.discard(saved, false);
       message.approval.assertCurrent();
       handoffAdopted = true;
@@ -2502,7 +2672,7 @@ export class NativeConnectionsController {
         advisories = [];
         warning = false;
         const prepared = await this.host!.prepareTransaction({ accountId: message.accountId,
-          networkId: message.networkId, transaction, approval, handoff: message.handoff }, approval.assertCurrent);
+          networkId: message.networkId, transaction, approval, handoff: message.handoff }, approval.assertCurrent, this.requestAuthentication(message));
         approval.assertCurrent();
         if ('operation' in prepared) { await prepared.operation.dispose(); throw new Error('Expected an EOA review'); }
         const result = await reviewDappAddressAdvisories({
@@ -2533,7 +2703,7 @@ export class NativeConnectionsController {
         feeChoice: message.review.kind === 'transaction' && prepared?.transaction === message.review.transaction
           ? message.review.feeChoice : null,
         transaction: prepared?.transaction ?? null, maximumFeeUnits: prepared?.maximumFeeUnits ?? null,
-        maximumTotalUnits: prepared?.maximumTotalUnits ?? null, approval: prepared?.approval ?? null,
+        maximumTotalUnits: prepared?.maximumTotalUnits ?? null, approval: prepared?.approval ?? null, assetTransfer: prepared?.assetTransfer ?? null,
         symbol: this.host!.context().network.currency, decimals: 18, broadcastHash: message.broadcastHash ?? null,
         expiresAt: message.requestExpiresAt, advisories, requiresWarningAcknowledgement: warning,
         batch: Object.freeze({ phase: snapshot.phase, index: snapshot.index,
@@ -2577,7 +2747,7 @@ export class NativeConnectionsController {
             request: message.request,
             approval,
             handoff: message.handoff,
-          }, approval.assertCurrent)
+          }, approval.assertCurrent, this.requestAuthentication(message))
         : message.request.method === 'wallet_sendCalls'
         ? await this.host!.prepareCalls(
             {
@@ -2590,7 +2760,7 @@ export class NativeConnectionsController {
               approval,
               handoff: message.handoff,
             },
-            approval.assertCurrent
+            approval.assertCurrent, this.requestAuthentication(message)
           )
         : await this.host!.prepareTransaction(
             {
@@ -2600,7 +2770,7 @@ export class NativeConnectionsController {
               approval,
               handoff: message.handoff,
             },
-            approval.assertCurrent
+            approval.assertCurrent, this.requestAuthentication(message)
           );
     try {
       approval.assertCurrent();
@@ -2633,6 +2803,8 @@ export class NativeConnectionsController {
           operation: snapshot,
           batchApprovals: prepared.batchApprovals,
           approval: prepared.approval,
+          assetTransfer: prepared.assetTransfer,
+          batchAssetTransfers: prepared.batchAssetTransfers,
         });
         this.publish();
       };
@@ -2742,6 +2914,7 @@ export class NativeConnectionsController {
       maximumFeeUnits: prepared.maximumFeeUnits,
       maximumTotalUnits: prepared.maximumTotalUnits,
       approval: prepared.approval,
+      ...("assetTransfer" in prepared ? { assetTransfer: prepared.assetTransfer } : {}),
       expiresAt,
       advisories: Object.freeze(advisories.addresses),
       requiresWarningAcknowledgement: Boolean(advisories.warning),
@@ -2911,7 +3084,7 @@ export class NativeConnectionsController {
         account: { type: this.host!.context().accounts.find(account => account.id === message.accountId)?.type },
         request: message.request as DappEncryptionRequest,
         approval,
-        sdk: this.host!.encryptionSdk({ accountId: message.accountId, networkId: message.networkId, approval }),
+        sdk: this.host!.encryptionSdk({ accountId: message.accountId, networkId: message.networkId, approval }, this.requestAuthentication(message)),
         assertCurrent: () => { approval.assertCurrent(); if (!this.requestConnectionCurrent(message) || this.host!.context().activeAccountId !== message.accountId) failure('CONTEXT_CHANGED'); },
         checkDocument: async () => { approval.assertCurrent(); },
         deliver: async (result, assertCurrent, onDispatch) => {
@@ -3093,7 +3266,7 @@ export class NativeConnectionsController {
           request: message.request,
           approval,
           handoff: message.handoff,
-        });
+        }, this.requestAuthentication(message));
       }
       await this.deliverSigningResult(message, result);
     } catch (error) {
@@ -3191,10 +3364,11 @@ export class NativeConnectionsController {
         .catch(() => this.unavailable());
     const pairing = this.pairing;
     this.pairing = undefined;
+    this.clearPairingDeadline();
     if (pairing) {
       this.canceledPairings.set(pairing.topic, pairing);
       for (const [id, proposal] of this.proposals)
-        if (proposal.pairingTopic === pairing.topic) this.proposals.delete(id);
+        if (proposal.pairingTopic === pairing.topic) { this.proposals.delete(id); this.clearProposalDeadline(id); }
       void pairing.cancel().catch(() => {
         this.error = 'CONNECTION_UNAVAILABLE';
         this.publish();
@@ -3207,6 +3381,7 @@ export class NativeConnectionsController {
     return this.disposal.close(() => {
       this.dismissStatus();
       this.disposed = true;
+      this.clearDeadlines(); this.canceledPairings.clear();
       for (const read of this.reads.values()) read.lifetime.abort();
       this.controls.clear(); this.sentry.clear(); this.psbt.clear(); this.preparations.clear(); this.handoffs.cancelDapp();
       for (const message of [...this.requests.values()])

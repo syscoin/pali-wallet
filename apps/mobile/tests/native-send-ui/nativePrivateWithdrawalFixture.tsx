@@ -2,9 +2,12 @@ import React, { useCallback, useState } from 'react';
 import { KeyringAccountType } from '@sidhujag/sysweb3-keyring/cjs/types';
 import type { NativePrivateWithdrawalView as View } from '../../src/custody/privateWithdrawal';
 import type { NativeNoteInventory as Inventory } from '../../src/custody/noteBackupRuntime';
+import type { NativePrivateAuthenticationScope } from '../../src/custody/privateAuthentication';
 import { NativeNoteInventory } from '../../src/screens/NativeNoteInventory';
 import { PRIVACY_POOLS } from '../../../../source/utils/privacy/registry';
 import { Text } from '../../src/ui';
+import { NativeOperationAuthentication } from '../../src/screens/NativeOperationAuthentication';
+import { nativeOperationAuthentication } from '../../src/platform/operationAuthentication';
 
 // Public presentation only. No note secret, proof worker, network or signer.
 type Snapshot = ReturnType<View['getSnapshot']>;
@@ -27,7 +30,7 @@ window.__privateWithdrawalFixture = {
 export function NativePrivateWithdrawalFixture() {
   const [closed, setClosed] = useState(false);
   const readInventory = useCallback(
-    async (assertInventory: () => void): Promise<Inventory> => {
+    async (assertInventory: () => void, _authentication: NativePrivateAuthenticationScope): Promise<Inventory> => {
       assertInventory();
       events.push('inventory');
       const note = Object.freeze({
@@ -52,7 +55,7 @@ export function NativePrivateWithdrawalFixture() {
             blockNumber: 100,
           };
         },
-        async openWithdrawal(selected, signal, assertCurrent) {
+        async openWithdrawal(selected, signal, assertCurrent, _authentication) {
           if (selected !== note) throw new Error('Wrong fixture note');
           let disposed = false;
           let directoryReads = 0;
@@ -237,14 +240,16 @@ export function NativePrivateWithdrawalFixture() {
                 },
               });
             },
-            async reviewRestored(password) {
+            async reviewRestored() {
+              check();
+              await nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'private-reconciliation', biometricsEnabled: false },
+                signal, check, async (credential, guard) => {
+                  guard();
+                  return credential.method === 'pin' && credential.pin === '123456' ? { accepted: true } : { accepted: false, reason: 'INVALID_CREDENTIAL' };
+                });
               check();
               events.push('restore:review');
-              publish(
-                password === 'Fixture password 1!'
-                  ? { restored: false, error: null }
-                  : { error: 'restored' }
-              );
+              publish({ restored: false, error: null });
             },
             async dispose() {
               if (!disposed) {
@@ -272,10 +277,10 @@ export function NativePrivateWithdrawalFixture() {
   );
   if (closed) return <Text>Private notes</Text>;
   return (
-    <NativeNoteInventory
+    <><NativeNoteInventory
       readInventory={readInventory}
       onBack={() => setClosed(true)}
       onLock={() => setClosed(true)}
-    />
+    /><NativeOperationAuthentication isProtectedPromptActive={() => false} /></>
   );
 }

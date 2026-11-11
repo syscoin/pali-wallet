@@ -5,6 +5,7 @@ import React from 'react';
 import { defaultAbiCoder, id } from 'utils/ethersV6Compat';
 
 import { EvmTransactionsList } from './EvmList';
+import { savedTransactionHistoryRow } from './useSavedEvmTransactions';
 
 const ACCOUNT = `0x${'11'.repeat(20)}`;
 const TARGET = `0x${'22'.repeat(20)}`;
@@ -408,3 +409,44 @@ it('renders an SDK data-only submitted ERC-20 row with imported metadata instead
   expect(await screen.findByText('6 TST')).toBeTruthy();
   expect(screen.queryByText('0 ETH')).toBeNull();
 });
+
+it.each(['ERC-721', 'ERC-1155'] as const)(
+  'renders saved %s intent while no explorer row is available',
+  async (tokenStandard) => {
+    const amountUnits = tokenStandard === 'ERC-721' ? '1' : '9007199254740993';
+    mockRows = [
+      savedTransactionHistoryRow({
+        hash: `0x${'6'.repeat(64)}`,
+        chainId: '1',
+        from: ACCOUNT,
+        to: CONTRACT,
+        value: '0',
+        nonce: 9,
+        createdAt: 1791655200000,
+        gasLimit: '100000',
+        feePerGas: '1',
+        dataBytes: 196,
+        type: 2,
+        operation: tokenStandard === 'ERC-721' ? 'erc721' : 'erc1155',
+        collectibleTransfer: {
+          kind: 'nft-transfer',
+          chainId: '1',
+          from: ACCOUNT,
+          contractAddress: CONTRACT,
+          recipient: TARGET,
+          tokenStandard,
+          tokenId: '0',
+          amountUnits,
+        },
+      } as any),
+    ];
+    render(<EvmTransactionsList userTransactions={mockRows} />);
+    expect(
+      await screen.findByText(
+        tokenStandard === 'ERC-721' ? 'NFT #0' : `${amountUnits} NFT #0`
+      )
+    ).toBeTruthy();
+    expect(screen.queryByText('0 ETH')).toBeNull();
+    expect(screen.queryByText('0 USD')).toBeNull();
+  }
+);

@@ -9,6 +9,7 @@ import test from 'node:test';
 import ts from 'typescript';
 import { createTrezorSessions } from '../src/hardware/trezorSessions.ts';
 import { CustodyOperationError } from '../src/custody/authority.ts';
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
@@ -50,8 +51,10 @@ async function fixture(smart = true) {
   const trezor = { subscribe: () => () => undefined };
   let runtime: any = { catalogue: { getSnapshot: () => catalogue }, trezor };
   const slhCounts = { opened: 0, installed: 0 };
+  let promptActive = false;
+  let slhAuthentication: privateAuthentication.NativePrivateAuthentication | null = null;
   const slhOperation = { dispose() {} };
-  runtime.openSlhDsaAccount = async (check: () => void) => { slhCounts.opened++; check(); return { installedKeys: [] }; };
+  runtime.openSlhDsaAccount = async (check: () => void, _signal: AbortSignal, authentication: privateAuthentication.NativePrivateAuthentication | null) => { slhAuthentication = authentication; slhCounts.opened++; check(); return { installedKeys: [] }; };
   runtime.openSlhDsaInstallation = async (_keyId: string, _signal: AbortSignal, check: () => void) => { slhCounts.installed++; check(); return slhOperation; };
   let locks = 0;
   class Authority {
@@ -86,6 +89,11 @@ async function fixture(smart = true) {
   security.custodyIdle.begin({}, () => undefined);
   const unexpectedFeature = () => assert.fail('unexpected feature operation in native factory fixture');
   const dependencies: Record<string, unknown> = {
+    '../notifications/service': { nativeActivityNotifications: { replaceAccountTypes: unexpectedFeature, disableOwner: unexpectedFeature } },
+    '../notifications/choices': { nativeNotificationChoices: unexpectedFeature },
+    '../custody/accountIdentity': { parseNativeAccountId: unexpectedFeature },
+    '../custody/privateAuthentication.ts': privateAuthentication,
+    '../portfolio/scopedPortfolioAssets.ts': { createScopedPortfolioAssetReader: unexpectedFeature },
     './privacyServiceSettings.native': { createNativePrivacyServiceSettings },
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
     'react-native': { Linking: { openURL: unexpectedFeature } },
@@ -109,10 +117,16 @@ async function fixture(smart = true) {
     },
     '../portfolio/nativeRecipientResolver': { createNativeRecipientResolver: () => ({ resolve: unexpectedFeature }) },
     './security': security,
+    './pinCredential.native': {
+      createNativePinCredentialPort: () => ({ read: unexpectedFeature, stage: unexpectedFeature, remove: unexpectedFeature }),
+    },
+    './operationAuthentication': {
+      nativeOperationAuthentication: { request: unexpectedFeature, cancel() {} },
+    },
     './deviceUnlockCredential.native': {
       createNativeDeviceUnlockCapability: () => ({
         credentials: {},
-        prompt: { cancel() {} },
+        prompt: { cancel() {}, isActive: () => promptActive },
       }),
     },
     './walletConnectRuntime': {
@@ -157,6 +171,7 @@ async function fixture(smart = true) {
     '../portfolio/ownedTokenReader.ts': { createOwnedTokenReader: () => ({}) },
     '../portfolio/nftOwnershipReadRpc.ts': {
       createNftOwnershipReader: () => ({}),
+      createNftEnumerationReader: () => () => assert.fail('guardian recovery must not enumerate collectibles'),
     },
     '../custody/utxoActivity.ts': { createNativeUtxoActivity: () => ({}) },
     '../core/utxoActivity.ts': { createUtxoActivityReader: () => ({}) },
@@ -203,6 +218,8 @@ async function fixture(smart = true) {
     controllers.readGuardianRecovery(signal, () => undefined);
   return {
     rpc, controllers, slhCounts, slhOperation,
+    authentication: () => slhAuthentication,
+    prompt(active: boolean) { promptActive = active; },
     read,
     listeners,
     snapshot: () => snapshot,
@@ -235,7 +252,7 @@ async function fixture(smart = true) {
         });
       };
       return controllers.openGuardianPolicy({ action: 'set', guardian: '0x' + '22'.repeat(20), delaySeconds: 259200,
-        acknowledgedPendingOperationId: null }, new AbortController().signal, () => undefined);
+        acknowledgedPendingOperationId: null }, new AbortController().signal, () => undefined, privateAuthentication.createNativePrivateAuthenticationScope());
     },
     change(kind: string) {
       snapshot = {
@@ -312,16 +329,44 @@ for (const failure of ['rpc', 'storage', 'stale', 'old-runtime'] as const) test(
 
 test('native SLH factory rejects an async management owner before opening its private facade', async () => {
   const f = await fixture();
-  await assert.rejects(f.controllers.openSlhDsaManagement(new AbortController().signal, async () => undefined), /guard must be synchronous/);
+  await assert.rejects(f.controllers.openSlhDsaManagement(new AbortController().signal, async () => undefined, privateAuthentication.createNativePrivateAuthenticationScope()), /guard must be synchronous/);
   assert.equal(f.slhCounts.opened, 0); assert.equal(f.slhCounts.installed, 0);
 });
 
 test('native SLH factory rejects an async installation view before private installation', async () => {
   const f = await fixture(), signal = new AbortController().signal;
-  const manager = await f.controllers.openSlhDsaManagement(signal, () => undefined);
+  const manager = await f.controllers.openSlhDsaManagement(signal, () => undefined, privateAuthentication.createNativePrivateAuthenticationScope());
   assert.equal(f.slhCounts.opened, 1);
   await assert.rejects(manager.openInstall('exact-public-key', signal, async () => undefined), /guard must be synchronous/);
   assert.equal(f.slhCounts.installed, 0);
   assert.equal(await manager.openInstall('exact-public-key', signal, () => undefined), f.slhOperation);
   assert.equal(f.slhCounts.installed, 1);
+});
+
+
+test('native smart factory binds prompt ownership without recursing through the view guard', async () => {
+  const f = await fixture();
+  const scope = privateAuthentication.createNativePrivateAuthenticationScope();
+  let interrupted = false;
+  const guard = () => { if (interrupted) assert(scope.isAuthenticating()); };
+  await f.controllers.openSlhDsaManagement(new AbortController().signal, guard, scope);
+  const binding = f.authentication(); assert(binding);
+  await privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => undefined, async () => {
+    f.prompt(true); interrupted = true;
+    try { guard(); assert(scope.isAuthenticating()); }
+    finally { interrupted = false; f.prompt(false); }
+  });
+  assert.equal(scope.isAuthenticating(), false);
+});
+
+test('native smart factory prompt ownership cannot survive an account revision change', async () => {
+  const f = await fixture();
+  const scope = privateAuthentication.createNativePrivateAuthenticationScope();
+  await f.controllers.openSlhDsaManagement(new AbortController().signal, () => undefined, scope);
+  const binding = f.authentication(); assert(binding);
+  await assert.rejects(privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => undefined, async () => {
+    f.prompt(true); f.change('account');
+    assert.equal(scope.isAuthenticating(), false);
+  }), /CANCELLED/);
+  f.prompt(false); scope.retire();
 });

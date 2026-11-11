@@ -12,6 +12,7 @@ import {
 import type { INoteBackupPayload } from './noteBackup';
 import { createNoteBackupService } from './noteBackupService';
 import type { INoteBackupServicePorts } from './noteBackupService';
+import { createPrivateVaultSession } from './privateVault';
 import { createPrivateVaultController } from './privateVault';
 import type { IPrivateVaultHost, IPrivateVaultSession } from './privateVault';
 
@@ -106,14 +107,14 @@ function fixture(overrides: Partial<INoteBackupServicePorts> = {}) {
   };
   const captureSession = (): IPrivateVaultSession => {
     const captured = generation;
-    return {
+    return createPrivateVaultSession({
       keyring,
       generation,
       assertCurrent: () => {
         if (captured !== generation)
           throw new Error('privacy_vault_session_changed');
       },
-    };
+    });
   };
   const host: IPrivateVaultHost = {
     captureSession,
@@ -566,11 +567,12 @@ test('reentrant and asynchronous host guards cannot bypass synchronous one-slot 
   expect(() => f.service.begin()).toThrow('BACKUP_UNAVAILABLE'); // repeated RNG ID
   f.service.dispose();
   const g = fixture({
-    captureSession: () => ({
-      keyring: {} as KeyringManager,
-      generation: 1,
-      assertCurrent: async () => undefined,
-    }),
+    captureSession: () =>
+      createPrivateVaultSession({
+        keyring: {} as KeyringManager,
+        generation: 1,
+        assertCurrent: async () => undefined,
+      }),
   });
   expect(() => g.service.begin()).toThrow('BACKUP_UNAVAILABLE');
   g.service.dispose();
@@ -732,13 +734,13 @@ test.each(['capture', 'guard'] as const)(
       captureSession: () => {
         captured++;
         if (point === 'capture') reenter();
-        return {
+        return createPrivateVaultSession({
           keyring: {} as KeyringManager,
           generation: 0,
           assertCurrent: () => {
             if (point === 'guard') reenter();
           },
-        };
+        });
       },
     });
     nested = () => {

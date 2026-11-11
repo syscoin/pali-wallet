@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import React from 'react';
 
@@ -21,11 +22,22 @@ const mockNetwork = {
   kind: INetworkType.Ethereum,
   label: 'Ethereum',
 };
+const mockSepoliaNetwork = {
+  chainId: 11155111,
+  kind: INetworkType.Ethereum,
+  label: 'Ethereum Sepolia',
+};
+let mockQueryChainId = 1;
+let mockActiveNetwork = {
+  chainId: 57057,
+  kind: INetworkType.Ethereum,
+  label: 'zkTanenbaum',
+};
 
 jest.mock('hooks/index', () => ({
   useQueryData: () => ({
     host: 'https://bridge.example',
-    chainId: 1,
+    chainId: mockQueryChainId,
     eventName: 'switch',
   }),
 }));
@@ -35,14 +47,20 @@ jest.mock('hooks/useController', () => ({
 jest.mock('react-redux', () => ({
   useSelector: (select: any) =>
     select({
-      vault: { activeNetwork: { chainId: 57057, kind: 'ethereum' } },
-      vaultGlobal: { networks: { ethereum: { 1: mockNetwork } } },
+      vault: { activeNetwork: mockActiveNetwork },
+      vaultGlobal: {
+        networks: {
+          ethereum: { 1: mockNetwork, 11155111: mockSepoliaNetwork },
+        },
+      },
     }),
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
-jest.mock('components/ChainIcon', () => ({ ChainIcon: () => null }));
+jest.mock('components/ChainIcon', () => ({
+  ChainIcon: () => <span aria-hidden="true">Shared chain icon</span>,
+}));
 jest.mock('components/Icon/Icon', () => ({
   Icon: () => null,
   LoadingSvg: () => null,
@@ -56,11 +74,59 @@ jest.mock('utils/stateWaitUtils', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockQueryChainId = 1;
+  mockActiveNetwork = {
+    chainId: 57057,
+    kind: INetworkType.Ethereum,
+    label: 'zkTanenbaum',
+  };
   mockEmitter.mockResolvedValue(undefined);
   mockWaitForSwitch.mockResolvedValue(undefined);
   jest.spyOn(window, 'close').mockImplementation();
 });
 afterEach(() => jest.restoreAllMocks());
+
+it('identifies mainnet and Sepolia despite shared icons and preserves the source after switching', async () => {
+  mockQueryChainId = 11155111;
+  mockActiveNetwork = mockNetwork;
+  const { rerender } = render(<SwitchChain />);
+
+  const previous = screen.getByRole('region', {
+    name: 'settings.previousChain',
+  });
+  const next = screen.getByRole('region', { name: 'settings.newChain' });
+  expect(screen.getAllByText('Shared chain icon')).toHaveLength(2);
+  expect(within(previous).getByText('Ethereum')).toBeVisible();
+  expect(within(previous).getByText('send.chainId: 1')).toBeVisible();
+  expect(within(next).getByText('Ethereum Sepolia')).toBeVisible();
+  expect(within(next).getByText('send.chainId: 11155111')).toBeVisible();
+
+  let finish!: () => void;
+  mockEmitter.mockReturnValueOnce(
+    new Promise<void>((resolve) => {
+      finish = resolve;
+    })
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  mockActiveNetwork = mockSepoliaNetwork;
+  rerender(<SwitchChain />);
+  expect(
+    within(
+      screen.getByRole('region', { name: 'settings.previousChain' })
+    ).getByText('Ethereum')
+  ).toBeVisible();
+  expect(
+    within(
+      screen.getByRole('region', { name: 'settings.previousChain' })
+    ).getByText('send.chainId: 1')
+  ).toBeVisible();
+  await act(async () => finish());
+  await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'setActiveNetwork'],
+    [mockSepoliaNetwork, false]
+  );
+});
 
 it('Reject closes the approval without switching or reporting confirmation', () => {
   render(<SwitchChain />);

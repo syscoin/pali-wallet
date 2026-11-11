@@ -19,6 +19,7 @@ import { createActivityScope } from '../src/activity/types.ts';
 import { isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
 import { exactUtxoResponseFetch } from '../src/core/utxoReadSession.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import { createNativeNetworkView } from '../src/custody/networkView.ts';
 import { createNativeDappControlHost } from '../src/custody/dappControl.ts';
@@ -333,6 +334,11 @@ test('native factory explicitly wires one owned transport to all network consume
   };
   const unexpectedFeature = () => assert.fail('unexpected feature operation in HTTP factory fixture');
   const factory = evaluate('../src/platform/nativeFactory.native.ts', {
+    '../notifications/service': { nativeActivityNotifications: { replaceAccountTypes: unexpectedFeature, disableOwner: unexpectedFeature } },
+    '../notifications/choices': { nativeNotificationChoices: unexpectedFeature },
+    '../custody/accountIdentity': { parseNativeAccountId: unexpectedFeature },
+    '../custody/privateAuthentication.ts': privateAuthentication,
+    '../portfolio/scopedPortfolioAssets.ts': { createScopedPortfolioAssetReader: unexpectedFeature },
     './privacyServiceSettings.native': { createNativePrivacyServiceSettings },
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
     'react-native': { Linking: { openURL: unexpectedFeature } },
@@ -357,6 +363,12 @@ test('native factory explicitly wires one owned transport to all network consume
     '../portfolio/nativeRecipientResolver': { createNativeRecipientResolver: () => ({ resolve: unexpectedFeature }) },
     './security': security,
     './walletConnectRuntime': { prepareWalletConnectRuntime },
+    './pinCredential.native': {
+      createNativePinCredentialPort: () => ({ read: unexpectedFeature, stage: unexpectedFeature, remove: unexpectedFeature }),
+    },
+    './operationAuthentication': {
+      nativeOperationAuthentication: { request: unexpectedFeature, cancel() {} },
+    },
     './deviceUnlockCredential.native': {
       createNativeDeviceUnlockCapability: () => ({
         prompt: { cancel() { retired.push('authentication'); } },
@@ -439,6 +451,10 @@ test('native factory explicitly wires one owned transport to all network consume
         captures.nft = [options];
         return 'nft-reader';
       },
+      createNftEnumerationReader: (options: unknown) => {
+        captures.nftEnumeration = [options];
+        return 'nft-enumeration-reader';
+      },
     },
     '../core/utxoBalanceReader.ts': {
       createUtxoBalanceReader() {
@@ -478,15 +494,17 @@ test('native factory explicitly wires one owned transport to all network consume
     captures.balance![0],
     captures.erc20![0],
     captures.transfers![0][2],
-    captures.receipt![0][0],
+    ...captures.receipt!.map(args => args[0]),
   ])
     assert.equal(options.fetch, fetcher);
-  assert.equal(captures.explorer![0][0], fetcher);
+  for (const args of captures.explorer!) assert.equal(args[0], fetcher);
   assert.equal(captures.holdings![0], fetcher);
   assert.equal(captures.tokens![0][2], 'token-reader');
   assert.equal(captures.tokens![0][5], 'holdings-reader');
   assert.equal(captures.tokens![0][6], 'nft-reader');
+  assert.equal(captures.tokens![0][7], 'nft-enumeration-reader');
   assert.equal(captures.nft![0], captures.erc20![0]);
+  assert.equal(captures.nftEnumeration![0], captures.erc20![0]);
   assert.equal(captures.activity![0].length, 4);
   assert.equal(captures.utxoActivity![0], bundle.authority);
   assert.equal(captures.utxoActivity![2], 'utxo-activity-reader');
@@ -602,6 +620,7 @@ test('public platform and native Portfolio fallback bind platform-owned fetch; N
   const react = {
     createElement: (...args: unknown[]) => args,
     useMemo: (work: () => unknown) => work(),
+    useCallback: (callback: unknown) => callback,
     useLayoutEffect() {},
     useSyncExternalStore: () => ({ account: null }),
   };

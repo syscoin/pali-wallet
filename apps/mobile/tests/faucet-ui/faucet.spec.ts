@@ -5,12 +5,17 @@ const second = '0x2222222222222222222222222222222222222222';
 const target = 'https://faucet-zk.tanenbaum.io/';
 const opened = 'Faucet opened in your browser. Paste your address there to request test funds.';
 
+test.beforeEach(async ({ page, baseURL }) => {
+  const origin = new URL(baseURL!).origin;
+  await page.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+});
+
 for (const kind of ['hd', 'watch'] as const) {
   const path = `/?faucet${kind === 'watch' ? '&watch' : ''}`;
   test(`${kind}: explicit copy and fixed handoff work from portfolio and Receive`, async ({ page, context }, testInfo) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await page.goto(path);
-    await expect(page.getByText(first, { exact: true })).toBeVisible();
+    await expect(page.getByTestId('native-faucet-copy')).toBeVisible();
     await expect(page.getByText('ZKTANENBAUM TESTNET TEST FUNDS', { exact: true })).toBeVisible();
     await expect(page.getByText('Pali does not send your address to the faucet.', { exact: false })).toBeVisible();
     expect(await page.evaluate(() => window.__nativeFaucetFixture.opened())).toEqual([]);
@@ -21,6 +26,7 @@ for (const kind of ['hd', 'watch'] as const) {
     await expect(page.getByText(opened, { exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`${kind}-faucet-portfolio.png`), fullPage: true });
     await page.getByRole('button', { name: 'Receive', exact: true }).click();
+    await expect(page.getByText(first, { exact: true })).toBeVisible();
     await expect(page.getByRole('img', { name: `QR code for zkTanenbaum Testnet address ${first}`, exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Copy address', exact: true }).click();
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(first);
@@ -41,6 +47,7 @@ for (const kind of ['hd', 'watch'] as const) {
       await expect(page.getByTestId('native-faucet-open')).toHaveCount(0);
     }
     await page.evaluate(() => window.__nativeFaucetFixture.select('zksys-testnet', 1));
+    await page.getByRole('button', { name: 'Receive', exact: true }).click();
     await expect(page.getByText(second, { exact: true })).toBeVisible();
     await expect(page.getByText(first, { exact: true })).toHaveCount(0);
     await page.getByTestId('native-faucet-open').click();

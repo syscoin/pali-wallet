@@ -616,6 +616,16 @@ it('preserves live rehydration status, but clears it on cold reset and wallet fo
 
 it('does not change EVM empty-result semantics or publish a UTXO history status', async () => {
   const evmNetwork = { ...network, kind: 'ethereum', chainId: 1 };
+  const accounts = mockStore.getState().vault.accounts;
+  mockStore.dispatch(
+    setAccounts({
+      ...accounts,
+      HDAccount: {
+        ...accounts.HDAccount,
+        0: { ...accounts.HDAccount[0], address: `0x${'11'.repeat(20)}` },
+      },
+    })
+  );
   mockStore.dispatch(setActiveNetwork(evmNetwork as any));
   mockStore.dispatch(setIsBitcoinBased(false));
   Object.defineProperty(mockController, 'ethereumTransaction', {

@@ -1,7 +1,9 @@
+import { unsignedTransferBytes } from '../../src/custody/evmFeeContracts.ts';
+import { createTestOperationAuthorizer } from '../fixtures/operationAuthorization.ts';
 import { authorizePrivateNoteReplay } from '../../../../source/wallet/privateNoteReplay.ts';
 import { getNativeSendContext, getNativeNetwork } from '../../src/custody/networkContext';
 // Synthetic public wallet only. Production never imports this fixture.
-import React, { useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
 import { Interface } from 'ethers/abi';
@@ -161,7 +163,18 @@ const rpc = new NativeTransferRpc({
     );
   },
 });
+const operationAuthorization = createTestOperationAuthorizer((credential, check) => runtime.authenticateOperation(credential, check), unsignedTransferBytes);
+const authenticationRefusals = new WeakSet<object>();
 const runtime: NativeTransferRuntime = {
+  isAuthenticationRefusal: error => !!error && typeof error === 'object' && authenticationRefusals.has(error),
+    authorizeOperation: operationAuthorization.authorizeOperation,
+    releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
+  async authenticateOperation(credential, check) {
+    check();
+    if (credential.method !== 'pin' || credential.pin !== '123456') {
+      const error = Error('INVALID_CREDENTIAL'); authenticationRefusals.add(error); throw error;
+    }
+  },
   replay(guard, transport, options) {
     return new EvmSignedReplay(signedRecords, () => ({authorizeReplay: (entry) => authorizePrivateNoteReplay(entry, guard, async () => { throw Error('Unexpected private replay'); }, async () => { throw new Error('Unexpected private withdrawal'); }),recordSession:signedRecordTestSession(guard),assertCurrent:guard,
       context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
@@ -183,6 +196,7 @@ const runtime: NativeTransferRuntime = {
   },
   async sign(transaction: EvmUnsignedTransfer, authority, intent) {
     const guard = authority.assertCurrent;
+    operationAuthorization.consume(authority.authorization, transaction, guard);
     guard();
     assertTransferIntentEnvelope(transaction, intent);
     const rawTransaction = await wallet.signTransaction({
@@ -339,6 +353,10 @@ export function Erc20SendFixture() {
     source.getSnapshot
   );
   const query = new URLSearchParams(window.location.search);
+  const inspection = query.get('inspect');
+  useEffect(() => {
+    if (inspection && /^0x[0-9a-f]{64}$/i.test(inspection)) void controller.view.recover(false, inspection);
+  }, [inspection]);
   const multi = query.has('multiple-pending');
   const [route, setRoute] = useState<{ revision: number; open: boolean; hash?: string }>(() => ({
     revision: snapshot.revision,
@@ -355,6 +373,7 @@ export function Erc20SendFixture() {
     }} />
   </> : <Text>Wallet closed</Text>;
   return <NativeSend
+    authenticationMethod="pin"
     account={{ address: wallet.address, network: 'ethereum', revision: state.revision }}
     key={snapshot.revision}
     controller={controller.view}

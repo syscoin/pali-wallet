@@ -12,12 +12,15 @@ import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import type { WalletConnectRequest } from '../src/connections/walletConnect.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 import { nativeTranslationFixture, englishI18n } from './localizationFixture.ts';
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 
 const local = '0x1111111111111111111111111111111111111111', external = '0x2222222222222222222222222222222222222222', smart = '0x3333333333333333333333333333333333333333';
 const validator = buildECDSAAuthenticator({ chainId: 1, config: { owners: [local], threshold: 1 } }).auth.validator;
 const hash = '0x' + 'ab'.repeat(32), t = englishI18n.t.bind(englishI18n);
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
-function fixture(options: { configured?: boolean; external?: boolean; deployed?: boolean; exact?: boolean; owners?: readonly string[]; corruptTarget?: 'owners' | 'data' | 'validator' } = {}) {
+function fixture(options: { authentication?: boolean; configured?: boolean; external?: boolean; deployed?: boolean; exact?: boolean; owners?: readonly string[]; corruptTarget?: 'owners' | 'data' | 'validator' } = {}) {
+  let promptActive = false, credentialWait: Promise<void> = Promise.resolve();
   let live = true, session = true, selected = 'hd:60:0', deployed = options.deployed ?? false, exact = options.exact ?? false, revision = 0;
   let allocations = 0, preparations = 0, signatures = 0, submissions = 0, metadataReads = 0, savedAccounts = 0;
   let prepareFailures = 0, connectFailures = 0, failMetadata = false, failSignature = false, failResponse = false, dispatchBeforeFailure = false;
@@ -35,14 +38,22 @@ function fixture(options: { configured?: boolean; external?: boolean; deployed?:
   const host = {
     context: () => ({ accounts: [{ id: 'hd:60:0', type: 'HDAccount', index: 0, address: local, xpub: local, label: 'Local owner' }], activeAccountId: selected, unlocked: live, networkId: 'ethereum', networkLabel: 'Ethereum',
       network: { chainId: Number(registration.chainId), currency: registration.symbol, kind: 'ethereum' as ReturnType<NativeConnectionSigningHost['context']>['network']['kind'], label: registration.name, slip44: registration.slip44, url: registration.rpcUrl } }),
-    async allocateSmartAccount(input, signal, guard, onCommitted) {
+    async allocateSmartAccount(input, signal, guard, onCommitted, authentication) {
+      if (options.authentication) {
+        assert(authentication);
+        await privateAuthentication.withNativePrivateAuthentication(authentication, signal, guard, async proof => {
+          promptActive = true;
+          try { await credentialWait; assert(!proof.aborted); guard(); }
+          finally { promptActive = false; }
+        });
+      }
       allocations++; externalAssents.push(input.externalOwnersAcknowledged); guard(); await allocationWait; guard(); assert(!signal.aborted);
       const allocation: NativeSmartCreationAllocation = Object.freeze({ account: { id: 'smart:60:0', index: 0, type: 'SmartAccount' as const, address: smart, xpub: smart, label: input.label }, networkId: 'ethereum', chainId: 1, target: input.target, assertCurrent: allocationCurrent });
       savedAccounts++; receipts.push(allocation); onCommitted(allocation);
       // An observer may run here while the new private state is not published.
       manager.revalidate(); await afterCommitWait; selected = 'smart:60:0'; guard(); assert(!signal.aborted); return allocation;
     },
-    async prepareSmartAccountCreationOperation(allocation, handoff, guard) {
+    async prepareSmartAccountCreationOperation(allocation, handoff, guard, authentication) {
       preparations++; guard(); assert.equal(allocation, receipts[0]);
       assert.throws(() => handoff.beforeSuiteOpen(Date.now() + 1000, {}), /Suite continuation/);
       if (prepareFailures-- > 0) throw Error('Pre-sign canonical read unavailable');
@@ -58,7 +69,7 @@ function fixture(options: { configured?: boolean; external?: boolean; deployed?:
         accountGasLimits: encodeSmartAccountGasLimits({ callGasLimit: 1, verificationGasLimit: 1 }), gasFees: encodeSmartAccountGasFees({ maxFeePerGas: 2, maxPriorityFeePerGas: 1 }), preVerificationGas: '1' }) } as PreparedSmartAccountOperation;
       return new NativeSmartAccountOperation({ account: smart, network: getNativeNetwork('ethereum'), authorizationExpiresAt: handoff.expiresAt, intent, assertCurrent: guard, background() {},
         async prepare() { guard(); return intent.kind === 'authenticator' && exact ? { kind: 'already-configured' } : { kind: 'authorization', intent, operation: prepared }; },
-        async sign() { guard(); handoff.beforeSignature(); signatures++; if (failSignature) throw Error('Uncertain signing outcome'); return '0xsigned'; },
+        async sign(_prepared, _guard, signal) { if (options.authentication) { assert(authentication); await privateAuthentication.withNativePrivateAuthentication(authentication, signal, guard, async proof => { promptActive = true; try { await credentialWait; assert(!proof.aborted); guard(); } finally { promptActive = false; } }); } guard(); handoff.beforeSignature(); signatures++; if (failSignature) throw Error('Uncertain signing outcome'); return '0xsigned'; },
         async submit(_prepared, _signature, _signal, check, reviewPayer, broadcast) {
           await reviewPayer({ purpose: 'submit-operation', transaction: { from: local, to: smart, nonce: '0', value: '0', data: '0x', gasLimit: '1', type: 2, chainId: '1', accessList: [], maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, maximumFeeUnits: '2', maximumTotalUnits: '2', coveredFeeUnits: '0' }, check);
           check(); submissions++; if (intent.kind === 'deploy') deployed = true; else exact = true; broadcast(hash, 'submit-operation'); return hash;
@@ -68,6 +79,7 @@ function fixture(options: { configured?: boolean; external?: boolean; deployed?:
     },
   } satisfies Pick<NativeConnectionSigningHost, 'context' | 'allocateSmartAccount' | 'prepareSmartAccountCreationOperation'>;
   manager = new NativeSmartPreparationRequests({ host: () => host, foreground: () => true, changed() { revision++; }, checkSite: async () => ({ isBlacklisted: false }),
+    bindAuthentication: (scope, check) => privateAuthentication.bindNativePrivateAuthentication(scope, { assertCurrent: check, isPromptActive: () => promptActive }),
     async connect(_wire, allocation, signal, check) {
       check(); connections.push(allocation);
       await new Promise<void>((resolve, reject) => {
@@ -82,6 +94,7 @@ function fixture(options: { configured?: boolean; external?: boolean; deployed?:
   const review = () => manager.review(revision)!;
   const enqueue = (input = request, order = 1) => manager.enqueue(order === 1 ? wire : { ...wire, id: wire.id + order }, input, { ...owner, order });
   return { manager, enqueue, review, wire, owner, receipts, responses, connections, externalAssents,
+    holdCredential(wait: Promise<void>) { credentialWait = wait; },
     counts: () => ({ allocations, preparations, signatures, submissions, metadataReads, savedAccounts }),
     failPrepare(value = 1) { prepareFailures = value; }, failConnect(value = 1) { connectFailures = value; }, failMetadata(value: boolean) { failMetadata = value; },
     failSign() { failSignature = true; }, failRespond(afterDispatch = false) { failResponse = true; dispatchBeforeFailure = afterDispatch; },
@@ -221,18 +234,21 @@ test('FIFO and a synchronous double approval admit only the displayed request on
 });
 
 function reviewScreenFixture() {
+  const authentication = privateAuthentication.createNativePrivateAuthenticationScope();
   let review: NativeSmartPreparationReview = { id: 'preparation-1', revision: 7, appName: 'Reported app', origin: 'https://app.example', verification: { validation: 'UNKNOWN', isScam: false }, label: 'Requested account', requestedAuthenticatorId: 'ecdsa', networkLabel: 'Ethereum', chainId: '1', expiresAt: Date.now() + 60000, busy: false, error: null, externalOwners: [external], requestedOwners: [external], requestedThreshold: 1, accountAddress: null, operation: null, canRetry: false };
   const actions: unknown[][] = [], events = new Map<string, (...args: any[]) => void>();
   const native = { AppState: { currentState: 'active', addEventListener(name: string, callback: (...args: any[]) => void) { events.set(name, callback); return { remove() { events.delete(name); } }; } }, BackHandler: { addEventListener(_name: string, callback: () => void) { events.set('back', callback); return { remove() {} }; } }, Platform: { OS: 'android' }, StyleSheet: { create: (value: unknown) => value }, View: 'View', Switch: 'Switch' };
-  const controller = { getSnapshot: () => ({ preparationReview: review }), async approveSmartPreparation(...args: unknown[]) { actions.push(['approve', ...args]); }, async rejectSmartPreparation(...args: unknown[]) { actions.push(['reject', ...args]); }, async confirmSmartPreparationPayer(...args: unknown[]) { actions.push(['payer', ...args]); }, async retrySmartPreparationMetadata(...args: unknown[]) { actions.push(['metadata', ...args]); } };
+  const controller = { isRequestAuthenticating: (id: string) => id === 'preparation-1' && authentication.isAuthenticating(), getSnapshot: () => ({ preparationReview: review }), async approveSmartPreparation(...args: unknown[]) { actions.push(['approve', ...args]); }, async rejectSmartPreparation(...args: unknown[]) { actions.push(['reject', ...args]); }, async confirmSmartPreparationPayer(...args: unknown[]) { actions.push(['payer', ...args]); }, async retrySmartPreparationMetadata(...args: unknown[]) { actions.push(['metadata', ...args]); } };
   const fixture = screenFixture(new URL('../src/screens/NativeSmartPreparationReview.tsx', import.meta.url), 'NativeSmartPreparationReview', {
     'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../platform/localization': nativeTranslationFixture,
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} }, './DappSiteStatus': { DappSiteStatus: 'Site' }, './NativeSmartAccountOperation': { NativeSmartAccountOperationContent: 'Operation' },
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
   });
   const render = () => screenElements(fixture.render({ review, controller }));
   const checkbox = () => render().find(element => element.type === 'Switch')!;
   const confirm = () => render().find(element => element.type === 'Button' && element.props.title === t('buttons.confirm'))!;
-  return { render, checkbox, confirm, actions, change(value: Partial<NativeSmartPreparationReview>) { review = { ...review, ...value }; }, close: fixture.close,
+  return { render, checkbox, confirm, actions, authentication, change(value: Partial<NativeSmartPreparationReview>) { review = { ...review, ...value }; }, close: fixture.close,
+    event(state: string) { native.AppState.currentState = state; events.get('change')?.(state); }, blur() { events.get('blur')?.(); },
     background() { native.AppState.currentState = 'background'; events.get('change')?.('background'); }, back() { events.get('back')?.(); } };
 }
 
@@ -258,4 +274,57 @@ test('stale revision, replacement request, background and unmount revoke held cr
       held(); await tick(); assert(!f.actions.some(action => action[0] === 'approve'));
     } finally { f.close(); }
   }
+});
+
+test('creation keeps only its own prompt, preserves assent across busy snapshots and passes status to operation content', async () => {
+  const f = reviewScreenFixture(), held = Promise.withResolvers<void>();
+  const binding = privateAuthentication.bindNativePrivateAuthentication(f.authentication, { assertCurrent() {}, isPromptActive: () => true });
+  const proof = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, () => held.promise);
+  try {
+    f.checkbox().props.onValueChange(true);
+    const press = f.confirm().props.onPress;
+    f.event('inactive'); f.blur(); press(); assert.deepEqual(f.actions, []);
+    f.change({ revision: 8, busy: true }); f.render();
+    f.event('active'); held.resolve(); await proof;
+    f.change({ revision: 9, busy: false }); f.confirm().props.onPress(); await tick();
+    assert.deepEqual(f.actions, [['approve', 'preparation-1', 9, true]]);
+    f.change({ operation: { phase: 'authorize' } as NativeSmartPreparationReview['operation'] });
+    const content = f.render().find(node => node.type === 'Operation')!;
+    assert.equal(typeof content.props.authentication.isAuthenticating, 'function');
+    assert.equal(content.props.authentication.isAuthenticating(), false);
+    assert.deepEqual(Object.keys(content.props.authentication), ['isAuthenticating']);
+  } finally { held.resolve(); await proof.catch(() => undefined); f.close(); }
+});
+
+for (const boundary of ['foreign-prompt', 'background', 'back'] as const) test(`creation ${boundary} still retires assent during an OS prompt`, async () => {
+  const f = reviewScreenFixture(), held = Promise.withResolvers<void>();
+  const scope = boundary === 'foreign-prompt' ? privateAuthentication.createNativePrivateAuthenticationScope() : f.authentication;
+  const binding = privateAuthentication.bindNativePrivateAuthentication(scope, { assertCurrent() {}, isPromptActive: () => true });
+  const proof = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, () => held.promise);
+  try {
+    f.checkbox().props.onValueChange(true); const press = f.confirm().props.onPress;
+    if (boundary === 'back') f.back(); else f.event(boundary === 'background' ? 'background' : 'inactive');
+    f.event('active'); held.resolve(); await proof; press(); await tick();
+    assert.deepEqual(f.actions, [['reject', 'preparation-1']]);
+  } finally { held.resolve(); await proof.catch(() => undefined); scope.retire(); f.close(); }
+});
+
+
+test('Smart preparation request keeps one prompt owner across allocation and selected-account transition', async () => {
+  const f = fixture({ configured: true, authentication: true }), allocation = Promise.withResolvers<void>(), signing = Promise.withResolvers<void>();
+  f.holdCredential(allocation.promise); f.enqueue(); const id = f.review().id;
+  try {
+    const allocating = f.manager.approve(id, false); await tick();
+    assert.equal(f.manager.isRequestAuthenticating(id), true);
+    assert.equal(f.manager.isRequestAuthenticating('preparation-other'), false);
+    allocation.resolve(); await allocating;
+    assert.equal(f.review().operation!.phase, 'authorize');
+    assert.equal(f.manager.isRequestAuthenticating(id), false);
+    f.holdCredential(signing.promise); const authorizing = f.manager.approve(id, false); await tick();
+    assert.equal(f.manager.isRequestAuthenticating(id), true, 'same request remains bound after its admitted account selection');
+    signing.resolve(); await tick();
+    const payer = f.review().operation!.payerReview; assert(payer); f.manager.confirmPayer(id, payer.id); await authorizing;
+    assert.equal(f.manager.isRequestAuthenticating(id), false);
+    assert(!JSON.stringify(f.review()).includes('authentication'));
+  } finally { allocation.resolve(); signing.resolve(); await f.manager.dispose(); }
 });

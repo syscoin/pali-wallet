@@ -80,6 +80,7 @@ import {
   readEvmRpcQuantity,
 } from '../../../shared/evmTransactionObservation';
 import { getEvmTransferCost } from '../../../shared/evmTransferCost';
+import { observeGuardianActivity } from '../../../shared/guardianActivityObservation';
 import {
   BLOCKBOOK_TICKER_PATH,
   readBlockbookNativeQuote,
@@ -105,8 +106,13 @@ import {
   getWalletNavigationScope,
   IWalletNavigationScope,
 } from '../../../utils/navigationState';
+import { guardianStatusProvider } from '../../../utils/smartAccount/guardianStatusProvider';
 import { signSmartAccountOwnerIntent } from '../../../utils/smartAccount/ownerSigning.ts';
 import { assertAccountCreationAvailable } from '../../../wallet/accountRecords';
+import {
+  createBrowserLocalPasskeyStorage,
+  LOCAL_PASSKEY_STORAGE_KEY,
+} from '../../../wallet/browserLocalPasskeyStorage';
 import { readRetainedEoaCall } from '../../../wallet/dappCallsBundles.ts';
 import {
   createEvmSignedRecordLifecycle,
@@ -124,7 +130,17 @@ import {
   importAccountWithRecovery,
   type ImportedRecoveryEntry,
 } from '../../../wallet/importedAccountRecovery';
+import {
+  createOwnedLocalPasskeyController,
+  type LocalPasskeyAuthority,
+  type LocalPasskeyEnrollment,
+} from '../../../wallet/localPasskeyController';
+import {
+  localPasskeyError,
+  type LocalPasskeyController,
+} from '../../../wallet/localPasskeyTypes';
 import { authorizePrivateNoteReplay } from '../../../wallet/privateNoteReplay.ts';
+import { createPrivateVaultSession } from '../../../wallet/privateVaultInspection';
 import {
   signVerifiedPsbt,
   verifyPsbtEnvelope,
@@ -149,6 +165,7 @@ import {
 } from '../../../wallet/utxoSignedRecords';
 import {
   observeRetainedUtxo,
+  reconcileRetainedUtxo,
   createUtxoSubmissionDisposition,
   submitRetainedUtxo,
   submitReviewedUtxo,
@@ -410,7 +427,10 @@ import {
   tokenBalanceKey,
 } from './balances/ReceiptBalanceRefresh';
 import { IBalancesManager } from './balances/types';
-import { createBrowserKeyringHost } from './browserKeyringHost';
+import {
+  createBrowserKeyringHost,
+  readBrowserDeviceUnlockVaultPair,
+} from './browserKeyringHost';
 import ChainListService from './chainlist';
 import {
   inspectWorkerAssetState,
@@ -436,6 +456,7 @@ import {
   createExtensionRetainedCancellation,
   readLiveEvmChainId,
 } from './evmSignedReplay';
+import { ExtensionActivityNotifications } from './extensionActivityNotifications';
 import {
   captureReviewedNativeEvmTransfer,
   freshSdkGasEstimate,
@@ -492,6 +513,10 @@ import {
 } from './transactions/types';
 import { createUtxoActivityParticipantProjection } from './transactions/utxoActivityParticipants';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
+import type {
+  ActivityNotificationFact,
+  ActivityNotificationScope,
+} from '../../../shared/activityNotifications';
 import type { EvmAutoNonceSnapshot } from '../../../shared/evmAutoNonce';
 import type { SmartAccountControllerAuthority } from '../../../shared/smartAccountControllerAuthority';
 import type {
@@ -509,6 +534,10 @@ import type {
   EvmSubmissionContext,
   KeyringHost,
 } from '@sidhujag/sysweb3-keyring';
+import type {
+  DeviceUnlockControls,
+  DeviceUnlockPort,
+} from '@sidhujag/sysweb3-keyring/cjs/keyring-core';
 import type {
   SentryAuthorityRole,
   SentryAuthorityScheme,
@@ -607,6 +636,10 @@ class MainController {
   // Map of keyrings indexed by slip44
   private keyrings: Map<number, KeyringManager> = new Map();
   private keyringHost?: KeyringHost;
+  private localPasskeyControls?: WeakMap<KeyringManager, DeviceUnlockControls>;
+  private localPasskeySdkPort?: DeviceUnlockPort;
+  private localPasskeyControllers?: Set<LocalPasskeyController>;
+  private retiredPasskeyKeyrings?: WeakSet<KeyringManager>;
 
   public account: {
     eth: IEthAccountController;
@@ -643,6 +676,8 @@ class MainController {
   private isNetworkSwitching = false;
   private isRemovingNetwork = false;
   private walletSessionGeneration = 0;
+  private extensionActivityNotifications?: ExtensionActivityNotifications;
+  private guardianNotificationScan?: Promise<void>;
   private smartOwnerInvalidators?: Set<() => void>;
   private utxoWalletReviewKey?: Promise<CryptoKey>;
   private activeUtxoReads?: Set<AbortController>;
@@ -944,6 +979,7 @@ class MainController {
             key.startsWith('pali-slh-dsa-precompute:') ||
             key.startsWith('pali-slh-dsa-smart-account-setup:') ||
             key.startsWith('pali-slh-dsa-prepared-smart-account-signer:v1:') ||
+            key === LOCAL_PASSKEY_STORAGE_KEY ||
             key === 'state' ||
             key.startsWith('state-')
         );
@@ -1292,13 +1328,65 @@ class MainController {
 
   public async listRetainedUtxoTransfers() {
     const signing = this.captureUtxoSigningContext();
+    return this.listCapturedRetainedUtxoTransfers(signing);
+  }
+
+  public async refreshRetainedUtxoTransfers() {
+    const signing = this.captureUtxoSigningContext();
+    await this.reconcileRetainedUtxoTransfers(signing);
+    return this.listCapturedRetainedUtxoTransfers(signing);
+  }
+
+  private listCapturedRetainedUtxoTransfers(
+    signing: ReturnType<MainController['captureUtxoSigningContext']>
+  ) {
     const network = store.getState().vault.activeNetwork;
+    signing.assertWalletReviewCurrent();
     return this.getRetainedUtxoRecords().list(
       {
         keyring: signing.keyring,
         assertCurrent: signing.assertWalletReviewCurrent,
       },
       this.utxoRecordOwner(network, signing.context.account)
+    );
+  }
+
+  private async reconcileRetainedUtxoTransfers(
+    captured?: ReturnType<MainController['captureUtxoSigningContext']>
+  ): Promise<void> {
+    // Public history polling also runs while locked. It must never open the
+    // encrypted journal or acquire a private-record session in that state.
+    if (!this.isUnlocked()) return;
+    const signing = captured ?? this.captureUtxoSigningContext();
+    const assertCurrent = signing.assertWalletReviewCurrent;
+    assertCurrent();
+    const { vault, vaultGlobal } = store.getState();
+    const network = vault.activeNetwork;
+    const owner = this.utxoRecordOwner(network, signing.context.account);
+    const backendChain = resolvePinnedUtxoBackendChain(
+      network,
+      vaultGlobal.networks?.syscoin?.[network.chainId]
+    );
+    if (!backendChain)
+      throw new Error('Verify this UTXO network before checking transfers');
+    await this.withUtxoReadOwner(assertCurrent, (signal) =>
+      reconcileRetainedUtxo({
+        records: this.getRetainedUtxoRecords(),
+        session: { keyring: signing.keyring, assertCurrent },
+        owner,
+        backendChain,
+        signal,
+        async fetch(input, init) {
+          if (typeof input !== 'string' || init?.method !== 'GET')
+            throw new Error('Invalid saved UTXO status request');
+          return withWalletBackend(input, () => {
+            assertCurrent();
+            if (init.signal?.aborted)
+              throw new Error('Saved UTXO status changed');
+            return globalThis.fetch(input, init);
+          });
+        },
+      })
     );
   }
 
@@ -2098,7 +2186,17 @@ class MainController {
       let targetKeyring = this.keyrings.get(slip44);
       let keyringWasJustCreated = false;
 
-      if (!targetKeyring) {
+      if (
+        isSwitchingSlip44 &&
+        targetKeyring &&
+        this.retiredPasskeyKeyrings?.has(targetKeyring)
+      ) {
+        targetKeyring = await this.createFreshTransferTarget(
+          slip44,
+          assertCurrentSwitch
+        );
+        keyringWasJustCreated = true;
+      } else if (!targetKeyring) {
         console.log('[MainController] Creating new keyring on demand');
         targetKeyring = this.createKeyringOnDemand();
         keyringWasJustCreated = true;
@@ -2149,6 +2247,9 @@ class MainController {
               assertCurrentSwitch
             );
           preparedTransfer.transfer();
+          (this.retiredPasskeyKeyrings ??= new WeakSet()).add(
+            stateTransaction.sourceKeyring
+          );
 
           // CRITICAL FIX: Only update activeSlip44 AFTER successful session transfer
           // This ensures atomic state change to prevent race conditions
@@ -2289,12 +2390,43 @@ class MainController {
     }
   }
 
+  private async createFreshTransferTarget(
+    slip44: number,
+    assertCurrent: () => void
+  ): Promise<KeyringManager> {
+    assertSynchronousEvmFeeGuard(assertCurrent);
+    const previous = this.keyrings.get(slip44);
+    if (previous) await previous.destroy();
+    assertSynchronousEvmFeeGuard(assertCurrent);
+    // The SDK permanently retires source device-unlock controls on transfer.
+    // Returning to that chain requires a fresh recipient, never reactivated controls.
+    const target = this.createKeyringOnDemand();
+    this.keyrings.set(slip44, target);
+    return target;
+  }
+
   private createKeyringOnDemand(): KeyringManager {
     assertEvmSignedRecordSdk();
     const host = (this.keyringHost ??= createBrowserKeyringHost(
-      chrome.storage.local
+      chrome.storage.local,
+      {
+        readCredential: (pair) => {
+          if (!this.localPasskeySdkPort)
+            return Promise.reject(localPasskeyError());
+          return this.localPasskeySdkPort.readCredential(pair);
+        },
+        writeCredential: (credential, check) => {
+          if (!this.localPasskeySdkPort)
+            return Promise.reject(localPasskeyError());
+          return this.localPasskeySdkPort.writeCredential(credential, check);
+        },
+      }
     ));
+    let controls: DeviceUnlockControls | undefined;
     const keyring = new KeyringManager(host, {
+      receiveDeviceUnlock: (value) => {
+        controls = value;
+      },
       ledgerHost: getLedgerHost(),
       trezorHost: createTrezorWebExtensionHost({
         manifest: {
@@ -2308,6 +2440,8 @@ class MainController {
       captureEvmSubmission: (context) =>
         this.captureEvmSignedSubmission(keyring, context),
     });
+    if (controls)
+      (this.localPasskeyControls ??= new WeakMap()).set(keyring, controls);
 
     keyring.setVaultStateGetter(readKeyringVaultState);
 
@@ -3113,7 +3247,7 @@ class MainController {
     const generation = this.walletSessionGeneration;
     const keyring = this.getActiveKeyring();
     if (!keyring.isUnlocked()) throw new Error('privacy_vault_locked');
-    return {
+    return createPrivateVaultSession({
       generation,
       keyring,
       assertCurrent: () => {
@@ -3125,7 +3259,7 @@ class MainController {
           throw new Error('privacy_vault_session_changed');
         }
       },
-    };
+    });
   }
 
   private capturePrivateVaultAcknowledgementSession(
@@ -3147,7 +3281,7 @@ class MainController {
         throw new Error('privacy_vault_session_changed');
     };
     assertCurrent();
-    return Object.freeze({
+    return createPrivateVaultSession({
       generation: session.generation,
       keyring,
       assertCurrent,
@@ -3156,6 +3290,9 @@ class MainController {
 
   private advanceWalletSession(): void {
     this.walletSessionGeneration += 1;
+    this.localPasskeyControllers?.forEach((controller) => {
+      void controller.dispose();
+    });
     this.smartOwnerInvalidators?.forEach((retire) => retire());
     this.postSwitchHistorySave = undefined;
     this.activeUtxoReads?.forEach((operation) => operation.abort());
@@ -3308,8 +3445,11 @@ class MainController {
               this.privateVaultNoteReader
                 ? this.privateVaultNoteReader(identity)
                 : Promise.resolve({ phase: 'waiting' }),
-            authenticate: (password, session, reveal) =>
-              this.authenticatePrivateVault(password, session, reveal),
+            authenticate: (password, session, reveal) => {
+              if (typeof password !== 'string')
+                return Promise.reject(new Error('privacy_vault_unavailable'));
+              return this.authenticatePrivateVault(password, session, reveal);
+            },
           })
         )
         .catch(() => {
@@ -4816,6 +4956,212 @@ class MainController {
     });
   }
 
+  public createLocalPasskeyController(
+    authority: LocalPasskeyAuthority
+  ): LocalPasskeyController {
+    let retired = false;
+    const generation = this.walletSessionGeneration;
+    const walletGeneration = this.walletStateGeneration;
+    const keyring = this.getActiveKeyring();
+    const vault = store.getState().vault;
+    const selection = { ...vault.activeAccount };
+    const accountIdentity = (account: IKeyringAccountState | undefined) =>
+      JSON.stringify([
+        account?.id,
+        account?.address,
+        account?.xpub,
+        account?.isLedgerWallet,
+        account?.isTrezorWallet,
+        account?.isImported,
+        account?.isSmartAccount,
+      ]);
+    const networkIdentity = (network: INetwork) =>
+      JSON.stringify([
+        network.kind,
+        network.chainId,
+        network.url,
+        network.slip44,
+      ]);
+    const account = accountIdentity(
+      vault.accounts[selection.type]?.[selection.id]
+    );
+    const network = networkIdentity(vault.activeNetwork);
+    const slip44 = store.getState().vaultGlobal.activeSlip44;
+    const check = () => {
+      assertSynchronousEvmFeeGuard(authority.assertCurrent);
+      const current = store.getState();
+      if (
+        retired ||
+        authority.signal.aborted ||
+        walletPersistenceGate.blocked ||
+        generation !== this.walletSessionGeneration ||
+        walletGeneration !== this.walletStateGeneration ||
+        keyring !== this.getActiveKeyring() ||
+        current.vaultGlobal.activeSlip44 !== slip44 ||
+        networkIdentity(current.vault.activeNetwork) !== network ||
+        current.vault.activeAccount.id !== selection.id ||
+        current.vault.activeAccount.type !== selection.type ||
+        accountIdentity(
+          current.vault.accounts[selection.type]?.[selection.id]
+        ) !== account ||
+        this.getWalletSetupStatus()
+      )
+        throw localPasskeyError();
+    };
+    check();
+    let pairFingerprint: string | undefined;
+    const readPair = async () => {
+      check();
+      const pair = await readBrowserDeviceUnlockVaultPair(chrome.storage.local);
+      check();
+      if (
+        !pair ||
+        (pairFingerprint !== undefined &&
+          pair.pairFingerprint !== pairFingerprint)
+      )
+        throw localPasskeyError();
+      pairFingerprint = pair.pairFingerprint;
+      return pair;
+    };
+    const randomId = () => crypto.randomUUID().replace(/-/g, '');
+    const origin = chrome.runtime.getURL('').replace(/\/$/, '');
+    const storage = createBrowserLocalPasskeyStorage({
+      storage: chrome.storage.local,
+      runExclusive: (work) => walletPersistenceMutex.runExclusive(work),
+      readVaultPair: readPair,
+      randomId,
+      origin,
+      assertCurrent: check,
+    });
+    const run = <T>(task: () => Promise<T>) =>
+      this.authenticationMutex.runExclusive(async () => {
+        check();
+        await this.prepareWalletRecoveryAccess();
+        check();
+        await readPair();
+        const remaining = await this.checkRateLimit();
+        check();
+        if (remaining > 0)
+          throw new Error(
+            `Too many failed attempts. Please wait ${remaining} seconds before trying again.`
+          );
+        return task();
+      });
+    const withSdk = async <T>(
+      enrollment: LocalPasskeyEnrollment,
+      action: (controls: DeviceUnlockControls) => Promise<T>
+    ) => {
+      check();
+      const controls = this.localPasskeyControls?.get(keyring);
+      if (!controls || this.localPasskeySdkPort) throw localPasskeyError();
+      this.localPasskeySdkPort = enrollment.sdkPort;
+      try {
+        return await action(controls);
+      } finally {
+        if (this.localPasskeySdkPort === enrollment.sdkPort)
+          this.localPasskeySdkPort = undefined;
+      }
+    };
+    const controller = createOwnedLocalPasskeyController({
+      authority: { signal: authority.signal, assertCurrent: check },
+      storage,
+      origin,
+      crypto,
+      randomId,
+      now: () => performance.now(),
+      wallTime: Date.now,
+      issue: (enrollment, password, assertCurrent) =>
+        run(async () => {
+          check();
+          assertSynchronousEvmFeeGuard(assertCurrent);
+          if (!keyring.isUnlocked()) throw localPasskeyError();
+          const accepted = await withSdk(enrollment, (controls) =>
+            enrollment.issue(
+              async (guard) => {
+                const result = await controls.issue(password, guard);
+                if (
+                  result === false &&
+                  walletGeneration === this.walletStateGeneration
+                ) {
+                  // A definitive password verdict is charged once to the same vault,
+                  // even if its document retired while the KDF was running.
+                  const observed = await readBrowserDeviceUnlockVaultPair(
+                    chrome.storage.local
+                  );
+                  if (
+                    walletGeneration === this.walletStateGeneration &&
+                    observed?.pairFingerprint === pairFingerprint
+                  )
+                    await this.recordFailedAttempt();
+                }
+                return result;
+              },
+              assertCurrent,
+              null
+            )
+          );
+          check();
+          await readPair();
+          assertSynchronousEvmFeeGuard(assertCurrent);
+          if (accepted) {
+            await this.resetRateLimit();
+            check();
+          }
+          return accepted;
+        }),
+      resume: (enrollment, assertCurrent) =>
+        run(async () => {
+          check();
+          assertSynchronousEvmFeeGuard(assertCurrent);
+          if (keyring.isUnlocked()) throw localPasskeyError();
+          let complete = false;
+          try {
+            const accepted = await withSdk(enrollment, (controls) =>
+              enrollment.resume(
+                (guard) => controls.resume(guard),
+                assertCurrent,
+                () => keyring.lockWallet()
+              )
+            );
+            check();
+            await readPair();
+            assertSynchronousEvmFeeGuard(assertCurrent);
+            if (!accepted) return false;
+            await this.finishControllerUnlock(
+              generation,
+              keyring,
+              false,
+              false,
+              assertCurrent
+            );
+            check();
+            complete = true;
+            return true;
+          } finally {
+            if (!complete) await keyring.lockWallet();
+          }
+        }),
+      disable: (action, password, assertCurrent) =>
+        run(async () => {
+          check();
+          assertSynchronousEvmFeeGuard(assertCurrent);
+          if (!keyring.isUnlocked()) throw localPasskeyError();
+          await this.getSeedForCurrentSession(password, generation);
+          check();
+          await readPair();
+          assertSynchronousEvmFeeGuard(assertCurrent);
+          await action();
+          check();
+        }),
+      onDispose: () => {
+        retired = true;
+        this.localPasskeyControllers?.delete(controller);
+      },
+    });
+    (this.localPasskeyControllers ??= new Set()).add(controller);
+    return controller;
+  }
+
   public async unlockFromController(pwd: string): Promise<boolean> {
     const generation = this.walletSessionGeneration;
     return this.authenticationMutex.runExclusive(() =>
@@ -4843,7 +5189,6 @@ class MainController {
 
     // Ensure clean network state during login
     store.dispatch(resetNetworkStatus());
-    const controller = getController();
     let authenticated = false;
 
     try {
@@ -4897,153 +5242,13 @@ class MainController {
       authenticated = true;
       this.assertCurrentWalletSession(generation, keyring);
 
-      console.log('[MainController] Unlock successful');
-
-      // Reset failed attempts on successful unlock (persisted)
-      await this.resetRateLimit();
-      this.assertCurrentWalletSession(generation, keyring);
-      // A new authenticated session never inherits an older unsigned draft.
-      // Password verification inside an existing session keeps its caller.
-      if (!wasUnlocked) {
-        await clearNavigationState();
-        this.assertCurrentWalletSession(generation, keyring);
-      }
-
-      // Check if this is a migration from old vault format that needs account creation
-      if (needsAccountCreation) {
-        const assertSafeFirstAccountCreation = () => {
-          const migrationVault = store.getState().vault;
-          assertCompleteHDAccountData(migrationVault.accounts.HDAccount);
-          // The keyring flag also covers a stale/missing active selection. It is
-          // not permission to replace an existing default account or its data.
-          if (
-            Object.keys(migrationVault.accounts.HDAccount).length > 0 ||
-            migrationVault.activeAccount.type !==
-              KeyringAccountType.HDAccount ||
-            migrationVault.activeAccount.id !== 0
-          ) {
-            throw new AccountRecoveryRequiredError();
-          }
-          assertEmptyHDAccountMetadata(migrationVault);
-        };
-        assertSafeFirstAccountCreation();
-
-        console.log(
-          '[MainController] Detected migration from old vault format - creating first account'
-        );
-
-        try {
-          const account = await keyring.createFirstAccount();
-          this.assertCurrentWalletSession(generation, keyring);
-          assertCompleteHDAccountData({ 0: account });
-          // Recheck after asynchronous derivation, immediately before commit.
-          assertSafeFirstAccountCreation();
-
-          console.log(
-            '[MainController] Created first account after migration:',
-            account.address
-          );
-
-          // Add account to Redux state
-          store.dispatch(
-            createAccount({
-              account: account,
-              accountType: KeyringAccountType.HDAccount,
-            })
-          );
-
-          store.dispatch(
-            setActiveAccount({
-              id: account.id,
-              type: KeyringAccountType.HDAccount,
-            })
-          );
-
-          // Save the newly created account
-          this.saveWalletState('migration-account-creation', true);
-        } catch (error) {
-          console.error(
-            '[MainController] Failed to create account after migration:',
-            error
-          );
-          throw new Error('Failed to create account after migration');
-        }
-      }
-
-      // Never rebuild persisted accounts as a side effect of authentication.
-      assertCompleteHDAccountData(store.getState().vault.accounts.HDAccount);
-      this.assertCurrentWalletSession(generation, keyring);
-
-      // Set flags to indicate we just unlocked and are starting up
-      this.justUnlocked = true;
-      this.isStartingUp = true;
-
-      // Redux state should already be correct from persistence
-      // The active keyring and Redux should be in sync - no need to update
-
-      controller.dapp
-        .handleStateChange(PaliEvents.lockStateChanged, {
-          method: PaliEvents.lockStateChanged,
-          params: {
-            // Don't send accounts array - let DAppController determine accounts per dapp
-            isUnlocked: true, // We just unlocked successfully
-          },
-        })
-        .catch((error) => {
-          console.error(
-            '[MainController] Failed to notify dapps about unlock:',
-            error
-          );
-          // Non-critical - popup update failure doesn't affect unlock success
-        });
-
-      // No need to update xprv in Redux store - private keys should only be accessed
-      // through KeyringManager methods for security
-      store.dispatch(setLastLogin());
-
-      // Run full Pali update in background (non-blocking)
-      setTimeout(() => {
-        if (generation !== this.walletSessionGeneration) return;
-        // Fetch fresh fiat prices immediately after successful unlock
-        Promise.all([
-          this.setFiat().catch((error) =>
-            console.error(
-              '[MainController] Failed to set fiat after unlock:',
-              error
-            )
-          ),
-          this.getLatestUpdateForCurrentAccount(true, true, false, true).catch(
-            (error) =>
-              console.error(
-                '[MainController] Failed to update account after unlock:',
-                error
-              )
-          ),
-        ]);
-      }, 10);
-
-      // Start auto-lock timer if enabled (> 0)
-      const { advancedSettings } = store.getState().vaultGlobal;
-      {
-        const _raw = (advancedSettings?.autolock as any) ?? 0;
-        const _minutes = Number(_raw);
-        if (Number.isFinite(_minutes) && _minutes > 0) {
-          await this.startAutoLockTimer();
-        }
-      }
-
-      // Clear startup flags after 2 seconds
-      setTimeout(() => {
-        if (generation !== this.walletSessionGeneration) return;
-        this.justUnlocked = false;
-        this.isStartingUp = false;
-
-        // Also clean up stale network quality data after startup
-        store.dispatch(clearNetworkQualityIfStale());
-      }, 2000); // 2 seconds - enough time for all initialization
-
-      this.assertCurrentWalletSession(generation, keyring);
-      return canLogin;
+      return await this.finishControllerUnlock(
+        generation,
+        keyring,
+        wasUnlocked,
+        needsAccountCreation,
+        () => undefined
+      );
     } catch (error) {
       console.error('[MainController] Unlock error:', error);
 
@@ -5065,6 +5270,168 @@ class MainController {
 
       throw error;
     }
+  }
+
+  private async finishControllerUnlock(
+    generation: number,
+    keyring: KeyringManager,
+    wasUnlocked: boolean,
+    needsAccountCreation: boolean | undefined,
+    assertOwner: () => void
+  ): Promise<boolean> {
+    const check = () => {
+      this.assertCurrentWalletSession(generation, keyring);
+      assertSynchronousEvmFeeGuard(assertOwner);
+      this.assertCurrentWalletSession(generation, keyring);
+    };
+    check();
+    const controller = getController();
+    console.log('[MainController] Unlock successful');
+
+    // Reset failed attempts on successful unlock (persisted)
+    await this.resetRateLimit();
+    check();
+    // A new authenticated session never inherits an older unsigned draft.
+    // Password verification inside an existing session keeps its caller.
+    if (!wasUnlocked) {
+      await clearNavigationState();
+      check();
+    }
+
+    // Check if this is a migration from old vault format that needs account creation
+    if (needsAccountCreation) {
+      const assertSafeFirstAccountCreation = () => {
+        const migrationVault = store.getState().vault;
+        assertCompleteHDAccountData(migrationVault.accounts.HDAccount);
+        // The keyring flag also covers a stale/missing active selection. It is
+        // not permission to replace an existing default account or its data.
+        if (
+          Object.keys(migrationVault.accounts.HDAccount).length > 0 ||
+          migrationVault.activeAccount.type !== KeyringAccountType.HDAccount ||
+          migrationVault.activeAccount.id !== 0
+        ) {
+          throw new AccountRecoveryRequiredError();
+        }
+        assertEmptyHDAccountMetadata(migrationVault);
+      };
+      assertSafeFirstAccountCreation();
+
+      console.log(
+        '[MainController] Detected migration from old vault format - creating first account'
+      );
+
+      try {
+        const account = await keyring.createFirstAccount();
+        check();
+        assertCompleteHDAccountData({ 0: account });
+        // Recheck after asynchronous derivation, immediately before commit.
+        assertSafeFirstAccountCreation();
+
+        console.log(
+          '[MainController] Created first account after migration:',
+          account.address
+        );
+
+        // Add account to Redux state
+        store.dispatch(
+          createAccount({
+            account: account,
+            accountType: KeyringAccountType.HDAccount,
+          })
+        );
+
+        store.dispatch(
+          setActiveAccount({
+            id: account.id,
+            type: KeyringAccountType.HDAccount,
+          })
+        );
+
+        // Save the newly created account
+        this.saveWalletState('migration-account-creation', true);
+      } catch (error) {
+        console.error(
+          '[MainController] Failed to create account after migration:',
+          error
+        );
+        throw new Error('Failed to create account after migration');
+      }
+    }
+
+    // Never rebuild persisted accounts as a side effect of authentication.
+    assertCompleteHDAccountData(store.getState().vault.accounts.HDAccount);
+    check();
+
+    // Set flags to indicate we just unlocked and are starting up
+    this.justUnlocked = true;
+    this.isStartingUp = true;
+
+    // Redux state should already be correct from persistence
+    // The active keyring and Redux should be in sync - no need to update
+
+    controller.dapp
+      .handleStateChange(PaliEvents.lockStateChanged, {
+        method: PaliEvents.lockStateChanged,
+        params: {
+          // Don't send accounts array - let DAppController determine accounts per dapp
+          isUnlocked: true, // We just unlocked successfully
+        },
+      })
+      .catch((error) => {
+        console.error(
+          '[MainController] Failed to notify dapps about unlock:',
+          error
+        );
+        // Non-critical - popup update failure doesn't affect unlock success
+      });
+
+    // No need to update xprv in Redux store - private keys should only be accessed
+    // through KeyringManager methods for security
+    store.dispatch(setLastLogin());
+
+    // Run full Pali update in background (non-blocking)
+    setTimeout(() => {
+      if (generation !== this.walletSessionGeneration) return;
+      // Fetch fresh fiat prices immediately after successful unlock
+      Promise.all([
+        this.setFiat().catch((error) =>
+          console.error(
+            '[MainController] Failed to set fiat after unlock:',
+            error
+          )
+        ),
+        this.getLatestUpdateForCurrentAccount(true, true, false, true).catch(
+          (error) =>
+            console.error(
+              '[MainController] Failed to update account after unlock:',
+              error
+            )
+        ),
+      ]);
+    }, 10);
+
+    // Start auto-lock timer if enabled (> 0)
+    const { advancedSettings } = store.getState().vaultGlobal;
+    {
+      const _raw = (advancedSettings?.autolock as any) ?? 0;
+      const _minutes = Number(_raw);
+      if (Number.isFinite(_minutes) && _minutes > 0) {
+        await this.startAutoLockTimer();
+      }
+    }
+
+    // Clear startup flags after 2 seconds
+    setTimeout(() => {
+      if (generation !== this.walletSessionGeneration) return;
+      this.justUnlocked = false;
+      this.isStartingUp = false;
+
+      // Also clean up stale network quality data after startup
+      store.dispatch(clearNetworkQualityIfStale());
+    }, 2000); // 2 seconds - enough time for all initialization
+
+    check();
+    return true;
   }
 
   public async createWallet(password: string, phrase: string): Promise<void> {
@@ -6482,6 +6849,7 @@ class MainController {
       activeAccount: activeAccountInfo,
       accounts,
       isBitcoinBased,
+      activeNetwork,
     } = store.getState().vault;
 
     if (isBitcoinBased) {
@@ -6526,8 +6894,20 @@ class MainController {
       }
 
       const knownTokenLogo =
-        getKnownTokenLogo(tokenDetails.symbol, tokenDetails.contractAddress) ||
-        getKnownTokenLogo(asset.symbol, asset.address);
+        getKnownTokenLogo(
+          tokenDetails.symbol,
+          tokenDetails.contractAddress,
+          undefined,
+          activeNetwork.chainId,
+          tokenDetails.decimals
+        ) ||
+        getKnownTokenLogo(
+          asset.symbol,
+          asset.address,
+          undefined,
+          activeNetwork.chainId,
+          tokenDetails.decimals
+        );
 
       // Use known local logos first, then CoinGecko/provided image, then Pali logo
       const tokenLogo =
@@ -8274,6 +8654,138 @@ class MainController {
     return promise;
   }
 
+  private activityNotificationObserver() {
+    return (this.extensionActivityNotifications ??=
+      new ExtensionActivityNotifications());
+  }
+
+  private activityNotificationScope(
+    accountInfo: { id: number; type: KeyringAccountType },
+    account: IKeyringAccountState,
+    network: INetwork,
+    isBitcoinBased: boolean
+  ): ActivityNotificationScope {
+    return {
+      accountId: String(accountInfo.id),
+      accountType: accountInfo.type,
+      accountAddress: isBitcoinBased
+        ? account.xpub || account.address
+        : account.address,
+      chainId: String(network.chainId),
+      networkType: isBitcoinBased ? 'utxo' : 'evm',
+      networkKey: JSON.stringify([
+        network.kind,
+        network.url,
+        network.apiUrl ?? '',
+      ]),
+    };
+  }
+
+  private deliverActivityNotification(
+    fact: ActivityNotificationFact,
+    transactions: readonly any[],
+    account: IKeyringAccountState,
+    network: INetwork,
+    isBitcoinBased: boolean,
+    isCurrent: () => boolean
+  ) {
+    if (!isCurrent()) return;
+    const type =
+      fact.kind === 'transaction-pending'
+        ? 'pending'
+        : fact.kind === 'transaction-confirmed'
+        ? 'confirmed'
+        : fact.kind === 'transaction-failed'
+        ? 'failed'
+        : null;
+    const transaction = transactions.find(
+      (tx) => String(tx.hash || tx.txid).toLowerCase() === fact.transactionHash
+    );
+    if (type && transaction)
+      notificationManager.notifyTransaction({
+        transaction,
+        type,
+        account: { address: account.address, label: account.label },
+        network,
+        isEvm: !isBitcoinBased,
+        fact,
+        isCurrent,
+      });
+    else notificationManager.notifyActivity?.(fact, isCurrent);
+  }
+
+  /** The existing selected-account tick must not query sibling accounts or chains. */
+  private scheduleGuardianActivityNotifications(activeNetwork: INetwork) {
+    if (this.guardianNotificationScan) return;
+    const session = this.walletSessionGeneration;
+    const namespace = this.walletStateGeneration ?? 0;
+    const { vault } = store.getState();
+    const accountInfo = vault.activeAccount;
+    const account = vault.accounts[accountInfo.type]?.[accountInfo.id];
+    if (
+      !account?.isSmartAccount ||
+      account.smartAccount?.chainId !== activeNetwork.chainId ||
+      vault.activeNetwork.url !== activeNetwork.url ||
+      vault.activeNetwork.chainId !== activeNetwork.chainId
+    )
+      return;
+    const network = activeNetwork;
+    const observer = this.activityNotificationObserver();
+    const scan = (async () => {
+      const scope = this.activityNotificationScope(
+        accountInfo,
+        account,
+        network,
+        false
+      );
+      const isCurrent = () => {
+        const latest = store.getState();
+        const current =
+          latest.vault.accounts[accountInfo.type]?.[accountInfo.id];
+        const configured =
+          latest.vaultGlobal.networks?.ethereum?.[network.chainId];
+        return (
+          session === this.walletSessionGeneration &&
+          namespace === (this.walletStateGeneration ?? 0) &&
+          latest.vault.activeAccount.id === accountInfo.id &&
+          latest.vault.activeAccount.type === accountInfo.type &&
+          latest.vault.activeNetwork.chainId === network.chainId &&
+          latest.vault.activeNetwork.url === network.url &&
+          current?.address.toLowerCase() === account.address.toLowerCase() &&
+          current?.isSmartAccount === true &&
+          current.smartAccount?.chainId === network.chainId &&
+          configured?.url === network.url &&
+          configured?.apiUrl === network.apiUrl
+        );
+      };
+      const assertCurrent = () => {
+        if (!isCurrent())
+          throw new Error('Guardian notification scope changed');
+      };
+      await observer.guardian({
+        namespace,
+        scope,
+        isCurrent,
+        read: (knownOperationId) =>
+          observeGuardianActivity({
+            scope,
+            knownOperationId,
+            assertCurrent,
+            provider: guardianStatusProvider(
+              this.getOrCreatePersistentProvider(network.chainId, network.url)
+            ),
+          }),
+        deliver: (fact) => notificationManager.notifyActivity(fact, isCurrent),
+      });
+    })()
+      .catch(() => undefined)
+      .finally(() => {
+        if (this.guardianNotificationScan === scan)
+          this.guardianNotificationScan = undefined;
+      });
+    this.guardianNotificationScan = scan;
+  }
+
   public updateUserTransactionsState({
     isBitcoinBased,
     activeNetwork,
@@ -8290,6 +8802,8 @@ class MainController {
     isRapidPolling?: boolean;
   }) {
     if (this.clearingEvmActivity) return;
+    if (isPolling && !isRapidPolling && !isBitcoinBased)
+      this.scheduleGuardianActivityNotifications(activeNetwork);
     // For polling, we don't need keyring access - we're just fetching public transaction data
     // Only check if unlocked for non-polling operations
     if (!isPolling) {
@@ -8441,54 +8955,48 @@ class MainController {
                     };
                   });
 
-              // Suppress notifications on first sync for this account/chain to avoid spam
-              // Baseline at current latest transactions and notify only for subsequent updates
-              const hasPreviousTxs =
-                Array.isArray(previousTxs) && previousTxs.length > 0;
-
-              // Notify about transaction updates
-              // Always check for notifications, even during polling - users should be notified
-              // about new transactions discovered in the background while using dapps
-              if (account && hasPreviousTxs) {
-                updatedTxs.forEach((tx: any) => {
-                  const txId = tx.hash || tx.txid;
-                  const previousTx = txId ? previousTxMap.get(txId) : undefined;
-                  const isCurrentConfirmed = isTransactionInBlock(tx);
-                  const wasPreviouslyConfirmed = previousTx
-                    ? isTransactionInBlock(previousTx)
-                    : false;
-
-                  // New pending transaction
-                  if (!previousTx && !isCurrentConfirmed) {
-                    notificationManager.notifyTransaction({
-                      transaction: tx,
-                      type: 'pending',
-                      account: {
-                        address: account.address,
-                        label: account.label,
-                      },
-                      network: activeNetwork,
-                      isEvm: !isBitcoinBased,
-                    });
+              if (account) {
+                const notificationScope = this.activityNotificationScope(
+                  activeAccount,
+                  account,
+                  activeNetwork,
+                  isBitcoinBased
+                );
+                const observedFacts =
+                  this.activityNotificationObserver().history({
+                    scope: notificationScope,
+                    namespace: this.walletStateGeneration ?? 0,
+                    previousTransactions: previousTxs,
+                    transactions: updatedTxs,
+                    isCurrent: isCurrentRead,
+                    deliver: (fact) =>
+                      this.deliverActivityNotification(
+                        fact,
+                        updatedTxs,
+                        account,
+                        activeNetwork,
+                        isBitcoinBased,
+                        isCurrentRead
+                      ),
+                  });
+                // Initial historical sync is not a new confirmation. Preserve
+                // the normal refresh policy, including the first transaction
+                // after an observed empty baseline.
+                if (
+                  !isBitcoinBased &&
+                  (previousTxs.length > 0 ||
+                    observedFacts.some(
+                      (fact) => fact.kind === 'transaction-confirmed'
+                    ))
+                )
+                  for (const tx of updatedTxs) {
+                    const before = previousTxMap.get(tx.hash || tx.txid);
+                    if (
+                      isTransactionInBlock(tx) &&
+                      !isTransactionInBlock(before)
+                    )
+                      this.refreshBalancesAfterHistory(tx);
                   }
-
-                  // Transaction just confirmed
-                  if (isCurrentConfirmed && !wasPreviouslyConfirmed) {
-                    if (!isBitcoinBased) this.refreshBalancesAfterHistory(tx);
-                    notificationManager.notifyTransaction({
-                      transaction: tx,
-                      type: isBitcoinBased
-                        ? 'confirmed'
-                        : this.getEvmMinedTransactionNotificationType(tx),
-                      account: {
-                        address: account.address,
-                        label: account.label,
-                      },
-                      network: activeNetwork,
-                      isEvm: !isBitcoinBased,
-                    });
-                  }
-                });
               }
 
               store.dispatch(
@@ -8521,6 +9029,33 @@ class MainController {
               // Update pending transaction badge
               notificationManager.updatePendingTransactionBadge(updatedTxs);
             } else if (Array.isArray(txs)) {
+              const account =
+                latestVault.accounts[activeAccount.type]?.[activeAccount.id];
+              if (account)
+                this.activityNotificationObserver().history({
+                  scope: this.activityNotificationScope(
+                    activeAccount,
+                    account,
+                    activeNetwork,
+                    isBitcoinBased
+                  ),
+                  namespace: this.walletStateGeneration ?? 0,
+                  previousTransactions:
+                    latestVault.accountTransactions[activeAccount.type]?.[
+                      activeAccount.id
+                    ]?.ethereum?.[activeNetwork.chainId] || [],
+                  transactions: [],
+                  isCurrent: isCurrentRead,
+                  deliver: (fact) =>
+                    this.deliverActivityNotification(
+                      fact,
+                      [],
+                      account,
+                      activeNetwork,
+                      isBitcoinBased,
+                      isCurrentRead
+                    ),
+                });
               // An empty EVM read retains local history, but the badge must
               // still belong to the current account after a context switch.
               notificationManager.updatePendingTransactionBadge(
@@ -8536,6 +9071,11 @@ class MainController {
                 activeAccount,
                 activeNetwork.chainId
               );
+            } else if (!isRapidPolling) {
+              // The bounded saved-record pass does not delay public history or
+              // change its result. Its captured wallet scope outlives same-scope
+              // rapid polls, while the shared helper coalesces concurrent passes.
+              void this.reconcileRetainedUtxoTransfers().catch(() => undefined);
             }
 
             // No-op for loading flags; transactions update fully in background
@@ -13761,11 +14301,26 @@ class MainController {
 
   // Direct EVM methods for cleaner UI access
 
-  public async checkContractType(contractAddress: string) {
-    return this.evmAssetsController.checkContractType(
-      contractAddress,
-      this.ethereumTransaction.web3Provider
+  public async checkContractType(
+    contractAddress: string,
+    accountAddress: string,
+    expectedContext: IEvmTransactionContext
+  ) {
+    if (typeof accountAddress !== 'string' || !expectedContext)
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const context = this.captureApprovalMetadataContext(
+      accountAddress,
+      expectedContext
     );
+    context.assertCurrent();
+    try {
+      return await this.evmAssetsController.checkContractType(
+        contractAddress,
+        context.provider
+      );
+    } finally {
+      context.assertCurrent();
+    }
   }
 
   private captureApprovalMetadataContext(

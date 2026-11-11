@@ -16,6 +16,7 @@ import {
   type SentryCollateralAdmission,
   type SentryCollateralReservation,
 } from './sentryCollateral.ts';
+import type { WalletAuthentication } from '../shared/walletAuthentication.ts';
 
 export type SentryNodeLinkReview = Readonly<{
   id: string;
@@ -40,7 +41,7 @@ export type SentryNodeManagementHost<Scope> = Readonly<{
   assertCurrent(scope: Scope): void;
   authenticate(
     scope: Scope,
-    password: string,
+    password: WalletAuthentication,
     assertCurrent: () => void
   ): Promise<void>;
   captureAdmission(
@@ -348,7 +349,7 @@ export function createSentryNodeManagement<Scope>(
     },
     async releaseCollateral(params: {
       acknowledgeNodeStops: boolean;
-      password: string;
+      password: WalletAuthentication;
       reservation: SentryCollateralReservation;
     }): Promise<SentryCollateralReservation> {
       const scope = host.captureScope();

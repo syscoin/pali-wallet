@@ -69,6 +69,7 @@ const UINT256_MAX = (BigInt(1) << BigInt(256)) - BigInt(1);
 export type IPrivateVaultWithdrawalJournal = IPrivacyWithdrawalJournal;
 export interface IPrivateVaultSession {
   assertCurrent: () => void;
+  captureOperation(assertCurrent: () => void): IPrivateVaultSession;
   generation: number;
   keyring: Pick<
     KeyringManager,
@@ -78,8 +79,30 @@ export interface IPrivateVaultSession {
   >;
 }
 
+/** Explicit session policy for hosts whose codec authority already has a stable lifetime. */
+export function createPrivateVaultSession(
+  input: Omit<IPrivateVaultSession, 'captureOperation'>
+): IPrivateVaultSession {
+  return Object.freeze({
+    ...input,
+    captureOperation(assertCurrent: () => void) {
+      const check = () => {
+        assertPrivateVaultSession(input, true);
+        const result: unknown = assertCurrent();
+        if (result !== undefined) {
+          void Promise.resolve(result).catch(() => undefined);
+          throw new Error('privacy_vault_session_changed');
+        }
+        assertPrivateVaultSession(input, true);
+      };
+      check();
+      return createPrivateVaultSession({ ...input, assertCurrent: check });
+    },
+  });
+}
+
 export const assertPrivateVaultSession = (
-  session: IPrivateVaultSession,
+  session: Pick<IPrivateVaultSession, 'assertCurrent'>,
   requireSynchronous: boolean
 ) => {
   const result: unknown = session.assertCurrent();
@@ -533,6 +556,8 @@ export async function readPrivateVaultBundle(
       throw error;
     throw new Error('privacy_vault_corrupt');
   }
+  const base = session;
+  session = base.captureOperation(() => assertPrivateVaultSession(base, true));
   const strictSession = encoding === 'serialized';
   assertPrivateVaultSession(session, strictSession);
   const profileId = await session.keyring.getPrivateRecordProfileId();

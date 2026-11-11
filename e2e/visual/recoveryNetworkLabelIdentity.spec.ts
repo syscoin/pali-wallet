@@ -14,6 +14,7 @@ import { PaliWallet } from '../harness/pali';
 import { verifyExecutingWorker } from '../harness/runtimeIdentity';
 import { extensionEvidence } from '../harness/testDappConformance';
 import { UTXO_FIXTURE_SEED } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // Normal-UI recovery network chooser identity regression. The initial active5700 is
 // healthy. Only after ordinary registration and a healthy switch to5 does its
@@ -603,9 +604,8 @@ for (const scenario of [
       const runtime = extensionEvidence(),
         sourceSha256 = sha(info.file);
       expect(runtime.sourceRevision).toBe(process.env.PALI_TEST_DAPP_REVISION);
-      // The raw build also contains late-emitted asset-manifest.json; the ZIP
-      // does not. Bind the actual complete artifact and executing worker, not
-      // an incidental member count from one packaging path.
+      // Bind the complete shipped artifact and executing worker, not an
+      // incidental member count. Build-only metadata is stored outside it.
       expect(runtime.artifactSha256).toMatch(/^[a-f0-9]{64}$/);
       expect(runtime.bundleHashes).toEqual({
         background: expect.stringMatching(/^[a-f0-9]{64}$/),
@@ -785,7 +785,9 @@ for (const scenario of [
             /* Ordinary GET. */
           }
         });
+        const releasePage = wallet.page;
         wallet.context.on('requestfailed', (request) => {
+          if (isOfflineWalletReleaseAbort(request, releasePage)) return;
           if (/^https?:/.test(request.url()))
             httpFailures.push({ method: request.method(), url: request.url() });
         });

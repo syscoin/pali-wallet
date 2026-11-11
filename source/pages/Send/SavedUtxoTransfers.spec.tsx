@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import { SavedUtxoTransfers } from './SavedUtxoTransfers';
@@ -16,7 +16,10 @@ jest.mock('react-i18next', () => ({
 it('separates exact saved asset amounts, native funding and transaction data before consent', async () => {
   const txid = '11'.repeat(32);
   mockEmitter.mockImplementation(async ([, method]) => {
-    if (method === 'listRetainedUtxoTransfers')
+    if (
+      method === 'listRetainedUtxoTransfers' ||
+      method === 'refreshRetainedUtxoTransfers'
+    )
       return [{ accepted: false, txid }];
     if (method === 'checkRetainedUtxoTransfer') return 'unknown';
     if (method === 'prepareRetainedUtxoRetry')
@@ -76,5 +79,59 @@ it('separates exact saved asset amounts, native funding and transaction data bef
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'confirmRetainedUtxoRetry'],
     ['review']
+  );
+});
+
+it('reloads recovery rows after a status check confirms the saved transfer', async () => {
+  mockEmitter.mockReset();
+  const txid = '22'.repeat(32);
+  let checked = false;
+  mockEmitter.mockImplementation(async ([, method]) => {
+    if (
+      method === 'listRetainedUtxoTransfers' ||
+      method === 'refreshRetainedUtxoTransfers'
+    )
+      return checked ? [] : [{ txid, accepted: true }];
+    if (method === 'checkRetainedUtxoTransfer') {
+      checked = true;
+      return 'confirmed';
+    }
+    throw new Error(`Unexpected controller method ${method}`);
+  });
+  render(<SavedUtxoTransfers symbol="SYS" />);
+  fireEvent.click(screen.getByText('send.savedUtxo.title'));
+  fireEvent.click(
+    await screen.findByRole('button', { name: /notifications.submitted/ })
+  );
+  expect(await screen.findByText('notifications.confirmed')).toBeVisible();
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('button', { name: /notifications.submitted/ })
+    ).toBeNull()
+  );
+  expect(screen.getByText('send.savedUtxo.empty')).toBeVisible();
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([path]) => path[1] === 'refreshRetainedUtxoTransfers'
+    )
+  ).toHaveLength(1);
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([path]) => path[1] === 'listRetainedUtxoTransfers'
+    )
+  ).toHaveLength(1);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'refreshRetainedUtxoTransfers'],
+    [],
+    30_000
+  );
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'checkRetainedUtxoTransfer'],
+    [txid],
+    30_000
+  );
+  expect(mockEmitter).not.toHaveBeenCalledWith(
+    ['wallet', 'confirmRetainedUtxoRetry'],
+    expect.anything()
   );
 });

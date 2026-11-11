@@ -6,7 +6,7 @@ import { getNativeNetwork } from '../src/custody/networkContext.ts';
 
 const contract = '0x' + '11'.repeat(20), owner = '0x' + '22'.repeat(20);
 const abi = AbiCoder.defaultAbiCoder();
-function fixture(standard: 'ERC-721' | 'ERC-1155' | 'ERC-20' | 'unknown') {
+function fixture(standard: 'ERC-721' | 'ERC-1155' | 'ERC-20' | 'ambiguous' | 'unknown') {
   const controller = new AbortController();
   const calls: string[] = [];
   let onRead = () => {};
@@ -20,7 +20,7 @@ function fixture(standard: 'ERC-721' | 'ERC-1155' | 'ERC-20' | 'unknown') {
     else {
       const data = String(params[0].data); calls.push(data);
       if (data.startsWith('0x01ffc9a7')) result = abi.encode(['bool'], [
-        standard === 'ERC-721' && data.includes('80ac58cd') || standard === 'ERC-1155' && data.includes('d9b67a26'),
+        standard === 'ambiguous' || standard === 'ERC-721' && data.includes('80ac58cd') || standard === 'ERC-1155' && data.includes('d9b67a26'),
       ]);
       else if (standard === 'ERC-20') result = data === '0x06fdde03' ? abi.encode(['string'], ['Example'])
         : data === '0x95d89b41' ? abi.encode(['string'], ['TOK'])
@@ -38,7 +38,7 @@ function fixture(standard: 'ERC-721' | 'ERC-1155' | 'ERC-20' | 'unknown') {
 for (const standard of ['ERC-721', 'ERC-1155'] as const) test(`native approval metadata reuses bounded ${standard} interface reads`, async () => {
   const f = fixture(standard);
   assert.deepEqual(await f.read(), { standard });
-  assert.equal(f.calls.length, standard === 'ERC-721' ? 1 : 2);
+  assert.equal(f.calls.length, 2);
 });
 
 test('ERC20 approval metadata preserves the full uint8 precision', async () => {
@@ -54,4 +54,11 @@ test('revocation during optional metadata still rejects the owning operation', a
   const f = fixture('ERC-20');
   f.onRead(() => f.controller.abort());
   await assert.rejects(f.read(), /CANCELLED/);
+});
+
+test('conflicting NFT interface claims stay unverified without an ERC20 fallback', async () => {
+  const f = fixture('ambiguous');
+  assert.equal(await f.read(), undefined);
+  assert.equal(f.calls.length, 2);
+  assert(f.calls.every(data => data.startsWith('0x01ffc9a7')));
 });

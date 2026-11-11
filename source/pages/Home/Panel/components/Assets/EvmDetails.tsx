@@ -13,6 +13,7 @@ import { TokenIcon } from 'components/TokenIcon';
 import { useUtils } from 'hooks/index';
 import { useContextualState } from 'hooks/useContextualState';
 import { useController } from 'hooks/useController';
+import { ExplorerLink } from 'pages/Home/Panel/components/ExplorerLink';
 import { getHomeBrowsingScope } from 'pages/Home/useHomeBrowsingState';
 import { RootState } from 'state/store';
 import {
@@ -28,7 +29,6 @@ import { navigateBack } from 'utils/navigationState';
 import { getNftQuantity } from 'utils/nftQuantity';
 import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
-import { ExplorerLink } from 'pages/Home/Panel/components/ExplorerLink';
 
 import { AssetMarketLinks, CoinGeckoLogo } from './AssetMarketLinks';
 
@@ -289,18 +289,18 @@ export const EvmAssetDetails = ({
 
         <AssetMarketLinks marketData={tokenData} t={t} />
 
-        {/* Verification Status */}
+        {/* Market-data provenance */}
         <div className="flex items-center justify-between mb-4">
           <span className="text-gray-400 text-xs">
-            {t('tokens.verification')}
+            {t('tokens.marketDataSource')}
           </span>
           {tokenData.isVerified ? (
             <span className="px-2 py-1 bg-green-500 bg-opacity-20 text-green-500 text-xs rounded flex items-center">
-              ✓ {t('tokens.verifiedByCoinGecko')}
+              {t('tokens.listedOnCoinGecko')}
             </span>
           ) : (
             <span className="px-2 py-1 bg-yellow-500 bg-opacity-20 text-yellow-500 text-xs rounded">
-              ⚠ {t('tokens.unverifiedToken')}
+              {t('tokens.coinGeckoListingUnavailable')}
             </span>
           )}
         </div>
@@ -430,6 +430,12 @@ export const EvmAssetDetails = ({
                     currentAsset.logo
                   }
                   contractAddress={currentAsset.contractAddress}
+                  chainId={currentAsset.chainId}
+                  decimals={
+                    currentAsset.decimals === undefined
+                      ? undefined
+                      : Number(currentAsset.decimals)
+                  }
                   symbol={currentAsset.tokenSymbol || currentAsset.symbol}
                   isNft={isNft}
                   size={48}

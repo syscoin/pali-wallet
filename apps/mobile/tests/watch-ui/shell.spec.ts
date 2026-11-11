@@ -1,5 +1,7 @@
+import { enterPin, revealBackupPhrase } from '../ui/operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 import { expectReceiveFooter, receiveViewports, scaleReceiveText } from '../receiveLayout';
+import { watchAccountName } from '../accountControlNames';
 
 const TABS = ['Wallet', 'Activity', 'Tools', 'Settings'] as const;
 const PUBLIC_KEY = `0x${'1'.repeat(64)}`;
@@ -17,7 +19,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function tabs(page: Page, selected: typeof TABS[number] = 'Wallet') {
-  await expect(page.getByRole('tab')).toHaveCount(4);
+  await expect(page.getByRole('tablist', { name: 'Main navigation', exact: true }).getByRole('tab')).toHaveCount(4);
   for (const name of TABS) {
     const tab = page.getByRole('tab', { name, exact: true });
     await expect(tab).toBeVisible();
@@ -32,12 +34,11 @@ async function openNative(page: Page, query = '') {
   await page.goto(`/${query}`);
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Unlock wallet', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
 }
 async function unlock(page: Page) {
-  await page.getByRole('textbox', { name: 'Password', exact: true }).fill('public-password');
-  await page.getByRole('button', { name: 'Unlock wallet', exact: true }).click();
+  await enterPin(page, '123456');
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
   await tabs(page);
 }
@@ -71,8 +72,8 @@ for (const viewport of receiveViewports) {
       if (scale !== 1) await scaleReceiveText(page, scale);
       const address = page.getByLabel('Ethereum address 0x52908400098527886E0F7030069857D2E4169EE7', { exact: true });
       const qr = page.getByRole('img', { name: 'QR code for Ethereum address 0x52908400098527886E0F7030069857D2E4169EE7', exact: true });
-      await expect(address).toBeInViewport({ ratio: 1 });
       if (scale === 1 && viewport.height >= 568) {
+        await expect(address).toBeInViewport({ ratio: 1 });
         await expect(qr).toBeInViewport({ ratio: 1 });
         await expect(page.getByRole('button', { name: 'Copy address', exact: true })).toBeInViewport({ ratio: 1 });
         await expect(page.getByRole('button', { name: 'Share address', exact: true })).toBeInViewport({ ratio: 1 });
@@ -91,7 +92,7 @@ for (const viewport of receiveViewports) {
 async function openSecurity(page: Page) {
   await chooseTab(page, 'Settings');
   await page.getByRole('button', { name: 'Security & backups', exact: false }).click();
-  await expect(page.getByText('Recovery phrase backed up', { exact: true })).toBeVisible();
+  await expect(page.getByText('Backed up', { exact: true })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
 }
 
@@ -178,8 +179,7 @@ test('Tools checks exact site origins locally and clears its result on Back', as
 test('native unlock and all security presentation stages exclude the tab shell', async ({ page }) => {
   await openNative(page);
   await page.evaluate(() => window.__watchFixture.delayUnlock(true));
-  await page.getByRole('textbox', { name: 'Password', exact: true }).fill('public-password');
-  await page.getByRole('button', { name: 'Unlock wallet', exact: true }).click();
+  await enterPin(page, '123456');
   await expect(page.getByText('Unlocking your wallet securely…', { exact: true })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await page.evaluate(() => window.__watchFixture.releaseUnlock());
@@ -187,19 +187,18 @@ test('native unlock and all security presentation stages exclude the tab shell',
   await openSecurity(page);
   await page.getByRole('button', { name: 'Reveal account private key', exact: false }).click();
   await expect(page.getByRole('tab')).toHaveCount(0);
-  await page.getByRole('textbox', { name: 'Confirm your wallet password', exact: true }).fill('public-password');
   await page.getByRole('button', { name: 'Reveal private key', exact: true }).click();
+  await enterPin(page, '123456');
   await expect(page.getByText(PUBLIC_KEY, { exact: true })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await page.getByRole('button', { name: 'Hide private key', exact: true }).click();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'View recovery phrase', exact: false }).click();
-  await page.getByRole('textbox', { name: 'Confirm your password', exact: true }).fill('public-password');
-  await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click();
+  await revealBackupPhrase(page);
   await expect(page.getByText('abandon', { exact: true })).toHaveCount(11);
   await expect(page.getByRole('tab')).toHaveCount(0);
-  await page.getByRole('button', { name: "I've written them down", exact: true }).click();
-  await expect(page.getByRole('textbox', { name: /^Word [0-9]+$/ })).toHaveCount(3);
+  await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: /^Word [0-9]+$/ })).toHaveCount(0);
   await expect(page.getByRole('tab')).toHaveCount(0);
 });
 
@@ -211,9 +210,12 @@ test('account management, imported-key review and send approval exclude tabs', a
   await page.getByRole('button', { name: 'Manage wallet accounts', exact: true }).click();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await page.getByRole('button', { name: 'Add account', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: 'Confirm wallet password', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Account name', exact: true })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Authorize change', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Add account', exact: true }).click();
   await page.getByRole('button', { name: 'Import private key', exact: true }).click();
   await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('Public fixture import');
   await page.getByRole('textbox', { name: 'EVM private key', exact: true }).fill(`0x${'1'.padStart(64, '0')}`);
@@ -233,6 +235,9 @@ test('account management, imported-key review and send approval exclude tabs', a
   await expect(page.getByRole('button', { name: 'Confirm and send', exact: true })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Amount in ETH', exact: true })).toHaveValue('0.001');
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await tabs(page);
   expect((await page.evaluate(() => window.__watchFixture.audit())).signs).toBe(0);
 });
@@ -243,15 +248,17 @@ test('watch shell is operational without borrowing native permissions or demo ac
   await expect(page.getByText('Shared address watch · Watch-only', { exact: true })).toBeVisible();
   await tabs(page);
   await chooseTab(page, 'Activity');
-  await expect(page.getByText('1.000000000000000001 ETH', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /^1\.000000000000000001 ETH, Confirmed\./ }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Activity options', exact: true }).click();
   await expect(page.getByText('Direct transactions and token transfer events from the selected explorer. Internal transfers are not included; older activity may require loading.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close activity options', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Review resend', exact: true })).toHaveCount(0);
   await expect(page.getByText(/Starbucks|Spotify|Coffee|Sample transaction/)).toHaveCount(0);
   await chooseTab(page, 'Tools');
   await expect(page.getByRole('button', { name: 'Accounts', exact: false })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Network', exact: false })).toHaveCount(0);
   await chooseTab(page, 'Settings');
-  await expect(page.getByText('Watch-only account', { exact: true })).toBeVisible();
+  await expect(page.getByText('This account contains a public address, not its private key or recovery phrase. Keep backups in the wallet that controls it.', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Security & backups', exact: false })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Reveal|recovery phrase|private key|Send/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Hide accounts', exact: true }).click();
@@ -265,7 +272,7 @@ test('same-address native to watch switch revokes native owner before public tab
   await openNative(page); await unlock(page);
   await chooseTab(page, 'Tools');
   await page.getByRole('button', { name: 'Accounts', exact: false }).click();
-  await page.getByRole('button', { name: 'Select Shared address watch (watch-only)', exact: true }).click();
+  await page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Public EVM address', '0x52908400098527886E0F7030069857D2E4169EE7') }).click();
   await tabs(page);
   await expect(page.getByText('Shared address watch · Watch-only', { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.__watchFixture.oldPhases()[0])).toBe('disposed');
@@ -274,7 +281,7 @@ test('same-address native to watch switch revokes native owner before public tab
   await chooseTab(page, 'Tools');
   await page.getByRole('button', { name: 'Accounts', exact: false }).click();
   await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Unlock wallet', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
   expect(await page.evaluate(() => window.__watchFixture.audit().unlocks)).toBe(1);
 });
@@ -297,7 +304,7 @@ test('fixed Bitcoin watch Activity loads automatically and its Wallet scope surv
   expect(accountCalls).toEqual([`https://btc1.trezor.io/api/v2/address/${BTC}?details=txsummary&page=1&pageSize=20`]);
   await chooseTab(page, 'Wallet');
   await expect(page.getByText('Network', { exact: true })).toBeVisible();
-  await expect(page.getByText('Bitcoin', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'BTC Bitcoin 1.23456789 BTC', exact: true })).toBeVisible();
   await expect(page.getByRole('radio')).toHaveCount(0);
   await expect(page.getByLabel('Bitcoin confirmed balance 1.23456789 BTC', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
@@ -313,8 +320,15 @@ test('native network without an explorer shows saved-transfer coverage and retai
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await tabs(page);
   await chooseTab(page, 'Activity');
-  await expect(page.getByText('Activity discovery is unavailable for this network.', { exact: true })).toBeVisible();
-  await expect(page.getByText('Activity unavailable', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Activity network: All networks', exact: true }).click();
+  await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Activity network: Base', exact: true })).toBeVisible();
+  await expect(page.getByText('Some activity is unavailable', { exact: true })).toBeVisible();
+  await expect(page.getByText('Some network activity is unavailable.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Activity options', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Show zero-value token activity', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.getByText('Some activity is unavailable', { exact: true })).toBeVisible();
   await expect(page.getByText('No activity yet', { exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__watchFixture.catalogue().active.networkId)).toBe('base');
   expect(await page.evaluate(() => window.__watchFixture.audit().unlocks)).toBe(1);
@@ -324,12 +338,12 @@ test('background cancels pending private presentation and requires unlock before
   await openNative(page); await unlock(page); await openSecurity(page);
   await page.getByRole('button', { name: 'Reveal account private key', exact: false }).click();
   await page.evaluate(() => window.__watchFixture.delayKeyRead(true));
-  await page.getByRole('textbox', { name: 'Confirm your wallet password', exact: true }).fill('public-password');
   await page.getByRole('button', { name: 'Reveal private key', exact: true }).click();
+  await enterPin(page, '123456');
   await expect.poll(() => page.evaluate(() => window.__watchFixture.audit().keyReads)).toBe(1);
   await expect(page.getByRole('tab')).toHaveCount(0);
   await page.evaluate(() => { window.__watchFixture.lifecycle('background'); window.__watchFixture.lifecycle('active'); window.__watchFixture.releaseKeyRead(); });
-  await expect(page.getByRole('button', { name: 'Unlock wallet', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await expect(page.getByText(PUBLIC_KEY, { exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__watchFixture.events().includes('key:finish'))).toBe(false);
@@ -340,15 +354,15 @@ test('background cancels pending private presentation and requires unlock before
 test('clearing Security returns to its originating Settings tab', async ({ page }) => {
   await openNative(page); await unlock(page); await openSecurity(page);
   await page.getByRole('button', { name: 'Reveal account private key', exact: false }).click();
-  await page.getByRole('textbox', { name: 'Confirm your wallet password', exact: true }).fill('public-password');
   await page.getByRole('button', { name: 'Reveal private key', exact: true }).click();
+  await enterPin(page, '123456');
   await expect(page.getByText(PUBLIC_KEY, { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByText(PUBLIC_KEY, { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await tabs(page, 'Settings');
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: /password/i })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'PIN digit 1', exact: true })).toHaveCount(0);
 });
 
 test('activity reset admits one same-turn double click and returns to Settings', async ({ page }, testInfo) => {
@@ -378,7 +392,7 @@ test('locking during activity reset prevents stale completion', async ({ page })
     window.__watchFixture.lifecycle('active');
     window.__watchFixture.finishActivityReset();
   });
-  await expect(page.getByRole('button', { name: 'Unlock wallet', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.events().includes('activity:reset:done'))).toBe(false);
 });
 
@@ -426,7 +440,7 @@ test('all four labels remain whole, operable and unclipped at 320px with large b
   for (const name of TABS) {
     await chooseTab(page, name);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    const boxes = await page.getByRole('tab').evaluateAll((elements) => elements.map((element) => {
+    const boxes = await page.getByRole('tablist', { name: 'Main navigation', exact: true }).getByRole('tab').evaluateAll((elements) => elements.map((element) => {
       const box = element.getBoundingClientRect();
       return { x: box.x, right: box.right, width: box.width, height: box.height, client: element.clientHeight, scroll: element.scrollHeight };
     }));
@@ -449,7 +463,7 @@ test('all four labels remain whole, operable and unclipped at 320px with large b
       expect(metrics.fullWidth).toBeLessThanOrEqual(metrics.width + 1);
       expect(metrics.scroll).toBeLessThanOrEqual(metrics.client + 1);
     }
-    expect(await page.getByRole('heading', { name, exact: true }).evaluate((element) => getComputedStyle(element).fontSize)).toBe('24px');
+    expect(await page.getByRole('heading', { name: name === 'Wallet' ? 'Pali Wallet' : name, exact: true }).evaluate((element) => getComputedStyle(element).fontSize)).toBe('24px');
     await page.screenshot({ path: testInfo.outputPath(`${name.toLowerCase()}-320-large.png`), fullPage: true });
     if (name === 'Settings') {
       await page.getByRole('button', { name: 'Help & about', exact: false }).click();
@@ -516,7 +530,7 @@ async function expectWholeLabel(page: Page, label: string) {
   expect(lines, `${label} should not split across lines`).toBe(1);
 }
 
-test('watch portfolio stacks controls and frees the header at 320px with font scale 1.6', async ({ page }) => {
+test('watch portfolio keeps toolbar targets and full-width Receive at 320px with font scale 1.6', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('/?font-scale=1.6');
   expect(await page.evaluate(() => window.__watchFixture.fontScale())).toBe(1.6);
@@ -525,10 +539,12 @@ test('watch portfolio stacks controls and frees the header at 320px with font sc
   await expect(subtitle).toBeVisible();
   await scaleVisibleText(page);
 
-  const heading = page.getByRole('heading', { name: 'Wallet', exact: true });
+  const heading = page.getByRole('heading', { name: 'Pali Wallet', exact: true });
   const headerBottom = await heading.evaluate((element) => element.parentElement!.parentElement!.getBoundingClientRect().bottom);
   const accounts = page.getByRole('button', { name: 'Accounts', exact: true });
-  expect((await accounts.boundingBox())!.y).toBeGreaterThanOrEqual(headerBottom - 1);
+  const accountsBox = (await accounts.boundingBox())!;
+  expect(accountsBox.width).toBeGreaterThanOrEqual(44); expect(accountsBox.height).toBeGreaterThanOrEqual(44);
+  expect(accountsBox.x).toBeGreaterThanOrEqual(0); expect(accountsBox.x + accountsBox.width).toBeLessThanOrEqual(320);
   const splitWords = await subtitle.evaluate((element) => {
     const node = element.firstChild;
     if (!node || node.nodeType !== Node.TEXT_NODE) return ['missing text'];
@@ -542,9 +558,10 @@ test('watch portfolio stacks controls and frees the header at 320px with font sc
   const receive = page.getByRole('button', { name: 'Receive', exact: true });
   const refresh = page.getByRole('button', { name: 'Refresh', exact: true });
   const receiveBox = (await receive.boundingBox())!; const refreshBox = (await refresh.boundingBox())!;
-  expect(receiveBox.width).toBeGreaterThan(250); expect(refreshBox.width).toBeGreaterThan(250);
-  expect(refreshBox.y).toBeGreaterThanOrEqual(receiveBox.y + receiveBox.height);
-  await expectWholeLabel(page, 'Receive'); await expectWholeLabel(page, 'Refresh');
+  expect(receiveBox.width).toBeGreaterThan(250); expect(receiveBox.y).toBeGreaterThanOrEqual(headerBottom);
+  expect(refreshBox.width).toBeGreaterThanOrEqual(44); expect(refreshBox.height).toBeGreaterThanOrEqual(44);
+  expect(refreshBox.x + refreshBox.width).toBeLessThanOrEqual(accountsBox.x + 1);
+  await expect(refresh.locator('svg')).toBeVisible(); await expectWholeLabel(page, 'Receive');
 
   await receive.click();
   await expect(page.getByRole('heading', { name: 'Receive ETH', exact: true })).toBeVisible();
@@ -557,17 +574,18 @@ test('watch portfolio stacks controls and frees the header at 320px with font sc
   await expectWholeLabel(page, 'Copy address'); await expectWholeLabel(page, 'Share address');
 });
 
-test('watch portfolio retains the side-by-side controls at normal font scale', async ({ page }) => {
+test('watch portfolio retains its icon toolbar and full-width Receive at normal font scale', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await openWatch(page);
   expect(await page.evaluate(() => window.__watchFixture.fontScale())).toBe(1);
   const accounts = (await page.getByRole('button', { name: 'Accounts', exact: true }).boundingBox())!;
-  const title = (await page.getByRole('heading', { name: 'Wallet', exact: true }).boundingBox())!;
+  const title = (await page.getByRole('heading', { name: 'Pali Wallet', exact: true }).boundingBox())!;
   expect(accounts.y).toBeLessThan(title.y + title.height + 30);
   const receive = (await page.getByRole('button', { name: 'Receive', exact: true }).boundingBox())!;
   const refresh = (await page.getByRole('button', { name: 'Refresh', exact: true }).boundingBox())!;
-  expect(Math.abs(receive.y - refresh.y)).toBeLessThanOrEqual(1);
-  expect(refresh.x).toBeGreaterThan(receive.x + receive.width - 1);
+  expect(receive.width).toBeGreaterThan(250);
+  expect(receive.y).toBeGreaterThanOrEqual(refresh.y + refresh.height);
+  expect(refresh.width).toBeGreaterThanOrEqual(44); expect(refresh.height).toBeGreaterThanOrEqual(44);
   await page.getByRole('button', { name: 'Receive', exact: true }).click();
   const copy = (await page.getByRole('button', { name: 'Copy address', exact: true }).boundingBox())!;
   const share = (await page.getByRole('button', { name: 'Share address', exact: true }).boundingBox())!;
@@ -576,7 +594,7 @@ test('watch portfolio retains the side-by-side controls at normal font scale', a
 });
 
 
-test('watch actions remain whole and side by side at 320px with font scale 1.3', async ({ page }) => {
+test('watch Receive and icon toolbar remain accessible at 320px with font scale 1.3', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('/?font-scale=1.3');
   expect(await page.evaluate(() => window.__watchFixture.fontScale())).toBe(1.3);
@@ -585,10 +603,10 @@ test('watch actions remain whole and side by side at 320px with font scale 1.3',
   await scaleVisibleText(page, 1.3);
   const receive = page.getByRole('button', { name: 'Receive', exact: true });
   const refresh = page.getByRole('button', { name: 'Refresh', exact: true });
-  await expectWholeLabel(page, 'Receive'); await expectWholeLabel(page, 'Refresh');
+  await expectWholeLabel(page, 'Receive'); await expect(refresh.locator('svg')).toBeVisible();
   const receiveBox = (await receive.boundingBox())!; const refreshBox = (await refresh.boundingBox())!;
-  expect(Math.abs(receiveBox.y - refreshBox.y)).toBeLessThanOrEqual(1);
-  expect(refreshBox.x).toBeGreaterThanOrEqual(receiveBox.x + receiveBox.width - 1);
+  expect(receiveBox.width).toBeGreaterThan(250); expect(receiveBox.y).toBeGreaterThanOrEqual(refreshBox.y + refreshBox.height);
+  expect(refreshBox.width).toBeGreaterThanOrEqual(44); expect(refreshBox.height).toBeGreaterThanOrEqual(44);
   // Capture a real scroll offset on the home view before changing modes.
   // The following viewport assertions must precede any locator click, focus or
   // scrollIntoView that could hide an inherited offset.

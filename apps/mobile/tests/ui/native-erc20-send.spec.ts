@@ -1,3 +1,4 @@
+import { authenticateNativeOperation, pinField } from './operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 import { Transaction } from 'ethers';
 import { decodeErc20Transfer } from '../../../../source/shared/erc20';
@@ -18,7 +19,7 @@ test.beforeEach(async ({ page }) => {
 const recipient = '0x1111111111111111111111111111111111111111';
 const contract = '0x3333333333333333333333333333333333333333';
 const password = (page: Page) =>
-  page.getByLabel('Confirm your wallet password', { exact: true });
+  pinField(page, 'Confirm your wallet PIN');
 async function prepare(page: Page, amount = '2.5') {
   await page.getByLabel('Ethereum address', { exact: true }).fill(recipient);
   await page.getByLabel('Amount in FIX', { exact: true }).fill(amount);
@@ -106,6 +107,7 @@ test('real ERC20 controller shows asset intent and preserves exact signed bytes 
   await page.goto('/?erc20-send');
   await prepare(page);
   await expect(page.getByTestId('native-send-amount')).toHaveText('2.5');
+  await page.getByRole('button', { name: 'Details', exact: true }).click();
   await expect(page.getByTestId('native-send-token-contract')).toHaveText(
     contract
   );
@@ -121,6 +123,7 @@ test('real ERC20 controller shows asset intent and preserves exact signed bytes 
     fullPage: true,
   });
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   await expect(page.getByTestId('native-send-hash')).toBeVisible();
   const firstHash = await page.getByTestId('native-send-hash').textContent();
   const firstBytes = await page.evaluate(
@@ -138,11 +141,13 @@ test('real ERC20 controller shows asset intent and preserves exact signed bytes 
     window.__erc20SendFixture.acceptBroadcasts();
   });
   await expect(page.getByTestId('native-send-amount')).toHaveText('2.5');
+  await page.getByRole('button', { name: 'Details', exact: true }).click();
   await expect(page.getByTestId('native-send-token-contract')).toHaveText(
     contract
   );
   await expect(password(page)).toHaveCount(0);
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   await expect(page.getByTestId('native-send-hash')).toHaveText(firstHash!);
   expect(
     await page.evaluate(() => window.__erc20SendFixture.broadcasts()[0])
@@ -153,23 +158,19 @@ test('real ERC20 controller shows asset intent and preserves exact signed bytes 
   expect(
     await page.evaluate(() => window.__erc20SendFixture.unlockChecks())
   ).toBe(1);
-  await page.evaluate(() => window.__erc20SendFixture.finalized());
-  await page.getByRole('button', { name: 'Check status', exact: true }).click();
-  await expect(
-    page.getByText('Transaction confirmed', { exact: true })
-  ).toBeVisible();
+  await expect(page.getByText('Transaction submitted', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Check status', exact: true })).toHaveCount(0);
   await expect(
     page.getByText('Transfer confirmed', { exact: true })
   ).toHaveCount(0);
-  await expect(
-    page.getByText(/Check the token balance for the received amount/)
-  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
 });
 
 test('saved recovery remains actionable through an observation outage', async ({ page }, info) => {
   await page.goto('/?erc20-send');
   await prepare(page);
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   const hash = await page.getByTestId('native-send-hash').textContent();
   expect(hash).toBeTruthy();
 
@@ -199,6 +200,7 @@ test('a fresh token send reserves the pending debit and queues an affordable tra
   await page.goto('/?erc20-send&multiple-pending');
   await prepare(page);
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   const hash = page.getByTestId('native-send-hash');
   await expect(hash).toBeVisible();
   const firstHash = await hash.textContent();
@@ -246,6 +248,7 @@ test('a fresh token send reserves the pending debit and queues an affordable tra
   await prepare(page, '1');
   await page.screenshot({ path: info.outputPath('queued-token-review-320.png'), fullPage: true });
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   await expect(hash).toBeVisible();
   await expect(hash).not.toHaveText(firstHash!);
   expect(await page.evaluate(() => window.__erc20SendFixture.signatures())).toBe(2);
@@ -259,7 +262,7 @@ test('a fresh token send reserves the pending debit and queues an affordable tra
     { nonce: 1, to: contract, recipient, amountUnits: '1000000' },
   ]);
 
-  await page.getByRole('button', { name: 'Back to wallet', exact: true }).click();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
   await page.evaluate(() => window.__erc20SendFixture.finalized());
   await page.getByRole('button', { name: 'Open first saved transfer', exact: true }).click();
   await expect(hash).toHaveText(firstHash!);
@@ -281,6 +284,7 @@ test('a post-sign asset-state change shows one saved no-broadcast message', asyn
   await prepare(page);
   await page.evaluate(() => window.__erc20SendFixture.raceAfterSigning());
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   const message = 'Your signed transaction is saved and was not submitted. Review it in Activity before retrying.';
   await expect(page.getByText(message, { exact: true })).toHaveCount(1);
   await expect(page.getByRole('alert')).toHaveCount(1);
@@ -363,12 +367,13 @@ test('narrow ERC20 review retains full identities, exact amount and reachable co
   await expect(page.getByTestId('native-send-amount')).toHaveText(
     '90071992547409.93'
   );
+  await page.getByRole('button', { name: 'Details', exact: true }).click();
   await expect(page.getByTestId('native-send-token-contract')).toHaveText(
     contract
   );
   await expect(page.getByTestId('native-send-confirm')).toBeEnabled();
   const reviewOrder = await page.evaluate(() =>
-    ['recipient', 'fee', 'token-contract', 'confirm'].map((field) =>
+    ['recipient', 'fee', 'token-contract'].map((field) =>
       document.querySelector(`[data-testid="native-send-${field}"]`)!.getBoundingClientRect().top
     )
   );

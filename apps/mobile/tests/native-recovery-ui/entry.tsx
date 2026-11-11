@@ -1,4 +1,4 @@
-import { isNativeNewPassword, NEW_PASSWORD_HELP } from '../../src/custody/password';
+import { isNativePin } from '../../src/custody/pinVault';
 // Actual leaf with a synthetic flow. This fixture does not perform recovery,
 // authenticate a phrase, access storage, or establish native qualification.
 import React, { useLayoutEffect, useState } from 'react';
@@ -44,14 +44,12 @@ class FixtureFlow {
   read() { this.publish(params.has('unavailable') ? 'blocked' : 'scope', params.has('unavailable') ? 'Your saved wallet could not be verified for this recovery. Nothing has been reset.' : ''); }
   enter() { if (this.snapshot.phase === 'scope') this.publish('entry'); }
   back() { audit.backs++; if (this.snapshot.phase === 'entry') this.publish('scope'); else this.cancel(); }
-  submit({ phrase, password, confirmation }: { phrase: string; password: string; confirmation: string }) {
+  submit({ phrase }: { phrase: string }) {
     if (this.snapshot.phase !== 'entry') return false;
     audit.submissions++;
     const words = phrase.trim().split(/\s+/u).length;
     const errors: Record<string, string> = {};
     if (![12, 24].includes(words)) errors.phrase = 'Enter 12 or 24 words in their original order.';
-    if (!isNativeNewPassword(password)) errors.password = NEW_PASSWORD_HELP;
-    if (confirmation !== password) errors.confirmation = 'The new passwords do not match.';
     if (Object.keys(errors).length) { this.publish('entry', '', errors); return false; }
     audit.admissions++; audit.admittedWordCounts.push(words); this.publish('verifying'); return true;
   }
@@ -59,11 +57,12 @@ class FixtureFlow {
     if (this.snapshot.phase !== 'verifying') return;
     this.publish(outcome === 'match' ? 'review' : 'entry', outcome === 'wrong' ? 'This recovery phrase does not match this wallet.' : '');
   }
-  commit() { if (this.snapshot.phase === 'review') { audit.commits++; this.publish('committing'); } }
+  commit() { if (this.snapshot.phase === 'review') this.publish('pin'); }
+  submitPin(pin: string) { if (this.snapshot.phase !== 'pin' || !isNativePin(pin)) return false; audit.commits++; this.publish('committing'); return true; }
   cancel() {
     if (this.snapshot.phase === 'closed') return;
     audit.cancels++;
-    this.publish('closed', this.snapshot.phase === 'committing' ? 'We could not confirm the password change. It may have completed. Unlock with your new password first; if it does not work, try your previous password.' : 'Recovery was cancelled');
+    this.publish('closed', this.snapshot.phase === 'committing' ? 'We could not confirm the PIN change. It may have completed. Unlock with your new PIN first; if it does not work, try your previous unlock method.' : 'Recovery was cancelled');
   }
 }
 const flow = new FixtureFlow();

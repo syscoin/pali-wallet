@@ -1,3 +1,5 @@
+import { unsignedTransferBytes } from '../src/custody/evmFeeContracts.ts';
+import { createTestOperationAuthorizer } from './fixtures/operationAuthorization.ts';
 import { authorizePrivateNoteReplay } from '../../../source/wallet/privateNoteReplay.ts';
 import { evmSubmissionFailure } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import assert from 'node:assert/strict';
@@ -7,7 +9,7 @@ import { Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
 import { keccak256 } from 'ethers/crypto';
 import type { EvmUnsignedTransfer } from '../src/custody/evmFeeContracts.ts';
-import type { CustodySnapshot } from '../src/custody/types.ts';
+import type { CustodySnapshot, NativeOperationCredential } from '../src/custody/types.ts';
 import { NativeTransfers, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE } from '../src/custody/transfers.ts';
 import { EvmSignedReplay } from '../../../source/wallet/evmSignedReplay.ts';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
@@ -19,6 +21,7 @@ const wallet = Wallet.fromPhrase(
   'test test test test test test test test test test test junk'
 );
 const to = '0x1111111111111111111111111111111111111111';
+const OPERATION_CREDENTIAL = { method: 'pin', pin: '123456' } as const;
 const token = Object.freeze({
   contractAddress: '0x3333333333333333333333333333333333333333',
   name: 'Public fixture token',
@@ -31,7 +34,7 @@ const otherToken = Object.freeze({
   name: 'Other public fixture token',
   symbol: 'OTHER',
 });
-function fixture() {
+function fixture(maximumAccountType?: 'HDAccount' | 'Imported' | 'Ledger' | 'Trezor' | 'SmartAccount') {
   let state: CustodySnapshot = {
     phase: 'ready',
     revision: 1,
@@ -58,6 +61,13 @@ function fixture() {
   let observationUnavailable = false;
   let payerIsEoa = false;
   let signatures = 0;
+  let authentications = 0;
+  let locks = 0;
+  let authenticationError: string | null = null;
+  let authenticationRefusal = false;
+  const authenticationRefusals = new WeakSet<object>();
+  const refusal = (code: string) => { const error = Error(code); authenticationRefusals.add(error); return error; };
+  let authenticationGate: Promise<void> | null = null;
   let altered: 'value' | 'signer' | 'hash' | 'oversized' | 'noncanonical' | null = null;
   let signGate: Promise<void> | null = null;
   let beforeCommit: (() => Promise<void>) | undefined;
@@ -69,11 +79,16 @@ function fixture() {
   const rpcMethods: string[] = [];
   const source = {
     getSnapshot: () => state,
+    ...(maximumAccountType ? { getCatalogue: () => ({ revision: 1,
+      accounts: [{ id: 'maximum-payer', type: maximumAccountType, index: 0, slip44: 60, address: wallet.address, label: 'Maximum payer' }],
+      networks: [getNativeNetwork('ethereum')], utxoNetworks: [], active: { accountId: 'maximum-payer', networkId: 'ethereum' as const },
+    }) } : {}),
     subscribe(listener: (state: CustodySnapshot) => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
     lock() {
+      locks++;
       state = {
         ...state,
         phase: 'locked',
@@ -92,7 +107,19 @@ function fixture() {
       records[profile] = value; return true;
     },
   });
+  const operationAuthorization = createTestOperationAuthorizer((credential, check): Promise<void> => runtime.authenticateOperation(credential, check), unsignedTransferBytes);
   const runtime = {
+    authorizeOperation: operationAuthorization.authorizeOperation,
+    releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
+    isAuthenticationRefusal(error: unknown) { return !!error && typeof error === 'object' && authenticationRefusals.has(error); },
+    async authenticateOperation(credential: NativeOperationCredential, guard: () => void) {
+      guard(); authentications++;
+      if (!credential || credential.method === 'pin' && credential.pin !== OPERATION_CREDENTIAL.pin)
+        throw refusal('INVALID_CREDENTIAL');
+      if (authenticationGate) await authenticationGate;
+      guard();
+      if (authenticationError) throw authenticationRefusal ? refusal(authenticationError) : Error(authenticationError);
+    },
     evmSubmissionFailure,
     async replacementOriginal(hash: string, mode: 'cancel' | 'speed-up', guard: () => void) {
       const retained = await signedRecords.readReplacement(signedRecordTestSession(guard), '1', wallet.address, hash, mode);
@@ -119,9 +146,10 @@ function fixture() {
     assertUnlocked(guard: () => void) { guard(); assert.equal(state.phase, 'ready'); },
     async sign(
       transaction: EvmUnsignedTransfer,
-      authority: Readonly<{ assertCurrent(): void; signal: AbortSignal }>
+      authority: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['sign']>[1]
     ) {
       const guard = authority.assertCurrent;
+      operationAuthorization.consume(authority.authorization, transaction, guard);
       guard();
       signatures++;
       if (signGate) await signGate;
@@ -237,6 +265,11 @@ function fixture() {
     runtime,
     source,
     signatures: () => signatures,
+    authentications: () => authentications,
+    locks: () => locks,
+    failAuthentication(code: string | null) { authenticationError = code; authenticationRefusal = false; },
+    refuseAuthentication(code: string) { authenticationError = code; authenticationRefusal = true; },
+    holdAuthentication(promise: Promise<void>) { authenticationGate = promise; },
     tokenReadsAfterChange,
     holdPostJournalTokenRead(hook: () => Promise<void>) { postJournalTokenRead = hook; },
     holdPostJournalNonceRead(hook: () => Promise<void>) { postJournalNonceRead = hook; },
@@ -317,6 +350,122 @@ function fixture() {
     },
   };
 }
+for (const type of ['HDAccount', 'Imported', 'Ledger', 'Trezor'] as const) {
+  test(`native MAX ${type} reserves the shared fee policy and sends exactly the review`, async () => {
+    const f = fixture(type);
+    try {
+      await f.transfers.prepareMaximum(to);
+      const approved = f.transfers.getSnapshot().review;
+      assert(approved);
+      const reserve = type === 'Ledger' || type === 'Trezor' ? 1_000_000_000_000n : 0n;
+      assert.equal(BigInt(approved.amountUnits) + BigInt(approved.maximumFeeUnits) + reserve, 0x10000000000000000n);
+      assert.equal(f.authentications(), 0);
+      assert.equal(f.signatures(), 0);
+      assert.equal(f.broadcasts.length, 0);
+      await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
+      assert.equal(f.authentications(), 1);
+      assert.equal(f.signatures(), 1);
+      assert.equal(f.broadcasts.length, 1);
+      const sent = Transaction.from(f.broadcasts[0]);
+      assert.equal(sent.value.toString(), approved.amountUnits);
+      assert.equal(sent.gasLimit.toString(), approved.gasLimit);
+      assert.equal(sent.maxFeePerGas?.toString() ?? sent.gasPrice?.toString(), approved.maximumFeePerGas);
+    } finally { f.close(); }
+  });
+}
+
+test('native MAX refuses externally pending and retained outgoing transactions', async () => {
+  const external = fixture('HDAccount');
+  try {
+    external.nextNonce();
+    await assert.rejects(external.transfers.prepareMaximum(to), { code: 'MAX_PENDING' });
+    assert.equal(external.transfers.getSnapshot().review, null);
+    assert.equal(external.signatures(), 0);
+    assert.equal(external.broadcasts.length, 0);
+  } finally { external.close(); }
+  const retained = fixture('HDAccount');
+  try {
+    const approved = await review(retained);
+    retained.loseAcknowledgment();
+    await retained.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
+    assert.equal(retained.transfers.getSnapshot().phase, 'unknown');
+    const signed = retained.signatures(), posts = retained.broadcasts.length;
+    await assert.rejects(retained.transfers.prepareMaximum(to), { code: 'MAX_PENDING' });
+    assert.equal(retained.signatures(), signed);
+    assert.equal(retained.broadcasts.length, posts);
+  } finally { retained.close(); }
+});
+
+test('native MAX preserves an explicit unused higher nonce through the reviewed signature', async () => {
+  const f = fixture('HDAccount');
+  try {
+    await f.transfers.prepareMaximum(to, '7');
+    const approved = f.transfers.getSnapshot().review;
+    assert(approved);
+    assert.equal(approved.nonce, '7');
+    assert.equal(approved.nonceOverride, 7);
+    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
+    assert.equal(Transaction.from(f.broadcasts[0]).nonce, 7);
+    assert.equal(Transaction.from(f.broadcasts[0]).value.toString(), approved.amountUnits);
+    assert.equal(f.signatures(), 1);
+  } finally { f.close(); }
+  const pending = fixture('HDAccount');
+  try {
+    pending.nextNonce();
+    await assert.rejects(pending.transfers.prepareMaximum(to, '7'), { code: 'MAX_PENDING' });
+    assert.equal(pending.signatures(), 0);
+  } finally { pending.close(); }
+});
+
+test('native MAX never rewrites an approved amount after balance growth or loss', async () => {
+  for (const grows of [true, false]) {
+    const f = fixture('HDAccount');
+    try {
+      await f.transfers.prepareMaximum(to);
+      const approved = f.transfers.getSnapshot().review;
+      assert(approved);
+      f.setPendingBalance(BigInt(approved.totalUnits) + (grows ? 1000n : -1n));
+      if (grows) {
+        await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
+        assert.equal(Transaction.from(f.broadcasts[0]).value.toString(), approved.amountUnits);
+      } else {
+        await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL));
+        assert.equal(f.signatures(), 0);
+        assert.equal(f.broadcasts.length, 0);
+      }
+    } finally { f.close(); }
+  }
+});
+
+test('native MAX keeps authentication, expiry, no-funds and payer-kind refusals', async () => {
+  const f = fixture('HDAccount');
+  try {
+    await f.transfers.prepareMaximum(to);
+    const approved = f.transfers.getSnapshot().review;
+    assert(approved);
+    await assert.rejects(f.transfers.confirm(approved.id, { method: 'pin', pin: '000000' }), { code: 'INVALID_CREDENTIAL' });
+    assert.equal(f.transfers.getSnapshot().review, approved);
+    assert.equal(f.signatures(), 0);
+    f.expire();
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'EXPIRED' });
+    assert.equal(f.broadcasts.length, 0);
+  } finally { f.close(); }
+  const empty = fixture('Imported');
+  try {
+    empty.insufficient();
+    await assert.rejects(empty.transfers.prepareMaximum(to));
+    assert.equal(empty.transfers.getSnapshot().review, null);
+    assert.equal(empty.authentications(), 0);
+    assert.equal(empty.signatures(), 0);
+  } finally { empty.close(); }
+  const smart = fixture('SmartAccount');
+  try {
+    await assert.rejects(smart.transfers.prepareMaximum(to));
+    assert.equal(smart.transfers.getSnapshot().review, null);
+    assert.equal(smart.signatures(), 0);
+  } finally { smart.close(); }
+});
+
 // Authenticated, deterministic capacity setup in an unrelated chain scope. No
 // network calls or production limits are changed; the same profile stores both.
 async function fillSyntheticJournal(f: ReturnType<typeof fixture>) {
@@ -396,7 +545,7 @@ test('invalid ERC20 input makes no RPC or writes with a saved native transfer', 
   try {
     f.loseAcknowledgment();
     const approved = await review(f);
-    await f.transfers.confirm(approved.id);
+    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
     const before = structuredClone(f.records);
     const calls = f.rpcMethods.length;
     await assert.rejects(
@@ -432,7 +581,7 @@ test('ordinary coin and token sends preserve a deliberate override below the ext
       assert.equal(approved.nonce, '0');
       assert.equal(approved.nonceOverride, 0);
       assert.equal(f.signatures(), 0);
-      await f.transfers.confirm(approved.id);
+      await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
       assert.equal(f.broadcasts.length, 1);
       assert.equal(Transaction.from(f.broadcasts[0]!).nonce, 0);
       assert.equal((await (await f.runtime.journal(() => undefined)).load())?.nonce, 0);
@@ -454,7 +603,7 @@ for (const manual of [false, true]) {
       const approved = f.transfers.getSnapshot().review!;
       let held = false;
       f.holdWrite(async () => { if (!held) { held = true; f.changeTokenAtNextBlock(); } });
-      await assert.rejects(f.transfers.confirm(approved.id), { code: 'INSUFFICIENT_TOKEN_BALANCE' });
+      await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'INSUFFICIENT_TOKEN_BALANCE' });
       assert.equal(f.signatures(), 1);
       assert.equal(f.broadcasts.length, 0);
       assert(f.tokenReadsAfterChange.includes('0x70a08231:0x21'));
@@ -476,7 +625,7 @@ test('manual nonce rejects malformed inputs and accepts zero only while it is av
     const approved = f.transfers.getSnapshot().review!;
     assert.equal(approved.nonceOverride, 0);
     f.consumeNonce();
-    await assert.rejects(f.transfers.confirm(approved.id), { code: 'NONCE_UNAVAILABLE' });
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'NONCE_UNAVAILABLE' });
     assert.equal(f.signatures(), 0);
     await assert.rejects(f.transfers.view.prepare(to, '0.001', '0'), { code: 'NONCE_UNAVAILABLE' });
     assert.equal(f.transfers.getSnapshot().phase, 'idle');
@@ -490,7 +639,7 @@ test('a manual nonce claimed during durable append retains its exact signed byte
     await f.transfers.view.prepare(to, '0.001', '0');
     const approved = f.transfers.getSnapshot().review!;
     f.holdWrite(async () => f.consumeNonce());
-    await assert.rejects(f.transfers.confirm(approved.id), { code: 'NONCE_UNAVAILABLE' });
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'NONCE_UNAVAILABLE' });
     assert.equal(f.signatures(), 1);
     assert.equal(f.broadcasts.length, 0);
     const saved = await (await f.runtime.journal(() => undefined)).load();
@@ -504,7 +653,7 @@ test('a pending nonce change during durable append preserves the approved bytes 
   try {
     const approved = await review(f);
     f.holdWrite(async () => f.nextNonce());
-    await assert.rejects(f.transfers.confirm(approved.id), { code: 'EXPIRED' });
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'EXPIRED' });
     assert.equal(f.signatures(), 1);
     assert.equal(f.broadcasts.length, 0);
     const saved = await (await f.runtime.journal(() => undefined)).load();
@@ -518,14 +667,14 @@ test('real signed bytes are journaled before one network submission and never ex
   const f = fixture();
   try {
     const approved = await review(f);
-    await f.transfers.confirm(approved.id);
+    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
     assert.equal(f.broadcasts.length, 1);
     assert.equal(f.signatures(), 1);
     assert.equal(f.transfers.getSnapshot().phase, 'pending');
     assert(
       !JSON.stringify(f.transfers.getSnapshot()).includes(f.broadcasts[0]!)
     );
-    await assert.rejects(f.transfers.confirm(approved.id), {
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), {
       code: 'EXPIRED',
     });
     assert.equal(f.broadcasts.length, 1);
@@ -537,7 +686,7 @@ test('lagging pending balance reserves accepted predecessor value and fee until 
   const f = fixture();
   try {
     const first = await review(f);
-    await f.transfers.confirm(first.id);
+    await f.transfers.confirm(first.id, OPERATION_CREDENTIAL);
     f.setPendingBalance(BigInt(first.totalUnits) * 2n - 1n);
     await assert.rejects(f.transfers.prepare(to, '0.001'), { code: 'INSUFFICIENT_BALANCE' });
     assert.equal(f.signatures(), 1);
@@ -547,7 +696,7 @@ test('lagging pending balance reserves accepted predecessor value and fee until 
     f.setPendingBalance(BigInt(first.totalUnits));
     const next = await review(f);
     assert.equal(next.nonce, '1');
-    await f.transfers.confirm(next.id);
+    await f.transfers.confirm(next.id, OPERATION_CREDENTIAL);
     assert.deepEqual(f.broadcasts.map((raw) => Transaction.from(raw).nonce), [0, 1]);
   } finally {
     f.close();
@@ -558,10 +707,10 @@ test('same-token sends queue while reserving existing outgoing amounts', async (
   const f = fixture();
   try {
     await f.transfers.prepareToken(token.contractAddress, to, '1');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, OPERATION_CREDENTIAL);
     await f.transfers.prepareToken(token.contractAddress, to, '2');
     assert.equal(f.transfers.getSnapshot().review?.nonce, '1');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, OPERATION_CREDENTIAL);
     assert.deepEqual(f.broadcasts.map((raw) => Transaction.from(raw).nonce), [0, 1]);
     await assert.rejects(f.transfers.prepareToken(token.contractAddress, to, '98'), { code: 'INSUFFICIENT_TOKEN_BALANCE' });
     await f.transfers.prepareToken(otherToken.contractAddress, to, '2');
@@ -575,7 +724,7 @@ test('asset state changes after signing retain recovery guidance without broadca
     await f.transfers.prepareToken(token.contractAddress, to, '1');
     const approved = f.transfers.getSnapshot().review!;
     f.holdWrite(async () => f.nextNonce());
-    await assert.rejects(f.transfers.confirm(approved.id), { code: 'EXPIRED' });
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'EXPIRED' });
     assert.equal(f.signatures(), 1);
     assert.equal(f.broadcasts.length, 0);
     const saved = await (await f.runtime.journal(() => undefined)).load();
@@ -593,7 +742,7 @@ test('a pending count behind canonical uses latest affordability and the canonic
     f.externalPendingBalance('latest');
     const approved = await review(f);
     assert.equal(approved.nonce, '1');
-    await f.transfers.confirm(approved.id);
+    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
     assert.equal(f.transfers.getSnapshot().phase, 'pending');
     assert.deepEqual(f.broadcasts.map((raw) => Transaction.from(raw).nonce), [1]);
   } finally {
@@ -604,11 +753,11 @@ test('a pending count behind canonical uses latest affordability and the canonic
 test('a bridged nonce stays approved when pending catches up during the durable append', async () => {
   const f = fixture();
   try {
-    await f.transfers.confirm((await review(f)).id);
+    await f.transfers.confirm((await review(f)).id, OPERATION_CREDENTIAL);
     const second = await review(f);
     assert.equal(second.nonce, '1');
     f.holdWrite(async () => f.nextNonce());
-    await f.transfers.confirm(second.id);
+    await f.transfers.confirm(second.id, OPERATION_CREDENTIAL);
     assert.equal(f.transfers.getSnapshot().phase, 'pending');
     assert.deepEqual(f.broadcasts.map((raw) => Transaction.from(raw).nonce), [0, 1]);
   } finally {
@@ -624,7 +773,7 @@ test('an expired review and a changed nonce cannot produce a signature or broadc
       if (expire) f.expire();
       else f.nextNonce();
       await assert.rejects(
-        f.transfers.confirm(approved.id),
+        f.transfers.confirm(approved.id, OPERATION_CREDENTIAL),
         { code: 'EXPIRED' }
       );
       assert.equal(f.signatures(), 0);
@@ -639,7 +788,7 @@ test('locking after review prevents a signature or pending transaction', async (
   try {
     const approved = await review(f);
     f.source.lock();
-    await assert.rejects(f.transfers.confirm(approved.id), { code: 'EXPIRED' });
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'EXPIRED' });
     assert.equal(f.signatures(), 0);
     assert.equal(f.source.getSnapshot().phase, 'locked');
     assert.equal(Object.keys(f.records).length, 0);
@@ -658,7 +807,7 @@ test('lock while signing discards the late signature', async () => {
   );
   try {
     const approved = await review(f);
-    const pending = f.transfers.confirm(approved.id);
+    const pending = f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
     while (!f.signatures())
       await new Promise((resolve) => setImmediate(resolve));
     f.source.lock();
@@ -670,12 +819,114 @@ test('lock while signing discards the late signature', async () => {
     f.close();
   }
 });
+test('operation authentication is required and a rejected credential preserves only the current unsigned review', async () => {
+  const f = fixture();
+  try {
+    const approved = await review(f);
+    assert.equal(f.authentications(), 0);
+    await assert.rejects(Reflect.apply(f.transfers.confirm, f.transfers, [approved.id]), { code: 'INVALID_CREDENTIAL' });
+    await assert.rejects(f.transfers.confirm(approved.id, { method: 'pin', pin: '000000' }), { code: 'INVALID_CREDENTIAL' });
+    assert.strictEqual(f.transfers.getSnapshot().review, approved);
+    assert.equal(f.signatures(), 0); assert.equal(f.broadcasts.length, 0); assert.equal(Object.keys(f.records).length, 0);
+    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
+    assert.equal(f.authentications(), 2); assert.equal(f.signatures(), 1); assert.equal(f.broadcasts.length, 1);
+  } finally { f.close(); }
+});
+
+test('cancelled biometric confirmation permits password retry without signing first', async () => {
+  const f = fixture();
+  try {
+    const approved = await review(f);
+    f.refuseAuthentication('DEVICE_UNLOCK_UNAVAILABLE');
+    await assert.rejects(f.transfers.confirm(approved.id, { method: 'biometric' }), { code: 'DEVICE_UNLOCK_UNAVAILABLE' });
+    assert.strictEqual(f.transfers.getSnapshot().review, approved); assert.equal(f.signatures(), 0);
+    f.failAuthentication(null);
+    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
+    assert.equal(f.signatures(), 1);
+  } finally { f.close(); }
+});
+
+for (const change of ['expiry', 'lock', 'cancel'] as const) test(`pending operation authentication cannot sign after ${change}`, async () => {
+  const f = fixture(), held = Promise.withResolvers<void>();
+  try {
+    const approved = await review(f), reads = f.rpcMethods.length;
+    f.holdAuthentication(held.promise);
+    const confirmation = f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
+    const refused = assert.rejects(confirmation, { code: 'CANCELLED' });
+    while (!f.authentications()) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.rpcMethods.length, reads);
+    if (change === 'expiry') f.expire();
+    else if (change === 'lock') f.source.lock();
+    else f.transfers.cancel();
+    held.resolve(); await refused;
+    assert.equal(f.signatures(), 0); assert.equal(f.broadcasts.length, 0); assert.equal(Object.keys(f.records).length, 0);
+  } finally { held.resolve(); f.close(); }
+});
+
+for (const code of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED', 'DEVICE_UNLOCK_UNAVAILABLE'] as const) {
+  test(`recognized ${code} authentication refusal keeps the exact review without locking`, async () => {
+    const f = fixture();
+    try {
+      const approved = await review(f); f.refuseAuthentication(code);
+      await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code });
+      assert.equal(f.locks(), 0); assert.strictEqual(f.transfers.getSnapshot().review, approved);
+      assert.equal(f.signatures(), 0); assert.equal(f.broadcasts.length, 0);
+      f.failAuthentication(null); await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
+      assert.equal(f.signatures(), 1); assert.equal(f.locks(), 0);
+    } finally { f.close(); }
+  });
+}
+
+for (const code of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED', 'DEVICE_UNLOCK_UNAVAILABLE'] as const) {
+  test(`unbranded ${code} cannot preserve a retryable review after authentication failure`, async () => {
+    const f = fixture();
+    try {
+      const approved = await review(f); f.failAuthentication(code);
+      await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'CANCELLED' });
+      assert.equal(f.locks(), 1);
+      assert.equal(f.source.getSnapshot().phase, 'locked');
+      assert.equal(f.transfers.getSnapshot().review, null);
+      assert.equal(f.signatures(), 0); assert.equal(f.broadcasts.length, 0);
+      assert.equal(Object.keys(f.records).length, 0);
+      await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL));
+      assert.equal(f.locks(), 1);
+    } finally { f.close(); }
+  });
+}
+
+test('unknown authentication failure revokes public custody exactly once before dropping its review', async () => {
+  const f = fixture();
+  try {
+    const approved = await review(f); f.failAuthentication('STORAGE_UNAVAILABLE');
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'CANCELLED' });
+    assert.equal(f.locks(), 1); assert.equal(f.source.getSnapshot().phase, 'locked');
+    assert.equal(f.transfers.getSnapshot().review, null);
+    assert.equal(f.signatures(), 0); assert.equal(f.broadcasts.length, 0); assert.equal(Object.keys(f.records).length, 0);
+  } finally { f.close(); }
+});
+
+for (const action of ['cancel', 'dispose'] as const) test(`late authentication after ${action} cannot lock a successor owner`, async () => {
+  const f = fixture(), held = Promise.withResolvers<void>();
+  try {
+    const approved = await review(f); f.holdAuthentication(held.promise);
+    const pending = f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
+    const rejected = assert.rejects(pending, { code: 'CANCELLED' });
+    while (!f.authentications()) await new Promise(resolve => setImmediate(resolve));
+    if (action === 'cancel') f.transfers.cancel(); else f.transfers.dispose();
+    assert.equal(f.locks(), 1);
+    f.unlock(); assert.equal(f.source.getSnapshot().phase, 'ready');
+    held.resolve(); await rejected;
+    assert.equal(f.locks(), 1); assert.equal(f.source.getSnapshot().phase, 'ready');
+    assert.equal(f.signatures(), 0); assert.equal(f.broadcasts.length, 0);
+  } finally { held.resolve(); f.close(); }
+});
+
 test('duplicate confirmation cannot trigger a second signing request', async () => {
   const f = fixture();
   try {
     const approved = await review(f);
-    const pending = f.transfers.confirm(approved.id);
-    await assert.rejects(f.transfers.confirm(approved.id), {
+    const pending = f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), {
       code: 'BUSY',
     });
     await pending;
@@ -690,7 +941,7 @@ test('a valid signature for different fields is rejected before durable admissio
   try {
     const approved = await review(f);
     f.changeSignedFields();
-    await assert.rejects(f.transfers.confirm(approved.id));
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL));
     assert.equal(Object.keys(f.records).length, 0);
     assert.equal(f.broadcasts.length, 0);
     assert.equal(f.source.getSnapshot().phase, 'locked');
@@ -704,7 +955,7 @@ for (const fault of ['signer', 'hash', 'oversized', 'noncanonical'] as const) {
     try {
       const approved = await review(f);
       f.changeSignedFields(fault);
-      await assert.rejects(f.transfers.confirm(approved.id), { code: 'FAILED' });
+      await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'FAILED' });
       assert.equal(f.signatures(), 1);
       assert.equal(Object.keys(f.records).length, 0);
       assert.equal(f.broadcasts.length, 0);
@@ -719,7 +970,7 @@ test('storage failure after signing never reaches the network', async () => {
   try {
     const approved = await review(f);
     f.failStorage();
-    await assert.rejects(f.transfers.confirm(approved.id));
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL));
     assert.equal(f.signatures(), 1);
     assert.equal(f.broadcasts.length, 0);
     assert.equal(f.source.getSnapshot().phase, 'locked');
@@ -732,7 +983,7 @@ test('lost acknowledgement retries the same bytes with fresh consent, without a 
   try {
     const approved = await review(f);
     f.loseAcknowledgment();
-    await f.transfers.confirm(approved.id);
+    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
     assert.equal(f.transfers.getSnapshot().phase, 'unknown');
     await assert.rejects(f.transfers.prepare(to, '0.002'), {
       code: 'PENDING_TRANSFER',
@@ -740,7 +991,10 @@ test('lost acknowledgement retries the same bytes with fresh consent, without a 
     await f.transfers.recover(true);
     const retry = f.transfers.getSnapshot().review;
     assert(retry?.retry);
-    await f.transfers.confirm(retry.id);
+    await assert.rejects(f.transfers.confirm(retry.id, { method: 'pin', pin: '000000' }), { code: 'INVALID_CREDENTIAL' });
+    assert.equal(f.broadcasts.length, 1);
+    await f.transfers.confirm(retry.id, OPERATION_CREDENTIAL);
+    assert.equal(f.authentications(), 3);
     assert.equal(f.signatures(), 1);
     assert.equal(f.broadcasts.length, 2);
     assert.equal(f.broadcasts[0], f.broadcasts[1]);
@@ -753,7 +1007,7 @@ test('a saved transaction stays visible when status observation is unavailable',
   try {
     const approved = await review(f);
     f.loseAcknowledgment();
-    await f.transfers.confirm(approved.id);
+    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
     const hash = f.transfers.getSnapshot().hash!;
     assert(hash);
     const retained = JSON.stringify(f.records);
@@ -786,7 +1040,7 @@ test('a reentrant lock cannot bring back a cancelled saved-transaction review', 
   try {
     const approved = await review(f);
     f.loseAcknowledgment();
-    await f.transfers.confirm(approved.id);
+    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
     const hash = f.transfers.getSnapshot().hash;
     assert(hash);
     f.transfers.cancel();
@@ -808,7 +1062,7 @@ test('finalized receipt releases the journal and records the result', async () =
   const f = fixture();
   try {
     const approved = await review(f);
-    await f.transfers.confirm(approved.id);
+    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
     f.finalize();
     await f.transfers.recover();
     assert.equal(f.transfers.getSnapshot().phase, 'confirmed');
@@ -827,7 +1081,7 @@ test('a reentrant observer can lock before submission without leaking signed byt
     f.transfers.subscribe((state) => {
       if (state.phase === 'submitting') f.source.lock();
     });
-    await assert.rejects(f.transfers.confirm(approved.id), {
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), {
       code: 'CANCELLED',
     });
     assert.equal(f.broadcasts.length, 0);
@@ -843,7 +1097,7 @@ test('effect replay recovers the pending journal after cancellation drains', asy
   try {
     const approved = await review(f);
     f.loseAcknowledgment();
-    await f.transfers.confirm(approved.id);
+    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
     const hash = f.transfers.getSnapshot().hash;
     const first = f.transfers.recover().catch((error) => error.code);
     f.transfers.cancel();
@@ -889,7 +1143,7 @@ test('a finalized nonce without the original receipt retires obsolete retries wi
   try {
     const approved = await review(f);
     f.loseAcknowledgment();
-    await f.transfers.confirm(approved.id);
+    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
     f.consumeElsewhere();
     await f.transfers.recover(true);
     assert.equal(f.transfers.getSnapshot().phase, 'nonce-consumed');
@@ -942,7 +1196,7 @@ test('acknowledged transfer keeps its hash while the submitted marker is held an
   };
   try {
     const approved = await review(f);
-    const pending = f.transfers.confirm(approved.id);
+    const pending = f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
     const completion = pending.catch((error: unknown) => error);
     await Promise.race([started, pending]);
     const whileMarking = f.transfers.getSnapshot();
@@ -973,7 +1227,7 @@ test('a definite no-POST from the dispatch callback retains only the already sav
   };
   try {
     const approved = await review(f);
-    await assert.rejects(f.transfers.confirm(approved.id), { code: 'EXPIRED' });
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'EXPIRED' });
     const saved = await (await f.runtime.journal(() => undefined)).load();
     assert(saved);
     assert.equal(f.broadcasts.length, 0);
@@ -989,7 +1243,7 @@ test('unexpected recovery journal failure does not claim an existing submitted t
   const f = fixture();
   try {
     const approved = await review(f);
-    await f.transfers.confirm(approved.id);
+    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
     const before = structuredClone(f.records);
     f.finalize();
     const updateObservedPhase = f.signedRecords.updateObservedPhase.bind(f.signedRecords);
@@ -1016,7 +1270,7 @@ test('expiry after a durable signed record preserves its recovery identity witho
     f.expire();
     return entry;
   };
-  try { const approved = await review(f); await assert.rejects(f.transfers.confirm(approved.id), { code: 'EXPIRED' }); assert.equal(f.broadcasts.length, 0); assert.equal(f.transfers.getSnapshot().phase, 'unknown'); assert(f.transfers.getSnapshot().hash); } finally { f.close(); }
+  try { const approved = await review(f); await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'EXPIRED' }); assert.equal(f.broadcasts.length, 0); assert.equal(f.transfers.getSnapshot().phase, 'unknown'); assert(f.transfers.getSnapshot().hash); } finally { f.close(); }
 });
 
 test('a final chain probe that outlives the review retains the exact signed record without a raw POST', async () => {
@@ -1029,7 +1283,7 @@ test('a final chain probe that outlives the review retains the exact signed reco
   });
   try {
     const approved = await review(f);
-    const pending = f.transfers.confirm(approved.id);
+    const pending = f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
     const expired = assert.rejects(pending, { code: 'EXPIRED' });
     await Promise.race([entered, pending]);
     const durable = JSON.parse(Object.values(f.records)[0] as string).entries[0];
@@ -1064,7 +1318,7 @@ test('expiry before the signed record commits exposes no saved hash or retry', a
   f.holdWrite(async () => { enter(); await held; });
   try {
     const approved = await review(f);
-    const pending = f.transfers.confirm(approved.id);
+    const pending = f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
     const expired = assert.rejects(pending, { code: 'EXPIRED' });
     await Promise.race([started, pending]);
     const whilePersisting = f.transfers.getSnapshot();
@@ -1092,7 +1346,7 @@ test('rechecks the original approved maximum cost when fees and balance decrease
     const approved = await review(f);
     assert.equal(approved.totalUnits, '1000000000075600');
     f.lowerFeesWithReducedBalance();
-    await assert.rejects(f.transfers.confirm(approved.id), { code: 'INSUFFICIENT_BALANCE' });
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL), { code: 'INSUFFICIENT_BALANCE' });
     assert.equal(f.signatures(), 0);
     assert.equal(f.broadcasts.length, 0);
     assert.equal(Object.keys(f.records).length, 0);
@@ -1153,7 +1407,7 @@ test('a rejected secret operation revokes custody before a queued cancellation c
   };
   try {
     const approved = await review(f);
-    await assert.rejects(f.transfers.confirm(approved.id));
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL));
     assert.equal(cancellationPhase, 'locked');
     assert.equal(f.source.getSnapshot().phase, 'locked');
     assert.equal(Object.keys(f.records).length, 0);
@@ -1207,20 +1461,20 @@ test('real SDK and NativeTransfers report a genuine journal capacity refusal wit
   const f=fixture();try {
     const approved=await review(f);const {profile,full,first,second}=await fillSyntheticJournal(f);
     const realSubmit=f.runtime.submit;f.runtime.submit=async (...args)=>{try{return await realSubmit(...args);}catch(error){capturedCapacity=error;throw error;}};
-    await assert.rejects(f.transfers.confirm(approved.id),{code:'SIGNED_STORAGE_FULL'});
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL),{code:'SIGNED_STORAGE_FULL'});
     assert.equal(f.broadcasts.length,0);assert.equal(f.signatures(),1);assert.equal(f.source.getSnapshot().phase,'ready');
     assert.equal(f.transfers.getSnapshot().hash,null);assert.equal(createHash('sha256').update(f.records[profile] as string).digest('hex'),createHash('sha256').update(full).digest('hex'));
     assert.equal(f.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_MESSAGE);
     const session=signedRecordTestSession();for(const entry of [first,second])assert((await f.signedRecords.readExact(session,entry.chainId,entry.from,entry.hash))?.rawTransaction===entry.rawTransaction);
   } finally { f.close(); }
-  const healthy=fixture();try {const approved=await review(healthy);await healthy.transfers.confirm(approved.id);assert.equal(healthy.broadcasts.length,1);assert.equal(healthy.transfers.getSnapshot().phase,'pending');}finally{healthy.close();}
+  const healthy=fixture();try {const approved=await review(healthy);await healthy.transfers.confirm(approved.id, OPERATION_CREDENTIAL);assert.equal(healthy.broadcasts.length,1);assert.equal(healthy.transfers.getSnapshot().phase,'pending');}finally{healthy.close();}
   // A previously marked error delivered after a real local POST must never be
   // presented as a no-broadcast capacity refusal.
   assert(capturedCapacity instanceof Error);
   const dispatched=fixture();try {
     const approved=await review(dispatched);const realSubmit=dispatched.runtime.submit;
     dispatched.runtime.submit=async (...args)=>{await realSubmit(...args);throw capturedCapacity;};
-    await dispatched.transfers.confirm(approved.id);
+    await dispatched.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
     assert.equal(dispatched.broadcasts.length,1);assert.equal(dispatched.transfers.getSnapshot().phase,'unknown');
     assert.notEqual(dispatched.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_MESSAGE);
     assert.notEqual(dispatched.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE);
@@ -1229,12 +1483,12 @@ test('real SDK and NativeTransfers report a genuine journal capacity refusal wit
 
 test('capacity refusal of a saved cancellation preserves the original exact record and sends no replacement', async () => {
   const f=fixture();try {
-    const initial=await review(f);await f.transfers.confirm(initial.id);const original=f.transfers.getSnapshot().hash!;
+    const initial=await review(f);await f.transfers.confirm(initial.id, OPERATION_CREDENTIAL);const original=f.transfers.getSnapshot().hash!;
     const saved=await (await f.runtime.journal(()=>undefined)).load(original);assert(saved);
     f.setPayerEoa();
     await f.transfers.prepareSavedCancellation(original);const replacement=f.transfers.getSnapshot().review!;assert(replacement.replacement);
     const {profile,full}=await fillSyntheticJournal(f);
-    await assert.rejects(f.transfers.confirm(replacement.id),{code:'SIGNED_STORAGE_FULL'});
+    await assert.rejects(f.transfers.confirm(replacement.id, OPERATION_CREDENTIAL),{code:'SIGNED_STORAGE_FULL'});
     assert.equal(f.broadcasts.length,1);assert.equal(f.source.getSnapshot().phase,'ready');assert.equal(createHash('sha256').update(f.records[profile] as string).digest('hex'),createHash('sha256').update(full).digest('hex'));
     const retained=await (await f.runtime.journal(()=>undefined)).load(original);assert(retained?.rawTransaction===saved.rawTransaction);
     assert.equal(f.transfers.getSnapshot().phase,'unknown');assert.equal(f.transfers.getSnapshot().hash,original);
@@ -1245,7 +1499,7 @@ test('capacity refusal of a saved cancellation preserves the original exact reco
 test('forged capacity text from a runtime is not classified as a local journal refusal', async () => {
   const f=fixture();try {
     const approved=await review(f);f.runtime.submit=async()=>{throw Object.assign(new Error('EVM_SIGNED_RECORD_CAPACITY'),{transactionNotBroadcast:true,code:'EVM_SIGNED_STORAGE_FULL'});};
-    await assert.rejects(f.transfers.confirm(approved.id),{code:'FAILED'});assert.equal(f.broadcasts.length,0);
+    await assert.rejects(f.transfers.confirm(approved.id, OPERATION_CREDENTIAL),{code:'FAILED'});assert.equal(f.broadcasts.length,0);
     assert.equal(f.source.getSnapshot().phase,'locked');assert.notEqual(f.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_MESSAGE);
     assert.notEqual(f.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE);
   }finally{f.close();}
@@ -1262,7 +1516,7 @@ test('a later attempt publishes a fresh review identity after submission is canc
         f.transfers.cancel();
       }
     });
-    await assert.rejects(f.transfers.confirm(first.id), { code: 'CANCELLED' });
+    await assert.rejects(f.transfers.confirm(first.id, OPERATION_CREDENTIAL), { code: 'CANCELLED' });
     unsubscribe();
     assert.strictEqual(submittingReview, first);
     assert.equal(f.broadcasts.length, 0);

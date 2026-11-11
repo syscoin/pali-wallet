@@ -1,3 +1,4 @@
+import { authenticateNativeOperation } from './operationAuthentication';
 import { expect, test } from '@playwright/test';
 
 test.use({
@@ -37,6 +38,7 @@ for (const width of [390, 320]) test(`saved predecessor replay is explicit at ${
   await expect(page.getByTestId('native-replay-same-nonce-warning')).toBeVisible();
   expect(await page.evaluate(()=>window.__erc20SendFixture.broadcasts().length)).toBe(0);
   await page.getByTestId('native-send-confirm').click();
+  await authenticateNativeOperation(page);
   await expect(page.getByTestId('native-send-hash')).toHaveText(hashes.first);
   expect(await page.evaluate(()=>window.__erc20SendFixture.broadcasts().length)).toBe(1);
   expect(await page.evaluate(()=>window.__erc20SendFixture.signatures())).toBe(0);
@@ -74,13 +76,16 @@ test('checking an earlier collectible keeps the displayed hash', async ({ page }
   await expect(page.getByText(first, { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Resend signed transaction' })).toBeVisible();
   await expect(page.getByTestId('native-send-collectible-id')).toHaveText('0');
-  await page.getByRole('button', { name: 'Close review' }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByText('Wallet closed', { exact: true })).toBeVisible();
+  // The production parent returns to Activity. Reopen its status-only route with the exact selected hash.
+  await page.goto(`/?erc20-send&inspect=${first}`);
   const hash = page.getByTestId('native-send-hash');
   await expect(hash).toHaveText(first);
   await expect(page.getByRole('button', { name: 'Review retry' })).toBeVisible();
   await page.evaluate(() => window.__erc20SendFixture.finalized());
   await page.getByRole('button', { name: 'Check status' }).click();
-  await expect(page.getByRole('button', { name: 'New transfer' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
   await expect(hash).toHaveText(first);
   await expect(page.getByText('Transaction confirmed.', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__erc20SendFixture.broadcasts())).toEqual([]);
