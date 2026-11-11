@@ -2005,3 +2005,7 @@ Source `dff877f472192f1597112d7c8ca154355fbf3a3f`. [Exact capture provenance](co
 </details>
 
 <!-- consent-updates:end -->
+
+## ERC-721 collection lookup
+
+[Current collection count, bounded token-ID picker and ownership-check captures](enumeration/README.md). The same shared enumeration helper is used by extension and mobile.
