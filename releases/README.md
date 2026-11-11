@@ -37,7 +37,10 @@ Before first iOS publication, set its assigned App Store URL in
 compiled into Pali. Remote metadata cannot substitute a different store/link.
 
 Pali checks at launch/resume and at most every six hours in a running process.
-Manual checks have a one-minute cooldown. Important/critical mobile notices use
+Manual checks have a one-minute cooldown. The shared Expo background worker keeps
+its 15-minute activity interval; persisted release-check timestamps independently
+limit background release requests to six hours, including across cold starts.
+Important/critical mobile notices use
 existing OS notification permission and are deduplicated per release. Users can
 enable/disable these alerts in Help & about. An OS-scheduled background check is
 best-effort; this is not an APNs/FCM push service and does not promise immediate

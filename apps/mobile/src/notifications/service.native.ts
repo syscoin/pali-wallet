@@ -5,26 +5,15 @@ import * as TaskManager from 'expo-task-manager';
 import { NativeNotificationCoordinator } from './coordinator.ts';
 import { createNotificationReader, normalizeNotificationScope, notificationFactScope } from './reader.ts';
 import { createNativeNotificationStore } from './store.native.ts';
-import { ACTIVITY_BACKGROUND_TASK, ACTIVITY_NOTIFICATION_CHANNEL } from './constants.ts';
+import { ACTIVITY_BACKGROUND_TASK, ACTIVITY_NOTIFICATION_CHANNEL, WALLET_BACKGROUND_INTERVAL_MINUTES } from './constants.ts';
 import type { NotificationDelivery } from './types.ts';
 import { startNotificationLifecycle } from './lifecycle.ts';
-import { createNotificationPermissionPresentation } from './permissionPresentation.ts';
-
-const permissionPresentation = createNotificationPermissionPresentation({
-  current: () => AppState.currentState ?? 'unknown',
-  subscribe(listener) {
-    const subscription = AppState.addEventListener('change', listener);
-    return () => subscription.remove();
-  },
-});
-export const isNotificationPermissionPromptActive = permissionPresentation.isActive;
+import { requestNativeNotificationPermission } from './permission.native.ts';
+export { isNotificationPermissionPromptActive } from './permission.native.ts';
 
 function randomId() {
   return 'pali-alert-' + Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
-const acceptsPermission = (permission: Notifications.NotificationPermissionsStatus) =>
-  // eslint-disable-next-line import/namespace -- Expo publicly re-exports this runtime enum from a .types module.
-  permission.granted || permission.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
 const delivery: NotificationDelivery = {
   async permission(request) {
     if (request && Platform.OS === 'android') await Notifications.setNotificationChannelAsync(ACTIVITY_NOTIFICATION_CHANNEL, {
@@ -33,13 +22,7 @@ const delivery: NotificationDelivery = {
       // eslint-disable-next-line import/namespace -- Expo's documented runtime enum is re-exported from a .types module.
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE, sound: null,
     });
-    const current = await Notifications.getPermissionsAsync();
-    if (acceptsPermission(current)) return 'granted';
-    if (!request || !current.canAskAgain) return 'denied';
-    const next = await permissionPresentation.run(() => Notifications.requestPermissionsAsync({
-      ios: { allowAlert: true, allowBadge: false, allowSound: false },
-    }));
-    return acceptsPermission(next) ? 'granted' : 'denied';
+    return requestNativeNotificationPermission(request);
   },
   async backgroundStatus() {
     if (!(await TaskManager.isAvailableAsync())) return 'unsupported';
@@ -47,7 +30,7 @@ const delivery: NotificationDelivery = {
   },
   async register() {
     if (await delivery.backgroundStatus() === 'available' && !(await TaskManager.isTaskRegisteredAsync(ACTIVITY_BACKGROUND_TASK)))
-      await BackgroundTask.registerTaskAsync(ACTIVITY_BACKGROUND_TASK, { minimumInterval: 15 });
+      await BackgroundTask.registerTaskAsync(ACTIVITY_BACKGROUND_TASK, { minimumInterval: WALLET_BACKGROUND_INTERVAL_MINUTES });
   },
   async unregister() {
     if (await TaskManager.isTaskRegisteredAsync(ACTIVITY_BACKGROUND_TASK)) await BackgroundTask.unregisterTaskAsync(ACTIVITY_BACKGROUND_TASK);

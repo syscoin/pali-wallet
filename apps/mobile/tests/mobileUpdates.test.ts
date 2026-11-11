@@ -16,7 +16,7 @@ function fixture(options: { ios?: boolean; severity?: string; store?: string | n
     severity: options.severity ?? 'important', title: 'Recovery fixes', summary: 'Improves interrupted transfer recovery.',
     publishedAt: '2026-01-01T00:00:00Z', releaseNotesUrl: 'https://github.com/syscoin/pali-wallet/releases/tag/v5.0.1',
     availability: { status: 'published' } }] });
-  let permission = true, failRead = false, registered = false;
+  let permission = true, failRead = false, registered = false, interval = 0;
   let hold: ReturnType<typeof Promise.withResolvers<void>> | undefined;
   let backgroundHold: { entered: ReturnType<typeof Promise.withResolvers<void>>; release: ReturnType<typeof Promise.withResolvers<void>> } | undefined;
   const store = { getItem: async (key: string) => { if (failRead) { failRead = false; throw Error('read failed'); } return data.get(key) ?? null; },
@@ -36,7 +36,7 @@ function fixture(options: { ios?: boolean; severity?: string; store?: string | n
     'expo-application': { nativeApplicationVersion: '5.0.0', nativeBuildVersion: '1' },
     'expo-background-task': { BackgroundTaskStatus: { Available: 1 }, getStatusAsync: async () => {
       if (backgroundHold) { backgroundHold.entered.resolve(); await backgroundHold.release.promise; } return 1;
-    }, registerTaskAsync: async () => { registered = true; }, unregisterTaskAsync: async () => { registered = false; } },
+    }, registerTaskAsync: async (_name: string, options: { minimumInterval: number }) => { registered = true; interval = options.minimumInterval; }, unregisterTaskAsync: async () => { registered = false; } },
     'expo-task-manager': { isAvailableAsync: async () => true, isTaskRegisteredAsync: async () => registered },
     'expo-notifications': notifications,
     '../../../../source/shared/walletRelease': { readWalletReleaseFeed: async () => { reads++; return failFeed ? null : feed; } },
@@ -45,8 +45,10 @@ function fixture(options: { ios?: boolean; severity?: string; store?: string | n
     '../../../../source/shared/walletStores': { PALI_STORES: { ios: options.store ?? null } },
     '../platform/http': { walletFetch: () => { throw Error('unexpected'); } },
     './constants': { UPDATE_BACKGROUND_TASK: 'pali-store-updates-v1' },
+    '../notifications/constants': { WALLET_BACKGROUND_INTERVAL_MINUTES: 15 },
+    '../notifications/permission.native': { requestNativeNotificationPermission: async () => (await notifications.requestPermissionsAsync()).granted ? 'granted' : 'denied' },
   };
-  const module = { exports: {} as { mobileUpdates: MobileUpdateService; isReleaseUpdateNotification(id: string): Promise<boolean> } };
+  const module = { exports: {} as { mobileUpdates: MobileUpdateService; runMobileUpdateBackground(): Promise<void>; isReleaseUpdateNotification(id: string): Promise<boolean> } };
   const code = ts.transpileModule(readFileSync(new NodeURL('../src/updates/service.native.ts', import.meta.url), 'utf8'),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
   runInNewContext(code, { module, exports: module.exports, AbortController, setTimeout, clearTimeout, setInterval, clearInterval,
@@ -54,6 +56,7 @@ function fixture(options: { ios?: boolean; severity?: string; store?: string | n
   return { ...module.exports, data, removed, advance() { clock += 21600001; },
     get reads() { return reads; }, get posts() { return posts; }, get requests() { return requests; },
     get registered() { return registered; },
+    get interval() { return interval; },
     failPost(value: boolean) { failPost = value; }, failFeed() { failFeed = true; },
     failReadOnce() { failRead = true; },
     permission(value: boolean) { permission = value; },
@@ -115,4 +118,15 @@ test('opt-out while permission observation waits cannot post the old notice', as
   const checking = f.mobileUpdates.check(); await new Promise<void>(resolve => setImmediate(resolve));
   await f.mobileUpdates.setAlerts(false); gate.resolve(); await checking;
   assert.equal(f.posts, 0);
+});
+test('registering update alerts preserves the activity worker cadence', async () => {
+  const f = fixture(); await f.mobileUpdates.check(); assert.equal(f.interval, 15);
+});
+test('cold background invocations throttle release I/O without changing worker cadence', async () => {
+  const f = fixture(); await f.mobileUpdates.check();
+  const cold = fixture();
+  cold.data.set('pali.update-last-check.v1', f.data.get('pali.update-last-check.v1')!);
+  await cold.runMobileUpdateBackground(); assert.equal(cold.reads, 0);
+  // Foreground entry still loads the badge even when background I/O is throttled.
+  await cold.mobileUpdates.check(); assert.equal(cold.reads, 1);
 });

@@ -10,9 +10,12 @@ import { PALI_STORES } from '../../../../source/shared/walletStores';
 import { walletFetch } from '../platform/http';
 import type { MobileUpdateService, MobileUpdateSnapshot } from './types';
 import { UPDATE_BACKGROUND_TASK } from './constants';
+import { WALLET_BACKGROUND_INTERVAL_MINUTES } from '../notifications/constants';
+import { requestNativeNotificationPermission } from '../notifications/permission.native';
 
 const ALERTS_KEY = 'pali.update-alerts.v1';
 const NOTICE_KEY = 'pali.update-notice.v1';
+const LAST_CHECK_KEY = 'pali.update-last-check.v1';
 const CHANNEL = 'pali-app-updates';
 const platform = Platform.OS === 'android' ? 'android' : 'ios';
 const version = Application.nativeApplicationVersion ?? '';
@@ -55,7 +58,7 @@ function syncBackground() {
     if (alertsEnabled && permission === 'granted') {
       const status = await BackgroundTask.getStatusAsync();
       if (!registered && alertsEnabled && permission === 'granted' && status === BackgroundTask.BackgroundTaskStatus.Available)
-        await BackgroundTask.registerTaskAsync(UPDATE_BACKGROUND_TASK, { minimumInterval: 360 });
+        await BackgroundTask.registerTaskAsync(UPDATE_BACKGROUND_TASK, { minimumInterval: WALLET_BACKGROUND_INTERVAL_MINUTES });
     } else if (registered) await BackgroundTask.unregisterTaskAsync(UPDATE_BACKGROUND_TASK);
   });
   return backgroundTail;
@@ -100,7 +103,10 @@ export const mobileUpdates: MobileUpdateService = {
     if (pending) return pending;
     pending = (async () => {
       await load();
+      const previous = monitor.getSnapshot().lastAttemptAt;
       await monitor.check({ force });
+      const attempted = monitor.getSnapshot().lastAttemptAt;
+      if (attempted !== null && attempted !== previous) await AsyncStorage.setItem(LAST_CHECK_KEY, String(attempted));
       permission = granted(await Notifications.getPermissionsAsync()) ? 'granted' : 'denied'; publish();
       await syncBackground();
       await notify();
@@ -109,7 +115,7 @@ export const mobileUpdates: MobileUpdateService = {
   },
   async setAlerts(enabled) {
     await load();
-    if (enabled) permission = granted(await Notifications.requestPermissionsAsync({ ios: { allowAlert: true, allowBadge: false, allowSound: false } })) ? 'granted' : 'denied';
+    if (enabled) permission = await requestNativeNotificationPermission();
     ++settingsEpoch;
     alertsEnabled = enabled;
     await AsyncStorage.setItem(ALERTS_KEY, enabled ? 'on' : 'off'); publish();
@@ -120,6 +126,15 @@ export const mobileUpdates: MobileUpdateService = {
     }
   },
 };
+/** Expo shares one worker: retain the activity cadence, throttle only release I/O. */
+export async function runMobileUpdateBackground(): Promise<void> {
+  await load();
+  if (!alertsEnabled) return;
+  const previous = Number(await AsyncStorage.getItem(LAST_CHECK_KEY));
+  const elapsed = Date.now() - previous;
+  if (previous > 0 && elapsed >= 0 && elapsed < WALLET_RELEASE_AUTOMATIC_INTERVAL_MS) return;
+  await mobileUpdates.check();
+}
 /** No URL or route is accepted from a notification payload. */
 export async function isReleaseUpdateNotification(id: string): Promise<boolean> {
   await load();
