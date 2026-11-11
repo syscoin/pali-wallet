@@ -4111,11 +4111,17 @@ export function createKeyringRuntimeFactory(
                 if (!['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(required.type)) throw new KeyringRuntimeError('INVALID_INPUT');
                 const saved = inventory.ownerRecords.get(`${required.type}:${required.id}`);
                 if (!saved || saved.address.toLowerCase() !== required.address.toLowerCase()) throw new KeyringRuntimeError('CANCELLED');
-                identities.set(`${required.type}:${required.id}`, { type: required.type as NativeOwnerProofIdentity['type'], id: required.id, address: saved.address, publicKey: saved.xpub });
+                // The Ledger SDK stores SEC bytes without 0x. Normalize only
+                // that representation at receipt capture; the receipt still
+                // verifies its exact SEC length and derived owner address.
+                const publicKey = required.type === 'Ledger' && /^(?:(?:02|03)[0-9a-f]{64}|04[0-9a-f]{128})$/i.test(saved.xpub)
+                  ? `0x${saved.xpub}` : saved.xpub;
+                identities.set(`${required.type}:${required.id}`, { type: required.type as NativeOwnerProofIdentity['type'], id: required.id, address: saved.address, publicKey });
               }
               const binding = JSON.stringify({ id: ownedHandoff.id,
                 account: { id: selected.id, address: smart.address, publicKey: smart.xpub },
-                network: getNativeNetwork(snapshot.active.networkId, snapshot.networks), metadata, plan, owners: [...identities.values()] });
+                network: getNativeNetwork(snapshot.active.networkId, snapshot.networks), metadata, plan,
+                owners: [...identities.values()].map(owner => ({ ...owner, publicKey: inventory.ownerRecords.get(`${owner.type}:${owner.id}`)!.xpub })) });
               const captured = continuation.captured ?? continuation.capture({ binding, intent, plan, owners: [...identities.values()], expiresAt: continuation.expiresAt }, check);
               return { continuation, captured, binding, ownedHandoff };
             } catch (error) { retireNativeSigningHandoff(ownedHandoff); throw error; }
