@@ -1,9 +1,10 @@
 import { IdlePressable } from './IdleActivityBoundary';
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, Header, Icon, Notice, Screen, Text } from '../ui';
 import { useNativeTranslation } from '../platform/localization';
+import { mobileUpdates } from '../updates/service';
 
 export type RealTab = 'wallet' | 'activity' | 'tools' | 'settings';
 export type ShellLeafNavigation = Readonly<{
@@ -31,15 +32,18 @@ export function RealAppShell({ tab, onTab, immersive = false, children }: {
   tab: RealTab; onTab(tab: RealTab): void; immersive?: boolean; children: React.ReactNode;
 }) {
   const { t } = useNativeTranslation();
+  const update = useSyncExternalStore(mobileUpdates.subscribe, mobileUpdates.getSnapshot, mobileUpdates.getSnapshot);
   return <View style={s.shell}>
     <View style={s.content}>{children}</View>
     {!immersive && <SafeAreaView edges={['bottom']} style={s.safe}>
       <View accessibilityRole="tablist" accessibilityLabel={t('mobile.navigation.label')} style={s.tabs}>
-        {TABS.map((item) => <IdlePressable key={item.id} accessibilityRole="tab" accessibilityLabel={t(`mobile.navigation.${item.id}`)}
+        {TABS.map((item) => <IdlePressable key={item.id} accessibilityRole="tab" accessibilityLabel={`${t(`mobile.navigation.${item.id}`)}${item.id === 'settings' && update.release ? ', update available' : ''}`}
           accessibilityShowsLargeContentViewer accessibilityLargeContentTitle={t(`mobile.navigation.${item.id}`)}
           accessibilityState={{ selected: tab === item.id }} aria-selected={tab === item.id} onPress={() => onTab(item.id)}
           style={({ pressed }) => [s.tab, pressed && s.pressed]}>
-          <View style={[s.icon, tab === item.id && s.selected]}><Icon name={item.icon} color={tab === item.id ? colors.blue : colors.muted} /></View>
+          <View style={[s.icon, tab === item.id && s.selected]}><Icon name={item.icon} color={tab === item.id ? colors.blue : colors.muted} />
+            {item.id === 'settings' && update.release && <View testID="update-badge" style={s.updateBadge} />}
+          </View>
           <Text testID={`main-tab-caption-${item.id}`} numberOfLines={1} maxFontSizeMultiplier={1.25}
             adjustsFontSizeToFit minimumFontScale={1} style={[s.label, tab === item.id && s.selectedLabel]}>{t(`mobile.navigation.${item.id}`)}</Text>
         </IdlePressable>)}
@@ -55,4 +59,5 @@ const s = StyleSheet.create({
   icon: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 12 }, selected: { backgroundColor: colors.raised },
   label: { fontSize: 12, lineHeight: 17, color: colors.muted, textAlign: 'center', alignSelf: 'stretch', flexShrink: 1 },
   selectedLabel: { color: colors.blue, fontWeight: '600' }, pressed: { opacity: 0.7 },
+  updateBadge: { position: 'absolute', right: 7, top: 2, width: 7, height: 7, borderRadius: 4, backgroundColor: colors.pink },
 });

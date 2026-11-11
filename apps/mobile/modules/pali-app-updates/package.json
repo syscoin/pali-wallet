@@ -1,0 +1,8 @@
+{
+  "name": "pali-app-updates",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Explicit Google Play in-app update actions for Pali",
+  "license": "MIT"
+}

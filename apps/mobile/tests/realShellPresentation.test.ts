@@ -12,11 +12,13 @@ import { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, sub
 type Element = { type: string | ((props: object) => Element); props: Record<string, unknown>; children: unknown[] };
 function shell() {
   const dependencies: Record<string, unknown> = {
-    react: { createElement: (type: string, props: Record<string, unknown>, ...children: unknown[]) => ({ type, props, children }) },
+    react: { createElement: (type: string, props: Record<string, unknown>, ...children: unknown[]) => ({ type, props, children }),
+      useSyncExternalStore: (_subscribe: unknown, read: () => unknown) => read() },
     'react-native': { Text: 'NativeText', Pressable: 'Pressable', View: 'View', StyleSheet: { create: (styles: unknown) => styles } },
     'react-native-svg': {},
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../platform/localization': nativeTranslationFixture,
+    '../updates/service': { mobileUpdates: { getSnapshot: () => ({ release: null }), subscribe: () => () => undefined } },
     '../../../source/shared/assetIconIdentity': { knownAssetIcon },
     './portfolio/assetIconCache': { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, subscribeNativeAssetIcon },
   };

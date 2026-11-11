@@ -75,6 +75,7 @@ const walletScreenPorts = {
   '../activity/accountActivity': { AccountActivityController: class {} },
   './BackupIntroduction': { BackupIntroduction: 'BackupIntroduction' },
   './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
+  './WalletUpdatePanel': { LockedWalletUpdate: () => null },
   './NativeDeviceUnlockSettings': { NativeDeviceUnlockSettings: 'NativeDeviceUnlockSettings' },
   './NativeImportWallet': { NativeImportWallet: 'NativeImportWallet' },
   './PinEntry': { PinEntryScreen: 'PinEntryScreen', PinSetup: 'PinSetup', PinField: 'PinField', isWalletPin: isNativePin },

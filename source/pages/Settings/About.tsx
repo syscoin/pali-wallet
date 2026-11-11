@@ -12,6 +12,7 @@ import {
   Button,
   PageActionFooter,
 } from 'components/index';
+import { WalletUpdatePanel } from 'components/WalletUpdatePanel';
 import { useUtils } from 'hooks/index';
 import { navigateBack } from 'utils/navigationState';
 
@@ -64,6 +65,7 @@ const AboutView: FC = () => {
       </div>
 
       <div className="flex flex-col items-center justify-center w-full md:max-w-full mt-2">
+        <WalletUpdatePanel />
         <SimpleCard>
           <p className="text-xs font-medium text-white mb-[11px]">
             {t('settings.userSupport')}

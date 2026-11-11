@@ -5,9 +5,10 @@ import * as Clipboard from 'expo-clipboard';
 import { PALI_INFORMATION } from '../../../../source/shared/paliInformation';
 import app from '../../app.json';
 import { Button, Card, colors, Header, Screen, Text } from '../ui';
+import { WalletUpdatePanel } from './WalletUpdatePanel';
 
 /** Public information only: actions never receive an account, key or wallet authority. */
-export function HelpAbout({ onBack }: { onBack(): void }) {
+export function HelpAbout({ onBack, allowInstall = false, onLockForUpdate }: { onBack(): void; allowInstall?: boolean; onLockForUpdate?(): void }) {
   const life = useRef({ mounted: false, focused: true, epoch: 0, pending: null as object | null });
   const [busy, setBusy] = useState(false);
   type Action = 'documentation' | 'support' | 'provider' | 'copy';
@@ -46,6 +47,7 @@ export function HelpAbout({ onBack }: { onBack(): void }) {
     <Card style={{ padding: 18, gap: 8 }}><Text accessibilityRole="header" style={{ fontSize: 22, fontWeight: '600' }}>Pali Wallet</Text>
       <Text>Version {app.expo.version}{typeof __DEV__ !== 'undefined' && __DEV__ ? ' · Development build' : ''}</Text>
       <Text style={{ color: colors.muted, lineHeight: 22 }}>Native features are under qualification. Use only test wallets and testnet funds.</Text></Card>
+    <WalletUpdatePanel allowInstall={allowInstall} onLock={onLockForUpdate} />
     <View style={{ gap: 12 }}><Text accessibilityRole="header" style={{ fontSize: 18, fontWeight: '600' }}>Support</Text>
       <Text selectable>{PALI_INFORMATION.supportUrl}</Text>
       <Button icon="help" title="Get support" disabled={busy} onPress={() => void act('support')} />{feedbackFor('support')}

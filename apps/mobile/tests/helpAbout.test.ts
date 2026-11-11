@@ -40,6 +40,7 @@ function setup(component = 'HelpAbout', watchOnly = true, options: { backupRequi
     './NativePreferences': { NativePreferences: 'NativePreferences' }, './WalletBackupBadge': { WalletBackupBadge: 'WalletBackupBadge' },
     './BalancePrivacySetting': { BalancePrivacySetting: 'BalancePrivacySetting' },
     './ActivityNotifications': { ActivityNotifications: 'ActivityNotifications' }, '../platform/localization': nativeTranslationFixture };
+  deps['./WalletUpdatePanel'] = { WalletUpdatePanel: 'WalletUpdatePanel' };
   const module = { exports: {} as Record<string, (props: object) => Element> };
   const code = ts.transpileModule(source(`../src/screens/${component}.tsx`), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
   runInNewContext(code, { module, exports: module.exports, require(name: string) { assert.ok(Object.hasOwn(deps, name), `Unexpected public-screen dependency ${name}`); return deps[name]; } });

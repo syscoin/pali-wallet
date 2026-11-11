@@ -67,7 +67,7 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
   useLayoutEffect(() => () => { languageOwner.current = null; notificationsOwner.current = null; }, []);
   useLayoutEffect(() => navigation?.registerBack(() => { back(); return true; }));
   useLayoutEffect(() => { navigation?.setImmersive(leaf !== null); return () => navigation?.setImmersive(false); }, [navigation, leaf]);
-  if (leaf === 'about') return <HelpAbout onBack={back} />;
+  if (leaf === 'about') return <HelpAbout onBack={back} allowInstall={watchOnly} onLockForUpdate={onLock} />;
   if (leaf === 'currency') return <DisplayCurrency onBack={back} />;
   if (leaf === 'language') return <NativePreferences onBack={back} assertCurrent={() => {
     if (languageOwner.current !== opened) throw new Error('CANCELLED');

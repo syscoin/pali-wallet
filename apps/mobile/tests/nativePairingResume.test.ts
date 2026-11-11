@@ -387,6 +387,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     './NativeSmartAccountSend': { NativeSmartAccountSend: 'NativeSmartAccountSend' },
     './NativePortfolio': { NativePortfolio: 'NativePortfolio' },
     './RealAppShell': { RealAppShell: 'RealAppShell' },
+    './WalletUpdatePanel': { LockedWalletUpdate: () => null },
     './NativeSmartAccountOperation': {
       NativeSmartAccountOperationRoute: 'NativeSmartAccountOperationRoute',
     },

@@ -99,6 +99,7 @@ import type { NativeConnectionsSnapshot, NativeSigningReview } from '../connecti
 import { RealSettings } from './RealSettings';
 import { useRealShell } from './useRealShell';
 import { nativeActivityNotifications, isNotificationPermissionPromptActive } from '../notifications/service';
+import { LockedWalletUpdate } from './WalletUpdatePanel';
 
 type Controllers = ReturnType<typeof createNativeWalletControllers>;
 const nativeLifecycle = new NativeControllerLifecycle({ create: createNativeWalletControllers, protect: ensurePrivacyShield, recovery: createNativeRecoveryCoordinator });
@@ -1361,6 +1362,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         });
       }} />}
       <Button title="Forgot PIN?" variant="secondary" disabled={busy} onPress={openRecovery} />
+      <LockedWalletUpdate disabled={busy} />
     </>} />;
   if (stage === 'change-pin' && snapshot.phase === 'ready') return <PinEntryScreen title="Enter your current PIN"
     busy={busy} error={error} resetKey={pinChangeAttempt} onBack={() => {

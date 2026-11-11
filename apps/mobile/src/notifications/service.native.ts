@@ -82,8 +82,13 @@ function receiveResponse(response: Notifications.NotificationResponse | null) {
 Notifications.setNotificationHandler({
   async handleNotification(notification) {
     let allowed = false;
-    try { allowed = notification.request.identifier === notification.request.content.data?.eventId &&
-      await nativeActivityNotifications.shouldPresent(notification.request.identifier); } catch { /* Fail closed. */ }
+    try {
+      if (notification.request.identifier.startsWith('pali-update-')) {
+        const { isReleaseUpdateNotification } = await import('../updates/service.native');
+        allowed = await isReleaseUpdateNotification(notification.request.identifier);
+      } else allowed = notification.request.identifier === notification.request.content.data?.eventId &&
+        await nativeActivityNotifications.shouldPresent(notification.request.identifier);
+    } catch { /* Fail closed. */ }
     return { shouldShowBanner: allowed, shouldShowList: allowed, shouldPlaySound: false, shouldSetBadge: false };
   },
 });

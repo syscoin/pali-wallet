@@ -11,6 +11,7 @@ const react = { createElement: (type: string, props: object, ...children: Elemen
 const dependencies: Record<string, unknown> = {
   './IdleActivityBoundary': { IdlePressable: 'IdlePressable' }, react,
   '../platform/localization': nativeTranslationFixture,
+  '../updates/service': { mobileUpdates: { getSnapshot: () => ({ release: null }), subscribe: () => () => undefined } },
   'react-native': { StyleSheet: { create: (value: unknown) => value }, View: 'View' },
   'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
   '../ui': { colors: {}, Header: 'Header', Icon: 'Icon', Notice: 'Notice', Screen: 'Screen', Text: 'Text' },

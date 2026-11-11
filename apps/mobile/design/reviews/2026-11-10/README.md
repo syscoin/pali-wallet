@@ -2009,3 +2009,15 @@ Source `dff877f472192f1597112d7c8ca154355fbf3a3f`. [Exact capture provenance](co
 ## ERC-721 collection lookup
 
 [Current collection count, bounded token-ID picker and ownership-check captures](enumeration/README.md). The same shared enumeration helper is used by extension and mobile.
+
+## Store update notices
+
+Actual shared update-panel rendering at 320 and 390 px, captured from the browser
+fixture. The release details are synthetic; this does not advertise a published
+mobile release or qualify Google Play delivery. The production feed starts empty.
+The locked screen supplies installation controls; ordinary About offers locking
+first so no signing, backup or recovery flow is interrupted.
+
+| 320 px | 390 px |
+| --- | --- |
+| ![Update notice at 320 px](update-notices/update-notice-320.png) | ![Update notice at 390 px](update-notices/update-notice-390.png) |

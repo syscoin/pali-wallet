@@ -21,6 +21,9 @@ jest.mock('hooks/index', () => ({
   }),
 }));
 jest.mock('utils/navigationState', () => ({ navigateBack: jest.fn() }));
+jest.mock('components/WalletUpdatePanel', () => ({
+  WalletUpdatePanel: () => null,
+}));
 jest.mock('components/Icon/Icon', () => ({
   PaliWhiteSmallIconSvg: () => <svg />,
 }));

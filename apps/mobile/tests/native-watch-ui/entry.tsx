@@ -13,6 +13,7 @@ import { WatchOnlyAuthority } from '../../src/core/watchOnlyAuthority';
 import { UTXO_NETWORKS } from '../../src/core/utxoNetworks';
 import App from '../../App';
 import { latestAuthority, retiredAuthorities, latestTransfers, fixtureFetch, fixtureCatalogue, noteInventoryFixture, recreateRemovalWallet, visualReviewFixture } from './nativeFactory';
+import { UpdateFixture } from './UpdateFixture';
 import { ADDRESS, audit, events, publicShares, setWatchBalanceMode, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, releaseSign, setDelayActivityReset, failActivityReset, finishActivityReset, setDelayKeyRead, releaseKeyRead, setKeyFailure, setDelayImport, releaseImport, setImportFailure } from './state';
 import { recoveryAudit, holdRecovery, releaseRecovery } from './recoveryState';
 import { removalFixtureEnabled, walletRemovalFixture } from './walletRemovalFixture';
@@ -154,4 +155,4 @@ window.__watchFixture = {
   async confirmReview(id) { try { await latestTransfers!.view.confirm(id, { method: 'pin', pin: visualReviewFixture.enabled ? visualReviewFixture.password : '123456' }); return 'accepted'; } catch (cause) { return cause instanceof Error ? cause.message : 'rejected'; } },
   recoveryAudit: () => ({ ...recoveryAudit }), holdRecovery, releaseRecovery,
 };
-registerRootComponent(() => new URLSearchParams(window.location.search).has('slh-fixture') ? <SlhManagementFixture /> : new URLSearchParams(window.location.search).has('watch-receive-fixture') ? <WatchReceiveFixture /> : <App availableWatchNetworks={new URLSearchParams(window.location.search).has('disabled-utxo') ? ['evm'] : undefined} />);
+registerRootComponent(() => new URLSearchParams(window.location.search).has('update-fixture') ? <UpdateFixture /> : new URLSearchParams(window.location.search).has('slh-fixture') ? <SlhManagementFixture /> : new URLSearchParams(window.location.search).has('watch-receive-fixture') ? <WatchReceiveFixture /> : <App availableWatchNetworks={new URLSearchParams(window.location.search).has('disabled-utxo') ? ['evm'] : undefined} />);
