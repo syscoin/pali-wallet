@@ -1,4 +1,26 @@
 {
+  "updates": {
+    "title": "Wallet updates",
+    "available": "Update available",
+    "current": "No newer published version found.",
+    "unavailable": "Release information is unavailable. Try again later.",
+    "notChecked": "Updates have not been checked yet.",
+    "checking": "Checking for updates…",
+    "check": "Check for updates",
+    "installed": "Installed:",
+    "latest": "Latest published:",
+    "readyToInstall": "Ready to install:",
+    "releaseNotes": "Release notes",
+    "openStore": "Open Chrome Web Store",
+    "automaticInstall": "Chrome installs updates automatically when Pali is idle. Finish your wallet actions, then close the extension.",
+    "throttled": "Chrome checked recently. Try the browser check again later.",
+    "browserUnavailable": "Chrome could not check for an update. You can check the store listing.",
+    "severity": {
+      "routine": "Routine update",
+      "important": "Important update",
+      "critical": "Critical update"
+    }
+  },
   "assetTransfer": {
     "summary": "Details zur Asset-Übertragung",
     "token-transfer": "Token-Übertragung",
@@ -2355,28 +2377,6 @@
       "label": "Asset",
       "change": "Asset ändern",
       "unavailable": "Gespeicherte Assets nicht verfügbar. Erneut versuchen."
-    }
-  },
-  "updates": {
-    "title": "Wallet updates",
-    "available": "Update available",
-    "current": "No newer published version found.",
-    "unavailable": "Release information is unavailable. Try again later.",
-    "notChecked": "Updates have not been checked yet.",
-    "checking": "Checking for updates…",
-    "check": "Check for updates",
-    "installed": "Installed:",
-    "latest": "Latest published:",
-    "readyToInstall": "Ready to install:",
-    "releaseNotes": "Release notes",
-    "openStore": "Open Chrome Web Store",
-    "automaticInstall": "Chrome installs updates automatically when Pali is idle. Finish your wallet actions, then close the extension.",
-    "throttled": "Chrome checked recently. Try the browser check again later.",
-    "browserUnavailable": "Chrome could not check for an update. You can check the store listing.",
-    "severity": {
-      "routine": "Routine update",
-      "important": "Important update",
-      "critical": "Critical update"
     }
   }
 }
