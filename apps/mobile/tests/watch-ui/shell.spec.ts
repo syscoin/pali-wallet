@@ -175,14 +175,10 @@ test('Tools checks exact site origins locally and clears its result on Back', as
   await expect(check).toBeDisabled();
 });
 
-test('native unlock and all security presentation stages exclude the tab shell', async ({ page }) => {
+test('public entry retains tabs while private security presentation excludes the shell', async ({ page }) => {
   await openNative(page);
-  await page.evaluate(() => window.__watchFixture.delayUnlock(true));
-  await authenticateNativeOperation(page);
-  await expect(page.getByText('Unlocking your wallet securely…', { exact: true })).toBeVisible();
-  await expect(page.getByRole('tab')).toHaveCount(0);
-  await page.evaluate(() => window.__watchFixture.releaseUnlock());
   await tabs(page);
+  await expect(page.getByText('Test device authorization', { exact: true })).toHaveCount(0);
   await openSecurity(page);
   await page.getByRole('button', { name: 'Reveal account private key', exact: false }).click();
   await expect(page.getByRole('tab')).toHaveCount(0);
@@ -281,7 +277,8 @@ test('same-address native to watch switch revokes native owner before public tab
   await page.getByRole('button', { name: 'Accounts', exact: false }).click();
   await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
   await waitForNativePublicSession(page);
-  expect(await page.evaluate(() => window.__watchFixture.audit().unlocks)).toBe(1);
+  expect(await page.evaluate(() => window.__watchFixture.audit().unlocks)).toBe(2);
+  await expect(page.getByText('Test device authorization', { exact: true })).toHaveCount(0);
 });
 
 test('fixed Bitcoin watch Activity loads automatically and its Wallet scope survives tab changes', async ({ page }) => {
@@ -329,7 +326,8 @@ test('native network without an explorer shows saved-transfer coverage and retai
   await expect(page.getByText('Some activity is unavailable', { exact: true })).toBeVisible();
   await expect(page.getByText('No activity yet', { exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__watchFixture.catalogue().active.networkId)).toBe('base');
-  expect(await page.evaluate(() => window.__watchFixture.audit().unlocks)).toBe(1);
+  expect(await page.evaluate(() => window.__watchFixture.audit().unlocks)).toBe(2);
+  await expect(page.getByText('Test device authorization', { exact: true })).toHaveCount(0);
 });
 
 test('background cancels pending private presentation and requires unlock before restoring tabs', async ({ page }) => {
@@ -389,7 +387,7 @@ test('locking during activity reset prevents stale completion', async ({ page })
     window.__watchFixture.lifecycle('active');
     window.__watchFixture.finishActivityReset();
   });
-  await expect(page.getByRole('heading', { name: 'Your wallet', exact: true })).toBeVisible();
+  await waitForNativePublicSession(page);
   expect(await page.evaluate(() => window.__watchFixture.events().includes('activity:reset:done'))).toBe(false);
 });
 
