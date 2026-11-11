@@ -102,18 +102,18 @@ Metro resolves selected platform-independent modules directly from `source/`. Bo
 
 `src/core/` exposes bounded public account/network data and narrow authority interfaces. Keep secret-bearing extension state behind the appropriate host boundary. Browser runtime messaging, Redux singletons and hardware transports require their own host adapters.
 
-The [mobile lockfile](package-lock.json) pins the dependencies below with integrity hashes. Keyring uses the reviewed operation-lifetime candidate described below.
+The [mobile lockfile](package-lock.json) pins the dependencies below with integrity hashes.
 
 | Dependency                   | Version |
 | ---------------------------- | ------- |
-| `@sidhujag/sysweb3-keyring`  | 2.1.11-operation.20261110 (review candidate) |
+| `@sidhujag/sysweb3-keyring`  | 2.1.12  |
 | `@sidhujag/sysweb3-network`  | 2.0.0   |
 | `syscoinjs-lib`              | 2.0.0   |
 | `syscointx-js`               | 2.0.0   |
 | `react-native-quick-crypto`  | 1.1.9   |
 | `react-native-nitro-modules` | 0.37.2  |
 
-The extension pins official Keyring 2.1.11 from Sysweb3 #107. Mobile uses the unpublished operation-scoped secret-lifetime candidate from [Sysweb3 #108](https://github.com/sidhujag/sysweb3/pull/108), based on that release. Its vendored archive remains in `vendor/sysweb3-operation`; [REVIEWED-CANDIDATE.json](../../vendor/sysweb3-operation/REVIEWED-CANDIDATE.json) binds the source and package digests. Replacement by an official package requires publication and byte verification. Qualification records bind the exact installed version and lockfile hash; the [shared-core audit](docs/shared-core-audit.md) tracks completion.
+Both hosts pin official Keyring 2.1.12, which includes the operation-scoped secret lifetime from [Sysweb3 #108](https://github.com/sidhujag/sysweb3/pull/108). Mobile explicitly selects that policy; the extension retains its existing unlocked-session policy. Qualification accepts only an exact package version and records the installed version and lockfile hash. The [shared-core audit](docs/shared-core-audit.md) tracks current qualification; the [historical candidate record](https://github.com/syscoin/pali-wallet/blob/3d7c784d/vendor/sysweb3-operation/REVIEWED-CANDIDATE.json) preserves the earlier review provenance.
 
 QuickCrypto uses its native scheduler. Crypto, Buffer and stream adapters support the native dependency graph. Unsupported Node transports fail closed. The lockfile also pins the reviewed tooling overrides, including `glob` 14.0.3 and `minimatch` 11.0.4.
 

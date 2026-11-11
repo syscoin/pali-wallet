@@ -6,10 +6,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-const { readQualificationSdkPin, verifyInstalledQualificationSdk } = createRequire(import.meta.url)('../scripts/qualification-sdk.cjs');
+const { readQualificationSdkPin } = createRequire(import.meta.url)('../scripts/qualification-sdk.cjs');
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 
-test('qualification binds the reviewed candidate archive and installed bytes', () => {
+test('qualification refuses the retired local candidate even with matching archive and installed bytes', () => {
   const directory = mkdtempSync(join(tmpdir(), 'pali-sdk-identity-'));
   const root = join(directory, 'apps/mobile'), vendor = join(directory, 'vendor/sysweb3-operation');
   const installed = join(root, 'node_modules/@sidhujag/sysweb3-keyring');
@@ -31,13 +31,6 @@ test('qualification binds the reviewed candidate archive and installed bytes', (
       package: { name: '@sidhujag/sysweb3-keyring', version, filename, sha256: digest('archive fixture') },
       distFiles: Object.fromEntries(Object.entries(files).map(([file, contents]) => [file, digest(contents)])),
     }));
-    const pin = readQualificationSdkPin(root);
-    assert.match(pin.identity, new RegExp(digest('archive fixture')));
-    verifyInstalledQualificationSdk(root, pin);
-    writeFileSync(join(installed, 'cjs/keyring-core.js'), 'different installed code');
-    assert.throws(() => verifyInstalledQualificationSdk(root, pin), /candidate differs/);
-    writeFileSync(join(installed, 'cjs/keyring-core.js'), files['cjs/keyring-core.js']!);
-    writeFileSync(join(vendor, filename), 'changed archive');
-    assert.throws(() => readQualificationSdkPin(root), /candidate identity mismatch/);
+    assert.throws(() => readQualificationSdkPin(root), /exact shared keyring pin/);
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

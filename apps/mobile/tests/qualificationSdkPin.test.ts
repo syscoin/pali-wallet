@@ -12,7 +12,7 @@ const name = '@sidhujag/sysweb3-keyring';
 function fixture() {
   const root = mkdtempSync(path.join(tmpdir(), 'pali-qualified-sdk-pin-'));
   const mobile = path.join(root, 'apps/mobile');
-  const version = '2.1.11';
+  const version = '2.1.12';
   const json = (file: string, value: unknown) => {
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, JSON.stringify(value));

@@ -6,7 +6,7 @@ The 32 reference screens below compare the supplied PDF with **actual implemente
 
 Original comparison source: `04466c2e9498dfd250ac575e393db72fceec0e1f`. These are browser renders with public synthetic wallet, network and connection adapters. They demonstrate presentation and navigation; they do not qualify native biometrics, camera, hardware, protected storage or funded transactions. The displayed recovery phrase is a public test phrase.
 
-The update implements six-digit PIN creation/confirmation, optional native biometric entry, locked and recovery flows, operation-bound send authorization, and ordered-word backup verification. Native prompt behavior requires its own qualification. The shared SDK candidate and its pending release are documented in `vendor/sysweb3-operation/REVIEWED-CANDIDATE.json`.
+The update implements six-digit PIN creation/confirmation, optional native biometric entry, locked and recovery flows, operation-bound send authorization, and ordered-word backup verification. Native prompt behavior requires its own qualification. The shared SDK candidate and its pending release at this checkpoint are documented in the [historical review record](https://github.com/syscoin/pali-wallet/blob/3d7c784d/vendor/sysweb3-operation/REVIEWED-CANDIDATE.json).
 
 Remaining gaps are stated per screen. Native background notification delivery is not qualified by these browser captures, and page 28 shows the browser camera fallback rather than a fabricated camera state.
 
