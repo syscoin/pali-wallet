@@ -80,7 +80,7 @@ export type NativeSmartOperationPorts = Readonly<{
   background(): void;
   signingOwners: readonly NativeSmartAccountSigningOwner[];
   assertOwnerCurrent(owner: NativeSmartAccountSigningOwner): void;
-  p256WebAuthn: ((metadata: ISmartAccountMetadata, assertCurrent: () => void, signal: AbortSignal) => NonNullable<SmartAccountAuthenticatorPorts['p256WebAuthn']>) | null;
+  p256WebAuthn: ((metadata: ISmartAccountMetadata, intent: SmartAccountOwnerSigningIntent, assertCurrent: () => void, signal: AbortSignal) => NonNullable<SmartAccountAuthenticatorPorts['p256WebAuthn']>) | null;
   slhDsa: ((metadata: ISmartAccountMetadata, actionHash: string, assertCurrent: () => void, signal: AbortSignal) => NonNullable<SmartAccountAuthenticatorPorts['slhDsa']>) | null;
   checkAddress(address: string): Promise<IBlacklistCheckResult>;
   signOwner(
@@ -424,7 +424,7 @@ export function createNativeSmartOperation(
         actionHash: prepared.actionHash,
         accountId: account.id,
         allowReservedSLHDSASignature: canUseReservedSLHDSASignature({ accountAddress: account.address, executions: prepared.executions, smartAccount: metadata }),
-        p256WebAuthn: ports.p256WebAuthn === null ? null : ports.p256WebAuthn(metadata, assertCurrent, signal),
+        p256WebAuthn: ports.p256WebAuthn === null ? null : ports.p256WebAuthn(metadata, buildSmartAccountUserOpSigningIntent(prepared.userOperation, chainId), assertCurrent, signal),
         slhDsa: ports.slhDsa === null ? null : ports.slhDsa(metadata, prepared.actionHash, assertCurrent, signal),
         localOwners: ports.signingOwners,
         assertCurrent,

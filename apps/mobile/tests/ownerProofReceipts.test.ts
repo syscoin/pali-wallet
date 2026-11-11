@@ -8,6 +8,7 @@ import {
   signSmartAccountActionHash,
 } from '../../../source/utils/smartAccount/authenticatorDispatch.ts';
 import { createSmartAccountTypedSigningIntent } from '../../../source/utils/smartAccount/ownerSigningIntent.ts';
+import { encodePasskeyWebAuthnProof } from '../../../source/utils/passkey/validation.ts';
 import type {
   ISmartAccountMetadata,
   SmartAccountValidatorModule,
@@ -49,6 +50,198 @@ const intent = createSmartAccountTypedSigningIntent(
   TypedDataEncoder.hash(data.domain, data.types, data.message)
 );
 const guard = () => undefined;
+const passkeyProof = encodePasskeyWebAuthnProof({
+  authenticatorData: '0x' + '01'.repeat(37),
+  clientDataJSON: '0x' + '02'.repeat(128),
+  typeOffset: 1,
+  challengeOffset: 2,
+  originOffset: 3,
+  r: '0x' + '03'.repeat(32),
+  s: '0x' + '04'.repeat(32),
+});
+const p256: SmartAccountValidatorModule = {
+  id: 'p256-webauthn',
+  type: 'validator',
+  address: external,
+  config: {
+    publicKey: {
+      x: '0x' + '11'.repeat(32),
+      y: '0x' + '22'.repeat(32),
+      originHash: '0x' + '33'.repeat(32),
+      rpIdHash: '0x' + '44'.repeat(32),
+      originLength: 25,
+    },
+  },
+};
+
+for (const order of ['first', 'middle', 'last'] as const)
+  test(`mixed P256 receipts retain shared child order and reuse admitted proof (${order})`, async () => {
+    const first = ecdsa(validator, owners.slice(0, 1)),
+      last = ecdsa(otherValidator, owners.slice(0, 1));
+    const children =
+      order === 'first'
+        ? [p256, first, last]
+        : order === 'middle'
+        ? [first, p256, last]
+        : [first, last, p256];
+    const outer: SmartAccountValidatorModule = {
+      id: 'composite',
+      type: 'validator',
+      address: composite,
+      config: {
+        childValidators: children.map((child) => child.address),
+        threshold: 3,
+      },
+    };
+    const account = metadata([...children, outer], outer),
+      plan = getSmartAccountSigningPlan(account, {
+        ecdsa: owners,
+        p256WebAuthn: true,
+        slhDsa: false,
+      });
+    assert(plan);
+    const receipts = new NativeOwnerProofReceipts({ now: () => 100 }),
+      binding = 'exact mixed policy and request';
+    const captured = receipts.capture(
+      { binding, intent, plan, owners, expiresAt: 1000 },
+      guard
+    );
+    let passkeyCalls = 0,
+      ownerCalls = 0;
+    const run = async () => {
+      let ownerIndex = 0,
+        passkeyIndex = 0;
+      return signSmartAccountActionHash({
+        smartAccount: account,
+        actionHash: intent.actionHash,
+        async assertBeforeAuthentication() {},
+        ports: {
+          slhDsa: null,
+          ecdsa: {
+            localOwners: owners,
+            async signActionHash(request) {
+              const current = {
+                  binding,
+                  intent,
+                  step: captured.steps[ownerIndex++]!,
+                },
+                previous = receipts.read(captured.handle, current, guard);
+              if (previous) return previous;
+              ownerCalls++;
+              const signature = wallets[request.owner.id]!.signingKey.sign(
+                request.actionHash
+              ).serialized;
+              receipts.record(captured.handle, current, signature, guard);
+              return signature;
+            },
+          },
+          p256WebAuthn: {
+            async signActionHash() {
+              const current = {
+                  binding,
+                  intent,
+                  step: captured.passkeys[passkeyIndex++]!,
+                },
+                previous = receipts.readPasskey(
+                  captured.handle,
+                  current,
+                  guard
+                );
+              if (previous) return { signature: previous };
+              passkeyCalls++;
+              receipts.recordPasskey(
+                captured.handle,
+                current,
+                passkeyProof,
+                guard
+              );
+              return { signature: passkeyProof };
+            },
+          },
+        },
+      });
+    };
+    const firstResult = await run(),
+      secondResult = await run();
+    assert.equal(passkeyCalls, 1);
+    assert.equal(ownerCalls, 2);
+    assert.deepEqual(secondResult, firstResult);
+    const slots = defaultAbiCoder.decode(['bytes[]'], firstResult.signature)[0];
+    assert.equal(
+      slots[children.findIndex((child) => child.id === 'p256-webauthn')],
+      passkeyProof
+    );
+  });
+
+for (const failure of [
+  'expired',
+  'cancelled',
+  'context',
+  'config',
+  'malformed',
+] as const)
+  test(`mixed P256 receipts refuse ${failure} reuse`, () => {
+    const first = ecdsa(validator, owners.slice(0, 1)),
+      outer: SmartAccountValidatorModule = {
+        id: 'composite',
+        type: 'validator',
+        address: composite,
+        config: {
+          childValidators: [p256.address, first.address],
+          threshold: 2,
+        },
+      };
+    const account = metadata([first, p256, outer], outer),
+      plan = getSmartAccountSigningPlan(account, {
+        ecdsa: owners,
+        p256WebAuthn: true,
+        slhDsa: false,
+      });
+    assert(plan);
+    let now = 100,
+      live = true;
+    const check = () => {
+      if (!live) throw Error('Cancelled');
+    };
+    const receipts = new NativeOwnerProofReceipts({ now: () => now });
+    const captured = receipts.capture(
+        { binding: 'exact', intent, plan, owners, expiresAt: 1000 },
+        check
+      ),
+      request = { binding: 'exact', intent, step: captured.passkeys[0]! };
+    if (failure === 'malformed') {
+      assert.throws(() =>
+        receipts.recordPasskey(captured.handle, request, '0xab', check)
+      );
+      return;
+    }
+    receipts.recordPasskey(captured.handle, request, passkeyProof, check);
+    if (failure === 'expired') now = 1000;
+    if (failure === 'cancelled') live = false;
+    const changed =
+      failure === 'context'
+        ? { ...request, binding: 'different' }
+        : failure === 'config'
+        ? {
+            ...request,
+            step: {
+              ...request.step,
+              config: {
+                ...request.step.config,
+                publicKey: {
+                  ...request.step.config.publicKey,
+                  x: '0x' + '99'.repeat(32),
+                },
+              },
+            },
+          }
+        : request;
+    assert.throws(() => receipts.readPasskey(captured.handle, changed, check));
+    assert.throws(
+      () => receipts.readPasskey(captured.handle, request, guard),
+      /retired/
+    );
+  });
 function ecdsa(
   address: string,
   selected = owners,
@@ -352,7 +545,7 @@ test('capture detaches and freezes public occurrence identities while handles ex
   assert.equal(receipts.read(captured.handle, request, guard), signature);
 });
 
-test('non-ECDSA drivers contribute no owner receipts or invented checkpoint state', () => {
+test('P256 has a separate proof occurrence without an invented ECDSA owner', () => {
   const passkey: SmartAccountValidatorModule = {
     id: 'p256-webauthn',
     type: 'validator',
@@ -391,6 +584,8 @@ test('non-ECDSA drivers contribute no owner receipts or invented checkpoint stat
   );
   assert.equal(captured.steps.length, 1);
   assert.equal(captured.steps[0]!.validator, validator);
+  assert.equal(captured.passkeys.length, 1);
+  assert.equal(captured.passkeys[0]!.validator, otherValidator);
   const passkeyOnly = getSmartAccountSigningPlan(metadata([passkey]), {
     ecdsa: owners,
     p256WebAuthn: true,
