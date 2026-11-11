@@ -79,7 +79,7 @@ export type NativeConnectionSigningHost = Readonly<{
     onCommitted: (allocation: NativeSmartCreationAllocation) => void,
     authentication: NativePrivateAuthentication | null
   ): Promise<NativeSmartCreationAllocation>;
-  /** Configured ECDSA only: deploy first, then configure using the same allocation. */
+  /** Deploy and configure the requested target using the same durable allocation. */
   prepareSmartAccountCreationOperation(
     allocation: NativeSmartCreationAllocation,
     handoff: NativeSigningHandoff,

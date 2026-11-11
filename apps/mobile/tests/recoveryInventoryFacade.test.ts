@@ -102,6 +102,7 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
         return unexpectedFeature;
       },
     },
+    '../crypto/native': { createNativeSlhCapability: () => ({ open: unexpectedFeature, purgePublicCache: unexpectedFeature }) },
     '../custody/networkView': { createNativeNetworkView: () => ({
       getSnapshot: () => null, getContextRevision: unexpectedFeature,
       subscribe: () => () => undefined, select: unexpectedFeature, cancel() {},

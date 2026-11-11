@@ -1019,6 +1019,73 @@ test('creation allocation retries the same saved address after a later read fail
   } finally { await deployment?.dispose(); await configuration?.dispose(); await noOp?.dispose(); await f.close(); }
 });
 
+test('SLH creation allocation reuses its prepared key through deployment and canonical installation', async () => {
+  const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability), lifetime = new AbortController();
+  const authentication = createTestPrivateAuthentication(() => { assert(!lifetime.signal.aborted); });
+  let operation: NativeSmartAccountOperation | undefined;
+  const finish = async (current: NativeSmartAccountOperation) => {
+    await current.prepare();
+    const reviewed = new Set<number>();
+    const confirm = () => {
+      const payer = current.getSnapshot().payerReview;
+      if (payer && !reviewed.has(payer.id)) { reviewed.add(payer.id); current.confirmPayer(payer.id); }
+    };
+    const unsubscribe = current.subscribe(() => queueMicrotask(confirm));
+    const timer = setTimeout(() => current.cancel(), 30_000);
+    try { await current.authorize(current.getSnapshot().revision); }
+    finally { clearTimeout(timer); unsubscribe(); }
+  };
+  try {
+    const host = await f.runtime.openConnectionHost();
+    const allocation = await host.allocateSmartAccount({ networkId: 'ethereum', label: 'Dapp SLH', target: { id: 'slh-dsa' }, externalOwnersAcknowledged: false }, lifetime.signal, () => undefined, () => undefined, authentication);
+    const readTarget = () => allocation.targetAuth;
+    assert.equal(readTarget(), undefined, 'allocation alone must not derive a private SLH key');
+    assert.equal(backend.setups, 0); assert.equal(f.slhDerivations.length, 0);
+    f.guardianStatus('unavailable');
+    await assert.rejects(host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined, authentication));
+    allocation.assertCurrent();
+    const expectedTarget = readTarget(); assert(expectedTarget); assert(Object.isFrozen(expectedTarget));
+    const facade = await f.runtime.openSlhDsaAccount(() => undefined, lifetime.signal, authentication);
+    const [key] = await facade.readPrepared(); assert(key);
+    assert.equal(backend.setups, 1); assert.deepEqual(f.slhDerivations, [0]);
+    f.deployed(); f.undeployed();
+    operation = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined, authentication);
+    assert.equal(operation.getSnapshot().intent.kind, 'deploy'); await finish(operation);
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    await operation.dispose(); operation = undefined;
+    f.guardianStatus('no-policy'); f.fundedSmart();
+    operation = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined, authentication);
+    const intent = operation.getSnapshot().intent; assert(intent.kind === 'authenticator');
+    assert.equal(intent.command.targetModule.id, 'slh-dsa');
+    assert.equal(intent.command.target.data, expectedTarget.data); assert.equal(intent.command.target.validator.toLowerCase(), expectedTarget.validator.toLowerCase());
+    f.onBroadcast(() => f.observedSlh(key)); await finish(operation);
+    assert.equal(operation.getSnapshot().phase, 'complete'); assert.equal(operation.getSnapshot().metadataRefresh, 'complete');
+    await operation.dispose(); operation = undefined;
+    const signatures = f.signatures.length, submissions = f.submitted.length;
+    operation = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined, authentication); await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'complete'); assert.equal(operation.getSnapshot().metadataRefresh, 'complete');
+    assert.equal(f.signatures.length, signatures); assert.equal(f.submitted.length, submissions);
+    assert.equal(backend.setups, 1); assert.deepEqual(f.slhDerivations, [0]);
+    assert.equal(allocation.targetAuth, expectedTarget);
+    assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.filter(account => account.type === 'SmartAccount').length, 1);
+  } finally { await operation?.dispose(); lifetime.abort(); await f.close(); }
+});
+
+test('SLH creation preparation cancellation retains its saved account without publishing a target or signing', async () => {
+  const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability), lifetime = new AbortController();
+  const authentication = createTestPrivateAuthentication(() => { assert(!lifetime.signal.aborted); });
+  try {
+    const host = await f.runtime.openConnectionHost();
+    const allocation = await host.allocateSmartAccount({ networkId: 'ethereum', label: 'Cancelled SLH setup', target: { id: 'slh-dsa' }, externalOwnersAcknowledged: false }, lifetime.signal, () => undefined, () => undefined, authentication);
+    f.onCredentialRequest(() => { lifetime.abort(); });
+    await assert.rejects(host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined, authentication));
+    assert.equal(allocation.targetAuth, undefined); assert.equal(backend.setups, 0);
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+    assert.equal(savedSmartAccount((await f.inspectRecovery()).record).address, allocation.account.address);
+    assert.throws(allocation.assertCurrent, /CANCELLED/);
+  } finally { lifetime.abort(); await f.close(); }
+});
+
 test('real SDK smart account creation, selection and cold unlock retain the original owner and receive address', async () => {
   const f = await fixture();
   try {
@@ -3600,16 +3667,20 @@ test('prepared uninstalled SLH status survives cold unlock without rederivation 
   try {
     await f.change({ kind: 'create-smart', label: 'Prepared signer',});
     let facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal, null);
+    const beforeSetup = f.credentialReads;
     const key = await facade.prepareFresh(() => undefined);
+    assert.equal(f.credentialReads, beforeSetup + 1, 'setup requires one fresh protected credential read');
     assert.equal(backend.active, 0, 'setup releases its native context before returning');
     f.assertNoSigningKeys();
     const row = await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId));
     assert.deepEqual(await facade.readPrepared(), [key]);
     assert.equal(f.runtime.canManageSlhDsa(), true); assert.equal(f.runtime.canSignSmartAccount(), true);
+    const beforeReopen = f.credentialReads;
     await f.reopen(); await f.owner.unlock();
     const opened = backend.opened;
     facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal, null);
     assert.deepEqual(await facade.readPrepared(), [key]);
+    assert.equal(f.credentialReads, beforeReopen, 'public entry and prepared status never read the spending credential');
     assert.equal(backend.opened, opened, 'status must not create a native context');
     f.assertNoSigningKeys();
     assert.deepEqual(f.slhDerivations, [0]);
@@ -3659,20 +3730,45 @@ test('SLH repeated signing and cold status retain only encrypted state and publi
     assert.equal(backend.active, 0); f.assertNoSigningKeys();
     connection = await smartMessageApproval(f);
     for (const message of ['First bounded SLH action', 'Second bounded SLH action']) {
+      const beforeSign = f.credentialReads;
       await connection.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: connection.selected.id, networkId: 'ethereum', approval: connection.approval,
         request: { method: 'personal_sign', address: connection.selected.address, message } }, null);
+      assert.equal(f.credentialReads, beforeSign + 1, 'each SLH signature requires its own OS-protected read');
+      assert.equal(f.completedSecretLeases, f.secretLeases);
       assert.equal(backend.active, 0, 'no reusable native signer remains'); f.assertNoSigningKeys();
     }
     connection.approval.dispose(); connection = undefined;
+    const beforeReopen = f.credentialReads;
     await f.reopen(); await f.owner.unlock();
     const opened = backend.opened;
     const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal, null);
     assert.equal((await facade.hydrateInstalled(key.keyId)).signatureCount, 2);
+    assert.equal(f.credentialReads, beforeReopen, 'installed status and public entry do not authorize signing');
     assert.equal(backend.opened, opened); assert.equal(backend.active, 0); f.assertNoSigningKeys();
     assert.deepEqual(f.slhDerivations, [0]);
     assert.equal(backend.setups, 1, 'later signatures reuse the published tree without rebuilding it');
     assert.equal(backend.cacheLoads, 2, 'each new action opens the existing public tree');
   } finally { connection?.approval.dispose(); await f.close(); }
+});
+
+test('OS refusal prevents SLH setup without entering native crypto and an explicit retry succeeds', async () => {
+  const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability);
+  try {
+    await f.change({ kind: 'create-smart', label: 'OS-protected SLH' });
+    const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal, null);
+    let refuse = true;
+    f.onCredentialRequest(() => { if (refuse) throw Object.assign(Error('CREDENTIAL_CANCELLED'), { code: 'CREDENTIAL_CANCELLED' }); });
+    await assert.rejects(facade.prepareFresh(() => undefined));
+    assert.equal(backend.opened, 0);
+    assert.deepEqual(f.slhDerivations, []);
+    assert.deepEqual(await facade.readPrepared(), []);
+    f.assertNoSigningKeys();
+    refuse = false;
+    const key = await facade.prepareFresh(() => undefined);
+    assert.deepEqual(await facade.readPrepared(), [key]);
+    assert.equal(backend.active, 0);
+    f.assertNoSigningKeys();
+  } finally { await f.close(); }
 });
 
 test('previously used uninstalled SLH key explicitly rebuilds missing cache without resetting usage', async () => {

@@ -21,6 +21,7 @@ import { createActivityScope } from '../src/activity/types.ts';
 import { isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
 import { exactUtxoResponseFetch } from '../src/core/utxoReadSession.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
+import { CustodyOperationError } from '../src/custody/authority.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import * as unavailableNativePasskeys from '../src/platform/nativePasskeys.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
@@ -312,6 +313,8 @@ test('native factory explicitly wires one owned transport to all network consume
   await security.securityPreferences.load();
   security.custodyIdle.begin({}, () => undefined);
   const captures: Record<string, any[]> = {};
+  let fillSlhRandom: ((bytes: Uint8Array) => void) | undefined;
+  const qualifiedCrypto = { getRandomValues(bytes: Uint8Array) { bytes.fill(0x47); return bytes; } };
   const retired: string[] = [];
   const capture = (name: string) =>
     class {
@@ -352,6 +355,10 @@ test('native factory explicitly wires one owned transport to all network consume
         return unexpectedFeature;
       },
     },
+    '../crypto/native': { createNativeSlhCapability: (fill: (bytes: Uint8Array) => void) => {
+      fillSlhRandom = fill;
+      return { open: unexpectedFeature, purgePublicCache: unexpectedFeature };
+    } },
     '../custody/networkView': { createNativeNetworkView: (...args: unknown[]) => { captures.networks = args; return ({
       getSnapshot: () => null, getContextRevision: unexpectedFeature,
       subscribe: () => () => undefined, select: unexpectedFeature, cancel() {},
@@ -391,7 +398,7 @@ test('native factory explicitly wires one owned transport to all network consume
       },
     },
     '../connections/controller.ts': { NativeConnectionsController: capture('connections') },
-    '../custody/authority.ts': { NativeCustodyAuthority: capture('authority') },
+    '../custody/authority.ts': { NativeCustodyAuthority: capture('authority'), CustodyOperationError },
     '../custody/utxoActivity.ts': {
       createNativeUtxoActivity: (...args: unknown[]) => {
         captures.utxoActivity = args;
@@ -475,7 +482,7 @@ test('native factory explicitly wires one owned transport to all network consume
     },
     './cryptoBootstrap': {
       ensureNativeCryptoReady() {
-        assert.fail('unexpected crypto');
+        return Promise.resolve(qualifiedCrypto);
       },
     },
     './http': { walletFetch: fetcher },
@@ -489,6 +496,12 @@ test('native factory explicitly wires one owned transport to all network consume
   assert.equal(bundle.balanceReader.readBalance, balance.readBalance);
   assert.equal(typeof bundle.balanceReader.readUtxoBalance, 'function');
   assert.equal(typeof captures.factory![0].readUtxoAccount, 'function');
+  assert(fillSlhRandom);
+  assert.throws(() => fillSlhRandom!(new Uint8Array(16)), /NOT_READY/);
+  await captures.factory![0].ensureCryptoReady();
+  const random = new Uint8Array(16);
+  fillSlhRandom(random);
+  assert.deepEqual([...random], Array(16).fill(0x47), 'SLH randomness uses only the qualified native provider');
   for (const options of [
     captures.balance![0],
     captures.erc20![0],
