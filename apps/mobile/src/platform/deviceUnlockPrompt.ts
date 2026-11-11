@@ -5,24 +5,25 @@ type Activity = Readonly<{
 
 /** Only the OS credential prompt may briefly interrupt the locked auth flow. */
 export class DeviceUnlockPrompt {
-  private pending: { cancelled: boolean } | null = null;
+  private pending: { cancelled: boolean; owner: AbortSignal | null } | null = null;
   private readonly activity: Activity;
 
   constructor(activity: Activity) { this.activity = activity; }
 
-  isActive(): boolean { return this.pending !== null && !this.pending.cancelled; }
+  isAnyPromptActive(): boolean { return this.pending !== null && !this.pending.cancelled && !this.pending.owner?.aborted; }
+  isActive(owner: AbortSignal): boolean { return this.isAnyPromptActive() && this.pending!.owner === owner; }
 
   cancel(): void {
     if (this.pending) this.pending.cancelled = true;
   }
 
-  async run<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.pending || this.activity.state() !== 'active') throw new Error('DEVICE_UNLOCK_UNAVAILABLE');
-    const pending = { cancelled: false };
+  async run<T>(owner: AbortSignal | null, operation: () => Promise<T>): Promise<T> {
+    if (this.pending || owner?.aborted || this.activity.state() !== 'active') throw new Error('DEVICE_UNLOCK_UNAVAILABLE');
+    const pending = { cancelled: false, owner };
     let focused = true;
     this.pending = pending;
     const check = () => {
-      if (this.pending !== pending || pending.cancelled || this.activity.state() === 'background')
+      if (this.pending !== pending || pending.cancelled || owner?.aborted || this.activity.state() === 'background')
         throw new Error('DEVICE_UNLOCK_UNAVAILABLE');
     };
     const unsubscribe = this.activity.subscribe((state) => {

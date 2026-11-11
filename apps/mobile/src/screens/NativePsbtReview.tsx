@@ -36,14 +36,16 @@ export function NativePsbtReview({ review, controller, ledgerConnection }: { rev
     const retained = owner.current;
     retained.active = true; busy.current = false; attempt.current = null;
     const timer = setTimeout(reject, Math.max(0, review.expiresAt - Date.now()));
-    const app = AppState.addEventListener('change', state => { if (state !== 'active' && !allowsPrivateAuthenticationInterruption(authentication, state)) {
+    const interrupt = (state: string) => { if (!allowsPrivateAuthenticationInterruption(authentication, state)) {
       if (owner.current.identity === identity) { owner.current.active = false; attempt.current = null; }
       setRetired(identity); controller.backgroundSigning();
-    } });
+    } };
+    const app = AppState.addEventListener('change', state => { if (state !== 'active') interrupt(state); });
+    const blur = AppState.addEventListener('blur', () => interrupt('blur'));
     const back = BackHandler.addEventListener('hardwareBackPress', () => { reject(); return true; });
     return () => {
       retained.active = false; attempt.current = null;
-      clearTimeout(timer); app.remove(); back.remove();
+      clearTimeout(timer); app.remove(); blur.remove(); back.remove();
       if (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(authentication, AppState.currentState)) controller.backgroundSigning();
       else void controller.rejectPsbt(review.id).catch(() => undefined);
     };

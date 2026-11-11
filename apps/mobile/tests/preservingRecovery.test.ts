@@ -1580,7 +1580,7 @@ test('Sentry key management keeps approvals public and bound to the selected wal
   const mainRow = () =>
     f.read().records.find(({ key }) => key === SENTRY_SLOT_KEYS.mainnet);
   try {
-    const open = () => f.runtime.openSentryKeyManagement!(scope.signal, guard);
+    const open = () => f.runtime.openSentryKeyManagement!(scope.signal, guard, createTestPrivateAuthentication(() => undefined));
     await assert.rejects(open(), { code: 'NOT_READY' });
     assert.equal(f.runtime.getSentryKeyNetwork!(), undefined);
     await selectNetwork(f, 'syscoin');
@@ -1797,7 +1797,7 @@ test('Sentry approval retired before SQLite COMMIT leaves the vault unchanged', 
     const manager = await f.runtime.openSentryKeyManagement!(
       scope.signal,
       () => undefined
-    );
+    , createTestPrivateAuthentication(() => undefined));
     const approval = await manager.prepareImport(input, 'operator', 'bls-basic');
     f.setAfter(async (kind, sql) => {
       if (kind === 'run' && sql.startsWith('INSERT INTO sentry_key_records')) {
@@ -1836,7 +1836,7 @@ test('Sentry public settings preserve each network through cold unlock and passw
       ['utxo:5700', 'http://127.0.0.1:8800', '300000'],
     ] as const) {
       await selectNetwork(f, network);
-      const manager = await f.runtime.openSentryKeyManagement!(new AbortController().signal, guard);
+      const manager = await f.runtime.openSentryKeyManagement!(new AbortController().signal, guard, createTestPrivateAuthentication(() => undefined));
       assert.deepEqual(await manager.getSettings(guard), {
         serviceUrl: network === 'syscoin' ? 'https://sysnode.info' : '', maxFeeSatoshis: '100000',
       });
@@ -1864,7 +1864,7 @@ test('Sentry public settings preserve each network through cold unlock and passw
     await f.reopen();
     await f.owner.unlock(NEXT);
     assert.deepEqual(f.read().records.filter(({ key }) => parseSentrySettingsStorageKey(key)), saved);
-    const manager = await f.runtime.openSentryKeyManagement!(new AbortController().signal, guard);
+    const manager = await f.runtime.openSentryKeyManagement!(new AbortController().signal, guard, createTestPrivateAuthentication(() => undefined));
     assert.deepEqual(await manager.getSettings(guard), { serviceUrl: 'http://127.0.0.1:8800', maxFeeSatoshis: '300000' });
     manager.dispose();
   } finally { await recovery?.dispose(); await f.close(); }
@@ -1877,7 +1877,7 @@ test('Sentry service settings cancelled while SQL waits never commit', async () 
   const guard = () => { if (!live) throw Error('CANCELLED'); };
   try {
     await selectNetwork(f, 'syscoin');
-    const manager = await f.runtime.openSentryKeyManagement!(new AbortController().signal, () => undefined);
+    const manager = await f.runtime.openSentryKeyManagement!(new AbortController().signal, () => undefined, createTestPrivateAuthentication(() => undefined));
     f.setAfter(async (kind, sql) => {
       if (kind === 'run' && sql.startsWith('INSERT INTO keyring_records')) { gate.enter(); await gate.gate; }
     });

@@ -42,7 +42,7 @@ test('real React StrictMode gives Withdrawal a fresh effect scope and preserves 
     return () => remove.forEach(value => value());
   } });
   const parent = createNativePrivateAuthenticationScope();
-  const parentBinding = bindNativePrivateAuthentication(parent, { assertCurrent() {}, isPromptActive: () => prompt.isActive() });
+  const parentBinding = bindNativePrivateAuthentication(parent, { assertCurrent() {}, isPromptActive: owner => prompt.isActive(owner) });
   const created: NativePrivateAuthenticationScope[] = [];
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   let opens = 0, disposed = 0, backs = 0;
@@ -82,7 +82,7 @@ test('real React StrictMode gives Withdrawal a fresh effect scope and preserves 
         note: { amount: '1', createdAt: 1 }, authentication: parent, onBack() { backs++; },
         async open(signal: AbortSignal, check: () => void, child: NativePrivateAuthenticationScope) {
           opens++; const binding = bindNativePrivateAuthenticationChild(parentBinding, child);
-          return withNativePrivateAuthentication(binding, signal, () => undefined, async () => prompt.run(async () => {
+          return withNativePrivateAuthentication(binding, signal, () => undefined, async owner => prompt.run(owner, async () => {
             entered.resolve(); await release.promise; check(); return controller;
           }));
         },

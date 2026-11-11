@@ -26,14 +26,14 @@ export function createNativeDeviceUnlockCapability() {
   });
   const credentials = createDeviceUnlockCredentialStore({
     async available() { return await SecureStore.isAvailableAsync() && SecureStore.canUseBiometricAuthentication(); },
-    async read(name) {
-      try { return await prompt.run(() => SecureStore.getItemAsync(name, protectedItem)); }
+    async read(name, owner) {
+      try { return await prompt.run(owner, () => SecureStore.getItemAsync(name, protectedItem)); }
       catch (error) {
         if (isNativeDeviceUnlockRefusal(Platform.OS, error)) throw deviceUnlockUserRefusal();
         throw error;
       }
     },
-    write: (name, value) => prompt.run(() => SecureStore.setItemAsync(name, value, protectedItem)),
+    write: (name, value, owner) => prompt.run(owner, () => SecureStore.setItemAsync(name, value, protectedItem)),
     remove: (name) => SecureStore.deleteItemAsync(name, protectedItem),
   });
   return { credentials, prompt,

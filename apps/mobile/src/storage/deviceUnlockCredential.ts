@@ -2,8 +2,8 @@ import { isDeviceUnlockUserRefusal, type DeviceUnlockCredentialScope } from '../
 
 type ProtectedItemPort = Readonly<{
   available(): Promise<boolean>;
-  read(name: string): Promise<string | null>;
-  write(name: string, value: string): Promise<void>;
+  read(name: string, owner: AbortSignal | null): Promise<string | null>;
+  write(name: string, value: string, owner: AbortSignal | null): Promise<void>;
   remove(name: string): Promise<void>;
 }>;
 
@@ -52,10 +52,10 @@ export function isNativeDeviceUnlockRefusal(platform: string, error: unknown): b
 export function createDeviceUnlockCredentialStore(port: ProtectedItemPort) {
   return Object.freeze({
     async available() { try { return await port.available() === true; } catch { return false; } },
-    async read(scope: DeviceUnlockCredentialScope, assertCurrent: () => void): Promise<Uint8Array | null> {
+    async read(scope: DeviceUnlockCredentialScope, assertCurrent: () => void, owner: AbortSignal | null): Promise<Uint8Array | null> {
       check(assertCurrent);
       const { name, header } = item(scope);
-      const raw = await native(() => port.read(name));
+      const raw = await native(() => port.read(name, owner));
       check(assertCurrent);
       if (raw === null) return null;
       if (typeof raw !== 'string' || raw.length !== header.length + 64 || !raw.startsWith(header)) throw unavailable();
@@ -65,16 +65,16 @@ export function createDeviceUnlockCredentialStore(port: ProtectedItemPort) {
       for (let i = 0; i < key.length; i++) key[i] = Number.parseInt(keyHex.slice(i * 2, i * 2 + 2), 16);
       return key;
     },
-    async stage(scope: DeviceUnlockCredentialScope, key: Uint8Array, assertCurrent: () => void): Promise<void> {
+    async stage(scope: DeviceUnlockCredentialScope, key: Uint8Array, assertCurrent: () => void, owner: AbortSignal | null): Promise<void> {
       check(assertCurrent);
       const { name, header } = item(scope);
       if (!(key instanceof Uint8Array) || key.length !== 32) throw unavailable();
       const raw = header + Array.from(key, (byte) => byte.toString(16).padStart(2, '0')).join('');
-      await native(() => port.write(name, raw));
+      await native(() => port.write(name, raw, owner));
       check(assertCurrent);
       // On iOS a new protected item can be created without an authentication prompt.
       // Confirm a protected read before the host can publish the enrollment.
-      const saved = await native(() => port.read(name));
+      const saved = await native(() => port.read(name, owner));
       check(assertCurrent);
       if (saved !== raw) throw unavailable();
     },

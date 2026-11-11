@@ -28,7 +28,7 @@ function captureCredential(value: unknown, biometricsEnabled: boolean): NativeOp
 export class OperationAuthentication {
   private readonly now: () => number;
   private host: Readonly<{ show(prompt: OperationAuthenticationPrompt | null): void }> | null = null;
-  private pending: Readonly<{ cancel(): void; isVerifying(): boolean }> | null = null;
+  private pending: Readonly<{ cancel(): void; isVerifying(): boolean; signal: AbortSignal }> | null = null;
 
   constructor(now: () => number = () => performance.now()) { this.now = now; }
 
@@ -45,6 +45,12 @@ export class OperationAuthentication {
 
   cancel = (): void => { this.pending?.cancel(); };
   isVerifying = (): boolean => this.pending?.isVerifying() === true;
+  isAuthenticating = (isPromptActive: (owner: AbortSignal) => boolean): boolean => {
+    const pending = this.pending;
+    if (!pending?.isVerifying() || pending.signal.aborted) return false;
+    try { return isPromptActive(pending.signal) === true && this.pending === pending && !pending.signal.aborted; }
+    catch { return false; }
+  };
 
   request: NativeOperationCredentialRequester = (request, signal, assertCurrent, verify) => {
     try { assertSynchronousEvmFeeGuard(assertCurrent); } catch { return Promise.reject(new Error('CANCELLED')); }
@@ -83,7 +89,7 @@ export class OperationAuthentication {
         else resolve();
       };
       const cancel = () => finish(new Error('CANCELLED'));
-      const pending = { cancel, isVerifying: () => !settled && verifying };
+      const pending = { cancel, signal, isVerifying: () => !settled && verifying };
       const show = (busy: boolean, error?: string) => host.show(Object.freeze({
         request: metadata, busy, error,
         confirm: (credential: NativeOperationCredential) => { void confirm(credential); },

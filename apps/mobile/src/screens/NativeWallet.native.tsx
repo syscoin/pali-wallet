@@ -144,7 +144,7 @@ export type NativeWalletProps = { onExit(): void; accounts?: WatchWalletBridge; 
 
 export function NativeWalletScreen({ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled }: NativeWalletProps) {
   const controllerRef = useRef<Controllers | null>(null);
-  return <><NativeWalletContent {...{ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled, controllerRef }} /><NativeOperationAuthentication isProtectedPromptActive={() => controllerRef.current?.authentication?.isActive() === true} /></>;
+  return <><NativeWalletContent {...{ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled, controllerRef }} /><NativeOperationAuthentication isProtectedPromptActive={owner => controllerRef.current?.authentication?.isActive(owner) === true} /></>;
 }
 
 export function NativeWalletContent({ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled, controllerRef: controllersRef }: NativeWalletProps & { controllerRef: React.MutableRefObject<Controllers | null> }) {
@@ -1118,12 +1118,12 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         void install().catch(() => undefined);
     };
     const lifecycle = AppState.addEventListener('change', (state) => {
-      if (state === 'inactive' && (controllersRef.current?.authentication?.isActive() || isNotificationPermissionPromptActive())) { clearSecrets(); Keyboard.dismiss(); }
+      if (state === 'inactive' && (controllersRef.current?.authentication?.isAnyPromptActive() || isNotificationPermissionPromptActive())) { clearSecrets(); Keyboard.dismiss(); }
       else if (state !== 'active') revoke(true);
       else resume();
     });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
-      if (controllersRef.current?.authentication?.isActive() || isNotificationPermissionPromptActive()) { clearSecrets(); Keyboard.dismiss(); } else revoke(true);
+      if (controllersRef.current?.authentication?.isAnyPromptActive() || isNotificationPermissionPromptActive()) { clearSecrets(); Keyboard.dismiss(); } else revoke(true);
     }) : null;
     const focus = AppState.addEventListener('focus', resume);
     return () => {

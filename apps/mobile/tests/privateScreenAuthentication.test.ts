@@ -32,8 +32,8 @@ function fixture(kind: Kind, owned = true) {
     scope = authentication;
     lastGuard = check;
     scopes.push(authentication);
-    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: hostGuard, isPromptActive: () => prompt.isActive() });
-    const work = async () => prompt.run(async () => {
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: hostGuard, isPromptActive: owner => prompt.isActive(owner) });
+    const work = async (owner: AbortSignal | null = null) => prompt.run(owner, async () => {
       entered.resolve(); await held.promise; check(); completed++; return value;
     });
     return owned ? withNativePrivateAuthentication(binding, new AbortController().signal, hostGuard, work) : work();
@@ -64,7 +64,7 @@ function fixture(kind: Kind, owned = true) {
       check(); return authenticateCheck ? acquire(check, scope, { phase: 'verified' }) : { phase: 'verified' };
     },
     openWithdrawal: async (_note: unknown, _signal: AbortSignal, check: () => void, supplied: NativePrivateAuthenticationScope) => {
-      bindNativePrivateAuthenticationChild(bindNativePrivateAuthentication(scope, { assertCurrent: hostGuard, isPromptActive: () => prompt.isActive() }), supplied);
+      bindNativePrivateAuthenticationChild(bindNativePrivateAuthentication(scope, { assertCurrent: hostGuard, isPromptActive: owner => prompt.isActive(owner) }), supplied);
       check(); return controller;
     },
   });
@@ -215,9 +215,9 @@ for (const scenario of ['owned-proof', 'background', 'picker-handoff'] as const)
     captureNoteFileOwner: async () => async () => undefined,
     async openNoteBackup(check: () => void, authentication: NativePrivateAuthenticationScope) {
       scope = authentication;
-      const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: () => undefined, isPromptActive: () => prompt.isActive() });
+      const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: () => undefined, isPromptActive: owner => prompt.isActive(owner) });
       return { begin: () => 'preview', cancel() {}, async prepareImport() {
-        return withNativePrivateAuthentication(binding, new AbortController().signal, () => undefined, async () => prompt.run(async () => {
+        return withNativePrivateAuthentication(binding, new AbortController().signal, () => undefined, async owner => prompt.run(owner, async () => {
           entered.resolve(); await held.promise; check();
           return { id: 'preview', added: 1, duplicates: 0, guarded: 0, expiresAt: performance.now() + 10000 };
         }));

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { bindNativePrivateAuthentication, bindNativePrivateAuthenticationChild, createNativePrivateAuthenticationChild, createNativePrivateAuthenticationScope, withNativePrivateAuthentication, type NativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
+import { DeviceUnlockPrompt } from '../src/platform/deviceUnlockPrompt.ts';
+import { createDeviceUnlockCredentialStore } from '../src/storage/deviceUnlockCredential.ts';
+import { createDeviceUnlockEnrollment } from '../../../source/wallet/deviceUnlockEnrollment.ts';
+import { OperationAuthentication, type OperationAuthenticationPrompt } from '../src/core/operationAuthentication.ts';
 
 const check = () => undefined;
 const held = () => Promise.withResolvers<void>();
@@ -108,4 +112,64 @@ test('parent retirement cancels its child and excludes sibling or foreign proof 
   assert.throws(() => createNativePrivateAuthenticationChild(f.scope));
   assert.throws(() => bindNativePrivateAuthenticationChild(f.binding, sibling));
   gate.resolve(); await assert.rejects(work);
+});
+
+test('a cancelled native read cannot lend prompt status to a waiting or verifying successor', async () => {
+  const prompt = new DeviceUnlockPrompt({ state: () => 'active', subscribe: () => () => {} });
+  const broker = new OperationAuthentication();
+  let shown: OperationAuthenticationPrompt | null = null, reads = 0, signatures = 0;
+  const detach = broker.attach(value => { shown = value; });
+  const firstRead = held(), nextRead = held();
+  const enrollment = { installationId: '11'.repeat(16), walletBindingId: '22'.repeat(32), pairFingerprint: '33'.repeat(32), enrollmentId: '44'.repeat(16) };
+  const raw = `pali-device-unlock-v1.${enrollment.installationId}.${enrollment.walletBindingId}.${enrollment.pairFingerprint}.${enrollment.enrollmentId}.${'55'.repeat(32)}`;
+  const credentials = createDeviceUnlockCredentialStore({
+    async available() { return true; },
+    read: (_name, owner) => prompt.run(owner, async () => {
+      await (++reads === 1 ? firstRead.promise : nextRead.promise);
+      return raw;
+    }),
+    async write() { assert.fail('This test never enrolls a credential'); },
+    async remove() {},
+  });
+  const vault = createDeviceUnlockEnrollment({ credentials,
+    enrollment: { async read() { return enrollment; }, async compareAndSet() { assert.fail('This test never changes enrollment'); } },
+    randomId: () => '66'.repeat(16),
+  });
+  const scope = createNativePrivateAuthenticationScope();
+  const binding = bindNativePrivateAuthentication(scope, { assertCurrent: check, isPromptActive: owner => prompt.isActive(owner) });
+  const owners: AbortSignal[] = [];
+  const start = (controller: AbortController) => withNativePrivateAuthentication(binding, controller.signal, check, async owner => {
+    owners.push(owner);
+    await broker.request({ id: `attempt-${owners.length}`, purpose: 'message', biometricsEnabled: true }, owner, check, async (_credential, guard) => {
+      await vault.verifyPresence(guard, owner);
+      return { accepted: true };
+    });
+    signatures++;
+  });
+  const tick = () => new Promise<void>(resolve => setImmediate(resolve));
+  try {
+    const a = new AbortController(), pendingA = start(a), rejectedA = assert.rejects(pendingA);
+    shown!.confirm({ method: 'biometric' }); await tick();
+    assert.equal(reads, 1); assert.equal(scope.isAuthenticating(), true);
+    a.abort(); await rejectedA;
+    assert.equal(prompt.isAnyPromptActive(), false, 'The cancelled owner is no longer an active presentation');
+    const pendingB = start(new AbortController()), rejectedB = assert.rejects(pendingB);
+    assert.notEqual(owners[0], owners[1]);
+    assert.equal(scope.isAuthenticating(), false, 'Waiting for credentials does not borrow A');
+    shown!.confirm({ method: 'biometric' });
+    assert.equal(broker.isVerifying(), true);
+    assert.equal(broker.isAuthenticating(owner => prompt.isActive(owner)), false);
+    assert.equal(scope.isAuthenticating(), false, 'Verifying B still does not own A’s pending native call');
+    await rejectedB;
+    assert.equal(reads, 1, 'The existing enrollment operation remains serialized');
+    assert.equal(signatures, 0);
+    firstRead.resolve(); await tick();
+    const pendingC = start(new AbortController());
+    shown!.confirm({ method: 'biometric' }); await tick();
+    assert.equal(reads, 2); assert.equal(scope.isAuthenticating(), true);
+    assert.equal(prompt.isActive(owners[0]!), false); assert.equal(prompt.isActive(owners[2]!), true);
+    nextRead.resolve(); await pendingC;
+    assert.equal(signatures, 1, 'Only the fresh, completed acquisition may proceed');
+    assert.equal(scope.isAuthenticating(), false);
+  } finally { firstRead.resolve(); nextRead.resolve(); broker.cancel(); detach(); scope.retire(); }
 });

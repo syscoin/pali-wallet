@@ -13,7 +13,7 @@ const titles = {
   'private-reconciliation': 'Review private transaction',
 };
 
-export function NativeOperationAuthentication({ isProtectedPromptActive }: { isProtectedPromptActive(): boolean }) {
+export function NativeOperationAuthentication({ isProtectedPromptActive }: { isProtectedPromptActive(owner: AbortSignal): boolean }) {
   const biometrics = useBiometricPresentation();
   const [prompt, setPrompt] = useState<OperationAuthenticationPrompt | null>(null);
   const protectedPrompt = useRef(isProtectedPromptActive);
@@ -21,7 +21,7 @@ export function NativeOperationAuthentication({ isProtectedPromptActive }: { isP
   useLayoutEffect(() => {
     const detach = nativeOperationAuthentication.attach(setPrompt);
     const subscription = AppState.addEventListener('change', state => {
-      if (state !== 'active' && !(state === 'inactive' && nativeOperationAuthentication.isVerifying() && protectedPrompt.current()))
+      if (state !== 'active' && !(state === 'inactive' && nativeOperationAuthentication.isAuthenticating(protectedPrompt.current)))
         nativeOperationAuthentication.cancel();
     });
     return () => { subscription.remove(); detach(); };

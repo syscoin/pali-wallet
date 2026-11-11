@@ -387,7 +387,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   openUtxoSend?(assertCurrent: () => void): Promise<NativeUtxoSend>;
   /** Internal Sentry review and encrypted storage only. */
   getSentryKeyNetwork?(): SentryNetwork | undefined;
-  openSentryKeyManagement?(lifetime: AbortSignal, assertCurrent: () => void): Promise<NativeSentryKeyManagement>;
+  openSentryKeyManagement?(lifetime: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication): Promise<NativeSentryKeyManagement>;
   openSentryNodeManagement?(lifetime: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSentryNodeManagement>;
   openSentryApprovals?(lifetime: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSentryApprovals>;
   openConnectionSentryApprovals(): Promise<NativeSentryApprovals>;
@@ -771,7 +771,7 @@ export function createKeyringRuntimeFactory(
               async (credential, assertAttemptCurrent) => {
                 const attemptCurrent = () => { check(); checkGuard(assertAttemptCurrent); check(); };
                 try {
-                  await verifyOperationCredential(credential, attemptCurrent);
+                  await verifyOperationCredential(credential, attemptCurrent, signal);
                   attemptCurrent(); accepted = true;
                   return { accepted: true };
                 } catch (error) {
@@ -792,7 +792,7 @@ export function createKeyringRuntimeFactory(
             throw error;
           }
         };
-        const verifyOperationCredential = async (credential: NativeOperationCredential, check: () => void) => {
+        const verifyOperationCredential = async (credential: NativeOperationCredential, check: () => void, owner: AbortSignal | null) => {
           check();
           try {
             if (!pinVault) throw new KeyringRuntimeError('NOT_READY');
@@ -804,7 +804,7 @@ export function createKeyringRuntimeFactory(
               await deviceUnlock.withPresenceCredential(check, key => pinVault.withPublicKey(check, async expected => {
                 if (key.length !== expected.length || key.some((byte, index) => byte !== expected[index]))
                   throw new KeyringRuntimeError('DEVICE_UNLOCK_UNAVAILABLE');
-              })); check();
+              }), owner); check();
               await storage.authGuard.recordSuccess(); check();
             } else throw new KeyringRuntimeError('INVALID_INPUT');
             check();
@@ -874,7 +874,7 @@ export function createKeyringRuntimeFactory(
                 try {
                   if (!deviceUnlock) throw new KeyringRuntimeError('DEVICE_UNLOCK_UNAVAILABLE');
                   await storage.authGuard.checkAllowed(); guard();
-                  await deviceUnlock.verifyPresence(guard); guard();
+                  await deviceUnlock.verifyPresence(guard, owned.signal); guard();
                 } catch (error) { refuseProof(error); }
                 completeAuthentication = async () => { guard(); await storage.authGuard.recordSuccess(); guard(); };
                 await pinVault.withSecret(guard, consume);
@@ -1504,7 +1504,7 @@ export function createKeyringRuntimeFactory(
                 await deviceUnlock.withPresenceCredential(guard, async key => {
                   await consume(key); guard();
                   await storage.authGuard.recordSuccess(); guard();
-                });
+                }, owned.signal);
               }
             } }, request, { signal: owned.signal, assertCurrent: check }, async authenticatedManifest => {
               check(); Object.assign(state, stateFor(records));
@@ -1615,7 +1615,7 @@ export function createKeyringRuntimeFactory(
           if (!live) {
             try {
               if (prove) throw new KeyringRuntimeError('INVALID_INPUT');
-              if (keyring.hasPublicSession()) await verifyOperationCredential({ method: 'pin', pin: password }, check);
+              if (keyring.hasPublicSession()) await verifyOperationCredential({ method: 'pin', pin: password }, check, null);
               else await restorePublicView(captured, { method: 'pin', pin: password }, check);
               return true;
             } catch (error) { if (error instanceof Error && error.message === 'INVALID_CREDENTIAL') return false; throw error; }
@@ -1652,7 +1652,7 @@ export function createKeyringRuntimeFactory(
             };
             check();
             try {
-            await verifyOperationCredential(credential, check);
+            await verifyOperationCredential(credential, check, null);
             check();
             if (JSON.stringify(await readIdentity()) !== JSON.stringify(identity)) throw new KeyringRuntimeError('CANCELLED');
             check();
@@ -2253,7 +2253,7 @@ export function createKeyringRuntimeFactory(
           });
         const openSentryKeyManagement: NonNullable<
           KeyringRuntime['openSentryKeyManagement']
-        > = (lifetime, assertOwner) =>
+        > = (lifetime, assertOwner, authentication) =>
           runPrivateDomain(async (captured) => {
             const derivePublicKey = dependencies.deriveSentryPublicKey;
             if (
@@ -2268,7 +2268,12 @@ export function createKeyringRuntimeFactory(
             const session = privateDomainSession(captured, () => {
               if (lifetime.aborted) throw new KeyringRuntimeError('CANCELLED');
               checkGuard(assertOwner);
-            });
+            }, authentication);
+            const checkOwnership = () => {
+              current(captured);
+              if (lifetime.aborted) throw new KeyringRuntimeError('CANCELLED');
+              assertNativePrivateAuthentication(authentication);
+            };
             const identity = verifiedIdentity!;
             const network = getSentryKeyNetwork();
             if (!network) throw new KeyringRuntimeError('NOT_READY');
@@ -2316,7 +2321,8 @@ export function createKeyringRuntimeFactory(
               },
               async authenticate(assertCurrent, signal) {
                 assertCurrent();
-                await requestCredential('account-change', signal, assertCurrent);
+                await withNativePrivateAuthentication(authentication, signal, checkOwnership,
+                  owned => requestCredential('account-change', owned, assertCurrent));
                 assertCurrent();
               },
               derivePublicKey,
@@ -2324,7 +2330,8 @@ export function createKeyringRuntimeFactory(
               network,
               async readSeed(assertCurrent, signal) {
                 assertCurrent();
-                const phrase = await withSoftwareSecret('secret-read', signal, assertCurrent, secret => keyring.getSeed(secret), null, null);
+                const phrase = await withSoftwareSecret('secret-read', signal, assertCurrent, secret => keyring.getSeed(secret), null, null,
+                  { authentication, assertCurrent: checkOwnership });
                 assertCurrent();
                 if (typeof phrase !== 'string' || !keyring.isSeedValid(phrase))
                   throw new KeyringRuntimeError('OPERATION_FAILED');

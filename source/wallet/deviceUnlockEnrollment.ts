@@ -27,7 +27,9 @@ type DeviceUnlockCredentialPort = Readonly<{
   available(): Promise<boolean>;
   read(
     scope: DeviceUnlockCredentialScope,
-    assertCurrent: Guard
+    assertCurrent: Guard,
+    /** Presentation identity only; never substitutes for the credential guard. */
+    owner: AbortSignal | null
   ): Promise<Uint8Array | null>;
   remove(
     scope: DeviceUnlockCredentialScope,
@@ -37,7 +39,8 @@ type DeviceUnlockCredentialPort = Readonly<{
   stage(
     scope: DeviceUnlockCredentialScope,
     key: Uint8Array,
-    assertCurrent: Guard
+    assertCurrent: Guard,
+    owner: AbortSignal | null
   ): Promise<void>;
 }>;
 
@@ -138,11 +141,16 @@ export function createDeviceUnlockEnrollment(
       checked(sdkGuard);
       operation.check();
       operation.attempted = true;
-      await ports.credentials.stage(scope, credential.key, () => {
-        operation.check();
-        checked(sdkGuard);
-        operation.check();
-      });
+      await ports.credentials.stage(
+        scope,
+        credential.key,
+        () => {
+          operation.check();
+          checked(sdkGuard);
+          operation.check();
+        },
+        null
+      );
       operation.check();
       operation.completed = true;
     },
@@ -158,7 +166,7 @@ export function createDeviceUnlockEnrollment(
       )
         return null;
       operation.attempted = true;
-      const key = await ports.credentials.read(scope, operation.check);
+      const key = await ports.credentials.read(scope, operation.check, null);
       if (!key) return null;
       try {
         const reference = await ports.enrollment.read();
@@ -177,7 +185,8 @@ export function createDeviceUnlockEnrollment(
     /** The host chooses the enrolled capability; it is consumed only while this proof remains current. */
     async withPresenceCredential<T>(
       guard: Guard,
-      consume: (key: Uint8Array) => Promise<T>
+      consume: (key: Uint8Array) => Promise<T>,
+      owner: AbortSignal | null
     ): Promise<T> {
       return run('presence', guard, async (operation) => {
         const { check } = operation;
@@ -190,7 +199,7 @@ export function createDeviceUnlockEnrollment(
           if (!reference?.enrollmentId) throw unavailable();
           const scope = scopeOf(reference, reference.enrollmentId);
           operation.scope = scope;
-          key = await ports.credentials.read(scope, check);
+          key = await ports.credentials.read(scope, check, owner);
           check();
           if (!(key instanceof Uint8Array) || key.length !== 32)
             throw unavailable();
@@ -205,8 +214,11 @@ export function createDeviceUnlockEnrollment(
         }
       });
     },
-    async verifyPresence(guard: Guard): Promise<void> {
-      await this.withPresenceCredential(guard, async () => undefined);
+    async verifyPresence(
+      guard: Guard,
+      owner: AbortSignal | null
+    ): Promise<void> {
+      await this.withPresenceCredential(guard, async () => undefined, owner);
     },
     issue: (prove: (assertCurrent: Guard) => Promise<boolean>, guard: Guard) =>
       run('issue', guard, async (operation) => {

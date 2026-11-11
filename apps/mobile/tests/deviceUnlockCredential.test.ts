@@ -31,28 +31,28 @@ test('stage verifies the protected readback before a fresh wallet credential can
   const { store, items, calls } = fixture();
   const key = Uint8Array.from({ length: 32 }, (_, index) => index);
   assert.equal(await store.available(), true);
-  assert.equal(await store.read(scope, current), null);
-  await store.stage(scope, key, current);
+  assert.equal(await store.read(scope, current, null), null);
+  await store.stage(scope, key, current, null);
   assert.deepEqual(calls, [`read:${alias}`, `write:${alias}`, `read:${alias}`]);
   assert.equal(items.size, 1);
-  const resumed = await store.read(scope, current);
+  const resumed = await store.read(scope, current, null);
   assert.deepEqual(resumed, key);
   resumed!.fill(0);
-  assert.deepEqual(await store.read(scope, current), key);
+  assert.deepEqual(await store.read(scope, current, null), key);
   await store.remove(scope, current);
-  assert.equal(await store.read(scope, current), null);
+  assert.equal(await store.read(scope, current, null), null);
 });
 
 test('a valid key from another installation, binding, pair or enrollment is rejected', async () => {
   const f = fixture();
-  await f.store.stage(scope, new Uint8Array(32).fill(7), current);
+  await f.store.stage(scope, new Uint8Array(32).fill(7), current, null);
   f.readAs(f.items.get(alias)!);
   for (const field of ['installationId', 'walletBindingId', 'pairFingerprint', 'enrollmentId'] as const)
-    await assert.rejects(f.store.read({ ...scope, [field]: '5'.repeat(scope[field].length) }, current), unavailable);
+    await assert.rejects(f.store.read({ ...scope, [field]: '5'.repeat(scope[field].length) }, current, null), unavailable);
   f.readAs(f.items.get(alias)! + '0');
-  await assert.rejects(f.store.read(scope, current), unavailable);
+  await assert.rejects(f.store.read(scope, current, null), unavailable);
   const before = f.calls.length;
-  await assert.rejects(f.store.stage({ ...scope, enrollmentId: 'not an alias' }, new Uint8Array(32), current), unavailable);
+  await assert.rejects(f.store.stage({ ...scope, enrollmentId: 'not an alias' }, new Uint8Array(32), current, null), unavailable);
   assert.equal(f.calls.length, before);
 });
 
@@ -61,22 +61,22 @@ test('revocation during platform work returns no key and never confirms staged b
   let live = true;
   const guard = () => { if (!live) throw Error('CANCELLED'); };
   f.onWrite(() => { live = false; });
-  await assert.rejects(f.store.stage(scope, new Uint8Array(32), guard), { message: 'CANCELLED' });
+  await assert.rejects(f.store.stage(scope, new Uint8Array(32), guard, null), { message: 'CANCELLED' });
   assert.deepEqual(f.calls, [`write:${alias}`]);
   live = true;
   f.onRead(() => { live = false; });
-  await assert.rejects(f.store.read(scope, guard), { message: 'CANCELLED' });
-  await assert.rejects(f.store.read(scope, async () => undefined), unavailable);
+  await assert.rejects(f.store.read(scope, guard, null), { message: 'CANCELLED' });
+  await assert.rejects(f.store.read(scope, async () => undefined, null), unavailable);
   assert.deepEqual(f.calls, [`write:${alias}`, `read:${alias}`]);
 });
 
 test('altered readback and native failures do not confirm enrollment or expose the cause', async () => {
   const f = fixture();
   f.readAs('different value');
-  await assert.rejects(f.store.stage(scope, new Uint8Array(32), current), unavailable);
+  await assert.rejects(f.store.stage(scope, new Uint8Array(32), current, null), unavailable);
   f.failWith(Error('fixture platform diagnostic contains private data'));
   assert.equal(await f.store.available(), false);
-  await assert.rejects(f.store.read(scope, current), unavailable);
+  await assert.rejects(f.store.read(scope, current, null), unavailable);
 });
 
 test('only explicit native authentication errors are classified as retryable refusals', () => {
@@ -100,7 +100,7 @@ test('only explicit native authentication errors are classified as retryable ref
 
 test('protected storage preserves only the private refusal brand, not a matching public message', async () => {
   const f = fixture(); f.failWith(deviceUnlockUserRefusal());
-  await assert.rejects(f.store.read(scope, current), error => isDeviceUnlockUserRefusal(error));
+  await assert.rejects(f.store.read(scope, current, null), error => isDeviceUnlockUserRefusal(error));
   f.failWith(Error('DEVICE_UNLOCK_UNAVAILABLE'));
-  await assert.rejects(f.store.read(scope, current), error => !isDeviceUnlockUserRefusal(error));
+  await assert.rejects(f.store.read(scope, current, null), error => !isDeviceUnlockUserRefusal(error));
 });

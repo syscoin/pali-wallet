@@ -238,11 +238,11 @@ export function createNativeWalletControllers() {
         { id: 'hd:0:0', type: 'HDAccount', index: 0, slip44: 0, label: 'Account 1', address: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4' },
       ] as const,
     });
-  const authenticateOperation = async (credential: NativeOperationCredential, check: () => void) => {
+  const authenticateOperation = async (credential: NativeOperationCredential, check: () => void, owner: AbortSignal | null = null) => {
     check();
     if (credential.method === 'biometric') {
       if (!authentication || !visualDeviceUnlockEnabled) throw refused('DEVICE_UNLOCK_UNAVAILABLE');
-      try { await authentication.run(async () => { await unlockGate(); check(); }); }
+      try { await authentication.run(owner, async () => { await unlockGate(); check(); }); }
       catch (error) { check(); if (error instanceof Error && error.message === 'DEVICE_UNLOCK_UNAVAILABLE') throw refused('DEVICE_UNLOCK_UNAVAILABLE'); throw error; }
     } else {
       await unlockGate();
@@ -260,7 +260,7 @@ export function createNativeWalletControllers() {
       await withNativePrivateAuthentication(binding, signal, () => { if (!sessionUnlocked) throw refused('CANCELLED'); }, proofSignal =>
         nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose,
           biometricsEnabled: !!authentication && visualDeviceUnlockEnabled }, proofSignal, guard, async (credential, check) => {
-          try { await authenticateOperation(credential, check); return { accepted: true }; }
+          try { await authenticateOperation(credential, check, proofSignal); return { accepted: true }; }
           catch (error) {
             check();
             if (error instanceof KeyringRuntimeError && credentialRefusals.has(error) &&
@@ -285,7 +285,7 @@ export function createNativeWalletControllers() {
       async enroll(password, check) {
         check();
         if (!sessionUnlocked || password !== fixturePassword) return { authenticated: false };
-        await authentication.run(unlockGate);
+        await authentication.run(null, unlockGate);
         check(); visualDeviceUnlockEnabled = true;
         return { authenticated: true };
       },
@@ -298,7 +298,7 @@ export function createNativeWalletControllers() {
       async unlock(check) {
         check();
         if (!visualWalletPresent || !visualDeviceUnlockEnabled || sessionUnlocked) return { authenticated: false };
-        await authentication.run(unlockGate);
+        await authentication.run(null, unlockGate);
         check(); sessionUnlocked = true;
         return { authenticated: true };
       },
@@ -587,7 +587,7 @@ export function createNativeWalletControllers() {
       audit.keyAttempts++;
       events.push('key:start');
       await requestFixtureCredential(bindNativePrivateAuthentication(scopeAuthentication, {
-        assertCurrent: () => { if (!sessionUnlocked || signal.aborted) throw refused('CANCELLED'); }, isPromptActive: () => authentication?.isActive() === true,
+        assertCurrent: () => { if (!sessionUnlocked || signal.aborted) throw refused('CANCELLED'); }, isPromptActive: owner => authentication?.isActive(owner) === true,
       }), signal, guard, 'secret-read');
       audit.keyReads++;
       await keyReadGate();
@@ -603,7 +603,7 @@ export function createNativeWalletControllers() {
   const imports: NativeImportView = { previewUtxo: (...args) => authority.previewUtxoImport(...args),
     submit: (input, revision, catalogueRevision, signal, scope) => authority.importAccount(input, revision, catalogueRevision, signal,
       bindNativePrivateAuthentication(scope, { assertCurrent: () => { if (signal.aborted) throw refused('CANCELLED'); },
-        isPromptActive: () => authentication?.isActive() === true })),
+        isPromptActive: owner => authentication?.isActive(owner) === true })),
     cancel: () => authority.cancelAccountOperation() };
   return { authority, getNotificationChoices, getScopedActivityRuntime, activityReaders, connections: connections.view, keyExport, imports,
     ...(authentication ? { authentication } : {}),
@@ -635,7 +635,7 @@ export function createNativeWalletControllers() {
     ...(removalFixtureEnabled ? { removal: createWalletRemovalFixture(authority, { getSnapshot: () => sessionUnlocked ? catalogue : null }, (password) => password === fixturePassword) } : {}),
     ...(noteFixtureEnabled ? {
       readNoteInventory: (check: () => void, scope: NativePrivateAuthenticationScope) => {
-        const parent = bindNativePrivateAuthentication(scope, { assertCurrent: () => { if (!sessionUnlocked) throw refused('CANCELLED'); }, isPromptActive: () => authentication?.isActive() === true });
+        const parent = bindNativePrivateAuthentication(scope, { assertCurrent: () => { if (!sessionUnlocked) throw refused('CANCELLED'); }, isPromptActive: owner => authentication?.isActive(owner) === true });
         return readFixtureNoteInventory(check, (child, guard) => requestFixtureCredential(
           bindNativePrivateAuthenticationChild(parent, child), new AbortController().signal, guard, 'secret-read'));
       },

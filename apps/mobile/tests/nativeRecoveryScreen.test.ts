@@ -388,7 +388,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
       },
       async unlockWithDevice(check: () => void) {
         check(); publish({ phase: 'authenticating', error: null });
-        try { await authentication.run(() => new Promise<void>(resolve => { releasePrompt = resolve; })); }
+        try { await authentication.run(null, () => new Promise<void>(resolve => { releasePrompt = resolve; })); }
         catch (cause) { publish({ phase: 'locked', account: null, error: 'DEVICE_UNLOCK_UNAVAILABLE' }); throw cause; }
         check(); publish({ phase: 'backup-required', backup: 'unconfirmed', account: { address, network: networkId }, error: null });
       },
@@ -900,13 +900,13 @@ for (const interruption of ['owned', 'background', 'unowned'] as const) test(`Se
   let keys: readonly SentryKeySummary[] = [];
   const unused = async (): Promise<never> => { throw Error('Unexpected operation'); };
   const manager: NativeSentryKeyManagement = {
-    isAuthenticating: () => proofOwned && nativePrompt.isActive(),
+    isAuthenticating: () => proofOwned && nativePrompt.isActive(scope),
     getSettings: unused, saveSettings: unused, list: async () => keys,
     prepareImport: async () => ({ network: 'mainnet', expiresAt: performance.now() + 90000, keys: [key] }),
     async confirmImport() {
       proofOwned = interruption !== 'unowned';
       try {
-        await nativePrompt.run(() => held.promise);
+        await nativePrompt.run(scope, () => held.promise);
         check(); writes++; return keys = [key];
       } finally { proofOwned = false; }
     },
@@ -922,7 +922,7 @@ for (const interruption of ['owned', 'background', 'unowned'] as const) test(`Se
     (field(render(), 'Private key').props.onChangeText as (value: string) => void)('13'.repeat(32));
     await activate('Review key');
     const saving = activate('Save key');
-    assert.equal(nativePrompt.isActive(), true);
+    assert.equal(nativePrompt.isAnyPromptActive(), true);
     f.emit('change', 'inactive'); f.emit('blur');
     assert.equal(scope.aborted, interruption === 'unowned');
     if (interruption === 'background') f.emit('change', 'background');

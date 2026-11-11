@@ -55,7 +55,9 @@ describe('protected presence failure classification', () => {
     f.beforeRead(() => {
       if (f.reads === 1) throw error;
     });
-    await expect(f.owner.verifyPresence(() => undefined)).rejects.toBe(error);
+    await expect(f.owner.verifyPresence(() => undefined, null)).rejects.toBe(
+      error
+    );
     expect(f.bytes).toEqual(new Uint8Array(32));
     expect(isDeviceUnlockUserRefusal(error)).toBe(false);
   });
@@ -70,7 +72,7 @@ describe('protected presence failure classification', () => {
         if (f.reads === 1 || replacement === null) f.replace(replacement);
       });
       const error = await f.owner
-        .verifyPresence(() => undefined)
+        .verifyPresence(() => undefined, null)
         .catch((value) => value);
       expect(error).toBeInstanceOf(Error);
       expect(isDeviceUnlockUserRefusal(error)).toBe(false);
@@ -94,7 +96,9 @@ describe('protected presence failure classification', () => {
         remove: async () => undefined,
       },
     });
-    await expect(owner.verifyPresence(() => undefined)).rejects.toBe(error);
+    await expect(owner.verifyPresence(() => undefined, null)).rejects.toBe(
+      error
+    );
     expect(isDeviceUnlockUserRefusal(error)).toBe(true);
     expect(isDeviceUnlockUserRefusal(Error(error.message))).toBe(false);
   });

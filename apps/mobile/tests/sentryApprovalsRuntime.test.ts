@@ -155,7 +155,7 @@ test('actual native runtime binds encrypted Sentry approvals to topic lifetime, 
     const keys = await runtime.openSentryKeyManagement!(
       lifetime.signal,
       checkTopic
-    );
+    , createTestPrivateAuthentication(() => undefined));
     const review = await keys.prepareImport(
       '02'.padStart(64, '0'),
       'voting',
@@ -268,7 +268,7 @@ test('actual runtime carries a disclosed Sentry operation into one child fee PSB
     address = account.address; xpub = account.xpub!;
     const script = bitcoin.address.toOutputScript(address, network.addressNetwork);
     funding = new bitcoin.Transaction(); funding.addInput(Buffer.alloc(32, 17), 0); funding.addOutput(script, BigInt(100000));
-    const keys = await runtime.openSentryKeyManagement!(owner.signal, checkGrant);
+    const keys = await runtime.openSentryKeyManagement!(owner.signal, checkGrant, createTestPrivateAuthentication(() => undefined));
     const imported = await keys.prepareImport('01'.padStart(64, '0'), 'operator', 'bls-basic'); await keys.confirmImport(imported);
     const manager = await runtime.openConnectionSentryApprovals();
     const request = sentry.buildSentryServiceUpdate({ chain, node, service: '127.0.0.2:8369',

@@ -11,6 +11,9 @@ import { createDeviceUnlockCredentialStore } from '../src/storage/deviceUnlockCr
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 import { deviceUnlockUserRefusal } from '../../../source/wallet/deviceUnlockEnrollment.ts';
 import { SeedBackupFlow } from '../src/custody/seedBackup.ts';
+import { DeviceUnlockPrompt } from '../src/platform/deviceUnlockPrompt.ts';
+import { OperationAuthentication, type OperationAuthenticationPrompt } from '../src/core/operationAuthentication.ts';
+import { bindNativePrivateAuthentication, createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = '123456';
@@ -18,24 +21,29 @@ process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 
-async function fixture(trezorSessions?: KeyringRuntimeDependencies['trezorSessions']) {
+async function fixture(trezorSessions?: KeyringRuntimeDependencies['trezorSessions'], requestCredential?: KeyringRuntimeDependencies['requestOperationCredential'], prompt?: DeviceUnlockPrompt) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-device-unlock-test-'));
   const file = path.join(directory, 'wallet.sqlite');
   const protectedItems = new Map<string, string>();
+  const readOwners: (AbortSignal | null)[] = [], writeOwners: (AbortSignal | null)[] = [];
   let initialized = false, nextId = 1;
   let afterRead: () => Promise<void> = async () => undefined;
   let failEnrollmentRead = false;
   let store!: SqliteWalletStorage, runtime!: KeyringRuntime;
   const credentials = createDeviceUnlockCredentialStore({
     async available() { return true; },
-    async read(name) { const result = protectedItems.get(name) ?? null; await afterRead(); return result; },
-    async write(name, value) { protectedItems.set(name, value); },
+    async read(name, owner) {
+      readOwners.push(owner);
+      const read = async () => { const result = protectedItems.get(name) ?? null; await afterRead(); return result; };
+      return prompt ? prompt.run(owner, read) : read();
+    },
+    async write(name, value, owner) { writeOwners.push(owner); protectedItems.set(name, value); },
     async remove(name) { protectedItems.delete(name); },
   });
-  const factory = createKeyringRuntimeFactory({ pinCredential: createTestPinCredentialPort(), requestOperationCredential: async (_request, _signal, check, verify) => {
+  const factory = createKeyringRuntimeFactory({ pinCredential: createTestPinCredentialPort(), requestOperationCredential: requestCredential ?? (async (_request, _signal, check, verify) => {
     const result = await verify({ method: 'pin', pin: PASSWORD }, check);
     if (!result.accepted) throw Error(result.reason);
-  }, privacyServiceSettings: null, slhExecution: null,
+  }), privacyServiceSettings: null, slhExecution: null,
     ensureCryptoReady: async () => undefined, readEvmRetirement: null,
     trezorSessions,
     async openStorage() {
@@ -55,7 +63,7 @@ async function fixture(trezorSessions?: KeyringRuntimeDependencies['trezorSessio
   let owner = await open();
   await owner.importPhrase(PHRASE, PASSWORD);
   return {
-    get owner() { return owner; }, get runtime() { return runtime; }, get store() { return store; }, protectedItems,
+    get owner() { return owner; }, get runtime() { return runtime; }, get store() { return store; }, protectedItems, readOwners, writeOwners,
     afterRead(operation: () => Promise<void>) { afterRead = operation; },
     failEnrollmentRead() { failEnrollmentRead = true; },
     async reopen() { await owner.dispose(); owner = await open(); },
@@ -220,6 +228,40 @@ test('operation authentication reuses device enrollment without changing the liv
     assert.equal(f.owner.getSnapshot(), before);
     assert.equal(f.owner.getCatalogue(), catalogue);
   } finally { await f.close(); }
+});
+
+test('actual SDK key export forwards its exact broker acquisition to protected storage', async () => {
+  const prompt = new DeviceUnlockPrompt({ state: () => 'active', subscribe: () => () => {} });
+  const broker = new OperationAuthentication();
+  let shown: OperationAuthenticationPrompt | null = null, brokerOwner: AbortSignal | undefined;
+  const detach = broker.attach(value => { shown = value; });
+  const f = await fixture(undefined, (request, signal, check, verify) => {
+    brokerOwner = signal; return broker.request(request, signal, check, verify);
+  }, prompt);
+  const authentication = createNativePrivateAuthenticationScope();
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  try {
+    await f.runtime.backup.confirm(await f.runtime.backup.fingerprint());
+    await f.owner.refreshAuthenticatedMetadata();
+    await f.owner.setDeviceUnlock(true, PASSWORD, () => undefined);
+    assert.deepEqual(f.writeOwners, [null]); assert.deepEqual(f.readOwners, [null]);
+    const before = f.owner.getSnapshot(), catalogue = f.owner.getCatalogue()!;
+    const account = catalogue.accounts.find(value => value.id === catalogue.active.accountId)!;
+    const network = catalogue.networks.find(value => value.id === catalogue.active.networkId)!;
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent() { assert.equal(f.owner.getSnapshot(), before); },
+      isPromptActive: owner => prompt.isActive(owner) });
+    f.afterRead(async () => { entered.resolve(); await release.promise; });
+    const exporting = f.runtime.keyExport!.readSelected({ authorityRevision: before.revision, catalogueRevision: catalogue.revision,
+      accountId: account.id, index: account.index, address: account.address, networkId: network.id, registrationHash: network.registrationHash },
+    new AbortController().signal, () => undefined, binding);
+    await new Promise(resolve => setImmediate(resolve));
+    const activePrompt = shown as OperationAuthenticationPrompt | null; assert(activePrompt);
+    activePrompt.confirm({ method: 'biometric' }); await entered.promise;
+    assert(brokerOwner); assert.equal(f.readOwners.at(-1), brokerOwner);
+    assert.equal(prompt.isActive(brokerOwner), true); assert.equal(authentication.isAuthenticating(), true);
+    release.resolve(); assert.match(await exporting, /^0x[0-9a-f]{64}$/i);
+    assert.equal(authentication.isAuthenticating(), false); assert.equal(f.owner.getSnapshot(), before);
+  } finally { release.resolve(); broker.cancel(); detach(); authentication.retire(); await f.close(); }
 });
 
 for (const failure of ['missing', 'corrupt', 'changed', 'read'] as const) test(`phrase flow reflects retired SDK authority after ${failure} biometric enrollment`, async () => {

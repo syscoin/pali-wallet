@@ -8,7 +8,7 @@ declare const bindingBrand: unique symbol;
 export type NativePrivateAuthentication = Readonly<{ [bindingBrand]: true }>;
 type Active = { cancel(): void; signal: AbortSignal; assertCurrent(): void; isPromptActive(): boolean };
 type State = { live: boolean; active: Active | null; parent: State | null; children: Set<State> };
-type Binding = { state: State; scope: NativePrivateAuthenticationScope; assertCurrent(): void; isPromptActive(): boolean };
+type Binding = { state: State; scope: NativePrivateAuthenticationScope; assertCurrent(): void; isPromptActive(owner: AbortSignal): boolean };
 const scopes = new WeakMap<NativePrivateAuthenticationScope, State>();
 const bindings = new WeakMap<NativePrivateAuthentication, Binding>();
 const stale = () => new Error('CANCELLED');
@@ -66,7 +66,7 @@ export function createNativePrivateAuthenticationChild(parent: NativePrivateAuth
 /** Native factory only: bind a genuine view scope to its captured wallet and OS prompt. */
 export function bindNativePrivateAuthentication(scope: NativePrivateAuthenticationScope, ports: Readonly<{
   assertCurrent(): void;
-  isPromptActive(): boolean;
+  isPromptActive(owner: AbortSignal): boolean;
 }>): NativePrivateAuthentication {
   const state = scopes.get(scope);
   if (!state?.live || typeof ports.assertCurrent !== 'function' || typeof ports.isPromptActive !== 'function') throw stale();
@@ -107,7 +107,7 @@ export async function withNativePrivateAuthentication<T>(binding: NativePrivateA
   while (root.parent) root = root.parent;
   if (signal.aborted || activeWithin(root)) throw stale();
   const controller = new AbortController();
-  const active: Active = { cancel: () => controller.abort(), signal: controller.signal, isPromptActive: value.isPromptActive,
+  const active: Active = { cancel: () => controller.abort(), signal: controller.signal, isPromptActive: () => value.isPromptActive(controller.signal),
     assertCurrent() { assertNativePrivateAuthentication(binding); assertSynchronousEvmFeeGuard(assertOwner); } };
   value.state.active = active;
   const clear = () => { controller.abort(); if (value.state.active === active) value.state.active = null; };

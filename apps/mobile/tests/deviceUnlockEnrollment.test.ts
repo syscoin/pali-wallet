@@ -149,7 +149,7 @@ test('presence verification reads the protected current enrollment and erases it
   const f = fixture(), c = f.coordinator;
   await c.issue(f.prove, current);
   const record = f.record, saved = [...f.items], before = f.reads;
-  assert.equal(await c.verifyPresence(current), undefined);
+  assert.equal(await c.verifyPresence(current, null), undefined);
   assert.equal(f.reads, before + 1);
   assert.equal(f.record, record);
   assert.equal(f.mutations, 1);
@@ -160,19 +160,19 @@ test('presence verification reads the protected current enrollment and erases it
 
 test('presence verification refuses disabled, unavailable, missing and failed protected credentials', async () => {
   const f = fixture(), c = f.coordinator;
-  await assert.rejects(c.verifyPresence(current), unavailable);
+  await assert.rejects(c.verifyPresence(current, null), unavailable);
   assert.equal(f.reads, 0);
   await c.issue(f.prove, current);
   const before = f.reads;
   f.availability(false);
-  await assert.rejects(c.verifyPresence(current), unavailable);
+  await assert.rejects(c.verifyPresence(current, null), unavailable);
   assert.equal(f.reads, before);
   f.availability(true);
   f.onRead(() => { throw Error('OS read failed'); });
-  await assert.rejects(c.verifyPresence(current), unavailable);
+  await assert.rejects(c.verifyPresence(current, null), unavailable);
   f.onRead(current);
   f.items.clear();
-  await assert.rejects(c.verifyPresence(current), unavailable);
+  await assert.rejects(c.verifyPresence(current, null), unavailable);
 });
 
 test('presence verification binds every enrollment field across the protected read', async () => {
@@ -187,7 +187,7 @@ test('presence verification binds every enrollment field across the protected re
     const f = fixture(), c = f.coordinator;
     await c.issue(f.prove, current);
     f.onRead(() => f.replaceReference(change));
-    await assert.rejects(c.verifyPresence(current), unavailable);
+    await assert.rejects(c.verifyPresence(current, null), unavailable);
     assert.deepEqual(f.decoded, new Uint8Array(32));
   }
 });
@@ -198,11 +198,11 @@ test('revoked presence verification erases already-read bytes and rejects non-sy
   let live = true;
   const check = () => { if (!live) throw Error('CANCELLED'); };
   f.onDecode(() => { live = false; });
-  await assert.rejects(c.verifyPresence(check), { message: 'CANCELLED' });
+  await assert.rejects(c.verifyPresence(check, null), { message: 'CANCELLED' });
   assert.deepEqual(f.decoded, new Uint8Array(32));
   const before = f.reads;
-  await assert.rejects(c.verifyPresence(check), { message: 'CANCELLED' });
-  await assert.rejects(c.verifyPresence(async () => undefined), unavailable);
+  await assert.rejects(c.verifyPresence(check, null), { message: 'CANCELLED' });
+  await assert.rejects(c.verifyPresence(async () => undefined, null), unavailable);
   assert.equal(f.reads, before);
 });
 
@@ -211,9 +211,9 @@ test('presence verification shares the single active operation with issue, resum
   await c.issue(f.prove, current);
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   f.onRead(() => { entered.resolve(); return release.promise; });
-  const pending = c.verifyPresence(current);
+  const pending = c.verifyPresence(current, null);
   await entered.promise;
-  await assert.rejects(c.verifyPresence(current), unavailable);
+  await assert.rejects(c.verifyPresence(current, null), unavailable);
   await assert.rejects(c.issue(f.prove, current), unavailable);
   await assert.rejects(c.resume(async () => assert.fail('SDK must not run'), current, retire), unavailable);
   await assert.rejects(c.disable(current), unavailable);
@@ -222,22 +222,22 @@ test('presence verification shares the single active operation with issue, resum
   await pending;
   assert.deepEqual(f.decoded, new Uint8Array(32));
   f.onRead(current);
-  await c.verifyPresence(current);
+  await c.verifyPresence(current, null);
 });
 
 test('presence keeps genuine user refusal distinct from enrollment and protected-record failures', async () => {
   const f = fixture(); await f.coordinator.issue(f.prove, current);
   f.onRead(() => { throw deviceUnlockUserRefusal(); });
-  await assert.rejects(f.coordinator.verifyPresence(current), error => isDeviceUnlockUserRefusal(error));
+  await assert.rejects(f.coordinator.verifyPresence(current, null), error => isDeviceUnlockUserRefusal(error));
   f.onRead(current);
   const failure = Error('SQL read failed');
   f.failEnrollment(failure);
-  await assert.rejects(f.coordinator.verifyPresence(current), error => error === failure && !isDeviceUnlockUserRefusal(error));
+  await assert.rejects(f.coordinator.verifyPresence(current, null), error => error === failure && !isDeviceUnlockUserRefusal(error));
   const stale = fixture(); await stale.coordinator.issue(stale.prove, current);
   stale.onRead(() => stale.replace(second));
-  await assert.rejects(stale.coordinator.verifyPresence(current), error => !isDeviceUnlockUserRefusal(error));
+  await assert.rejects(stale.coordinator.verifyPresence(current, null), error => !isDeviceUnlockUserRefusal(error));
   assert.deepEqual(stale.decoded, new Uint8Array(32));
   const corrupt = fixture(); await corrupt.coordinator.issue(corrupt.prove, current);
   corrupt.items.set(name(first), 'corrupt');
-  await assert.rejects(corrupt.coordinator.verifyPresence(current), error => !isDeviceUnlockUserRefusal(error));
+  await assert.rejects(corrupt.coordinator.verifyPresence(current, null), error => !isDeviceUnlockUserRefusal(error));
 });
