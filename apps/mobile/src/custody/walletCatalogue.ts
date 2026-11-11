@@ -262,15 +262,16 @@ function recoveryAccountReference(value: unknown, record: NativeAccountRecord, r
 export function captureNativeInfrastructurePayerReference(value: unknown, record: NativeAccountRecord): NativeGuardianRecoveryAccountRef {
   const raw = object(value, ['id', 'address', 'xpub']);
   const identity = parseNativeAccountId(raw.id);
-  if (identity.slip44 !== 60 || !['HDAccount', 'Imported', 'Ledger'].includes(identity.type)) return invalid();
+  if (identity.slip44 !== 60 || !['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(identity.type)) return invalid();
   const account = softwareGroup(record).accounts[identity.type]?.[identity.index];
   const publicKey = publicIdentity({ address: raw.address, publicKey: typeof raw.xpub === 'string' ? `0x${raw.xpub.replace(/^0x/, '')}` : raw.xpub });
   if (!account || account.id !== identity.index || account.address.toLowerCase() !== publicKey.address.toLowerCase() ||
-      `0x${account.xpub.replace(/^0x/, '')}`.toLowerCase() !== publicKey.publicKey || account.isTrezorWallet || account.isSmartAccount)
+      `0x${account.xpub.replace(/^0x/, '')}`.toLowerCase() !== publicKey.publicKey || account.isSmartAccount)
     return invalid();
-  if (identity.type === 'Ledger') {
-    if (!account.isLedgerWallet || account.isImported || account.xprv !== '') return invalid();
-  } else if (!account.xprv || account.isLedgerWallet || Boolean(account.isImported) !== (identity.type === 'Imported')) return invalid();
+  if (identity.type === 'Ledger' || identity.type === 'Trezor') {
+    if (Boolean(account.isLedgerWallet) !== (identity.type === 'Ledger') || Boolean(account.isTrezorWallet) !== (identity.type === 'Trezor') ||
+        account.isImported || account.xprv !== '') return invalid();
+  } else if (!account.xprv || account.isLedgerWallet || account.isTrezorWallet || Boolean(account.isImported) !== (identity.type === 'Imported')) return invalid();
   return Object.freeze({ id: identity.id, address: publicKey.address, xpub: publicKey.publicKey });
 }
 

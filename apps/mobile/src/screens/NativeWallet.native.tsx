@@ -210,6 +210,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const [openWalletAuthenticator, setOpenWalletAuthenticator] = useState<Controllers['openWalletAuthenticator'] | null>(null);
   const [openSmartDeployment, setOpenSmartDeployment] = useState<Controllers['openSmartAccountDeployment'] | null>(null);
   const [smartResumeId, setSmartResumeId] = useState<string | null>(null);
+  const [infrastructureResumeId, setInfrastructureResumeId] = useState<string | null>(null);
   const [openUtxoSend, setOpenUtxoSend] = useState<Controllers['openUtxoSend'] | null>(null);
   const [tokenView, setTokenView] = useState<Controllers['tokens'] | null>(null);
   const [keyExportView, setKeyExportView] = useState<Controllers['keyExport'] | null>(null);
@@ -337,7 +338,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     controllersRef.current?.authentication?.cancel();
     setRecoveryActivity(null); setResumeGuardianScope(null); setTransactionActivity(null);
     controllersRef.current?.keyExport.cancel(); controllersRef.current?.backup.cancel(); controllersRef.current?.authority.lock();
-    Keyboard.dismiss(); clearSecrets(); setSendDraft(null); setSmartResumeId(null); if (!recoveryRef.current && !retainRemoval) setStage('choose'); setError('');
+    Keyboard.dismiss(); clearSecrets(); setSendDraft(null); setSmartResumeId(null); setInfrastructureResumeId(null); if (!recoveryRef.current && !retainRemoval) setStage('choose'); setError('');
   }, [clearSecrets, lockNoteRestore, controllersRef]);
   useLayoutEffect(() => {
     if (mounted.current && AppState.currentState === 'active' && securityPreferences.getSnapshot().status === 'ready') custodyIdle.begin(screenToken.current, revoke);
@@ -366,6 +367,20 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     const operation = await local!.openResumedSmartAccountOperation(id!, signal, check, authentication);
     try { check(); return operation; } catch (error) { await operation.dispose(); throw error; }
   }, [readyContext, smartResumeId, controllersRef]);
+  const openResumedInfrastructure = useCallback(async (signal: AbortSignal, assertView: () => void, authentication: NativePrivateAuthenticationScope) => {
+    if (AppState.currentState !== 'active') throw new Error('CANCELLED');
+    const local = controllersRef.current, origin = rootOrigin.current, id = infrastructureResumeId;
+    const check = () => {
+      assertView();
+      if (!local || !id || !origin || origin.stage !== 'smart-infrastructure' || signal.aborted ||
+          !mounted.current || controllersRef.current !== local || rootOrigin.current !== origin ||
+          epoch.current !== origin.epoch || (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(authentication, AppState.currentState)) || readyContext()?.identity !== origin.identity)
+        throw new Error('CANCELLED');
+    };
+    check();
+    const controller = await local!.openResumedSmartInfrastructure(id!, signal, check, authentication);
+    try { check(); return controller; } catch (error) { controller.dispose(); throw error; }
+  }, [readyContext, infrastructureResumeId, controllersRef]);
   const currentShellScope = () => {
     if (stage !== 'choose') return null;
     const local = controllersRef.current, state = local?.authority.getSnapshot(), saved = local?.authority.getCatalogue();
@@ -813,7 +828,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     setCanSignSmart(local?.canSignSmartAccount() === true); setCanManageSlh(local?.canManageSlhDsa() === true); setCanManageModules(local?.canManageSmartAccountModules() === true);
     setCanUseWalletAuthenticator(local?.canUseWalletAuthenticator() === true);
     setSendDraft(null);
-    setSmartResumeId(null);
+    setSmartResumeId(null); setInfrastructureResumeId(null);
     setSentryScope(null);
     setStage('choose');
     if (origin && current && AppState.currentState === 'active' && origin.context === current.context && origin.identity === current.identity && origin.epoch === epoch.current)
@@ -885,7 +900,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     }
     setCanRemoveWallet(false); setDeviceUnlockStatus(null); setPinConfigured(null);
     setCanSignSmart(false); setCanManageSlh(false); setOpenSlhDsaManagement(null); setCanManageModules(false); setOpenSmartAccountModules(null); setOpenSmartInfrastructure(null);
-    setCanUseWalletAuthenticator(false); setOpenWalletAuthenticator(null); setSmartResumeId(null);
+    setCanUseWalletAuthenticator(false); setOpenWalletAuthenticator(null); setSmartResumeId(null); setInfrastructureResumeId(null);
     setPublicSource(null); setBalanceReader(null); setRecipientResolver(undefined); setReadGuardianRecovery(null); setOpenGuardianPolicy(null); setInspectGuardianRemoval(null); setGuardianRecoveryController(null); setRecoveryActivity(null); setResumeGuardianScope(null); setAccountView(null); setTrezorView(null); setLedgerView(null); setLedgerConnection(null); setConnectionView(null); setConnectionSnapshot(null); setSigningReview(null); setNetworkView(null);
     setOpenNoteCapacity(null); setReadNoteInventory(null); setOpenPrivateDeposit(null); setTransactionActivity(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setOpenSmartDeployment(null); setOpenSmartSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
     bridge.current?.onNativeCatalogue(null);
@@ -1028,7 +1043,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       const origin = rootOrigin.current;
       if ((origin?.stage === 'smart-infrastructure' || origin?.stage === 'smart-authenticator' || origin?.stage === 'slh-dsa' || origin?.stage === 'smart-modules' || origin?.stage === 'smart-resume') && origin.identity !== custodyContext(state, nextCatalogue)?.identity) {
         rootOrigin.current = null;
-        setSmartResumeId(null);
+        setSmartResumeId(null); setInfrastructureResumeId(null);
         setStage((current) => current === 'smart-infrastructure' || current === 'smart-authenticator' || current === 'slh-dsa' || current === 'smart-modules' || current === 'smart-resume' ? 'choose' : current);
       }
       if (origin?.stage === 'sentry-keys' && origin.context !== custodyContext(state, nextCatalogue)?.context) {
@@ -1511,6 +1526,13 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         if (controllersRef.current === local && epoch.current === resumeEpoch && AppState.currentState === 'active') setStage('choose');
         return;
       }
+      if (intent.kind === 'infrastructure') {
+        if (captured.accounts.find(account => account.id === intent.accountId)?.type !== 'Trezor') throw new Error('CANCELLED');
+        rootOrigin.current = {tab: shell.tab, stage: 'smart-infrastructure', ...current, epoch: epoch.current};
+        setInfrastructureResumeId(intent.id);
+        setStage('smart-infrastructure');
+        return;
+      }
       if (intent.kind === 'smart-operation') {
         rootOrigin.current = {tab: shell.tab, stage: 'smart-resume', ...current, epoch: epoch.current};
         setSmartResumeId(intent.id);
@@ -1722,7 +1744,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     return <RealAppShell tab={shell.tab} onTab={tab => { cancelAccountNavigation(); notificationTransition.current = null; shell.select(tab); }} immersive={shell.immersive}>{content}</RealAppShell>;
   }
   else if (snapshot.phase === 'ready' && stage === 'slh-dsa' && openSlhDsaManagement) return <NativeSlhDsaManagementScreen ledgerConnection={ledgerConnection ?? undefined} open={openSlhDsaManagement} onBack={closeStage} />;
-  else if (snapshot.phase === 'ready' && stage === 'smart-infrastructure' && openSmartInfrastructure) return <NativeInfrastructureScreen ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined} open={openSmartInfrastructure} onBack={closeStage} />;
+  else if (snapshot.phase === 'ready' && stage === 'smart-infrastructure' && openSmartInfrastructure) return <NativeInfrastructureScreen mode={infrastructureResumeId ? {kind:'suite-resume',id:infrastructureResumeId} : {kind:'new'}} ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined} open={infrastructureResumeId ? openResumedInfrastructure : openSmartInfrastructure} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && stage === 'smart-modules' && openSmartAccountModules) return <NativeSmartAccountModulesScreen ledgerConnection={ledgerConnection ?? undefined} open={openSmartAccountModules} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && stage === 'smart-authenticator' && openWalletAuthenticator) return <NativeSmartAccountAuthenticator ledgerConnection={ledgerConnection ?? undefined}
     open={openWalletAuthenticator} onBack={closeStage} />;
@@ -1823,7 +1845,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       onSentryKeys={sentryAvailable ? () => openStage('sentry-keys') : undefined}
       onBack={() => shell.select('wallet')} navigation={shell.navigation} />;
     else content = <RealSettings navigation={shell.navigation} notifications={notificationSettings} accountLabel={accountLabel} watchOnly={false} onSecurity={() => openStage('security')} backupRequired={snapshot.backup !== 'confirmed'} onBackup={() => openStage('backup-intro')} onConnections={connectionView ? () => openStage('connections') : undefined}
-      onInfrastructure={canSign && openSmartInfrastructure && !utxo && (selectedAccountType === 'HDAccount' || selectedAccountType === 'Imported' || selectedAccountType === 'Ledger' && !!ledgerConnection) ? () => openStage('smart-infrastructure') : undefined}
+      onInfrastructure={canSign && openSmartInfrastructure && !utxo && (selectedAccountType === 'HDAccount' || selectedAccountType === 'Imported' || selectedAccountType === 'Ledger' && !!ledgerConnection || selectedAccountType === 'Trezor' && !!trezorView) ? () => { setInfrastructureResumeId(null); openStage('smart-infrastructure'); } : undefined}
       activityReset={canSign && catalogue && snapshot.account ? {
         scope: custodyContext(snapshot, catalogue)!.context,
         networkLabel: getNativeNetwork(snapshot.account.network, catalogue.networks).name,

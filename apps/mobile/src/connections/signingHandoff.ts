@@ -1,5 +1,5 @@
 import { measureJsonWorkBudget, DAPP_REQUEST_LIMITS } from '../../../../source/utils/requestPayloadBudget.ts';
-import type { NativeSmartLocalAction } from '../custody/trezorAccounts.ts';
+import type { NativeInfrastructureLocalAction, NativeSmartLocalAction } from '../custody/trezorAccounts.ts';
 import type { NativeConnectionBinding } from './storage.ts';
 import type { WalletConnectRequest } from './walletConnect.ts';
 
@@ -33,13 +33,19 @@ export type LocalSigningHandoffDescriptor = Readonly<{
   kind: 'local-smart'; id: string; action: NativeSmartLocalAction; scope: LocalSigningResumeScope;
   expiresAt: number; order: number; job: object;
 }>;
-type Descriptor = SigningHandoffDescriptor | LocalSigningHandoffDescriptor;
+export type LocalInfrastructureHandoffDescriptor = Readonly<{
+  kind: 'local-infrastructure'; id: string; action: NativeInfrastructureLocalAction; scope: LocalSigningResumeScope;
+  expiresAt: number; order: number; job: object;
+}>;
+type LocalDescriptor = LocalSigningHandoffDescriptor | LocalInfrastructureHandoffDescriptor;
+type Descriptor = SigningHandoffDescriptor | LocalDescriptor;
 type Capture = Readonly<{
   id: string; scope: SigningResumeScope | LocalSigningResumeScope; expiresAt: number; order: number;
   assertCurrent(): void; eligible(): boolean; drain(): Promise<unknown>; retire(): void;
 }>;
 type Entry = Capture & Readonly<{wire: WalletConnectRequest; scope: SigningResumeScope}>;
 type LocalEntry = Capture & Readonly<{action: NativeSmartLocalAction; scope: LocalSigningResumeScope}>;
+type InfrastructureEntry = Capture & Readonly<{action: NativeInfrastructureLocalAction; scope: LocalSigningResumeScope}>;
 type PrivateContinuation = { retire(): void };
 type ContinuationOwner = {
   phase: 'active' | 'suspended' | 'retired';
@@ -132,8 +138,9 @@ export class NativeSigningHandoffs {
   }
   descriptor(id: string) { const value=this.currentDescriptor(id); return value?.kind === 'dapp' ? value : null; }
   localDescriptor(id: string) { const value=this.currentDescriptor(id); return value?.kind === 'local-smart' ? value : null; }
+  infrastructureDescriptor(id: string) { const value=this.currentDescriptor(id); return value?.kind === 'local-infrastructure' ? value : null; }
   cancelDapp() { const value=this.suspended?.descriptor; if(value?.kind !== 'dapp')return;this.discard(value);return value; }
-  cancelLocal() { const value=this.suspended?.descriptor;if(value?.kind !== 'local-smart')return;this.discard(value);return value; }
+  cancelLocal() { const value=this.suspended?.descriptor;if(value?.kind !== 'local-smart' && value?.kind !== 'local-infrastructure')return;this.discard(value);return value; }
   async drain(id: string) {
     const saved = this.suspended;
     if (!saved || !this.currentDescriptor(id)) throw Error('REQUEST_EXPIRED');
@@ -141,7 +148,7 @@ export class NativeSigningHandoffs {
     if (this.suspended !== saved || !this.currentDescriptor(id)) throw Error('REQUEST_EXPIRED');
   }
   revalidate(check: (descriptor: SigningHandoffDescriptor) => boolean) { const value=this.suspended?.descriptor;if(value?.kind === 'dapp' && !check(value))this.discard(value); }
-  revalidateLocal(check: (descriptor: LocalSigningHandoffDescriptor) => boolean) { const value=this.suspended?.descriptor;if(value?.kind === 'local-smart' && !check(value))this.discard(value); }
+  revalidateLocal(check: (descriptor: LocalDescriptor) => boolean) { const value=this.suspended?.descriptor;if((value?.kind === 'local-smart' || value?.kind === 'local-infrastructure') && !check(value))this.discard(value); }
   expire(id: number) { const value=this.suspended?.descriptor;if(value?.kind === 'dapp' && value.requestId === id)this.discard(value); }
   retired() { return this.retirement; }
   capture(entry: Entry): NativeSigningHandoff {
@@ -159,20 +166,28 @@ export class NativeSigningHandoffs {
     return this.captureState(entry,fresh,(job,expiresAt,scope)=>Object.freeze({kind:'dapp',id:entry.id,binding,requestId,wire,scope:scope as SigningResumeScope,expiresAt,order:entry.order,job}),true,resume);
   }
   captureLocal(entry: LocalEntry, snapshotAction: (action: NativeSmartLocalAction) => NativeSmartLocalAction): NativeSigningHandoff {
-    return this.captureLocalState(entry, snapshotAction, null);
+    return this.captureLocalState(entry, snapshotAction, (action,job,expiresAt,scope)=>Object.freeze({kind:'local-smart',id:entry.id,action,scope,expiresAt,order:entry.order,job}), null);
   }
   resumeLocal(entry: LocalEntry, snapshotAction: (action: NativeSmartLocalAction) => NativeSmartLocalAction, descriptor: LocalSigningHandoffDescriptor): NativeSigningHandoff {
     if (this.suspended?.descriptor === descriptor && this.suspended.claimed) throw Error('REQUEST_EXPIRED');
-    return this.captureLocalState(entry, snapshotAction, descriptor);
+    return this.captureLocalState(entry, snapshotAction, (action,job,expiresAt,scope)=>Object.freeze({kind:'local-smart',id:entry.id,action,scope,expiresAt,order:entry.order,job}), descriptor);
   }
-  private captureLocalState(entry: LocalEntry, snapshotAction: (action: NativeSmartLocalAction) => NativeSmartLocalAction, resume: LocalSigningHandoffDescriptor | null): NativeSigningHandoff {
+  captureInfrastructure(entry: InfrastructureEntry, snapshotAction: (action: NativeInfrastructureLocalAction) => NativeInfrastructureLocalAction): NativeSigningHandoff {
+    return this.captureLocalState(entry, snapshotAction, (action,job,expiresAt,scope)=>Object.freeze({kind:'local-infrastructure',id:entry.id,action,scope,expiresAt,order:entry.order,job}), null);
+  }
+  resumeInfrastructure(entry: InfrastructureEntry, snapshotAction: (action: NativeInfrastructureLocalAction) => NativeInfrastructureLocalAction, descriptor: LocalInfrastructureHandoffDescriptor): NativeSigningHandoff {
+    if (this.suspended?.descriptor === descriptor && this.suspended.claimed) throw Error('REQUEST_EXPIRED');
+    return this.captureLocalState(entry, snapshotAction, (action,job,expiresAt,scope)=>Object.freeze({kind:'local-infrastructure',id:entry.id,action,scope,expiresAt,order:entry.order,job}), descriptor);
+  }
+  private captureLocalState<T>(entry: Capture & Readonly<{action:T;scope:LocalSigningResumeScope}>, snapshotAction: (action: T) => T,
+    describe: (action:T,job:object,expiresAt:number,scope:LocalSigningResumeScope)=>LocalDescriptor, resume: LocalDescriptor | null): NativeSigningHandoff {
     // Locally initiated public actions have a distinct admission source; they
     // never acquire WalletConnect freshness, topic or grant by fabrication.
     // The required local DTO capture keeps asset/signing dependencies out of PSBT transport.
     entry.assertCurrent(); measureJsonWorkBudget(entry.action,DAPP_REQUEST_LIMITS.bytes);
     const action = freezePublicJson(snapshotAction(entry.action));
     if (resume && JSON.stringify(resume.action) !== JSON.stringify(action)) { this.discard(resume); throw Error('REQUEST_EXPIRED'); }
-    return this.captureState(entry,true,(job,expiresAt,scope)=>Object.freeze({kind:'local-smart',id:entry.id,action,scope,expiresAt,order:entry.order,job}),false,resume);
+    return this.captureState(entry,true,(job,expiresAt,scope)=>describe(action,job,expiresAt,scope),false,resume);
   }
   /** Bind canonical preparation once, before the queue exposes its new review. */
   bindPreparedScope(handoff: NativeSigningHandoff, scope: SigningResumeScope): void {

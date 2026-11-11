@@ -70,3 +70,9 @@ test('Smart operation resume IDs cannot be interpreted as a transfer draft', () 
   assert.throws(() => trezorResumeDraft(resume), /fresh operation review/);
   assert.deepEqual(Object.keys(resume).sort(), ['accountId', 'id', 'kind', 'networkId']);
 });
+
+test('infrastructure resume IDs require their original setup route and cannot become ordinary transfer drafts', () => {
+  const resume: NativeTrezorResumeIntent = Object.freeze({ ...scope, kind: 'infrastructure' });
+  assert.throws(() => trezorResumeDraft(resume), /original setup review/);
+  assert.deepEqual(Object.keys(resume).sort(), ['accountId', 'id', 'kind', 'networkId']);
+});

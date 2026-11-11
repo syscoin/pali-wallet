@@ -21,6 +21,7 @@ export function NativeInfrastructureFixture() {
       return result;
     };
     return new NativeInfrastructureController({
+      origin: {kind:'new'}, background() {},
       networkLabel: 'Ethereum Sepolia', currencySymbol: 'ETH', payerLabel: 'Deployment fee wallet', payerAddress: payer,
       assertCurrent, dispose() {},
       async observe() {
@@ -43,5 +44,5 @@ export function NativeInfrastructureFixture() {
     }, signal);
   }, []);
   return closed ? <Text>Simulated infrastructure preview closed</Text>
-    : <NativeInfrastructure open={open} onBack={() => setClosed(true)} />;
+    : <NativeInfrastructure mode={{kind:"new"}} open={open} onBack={() => setClosed(true)} />;
 }

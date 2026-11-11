@@ -45,6 +45,8 @@ function fixture() {
     return prepared;
   };
   const host = {
+    origin: {kind:'new' as const},
+    background() {},
     networkLabel: 'Ethereum', currencySymbol: 'ETH', payerLabel: 'Fee wallet', payerAddress: payer,
     assertCurrent() { assert(current, 'PROFILE_CHANGED'); },
     dispose() { disposed++; },
@@ -92,6 +94,63 @@ test('each infrastructure deployment refreshes the catalogue order and requires 
     assert.equal(f.controller.getSnapshot().phase, 'pending');
     assert.deepEqual(f.contracts, ['accountImplementation']);
   } finally { held.resolve(); f.controller.dispose(); }
+});
+
+test('an owned Suite return keeps its reservation and needs a new explicit confirmation', async () => {
+  const f = fixture();
+  const pending = {contractId:'factory' as const,transactionHash:null};
+  f.setStatus(status([],pending));
+  let preparations = 0;
+  const controller = new NativeInfrastructureController({...f.host,origin:{kind:'suite-resume',id:'owned-infrastructure-return',
+    async prepare(signal) {
+      preparations++;
+      return {status:await f.host.observe(signal),contractId:'factory',prepared:await f.host.prepare('factory',signal)};
+    },
+  }},f.lifetime.signal,()=>100);
+  try {
+    assert.deepEqual(controller.origin,{kind:'suite-resume',id:'owned-infrastructure-return'});
+    await controller.reviewNext(controller.getSnapshot().revision);
+    assert.equal(preparations,0);
+    await controller.reviewResume(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().feeReview!.kind,'suite-resume');
+    assert.deepEqual(controller.getSnapshot().status!.pending,pending);
+    assert.equal(f.counts.submissions,0);
+    const reviewId = controller.getSnapshot().feeReview!.id;
+    await controller.reviewResume(controller.getSnapshot().revision);
+    assert.equal(preparations,1);
+    await controller.confirm(reviewId);
+    assert.equal(f.counts.submissions,1);
+    assert.equal(controller.getSnapshot().phase,'pending');
+    await controller.confirm(reviewId);
+    assert.equal(f.counts.submissions,1);
+  } finally {controller.dispose();f.controller.dispose();}
+});
+
+for (const response of ['wrong-contract','already-broadcast'] as const)
+  test(`a Suite return cannot authorize ${response} pending state`, async () => {
+    const f = fixture();
+    const controller = new NativeInfrastructureController({...f.host,origin:{kind:'suite-resume',id:'owned-return',async prepare(signal) {
+      return {status:status([],{contractId:response==='wrong-contract'?'entryPoint':'factory',transactionHash:response==='already-broadcast'?hash:null}),
+        contractId:'factory',prepared:await f.host.prepare('factory',signal)};
+    }}},f.lifetime.signal,()=>100);
+    try {
+      await controller.reviewResume(controller.getSnapshot().revision);
+      assert.equal(controller.getSnapshot().phase,'failed');
+      assert.equal(controller.getSnapshot().feeReview,null);
+      assert.equal(f.counts.submissions,0);
+    } finally {controller.dispose();f.controller.dispose();}
+  });
+
+test('owned background capture does not require a foreground view and cannot authorize a submission', () => {
+  const f = fixture(); let backgrounds = 0;
+  const controller = new NativeInfrastructureController({...f.host,background(){backgrounds++;}},f.lifetime.signal,()=>100);
+  try {
+    f.setCurrent(false);
+    controller.background();
+    assert.equal(backgrounds,1); assert.equal(f.counts.submissions,0);
+    controller.dispose(); controller.background();
+    assert.equal(backgrounds,1);
+  } finally {controller.dispose();f.controller.dispose();}
 });
 
 for (const stage of ['observation', 'quote'] as const) test(`disposing during the held ${stage} prevents review or signing`, async () => {
