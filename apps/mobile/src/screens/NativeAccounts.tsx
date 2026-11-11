@@ -118,11 +118,19 @@ export function NativeAccounts({
     Keyboard.dismiss();
     latestBack.current();
   }, [controller]);
+  const back = useCallback(() => {
+    if (form && !busy && !working.current) {
+      setForm(null);
+      setError('');
+    } else close();
+  }, [form, busy, close]);
+  const navigationBack = useRef(back);
+  useLayoutEffect(() => { navigationBack.current = back; }, [back]);
   useEffect(() => {
     const localLifetime = lifetime.current;
     localLifetime.alive = true;
     const listener = BackHandler.addEventListener('hardwareBackPress', () => {
-      close();
+      navigationBack.current();
       return true;
     });
     return () => {
@@ -363,12 +371,7 @@ export function NativeAccounts({
           <Header
             title={title}
             subtitle={t('mobile.accounts.subtitle', { network: networkLabel })}
-            onBack={() => {
-              if (form && !busy) {
-                setForm(null);
-                setError('');
-              } else close();
-            }}
+            onBack={back}
           />
           {busy ? (
             <Notice

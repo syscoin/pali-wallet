@@ -20,11 +20,15 @@ async function fixture(language = 'en') {
     resources: { [language]: { translation: languageMessages(language) }, en: { translation: languageMessages('en') } },
     interpolation: { escapeValue: false } });
   const returned: unknown[][] = [], selected: unknown[][] = [];
+  const backHandlers = new Set<() => boolean>();
+  let accountBacks = 0, accountCancels = 0;
+  let accountOperation = async () => {};
   const session = { id: 'exact-session', name: 'App', origin: 'https://app.example', accountLabel: 'Account', networkLabel: 'Network', returnTarget: {}, address: null, methods: ['eth_accounts'], expiresAt: Date.now() + 60_000 };
   const connectionSnapshot = { revision: 7, status: 'ready', pairingExpiresAt: null, proposals: [], accounts: [], selectedAccountId: null,
     network: { id: 'ethereum', label: 'Ethereum', chainId: '1' }, sessions: [session], signingReview: null, error: null };
   const account = { id: 'hd:60:0', label: 'My account', address: `0x${'12'.repeat(20)}`, type: 'HDAccount', index: 0 };
-  const catalogue = { revision: 3, active: { accountId: account.id }, accounts: [account] };
+  const removable = { ...account, id: 'imported:1', type: 'Imported', label: 'Imported account', index: 1 };
+  const catalogue = { revision: 3, active: { accountId: account.id }, accounts: [account, removable] };
   const connections = { getSnapshot: () => connectionSnapshot, subscribe: () => () => {}, cancel() {},
     async returnToDapp(...args: unknown[]) { returned.push(args); }, async disconnect() {} };
   const props: Record<Name, Record<string, unknown>> = {
@@ -33,7 +37,8 @@ async function fixture(language = 'en') {
       accountId: account.id, accountType: 'HDAccount', accountLabel: account.label, address: account.address,
       onViewRecovery() {}, onLock() {}, onBack() {}, captureFailureHandler: () => () => {} },
     NativeAccounts: { controller: { getSnapshot: () => catalogue, subscribe: () => () => {}, getContextRevision: () => 9,
-      cancel() {}, async execute(...args: unknown[]) { selected.push(structuredClone(args)); } }, onBack() {}, networkLabel: 'Ethereum' },
+      supportsSmartAccounts: () => true,
+      cancel() { accountCancels++; }, async execute(...args: unknown[]) { selected.push(structuredClone(args)); await accountOperation(); } }, onBack() { accountBacks++; }, networkLabel: 'Ethereum' },
     NativeImport: { imports: { cancel() {} }, contextRevision: 9, catalogueRevision: 3, networkLabel: 'Ethereum', utxo: false,
       onImported() {}, onBack() {}, onSubmitStart() {}, onSubmitEnd() {} },
     NativeNetworks: { controller: { getSnapshot: () => ({ revision: 3, selectedId: 'ethereum', networks: [] }),
@@ -46,7 +51,7 @@ async function fixture(language = 'en') {
     '../platform/localization': { useNativeTranslation: () => ({ t: engine.t.bind(engine), i18n: engine }) },
     'react-native': { View: 'View', FlatList: 'FlatList', KeyboardAvoidingView: 'KeyboardAvoidingView', ActivityIndicator: 'ActivityIndicator',
       Switch: 'Switch', Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
-      BackHandler: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} }, StyleSheet: { create: (value: unknown) => value } },
+      BackHandler: { addEventListener: (_event: string, handler: () => boolean) => { backHandlers.add(handler); return { remove() { backHandlers.delete(handler); } }; } }, Keyboard: { dismiss() {} }, StyleSheet: { create: (value: unknown) => value } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'IconButton', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
     'expo-clipboard': {}, './DappSiteStatus': { DappSiteStatus: 'DappSiteStatus' }, './ConnectionQrScanner': { ConnectionQrScanner: 'ConnectionQrScanner' },
@@ -67,11 +72,16 @@ async function fixture(language = 'en') {
     const host = screenFixture(new URL(`../src/screens/${name}.tsx`, import.meta.url), name, imported);
     const render = () => {
       const tree = host.render(props[name]), values = screenElements(tree);
-      return [...values, ...values.flatMap(value => screenElements(value.props.ListHeaderComponent))];
+      return [...values, ...values.flatMap(value => screenElements(value.props.ListHeaderComponent)),
+        ...values.flatMap(value => value.type === 'FlatList' ? value.props.data.flatMap((item: unknown) => screenElements(value.props.renderItem({ item }))) : [])];
     };
     return { render, close: host.close };
   }
-  return { engine, screen, returned, selected, props };
+  return { engine, screen, returned, selected, props,
+    hardwareBack: () => [...backHandlers].reverse().some(handler => handler()),
+    accountStatus: () => ({ backs: accountBacks, cancels: accountCancels }),
+    setAccountOperation(value: () => Promise<void>) { accountOperation = value; },
+  };
 }
 
 for (const language of PALI_LANGUAGE_OPTIONS) test(`all six management screens resolve packaged ${language.value} labels`, async () => {
@@ -102,6 +112,57 @@ test('translated account creation sends only the name and catalogue scope to sha
   await Promise.resolve();
   assert.deepEqual(f.selected, [[{ kind: 'create', label: 'Exact account' }, 9, 3]]);
   screen.close();
+});
+
+for (const kind of ['create', 'create-smart', 'rename', 'remove'] as const)
+  for (const navigation of ['header', 'hardware'] as const) test(`account ${kind} form returns to its list with ${navigation} Back`, async () => {
+    const f = await fixture(), screen = f.screen('NativeAccounts');
+    const header = () => screen.render().find(element => element.type === 'Header')!;
+    try {
+      if (kind === 'create' || kind === 'create-smart') {
+        header().props.right.props.onPress();
+        const title = f.engine.t(kind === 'create' ? 'mobile.accounts.create' : 'mobile.accounts.createSmart');
+        screen.render().find(element => element.type === 'Row' && element.props.title === title)!.props.onPress();
+      } else {
+        const label = `${f.engine.t(kind === 'rename' ? 'mobile.accounts.rename' : 'buttons.remove')} Imported account`;
+        screen.render().find(element => element.type === 'IconButton' && element.props.label === label)!.props.onPress();
+      }
+      assert.notEqual(header().props.title, f.engine.t('mobile.accounts.title'));
+      const input = screen.render().find(element => element.type === 'Input');
+      input?.props.onChangeText('Edited account');
+      screen.render();
+      assert.deepEqual(f.accountStatus(), { backs: 0, cancels: 0 }, 'Opening and editing a form must not clean up its controller');
+      if (navigation === 'hardware') assert.equal(f.hardwareBack(), true); else header().props.onBack();
+      assert.equal(header().props.title, f.engine.t('mobile.accounts.title'));
+      assert.deepEqual(f.accountStatus(), { backs: 0, cancels: 0 });
+    } finally { screen.close(); }
+  });
+
+for (const adding of [false, true]) test(`account list ${adding ? 'with add choices ' : ''}Back still exits to its parent`, async () => {
+  const f = await fixture(), screen = f.screen('NativeAccounts');
+  try {
+    if (adding) screen.render().find(element => element.type === 'Header')!.props.right.props.onPress();
+    screen.render(); assert.equal(f.hardwareBack(), true);
+    assert.deepEqual(f.accountStatus(), { backs: 1, cancels: 1 });
+  } finally { screen.close(); }
+});
+
+for (const navigation of ['header', 'hardware'] as const) test(`immediate ${navigation} Back cancels an account operation before busy renders`, async () => {
+  const f = await fixture(), screen = f.screen('NativeAccounts'), held = Promise.withResolvers<void>();
+  f.setAccountOperation(() => held.promise);
+  try {
+    screen.render().find(element => element.type === 'Header')!.props.right.props.onPress();
+    screen.render().find(element => element.type === 'Row' && element.props.title === f.engine.t('mobile.accounts.create'))!.props.onPress();
+    screen.render().find(element => element.type === 'Input')!.props.onChangeText('New account');
+    const form = screen.render();
+    form.find(element => element.type === 'Button' && element.props.title === f.engine.t('mobile.accounts.create'))!.props.onPress();
+    assert.equal(f.selected.length, 1); assert.deepEqual(f.accountStatus(), { backs: 0, cancels: 0 });
+    if (navigation === 'header') form.find(element => element.type === 'Header')!.props.onBack();
+    else assert.equal(f.hardwareBack(), true);
+    assert.deepEqual(f.accountStatus(), { backs: 1, cancels: 1 });
+    held.reject(new Error('CANCELLED')); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(screen.render().some(element => element.props.accessibilityRole === 'alert'), false);
+  } finally { held.resolve(); screen.close(); }
 });
 
 test('new native management keys and interpolation fields match in every packaged locale', () => {
