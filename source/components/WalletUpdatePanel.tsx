@@ -4,18 +4,17 @@ import { useTranslation } from 'react-i18next';
 import {
   CHROME_WALLET_STORE_URL,
   useWalletUpdate,
+  type WalletUpdateSnapshot,
 } from 'hooks/useWalletUpdate';
 
 const linkClass =
   'inline-flex min-h-[44px] items-center rounded px-2 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue200';
 
-export function WalletUpdatePanel() {
-  const { t } = useTranslation();
-  const update = useWalletUpdate();
+const updateStatus = (update: WalletUpdateSnapshot) => {
   const available = !!update.release || !!update.pendingVersion;
   const checking =
     update.status === 'checking' || update.browserStatus === 'checking';
-  const status = available
+  return available
     ? 'available'
     : checking
     ? 'checking'
@@ -26,6 +25,37 @@ export function WalletUpdatePanel() {
     : update.status === 'ready'
     ? 'current'
     : 'notChecked';
+};
+
+export function WalletUpdateSummary({ onOpen }: { onOpen(): void }) {
+  const { t } = useTranslation();
+  const update = useWalletUpdate();
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="my-3 flex min-h-[64px] w-full items-center justify-between gap-3 rounded-xl bg-brand-blue500 px-4 py-3 text-left text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue200"
+    >
+      <span>
+        <span className="block text-sm font-medium">{t('updates.title')}</span>
+        <span className="block text-xs text-brand-gray200">
+          {t('settings.version')}: {update.installedVersion}
+        </span>
+      </span>
+      <span className="max-w-[55%] text-right text-xs" aria-live="polite">
+        {t(`updates.${updateStatus(update)}`)}
+      </span>
+    </button>
+  );
+}
+
+export function WalletUpdatePanel() {
+  const { t } = useTranslation();
+  const update = useWalletUpdate();
+  const available = !!update.release || !!update.pendingVersion;
+  const checking =
+    update.status === 'checking' || update.browserStatus === 'checking';
+  const status = updateStatus(update);
   return (
     <section
       aria-label={t('updates.title')}

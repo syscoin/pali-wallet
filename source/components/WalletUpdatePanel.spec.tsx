@@ -9,7 +9,7 @@ import {
 } from '../hooks/useWalletUpdate';
 
 import { WalletUpdateBadge } from './WalletUpdateBadge';
-import { WalletUpdatePanel } from './WalletUpdatePanel';
+import { WalletUpdatePanel, WalletUpdateSummary } from './WalletUpdatePanel';
 
 const mockCheck = jest.fn();
 let mockUpdate: {
@@ -56,6 +56,17 @@ it('offers a keyboardable manual check and the fixed store destination', () => {
     screen.getByRole('link', { name: 'Open Chrome Web Store' })
   ).toHaveAttribute('href', CHROME_WALLET_STORE_URL);
   expect(screen.queryByText('No newer published version found.')).toBeNull();
+});
+
+it('keeps About compact until its version and status entry is opened', () => {
+  const open = jest.fn();
+  render(<WalletUpdateSummary onOpen={open} />);
+  const summary = screen.getByRole('button');
+  expect(summary).toHaveTextContent('1.0.0');
+  expect(screen.queryByRole('link')).toBeNull();
+  expect(screen.queryByText('Check for updates')).toBeNull();
+  fireEvent.click(summary);
+  expect(open).toHaveBeenCalledTimes(1);
 });
 
 it('does not call unavailable metadata up to date even when Chrome returns no update', () => {

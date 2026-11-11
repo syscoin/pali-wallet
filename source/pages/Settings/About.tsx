@@ -1,8 +1,7 @@
-import React, { FC, useEffect, memo } from 'react';
+import React, { FC, useEffect, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 
-import packageJson from '../../../package.json';
 import { PALI_INFORMATION } from '../../shared/paliInformation';
 import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
 import {
@@ -12,7 +11,10 @@ import {
   Button,
   PageActionFooter,
 } from 'components/index';
-import { WalletUpdatePanel } from 'components/WalletUpdatePanel';
+import {
+  WalletUpdatePanel,
+  WalletUpdateSummary,
+} from 'components/WalletUpdatePanel';
 import { useUtils } from 'hooks/index';
 import { navigateBack } from 'utils/navigationState';
 
@@ -30,6 +32,7 @@ const AboutView: FC = () => {
   const { navigate, useCopyClipboard, alert } = useUtils();
   const location = useLocation();
   const [copied, copy] = useCopyClipboard();
+  const [showUpdates, setShowUpdates] = useState(false);
   const copySupportUrl = async () => {
     try {
       await copy(PALI_INFORMATION.supportUrl);
@@ -44,6 +47,22 @@ const AboutView: FC = () => {
     }
   }, [copied, alert, t]);
 
+  if (showUpdates)
+    return (
+      <>
+        <WalletUpdatePanel />
+        <PageActionFooter>
+          <Button
+            className="flex items-center justify-center w-full h-10 bg-white text-brand-blue400 text-base font-medium rounded-[100px]"
+            type="button"
+            onClick={() => setShowUpdates(false)}
+          >
+            {t('buttons.back')}
+          </Button>
+        </PageActionFooter>
+      </>
+    );
+
   return (
     <>
       <div className="flex items-center justify-center flex-col w-full text-sm font-normal">
@@ -51,10 +70,6 @@ const AboutView: FC = () => {
         <p className=" text-white">
           {t('settings.paliWalletBrowserExtension')}
         </p>
-        <p className="text-brand-gray200">
-          {t('settings.version')}: {packageJson.version}
-        </p>
-
         <Button
           type="submit"
           className="bg-transparent border-2 border-white rounded-[100px] w-[150px] h-10 flex items-center justify-center cursor-pointer transition-all duration-200 mt-6 py-2 px-[13px]"
@@ -65,7 +80,7 @@ const AboutView: FC = () => {
       </div>
 
       <div className="flex flex-col items-center justify-center w-full md:max-w-full mt-2">
-        <WalletUpdatePanel />
+        <WalletUpdateSummary onOpen={() => setShowUpdates(true)} />
         <SimpleCard>
           <p className="text-xs font-medium text-white mb-[11px]">
             {t('settings.userSupport')}

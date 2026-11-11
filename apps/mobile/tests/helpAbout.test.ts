@@ -9,9 +9,9 @@ import { nativeTranslationFixture } from './localizationFixture.ts';
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
 const source = (path: string) => readFileSync(new NodeURL(path, import.meta.url), 'utf8');
-function setup(component = 'HelpAbout', watchOnly = true, options: { backupRequired?: boolean; navigation?: boolean; autoLock?: boolean } = {}) {
+function setup(component = 'HelpAbout', watchOnly = true, options: { backupRequired?: boolean; navigation?: boolean; autoLock?: boolean; updates?: boolean; updateVersion?: string } = {}) {
   const cells: Cell[] = [], effects: (() => void)[] = [];
-  let cursor = 0, active = 'active', backs = 0, closes = 0, security = 0, autoLock = 0, connections = 0, backups = 0, blocked = false;
+  let cursor = 0, active = 'active', backs = 0, closes = 0, security = 0, autoLock = 0, connections = 0, backups = 0, updates = 0, blocked = false;
   let pending: Promise<unknown> = Promise.resolve(true);
   const actions: { kind: string; value: string }[] = [];
   const listeners = new Map<string, Set<(value: string) => void>>();
@@ -19,6 +19,7 @@ function setup(component = 'HelpAbout', watchOnly = true, options: { backupRequi
   const react = {
     createElement: (type: unknown, props: object | null, ...children: unknown[]): Element => ({ type, props: props ?? {}, children }),
     useRef(value: unknown) { const c = cell(); c.value ??= { current: value }; return c.value; },
+    useSyncExternalStore(_subscribe: unknown, getSnapshot: () => unknown) { return getSnapshot(); },
     useState(initial: unknown) { const c = cell(); if (!Object.hasOwn(c, 'value')) c.value = initial;
       return [c.value, (value: unknown) => { c.value = typeof value === 'function' ? value(c.value) : value; }]; },
     useLayoutEffect(run: () => void | (() => void), deps?: readonly unknown[]) { const c = cell();
@@ -41,15 +42,18 @@ function setup(component = 'HelpAbout', watchOnly = true, options: { backupRequi
     './BalancePrivacySetting': { BalancePrivacySetting: 'BalancePrivacySetting' },
     './ActivityNotifications': { ActivityNotifications: 'ActivityNotifications' }, '../platform/localization': nativeTranslationFixture };
   deps['./WalletUpdatePanel'] = { WalletUpdatePanel: 'WalletUpdatePanel' };
+  deps['../updates/service'] = { mobileUpdates: { subscribe: () => () => undefined,
+    getSnapshot: () => ({ release: options.updateVersion ? { version: options.updateVersion } : null }) } };
   const module = { exports: {} as Record<string, (props: object) => Element> };
   const code = ts.transpileModule(source(`../src/screens/${component}.tsx`), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
   runInNewContext(code, { module, exports: module.exports, require(name: string) { assert.ok(Object.hasOwn(deps, name), `Unexpected public-screen dependency ${name}`); return deps[name]; } });
   const props = { onBack() { backs++; }, accountLabel: 'Public account', watchOnly, navigation: options.navigation === false ? undefined : navigation,
-    backupRequired: options.backupRequired, onBackup() { backups++; }, onSecurity() { security++; }, onAutoLock: options.autoLock === false ? undefined : () => { autoLock++; }, onConnections() { connections++; }, onLock() { closes++; } };
+    backupRequired: options.backupRequired, onBackup() { backups++; }, onSecurity() { security++; }, onAutoLock: options.autoLock === false ? undefined : () => { autoLock++; }, onConnections() { connections++; }, onLock() { closes++; },
+    onUpdates: options.updates ? () => { updates++; } : undefined };
   return { render() { cursor = 0; const tree = module.exports[component]!(props); effects.splice(0).forEach((run) => run()); return tree; }, actions,
     pending(value: Promise<unknown>) { pending = value; }, block() { blocked = true; },
     emit(event: string, value = '') { if (event === 'change') active = value; for (const fn of listeners.get(event) ?? []) fn(value); },
-    back() { return registeredBack?.(); }, immersive: () => immersive, backs: () => backs, closes: () => closes, security: () => security, autoLock: () => autoLock, connections: () => connections, backups: () => backups,
+    back() { return registeredBack?.(); }, immersive: () => immersive, backs: () => backs, closes: () => closes, security: () => security, autoLock: () => autoLock, connections: () => connections, backups: () => backups, updates: () => updates,
     dispose() { cells.forEach((c) => c.cleanup?.()); }, listeners: () => [...listeners.values()].reduce((n, set) => n + set.size, 0) };
 }
 function all(value: unknown): Element[] {
@@ -70,6 +74,16 @@ test('mobile package and lock metadata match the app version shown in Help', () 
   assert.equal(manifest.version, app.expo.version);
   assert.equal(lock.version, app.expo.version);
   assert.equal(lock.packages[''].version, app.expo.version);
+});
+for (const updateVersion of [undefined, '5.0.1']) test(`Help keeps updates to one compact row${updateVersion ? ' with available version' : ''}`, () => {
+  const f = setup('HelpAbout', true, { updates: true, updateVersion });
+  try {
+    const tree = f.render(), rows = all(tree).filter(node => node.type === 'Row');
+    assert.equal(rows.length, 1); assert.equal(rows[0]!.props.dense, true);
+    assert.equal(rows[0]!.props.title, updateVersion ? 'Update available · 5.0.1' : 'App updates');
+    assert.equal(all(tree).some(node => node.type === 'WalletUpdatePanel'), false);
+    assert.equal(f.actions.length, 0); rows[0]!.props.onPress(); assert.equal(f.updates(), 1);
+  } finally { f.dispose(); }
 });
 for (const [title, kind, value] of [['Get support', 'open', PALI_INFORMATION.supportUrl], ['Pali documentation', 'open', PALI_INFORMATION.documentationUrl], ['Routescan', 'open', PALI_INFORMATION.dataProvider.url], ['Copy support link', 'copy', PALI_INFORMATION.supportUrl]]) {
   test(`actual ${title} uses only its exact public value`, async () => { const f = setup(); press(f.render(), title!); await tick(); assert.deepEqual(f.actions, [{ kind, value }]); assert.match(text(f.render()), kind === 'copy' ? /Support link copied\./ : /Link opened\./); f.dispose(); });

@@ -2,6 +2,7 @@ import React, { useLayoutEffect, useRef, useState } from 'react';
 import { DisplayCurrency } from './DisplayCurrency';
 import { BalancePrivacySetting } from './BalancePrivacySetting';
 import { HelpAbout } from './HelpAbout';
+import { WalletUpdatePanel } from './WalletUpdatePanel';
 import { NativePreferences } from './NativePreferences';
 import { WalletBackupBadge } from './WalletBackupBadge';
 import { ActivityNotifications, type NotificationSettingsTarget } from './ActivityNotifications';
@@ -59,15 +60,19 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
   notifications?: NotificationSettingsTarget;
 }) {
   const { t } = useNativeTranslation();
-  const [opened, setOpened] = useState<Readonly<{ leaf: 'about' | 'currency' | 'activity' | 'language' | 'notifications'; scope?: string }> | null>(null);
+  const [opened, setOpened] = useState<Readonly<{ leaf: 'about' | 'updates' | 'currency' | 'activity' | 'language' | 'notifications'; scope?: string }> | null>(null);
   const languageOwner = useRef<typeof opened>(null);
   const notificationsOwner = useRef<typeof opened>(null);
   const leaf = opened?.leaf === 'activity' && opened.scope !== activityReset?.scope || opened?.leaf === 'notifications' && opened.scope !== notifications?.scope ? null : opened?.leaf ?? null;
-  const back = () => { languageOwner.current = null; notificationsOwner.current = null; if (leaf) setOpened(null); else onBack(); };
+  const back = () => { languageOwner.current = null; notificationsOwner.current = null; if (leaf === 'updates') setOpened({ leaf: 'about' }); else if (leaf) setOpened(null); else onBack(); };
   useLayoutEffect(() => () => { languageOwner.current = null; notificationsOwner.current = null; }, []);
   useLayoutEffect(() => navigation?.registerBack(() => { back(); return true; }));
   useLayoutEffect(() => { navigation?.setImmersive(leaf !== null); return () => navigation?.setImmersive(false); }, [navigation, leaf]);
-  if (leaf === 'about') return <HelpAbout onBack={back} allowInstall={watchOnly} onLockForUpdate={onLock} />;
+  if (leaf === 'about') return <HelpAbout onBack={back} onUpdates={() => setOpened({ leaf: 'updates' })} />;
+  if (leaf === 'updates') return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
+    <Screen footer={<Button title="Done" variant="secondary" onPress={back} />}>
+      <Header title="App updates" onBack={back} /><WalletUpdatePanel allowInstall={watchOnly} onLock={onLock} />
+    </Screen></SafeAreaView>;
   if (leaf === 'currency') return <DisplayCurrency onBack={back} />;
   if (leaf === 'language') return <NativePreferences onBack={back} assertCurrent={() => {
     if (languageOwner.current !== opened) throw new Error('CANCELLED');

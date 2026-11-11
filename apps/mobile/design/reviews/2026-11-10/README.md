@@ -2021,3 +2021,11 @@ first so no signing, backup or recovery flow is interrupted.
 | 320 px | 390 px |
 | --- | --- |
 | ![Update notice at 320 px](update-notices/update-notice-320.png) | ![Update notice at 390 px](update-notices/update-notice-390.png) |
+
+About keeps only a compact update entry. Selecting it opens the details above;
+Back/Done returns to About. The following captures show that compact entry with
+no published update (the development-build qualification copy is unchanged).
+
+| About · 320 px | About · 390 px |
+| --- | --- |
+| ![Compact updates entry at 320 px](update-notices/about-updates-320.png) | ![Compact updates entry at 390 px](update-notices/about-updates-390.png) |

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { WalletUpdatePanel } from '../../src/screens/WalletUpdatePanel';
+import { HelpAbout } from '../../src/screens/HelpAbout';
 import type { MobileUpdateService, MobileUpdateSnapshot } from '../../src/updates/types';
 import { Button, colors, Header, Screen } from '../../src/ui';
 
@@ -17,7 +18,10 @@ const service: MobileUpdateService = {
 };
 /** Public synthetic release; renders the shipped update panel, never downloads code. */
 export function UpdateFixture() {
-  return <SafeAreaProvider><SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}><Screen footer={<Button title="Done" variant="secondary" onPress={() => {}} />}>
+  const [opened, setOpened] = useState(false);
+  if (new URLSearchParams(window.location.search).has('about-updates-fixture') && !opened)
+    return <SafeAreaProvider><HelpAbout onBack={() => {}} onUpdates={() => setOpened(true)} /></SafeAreaProvider>;
+  return <SafeAreaProvider><SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}><Screen footer={<Button title="Done" variant="secondary" onPress={() => setOpened(false)} />}>
     <Header title="Update Pali" /><WalletUpdatePanel service={service} onLock={() => {}} />
   </Screen></SafeAreaView></SafeAreaProvider>;
 }
