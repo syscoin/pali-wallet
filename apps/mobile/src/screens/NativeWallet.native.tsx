@@ -67,7 +67,6 @@ import { NativeOperationAuthentication } from './NativeOperationAuthentication';
 import type { NativeImportView } from '../custody/importedAccounts';
 import { sptBalanceTotalUnits, supportsSptUtxoChain } from '../../../../source/shared/sptInventory';
 import { formatBaseUnits } from '../core/amounts';
-import { EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks';
 import { PRIVACY_CHAIN_ID } from '../../../../source/utils/privacy/registry';
 import { NativeCustodyFeedback } from './NativeCustodyFeedback';
 import { NativeNetworks } from './NativeNetworks';
@@ -1824,7 +1823,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       connections={connectionView ?? undefined}
       incomingPairing={incomingPairing} onPairingHandled={onPairingHandled}
       initialScan={scanIntentExpiresAt !== null} onScanStarted={scanStarted} onScanFinished={scanFinished}
-      networkLabel={utxo?.name ?? EVM_NETWORK_DEFINITIONS.find((network) => network.id === snapshot.account?.network)?.name ?? 'Network unavailable'} watchOnly={false}
+      networkLabel={utxo?.name ?? getNativeNetwork(snapshot.account!.network, catalogue?.networks).name} watchOnly={false}
       onAccounts={onAccounts} onNetworks={networkView ? () => openStage('networks') : undefined}
       onPrivateNotes={() => openStage('private-notes')}
       onSentryKeys={sentryAvailable ? () => openStage('sentry-keys') : undefined}

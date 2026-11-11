@@ -319,13 +319,13 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
 });
 
 async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED'; verifyCalls?: string[]; wait?: Promise<void> }, notificationPort: NotificationTestPort = quietActivityNotifications,
-  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number }) {
+  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number }, networkOverride?: networkContext.NativeNetworkRegistration) {
   const root = setup();
-  const networkId = networkMode === 'utxo' ? utxoResume ? 'syscoin' : 'bitcoin' : 'ethereum';
+  const networkId = networkMode === 'utxo' ? utxoResume ? 'syscoin' : 'bitcoin' : networkOverride?.id ?? 'ethereum';
   const address = `0x${'11'.repeat(20)}`;
   let catalogue = { revision: 1, active: { accountId: 'hd:60:0', networkId },
     accounts: [{ id: 'hd:60:0', type: utxoResume ? 'Trezor' : 'HDAccount', index: 0, slip44: 60, address, label: 'Account 1' }],
-    networks: networkContext.NATIVE_NETWORKS, utxoNetworks: networkMode ? UTXO_NETWORKS : [] };
+    networks: networkOverride ? [...networkContext.NATIVE_NETWORKS.filter(network => network.id !== networkOverride.id), networkOverride] : networkContext.NATIVE_NETWORKS, utxoNetworks: networkMode ? UTXO_NETWORKS : [] };
   let state: { phase: string; revision: number; presence: string; backup: string; account: { address: string; network: string } | null; error: string | null } =
     { phase: setting || depositMode || networkMode || pinChange ? 'ready' : empty ? 'empty' : 'locked', revision: 1, presence: empty ? 'empty' : 'existing', backup: empty ? 'unconfirmed' : 'confirmed', account: setting || depositMode || networkMode || pinChange ? { address, network: networkId } : null, error: null };
   let observer: (snapshot: typeof state) => void = () => {};
@@ -1363,6 +1363,25 @@ for (const family of ['evm'] as ('evm' | 'utxo')[]) test(`contextual ${family} n
     assert.equal(send.props.draftNotice, NETWORK_CHANGED_DRAFT_NOTICE);
     assert.equal(send.props.authentication, undefined); assert.equal(send.props.review, undefined);
   } finally { f.dispose(); }
+});
+
+test('Tools uses the selected saved network label for custom EVM, renamed presets and UTXO', async () => {
+  const ethereum = networkContext.getNativeNetwork('ethereum');
+  const custom = networkContext.createNativeNetwork({ ...ethereum, id: 'custom-evm', name: 'Custom EVM', chainId: '31337', rpcUrl: 'https://custom.example/rpc' });
+  const renamed = networkContext.createNativeNetwork({ ...ethereum, name: 'My Ethereum connection' });
+  for (const { family, registration, expected } of [
+    { family: 'evm' as const, registration: custom, expected: custom.name },
+    { family: 'evm' as const, registration: renamed, expected: renamed.name },
+    { family: 'evm' as const, registration: undefined, expected: ethereum.name },
+    { family: 'utxo' as const, registration: undefined, expected: findUtxoNetwork('bitcoin')!.name },
+  ]) {
+    const f = await walletFeedbackFixture(false, false, undefined, undefined, true, family, undefined,
+      quietActivityNotifications, undefined, undefined, undefined, registration);
+    try {
+      const tools = all(f.render()).find(node => node.type === 'RealTools'); assert(tools);
+      assert.equal(tools.props.networkLabel, expected);
+    } finally { f.dispose(); }
+  }
 });
 
 test('UTXO Send opens its known network directly without a source selector', async () => {
