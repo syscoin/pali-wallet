@@ -16,6 +16,7 @@ const warm = workflow.split('\n  warm:\n')[1];
 const steps = warm.split(/\n(?=      - )/);
 const aptPath = '          path: /var/cache/pali-playwright-apt/*.deb';
 const verifier = 'bash .github/scripts/verify-playwright-apt-cache.sh';
+const diagnostics = 'bash .github/scripts/with-playwright-apt-diagnostics.sh';
 
 it('warms only the trusted master repository on push, manual dispatch or a daily schedule', () => {
   const triggers = workflow.split('\non:\n')[1].split('\npermissions:')[0];
@@ -60,6 +61,7 @@ it('shares exactly the main visual/conformance archive key and caches downloads 
     'package.json',
     '.github/workflows/main.yml',
     '.github/scripts/verify-playwright-apt-cache.sh',
+    '.github/scripts/configure-playwright-apt-mirror.py',
   ]) {
     expect(mainKeys[0]).toContain(`'${input}'`);
   }
@@ -85,7 +87,7 @@ it('keeps real apt sandbox access and verifies restored and downloaded archives 
     .map((step, index) => (step.includes(verifier) ? index : -1))
     .filter((index) => index >= 0);
   const install = steps.findIndex((step) =>
-    step.includes('run: npx playwright install --with-deps chromium')
+    step.includes('npx playwright install --with-deps chromium')
   );
   const save = steps.findIndex((step) =>
     step.includes('uses: actions/cache/save@')
@@ -97,10 +99,13 @@ it('keeps real apt sandbox access and verifies restored and downloaded archives 
   expect(checks[0]).toBeLessThan(install);
   expect(install).toBeLessThan(checks[1]);
   expect(checks[1]).toBeLessThan(save);
-  expect(steps[checks[0]]).toContain(`run: ${verifier}`);
+  expect(steps[checks[0]]).toContain(`run: ${diagnostics} ${verifier}`);
   // sudo APT leaves root-owned downloads: even chmod-to-the-current-mode
   // fails as the runner. Keep the trusted post-install repair privileged.
-  expect(steps[checks[1]]).toContain(`run: sudo ${verifier}`);
+  expect(steps[checks[1]]).toContain(`run: ${diagnostics} sudo ${verifier}`);
+  expect(steps[install]).toContain(
+    `run: ${diagnostics} npx playwright install --with-deps chromium`
+  );
   expect(steps[install]).not.toContain('if:');
   expect(workflow).not.toMatch(
     /Sandbox::User|RUNNER_TEMP.*chmod|continue-on-error:/

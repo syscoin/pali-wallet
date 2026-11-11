@@ -11,6 +11,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   const origin = context.originModulePath;
   if (['./src/platform/security', '../platform/security', './platform/security', './security'].includes(moduleName)) return { type: 'sourceFile', filePath: path.join(__dirname, 'security.ts') };
   const local = (name) => ({ type: 'sourceFile', filePath: path.join(__dirname, name) });
+  if (origin.endsWith('/src/screens/WalletUpdatePanel.tsx') && moduleName === '../platform/appUpdates') return local('appUpdates.ts');
   if (origin === path.join(mobileRoot, 'App.tsx') && moduleName === './src/platform') return local('platform.ts');
   if (origin === path.join(mobileRoot, 'App.tsx') && moduleName === './src/screens/NativeWallet') {
     return { type: 'sourceFile', filePath: path.join(mobileRoot, 'src/screens/NativeWallet.native.tsx') };
