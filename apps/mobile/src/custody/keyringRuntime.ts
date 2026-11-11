@@ -5231,7 +5231,9 @@ export function createKeyringRuntimeFactory(
               withOwnerProof(signal, assertCurrent, work) {
                 check(); checkGuard(assertCurrent);
                 if (signal.aborted) throw new KeyringRuntimeError('CANCELLED');
-                const plan = getNativeSmartAccountSigningPlan(account.smartAccount!, ownerInventory.localOwners,
+                const smartAccount = account?.smartAccount;
+                if (!smartAccount) throw new KeyringRuntimeError('CANCELLED');
+                const plan = getNativeSmartAccountSigningPlan(smartAccount, ownerInventory.localOwners,
                   { p256WebAuthn: passkeys !== null, slhDsa: slhCapability !== null });
                 if (plan?.authenticators.some(entry => entry.owners.some(owner => owner.type === 'Ledger')) && !ledger.isConnected())
                   throw new KeyringRuntimeError('NOT_READY');
