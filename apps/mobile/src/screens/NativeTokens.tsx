@@ -623,6 +623,18 @@ function TokenContent({
                 </>
               )}
             </>
+          ) : !token && snapshot.status === 'loading' ? (
+            <ActivityIndicator color={colors.pink} accessibilityLabel="Loading saved tokens" />
+          ) : !token && snapshot.status === 'error' ? (
+            <>
+              <Notice
+                title="Saved tokens unavailable"
+                body="Your saved token list has been preserved. Retry to load it again."
+                tone="amber"
+              />
+              <Button title="Retry" icon="refresh" variant="secondary" disabled={busy}
+                onPress={() => run(() => controller.refresh())} />
+            </>
           ) : !token ? (
             <Notice
               title="Token is no longer in this list"

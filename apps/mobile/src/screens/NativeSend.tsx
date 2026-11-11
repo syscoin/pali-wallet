@@ -753,6 +753,9 @@ export function NativeSend({
                 <View style={s.hero}>
                   <Coin
                     id={reviewedToken ? 'custom-token' : capturedContext.networkId}
+                    asset={reviewedToken ? { kind: 'evm', chainId: capturedContext.chainId, contractAddress: reviewedToken.contractAddress, decimals: reviewedToken.decimals } : undefined}
+                    registrationHash={capturedContext.registrationHash}
+                    fallbackSymbol={reviewedToken?.symbol ?? capturedContext.symbol}
                     size={46}
                   />
                   <Text

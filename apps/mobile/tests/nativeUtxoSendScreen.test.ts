@@ -62,6 +62,7 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
   const requests: any[] = []; let cancels = 0, confirmations = 0, networkChanges = 0, gate: Promise<void> | undefined, release: (() => void) | undefined;
   let authenticationMethod: NativeOperationCredential['method'] = 'pin';
   let confirmationFailure: Error | undefined;
+  let retryReview: NativeUtxoReview | undefined;
   const authorized: { review: NativeUtxoReview; credential: NativeOperationCredential }[] = [];
   const openedTransactions: string[] = [];
   const networkDrafts: unknown[] = [];
@@ -71,11 +72,15 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
     cancel() { cancels++; }, async list() { listReads++; return saved; },
     async refreshSaved() { refreshReads++; return service.list(); },
     async check() { saved = []; return 'confirmed' as const; },
+    async prepareRetry(txid: string) {
+      assert(retryReview);
+      return { ...retryReview, retryTxid: txid };
+    },
     async prepare(input: any): Promise<NativeUtxoReview> {
       requests.push(structuredClone(input));
       if (gate) await gate; // Deliberately deliver a late result after cancellation.
       const view = { transactionOptions: { rbf: input.rbf, ...(input.asset ? { zdag: !input.rbf } : {}) }, feeSatoshis: '100',
-        outputs: [{ address: input.recipient, amountSatoshis: input.asset ? '294' : '10000',
+        outputs: [{ address: input.recipient, amountSatoshis: input.asset ? '294' : parseDecimalAmount(input.amount, network.decimals).toString(),
           ...(input.asset ? { asset: { assetGuid: input.asset.assetGuid, rawAmount: parseDecimalAmount(input.amount, input.asset.decimals).toString() } } : {}) }],
         ...(input.asset ? { assetDisplay: input.asset } : {}) };
       reviews.push(view); return view;
@@ -98,6 +103,8 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
     seedSaved(records: typeof saved) { saved = records; }, listReads: () => listReads, refreshReads: () => refreshReads,
     useBiometrics() { authenticationMethod = 'biometric'; },
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
+    failSubmissionUnknown() { confirmationFailure = Object.assign(new Error('UTXO_SUBMISSION_UNKNOWN'), { code: 'UTXO_SUBMISSION_UNKNOWN', txid: 'ab'.repeat(32) }); },
+    seedRetryReview(review: NativeUtxoReview) { retryReview = review; },
     changeBalance(value: string) { maximum = value; },
     changeNetwork(id: string) { network = getUtxoNetwork(id); },
     changeAvailable(value: string | undefined) { availableAmount = value; },
@@ -314,4 +321,75 @@ test('submitted UTXO transaction action uses the saved hash and retires with the
   assert.equal(shown.find(node => node.type === 'Button' && node.props.title === 'Done')?.props.variant, 'secondary');
   shown.find(node => node.type === 'Header')!.props.onBack(); view.props.onPress();
   assert.equal(f.openedTransactions.length, 1); f.close();
+});
+
+test('successful native UTXO outcome retains the exact reviewed amount, recipient and fee', async () => {
+  const f = fixture();
+  try {
+    f.render(); await tick();
+    f.edit('Recipient address', 'bc1qreviewedrecipient'); f.edit('Amount in BTC', '0.12345678');
+    f.review(); await tick();
+    f.press('Confirm and send'); f.authentication().props.onConfirm({ method: 'pin', pin: '123456' }); await tick();
+    const shown = all(f.render());
+    assert.equal(shown.find(node => node.props.testID === 'native-utxo-outcome-amount')?.children.join(''), '0.12345678 BTC');
+    assert.equal(shown.find(node => node.props.testID === 'native-utxo-outcome-recipient')?.children.join(''), 'bc1qreviewedrecipient');
+    assert.equal(shown.find(node => node.props.testID === 'native-utxo-outcome-fee')?.children.join(''), '0.000001 BTC');
+    assert(shown.some(node => node.type === 'Coin' && node.props.id === 'bitcoin'));
+    assert(shown.some(node => node.type === 'Notice' && node.props.title === 'Submitted'));
+    assert(!shown.some(node => node.type === 'TransactionAuthentication'));
+  } finally { f.close(); }
+});
+
+test('unknown SPT submission retains its exact public summary through a status check', async () => {
+  const asset = { assetGuid: '987654321', decimals: 3, symbol: 'SPT' };
+  const f = fixture(asset);
+  try {
+    f.render(); await tick();
+    f.edit('Recipient address', 'sys1qreviewedrecipient'); f.edit('Amount in SPT', '9007199254740.993');
+    f.review(); await tick(); f.failSubmissionUnknown();
+    f.press('Confirm and send'); f.authentication().props.onConfirm({ method: 'pin', pin: '123456' }); await tick();
+    const assertSummary = (title: string) => {
+      const shown = all(f.render());
+      assert.equal(shown.find(node => node.props.testID === 'native-utxo-outcome-amount')?.children.join(''), '9007199254740.993 SPT');
+      assert.equal(shown.find(node => node.props.testID === 'native-utxo-outcome-recipient')?.children.join(''), 'sys1qreviewedrecipient');
+      assert.equal(shown.find(node => node.props.testID === 'native-utxo-outcome-carrier')?.children.join(''), '0.00000294 SYS');
+      assert.equal(shown.find(node => node.props.testID === 'native-utxo-outcome-fee')?.children.join(''), '0.000001 SYS');
+      assert(shown.some(node => node.type === 'Text' && node.children.join('') === asset.assetGuid));
+      const icon = shown.find(node => node.type === 'Coin' && node.props.asset);
+      assert.deepEqual(JSON.parse(JSON.stringify(icon?.props.asset)), { kind: 'spt', chainId: 57, assetGuid: asset.assetGuid, decimals: 3 });
+      assert(shown.some(node => node.type === 'Notice' && node.props.title === title));
+      assert(!shown.some(node => node.type === 'TransactionAuthentication'));
+    };
+    assertSummary('Submission unverified');
+    f.press('Check status'); await tick();
+    assertSummary('Confirmed');
+    assert.equal(f.counts().confirmations, 1);
+    assert.equal(f.requests.length, 1);
+  } finally { f.close(); }
+});
+
+test('saved UTXO replay outcome keeps Output 1 without identifying it as the recipient', async () => {
+  const f = fixture();
+  try {
+    f.seedRetryReview({ transactionOptions: { rbf: true }, feeSatoshis: '100', outputs: [
+      { address: 'bc1qfirstoutput', amountSatoshis: '900001' },
+      { address: 'bc1qotheroutput', amountSatoshis: '12345678' },
+    ] });
+    f.render(); await tick();
+    f.edit('Recipient address', 'bc1qreviewedrecipient'); f.edit('Amount in BTC', '0.12345678');
+    f.review(); await tick(); f.failSubmissionUnknown();
+    f.press('Confirm and send'); f.authentication().props.onConfirm({ method: 'pin', pin: '123456' }); await tick();
+    f.press('Review saved transfer'); await tick();
+    f.press('Resend saved transfer'); f.authentication().props.onConfirm({ method: 'pin', pin: '123456' }); await tick();
+    const assertSummary = () => {
+      const shown = all(f.render());
+      assert(shown.some(node => node.type === 'Text' && node.children.join('') === 'Output 1'));
+      assert(!shown.some(node => node.type === 'Text' && node.children.join('') === 'Recipient'));
+      assert.equal(shown.find(node => node.props.testID === 'native-utxo-outcome-recipient')?.children.join(''), 'bc1qfirstoutput');
+      assert.equal(shown.find(node => node.props.testID === 'native-utxo-outcome-amount')?.children.join(''), '0.00900001 BTC');
+    };
+    assertSummary();
+    f.press('Check status'); await tick(); assertSummary();
+    assert.equal(f.counts().confirmations, 2);
+  } finally { f.close(); }
 });

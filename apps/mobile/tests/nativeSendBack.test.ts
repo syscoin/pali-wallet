@@ -484,3 +484,22 @@ test('native coin MAX is inline, selects the dedicated review, and editing retur
   assert.deepEqual(f.prepared.at(-1), ['0x2222222222222222222222222222222222222222', '0.5', undefined]);
   f.dispose();
 });
+
+
+test('ERC20 review hero retains the reviewed token identity and symbol fallback', () => {
+  const token = { contractAddress: '0x' + 'ab'.repeat(20), decimals: 6, name: 'Saved token', symbol: 'TOK' };
+  const f = setup(token);
+  try {
+    f.setSnapshot({ ...f.snapshot, phase: 'review', review: {
+      id: 'token-review', recipient: '0x' + '2'.repeat(40), amountUnits: '2500000', maximumFeeUnits: '1', totalUnits: '1',
+      context: { networkId: 'ethereum', name: 'Ethereum', symbol: 'ETH', chainId: '1', rpcUrl: 'https://example.invalid', testnet: false, registrationHash: 'reviewed-registration' },
+      intent: { token },
+    } });
+    const hero = one(f.render(), 'Coin', node => node.props.size === 46);
+    assert.deepEqual(JSON.parse(JSON.stringify(hero.props.asset)), {
+      kind: 'evm', chainId: '1', contractAddress: token.contractAddress, decimals: token.decimals,
+    });
+    assert.equal(hero.props.registrationHash, 'reviewed-registration');
+    assert.equal(hero.props.fallbackSymbol, 'TOK');
+  } finally { f.dispose(); }
+});

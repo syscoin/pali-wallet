@@ -42,10 +42,32 @@ import type {
   NativeUtxoSend,
 } from '../custody/utxoSend';
 
+type ReviewedTransferSummary = Readonly<{
+  recipient: NativeUtxoReview['outputs'][number];
+  recipientLabel: 'Recipient' | 'Output 1';
+  assetDisplay?: NativeUtxoAsset;
+  feeSatoshis: string;
+}>;
+
 type Outcome = Readonly<{
   txid: string;
   phase: 'submitted' | 'seen' | 'confirmed' | 'unknown';
+  summary?: ReviewedTransferSummary;
 }>;
+
+function summarizeReview(review: NativeUtxoReview): ReviewedTransferSummary {
+  const recipient = review.outputs[0]!;
+  return Object.freeze({
+    recipientLabel: review.retryTxid ? 'Output 1' : 'Recipient',
+    recipient: Object.freeze({
+      address: recipient.address,
+      amountSatoshis: recipient.amountSatoshis,
+      ...(recipient.asset ? { asset: Object.freeze({ ...recipient.asset }) } : {}),
+    }),
+    ...(review.assetDisplay ? { assetDisplay: Object.freeze({ ...review.assetDisplay }) } : {}),
+    feeSatoshis: review.feeSatoshis,
+  });
+}
 
 function describe(error: unknown): string {
   const code = error instanceof Error ? error.message : '';
@@ -213,7 +235,7 @@ export function NativeUtxoSendScreen({
     );
     return () => subscription.remove();
   });
-  const run = (work: (current: () => boolean) => Promise<void>) => {
+  const run = (work: (current: () => boolean) => Promise<void>, summary?: ReviewedTransferSummary) => {
     if (inFlight.current || closing.current) return;
     const revision = owner.current.revision, draft = draftRevision.current,
       current = () => revision === owner.current.revision && draft === draftRevision.current;
@@ -232,7 +254,7 @@ export function NativeUtxoSendScreen({
           'txid' in cause &&
           typeof cause.txid === 'string'
         ) {
-          setOutcome({ phase: 'unknown', txid: cause.txid });
+          setOutcome({ phase: 'unknown', txid: cause.txid, ...(summary ? { summary } : {}) });
           return;
         }
         setError(describe(cause));
@@ -259,8 +281,7 @@ export function NativeUtxoSendScreen({
   const assetUnits = ({
     assetGuid,
     rawAmount,
-  }: NonNullable<NativeUtxoReview['outputs'][number]['asset']>) => {
-    const display = review?.assetDisplay;
+  }: NonNullable<NativeUtxoReview['outputs'][number]['asset']>, display = review?.assetDisplay) => {
     if (display?.assetGuid === assetGuid)
       return `${formatBaseUnits(rawAmount, display.decimals)} ${
         display.symbol
@@ -268,6 +289,21 @@ export function NativeUtxoSendScreen({
     return `${rawAmount} base units · Asset ${assetGuid}`;
   };
   const recipient = review?.outputs[0];
+  const amountHero = (summary: ReviewedTransferSummary, outcome = false) => (
+    <View style={s.hero}>
+      <Coin
+        id={summary.recipient.asset ? 'spt' : network.id}
+        asset={summary.recipient.asset ? { kind: 'spt', chainId: network.chainId, assetGuid: summary.recipient.asset.assetGuid, decimals: summary.assetDisplay?.decimals } : undefined}
+        fallbackSymbol={summary.recipient.asset ? summary.assetDisplay?.symbol ?? 'SPT' : undefined}
+        size={46}
+      />
+      <Text style={s.amount} testID={outcome ? 'native-utxo-outcome-amount' : undefined}>
+        {summary.recipient.asset
+          ? assetUnits(summary.recipient.asset, summary.assetDisplay)
+          : units(summary.recipient.amountSatoshis)}
+      </Text>
+    </View>
+  );
   const subtitle = `${accountLabel} · ${network.name}${
     network.testnet ? ' · Test network' : ''
   }`;
@@ -275,17 +311,18 @@ export function NativeUtxoSendScreen({
     run(async (current) => {
       const phase = await send!.check(txid);
       if (!current()) return;
-      setOutcome({ txid, phase });
+      setOutcome(previous => ({ txid, phase, ...(previous?.txid === txid && previous.summary ? { summary: previous.summary } : {}) }));
       const records = await send!.list();
       if (current()) setSaved([...records].reverse());
     });
   const confirmAuthenticated = (credential: NativeOperationCredential) => {
     if (!review || !send || currentReview.current !== review) return;
     const approved = review;
+    const summary = summarizeReview(approved);
     run(async (current) => {
       try {
         const { txid } = await send.confirm(approved, credential);
-        if (current()) { setAuthentication(null); setReview(null); setOutcome({ txid, phase: 'submitted' }); }
+        if (current()) { setAuthentication(null); setReview(null); setOutcome({ txid, phase: 'submitted', summary }); }
       } catch (cause) {
         const code = cause instanceof Error ? cause.message : '';
         if (current() && !['INVALID_CREDENTIAL', 'DEVICE_UNLOCK_UNAVAILABLE', 'AUTH_THROTTLED'].includes(code)) {
@@ -294,7 +331,7 @@ export function NativeUtxoSendScreen({
         }
         throw cause;
       }
-    });
+    }, summary);
   };
   const confirm = review && (
     <Button
@@ -369,6 +406,7 @@ export function NativeUtxoSendScreen({
           />}
           {outcome ? (
             <>
+              {outcome.summary && amountHero(outcome.summary, true)}
               <Notice
                 title={
                   outcome.phase === 'confirmed'
@@ -385,6 +423,21 @@ export function NativeUtxoSendScreen({
                 tone={outcome.phase === 'unknown' ? 'amber' : undefined}
               />
               <Card>
+                {outcome.summary && <>
+                  <Text style={styles.muted}>{outcome.summary.recipientLabel}</Text>
+                  <Text selectable style={s.address} testID="native-utxo-outcome-recipient">
+                    {outcome.summary.recipient.address}
+                  </Text>
+                  {outcome.summary.recipient.asset && <>
+                    <Text style={styles.muted}>Asset ID</Text>
+                    <Text>{outcome.summary.recipient.asset.assetGuid}</Text>
+                    <Text style={styles.muted}>Native amount sent with asset</Text>
+                    <Text testID="native-utxo-outcome-carrier">{units(outcome.summary.recipient.amountSatoshis)}</Text>
+                  </>}
+                  <Text style={styles.muted}>Network fee</Text>
+                  <Text testID="native-utxo-outcome-fee">{units(outcome.summary.feeSatoshis)}</Text>
+                  <Text style={styles.muted}>Transaction ID</Text>
+                </>}
                 <Text selectable style={s.address}>
                   {outcome.txid}
                 </Text>
@@ -414,23 +467,7 @@ export function NativeUtxoSendScreen({
             </>
           ) : review ? (
             <>
-              <View style={s.hero}>
-                <Coin
-                  id={recipient?.asset ? 'spt' : network.id}
-                  asset={recipient?.asset ? { kind: 'spt', chainId: network.chainId, assetGuid: recipient.asset.assetGuid, decimals: review.assetDisplay?.decimals } : undefined}
-                  fallbackSymbol={
-                    recipient?.asset
-                      ? review.assetDisplay?.symbol ?? 'SPT'
-                      : undefined
-                  }
-                  size={46}
-                />
-                <Text style={s.amount}>
-                  {recipient?.asset
-                    ? assetUnits(recipient.asset)
-                    : units(recipient!.amountSatoshis)}
-                </Text>
-              </View>
+              {amountHero(summarizeReview(review))}
               <Card style={s.insetCard}>
                 <Text style={styles.muted}>
                   {review.retryTxid ? 'Output 1' : 'Recipient'}

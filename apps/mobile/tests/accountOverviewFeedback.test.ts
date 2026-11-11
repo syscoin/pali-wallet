@@ -16,7 +16,7 @@ const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 const address = '0x' + '1'.repeat(40);
 const tokenAddress = '0x' + '2'.repeat(40);
 
-function fixture(screen: 'wallet' | 'activity', failed = false) {
+function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts?: () => void) {
   const choice = { label: 'Account 1', networkName: 'Ethereum', symbol: 'ETH', scope: {
     id: 'account-1:ethereum', accountId: 'account-1', accountAddress: address,
     network: { id: 'ethereum', kind: 'evm', chainId: '1', testnet: false },
@@ -83,7 +83,7 @@ function fixture(screen: 'wallet' | 'activity', failed = false) {
     getCatalogue: () => ({ active: { accountId: 'account-1' } }) };
   const render = () => {
     cursor = 0;
-    const tree = component(screen === 'wallet' ? { controller, portfolio: { source, accountLabel: 'Account 1', onSend() {} }, selectNetwork: async () => { throw Error('Detail unavailable'); }, send: async () => {} }
+    const tree = component(screen === 'wallet' ? { controller, portfolio: { source, accountLabel: 'Account 1', onSend() {}, onManageAccounts }, selectNetwork: async () => { throw Error('Detail unavailable'); }, send: async () => {} }
       : { controller, accountLabel: 'Account 1' }) as Element;
     effects.splice(0).forEach(run => run());
     return tree;
@@ -201,5 +201,29 @@ test('successful observations continue to show their fiat estimates', () => {
     assert(text.some(value => value.includes('1,000.00')));
     assert(text.some(value => value.includes('5.00 USD')));
     assert(!text.includes('Last known balance'));
+  } finally { f.close(); }
+});
+
+
+test('wallet account identity has no control semantics when account management is unavailable', () => {
+  const f = fixture('wallet');
+  try {
+    const tree = f.nodes(f.render());
+    assert(tree.some(node => node.type === 'Text' && node.children.includes('Account 1')));
+    assert(!tree.some(node => node.props.accessibilityLabel === 'Choose account, Account 1'));
+    const identity = tree.find(node => node.type === 'View' && f.nodes(node).some(child => child.type === 'Icon' && child.props.name === 'wallet'));
+    assert(identity);
+    assert(!f.nodes(identity).some(node => node.type === 'Icon' && node.props.name === 'chevron-down'));
+  } finally { f.close(); }
+});
+
+test('wallet account chooser remains actionable when account management is available', () => {
+  let opened = 0;
+  const f = fixture('wallet', false, () => { opened++; });
+  try {
+    const choice = f.nodes(f.render()).find(node => node.props.accessibilityLabel === 'Choose account, Account 1');
+    assert(choice); assert.equal(choice.props.accessibilityRole, 'button');
+    assert(f.nodes(choice).some(node => node.type === 'Icon' && node.props.name === 'chevron-down'));
+    choice.props.onPress(); assert.equal(opened, 1);
   } finally { f.close(); }
 });
