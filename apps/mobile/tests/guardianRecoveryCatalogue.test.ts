@@ -15,6 +15,7 @@ import {
   PALI_SMART_ACCOUNT_VERSION,
 } from '../../../source/utils/smartAccount/contracts.ts';
 import { captureGuardianRecoveryIntent } from '../../../source/utils/smartAccount/guardianRecoveryIntent.ts';
+import { toP256WebAuthnRecoveryTarget } from '../../../source/utils/passkey/identity.ts';
 import { buildSmartAccountGuardianRecoveryOperation } from '../../../source/utils/smartAccount/recovery.ts';
 import {
   NativeWalletCatalogue,
@@ -149,11 +150,11 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       xpub: guardian.xpub.toLowerCase(),
     },
     payer: { id: 'hd:60:2', address: payer.address, xpub: payer.xpub.toLowerCase() },
-    replacement: {
+    replacement: { kind: 'software', account: {
       id: `imported:60:${replacement.account.id}`,
       address: replacement.account.address,
       xpub: replacement.account.xpub.toLowerCase(),
-    },
+    } },
   };
   return {
     sdk,
@@ -161,6 +162,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     smart,
     target: captured.target,
     intent,
+    replacementRef: intent.replacement.kind === 'software' ? intent.replacement.account : (() => { throw Error('Fixture must use software'); })(),
     change,
     get storage() {
       return storage;
@@ -187,6 +189,30 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     },
   };
 }
+
+test('P256 replacement profiles stay bound to the canonical recovery target across reopen', async () => {
+  const f = await fixture();
+  try {
+    const config = { credentialId: 'AQ', credentialIdHash: '0x' + '12'.repeat(32), passkeyName: 'Recovery passkey', publicKey: {
+      x: '0x' + '02'.repeat(32), y: '0x' + '03'.repeat(32), rpIdHash: '0x' + '04'.repeat(32), originHash: '0x' + '05'.repeat(32), originLength: 22,
+    } };
+    const target = toP256WebAuthnRecoveryTarget({ validator: getConfiguredAuthenticatorAddress(1, 'p256-webauthn'), ...config.publicKey });
+    const operation = buildSmartAccountGuardianRecoveryOperation({ ...f.intent.operation, target, replaceExistingValidator: true, revokeValidator: f.smart.smartAccount.auth.validator });
+    const intent: NativeGuardianRecoveryIntent = { ...f.intent, operation, target,
+      replacement: { kind: 'passkey', credential: { kind: 'p256-webauthn', authenticator: { id: 'p256-webauthn', config }, credentialId: config.credentialId, credentialIdHash: config.credentialIdHash } } };
+    await f.change({kind:'store-guardian-recovery',id:intent.accountId,intent,expectedOperationHash:null});
+    await f.reopen();
+    const restored = f.catalogue.privateRecords.guardianRecoveryIntents![0]!;
+    assert.equal(restored.replacement.kind, 'passkey');
+    assert.equal(restored.target.auth.data, target.auth.data);
+    if (restored.replacement.kind !== 'passkey') throw Error('Wrong replacement');
+    assert.equal(restored.replacement.credential.credentialId, config.credentialId);
+    if (intent.replacement.kind !== 'passkey') throw Error('Wrong fixture');
+    const corrupted = { ...intent, replacement: {kind:'passkey' as const, credential: { ...intent.replacement.credential,
+      authenticator: {id:'p256-webauthn' as const,config:{...config,publicKey:{...config.publicKey,x:'0x'+'06'.repeat(32)}}} } } };
+    await assert.rejects(f.change({kind:'store-guardian-recovery',id:intent.accountId,intent:corrupted,expectedOperationHash:operation.hash}));
+  } finally { await f.cleanup(); }
+});
 const store = (f: Awaited<ReturnType<typeof fixture>>) =>
   f.change({
     kind: 'store-guardian-recovery',
@@ -268,12 +294,12 @@ test('recovery intent rejects unrelated replacement keys, payloads and target ac
     const variants = [
       { ...f.intent, replacement: f.intent.guardian },
       legacy,
-      { ...f.intent, payer: { ...f.intent.payer, xpub: f.intent.replacement.xpub } },
+      { ...f.intent, payer: { ...f.intent.payer, xpub: f.replacementRef.xpub } },
       { ...f.intent, payer: { id: f.intent.accountId, address: f.smart.address, xpub: f.smart.xpub.toLowerCase() } },
-      { ...f.intent, replacement: { id: f.intent.accountId, address: f.smart.address, xpub: f.smart.xpub.toLowerCase() } },
+      { ...f.intent, replacement: { kind: 'software', account: { id: f.intent.accountId, address: f.smart.address, xpub: f.smart.xpub.toLowerCase() } } },
       {
         ...f.intent,
-        guardian: { ...f.intent.guardian, xpub: f.intent.replacement.xpub },
+        guardian: { ...f.intent.guardian, xpub: f.replacementRef.xpub },
       },
       { ...f.intent, accountId: 'hd:60:0' },
       {
@@ -288,7 +314,7 @@ test('recovery intent rejects unrelated replacement keys, payloads and target ac
         f.change({
           kind: 'store-guardian-recovery',
           id: f.intent.accountId,
-          intent,
+          intent: intent as NativeGuardianRecoveryIntent,
           expectedOperationHash: null,
         })
       );
@@ -330,7 +356,7 @@ test('referenced guardian and replacement keys remain until intent retirement', 
   try {
     await store(f);
     const imported = f.catalogue.privateRecords.recovery;
-    for (const id of [f.intent.guardian.id, f.intent.replacement.id, f.intent.payer.id]) {
+    for (const id of [f.intent.guardian.id, f.replacementRef.id, f.intent.payer.id]) {
       await assert.rejects(
         f.change({ kind: 'remove', id }),
         /CATALOGUE_NOT_REMOVABLE/
@@ -349,7 +375,7 @@ test('referenced guardian and replacement keys remain until intent retirement', 
       id: f.intent.accountId,
       operationHash: f.intent.operation.hash,
     });
-    await f.change({ kind: 'remove', id: f.intent.replacement.id });
+    await f.change({ kind: 'remove', id: f.replacementRef.id });
     await f.change({ kind: 'remove', id: f.intent.payer.id });
     assert.equal(f.catalogue.privateRecords.recovery.length, 0);
   } finally {

@@ -2496,7 +2496,7 @@ for (const delayedMetadata of [false, true]) test(`native guardian recovery pers
     const replacement = accounts.find(account => account.type === 'Imported')!;
     const status = f.guardianStatus('installed'); status.configure(guardian.address, 600);
     f.externalOwner();
-    recovery = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacementId: replacement.id, payerId: guardian.id }, new AbortController().signal, () => undefined, null);
+    recovery = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacement: { kind: 'software' as const, accountId: replacement.id }, payerId: guardian.id }, new AbortController().signal, () => undefined, null);
     const intent = f.runtime.getGuardianRecoveryIntent()!;
     assert(intent); assert.equal(f.submitted.length, 0);
     assert.equal(((await f.inspectRecovery()).record as { guardianRecoveryIntents: unknown[] }).guardianRecoveryIntents.length, 1);
@@ -2552,7 +2552,7 @@ async function startNativeRecovery() {
   const guardian = f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!;
   const replacement = f.owner.getCatalogue()!.accounts.find(account => account.type === 'Imported')!;
   const policy = f.guardianStatus('installed'); policy.configure(guardian.address, 600);
-  const controller = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacementId: replacement.id, payerId: guardian.id }, new AbortController().signal, () => undefined, null);
+  const controller = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacement: { kind: 'software' as const, accountId: replacement.id }, payerId: guardian.id }, new AbortController().signal, () => undefined, null);
   return { f, guardian, replacement, policy, controller };
 }
 
@@ -2573,7 +2573,7 @@ async function smartGuardianRecoveryFixture(composite = false, hooks: { before?:
     const policy = f.guardianStatus('installed'); policy.configure(guardian.address, 600);
     f.smartGuardian(guardian.address, [owner.address], { compositeThreshold: composite ? 1 : undefined });
     f.externalOwner();
-    const draft = { kind: 'start' as const, guardianId: guardian.id, replacementId: replacement.id, payerId: payer.id };
+    const draft = { kind: 'start' as const, guardianId: guardian.id, replacement: { kind: 'software' as const, accountId: replacement.id }, payerId: payer.id };
     return { f, guardian, owner, replacement, payer, policy, draft,
       open: (signal = new AbortController().signal) => f.runtime.openGuardianRecovery(draft, signal, () => undefined, null) };
   } catch (error) { await f.close(); throw error; }
@@ -2659,7 +2659,7 @@ test('native Smart guardian refuses unsatisfied composite and undeployed policie
     const missingPayer = { ...draft }; Reflect.deleteProperty(missingPayer, 'payerId');
     await assert.rejects(f.runtime.openGuardianRecovery(missingPayer, new AbortController().signal, () => undefined, null), /INVALID_INPUT/);
     await assert.rejects(f.runtime.openGuardianRecovery({ ...draft, payerId: guardian.id }, new AbortController().signal, () => undefined, null), /INVALID_INPUT/);
-    await assert.rejects(f.runtime.openGuardianRecovery({ ...draft, replacementId: guardian.id }, new AbortController().signal, () => undefined, null), /INVALID_INPUT/);
+    await assert.rejects(f.runtime.openGuardianRecovery({ ...draft, replacement: { kind: 'software' as const, accountId: guardian.id  }}, new AbortController().signal, () => undefined, null), /INVALID_INPUT/);
     f.smartGuardian(guardian.address, [owner.address], { compositeThreshold: 2 });
     await assert.rejects(open(), /unavailable authenticator/);
     assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
@@ -2675,7 +2675,7 @@ test('native recovery uses an explicitly selected imported payer for an EOA guar
   let controller: typeof initial | undefined;
   try {
     await initial.prepare(); await initial.abandon(); initial.dispose();
-    controller = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacementId: replacement.id, payerId: replacement.id }, new AbortController().signal, () => undefined, null);
+    controller = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacement: { kind: 'software' as const, accountId: replacement.id }, payerId: replacement.id }, new AbortController().signal, () => undefined, null);
     await controller.prepare(); await controller.review();
     const review = controller.getSnapshot().feeReview!; assert(review);
     assert.equal(review.transaction.from.toLowerCase(), replacement.address.toLowerCase());
@@ -2768,13 +2768,49 @@ test('an uncertain scheduled recovery survives restart without signing a second 
   } finally { resumed?.dispose(); controller.dispose(); await f.close(); }
 });
 
+test('P256 guardian replacement survives an unknown submission and restart without recreating or re-signing', async () => {
+  let f!: Awaited<ReturnType<typeof fixture>>, creates = 0, assertions = 0, prompt = false;
+  const registration = { backupStatus: 'deviceBound' as const, credentialId: 'AQ', credentialIdHash: '0x' + '01'.repeat(32), rawId: 'AQ', userHandle: 'Ag',
+    x: '0x' + '02'.repeat(32), y: '0x' + '03'.repeat(32), rpIdHash: '0x' + '04'.repeat(32), originHash: '0x' + '05'.repeat(32), originLength: 22 };
+  const hashes: string[] = [];
+  const passkeys: NonNullable<KeyringRuntimeDependencies['passkeys']> = {
+    async create(request) { prompt = true; try { request.assertCurrent(); f.assertNoSigningKeys(); creates++; return registration; } finally { prompt = false; } },
+    async sign(request) { prompt = true; try { request.assertCurrent(); f.assertNoSigningKeys(); hashes.push(request.actionHash); assertions++; return {signature:'0xab'}; } finally { prompt = false; } },
+    async recover() { throw Error('Unexpected discovery'); },
+  };
+  f = await fixture({}, true, null, undefined, undefined, passkeys);
+  const scope = createNativePrivateAuthenticationScope(), lifetime = new AbortController();
+  const binding = bindNativePrivateAuthentication(scope, { assertCurrent() {}, isPromptActive: () => prompt });
+  let controller: Awaited<ReturnType<KeyringRuntime['openGuardianRecovery']>> | undefined;
+  try {
+    await f.change({kind:'create-smart',label:'Passkey recovery'});
+    const guardian = f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!;
+    f.guardianStatus('installed').configure(guardian.address, 600); f.externalOwner();
+    controller = await f.runtime.openGuardianRecovery({kind:'start',guardianId:guardian.id,payerId:guardian.id,replacement:{kind:'passkey',recreate:false}}, lifetime.signal, () => undefined, binding);
+    const intent = f.runtime.getGuardianRecoveryIntent()!;
+    assert.equal(intent.replacement.kind, 'passkey'); assert.equal(intent.target.auth.module, 'p256-webauthn'); assert.equal(creates, 1);
+    f.holdReceipts(); f.onBroadcast(() => { throw Error('Reply lost after delivery'); });
+    await controller.review(); assert.deepEqual(hashes, [intent.operation.hash]);
+    assert.equal(f.signatures.length, 1, 'only the guardian uses a software proof');
+    await controller.confirm(controller.getSnapshot().feeReview!.id);
+    assert.equal(controller.getSnapshot().phase, 'unknown'); const hash = controller.getSnapshot().transactionHash;
+    controller.dispose(); controller = undefined;
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    assert.deepEqual(f.runtime.getGuardianRecoveryIntent()!.target, intent.target);
+    controller = await f.runtime.openGuardianRecovery({kind:'resume'}, lifetime.signal, () => undefined, binding);
+    await controller.prepare(); await controller.review();
+    assert.equal(controller.getSnapshot().phase, 'waiting'); assert.equal(controller.getSnapshot().transactionHash, hash);
+    assert.equal(creates, 1); assert.equal(assertions, 1); assert.equal(f.submitted.length, 1);
+  } finally { lifetime.abort(); scope.retire(); controller?.dispose(); await f.close(); }
+});
+
 test('locking during new recovery observation cannot persist an intent or sign', async () => {
   const f = await fixture({}, true);
   let held: ReturnType<typeof f.guardianStatus> | undefined;
   try {
     await f.change({ kind: 'create-smart', label: 'Held recovery',});
     held = f.guardianStatus('hold');
-    const pending = f.runtime.openGuardianRecovery({ kind: 'start', guardianId: 'hd:60:0', replacementId: 'hd:60:0', payerId: 'hd:60:0' }, new AbortController().signal, () => undefined, null);
+    const pending = f.runtime.openGuardianRecovery({ kind: 'start', guardianId: 'hd:60:0', replacement: { kind: 'software' as const, accountId: 'hd:60:0' }, payerId: 'hd:60:0' }, new AbortController().signal, () => undefined, null);
     const rejected = assert.rejects(pending);
     for (let i = 0; !held.methods().length && i < 200; i++) await new Promise(resolve => setTimeout(resolve, 5));
     assert(held.methods().length); f.owner.lock(); held.release(); await rejected;
@@ -4638,7 +4674,7 @@ test('owned smart authentication reaches both guardian recovery proofs', async (
     const replacement = accounts.find(account => account.type === 'Imported')!;
     f.guardianStatus('installed').configure(guardian.address, 600); f.externalOwner();
     const auth = ownedSmartAuthentication(f);
-    recovery = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacementId: replacement.id, payerId: guardian.id },
+    recovery = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacement: { kind: 'software' as const, accountId: replacement.id }, payerId: guardian.id },
       new AbortController().signal, auth.guard, auth.binding);
     await recovery.prepare(); await recovery.review();
     assert.equal(recovery.getSnapshot().phase, 'review', JSON.stringify(recovery.getSnapshot()));

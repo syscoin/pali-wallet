@@ -31,6 +31,7 @@ import {
   Card,
   colors,
   Header,
+  Icon,
   Notice,
   Screen,
   Text,
@@ -81,6 +82,8 @@ export function NativeGuardianRecovery({
   );
   const [guardianId, setGuardianId] = useState(guardians[0]?.id ?? '');
   const [replacementId, setReplacementId] = useState('');
+  const [replacementKind, setReplacementKind] = useState<'software' | 'passkey'>('software');
+  const [passkeyNotVerified, setPasskeyNotVerified] = useState(false);
   const [payerId, setPayerId] = useState(
     () =>
       port.payers.find((account) => account.id === guardians[0]?.id)?.id ??
@@ -155,16 +158,16 @@ export function NativeGuardianRecovery({
                   guardian.toLowerCase() === account.address.toLowerCase()
               )
           ) ||
-          !port.replacements.some(
-            (account) => account.id === draft.replacementId
-          ) ||
+          !(draft.replacement.kind === 'passkey' ? port.passkeysAvailable : port.replacements.some(
+            (account) => account.id === (draft.replacement.kind === 'software' ? draft.replacement.accountId : '')
+          )) ||
           !port.payers.some((account) => account.id === draft.payerId))
       )
         return;
       if (!current.live || current.busy || !current.authentication || lifetime.aborted || AppState.currentState !== 'active') return;
       current.busy = true;
       setBusy(true);
-      setError('');
+      setError(''); setPasskeyNotVerified(false);
       const check = () => {
         if (!current.live || lifetime.aborted ||
             (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication!, AppState.currentState))) throw Error('CANCELLED');
@@ -177,8 +180,9 @@ export function NativeGuardianRecovery({
         }
         current.controller = next;
         setController(next);
-      } catch {
-        if (current.live)
+      } catch (failure) {
+        if (current.live && (failure as {code?:string})?.code === 'PASSKEY_POSSESSION_FAILED') setPasskeyNotVerified(true);
+        else if (current.live)
           setError(
             'Recovery could not be opened. Check the current policy and try again.'
           );
@@ -306,14 +310,14 @@ export function NativeGuardianRecovery({
                   busy ||
                   !policySupported ||
                   !guardianId ||
-                  !replacementId ||
+                  (replacementKind === 'software' && !replacementId) ||
                   !payerId
                 }
                 onPress={() =>
                   void open({
                     kind: 'start',
                     guardianId,
-                    replacementId,
+                    replacement: replacementKind === 'passkey' ? {kind:'passkey',recreate:false} : {kind:'software',accountId:replacementId},
                     payerId,
                   })
                 }
@@ -390,7 +394,8 @@ export function NativeGuardianRecovery({
               />
             )}
             <Text style={s.heading}>Replacement owner</Text>
-            {replacementId && (
+            {replacementKind === 'passkey' && <Card style={s.card}><Icon name="fingerprint" /><Text>Passkey</Text><Text>{t('smartAccountHub.compositePasskeyDescription')}</Text></Card>}
+            {replacementKind === 'software' && replacementId && (
               <Card style={s.card}>
                 <Text style={s.label}>
                   {
@@ -413,8 +418,16 @@ export function NativeGuardianRecovery({
               variant="secondary"
               size="compact"
               disabled={busy}
-              onPress={() => setChoosing('replacement')}
+              icon="wallet"
+              onPress={() => { setReplacementKind('software'); setPasskeyNotVerified(false); setChoosing('replacement'); }}
             />
+            {port.passkeysAvailable && replacementKind !== 'passkey' && <Button title="Use passkey" icon="fingerprint" variant="secondary" size="compact" disabled={busy}
+              onPress={() => { setReplacementKind('passkey'); setPasskeyNotVerified(false); }} />}
+            {passkeyNotVerified && replacementKind === 'passkey' && <>
+              <Notice title={t('settings.smartAccountPasskeyRecreateConfirmTitle')} body={t('settings.smartAccountPasskeyRecreateConfirmDescription')} />
+              <Button title={t('settings.smartAccountPasskeyRecreateConfirmButton')} icon="fingerprint" disabled={busy || !guardianId || !payerId}
+                onPress={() => void open({kind:'start',guardianId,payerId,replacement:{kind:'passkey',recreate:true}})} />
+            </>}
             <Text style={s.heading}>Fee payer</Text>
             {payerId && (
               <Card style={s.card}>
@@ -649,7 +662,7 @@ export function NativeGuardianRecoveryView({
                   : 'Replacement owner'}
               </Text>
               <Text selectable style={s.address}>
-                {state.intent.replacement.address}
+                {state.intent.replacement.kind === 'software' ? state.intent.replacement.account.address : state.intent.replacement.credential.authenticator.id === 'p256-webauthn' ? state.intent.replacement.credential.authenticator.config.passkeyName || 'Passkey' : 'Passkey'}
               </Text>
               <Text style={s.label}>Guardian</Text>
               <Text selectable style={s.address}>

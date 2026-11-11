@@ -402,7 +402,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     recovery: guardianRecoveryController ? {
       chainId: Number(getNativeNetwork(snapshot.account.network, catalogue?.networks).chainId),
       currency: getNativeNetwork(snapshot.account.network, catalogue?.networks).symbol,
-      ...getNativeGuardianRecoveryChoices(catalogue?.accounts ?? [], Number(getNativeNetwork(snapshot.account.network, catalogue?.networks).chainId)),
+      ...getNativeGuardianRecoveryChoices(catalogue?.accounts ?? [], Number(getNativeNetwork(snapshot.account.network, catalogue?.networks).chainId), guardianRecoveryController.supportsPasskeys()),
       openRecoveryAlerts: async () => {
         if (!mounted.current || epoch.current !== guardianEpoch || AppState.currentState !== 'active' || readyContext()?.context !== guardianContext)
           throw new Error('CANCELLED');
@@ -988,6 +988,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       setSnapshot(state); setPublicSource(publicView); setBalanceReader(local.balanceReader); setRecipientResolver(local.recipientResolver); setConnectionView(local.connections); setTransferView(local.transfers); setOpenUtxoSend(() => local.openUtxoSend); setOpenSmartDeployment(() => local.openSmartAccountDeployment); setOpenSmartSend(() => local.openSmartAccountSend); setTokenView(local.tokens); setActivityView(local.activity); setUtxoActivityView(local.utxoActivity); setKeyExportView(local.keyExport); setNetworkView(networks);
       setAccountActivity(allActivity);
       setGuardianRecoveryController({
+        supportsPasskeys: () => local.guardianRecovery.supportsPasskeys(),
         hasIntent: () => local.guardianRecovery.hasIntent(),
         open: async (draft, signal, assertView, authentication) => {
           if (AppState.currentState !== 'active') throw new Error('CANCELLED');

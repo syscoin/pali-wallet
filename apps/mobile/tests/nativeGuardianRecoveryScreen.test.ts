@@ -75,7 +75,7 @@ const intent: NativeGuardianRecoveryIntent = {
   },
   target: { auth: { module: 'ecdsa', validator: moduleAddress, data: '0x' } },
   guardian: { ...guardian, xpub: guardian.address },
-  replacement: { ...replacement, xpub: 'replacement public key' },
+  replacement: { kind: 'software', account: { ...replacement, xpub: 'replacement public key' } },
   payer: { ...payer, xpub: 'payer public key' },
 };
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
@@ -99,7 +99,7 @@ const imports = {
   '../core/amounts': { formatBaseUnits },
   '../ui': {
     ...Object.fromEntries(
-      ['Button', 'Card', 'Header', 'Notice', 'Screen', 'Text'].map((name) => [
+      ['Button', 'Card', 'Header', 'Icon', 'Notice', 'Screen', 'Text'].map((name) => [
         name,
         name,
       ])
@@ -138,6 +138,7 @@ function initialFixture(
     guardian?: NativeGuardianRecoveryChoice;
     payers?: readonly NativeGuardianRecoveryChoice[];
     threshold?: number;
+    failPasskey?: boolean;
   } = {}
 ) {
   const selectedGuardian = options.guardian ?? guardian;
@@ -152,7 +153,7 @@ function initialFixture(
     },
   };
   const recovery = {
-    chainId: 1,
+    chainId: 1, passkeysAvailable: true,
     currency: 'ETH',
     guardians: [selectedGuardian],
     replacements: [replacement],
@@ -165,6 +166,7 @@ function initialFixture(
     ) {
       check();
       drafts.push(draft);
+      if (options.failPasskey && draft.kind === 'start' && draft.replacement.kind === 'passkey' && !draft.replacement.recreate) throw Object.assign(Error('Failed'), {code:'PASSKEY_POSSESSION_FAILED'});
       return next;
     },
     async onActivity() {
@@ -234,7 +236,7 @@ test('Smart guardian recovery chooses a software payer independently and opens o
       {
         kind: 'start',
         guardianId: guardian.id,
-        replacementId: replacement.id,
+        replacement: { kind: 'software', accountId: replacement.id },
         payerId: secondPayer.id,
       },
     ]);
@@ -255,13 +257,42 @@ test('the software guardian remains the explicit default fee payer for the simpl
       {
         kind: 'start',
         guardianId: payer.id,
-        replacementId: replacement.id,
+        replacement: { kind: 'software', accountId: replacement.id },
         payerId: payer.id,
       },
     ]);
   } finally {
     f.close();
   }
+});
+
+test('P256 replacement is an explicit icon-bearing choice and retains a separate payer', async () => {
+  const f = initialFixture();
+  try {
+    const select = button(f.render(), 'Use passkey'); assert.equal(select.props.icon, 'fingerprint'); select.props.onPress();
+    assert(englishI18n.exists('smartAccountHub.compositePasskeyDescription'));
+    assert(text(f.render()).includes(englishI18n.t('smartAccountHub.compositePasskeyDescription')));
+    assert(!text(f.render()).includes(englishI18n.t('settings.recoveryAuthenticatorP256WebAuthnDescription')));
+    assert.equal(button(f.render(), 'Review recovery').props.disabled, false);
+    button(f.render(), 'Review recovery').props.onPress(); await tick();
+    assert.deepEqual(JSON.parse(JSON.stringify(f.drafts)), [{kind:'start',guardianId:guardian.id,replacement:{kind:'passkey',recreate:false},payerId:payer.id}]);
+  } finally { f.close(); }
+});
+
+test('a failed replacement passkey proof requires explicit consent before recreation', async () => {
+  const f = initialFixture({ failPasskey: true });
+  try {
+    button(f.render(), 'Use passkey').props.onPress();
+    button(f.render(), 'Review recovery').props.onPress(); await tick();
+    assert.equal(f.drafts.length, 1);
+    const recreate = button(f.render(), englishI18n.t('settings.smartAccountPasskeyRecreateConfirmButton'));
+    assert.equal(recreate.props.icon, 'fingerprint');
+    recreate.props.onPress(); await tick();
+    assert.deepEqual(JSON.parse(JSON.stringify(f.drafts)), [
+      {kind:'start',guardianId:guardian.id,payerId:payer.id,replacement:{kind:'passkey',recreate:false}},
+      {kind:'start',guardianId:guardian.id,payerId:payer.id,replacement:{kind:'passkey',recreate:true}},
+    ]);
+  } finally { f.close(); }
 });
 
 test('a missing payer, unsupported threshold or retired screen cannot open a recovery draft', async () => {
@@ -405,7 +436,7 @@ test('saved review and Activity use the captured payer while proofs and submissi
   const props = {
     controller,
     address,
-    chainId: 1,
+    chainId: 1, passkeysAvailable: true,
     currency: 'ETH',
     networkLabel: 'Ethereum',
     async onActivity(...args: unknown[]) {
@@ -583,7 +614,7 @@ for (const boundary of ['back', 'background', 'unmount', 'foreign-prompt'] as co
   const f = screenFixture(new URL('../src/screens/NativeGuardianRecovery.tsx', import.meta.url), 'NativeGuardianRecovery', { ...imports, 'react-native': native });
   let authentication!: privateAuthentication.NativePrivateAuthenticationScope, guard!: () => void, returned = 0;
   const props = { address, networkLabel: 'Ethereum', observation, lifetime: new AbortController().signal, onBack() { returned++; },
-    recovery: { chainId: 1, currency: 'ETH', guardians: [guardian], replacements: [replacement], payers: [payer], hasIntent: true,
+    recovery: { chainId: 1, passkeysAvailable: false, currency: 'ETH', guardians: [guardian], replacements: [replacement], payers: [payer], hasIntent: true,
       async open(_draft: unknown, _signal: AbortSignal, check: () => void, scope: privateAuthentication.NativePrivateAuthenticationScope) {
         authentication = scope; guard = check; return { dispose() {} };
       }, async onActivity() {}, async openRecoveryAlerts() {} } };

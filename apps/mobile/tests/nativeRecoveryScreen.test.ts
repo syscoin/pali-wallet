@@ -267,7 +267,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
     async openSmartAccountModules() { throw Error('Modules are outside this fixture'); },
     async openSlhDsaManagement() { throw Error('SLH is outside this fixture'); },
     canUseWalletAuthenticator: () => false,
-    guardianRecovery: { hasIntent: () => false, async open() { throw Error('Unavailable in this fixture'); } },
+    guardianRecovery: { supportsPasskeys: () => false, hasIntent: () => false, async open() { throw Error('Unavailable in this fixture'); } },
     authority: { getSnapshot: () => state, getCatalogue: () => null, supportsAccountManagement: () => false,
       async getAuthenticationStatus() { return { pinConfigured: true, biometricsAvailable: false, biometricsEnabled: false }; },
       async initialize() {}, subscribe: () => () => {}, lock() {}, async dispose() { state = { ...state, phase: 'disposed' }; } },
@@ -358,7 +358,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     async openSmartAccountModules() { throw Error('Modules are outside this fixture'); },
     async openSlhDsaManagement() { throw Error('SLH is outside this fixture'); },
     canUseWalletAuthenticator: () => false,
-    guardianRecovery: { hasIntent: () => false, async open() { throw Error('Unavailable in this fixture'); } },
+    guardianRecovery: { supportsPasskeys: () => false, hasIntent: () => false, async open() { throw Error('Unavailable in this fixture'); } },
     ...(deviceUnlock ? { authentication } : {}),
     async configureDeviceUnlock(enabled: boolean, signal: AbortSignal, authentication: NativePrivateAuthenticationScope, check: () => void) {
       check(); configurations.push({ enabled, signal, authentication });
