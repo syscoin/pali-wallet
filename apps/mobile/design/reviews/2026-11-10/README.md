@@ -1,5 +1,8 @@
 # Pali mobile screen review — 10 November 2026
 
+Latest quality pass: [current mobile error states and extension hardware dialogs](quality-pass/README.md).
+
+
 Latest flow updates: [selected account, Send, Activity and alerts](#selected-account-send-activity-and-alert-updates) · [recovery, shared authentication and decoded asset reviews](#current-flow-updates) · [contact sheet](flow-updates/contact-sheet.png) · [per-frame provenance](flow-updates/manifest.json).
 
 The 32 reference screens below compare the supplied PDF with **actual implemented React Native components**. Home, Send, Receive and Activity also include video stills. Each screen includes a narrow 320px capture.

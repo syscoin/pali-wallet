@@ -1,0 +1,67 @@
+{
+  "sourceRevision": "e5a1751b6a0903f3cce40245f19e83b155b20191",
+  "method": "Actual React Native Web and extension React components with deterministic public fixture data. Browser requests restricted to loopback; Chromium sandbox enabled. Not native-device or hardware qualification.",
+  "sourceSha256": {
+    "apps/mobile/src/portfolio/accountPortfolio.ts": "114d1cca79c73507edfe0abd9c27c26e548746ec3edffab0ad3394d896f3d427",
+    "apps/mobile/src/screens/NativeAccountOverview.tsx": "6fb6c66d244e53d3892b567e15cebedb7f22353d7713357487ac71f1e5c9ae3c",
+    "apps/mobile/src/screens/AllNetworksActivity.tsx": "3b04cd43d5c0646c4838472d1f99f573e75430b04a06e688d4a634ef47ed9a21",
+    "source/components/Button/Button.tsx": "006f7faf1e0edb2f2fbc0f70d1b030084e43bc82c394cd718d633d43d00fb667",
+    "source/components/DeviceWaitingBanner/index.tsx": "5f2ba0760e5915ff52b8d90d0ac7c4a0ac65f045fc3baf5cfe3d1a16a2af9390",
+    "source/pages/Settings/ConnectHardwareWallet.tsx": "71d9ff0bff20d9cc8f21e62b825a526e57ce79d5244d63bf28f1986434b2e234",
+    "source/pages/Settings/Advanced.tsx": "2a0eb4414b22a0d40cc8ccc6b0f5a8d2b7ec18b4d0847480b65fd3ca37fc4328",
+    "source/pages/Home/Panel/components/Assets/EvmDetails.tsx": "e890455aa235d5b60de53f3ef3f776ee100209c635bc0416d9dc976cdb4f77f9",
+    "source/assets/locales/en.json": "0c41f7950f218182745e19cb97f72ed88ed55c99182e88283052889a6154f677"
+  },
+  "frames": [
+    {
+      "file": "account-overview-320.png",
+      "surface": "mobile",
+      "sha256": "c71c17751190da40ac8de6e7f21c971a531198634deefca1cef86ff939cea310"
+    },
+    {
+      "file": "account-overview-390.png",
+      "surface": "mobile",
+      "sha256": "39ae8531d53064df2a05b3030d796e28d8a5bfe72b7daeda5c6ba7c8d3a1663c"
+    },
+    {
+      "file": "cached-balance-320.png",
+      "surface": "mobile",
+      "sha256": "014363cf8ede2732295acb640bb1c6678bb8bb35f91974c05aee9f2fad0f0390"
+    },
+    {
+      "file": "cached-balance-390.png",
+      "surface": "mobile",
+      "sha256": "d12eb08032c9f289b058c2e5323ea487d8bec2569068f39a0a46c5d3343a6b36"
+    },
+    {
+      "file": "filter-error-320.png",
+      "surface": "mobile",
+      "sha256": "e4a0720b6dc3872f7c7804741e08fd9f5eeed198a01afc104cb22af0daa1bf7b"
+    },
+    {
+      "file": "filter-error-390.png",
+      "surface": "mobile",
+      "sha256": "91081855513a2bfe9a144c8ba2c3478bcca71cc0b93bc883c6609c6760208bab"
+    },
+    {
+      "file": "400x620-chooser.png",
+      "surface": "extension",
+      "sha256": "22e240ce42b9f24a15f1b7c1bc3d40ea689622e460c1ccacfd4ba5e87e2cbec1"
+    },
+    {
+      "file": "400x620-success.png",
+      "surface": "extension",
+      "sha256": "40a5efbef48abf3428a2d4607d1b8636a7eda8a56adc038ec4e0ec17c468a869"
+    },
+    {
+      "file": "320x360-chooser.png",
+      "surface": "extension",
+      "sha256": "e6e5cc9126d138e8b05842eb874ef5e67b9e00ccc3dd6fdcf1a093d3c8e92201"
+    },
+    {
+      "file": "320x360-success.png",
+      "surface": "extension",
+      "sha256": "9dc00da971a45e2aaf8cbbee13c47e630273d489b5b729894928548e225e8372"
+    }
+  ]
+}
