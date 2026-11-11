@@ -122,8 +122,8 @@ enum pali_slh_status pali_slh_leaf_chunk(
         return PALI_SLH_NO_MEMORY;
     }
     int engine_result = -1;
-    enum pali_slh_status status = pali_slh_run_serialized(
-        PALI_SLH_RNG_NONE, NULL, call_leaves, &input, &engine_result);
+    enum pali_slh_status status = pali_slh_run_independent(
+        call_leaves, &input, &engine_result);
     if (status == PALI_SLH_OK && engine_result != (int)count)
         status = PALI_SLH_ENGINE_FAILED;
     if (status == PALI_SLH_OK) memcpy(output, input.output, output_size);
@@ -230,8 +230,8 @@ enum pali_slh_status pali_slh_fors_tree(
     memcpy(input.prelude, prelude, prelude_size);
     input.index = tree_index;
     int engine_result = -1;
-    enum pali_slh_status status = pali_slh_run_serialized(
-        PALI_SLH_RNG_NONE, NULL, call_fors, &input, &engine_result);
+    enum pali_slh_status status = pali_slh_run_independent(
+        call_fors, &input, &engine_result);
     if (status == PALI_SLH_OK && engine_result != PALI_SLH_FORS_OUTPUT_BYTES)
         status = PALI_SLH_ENGINE_FAILED;
     if (status == PALI_SLH_OK) memcpy(output, input.output, output_size);

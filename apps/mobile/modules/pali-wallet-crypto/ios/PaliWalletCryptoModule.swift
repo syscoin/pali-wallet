@@ -141,6 +141,7 @@ public final class PaliWalletCryptoModule: Module {
     Name("PaliWalletCrypto")
     Function("info") { ["apiVersion": 1, "implementation": "apple-cryptokit-commoncrypto"] as [String: Any] }
     Function("createContext") { PaliCryptoContext() }
+    Function("slhParallelism") { PaliSlhLeafWorker.shared.parallelism }
     Function("createSlhContext") { (namespace: String) in try self.operation {
       guard self.slhForeground() else { throw PaliSlhFailure.unavailable }
       return try PaliSlhContext(namespace: namespace, owner: self.slhOwner)

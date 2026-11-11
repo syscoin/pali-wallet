@@ -3,6 +3,7 @@ package expo.modules.paliwalletcrypto
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.sharedobjects.SharedObject
 import java.util.concurrent.Executors
+import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 
 private const val KEY_KIND = "SLH-DSA-SEED"
@@ -121,36 +122,99 @@ class PaliSlhLeafOperation internal constructor(
   }
 }
 
-internal object PaliSlhLeafWorker {
-  private val busy = AtomicBoolean(false)
-  private val queue = Executors.newSingleThreadExecutor { task ->
-    Thread(task, "PaliSlhSetup").apply { isDaemon = true }
-  }
-  fun cleanup(work: () -> Unit) { queue.execute(work) }
+internal enum class PaliSlhWorkKind { EXCLUSIVE, INDEPENDENT }
 
-  fun <T> enqueue(work: () -> T, complete: (T) -> Unit): Boolean {
-    if (!busy.compareAndSet(false, true)) return false
-    return try {
-      queue.execute {
-        val result = try { work() } finally { busy.set(false) }
-        complete(result)
-      }
-      true
-    } catch (_: Throwable) { busy.set(false); false }
+/** FIFO admission: independent work may share workers, but never cross a barrier. */
+internal class PaliSlhScheduler(
+  val parallelism: Int,
+  private val executor: Executor,
+  private val normalLimit: Int = 8
+) {
+  private class Task(val kind: PaliSlhWorkKind, val cleanup: Boolean, val run: () -> Unit, val rejected: () -> Unit)
+  private val pending = java.util.ArrayDeque<Task>()
+  private var active = 0
+  private var exclusive = false
+  private var normalCount = 0
+  private var cleanupCount = 0
+
+  init { require(parallelism in 1..6 && normalLimit in 1..8) }
+
+  fun enqueue(kind: PaliSlhWorkKind, work: () -> Unit, rejected: () -> Unit): Boolean {
+    synchronized(this) {
+      if (cleanupCount != 0 || normalCount >= normalLimit) return false
+      normalCount++
+      pending.addLast(Task(kind, false, work, rejected))
+    }
+    pump()
+    return true
   }
+
+  // Cleanup cannot be refused at the normal work limit. Its reservation also
+  // prevents a stream of new operations from starving resource retirement.
+  fun cleanup(work: () -> Unit) {
+    synchronized(this) {
+      cleanupCount++
+      pending.addLast(Task(PaliSlhWorkKind.EXCLUSIVE, true, work, work))
+    }
+    pump()
+  }
+
+  private fun pump() {
+    val ready = synchronized(this) {
+      val jobs = mutableListOf<Task>()
+      if (!exclusive) {
+        while (pending.isNotEmpty() && active < parallelism) {
+          val next = pending.peekFirst()
+          if (next.kind == PaliSlhWorkKind.EXCLUSIVE) {
+            if (active != 0) break
+            pending.removeFirst(); active++; exclusive = true; jobs.add(next); break
+          }
+          pending.removeFirst(); active++; jobs.add(next)
+        }
+      }
+      jobs
+    }
+    ready.forEach { task ->
+      val entered = AtomicBoolean(false)
+      try {
+        executor.execute { entered.set(true); try { task.run() } finally { finished(task) } }
+      } catch (_: Throwable) {
+        // Dispatch failure still drains the owner's inputs/resources exactly
+        // once, before another operation is allowed to acquire this slot.
+        if (!entered.get()) try { task.rejected() } finally { finished(task) }
+      }
+    }
+  }
+
+  private fun finished(task: Task) {
+    synchronized(this) {
+      active--
+      if (task.kind == PaliSlhWorkKind.EXCLUSIVE) exclusive = false
+      if (task.cleanup) cleanupCount-- else normalCount--
+    }
+    pump()
+  }
+}
+
+internal object PaliSlhLeafWorker {
+  val parallelism = minOf(6, maxOf(1, Runtime.getRuntime().availableProcessors() - 1))
+  private val scheduler = PaliSlhScheduler(parallelism, Executors.newFixedThreadPool(parallelism) { task ->
+    Thread(task, "PaliSlhWorker").apply { isDaemon = true }
+  })
+  fun cleanup(work: () -> Unit) { scheduler.cleanup(work) }
+  fun <T> enqueue(kind: PaliSlhWorkKind = PaliSlhWorkKind.EXCLUSIVE, work: () -> T, complete: (T) -> Unit, rejected: () -> Unit): Boolean =
+    scheduler.enqueue(kind, { complete(work()) }, rejected)
 
   fun execute(operation: PaliSlhLeafOperation, promise: Promise) {
     val seed = try { operation.copySeed() } catch (_: Throwable) {
       operation.deliver(null, promise)
       return
     }
-    val admitted = enqueue({
+    val refused = { seed.fill(0); operation.deliver(null, promise) }
+    val admitted = enqueue(PaliSlhWorkKind.INDEPENDENT, {
       try { operation.run(seed) } catch (_: Throwable) { null }
       finally { seed.fill(0) }
-    }, { output -> operation.deliver(output, promise) })
-    if (!admitted) {
-      seed.fill(0)
-      operation.deliver(null, promise)
-    }
+    }, { output -> operation.deliver(output, promise) }, refused)
+    if (!admitted) refused()
   }
 }

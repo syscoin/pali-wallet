@@ -112,6 +112,7 @@ class PaliWalletCryptoModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("PaliWalletCrypto")
     Function("info") { mapOf("apiVersion" to 1, "implementation" to "android-jca-bc") }
+    Function("slhParallelism") { PaliSlhLeafWorker.parallelism }
     Function("createContext") { PaliCryptoContext() }
     Function("createSlhContext") { namespace: String -> operation {
       assertSlhForeground()

@@ -92,7 +92,9 @@ class PaliSlhTree internal constructor(
   private val mappingGood = AtomicBoolean(true)
   private val mapping = ReentrantLock()
   private var released = false
-  private var cleanupGood = true
+  private var releaseScheduled = false
+  private var releaseResult: Boolean? = null
+  private val releaseWaiters = mutableListOf<(Boolean) -> Unit>()
   internal fun check() { check(!retired.get() && mappingGood.get()); context.check() }
   @androidx.annotation.Keep fun isCurrentForSlhIO(): Boolean = runCatching { check() }.isSuccess
   @androidx.annotation.Keep fun markSlhMappingFailure() { mappingGood.set(false); context.markCleanupFailure(); context.close() }
@@ -103,16 +105,29 @@ class PaliSlhTree internal constructor(
   }
   internal fun release(promise: Promise? = null, complete: ((Boolean) -> Unit)? = null) {
     retired.set(true)
+    val waiter: (Boolean) -> Unit = { good ->
+      if (good) promise?.resolve() else promise?.reject("ERR_SLH_EXECUTION", "Native SLH execution unavailable", null)
+      complete?.invoke(good)
+    }
+    var immediate: Boolean? = null
+    val schedule = synchronized(this) {
+      immediate = releaseResult
+      if (immediate != null) false else {
+        if (promise != null || complete != null) releaseWaiters.add(waiter)
+        if (releaseScheduled) false else { releaseScheduled = true; true }
+      }
+    }
+    immediate?.let { waiter(it); return }
+    if (!schedule) return
     PaliSlhLeafWorker.cleanup {
       val good = runCatching { mapping.withLock {
         if (!released) {
           try { files.abort(this) } finally { released = true; check(PaliSlhNative.closeDescriptor(descriptor)) }
         }
-      } }.isSuccess && cleanupGood && mappingGood.get()
-      cleanupGood = good
+      } }.isSuccess && mappingGood.get()
       context.releaseTreeOwnership(this, good)
-      if (good) promise?.resolve() else promise?.reject("ERR_SLH_EXECUTION", "Native SLH execution unavailable", null)
-      complete?.invoke(good)
+      val callbacks = synchronized(this) { releaseResult = good; releaseWaiters.toList().also { releaseWaiters.clear() } }
+      callbacks.forEach { runCatching { it(good) } }
     }
   }
   override fun sharedObjectDidRelease() { release() }
@@ -173,21 +188,26 @@ class PaliSlhContext internal constructor(
     }
     val remaining = java.util.concurrent.atomic.AtomicInteger(live.size + 1)
     fun finish(good: Boolean) {
-      val callbacks = synchronized(this) {
+      val complete = synchronized(this) {
         disposalGood = disposalGood && good
-        if (remaining.decrementAndGet() != 0) return
-        val filesClosed = runCatching { files.close() }.isSuccess
-        disposalGood = disposalGood && filesClosed
-        owner.closeNamespace(namespace, disposalGood)
-        disposed = true; waiters.toList().also { waiters.clear() }
+        remaining.decrementAndGet() == 0
       }
-      callbacks.forEach { finishPromise(it) }
+      if (complete) PaliSlhLeafWorker.cleanup {
+        val callbacks = synchronized(this) {
+          val filesClosed = runCatching { files.close() }.isSuccess
+          disposalGood = disposalGood && filesClosed
+          owner.closeNamespace(namespace, disposalGood)
+          disposed = true; waiters.toList().also { waiters.clear() }
+        }
+        callbacks.forEach { runCatching { finishPromise(it) } }
+      }
     }
     live.forEach { it.release(complete = ::finish) }; finish(true)
   }
   private fun tree(value: PaliSlhTree) { check(); check(value.context === this) }
-  private fun operation(bytes: List<ByteArray> = emptyList(), material: PaliCryptoKey?, seed: Boolean = false, body: (List<ByteArray>) -> Any?): PaliSlhOperation {
-    check(); val operation = PaliSlhOperation(this, material, seed, bytes, body)
+  private fun operation(bytes: List<ByteArray> = emptyList(), material: PaliCryptoKey?, seed: Boolean = false,
+    kind: PaliSlhWorkKind = PaliSlhWorkKind.EXCLUSIVE, body: (List<ByteArray>) -> Any?): PaliSlhOperation {
+    check(); val operation = PaliSlhOperation(this, material, seed, bytes, kind, body)
     synchronized(this) { check(!closed); operations.removeAll { it.get() == null }; operations.add(WeakReference(operation)) }
     return operation
   }
@@ -210,7 +230,7 @@ class PaliSlhContext internal constructor(
   }
   internal fun leafChunk(seed: PaliCryptoKey, start: Double, count: Double): PaliSlhOperation {
     val size = index(count, 1, 8192); val first = index(start, 0, SLH_LEAVES - size)
-    return operation(material = seed, seed = true) { val bytes = key(seed, true); try {
+    return operation(material = seed, seed = true, kind = PaliSlhWorkKind.INDEPENDENT) { val bytes = key(seed, true); try {
       val result = checkNotNull(PaliSlhNative.leafChunk(bytes, first, size)); try { check(result.size == size * 16); slhText(result) } finally { result.fill(0) }
     } finally { bytes.fill(0) } }
   }
@@ -221,7 +241,8 @@ class PaliSlhContext internal constructor(
   internal fun prepareVerify(publicKey: String, action: String, signature: String) = operation(listOf(slhHex(publicKey, 32), slhHex(action, 32), slhHex(signature, 3856)), material = null) { input ->
     when (PaliSlhNative.verify(input[0], input[1], input[2])) { 1 -> true; 0 -> false; else -> error("Native SLH execution unavailable") }
   }
-  private fun signing(key: PaliCryptoKey, bytes: List<ByteArray>, length: Int, body: (ByteArray, List<ByteArray>) -> ByteArray?) = operation(bytes, material = key) { input ->
+  private fun signing(key: PaliCryptoKey, bytes: List<ByteArray>, length: Int,
+    kind: PaliSlhWorkKind = PaliSlhWorkKind.EXCLUSIVE, body: (ByteArray, List<ByteArray>) -> ByteArray?) = operation(bytes, material = key, kind = kind) { input ->
     val material = this.key(key, false)
     try { val result = checkNotNull(body(material, input)); try { check(result.size == length); slhText(result) } finally { result.fill(0) } }
     finally { material.fill(0) }
@@ -229,7 +250,7 @@ class PaliSlhContext internal constructor(
   internal fun prelude(key: PaliCryptoKey, text: String, random: String) = signing(key, listOf(message(text), slhHex(random, 16)), 46) { material, input -> PaliSlhNative.prelude(material, input[0], input[1]) }
   internal fun fors(key: PaliCryptoKey, text: String, treeIndex: Double): PaliSlhOperation {
     val number = index(treeIndex, 0, 5)
-    return signing(key, listOf(slhHex(text, 46)), 416) { material, input -> PaliSlhNative.fors(material, input[0], number) }
+    return signing(key, listOf(slhHex(text, 46)), 416, PaliSlhWorkKind.INDEPENDENT) { material, input -> PaliSlhNative.fors(material, input[0], number) }
   }
   internal fun cached(key: PaliCryptoKey, text: String, random: String, value: PaliSlhTree): PaliSlhOperation {
     tree(value); return signing(key, listOf(message(text), slhHex(random, 16)), 3856) { material, input -> value.access(false) { fd -> PaliSlhNative.cached(material, input[0], input[1], fd, value) } }
@@ -254,13 +275,14 @@ class PaliSlhCachePurge internal constructor(
   @androidx.annotation.Keep fun isCurrentForSlhIO(): Boolean = !cancelled.get() && owner.isOpen
   internal fun run(promise: Promise) {
     if (!started.compareAndSet(false, true) || !isCurrentForSlhIO() || !owner.beginPurge(namespace)) { reject(promise); return }
-    val accepted = PaliSlhLeafWorker.enqueue({
+    val refused = { owner.endPurge(namespace, true); reject(promise) }
+    val accepted = PaliSlhLeafWorker.enqueue(work = {
       try { PaliSlhFiles.purge(app, namespace, this) } catch (_: Throwable) { false to false }
-    }, { result ->
+    }, complete = { result ->
       owner.endPurge(namespace, result.second)
       if (result.first && isCurrentForSlhIO()) promise.resolve() else reject(promise)
-    })
-    if (!accepted) { owner.endPurge(namespace, true); reject(promise) }
+    }, rejected = refused)
+    if (!accepted) refused()
   }
   private fun reject(promise: Promise) { promise.reject("ERR_SLH_EXECUTION", "Native SLH execution unavailable", null) }
   override fun sharedObjectDidRelease() { cancel() }
@@ -268,16 +290,26 @@ class PaliSlhCachePurge internal constructor(
 
 class PaliSlhOperation internal constructor(
   private val context: PaliSlhContext, private val material: PaliCryptoKey?, private val seed: Boolean,
-  private val bytes: List<ByteArray>, private val body: (List<ByteArray>) -> Any?
+  private val bytes: List<ByteArray>, private val kind: PaliSlhWorkKind = PaliSlhWorkKind.EXCLUSIVE,
+  private val body: (List<ByteArray>) -> Any?
 ) : SharedObject() {
   private val started = AtomicBoolean(false)
   private val cancelled = AtomicBoolean(false)
-  internal fun cancel() { cancelled.set(true) }
+  @Synchronized internal fun cancel() {
+    cancelled.set(true)
+    if (!started.get()) bytes.forEach { it.fill(0) }
+  }
   private fun check() { check(!cancelled.get()); context.check(); material?.let { context.checkMaterial(it, seed) } }
   internal fun run(promise: Promise) {
-    try { check(started.compareAndSet(false, true)); check(); context.begin() }
-    catch (_: Throwable) { reject(promise); return }
-    val accepted = PaliSlhLeafWorker.enqueue({
+    val ready = synchronized(this) {
+      if (!started.compareAndSet(false, true)) false else {
+        try { check(); context.begin(); true }
+        catch (_: Throwable) { bytes.forEach { it.fill(0) }; false }
+      }
+    }
+    if (!ready) { reject(promise); return }
+    val refused = { bytes.forEach { it.fill(0) }; context.end(); reject(promise) }
+    val accepted = PaliSlhLeafWorker.enqueue(kind, {
       var produced: Any? = null
       try { check(); produced = body(bytes); check(); Result.success(produced) to null }
       catch (error: Throwable) { Result.failure<Any?>(error) to (produced as? PaliSlhTree) }
@@ -290,8 +322,8 @@ class PaliSlhOperation internal constructor(
         // C/body has returned; never rely on Expo GC for an undelivered output.
         if (tree != null) tree.release(complete = { reject(promise) }) else reject(promise)
       }
-    })
-    if (!accepted) { context.end(); bytes.forEach { it.fill(0) }; reject(promise) }
+    }, refused)
+    if (!accepted) refused()
   }
   private fun reject(promise: Promise) { promise.reject("ERR_SLH_EXECUTION", "Native SLH execution unavailable", null) }
   override fun sharedObjectDidRelease() { cancel() }

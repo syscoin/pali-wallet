@@ -3522,7 +3522,7 @@ function slhSmartBackend(onRetire: () => Promise<void> = async () => undefined) 
       let retired = false;
       const tree = () => { const value = { async release() {} }; roots.set(value, new Uint8Array(16).fill(0x44)); return value; };
       const host: SlhDsaExecutionHost<NativeSlhTree, NativeSlhKey> = {
-        hardwareConcurrency: 1, forsConcurrency: 1,
+        leafConcurrency: 1, forsConcurrency: 1,
         allocateTree: tree, releaseTree: (value, erase) => value.release(erase),
         readTree(value, offset, length) { assert.equal(offset, 134217696); assert.equal(length, 16); return roots.get(value)!.slice(); },
         writeTree() { throw Error('No parallel leaf lane'); },

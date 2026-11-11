@@ -32,3 +32,5 @@ for override in SPX_FULL_HEIGHT=21 SPX_FORS_HEIGHT=23; do
   grep -F 'Only the pinned full SHA2-128-24 parameters are admitted' "$scratch/forbidden.log" > /dev/null
 done
 printf 'Changed-profile compile refusals passed\n'
+
+sh "$test_dir/run-slh-native-concurrency.sh"

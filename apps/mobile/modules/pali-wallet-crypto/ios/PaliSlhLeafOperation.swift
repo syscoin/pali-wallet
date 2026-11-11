@@ -123,23 +123,63 @@ final class PaliSlhLeafOperation: SharedObject, @unchecked Sendable {
   }
 }
 
+enum PaliSlhWorkKind: Sendable, Equatable { case exclusive, independent }
+
 final class PaliSlhLeafWorker: @unchecked Sendable {
   static let shared = PaliSlhLeafWorker()
+  let parallelism: Int
+  init(parallelism: Int = min(6, max(1, ProcessInfo.processInfo.activeProcessorCount - 1))) {
+    precondition((1...6).contains(parallelism))
+    self.parallelism = parallelism
+  }
   private let mutex = NSLock()
-  private let queue = DispatchQueue(label: "org.paliwallet.slh-setup", qos: .userInitiated)
-  private var busy = false
-  func cleanup(_ work: @escaping @Sendable () -> Void) { queue.async(execute: work) }
+  private let queue = DispatchQueue(label: "org.paliwallet.slh-setup", qos: .userInitiated, attributes: .concurrent)
+  private struct Entry: Sendable { let kind: PaliSlhWorkKind; let run: @Sendable () -> Void }
+  private var pending: [Entry] = []
+  private var active = 0, outstanding = 0, cleanups = 0
+  private var exclusive = false
 
-  func enqueue<T: Sendable>(_ work: @escaping @Sendable () -> T,
-                           complete: @escaping @Sendable (T) -> Void) -> Bool {
-    mutex.lock(); let admitted = !busy; if admitted { busy = true }; mutex.unlock()
-    guard admitted else { return false }
-    queue.async {
-      let result = work()
-      self.mutex.lock(); self.busy = false; self.mutex.unlock()
-      complete(result)
+  // Called only with mutex held. FIFO exclusive entries stop later leaf/FORS
+  // calls from overtaking a tree write or resource release.
+  private func pump() {
+    while !exclusive, let first = pending.first {
+      if first.kind == .exclusive {
+        guard active == 0 else { return }
+        exclusive = true
+      } else if active >= parallelism { return }
+      pending.removeFirst(); active += 1
+      queue.async(execute: first.run)
     }
-    return true
+  }
+  private func finish(_ kind: PaliSlhWorkKind, cleanup: Bool) {
+    mutex.lock()
+    active -= 1
+    if kind == .exclusive { exclusive = false }
+    if cleanup { cleanups -= 1 } else { outstanding -= 1 }
+    pump(); mutex.unlock()
+  }
+  func cleanup(_ work: @escaping @Sendable () -> Void) {
+    mutex.lock(); cleanups += 1
+    pending.append(Entry(kind: .exclusive, run: { [self] in
+      defer { finish(.exclusive, cleanup: true) }
+      work()
+    }))
+    pump(); mutex.unlock()
+  }
+  func enqueue<T: Sendable>(kind: PaliSlhWorkKind = .exclusive,
+                           _ work: @escaping @Sendable () -> T,
+                           complete: @escaping @Sendable (T) -> Void) -> Bool {
+    mutex.lock(); defer { mutex.unlock() }
+    guard outstanding < 8, cleanups == 0 else { return false }
+    outstanding += 1
+    pending.append(Entry(kind: kind, run: { [self] in
+      defer { finish(kind, cleanup: false) }
+      let result = work()
+      // Completion joins context.active and disposes unaccepted output before
+      // a queued cleanup is allowed to close its namespace or descriptors.
+      complete(result)
+    }))
+    pump(); return true
   }
 
   func execute(_ operation: PaliSlhLeafOperation,
@@ -150,7 +190,7 @@ final class PaliSlhLeafWorker: @unchecked Sendable {
       complete(.failure(.unavailable))
       return
     }
-    let admitted = enqueue({
+    let admitted = enqueue(kind: .independent, {
       let result = operation.run(seed: &copied.bytes)
       // Cancellation retires output only. The live C input stays owned until return.
       copied.clear()
