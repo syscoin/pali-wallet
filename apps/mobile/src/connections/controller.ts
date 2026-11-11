@@ -260,6 +260,7 @@ export class NativeConnectionsController {
   }> | null = null;
   private statusSession: WalletConnectSession | undefined;
   private statusResponse: ((shown: boolean) => Promise<void>) | undefined;
+  private statusRefresh: { id: string; busy: boolean; check(): void; read(): Promise<CallsBundleStatus> } | undefined;
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
   private host: NativeConnectionHost | undefined;
   private repository: NativeConnectionRepository | undefined;
@@ -438,6 +439,28 @@ export class NativeConnectionsController {
         const respond = this.statusResponse;
         this.statusResponse = undefined;
         await respond?.(true);
+      },
+      refreshCallsStatus: async (id) => {
+        const owner = this.statusRefresh;
+        if (!owner || owner.id !== id) return failure('REQUEST_EXPIRED');
+        if (owner.busy) return failure('BUSY');
+        owner.busy = true;
+        const finish = this.disposal.begin();
+        try {
+          owner.check();
+          const status = await owner.read();
+          owner.check();
+          this.callsStatus = Object.freeze({ ...this.callsStatus!, status });
+          this.publish();
+        } catch (error) {
+          if (this.statusRefresh === owner) {
+            try { owner.check(); } catch { this.dismissStatus(); }
+          }
+          throw error;
+        } finally {
+          owner.busy = false;
+          finish();
+        }
       },
       dismissCallsStatus: (id) => {
         if (this.callsStatus?.id === id) this.dismissStatus();
@@ -740,6 +763,7 @@ export class NativeConnectionsController {
                 methodsByAccount: Object.freeze(context ? context.accounts.map(account => Object.freeze({
                   accountId: account.id,
                   methods: Object.freeze(this.proposalPermissions(proposal, context!, account).methods),
+                  canApprove: this.canApprove(proposal, account.id),
                 })) : []),
                 canApprove: this.canApprove(proposal),
               })
@@ -782,6 +806,10 @@ export class NativeConnectionsController {
     });
   }
   private publish() {
+    if (this.statusRefresh) {
+      try { this.statusRefresh.check(); }
+      catch { this.dismissStatus(); return; }
+    }
     if (
       this.statusSession &&
       (this.connections.get(sessionKey(this.statusSession))?.session !==
@@ -1904,16 +1932,19 @@ export class NativeConnectionsController {
         const hasLiveSequence = () => [...this.requests.values()].some((message) =>
           message.session.binding.origin === request.session.binding.origin &&
           message.request.method === 'wallet_sendCalls' && message.request.bundleId === bundleId);
-        if (!hasLiveSequence()) await this.host!.recoverStoppedEoaCalls(
-          request.session.binding.origin, request.params[0], () => {
-            statusGuard();
-            if (hasLiveSequence()) throw new Error('Calls sequence is still active');
-          });
-        result = await this.host!.readCallsStatus(
-          request.session.binding.origin,
-          request.params[0],
-          statusGuard
-        );
+        const readStatus = async (check: () => void) => {
+          check();
+          if (!hasLiveSequence()) await this.host!.recoverStoppedEoaCalls(
+            request.session.binding.origin, bundleId, () => {
+              check();
+              if (hasLiveSequence()) throw new Error('Calls sequence is still active');
+            });
+          check();
+          const value = await this.host!.readCallsStatus(request.session.binding.origin, bundleId, check);
+          check();
+          return value;
+        };
+        result = await readStatus(statusGuard);
         statusGuard();
         if (request.method === 'wallet_showCallsStatus') {
           if (this.callsStatus)
@@ -1928,6 +1959,19 @@ export class NativeConnectionsController {
             origin: request.session.binding.origin,
             status: result as CallsBundleStatus,
           });
+          const refreshOwner: NonNullable<typeof this.statusRefresh> = {
+            id,
+            busy: false,
+            check: () => {
+              statusGuard();
+              if (this.statusRefresh !== refreshOwner || this.callsStatus?.id !== id ||
+                  this.options.source.getSnapshot().phase !== 'ready' || !this.host!.context().unlocked ||
+                  !connected.engine.isConnected(request.session.binding.origin) || session.expiry * 1000 <= Date.now())
+                failure('CONTEXT_CHANGED');
+            },
+            read: () => readStatus(refreshOwner.check),
+          };
+          this.statusRefresh = refreshOwner;
           this.statusResponse = async (shown) => {
             const assertStatusCurrent = () => {
               statusGuard();
@@ -2025,6 +2069,7 @@ export class NativeConnectionsController {
     if (!this.callsStatus && !this.statusResponse) return;
     const respond = this.statusResponse;
     this.statusResponse = undefined;
+    this.statusRefresh = undefined;
     this.callsStatus = null;
     this.statusSession = undefined;
     clearTimeout(this.statusTimer);

@@ -8,7 +8,7 @@ import { Button, Card, colors, Header, Icon, IconButton, Notice, Screen, Text } 
 import { IdlePressable } from './IdleActivityBoundary';
 import { DappSiteStatus } from './DappSiteStatus';
 import { ConnectionQrScanner } from './ConnectionQrScanner';
-import type { NativePairingEntry } from '../connections/pairingLinks';
+import { extractPairingUri, type NativePairingEntry } from '../connections/pairingLinks';
 
 const appInitial = (name: string) => Array.from(name.trim())[0]?.toUpperCase() || '•';
 type Session = NativeConnectionsSnapshot['sessions'][number];
@@ -52,10 +52,35 @@ export function NativeCallsStatus({
   controller: NativeConnectionsView;
 }) {
   const { t } = useNativeTranslation();
+  const [feedback, setFeedback] = useState<{ id: string; controller: NativeConnectionsView; busy: boolean; error: boolean } | null>(null);
+  const currentFeedback = feedback?.id === view.id && feedback.controller === controller ? feedback : null;
+  const refreshing = currentFeedback?.busy === true, refreshError = currentFeedback?.error === true;
+  const refreshOwner = useRef<{ live: boolean; busy: boolean; id: string; controller: NativeConnectionsView } | null>(null);
+  useLayoutEffect(() => {
+    const owner = { live: true, busy: false, id: view.id, controller };
+    refreshOwner.current = owner;
+    return () => { owner.live = false; };
+  }, [controller, view.id]);
   const close = useCallback(
-    () => controller.dismissCallsStatus(view.id),
+    () => {
+      const owner = refreshOwner.current;
+      if (owner?.id === view.id && owner.controller === controller) owner.live = false;
+      controller.dismissCallsStatus(view.id);
+    },
     [controller, view.id]
   );
+  const refresh = async () => {
+    const owner = refreshOwner.current;
+    if (!owner?.live || owner.busy || owner.id !== view.id || owner.controller !== controller) return;
+    owner.busy = true; setFeedback({ id: view.id, controller, busy: true, error: false });
+    try { await controller.refreshCallsStatus(view.id); }
+    catch { if (owner.live && refreshOwner.current === owner) setFeedback({ id: view.id, controller, busy: true, error: true }); }
+    finally {
+      owner.busy = false;
+      if (owner.live && refreshOwner.current === owner)
+        setFeedback(previous => previous?.id === view.id && previous.controller === controller ? { ...previous, busy: false } : previous);
+    }
+  };
   useEffect(() => {
     void controller.callsStatusShown(view.id).catch(() => undefined);
     const subscription = BackHandler.addEventListener(
@@ -103,6 +128,9 @@ export function NativeCallsStatus({
             <Text>{t('mobile.connections.block', { blockNumber: BigInt(receipt.blockNumber).toString() })}</Text>
           </Card>
         ))}
+        {refreshError && <Notice title={t('mobile.connections.bundleStatus')} body={t('mobile.connections.unavailable')} />}
+        {refreshing && <ActivityIndicator accessibilityLabel={t('mobile.infrastructure.refresh')} color={colors.pink} />}
+        <Button title={t('mobile.infrastructure.refresh')} icon="refresh" disabled={refreshing} onPress={() => void refresh()} />
         <Button title={t('buttons.close')} variant="secondary" size="compact" onPress={close} />
       </Screen>
     </SafeAreaView>
@@ -135,6 +163,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
   const busy = snapshot.status === 'pairing' || snapshot.status === 'approving';
   const selectedAccountId = selection?.controller === controller && snapshot.accounts.some((account) => account.id === selection.accountId)
     ? selection.accountId : snapshot.selectedAccountId;
+  const selectedPermissions = proposal?.methodsByAccount.find(account => account.accountId === selectedAccountId);
   const selectedSession = snapshot.status !== 'locked' && !proposal && sessionSelection?.controller === controller && snapshot.sessions.find(session => session.id === sessionSelection.id);
   const sessionKey = selectedSession ? sessionIdentity(selectedSession) : null;
   const sessionOwner = useMemo(() => ({ controller, selection: sessionSelection, key: sessionKey }), [controller, sessionSelection, sessionKey]);
@@ -215,7 +244,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
       return;
     }
     if (!current.active || current.revision !== revision) return;
-    await controller.pair(uri).catch(() => undefined);
+    await controller.pair(extractPairingUri(uri) ?? uri).catch(() => undefined);
   };
   const invoke = (operation: () => Promise<void>) => { void operation().catch(() => undefined); };
   const runSessionAction = async (action: 'open' | 'disconnect') => {
@@ -291,9 +320,9 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
   return <SafeAreaView edges={['top']} style={s.container}><Screen gap={14} scrollResetKey={proposal ? `proposal:${proposal.id}` : 'connections'} footer={proposal ? <View style={s.actions}>
     <Button title={t('buttons.reject')} variant="secondary" style={s.action} onPress={() => invoke(() => controller.reject(proposal.id))} />
     <Button title={snapshot.status === 'approving' ? t('mobile.connections.connecting') : t('buttons.connect')}
-      style={s.action} disabled={busy || expired || !proposal.canApprove || !selectedAccountId || !snapshot.network}
+      style={s.action} disabled={busy || expired || !selectedPermissions?.canApprove || !selectedAccountId || !snapshot.network}
       onPress={() => {
-        if (selectedAccountId && snapshot.network && !expired) invoke(() => controller.approve(proposal.id, selectedAccountId, snapshot.network!.id, snapshot.revision));
+        if (selectedAccountId && selectedPermissions?.canApprove && snapshot.network && !expired) invoke(() => controller.approve(proposal.id, selectedAccountId, snapshot.network!.id, snapshot.revision));
       }} />
   </View> : undefined}>
     <Header title={proposal ? t('connections.connectRequest') : t('mobile.connections.title')} onBack={close} />
@@ -318,8 +347,8 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
             {account.id === selectedAccountId && <Icon name="check" color={colors.blue} size={20} />}
           </IdlePressable>)}
         </View>
-        {renderPermissions(proposal.methodsByAccount.find(account => account.accountId === selectedAccountId)?.methods ?? [], proposal)}
-        {!proposal.canApprove && proposal.verification.validation !== 'INVALID' && !proposal.verification.isScam && <Notice title={t('mobile.connections.unsupportedTitle')} body={t('mobile.connections.unsupportedBody')} />}
+        {renderPermissions(selectedPermissions?.methods ?? [], proposal)}
+        {!selectedPermissions?.canApprove && proposal.verification.validation !== 'INVALID' && !proposal.verification.isScam && <Notice title={t('mobile.connections.unsupportedTitle')} body={t('mobile.connections.unsupportedBody')} />}
       </> : <Card style={s.card}>
         <View style={s.connectHeading}><Icon name={busy ? 'clock' : 'scan'} size={23} color={colors.blue} />
         <Text style={s.title}>{busy ? t('mobile.connections.waiting') : t('mobile.connections.connectWalletConnect')}</Text></View>

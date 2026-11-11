@@ -1209,6 +1209,30 @@ test('unsupported raw signing remains unavailable and cancel affects only the ne
   }
 });
 
+test('required calls expose connection eligibility for each account', async () => {
+  const f = fixture({ hardware: 'Ledger', secondAccount: true, batch: true });
+  try {
+    await settle();
+    await f.view.pair('wc:fixture');
+    f.event({ type: 'proposal', proposal: { ...f.proposal,
+      requiredNamespaces: { eip155: { chains: ['eip155:1'], methods: ['wallet_sendCalls'], events: [] } },
+    } });
+    const proposal = f.view.getSnapshot().proposals[0]!;
+    const ledger = proposal.methodsByAccount.find(account => account.accountId === 'ledger:60:0')!;
+    const software = proposal.methodsByAccount.find(account => account.accountId === 'hd:60:1')!;
+    assert.equal(ledger.canApprove, false);
+    assert.equal(ledger.methods.includes('wallet_sendCalls'), false);
+    assert.equal(software.canApprove, true);
+    assert.equal(software.methods.includes('wallet_sendCalls'), true);
+    await assert.rejects(f.view.approve(proposal.id, ledger.accountId, 'ethereum', f.view.getSnapshot().revision),
+      { message: 'UNSUPPORTED_REQUEST' });
+    assert.equal(f.approved(), 0);
+    await f.view.approve(proposal.id, software.accountId, 'ethereum', f.view.getSnapshot().revision);
+    assert.equal(f.approved(), 1);
+    assert.equal(f.view.getSnapshot().proposals.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
 test('ordinary unlock preparation stays local and unchanged custody updates do not emit duplicate events', async () => {
   const f = fixture();
   await settle();
@@ -5460,4 +5484,121 @@ test('dapp prompt binding follows an explicitly activated request account withou
     assert.equal(f.view.isRequestAuthenticating(review.id), false);
     assert.equal(f.signatures.length, 1);
   } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+async function showRefreshableCallsStatus(f: Awaited<ReturnType<typeof connectedFixture>>, hash?: string) {
+  const calls = (await f.repository).calls;
+  const descriptor = { atomic: false, smartAccount: false, chainId: 1 };
+  await calls.reserveSendCallsBundle(ORIGIN, '0xcafe', descriptor, 'refresh-reserved', ADDRESS);
+  if (hash) await calls.recordSendCallsBundle(ORIGIN, '0xcafe', {
+    ...descriptor, reservationId: 'refresh-reserved', txHashes: [hash], submissionCompleted: true,
+  });
+  f.setCallsStatusReceipts(1, new Map());
+  await messageRequest(f, 'wallet_showCallsStatus', ['0xcafe']);
+  const status = f.view.getSnapshot().callsStatus;
+  assert(status);
+  await f.view.callsStatusShown(status.id);
+  return status;
+}
+
+for (const receiptStatus of ['0x1', '0x0']) test(`manual calls status refresh observes ${receiptStatus} on the stored chain without another acknowledgement`, async () => {
+  const f = await connectedFixture({ batch: true });
+  const hash = '0x' + '43'.repeat(32);
+  try {
+    f.selectChain(2);
+    const shown = await showRefreshableCallsStatus(f, hash);
+    assert.equal(shown.status.status, 100);
+    f.setCallsStatusReceipts(1, new Map([[hash, {
+      transactionHash: hash, status: receiptStatus, blockHash: '0x' + 'ab'.repeat(32),
+      blockNumber: '0x7', gasUsed: '0x5208', logs: [],
+    }]]));
+    await f.view.refreshCallsStatus(shown.id);
+    const refreshed = f.view.getSnapshot().callsStatus;
+    assert.equal(refreshed?.id, shown.id);
+    assert.equal(refreshed?.status.status, receiptStatus === '0x1' ? 200 : 500);
+    assert.equal(refreshed?.status.chainId, '0x1');
+    assert.deepEqual(f.callsStatusChains, [1, 1]);
+    await f.view.callsStatusShown(shown.id);
+    assert.equal(f.responses.length, 1);
+    assert.equal(f.transactions.length, 0);
+    assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('manual calls status read errors preserve the last successful view', async () => {
+  const f = await connectedFixture({ batch: true });
+  try {
+    const shown = await showRefreshableCallsStatus(f);
+    f.failCallsStatus(Error('RPC unavailable'));
+    await assert.rejects(f.view.refreshCallsStatus(shown.id), /RPC unavailable/);
+    assert.equal(f.view.getSnapshot().callsStatus, shown);
+    assert.equal(f.responses.length, 1);
+  } finally { await f.controller.dispose(); }
+});
+
+test('manual calls status refresh rejects overlap and cannot replace a newer status after Close', async () => {
+  const f = await connectedFixture({ batch: true }), held = Promise.withResolvers<void>();
+  try {
+    const shown = await showRefreshableCallsStatus(f);
+    f.setCallsStatusWait(held.promise);
+    const pending = f.view.refreshCallsStatus(shown.id);
+    const rejected = assert.rejects(pending, { code: 'CONTEXT_CHANGED' });
+    await settle();
+    await assert.rejects(f.view.refreshCallsStatus(shown.id), { code: 'BUSY' });
+    assert.equal(f.callsStatusReads.length, 2);
+    f.view.dismissCallsStatus(shown.id);
+    f.setCallsStatusWait(Promise.resolve());
+    await messageRequest(f, 'wallet_showCallsStatus', ['0xcafe'], 11);
+    const newer = f.view.getSnapshot().callsStatus;
+    assert(newer && newer.id !== shown.id);
+    held.resolve(); await rejected;
+    assert.equal(f.view.getSnapshot().callsStatus, newer);
+    assert.equal(f.responses.length, 1);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+for (const retirement of ['lock', 'session', 'context', 'expiry'] as const) test(`manual calls status refresh retires after ${retirement}`, async () => {
+  const f = await connectedFixture({ batch: true }), held = Promise.withResolvers<void>();
+  const readNow = Date.now;
+  let now = readNow();
+  Date.now = () => now;
+  try {
+    const shown = await showRefreshableCallsStatus(f);
+    f.setCallsStatusWait(held.promise);
+    const pending = f.view.refreshCallsStatus(shown.id);
+    const rejected = assert.rejects(pending);
+    await settle();
+    if (retirement === 'lock') f.lock();
+    else if (retirement === 'session') f.event({ type: 'session-ended', topic: TOPIC });
+    else if (retirement === 'context') f.selectChain(2);
+    else now += 300001;
+    held.resolve(); await rejected;
+    assert.equal(f.view.getSnapshot().callsStatus, null);
+    assert.equal(f.responses.length, 1);
+    await assert.rejects(f.view.refreshCallsStatus(shown.id), { code: 'REQUEST_EXPIRED' });
+    assert(await (await f.repository).calls.getStoredSendCallsBundle(ORIGIN, '0xcafe'));
+  } finally { Date.now = readNow; held.resolve(); await f.controller.dispose(); }
+});
+
+test('manual calls status refresh preserves an active per-call consent sequence', async () => {
+  const f = await connectedFixture({ batch: true });
+  try {
+    const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0xa321',
+      calls: [{ to: ADDRESS }, { to: ADDRESS }], atomicRequired: false }]);
+    assert(review?.kind === 'transaction');
+    await f.view.approveRequest(review.id, review.revision, false);
+    const suffix = f.view.getSnapshot().signingReview;
+    assert(suffix?.kind === 'transaction' && suffix.batch?.index === 1);
+    f.setCallsStatusReceipts(1, new Map());
+    await messageRequest(f, 'wallet_showCallsStatus', ['0xa321'], 11);
+    const shown = f.view.getSnapshot().callsStatus;
+    assert(shown);
+    await f.view.callsStatusShown(shown.id);
+    await f.view.refreshCallsStatus(shown.id);
+    assert.deepEqual(f.callsRecoveries, []);
+    assert.equal(f.view.getSnapshot().signingReview?.id, suffix.id);
+    assert.equal(f.transactions.length, 1);
+    f.view.dismissCallsStatus(shown.id);
+    await f.view.rejectRequest(suffix.id);
+  } finally { await f.controller.dispose(); }
 });

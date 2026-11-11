@@ -33,6 +33,7 @@ const controller: NativeConnectionsView = {
     isRequestAuthenticating: () => false,
   ...unsupportedDappViews,
     async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
+    async refreshCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     async retrySmartMetadata() { throw new Error('Smart metadata refresh is outside this fixture'); },
     async confirmSmartPayer() { throw new Error('No Smart payer review in this fixture'); },
@@ -73,7 +74,7 @@ window.__nativeConnectionsFixture = {
   proposal(allowed = true) {
     publish({ ...snapshot, revision: snapshot.revision + 1, status: 'ready', pairingExpiresAt: null, proposals: [
       { id: 42, name: 'Example app', origin: 'https://example.invalid', verification: { validation: 'VALID', isScam: false }, requiredMethods: ['eth_accounts'], canApprove: allowed, expiresAt: Date.now() + 120_000,
-        methodsByAccount: accounts.map(account => ({ accountId: account.id, methods: ['eth_accounts', 'eth_sendTransaction'] })) },
+        methodsByAccount: accounts.map(account => ({ accountId: account.id, methods: ['eth_accounts', 'eth_sendTransaction'], canApprove: allowed })) },
     ] });
   },
   fail() { publish({ ...snapshot, error: 'CONTEXT_CHANGED' }); },

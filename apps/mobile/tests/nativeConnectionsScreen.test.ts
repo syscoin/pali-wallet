@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { NativeConnectionsSnapshot } from '../src/connections/types.ts';
+import { extractPairingUri } from '../src/connections/pairingLinks.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import { screenElements, screenFixture, type ScreenElement } from './screenFixture.ts';
 
@@ -33,6 +34,7 @@ function fixture() {
   let renderingController = controller;
   const host = screenFixture(new URL('../src/screens/NativeConnections.tsx', import.meta.url), 'NativeConnections', {
     '../platform/localization': nativeTranslationFixture,
+    '../connections/pairingLinks': { extractPairingUri },
     'react-native': { ActivityIndicator: 'ActivityIndicator', View: 'View', StyleSheet: { create: (value: unknown) => value },
       BackHandler: { addEventListener: (_event: string, handler: () => boolean) => { backHandlers.add(handler); return { remove: () => backHandlers.delete(handler) }; } } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
@@ -64,7 +66,7 @@ function fixture() {
     proposal(methods = ['eth_accounts', 'eth_sendTransaction']) {
       snapshot = { ...snapshot, proposals: [{ id: 42, name: 'Example app', origin: 'https://example.invalid',
         verification: { validation: 'VALID', isScam: false }, requiredMethods: ['eth_accounts'], expiresAt: now + 120_000,
-        canApprove: true, methodsByAccount: [{ accountId: account.id, methods }] }] };
+        canApprove: true, methodsByAccount: [{ accountId: account.id, methods, canApprove: true }] }] };
     },
     session(returnable = false): NativeConnectionsSnapshot['sessions'][number] {
       return { id: 'session-1', name: 'Example app', origin: 'https://example.invalid', accountLabel: account.label,
@@ -114,6 +116,20 @@ test('QR and pasted links reach the same proposal review and only explicit Conne
   f.close();
 });
 
+test('pasted Pali links use the same WalletConnect URI as scanned links', async () => {
+  const f = fixture();
+  try {
+    const uri = `wc:${'ab'.repeat(32)}@2?relay-protocol=irn&symKey=${'cd'.repeat(32)}`;
+    f.setClipboard(async () => `pali://wc?uri=${encodeURIComponent(uri)}`);
+    await click(f.button('Paste connection link'));
+    assert.deepEqual(f.calls, [{ method: 'pair', args: [uri] }]);
+    assert(!f.calls.some(call => call.method === 'approve'));
+    f.setClipboard(async () => 'https://invalid.example/');
+    await click(f.button('Paste connection link'));
+    assert.deepEqual(f.calls.at(-1), { method: 'pair', args: ['https://invalid.example/'] });
+  } finally { f.close(); }
+});
+
 test('pairing uses the authoritative countdown without claiming app identity; no deadline invents none', () => {
   const f = fixture();
   f.update({ status: 'pairing', pairingExpiresAt: 220_000 });
@@ -135,7 +151,7 @@ test('proposal expiry disables approval, and account selection changes the discl
   f.proposal();
   const proposal = f.controller.getSnapshot().proposals[0]!;
   f.update({ accounts: [account, second], proposals: [{ ...proposal, methodsByAccount: [
-    ...proposal.methodsByAccount, { accountId: second.id, methods: ['eth_accounts', 'personal_sign'] },
+    ...proposal.methodsByAccount, { accountId: second.id, methods: ['eth_accounts', 'personal_sign'], canApprove: true },
   ] }] });
   click(f.render().find(element => element.type === 'Pressable' && element.props.accessibilityLabel?.startsWith('Savings,'))!);
   assert.match(f.text(), /Request signatures for your approval/);
@@ -145,6 +161,27 @@ test('proposal expiry disables approval, and account selection changes the discl
   click(f.button('Connect'));
   assert(!f.calls.some(call => call.method === 'approve'));
   f.close();
+});
+
+test('required calls cannot connect through an incompatible selected Ledger account', () => {
+  const f = fixture();
+  try {
+    const ledger = { id: 'ledger:60:0', label: 'Ledger', address: `0x${'34'.repeat(20)}` };
+    f.proposal(['eth_accounts', 'wallet_sendCalls']);
+    const proposal = f.controller.getSnapshot().proposals[0]!;
+    f.update({ accounts: [account, ledger], proposals: [{ ...proposal, requiredMethods: ['wallet_sendCalls'], methodsByAccount: [
+      ...proposal.methodsByAccount, { accountId: ledger.id, methods: ['eth_accounts'], canApprove: false },
+    ] }] });
+    click(f.render().find(element => element.type === 'Pressable' && element.props.accessibilityLabel?.startsWith('Ledger,'))!);
+    assert.equal(f.button('Connect').props.disabled, true);
+    assert(!f.text().includes('Request transactions for your approval'));
+    assert(f.render().some(element => element.type === 'Notice'));
+    click(f.button('Connect'));
+    assert(!f.calls.some(call => call.method === 'approve'));
+    click(f.render().find(element => element.type === 'Pressable' && element.props.accessibilityLabel?.startsWith('Daily wallet,'))!);
+    assert.equal(f.button('Connect').props.disabled, false);
+    assert(f.text().includes('Request transactions for your approval'));
+  } finally { f.close(); }
 });
 
 test('a proposal without a supplied deadline never inherits the pairing timeout', () => {

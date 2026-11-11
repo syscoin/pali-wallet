@@ -256,6 +256,10 @@ export function NativeSmartBatchFixture() {
         if (args[0] !== current.current.status?.id) unavailable();
         recorded.current.push({ method: 'callsStatusShown', args });
       },
+      async refreshCallsStatus(...args) {
+        if (args[0] !== current.current.status?.id) unavailable();
+        recorded.current.push({ method: 'refreshCallsStatus', args });
+      },
       dismissCallsStatus(...args) {
         recorded.current.push({ method: 'dismissCallsStatus', args });
         setView({ review: null, status: null, closed: true });

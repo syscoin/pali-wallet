@@ -150,7 +150,7 @@ export type NativeConnectionsSnapshot = Readonly<{
     verification: WalletConnectVerification;
     expiresAt: number | null;
     requiredMethods: readonly string[];
-    methodsByAccount: readonly Readonly<{ accountId: string; methods: readonly string[] }>[];
+    methodsByAccount: readonly Readonly<{ accountId: string; methods: readonly string[]; canApprove: boolean }>[];
     canApprove: boolean;
   }>[];
   sessions: readonly Readonly<{
@@ -187,6 +187,7 @@ export type NativeConnectionsView = Readonly<{
   rejectControl(id: string): Promise<void>;
   returnToDapp(id: string, revision: number): Promise<void>;
   callsStatusShown(id: string): Promise<void>;
+  refreshCallsStatus(id: string): Promise<void>;
   dismissCallsStatus(id: string): void;
   getSnapshot(): NativeConnectionsSnapshot;
   subscribe(listener: () => void): () => void;

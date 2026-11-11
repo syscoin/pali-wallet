@@ -152,6 +152,7 @@ export function NativeSmartDappFixture() {
     isRequestAuthenticating: () => false,
   ...unsupportedDappViews,
     async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
+    async refreshCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     getSnapshot: () => ({
       revision: latest.current?.revision ?? 0,
