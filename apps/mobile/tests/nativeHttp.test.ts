@@ -20,6 +20,7 @@ import { isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
 import { exactUtxoResponseFetch } from '../src/core/utxoReadSession.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import * as unavailableNativePasskeys from '../src/platform/nativePasskeys.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import { createNativeNetworkView } from '../src/custody/networkView.ts';
 import { createNativeDappControlHost } from '../src/custody/dappControl.ts';
@@ -334,6 +335,7 @@ test('native factory explicitly wires one owned transport to all network consume
   };
   const unexpectedFeature = () => assert.fail('unexpected feature operation in HTTP factory fixture');
   const factory = evaluate('../src/platform/nativeFactory.native.ts', {
+    './nativePasskeys': unavailableNativePasskeys,
     '../notifications/service': { nativeActivityNotifications: { replaceAccountTypes: unexpectedFeature, disableOwner: unexpectedFeature } },
     '../notifications/choices': { nativeNotificationChoices: unexpectedFeature },
     '../custody/accountIdentity': { parseNativeAccountId: unexpectedFeature },
@@ -371,7 +373,7 @@ test('native factory explicitly wires one owned transport to all network consume
     },
     './deviceUnlockCredential.native': {
       createNativeDeviceUnlockCapability: () => ({
-        prompt: { cancel() { retired.push('authentication'); } },
+        prompt: { cancel() { retired.push('authentication'); }, isActive: () => false, isAnyPromptActive: () => false, run: unexpectedFeature },
       }),
     },
     '../hardware/trezorTransport.native': {
