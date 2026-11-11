@@ -74,6 +74,7 @@ function fixture(
     moduleInventory?: boolean;
     moduleChanges?: boolean;
     smartCreation?: boolean;
+    unavailablePasskeys?: boolean;
     feeComparison?: EvmDappFeeComparison;
     minimumGasLimit?: string;
     batch?: boolean;
@@ -244,6 +245,10 @@ function fixture(
     async allocateSmartAccount(input, signal, check, onCommitted) {
       assert(options.smartCreation, 'Creation is outside this fixture'); check();
       assert.equal(creationAllocation, undefined, 'An allocated account cannot be replaced');
+      if (options.unavailablePasskeys) {
+        assert.equal(input.target.id, 'p256-webauthn', 'Unavailable passkeys must not fall back to ECDSA');
+        throw Error('Native passkeys unavailable');
+      }
       assert.equal(input.target.id, 'ecdsa'); creationRequests.push(input);
       const account = Object.freeze({ id: 'smart:60:7', index: 7, type: 'SmartAccount' as const,
         address: '0x' + '77'.repeat(20), xpub: 'new-smart-public-address', label: input.label });
@@ -1892,6 +1897,7 @@ async function connectedFixture(
     moduleInventory?: boolean;
     moduleChanges?: boolean;
     smartCreation?: boolean;
+    unavailablePasskeys?: boolean;
     feeComparison?: EvmDappFeeComparison;
     minimumGasLimit?: string;
     batch?: boolean;
@@ -5323,13 +5329,15 @@ for (const existingGrant of [true, false]) test(`Smart creation connects one cou
   } finally { await f.controller.dispose(); }
 });
 
-test('Smart creation defaults to unavailable native P256 instead of silently choosing ECDSA', async () => {
-  const f = await connectedFixture({ smartCreation: true });
+test('Smart creation surfaces unavailable native P256 without silently choosing ECDSA', async () => {
+  const f = await connectedFixture({ smartCreation: true, unavailablePasskeys: true });
   try {
     await messageRequest(f, 'wallet_prepareSmartAccount', []);
     const review = f.view.getSnapshot().preparationReview; assert(review);
-    assert.equal(review.requestedAuthenticatorId, 'p256-webauthn'); assert.equal(review.error, 'PREPARATION_UNAVAILABLE');
-    await assert.rejects(f.view.approveSmartPreparation(review.id, review.revision, false));
+    assert.equal(review.requestedAuthenticatorId, 'p256-webauthn'); assert.equal(review.error, null);
+    assert.equal(f.creationRequests.length, 0);
+    await assert.rejects(f.view.approveSmartPreparation(review.id, review.revision, false), /Native passkeys unavailable/);
+    assert.equal(f.view.getSnapshot().preparationReview?.error, 'PREPARATION_UNAVAILABLE');
     assert.equal(f.creationRequests.length, 0); assert.equal(f.preparedAccountUpdates.length, 0);
   } finally { await f.controller.dispose(); }
 });

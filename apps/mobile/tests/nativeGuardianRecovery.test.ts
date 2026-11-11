@@ -10,6 +10,7 @@ import ts from 'typescript';
 import { createTrezorSessions } from '../src/hardware/trezorSessions.ts';
 import { CustodyOperationError } from '../src/custody/authority.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import * as unavailableNativePasskeys from '../src/platform/nativePasskeys.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
@@ -89,6 +90,7 @@ async function fixture(smart = true) {
   security.custodyIdle.begin({}, () => undefined);
   const unexpectedFeature = () => assert.fail('unexpected feature operation in native factory fixture');
   const dependencies: Record<string, unknown> = {
+    './nativePasskeys': unavailableNativePasskeys,
     '../notifications/service': { nativeActivityNotifications: { replaceAccountTypes: unexpectedFeature, disableOwner: unexpectedFeature } },
     '../notifications/choices': { nativeNotificationChoices: unexpectedFeature },
     '../custody/accountIdentity': { parseNativeAccountId: unexpectedFeature },
@@ -126,7 +128,7 @@ async function fixture(smart = true) {
     './deviceUnlockCredential.native': {
       createNativeDeviceUnlockCapability: () => ({
         credentials: {},
-        prompt: { cancel() {}, isActive: () => promptActive },
+        prompt: { cancel() {}, isActive: () => promptActive, isAnyPromptActive: () => promptActive, run: unexpectedFeature },
       }),
     },
     './walletConnectRuntime': {
