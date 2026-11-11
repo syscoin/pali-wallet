@@ -72,7 +72,7 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
     <Card style={s.originCard}>
       <Text style={s.originTitle}>{review.appName} · {review.networkLabel}</Text>
       <Text selectable style={s.origin}>{review.origin}</Text>
-      <DappSiteStatus verification={review.verification} />
+      <DappSiteStatus verification={review.verification} compact />
       {!operation && <><Text style={s.muted}>{review.accountLabel}</Text><Text selectable style={s.value}>{review.address}</Text></>}
     </Card>
     {link && <Card style={s.card}>
