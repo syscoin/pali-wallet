@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { URL } from 'node:url';
 
 const source = readFileSync(new URL('../modules/pali-wallet-storage/android/src/main/java/org/syscoin/pali/storage/PaliCredentialRequest.kt', import.meta.url), 'utf8');
 /** Static platform-contract gate; real KeyMint acceptance still needs a physical device. */
