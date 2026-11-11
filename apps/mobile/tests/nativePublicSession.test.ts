@@ -203,6 +203,22 @@ test('explicit seed reveal retrieves a fresh spending credential and retires SDK
   } finally { await f.close(); }
 });
 
+test('Change PIN current-credential checks use no spending reads and preserve branded refusal semantics', async () => {
+  const f = await fixture();
+  try {
+    await f.create(); await f.ready();
+    const before = f.authority.getSnapshot();
+    await f.authority.verifyPin(PIN, () => undefined);
+    assert.equal(f.authority.getSnapshot(), before);
+    for (let attempt = 0; attempt < 5; attempt++)
+      await assert.rejects(f.authority.verifyPin('000000', () => undefined), { code: 'INVALID_CREDENTIAL' });
+    await assert.rejects(f.authority.verifyPin(PIN, () => undefined), { code: 'AUTH_THROTTLED' });
+    assert.equal(f.authority.getSnapshot(), before);
+    assert.equal(f.secretReads, 0); assert.equal(f.rootEntries, 0);
+    assert.equal(f.instances.at(-1)!.isUnlocked(), false);
+  } finally { await f.close(); }
+});
+
 test('cold biometric view unlock authenticates the same checkpoint without entering the root path', async () => {
   const f = await fixture();
   try {

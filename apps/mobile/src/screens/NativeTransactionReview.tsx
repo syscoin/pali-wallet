@@ -1,5 +1,4 @@
-import { decodeAssetTransfer } from '../../../../source/shared/assetTransfer';
-import { formatTokenUnits } from '../../../../source/shared/erc20';
+import { resolveAssetTransferDisplay } from '../../../../source/shared/assetTransferDisplay';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -94,7 +93,8 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
   }, [controller, review.id]);
 
   const transaction = review.transaction;
-  const transfer = transaction ? (review.assetTransfer === undefined ? decodeAssetTransfer(transaction.data, transaction.to) : review.assetTransfer) : null;
+  const transfer = transaction ? resolveAssetTransferDisplay({ data: transaction.data, contract: transaction.to, transfer: review.assetTransfer }) : null;
+  const siteWarning = review.verification.isScam || review.verification.validation !== 'VALID';
   const prepared = transaction !== null && review.maximumFeeUnits !== null && review.maximumTotalUnits !== null;
   const comparison = review.feeComparison;
   const showFeeChoices =
@@ -149,34 +149,35 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
       disabled={expired || editingApproval || review.error !== null || review.busy || !review.needsAccountSwitch &&
         (ledger.blocked || !retry && (!prepared || review.requiresWarningAcknowledgement && !acknowledged))} onPress={approve} style={s.action} />}
     </View>
-  </>} gap={16}>
+  </>} gap={12}>
     <Header title={batch ? 'Review calls' : 'Transaction request'} onBack={close} />
     <Card style={s.appCard}>
       <View style={s.appMark} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><Text style={s.appInitial}>{Array.from(review.appName.trim())[0]?.toUpperCase() || '•'}</Text></View>
       <View style={s.appCopy}><Text style={s.appName}>{review.appName}</Text>
-      <Text selectable style={s.origin}>{review.networkLabel} · {review.origin}</Text></View>
+      <Text selectable style={s.origin}>{review.networkLabel} · {review.origin}</Text>
+      {!siteWarning && <DappSiteStatus verification={review.verification} />}</View>
     </Card>
+    {siteWarning && <DappSiteStatus verification={review.verification} />}
     {transaction && <View style={s.hero}>
       {batch && <Text accessibilityRole="header" style={s.sectionTitle}>Call {batch.index + 1} of {batch.calls.length}</Text>}
       <Text style={[s.label, { textAlign: 'center' }]}>{transfer ? transfer.standardVerified ? `${transfer.standard} transfer` : 'Transfer call' : transaction.to === null ? 'Contract deployment' : transaction.data === '0x' ? `${review.symbol} transfer` : 'Contract interaction'}</Text>
       {!transfer && transaction.data !== '0x' && <Text style={[s.muted, { textAlign: 'center' }]}>Native currency sent</Text>}
       {transfer ? transfer.items.map((item, index) => <View key={index} style={s.asset}>
-        <Text selectable style={[s.amount, s.longAmount]}>{transfer.token ? formatTokenUnits(item.units, transfer.token.decimals) : item.tokenId ? `#${item.tokenId}` : item.units}</Text>
-        <Text style={s.amountSymbol}>{transfer.token?.symbol ?? (item.tokenId ? `${item.units} NFT${item.units === '1' ? '' : 's'}` : 'Base units / token ID')}</Text>
+        <Text selectable style={[s.amount, s.longAmount]}>{item.value}</Text>
+        <Text style={s.amountSymbol}>{item.symbol ?? (item.tokenId !== null ? `${item.units} NFT${item.units === '1' ? '' : 's'}` : 'Base units / token ID')}</Text>
       </View>) : <>
         <Text selectable style={[s.amount, amount(transaction.value).length > 22 && s.longAmount]} accessibilityLabel={amount(transaction.value)}>{formatBaseUnits(transaction.value, review.decimals)}</Text>
         <Text style={s.amountSymbol}>{review.symbol}</Text>
       </>}
       {!transfer && transaction.data !== '0x' && <Text style={[s.muted, { textAlign: 'center' }]}>This amount excludes any tokens or NFTs the contract may move.</Text>}
     </View>}
-    <DappSiteStatus verification={review.verification} />
     {review.approval && transaction && <ApprovalReview summary={review.approval} transaction={transaction}
       onEditingChange={setApprovalEditing}
       disabled={!!batch || review.busy || submitted || review.needsAccountSwitch || review.error !== null}
       edit={(value) => controller.editApprovalAmount(review.id, review.revision, value)} />}
       <Card style={s.facts}>
-        <View style={s.fact}><Text style={s.factLabel}>From</Text><View style={s.factValue}><Text style={s.factAccount}>{review.accountLabel}</Text><Text selectable style={s.factAddress}>{review.address}</Text></View></View>
         {transaction && <View style={s.fact}><Text style={s.factLabel}>{transfer ? 'Recipient' : transaction.to === null ? 'Destination' : 'To'}</Text><Text selectable style={[s.factValue, s.factAddress]}>{transfer?.recipient ?? transaction.to ?? 'New contract'}</Text></View>}
+        <View style={s.fact}><Text style={s.factLabel}>From</Text><View style={s.factValue}><Text style={s.factAccount}>{review.accountLabel}</Text><Text selectable style={s.factAddress}>{review.address}</Text></View></View>
         {transfer && <View style={s.fact}><Text style={s.factLabel}>Token contract</Text><Text selectable style={[s.factValue, s.factAddress]}>{transfer.contract}</Text></View>}
         {transfer?.from && <View style={s.fact}><Text style={s.factLabel}>Asset owner</Text><Text selectable style={[s.factValue, s.factAddress]}>{transfer.from}</Text></View>}
         {transfer && transaction?.value !== '0' && <View style={s.fact}><Text style={s.factLabel}>Also sending</Text><Text style={[s.factValue, s.factText]}>{amount(transaction!.value)}</Text></View>}
@@ -266,7 +267,7 @@ const s = StyleSheet.create({
   appName: { fontSize: 16, lineHeight: 23, fontWeight: '600' },
   origin: { fontSize: 12, lineHeight: 18, color: colors.muted },
   asset: { gap: 8 },
-  hero: { alignItems: 'stretch', gap: 8, paddingVertical: 16 },
+  hero: { alignItems: 'stretch', gap: 8, paddingVertical: 8 },
   actions: { flexDirection: 'row', gap: 10 },
   action: { flex: 1, minWidth: 0 },
   facts: { overflow: 'hidden' },

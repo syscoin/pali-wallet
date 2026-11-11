@@ -4321,7 +4321,7 @@ bitcoin-ops@^1.4.1:
   resolved "https://registry.yarnpkg.com/bitcoin-ops/-/bitcoin-ops-1.4.1.tgz#e45de620398e22fd4ca6023de43974ff42240278"
   integrity sha512-pef6gxZFztEhaE9RY9HmWVmiIHqCb2OyS4HPKkpc6CIiiOa3Qmuoylxc5P2EkU3w+5eTSifI9SEZC88idAIGow==
 
-bitcoinjs-lib@^7.0.1, bitcoinjs-lib@^7.0.5:
+bitcoinjs-lib@7.0.5, bitcoinjs-lib@^7.0.1, bitcoinjs-lib@^7.0.5:
   version "7.0.5"
   resolved "https://registry.yarnpkg.com/bitcoinjs-lib/-/bitcoinjs-lib-7.0.5.tgz#ef7175e79e50faae69c9ca61c273efd966a60c33"
   integrity sha512-xH24P1ile3QtyChzX1ITitcgpfZgDzG986gy1glbGXFsvcSnRX0P6p4m3nuTQfJ+j97va8py0leEK7xG8oxMqQ==

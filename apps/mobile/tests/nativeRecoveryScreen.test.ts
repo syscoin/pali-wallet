@@ -311,7 +311,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   installed.forEach((s) => s.remove()); leaf.dispose(); root.dispose();
 });
 
-async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED' }, notificationPort: NotificationTestPort = quietActivityNotifications,
+async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED'; verifyCalls?: string[]; wait?: Promise<void> }, notificationPort: NotificationTestPort = quietActivityNotifications,
   networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }) {
   const root = setup();
   const networkId = networkMode === 'utxo' ? 'bitcoin' : 'ethereum';
@@ -366,6 +366,11 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
       },
       cancelAccountOperation() {},
       async initialize() {}, subscribe(fn: typeof observer) { observer = fn; return () => { observer = () => {}; }; },
+      async verifyPin(pin: string, check: () => void) {
+        assert(pinChange); check(); pinChange.verifyCalls?.push(pin);
+        await pinChange.wait; check();
+        if (pin !== '123456') throw new Error(pinChange.refusal);
+      },
       async changePin(current: string, next: string, check: () => void) {
         assert(pinChange); check(); pinChange.calls.push([current, next]);
         if (current !== '123456') throw new Error(pinChange.refusal);
@@ -384,7 +389,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
         catch (cause) { publish({ phase: 'locked', account: null, error: 'DEVICE_UNLOCK_UNAVAILABLE' }); throw cause; }
         check(); publish({ phase: 'backup-required', backup: 'unconfirmed', account: { address, network: networkId }, error: null });
       },
-      lock() { if (deviceUnlock) { lifecycle.push('lock'); locks++; publish({ phase: 'locked', revision: state.revision + 1, account: null }); } }, async dispose() { state = { ...state, phase: 'disposed' }; },
+      lock() { if (deviceUnlock || pinChange) { lifecycle.push('lock'); locks++; publish({ phase: 'locked', revision: state.revision + 1, account: null }); } }, async dispose() { state = { ...state, phase: 'disposed' }; },
       async unlock() {
         publish({ phase: 'authenticating', error: null });
         if (nextError) { const code = nextError; publish({ phase: 'locked', error: code }); throw new Error(code); }
@@ -490,7 +495,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
 }
 
 for (const refusal of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED'] as const) test(`Change PIN returns to a fresh current-PIN entry after ${refusal}`, async () => {
-  const change = { calls: [] as [string, string][], refusal };
+  const change = { calls: [] as [string, string][], verifyCalls: [] as string[], refusal };
   const f = await walletFeedbackFixture(false, false, undefined, undefined, false, undefined, change);
   const find = (type: string) => {
     const entry = all(f.render()).find(node => node.type === type);
@@ -500,21 +505,50 @@ for (const refusal of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED'] as const) test(`C
     (find('NativePortfolio').props.onSecurity as () => void)();
     (find('NativeSecurity').props.onChangePin as () => void)();
     assert.equal(find('PinEntryScreen').props.title, 'Enter your current PIN');
+    const firstReset = find('PinEntryScreen').props.resetKey;
     (find('PinEntryScreen').props.onComplete as (pin: string) => void)('000000');
-    (find('PinSetup').props.onComplete as (pin: string) => void)('654321');
+    assert.equal(all(f.render()).filter(node => node.type === 'PinSetup').length, 0, 'A wrong current PIN never opens new-PIN setup');
     await new Promise(resolve => setImmediate(resolve));
     const retry = find('PinEntryScreen');
     assert.equal(retry.props.title, 'Enter your current PIN');
     assert(retry.props.error, 'The refusal remains visible beside current-PIN entry');
     assert.equal(retry.props.busy, false);
+    assert.notEqual(retry.props.resetKey, firstReset);
     assert.equal(all(f.render()).filter(node => node.type === 'PinSetup').length, 0, 'Old PIN setup is unmounted');
+    assert.deepEqual(change.calls, []);
     (retry.props.onComplete as (pin: string) => void)('123456');
+    await new Promise(resolve => setImmediate(resolve));
     assert.equal(find('PinSetup').props.error, '', 'The previous refusal does not leak into new-PIN setup');
     (find('PinSetup').props.onComplete as (pin: string) => void)('654321');
     await new Promise(resolve => setImmediate(resolve));
     assert(find('NativeSecurity'));
-    assert.deepEqual(change.calls, [['000000', '654321'], ['123456', '654321']]);
+    assert.deepEqual(change.verifyCalls, ['000000', '123456']);
+    assert.deepEqual(change.calls, [['123456', '654321']]);
   } finally { f.dispose(); }
+});
+
+for (const retirement of ['back', 'lock', 'context'] as const) test(`Change PIN refuses a late current-PIN verification after ${retirement}`, async () => {
+  const gate = Promise.withResolvers<void>();
+  const change = { calls: [] as [string, string][], verifyCalls: [] as string[], refusal: 'INVALID_CREDENTIAL' as const, wait: gate.promise };
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, undefined, change);
+  const find = (type: string) => { const node = all(f.render()).find(entry => entry.type === type); assert(node, type); return node; };
+  try {
+    (find('NativePortfolio').props.onSecurity as () => void)();
+    (find('NativeSecurity').props.onChangePin as () => void)();
+    (find('PinEntryScreen').props.onComplete as (pin: string) => void)('123456');
+    assert.equal(find('PinEntryScreen').props.busy, true);
+    assert.equal(all(f.render()).filter(node => node.type === 'PinSetup').length, 0);
+    if (retirement === 'back') (find('PinEntryScreen').props.onBack as () => void)();
+    else if (retirement === 'lock') f.emit('change', 'background');
+    else {
+      f.publish({ revision: 2 });
+      f.publish({ revision: 3 });
+    }
+    gate.resolve(); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(all(f.render()).filter(node => node.type === 'PinSetup').length, 0);
+    assert.deepEqual(change.verifyCalls, ['123456']); assert.deepEqual(change.calls, []);
+    if (retirement !== 'context') assert(f.locks > 0);
+  } finally { gate.resolve(); f.dispose(); }
 });
 
 test('backup completion waits for verification and durable save, then clears displayed words', async () => {

@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
+import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeSentryAssent, NativeSentryReview as Review } from '../connections/sentryRequests';
 import type { NativeConnectionsView } from '../connections/types';
 import { Button, Card, colors, Header, Notice, Row, Screen, Text } from '../ui';
 import { DappSiteStatus } from './DappSiteStatus';
+import { decodeSentryPayoutAddress } from './sentryPayoutAddress';
 
 function Field({ name, value }: { name: string; value: string }) {
   return <><Text style={s.muted}>{name}</Text><Text selectable style={s.value}>{value || 'Not set'}</Text></>;
@@ -29,7 +30,7 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
   const link = details?.kind === 'link' ? details.approval : null;
   const key = operation?.keys[selection.id === identity ? selection.index : 0];
   const title = link ? 'Link Sentry node' : vote ? 'Approve governance vote' : operation?.review.operation === 'updateService' ? 'Update node service' : operation?.review.operation === 'updateRegistrar' ? 'Update node registration' : 'Authorize Sentry update';
-  const fieldNames: Record<string, string> = { service: 'Service address', nevmAddress: 'NEVM address', operatorPayoutScript: 'Operator payout script',
+  const fieldNames: Record<string, string> = { service: 'Service address', nevmAddress: 'NEVM address', operatorPayoutScript: 'Operator payout address',
     payoutAddress: 'Proposed payout address', previousPayoutAddress: 'Current payout address',
     ownerKeyId: 'Owner key ID', votingKeyId: 'Proposed voting key ID', previousVotingKeyId: 'Current voting key ID',
     operatorPublicKey: 'Proposed operator public key', previousOperatorPublicKey: 'Current operator public key',
@@ -37,6 +38,9 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
     pqOwnerPublicKey: 'Proposed post-quantum owner key', previousPQOwnerPublicKey: 'Current post-quantum owner key' };
   const technicalField = (name: string) => ['globalKeyVersion', 'childKeyCommitment', 'collateralSigningMessage'].includes(name);
   const fieldName = (name: string) => fieldNames[name] ?? name.replace(/([A-Z])/g, ' $1');
+  const fieldValue = (name: string, value: string) => name === 'operatorPayoutScript' && value
+    ? decodeSentryPayoutAddress(value, operation!.network) ?? 'Address unavailable · See script in Details'
+    : value;
   const unavailable = !details || !!review.error || expired;
   const blocked = unavailable || review.busy || submitting ||
     !!operation && !key || !!vote && (!vote.nodes.length || !!vote.missingVotingKeys.length);
@@ -60,15 +64,16 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
   };
   return <SafeAreaView edges={['top', 'bottom']} style={s.root}>
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <Screen key={review.id} footer={<>
+    <Screen key={review.id} gap={14} footer={<>
       <Button title={review.busy || submitting ? 'Authorizing…' : title} disabled={blocked} onPress={() => void approve()} />
       <Button title="Reject" variant="secondary" onPress={reject} />
     </>}>
     <Header title={title} onBack={reject} />
-    <Card style={s.card}>
-      <Text style={s.title}>{review.appName}</Text><Field name="Reported website" value={review.origin} />
+    <Card style={s.originCard}>
+      <Text style={s.originTitle}>{review.appName} · {review.networkLabel}</Text>
+      <Text selectable style={s.origin}>{review.origin}</Text>
       <DappSiteStatus verification={review.verification} />
-      <Text style={s.muted}>{review.accountLabel} · {review.networkLabel}</Text><Text selectable style={s.value}>{review.address}</Text>
+      {!operation && <><Text style={s.muted}>{review.accountLabel}</Text><Text selectable style={s.value}>{review.address}</Text></>}
     </Card>
     {link && <Card style={s.card}>
       <Field name="Registered node" value={link.node.proTxHash} />
@@ -77,15 +82,18 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
       <Text style={s.muted}>The collateral remains protected from ordinary wallet sends until you release it.</Text>
     </Card>}
     {operation && <>
+      {'changes' in operation.review ? <View style={s.changes} testID="sentry-proposed-changes">
+        {Object.entries(operation.review.changes).map(([name, change]) =>
+          <Card key={name} style={s.change}><Text style={s.changeTitle}>{fieldName(name)}</Text><Field name="Proposed" value={fieldValue(name, change.next)} /><Field name="Current" value={fieldValue(name, change.previous)} /></Card>)}
+      </View> : <Card style={s.card}>
+        <Text style={s.title}>Proposed changes</Text>
+        {Object.entries(operation.review.fields).filter(([name]) => !technicalField(name)).map(([name, value]) =>
+            <Field key={name} name={fieldName(name)} value={fieldValue(name, value)} />)}
+      </Card>}
       <Card style={s.card}>
-        <Text style={s.title}>{title}</Text>
-        <Text style={s.muted}>{operation.review.operation === 'updateService' ? 'Change the service information for this node using the selected authority key.' : 'Authorize the node changes shown below using the selected authority key.'}</Text>
+        <Field name="Request account" value={`${review.accountLabel} · ${review.address}`} />
         <Field name="Registered node" value={operation.review.proTxHash ?? 'New registration'} />
         {key && <><Field name="Authority" value={key.label} /><Text style={s.muted}>{key.role} · {key.scheme}</Text></>}
-        {'changes' in operation.review ? Object.entries(operation.review.changes).map(([name, change]) =>
-          <Card key={name} style={s.change}><Text style={s.title}>{fieldName(name)}</Text><Field name="Current" value={change.previous} /><Field name="Proposed" value={change.next || 'Not set'} /></Card>) :
-          Object.entries(operation.review.fields).filter(([name]) => !technicalField(name)).map(([name, value]) =>
-            <Field key={name} name={fieldName(name)} value={value} />)}
         <Field name="Transaction fee" value={`${operation.review.feeSatoshis} satoshis`} />
       </Card>
       {!!operation.keys.length && <Card><Text style={s.keyHeading}>Choose authority key</Text>{operation.keys.map((item, index) => <Row
@@ -98,6 +106,12 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
       {showDetails && <>
         <Card style={s.card}>
           <Field name="Operation" value={operation.review.operation} /><Field name="State source" value={operation.serviceUrl} />
+          {'changes' in operation.review && <>
+            <Field name="Current operator payout script" value={operation.review.changes.operatorPayoutScript.previous} />
+            <Field name="Proposed operator payout script" value={operation.review.changes.operatorPayoutScript.next} />
+          </>}
+          {'fields' in operation.review && operation.review.fields.operatorPayoutScript !== undefined &&
+            <Field name="Operator payout script" value={operation.review.fields.operatorPayoutScript} />}
           {'fields' in operation.review && Object.entries(operation.review.fields).filter(([name]) => technicalField(name)).map(([name, value]) =>
             <Field key={name} name={fieldName(name)} value={value} />)}
           {'authorizations' in operation.review && operation.review.authorizations.map(auth => <Text key={auth.id}>{auth.id} · {auth.scheme} · {auth.signed ? 'Already signed' : 'Signature required'}</Text>)}
@@ -125,6 +139,8 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
   </Screen></KeyboardAvoidingView></SafeAreaView>;
 }
 const s = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.bg }, card: { padding: 16, gap: 10 },
+  originCard: { padding: 12, gap: 6 }, originTitle: { fontSize: 14, fontWeight: '600' }, origin: { fontSize: 12, lineHeight: 18, color: colors.muted },
   title: { fontSize: 17, fontWeight: '700' }, muted: { color: colors.muted, lineHeight: 22 }, value: { fontSize: 13, lineHeight: 20 },
-  change: { padding: 12, gap: 8 }, keyHeading: { padding: 16, fontWeight: '700' },
+  change: { padding: 12, gap: 6 }, changeTitle: { fontSize: 15, fontWeight: '600' }, keyHeading: { padding: 16, fontWeight: '700' },
+  changes: { gap: 12 },
   input: { minHeight: 52, borderRadius: 14, paddingHorizontal: 16, backgroundColor: colors.surface, color: colors.text } });

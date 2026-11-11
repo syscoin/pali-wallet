@@ -113,6 +113,7 @@ type NetworkReturn = Readonly<{ local: Controllers; origin: RootOrigin; sourceRe
 )>;
 type AccountNavigation = Readonly<{ local: Controllers; origin: RootOrigin; choice: NotificationChoice; sourceRevision: number; sourceCatalogueRevision: number }>;
 type RemovalScope = { local: Controllers; authority: CustodySnapshot; epoch: number; phase: 'reviewing' | 'working' | 'settled'; outcome?: RemovalScreenOutcome };
+type PinChangeScope = { token: object; local: Controllers; authority: CustodySnapshot; catalogue: NativeWalletCatalogueSnapshot; epoch: number; pin: string };
 type Stage = 'choose' | 'create' | 'import' | 'import-security' | 'backup-intro' | 'backup-auth' | 'words' | 'backup-complete' | 'backup-verify' | 'change-pin' | 'change-pin-new' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'remove-wallet' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-import' | 'note-deposit' | 'note-capacity' | 'note-maintenance' | 'privacy-settings' | 'restore-notes' | 'backup-notes' | 'connections' | 'device-unlock' | 'ledger' | 'trezor' | 'smart-deploy' | 'smart-resume' | 'smart-authenticator' | 'slh-dsa' | 'smart-modules' | 'sentry-keys' | 'smart-infrastructure';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 const noBalanceSubscribe = () => () => undefined;
@@ -157,6 +158,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const detachSubscriptions = useRef<() => void>(() => undefined);
   const recoveryRef = useRef<NativeRecoveryFlow | null>(null);
   const removalRef = useRef<RemovalScope | null>(null);
+  const pinChangeRef = useRef<PinChangeScope | null>(null);
   const [removalScope, setRemovalScope] = useState<RemovalScope | null>(null);
   const [canRemoveWallet, setCanRemoveWallet] = useState(false);
   const [recoveryFlow, setRecoveryFlow] = useState<NativeRecoveryFlow | null>(null);
@@ -282,6 +284,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   }, [snapshot.phase, snapshot.presence, stage]);
   const closePrivateLeaf = useCallback(() => setStage('private-notes'), []);
   const [pin, setPin] = useState('');
+  const [pinChangeAttempt, setPinChangeAttempt] = useState(0);
+  const [pinChangeOwner, setPinChangeOwner] = useState<object | null>(null);
   const [deviceUnlockStatus, setDeviceUnlockStatus] = useState<Readonly<{ available: boolean; enabled: boolean }> | null>(null);
   const [pinConfigured, setPinConfigured] = useState<boolean | null>(null);
   const [phrase, setPhrase] = useState('');
@@ -297,6 +301,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const { cancel: cancelNoteRestore, lock: lockNoteRestore } = noteRestore;
 
   const clearSecrets = useCallback(() => {
+    pinChangeRef.current = null;
+    setPinChangeOwner(null);
     setPin(''); setPhrase(''); setPresentation(null);
   }, []);
   const revoke = useCallback((background = false) => {
@@ -834,6 +840,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         closeDeviceUnlock();
         return true;
       }
+      if ((stage === 'change-pin' || stage === 'change-pin-new') && snapshot.phase === 'ready') return false;
       // Full-screen leaf flows own their Back behavior regardless of listener order.
       if (snapshot.phase === 'ready' && (stage === 'choose' || stage === 'connections') && (signingReview || connectionSnapshot?.preparationReview || connectionSnapshot?.controlReview || connectionSnapshot?.sentryReview || connectionSnapshot?.psbtReview)) return false;
       if ((stage === 'private-notes' || stage === 'connections') && snapshot.phase === 'ready') {
@@ -1001,6 +1008,12 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         });
       } : null);
       const nextCatalogue = local.authority.getCatalogue();
+      const pinChange = pinChangeRef.current;
+      if (pinChange && (pinChange.local !== local || pinChange.authority !== state || pinChange.catalogue !== nextCatalogue)) {
+        pinChangeRef.current = null;
+        setPinChangeOwner(null);
+        setStage(current => current === 'change-pin-new' ? 'change-pin' : current);
+      }
       setCatalogue(nextCatalogue); bridge.current?.onNativeCatalogue(nextCatalogue);
       const origin = rootOrigin.current;
       if ((origin?.stage === 'smart-infrastructure' || origin?.stage === 'smart-authenticator' || origin?.stage === 'slh-dsa' || origin?.stage === 'smart-modules' || origin?.stage === 'smart-resume') && origin.identity !== custodyContext(state, nextCatalogue)?.identity) {
@@ -1340,22 +1353,48 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       <Button title="Forgot PIN?" variant="secondary" disabled={busy} onPress={openRecovery} />
     </>} />;
   if (stage === 'change-pin' && snapshot.phase === 'ready') return <PinEntryScreen title="Enter your current PIN"
-    busy={busy} error={error} resetKey={error} onBack={closeStage}
-    onComplete={entered => { setError(''); setPin(entered); setStage('change-pin-new'); }} />;
-  if (stage === 'change-pin-new' && snapshot.phase === 'ready') return <PinSetup biometrics={biometrics} title="Create a new PIN" offerBiometrics={false}
-    busy={busy} error={error} onBack={() => { setPin(''); setStage('change-pin'); }} onComplete={next => {
-      const currentPin = pin;
+    busy={busy} error={error} resetKey={pinChangeAttempt} onBack={() => {
+      if (submitting.current) revoke(); else { clearSecrets(); setError(''); closeStage(); }
+    }}
+    onComplete={entered => {
+      if (submitting.current) return;
+      pinChangeRef.current = null; setPinChangeOwner(null); setPinChangeAttempt(value => value + 1);
       void perform(async local => {
-        const captured = epoch.current;
+        const authority = local.authority.getSnapshot(), catalogue = local.authority.getCatalogue(), captured = epoch.current;
+        const check = () => {
+          if (!mounted.current || controllersRef.current !== local || epoch.current !== captured || AppState.currentState !== 'active' ||
+              local.authority.getSnapshot() !== authority || local.authority.getCatalogue() !== catalogue || authority.phase !== 'ready' || !catalogue)
+            throw new Error('CANCELLED');
+        };
+        check();
+        await local.authority.verifyPin(entered, check);
+        check();
+        const token = {};
+        pinChangeRef.current = { token, local, authority, catalogue: catalogue!, epoch: captured, pin: entered };
+        setPinChangeOwner(token);
+        setStage('change-pin-new');
+      });
+    }} />;
+  if (stage === 'change-pin-new' && snapshot.phase === 'ready' && pinChangeOwner) return <PinSetup biometrics={biometrics} title="Create a new PIN" offerBiometrics={false}
+    busy={busy} error={error} onBack={() => {
+      if (submitting.current) revoke(); else { pinChangeRef.current = null; setPinChangeOwner(null); setError(''); setStage('change-pin'); }
+    }} onComplete={next => {
+      const pinChange = pinChangeRef.current;
+      if (!pinChange || pinChange.token !== pinChangeOwner) return;
+      void perform(async local => {
+        const check = () => {
+          if (!mounted.current || controllersRef.current !== local || pinChangeRef.current !== pinChange || pinChange.local !== local ||
+              epoch.current !== pinChange.epoch || AppState.currentState !== 'active' ||
+              local.authority.getSnapshot() !== pinChange.authority || local.authority.getCatalogue() !== pinChange.catalogue)
+            throw new Error('CANCELLED');
+        };
         try {
-          await local.authority.changePin(currentPin, next, () => {
-            if (!mounted.current || controllersRef.current !== local || epoch.current !== captured || AppState.currentState !== 'active') throw new Error('CANCELLED');
-          });
+          check(); await local.authority.changePin(pinChange.pin, next, check);
         } catch (cause) {
-          if (mounted.current && controllersRef.current === local && epoch.current === captured && AppState.currentState === 'active' &&
+          if (mounted.current && controllersRef.current === local && epoch.current === pinChange.epoch && AppState.currentState === 'active' &&
               local.authority.getSnapshot().phase === 'ready' && cause instanceof Error &&
               (cause.message === 'INVALID_CREDENTIAL' || cause.message === 'AUTH_THROTTLED')) {
-            setPin(''); setStage('change-pin');
+            pinChangeRef.current = null; setPinChangeOwner(null); setStage('change-pin');
           }
           throw cause;
         }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { screenElements, screenFixture } from './screenFixture.ts';
+import { decodeSentryPayoutAddress } from '../src/screens/sentryPayoutAddress.ts';
 
 function fixture(kind: 'control' | 'sentry') {
   let clock = 100, serial = 0, back: (() => boolean) | undefined, app: ((state: string) => void) | undefined;
@@ -12,7 +13,7 @@ function fixture(kind: 'control' | 'sentry') {
     networkLabel: 'Test network', chainId: '1', expiresAt: 1000, busy: false, error: null,
     verification: { validation: 'UNKNOWN', isScam: false }, details: kind === 'control'
       ? { kind: 'network-switch', name: 'Chain', chainId: '99', symbol: 'COIN', rpcUrl: 'https://rpc.example.test' }
-      : { kind: 'operation', approval: { keys: [{ id: 'owner', label: 'Owner', role: 'owner', scheme: 'secp256k1', authorizationId: 'owner' },
+      : { kind: 'operation', approval: { network: 'mainnet', keys: [{ id: 'owner', label: 'Owner', role: 'owner', scheme: 'secp256k1', authorizationId: 'owner' },
         { id: 'new', label: 'New owner', role: 'owner', scheme: 'secp256k1', authorizationId: 'newOwner' }],
       serviceUrl: 'https://node.example.test', review: { operation: 'register', feeSatoshis: '50', fields: { payout: 'script' }, outputs: [], authorizations: [] } } } };
   const controller = { approveControl: async (...args: unknown[]) => { approvals.push(args); }, rejectControl: async (id: string) => { rejections.push(id); },
@@ -23,6 +24,7 @@ function fixture(kind: 'control' | 'sentry') {
       '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
       './DappSiteStatus': { DappSiteStatus: 'SiteStatus' }, './IdleActivityBoundary': { IdleTextInput: 'Input' },
       './PinEntry': { PinField: 'Input' },
+      './sentryPayoutAddress': { decodeSentryPayoutAddress },
     }, { Date: class extends Date { static now() { return clock; } },
       setTimeout(callback: () => void) { timers.set(++serial, callback); return serial; }, clearTimeout(id: number) { timers.delete(id); } });
   const render = () => screenElements(f.render({ review, controller }));
@@ -110,25 +112,54 @@ test('Sentry service review shows payout and address changes before opening tech
       nevmAddress: { previous: '0x' + '33'.repeat(20), next: '0x' + '44'.repeat(20) },
     } };
     const fields = f.render().filter(node => typeof node.type === 'function' && (node.type as Function).name === 'Field');
-    for (const value of Object.values(f.review.details.approval.review.changes) as { previous: string; next: string }[]) {
-      assert(fields.some(node => node.props.name === 'Current' && node.props.value === value.previous));
-      assert(fields.some(node => node.props.name === 'Proposed' && node.props.value === value.next));
+    for (const [name, value] of Object.entries(f.review.details.approval.review.changes) as [string, { previous: string; next: string }][]) {
+      assert(fields.some(node => node.props.name === 'Current' && node.props.value === (name === 'operatorPayoutScript' ? decodeSentryPayoutAddress(value.previous, 'mainnet') : value.previous)));
+      assert(fields.some(node => node.props.name === 'Proposed' && node.props.value === (name === 'operatorPayoutScript' ? decodeSentryPayoutAddress(value.next, 'mainnet') : value.next)));
     }
+    assert(!fields.some(node => node.props.value === f.review.details.approval.review.changes.operatorPayoutScript.next));
+    const nodes = f.render();
+    assert(nodes.findIndex(node => node.props.testID === 'sentry-proposed-changes') < nodes.findIndex(node => node.props.name === 'Registered node'));
+    assert(nodes.some(node => node.children.includes(f.review.origin)));
+    assert(fields.findIndex(node => node.props.name === 'Proposed') < fields.findIndex(node => node.props.name === 'Current'));
     assert(fields.some(node => node.props.name === 'Transaction fee' && node.props.value === '50 satoshis'));
+    f.render().find(node => node.type === 'Button' && node.props.title === 'View request details')!.props.onPress();
+    const details = f.render().filter(node => node.props.name?.includes('payout script'));
+    assert(details.some(node => node.props.name === 'Current operator payout script' && node.props.value === f.review.details.approval.review.changes.operatorPayoutScript.previous));
+    assert(details.some(node => node.props.name === 'Proposed operator payout script' && node.props.value === f.review.details.approval.review.changes.operatorPayoutScript.next));
+  } finally { f.close(); }
+});
+
+test('Sentry undecodable or unset payout remains explicit and raw bytes stay in Details', () => {
+  const f = fixture('sentry');
+  try {
+    f.review.details.approval.review = { operation: 'updateService', feeSatoshis: '50', outputs: [], changes: {
+      service: { previous: 'old.example:8369', next: 'new.example:8369' }, nevmAddress: { previous: '', next: '' },
+      operatorPayoutScript: { previous: '', next: '6a02abcd' },
+    } };
+    const fields = f.render().filter(node => node.props.name);
+    assert(fields.some(node => node.props.name === 'Proposed' && node.props.value === 'Address unavailable · See script in Details'));
+    assert(fields.some(node => node.props.name === 'Current' && node.props.value === ''));
+    assert(!fields.some(node => node.props.value === '6a02abcd'));
+    f.render().find(node => node.type === 'Button' && node.props.title === 'View request details')!.props.onPress();
+    assert(f.render().some(node => node.props.name === 'Proposed operator payout script' && node.props.value === '6a02abcd'));
   } finally { f.close(); }
 });
 
 test('Sentry registration review keeps payout and authority changes visible while technical material is collapsed', () => {
   const f = fixture('sentry');
   try {
+    f.review.details.approval.network = 'testnet';
     f.review.details.approval.review = { operation: 'updateRegistrar', feeSatoshis: '75', outputs: [], authorizations: [], fields: {
       previousPayoutAddress: 'old-payout', payoutAddress: 'new-payout', previousVotingKeyId: 'old-vote', votingKeyId: 'new-vote',
-      previousOperatorPublicKey: 'old-operator', operatorPublicKey: 'new-operator', childKeyCommitment: 'technical-commitment',
+      previousOperatorPublicKey: 'old-operator', operatorPublicKey: 'new-operator', childKeyCommitment: 'technical-commitment', operatorPayoutScript: '0014' + '11'.repeat(20),
     } };
     const values = () => f.render().filter(node => typeof node.type === 'function' && (node.type as Function).name === 'Field').map(node => node.props.value);
     for (const value of ['old-payout', 'new-payout', 'old-vote', 'new-vote', 'old-operator', 'new-operator']) assert(values().includes(value));
     assert(!values().includes('technical-commitment'));
+    assert(values().includes('tsys1qzyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3g9m666'));
+    assert(!values().includes('0014' + '11'.repeat(20)));
     f.render().find(node => node.type === 'Button' && node.props.title === 'View request details')!.props.onPress();
     assert(values().includes('technical-commitment'));
+    assert(values().includes('0014' + '11'.repeat(20)));
   } finally { f.close(); }
 });

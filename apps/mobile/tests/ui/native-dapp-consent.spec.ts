@@ -9,10 +9,15 @@ for (const viewport of [{ width: 320, height: 480 }, { width: 390, height: 844 }
     await page.goto('/?sentry-consent');
     await expect(page.getByText('https://app.example.test', { exact: true })).toBeVisible();
     await expect(page.getByText('new.example.test:8369', { exact: true })).toBeVisible();
+    await expect(page.getByText('new.example.test:8369', { exact: true })).toBeInViewport();
+    await expect(page.getByText('sys1qwamhwamhwamhwamhwamhwamhwamhwamhjx836v', { exact: true })).toBeVisible();
+    await expect(page.getByText('0014' + '77'.repeat(20), { exact: true })).toHaveCount(0);
     const confirm = page.getByRole('button', { name: 'Update node service', exact: true });
     await confirm.scrollIntoViewIfNeeded(); await expect(confirm).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath('sentry-consent.png') });
+    await page.getByRole('button', { name: 'View request details', exact: true }).click();
+    await expect(page.getByText('0014' + '77'.repeat(20), { exact: true })).toBeVisible();
     await confirm.click();
     await enterPin(page, '123456');
     await expect(page.getByText('Fixture approved', { exact: true })).toBeVisible();

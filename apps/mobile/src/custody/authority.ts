@@ -584,6 +584,41 @@ export class NativeCustodyAuthority {
     return result;
   }
 
+  /** Verify the current PIN without releasing spending material or changing it. */
+  verifyPin(pin: string, assertOwner: () => void): Promise<void> {
+    const runtime = this.runtime, revision = this.revision;
+    if (!runtime?.security || !['ready', 'backup-required'].includes(this.snapshot.phase)) return Promise.reject(new CustodyOperationError('NOT_READY'));
+    if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
+    const check = () => {
+      this.checkIdle();
+      if (runtime !== this.runtime || revision !== this.revision || !['ready', 'backup-required'].includes(this.snapshot.phase)) throw new CustodyOperationError('CANCELLED');
+      assertSynchronousEvmFeeGuard(assertOwner);
+    };
+    let release!: () => void;
+    this.pending = new Promise<void>(resolve => { release = resolve; });
+    return (async () => {
+      try { check(); await runtime.security!.authenticateOperation({ method: 'pin', pin }, check); check(); }
+      catch (caught) {
+        let cause = caught;
+        if (runtime.security!.isAuthenticationRefusal(cause) && cause instanceof Error &&
+            (cause.message === 'INVALID_CREDENTIAL' || cause.message === 'AUTH_THROTTLED')) {
+          const refusal = cause.message;
+          try { check(); } catch (guardFailure) { cause = guardFailure; }
+          if (cause === caught) throw new CustodyOperationError(refusal);
+        }
+        if (runtime === this.runtime && revision === this.revision && this.snapshot.phase !== 'disposed') {
+          this.requestLock();
+          try { await this.drainLocks(); } catch { /* Cleanup publishes quarantine. */ }
+          if (this.lockFailed || this.snapshot.phase === 'unavailable') throw new CustodyOperationError('UNAVAILABLE');
+          if (revision === this.revision)
+            this.publish({ phase: 'locked', account: null, error: cause instanceof CustodyRuntimeError || cause instanceof CustodyOperationError ? cause.code : 'OPERATION_FAILED' });
+        }
+        throw new CustodyOperationError(cause instanceof CustodyRuntimeError || cause instanceof CustodyOperationError ? cause.code : 'OPERATION_FAILED');
+      }
+      finally { this.pending = null; release(); }
+    })();
+  }
+
   changePin(currentPin: string, nextPin: string, assertOwner: () => void): Promise<void> {
     const runtime = this.runtime, revision = this.revision;
     if (!runtime?.security || !['ready', 'backup-required'].includes(this.snapshot.phase)) return Promise.reject(new CustodyOperationError('NOT_READY'));

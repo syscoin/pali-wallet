@@ -1,4 +1,5 @@
 import { Interface } from 'ethers/abi';
+import { resolveAssetTransferDisplay } from '../../../source/shared/assetTransferDisplay.ts';
 import { decodeAssetTransfer } from '../../../source/shared/assetTransfer.ts';
 import { formatTokenUnits } from '../../../source/shared/erc20.ts';
 import assert from 'node:assert/strict';
@@ -42,7 +43,7 @@ function fixture(kind: 'message' | 'transaction' | 'psbt' | 'smart-transaction' 
       'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
       '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
       './IdleActivityBoundary': { IdlePressable: 'Pressable' }, './DappSiteStatus': { DappSiteStatus: 'DappSiteStatus' },
-      '../../../../source/shared/assetTransfer': { decodeAssetTransfer }, '../../../../source/shared/erc20': { formatTokenUnits },
+      '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay }, '../../../../source/shared/assetTransfer': { decodeAssetTransfer }, '../../../../source/shared/erc20': { formatTokenUnits },
       '../core/amounts': { formatBaseUnits }, './ApprovalReview': { ApprovalReview: 'ApprovalReview' },
     }, globals);
   return { review, controller, ledgerConnection, state, approvals, deviceActions,
@@ -197,5 +198,21 @@ test('unknown contract call identifies native value separately from possible ass
     assert(text.includes('Native currency sent'));
     assert(text.includes('This amount excludes any tokens or NFTs the contract may move.'));
     assert(text.includes('Maximum ETH debit'));
+  } finally { f.close(); }
+});
+
+
+test('transaction review keeps the canonical asset recipient before account detail and refuses stale enrichment', () => {
+  const f = fixture('transaction');
+  try {
+    const token = `0x${'33'.repeat(20)}`, recipient = `0x${'44'.repeat(20)}`, stale = `0x${'55'.repeat(20)}`;
+    const abi = new Interface(['function transfer(address,uint256)']);
+    f.review.transaction = { ...f.review.transaction, to: token, data: abi.encodeFunctionData('transfer', [recipient, 123]), value: '0' };
+    f.review.assetTransfer = decodeAssetTransfer(abi.encodeFunctionData('transfer', [stale, 999]), token,
+      { standard: 'ERC-20', token: { contractAddress: token, name: 'Token', symbol: 'TOK', decimals: 2 } });
+    const nodes = f.render(), strings = nodes.flatMap(node => node.children.filter(value => typeof value === 'string'));
+    assert(strings.includes(recipient)); assert(!strings.includes(stale)); assert(strings.includes('123')); assert(!strings.includes('9.99'));
+    assert(strings.indexOf('Recipient') < strings.indexOf('From'));
+    assert(nodes.some(node => node.type === 'DappSiteStatus'));
   } finally { f.close(); }
 });

@@ -6338,7 +6338,7 @@ export function createKeyringRuntimeFactory(
             return rows;
           }),
           security: {
-            isAuthenticationRefusal: error => !!error && typeof error === 'object' && secretAuthenticationRefusals.has(error),
+            isAuthenticationRefusal: error => !!error && typeof error === 'object' && (secretAuthenticationRefusals.has(error) || operationAuthenticationRefusals.has(error)),
             authenticationStatus: async () => {
               const captured = generation; current(captured);
               const configured = !!pinVault && !!(await storage.pin.read()); current(captured);
