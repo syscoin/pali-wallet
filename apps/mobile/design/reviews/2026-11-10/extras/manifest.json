@@ -1,6 +1,6 @@
 {
   "started": "2026-11-10T21:05:26.968Z",
-  "updated": "2026-11-10T21:05:32.947Z",
+  "updated": "2026-11-11T01:52:25.987Z",
   "report": [
     {
       "id": "65-smart-send-form",
@@ -258,7 +258,7 @@
       "id": "10-evm-nonce",
       "label": "EVM advanced nonce",
       "component": "NativeSend",
-      "url": "http://127.0.0.1:4291/?",
+      "url": "http://127.0.0.1:4179/",
       "steps": [
         "Advanced options",
         "Scroll to Transaction nonce"
@@ -266,18 +266,24 @@
       "width": 390,
       "height": 844,
       "image": "10-evm-nonce-390.png",
-      "capturedAt": "2026-11-10T20:41:20.459Z",
-      "note": null,
-      "text": "Send ETH\nAccount 1 \u00b7 Ethereum\nEthereum\nETH\nEthereum address\nAmount in ETH\nAvailable 1 ETH\nHide advanced options\nTransaction nonce\nLeave blank for automatic selection. A higher nonce can wait for earlier transactions.\nReview transfer",
+      "capturedAt": "2026-11-11T01:52:24.767Z",
+      "note": "Inline MAX displayed and verified to fill the amount field.",
+      "text": "Send ETH\nAccount 1 \u00b7 Ethereum\nEthereum\nETH\nEthereum address\nAmount in ETH\nMAX\nAvailable 1 ETH\nHide advanced options\nTransaction nonce\nLeave blank for automatic selection. A higher nonce can wait for earlier transactions.\nReview transfer",
       "errors": [],
       "blocked": [],
       "mocked": [],
       "assets": [
-        "http://127.0.0.1:4291/_expo/static/js/web/entry-9fafad3b02075b4637ac62f711e59c8e.js"
+        "http://127.0.0.1:4179/_expo/static/js/web/entry-57fcdb96651c1b13c412404bfcf96dfe.js"
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "04466c2e9498dfd250ac575e393db72fceec0e1f"
+      "sourceCheckpoint": "d7fa5bdee821247a1ee85b866af60ce6a890e0e4",
+      "sourceFiles": {
+        "apps/mobile/src/screens/NativeSend.tsx": "56e9768aabb084a6fae2acd2073f83951d3338e171ebfdfa73abdf27dd6ecf23",
+        "apps/mobile/src/screens/NativeSlhDsaManagement.tsx": "1b29f8b5f291a0265fc2658e9d58e97851b28d8ac13901d84ebe821d1f4898df",
+        "apps/mobile/src/ui.tsx": "a2ff8ae4d058c4bb36f248ab2a87ed17a63d15fc78578f18171a0468e7c817c8"
+      },
+      "imageSha256": "c7a8794ae73affdbf9ea074f001013003a5ae4b095540a0567be79ee6a1824f2"
     },
     {
       "id": "11-utxo-advanced",
@@ -449,49 +455,61 @@
       "id": "18-slh-keys",
       "label": "SLH-DSA prepared keys",
       "component": "NativeSlhDsaManagement",
-      "url": "http://127.0.0.1:4292/?slh-fixture=ready",
+      "url": "http://127.0.0.1:4182/?slh-fixture=prepared",
       "steps": [],
       "width": 390,
       "height": 844,
       "image": "18-slh-keys-390.png",
-      "capturedAt": "2026-11-10T20:41:30.055Z",
-      "note": null,
-      "text": "Post-quantum SLH-DSA\nEthereum\n0x1111111111111111111111111111111111111111\nUse a wallet-managed post-quantum key to approve account actions.\nReady\n0x4444444444444444444444444444444400000000000000000000000000000000\nSLH-DSA \u00b7 7 / 16776216\nUse this method\nRegenerate local signer\nCheck status\nClose",
+      "capturedAt": "2026-11-11T01:52:25.058Z",
+      "note": "Installed keys have shield icon and checkmarked status; prepared keys have no installed checkmark.",
+      "text": "Post-quantum SLH-DSA\nEthereum\n0x1111111111111111111111111111111111111111\nUse a wallet-managed post-quantum key to approve account actions.\nSLH-DSA\nReady\n0x4444444444444444444444444444444400000000000000000000000000000000\nSLH-DSA \u00b7 7 / 16776216\nUse this method\nRegenerate local signer\nCheck status\nClose",
       "errors": [],
       "blocked": [],
       "mocked": [],
       "assets": [
-        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
-        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
-        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+        "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "04466c2e9498dfd250ac575e393db72fceec0e1f"
+      "sourceCheckpoint": "d7fa5bdee821247a1ee85b866af60ce6a890e0e4",
+      "sourceFiles": {
+        "apps/mobile/src/screens/NativeSend.tsx": "56e9768aabb084a6fae2acd2073f83951d3338e171ebfdfa73abdf27dd6ecf23",
+        "apps/mobile/src/screens/NativeSlhDsaManagement.tsx": "1b29f8b5f291a0265fc2658e9d58e97851b28d8ac13901d84ebe821d1f4898df",
+        "apps/mobile/src/ui.tsx": "a2ff8ae4d058c4bb36f248ab2a87ed17a63d15fc78578f18171a0468e7c817c8"
+      },
+      "imageSha256": "6cb4b82d28f7985b8ed4e8706b82c6d4d2b2d7c7d49baaf7546cdba90c983e24"
     },
     {
       "id": "19-slh-installed",
       "label": "SLH-DSA installed keys",
       "component": "NativeSlhDsaManagement",
-      "url": "http://127.0.0.1:4292/?slh-fixture=installed",
+      "url": "http://127.0.0.1:4182/?slh-fixture=installed",
       "steps": [],
       "width": 390,
       "height": 844,
       "image": "19-slh-installed-390.png",
-      "capturedAt": "2026-11-10T20:41:31.231Z",
-      "note": null,
-      "text": "Post-quantum SLH-DSA\nEthereum\n0x1111111111111111111111111111111111111111\nUse a wallet-managed post-quantum key to approve account actions.\nInstalled\n0x4444444444444444444444444444444400000000000000000000000000000000\nSLH-DSA \u00b7 7 / 16776216\nUse this method\nRegenerate local signer\nCheck status\nClose",
+      "capturedAt": "2026-11-11T01:52:25.209Z",
+      "note": "Installed keys have shield icon and checkmarked status; prepared keys have no installed checkmark.",
+      "text": "Post-quantum SLH-DSA\nEthereum\n0x1111111111111111111111111111111111111111\nUse a wallet-managed post-quantum key to approve account actions.\nSLH-DSA\nInstalled\n0x4444444444444444444444444444444400000000000000000000000000000000\nSLH-DSA \u00b7 7 / 16776216\nUse this method\nRegenerate local signer\nCheck status\nClose",
       "errors": [],
       "blocked": [],
       "mocked": [],
       "assets": [
-        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
-        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
-        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+        "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "04466c2e9498dfd250ac575e393db72fceec0e1f"
+      "sourceCheckpoint": "d7fa5bdee821247a1ee85b866af60ce6a890e0e4",
+      "sourceFiles": {
+        "apps/mobile/src/screens/NativeSend.tsx": "56e9768aabb084a6fae2acd2073f83951d3338e171ebfdfa73abdf27dd6ecf23",
+        "apps/mobile/src/screens/NativeSlhDsaManagement.tsx": "1b29f8b5f291a0265fc2658e9d58e97851b28d8ac13901d84ebe821d1f4898df",
+        "apps/mobile/src/ui.tsx": "a2ff8ae4d058c4bb36f248ab2a87ed17a63d15fc78578f18171a0468e7c817c8"
+      },
+      "imageSha256": "ea3927b4cbcff1a5c335096f76e7991191b892e1d0a1bd713962d054351c849a"
     },
     {
       "id": "20-smart-transfer",
@@ -1898,7 +1916,7 @@
       "id": "10-evm-nonce",
       "label": "EVM advanced nonce",
       "component": "NativeSend",
-      "url": "http://127.0.0.1:4291/?",
+      "url": "http://127.0.0.1:4179/",
       "steps": [
         "Advanced options",
         "Scroll to Transaction nonce"
@@ -1906,18 +1924,24 @@
       "width": 320,
       "height": 568,
       "image": "10-evm-nonce-320.png",
-      "capturedAt": "2026-11-10T20:42:47.247Z",
-      "note": null,
-      "text": "Send ETH\nAccount 1 \u00b7 Ethereum\nEthereum\nETH\nEthereum address\nAmount in ETH\nAvailable 1 ETH\nHide advanced options\nTransaction nonce\nLeave blank for automatic selection. A higher nonce can wait for earlier transactions.\nReview transfer",
+      "capturedAt": "2026-11-11T01:52:25.541Z",
+      "note": "Inline MAX displayed and verified to fill the amount field.",
+      "text": "Send ETH\nAccount 1 \u00b7 Ethereum\nEthereum\nETH\nEthereum address\nAmount in ETH\nMAX\nAvailable 1 ETH\nHide advanced options\nTransaction nonce\nLeave blank for automatic selection. A higher nonce can wait for earlier transactions.\nReview transfer",
       "errors": [],
       "blocked": [],
       "mocked": [],
       "assets": [
-        "http://127.0.0.1:4291/_expo/static/js/web/entry-9fafad3b02075b4637ac62f711e59c8e.js"
+        "http://127.0.0.1:4179/_expo/static/js/web/entry-57fcdb96651c1b13c412404bfcf96dfe.js"
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "04466c2e9498dfd250ac575e393db72fceec0e1f"
+      "sourceCheckpoint": "d7fa5bdee821247a1ee85b866af60ce6a890e0e4",
+      "sourceFiles": {
+        "apps/mobile/src/screens/NativeSend.tsx": "56e9768aabb084a6fae2acd2073f83951d3338e171ebfdfa73abdf27dd6ecf23",
+        "apps/mobile/src/screens/NativeSlhDsaManagement.tsx": "1b29f8b5f291a0265fc2658e9d58e97851b28d8ac13901d84ebe821d1f4898df",
+        "apps/mobile/src/ui.tsx": "a2ff8ae4d058c4bb36f248ab2a87ed17a63d15fc78578f18171a0468e7c817c8"
+      },
+      "imageSha256": "7e6f8a806afbae27d3deee91c0b6c2a86916c70a8debc07944bbb2b9cacca02c"
     },
     {
       "id": "11-utxo-advanced",
@@ -2089,49 +2113,61 @@
       "id": "18-slh-keys",
       "label": "SLH-DSA prepared keys",
       "component": "NativeSlhDsaManagement",
-      "url": "http://127.0.0.1:4292/?slh-fixture=ready",
+      "url": "http://127.0.0.1:4182/?slh-fixture=prepared",
       "steps": [],
       "width": 320,
       "height": 568,
       "image": "18-slh-keys-320.png",
-      "capturedAt": "2026-11-10T20:42:56.758Z",
-      "note": null,
-      "text": "Post-quantum SLH-DSA\nEthereum\n0x1111111111111111111111111111111111111111\nUse a wallet-managed post-quantum key to approve account actions.\nReady\n0x4444444444444444444444444444444400000000000000000000000000000000\nSLH-DSA \u00b7 7 / 16776216\nUse this method\nRegenerate local signer\nCheck status\nClose",
+      "capturedAt": "2026-11-11T01:52:25.824Z",
+      "note": "Installed keys have shield icon and checkmarked status; prepared keys have no installed checkmark.",
+      "text": "Post-quantum SLH-DSA\nEthereum\n0x1111111111111111111111111111111111111111\nUse a wallet-managed post-quantum key to approve account actions.\nSLH-DSA\nReady\n0x4444444444444444444444444444444400000000000000000000000000000000\nSLH-DSA \u00b7 7 / 16776216\nUse this method\nRegenerate local signer\nCheck status\nClose",
       "errors": [],
       "blocked": [],
       "mocked": [],
       "assets": [
-        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
-        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
-        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+        "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "04466c2e9498dfd250ac575e393db72fceec0e1f"
+      "sourceCheckpoint": "d7fa5bdee821247a1ee85b866af60ce6a890e0e4",
+      "sourceFiles": {
+        "apps/mobile/src/screens/NativeSend.tsx": "56e9768aabb084a6fae2acd2073f83951d3338e171ebfdfa73abdf27dd6ecf23",
+        "apps/mobile/src/screens/NativeSlhDsaManagement.tsx": "1b29f8b5f291a0265fc2658e9d58e97851b28d8ac13901d84ebe821d1f4898df",
+        "apps/mobile/src/ui.tsx": "a2ff8ae4d058c4bb36f248ab2a87ed17a63d15fc78578f18171a0468e7c817c8"
+      },
+      "imageSha256": "2e7418c6385de4743bda6bb4697611c8d6fb462da1f18be7d23ffee860ee5b8f"
     },
     {
       "id": "19-slh-installed",
       "label": "SLH-DSA installed keys",
       "component": "NativeSlhDsaManagement",
-      "url": "http://127.0.0.1:4292/?slh-fixture=installed",
+      "url": "http://127.0.0.1:4182/?slh-fixture=installed",
       "steps": [],
       "width": 320,
       "height": 568,
       "image": "19-slh-installed-320.png",
-      "capturedAt": "2026-11-10T20:42:57.937Z",
-      "note": null,
-      "text": "Post-quantum SLH-DSA\nEthereum\n0x1111111111111111111111111111111111111111\nUse a wallet-managed post-quantum key to approve account actions.\nInstalled\n0x4444444444444444444444444444444400000000000000000000000000000000\nSLH-DSA \u00b7 7 / 16776216\nUse this method\nRegenerate local signer\nCheck status\nClose",
+      "capturedAt": "2026-11-11T01:52:25.973Z",
+      "note": "Installed keys have shield icon and checkmarked status; prepared keys have no installed checkmark.",
+      "text": "Post-quantum SLH-DSA\nEthereum\n0x1111111111111111111111111111111111111111\nUse a wallet-managed post-quantum key to approve account actions.\nSLH-DSA\nInstalled\n0x4444444444444444444444444444444400000000000000000000000000000000\nSLH-DSA \u00b7 7 / 16776216\nUse this method\nRegenerate local signer\nCheck status\nClose",
       "errors": [],
       "blocked": [],
       "mocked": [],
       "assets": [
-        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
-        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
-        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+        "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "04466c2e9498dfd250ac575e393db72fceec0e1f"
+      "sourceCheckpoint": "d7fa5bdee821247a1ee85b866af60ce6a890e0e4",
+      "sourceFiles": {
+        "apps/mobile/src/screens/NativeSend.tsx": "56e9768aabb084a6fae2acd2073f83951d3338e171ebfdfa73abdf27dd6ecf23",
+        "apps/mobile/src/screens/NativeSlhDsaManagement.tsx": "1b29f8b5f291a0265fc2658e9d58e97851b28d8ac13901d84ebe821d1f4898df",
+        "apps/mobile/src/ui.tsx": "a2ff8ae4d058c4bb36f248ab2a87ed17a63d15fc78578f18171a0468e7c817c8"
+      },
+      "imageSha256": "367dfd533a5ffc685bb546bc3040889af2a67c7d979d3a32a95402e65a0f6fb8"
     },
     {
       "id": "20-smart-transfer",
@@ -3407,6 +3443,49 @@
         "45-private-key-auth",
         "32-sentry-consent"
       ]
+    },
+    {
+      "at": "2026-11-11T01:52:25.987Z",
+      "reason": "Refresh requested native MAX and SLH prepared/installed iconography captures.",
+      "images": [
+        {
+          "id": "10-evm-nonce",
+          "width": 390,
+          "image": "10-evm-nonce-390.png",
+          "sha256": "c7a8794ae73affdbf9ea074f001013003a5ae4b095540a0567be79ee6a1824f2"
+        },
+        {
+          "id": "18-slh-keys",
+          "width": 390,
+          "image": "18-slh-keys-390.png",
+          "sha256": "6cb4b82d28f7985b8ed4e8706b82c6d4d2b2d7c7d49baaf7546cdba90c983e24"
+        },
+        {
+          "id": "19-slh-installed",
+          "width": 390,
+          "image": "19-slh-installed-390.png",
+          "sha256": "ea3927b4cbcff1a5c335096f76e7991191b892e1d0a1bd713962d054351c849a"
+        },
+        {
+          "id": "10-evm-nonce",
+          "width": 320,
+          "image": "10-evm-nonce-320.png",
+          "sha256": "7e6f8a806afbae27d3deee91c0b6c2a86916c70a8debc07944bbb2b9cacca02c"
+        },
+        {
+          "id": "18-slh-keys",
+          "width": 320,
+          "image": "18-slh-keys-320.png",
+          "sha256": "2e7418c6385de4743bda6bb4697611c8d6fb462da1f18be7d23ffee860ee5b8f"
+        },
+        {
+          "id": "19-slh-installed",
+          "width": 320,
+          "image": "19-slh-installed-320.png",
+          "sha256": "367dfd533a5ffc685bb546bc3040889af2a67c7d979d3a32a95402e65a0f6fb8"
+        }
+      ],
+      "sourceCheckpoint": "d7fa5bdee821247a1ee85b866af60ce6a890e0e4"
     }
   ]
 }

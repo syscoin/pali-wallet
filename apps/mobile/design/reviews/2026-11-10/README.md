@@ -575,7 +575,7 @@ Component: `NativeTokens / CollectibleOwnership`
 <details>
 <summary>10-evm-nonce: EVM advanced nonce</summary>
 
-Component: `NativeSend`
+Component: `NativeSend`. MAX is inside the amount field, with the available balance below it.
 
 ![EVM advanced nonce at 390px](extras/10-evm-nonce-390.png)
 
@@ -674,7 +674,7 @@ Component: `NativeSlhDsaManagement`
 <details>
 <summary>19-slh-installed: SLH-DSA installed keys</summary>
 
-Component: `NativeSlhDsaManagement`
+Component: `NativeSlhDsaManagement`. The shield identifies the authenticator; a green checkmark and Installed badge mark an installed key. Prepared keys show Ready without the checkmark.
 
 ![SLH-DSA installed keys at 390px](extras/19-slh-installed-390.png)
 
