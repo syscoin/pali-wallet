@@ -819,7 +819,7 @@ Component: `NativeSentryNodes`
 
 Updated source: `a7c370a22656574043007ccc8d15fe2af342351a`. Authorization opens the shared prompt.
 
-Component: `NativeSentryReview`
+Component: `NativeSentryReview`. The website warning stays visible without pushing the proposed service behind the footer on short screens. [320×480 capture](consent-updates/sentry-review-320-short.png).
 
 ![Sentry request approval at 390px](extras/32-sentry-consent-390.png)
 

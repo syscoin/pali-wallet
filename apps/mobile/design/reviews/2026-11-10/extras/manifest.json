@@ -792,9 +792,9 @@
       "width": 390,
       "height": 844,
       "image": "32-sentry-consent-390.png",
-      "capturedAt": "2026-11-10T20:41:46.602Z",
+      "capturedAt": "2026-11-11T02:06:05.455Z",
       "note": null,
-      "text": "Update node service\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet \u00b7 Syscoin\nsys1qexamplepublicaddress\nUpdate node service\nChange the service information for this node using the selected authority key.\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator \u00b7 bls-basic\nService address\nCurrent\nold.example.test:8369\nProposed\nnew.example.test:8369\nNEVM address\nCurrent\n0x4444444444444444444444444444444444444444\nProposed\n0x5555555555555555555555555555555555555555\nOperator payout script\nCurrent\n00146666666666666666666666666666666666666666\nProposed\n00147777777777777777777777777777777777777777\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key \u00b7 operator\nbls-basic \u00b7 Selected\nView request details\nUpdate node service\nReject",
+      "text": "Update node service\nExample staking app \u00b7 Syscoin\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nService address\nProposed\nnew.example.test:8369\nCurrent\nold.example.test:8369\nNEVM address\nProposed\n0x5555555555555555555555555555555555555555\nCurrent\n0x4444444444444444444444444444444444444444\nOperator payout address\nProposed\nsys1qwamhwamhwamhwamhwamhwamhwamhwamhjx836v\nCurrent\nsys1qvenxvenxvenxvenxvenxvenxvenxvenxqcsv07\nRequest account\nDaily wallet \u00b7 sys1qexamplepublicaddress\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator \u00b7 bls-basic\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key \u00b7 operator\nbls-basic \u00b7 Selected\nView request details\nUpdate node service\nReject",
       "errors": [],
       "blocked": [],
       "mocked": [],
@@ -806,8 +806,14 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
-      "sourceCheckpoint": "a7c370a22656574043007ccc8d15fe2af342351a",
-      "sha256": "6fd5ed73bb86c79e221458714f5c2138bae655967c7a69a1b00dc30b087f7326"
+      "sourceCheckpoint": "5e87e73ebcaecfd51e10059b6d7727b71c02fffc",
+      "sha256": "d620f2a299fcaa94a14c265d836afe4cbccd4e1c84456e62abfc233ccbcd49d9",
+      "sourceRevision": "5e87e73ebcaecfd51e10059b6d7727b71c02fffc",
+      "sourceFiles": {
+        "apps/mobile/src/ui.tsx": "57fd29ef4e1a042a750040118c2481cca20fe455450be11884298c855570bf0f",
+        "apps/mobile/src/screens/DappSiteStatus.tsx": "5ac34144f8c6d76da43b9cfa3e2909da9d49b25aa8b5ab1822b59accf28c28f5",
+        "apps/mobile/src/screens/NativeSentryReview.tsx": "0feb5fd0f7b5c272f2fed87dcd5e954b6411678cb1dde3dd90eea4fed9a5c0db"
+      }
     },
     {
       "id": "33-ledger-connect",
@@ -2450,9 +2456,9 @@
       "width": 320,
       "height": 568,
       "image": "32-sentry-consent-320.png",
-      "capturedAt": "2026-11-10T20:43:13.166Z",
+      "capturedAt": "2026-11-11T02:06:05.753Z",
       "note": null,
-      "text": "Update node service\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet \u00b7 Syscoin\nsys1qexamplepublicaddress\nUpdate node service\nChange the service information for this node using the selected authority key.\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator \u00b7 bls-basic\nService address\nCurrent\nold.example.test:8369\nProposed\nnew.example.test:8369\nNEVM address\nCurrent\n0x4444444444444444444444444444444444444444\nProposed\n0x5555555555555555555555555555555555555555\nOperator payout script\nCurrent\n00146666666666666666666666666666666666666666\nProposed\n00147777777777777777777777777777777777777777\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key \u00b7 operator\nbls-basic \u00b7 Selected\nView request details\nUpdate node service\nReject",
+      "text": "Update node service\nExample staking app \u00b7 Syscoin\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nService address\nProposed\nnew.example.test:8369\nCurrent\nold.example.test:8369\nNEVM address\nProposed\n0x5555555555555555555555555555555555555555\nCurrent\n0x4444444444444444444444444444444444444444\nOperator payout address\nProposed\nsys1qwamhwamhwamhwamhwamhwamhwamhwamhjx836v\nCurrent\nsys1qvenxvenxvenxvenxvenxvenxvenxvenxqcsv07\nRequest account\nDaily wallet \u00b7 sys1qexamplepublicaddress\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator \u00b7 bls-basic\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key \u00b7 operator\nbls-basic \u00b7 Selected\nView request details\nUpdate node service\nReject",
       "errors": [],
       "blocked": [],
       "mocked": [],
@@ -2464,8 +2470,14 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
-      "sourceCheckpoint": "a7c370a22656574043007ccc8d15fe2af342351a",
-      "sha256": "507dbb855c710f3edb15c1ef30007a31d6579bfe0194a1130130a39c47489727"
+      "sourceCheckpoint": "5e87e73ebcaecfd51e10059b6d7727b71c02fffc",
+      "sha256": "31369f7b4b6c0f42f5ee1d5b20844f3fca30c102b9828d715c75be6de929eae4",
+      "sourceRevision": "5e87e73ebcaecfd51e10059b6d7727b71c02fffc",
+      "sourceFiles": {
+        "apps/mobile/src/ui.tsx": "57fd29ef4e1a042a750040118c2481cca20fe455450be11884298c855570bf0f",
+        "apps/mobile/src/screens/DappSiteStatus.tsx": "5ac34144f8c6d76da43b9cfa3e2909da9d49b25aa8b5ab1822b59accf28c28f5",
+        "apps/mobile/src/screens/NativeSentryReview.tsx": "0feb5fd0f7b5c272f2fed87dcd5e954b6411678cb1dde3dd90eea4fed9a5c0db"
+      }
     },
     {
       "id": "33-ledger-connect",

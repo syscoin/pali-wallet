@@ -27,7 +27,7 @@
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc20",
       "sha256": "1d7f2a0bdd13f7ae029fe37127848f19b9c5142dd8fd2cc5f8bf6e84b6033d23",
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nWebsite origin matched by WalletConnect\nTOK\nERC-20 transfer\n123.456789\nTOK\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nTOK\nERC-20 transfer\n123.456789\nTOK\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
     },
     {
       "id": "dapp-erc721",
@@ -38,7 +38,7 @@
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc721",
       "sha256": "639062d1ec0d128817dac00f991d23ad6e6f8137dd1cd6e3d4a157a956638d1e",
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nWebsite origin matched by WalletConnect\nERC-721 transfer\n#42\n1 NFT\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-721 transfer\n#42\n1 NFT\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
     },
     {
       "id": "dapp-erc1155",
@@ -49,7 +49,7 @@
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc1155",
       "sha256": "ce45c95ddaf161e7863d1a068a67e6ba296d2183a809596c3040f9fffde2f1f5",
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nWebsite origin matched by WalletConnect\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
     },
     {
       "id": "smart-token",
@@ -80,9 +80,17 @@
       "width": 390,
       "height": 844,
       "url": "http://127.0.0.1:4179/?sentry-consent",
-      "sha256": "4682af1f0faf13ea0a735f037dc550c4d1061a93cdba4ad35490d9ede059141f",
+      "sha256": "d620f2a299fcaa94a14c265d836afe4cbccd4e1c84456e62abfc233ccbcd49d9",
       "overflow": false,
-      "text": "Update node service\nExample staking app \u00b7 Syscoin\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nService address\nProposed\nnew.example.test:8369\nCurrent\nold.example.test:8369\nNEVM address\nProposed\n0x5555555555555555555555555555555555555555\nCurrent\n0x4444444444444444444444444444444444444444\nOperator payout address\nProposed\nsys1qwamhwamhwamhwamhwamhwamhwamhwamhjx836v\nCurrent\nsys1qvenxvenxvenxvenxvenxvenxvenxvenxqcsv07\nRequest account\nDaily wallet \u00b7 sys1qexamplepublicaddress\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator \u00b7 bls-basic\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key \u00b7 operator\nbls-basic \u00b7 Selected\nView request details\nUpdate node service\nReject"
+      "text": "Update node service\nExample staking app · Syscoin\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nService address\nProposed\nnew.example.test:8369\nCurrent\nold.example.test:8369\nNEVM address\nProposed\n0x5555555555555555555555555555555555555555\nCurrent\n0x4444444444444444444444444444444444444444\nOperator payout address\nProposed\nsys1qwamhwamhwamhwamhwamhwamhwamhwamhjx836v\nCurrent\nsys1qvenxvenxvenxvenxvenxvenxvenxvenxqcsv07\nRequest account\nDaily wallet · sys1qexamplepublicaddress\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator · bls-basic\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key · operator\nbls-basic · Selected\nView request details\nUpdate node service\nReject",
+      "sourceRevision": "5e87e73ebcaecfd51e10059b6d7727b71c02fffc",
+      "sourceCheckpoint": "5e87e73ebcaecfd51e10059b6d7727b71c02fffc",
+      "sourceFiles": {
+        "apps/mobile/src/ui.tsx": "57fd29ef4e1a042a750040118c2481cca20fe455450be11884298c855570bf0f",
+        "apps/mobile/src/screens/DappSiteStatus.tsx": "5ac34144f8c6d76da43b9cfa3e2909da9d49b25aa8b5ab1822b59accf28c28f5",
+        "apps/mobile/src/screens/NativeSentryReview.tsx": "0feb5fd0f7b5c272f2fed87dcd5e954b6411678cb1dde3dd90eea4fed9a5c0db"
+      },
+      "capturedAt": "2026-11-11T02:06:06.058Z"
     },
     {
       "id": "known-usdc",
@@ -93,7 +101,7 @@
       "url": "http://127.0.0.1:4179/?transaction-review=1&known-icon=usdc",
       "sha256": "f5f4ff9f4efab2183fe359b34d3b681fa0e53f72c18276fe6bf222e22d4d61a3",
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nzkSYS Tanenbaum Testnet \u00b7 https://example.invalid\nWebsite origin matched by WalletConnect\nERC-20 transfer\n123.456789\nUSDC\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0xD501e86b1Fc5823403b2bA995e2b8b78179236A6\nNetwork\nzkSYS Tanenbaum Testnet \u00b7 Chain 57057\nMaximum network fee\n0.000000000000252 TSYS\nMaximum TSYS debit\n0.000000000000252 TSYS\nView transaction details\nReject\nConfirm"
+      "text": "Transaction request\nE\nExample app\nzkSYS Tanenbaum Testnet · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-20 transfer\n123.456789\nUSDC\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0xD501e86b1Fc5823403b2bA995e2b8b78179236A6\nNetwork\nzkSYS Tanenbaum Testnet · Chain 57057\nMaximum network fee\n0.000000000000252 TSYS\nMaximum TSYS debit\n0.000000000000252 TSYS\nView transaction details\nReject\nConfirm"
     },
     {
       "id": "known-sysx",
@@ -104,7 +112,7 @@
       "url": "http://127.0.0.1:4179/?utxo-send=1&known-icon=sysx",
       "sha256": "eeda68cacf3baa99f41250f2e15aa7f42c1905a21aebe9d1d54241a04da8545d",
       "overflow": false,
-      "text": "Review transfer\nAccount 1 \u00b7 Syscoin Mainnet\n1.23456789 SYSX\nOutput 1\nsys1qpqyqszqgpqyqszqgpqyqszqgpqyqszqgzp6ll8\nAsset ID\n123456\nNative amount sent with asset\n0.00000294 SYS\nNetwork fee\n0.00000452 SYS\nReplace-by-fee\nEnabled\nOutput 2 \u00b7 0.000005 SYS\nsys1qqurswpc8qurswpc8qurswpc8qurswpc8degtm7\nResend saved transfer"
+      "text": "Review transfer\nAccount 1 · Syscoin Mainnet\n1.23456789 SYSX\nOutput 1\nsys1qpqyqszqgpqyqszqgpqyqszqgpqyqszqgzp6ll8\nAsset ID\n123456\nNative amount sent with asset\n0.00000294 SYS\nNetwork fee\n0.00000452 SYS\nReplace-by-fee\nEnabled\nOutput 2 · 0.000005 SYS\nsys1qqurswpc8qurswpc8qurswpc8qurswpc8degtm7\nResend saved transfer"
     },
     {
       "id": "dapp-erc20",
@@ -115,7 +123,7 @@
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc20",
       "sha256": "b9428fc02a16926b2cfa9947a49721b275faa11bd7e71133bfaf92420244ac8c",
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nWebsite origin matched by WalletConnect\nTOK\nERC-20 transfer\n123.456789\nTOK\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nTOK\nERC-20 transfer\n123.456789\nTOK\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
     },
     {
       "id": "dapp-erc721",
@@ -126,7 +134,7 @@
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc721",
       "sha256": "934704362949458fa3d5acf7ba80ceae73a207ca4d58a5c6edd075fcf8f5a0fb",
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nWebsite origin matched by WalletConnect\nERC-721 transfer\n#42\n1 NFT\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-721 transfer\n#42\n1 NFT\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
     },
     {
       "id": "dapp-erc1155",
@@ -137,7 +145,7 @@
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc1155",
       "sha256": "6a11e1f2a0748953eb13602d0c20d1416027d6e489b24aa23633197c8edc6aba",
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nWebsite origin matched by WalletConnect\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
     },
     {
       "id": "smart-token",
@@ -168,9 +176,17 @@
       "width": 320,
       "height": 740,
       "url": "http://127.0.0.1:4179/?sentry-consent",
-      "sha256": "23724935ff7dbce70c7c214489afcc766e22d1a71bf0dec37f599b536fdb0744",
+      "sha256": "f495484c68d68d32fe9ee440bf805b71724258f31fa6f9e0091ea775c6bb56ab",
       "overflow": false,
-      "text": "Update node service\nExample staking app \u00b7 Syscoin\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nService address\nProposed\nnew.example.test:8369\nCurrent\nold.example.test:8369\nNEVM address\nProposed\n0x5555555555555555555555555555555555555555\nCurrent\n0x4444444444444444444444444444444444444444\nOperator payout address\nProposed\nsys1qwamhwamhwamhwamhwamhwamhwamhwamhjx836v\nCurrent\nsys1qvenxvenxvenxvenxvenxvenxvenxvenxqcsv07\nRequest account\nDaily wallet \u00b7 sys1qexamplepublicaddress\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator \u00b7 bls-basic\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key \u00b7 operator\nbls-basic \u00b7 Selected\nView request details\nUpdate node service\nReject"
+      "text": "Update node service\nExample staking app · Syscoin\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nService address\nProposed\nnew.example.test:8369\nCurrent\nold.example.test:8369\nNEVM address\nProposed\n0x5555555555555555555555555555555555555555\nCurrent\n0x4444444444444444444444444444444444444444\nOperator payout address\nProposed\nsys1qwamhwamhwamhwamhwamhwamhwamhwamhjx836v\nCurrent\nsys1qvenxvenxvenxvenxvenxvenxvenxvenxqcsv07\nRequest account\nDaily wallet · sys1qexamplepublicaddress\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator · bls-basic\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key · operator\nbls-basic · Selected\nView request details\nUpdate node service\nReject",
+      "sourceRevision": "5e87e73ebcaecfd51e10059b6d7727b71c02fffc",
+      "sourceCheckpoint": "5e87e73ebcaecfd51e10059b6d7727b71c02fffc",
+      "sourceFiles": {
+        "apps/mobile/src/ui.tsx": "57fd29ef4e1a042a750040118c2481cca20fe455450be11884298c855570bf0f",
+        "apps/mobile/src/screens/DappSiteStatus.tsx": "5ac34144f8c6d76da43b9cfa3e2909da9d49b25aa8b5ab1822b59accf28c28f5",
+        "apps/mobile/src/screens/NativeSentryReview.tsx": "0feb5fd0f7b5c272f2fed87dcd5e954b6411678cb1dde3dd90eea4fed9a5c0db"
+      },
+      "capturedAt": "2026-11-11T02:06:06.353Z"
     },
     {
       "id": "known-usdc",
@@ -181,7 +197,7 @@
       "url": "http://127.0.0.1:4179/?transaction-review=1&known-icon=usdc",
       "sha256": "ef4d8497a8272d0f2f2e4d92194884bdf379b8c1e2f2a1910dd2f5253b051b95",
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nzkSYS Tanenbaum Testnet \u00b7 https://example.invalid\nWebsite origin matched by WalletConnect\nERC-20 transfer\n123.456789\nUSDC\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0xD501e86b1Fc5823403b2bA995e2b8b78179236A6\nNetwork\nzkSYS Tanenbaum Testnet \u00b7 Chain 57057\nMaximum network fee\n0.000000000000252 TSYS\nMaximum TSYS debit\n0.000000000000252 TSYS\nView transaction details\nReject\nConfirm"
+      "text": "Transaction request\nE\nExample app\nzkSYS Tanenbaum Testnet · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-20 transfer\n123.456789\nUSDC\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0xD501e86b1Fc5823403b2bA995e2b8b78179236A6\nNetwork\nzkSYS Tanenbaum Testnet · Chain 57057\nMaximum network fee\n0.000000000000252 TSYS\nMaximum TSYS debit\n0.000000000000252 TSYS\nView transaction details\nReject\nConfirm"
     },
     {
       "id": "known-sysx",
@@ -192,7 +208,25 @@
       "url": "http://127.0.0.1:4179/?utxo-send=1&known-icon=sysx",
       "sha256": "8aa3dced9ea1d807220adb6da98f03d1ae4a61b743aa1984a78641384d789b9f",
       "overflow": false,
-      "text": "Review transfer\nAccount 1 \u00b7 Syscoin Mainnet\n1.23456789 SYSX\nOutput 1\nsys1qpqyqszqgpqyqszqgpqyqszqgpqyqszqgzp6ll8\nAsset ID\n123456\nNative amount sent with asset\n0.00000294 SYS\nNetwork fee\n0.00000452 SYS\nReplace-by-fee\nEnabled\nOutput 2 \u00b7 0.000005 SYS\nsys1qqurswpc8qurswpc8qurswpc8qurswpc8degtm7\nResend saved transfer"
+      "text": "Review transfer\nAccount 1 · Syscoin Mainnet\n1.23456789 SYSX\nOutput 1\nsys1qpqyqszqgpqyqszqgpqyqszqgpqyqszqgzp6ll8\nAsset ID\n123456\nNative amount sent with asset\n0.00000294 SYS\nNetwork fee\n0.00000452 SYS\nReplace-by-fee\nEnabled\nOutput 2 · 0.000005 SYS\nsys1qqurswpc8qurswpc8qurswpc8qurswpc8degtm7\nResend saved transfer"
+    },
+    {
+      "id": "sentry-review-short",
+      "label": "Sentry consent at320x480",
+      "file": "sentry-review-320-short.png",
+      "width": 320,
+      "height": 480,
+      "sourceRevision": "5e87e73ebcaecfd51e10059b6d7727b71c02fffc",
+      "sourceCheckpoint": "5e87e73ebcaecfd51e10059b6d7727b71c02fffc",
+      "sourceFiles": {
+        "apps/mobile/src/ui.tsx": "57fd29ef4e1a042a750040118c2481cca20fe455450be11884298c855570bf0f",
+        "apps/mobile/src/screens/DappSiteStatus.tsx": "5ac34144f8c6d76da43b9cfa3e2909da9d49b25aa8b5ab1822b59accf28c28f5",
+        "apps/mobile/src/screens/NativeSentryReview.tsx": "0feb5fd0f7b5c272f2fed87dcd5e954b6411678cb1dde3dd90eea4fed9a5c0db"
+      },
+      "capturedAt": "2026-11-11T02:06:06.652Z",
+      "url": "http://127.0.0.1:4179/?sentry-consent",
+      "text": "Update node service\nExample staking app · Syscoin\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nService address\nProposed\nnew.example.test:8369\nCurrent\nold.example.test:8369\nNEVM address\nProposed\n0x5555555555555555555555555555555555555555\nCurrent\n0x4444444444444444444444444444444444444444\nOperator payout address\nProposed\nsys1qwamhwamhwamhwamhwamhwamhwamhwamhjx836v\nCurrent\nsys1qvenxvenxvenxvenxvenxvenxvenxvenxqcsv07\nRequest account\nDaily wallet · sys1qexamplepublicaddress\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator · bls-basic\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key · operator\nbls-basic · Selected\nView request details\nUpdate node service\nReject",
+      "sha256": "572f63b9583537c12c099a34d2f88932142951c21ee87045000c279e9da21439"
     }
   ],
   "bundleFiles": {
