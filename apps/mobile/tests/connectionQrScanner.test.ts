@@ -47,7 +47,8 @@ function deferred<T>() {
 function fixture(
   permission: () => Promise<{ granted: boolean }>,
   platform = 'android',
-  kind: 'connection' | 'recipient' = 'connection'
+  kind: 'connection' | 'recipient' = 'connection',
+  readPermission = permission
 ) {
   const cells: Cell[] = [];
   const effects: (() => void)[] = [];
@@ -56,6 +57,7 @@ function fixture(
   let cursor = 0,
     closes = 0,
     permissionRequests = 0,
+    permissionReads = 0,
     stateWrites = 0;
   let settings: () => Promise<void> = async () => undefined;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
@@ -128,6 +130,10 @@ function fixture(
           permissionRequests++;
           return permission();
         },
+        getCameraPermissionsAsync() {
+          permissionReads++;
+          return readPermission();
+        },
         requestMicrophonePermissionsAsync() {
           assert.fail('QR scanning must not request microphone access');
         },
@@ -190,6 +196,9 @@ function fixture(
     get permissionRequests() {
       return permissionRequests;
     },
+    get permissionReads() {
+      return permissionReads;
+    },
     get stateWrites() {
       return stateWrites;
     },
@@ -239,6 +248,7 @@ test('flashlight is explicit, waits for the camera and resets after focus loss',
     f.emit('blur');
     assert.equal(find(f.render(), 'CameraView'), undefined);
     f.emit('focus');
+    await settle();
     assert.equal(find(f.render(), 'CameraView')!.props.enableTorch, false);
   } finally { f.unmount(); }
 });
@@ -276,6 +286,79 @@ test('denied camera permission offers Settings and failed permission requests sh
     failed.unmount();
   }
 });
+
+for (const platform of ['ios', 'android']) {
+  test(`${platform} scanner rereads a Settings grant on return without requesting permission again`, async () => {
+    let granted = false;
+    const f = fixture(async () => ({ granted }), platform);
+    try {
+      await settle();
+      assert(notice(f.render(), 'Camera access needed'));
+      elements(f.render()).find(element => element.props.title === 'Open Settings')!.props.onPress();
+      f.emit('change', 'background');
+      granted = true;
+      f.emit('change', 'active');
+      if (platform === 'android') f.emit('focus');
+      await settle();
+      assert(find(f.render(), 'CameraView'));
+      assert.equal(f.permissionRequests, 1);
+      assert.equal(f.permissionReads, 1);
+      assert.equal(notice(f.render(), 'Camera access needed'), false);
+    } finally { f.unmount(); }
+  });
+}
+
+test('returning from the initial permission prompt waits for its result', async () => {
+  const permission = deferred<{ granted: boolean }>();
+  const f = fixture(() => permission.promise);
+  try {
+    await settle();
+    f.emit('change', 'background'); f.emit('change', 'active'); f.emit('focus');
+    await settle();
+    assert.equal(f.permissionRequests, 1);
+    assert.equal(f.permissionReads, 0);
+    permission.resolve({ granted: true }); await settle();
+    assert(find(f.render(), 'CameraView'));
+    assert.equal(f.permissionReads, 0);
+  } finally { f.unmount(); }
+});
+
+test('permission refresh blocks retained scans and ignores a read from an earlier foreground', async () => {
+  const first = deferred<{ granted: boolean }>(), second = deferred<{ granted: boolean }>();
+  let reads = 0;
+  const f = fixture(async () => ({ granted: true }), 'android', 'connection', () => ++reads === 1 ? first.promise : second.promise);
+  try {
+    await settle();
+    const scan = find(f.render(), 'CameraView')!.props.onBarcodeScanned;
+    f.emit('blur'); f.emit('focus'); await settle();
+    scan({ data: URI });
+    assert.deepEqual(f.scans, []);
+    assert.equal(find(f.render(), 'CameraView'), undefined);
+    f.emit('blur'); f.emit('focus'); await settle();
+    first.resolve({ granted: true }); await settle();
+    assert.equal(find(f.render(), 'CameraView'), undefined);
+    second.resolve({ granted: false }); await settle();
+    assert(notice(f.render(), 'Camera access needed'));
+    scan({ data: URI }); assert.deepEqual(f.scans, []);
+    assert.equal(f.permissionRequests, 1);
+  } finally { f.unmount(); }
+});
+
+for (const boundary of ['close', 'unmount'] as const) {
+  test(`a permission refresh after ${boundary} cannot publish camera state`, async () => {
+    const read = deferred<{ granted: boolean }>();
+    const f = fixture(async () => ({ granted: false }), 'android', 'connection', () => read.promise);
+    await settle(); f.emit('blur'); f.emit('focus'); await settle();
+    if (boundary === 'close') find(f.render(), 'Header')!.props.right.props.onPress();
+    else f.unmount();
+    const writes = f.stateWrites;
+    read.resolve({ granted: true }); await settle();
+    assert.equal(f.stateWrites, writes);
+    assert.equal(find(f.render(), 'CameraView'), undefined);
+    assert.deepEqual(f.scans, []);
+    f.unmount();
+  });
+}
 
 test('the camera accepts only QR input and hands one valid connection to the controller', async () => {
   const f = fixture(async () => ({ granted: true }));
@@ -352,6 +435,7 @@ test('Android focus resumes QR scanning after a notification-shade blur', async 
     f.emit('blur');
     assert.equal(find(f.render(), 'CameraView'), undefined);
     f.emit('focus');
+    await settle();
     const camera = find(f.render(), 'CameraView');
     assert(camera);
     camera.props.onBarcodeScanned({ data: URI });
@@ -360,6 +444,32 @@ test('Android focus resumes QR scanning after a notification-shade blur', async 
     f.unmount();
   }
 });
+
+for (const boundary of ['background', 'blur'] as const) {
+  test(`callbacks from before ${boundary} cannot affect the resumed camera`, async () => {
+    const f = fixture(async () => ({ granted: true }));
+    try {
+      await settle();
+      const old = find(f.render(), 'CameraView')!;
+      old.props.onCameraReady();
+      const oldTorch = elements(f.render()).find(node => node.props.title === 'Turn on flashlight')!;
+      if (boundary === 'background') { f.emit('change', 'background'); f.emit('change', 'active'); }
+      else { f.emit('blur'); f.emit('focus'); }
+      await settle();
+      const current = find(f.render(), 'CameraView')!;
+      assert(current);
+      old.props.onCameraReady(); old.props.onMountError(); old.props.onBarcodeScanned({ data: URI }); oldTorch.props.onPress();
+      assert.deepEqual(f.scans, []);
+      assert.equal(find(f.render(), 'CameraView')!.props.enableTorch, false);
+      assert.equal(notice(f.render(), 'Camera unavailable'), false);
+      assert.equal(elements(f.render()).some(node => node.props.title === 'Turn on flashlight'), false);
+      current.props.onCameraReady();
+      assert(elements(f.render()).some(node => node.props.title === 'Turn on flashlight'));
+      current.props.onBarcodeScanned({ data: URI });
+      assert.deepEqual(f.scans, [URI]);
+    } finally { f.unmount(); }
+  });
+}
 
 test('a camera mount failure disables a queued scan before the error rerenders', async () => {
   const f = fixture(async () => ({ granted: true }));

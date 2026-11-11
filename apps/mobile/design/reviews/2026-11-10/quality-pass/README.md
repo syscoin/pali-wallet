@@ -46,3 +46,9 @@ The follow-up source review rechecked shared button callers, hardware focus and 
 ## Authentication error feedback
 
 PIN errors and the app's biometric-failure fallback now shake the dot indicator horizontally by at most 6 px for 300 ms; buttons stay still. The completed PIN string clears before submission, while only the filled-dot count remains briefly. Reduce Motion keeps the indicator static and clears immediately. Backgrounding, Android blur, a new input, or unmount cancels the animation. Native Face ID/fingerprint dialogs retain OS-controlled feedback.
+
+## Third independent pass
+
+Returning from system Settings now refreshes camera permission without another permission prompt, so both recipient and WalletConnect scanners recover after access is granted. Scanning stays disabled during the refresh, and callbacks from the previous camera instance cannot affect the resumed view. Focused tests cover iOS/Android lifecycle sequences, initial-prompt races, permission changes, and stale callbacks; physical OS Settings verification remains separate.
+
+Explorer-discovered NFTs now retain their shared token ID and quantity in mobile Activity and details, matching the extension's interpretation. Regressions cover ERC-721 ID `0` and an ERC-1155 maximum-size ID/quantity. The two fixes pass 40 focused tests, mobile typechecking, targeted lint, and independent review. No shared SDK or authorization-policy change is needed.

@@ -14,24 +14,40 @@ export function QrScanner<T>({ parse, copy, onScan, onClose }: QrScannerProps<T>
   const [torch, setTorch] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [foreground, setForeground] = useState(AppState.currentState === 'active');
-  const owner = useRef({ active: true, completed: false, enabled: false, foreground: AppState.currentState === 'active' });
+  const owner = useRef({ active: true, completed: false, enabled: false, foreground: AppState.currentState === 'active', cameraGeneration: 0 });
 
   useEffect(() => {
-    const current = { active: true, completed: false, enabled: false, foreground: AppState.currentState === 'active' };
+    const current = { active: true, completed: false, enabled: false, foreground: AppState.currentState === 'active', cameraGeneration: 0 };
     owner.current = current;
+    let initialPermissionPending = true, permissionRevision = 0;
+    const refreshPermission = () => {
+      if (initialPermissionPending || !current.active || current.completed || !current.foreground) return;
+      const revision = ++permissionRevision;
+      const isCurrent = () => current.active && !current.completed && current.foreground && permissionRevision === revision;
+      current.enabled = false; current.cameraGeneration++;
+      setPermission(null); setTorch(false); setCameraReady(false);
+      void Promise.resolve().then(() => isCurrent() ? Camera.getCameraPermissionsAsync() : undefined).then(result => {
+        if (result && isCurrent()) { current.enabled = result.granted; setPermission(result); setFailure(false); }
+      }).catch(() => { if (isCurrent()) { current.enabled = false; setFailure(true); } });
+    };
     const change = AppState.addEventListener('change', (state) => {
+      const wasForeground = current.foreground;
       current.foreground = state === 'active';
-      if (!current.foreground) { setTorch(false); setCameraReady(false); }
+      if (!current.foreground) { permissionRevision++; current.cameraGeneration++; setTorch(false); setCameraReady(false); }
       if (current.active) setForeground(current.foreground);
+      if (!wasForeground && current.foreground) refreshPermission();
     });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
       current.foreground = false;
+      permissionRevision++; current.cameraGeneration++;
       setTorch(false); setCameraReady(false);
       if (current.active) setForeground(false);
     }) : null;
     const focus = Platform.OS === 'android' ? AppState.addEventListener('focus', () => {
+      const wasForeground = current.foreground;
       current.foreground = AppState.currentState === 'active';
       if (current.active && !current.completed) setForeground(current.foreground);
+      if (!wasForeground && current.foreground) refreshPermission();
     }) : null;
     void Promise.resolve().then(() => {
       if (!current.active || current.completed) return undefined;
@@ -40,7 +56,7 @@ export function QrScanner<T>({ parse, copy, onScan, onClose }: QrScannerProps<T>
       if (result && current.active && !current.completed) { current.enabled = result.granted; setPermission(result); }
     }).catch(() => {
       if (current.active && !current.completed) { current.enabled = false; setFailure(true); }
-    });
+    }).finally(() => { initialPermissionPending = false; });
     return () => { current.active = false; change.remove(); blur?.remove(); focus?.remove(); };
   }, []);
   useEffect(() => {
@@ -53,14 +69,16 @@ export function QrScanner<T>({ parse, copy, onScan, onClose }: QrScannerProps<T>
   }, [onClose]);
 
   const close = () => { owner.current.completed = true; onClose(); };
+  const cameraOwner = owner.current, cameraGeneration = cameraOwner.cameraGeneration;
+  const isCurrentCamera = () => owner.current === cameraOwner && cameraOwner.cameraGeneration === cameraGeneration &&
+    cameraOwner.active && !cameraOwner.completed && cameraOwner.enabled && cameraOwner.foreground && AppState.currentState === 'active';
   const scan = ({ data }: { data: string }) => {
-    const current = owner.current;
-    if (!current.active || current.completed || !current.enabled || !current.foreground || AppState.currentState !== 'active') return;
+    if (!isCurrentCamera()) return;
     let value: T | null;
     try { value = parse(data); } catch { value = null; }
-    if (!current.active || current.completed || !current.foreground || AppState.currentState !== 'active') return;
+    if (!isCurrentCamera()) return;
     if (value === null) { setInvalidCode(true); return; }
-    current.completed = true;
+    cameraOwner.completed = true;
     onScan(value);
   };
   const openSettings = () => { void Linking.openSettings().catch(() => {
@@ -74,17 +92,16 @@ export function QrScanner<T>({ parse, copy, onScan, onClose }: QrScannerProps<T>
       : permission.granted ? <>
         {foreground && <View style={s.camera}>
           <CameraView style={StyleSheet.absoluteFill} facing="back" autofocus="on" active={foreground} enableTorch={torch}
-            onCameraReady={() => { if (owner.current.active && !owner.current.completed && owner.current.foreground) setCameraReady(true); }}
+            onCameraReady={() => { if (isCurrentCamera()) setCameraReady(true); }}
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={scan}
             onMountError={() => {
-              const current = owner.current;
-              if (current.active && !current.completed) { current.enabled = false; setTorch(false); setCameraReady(false); setFailure(true); }
+              if (isCurrentCamera()) { cameraOwner.cameraGeneration++; cameraOwner.enabled = false; setTorch(false); setCameraReady(false); setFailure(true); }
             }} />
           <View pointerEvents="none" style={s.target} />
         </View>}
         <Text style={s.caption}>{copy.instructions}</Text>
         {foreground && cameraReady && <Button title={torch ? 'Turn off flashlight' : 'Turn on flashlight'} icon="torch" variant="secondary" size="compact" onPress={() => {
-          if (owner.current.active && !owner.current.completed && owner.current.foreground) setTorch(value => !value);
+          if (isCurrentCamera()) setTorch(value => !value);
         }} />}
         <Text style={s.caption}>Scanning never signs a transaction. You review requests before approving them.</Text>
         {invalidCode && <Notice title={copy.invalidTitle} body={copy.invalidBody} />}

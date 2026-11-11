@@ -8,6 +8,8 @@ import { formatBaseUnits } from '../src/core/amounts.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { DEFAULT_ACTIVITY_VIEW } from '../src/activity/types.ts';
 import { activityAssetIcon } from '../src/activity/assetIcon.ts';
+import { getEvmTransactionDisplayInfo } from '../../../source/shared/evmTransactionDisplay.ts';
+import { mapEvmExplorerTokenTransfer } from '../../../source/shared/evmHistory.ts';
 
 type Element = { type: any; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; dependencies?: unknown[]; cleanup?: () => void };
@@ -295,6 +297,37 @@ test('privacy masks Activity list quantities and accessibility labels but keeps 
     preview.props.onPress(); await settle();
     const detail = all(f.render()).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
     assert.equal(detail.props.amount, '1.25 ETH');
+  } finally { f.dispose(); }
+});
+
+for (const [standard, tokenId, quantity] of [
+  ['ERC-721', '0', '1'],
+  ['ERC-1155', (2n ** 256n - 1n).toString(), (2n ** 255n).toString()],
+] as const) test(`explorer-only ${standard} activity preserves token ID and exact quantity in details`, async () => {
+  const contract = '0x' + '55'.repeat(20);
+  const indexed = mapEvmExplorerTokenTransfer({
+    hash, from: '0x' + '44'.repeat(20), to: '0x' + '22'.repeat(20),
+    contractAddress: contract, value: quantity, tokenID: tokenId,
+    tokenType: standard, tokenSymbol: 'ART', timeStamp: '1700000000',
+    confirmations: '1', blockNumber: '123', txreceipt_status: '1',
+  }, 1);
+  const display = await getEvmTransactionDisplayInfo(indexed, 'ETH', { chainId: 1 });
+  const row = { hash, indexed, display, indexedStatus: 'confirmed', checking: false, unavailable: false };
+  const f = fixture();
+  try {
+    f.rows([row]);
+    const list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    const preview = list.props.renderItem({ item: row, index: 0 });
+    assert(preview.props.label.includes(`#${tokenId}`));
+    await preview.props.onPress();
+    let tree = all(f.render());
+    const detail = tree.find(node => node.type === 'TransactionDetailLayout'); assert(detail);
+    assert(detail.props.amount.includes(`#${tokenId}`));
+    assert.equal(detail.props.rows.find((item: { label: string }) => item.label === 'Token ID')?.value, tokenId);
+    assert.equal(detail.props.rows.find((item: { label: string }) => item.label === 'Quantity')?.value, quantity);
+    tree.find(node => node.type === 'Button' && node.props.title === 'Details')!.props.onPress();
+    tree = all(f.render());
+    assert(tree.some(node => node.children.includes(`${quantity} ART #${tokenId}`)));
   } finally { f.dispose(); }
 });
 

@@ -125,6 +125,8 @@ function amount(row: ActivityRow, symbol: string): string {
   if (row.display) {
     if (row.display.amountUnavailable) return `? ${row.display.displaySymbol}`;
     if (row.display.hasUnknownDecimals) return `${row.display.displaySymbol} transfer`;
+    if (row.display.isNft && row.display.tokenId !== undefined)
+      return `${row.display.nftQuantity ?? row.display.formattedValue} ${row.display.displaySymbol} #${row.display.tokenId}`;
     return `${row.display.formattedValue} ${row.display.displaySymbol}`;
   }
   if (row.indexed) return 'Amount unavailable';
@@ -333,6 +335,7 @@ function NativeActivityContent({
   const displayStatus = savedPending ? savedPendingStatus : status;
   const chosen = findRow((row) => row.hash === selected);
   const collectible = chosen?.local?.collectibleTransfer;
+  const indexedCollectible = !collectible && chosen?.display?.isNft ? chosen.display : undefined;
   const chosenObservation = chosen ? currentObservation(chosen) : undefined;
   const replacement = findRow((row) => row.local?.originalHash === chosen?.hash &&
     (row.local?.operation === 'cancel' || row.local?.operation === 'speed-up'));
@@ -663,6 +666,10 @@ function NativeActivityContent({
             rows={[
               { label: 'Network', value: snapshot.networkName ?? snapshot.nativeSymbol ?? 'Network' },
               { label: 'Date', value: `${rowDate(chosen).label}${rowDate(chosen).time ? `, ${rowDate(chosen).time}` : ''}` },
+              ...(indexedCollectible ? [
+                ...(indexedCollectible.tokenId !== undefined ? [{ label: 'Token ID', value: indexedCollectible.tokenId }] : []),
+                { label: 'Quantity', value: indexedCollectible.nftQuantity ?? indexedCollectible.formattedValue },
+              ] : []),
               { label: 'From', value: sender(chosen, owner) ?? 'Not available', actionLabel: 'Copy sender address',
                 ...(sender(chosen, owner) ? { onPress: () => setCopyAddress(sender(chosen, owner)) } : {}) },
               { label: 'To', value: recipient(chosen) ?? (chosen.indexed?.to === null || chosen.indexed?.to === '' || chosen.local?.recipient === null ? 'Contract creation' : 'Not available'),
