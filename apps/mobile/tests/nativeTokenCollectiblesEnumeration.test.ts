@@ -10,9 +10,9 @@ const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 type Enumeration = { tokenIds: readonly string[]; hasMore: boolean; method: 'enumeration' | 'manual'; totalOwned?: string };
 const deferred = <T,>() => Promise.withResolvers<T>();
 
-function fixture(options: { item?: object; hidden?: boolean; enumerate?: (signal: AbortSignal) => Promise<Enumeration>;
+function fixture(options: { item?: object; hidden?: boolean; removable?: boolean; enumerate?: (signal: AbortSignal) => Promise<Enumeration>;
   check?: (query: object, signal: AbortSignal) => Promise<{ tokenId: string; units: string }> } = {}) {
-  const enumerations: { query: object; signal: AbortSignal }[] = [], checks: object[] = [], saves: object[] = [];
+  const enumerations: { query: object; signal: AbortSignal }[] = [], checks: object[] = [], saves: object[] = [], removals: boolean[] = [];
   let leave: (() => void) | null = null;
   const host = screenFixture(new URL('../src/screens/NativeTokens.tsx', import.meta.url), 'CollectibleOwnership', {
     '../platform/balancePrivacy': { useBalancePrivacy: () => ({ hidden: options.hidden ?? false }), HIDDEN_BALANCE: 'Hidden' },
@@ -35,10 +35,11 @@ function fixture(options: { item?: object; hidden?: boolean; enumerate?: (signal
       return options.check ? options.check(query, signal) : { tokenId: '0', units: '1' };
     },
     async onSave(ticket: object) { saves.push(ticket); },
+    ...(options.removable ? { async onRemove() { removals.push(true); } } : {}),
     onLeaveChange(next: (() => void) | null) { leave = next; },
   };
   const render = () => screenElements(host.render(props));
-  return { render, enumerations, checks, saves, leave: () => leave?.(), close: host.close };
+  return { render, enumerations, checks, saves, removals, leave: () => leave?.(), close: host.close };
 }
 function button(tree: ScreenElement[], title: string) {
   const found = tree.find(node => node.type === 'Button' && node.props.title === title);
@@ -84,6 +85,44 @@ for (const item of [
     assert(button(f.render(), 'Token ID 0'));
     assert.deepEqual(f.checks, []); assert.deepEqual(f.saves, []);
   } finally { f.close(); }
+});
+
+for (const phase of ['pending', 'completed'] as const) test(`cancelling removal after a ${phase} collection lookup permits a fresh lookup`, async () => {
+  const first = deferred<Enumeration>();
+  let attempts = 0;
+  const f = fixture({
+    item: { contractAddress, tokenStandard: 'ERC-721' },
+    removable: true,
+    enumerate: async () => ++attempts === 1 ? first.promise : { tokenIds: ['7'], hasMore: false, method: 'enumeration' },
+  });
+  try {
+    f.render(); await tick();
+    let oldSelection: ScreenElement | undefined;
+    if (phase === 'completed') {
+      first.resolve({ tokenIds: ['0'], hasMore: false, method: 'enumeration', totalOwned: '1' }); await tick();
+      oldSelection = button(f.render(), 'Token ID 0');
+    } else assert(button(f.render(), 'Finding token IDs…').props.disabled);
+
+    button(f.render(), 'Remove collectible').props.onPress();
+    assert.equal(f.enumerations[0]?.signal.aborted, true);
+    button(f.render(), 'Cancel').props.onPress();
+    const resumed = f.render();
+    assert.equal(button(resumed, 'Find token IDs').props.disabled, false);
+    assert(!resumed.some(node => node.props.testID === 'native-collectible-enumeration'));
+    assert(!resumed.some(node => node.type === 'ActivityIndicator' && node.props.accessibilityLabel === 'Finding token IDs'));
+    assert.equal(input(resumed, 'Token ID').props.editable, true);
+    oldSelection?.props.onPress();
+    first.resolve({ tokenIds: ['0'], hasMore: false, method: 'enumeration', totalOwned: '1' }); await tick();
+    assert.equal(f.enumerations.length, 1, 'Cancel does not automatically repeat the lookup');
+    assert(!f.render().some(node => node.props.title === 'Token ID 0'));
+    assert.deepEqual(f.checks, []); assert.deepEqual(f.saves, []); assert.deepEqual(f.removals, []);
+
+    button(f.render(), 'Find token IDs').props.onPress(); await tick();
+    assert.equal(f.enumerations.length, 2);
+    button(f.render(), 'Token ID 7').props.onPress(); await tick();
+    assert.deepEqual(f.checks, [{ contractAddress, tokenStandard: 'ERC-721', tokenId: '7' }]);
+    assert.deepEqual(f.saves, []); assert.deepEqual(f.removals, []);
+  } finally { first.resolve({ tokenIds: [], hasMore: false, method: 'enumeration' }); f.close(); }
 });
 
 test('a fixed ID and ERC1155 retain their manual ownership path without enumeration', async () => {

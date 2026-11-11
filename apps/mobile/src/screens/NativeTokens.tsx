@@ -1006,6 +1006,7 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
     </> : <Button title="Remove collectible" variant="danger" size="compact" icon="trash" disabled={busy} onPress={() => {
       cancel();
       setResult({ kind: 'idle' });
+      setEnumeration({ kind: 'idle' });
       setConfirmRemove(true);
     }} />)}
   </View>;
