@@ -41,7 +41,9 @@ describe('Pali asset amount to keyring builder', () => {
       () => readOnlySigner,
       () => state as never,
       {},
-      () => () => undefined
+      () => () => undefined,
+      'session',
+      () => undefined
     );
 
     await transactions.getEstimateSysTransactionFee(

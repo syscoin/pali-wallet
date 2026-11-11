@@ -355,7 +355,9 @@ const prepareUtxoRemoval = async () => {
         activeNetwork: syscoin,
       } as never),
     {},
-    () => assertCurrent
+    () => assertCurrent,
+    'session',
+    assertCurrent
   );
   const fetch = jest.fn(async () => {
     const response = Response.json({ result: transaction.txid });

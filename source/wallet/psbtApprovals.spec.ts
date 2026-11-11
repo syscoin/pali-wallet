@@ -105,7 +105,9 @@ function fixture(partial = false, asset = false) {
     () => ({ main: new Syscoin(undefined, network.url, outputNetwork) }),
     () => state as never,
     {},
-    () => check
+    () => check,
+    'session',
+    check
   );
   const readFetch = jest.fn(async (url: string) => {
     if (url !== `${network.url}/api/v2/tx/${previous.getId()}`)

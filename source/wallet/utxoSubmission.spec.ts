@@ -167,7 +167,9 @@ function context() {
         },
       } as never),
     {},
-    () => guard
+    () => guard,
+    'session',
+    guard
   );
   const response = (txid: string) => {
     const reply = Response.json({ result: txid });

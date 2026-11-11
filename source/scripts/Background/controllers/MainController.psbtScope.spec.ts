@@ -322,7 +322,9 @@ describe('PSBT approval context', () => {
         };
       },
       {},
-      () => () => undefined
+      () => () => undefined,
+      'session',
+      () => undefined
     );
     keyring = {
       isUnlocked: jest.fn().mockReturnValue(true),
