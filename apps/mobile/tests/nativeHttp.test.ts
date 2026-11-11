@@ -1,4 +1,6 @@
 import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard.ts';
+import * as credentialPlatform from '../src/platform/credentialPort.ts';
+import { createTestCredentialPort } from './fixtures/credential.ts';
 import { createNativePrivacyServiceSettings } from '../src/platform/privacyServiceSettings.native.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -343,7 +345,7 @@ test('native factory explicitly wires one owned transport to all network consume
     '../portfolio/scopedPortfolioAssets.ts': { createScopedPortfolioAssetReader: unexpectedFeature },
     './privacyServiceSettings.native': { createNativePrivacyServiceSettings },
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
-    'react-native': { Linking: { openURL: unexpectedFeature } },
+    'react-native': { AppState: { currentState: 'active' }, Linking: { openURL: unexpectedFeature } },
     '../crypto/sentryCrypto.native': {
       createNativeSentryCryptoExecutor: (isolated: unknown) => {
         assert.equal(isolated, null, 'production isolated signing stays gated');
@@ -365,16 +367,11 @@ test('native factory explicitly wires one owned transport to all network consume
     '../portfolio/nativeRecipientResolver': { createNativeRecipientResolver: () => ({ resolve: unexpectedFeature }) },
     './security': security,
     './walletConnectRuntime': { prepareWalletConnectRuntime },
-    './credentialPort.native': {
-      createNativeCredentialPort: () => ({ read: unexpectedFeature, stage: unexpectedFeature, remove: unexpectedFeature }),
-    },
-    './operationAuthentication': {
-      nativeOperationAuthentication: { request: unexpectedFeature, cancel() {} },
-    },
-    './deviceUnlockCredential.native': {
-      createNativeDeviceUnlockCapability: () => ({
-        prompt: { cancel() { retired.push('authentication'); }, isActive: () => false, isAnyPromptActive: () => false, run: unexpectedFeature },
-      }),
+    './credentialPort.ts': credentialPlatform,
+    './credential.native': {
+      createNativeCredentialPort: createTestCredentialPort,
+      isNativeCredentialPromptActive: () => false,
+      nativeCredentialAuthentication: { cancel() { retired.push('authentication'); }, run: unexpectedFeature },
     },
     '../hardware/trezorTransport.native': {
       createNativeTrezorSessions: (options: { randomBytes(length: number): Uint8Array }) => createTrezorSessions({

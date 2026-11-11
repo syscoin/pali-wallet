@@ -46,7 +46,7 @@ test('explicit phrase input fills numbered fields, previews only on Check, and c
   button(tree, 'Check phrase').props.onPress(); await tick(); tree = f.render();
   assert.deepEqual(f.calls, [phrase]); assert.equal(elements(tree).some(row => row.type === 'Input'), false);
   for (const row of rows) assert(elements(tree).some(node => node.children.includes(row.address)));
-  const confirm = button(tree, 'Continue to security setup'); confirm.props.onPress(); confirm.props.onPress();
+  const confirm = button(tree, 'Continue'); confirm.props.onPress(); confirm.props.onPress();
   assert.deepEqual(f.confirmed, [phrase]);
   tree = f.render(); assert.equal(field(tree).props.value, ''); f.close();
 });
@@ -73,7 +73,7 @@ test('Back retires a held preview and returns from confirmation to an empty phra
   assert.equal(field(tree).props.value, ''); assert.equal(elements(tree).some(row => row.children.includes(rows[0]!.address)), false); f.close();
   const ready = fixture(); tree = ready.render(); field(tree).props.onChangeText(phrase);
   button(ready.render(), 'Check phrase').props.onPress(); await tick(); tree = ready.render();
-  const oldConfirm = button(tree, 'Continue to security setup'); back(tree); oldConfirm.props.onPress();
+  const oldConfirm = button(tree, 'Continue'); back(tree); oldConfirm.props.onPress();
   assert.deepEqual(ready.confirmed, []); assert.equal(ready.backs, 0); assert.equal(field(ready.render()).props.value, ''); ready.close();
 });
 
@@ -89,7 +89,7 @@ test('background and unmount clear local words and reject late public preview re
 test('empty preview results cannot reach confirmation and errors do not echo the phrase', async () => {
   const f = fixture(async () => []); let tree = f.render(); field(tree).props.onChangeText(phrase);
   button(f.render(), 'Check phrase').props.onPress(); await tick(); tree = f.render();
-  assert.equal(elements(tree).some(row => row.props.title === 'Continue to security setup'), false);
+  assert.equal(elements(tree).some(row => row.props.title === 'Continue'), false);
   const error = elements(tree).find(row => row.props.accessibilityRole === 'alert'); assert(error);
   assert(!JSON.stringify(error.children).includes(phrase)); f.close();
 });

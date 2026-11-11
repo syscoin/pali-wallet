@@ -35,6 +35,7 @@ const PHRASE =
 
 test('actual native runtime binds encrypted Sentry approvals to topic lifetime, selected account, chain and lock session', async (t) => {
   const stages: string[] = [];
+  credentialPort.beforeRead(async owner => { owner.assertCurrent(); stages.push('credential-read'); });
   const sdk = await loadNativeKeyringSdk();
   const keyrings: InstanceType<typeof sdk.HostKeyring>[] = [];
   let requirePublicReads = false;
@@ -169,9 +170,11 @@ test('actual native runtime binds encrypted Sentry approvals to topic lifetime, 
     requirePublicReads = true;
     let id = await manager.votes.prepare(request, 'https://connected.test', checkTopic, { assertCurrent: checkTopic, signal: lifetime.signal });
     const beforeSigning = stages.length;
+    const beforeSecretReads = credentialPort.secretReads;
     const result = await manager.votes.sign({ id });
-    assert.deepEqual(stages.slice(beforeSigning).filter(stage => stage.startsWith('auth-') || stage.startsWith('seed-')),
-      ['auth-before', 'auth-after', 'seed-before', 'seed-after']);
+    assert.equal(credentialPort.secretReads - beforeSecretReads, 1);
+    assert.deepEqual(stages.slice(beforeSigning).filter(stage => stage === 'credential-read' || stage.startsWith('seed-')),
+      ['credential-read', 'seed-before', 'seed-after']);
     assert(keyrings.every(ring => !ring.isUnlocked()));
     assert(
       await verifySentryGovernanceVote(request, context, result.votes[0]!)

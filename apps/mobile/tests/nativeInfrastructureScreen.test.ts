@@ -538,13 +538,15 @@ for (const boundary of ['back', 'background', 'unmount', 'foreign-prompt'] as co
   screen.render(props); await tick(); screen.render(props);
   const held = Promise.withResolvers<void>();
   const promptScope = boundary === 'foreign-prompt' ? privateAuthentication.createNativePrivateAuthenticationScope() : scope;
-  const binding = privateAuthentication.bindNativePrivateAuthentication(promptScope, { assertCurrent() {}, isPromptActive: () => true });
+  let promptActive = true;
+  const binding = privateAuthentication.bindNativePrivateAuthentication(promptScope, { assertCurrent() {}, isPromptActive: () => promptActive });
   const proof = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, () => held.promise);
   try {
     if (boundary !== 'foreign-prompt') {
       screen.emit('change', 'inactive'); screen.emit('blur'); guard(); assert.equal(returned, 0);
       screen.emit('change', 'active');
     }
+    if (boundary === 'background') promptActive = false;
     if (boundary === 'unmount') screen.close();
     else screen.emit(boundary === 'back' ? 'hardwareBackPress' : 'change', boundary === 'background' ? 'background' : 'inactive');
     assert.throws(guard, /CANCELLED/); assert.equal(scope.isAuthenticating(), false);

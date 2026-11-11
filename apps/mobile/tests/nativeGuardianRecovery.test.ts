@@ -10,6 +10,8 @@ import ts from 'typescript';
 import { createTrezorSessions } from '../src/hardware/trezorSessions.ts';
 import { CustodyOperationError } from '../src/custody/authority.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import * as credentialPlatform from '../src/platform/credentialPort.ts';
+import { createTestCredentialPort } from './fixtures/credential.ts';
 import * as unavailableNativePasskeys from '../src/platform/nativePasskeys.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
@@ -98,7 +100,7 @@ async function fixture(smart = true) {
     '../portfolio/scopedPortfolioAssets.ts': { createScopedPortfolioAssetReader: unexpectedFeature },
     './privacyServiceSettings.native': { createNativePrivacyServiceSettings },
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
-    'react-native': { Linking: { openURL: unexpectedFeature } },
+    'react-native': { AppState: { currentState: 'active' }, Linking: { openURL: unexpectedFeature } },
     '../crypto/sentryCrypto.native': {
       createNativeSentryCryptoExecutor: (isolated: unknown) => {
         assert.equal(isolated, null, 'production isolated signing stays gated');
@@ -119,17 +121,11 @@ async function fixture(smart = true) {
     },
     '../portfolio/nativeRecipientResolver': { createNativeRecipientResolver: () => ({ resolve: unexpectedFeature }) },
     './security': security,
-    './credentialPort.native': {
-      createNativeCredentialPort: () => ({ read: unexpectedFeature, stage: unexpectedFeature, remove: unexpectedFeature }),
-    },
-    './operationAuthentication': {
-      nativeOperationAuthentication: { request: unexpectedFeature, cancel() {} },
-    },
-    './deviceUnlockCredential.native': {
-      createNativeDeviceUnlockCapability: () => ({
-        credentials: {},
-        prompt: { cancel() {}, isActive: () => promptActive, isAnyPromptActive: () => promptActive, run: unexpectedFeature },
-      }),
+    './credentialPort.ts': credentialPlatform,
+    './credential.native': {
+      createNativeCredentialPort: createTestCredentialPort,
+      isNativeCredentialPromptActive: () => promptActive,
+      nativeCredentialAuthentication: { cancel() {}, run: unexpectedFeature },
     },
     './walletConnectRuntime': {
       prepareWalletConnectRuntime() {

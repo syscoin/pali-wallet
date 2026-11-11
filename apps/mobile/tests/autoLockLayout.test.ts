@@ -6,6 +6,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import * as idlePolicy from '../../../source/shared/idleLockPolicy.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import * as privateAuthenticationLifecycle from '../src/screens/privateAuthenticationLifecycle.ts';
 
 type Element = {
   type: string;
@@ -38,6 +39,7 @@ test('custody and watch auto-lock resize Android for the keyboard and preserve i
       'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
       '../../../../source/shared/idleLockPolicy': idlePolicy,
       '../custody/privateAuthentication': privateAuthentication,
+      './privateAuthenticationLifecycle': privateAuthenticationLifecycle,
       '../platform/security': { securityPreferences: { getSnapshot: () => ({ value: { custodyIdleMinutes: 5, watchIdleMinutes: 5 } }) } },
       './IdleActivityBoundary': { IdleTextInput: 'IdleTextInput', IdlePressable: 'IdlePressable' },
       '../ui': { Button: 'Button', Card: 'Card', Header: 'Header', Icon: 'Icon', Notice: 'Notice', Screen: 'Screen', Text: 'Text', colors: {}, styles: { screen: screenStyle } },

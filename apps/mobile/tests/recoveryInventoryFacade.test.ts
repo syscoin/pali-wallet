@@ -1,5 +1,6 @@
 import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import * as credentialPlatform from '../src/platform/credentialPort.ts';
 import * as unavailableNativePasskeys from '../src/platform/nativePasskeys.ts';
 import { createTestCredentialPort } from './fixtures/credential.ts';
 import { createNativePrivacyServiceSettings } from '../src/platform/privacyServiceSettings.native.ts';
@@ -94,7 +95,7 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
     '../portfolio/scopedPortfolioAssets.ts': { createScopedPortfolioAssetReader: unexpectedFeature },
     './privacyServiceSettings.native': { createNativePrivacyServiceSettings },
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
-    'react-native': { Linking: { openURL: unexpectedFeature } },
+    'react-native': { AppState: { currentState: 'active' }, Linking: { openURL: unexpectedFeature } },
     '../crypto/sentryCrypto.native': {
       createNativeSentryCryptoExecutor: (isolated: unknown) => {
         assert.equal(isolated, null, 'production isolated signing stays gated');
@@ -115,16 +116,10 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
     },
     '../portfolio/nativeRecipientResolver': { createNativeRecipientResolver: () => ({ resolve: unexpectedFeature }) },
     './security': security,
-    './credentialPort.native': { createNativeCredentialPort: () => credentialPort },
+    './credentialPort.ts': credentialPlatform,
+    './credential.native': { createNativeCredentialPort: () => credentialPort, isNativeCredentialPromptActive: () => false,
+      nativeCredentialAuthentication: { cancel() {}, run: unexpectedFeature } },
     '../custody/privateAuthentication.ts': privateAuthentication,
-    './operationAuthentication': {
-      nativeOperationAuthentication: { request: unexpectedFeature, cancel() {} },
-    },
-    './deviceUnlockCredential.native': {
-      createNativeDeviceUnlockCapability() {
-        return { credentials: {}, prompt: { cancel() {}, isActive: () => false, isAnyPromptActive: () => false, run: unexpectedFeature } };
-      },
-    },
     './walletConnectRuntime': {
       prepareWalletConnectRuntime() { assert.fail('inventory must not prepare WalletConnect'); },
     },
@@ -282,7 +277,7 @@ test('locked inventory facade reads the original handle, returns only public cou
   await controllers.authority.dispose();
 });
 
-test('facade rejects empty, ready and disposed owners before reading inventory', async () => {
+test('facade permits recovery inventory for the ready owner and rejects empty or disposed owners', async () => {
   const empty = await fixture(false), emptyControllers = empty.factory.createNativeWalletControllers();
   await emptyControllers.authority.initialize();
   await assert.rejects(emptyControllers.readRecoveryInventory(), cancelled);
@@ -292,10 +287,11 @@ test('facade rejects empty, ready and disposed owners before reading inventory',
   await controllers.authority.initialize();
   await controllers.authority.unlock();
   assert.equal(controllers.authority.getSnapshot().phase, 'ready');
-  await assert.rejects(controllers.readRecoveryInventory(), cancelled);
+  assert.equal((await controllers.readRecoveryInventory()).status, 'needs-matching-phrase-verification');
+  assert.equal(f.counts.snapshotReads, 1);
   await controllers.authority.dispose();
   await assert.rejects(controllers.readRecoveryInventory(), cancelled);
-  assert.equal(f.counts.snapshotReads, 0); assert.equal(f.counts.opens, 1);
+  assert.equal(f.counts.snapshotReads, 1); assert.equal(f.counts.opens, 1);
 });
 
 for (const change of ['lock', 'unlock-relock', 'dispose', 'recovery-retirement'] as const) {

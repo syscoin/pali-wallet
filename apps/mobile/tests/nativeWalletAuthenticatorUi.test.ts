@@ -874,9 +874,9 @@ async function authenticationRoute(route: AuthenticationRoute) {
   if (route !== 'slh') assert.equal(tree.props.authentication, authentication, 'The operation child receives the same genuine scope');
   return { f, authentication, guard, props, component, get returned() { return returned; } };
 }
-function holdAuthentication(scope: privateAuthentication.NativePrivateAuthenticationScope) {
+function holdAuthentication(scope: privateAuthentication.NativePrivateAuthenticationScope, isPromptActive = () => true) {
   const held = Promise.withResolvers<void>();
-  const binding = privateAuthentication.bindNativePrivateAuthentication(scope, { assertCurrent() {}, isPromptActive: () => true });
+  const binding = privateAuthentication.bindNativePrivateAuthentication(scope, { assertCurrent() {}, isPromptActive });
   const completed = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, () => held.promise);
   return { binding, finish: async () => { held.resolve(); await completed.catch(() => undefined); } };
 }
@@ -885,6 +885,7 @@ for (const route of ['authenticator', 'deployment', 'send', 'guardian', 'slh'] a
     const f = await authenticationRoute(route), prompt = holdAuthentication(f.authentication);
     try {
       f.f.event('change', 'inactive'); f.f.event('blur'); f.guard(); assert.equal(f.returned, 0);
+      f.f.event('change', 'background'); f.guard(); assert.equal(f.returned, 0, 'owned credential Activity preserves this exact attempt');
       f.f.event('change', 'active'); await prompt.finish(); f.guard();
       const retry = holdAuthentication(f.authentication);
       f.f.back(); await settle(); assert.throws(f.guard, /CANCELLED|EXPIRED/);
@@ -895,8 +896,10 @@ for (const route of ['authenticator', 'deployment', 'send', 'guardian', 'slh'] a
   for (const boundary of ['foreign-prompt', 'background', 'unmount'] as const) test(`${route} retires on ${boundary} even while an OS prompt is active`, async () => {
     const f = await authenticationRoute(route);
     const own = boundary !== 'foreign-prompt';
-    const prompt = holdAuthentication(own ? f.authentication : privateAuthentication.createNativePrivateAuthenticationScope());
+    let promptActive = true;
+    const prompt = holdAuthentication(own ? f.authentication : privateAuthentication.createNativePrivateAuthenticationScope(), () => promptActive);
     try {
+      if (boundary === 'background') promptActive = false;
       if (boundary === 'unmount') f.f.dispose();
       else f.f.event('change', boundary === 'background' ? 'background' : 'inactive');
       await settle(); assert.throws(f.guard, /CANCELLED|EXPIRED/);

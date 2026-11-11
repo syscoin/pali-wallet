@@ -5229,6 +5229,12 @@ export function createKeyringRuntimeFactory(
               slhDsa: slhCapability === null ? null : (metadata, actionHash, assertCurrent, signal) =>
                 slhDsaSigningPort(captured, metadata, accountId, actionHash, () => { check(); checkGuard(assertCurrent); }, null, signal, authentication),
               withOwnerProof(signal, assertCurrent, work) {
+                check(); checkGuard(assertCurrent);
+                if (signal.aborted) throw new KeyringRuntimeError('CANCELLED');
+                const plan = getNativeSmartAccountSigningPlan(account.smartAccount!, ownerInventory.localOwners,
+                  { p256WebAuthn: passkeys !== null, slhDsa: slhCapability !== null });
+                if (plan?.authenticators.some(entry => entry.owners.some(owner => owner.type === 'Ledger')) && !ledger.isConnected())
+                  throw new KeyringRuntimeError('NOT_READY');
                 return run(async ownerGeneration => {
                   const guard = () => { current(ownerGeneration); check(); checkGuard(assertCurrent);
                     if (signal.aborted) throw new KeyringRuntimeError('CANCELLED'); };

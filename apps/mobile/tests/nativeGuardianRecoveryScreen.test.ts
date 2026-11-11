@@ -621,11 +621,13 @@ for (const boundary of ['back', 'background', 'unmount', 'foreign-prompt'] as co
   f.render(props); await tick(); f.render(props); guard();
   const promptScope = boundary === 'foreign-prompt' ? privateAuthentication.createNativePrivateAuthenticationScope() : authentication;
   const held = Promise.withResolvers<void>();
-  const binding = privateAuthentication.bindNativePrivateAuthentication(promptScope, { assertCurrent() {}, isPromptActive: () => true });
+  let promptActive = true;
+  const binding = privateAuthentication.bindNativePrivateAuthentication(promptScope, { assertCurrent() {}, isPromptActive: () => promptActive });
   const proof = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, () => held.promise);
   const emit = (event: string, state = '') => { if (event === 'change') native.AppState.currentState = state; events.get(event)?.(state); };
   try {
     if (boundary !== 'foreign-prompt') { emit('change', 'inactive'); emit('blur'); guard(); assert.equal(returned, 0); emit('change', 'active'); }
+    if (boundary === 'background') promptActive = false;
     if (boundary === 'unmount') f.close();
     else if (boundary !== 'back') emit('change', boundary === 'background' ? 'background' : 'inactive');
     if (boundary === 'back') {

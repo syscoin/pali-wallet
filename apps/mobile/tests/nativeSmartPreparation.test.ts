@@ -324,10 +324,12 @@ test('creation keeps only its own prompt, preserves assent across busy snapshots
 for (const boundary of ['foreign-prompt', 'background', 'back'] as const) test(`creation ${boundary} still retires assent during an OS prompt`, async () => {
   const f = reviewScreenFixture(), held = Promise.withResolvers<void>();
   const scope = boundary === 'foreign-prompt' ? privateAuthentication.createNativePrivateAuthenticationScope() : f.authentication;
-  const binding = privateAuthentication.bindNativePrivateAuthentication(scope, { assertCurrent() {}, isPromptActive: () => true });
+  let promptActive = true;
+  const binding = privateAuthentication.bindNativePrivateAuthentication(scope, { assertCurrent() {}, isPromptActive: () => promptActive });
   const proof = privateAuthentication.withNativePrivateAuthentication(binding, new AbortController().signal, () => {}, () => held.promise);
   try {
     f.checkbox().props.onValueChange(true); const press = f.confirm().props.onPress;
+    if (boundary === 'background') promptActive = false;
     if (boundary === 'back') f.back(); else f.event(boundary === 'background' ? 'background' : 'inactive');
     f.event('active'); held.resolve(); await proof; press(); await tick();
     assert.deepEqual(f.actions, [['reject', 'preparation-1']]);

@@ -387,8 +387,9 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
       return new EvmTransferReadRpc(network, { fetch: (_url, init) => backend(network, init) }).prepareSmartAccount(index, owner, signal, guard);
     },
   });
+  const createAuthority = () => new NativeCustodyAuthority({ async open() { runtime = await factory.open() as KeyringRuntime; return runtime; } });
   const open = async () => {
-    const owner = new NativeCustodyAuthority({ async open() { runtime = await factory.open() as KeyringRuntime; return runtime; } });
+    const owner = createAuthority();
     await owner.initialize();
     return owner;
   };
@@ -477,7 +478,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
       owner = await open();
       await owner.unlock();
     },
-    async reopen() { await owner.dispose(); owner = await open(); },
+    async reopen() { await owner.dispose(); owner = createAuthority(); await owner.initialize(); },
     async reopenQuarantined() {
       await owner.dispose().catch(error => { assert.equal(error.code, 'CLEANUP_FAILED'); });
       owner = await open();
@@ -3874,6 +3875,7 @@ for (const retire of [false, true]) test(`actual Smart UserOperation releases no
       operation.cancel();
     }
     await work;
+    if (retire) await f.reopen();
     const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal, null);
     assert.equal((await facade.hydrateInstalled(key.keyId)).signatureCount, 1);
     assert.equal(f.submitted.length, 0); assert.equal(f.signatures.length, 0);
@@ -3959,7 +3961,7 @@ test('actual Smart credential recovery preserves SLH encrypted high-water state 
   } finally { connection?.approval.dispose(); await f.close(); }
 });
 
-test('actual Smart password reset authenticates retained SLH ciphertext before any replacement', async () => {
+test('actual Smart credential replacement authenticates retained SLH ciphertext and cold public reopen rejects corruption', async () => {
   const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability);
   try {
     const key = await provisionSlhSmart(f), storageKey = getSLHDSAStateStorageKey(key.keyId);
@@ -3969,7 +3971,8 @@ test('actual Smart password reset authenticates retained SLH ciphertext before a
     await f.storage.keyringStorage.set(storageKey, { ...saved, cipherText: JSON.stringify(inner) });
     const before = await f.storage.recovery.readSnapshot();
     await assert.rejects(f.restoreCredential(), { code: 'INVALID_SAVED_DATA' });
-    await f.reopen();
+    await assert.rejects(f.reopen(), { code: 'UNAVAILABLE' });
+    assert.equal(f.owner.getSnapshot().phase, 'unavailable');
     assert.deepEqual(await f.storage.recovery.readSnapshot(), before);
     assert.deepEqual(f.slhDerivations, [0]); assert.deepEqual(backend.actions, []); assert.equal(f.submitted.length, 0);
   } finally { await f.close(); }
@@ -3977,7 +3980,12 @@ test('actual Smart password reset authenticates retained SLH ciphertext before a
 
 async function readyLedgerSmartOwner(count = 1) {
   const device = nativeSmartLedgerDevice();
-  const f = await fixture({}, true, null, device.factory);
+  let disconnect!: () => Promise<void>;
+  const f = await fixture({}, true, null, async scope => {
+    const transport = await device.factory(scope);
+    disconnect = () => transport.host.disconnect();
+    return transport;
+  });
   const picker = new NativeLedgerAccounts(f.owner, () => f.runtime.ledger, 'import');
   try {
     for (let index = 0; index < count; index++) {
@@ -3987,7 +3995,7 @@ async function readyLedgerSmartOwner(count = 1) {
     f.guardianStatus('no-policy'); f.fundedSmart(); f.observedEcdsaOwners(device.wallets.slice(0, count).map(wallet => wallet.address), count);
     await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
     const connection = new NativeLedgerAccounts(f.owner, () => f.runtime.ledger, 'connect');
-    return {f, device, connection, async close() {await connection.dispose(); await picker.dispose(); await f.close();}};
+    return {f, device, connection, disconnect: () => disconnect(), async close() {await connection.dispose(); await picker.dispose(); await f.close();}};
   } catch(error) {await picker.dispose(); await f.close(); throw error;}
 }
 async function connectLedgerSmart(f: Awaited<ReturnType<typeof readyLedgerSmartOwner>>) {
@@ -4042,16 +4050,65 @@ test('Ledger Smart owner connection rejects a mismatched later owner before any 
 test('Ledger Smart owner cannot sign before verified connection and an incompatible proof cannot prefund', async () => {
   const owned = await readyLedgerSmartOwner(), {f, device} = owned;
   try {
+    const catalogue = f.owner.getCatalogue(), reads = f.credentialReads;
     const blocked = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), {kind: 'exact', amount: '0.000001'}, () => undefined, null);
     try {await blocked.prepare(); await blocked.authorize(blocked.getSnapshot().revision); assert.equal(blocked.getSnapshot().phase, 'failed');}
     finally {await blocked.dispose();}
     assert.equal(device.signatures.length, 0); assert.equal(f.submitted.length, 0);
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
+    assert.equal(f.runtime.catalogue.getSnapshot(), catalogue, 'a missing connection is a retryable prerequisite');
+    assert.equal(f.credentialReads, reads, 'preflight cannot open a software credential');
     await connectLedgerSmart(owned); device.wrongProof(); f.smartBalance(10n ** 12n);
     const operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), {kind: 'exact', amount: '0.000001'}, () => undefined, null);
     try {await operation.prepare(); await operation.authorize(operation.getSnapshot().revision); assert.equal(operation.getSnapshot().phase, 'failed');}
     finally {await operation.dispose();}
     assert.equal(f.submitted.length, 0, 'wrong owner digest is rejected before prefunding or any wire POST');
   } finally {await owned.close();}
+});
+
+test('a Ledger disconnect after the first Smart owner proof still retires the admitted signing operation', async () => {
+  const owned = await readyLedgerSmartOwner(), {f, device} = owned;
+  let operation: NativeSmartAccountOperation | undefined;
+  let disconnecting: Promise<void> | undefined;
+  try {
+    const software = f.owner.getCatalogue()!.accounts.find(account => account.type === 'HDAccount' && account.slip44 === 60)!;
+    f.observedEcdsaOwners([software.address, device.wallets[0]!.address], 2);
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    await connectLedgerSmart(owned);
+    operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), {kind: 'exact', amount: '0.000001'}, () => undefined, null);
+    await operation.prepare();
+    f.afterSecretLease(() => { f.afterSecretLease(); disconnecting = owned.disconnect(); });
+    await operation.authorize(operation.getSnapshot().revision); await disconnecting;
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.signatures.length, 1); assert.equal(device.signatures.length, 0);
+    assert.equal(operation.getSnapshot().payerReview, null); assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+    assert.equal(f.runtime.catalogue.getSnapshot(), null, 'a disconnect after admission retains fail-closed retirement');
+    assert.equal(f.completedSecretLeases, f.secretLeases); f.assertNoSigningKeys();
+  } finally { f.afterSecretLease(); await operation?.dispose(); await owned.close(); }
+});
+
+test('an unrelated disconnected Ledger does not block the selected software-only Smart signing plan', async () => {
+  const owned = await readyLedgerSmartOwner(), {f, device} = owned;
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    const software = f.owner.getCatalogue()!.accounts.find(account => account.type === 'HDAccount' && account.slip44 === 60)!;
+    assert(f.owner.getCatalogue()!.accounts.some(account => account.type === 'Ledger'));
+    f.observedEcdsaOwners([software.address], 1);
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    assert.deepEqual(f.runtime.ledger.getConnectionTargets(), []);
+    operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), {kind: 'exact', amount: '0.000001'}, () => undefined, null);
+    await operation.prepare();
+    const current = operation;
+    const unsubscribe = current.subscribe(() => {
+      const payer = current.getSnapshot().payerReview;
+      if (payer) current.confirmPayer(payer.id);
+    });
+    try { await current.authorize(current.getSnapshot().revision); }
+    finally { unsubscribe(); }
+    assert.equal(current.getSnapshot().phase, 'complete', JSON.stringify(current.getSnapshot()));
+    assert.equal(f.signatures.length, 1); assert.equal(device.signatures.length, 0);
+    assert(f.submitted.length > 0); f.assertNoSigningKeys();
+  } finally { await operation?.dispose(); await owned.close(); }
 });
 
 test('Ledger Smart owner dapp personal and V4 signing uses exact typed intents without selecting the owner account', async () => {
