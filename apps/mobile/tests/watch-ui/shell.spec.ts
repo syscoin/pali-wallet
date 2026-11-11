@@ -326,7 +326,7 @@ test('native network without an explorer shows saved-transfer coverage and retai
   await expect(page.getByText('Some activity is unavailable', { exact: true })).toBeVisible();
   await expect(page.getByText('No activity yet', { exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__watchFixture.catalogue().active.networkId)).toBe('base');
-  expect(await page.evaluate(() => window.__watchFixture.audit().unlocks)).toBe(2);
+  expect(await page.evaluate(() => window.__watchFixture.audit().unlocks)).toBe(1);
   await expect(page.getByText('Test device authorization', { exact: true })).toHaveCount(0);
 });
 

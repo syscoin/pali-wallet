@@ -1522,7 +1522,18 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     return <NativeImport key={`${importScope.token}:${importScope.contextRevision}:${importScope.catalogueRevision}`} imports={importScope.imports} contextRevision={importScope.contextRevision} catalogueRevision={importScope.catalogueRevision}
       networkLabel={importScope.networkLabel} utxo={importScope.utxo} utxoAddressTypes={importScope.utxoAddressTypes}
       onSubmitStart={() => { if (mounted.current && importRequest.current.token === importScope.token) { importRequest.current.active = true; setImportActiveToken(importScope.token); } }}
-      onSubmitEnd={() => { if (importRequest.current.token === importScope.token) importRequest.current.active = false; if (mounted.current) setImportActiveToken((value) => value === importScope.token ? null : value); }}
+      onSubmitEnd={() => {
+        if (importRequest.current.token !== importScope.token) return;
+        importRequest.current.active = false;
+        if (!mounted.current) return;
+        setImportActiveToken(value => value === importScope.token ? null : value);
+        const current = controllersRef.current?.authority.getSnapshot();
+        // Admission failures keep their inline form error; an admitted attempt
+        // consumes the revision even when OS authorization is cancelled.
+        if (!current || current.revision === importScope.contextRevision) return;
+        setImportScope(value => value?.token === importScope.token ? null : value);
+        setStage(value => value === 'import-key' ? 'choose' : value);
+      }}
       onBack={() => { setImportScope(null); setStage('manage-hd'); }}
       onImported={() => {
         const local = controllersRef.current, now = local?.authority.getSnapshot(), current = local?.authority.getCatalogue();

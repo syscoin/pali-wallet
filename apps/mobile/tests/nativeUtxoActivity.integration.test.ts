@@ -22,7 +22,6 @@ import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 const credentialPort = createTestCredentialPort();
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = '123456';
 const TXID = 'a'.repeat(64), BLOCK = 'b'.repeat(64);
 const statusPath = '/api/v2/', genesisPath = '/api/v2/block-index/0';
 

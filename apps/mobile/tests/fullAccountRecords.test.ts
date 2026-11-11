@@ -28,7 +28,6 @@ const credentialPort = createTestCredentialPort();
 process.env.NODE_ENV = 'production';
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = '123456';
 
 async function fixture() {
   const sdk = await loadNativeKeyringSdk();

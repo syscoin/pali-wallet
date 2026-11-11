@@ -24,7 +24,6 @@ const credentialPort = createTestCredentialPort();
 
 const phrase =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const password = '123456';
 const wallet = Wallet.fromPhrase(phrase);
 const from = wallet.address;
 const contractAddress = '0x2222222222222222222222222222222222222222';

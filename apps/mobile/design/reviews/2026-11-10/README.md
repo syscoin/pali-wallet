@@ -1,5 +1,15 @@
 # Pali mobile screen review — 10 November 2026
 
+## Current local access flow — 11 November
+
+The current mobile app has **no Pali PIN setup, PIN unlock or biometric toggle**. Opening restores the public wallet; each sensitive action invokes the OS-protected credential with device biometrics or system-passcode fallback. The older PIN comparison frames below are historical reference captures, superseded by this flow.
+
+| One-time device-protection setup | Public wallet entry |
+| --- | --- |
+| ![Current device protection setup](os-authorization/onboarding.png) | ![Current public wallet entry](os-authorization/public-home.png) |
+
+These are actual React Native browser renders from candidate `9b00da7cf` with public synthetic data. The OS authentication sheet is native and is deliberately not imitated here. Real OS authorization and physical-device behavior require separate qualification.
+
 Latest quality pass: [current mobile error states and extension hardware dialogs](quality-pass/README.md).
 
 
@@ -9,20 +19,20 @@ The 32 reference screens below compare the supplied PDF with **actual implemente
 
 Original comparison source: `04466c2e9498dfd250ac575e393db72fceec0e1f`. These are browser renders with public synthetic wallet, network and connection adapters. They demonstrate presentation and navigation; they do not qualify native biometrics, camera, hardware, protected storage or funded transactions. The displayed recovery phrase is a public test phrase.
 
-The update implements six-digit PIN creation/confirmation, optional native biometric entry, locked and recovery flows, operation-bound send authorization, and ordered-word backup verification. Native prompt behavior requires its own qualification. The shared SDK candidate and its pending release at this checkpoint are documented in the [historical review record](https://github.com/syscoin/pali-wallet/blob/3d7c784d/vendor/sysweb3-operation/REVIEWED-CANDIDATE.json).
+The historical comparison implemented PIN creation/confirmation and optional biometric entry. The current flow above replaces those local-access screens; operation-bound authorization and ordered-word backup verification remain. Native prompt behavior requires its own qualification. The shared SDK candidate and its pending release at this checkpoint are documented in the [historical review record](https://github.com/syscoin/pali-wallet/blob/3d7c784d/vendor/sysweb3-operation/REVIEWED-CANDIDATE.json).
 
 Remaining gaps are stated per screen. Native background notification delivery is not qualified by these browser captures, and page 28 shows the browser camera fallback rather than a fabricated camera state.
 
 [All-screen contact sheet](contact-sheet.png) · [Capture manifest](manifest.json) · [Additional implemented screens](extras/README.md)
 
-Conditional states: [PIN-only send authorization](actual/actual-13-pin.png) · [Local transaction detail after View transaction](actual/actual-14-local-detail.png) · [Unbacked wallet and Settings](extras/README.md) · [Backed-up removal](actual/actual-26-backed-up.png) · [Populated connections](actual/actual-27-connected.png) · [Populated connections at 320px](actual/actual-27-connected-320.png)
+Historical conditional states: [superseded PIN-only send authorization](actual/actual-13-pin.png) · [Local transaction detail after View transaction](actual/actual-14-local-detail.png) · [Unbacked wallet and Settings](extras/README.md) · [Backed-up removal](actual/actual-26-backed-up.png) · [Populated connections](actual/actual-27-connected.png) · [Populated connections at 320px](actual/actual-27-connected-320.png)
 
 | PDF page | Comparison | Narrow actual | Presentation status |
 | --- | --- | --- | --- |
 | 01 | [Welcome](01-welcome.png) | [320px](actual/actual-01-320.png) | implemented |
-| 02 | [Create PIN](02-create-pin.png) | [320px](actual/actual-02-320.png) | implemented |
-| 03 | [Confirm PIN](03-confirm-pin.png) | [320px](actual/actual-03-320.png) | implemented |
-| 04 | [Fingerprint](04-fingerprint.png) | [320px](actual/actual-04-320.png) | implemented |
+| 02 | [Create PIN reference](02-create-pin.png) | [Current device setup](os-authorization/onboarding.png) | replaced by OS protection |
+| 03 | [Confirm PIN reference](03-confirm-pin.png) | [Current device setup](os-authorization/onboarding.png) | app PIN removed |
+| 04 | [Fingerprint reference](04-fingerprint.png) | native OS sheet | OS chooses biometrics or system passcode |
 | 05 | [Import wallet](05-import-wallet.png) | [320px](actual/actual-05-320.png) | implemented |
 | 06 | [Confirm restored wallet](06-confirm-restored-wallet.png) | [320px](actual/actual-06-320.png) | implemented |
 | 07 | [Locked](07-locked.png) | [320px](actual/actual-07-320.png) | implemented |

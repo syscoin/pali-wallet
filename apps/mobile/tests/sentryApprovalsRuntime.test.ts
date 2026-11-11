@@ -32,7 +32,6 @@ const credentialPort = createTestCredentialPort();
 const softwarePsbtHandoff = { id: 'software-fixture', expiresAt: Number.MAX_SAFE_INTEGER, beforeSuiteOpen() { throw Error('Unexpected hardware handoff'); }, beforeSignature() { throw Error('Unexpected hardware signature'); }, isSuspended: () => false };
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = '123456';
 
 test('actual native runtime binds encrypted Sentry approvals to topic lifetime, selected account, chain and lock session', async (t) => {
   const stages: string[] = [];

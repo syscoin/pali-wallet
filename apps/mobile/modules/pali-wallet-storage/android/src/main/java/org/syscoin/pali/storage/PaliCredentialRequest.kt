@@ -245,7 +245,6 @@ class PaliCredentialRequest internal constructor(private val owner: PaliCredenti
           try { cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, record.copyOfRange(3, 15))); ciphertext = record.copyOfRange(15, record.size) }
           finally { record.fill(0) }
         }
-        cipher.updateAAD(binding.value.toByteArray(Charsets.US_ASCII))
         val ownedAlias = created
         credentialMain.post {
           try {
@@ -270,6 +269,11 @@ class PaliCredentialRequest internal constructor(private val owner: PaliCredenti
                     var plaintext: ByteArray? = null
                     try {
                       check()
+                      // updateAAD is a KeyMint operation too. It must consume
+                      // the fresh authentication token, after OS success and
+                      // foreground return, just like doFinal. The canonical
+                      // request binding is immutable throughout this request.
+                      cipher.updateAAD(binding.value.toByteArray(Charsets.US_ASCII))
                       if (authorizationOnly) {
                         val proof = cipher.doFinal(ByteArray(0)); proof.fill(0)
                         check(); finish(promise, null, null, false, ciphertext)

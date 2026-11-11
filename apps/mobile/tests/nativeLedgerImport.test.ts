@@ -46,7 +46,6 @@ const credentialPort = createTestCredentialPort();
 
 const phrase =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const password = '123456';
 const deviceWallet = new Wallet('0x' + '31'.repeat(32));
 
 function hardwareHd(slip44: number, currency: string, accountIndex: number) {
@@ -117,7 +116,6 @@ async function fixture() {
     initialized = true;
     return storage;
   };
-  let currentPin = password;
   const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: null, passkeys: null, slhExecution: null,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: CountedHost }),
@@ -345,7 +343,7 @@ async function fixture() {
         values.map((value) => (value === 'first' ? candidate : second))
       );
     },
-    async reopen(nextPassword: string) {
+    async reopen() {
       owner = new NativeCustodyAuthority({
         async open() {
           runtime = (await factory.open()) as KeyringRuntime;
@@ -353,7 +351,7 @@ async function fixture() {
         },
       });
       await owner.initialize();
-      await owner.unlock(); currentPin = nextPassword;
+      await owner.unlock();
     },
     get disposedCount() {
       return disposedCount;
@@ -406,7 +404,7 @@ test('the shared SDK imports a public Ledger record, preserves it on public reop
     } finally {
       await recovery.dispose();
     }
-    await f.reopen('654321');
+    await f.reopen();
     assert.equal(
       f.owner
         .getCatalogue()!
