@@ -1963,7 +1963,7 @@ Search Ethereum → Existing enrollment remains removable.
 
 ## Latest consent review
 
-Source `95265026a71e1b1489cad081773a8c70d619b184`. [Exact capture provenance](consent-updates/manifest.json). The existing transaction-request comparison and transfer/Sentry panels above are updated in place. These public fixtures verify presentation at 390px and 320px; native biometric and hardware qualification remain separate.
+Source `dff877f472192f1597112d7c8ca154355fbf3a3f`. [Exact capture provenance](consent-updates/manifest.json). The existing transaction-request comparison and transfer/Sentry panels above are updated in place. These public fixtures verify presentation at 390px and 320px; native biometric and hardware qualification remain separate.
 
 <details>
 <summary>Smart-account token transfer</summary>
@@ -1980,6 +1980,24 @@ Source `95265026a71e1b1489cad081773a8c70d619b184`. [Exact capture provenance](co
 ![Smart-account mixed batch at 390px](consent-updates/smart-batch-390.png)
 
 ![Smart-account mixed batch at 320px](consent-updates/smart-batch-320.png)
+
+</details>
+
+<details>
+<summary>Configured bridged USDC icon</summary>
+
+![Configured bridged USDC icon at 390px](consent-updates/known-usdc-390.png)
+
+![Configured bridged USDC icon at 320px](consent-updates/known-usdc-320.png)
+
+</details>
+
+<details>
+<summary>Configured SYSX icon</summary>
+
+![Configured SYSX icon at 390px](consent-updates/known-sysx-390.png)
+
+![Configured SYSX icon at 320px](consent-updates/known-sysx-320.png)
 
 </details>
 

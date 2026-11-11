@@ -765,21 +765,21 @@
       "title": "Transaction request",
       "comparison": "32-transaction-request.png",
       "comparison_size": [
-        852,
-        1184
+        864,
+        1080
       ],
       "actual": "actual/actual-32.png",
       "actual_size": [
         390,
         844
       ],
-      "actual_sha256": "1319925b6ec9a8302489bd93738c6661e5ff6167032a6bee8fd3cc7a89ecac51",
+      "actual_sha256": "f5f4ff9f4efab2183fe359b34d3b681fa0e53f72c18276fe6bf222e22d4d61a3",
       "reference": "PDF reference embedded in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-32-320.png",
-      "comparison_sha256": "accb9050af84cee99f6973cabbf2053cb454996ca3e7b719e2c6f10b53a748f2",
-      "source_commit": "95265026a71e1b1489cad081773a8c70d619b184",
-      "narrow_actual_sha256": "b6fb17cf48d2447f52ae4ee212abaed3aed3350da9f890b4cbe26255783e30e0"
+      "comparison_sha256": "a81b72195006857caed2d2f3c26b125d64857866a53f76a3b1ebbccf86237a1d",
+      "source_commit": "dff877f472192f1597112d7c8ca154355fbf3a3f",
+      "narrow_actual_sha256": "ef4d8497a8272d0f2f2e4d92194884bdf379b8c1e2f2a1910dd2f5253b051b95"
     }
   ],
   "source_commit": "04466c2e9498dfd250ac575e393db72fceec0e1f",

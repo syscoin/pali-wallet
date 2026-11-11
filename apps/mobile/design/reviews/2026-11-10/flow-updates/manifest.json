@@ -274,7 +274,7 @@
       "width": 390,
       "height": 844,
       "file": "sentry-review-390.png",
-      "sourceCommit": "95265026a71e1b1489cad081773a8c70d619b184",
+      "sourceCommit": "dff877f472192f1597112d7c8ca154355fbf3a3f",
       "url": "http://127.0.0.1:4179/?sentry-consent",
       "assets": [
         {
@@ -664,7 +664,7 @@
       "width": 320,
       "height": 568,
       "file": "sentry-review-320.png",
-      "sourceCommit": "95265026a71e1b1489cad081773a8c70d619b184",
+      "sourceCommit": "dff877f472192f1597112d7c8ca154355fbf3a3f",
       "url": "http://127.0.0.1:4179/?sentry-consent",
       "assets": [
         {
@@ -791,7 +791,7 @@
       "width": 390,
       "height": 844,
       "file": "dapp-erc20-390.png",
-      "sourceCommit": "95265026a71e1b1489cad081773a8c70d619b184",
+      "sourceCommit": "dff877f472192f1597112d7c8ca154355fbf3a3f",
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc20",
       "assets": [
         {
@@ -800,10 +800,10 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-20 transfer\n123.456789\nTOK\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nTOK\nERC-20 transfer\n123.456789\nTOK\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
-      "sha256": "1319925b6ec9a8302489bd93738c6661e5ff6167032a6bee8fd3cc7a89ecac51",
+      "sha256": "1d7f2a0bdd13f7ae029fe37127848f19b9c5142dd8fd2cc5f8bf6e84b6033d23",
       "provenance": "../consent-updates/manifest.json"
     },
     {
@@ -813,7 +813,7 @@
       "width": 390,
       "height": 844,
       "file": "dapp-erc721-390.png",
-      "sourceCommit": "95265026a71e1b1489cad081773a8c70d619b184",
+      "sourceCommit": "dff877f472192f1597112d7c8ca154355fbf3a3f",
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc721",
       "assets": [
         {
@@ -825,7 +825,7 @@
       "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-721 transfer\n#42\n1 NFT\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
-      "sha256": "a0f945239b32109177c6b526284a31adf1c10e3a67ac619a3f0cf822e2e00aca",
+      "sha256": "639062d1ec0d128817dac00f991d23ad6e6f8137dd1cd6e3d4a157a956638d1e",
       "provenance": "../consent-updates/manifest.json"
     },
     {
@@ -835,7 +835,7 @@
       "width": 390,
       "height": 844,
       "file": "dapp-erc1155-390.png",
-      "sourceCommit": "95265026a71e1b1489cad081773a8c70d619b184",
+      "sourceCommit": "dff877f472192f1597112d7c8ca154355fbf3a3f",
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc1155",
       "assets": [
         {
@@ -847,7 +847,7 @@
       "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
-      "sha256": "9180fa90075b22ebb68b22eec931552122af50b2b0f4ae16dcbea867d3e1e0c2",
+      "sha256": "ce45c95ddaf161e7863d1a068a67e6ba296d2183a809596c3040f9fffde2f1f5",
       "provenance": "../consent-updates/manifest.json"
     },
     {
@@ -973,7 +973,7 @@
       "width": 320,
       "height": 568,
       "file": "dapp-erc20-320.png",
-      "sourceCommit": "95265026a71e1b1489cad081773a8c70d619b184",
+      "sourceCommit": "dff877f472192f1597112d7c8ca154355fbf3a3f",
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc20",
       "assets": [
         {
@@ -982,10 +982,10 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-20 transfer\n123.456789\nTOK\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nTOK\nERC-20 transfer\n123.456789\nTOK\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
-      "sha256": "b6fb17cf48d2447f52ae4ee212abaed3aed3350da9f890b4cbe26255783e30e0",
+      "sha256": "b9428fc02a16926b2cfa9947a49721b275faa11bd7e71133bfaf92420244ac8c",
       "provenance": "../consent-updates/manifest.json"
     },
     {
@@ -1248,7 +1248,7 @@
       "width": 320,
       "height": 568,
       "file": "dapp-erc721-320.png",
-      "sourceCommit": "95265026a71e1b1489cad081773a8c70d619b184",
+      "sourceCommit": "dff877f472192f1597112d7c8ca154355fbf3a3f",
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc721",
       "assets": [
         {
@@ -1260,7 +1260,7 @@
       "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-721 transfer\n#42\n1 NFT\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
-      "sha256": "da6b3eba70e19f2c87441b73f043220d071e56b4645661833bf94921ca1b171a",
+      "sha256": "934704362949458fa3d5acf7ba80ceae73a207ca4d58a5c6edd075fcf8f5a0fb",
       "provenance": "../consent-updates/manifest.json"
     },
     {
@@ -1312,7 +1312,7 @@
       "width": 320,
       "height": 568,
       "file": "dapp-erc1155-320.png",
-      "sourceCommit": "95265026a71e1b1489cad081773a8c70d619b184",
+      "sourceCommit": "dff877f472192f1597112d7c8ca154355fbf3a3f",
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc1155",
       "assets": [
         {
@@ -1324,7 +1324,7 @@
       "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
-      "sha256": "bb69f2179502f9817c42407ae1276edaadda6dd1bd73335a14e3d8ad56de0059",
+      "sha256": "6a11e1f2a0748953eb13602d0c20d1416027d6e489b24aa23633197c8edc6aba",
       "provenance": "../consent-updates/manifest.json"
     },
     {
