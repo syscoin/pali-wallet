@@ -117,6 +117,10 @@ function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing'
     failUnknownSubmission() { unknownSubmission = true; },
     async prepareResume() { await controller.reviewResume(controller.getSnapshot().revision); },
     backgrounds,
+    reconcileOriginal() {
+      status.pending = null;
+      status.observation = projectSmartAccountInfrastructureObservation(1, ['0x01', ...PALI_INFRASTRUCTURE_METADATA.map(entry => entry.id === 'factory' ? '0x' : '0x01')])!;
+    },
     get counts() { return { disposed, signatures, wires, submissions, observations }; },
   };
 }
@@ -642,4 +646,40 @@ test('changing the explicit resume id retires old Confirm and Close handlers eve
     button(footer(screen.render(second)), 'buttons.confirm').props.onPress(); await tick();
     assert.equal(values[1]!.counts.submissions, 1);
   } finally { screen.close(); }
+});
+
+for (const outcome of ['pending', 'unknown'] as const) test(`reconciled ${outcome} Suite deployment opens a fresh controller before the next fee review`, async () => {
+  const screen = nativeScreen(); let value!: ReturnType<typeof runtime>, fresh!: ReturnType<typeof runtime>, resumes = true, transitions = 0;
+  const continueSetup = () => { transitions++; resumes = false; };
+  const openResume = async (signal: AbortSignal, check: () => void) => {
+    value = runtime(signal, check, 'pending-optional', true, () => 0, 'settled-suite-job');
+    await value.prepareResume(); return value.controller;
+  };
+  const openFresh = async (signal: AbortSignal, check: () => void) => {
+    fresh = runtime(signal, check); return fresh.controller;
+  };
+  const props = () => resumes
+    ? {mode:{kind:'suite-resume' as const,id:'settled-suite-job',onContinue:continueSetup},open:openResume,onBack() {}}
+    : {mode:{kind:'new' as const,reviewNext:true},open:openFresh,onBack() {}};
+  try {
+    screen.render(props()); await tick();
+    if (outcome === 'unknown') value.failUnknownSubmission();
+    button(footer(screen.render(props())), 'buttons.confirm').props.onPress(); await tick();
+    assert.equal(value.controller.getSnapshot().phase, outcome);
+    assert.equal(footer(screen.render(props())).some(node => node.props.title === title('buttons.continue')), false);
+    assert.equal(transitions, 0);
+    value.reconcileOriginal();
+    button(footer(screen.render(props())), 'mobile.infrastructure.refresh').props.onPress(); await tick();
+    const tree = screen.render(props());
+    const continueButton = button(footer(tree), 'buttons.continue');
+    assert.equal(value.counts.submissions, 1); assert.equal(transitions, 0);
+    continueButton.props.onPress();
+    screen.render(props()); await tick();
+    assert.equal(transitions, 1); assert.equal(value.counts.disposed, 1);
+    assert.equal(fresh.controller.origin.kind, 'new'); assert.equal(fresh.counts.submissions, 0);
+    assert.equal(fresh.controller.getSnapshot().phase, 'review', 'the explicit Continue action opens the fresh next review directly');
+    assert.equal(fresh.controller.getSnapshot().feeReview?.kind, 'deployment');
+    assert.equal(fresh.counts.submissions, 0, 'Continue and Review never automatically sign');
+    continueButton.props.onPress(); assert.equal(transitions, 1, 'stale Continue cannot reopen its retired route');
+  } finally {screen.close();}
 });

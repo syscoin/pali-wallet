@@ -12,12 +12,12 @@ import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticatio
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 type Props = {
-  mode: Readonly<{kind:'new'} | {kind:'suite-resume';id:string}>;
+  mode: Readonly<{kind:'new';reviewNext?:boolean} | {kind:'suite-resume';id:string;onContinue():void}>;
   open(signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeInfrastructureController>;
   onBack(): void;
   ledgerConnection?: NativeLedgerConnectionView;
 };
-type Scope = Readonly<{ source: Props['open']; mode: 'new' | 'suite-resume'; id: string | null }>;
+type Scope = Readonly<{ source: Props['open']; mode: 'new' | 'suite-resume'; id: string | null; reviewNext: boolean }>;
 type Owner = { scope: Scope; live: boolean; abort: AbortController; authentication: NativePrivateAuthenticationScope; controller?: NativeInfrastructureController };
 const empty: NativeInfrastructureSnapshot = Object.freeze({ phase: 'loading', revision: 0, status: null, feeReview: null, error: null });
 const emptySnapshot = () => empty;
@@ -35,7 +35,8 @@ const setupPurpose: Record<string, string> = {
 export function NativeInfrastructure({ mode, open, onBack, ledgerConnection }: Props) {
   const { t } = useNativeTranslation();
   const modeId = mode.kind === 'suite-resume' ? mode.id : null;
-  const scope = useMemo<Scope>(() => ({ source: open, mode: mode.kind, id: modeId }), [open, mode.kind, modeId]);
+  const reviewNext = mode.kind === 'new' && mode.reviewNext === true;
+  const scope = useMemo<Scope>(() => ({ source: open, mode: mode.kind, id: modeId, reviewNext }), [open, mode.kind, modeId, reviewNext]);
   const owner = useRef<Owner | null>(null);
   const back = useRef(onBack);
   const [session, setSession] = useState<{ owner: Owner; controller: NativeInfrastructureController }>();
@@ -70,7 +71,12 @@ export function NativeInfrastructure({ mode, open, onBack, ledgerConnection }: P
           throw new Error('CANCELLED');
         current.controller = controller;
         setSession({ owner: current, controller });
-        if (controller.origin.kind === 'new') await controller.refresh(controller.getSnapshot().revision);
+        if (controller.origin.kind === 'new') {
+          await controller.refresh(controller.getSnapshot().revision);
+          check();
+          // Only the explicit Continue action requests this fresh next-contract review.
+          if (scope.reviewNext) await controller.reviewNext(controller.getSnapshot().revision);
+        }
       } catch {
         controller?.dispose();
         if (isCurrent(current)) setOpeningError(scope);
@@ -131,7 +137,16 @@ export function NativeInfrastructure({ mode, open, onBack, ledgerConnection }: P
           if (!ledger.blocked && isReviewCurrent() && ledger.canApprove()) act(() => controller!.confirm(review.id));
         }} />
       : readyToReview
-      ? <Button title={t(reviewLabel)} onPress={() => act(() => controller!.reviewNext(state.revision))} />
+      ? mode.kind === 'suite-resume'
+        ? <Button title={t('buttons.continue')} onPress={() => {
+          if (!controller || !current || !isCurrent(current) || controller.getSnapshot() !== state || !readyToReview) return;
+          current.live = false;
+          current.authentication.retire();
+          current.abort.abort();
+          controller.dispose();
+          mode.onContinue();
+        }} />
+        : <Button title={t(reviewLabel)} onPress={() => act(() => controller!.reviewNext(state.revision))} />
       : <Button title={t('mobile.infrastructure.refresh')} variant="secondary" size="compact" disabled={!controller || busy} onPress={() => act(() => controller!.refresh(state.revision))} />}
     <Button title={t('buttons.close')} variant="secondary" size="compact" onPress={close} />
   </>}>
