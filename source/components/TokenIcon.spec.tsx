@@ -15,11 +15,16 @@ describe('TokenIcon UTXO identity enforcement', () => {
   });
 
   it('does not render a legacy official logo for a noncanonical SPT', () => {
-    const officialLogo = getKnownTokenLogo('SYSX', undefined, '123456');
+    const officialLogo = getKnownTokenLogo('SYSX', undefined, '123456', 57);
     expect(officialLogo).not.toBeNull();
 
     const markup = renderToStaticMarkup(
-      <TokenIcon assetGuid="987654321" logo={officialLogo!} symbol="SYSX" />
+      <TokenIcon
+        assetGuid="987654321"
+        chainId={57}
+        logo={officialLogo!}
+        symbol="SYSX"
+      />
     );
 
     expect(markup).not.toContain('<img');

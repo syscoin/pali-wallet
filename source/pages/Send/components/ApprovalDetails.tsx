@@ -3,12 +3,17 @@ import { useTranslation } from 'react-i18next';
 
 import { IApprovalAddressValues } from '../../../shared/approval';
 import { AddressText } from 'components/AddressText';
+import type { IEvmTransactionContext } from 'utils/evmTransactionContext';
+
+import { ReviewedAssetIcon } from './ReviewedAssetIcon';
 
 interface IApprovalDetailsProps extends IApprovalAddressValues {
   approved?: boolean;
+  context?: IEvmTransactionContext;
   formattedAmount?: string;
   isUnlimited?: boolean;
   standardVerified: boolean;
+  tokenDecimals?: number;
   tokenSymbol?: string;
 }
 
@@ -17,11 +22,13 @@ export const ApprovalDetails: React.FC<IApprovalDetailsProps> = ({
   approvalType,
   authority,
   authorityLabelKey,
+  context,
   formattedAmount,
   isUnlimited = false,
   isValid,
   method,
   tokenContract,
+  tokenDecimals,
   tokenSymbol,
   standardVerified,
 }) => {
@@ -54,11 +61,20 @@ export const ApprovalDetails: React.FC<IApprovalDetailsProps> = ({
         <span className="text-brand-graylight">
           {t('settings.contractAddress')}
         </span>
-        <AddressText
-          className="text-brand-white"
-          value={tokenContract}
-          preset="short"
-        />
+        <span className="inline-flex items-center gap-2">
+          {approvalType === 'erc20-amount' && context && (
+            <ReviewedAssetIcon
+              asset={{ contract: tokenContract, decimals: tokenDecimals }}
+              context={context}
+              size={24}
+            />
+          )}
+          <AddressText
+            className="text-brand-white"
+            value={tokenContract}
+            preset="short"
+          />
+        </span>
       </div>
       {!standardVerified &&
         approvalType === 'nft-all' &&

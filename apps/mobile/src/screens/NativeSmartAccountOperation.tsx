@@ -32,7 +32,7 @@ import type {
   NativeSmartAccountOperationSnapshot,
 } from '../smartAccount/operation';
 import { TransactionDetails } from './NativeTransactionReview';
-import { Button, Card, colors, Header, Icon, Notice, Screen, Text } from '../ui';
+import { Button, Card, Coin, colors, Header, Notice, Screen, Text } from '../ui';
 import { guardianDelayLabel } from './guardianPolicyLabels';
 
 type DeploymentOwner = {
@@ -293,7 +293,7 @@ export function NativeSmartAccountOperationContent({
   const payer = state.payerReview;
   const assetSummary = (display: AssetTransferDisplay, nativeUnits: string) => <>
     <View style={s.transferHeading}>
-      <View style={s.transferIcon}><Icon name="arrow-up-right" size={22} color={colors.pink} /></View>
+      <View style={s.transferIcon}><Coin id="token" asset={{ kind: 'evm', chainId: state.network.chainId, contractAddress: display.contract, decimals: display.decimals }} registrationHash={state.network.registrationHash} size={42} fallbackSymbol={display.items[0]?.symbol ?? undefined} /></View>
       <View style={s.transferTitle}>
         <Text style={s.value}>{t(`assetTransfer.${display.heading}`)}</Text>
         <Text style={s.label}>{t(display.standardVerified ? 'assetTransfer.contractMetadata' : 'assetTransfer.unverified')}</Text>

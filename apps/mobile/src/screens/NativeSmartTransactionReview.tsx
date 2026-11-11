@@ -80,6 +80,8 @@ export function NativeSmartTransactionReviewScreen({
             <ApprovalReview
               summary={review.approval}
               transaction={intent}
+              chainId={review.chainId}
+              registrationHash={review.operation.network.registrationHash}
               disabled={
                 review.busy ||
                 review.operation.phase !== 'authorize' ||
@@ -115,6 +117,8 @@ export function NativeSmartTransactionReviewScreen({
                   <ApprovalReview
                     summary={{ ...summary, canEditAmount: false }}
                     transaction={intent}
+                    chainId={review.chainId}
+                    registrationHash={review.operation.network.registrationHash}
                     disabled
                     edit={async () => {
                       throw new Error('Batch approval is read-only');

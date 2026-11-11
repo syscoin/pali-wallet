@@ -231,7 +231,7 @@ function TokenContent({
     <Card style={s.identity}>
       <View style={s.identityTop}>
         <View style={s.coin}>
-          <Coin id="custom-token" size={34} />
+          <Coin id="custom-token" asset={snapshot.network ? { kind: 'evm', chainId: snapshot.network.chainId, contractAddress: metadata.contractAddress, decimals: metadata.decimals } : undefined} registrationHash={registration?.registrationHash} fallbackSymbol={metadata.symbol} size={34} />
         </View>
         <Text style={s.name}>{metadata.name}</Text>
       </View>
@@ -331,7 +331,7 @@ function TokenContent({
                 >
                   <Card style={s.tokenRow}>
                     <View style={s.identityTop}>
-                      <Coin id="custom-token" size={34} fallbackSymbol={item.metadata.symbol} />
+                      <Coin id="custom-token" asset={snapshot.network ? { kind: 'evm', chainId: snapshot.network.chainId, contractAddress: item.metadata.contractAddress, decimals: item.metadata.decimals } : undefined} registrationHash={registration?.registrationHash} size={34} fallbackSymbol={item.metadata.symbol} />
                       <View style={s.tokenName}>
                         <Text style={s.name}>{item.metadata.name}</Text>
                         <Text style={s.provenance}>{item.metadata.symbol}</Text>
@@ -370,6 +370,7 @@ function TokenContent({
                   const label = id === undefined ? 'Saved collection' : `Saved token ${id}`;
                   return (
                     <Card key={`${item.contractAddress}:${id ?? ''}`} style={s.tokenRow}>
+                      <Coin id="collectible" asset={snapshot.network ? { kind: 'evm', chainId: snapshot.network.chainId, contractAddress: item.contractAddress } : undefined} registrationHash={registration?.registrationHash} fallbackSymbol="NFT" size={32} />
                       <Text style={s.name}>{label}</Text>
                       <Text style={styles.muted}>{item.tokenStandard}</Text>
                       <Text selectable style={s.contract}>{item.contractAddress}</Text>
@@ -403,6 +404,7 @@ function TokenContent({
               {discovery?.collectibles?.map((item) => {
                 const { contractAddress, name, tokenStandard, tokenId, units } = item;
                 return <Card key={`${contractAddress}:${tokenId ?? ''}`} style={s.tokenRow}>
+                  <Coin id="collectible" asset={snapshot.network ? { kind: 'evm', chainId: snapshot.network.chainId, contractAddress } : undefined} registrationHash={registration?.registrationHash} fallbackSymbol="NFT" size={32} />
                   <Text style={s.name}>{name}</Text>
                   <Text style={styles.muted}>{tokenStandard}</Text>
                   <Text selectable style={s.contract}>{contractAddress}</Text>
@@ -669,7 +671,7 @@ function TokenContent({
               ) : (
                 <>
                   <View style={s.assetHero}>
-                    <Coin id="custom-token" size={44} fallbackSymbol={token.metadata.symbol} />
+                    <Coin id="custom-token" asset={snapshot.network ? { kind: 'evm', chainId: snapshot.network.chainId, contractAddress: token.metadata.contractAddress, decimals: token.metadata.decimals } : undefined} registrationHash={registration?.registrationHash} size={44} fallbackSymbol={token.metadata.symbol} />
                     <Text style={s.name}>{token.metadata.name}</Text>
                   <Text
                     style={s.balance}

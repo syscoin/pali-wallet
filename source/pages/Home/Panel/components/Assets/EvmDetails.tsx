@@ -13,6 +13,7 @@ import { TokenIcon } from 'components/TokenIcon';
 import { useUtils } from 'hooks/index';
 import { useContextualState } from 'hooks/useContextualState';
 import { useController } from 'hooks/useController';
+import { ExplorerLink } from 'pages/Home/Panel/components/ExplorerLink';
 import { getHomeBrowsingScope } from 'pages/Home/useHomeBrowsingState';
 import { RootState } from 'state/store';
 import {
@@ -28,7 +29,6 @@ import { navigateBack } from 'utils/navigationState';
 import { getNftQuantity } from 'utils/nftQuantity';
 import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
-import { ExplorerLink } from 'pages/Home/Panel/components/ExplorerLink';
 
 import { AssetMarketLinks, CoinGeckoLogo } from './AssetMarketLinks';
 
@@ -430,6 +430,12 @@ export const EvmAssetDetails = ({
                     currentAsset.logo
                   }
                   contractAddress={currentAsset.contractAddress}
+                  chainId={currentAsset.chainId}
+                  decimals={
+                    currentAsset.decimals === undefined
+                      ? undefined
+                      : Number(currentAsset.decimals)
+                  }
                   symbol={currentAsset.tokenSymbol || currentAsset.symbol}
                   isNft={isNft}
                   size={48}

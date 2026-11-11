@@ -197,6 +197,8 @@ export const EvmNftsList = ({
                   <TokenIcon
                     logo={collection.logo}
                     contractAddress={collection.contractAddress}
+                    chainId={collection.chainId}
+                    decimals={0}
                     symbol={collection.symbol}
                     size={24}
                     isNft={true}

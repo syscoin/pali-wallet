@@ -25,6 +25,7 @@ import { formatTokenUnits } from '../../../../source/shared/erc20';
 import { getEvmHistoryDirection } from '../../../../source/shared/evmHistory';
 import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
 import { ActivityListRow, activityDate } from './ActivityListRow';
+import { activityAssetIcon } from '../activity/assetIcon';
 import { TransactionDetailLayout } from './TransactionDetailLayout';
 import type { ShellLeafNavigation } from './RealAppShell';
 import type {
@@ -594,6 +595,7 @@ function NativeActivityContent({
                 else rowViews.current.delete(item.hash);
               }}
               testID={`activity-row-${item.hash}`} direction={display.direction}
+              asset={activityAssetIcon(item, snapshot.chainId, snapshot.registrationHash)} registrationHash={snapshot.registrationHash ?? undefined} assetSymbol={item.display?.displaySymbol ?? item.local?.token?.symbol}
               first={first} last={last} heading={first ? date.label : undefined}
               title={display.title}
               subtitle={display.subtitle}
@@ -653,6 +655,7 @@ function NativeActivityContent({
       {chosen && (
         <ScrollView key={chosen.hash} contentContainerStyle={[s.content, s.detailContent]}>
           <TransactionDetailLayout
+            asset={activityAssetIcon(chosen, snapshot.chainId, snapshot.registrationHash)} registrationHash={snapshot.registrationHash ?? undefined} assetSymbol={chosen.display?.displaySymbol ?? chosen.local?.token?.symbol}
             amount={`${rowMonetaryAmount(chosen) ? direction(chosen, owner) === 'sent' ? '-' : direction(chosen, owner) === 'received' ? '+' : '' : ''}${amount(chosen, snapshot.nativeSymbol ?? 'ETH')}`}
             direction={direction(chosen, owner) === 'sent' ? 'Sent' : direction(chosen, owner) === 'received' ? 'Received' : direction(chosen, owner) === 'self' ? 'Self transfer' : 'Activity'}
             status={displayStatus(chosen)}

@@ -7,6 +7,7 @@ import ts from 'typescript';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { DEFAULT_ACTIVITY_VIEW } from '../src/activity/types.ts';
+import { activityAssetIcon } from '../src/activity/assetIcon.ts';
 
 type Element = { type: any; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; dependencies?: unknown[]; cleanup?: () => void };
@@ -138,6 +139,7 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
     '../activity/activityAmountLabel': { compactActivityAmountLabel },
     './ActivityListRow': { ActivityListRow: 'ActivityListRow', activityDate: () => ({ key: 'today', label: 'Today', time: '10:00' }) },
     './TransactionDetailLayout': { TransactionDetailLayout: 'TransactionDetailLayout' },
+    '../activity/assetIcon': { activityAssetIcon },
     '../../../../source/shared/erc20': { formatTokenUnits: () => '0' },
     '../../../../source/shared/evmHistory': {
       getEvmHistoryDirection: () => 'unknown',

@@ -6,11 +6,19 @@ import { isFiatCurrency, type FiatCurrency } from '../core/fiatPreference.ts';
 import { NATIVE_NETWORKS, type NativeNetworkRegistration } from '../custody/networkContext.ts';
 import type { WalletHttpFetch } from '../platform/httpPolicy.ts';
 import { abortable, boundedResponseText, cancelResponseBody } from '../platformRpc.ts';
+import { rememberNativeAssetIcon } from './assetIconCache.ts';
 
 export type AssetMarketReference = Readonly<{
   kind: 'native' | 'token'; networkId: string; registration?: NativeNetworkRegistration | null; contractAddress?: string;
 }>;
 export type AssetMarketSource = Readonly<{ kind: 'native'; id: string } | { kind: 'token'; platform: string; contract: string }>;
+/** Reuse only images accompanying the existing verified, registered market read. */
+export function rememberNativeAssetMarketIcon(asset: AssetMarketReference, data: AssetMarket): void {
+  if (asset.kind !== 'token' || !data.iconUri || !asset.contractAddress || !nativeAssetMarketSource(asset)) return;
+  const network = NATIVE_NETWORKS.find(value => value.id === asset.networkId);
+  if (!network) return;
+  rememberNativeAssetIcon({ kind: 'evm', chainId: network.chainId, contractAddress: asset.contractAddress }, network.registrationHash, data.iconUri);
+}
 export function nativeAssetMarketSource(asset: AssetMarketReference): AssetMarketSource | null {
   const utxo = findUtxoNetwork(asset.networkId);
   if (utxo) {

@@ -27,13 +27,14 @@ export function SendAssetSelector({ context, token, nativeAvailable, items, open
   const amountText = amount === undefined || amount === null ? '—' : token ? formatTokenUnits(amount, token.decimals) : amount;
   const options = [{ id: 'native', name: context.name, symbol: context.symbol, iconId: context.networkId, available: nativeAvailable },
     ...items.map(item => ({ id: item.metadata.contractAddress, name: item.metadata.name, symbol: item.metadata.symbol,
-      iconId: item.metadata.contractAddress, available: item.units === null ? undefined : formatTokenUnits(item.units, item.metadata.decimals) }))]
+      iconId: item.metadata.contractAddress, assetIcon: { kind: 'evm' as const, chainId: context.chainId, contractAddress: item.metadata.contractAddress, decimals: item.metadata.decimals }, iconRegistrationHash: context.registrationHash,
+      available: item.units === null ? undefined : formatTokenUnits(item.units, item.metadata.decimals) }))]
     .filter(item => !query.trim() || `${item.name} ${item.symbol} ${item.id}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <>
     <Text style={s.label}>{t('mobile.sendAssets.label')}</Text>
     <IdlePressable accessibilityRole="button" accessibilityLabel={t('mobile.sendAssets.change')} disabled={busy}
       onPress={() => { setQuery(''); onOpen(); }} style={s.card}>
-      <Coin id={token?.contractAddress ?? context.networkId} fallbackSymbol={token?.symbol ?? context.symbol} size={34} />
+      <Coin id={token?.contractAddress ?? context.networkId} asset={token ? { kind: 'evm', chainId: context.chainId, contractAddress: token.contractAddress, decimals: token.decimals } : undefined} registrationHash={context.registrationHash} fallbackSymbol={token?.symbol ?? context.symbol} size={34} />
       <View style={s.details}><Text style={s.name} numberOfLines={1}>{token?.name ?? context.name}</Text>
         <Text style={s.help} accessibilityLabel={hidden ? HIDDEN_BALANCE : `${amountText} ${token?.symbol ?? context.symbol}`}>
           {hidden ? HIDDEN_BALANCE : compactActivityAmountLabel(amountText)} {token?.symbol ?? context.symbol} · {context.name}

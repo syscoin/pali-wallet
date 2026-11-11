@@ -2023,6 +2023,7 @@ export const SendTransaction = () => {
                   <div className="flex flex-col gap-2 items-center justify-center mt-4 w-full">
                     <ApprovalDetails
                       {...approvalDetails}
+                      context={approvedContext}
                       approved={
                         typeof decodedTxData?.inputs?.[1] === 'boolean'
                           ? decodedTxData.inputs[1]
@@ -2032,6 +2033,7 @@ export const SendTransaction = () => {
                       standardVerified={standardVerified}
                       isUnlimited={isUnlimitedApproval}
                       tokenSymbol={approvedTokenInfos?.tokenSymbol}
+                      tokenDecimals={approvedTokenInfos?.tokenDecimals}
                     />
 
                     {canEditCurrentApproval &&
@@ -2083,7 +2085,10 @@ export const SendTransaction = () => {
                     />
                   </div>
                   {assetTransfer ? (
-                    <AssetTransferSummary transfer={assetTransfer} />
+                    <AssetTransferSummary
+                      transfer={assetTransfer}
+                      context={approvedContext}
+                    />
                   ) : (
                     <>
                       <p className="text-brand-gray200 text-xs font-light">

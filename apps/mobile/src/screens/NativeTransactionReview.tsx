@@ -7,7 +7,7 @@ import { useDappLedgerConnection } from './useDappLedgerConnection';
 import type { EvmDappFeeChoice } from '../../../../source/shared/evmDappFeePolicy';
 import type { NativeConnectionsView, NativeTransactionReview } from '../connections/types';
 import { formatBaseUnits } from '../core/amounts';
-import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
+import { Button, Card, Coin, colors, Header, Notice, Screen, Text } from '../ui';
 import { DappSiteStatus } from './DappSiteStatus';
 import { IdlePressable } from './IdleActivityBoundary';
 import { ApprovalReview } from './ApprovalReview';
@@ -159,6 +159,7 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
     </Card>
     {siteWarning && <DappSiteStatus verification={review.verification} />}
     {transaction && <View style={s.hero}>
+      {transfer && <View style={{ alignItems: 'center' }}><Coin id="token" asset={{ kind: 'evm', chainId: review.chainId, contractAddress: transfer.contract, decimals: transfer.decimals }} registrationHash={review.registrationHash} fallbackSymbol={transfer.items[0]?.symbol ?? undefined} size={44} /></View>}
       {batch && <Text accessibilityRole="header" style={s.sectionTitle}>Call {batch.index + 1} of {batch.calls.length}</Text>}
       <Text style={[s.label, { textAlign: 'center' }]}>{transfer ? transfer.standardVerified ? `${transfer.standard} transfer` : 'Transfer call' : transaction.to === null ? 'Contract deployment' : transaction.data === '0x' ? `${review.symbol} transfer` : 'Contract interaction'}</Text>
       {!transfer && transaction.data !== '0x' && <Text style={[s.muted, { textAlign: 'center' }]}>Native currency sent</Text>}
@@ -171,7 +172,7 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
       </>}
       {!transfer && transaction.data !== '0x' && <Text style={[s.muted, { textAlign: 'center' }]}>This amount excludes any tokens or NFTs the contract may move.</Text>}
     </View>}
-    {review.approval && transaction && <ApprovalReview summary={review.approval} transaction={transaction}
+    {review.approval && transaction && <ApprovalReview summary={review.approval} transaction={transaction} chainId={review.chainId} registrationHash={review.registrationHash}
       onEditingChange={setApprovalEditing}
       disabled={!!batch || review.busy || submitted || review.needsAccountSwitch || review.error !== null}
       edit={(value) => controller.editApprovalAmount(review.id, review.revision, value)} />}

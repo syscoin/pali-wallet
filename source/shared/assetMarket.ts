@@ -1,7 +1,10 @@
+import { trustedAssetIconUri } from './assetIconIdentity.ts';
+
 /** Public display data only. Never use market quotes for transaction amounts. */
 export type AssetMarket = Readonly<{
   change24h: number | null;
   high24h: number | null;
+  iconUri?: string;
   low24h: number | null;
   marketCap: number | null;
   price: number;
@@ -97,6 +100,9 @@ export function readAssetMarket(
       ) as number[])
     : [];
   return Object.freeze({
+    ...(trustedAssetIconUri(data.image)
+      ? { iconUri: trustedAssetIconUri(data.image)! }
+      : {}),
     price,
     updatedAt,
     prices: Object.freeze(prices),

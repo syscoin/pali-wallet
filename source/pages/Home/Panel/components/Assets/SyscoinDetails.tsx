@@ -17,6 +17,7 @@ import {
 import { Button } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
 import { useUtils } from 'hooks/index';
+import { ExplorerLink } from 'pages/Home/Panel/components/ExplorerLink';
 import { getHomeBrowsingScope } from 'pages/Home/useHomeBrowsingState';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
@@ -37,7 +38,6 @@ import { navigateBack } from 'utils/navigationState';
 import { retryableFetch } from 'utils/retryableFetch';
 import { isSptBalanceAvailable } from 'utils/sptBalance';
 import { buildExplorerUrl } from 'utils/strings';
-import { ExplorerLink } from 'pages/Home/Panel/components/ExplorerLink';
 import { translateTransactionLabel } from 'utils/transactionDisplay';
 
 import { AssetMarketLinks, CoinGeckoLogo } from './AssetMarketLinks';
@@ -218,7 +218,13 @@ export const SyscoinAssetDetails = ({
   useEffect(() => {
     let cancelled = false;
     setMarketDataState(null);
-    const knownAsset = hasAsset ? getKnownSyscoinAsset(currentAssetGuid) : null;
+    const knownAsset = hasAsset
+      ? getKnownSyscoinAsset(
+          currentAssetGuid,
+          activeNetwork.chainId,
+          asset?.decimals === undefined ? undefined : Number(asset.decimals)
+        )
+      : null;
     setIsLoadingMarketData(Boolean(knownAsset));
     const fetchMarketData = async () => {
       if (!knownAsset) return;
@@ -252,7 +258,7 @@ export const SyscoinAssetDetails = ({
     return () => {
       cancelled = true;
     };
-  }, [currentAssetGuid, hasAsset]);
+  }, [currentAssetGuid, hasAsset, activeNetwork.chainId, asset?.decimals]);
 
   useEffect(() => {
     if (!isCopied) return;
@@ -471,7 +477,8 @@ export const SyscoinAssetDetails = ({
             getTokenLogo(
               assetSymbol?.value,
               false,
-              asset?.assetGuid || id
+              asset?.assetGuid || id,
+              activeNetwork.chainId
             )) && (
             <div className="group relative p-2">
               <TokenIcon
@@ -480,7 +487,8 @@ export const SyscoinAssetDetails = ({
                   getTokenLogo(
                     assetSymbol?.value,
                     false,
-                    asset?.assetGuid || id
+                    asset?.assetGuid || id,
+                    activeNetwork.chainId
                   ) ||
                   marketData?.image?.large ||
                   marketData?.image?.small ||
@@ -488,6 +496,12 @@ export const SyscoinAssetDetails = ({
                   ''
                 }
                 assetGuid={String(asset?.assetGuid || id)}
+                chainId={activeNetwork.chainId}
+                decimals={
+                  asset?.decimals === undefined
+                    ? undefined
+                    : Number(asset?.decimals)
+                }
                 symbol={assetSymbol?.value}
                 size={48}
                 className="shadow-md group-hover:shadow-xl group-hover:scale-110 transition-all duration-300"

@@ -177,6 +177,17 @@ test('SPT Z-DAG uses the inverse RBF option and MAX fills the selected exact tot
   f.close();
 });
 
+test('SPT review binds artwork to network and GUID rather than issuer symbol', async () => {
+  const f = fixture({ assetGuid: '987654321', decimals: 3, symbol: 'BTC' }, '2.125');
+  try {
+    f.render(); await tick(); f.edit('Recipient address', 'sys1qfixture'); f.press('MAX'); f.review(); await tick();
+    const icon = all(f.render()).find(node => node.type === 'Coin' && node.props.asset);
+    assert(icon); assert.equal(icon.props.id, 'spt');
+    assert.deepEqual(JSON.parse(JSON.stringify(icon.props.asset)), { kind: 'spt', chainId: 57, assetGuid: '987654321', decimals: 3 });
+    assert.equal(icon.props.fallbackSymbol, 'BTC');
+  } finally { f.close(); }
+});
+
 test('SPT maximum keeps its explicit flag and fixed quantity when no inventory update occurs', async () => {
   const f = fixture({ assetGuid: '123456', decimals: 0, symbol: 'WHOLE' }, '9007199254740993'); f.render(); await tick();
   f.edit('Recipient address', 'sys1qfixture'); f.press('MAX'); f.review(); await tick();

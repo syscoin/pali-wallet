@@ -5,7 +5,7 @@ import { assetMarketLine, type AssetMarket } from '../../../../source/shared/ass
 import { useFiatCurrency } from '../platform/fiatPreferences.ts';
 import { walletFetch } from '../platform/http.ts';
 import { Button, Card, colors, Text } from '../ui';
-import { createNativeAssetMarketReader, nativeAssetMarketSource, type AssetMarketReference } from './nativeAssetMarket.ts';
+import { createNativeAssetMarketReader, nativeAssetMarketSource, rememberNativeAssetMarketIcon, type AssetMarketReference } from './nativeAssetMarket.ts';
 
 const read = createNativeAssetMarketReader(walletFetch);
 export function AssetMarketCard({ asset }: { asset: AssetMarketReference }) {
@@ -26,6 +26,7 @@ export function AssetMarketCard({ asset }: { asset: AssetMarketReference }) {
       setState({ key, status: 'loading' });
       void read(source, currency, current.signal).then(data => {
         if (current.signal.aborted || AppState.currentState !== 'active') return;
+        if (data) rememberNativeAssetMarketIcon({ kind, networkId, contractAddress, registration }, data);
         setState({ key, status: data ? 'ready' : 'unavailable', ...(data ? { data } : {}) });
         timer = setTimeout(() => { stop(); start(); }, 300_000);
       });
@@ -34,7 +35,7 @@ export function AssetMarketCard({ asset }: { asset: AssetMarketReference }) {
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', hide) : null;
     const focus = Platform.OS === 'android' ? AppState.addEventListener('focus', start) : null;
     start(); return () => { stop(); lifecycle.remove(); blur?.remove(); focus?.remove(); };
-  }, [source, currency, key, retry]);
+  }, [source, currency, key, retry, kind, networkId, contractAddress, registration]);
   if (!source) return <Card style={s.card} testID="asset-market-card"><Text style={s.label}>Market price</Text><Text style={s.caption}>Market data is unavailable for this asset.</Text></Card>;
   const current = state.key === key ? state : null, data = current?.data;
   const format = (value: number) => `${new Intl.NumberFormat(undefined, {

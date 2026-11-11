@@ -6,6 +6,7 @@ import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import { Coin, colors, Icon, Text } from '../ui';
 import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
 import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
+import type { AssetIconIdentity } from '../../../../source/shared/assetIconIdentity';
 
 export type NetworkSourceOption = Readonly<{
   id: string;
@@ -14,6 +15,8 @@ export type NetworkSourceOption = Readonly<{
   testnet?: boolean;
   chainId?: string;
   iconId?: string;
+  assetIcon?: AssetIconIdentity;
+  iconRegistrationHash?: string;
   /** A public observation for this exact account and network, never a fallback. */
   available?: string;
   loading?: boolean;
@@ -66,7 +69,7 @@ export function NetworkSourceSheet({ purpose, options, selectedId, busy = false,
             accessibilityHint={option.available === undefined ? undefined : hidden ? HIDDEN_BALANCE : `${option.available} ${option.symbol}`}
             accessibilityState={{ checked: selected, disabled: busy }} aria-checked={selected} disabled={busy}
             onPress={() => { void onSelect(option.id); }} style={({ pressed }) => [s.row, index > 0 && s.divider, pressed && s.pressed]}>
-            {option.id === 'all' ? <View style={{ width: 38, alignItems: 'center' }}><Icon name="globe" size={26} color={colors.blue} /></View> : <Coin id={option.iconId ?? option.id} fallbackSymbol={option.symbol} size={38} />}
+            {option.id === 'all' ? <View style={{ width: 38, alignItems: 'center' }}><Icon name="globe" size={26} color={colors.blue} /></View> : <Coin id={option.iconId ?? option.id} asset={option.assetIcon} registrationHash={option.iconRegistrationHash} fallbackSymbol={option.symbol} size={38} />}
             <View style={s.details}>
               <Text style={s.name} numberOfLines={2}>{option.name}</Text>
               {option.testnet && <Text style={s.testnet}>{t('mobile.common.testNetwork')}</Text>}

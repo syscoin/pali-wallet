@@ -59,3 +59,20 @@ test('numeric-only transaction identifiers stay bounded as identifiers and copy 
   copy.props.onPress(); assert.equal(copied, hash);
   f.close();
 });
+
+test('asset icon in transaction details preserves visible status and has the exact public scope', () => {
+  const asset = { kind: 'spt', chainId: 57, assetGuid: '123456', decimals: 8 };
+  const f = screenFixture(new URL('../src/screens/TransactionDetailLayout.tsx', import.meta.url), 'TransactionDetailLayout', {
+    'react-native': { StyleSheet: { create: (value: unknown) => value }, View: 'View' },
+    '../activity/activityAmountLabel': { compactActivityAmountLabel },
+    '../ui': { colors: {}, ...Object.fromEntries(['Button', 'Card', 'Coin', 'Icon', 'Text'].map(name => [name, name])) },
+    './IdleActivityBoundary': { IdlePressable: 'Row' },
+  });
+  try {
+    const nodes = screenElements(f.render({ amount: '1 SYSX', direction: 'Received', status: 'Confirmed', tone: 'confirmed', asset, assetSymbol: 'SYSX', rows: [] }));
+    const icon = nodes.find(node => node.type === 'Coin'); assert(icon);
+    assert.deepEqual(icon.props.asset, asset);
+    assert(nodes.some(node => node.children.includes('Confirmed')));
+    assert(nodes.some(node => node.props.accessibilityLabel === '1 SYSX'));
+  } finally { f.close(); }
+});

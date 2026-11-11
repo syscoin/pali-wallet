@@ -2359,6 +2359,12 @@ export class NativeConnectionsController {
     }
     const scope = this.signingResumeScope(wire.session.binding, 'granted');
     if (!scope || saved && (saved.wire !== JSON.stringify(wire) || !sameSigningResumeOwner(saved.scope, scope) || scope.unlockGeneration <= saved.scope.unlockGeneration)) return failure('REQUEST_EXPIRED');
+    let iconRegistrationHash: string | undefined;
+    try {
+      const registration = this.host!.registration();
+      if (registration.id === context.networkId && registration.chainId === String(context.network.chainId) && registration.rpcUrl === context.network.url)
+        iconRegistrationHash = registration.registrationHash;
+    } catch { /* Missing public icon scope leaves the generic icon. */ }
     const next = ++this.serial, queueOrder = saved?.order ?? next;
     const id = `request-${next}`;
     const message: PendingSigning = {
@@ -2389,6 +2395,7 @@ export class NativeConnectionsController {
         accountLabel: account.label,
         address: account.address,
         networkLabel: context.networkLabel,
+        registrationHash: iconRegistrationHash,
         chainId: String(context.network.chainId),
         expiresAt,
         error,

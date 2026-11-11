@@ -19,7 +19,7 @@ function fixture() {
   const screen = screenFixture(new URL('../src/screens/NativeSmartAccountOperation.tsx', import.meta.url), 'NativeSmartAccountOperationContent', {
     'react-native': { StyleSheet: { create: (value: unknown) => value, hairlineWidth: 1 }, View: 'View', Switch: 'Switch', AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'android' } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
-    '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
+    '../ui': { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Icon', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
     '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay },
     '../../../../source/shared/erc20': { formatTokenUnits }, '../core/amounts': { formatBaseUnits }, '../custody/networkContext': { getNativeSendContext },
     '../platform/localization': nativeTranslationFixture, './NativeTransactionReview': { TransactionDetails: 'TransactionDetails' }, './guardianPolicyLabels': { guardianDelayLabel: () => '' },
@@ -46,7 +46,7 @@ test('Smart dapp token review shows exact token amount and recipient with native
     const nodes = f.render(snapshot, { assetTransfer: transfer }), copy = text(nodes);
     assert(copy.includes(formatTokenUnits(units, 255))); assert(copy.includes(recipient)); assert(copy.includes(contract));
     assert(copy.includes('Also sending')); assert(copy.includes('1.000000000000000001')); assert(copy.includes('Token metadata is supplied by the contract.'));
-    assert(nodes.some(node => node.type === 'Icon' && node.props.name === 'arrow-up-right'));
+    assert(nodes.some(node => node.type === 'Coin' && node.props.asset.chainId === snapshot.network.chainId && node.props.asset.contractAddress === contract && node.props.registrationHash === snapshot.network.registrationHash));
     nodes.find(node => node.type === 'Button' && node.props.title === 'Authorize transaction')!.props.onPress();
     const fee = f.render({ ...snapshot, phase: 'review-fee', payerReview: { id: 8, purpose: 'submit-operation', transaction: { from: owner, value: '0' } as never, maximumFeeUnits: '1', coveredFeeUnits: '0', maximumTotalUnits: '1' } }, { assetTransfer: transfer });
     fee.find(node => node.type === 'Button' && node.props.title === 'Confirm transaction')!.props.onPress();

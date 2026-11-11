@@ -19,6 +19,7 @@ import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { TabDeparture } from '../src/navigation/tabDeparture.ts';
 import type { ShellLeafNavigation, RealTab } from '../src/screens/RealAppShell';
 import type { NativeActivitySnapshot } from '../src/activity/nativeActivity.ts';
+import { activityAssetIcon } from '../src/activity/assetIcon.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { quietActivityNotifications } from './notificationFixture.ts';
 
@@ -142,6 +143,7 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         './ActivityListRow': activityListRow,
         './TransactionDetailLayout': { TransactionDetailLayout: 'TransactionDetailLayout' },
         '../activity/activityAmountLabel': { compactActivityAmountLabel },
+        '../activity/assetIcon': { activityAssetIcon },
         '../../../../source/shared/erc20': {},
         '../../../../source/shared/syscoinAssetIds': syscoinAssetIds,
         '../../../../source/shared/sptInventory': sptInventory,

@@ -450,6 +450,7 @@ export function NativeSmartAccountSend({
             }} /> : <SendNetworkCard context={context} disabled={busy} />}
           {collectible && (
             <Card style={s.asset}>
+              <Coin id="collectible" asset={{ kind: 'evm', chainId: context.chainId, contractAddress: collectible.contractAddress }} registrationHash={context.registrationHash} fallbackSymbol="NFT" size={36} />
               <Text style={s.label}>COLLECTIBLE CONTRACT · {collectible.tokenStandard}</Text>
               <Text selectable style={s.address}>{collectible.contractAddress}</Text>
             </Card>
@@ -457,7 +458,7 @@ export function NativeSmartAccountSend({
           {token && (
             <Card style={s.asset}>
               <View style={s.assetRow}>
-                <Coin id="custom-token" fallbackSymbol={token.symbol} size={32} />
+                <Coin id="custom-token" asset={{ kind: 'evm', chainId: context.chainId, contractAddress: token.contractAddress, decimals: token.decimals }} registrationHash={context.registrationHash} fallbackSymbol={token.symbol} size={32} />
                 <View style={s.assetDescription}><Text numberOfLines={1}>{token.name}</Text><Text style={styles.muted}>{token.symbol} · {context.name}</Text></View>
                 <Button title="Details" variant="quiet" size="compact" expanded={tokenDetails} disabled={busy} onPress={() => setTokenDetails(value => !value)} />
               </View>

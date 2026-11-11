@@ -41,7 +41,7 @@ function fixture(kind: 'message' | 'transaction' | 'psbt' | 'smart-transaction' 
       'react-native': { ActivityIndicator: 'ActivityIndicator', View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView',
         Platform: { OS: 'ios' }, StyleSheet: { create: (value: unknown) => value }, BackHandler: { addEventListener: () => ({ remove() {} }) } },
       'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
-      '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
+      '../ui': { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
       './IdleActivityBoundary': { IdlePressable: 'Pressable' }, './DappSiteStatus': { DappSiteStatus: 'DappSiteStatus' },
       '../../../../source/shared/assetTransferDisplay': { resolveAssetTransferDisplay }, '../../../../source/shared/assetTransfer': { decodeAssetTransfer }, '../../../../source/shared/erc20': { formatTokenUnits },
       '../core/amounts': { formatBaseUnits }, './ApprovalReview': { ApprovalReview: 'ApprovalReview' },
@@ -185,6 +185,9 @@ for (const kind of ['erc20', 'erc721', 'unknown'] as const) test(`dapp ${kind} t
     const text = values.flatMap(element => element.children.filter(value => typeof value === 'string')).join(' ');
     assert(text.includes(recipient)); assert(text.includes('Recipient')); assert(text.includes('Token contract'));
     assert(text.includes(nft ? '#91' : kind === 'erc20' ? '2.5' : '2500000'));
+    const icon = values.find(value => value.type === 'Coin');
+    assert.equal(icon?.props.asset.contractAddress, f.review.transaction.to);
+    assert.equal(icon?.props.asset.chainId, f.review.chainId);
     assert(!text.includes('Contract interaction'));
     assert(!values.some(value => value.type === 'TransactionDetails'));
   } finally { f.close(); }

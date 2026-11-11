@@ -1,8 +1,9 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
-import { Button, Card, colors, Icon, Text } from '../ui';
+import { Button, Card, Coin, colors, Icon, Text } from '../ui';
 import { IdlePressable } from './IdleActivityBoundary';
+import type { AssetIconIdentity } from '../../../../source/shared/assetIconIdentity';
 
 export type TransactionDetailRow = Readonly<{
   label: string;
@@ -15,7 +16,7 @@ export type TransactionDetailRow = Readonly<{
 
 const bounded = (value: string) => value.length > 42 ? `${value.slice(0, 16)}…${value.slice(-12)}` : value;
 
-export function TransactionDetailLayout({ amount, direction, status, tone, rows, onExplorer, explorerDisabled = false }: {
+export function TransactionDetailLayout({ amount, direction, status, tone, rows, onExplorer, explorerDisabled = false, asset, registrationHash, assetSymbol }: {
   amount: string;
   direction: string;
   status: string;
@@ -23,12 +24,16 @@ export function TransactionDetailLayout({ amount, direction, status, tone, rows,
   rows: readonly TransactionDetailRow[];
   onExplorer?(): void;
   explorerDisabled?: boolean;
+  asset?: AssetIconIdentity;
+  registrationHash?: string;
+  assetSymbol?: string;
 }) {
   const accent = tone === 'failed' ? colors.pink : tone === 'unknown' ? colors.muted : colors.blue;
   return <View style={s.content}>
     <View style={s.hero}>
       <View style={[s.statusIcon, { backgroundColor: tone === 'failed' ? '#312139' : colors.raised }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        <Icon name={tone === 'confirmed' ? 'check' : tone === 'failed' ? 'close' : tone === 'pending' ? 'clock' : 'activity'} size={26} color={accent} />
+        {asset ? <Coin id="activity-asset" asset={asset} registrationHash={registrationHash} fallbackSymbol={assetSymbol} size={46} />
+          : <Icon name={tone === 'confirmed' ? 'check' : tone === 'failed' ? 'close' : tone === 'pending' ? 'clock' : 'activity'} size={26} color={accent} />}
       </View>
       <Text style={s.direction}>{direction}</Text>
       <Text accessibilityLabel={amount} style={s.amount} numberOfLines={2}>{compactActivityAmountLabel(amount.replace(/^−/, '-'))}</Text>

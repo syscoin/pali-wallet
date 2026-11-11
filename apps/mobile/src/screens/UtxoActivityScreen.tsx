@@ -13,6 +13,7 @@ import { Button, Card, colors, Header, IconButton, Notice, SegmentedControl, sty
 import { ActivityListRow, activityDate } from './ActivityListRow';
 import { TransactionDetailLayout } from './TransactionDetailLayout';
 import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
+import { utxoActivityAssetIcon } from '../activity/assetIcon';
 
 function signed(units: string, decimals: number, symbol: string): string {
   const negative = units.startsWith('-');
@@ -29,7 +30,7 @@ function assetQuantity(row: UtxoActivityRow): string | null {
 /** The active screen follows the account-owned history capability. */
 export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, navigation, onBack, initialHash }: {
   authority: UtxoActivityOwner;
-  selectedNetwork: Pick<UtxoNetwork, 'id' | 'name' | 'symbol' | 'decimals'>;
+  selectedNetwork: Pick<UtxoNetwork, 'id' | 'name' | 'symbol' | 'decimals' | 'chainId'>;
   accountLabel: string;
   navigation: ShellLeafNavigation;
   onBack(): void;
@@ -179,6 +180,7 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
             const first = index === 0 || dateOf(rows[index - 1]!).key !== date.key;
             const last = index === rows.length - 1 || dateOf(rows[index + 1]!).key !== date.key;
             return <ActivityListRow testID={`watch-activity-row-${item.txid}`}
+              asset={utxoActivityAssetIcon(item, network.chainId)} assetSymbol={item.assetAmount?.symbol}
               first={first} last={last} heading={first ? date.label : undefined} direction={flow}
               title={flow === 'sent' ? 'Sent' : flow === 'received' ? 'Received' : flow === 'self' ? 'Self transfer' : item.hasAssetData ? 'Asset activity' : 'Activity'}
               subtitle={`${network.name} · ${item.block && item.observedConfirmations > 0 ? 'Confirmed' : 'Pending'}`}
@@ -198,6 +200,7 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
       </View>
       {chosen && <ScrollView testID="watch-activity-detail" style={s.detailOverlay} contentContainerStyle={[s.content, s.detailContent]}>
         <TransactionDetailLayout amount={detailAmount}
+          asset={utxoActivityAssetIcon(chosen, network.chainId)} assetSymbol={chosen.assetAmount?.symbol}
           direction={rowDirection(chosen) === 'sent' ? 'Sent' : rowDirection(chosen) === 'received' ? 'Received' : rowDirection(chosen) === 'self' ? 'Self transfer' : 'Activity'}
           status={chosen.block && chosen.observedConfirmations > 0 ? 'Confirmed' : status(chosen)}
           tone={chosen.block && chosen.observedConfirmations > 0 ? 'confirmed' : chosen.block === null ? 'pending' : 'unknown'}

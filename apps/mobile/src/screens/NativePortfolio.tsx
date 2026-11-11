@@ -303,7 +303,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
         {faucetCard}
         </>}
         <View style={nativeDetail ? { display: 'none' } : s.assetList} accessibilityElementsHidden={nativeDetail} aria-hidden={nativeDetail}>
-        {utxo && supportsSptUtxoChain(utxo.chainId) && <NativeSptAssets key={scope} holdings={snapshot.assets?.status === 'available' ? snapshot.assets.holdings : null} loading={loading}
+        {utxo && supportsSptUtxoChain(utxo.chainId) && <NativeSptAssets key={scope} chainId={utxo.chainId} holdings={snapshot.assets?.status === 'available' ? snapshot.assets.holdings : null} loading={loading}
           onModeChange={setTokenTitle} onBackHandlerChange={setTokenBack}
           onReceive={canReceive ? requestReceive : undefined}
           onRefresh={() => { if (account && model.isCurrent(account)) void model.refresh(); }}

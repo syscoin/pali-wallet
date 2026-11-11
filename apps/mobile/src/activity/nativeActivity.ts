@@ -92,6 +92,7 @@ export type NativeActivitySnapshot = Readonly<{
   accountAddress: string | null;
   scopeKey: string | null;
   chainId: string | null;
+  registrationHash?: string | null;
   networkName?: string | null;
   nativeSymbol?: string | null;
   explorerUrl: string | null;
@@ -144,6 +145,7 @@ const initial = (): NativeActivitySnapshot =>
     accountAddress: null,
     scopeKey: null,
     chainId: null,
+    registrationHash: null,
     networkName: null,
     nativeSymbol: null,
     explorerUrl: null,
@@ -305,6 +307,7 @@ export class NativeActivity {
         accountAddress: scope.address,
         scopeKey: scope.key,
         chainId: scope.network.chainId,
+        registrationHash: scope.network.registrationHash,
         networkName: scope.network.name,
         nativeSymbol: scope.network.symbol,
         explorerUrl: scope.explorerUrl,

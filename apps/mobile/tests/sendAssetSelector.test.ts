@@ -26,6 +26,8 @@ test('asset search filters saved metadata within the fixed network without selec
   const f = fixture();
   try {
     const sheet = f.render(); assert.equal(sheet.props.subtitle, 'Ethereum'); assert.equal(sheet.props.options.length, 3);
+    assert.deepEqual(JSON.parse(JSON.stringify(sheet.props.options[1].assetIcon)), { kind: 'evm', chainId: '1', contractAddress: items[0]!.metadata.contractAddress, decimals: 6 });
+    assert.equal(sheet.props.options[1].iconRegistrationHash, getNativeSendContext('ethereum').registrationHash);
     sheet.props.search.onChange('usdc');
     const searched = f.render(); assert.equal(searched.props.options.length, 1); assert.equal(searched.props.options[0].name, 'USD Coin');
     searched.props.onSelect(items[0]!.metadata.contractAddress); assert.equal(f.selected[0], items[0]!.metadata);

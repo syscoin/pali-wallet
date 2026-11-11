@@ -1,14 +1,9 @@
+import { knownAssetIcon } from '../shared/assetIconIdentity';
 import { SYSX_ASSET_GUID } from '../shared/syscoinAssetIds';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
+import SyscoinIcon from 'assets/all_assets/syscoin.png';
+import UsdcIcon from 'assets/all_assets/usdc-icon.svg';
 import ZkSysIcon from 'assets/all_assets/zksys-icon.svg';
-
-// Canonical zkSYS ERC-20 token addresses per chain (governance token; gas
-// payment in zkSYS is handled natively by the chain's gas tank).
-const CONFIGURED_ZKSYS_TOKEN_ADDRESSES = new Set(
-  ['0x6EBb170f69D886916D9ee9E585CE39E626CbC35d'].map((address) =>
-    address.toLowerCase()
-  )
-);
 
 const SYSCOIN_LOGO_URL =
   'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/syscoin/info/logo.png';
@@ -27,51 +22,100 @@ const KNOWN_SYSCOIN_ASSETS: Readonly<Record<string, IKnownSyscoinAsset>> = {
   [SYSX_ASSET_GUID]: {
     coinGeckoId: 'syscoin',
     isVerified: true,
-    logo: SYSCOIN_LOGO_URL,
+    logo: SyscoinIcon,
   },
 };
 
 // Reserved logos previously assigned by symbol. They must not survive on a
 // noncanonical SPT if they were persisted by an older wallet build.
-const RESERVED_UTXO_LOGOS = new Set([SYSCOIN_LOGO_URL, BITCOIN_LOGO_URL]);
+const RESERVED_TOKEN_LOGOS = new Set([
+  SYSCOIN_LOGO_URL,
+  BITCOIN_LOGO_URL,
+  SyscoinIcon,
+  ZkSysIcon,
+  UsdcIcon,
+]);
 
 export const getKnownSyscoinAsset = (
-  assetGuid?: number | string
+  assetGuid?: number | string,
+  chainId?: number | string,
+  decimals?: number
 ): IKnownSyscoinAsset | null => {
-  if (assetGuid === undefined || assetGuid === null) return null;
+  if (
+    assetGuid === undefined ||
+    assetGuid === null ||
+    chainId === undefined ||
+    knownAssetIcon({
+      kind: 'spt',
+      chainId,
+      assetGuid,
+      ...(decimals === undefined ? {} : { decimals }),
+    }) !== 'syscoin'
+  )
+    return null;
 
   return KNOWN_SYSCOIN_ASSETS[String(assetGuid)] || null;
 };
 
 export const sanitizeUtxoTokenLogo = (
   logo: string | undefined,
-  assetGuid?: number | string
+  assetGuid?: number | string,
+  chainId?: number | string,
+  decimals?: number
+): string | undefined =>
+  sanitizeTokenLogo(logo, undefined, assetGuid, chainId, decimals);
+
+export const sanitizeTokenLogo = (
+  logo: string | undefined,
+  contractAddress?: string,
+  assetGuid?: number | string,
+  chainId?: number | string,
+  decimals?: number
 ): string | undefined => {
   if (!logo) return logo;
-
-  const knownAsset = getKnownSyscoinAsset(assetGuid);
-  if (knownAsset?.logo === logo) return logo;
-
-  return RESERVED_UTXO_LOGOS.has(logo) ? undefined : logo;
+  if (
+    getKnownTokenLogo(
+      undefined,
+      contractAddress,
+      assetGuid,
+      chainId,
+      decimals
+    ) === logo
+  )
+    return logo;
+  return RESERVED_TOKEN_LOGOS.has(logo) ? undefined : logo;
 };
 
 export const getKnownTokenLogo = (
   _symbol?: string,
   contractAddress?: string,
-  assetGuid?: number | string
+  assetGuid?: number | string,
+  chainId?: number | string,
+  decimals?: number
 ): string | null => {
-  if (
-    contractAddress &&
-    CONFIGURED_ZKSYS_TOKEN_ADDRESSES.has(contractAddress.toLowerCase())
-  ) {
-    return ZkSysIcon;
-  }
-
-  if (contractAddress) {
-    return null;
-  }
-
-  return getKnownSyscoinAsset(assetGuid)?.logo || null;
+  if (chainId === undefined) return null;
+  const known = contractAddress
+    ? knownAssetIcon({
+        kind: 'evm',
+        chainId,
+        contractAddress,
+        ...(decimals === undefined ? {} : { decimals }),
+      })
+    : assetGuid !== undefined
+    ? knownAssetIcon({
+        kind: 'spt',
+        chainId,
+        assetGuid,
+        ...(decimals === undefined ? {} : { decimals }),
+      })
+    : null;
+  return known === 'zksys'
+    ? ZkSysIcon
+    : known === 'syscoin'
+    ? SyscoinIcon
+    : known === 'usdc'
+    ? UsdcIcon
+    : null;
 };
 
 /**
@@ -84,9 +128,17 @@ export const getKnownTokenLogo = (
 export const getTokenLogo = (
   symbol: string | undefined,
   includePaliLogo = true,
-  assetGuid?: number | string
+  assetGuid?: number | string,
+  chainId?: number | string,
+  decimals?: number
 ): string | null => {
-  const knownLogo = getKnownTokenLogo(symbol, undefined, assetGuid);
+  const knownLogo = getKnownTokenLogo(
+    symbol,
+    undefined,
+    assetGuid,
+    chainId,
+    decimals
+  );
   if (knownLogo) return knownLogo;
   if (!symbol) return null;
 

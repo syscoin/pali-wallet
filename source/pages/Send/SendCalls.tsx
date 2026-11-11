@@ -1490,6 +1490,7 @@ export const SendCalls = () => {
                   {assetTransfers[index] && (
                     <AssetTransferSummary
                       transfer={assetTransfers[index]!}
+                      context={approvedContext}
                       compact
                     />
                   )}

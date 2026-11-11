@@ -10,6 +10,7 @@ import { IdlePressable } from './IdleActivityBoundary';
 import { NativeActivityScreen, nativeActivityRowPresentation } from './NativeActivity';
 import { NetworkSourceSheet } from './NetworkSourceSheet';
 import type { ShellLeafNavigation } from './RealAppShell';
+import { activityAssetIcon } from '../activity/assetIcon';
 
 export type AccountActivityAction = 'saved' | 'cancel' | 'cancel-saved' | 'speed-up';
 export function AllNetworksActivity({ controller, accountLabel, navigation, onAction, initialTarget }: {
@@ -146,6 +147,8 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
           heading={first ? display.date.label : undefined} title={display.title} subtitle={`${display.status}${item.row.unavailable ? ' · Details unavailable' : ''}`}
           networkBadge={snapshot.filter === 'all' ? item.choice.networkName : undefined} networkId={item.choice.scope.network.id} networkSymbol={item.choice.symbol}
           direction={display.direction} amount={display.amount} time={display.date.time}
+          asset={activityAssetIcon(item.row, String(item.choice.scope.network.chainId), 'registrationHash' in item.choice.scope.network ? item.choice.scope.network.registrationHash : undefined)}
+          registrationHash={'registrationHash' in item.choice.scope.network ? item.choice.scope.network.registrationHash : undefined} assetSymbol={item.row.display?.displaySymbol ?? item.row.local?.token?.symbol}
           label={`${display.label}. Network: ${item.choice.networkName}`} disabled={busy} onPress={() => { rememberScroll(); setError(''); setSelection(item); }} />;
       }}
       ListEmptyComponent={snapshot.status !== 'loading' && !snapshot.refreshing ? <View style={s.empty}>

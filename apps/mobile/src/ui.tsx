@@ -1,6 +1,8 @@
 import { IdlePressable } from './screens/IdleActivityBoundary';
 import { useWelcomeBackdropMotion } from './screens/useWelcomeBackdropMotion';
-import React, { useLayoutEffect, useRef } from 'react';
+import React, { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
+import { knownAssetIcon, type AssetIconIdentity } from '../../../source/shared/assetIconIdentity';
+import { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, subscribeNativeAssetIcon } from './portfolio/assetIconCache';
 import {
   Image,
   Animated,
@@ -181,12 +183,23 @@ export function PaliMark({ size = 34 }: { size?: number }) {
   );
 }
 
-export function Coin({ id, size = 42, fallbackSymbol }: { id: string; size?: number; fallbackSymbol?: string }) {
+export function NativeAssetIcon({ identity, registrationHash, size = 42, symbol }: { identity: AssetIconIdentity; registrationHash?: string; size?: number; symbol?: string }) {
+  const key = nativeAssetIconKey(identity, registrationHash);
+  const uri = useSyncExternalStore(listener => subscribeNativeAssetIcon(key, listener), () => readNativeAssetIcon(key), () => null);
+  const artwork = knownAssetIcon(identity);
+  if (artwork) return <Coin id={artwork === 'zksys' ? 'zksys-testnet' : artwork} size={size} />;
+  if (uri) return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} resizeMode="contain"
+    accessible={false} onError={() => markNativeAssetIconFailed(key, uri)} />;
+  return <Coin id="unknown-asset" size={size} fallbackSymbol={symbol} />;
+}
+
+export function Coin({ id, size = 42, fallbackSymbol, asset, registrationHash }: { id: string; size?: number; fallbackSymbol?: string; asset?: AssetIconIdentity; registrationHash?: string }) {
+  if (asset) return <NativeAssetIcon identity={asset} registrationHash={registrationHash} size={size} symbol={fallbackSymbol} />;
   const token = id.toLowerCase();
   if (['syscoin', 'syscoin-nevm', 'syscoin-nevm-testnet', 'sys', 'tsys', 'nevm'].includes(token)) {
     return (
       <Image
-        source={require('../assets/syscoin.png')}
+        source={require('../../../source/assets/all_assets/syscoin.png')}
         style={{ width: size, height: size, borderRadius: size / 2 }}
         resizeMode="contain"
         accessible={false}

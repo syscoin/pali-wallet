@@ -48,7 +48,7 @@ import { AccountPortfolioController } from '../portfolio/accountPortfolio';
 import { AccountActivityController, type AccountActivityRow } from '../activity/accountActivity';
 import { portfolioFilter } from '../platform/portfolioFilter';
 import { createNativeCoinQuoteReader, nativeCoinQuoteSource } from '../portfolio/nativeCoinQuote';
-import { createNativeAssetMarketReader, nativeAssetMarketSource } from '../portfolio/nativeAssetMarket';
+import { createNativeAssetMarketReader, nativeAssetMarketSource, rememberNativeAssetMarketIcon } from '../portfolio/nativeAssetMarket';
 import type { NotificationChoice } from '../notifications/choices';
 import { sendDraftForNetwork, NETWORK_CHANGED_DRAFT_NOTICE, type NativeUnsignedSendDraft } from './sendNetworkDraft';
 import type { NativeNetworkSelectionReceipt } from '../custody/accounts';
@@ -265,8 +265,11 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       },
       async tokenPrice(choice, token, currency, signal) {
         const registration = 'kind' in choice.scope.network && choice.scope.network.kind === 'evm' ? choice.scope.network : null;
-        const source = nativeAssetMarketSource({ kind: 'token', networkId: choice.scope.network.id, registration, contractAddress: token.contractAddress });
-        return source ? (await readMarket(source, currency, signal))?.price ?? null : null;
+        const asset = { kind: 'token' as const, networkId: choice.scope.network.id, registration, contractAddress: token.contractAddress };
+        const source = nativeAssetMarketSource(asset);
+        const data = source ? await readMarket(source, currency, signal) : null;
+        if (data && !signal.aborted) rememberNativeAssetMarketIcon(asset, data);
+        return data?.price ?? null;
       },
     });
   }, [publicSource, balanceReader, controllerOwner]);

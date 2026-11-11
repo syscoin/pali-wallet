@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Coin, colors, Icon, Text } from '../ui';
 import { IdlePressable } from './IdleActivityBoundary';
+import type { AssetIconIdentity } from '../../../../source/shared/assetIconIdentity';
 
 export function activityDate(milliseconds: number | null | undefined, now = new Date()) {
   if (!milliseconds || !Number.isFinite(milliseconds)) return { key: 'unknown', label: 'Date unavailable', time: '' };
@@ -17,7 +18,7 @@ export function activityDate(milliseconds: number | null | undefined, now = new 
 }
 
 /** Compact public summary. The full amount and identifiers remain in details. */
-export function ActivityListRow({ title, subtitle, amount, time, direction, heading, first, last, label, onPress, rowRef, testID, disabled = false, networkBadge, networkId, networkSymbol }: {
+export function ActivityListRow({ title, subtitle, amount, time, direction, heading, first, last, label, onPress, rowRef, testID, disabled = false, networkBadge, networkId, networkSymbol, asset, registrationHash, assetSymbol }: {
   title: string; subtitle: string; amount: string; time: string;
   direction: 'sent' | 'received' | 'self' | 'unknown'; heading?: string;
   first: boolean; last: boolean; label: string; onPress(): void;
@@ -25,6 +26,9 @@ export function ActivityListRow({ title, subtitle, amount, time, direction, head
   networkBadge?: string;
   networkId?: string;
   networkSymbol?: string;
+  asset?: AssetIconIdentity;
+  registrationHash?: string;
+  assetSymbol?: string;
 }) {
   const accent = direction === 'sent' ? colors.pink : colors.blue;
   return <View>
@@ -32,7 +36,8 @@ export function ActivityListRow({ title, subtitle, amount, time, direction, head
     <IdlePressable ref={rowRef} accessibilityRole="button" accessibilityLabel={label} testID={testID}
       disabled={disabled} onPress={onPress} style={({ pressed }) => [s.row, first && s.first, last && s.last, pressed && s.pressed]}>
       <View style={[s.icon, { backgroundColor: direction === 'sent' ? '#312139' : colors.raised }]}>
-        <Icon name={direction === 'sent' ? 'arrow-up-right' : direction === 'received' ? 'arrow-down-left' : 'activity'} size={18} color={accent} />
+        {asset ? <Coin id="activity-asset" asset={asset} registrationHash={registrationHash} fallbackSymbol={assetSymbol} size={30} />
+          : <Icon name={direction === 'sent' ? 'arrow-up-right' : direction === 'received' ? 'arrow-down-left' : 'activity'} size={18} color={accent} />}
       </View>
       <View style={s.description}><Text style={s.title}>{title}</Text>
         {networkBadge && <View style={s.badge}>

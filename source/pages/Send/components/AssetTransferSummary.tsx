@@ -1,14 +1,19 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 
+import type { IEvmTransactionContext } from 'utils/evmTransactionContext';
+
+import { ReviewedAssetIcon } from './ReviewedAssetIcon';
 import type { AssetTransferDisplay } from '../../../shared/assetTransferDisplay';
 
 /** A calldata summary is descriptive; the call's separate native value and fees remain visible. */
 export function AssetTransferSummary({
   transfer,
   compact = false,
+  context,
 }: {
   compact?: boolean;
+  context?: IEvmTransactionContext;
   transfer: AssetTransferDisplay;
 }) {
   const { t } = useTranslation();
@@ -26,6 +31,21 @@ export function AssetTransferSummary({
       className={compact ? 'mt-3 space-y-3' : 'w-full space-y-4'}
     >
       <div className="space-y-2 text-center">
+        <div aria-hidden="true" className="flex justify-center">
+          <ReviewedAssetIcon
+            asset={{
+              contract: transfer.contract,
+              decimals: transfer.decimals,
+              tokenId:
+                transfer.items.length === 1
+                  ? transfer.items[0].tokenId ?? undefined
+                  : undefined,
+            }}
+            context={context}
+            isNft={transfer.items.some((item) => item.tokenId !== null)}
+            size={compact ? 32 : 44}
+          />
+        </div>
         <p className="text-brand-gray200 text-xs">
           {t(`assetTransfer.${transfer.heading}`)}
         </p>

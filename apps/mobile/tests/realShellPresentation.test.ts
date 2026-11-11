@@ -6,6 +6,8 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { createIdleComponentFixture, expandIdleElements } from './idleComponentFixture.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
+import { knownAssetIcon } from '../../../source/shared/assetIconIdentity.ts';
+import { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, subscribeNativeAssetIcon } from '../src/portfolio/assetIconCache.ts';
 
 type Element = { type: string | ((props: object) => Element); props: Record<string, unknown>; children: unknown[] };
 function shell() {
@@ -15,6 +17,8 @@ function shell() {
     'react-native-svg': {},
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../platform/localization': nativeTranslationFixture,
+    '../../../source/shared/assetIconIdentity': { knownAssetIcon },
+    './portfolio/assetIconCache': { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, subscribeNativeAssetIcon },
   };
   const load = (path: string) => {
     const module = { exports: {} as Record<string, (props: object) => Element> };

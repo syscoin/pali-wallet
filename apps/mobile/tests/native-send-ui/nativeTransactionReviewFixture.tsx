@@ -9,8 +9,10 @@ import { decodeAssetTransfer } from '../../../../source/shared/assetTransfer';
 
 const query = new URLSearchParams(window.location.search);
 const approvalKind = query.get('approval');
-const transferKind = query.get('transfer-kind');
-const tokenContract = '0x3333333333333333333333333333333333333333';
+const knownUsdc = query.get('known-icon') === 'usdc';
+const transferKind = query.get('transfer-kind') ?? (knownUsdc ? 'erc20' : null);
+const tokenContract = knownUsdc ? '0xd501e86b1fc5823403b2ba995e2b8b78179236a6' : '0x3333333333333333333333333333333333333333';
+const chainId = knownUsdc ? '57057' : '743211';
 const spender = '0x4444444444444444444444444444444444444444';
 const approvalAbi = new Interface(['function approve(address spender,uint256 amount)', 'function setApprovalForAll(address operator,bool approved)']);
 const approvalData = approvalKind === 'operator' ? approvalAbi.encodeFunctionData('setApprovalForAll', [spender, false])
@@ -23,7 +25,7 @@ const transferAbi = new Interface(['function transfer(address to,uint256 amount)
   'function safeTransferFrom(address from,address to,uint256 tokenId)',
   'function safeBatchTransferFrom(address from,address to,uint256[] ids,uint256[] amounts,bytes data)']);
 const transferMetadata: ApprovalContractMetadata | undefined = transferKind === 'erc20'
-  ? { standard: 'ERC-20', token: { contractAddress: tokenContract, name: 'Example token', symbol: 'TOK', decimals: 6 } }
+  ? { standard: 'ERC-20', token: { contractAddress: tokenContract, name: knownUsdc ? 'USD Coin' : 'Example token', symbol: knownUsdc ? 'USDC' : 'TOK', decimals: 6 } }
   : transferKind === 'erc721' ? { standard: 'ERC-721' } : transferKind === 'erc1155' ? { standard: 'ERC-1155' } : undefined;
 const transferData = transferKind === 'erc20' ? transferAbi.encodeFunctionData('transfer', [spender, '123456789'])
   : transferKind === 'erc721' ? transferAbi.encodeFunctionData('safeTransferFrom', ['0x2222222222222222222222222222222222222222', spender, '42'])
@@ -42,12 +44,12 @@ const initialReview: NativeTransactionReview = {
   feeChoice: null,
   kind: 'transaction', method: 'eth_sendTransaction', id: 'transaction-1', revision: 7,
   appName: 'Example app', origin: 'https://example.invalid', accountLabel: 'Savings',
-  address: '0x2222222222222222222222222222222222222222', networkLabel: 'Custom network',
-  chainId: '743211', symbol: 'COIN', decimals: 18, expiresAt: Date.now() + 300000,
+  address: '0x2222222222222222222222222222222222222222', networkLabel: knownUsdc ? 'zkSYS Tanenbaum Testnet' : 'Custom network',
+  chainId, symbol: knownUsdc ? 'TSYS' : 'COIN', decimals: 18, expiresAt: Date.now() + 300000,
   transaction: query.has('preparing') ? null : {
     type: 2, from: '0x2222222222222222222222222222222222222222',
-    to: query.has('deployment') ? null : '0x3333333333333333333333333333333333333333',
-    chainId: '743211', value: transferValue, gasLimit: '25200',
+    to: query.has('deployment') ? null : tokenContract,
+    chainId, value: transferValue, gasLimit: '25200',
     maxFeePerGas: '10', maxPriorityFeePerGas: '1', nonce: '3',
     data: transferKind ? transferData : approvalKind ? approvalData : query.has('large-data') ? '0x' + 'ab'.repeat(8192) + 'cd' : '0xabcdef',
     accessList: [{ address: '0x4444444444444444444444444444444444444444', storageKeys: ['0x' + '5'.repeat(64)] }],

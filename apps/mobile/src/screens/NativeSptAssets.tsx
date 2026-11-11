@@ -8,6 +8,7 @@ import { IdleTextInput } from './IdleActivityBoundary';
 
 type Props = {
   holdings: readonly SptBalance[] | null;
+  chainId?: number;
   loading: boolean;
   onSend?(asset: SptBalance): void;
   onReceive?(): void;
@@ -18,7 +19,7 @@ type Props = {
 const PAGE_SIZE = 20;
 
 /** Public asset inventory from the shared Blockbook account parser; no extra lookup. */
-export function NativeSptAssets({ holdings, loading, onSend, onReceive, onRefresh, onModeChange, onBackHandlerChange }: Props) {
+export function NativeSptAssets({ holdings, chainId, loading, onSend, onReceive, onRefresh, onModeChange, onBackHandlerChange }: Props) {
   const { hidden: hideBalances } = useBalancePrivacy();
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
@@ -38,7 +39,7 @@ export function NativeSptAssets({ holdings, loading, onSend, onReceive, onRefres
   }, [asset?.symbol, onBackHandlerChange, onModeChange, selected]);
   if (selected) return <View style={s.section}>
     <Card style={s.detail}>
-      <Coin id={selected.assetGuid} fallbackSymbol={asset?.symbol ?? selected.symbol} size={48} />
+      <Coin id="spt" asset={chainId === undefined ? undefined : { kind: 'spt', chainId, assetGuid: selected.assetGuid, decimals: asset?.decimals }} fallbackSymbol={asset?.symbol ?? selected.symbol} size={48} />
       <Text style={s.heading}>{asset?.symbol ?? selected.symbol}</Text>
       <Text selectable style={s.muted}>Asset {selected.assetGuid}</Text>
       {asset ? <>
@@ -58,7 +59,7 @@ export function NativeSptAssets({ holdings, loading, onSend, onReceive, onRefres
     {holdings === null ? <Text style={s.muted}>{loading ? 'Loading tokens…' : 'Token balances unavailable'}</Text> : !holdings.length ?
       <Text style={s.muted}>No token holdings.</Text> : <>
       <IdleTextInput accessibilityLabel="Search tokens" placeholder="Search name or asset ID" placeholderTextColor={colors.muted} value={query} onChangeText={value => { setQuery(value); setPage(0); }} maxLength={128} autoCorrect={false} autoCapitalize="none" style={s.search} />
-      <Card>{rows.map((item, index) => <Row dense key={item.assetGuid} title={item.symbol} icon={<Coin id={item.assetGuid} fallbackSymbol={item.symbol} size={32} />}
+      <Card>{rows.map((item, index) => <Row dense key={item.assetGuid} title={item.symbol} icon={<Coin id="spt" asset={chainId === undefined ? undefined : { kind: 'spt', chainId, assetGuid: item.assetGuid, decimals: item.decimals }} fallbackSymbol={item.symbol} size={32} />}
         subtitle={`${hideBalances ? HIDDEN_BALANCE : formatBaseUnits(item.confirmedUnits, item.decimals)} · Asset ${item.assetGuid}${item.pendingDeltaUnits !== '0' ? ' · Pending activity' : ''}`}
         onPress={() => setSelected({ assetGuid: item.assetGuid, symbol: item.symbol })} last={index === rows.length - 1} />)}</Card>
       {!rows.length && <Text style={s.muted}>No matching tokens.</Text>}

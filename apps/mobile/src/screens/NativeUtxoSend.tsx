@@ -413,11 +413,8 @@ export function NativeUtxoSendScreen({
             <>
               <View style={s.hero}>
                 <Coin
-                  id={
-                    recipient?.asset
-                      ? review.assetDisplay?.symbol ?? 'asset'
-                      : network.symbol
-                  }
+                  id={recipient?.asset ? 'spt' : network.id}
+                  asset={recipient?.asset ? { kind: 'spt', chainId: network.chainId, assetGuid: recipient.asset.assetGuid, decimals: review.assetDisplay?.decimals } : undefined}
                   fallbackSymbol={
                     recipient?.asset
                       ? review.assetDisplay?.symbol ?? 'SPT'

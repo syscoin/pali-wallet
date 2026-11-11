@@ -5382,6 +5382,8 @@ test('Smart controller publishes exact single transfer enrichment and retires it
     assert.equal(review.assetTransfer?.recipient.toLowerCase(), recipient);
     assert.equal(review.assetTransfer?.items[0]?.units, '1234567');
     assert.equal(review.assetTransfer?.token?.symbol, 'TOK');
+    assert.equal(review.registrationHash, createNativeNetwork({ id: 'ethereum', name: 'Ethereum', kind: 'evm', chainId: '1',
+      slip44: 60, rpcUrl: 'https://rpc.invalid', symbol: 'eth', decimals: 18, testnet: false }).registrationHash);
     assert.equal(f.signatures.length, 0);
     f.selectChain(2); await settle();
     assert.equal(f.view.getSnapshot().signingReview, null);

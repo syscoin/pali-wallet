@@ -6792,6 +6792,7 @@ class MainController {
       activeAccount: activeAccountInfo,
       accounts,
       isBitcoinBased,
+      activeNetwork,
     } = store.getState().vault;
 
     if (isBitcoinBased) {
@@ -6836,8 +6837,20 @@ class MainController {
       }
 
       const knownTokenLogo =
-        getKnownTokenLogo(tokenDetails.symbol, tokenDetails.contractAddress) ||
-        getKnownTokenLogo(asset.symbol, asset.address);
+        getKnownTokenLogo(
+          tokenDetails.symbol,
+          tokenDetails.contractAddress,
+          undefined,
+          activeNetwork.chainId,
+          tokenDetails.decimals
+        ) ||
+        getKnownTokenLogo(
+          asset.symbol,
+          asset.address,
+          undefined,
+          activeNetwork.chainId,
+          tokenDetails.decimals
+        );
 
       // Use known local logos first, then CoinGecko/provided image, then Pali logo
       const tokenLogo =

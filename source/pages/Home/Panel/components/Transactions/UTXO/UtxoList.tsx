@@ -163,14 +163,14 @@ const UtxoTransactionsListComponentBase = ({
   // Native values describe wallet movement; SPT values describe the asset.
   let sptAmountDisplay: string | null = null;
   let sysAmountDisplay: string | null = null;
+  const sptDecimals = intent?.decimals ?? (sptAssetInfo as any)?.decimals ?? 8;
   if (intent) {
-    const decimals = intent.decimals ?? (sptAssetInfo as any)?.decimals ?? 8;
     const symbol = getSyscoinActivityAssetLabel(
       intentGuid,
       sptAssetInfo?.symbol
     );
     const amountText =
-      formatSyscoinTokenAmount(intent.amount, decimals) ??
+      formatSyscoinTokenAmount(intent.amount, sptDecimals) ??
       t('settings.unavailable');
     sptAmountDisplay = `${amountText} ${symbol}`;
   }
@@ -324,7 +324,9 @@ const UtxoTransactionsListComponentBase = ({
                 getTokenLogo(
                   sptAssetInfo.symbol,
                   true,
-                  sptAssetInfo.assetGuid
+                  sptAssetInfo.assetGuid,
+                  activeNetwork.chainId,
+                  sptDecimals
                 ))) && (
               <Tooltip content={sptAssetInfo?.name || sptAssetInfo?.symbol}>
                 <span className="inline-flex items-center justify-center">
@@ -334,10 +336,14 @@ const UtxoTransactionsListComponentBase = ({
                       getTokenLogo(
                         sptAssetInfo.symbol,
                         true,
-                        sptAssetInfo.assetGuid
+                        sptAssetInfo.assetGuid,
+                        activeNetwork.chainId,
+                        sptDecimals
                       )
                     }
                     assetGuid={sptAssetInfo.assetGuid}
+                    chainId={activeNetwork.chainId}
+                    decimals={sptDecimals}
                     symbol={sptAssetInfo.symbol}
                     size={14}
                     className="shrink-0 hover:scale-110 hover:shadow-md transition-transform duration-200"

@@ -12,6 +12,7 @@ const tokenPolicy = createErc20Policy(getAddress);
 /** Public display data only. Neither decoded calldata nor token metadata proves execution. */
 export type AssetTransferDisplay = Readonly<{
   contract: string;
+  decimals?: number;
   from: string | null;
   heading: 'token-transfer' | 'nft-transfer' | 'transfer-call';
   items: readonly Readonly<{
@@ -41,6 +42,7 @@ export function createAssetTransferDisplay(
   const standardVerified =
     transfer.standardVerified && (!transfer.token || token !== null);
   return Object.freeze({
+    ...(token ? { decimals: token.decimals } : {}),
     heading:
       standardVerified && token
         ? 'token-transfer'

@@ -304,7 +304,15 @@ const EvmTransactionItem = React.memo(
         const symbol = tokenMeta?.tokenSymbol || tokenMeta?.symbol;
         const logo =
           tokenMeta?.logo ||
-          getKnownTokenLogo(symbol, tokenMeta.contractAddress);
+          getKnownTokenLogo(
+            symbol,
+            tokenMeta.contractAddress,
+            undefined,
+            chainId,
+            tokenMeta.decimals === undefined
+              ? undefined
+              : Number(tokenMeta.decimals)
+          );
         if (logo && symbol) {
           tokenIcon = (
             <Tooltip content={tokenMeta?.name || symbol}>
@@ -312,6 +320,12 @@ const EvmTransactionItem = React.memo(
                 <TokenIcon
                   logo={logo}
                   contractAddress={tokenMeta.contractAddress}
+                  chainId={chainId}
+                  decimals={
+                    tokenMeta.decimals === undefined
+                      ? undefined
+                      : Number(tokenMeta.decimals)
+                  }
                   symbol={symbol}
                   size={14}
                   className="shrink-0 hover:scale-110 hover:shadow-md transition-transform duration-200"

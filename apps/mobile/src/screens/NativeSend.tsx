@@ -371,7 +371,7 @@ export function NativeSend({
   const tokenIdentity = (asset: Erc20Metadata) => (
     <Card style={s.summary}>
       <View style={s.networkCard}>
-        <Coin id="custom-token" fallbackSymbol={asset.symbol} size={32} />
+        <Coin id="custom-token" asset={{ kind: 'evm', chainId: capturedContext.chainId, contractAddress: asset.contractAddress, decimals: asset.decimals }} registrationHash={capturedContext.registrationHash} fallbackSymbol={asset.symbol} size={32} />
         <View style={s.networkDescription}><Text numberOfLines={1}>{asset.name}</Text><Text style={s.hint}>{asset.symbol} · {capturedContext.name}</Text></View>
         <Button title="Details" variant="quiet" size="compact" expanded={tokenDetails} onPress={() => setTokenDetails(value => !value)} />
       </View>
@@ -388,6 +388,7 @@ export function NativeSend({
     amountUnits?: string;
   }) => (
     <Card style={s.summary}>
+      <Coin id="collectible" asset={{ kind: 'evm', chainId: capturedContext.chainId, contractAddress: asset.contractAddress }} registrationHash={capturedContext.registrationHash} fallbackSymbol="NFT" size={36} />
       <Text style={s.label}>COLLECTIBLE CONTRACT · {asset.tokenStandard}</Text>
       <Text selectable style={s.address} testID="native-send-collectible-contract">
         {asset.contractAddress}

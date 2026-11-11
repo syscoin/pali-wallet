@@ -296,8 +296,14 @@ export const SyscoinImport: React.FC = () => {
             ? { balance: token.balance }
             : {}),
           decimals: decimals,
-          logo: getTokenLogo(token.symbol || '', true, token.assetGuid),
+          logo: getTokenLogo(
+            token.symbol || '',
+            true,
+            token.assetGuid,
+            activeNetwork.chainId
+          ),
           assetGuid: token.assetGuid || '',
+          chainId: activeNetwork.chainId,
           assetType: token.assetType,
           contract: token.contract,
           originDecimals: token.originDecimals,
@@ -305,7 +311,7 @@ export const SyscoinImport: React.FC = () => {
           type: token.type || 'SPTAllocated',
         };
       }),
-    []
+    [activeNetwork.chainId]
   );
 
   // Handle import
@@ -324,7 +330,12 @@ export const SyscoinImport: React.FC = () => {
 
     try {
       // Get token logo URL for known tokens
-      const tokenLogo = getTokenLogo(asset.symbol, true, asset.assetGuid);
+      const tokenLogo = getTokenLogo(
+        asset.symbol,
+        true,
+        asset.assetGuid,
+        activeNetwork.chainId
+      );
 
       // Convert to ITokenSysProps format for vault storage
       const tokenToSave: ITokenSysProps = {

@@ -420,6 +420,12 @@ const expectReadyAllowance = async (data: string) => {
 it('changes the approval heading with the real allowance editor and preserves the reviewed bytes', async () => {
   const { pending, abi } = await prepareApproval();
   await act(async () => pending[0].resolve(TOKEN_INFO));
+  expect(
+    JSON.parse(screen.getByTestId('reviewed-approval').textContent!)
+  ).toMatchObject({
+    context: pending[0].expectedContext,
+    tokenDecimals: TOKEN_INFO.decimals,
+  });
   const positive = abi.encodeFunctionData('approve', [SPENDER, '1000000']);
   const zero = abi.encodeFunctionData('approve', [SPENDER, '0']);
   await expectReadyAllowance(positive);

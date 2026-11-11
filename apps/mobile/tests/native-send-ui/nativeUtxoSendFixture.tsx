@@ -7,9 +7,12 @@ import { CustodyRuntimeError } from '../../src/custody/types';
 import { NativeUtxoSendScreen } from '../../src/screens/NativeUtxoSend';
 
 import type { NativeUtxoSend } from '../../src/custody/utxoSend';
+import { SYSX_ASSET_DECIMALS, SYSX_ASSET_GUID } from '../../../../source/shared/syscoinAssetIds';
 
-const network = getUtxoNetwork('bitcoin');
-const recipient = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
+const knownSysx = new URLSearchParams(window.location.search).get('known-icon') === 'sysx';
+const asset = knownSysx ? { assetGuid: SYSX_ASSET_GUID, decimals: SYSX_ASSET_DECIMALS, symbol: 'SYSX' } : undefined;
+const network = getUtxoNetwork(knownSysx ? 'syscoin' : 'bitcoin');
+const recipient = knownSysx ? 'sys1qpqyqszqgpqyqszqgpqyqszqgpqyqszqgzp6ll8' : 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
 const txid = 'a'.repeat(64);
 const ledgerConnection = new URLSearchParams(window.location.search).has('ledger-send') ? createLedgerConnectionFixture(recipient) : undefined;
 let confirmations = 0, opens = 0, expired = false;
@@ -18,9 +21,10 @@ declare global { interface Window { __nativeUtxoLedgerFixture: { confirmations()
 const request = {
   transactionOptions: { rbf: true },
   feeSatoshis: '452',
+  ...(asset ? { assetDisplay: asset } : {}),
   outputs: [
-    { address: recipient, amountSatoshis: '123456789' },
-    { address: '1BoatSLRHtKNngkdXEeobR76b53LETtpyT', amountSatoshis: '500' },
+    { address: recipient, amountSatoshis: asset ? '294' : '123456789', ...(asset ? { asset: { assetGuid: asset.assetGuid, rawAmount: '123456789' } } : {}) },
+    { address: knownSysx ? 'sys1qqurswpc8qurswpc8qurswpc8qurswpc8degtm7' : '1BoatSLRHtKNngkdXEeobR76b53LETtpyT', amountSatoshis: '500' },
   ],
 };
 
@@ -46,7 +50,7 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
         return {
           ...request,
           outputs: [
-            { address: recipient, amountSatoshis: amount.toString() },
+            { address: recipient, amountSatoshis: asset ? '294' : amount.toString(), ...(asset ? { asset: { assetGuid: asset.assetGuid, rawAmount: amount.toString() } } : {}) },
             request.outputs[1]!,
           ],
         };
@@ -82,6 +86,7 @@ export function NativeUtxoSendFixture() {
       ledgerConnection={ledgerConnection}
       accountLabel="Account 1"
       network={network}
+      asset={asset}
       open={open}
       onBack={() => undefined}
     />

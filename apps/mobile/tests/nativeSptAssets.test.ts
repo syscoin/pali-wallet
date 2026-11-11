@@ -20,7 +20,7 @@ function fixture() {
   const sent: SptBalance[] = [];
   const props = { onSend: (asset: SptBalance) => sent.push(asset), onRefresh() {}, onModeChange: (value: string | null) => { title = value; },
     onBackHandlerChange: (value: (() => boolean) | null) => { back = value; } };
-  const render = () => screenElements(f.render({ ...props, holdings, loading }));
+  const render = () => screenElements(f.render({ ...props, chainId: 57, holdings, loading }));
   const press = (type: string, name: string) => {
     const element = render().find(e => e.type === type && e.props.title === name); assert(element, name); assert(!element.props.disabled, name); element.props.onPress();
   };
@@ -29,6 +29,8 @@ function fixture() {
 
 test('SPT list bounds visible rows, searches every asset and retains exact generic precision', () => {
   const f = fixture(); assert.equal(f.render().filter(e => e.type === 'Row').length, 20);
+  const icon = f.render().find(e => e.type === 'Row')!.props.icon;
+  assert.deepEqual(JSON.parse(JSON.stringify(icon.props.asset)), { kind: 'spt', chainId: 57, assetGuid: '1', decimals: 3 });
   f.press('Button', 'Next'); assert.equal(f.render().find(e => e.type === 'Row')!.props.title, 'SPT 21');
   f.press('Button', 'Next'); assert.equal(f.render().filter(e => e.type === 'Row').length, 5);
   f.render().find(e => e.type === 'Input')!.props.onChangeText('45');

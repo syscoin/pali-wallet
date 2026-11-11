@@ -45,6 +45,7 @@ type NativeSigningReviewBase = Readonly<{
   accountLabel: string;
   address: string;
   networkLabel: string;
+  registrationHash?: string;
   chainId: string;
   expiresAt: number;
   error: NativeMessageReviewError | null;
