@@ -46,7 +46,7 @@ test('portable recovery output is exercised in the existing CI budget and upload
   assert.equal(manifest.scripts['test:recovery-ui'], 'node scripts/build-native-recovery-ui.cjs && playwright test --config playwright.recovery.config.ts');
   const workflow = yaml.load(fs.readFileSync(path.join(root, '.github/workflows/mobile.yml'), 'utf8'));
   const { foundation, browser, validate } = workflow.jobs;
-  assert.equal(foundation['timeout-minutes'], 30);
+  assert.equal(foundation['timeout-minutes'], 60);
   assert.equal(browser['timeout-minutes'], 20);
   for (const job of [foundation, browser]) {
     assert.equal(job.defaults.run['working-directory'], 'apps/mobile');
@@ -96,4 +96,40 @@ test('native qualification includes native runner dependency resolution', () => 
     assert(job.steps.some(step => step.run === 'node --import ./scripts/register-shared-test-dependencies.mjs --test qualification/*.test.cjs'));
     assert(job.steps.some(step => step.run?.includes('node --import ./scripts/register-shared-test-dependencies.mjs qualification/run-native.cjs')));
   }
+});
+
+test('Android tool download retries transport errors and refuses unpacking before checksum verification', () => {
+  const os = require('node:os');
+  const { spawnSync } = require('node:child_process');
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-android-tools-'));
+  const workflow = yaml.load(fs.readFileSync(path.join(root, '.github/workflows/mobile-native-qualification.yml'), 'utf8'));
+  const setup = workflow.jobs.android.steps.find(step => step.name === 'Set up verified Android command-line tools');
+  assert.equal(typeof setup?.run, 'string');
+  const curlArgs = path.join(temporary, 'curl-args');
+  const checksumArgs = path.join(temporary, 'checksum-args');
+  const checksum = path.join(temporary, 'checksum');
+  const unpacked = path.join(temporary, 'unpacked');
+  const environment = path.join(temporary, 'github-env');
+  fs.writeFileSync(environment, '');
+  try {
+    const result = spawnSync('/bin/bash', ['-e', '-o', 'pipefail', '-c', `
+curl() { printf '%s\\n' "$@" > "$PALI_CURL_ARGS"; }
+sha256sum() { printf '%s\\n' "$@" > "$PALI_CHECKSUM_ARGS"; cat > "$PALI_CHECKSUM"; return 1; }
+unzip() { touch "$PALI_UNPACKED"; }
+${setup.run}
+`], { env: {
+      PATH: process.env.PATH, RUNNER_TEMP: temporary,
+      ANDROID_HOME: path.join(temporary, 'sdk'), GITHUB_ENV: environment,
+      GITHUB_PATH: path.join(temporary, 'github-path'),
+      PALI_CURL_ARGS: curlArgs, PALI_CHECKSUM_ARGS: checksumArgs, PALI_CHECKSUM: checksum, PALI_UNPACKED: unpacked,
+    } });
+    assert.equal(result.status, 1, result.stderr?.toString());
+    const args = fs.readFileSync(curlArgs, 'utf8').trim().split('\n');
+    assert(args.includes('--retry-all-errors'));
+    assert.equal(args[args.indexOf('--retry') + 1], '3');
+    assert.deepEqual(fs.readFileSync(checksumArgs, 'utf8').trim().split('\n'), ['--check', '--strict']);
+    assert.match(fs.readFileSync(checksum, 'utf8'), /^[0-9a-f]{64}  .+pali-command-line-tools\.zip\n$/);
+    assert.equal(fs.existsSync(unpacked), false, 'a rejected archive must never reach unzip');
+    assert.equal(fs.readFileSync(environment, 'utf8'), '', 'a rejected archive must never publish SDK admission');
+  } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
 });

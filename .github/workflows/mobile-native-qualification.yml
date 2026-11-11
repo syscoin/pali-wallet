@@ -239,7 +239,7 @@ jobs:
           PALI_SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           PALI_TOOLS_ARCHIVE="$RUNNER_TEMP/pali-command-line-tools.zip"
           PALI_TOOLS_STAGE="$RUNNER_TEMP/pali-command-line-tools"
-          curl --fail --location --retry 3 --connect-timeout 15 \
+          curl --fail --location --retry 3 --retry-all-errors --connect-timeout 15 \
             https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip \
             --output "$PALI_TOOLS_ARCHIVE"
           echo "4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583  $PALI_TOOLS_ARCHIVE" | sha256sum --check --strict
