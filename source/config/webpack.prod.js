@@ -82,8 +82,10 @@ module.exports = merge(common, {
   plugins: [
     // Generate manifest for caching
     new WebpackManifestPlugin({
-      fileName: 'asset-manifest.json',
+      // Build metadata is not shipped in the ZIP; keep it beside the analyzer report.
+      fileName: `../${targetBrowser}-asset-manifest.json`,
       publicPath: '/',
+      serialize: (manifest) => JSON.stringify(manifest),
       generate: (seed, files, entrypoints) => {
         const manifestFiles = files.reduce((manifest, file) => {
           manifest[file.name] = file.path;

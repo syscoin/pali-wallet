@@ -239,6 +239,7 @@ module.exports = {
         removeComments: true,
         collapseWhitespace: true,
         removeAttributeQuotes: true,
+        minifyCSS: true,
       },
     }),
     new HtmlWebpackPlugin({
@@ -263,6 +264,7 @@ module.exports = {
         removeComments: true,
         collapseWhitespace: true,
         removeAttributeQuotes: true,
+        minifyCSS: true,
       },
     }),
 
@@ -367,7 +369,7 @@ module.exports = {
           transform: function (content) {
             try {
               const manifestObject = JSON.parse(content.toString());
-              return Buffer.from(JSON.stringify(manifestObject, null, 2));
+              return Buffer.from(JSON.stringify(manifestObject));
             } catch (e) {
               console.error('Error transforming manifest.json:', e);
               return content;
