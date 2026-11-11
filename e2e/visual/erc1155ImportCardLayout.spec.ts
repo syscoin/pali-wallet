@@ -19,6 +19,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // Exercise ordinary custom-import previews through the genuine SDK ABI boundary,
 // not controller replies or renderer state. Verify painted text readability as
@@ -499,7 +500,9 @@ for (const { viewport, tokenId: testTokenId } of [
           /* Ordinary GET/local HTML has no RPC body. */
         }
       });
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         if (/^https?:/.test(request.url()))
           failures.push({
             method: request.method(),

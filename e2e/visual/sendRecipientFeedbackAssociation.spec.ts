@@ -18,6 +18,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // Real Send regression. Amount remains zero: no successful Next,
 // confirmation preview, gas estimate, asset import, approval or signing occurs.
@@ -830,7 +831,9 @@ for (const viewport of [
         if (navigationFrame === page.mainFrame())
           observations.routes.push(new URL(navigationFrame.url()).hash);
       });
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         if (/^https?:/.test(request.url()))
           httpFailures.push({ method: request.method(), url: request.url() });
       });

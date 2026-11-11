@@ -16,6 +16,7 @@ import { PaliWallet } from '../harness/pali';
 import { verifyExecutingWorker } from '../harness/runtimeIdentity';
 import { extensionEvidence } from '../harness/testDappConformance';
 import { UTXO_FIXTURE_SEED } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 const IDS = [5, 11155111] as const;
 const chainIdentity = (chainId: number) =>
@@ -588,7 +589,9 @@ for (const scenario of [
           /* Ordinary GET has no JSON body. */
         }
       });
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         if (/^https?:/.test(request.url()))
           unexpectedWalletHttpFailures.push({
             method: request.method(),

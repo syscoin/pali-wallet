@@ -16,6 +16,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 const scenarios = [
   {
@@ -129,7 +130,9 @@ for (const scenario of scenarios) {
           viewport: { width: 400, height: 620 },
         }
       );
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         if (/^https?:/.test(request.url()))
           failedRequests.push({ method: request.method(), url: request.url() });
       });

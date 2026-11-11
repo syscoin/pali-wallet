@@ -4,6 +4,7 @@ import {
   fulfillOfflineWalletRelease,
   installOfflineWalletRelease,
   isOfflineWalletReleaseAbort,
+  isOfflineWalletReleaseRequest,
 } from '../../e2e/harness/walletReleaseFixture';
 import { WALLET_RELEASE_FEED_URL } from '../../source/shared/walletRelease';
 
@@ -47,6 +48,9 @@ const abortedReleaseRequest = (overrides: Partial<Request> = {}) =>
   } as Request);
 
 it('recognizes only the optional feed fetch abort in the wallet main frame', () => {
+  expect(
+    isOfflineWalletReleaseRequest(abortedReleaseRequest(), walletPage)
+  ).toBe(true);
   expect(isOfflineWalletReleaseAbort(abortedReleaseRequest(), walletPage)).toBe(
     true
   );
@@ -61,12 +65,6 @@ it.each<[string, Partial<Request>]>([
   ['fragment variant', { url: () => WALLET_RELEASE_FEED_URL + '#fragment' }],
   ['unknown URL', { url: () => 'https://unknown.invalid/wallet-updates.json' }],
   ['document navigation', { resourceType: () => 'document' }],
-  ['failed connection', { failure: () => ({ errorText: 'net::ERR_FAILED' }) }],
-  [
-    'blocked request',
-    { failure: () => ({ errorText: 'net::ERR_BLOCKED_BY_CLIENT' }) },
-  ],
-  ['successful request', { failure: () => null }],
   ['another frame', { frame: () => ({} as ReturnType<Page['mainFrame']>) }],
   [
     'frameless worker',
@@ -78,9 +76,23 @@ it.each<[string, Partial<Request>]>([
   ],
 ])('keeps %s in the HTTP failure audit', (_name, overrides) => {
   expect(
+    isOfflineWalletReleaseRequest(abortedReleaseRequest(overrides), walletPage)
+  ).toBe(false);
+  expect(
     isOfflineWalletReleaseAbort(abortedReleaseRequest(overrides), walletPage)
   ).toBe(false);
 });
+
+it.each(['net::ERR_FAILED', 'net::ERR_BLOCKED_BY_CLIENT', null])(
+  'does not classify another failure or success as an abort: %s',
+  (errorText) => {
+    const request = abortedReleaseRequest({
+      failure: () => (errorText === null ? null : { errorText }),
+    });
+    expect(isOfflineWalletReleaseRequest(request, walletPage)).toBe(true);
+    expect(isOfflineWalletReleaseAbort(request, walletPage)).toBe(false);
+  }
+);
 
 it('fulfills only the known public GET with a deterministic empty release feed', async () => {
   const route = fixtureRoute();

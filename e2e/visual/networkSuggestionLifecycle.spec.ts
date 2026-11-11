@@ -17,6 +17,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 const EVM_LABEL = 'Explorer Origin';
 const EVM_RPC = 'https://rpc.tanenbaum.io';
@@ -188,7 +189,9 @@ test('network suggestions reset reopened typeahead and do not carry an EVM explo
       offlineHttpProxy: server.url,
       viewport: { width: 400, height: 620 },
     });
+    const releasePage = wallet.page;
     wallet.context.on('requestfailed', (request) => {
+      if (isOfflineWalletReleaseAbort(request, releasePage)) return;
       if (/^https?:/.test(request.url()))
         failedRequests.push({ method: request.method(), url: request.url() });
     });

@@ -16,6 +16,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // Exploratory normal-UI NFT feedback association diagnostic. A finding is
 // not inferred from source or an abbreviated ariaSnapshot. Exact DOM relations,
@@ -690,7 +691,9 @@ for (const viewport of [
       );
       const page = wallet.page;
       page.on('pageerror', (error) => pageErrors.push(error.message));
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         if (/^https?:/.test(request.url())) {
           const url = new URL(request.url());
           httpFailures.push(request.method() + ' ' + url.origin + url.pathname);

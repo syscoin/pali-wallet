@@ -35,14 +35,13 @@ export async function installOfflineWalletRelease(page: Page) {
   );
 }
 
-/** Optional metadata can be cancelled while its response body is released. */
-export function isOfflineWalletReleaseAbort(request: Request, page: Page) {
+/** The one public-metadata fetch served by this wallet page's offline fixture. */
+export function isOfflineWalletReleaseRequest(request: Request, page: Page) {
   if (
     request.url() !== WALLET_RELEASE_FEED_URL ||
     request.method() !== 'GET' ||
     request.postData() !== null ||
-    request.resourceType() !== 'fetch' ||
-    request.failure()?.errorText !== 'net::ERR_ABORTED'
+    request.resourceType() !== 'fetch'
   )
     return false;
   try {
@@ -51,4 +50,12 @@ export function isOfflineWalletReleaseAbort(request: Request, page: Page) {
     // Service-worker requests have no frame and are outside this UI fixture.
     return false;
   }
+}
+
+/** Optional metadata can be cancelled while its response body is released. */
+export function isOfflineWalletReleaseAbort(request: Request, page: Page) {
+  return (
+    request.failure()?.errorText === 'net::ERR_ABORTED' &&
+    isOfflineWalletReleaseRequest(request, page)
+  );
 }

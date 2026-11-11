@@ -16,6 +16,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // The real local HD creation flow supplies its own address. Only exact public
 // HTTP reads are synthetic. No wallet state, controller result or address is
@@ -562,7 +563,9 @@ for (const viewport of [
         });
         const page = wallet.page;
         page.on('pageerror', (error) => pageErrors.push(error.message));
+        const releasePage = wallet.page;
         wallet.context.on('requestfailed', (request) => {
+          if (isOfflineWalletReleaseAbort(request, releasePage)) return;
           if (/^https?:/.test(request.url()))
             failedRequests.push({
               method: request.method(),

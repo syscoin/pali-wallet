@@ -17,6 +17,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // Official Blockbook public-key vector with testnet extended-key version.
 // Its first external child is independently fixed by the SDK crypto tests.
@@ -130,7 +131,9 @@ for (const scenario of ['descriptor', 'plain address'] as const) {
         offlineHttpProxy: server.url,
         viewport: { width: 400, height: 620 },
       });
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         if (/^https?:/.test(request.url()))
           failedRequests.push({ method: request.method(), url: request.url() });
       });

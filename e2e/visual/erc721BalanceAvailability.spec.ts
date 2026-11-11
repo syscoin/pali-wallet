@@ -19,6 +19,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 const CONTRACT = '0x000000000000000000000000000000000000e721';
 const SYMBOL = 'READ721';
@@ -307,7 +308,9 @@ for (const { mode, width } of availabilityCases) {
       // JSON-RPC errors under test are handled HTTP200 responses, not transport
       // failures. Any unmatched/cancelled HTTP in the wallet context is separate
       // fixture evidence and must not be silently excused by the deny proxy.
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         const url = new URL(request.url());
         if (['http:', 'https:'].includes(url.protocol))
           walletHttpFailures.push({

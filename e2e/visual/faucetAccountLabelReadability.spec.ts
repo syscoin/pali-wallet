@@ -22,6 +22,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // Observe the actual request view only. Request Now is never activated; every
 // faucet claim and transaction/signing operation is denied and audited.
@@ -1187,7 +1188,9 @@ for (const viewport of [
       });
       const page = wallet.page;
       page.on('pageerror', (error) => pageErrors.push(error.message));
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         if (/^https?:/.test(request.url()))
           failedRequests.push({ method: request.method(), url: request.url() });
       });

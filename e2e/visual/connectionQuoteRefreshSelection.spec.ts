@@ -25,6 +25,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // Normal preference Save produces the genuine delayed
 // quote/full-state delivery. No controller, Redux, runtime response or cache is
@@ -292,17 +293,17 @@ for (const viewport of [
     });
     const quoteCompletions: Promise<void>[] = [];
     const quotes: Array<{
+      error?: string;
+      fulfilledAt?: number;
       phase: string;
       receivedAt: number;
       releasedAt?: number;
-      fulfilledAt?: number;
-      error?: string;
     }> = [];
     const reads: Array<{ method: string; url: string }> = [];
     const unexpectedWalletHttpFailures: Array<{
+      failure: string | null;
       method: string;
       url: string;
-      failure: string | null;
     }> = [];
     const forbiddenRequests: string[] = [];
     const unsupportedQuoteRequests: string[] = [];
@@ -312,8 +313,8 @@ for (const viewport of [
       sourceSha256,
     };
     let expectedIdentity: Awaited<ReturnType<typeof publicState>>['identity'];
-    let first: { id: number; label: string; address: string };
-    let second: { id: number; label: string; address: string };
+    let first: { address: string; id: number; label: string };
+    let second: { address: string; id: number; label: string };
     let afterQuoteSelection: { first: boolean; second: boolean } | undefined;
     try {
       wallet = await PaliWallet.launch(
@@ -351,7 +352,9 @@ for (const viewport of [
           /* Read-only GETs and local HTML have no JSON body. */
         }
       });
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         if (/^https?:/.test(request.url()))
           unexpectedWalletHttpFailures.push({
             method: request.method(),

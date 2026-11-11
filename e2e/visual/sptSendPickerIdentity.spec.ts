@@ -25,6 +25,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // Nine digits exercise full identity beyond the old NFT-only eight-digit cue.
 // Both values fit uint32 and are therefore ordinary fungible SPTs, not NFTs.
@@ -348,7 +349,9 @@ for (const scenario of [
           /* Ordinary REST has no JSON body. */
         }
       });
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         if (/^https?:/.test(request.url()))
           unexpectedWalletHttpFailures.push({
             method: request.method(),

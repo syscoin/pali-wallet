@@ -20,6 +20,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // Exercise real preview and imported contract actions in a disposable wallet.
 // Compare rendered targets only after the native lifecycle and exact-state guards.
@@ -420,7 +421,9 @@ test('SPT details retain known preview contract metadata and expose a consistent
     );
     const page = wallet.page;
     page.on('pageerror', (error) => pageErrors.push(error.message));
+    const releasePage = wallet.page;
     wallet.context.on('requestfailed', (request) => {
+      if (isOfflineWalletReleaseAbort(request, releasePage)) return;
       if (['http:', 'https:'].includes(new URL(request.url()).protocol))
         unknownHttpFailures.push({
           method: request.method(),

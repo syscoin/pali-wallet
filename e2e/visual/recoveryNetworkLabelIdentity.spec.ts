@@ -14,6 +14,7 @@ import { PaliWallet } from '../harness/pali';
 import { verifyExecutingWorker } from '../harness/runtimeIdentity';
 import { extensionEvidence } from '../harness/testDappConformance';
 import { UTXO_FIXTURE_SEED } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // Normal-UI recovery network chooser identity regression. The initial active5700 is
 // healthy. Only after ordinary registration and a healthy switch to5 does its
@@ -784,7 +785,9 @@ for (const scenario of [
             /* Ordinary GET. */
           }
         });
+        const releasePage = wallet.page;
         wallet.context.on('requestfailed', (request) => {
+          if (isOfflineWalletReleaseAbort(request, releasePage)) return;
           if (/^https?:/.test(request.url()))
             httpFailures.push({ method: request.method(), url: request.url() });
         });

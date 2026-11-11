@@ -28,6 +28,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 async function observeTokenBadges(
   page: Page,
@@ -384,7 +385,9 @@ for (const targetViewport of [
                 viewport: targetViewport,
               }
             );
+            const releasePage = wallet.page;
             wallet.context.on('requestfailed', (request) => {
+              if (isOfflineWalletReleaseAbort(request, releasePage)) return;
               if (/^https?:/.test(request.url()))
                 failedRequests.push({
                   method: request.method(),

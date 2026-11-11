@@ -16,6 +16,7 @@ import { PaliWallet } from '../harness/pali';
 import { verifyExecutingWorker } from '../harness/runtimeIdentity';
 import { extensionEvidence } from '../harness/testDappConformance';
 import { UTXO_FIXTURE_SEED } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 const CHAIN_ID = 31337;
 const LABEL = 'RPC recovery fixture';
@@ -399,7 +400,9 @@ for (const scenario of ['edited-url', 'same-url'] as const) {
           /* Ordinary GET has no JSON body. */
         }
       });
+      const releasePage = wallet.page;
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, releasePage)) return;
         if (/^https?:/.test(request.url()))
           httpFailures.push({ method: request.method(), url: request.url() });
       });
