@@ -1,3 +1,8 @@
+import { createNativePasskeyRegistry } from '../smartAccount/passkeyRegistry.ts';
+import { passkeyRegistrationToProfile } from '../../../../source/utils/passkey/registry.ts';
+import { bytesToHex } from '../../../../source/utils/passkey/base64url.ts';
+import type { IPasskeyCredentialProfile , ISmartAccountMetadata, SmartAccountValidatorModule, SmartAccountCustomModuleRecord } from '../../../../source/types/network.ts';
+import type { NativePasskeyCapability } from '../smartAccount/passkeys.ts';
 import { assertNativePrivateAuthentication, bindNativePrivateAuthenticationChild, nativePrivateAuthenticationScope, withNativePrivateAuthentication, type NativePrivateAuthentication } from './privateAuthentication.ts';
 import { createNativeInfrastructure } from './nativeInfrastructure.ts';
 import { isOperationAuthenticationCancellation } from '../core/operationAuthentication.ts';
@@ -23,7 +28,7 @@ import { encodeSmartAccountAuthenticatorSignature } from '../../../../source/uti
 import { supportsDappEncryptionAccount } from '../../../../source/shared/dappEncryptionRequest.ts';
 import { bindEoaCallsSignedLifecycle, captureEoaCallsSignedMetadata, readRetainedEoaCall, recoverRetainedEoaCallsAttempt, settleEoaCallsSignedSubmission } from '../../../../source/wallet/dappCallsBundles.ts';
 import { sentrySettingsStorageKey } from '../../../../source/shared/sentrySettings.ts';
-import { buildECDSAAuthenticator, buildSLHDSAAuthenticator, type SmartAccountAuthenticatorBuildResult } from '../../../../source/utils/smartAccount/authenticators.ts';
+import { buildECDSAAuthenticator, buildP256WebAuthnAuthenticator, buildSLHDSAAuthenticator, type SmartAccountAuthenticatorBuildResult } from '../../../../source/utils/smartAccount/authenticators.ts';
 import { getSLHDSAStateStorageKey } from '../../../../source/utils/slhDsa/constants.ts';
 import { parseSLHDSAStateStorageKey } from '../../../../source/wallet/slhDsaState.ts';
 import { assertSmartAccountValidatorSwitchApplied, buildSmartAccountValidatorSwitch } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
@@ -91,7 +96,6 @@ import { signNativeSmartAccountActionHash, canSignNativeSmartAccountActionHash, 
 import type { SmartAccountAuthenticatorPorts } from '../../../../source/utils/smartAccount/authenticatorDispatch.ts';
 import type { SLHDSADispatchApproval } from '../../../../source/utils/slhDsa/types.ts';
 import { SMART_ACCOUNT_EXECUTION_LIFETIME_MS, requireSmartAccountAuthenticator } from '../../../../source/utils/smartAccount/prepareOperation.ts';
-import type { ISmartAccountMetadata, SmartAccountValidatorModule, SmartAccountCustomModuleRecord } from '../../../../source/types/network.ts';
 import { createNativeSlhDsaRuntime, readNativeSlhPublicStates, type NativeSlhPublicStates, type NativeSlhDsaRuntime, type NativeSlhExecutionCapability, type NativeSlhInstalledKey } from '../smartAccount/slhDsaRuntime.ts';
 import { SLH_DSA_PROFILE_STATE_DOMAIN } from '../../../../source/wallet/slhDsaStateCrypto.ts';
 import { normalizeSLHDSAPublicKeyField } from '../../../../source/utils/slhDsa/hex.ts';
@@ -255,6 +259,7 @@ class TrezorReviewChangedError extends Error {
 export type KeyringRuntimeDependencies = Readonly<{
   ensureCryptoReady(): Promise<void>;
   slhExecution: NativeSlhExecutionCapability | null;
+  passkeys: NativePasskeyCapability | null;
   privacyServiceSettings: NativePrivacyServiceSettingsPort | null;
   checkSmartAccountAddress?: (address: string) => Promise<IBlacklistCheckResult>;
   connectionFetch?: typeof walletFetch;
@@ -351,6 +356,8 @@ export interface KeyringRuntime extends CustodyRuntime {
     signal: AbortSignal, assertCurrent: () => void): Promise<string>;
   openSmartAccountDeployment(assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
   openWalletAuthenticator(signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
+  canUsePasskeys(): boolean;
+  openPasskeyAuthenticator(recreate: boolean, signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
   canUseWalletAuthenticator(): boolean;
   readSmartAccountModules(signal: AbortSignal, assertCurrent: () => void): Promise<ISmartAccountMetadata>;
   preflightSmartAccountModule(address: string, signal: AbortSignal, assertCurrent: () => void): Promise<CustomValidatorPreflightResult>;
@@ -442,6 +449,10 @@ function checkGuard(assertCurrent: () => void): void {
 export function createKeyringRuntimeFactory(
   dependencies: KeyringRuntimeDependencies
 ): CustodyRuntimeFactory {
+  if (!Object.hasOwn(dependencies, 'passkeys') || (dependencies.passkeys !== null &&
+    (typeof dependencies.passkeys?.create !== 'function' || typeof dependencies.passkeys?.recover !== 'function' || typeof dependencies.passkeys?.sign !== 'function')))
+    throw new TypeError('Explicit native passkey capability is required');
+  const passkeys = dependencies.passkeys;
   if (dependencies.slhExecution !== null && (typeof dependencies.slhExecution !== 'object' ||
       typeof dependencies.slhExecution.open !== 'function' || typeof dependencies.slhExecution.purgePublicCache !== 'function'))
     throw new Error('An explicit native SLH execution capability is required');
@@ -663,6 +674,25 @@ export function createKeyringRuntimeFactory(
         });
         const catalogue = new NativeWalletCatalogue(checkpointStorage);
         const infrastructure = createNativeInfrastructure();
+        const passkeyRegistry = createNativePasskeyRegistry(storage.keyringStorage);
+        const passkeyCeremony = <T>(authentication: NativePrivateAuthentication | null, signal: AbortSignal, guard: () => void, work: (signal: AbortSignal) => Promise<T>): Promise<T> => {
+          if (!passkeys || !authentication) throw new KeyringRuntimeError('NOT_READY');
+          checkGuard(guard);
+          const captured = generation, ring = keyring, snapshot = catalogueSnapshot, account = selectedAccount();
+          // The prompt marker is queried by the view's inactive-state guard.
+          // Its own guard must check ownership without calling that view again.
+          const promptOwner = () => {
+            if (closed || signal.aborted || generation !== captured || keyring !== ring || !ring.hasPublicSession() ||
+                !snapshot || catalogueSnapshot !== snapshot || selectedAccount() !== account)
+              throw new KeyringRuntimeError('CANCELLED');
+          };
+          return withNativePrivateAuthentication(authentication, signal, promptOwner, async owner => {
+            checkGuard(guard);
+            const result = await work(owner);
+            checkGuard(guard);
+            return result;
+          });
+        };
         const tokens = new NativeTokenRegistry(storage.keyringStorage);
         const activityHistory = new NativeActivityHistory(storage.keyringStorage);
         const signedRecords = new EvmSignedRecords(storage.signedRecords, Date.now, () => { void lock().catch(() => undefined); });
@@ -3171,7 +3201,7 @@ export function createKeyringRuntimeFactory(
             }
         };
         const smartCreationAllocations = new WeakMap<NativeSmartCreationAllocation, Readonly<{
-          signal: AbortSignal; target: NativeSmartCreationAllocation['target']; ring: IndexedKeyring; generation: number; bootstrapAuthHash: string;
+          signal: AbortSignal; target: NativeSmartCreationAllocation['target']; passkey?: IPasskeyCredentialProfile; ring: IndexedKeyring; generation: number; bootstrapAuthHash: string;
         }>>();
         const reserveContext = (input:
             | NativeAccountRequest | import('./accounts.ts').NativeNetworkRequest, expectedRevision: number, networkSelection: boolean) => {
@@ -3663,7 +3693,7 @@ export function createKeyringRuntimeFactory(
                 if (selected.type !== 'SmartAccount') return Object.freeze({trezor:selected.type === 'Trezor', binding:JSON.stringify({selected})});
                 const metadata = state.accounts.SmartAccount[selected.index]?.smartAccount;
                 if (!metadata) throw new KeyringRuntimeError('NOT_READY');
-                const plan = getNativeSmartAccountSigningPlan(metadata,captureSmartSigningOwners().localOwners,{slhDsa:slhCapability !== null});
+                const plan = getNativeSmartAccountSigningPlan(metadata,captureSmartSigningOwners().localOwners,{p256WebAuthn: passkeys !== null, slhDsa:slhCapability !== null});
                 if (!plan) throw new KeyringRuntimeError('NOT_READY');
                 const records = captureSmartSigningOwners().ownerRecords;
                 const owners = plan.authenticators.flatMap(entry => entry.owners.map(owner => ({...owner, publicKey:records.get(`${owner.type}:${owner.id}`)?.xpub})));
@@ -3676,7 +3706,7 @@ export function createKeyringRuntimeFactory(
           if (selected.type !== 'SmartAccount' || selected.slip44 !== 60) throw new KeyringRuntimeError('NOT_READY');
           const metadata = state.accounts.SmartAccount[selected.index]?.smartAccount;
           if (!metadata) throw new KeyringRuntimeError('NOT_READY');
-          const plan = getNativeSmartAccountSigningPlan(metadata, captureSmartSigningOwners().localOwners, {slhDsa: slhCapability !== null});
+          const plan = getNativeSmartAccountSigningPlan(metadata, captureSmartSigningOwners().localOwners, {p256WebAuthn: passkeys !== null, slhDsa: slhCapability !== null});
           if (!plan) throw new KeyringRuntimeError('NOT_READY');
           const result = new Set<string>();
           for (const entry of plan.authenticators) for (const owner of entry.owners) if (owner.type === 'Ledger') {
@@ -4049,7 +4079,7 @@ export function createKeyringRuntimeFactory(
             intent: Parameters<typeof signSmartAccountOwnerIntent>[0]['intent'], inventory: ReturnType<typeof captureSmartSigningOwners>,
             check: () => void, sign: (acceptTrezorProof: (signature: string) => void, position: Readonly<{step:number;total:number}> | null) => Promise<string>) => {
             check();
-            const plan = getNativeSmartAccountSigningPlan(metadata, inventory.localOwners, { slhDsa: slhCapability !== null });
+            const plan = getNativeSmartAccountSigningPlan(metadata, inventory.localOwners, { p256WebAuthn: passkeys !== null, slhDsa: slhCapability !== null });
             if (!plan) throw new KeyringRuntimeError('NOT_READY');
             if (!plan.authenticators.some(entry => entry.owners.some(candidate => candidate.type === 'Trezor')))
               return sign(() => { throw new KeyringRuntimeError('INVALID_INPUT'); }, null);
@@ -4117,7 +4147,7 @@ export function createKeyringRuntimeFactory(
             const captured = generation, snapshot = catalogueSnapshot, smart = selectedAccount(), originalRing = keyring, admittedEpoch = trezorEpoch;
             const record = snapshot?.accounts.find(candidate => candidate.type === 'Trezor' && candidate.index === owner.id);
             const saved = state.accounts.Trezor[owner.id], smartRecord = state.accounts.SmartAccount[smart.index];
-            const plan = getNativeSmartAccountSigningPlan(metadata, captureSmartSigningOwners().localOwners, {slhDsa: slhCapability !== null});
+            const plan = getNativeSmartAccountSigningPlan(metadata, captureSmartSigningOwners().localOwners, {p256WebAuthn: passkeys !== null, slhDsa: slhCapability !== null});
             const needed = plan?.authenticators.flatMap(entry => entry.owners.filter(candidate => candidate.type === 'Trezor')) ?? [];
             const planned = needed[position.step-1];
             if (!snapshot || smart.type !== 'SmartAccount' || !smartRecord?.smartAccount || !record || record.slip44 !== 60 || !saved ||
@@ -4204,6 +4234,7 @@ export function createKeyringRuntimeFactory(
                 ];
               }
               await dataBinding(captured, check); check();
+              await passkeyRegistry.activateObserved(account.address, metadata, check); check();
               const committed = await run(async () => {
                 // A read may be cancelled before this queued mutation starts.
                 try { check(); } catch { return false; }
@@ -4262,7 +4293,7 @@ export function createKeyringRuntimeFactory(
             if (!account?.smartAccount) return false;
             requireSmartAccountAddressIdentity(account, account.smartAccount.chainId);
             const {localOwners} = captureSmartSigningOwners();
-            return canSignNativeSmartAccountActionHash(account.smartAccount, localOwners, { slhDsa: slhCapability !== null });
+            return canSignNativeSmartAccountActionHash(account.smartAccount, localOwners, { p256WebAuthn: passkeys !== null, slhDsa: slhCapability !== null });
           } catch { return false; }
         };
         const canManageSlhDsa = () => {
@@ -4280,7 +4311,7 @@ export function createKeyringRuntimeFactory(
           if (!metadata) return false;
           try {
             const owners=captureSmartSigningOwners().localOwners;
-            if(!getNativeSmartAccountSigningPlan(metadata,owners,{slhDsa:slhCapability!==null}))return false;
+            if(!getNativeSmartAccountSigningPlan(metadata,owners,{p256WebAuthn: passkeys !== null, slhDsa:slhCapability!==null}))return false;
             getSmartAccountLocalEcdsaOwners(metadata,address=>{
               const owner=owners.find(candidate=>candidate.address.toLowerCase()===address.toLowerCase());
               return owner?{id:owner.id,type:sdk.KeyringAccountType[owner.type]}:null;
@@ -4632,7 +4663,7 @@ export function createKeyringRuntimeFactory(
               check(); guardian.assertCurrent();
               const inventory = captureSmartSigningOwners();
               const localOwners = inventory.localOwners.filter(owner => owner.type === 'HDAccount' || owner.type === 'Imported');
-              const plan = getNativeSmartAccountSigningPlan(metadata, localOwners, { slhDsa: false });
+              const plan = getNativeSmartAccountSigningPlan(metadata, localOwners, { p256WebAuthn: passkeys !== null, slhDsa: false });
               if (!metadata.isDeployed || !plan) throw new Error('This Smart guardian requires an unavailable authenticator');
               const owners = plan.authenticators.flatMap(entry => entry.owners).map(owner => {
                 const type = owner.type;
@@ -4902,7 +4933,7 @@ export function createKeyringRuntimeFactory(
                       const actionHash = getPaliErc7739PersonalSignHash({ accountAddress: guardian.ref.address, chainId: Number(network.chainId), hash: savedIntent.operation.hash });
                       const approval = await signNativeSmartAccountActionHash({
                         metadata: smartGuardian.metadata, actionHash, localOwners: smartGuardian.localOwners,
-                        accountId: guardian.saved.index, slhDsa: null, allowReservedSLHDSASignature: false, assertCurrent: check,
+                        accountId: guardian.saved.index, p256WebAuthn: passkeys === null ? null : { signActionHash: request => passkeyCeremony(authentication, signal, check, owner => passkeys.sign({ ...request, assertCurrent: check, signal: owner })) }, slhDsa: null, allowReservedSLHDSASignature: false, assertCurrent: check,
                         assertOwnerCurrent(owner) {
                           const capturedOwner = smartGuardian.owners.find(candidate => candidate.owner.type === owner.type && candidate.owner.id === owner.id && candidate.owner.address === owner.address);
                           if (!capturedOwner) throw new KeyringRuntimeError('CANCELLED');
@@ -5061,8 +5092,8 @@ export function createKeyringRuntimeFactory(
             // wallet operations keep their existing authorization/cancellation path.
             const localTrezor = origin.kind !== 'dapp' &&
               ownerInventory.localOwners.some(owner => owner.type === 'Trezor') &&
-              canSignNativeSmartAccountActionHash(account.smartAccount, ownerInventory.localOwners, { slhDsa: slhCapability !== null }) &&
-              getNativeSmartAccountSigningPlan(account.smartAccount, ownerInventory.localOwners, { slhDsa: slhCapability !== null })!
+              canSignNativeSmartAccountActionHash(account.smartAccount, ownerInventory.localOwners, { p256WebAuthn: passkeys !== null, slhDsa: slhCapability !== null }) &&
+              getNativeSmartAccountSigningPlan(account.smartAccount, ownerInventory.localOwners, { p256WebAuthn: passkeys !== null, slhDsa: slhCapability !== null })!
                 .authenticators.some(entry => entry.owners.some(owner => owner.type === 'Trezor'));
             const saved=origin.kind==='local-resume'?origin.descriptor:null;
             const deadline=origin.kind==='dapp'?origin.handoff.expiresAt:saved?.expiresAt??Date.now()+SMART_ACCOUNT_EXECUTION_LIFETIME_MS;
@@ -5091,6 +5122,9 @@ export function createKeyringRuntimeFactory(
               checkAddress: dependencies.checkSmartAccountAddress ?? (address => blacklistService.checkAddress(address)),
               account: account as IKeyringAccountState & { smartAccount: NonNullable<IKeyringAccountState['smartAccount']> },
               wallet: state, network, rpc, assertCurrent: check,
+              p256WebAuthn: passkeys === null ? null : (_metadata, assertCurrent, signal) => ({
+                signActionHash: request => passkeyCeremony(authentication, signal, () => { check(); checkGuard(assertCurrent); }, owner => passkeys.sign({ ...request, signal: owner, assertCurrent: () => { check(); checkGuard(assertCurrent); } })),
+              }),
               slhDsa: slhCapability === null ? null : (metadata, actionHash, assertCurrent, signal) =>
                 slhDsaSigningPort(captured, metadata, accountId, actionHash, () => { check(); checkGuard(assertCurrent); }, null, signal, authentication),
               signOwner(address, digest, owner, assertCurrent, intent, signal, metadata) {
@@ -5315,6 +5349,48 @@ export function createKeyringRuntimeFactory(
               chainId: account.smartAccount.chainId, metadata: account.smartAccount, target });
             return openSmartAccountOperation({ kind: 'authenticator', command }, check, origin, authentication);
         };
+        const openPasskeyAuthenticator = async (recreate: boolean, expectedCredentialHash: string | null, signal: AbortSignal, assertOwner: () => void, origin: SmartOperationOrigin | null, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation> => {
+            if (!passkeys || !authentication || typeof recreate !== 'boolean' || !catalogueSnapshot || !canSignSmartAccount()) throw new KeyringRuntimeError('NOT_READY');
+            const captured = generation, before = catalogueSnapshot, address = selectedAccount().address;
+            const check = () => {
+              current(captured); checkGuard(assertOwner);
+              if (signal.aborted || catalogueSnapshot?.active.accountId !== before.active.accountId ||
+                  catalogueSnapshot.active.networkId !== before.active.networkId || selectedAccount().address !== address) throw new KeyringRuntimeError('CANCELLED');
+            };
+            await refreshSmartAccountMetadata(signal, check); check();
+            const selected = selectedAccount(), account = state.accounts.SmartAccount[selected.index];
+            if (!account?.smartAccount || !canSignSmartAccount()) throw new KeyringRuntimeError('NOT_READY');
+            const records = await passkeyRegistry.read(address, check); check();
+            const candidates = [records.pending?.profile, records.active].filter((value): value is IPasskeyCredentialProfile => !!value);
+            let profile = expectedCredentialHash ? candidates.find(value => value.credentialIdHash.toLowerCase() === expectedCredentialHash.toLowerCase())
+              : !recreate ? candidates[0] : undefined;
+            if (expectedCredentialHash && !profile) throw new KeyringRuntimeError('CANCELLED');
+            const name = `Pali ${account.label || 'Smart account'}`.slice(0, 80);
+            if (profile) {
+              try {
+                await passkeyCeremony(authentication, signal, check, owner => passkeys.sign({ actionHash: bytesToHex(crypto.getRandomValues(new Uint8Array(32))),
+                  credentialId: profile!.credentialId, expectedCredentialIdHash: profile!.credentialIdHash, expectedPublicKey: profile!.publicKey,
+                  signal: owner, assertCurrent: check }));
+              } catch (error) { check(); throw Object.assign(new Error('Passkey could not be verified'), { code: 'PASSKEY_POSSESSION_FAILED', cause: error }); }
+            } else {
+              const installed = !recreate && account.smartAccount.installedModules?.find((module: SmartAccountValidatorModule): module is Extract<SmartAccountValidatorModule, {id:'p256-webauthn'}> => module.id === 'p256-webauthn');
+              if (installed) {
+                try {
+                  const restored = await passkeyCeremony(authentication, signal, check, owner => passkeys.recover({ expectedCredentialIdHash: installed.config.credentialIdHash,
+                    expectedPublicKey: installed.config.publicKey, signal: owner, assertCurrent: check }));
+                  profile = { ...restored, passkeyName: installed.config.passkeyName || name };
+                } catch (error) { check(); throw Object.assign(new Error('Passkey could not be verified'), { code: 'PASSKEY_POSSESSION_FAILED', cause: error }); }
+              } else {
+                profile = passkeyRegistrationToProfile(await passkeyCeremony(authentication, signal, check,
+                  owner => passkeys.create({ accountName: name, signal: owner, assertCurrent: check })), name);
+              }
+            }
+            if (!profile) throw new KeyringRuntimeError('NOT_READY');
+            check(); await passkeyRegistry.savePending(address, profile, check); check();
+            const target = buildP256WebAuthnAuthenticator({ chainId: account.smartAccount.chainId, config: profile });
+            const ownedOrigin: SmartOperationOrigin = origin ?? { kind: 'local-new', action: {kind:'passkey-authenticator',credentialIdHash:profile.credentialIdHash} };
+            return openSmartAccountAuthenticator(target, signal, check, ownedOrigin, authentication);
+        };
         const openWalletAuthenticator = async (signal: AbortSignal, assertOwner: () => void, origin: SmartOperationOrigin, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation> => {
             if (!catalogueSnapshot || !canSignSmartAccount()) throw new KeyringRuntimeError('NOT_READY');
             const selected = selectedAccount(), account = state.accounts.SmartAccount[selected.index];
@@ -5384,14 +5460,14 @@ export function createKeyringRuntimeFactory(
             if (!account?.smartAccount || !canSignSmartAccount()) throw new KeyringRuntimeError('NOT_READY');
             const command = buildNativeSmartModuleCommand({ accountAddress: account.address, metadata: account.smartAccount, draft,
               deploymentAdmission, removalPolicy: origin.kind === 'dapp' ? 'active-composite' : 'all-installed-composites',
-              isAlgorithmAvailable: module => module.id === 'ecdsa' || (module.id === 'slh-dsa' && slhCapability !== null) });
+              isAlgorithmAvailable: module => module.id === 'ecdsa' || (module.id === 'p256-webauthn' && passkeys !== null) || (module.id === 'slh-dsa' && slhCapability !== null) });
             if (draft.kind === 'composite') {
               const installed = account.smartAccount.installedModules?.filter((module: NonNullable<ISmartAccountMetadata['installedModules']>[number]) => module.id !== 'composite') ?? [];
               const data = encodeCompositeValidatorInitData([...draft.children], draft.threshold);
               const proposed: ISmartAccountMetadata = { ...account.smartAccount, auth: { module: 'composite', validator: command.targetAddress, data },
                 installedModules: [...installed, { type: 'validator', id: 'composite', address: command.targetAddress, data,
                   config: { childValidators: [...draft.children], threshold: draft.threshold } }] };
-              if (!canSignNativeSmartAccountActionHash(proposed, captureSmartSigningOwners().localOwners, { slhDsa: slhCapability !== null }))
+              if (!canSignNativeSmartAccountActionHash(proposed, captureSmartSigningOwners().localOwners, { p256WebAuthn: passkeys !== null, slhDsa: slhCapability !== null }))
                 throw new Error('The selected approval rule cannot be signed on this device');
             }
             return openSmartAccountOperation({ kind: 'modules', command }, check, origin.kind === 'local-new'
@@ -5439,6 +5515,7 @@ export function createKeyringRuntimeFactory(
               if(!sameSigningResumeOwner(descriptor.scope,scope)||scope.unlockGeneration<=descriptor.scope.unlockGeneration)throw new KeyringRuntimeError('CANCELLED');
               const origin:SmartOperationOrigin={kind:'local-resume',descriptor},action=descriptor.action;
               if(action.kind==='guardian-policy')return await openGuardianPolicy(action.draft,signal,assertOwner,origin,authentication);
+              if(action.kind==='passkey-authenticator')return await openPasskeyAuthenticator(false,action.credentialIdHash,signal,assertOwner,origin,authentication);
               if(action.kind==='wallet-authenticator')return await openWalletAuthenticator(signal,assertOwner,origin,authentication);
               if(action.kind==='modules')return await openSmartAccountModuleChange(action.draft,signal,assertOwner,origin,authentication);
               if(action.kind==='slh-installation')return await openSlhDsaInstallation(action.keyId,signal,assertOwner,origin,authentication);
@@ -5455,6 +5532,8 @@ export function createKeyringRuntimeFactory(
           refreshSmartAccountMetadata,
           openGuardianPolicy: (draft, signal, assertOwner, authentication) => openGuardianPolicy(draft, signal, assertOwner, {kind:'local-new',action:{kind:'guardian-policy',draft}}, authentication),
           openSlhDsaAccount, canSignSmartAccount, canManageSlhDsa,
+          canUsePasskeys: () => passkeys !== null,
+          openPasskeyAuthenticator: (recreate, signal, assertOwner, authentication) => openPasskeyAuthenticator(recreate, null, signal, assertOwner, null, authentication),
           readSmartAccountModules, preflightSmartAccountModule: (address, signal, assertOwner) => preflightModuleInstall(address, signal, assertOwner, 'deployed-only'),
           openSmartAccountModuleChange: (draft, signal, assertOwner, authentication) => openSmartAccountModuleChange(draft, signal, assertOwner, { kind: 'local-new', action: { kind: 'modules', draft } }, authentication),
           openSmartAccountDeployment: (assertOwner, authentication) => openSmartAccountOperation({ kind: 'deploy' }, assertOwner, {kind:'local-new',action:{kind:'operation',intent:{kind:'deploy'}}}, authentication),
@@ -5645,7 +5724,7 @@ export function createKeyringRuntimeFactory(
                   saved,
                   Number(network.chainId)
                 );
-                return canSignNativeSmartAccountActionHash(saved.smartAccount, captureLocalSmartOwners().localOwners, { slhDsa: slhCapability !== null });
+                return canSignNativeSmartAccountActionHash(saved.smartAccount, captureLocalSmartOwners().localOwners, { p256WebAuthn: passkeys !== null, slhDsa: slhCapability !== null });
               } catch {
                 return false;
               }
@@ -5725,7 +5804,7 @@ export function createKeyringRuntimeFactory(
                   config: config === undefined ? undefined : decodeStorageValue(encodeStorageValue(config)) }, { slhDsaSupported: false });
                 // Credential acquisition is a separate real capability. This
                 // foundation never manufactures passkeys or PQ setup material.
-                if (target.id !== 'ecdsa') throw new KeyringRuntimeError('NOT_READY');
+                if (target.id !== 'ecdsa' && (target.id !== 'p256-webauthn' || !passkeys || !authentication)) throw new KeyringRuntimeError('NOT_READY');
                 const before = catalogueSnapshot, ring = keyring, captured = generation;
                 if (!before || !ring.hasPublicSession() || before.active.networkId !== request.networkId ||
                     findUtxoNetwork(request.networkId, before.utxoNetworks) || !dependencies.prepareSmartAccount)
@@ -5734,7 +5813,7 @@ export function createKeyringRuntimeFactory(
                 const management = state.accounts.HDAccount[0];
                 if (!management?.address || !management.xpub) throw new KeyringRuntimeError('NOT_READY');
                 const managementIdentity = JSON.stringify([management.address, management.xpub]);
-                if (target.config) {
+                if (target.id === 'ecdsa' && target.config) {
                   buildECDSAAuthenticator({ chainId: Number(network.chainId), config: { owners: [...target.config.owners], threshold: target.config.threshold } });
                   const local = (['HDAccount', 'Imported', 'Ledger', 'Trezor'] as const).flatMap(type => Object.values(state.accounts[type]).map(account => account.address.toLowerCase()));
                   if (target.config.owners.some(owner => !local.includes(owner.toLowerCase())) && !request.externalOwnersAcknowledged)
@@ -5745,6 +5824,23 @@ export function createKeyringRuntimeFactory(
                   if (signal.aborted || keyring !== ring || !ring.hasPublicSession() || catalogueSnapshot !== before || selectedAccount() !== selected)
                     throw new KeyringRuntimeError('CANCELLED');
                 };
+                let passkey: IPasskeyCredentialProfile | undefined;
+                if (target.id === 'p256-webauthn') {
+                  const previous = await passkeyRegistry.creation(check); check();
+                  if (previous?.profile.passkeyName === request.label) {
+                    await passkeyCeremony(authentication, signal, check, owner => passkeys!.sign({
+                      actionHash: bytesToHex(crypto.getRandomValues(new Uint8Array(32))), credentialId: previous.profile.credentialId,
+                      expectedCredentialIdHash: previous.profile.credentialIdHash, expectedPublicKey: previous.profile.publicKey,
+                      signal: owner, assertCurrent: check,
+                    }));
+                    passkey = previous.profile;
+                  } else {
+                    passkey = passkeyRegistrationToProfile(await passkeyCeremony(authentication, signal, check,
+                      owner => passkeys!.create({ accountName: request.label, signal: owner, assertCurrent: check })), request.label);
+                    if (!passkey) throw new KeyringRuntimeError('NOT_READY');
+                    check(); await passkeyRegistry.saveCreation(passkey, check); check();
+                  }
+                }
                 let allocation: NativeSmartCreationAllocation | undefined, publishing = true;
                 await run(async () => {
                   check();
@@ -5759,6 +5855,7 @@ export function createKeyringRuntimeFactory(
                     const receipt: NativeSmartCreationAllocation = Object.freeze({
                       account: Object.freeze({ id: saved.id, index: saved.index, type: 'SmartAccount', address: saved.address, xpub: created.xpub, label: saved.label }),
                       networkId: request.networkId, chainId: Number(network.chainId), target,
+                      ...(passkey ? { targetAuth: Object.freeze(buildP256WebAuthnAuthenticator({ chainId: Number(network.chainId), config: passkey }).auth) } : {}),
                       assertCurrent() {
                         assertOwner(); current(captured); checkGuard(assertRequestCurrent);
                         const snapshot = catalogueSnapshot, provisional = publishing && snapshot === before;
@@ -5772,7 +5869,7 @@ export function createKeyringRuntimeFactory(
                         requireSmartAccountAddressIdentity(record, Number(network.chainId));
                       },
                     });
-                    smartCreationAllocations.set(receipt, Object.freeze({ signal, target, ring, generation: captured,
+                    smartCreationAllocations.set(receipt, Object.freeze({ signal, target, passkey, ring, generation: captured,
                       bootstrapAuthHash: getSmartAccountAuthHash(created.smartAccount.auth) }));
                     allocation = receipt;
                     checkGuard(() => onCommitted(receipt));
@@ -5780,20 +5877,25 @@ export function createKeyringRuntimeFactory(
                   publishing = false;
                 });
                 if (!allocation) throw new KeyringRuntimeError('OPERATION_FAILED');
+                allocation.assertCurrent();
+                if (passkey) await passkeyRegistry.transferCreation(allocation.account.address, passkey, allocation.assertCurrent);
                 allocation.assertCurrent(); return allocation;
               },
               async prepareSmartAccountCreationOperation(allocation, handoff, assertRequestCurrent, authentication) {
                 if (authentication !== null) assertNativePrivateAuthentication(authentication);
                 const owned = smartCreationAllocations.get(allocation);
-                if (!owned || owned.target.id !== 'ecdsa' || !owned.target.config) throw new KeyringRuntimeError('INVALID_INPUT');
+                if (!owned || (owned.target.id === 'ecdsa' ? !owned.target.config : owned.target.id !== 'p256-webauthn' || !owned.passkey)) throw new KeyringRuntimeError('INVALID_INPUT');
                 requireNativeSigningHandoff(handoff);
                 const check = () => {
                   current(owned.generation); allocation.assertCurrent(); checkGuard(assertRequestCurrent);
                   if (keyring !== owned.ring || allocation.target !== owned.target) throw new KeyringRuntimeError('CANCELLED');
                 };
                 check();
-                const target = buildECDSAAuthenticator({ chainId: allocation.chainId,
-                  config: { owners: [...owned.target.config.owners], threshold: owned.target.config.threshold } });
+                const target = owned.target.id === 'p256-webauthn'
+                  ? buildP256WebAuthnAuthenticator({ chainId: allocation.chainId, config: owned.passkey! })
+                  : owned.target.id === 'ecdsa' && owned.target.config
+                    ? buildECDSAAuthenticator({ chainId: allocation.chainId, config: { owners: [...owned.target.config.owners], threshold: owned.target.config.threshold } })
+                    : (() => { throw new KeyringRuntimeError('INVALID_INPUT'); })();
                 const assertSource = () => {
                   check();
                   const metadata = state.accounts.SmartAccount[allocation.account.index]?.smartAccount;
@@ -6229,6 +6331,7 @@ export function createKeyringRuntimeFactory(
                     const signature = await signNativeSmartAccountActionHash({
                       metadata, actionHash: prepared.actionHash, localOwners, assertCurrent: guard,
                       accountId: account.id, allowReservedSLHDSASignature: false,
+                      p256WebAuthn: passkeys === null ? null : { signActionHash: request => passkeyCeremony(authentication, approval.signal, guard, owner => passkeys.sign({ ...request, assertCurrent: guard, signal: owner })) },
                       slhDsa: slhCapability === null ? null : slhDsaSigningPort(captured, metadata, account.id, prepared.actionHash, guard, { assertCurrent: guard, async checkDocument() { guard(); } }, approval.signal, authentication),
                       assertOwnerCurrent(owner) {
                         const original = ownerRecords.get(`${owner.type}:${owner.id}`), currentOwner = findLocalEcdsaOwner(owner.address);

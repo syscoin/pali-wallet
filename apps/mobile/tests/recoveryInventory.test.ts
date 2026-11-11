@@ -19,6 +19,7 @@ import { createAccountRecordTestFixture } from './accountRecordTestFixture.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection, validPair } from './storageHelpers.ts';
 import { openNativeConnectionRepository, NATIVE_CONNECTION_STORAGE_KEY } from '../src/connections/storage.ts';
+import { PASSKEY_CREATION_PENDING_KEY, passkeyAccountRecordsKey } from '../../../source/utils/passkey/registry.ts';
 
 // Setup uses actual SDK-encrypted account records. Inventory itself only reads public counts.
 const KEY = `0x${'1'.padStart(64, '0')}`;
@@ -67,6 +68,24 @@ function signedBundle(address: string, profileId: string) {
 function assertReadsOnly(statements: string[]) {
   assert.equal(statements.some((sql) => /^(INSERT|UPDATE|DELETE|BEGIN|COMMIT|CREATE|ALTER|DROP)/i.test(sql)), false, statements.join('\n'));
 }
+
+test('public passkey profiles survive cold reopen with only exact shared record keys admitted', async () => {
+  const f = await fixture();
+  const profile = { credentialId: 'AQ', credentialIdHash: '0x' + '01'.repeat(32), passkeyName: 'Pali recovery',
+    publicKey: { x: '0x' + '02'.repeat(32), y: '0x' + '03'.repeat(32), rpIdHash: '0x' + '04'.repeat(32), originHash: '0x' + '05'.repeat(32), originLength: 22 } };
+  try {
+    f.put(PASSKEY_CREATION_PENDING_KEY, { createdAt: 1, profile });
+    f.put(passkeyAccountRecordsKey(wallet.address), { pending: { createdAt: 1, profile } });
+    const before = f.bytes(); await f.reopen(); f.sql.length = 0;
+    assert.equal((await readRecoveryInventory(f.storage)).status, 'needs-matching-phrase-verification');
+    assert.equal(f.bytes(), before); assertReadsOnly(f.sql);
+    f.put(passkeyAccountRecordsKey(wallet.address), { pending: { createdAt: 1, profile: { ...profile, publicKey: {} } } });
+    assert.equal((await readRecoveryInventory(f.storage)).reason, 'unsupported-record');
+    f.put(passkeyAccountRecordsKey(wallet.address), { active: profile });
+    f.put(passkeyAccountRecordsKey('unrecognized-record'), { active: profile });
+    assert.equal((await readRecoveryInventory(f.storage)).reason, 'unsupported-record');
+  } finally { await f.close(); }
+});
 
 test('unverified inventory is read-only, byte preserving and never claims phrase or root verification', async () => {
   const f = await fixture();

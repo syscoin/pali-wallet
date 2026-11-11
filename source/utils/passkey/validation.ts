@@ -1,6 +1,6 @@
-import { defaultAbiCoder } from '../ethersV6Compat';
+import { defaultAbiCoder } from '../ethersV6Compat.ts';
 
-import { readPasskeyClientDataJSON } from './clientData';
+import { readPasskeyClientDataJSON } from './clientData.ts';
 
 export type PasskeyWebAuthnProof = {
   authenticatorData: string;

@@ -31,7 +31,7 @@ async function fixture() {
     return storage;
   };
   const factory = (credentials: NativePinCredentialPort = port) => createKeyringRuntimeFactory({
-    privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+    privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
     pinCredential: credentials, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: '123456' }, check); if (!result.accepted) throw Error(result.reason); }, ensureCryptoReady: async () => {}, openStorage: open,
     async loadSdk() {
       const sdk = await loadNativeKeyringSdk();

@@ -1,4 +1,6 @@
+import type { PasskeyBackupStatus } from './passkey';
 import type { GuardianRecoveryClaim } from '../utils/smartAccount/guardianRecoveryClaim';
+export { PasskeyBackupStatus } from './passkey';
 
 // Shared network types - mirror sysweb3 types without importing the package
 // This prevents frontend bundles from pulling in sysweb3 dependencies
@@ -35,15 +37,6 @@ export enum KeyringAccountType {
   Ledger = 'Ledger',
   SmartAccount = 'SmartAccount',
   Trezor = 'Trezor',
-}
-/* eslint-enable no-shadow */
-
-/* eslint-disable no-shadow */
-export enum PasskeyBackupStatus {
-  BackupCapable = 'backupCapable',
-  DeviceBound = 'deviceBound',
-  Synced = 'synced',
-  Unavailable = 'unavailable',
 }
 /* eslint-enable no-shadow */
 

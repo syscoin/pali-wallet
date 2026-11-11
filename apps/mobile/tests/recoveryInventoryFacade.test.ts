@@ -1,5 +1,6 @@
 import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import * as unavailableNativePasskeys from '../src/platform/nativePasskeys.ts';
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import { createNativePrivacyServiceSettings } from '../src/platform/privacyServiceSettings.native.ts';
 import assert from 'node:assert/strict';
@@ -86,6 +87,7 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
   const unexpectedFeature = () => assert.fail('unexpected feature operation in native factory fixture');
   const pinCredential = createTestPinCredentialPort();
   const dependencies: Record<string, unknown> = {
+    './nativePasskeys': unavailableNativePasskeys,
     '../notifications/service': { nativeActivityNotifications: { replaceAccountTypes: unexpectedFeature, disableOwner: unexpectedFeature } },
     '../custody/accountIdentity': { parseNativeAccountId: unexpectedFeature },
     '../notifications/choices': { nativeNotificationChoices: unexpectedFeature },
@@ -120,7 +122,7 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
     },
     './deviceUnlockCredential.native': {
       createNativeDeviceUnlockCapability() {
-        return { credentials: {}, prompt: { cancel() {}, isActive: () => false } };
+        return { credentials: {}, prompt: { cancel() {}, isActive: () => false, isAnyPromptActive: () => false, run: unexpectedFeature } };
       },
     },
     './walletConnectRuntime': {

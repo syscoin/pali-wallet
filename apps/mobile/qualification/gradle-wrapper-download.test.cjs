@@ -91,8 +91,13 @@ test('every Android qualification mode configures the wrapper before JVM checks 
   assert.equal(configure.step['continue-on-error'], undefined);
   assert(configure.index > prebuild && prebuild >= 0);
   const gradleSteps = steps.map((step, index) => ({ step, index })).filter(({ step }) => step.run?.includes('./gradlew'));
-  assert.equal(gradleSteps.length, 2);
+  assert(gradleSteps.length >= 2);
   assert(gradleSteps.every(({ index }) => index > configure.index));
+  const passkeys = gradleSteps.find(({ step }) => step.name === 'Verify native passkey input and cancellation ownership');
+  assert(passkeys);
+  assert(passkeys.step.run.includes(':pali-passkeys:testDebugUnitTest'));
+  assert.equal(passkeys.step.if, undefined);
+  assert.equal(passkeys.step['continue-on-error'], undefined);
   assert.equal(steps.find(step => step.name === 'Run Android JVM public snapshot and SLH ownership checks').if,
     "env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION != '1' && env.PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION != '1'");
   assert.equal(workflow.jobs.android['timeout-minutes'], 90);

@@ -505,7 +505,7 @@ function QualificationApp() {
         ]);
         const qualificationSlhExecution = null;
         const qualificationPinCredential = createNativePinCredentialPort();
-        const factory = createKeyringRuntimeFactory({ pinCredential: qualificationPinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PUBLIC_PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: qualificationSlhExecution, readEvmRetirement: null,
+        const factory = createKeyringRuntimeFactory({ pinCredential: qualificationPinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PUBLIC_PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys: null, slhExecution: qualificationSlhExecution, readEvmRetirement: null,
           ensureCryptoReady: async () => {
             await ensureNativeCryptoReady();
           },

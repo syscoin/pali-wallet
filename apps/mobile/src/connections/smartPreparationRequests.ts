@@ -25,7 +25,7 @@ export type NativeSmartPreparationReview = Readonly<{
 type Pending = {
   authenticationScope: NativePrivateAuthenticationScope; authentication: NativePrivateAuthentication | null;
   id: string; wire: WalletConnectRequest; request: NativeSmartPreparationRequest; owner: NativeSmartPreparationAdmission;
-  target?: Extract<SmartAccountPreparationTarget, { id: 'ecdsa' }>; lifetime: AbortController; expiresAt: number; timer: ReturnType<typeof setTimeout>;
+  target?: Extract<SmartAccountPreparationTarget, { id: 'ecdsa' }> | Readonly<{ id: 'p256-webauthn' }>; lifetime: AbortController; expiresAt: number; timer: ReturnType<typeof setTimeout>;
   busy: boolean; allocating: boolean; consentAccepted: boolean; externalOwners: readonly string[];
   error: NativeSmartPreparationReview['error']; allocation?: NativeSmartCreationAllocation;
   operation?: NativeSmartAccountOperation; unsubscribe?: () => void; signingAttempted: boolean; broadcast: boolean;
@@ -73,7 +73,7 @@ export class NativeSmartPreparationRequests {
   }
   private foreground(entry: Pending) { return this.first() === entry && entry.owner.order < this.retirementOrder() && this.options.foreground(entry.owner.order); }
   private externalOwners(target: Pending['target']): readonly string[] {
-    if (!target?.config) return Object.freeze([]);
+    if (target?.id !== 'ecdsa' || !target.config) return Object.freeze([]);
     const local = this.options.host().context().accounts.filter(account => ['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(account.type));
     return Object.freeze(target.config.owners.filter(owner => !local.some(account => account.address.toLowerCase() === owner.toLowerCase())));
   }
@@ -92,8 +92,8 @@ export class NativeSmartPreparationRequests {
     let target: Pending['target'], error: Pending['error'] = wire.verification.isScam ? 'BLOCKED_SITE' : wire.verification.validation === 'INVALID' ? 'SITE_MISMATCH' : null;
     try {
       const selected = resolveSmartAccountPreparationTarget(captured.authenticator, { slhDsaSupported: false });
-      if (selected.id !== 'ecdsa') throw Error('UNSUPPORTED_AUTHENTICATOR');
-      target = selected;
+      if (selected.id !== 'ecdsa' && selected.id !== 'p256-webauthn') throw Error('UNSUPPORTED_AUTHENTICATOR');
+      target = selected.id === 'p256-webauthn' ? { id: selected.id } : selected as Extract<SmartAccountPreparationTarget, { id: 'ecdsa' }>;
     } catch { error ??= 'PREPARATION_UNAVAILABLE'; }
     const entry: Pending = { authenticationScope: createNativePrivateAuthenticationScope(), authentication: null, id, wire, request: captured, owner, target, lifetime: new AbortController(), expiresAt,
       timer: setTimeout(() => { void this.retire(entry, true); }, expiresAt - Date.now()), busy: false, allocating: false,
@@ -111,8 +111,8 @@ export class NativeSmartPreparationRequests {
       verification: entry.wire.verification, label: entry.request.label, requestedAuthenticatorId: entry.request.authenticator.id ?? '',
       networkLabel: entry.owner.networkLabel, chainId: entry.owner.chainId, expiresAt: entry.expiresAt, busy: entry.busy,
       error: entry.error, externalOwners: entry.externalOwners, accountAddress: entry.allocation?.account.address ?? null,
-      operation: entry.operation?.getSnapshot() ?? null, requestedOwners: entry.target?.config?.owners ?? Object.freeze([]),
-      requestedThreshold: entry.target?.config?.threshold ?? null, canRetry: this.retryable(entry) });
+      operation: entry.operation?.getSnapshot() ?? null, requestedOwners: entry.target?.id === 'ecdsa' ? entry.target.config?.owners ?? Object.freeze([]) : Object.freeze([]),
+      requestedThreshold: entry.target?.id === 'ecdsa' ? entry.target.config?.threshold ?? null : null, canRetry: this.retryable(entry) });
   }
   private admitted(id: string) {
     const entry = this.first();
@@ -135,7 +135,17 @@ export class NativeSmartPreparationRequests {
       if (entry.deploymentSeen) throw Error('Repeated creation deployment');
       return;
     }
-    if (snapshot.intent.kind !== 'authenticator' || !entry.target?.config || snapshot.intent.command.targetModule.id !== 'ecdsa') throw Error('Creation target changed');
+    if (snapshot.intent.kind !== 'authenticator') throw Error('Creation target changed');
+    if (entry.target?.id === 'p256-webauthn') {
+      const expected = entry.allocation.targetAuth, command = snapshot.intent.command;
+      if (!expected || command.targetModule.id !== 'p256-webauthn' || command.target.module !== 'p256-webauthn' ||
+          command.chainId !== entry.allocation.chainId || getAddress(command.accountAddress) !== getAddress(entry.allocation.account.address) ||
+          getAddress(command.target.validator) !== getAddress(expected.validator) || getAddress(command.targetModule.address) !== getAddress(expected.validator) ||
+          command.target.data.toLowerCase() !== expected.data.toLowerCase() || command.targetModule.data?.toLowerCase() !== expected.data.toLowerCase())
+        throw Error('Creation target changed');
+      return;
+    }
+    if (entry.target?.id !== 'ecdsa' || !entry.target.config || snapshot.intent.command.targetModule.id !== 'ecdsa') throw Error('Creation target changed');
     const requested = entry.target.config, command = snapshot.intent.command, module = command.targetModule;
     if (module.id !== 'ecdsa') throw Error('Creation target changed');
     const actual = module.config;
@@ -148,7 +158,7 @@ export class NativeSmartPreparationRequests {
         command.target.data.toLowerCase() !== expected.auth.data.toLowerCase() || command.targetModule.data?.toLowerCase() !== expected.auth.data.toLowerCase()) throw Error('Creation target changed');
   }
   private async prepareNext(entry: Pending) {
-    if (!entry.allocation || !entry.target?.config || entry.stages >= 3) throw Error('Creation stages unavailable');
+    if (!entry.allocation || !(entry.target?.id === 'p256-webauthn' || entry.target?.id === 'ecdsa' && entry.target.config) || entry.stages >= 3) throw Error('Creation stages unavailable');
     this.check(entry);
     const operation = await this.options.host().prepareSmartAccountCreationOperation(entry.allocation, this.handoff(entry), () => this.check(entry), this.authentication(entry));
     try {
@@ -170,7 +180,7 @@ export class NativeSmartPreparationRequests {
     this.check(entry);
     const allocation = entry.allocation!;
     let validator: string | undefined;
-    if (entry.target?.config) {
+    if (entry.target?.id === 'p256-webauthn' || entry.target?.id === 'ecdsa' && entry.target.config) {
       const snapshot = entry.operation?.getSnapshot();
       if (!snapshot || snapshot.phase !== 'complete' || snapshot.intent.kind !== 'authenticator' || snapshot.metadataRefresh !== 'complete') return;
       this.verifyOperation(entry, snapshot); validator = snapshot.intent.command.target.validator;
@@ -184,7 +194,7 @@ export class NativeSmartPreparationRequests {
     await this.retire(entry, false, false);
   }
   private async advance(entry: Pending) {
-    if (!entry.target?.config) { await this.finishCreation(entry); return; }
+    if (!(entry.target?.id === 'p256-webauthn' || entry.target?.id === 'ecdsa' && entry.target.config)) { await this.finishCreation(entry); return; }
     for (let stage = 0; stage < 3; stage++) {
       if (!entry.operation) await this.prepareNext(entry);
       const operation = entry.operation!, snapshot = operation.getSnapshot();

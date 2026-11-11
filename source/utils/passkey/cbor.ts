@@ -13,19 +13,19 @@ const readLength = (data: Uint8Array, offset: number, additional: number) => {
   if (!size || offset + size > data.length) {
     throw new Error('Unsupported or truncated CBOR length');
   }
-  if (additional === 24) return { length: data[offset], offset: offset + 1 };
+  if (additional === 24) return { length: data[offset]!, offset: offset + 1 };
   if (additional === 25)
     return {
-      length: (data[offset] << 8) | data[offset + 1],
+      length: (data[offset]! << 8) | data[offset + 1]!,
       offset: offset + 2,
     };
   if (additional === 26) {
     return {
       length:
-        (data[offset] * 0x1000000 +
-          ((data[offset + 1] << 16) |
-            (data[offset + 2] << 8) |
-            data[offset + 3])) >>>
+        (data[offset]! * 0x1000000 +
+          ((data[offset + 1]! << 16) |
+            (data[offset + 2]! << 8) |
+            data[offset + 3]!)) >>>
         0,
       offset: offset + 4,
     };
@@ -47,7 +47,7 @@ const decodeValue = (
   ) {
     throw new Error('Truncated or excessively nested CBOR value');
   }
-  const first = data[offset];
+  const first = data[offset]!;
   const major = first >> 5;
   const additional = first & 0x1f;
   let cursor = offset + 1;
@@ -123,7 +123,7 @@ const decodeValue = (
 export const decodeCbor = (data: Uint8Array, offset = 0): DecodeResult =>
   decodeValue(data, offset, 0);
 
-export const asCborMap = (value: CborValue): CborMap => {
+export const asCborMap = (value: CborValue | undefined): CborMap => {
   if (!(value instanceof Map)) {
     throw new Error('Expected CBOR map');
   }
@@ -131,7 +131,7 @@ export const asCborMap = (value: CborValue): CborMap => {
   return value;
 };
 
-export const asCborBytes = (value: CborValue): Uint8Array => {
+export const asCborBytes = (value: CborValue | undefined): Uint8Array => {
   if (!(value instanceof Uint8Array)) {
     throw new Error('Expected CBOR byte string');
   }

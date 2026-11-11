@@ -16,6 +16,7 @@ import { inspectRecoveryCatalogue, WALLET_CATALOGUE_KEY } from './walletCatalogu
 import { parseNativeAccountId } from './accountIdentity.ts';
 import { inspectEvmSignedBundle } from '../../../../source/wallet/evmSignedRecords.ts';
 import { inspectUtxoSignedBundle, UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
+import { inspectNativePasskeyStorageRecord } from '../smartAccount/passkeyRegistry.ts';
 
 export type RecoveryInventoryCounts = Readonly<{
   hdAccounts: number; importedKeys: number;
@@ -40,6 +41,7 @@ const zero = (): RecoveryInventoryCounts => ({ hdAccounts: 0, importedKeys: 0,
 export function assertNativeRecordDomains(records: RecoveryStorageSnapshot['records'], profileId: string | null): void {
   for (const { key, value } of records) {
     if (key === PUBLIC_SESSION_RECORD_KEY) { decodePublicSessionRecord(value); continue; }
+    if (inspectNativePasskeyStorageRecord(key, value)) continue;
     const slhKeyId = parseSLHDSAStateStorageKey(key);
     if (slhKeyId !== null) {
       const state = captureSLHDSAEncryptedStateEnvelope(decodeStorageValue(value), slhKeyId);

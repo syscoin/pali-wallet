@@ -1,4 +1,5 @@
 import { bindNativePrivateAuthentication, createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { prepareRecoveryPin } from './fixtures/recoveryPin.ts';
 import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
 import { createTestPinRecordKeyring } from './fixtures/pinOperation.ts';
@@ -65,7 +66,7 @@ process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 
-async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, recordSignatures = false, slhFactory: NativeSlhExecutionCapability | null = null, ledgerFactory?: KeyringRuntimeDependencies['createLedgerTransport'], trezorSessions?: KeyringRuntimeDependencies['trezorSessions']) {
+async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, recordSignatures = false, slhFactory: NativeSlhExecutionCapability | null = null, ledgerFactory?: KeyringRuntimeDependencies['createLedgerTransport'], trezorSessions?: KeyringRuntimeDependencies['trezorSessions'], passkeys: KeyringRuntimeDependencies['passkeys'] = null) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-smart-account-test-'));
   const file = path.join(directory, 'wallet.sqlite');
   let initialized = false, substituteAddress = false, hold: (() => Promise<void>) | undefined;
@@ -281,7 +282,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
         } else assert.fail(`Unexpected RPC ${request.method}`);
         return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { headers: { 'content-type': 'application/json' } });
   };
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); await onCredentialRequest?.(check); check(); const result = await verify({ method: 'pin', pin: currentPin }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: slhFactory, ...(trezorSessions ? {trezorSessions} : {}), ...(ledgerFactory ? {createLedgerTransport: ledgerFactory} : {}),
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); await onCredentialRequest?.(check); check(); const result = await verify({ method: 'pin', pin: currentPin }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys, slhExecution: slhFactory, ...(trezorSessions ? {trezorSessions} : {}), ...(ledgerFactory ? {createLedgerTransport: ledgerFactory} : {}),
     ...(recordSignatures || slhFactory !== null ? { loadSdk: async () => {
       const sdk = await loadNativeKeyringSdk();
       const Base = sdk.HostKeyring;
@@ -1022,6 +1023,34 @@ test('wallet authenticator recognizes an already configured owner without signin
     assert.equal(f.signatures.length, 0);
     assert.equal(f.submitted.length, 0);
   } finally { operation?.dispose(); await f.close(); }
+});
+
+test('native passkey setup survives owned inactive/blur prompts and cold reopen without decrypting the signing root', async () => {
+  let f!: Awaited<ReturnType<typeof fixture>>, creates = 0, assertions = 0, prompt = false;
+  let state = 'active';
+  const scope = createNativePrivateAuthenticationScope(), lifetime = new AbortController();
+  const viewGuard = () => assert(state === 'active' || allowsPrivateAuthenticationInterruption(scope, state), 'view retired');
+  const registration = { backupStatus: 'deviceBound' as const, credentialId: 'AQ', credentialIdHash: '0x' + '01'.repeat(32),
+    rawId: 'AQ', userHandle: 'Ag', x: '0x' + '02'.repeat(32), y: '0x' + '03'.repeat(32),
+    rpIdHash: '0x' + '04'.repeat(32), originHash: '0x' + '05'.repeat(32), originLength: 22 };
+  const passkeys: NonNullable<KeyringRuntimeDependencies['passkeys']> = {
+    async create(request) { prompt = true; state = 'inactive'; try { f.assertNoSigningKeys(); request.assertCurrent(); assert(scope.isAuthenticating()); creates++; return registration; } finally { state = 'active'; prompt = false; } },
+    async sign(request) { prompt = true; state = 'blur'; try { f.assertNoSigningKeys(); request.assertCurrent(); assert(scope.isAuthenticating()); assertions++; assert.equal(request.expectedCredentialIdHash, registration.credentialIdHash); return { signature: '0xab' }; } finally { state = 'active'; prompt = false; } },
+    async recover() { throw Error('Unexpected credential recovery'); },
+  };
+  f = await fixture({}, true, null, undefined, undefined, passkeys);
+  const binding = bindNativePrivateAuthentication(scope, { assertCurrent() {}, isPromptActive: () => prompt });
+  let first: NativeSmartAccountOperation | undefined, second: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Passkey account' }); f.guardianStatus('no-policy'); f.fundedSmart();
+    first = await f.runtime.openPasskeyAuthenticator(false, lifetime.signal, viewGuard, binding);
+    assert.equal(creates, 1); assert.equal(assertions, 0); assert.equal(f.signatures.length, 0);
+    await first.dispose(); first = undefined;
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    second = await f.runtime.openPasskeyAuthenticator(false, lifetime.signal, viewGuard, binding);
+    assert.equal(creates, 1); assert.equal(assertions, 1);
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0); f.assertNoSigningKeys();
+  } finally { scope.retire(); lifetime.abort(); await first?.dispose(); await second?.dispose(); await f.close(); }
 });
 
 for (const delayedMetadata of [false, 'stale', 'unavailable'] as const) test(`wallet authenticator rotates the exact ECDSA owner and preserves confirmed state (delayed metadata ${delayedMetadata})`, async () => {

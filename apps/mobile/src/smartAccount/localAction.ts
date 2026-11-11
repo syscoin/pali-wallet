@@ -12,6 +12,10 @@ export function snapshotNativeSmartLocalAction(action: NativeSmartLocalAction): 
   if (!action || typeof action !== 'object') return invalid();
   if (action.kind === 'modules') return Object.freeze({ kind: action.kind, draft: snapshotNativeSmartModuleDraft(action.draft) });
   if (action.kind === 'wallet-authenticator') return Object.freeze({ kind: action.kind });
+  if (action.kind === 'passkey-authenticator') {
+    if (!/^0x[0-9a-f]{64}$/i.test(action.credentialIdHash)) return invalid();
+    return Object.freeze({ kind: action.kind, credentialIdHash: action.credentialIdHash.toLowerCase() });
+  }
   if (action.kind === 'slh-installation') {
     if (typeof action.keyId !== 'string' || !action.keyId || action.keyId.length > 256) return invalid();
     return Object.freeze({ kind: action.kind, keyId: action.keyId });

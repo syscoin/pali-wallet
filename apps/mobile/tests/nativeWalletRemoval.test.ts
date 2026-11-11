@@ -154,7 +154,7 @@ async function fixture(withSlhCache = false) {
   }) });
   const factory = createKeyringRuntimeFactory({ pinCredential: credentials, requestOperationCredential: broker.request,
     deviceUnlock: { credentials: deviceCredentials, randomId: () => (nextEnrollment++).toString(16).padStart(32, '0') },
-    privacyServiceSettings: null, slhExecution: withSlhCache ? {
+    privacyServiceSettings: null, passkeys: null, slhExecution: withSlhCache ? {
     open() { throw Error('No signing context belongs to this removal fixture'); },
     async purgePublicCache(namespace, guard) {
       guard(); assert.equal(owner.getSnapshot().phase, 'disposed'); assert.equal(rings.some(ring => ring.isUnlocked()), false);
@@ -221,7 +221,7 @@ async function fixture(withSlhCache = false) {
     failCredentialRemoval(value: 'before' | 'after' | undefined) { credentialFailure = value; },
     async reopenRuntime() {
       return await createKeyringRuntimeFactory({ pinCredential: credentials, requestOperationCredential: null,
-        privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+        privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
         ensureCryptoReady: async () => undefined, loadSdk: async () => sdk,
         openStorage: () => openWalletStorage(ports),
       }).open() as KeyringRuntime;
@@ -536,7 +536,7 @@ for (const interruption of ['cancel', 'cancel-during-retirement', 'lock', 'expir
         assert.equal(created, 2);
         const authority = new NativeCustodyAuthority({ async open() {
           nextStorage = await openWalletStorage(f.ports);
-          nextRuntime = await createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+          nextRuntime = await createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
             ensureCryptoReady: async () => undefined, openStorage: async () => nextStorage!,
           }).open() as KeyringRuntime;
           return nextRuntime;

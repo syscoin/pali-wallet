@@ -80,6 +80,7 @@ export type NativeSmartOperationPorts = Readonly<{
   background(): void;
   signingOwners: readonly NativeSmartAccountSigningOwner[];
   assertOwnerCurrent(owner: NativeSmartAccountSigningOwner): void;
+  p256WebAuthn: ((metadata: ISmartAccountMetadata, assertCurrent: () => void, signal: AbortSignal) => NonNullable<SmartAccountAuthenticatorPorts['p256WebAuthn']>) | null;
   slhDsa: ((metadata: ISmartAccountMetadata, actionHash: string, assertCurrent: () => void, signal: AbortSignal) => NonNullable<SmartAccountAuthenticatorPorts['slhDsa']>) | null;
   checkAddress(address: string): Promise<IBlacklistCheckResult>;
   signOwner(
@@ -120,6 +121,8 @@ export type NativeSmartOperationPorts = Readonly<{
 export function createNativeSmartOperation(
   ports: NativeSmartOperationPorts
 ): NativeSmartAccountOperation {
+  if (!Object.hasOwn(ports, 'p256WebAuthn') || (ports.p256WebAuthn !== null && typeof ports.p256WebAuthn !== 'function'))
+    throw new TypeError('Explicit native passkey signing capability is required');
   if (!Object.hasOwn(ports, 'slhDsa') || (ports.slhDsa !== null && typeof ports.slhDsa !== 'function'))
     throw new TypeError('Explicit native SLH signing capability is required');
   const account = ports.account;
@@ -275,7 +278,8 @@ export function createNativeSmartOperation(
       }
       const authenticator = assertNativeSmartAccountAuthenticator(metadata);
       if (!['ecdsa', 'composite'].includes(authenticator.module) &&
-          !(authenticator.module === 'slh-dsa' && ports.slhDsa !== null))
+          !(authenticator.module === 'slh-dsa' && ports.slhDsa !== null) &&
+          !(authenticator.module === 'p256-webauthn' && ports.p256WebAuthn !== null))
         throw new Error(
           'This authenticator is not available for native transfers'
         );
@@ -420,6 +424,7 @@ export function createNativeSmartOperation(
         actionHash: prepared.actionHash,
         accountId: account.id,
         allowReservedSLHDSASignature: canUseReservedSLHDSASignature({ accountAddress: account.address, executions: prepared.executions, smartAccount: metadata }),
+        p256WebAuthn: ports.p256WebAuthn === null ? null : ports.p256WebAuthn(metadata, assertCurrent, signal),
         slhDsa: ports.slhDsa === null ? null : ports.slhDsa(metadata, prepared.actionHash, assertCurrent, signal),
         localOwners: ports.signingOwners,
         assertCurrent,

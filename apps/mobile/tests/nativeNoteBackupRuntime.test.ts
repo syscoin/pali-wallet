@@ -106,7 +106,7 @@ async function fixture(openPrivacyPool?: KeyringRuntimeDependencies['openPrivacy
     if (gate) await gate.wait();
     return value;
   } };
-  const factory = createKeyringRuntimeFactory({ pinCredential: credentials, requestOperationCredential: async (_request, signal, check, verify) => { check(); if (beforeCredential) await beforeCredential(signal); check(); if (requester) return requester(_request, signal, check, verify); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential: credentials, requestOperationCredential: async (_request, signal, check, verify) => { check(); if (beforeCredential) await beforeCredential(signal); check(); if (requester) return requester(_request, signal, check, verify); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
     openPrivacyPool,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),

@@ -84,7 +84,7 @@ export const admitPasskeyAuthenticatorData = (
   bytes: Uint8Array,
   registration: boolean
 ): void => {
-  const flags = bytes[32];
+  const flags = bytes[32]!;
   if (
     bytes.length < 37 ||
     (flags & 0x05) !== 0x05 || // User presence and verification were requested.
