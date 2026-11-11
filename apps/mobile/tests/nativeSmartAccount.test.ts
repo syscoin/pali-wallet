@@ -1,3 +1,7 @@
+import { Wallet } from 'ethers/wallet';
+import { serializePreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
+import { createTrezorSessions } from '../src/hardware/trezorSessions.ts';
+import type { NativeTrezorClient } from '../src/hardware/trezorHost.ts';
 import { bindNativePrivateAuthentication, createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { prepareRecoveryPin } from './fixtures/recoveryPin.ts';
@@ -111,6 +115,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let composite: { threshold: number; ecdsaFirst: boolean; children?: string[] } | undefined;
   const customValidators = new Map<string, { installed: boolean; compatible: boolean }>();
   let observedSlh: Pick<NativeSlhPublicState, 'pkRoot' | 'pkSeed'> | undefined;
+  let observedPasskey = false;
   const slhDerivations: number[] = [];
   const sdkInstances: { isUnlocked(): boolean }[] = [];
   let captureJournal: (() => ReturnType<EvmSignedRecords['captureSmartAccountPendingRecords']>) | undefined;
@@ -227,9 +232,9 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             result = paliSmartAccountInterface.encodeFunctionResult('supportsExecutionMode', [true]);
           } else if (smartTarget && data.startsWith(paliSmartAccountInterface.getFunction('isModuleInstalled')!.selector)) {
             const args = paliSmartAccountInterface.decodeFunctionData('isModuleInstalled', data);
-            result = paliSmartAccountInterface.encodeFunctionResult('isModuleInstalled', [customValidators.get(args[1].toLowerCase())?.installed === true || args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() || !ownGuardian && !!observedSlh && args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'slh-dsa').toLowerCase() || smartComposite && (['composite', 'p256-webauthn'] as const).some(kind => args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), kind).toLowerCase())]);
+            result = paliSmartAccountInterface.encodeFunctionResult('isModuleInstalled', [customValidators.get(args[1].toLowerCase())?.installed === true || args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() || !ownGuardian && observedPasskey && args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'p256-webauthn').toLowerCase() || !ownGuardian && !!observedSlh && args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'slh-dsa').toLowerCase() || smartComposite && (['composite', 'p256-webauthn'] as const).some(kind => args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), kind).toLowerCase())]);
           } else if (smartTarget && data.startsWith(paliSmartAccountInterface.getFunction('activeValidator')!.selector)) {
-            result = paliSmartAccountInterface.encodeFunctionResult('activeValidator', [getConfiguredAuthenticatorAddress(Number(network.chainId), smartComposite ? 'composite' : !ownGuardian && observedSlh ? 'slh-dsa' : 'ecdsa')]);
+            result = paliSmartAccountInterface.encodeFunctionResult('activeValidator', [getConfiguredAuthenticatorAddress(Number(network.chainId), smartComposite ? 'composite' : !ownGuardian && observedPasskey ? 'p256-webauthn' : !ownGuardian && observedSlh ? 'slh-dsa' : 'ecdsa')]);
           } else if (customValidators.has(to)) {
             const [type] = coder.decode(['uint256'], '0x' + data.slice(10));
             result = coder.encode(['bool'], [type === 1n || customValidators.get(to)!.compatible]);
@@ -241,7 +246,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             result = data.startsWith(paliCompositeValidatorInterface.getFunction('childValidators')!.selector)
               ? paliCompositeValidatorInterface.encodeFunctionResult('childValidators', [guardianConfig ? [ecdsa, passkey] : composite?.children ?? (composite?.ecdsaFirst ? [ecdsa, passkey] : [passkey, ecdsa])])
               : paliCompositeValidatorInterface.encodeFunctionResult('threshold', [guardianConfig?.compositeThreshold ?? composite?.threshold ?? 1]);
-          } else if ((composite || smartGuardianMetadata?.compositeThreshold !== undefined) && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'p256-webauthn').toLowerCase()) {
+          } else if ((observedPasskey || composite || smartGuardianMetadata?.compositeThreshold !== undefined) && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'p256-webauthn').toLowerCase()) {
             result = paliP256WebAuthnValidatorInterface.encodeFunctionResult('authData', [[`0x${'01'.repeat(32)}`, `0x${'02'.repeat(32)}`, `0x${'03'.repeat(32)}`, `0x${'04'.repeat(32)}`, 32]]);
           } else if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && data.startsWith(paliEcdsaValidatorInterface.getFunction('owners')!.selector)) {
             const ownerAddress = runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === 'hd:60:0')!.address;
@@ -390,6 +395,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     customValidator(address: string, installed = false, compatible = true) { customValidators.set(address.toLowerCase(), { installed, compatible }); },
     observedCompositeChildren(children: string[], threshold = 1) { composite = { threshold, ecdsaFirst: true, children }; },
     observedComposite(threshold = 1, ecdsaFirst = false) { composite = { threshold, ecdsaFirst }; },
+    observedPasskey() { observedPasskey = true; composite = undefined; observedSlh = undefined; },
     observedSlh(key: Pick<NativeSlhPublicState, 'pkRoot' | 'pkSeed'>) { observedSlh = { pkRoot: key.pkRoot, pkSeed: key.pkSeed }; },
     clearObservedSlh() { observedSlh = undefined; composite = undefined; },
     replaceSoftwareOwner(type: 'HDAccount' | 'Imported', id: number) { assert(replaceSoftwareOwner); replaceSoftwareOwner(type, id); },
@@ -2203,6 +2209,112 @@ for (const existing of [false, true]) test(`guardian policy ${existing ? 'update
     await f.reopen(); await f.owner.unlock(PASSWORD);
     assert.deepEqual(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.installedModules.find((module: any) => module.id === 'guardian-recovery'), policy);
   } finally { operation?.dispose(); await f.close(); }
+});
+
+async function guardianPolicySigningFixture(kind: 'p256' | 'composite', available = true) {
+  let f!: Awaited<ReturnType<typeof fixture>>, prompt = false;
+  let hold: (() => Promise<void>) | undefined;
+  const hashes: string[] = [];
+  const scope = createNativePrivateAuthenticationScope(), lifetime = new AbortController();
+  const binding = bindNativePrivateAuthentication(scope, { assertCurrent() {}, isPromptActive: () => prompt });
+  const passkeys: NonNullable<KeyringRuntimeDependencies['passkeys']> = {
+    async create() { throw Error('Guardian policy must use the existing credential'); },
+    async recover() { throw Error('Guardian policy must not discover another credential'); },
+    async sign(request) {
+      prompt = true;
+      try {
+        request.assertCurrent(); f.assertNoSigningKeys(); hashes.push(request.actionHash);
+        await hold?.(); request.assertCurrent();
+        return { signature: mixedPasskeyProof };
+      } finally { prompt = false; }
+    },
+  };
+  f = await fixture({}, true, null, undefined, undefined, available ? passkeys : null);
+  try {
+    await f.change({ kind: 'create-smart', label: 'Guardian signing policy' });
+    f.fundedSmart(); f.guardianStatus('no-policy');
+    if (kind === 'p256') f.observedPasskey(); else f.observedComposite(2);
+    await f.runtime.refreshSmartAccountMetadata(lifetime.signal, () => undefined);
+    return { f, hashes, binding, lifetime, hold(next: () => Promise<void>) { hold = next; },
+      async close() { lifetime.abort(); scope.retire(); await f.close(); } };
+  } catch (error) { lifetime.abort(); scope.retire(); await f.close(); throw error; }
+}
+
+for (const kind of ['p256', 'composite'] as const)
+  for (const action of ['install', 'update', 'remove'] as const)
+    test(`guardian policy ${action} uses the active ${kind} signer and separate payer consent`, async () => {
+      const { f, hashes, binding, lifetime, close } = await guardianPolicySigningFixture(kind);
+      let operation: NativeSmartAccountOperation | undefined;
+      try {
+        const guardian = '0x' + '77'.repeat(20), delaySeconds = 259200;
+        f.guardianStatus(action === 'install' ? 'no-policy' : 'installed');
+        f.onBroadcast(() => {
+          if (Transaction.from(f.submitted.at(-1)!).to !== getPaliEntryPointAddress(1)) return;
+          if (action === 'remove') f.guardianStatus('no-policy');
+          else f.guardianStatus('installed').configure(guardian, delaySeconds);
+        });
+        assert.equal(f.runtime.canManageGuardianPolicy(), true);
+        operation = await f.runtime.openGuardianPolicy(action === 'remove'
+          ? { action: 'remove', recoveryLossAcknowledged: true, acknowledgedPendingOperationId: null }
+          : { action: 'set', guardian, delaySeconds, acknowledgedPendingOperationId: null }, lifetime.signal, () => undefined, binding);
+        await operation.prepare();
+        assert.equal(operation.getSnapshot().phase, 'authorize', operation.getSnapshot().error ?? '');
+        assert.equal(hashes.length, 0); assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+        const signing = operation.authorize(operation.getSnapshot().revision);
+        for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+          await new Promise(resolve => setTimeout(resolve, 5));
+        const payer = operation.getSnapshot().payerReview; assert(payer, JSON.stringify(operation.getSnapshot()));
+        assert.equal(hashes.length, 1); assert.equal(f.signatures.length, kind === 'composite' ? 1 : 0);
+        assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+        operation.confirmPayer(payer.id); await signing;
+        assert.equal(operation.getSnapshot().phase, 'complete', operation.getSnapshot().error ?? '');
+        assert.equal(operation.getSnapshot().metadataRefresh, 'complete');
+        assert.equal(f.submitted.length, 1); assert.equal(f.payerSignatures.length, 1);
+        const transaction = Transaction.from(f.submitted[0]!);
+        const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', transaction.data);
+        const expectedSignature = kind === 'p256' ? mixedPasskeyProof : coder.encode(['bytes[]'], [[mixedPasskeyProof, f.signatures[0]!.signature]]);
+        assert.equal(operations[0].signature, expectedSignature);
+        const op = operations[0];
+        const digest = getSmartAccountUserOpHash({ sender: op.sender, nonce: op.nonce.toString(), initCode: op.initCode, callData: op.callData,
+          accountGasLimits: op.accountGasLimits, preVerificationGas: op.preVerificationGas.toString(), gasFees: op.gasFees, paymasterAndData: op.paymasterAndData, signature: op.signature }, 1);
+        assert.deepEqual(hashes, [digest]);
+        if (kind === 'composite') assert.equal(f.signatures[0]!.digest, digest);
+        const saved = savedSmartAccount((await f.inspectRecovery()).record).smartAccount;
+        assert.equal(saved.auth.module, kind === 'p256' ? 'p256-webauthn' : 'composite');
+        const policy = saved.installedModules.find((module: SmartAccountInstalledModule) => module.id === 'guardian-recovery');
+        if (action === 'remove') assert.equal(policy, undefined);
+        else { assert.deepEqual(policy.config.guardians, [guardian]); assert.equal(policy.config.delaySeconds, delaySeconds); }
+      } finally { await operation?.dispose(); await close(); }
+    });
+
+for (const kind of ['p256', 'composite'] as const)
+  test(`guardian policy rejects unavailable ${kind} signing before any prompt`, async () => {
+    const { f, hashes, binding, lifetime, close } = await guardianPolicySigningFixture(kind, kind === 'composite');
+    try {
+      if (kind === 'composite') {
+        f.externalOwner(); await f.runtime.refreshSmartAccountMetadata(lifetime.signal, () => undefined);
+      }
+      assert.equal(f.runtime.canManageGuardianPolicy(), false);
+      await assert.rejects(f.runtime.openGuardianPolicy({ action: 'set', guardian: '0x' + '77'.repeat(20), delaySeconds: 259200,
+        acknowledgedPendingOperationId: null }, lifetime.signal, () => undefined, binding));
+      assert.equal(hashes.length, 0); assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+    } finally { await close(); }
+  });
+
+test('guardian policy cancellation during the P256 prompt cannot request payer consent or submit', async () => {
+  const { f, hashes, binding, lifetime, hold, close } = await guardianPolicySigningFixture('p256');
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    hold(async () => { entered.resolve(); await release.promise; });
+    operation = await f.runtime.openGuardianPolicy({ action: 'set', guardian: '0x' + '77'.repeat(20), delaySeconds: 259200,
+      acknowledgedPendingOperationId: null }, lifetime.signal, () => undefined, binding);
+    await operation.prepare(); const signing = operation.authorize(operation.getSnapshot().revision);
+    await entered.promise; operation.cancel(); release.resolve(); await signing;
+    assert.equal(hashes.length, 1); assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(operation.getSnapshot().payerReview, null);
+    assert.equal(f.signatures.length, 0); assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { release.resolve(); await operation?.dispose(); await close(); }
 });
 
 for (const mode of ['unavailable', 'stale'] as const) test(`guardian policy preserves the confirmed transaction when metadata is ${mode} and only re-reads on retry`, async () => {
@@ -4806,4 +4918,276 @@ test('owned smart authentication reaches both guardian recovery proofs', async (
     assert.equal(auth.requests(), 2); assert.equal(f.signatures.length, 2); assert.equal(f.submitted.length, 0);
     assert.equal(auth.scope.isAuthenticating(), false);
   } finally { recovery?.dispose(); await f.close(); }
+});
+
+function infrastructureTrezorDevice() {
+  const wallet = new Wallet(`0x${'31'.repeat(32)}`), methods: string[] = [], unsignedTransactions: string[] = [], callbackErrors: unknown[] = [];
+  let sequence = 0, clients = 0, disposals = 0;
+  let beforeCallback: ((method: string) => Promise<void>) | undefined;
+  let beforeDispose: (() => Promise<void>) | undefined;
+  let signingFailure: string | undefined;
+  let beforeSign: ((unsigned: string) => Promise<void>) | undefined;
+  const sessions = createTrezorSessions({
+    randomBytes: length => new Uint8Array(length).fill(++sequence),
+    async loadClient() {
+      const id = ++clients;
+      let settings!: Parameters<NativeTrezorClient['init']>[0], settle!: (value: unknown) => void;
+      const vendor = new Promise<unknown>(resolve => {settle = resolve;});
+      return {
+        async init(value) {settings = value;},
+        call({method, ...params}) {
+          const callback = new URL(settings.deeplinkCallbackUrl); callback.searchParams.set('id', `infrastructure-${id}`);
+          const url = new URL(`${settings.connectSrc}deeplink/1/`);
+          url.searchParams.set('method', String(method)); url.searchParams.set('params', JSON.stringify(params));
+          url.searchParams.set('callback', callback.toString()); url.searchParams.set('appName', settings.manifest.appName);
+          settings.deeplinkOpen(url.toString()); return vendor;
+        },
+        cancel() {settle(undefined);},
+        async dispose() {disposals++; await beforeDispose?.();},
+      } satisfies NativeTrezorClient;
+    },
+    async openURL(text) {
+      const url = new URL(text), method = url.searchParams.get('method')!, params = JSON.parse(url.searchParams.get('params')!);
+      methods.push(method);
+      let payload: Record<string, unknown>;
+      let success = true;
+      if (method === 'ethereumSignTransaction' && signingFailure) {
+        success = false; payload = {error: signingFailure, code: signingFailure};
+      } else if (method === 'getFeatures') payload = {model: 'T', initialized: true, unlocked: true};
+      else {
+        assert.equal(Number(String(params.path).split('/').at(-1)), 0);
+        if (method === 'ethereumGetPublicKey') payload = {publicKey: wallet.signingKey.publicKey.slice(2)};
+        else if (method === 'ethereumGetAddress') payload = {address: wallet.address};
+        else if (method === 'ethereumSignTransaction') {
+          const tx = params.transaction;
+          const transaction = Transaction.from({chainId: tx.chainId, nonce: Number(BigInt(tx.nonce)), to: tx.to,
+            value: BigInt(tx.value), gasLimit: BigInt(tx.gasLimit), data: tx.data,
+            ...(tx.gasPrice !== undefined ? {type: 0, gasPrice: BigInt(tx.gasPrice)}
+              : {type: 2, accessList: tx.accessList, maxFeePerGas: BigInt(tx.maxFeePerGas), maxPriorityFeePerGas: BigInt(tx.maxPriorityFeePerGas)})});
+          await beforeSign?.(transaction.unsignedSerialized);
+          unsignedTransactions.push(transaction.unsignedSerialized);
+          const signature = wallet.signingKey.sign(transaction.unsignedHash);
+          payload = {r: signature.r.slice(2), s: signature.s.slice(2), v: signature.v.toString(16)};
+        } else throw Error(`Unexpected infrastructure Trezor method: ${method}`);
+      }
+      const callback = new URL(url.searchParams.get('callback')!);
+      callback.searchParams.set('response', JSON.stringify(success ? {success, payload} : {success, error:{code:signingFailure!,message:'Trezor request refused'}}));
+      setImmediate(() => {
+        void Promise.resolve().then(() => beforeCallback?.(method)).then(() => {
+          assert.equal(sessions.receiveCallback(callback.toString()), true);
+        }).catch(error => callbackErrors.push(error));
+      });
+    },
+  });
+  return {wallet, sessions, methods, unsignedTransactions, callbackErrors,
+    rejectSigning(error: string) {signingFailure = error;},
+    counts: () => ({clients, disposals}),
+    onBeforeCallback(hook: typeof beforeCallback) {beforeCallback = hook;},
+    onBeforeDispose(hook: typeof beforeDispose) {beforeDispose = hook;},
+    onBeforeSign(hook: typeof beforeSign) {beforeSign = hook;},
+  };
+}
+
+async function readyTrezorInfrastructure() {
+  const device = infrastructureTrezorDevice(), f = await fixture({}, true, null, undefined, device.sessions);
+  try {
+    await f.runtime.trezor.startImport('Infrastructure Trezor');
+    await f.change({kind: 'import-trezor', label: 'Infrastructure Trezor'});
+    if (f.owner.getCatalogue()!.active.accountId !== 'trezor:60:0') await f.change({kind: 'select', id: 'trezor:60:0'});
+    device.onBeforeSign(async unsigned => {
+      f.assertNoSigningKeys();
+      const pending = ((await f.inspectRecovery()).record as {infrastructurePending: readonly NativeInfrastructurePending[]}).infrastructurePending[0];
+      assert(pending, 'the reservation must commit before any Suite transaction signing');
+      assert.equal(pending.payer.id, 'trezor:60:0'); assert.equal(pending.entry.nonce, Transaction.from(unsigned).nonce);
+      assert.equal(pending.entry.payerAddress, device.wallet.address); assert.equal(pending.entry.transactionHash, undefined);
+    });
+    return {f, device, async close() {await f.close(); await device.sessions.dispose();}};
+  } catch (error) {await f.close(); await device.sessions.dispose(); throw error;}
+}
+
+async function suspendTrezorInfrastructure(bundle: Awaited<ReturnType<typeof readyTrezorInfrastructure>>) {
+  const {f, device} = bundle, entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  try {
+    f.initialEoaNonce(7); f.infrastructureCode('factory', false); f.holdReceipts();
+    device.onBeforeCallback(async method => {if (method === 'ethereumSignTransaction') {entered.resolve(); await release.promise;}});
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined, null);
+    await controller.refresh(controller.getSnapshot().revision); await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!; assert(review);
+    const confirmation = controller.confirm(review.id);
+    await Promise.race([entered.promise, confirmation.then(() => {throw Error(`No Suite signing launch: ${JSON.stringify(controller?.getSnapshot())}`);})]);
+    const pending = ((await f.inspectRecovery()).record as {infrastructurePending: readonly NativeInfrastructurePending[]}).infrastructurePending[0]!;
+    const job = device.sessions.getSnapshot()!.job;
+    controller.background(); f.runtime.trezor.background(); f.owner.lock(); await confirmation;
+    release.resolve(); await new Promise<void>(resolve => setImmediate(resolve));
+    await f.owner.unlock(PASSWORD);
+    const resume = await f.runtime.trezor.resumeSend(); assert.equal(resume.kind, 'infrastructure');
+    return {controller, review, pending, resume, job};
+  } catch (error) {controller?.dispose(); throw error;}
+  finally {release.resolve();}
+}
+
+test('Trezor infrastructure private SDK deploys through its existing live EOA session', async () => {
+  const bundle = await readyTrezorInfrastructure(), {f, device} = bundle;
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  try {
+    f.initialEoaNonce(7); f.infrastructureCode('factory', false); f.holdReceipts();
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined, null);
+    await controller.refresh(controller.getSnapshot().revision); await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!; assert(review);
+    await controller.confirm(review.id);
+    assert.equal(controller.getSnapshot().phase, 'pending', JSON.stringify(controller.getSnapshot()));
+    assert.equal(device.unsignedTransactions.length, 1); assert.equal(f.submitted.length, 1); assert.equal(f.payerSignatures.length, 0);
+    assert.equal(Transaction.from(f.submitted[0]).unsignedSerialized, serializePreparedEvmTransaction(review.transaction));
+    assert.equal(Transaction.from(f.submitted[0]).from, device.wallet.address);
+    assert.equal(device.sessions.getSnapshot(), null); assert.deepEqual(device.callbackErrors, []);
+  } finally {controller?.dispose(); await bundle.close();}
+});
+
+for (const uncertain of [false, true]) test(`Trezor infrastructure private SDK resumes the same durable attempt after fresh consent (${uncertain})`, async () => {
+  const bundle = await readyTrezorInfrastructure(), {f, device} = bundle;
+  let suspended: Awaited<ReturnType<typeof suspendTrezorInfrastructure>> | undefined;
+  let resumed: Awaited<ReturnType<KeyringRuntime['openResumedSmartInfrastructure']>> | undefined;
+  try {
+    suspended = await suspendTrezorInfrastructure(bundle);
+    const clients = device.counts().clients;
+    resumed = await f.runtime.openResumedSmartInfrastructure(suspended.resume.id, new AbortController().signal, () => undefined, null);
+    const review = resumed.getSnapshot().feeReview!; assert(review, JSON.stringify(resumed.getSnapshot()));
+    assert.equal(review.kind, 'suite-resume'); assert.equal(resumed.getSnapshot().phase, 'review');
+    assert.equal(serializePreparedEvmTransaction(review.transaction), serializePreparedEvmTransaction(suspended.review.transaction));
+    assert(review.expiresAtMonotonicMilliseconds <= suspended.review.expiresAtMonotonicMilliseconds, 'fresh review must never renew the original expiry');
+    assert(review.expiresAtMonotonicMilliseconds > performance.now());
+    assert.equal(device.counts().clients, clients, 'opening the new review must not accept the retained terminal SDK job');
+    assert.equal(device.sessions.getSnapshot()!.phase, 'response-ready');
+    assert.equal(device.sessions.getSnapshot()!.job, suspended.job);
+    assert.equal(device.unsignedTransactions.length, 1); assert.equal(f.submitted.length, 0);
+    assert.deepEqual(((await f.inspectRecovery()).record as {infrastructurePending: readonly NativeInfrastructurePending[]}).infrastructurePending, [suspended.pending]);
+    if (uncertain) f.infrastructureResponseLost();
+    await resumed.confirm(review.id);
+    assert.equal(resumed.getSnapshot().phase, uncertain ? 'unknown' : 'pending', JSON.stringify(resumed.getSnapshot()));
+    assert.equal(device.unsignedTransactions.length, 1, 'the resumed SDK must replay the captured exact signing response');
+    assert.equal(f.submitted.length, 1); assert.equal(f.payerSignatures.length, 0);
+    const transaction = Transaction.from(f.submitted[0]);
+    assert.equal(transaction.unsignedSerialized, device.unsignedTransactions[0]); assert.equal(transaction.nonce, 7); assert.equal(transaction.from, device.wallet.address);
+    assert.equal(f.infrastructureBroadcasts[0]!.pending.entry.attemptId, suspended.pending.entry.attemptId);
+    assert.equal(device.sessions.getSnapshot(), null); assert.deepEqual(device.callbackErrors, []);
+    suspended.controller.dispose(); suspended = undefined; resumed.dispose(); resumed = undefined;
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await assert.rejects(f.runtime.openResumedSmartInfrastructure('missing-continuation', new AbortController().signal, () => undefined, null));
+    resumed = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined, null);
+    await resumed.refresh(resumed.getSnapshot().revision); await resumed.reviewNext(resumed.getSnapshot().revision);
+    assert.equal(resumed.getSnapshot().phase, 'pending'); assert.equal(f.submitted.length, 1);
+    f.showReceipts(); await resumed.refresh(resumed.getSnapshot().revision);
+    assert.deepEqual(((await f.inspectRecovery()).record as {infrastructurePending: unknown[]}).infrastructurePending, []);
+  } finally {suspended?.controller.dispose(); resumed?.dispose(); await bundle.close();}
+});
+
+for (const changed of ['automatic-nonce', 'insufficient-funds', 'network', 'cold-reopen'] as const) test(`Trezor infrastructure private SDK ${changed} cannot consume its old signing job or clear its entered reservation`, async () => {
+  const bundle = await readyTrezorInfrastructure(), {f, device} = bundle;
+  let suspended: Awaited<ReturnType<typeof suspendTrezorInfrastructure>> | undefined;
+  let resumed: Awaited<ReturnType<KeyringRuntime['openResumedSmartInfrastructure']>> | undefined;
+  try {
+    suspended = await suspendTrezorInfrastructure(bundle);
+    const clients = device.counts().clients;
+    if (changed === 'automatic-nonce') f.initialEoaNonce(8);
+    if (changed === 'insufficient-funds') f.gasSponsored();
+    if (changed === 'network') await f.selectNetwork('base');
+    if (changed === 'cold-reopen') {await f.reopen(); await f.owner.unlock(PASSWORD);}
+    if (changed === 'network' || changed === 'cold-reopen')
+      await assert.rejects(f.runtime.openResumedSmartInfrastructure(suspended.resume.id, new AbortController().signal, () => undefined, null));
+    else {
+      resumed = await f.runtime.openResumedSmartInfrastructure(suspended.resume.id, new AbortController().signal, () => undefined, null);
+      assert.notEqual(resumed.getSnapshot().phase, 'review');
+    }
+    assert.equal(device.counts().clients, clients); assert.equal(device.unsignedTransactions.length, 1); assert.equal(f.submitted.length, 0);
+    const stored = (await f.inspectRecovery()).record as {infrastructurePending: readonly NativeInfrastructurePending[]};
+    assert.deepEqual(stored.infrastructurePending, [suspended.pending]);
+  } finally {suspended?.controller.dispose(); resumed?.dispose(); await bundle.close();}
+});
+
+for (const poisoned of [false, true]) test(`Trezor infrastructure private SDK holds fresh unlock behind the original client disposal (${poisoned})`, async () => {
+  const bundle = await readyTrezorInfrastructure(), {f, device} = bundle;
+  const entered = Promise.withResolvers<void>(), callback = Promise.withResolvers<void>();
+  const draining = Promise.withResolvers<void>(), disposal = Promise.withResolvers<void>();
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  let resumed: Awaited<ReturnType<KeyringRuntime['openResumedSmartInfrastructure']>> | undefined;
+  let confirmation: Promise<void> | undefined, unlock: Promise<void> | undefined;
+  try {
+    f.initialEoaNonce(7); f.infrastructureCode('factory', false); f.holdReceipts();
+    device.onBeforeCallback(async method => {if (method === 'ethereumSignTransaction') {entered.resolve(); await callback.promise;}});
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined, null);
+    await controller.refresh(controller.getSnapshot().revision); await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!; assert(review);
+    confirmation = controller.confirm(review.id);
+    await Promise.race([entered.promise, confirmation.then(() => {throw Error('No Suite signing launch');})]);
+    const job = device.sessions.getSnapshot()!.job;
+    const saved = ((await f.inspectRecovery()).record as {infrastructurePending: readonly NativeInfrastructurePending[]}).infrastructurePending;
+    device.onBeforeDispose(async () => {draining.resolve(); await disposal.promise; if (poisoned) throw Error('SDK disposal unproven');});
+    controller.background(); f.runtime.trezor.background(); f.owner.lock();
+    await draining.promise;
+    const clients = device.counts().clients, quotes = f.calls.filter(method => method === 'eth_estimateGas').length;
+    let unlocked = false;
+    unlock = f.owner.unlock(PASSWORD).then(() => {unlocked = true;});
+    void unlock.catch(() => undefined);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(unlocked, false); assert.notEqual(f.owner.getSnapshot().phase, 'ready');
+    assert.equal(f.runtime.catalogue.getSnapshot(), null); assert.equal(device.sessions.getSnapshot()!.job, job);
+    assert.equal(device.counts().clients, clients); assert.equal(f.calls.filter(method => method === 'eth_estimateGas').length, quotes);
+    assert.equal(f.submitted.length, 0);
+    disposal.resolve(); callback.resolve();
+    await confirmation;
+    if (poisoned) {
+      await assert.rejects(unlock);
+      assert.notEqual(f.owner.getSnapshot().phase, 'ready');
+      await f.reopenQuarantined(); await f.owner.unlock(PASSWORD);
+      await assert.rejects(f.runtime.openResumedSmartInfrastructure('retired-infrastructure', new AbortController().signal, () => undefined, null));
+    } else {
+      await unlock;
+      const resume = await f.runtime.trezor.resumeSend(); assert.equal(resume.kind, 'infrastructure');
+      resumed = await f.runtime.openResumedSmartInfrastructure(resume.id, new AbortController().signal, () => undefined, null);
+      assert.equal(resumed.getSnapshot().phase, 'review', JSON.stringify(resumed.getSnapshot()));
+      assert(resumed.getSnapshot().feeReview!.expiresAtMonotonicMilliseconds <= review.expiresAtMonotonicMilliseconds, 'drain and unlock must never renew the original expiry');
+      assert(resumed.getSnapshot().feeReview!.expiresAtMonotonicMilliseconds > performance.now());
+      assert.equal(device.sessions.getSnapshot()!.job, job); assert.equal(device.counts().clients, clients);
+    }
+    assert.deepEqual(((await f.inspectRecovery()).record as {infrastructurePending: readonly NativeInfrastructurePending[]}).infrastructurePending, saved);
+    assert.equal(device.unsignedTransactions.length, 1); assert.equal(f.submitted.length, 0);
+  } finally {
+    disposal.resolve(); callback.resolve(); await confirmation?.catch(() => undefined); await unlock?.catch(() => undefined);
+    controller?.dispose(); resumed?.dispose();
+    if (poisoned) {
+      await f.close();
+      await assert.rejects(device.sessions.dispose(), {message: 'SDK disposal unproven'});
+    } else await bundle.close();
+  }
+});
+
+for (const refusal of ['Failure_ActionCancelled', 'Failure_ProcessError'] as const) test(`foreground Trezor infrastructure ${refusal} leaves the mounted controller usable`, async () => {
+  const bundle = await readyTrezorInfrastructure(), {f, device} = bundle;
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  try {
+    f.infrastructureCode('factory', false); f.holdReceipts();
+    device.rejectSigning(refusal);
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined, null);
+    await controller.refresh(controller.getSnapshot().revision); await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!; assert(review);
+    await controller.confirm(review.id);
+    assert.equal(controller.getSnapshot().phase, 'failed', JSON.stringify(controller.getSnapshot()));
+    assert.equal(controller.getSnapshot().feeReview, null);
+    assert(controller.getSnapshot().error, 'the mounted screen receives the failure');
+    assert.equal(device.unsignedTransactions.length, 0); assert.equal(f.submitted.length, 0);
+    assert.equal(f.payerSignatures.length, 0); f.assertNoSigningKeys();
+    assert.equal(device.sessions.getSnapshot(), null, 'the failed physical request is retired');
+    const pending = ((await f.inspectRecovery()).record as {infrastructurePending: readonly NativeInfrastructurePending[]}).infrastructurePending;
+    assert.equal(pending.length, 0, 'SDK-proven pre-broadcast failure releases only the exact unsent reservation');
+    const before = controller.getSnapshot().revision;
+    await controller.refresh(before);
+    assert.equal(controller.getSnapshot().phase, 'ready');
+    assert(controller.getSnapshot().revision > before, 'Refresh remains usable without reopening the screen');
+    await controller.reviewNext(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'review');
+    assert.notEqual(controller.getSnapshot().feeReview!.id, review.id);
+    assert.equal(device.methods.filter(method => method === 'ethereumSignTransaction').length, 1, 'new review never signs automatically');
+    assert.equal(f.submitted.length, 0); assert.deepEqual(device.callbackErrors, []);
+  } finally {controller?.dispose(); await bundle.close();}
 });

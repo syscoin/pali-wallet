@@ -7,7 +7,7 @@ import { bytesToHex } from '../../../../source/utils/passkey/base64url.ts';
 import type { IPasskeyCredentialProfile , ISmartAccountMetadata, SmartAccountValidatorModule, SmartAccountCustomModuleRecord } from '../../../../source/types/network.ts';
 import type { NativePasskeyCapability } from '../smartAccount/passkeys.ts';
 import { assertNativePrivateAuthentication, bindNativePrivateAuthenticationChild, nativePrivateAuthenticationScope, withNativePrivateAuthentication, type NativePrivateAuthentication } from './privateAuthentication.ts';
-import { createNativeInfrastructure } from './nativeInfrastructure.ts';
+import { createNativeInfrastructure, getNativeInfrastructureContinuation, type NativeInfrastructureHandoffCapture } from './nativeInfrastructure.ts';
 import { isOperationAuthenticationCancellation } from '../core/operationAuthentication.ts';
 import type { NativeInfrastructureController } from '../smartAccount/infrastructure.ts';
 import { getSmartAccountModulesProjection } from '../../../../source/shared/smartAccountModules.ts';
@@ -20,7 +20,7 @@ import { createNativePrivacyControls, type NativePrivacyControls, type NativePri
 import { createNativePrivacyLifecycle } from '../privacy/privacyLifecycle.ts';
 import { createNativeNoteMaintenanceProofs } from './noteMaintenance.ts';
 import type { NativeNoteMaintenanceRuntime , NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from './noteBackupRuntime.ts';
-import { NativeSigningHandoffs, captureNativeSigningContinuation, completeNativeSigningOwnerStep, retireNativeSigningHandoff, sameSigningResumeOwner, type NativeSigningHandoff, type LocalSigningResumeScope, type LocalSigningHandoffDescriptor, requireNativeSigningHandoff } from '../connections/signingHandoff.ts';
+import { NativeSigningHandoffs, captureNativeSigningContinuation, completeNativeSigningOwnerStep, retireNativeSigningHandoff, sameSigningResumeOwner, type NativeSigningHandoff, type LocalSigningResumeScope, type LocalSigningHandoffDescriptor, type LocalInfrastructureHandoffDescriptor, requireNativeSigningHandoff } from '../connections/signingHandoff.ts';
 import { signNativeSmartTrezorOwner } from '../hardware/smartOwnerSigning.ts';
 import { NativeOwnerProofReceipts, type NativeOwnerProofIdentity } from '../smartAccount/ownerProofReceipts.ts';
 import { snapshotNativeSmartLocalAction } from '../smartAccount/localAction.ts';
@@ -90,10 +90,7 @@ import { parseDecimalAmount } from '../core/amounts.ts';
 import { createNativeSmartOperation } from '../smartAccount/runtime.ts';
 import { createSmartAccountCallsExecutions, normalizeDappCallsRequest } from '../../../../source/shared/dappCalls.ts';
 import { captureSmartAccountCallsIdentity } from '../../../../source/shared/dappCallsStatus.ts';
-import {
-  getSmartAccountLocalEcdsaOwners,
-  type SmartAccountLocalOwner,
-} from '../../../../source/utils/smartAccount/signOperation.ts';
+import type { SmartAccountLocalOwner } from '../../../../source/utils/smartAccount/signOperation.ts';
 import type { NativeSmartOperationPorts } from '../smartAccount/runtime.ts';
 import { signNativeSmartAccountActionHash, canSignNativeSmartAccountActionHash, getNativeSmartAccountSigningPlan, type NativeSmartAccountSigningOwner } from '../smartAccount/authenticatorSigning.ts';
 import type { SmartAccountAuthenticatorPorts } from '../../../../source/utils/smartAccount/authenticatorDispatch.ts';
@@ -113,6 +110,7 @@ import { loadNativeKeyringSdk, type NativeKeyringSdk } from './keyringSdk.ts';
 import { createNativeLedgerHost } from '../hardware/ledgerHost.ts';
 import type { NativeLedgerTransport, NativeLedgerOwner } from '../hardware/ownedLedgerTransport.ts';
 import type { NativeLedgerRuntime } from './ledgerAccounts.ts';
+import { snapshotNativeInfrastructureLocalAction } from './trezorAccounts.ts';
 import type { NativeTrezorView, NativeTrezorResumeIntent, NativeTrezorSnapshot, NativeSmartLocalAction } from './trezorAccounts.ts';
 import type { NativeTrezorSessions, NativeTrezorSession } from '../hardware/trezorSessions.ts';
 import type { NativeTrezorHandoffOwner } from '../hardware/trezorHandoff.ts';
@@ -369,6 +367,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   refreshSmartAccountMetadata(signal: AbortSignal, assertCurrent: () => void): Promise<GuardianRecoveryObservation | null>;
   getGuardianRecoveryIntent(): NativeGuardianRecoveryIntent | null;
   openSmartInfrastructure(signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeInfrastructureController>;
+  openResumedSmartInfrastructure(id: string, signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeInfrastructureController>;
   openGuardianRecovery(draft: NativeGuardianRecoveryDraft, signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeGuardianRecoveryController>;
   openGuardianPolicy(draft: NativeGuardianPolicyDraft, signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
   canManageGuardianPolicy(): boolean;
@@ -554,7 +553,7 @@ export function createKeyringRuntimeFactory(
           label: string;
           networkLabel: string;
           accountLabel: string;
-          operation: 'import' | 'send' | 'utxo-send' | 'external-psbt' | 'external-signing' | 'smart-operation';
+          operation: 'import' | 'send' | 'utxo-send' | 'external-psbt' | 'external-signing' | 'smart-operation' | 'infrastructure';
           resume?: NativeTrezorResumeIntent;
           target: SmartTrezorTarget | null;
           accepted: boolean;
@@ -600,10 +599,17 @@ export function createKeyringRuntimeFactory(
         };
         type LocalSmartContext = { handoff: NativeSigningHandoff; operation: NativeSmartAccountOperation; disposeOriginal(): Promise<void> };
         let localSmartContext: LocalSmartContext | undefined;
+        type LocalInfrastructureContext = { handoff: NativeSigningHandoff; controller: NativeInfrastructureController; drain(): Promise<void> };
+        let localInfrastructureContext: LocalInfrastructureContext | undefined;
         const localSmartHandoffs = new NativeSigningHandoffs({
           async cancel(job) { if (pendingTrezor?.job === job) await cancelTrezor(); }, changed: publishTrezor,
         });
         const backgroundLocalSmart = () => {
+          const infrastructure = localInfrastructureContext;
+          if (infrastructure && !localSmartHandoffs.background(infrastructure.handoff)) {
+            if (localInfrastructureContext === infrastructure) localInfrastructureContext = undefined;
+            infrastructure.controller.dispose();
+          }
           const owned=localSmartContext;
           if (owned && !localSmartHandoffs.background(owned.handoff)) {
             if(localSmartContext===owned)localSmartContext=undefined;
@@ -617,8 +623,9 @@ export function createKeyringRuntimeFactory(
         };
         const cancelTrezor = (invalidate = true): Promise<void> => {
           if (invalidate) trezorEpoch++;
-          const pending = pendingTrezor, local=localSmartContext;
-          localSmartContext=undefined; localSmartHandoffs.cancelLocal();
+          const pending = pendingTrezor, local=localSmartContext, infrastructure=localInfrastructureContext;
+          localSmartContext=undefined; localInfrastructureContext=undefined; localSmartHandoffs.cancelLocal();
+          if(infrastructure){retireNativeSigningHandoff(infrastructure.handoff);infrastructure.controller.dispose();}
           if(local){retireNativeSigningHandoff(local.handoff);local.operation.cancel();void local.disposeOriginal().catch(()=>undefined);}
           pendingTrezor = undefined; trezorError = null;
           preparedTrezor = undefined;
@@ -1221,7 +1228,7 @@ export function createKeyringRuntimeFactory(
         const revalidateLocalSmart = () => {
           if(!localSmartHandoffs.active||!keyring.hasPublicSession()||!verifiedIdentity||!catalogueSnapshot)return;
           localSmartHandoffs.revalidateLocal(descriptor=>{
-            try{return sameSigningResumeOwner(descriptor.scope,readLocalSmartScope(descriptor.scope.wallet));}catch{return false;}
+            try{return sameSigningResumeOwner(descriptor.scope,descriptor.kind === 'local-infrastructure' ? readLocalInfrastructureScope(descriptor.scope.wallet) : readLocalSmartScope(descriptor.scope.wallet));}catch{return false;}
           });
         };
         const publishAccounts = (next: NativeWalletCatalogueSnapshot) => {
@@ -1319,6 +1326,9 @@ export function createKeyringRuntimeFactory(
           });
         }
         const enteredPrivateSubmissions = new WeakSet<object>();
+        // One-use private refusal receipts, issued only after the owned hardware
+        // request retires. Rethrow outside run() without retiring the result screen.
+        const infrastructureSigningFailures = new WeakSet<Error>();
         function prepareOwnedEvmTransaction(input: unknown, selected: NativeCatalogueAccount,
           selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void, metadata: Readonly<Record<string, unknown>> | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy,
           hardwareSigner: (Pick<NativeHardwareDappSigning, 'signTransaction'> & {keyring(): IndexedKeyring}) | null,
@@ -1360,6 +1370,10 @@ export function createKeyringRuntimeFactory(
                     const signed = await hardwareSigner.signTransaction(serializePreparedEvmTransaction(transaction), {signal, assertCurrent: guard});
                     return {kind: 'signed' as const, signed};
                   } catch (error) {
+                    if (selected.type === 'Trezor' && error instanceof Error && infrastructureSigningFailures.delete(error)) {
+                      guard();
+                      return {kind: 'infrastructure-signing-failure' as const, error};
+                    }
                     if (selected.type !== 'Ledger' || sdk.evmSubmissionFailure(error)?.transactionNotBroadcast !== true) throw error;
                     guard();
                     if (!transport || !proof || ledgerTransport !== transport || (ledgerVerified !== proof && ledgerVerified !== undefined))
@@ -1389,7 +1403,7 @@ export function createKeyringRuntimeFactory(
               // The enclosing private confirmation owns its drain. Revoke keys
               // on error here, then let that confirmation finish without self-joining.
               }, authentication ? 'revoke' : 'join');
-              if (result.kind === 'ledger-signing-failure') {
+              if (result.kind === 'ledger-signing-failure' || result.kind === 'infrastructure-signing-failure') {
                 check(); checkGuard(assertSigningCurrent);
                 throw result.error;
               }
@@ -1761,7 +1775,7 @@ export function createKeyringRuntimeFactory(
           return pending;
         };
         const admitTrezorAttempt = async (captured: number, check: () => void,
-          operation: 'import' | 'send' | 'utxo-send' | 'external-psbt' | 'external-signing' | 'smart-operation', label: string,
+          operation: 'import' | 'send' | 'utxo-send' | 'external-psbt' | 'external-signing' | 'smart-operation' | 'infrastructure', label: string,
           resume: NativeTrezorResumeIntent | undefined, target: SmartTrezorTarget | null,
           beforeSuiteOpen: ((expiresAt: number, job: object) => (opened: boolean) => void) | undefined) => {
           const sessions = dependencies.trezorSessions;
@@ -1794,7 +1808,7 @@ export function createKeyringRuntimeFactory(
           return session;
         };
         const openTrezorAttempt = async (captured: number, check: () => void,
-          operation: 'import' | 'send' | 'utxo-send' | 'external-psbt' | 'external-signing' | 'smart-operation', label: string, resume: NativeTrezorResumeIntent | undefined,
+          operation: 'import' | 'send' | 'utxo-send' | 'external-psbt' | 'external-signing' | 'smart-operation' | 'infrastructure', label: string, resume: NativeTrezorResumeIntent | undefined,
           transferred: (source: IndexedKeyring, target: IndexedKeyring, session: NativeTrezorSession) => void,
           beforeSuiteOpen?: (expiresAt: number, job: object) => (opened: boolean) => void) => {
           const session = await admitTrezorAttempt(captured, check, operation, label, resume, null, beforeSuiteOpen); check();
@@ -4343,19 +4357,9 @@ export function createKeyringRuntimeFactory(
           } catch { return false; }
         };
         const canManageGuardianPolicy = () => {
-          if (!catalogueSnapshot || !keyring.hasPublicSession()) return false;
-          const selected = selectedAccount();
-          const metadata = selected.type === 'SmartAccount' ? state.accounts.SmartAccount[selected.index]?.smartAccount : undefined;
-          if (!metadata) return false;
-          try {
-            const owners=captureSmartSigningOwners().localOwners;
-            if(!getNativeSmartAccountSigningPlan(metadata,owners,{p256WebAuthn: passkeys !== null, slhDsa:slhCapability!==null}))return false;
-            getSmartAccountLocalEcdsaOwners(metadata,address=>{
-              const owner=owners.find(candidate=>candidate.address.toLowerCase()===address.toLowerCase());
-              return owner?{id:owner.id,type:sdk.KeyringAccountType[owner.type]}:null;
-            });
-            return true;
-          } catch { return false; }
+          // Policy changes use openSmartAccountOperation's current-validator
+          // signer and separate payer consent, including P256 and composites.
+          return canSignSmartAccount();
         };
         const getGuardianRecoveryIntent = () => {
           if (!catalogueSnapshot || !keyring.hasPublicSession()) return null;
@@ -4366,12 +4370,26 @@ export function createKeyringRuntimeFactory(
             ) ?? null
           );
         };
-        const openSmartInfrastructure = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthentication | null) => {
+        const readLocalInfrastructureScope = (wallet: string): LocalSigningResumeScope => {
+          const snapshot = catalogueSnapshot, selected = snapshot && selectedAccount();
+          if (!snapshot || !selected || selected.type !== 'Trezor' || selected.slip44 !== 60 ||
+              !keyring.hasPublicSession() || verifiedIdentity?.walletBindingId !== wallet) throw new KeyringRuntimeError('CANCELLED');
+          const network = getNativeNetwork(snapshot.active.networkId, snapshot.networks), account = state.accounts.Trezor[selected.index];
+          if (!account || !account.isTrezorWallet || account.isLedgerWallet || account.isImported || account.isSmartAccount || account.xprv !== '')
+            throw new KeyringRuntimeError('NOT_READY');
+          return Object.freeze({wallet, unlockGeneration: trezorSessionGeneration, accountId: selected.id, address: account.address,
+            type: selected.type, xpub: account.xpub, registration: JSON.stringify(network),
+            signing: JSON.stringify({id: account.id, address: account.address, xpub: account.xpub}), trezor: true});
+        };
+        type InfrastructureOrigin = Readonly<{kind: 'new'}> | Readonly<{kind: 'suite-resume'; descriptor: LocalInfrastructureHandoffDescriptor}>;
+        const openInfrastructure = async (signal: AbortSignal, assertOwner: () => void, origin: InfrastructureOrigin, authentication: NativePrivateAuthentication | null) => {
           if (authentication !== null) assertNativePrivateAuthentication(authentication);
           const captured = generation, ring = keyring;
           let snapshot = catalogueSnapshot;
           const selected = selectedAccount();
-          if (!snapshot || selected.slip44 !== 60 || !['HDAccount', 'Imported', 'Ledger'].includes(selected.type))
+          if (!snapshot || selected.slip44 !== 60 || !['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(selected.type) ||
+              origin.kind === 'suite-resume' && selected.type !== 'Trezor' ||
+              selected.type === 'Trezor' && (!dependencies.trezorSessions || !trezorSessionGeneration))
             throw new KeyringRuntimeError('NOT_READY');
           const network = getNativeNetwork(snapshot.active.networkId, snapshot.networks);
           let payer = state.accounts[selected.type][selected.index];
@@ -4388,8 +4406,8 @@ export function createKeyringRuntimeFactory(
                 payer.isLedgerWallet !== role.ledger || payer.isImported !== role.imported ||
                 payer.isTrezorWallet !== role.trezor || payer.isSmartAccount !== role.smart ||
                 Boolean(payer.isLedgerWallet) !== (selected.type === 'Ledger') || Boolean(payer.isImported) !== (selected.type === 'Imported') ||
-                payer.isTrezorWallet || payer.isSmartAccount ||
-                (selected.type === 'Ledger' ? encryptedKey !== '' : !encryptedKey) ||
+                Boolean(payer.isTrezorWallet) !== (selected.type === 'Trezor') || payer.isSmartAccount ||
+                (selected.type === 'Ledger' || selected.type === 'Trezor' ? encryptedKey !== '' : !encryptedKey) ||
                 state.activeNetwork.slip44 !== 60 || state.activeNetwork.chainId !== Number(network.chainId) || state.activeNetwork.url !== network.rpcUrl)
               throw new KeyringRuntimeError('CANCELLED');
           };
@@ -4403,11 +4421,58 @@ export function createKeyringRuntimeFactory(
             identity: cleanupIdentity, checkpoint: currentPublicSessionRecord, records: catalogue.privateRecords,
           });
           const cleanupRoot = { walletFingerprint, address: cleanupIdentity.root.address, publicKey: cleanupIdentity.root.publicKey };
-          let preparedAttemptId: string | undefined;
+          let preparedAttemptId: string | undefined = origin.kind === 'suite-resume' ? origin.descriptor.action.attemptId : undefined;
           let admission: { attemptId: string; pending: NativeInfrastructurePending | null } | null = null;
+          let admittedWork: Promise<unknown> | undefined;
+          let handoff: NativeSigningHandoff | null = null;
+          let controller!: NativeInfrastructureController;
+          const drain = async () => {controller?.dispose(); await admittedWork?.catch(() => undefined); await trezorCleanup;};
+          const localEntry = (action: LocalInfrastructureHandoffDescriptor['action'], scope: LocalSigningResumeScope, expiresAt: number) => ({
+            id: origin.kind === 'suite-resume' ? origin.descriptor.id : `local-infrastructure-${++trezorSequence}`,
+            action, scope, expiresAt, order: 0, assertCurrent: check,
+            eligible: () => {
+              if (controller?.getSnapshot().phase !== 'submitting' || !catalogueSnapshot || !keyring.hasPublicSession()) return false;
+              const pending = catalogue.privateRecords.infrastructurePending?.find(entry => entry.chainId === network.chainId);
+              return pending?.entry.attemptId === action.attemptId && pending.entry.contractId === action.contractId && !pending.entry.transactionHash;
+            },
+            drain, retire: () => {if (localInfrastructureContext?.handoff === handoff) localInfrastructureContext = undefined; controller?.dispose();},
+          });
+          try {
+          if (origin.kind === 'suite-resume') {
+            const scope = readLocalInfrastructureScope(walletFingerprint), saved = origin.descriptor;
+            if (localSmartHandoffs.infrastructureDescriptor(saved.id) !== saved || !sameSigningResumeOwner(saved.scope, scope) ||
+                scope.unlockGeneration <= saved.scope.unlockGeneration) throw new KeyringRuntimeError('CANCELLED');
+            handoff = localSmartHandoffs.resumeInfrastructure(localEntry(saved.action, scope, saved.expiresAt), snapshotNativeInfrastructureLocalAction, saved);
+            getNativeInfrastructureContinuation(handoff);
+          }
           const rpc = new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch });
-          return infrastructure.open({
+          controller = infrastructure.open({
             network, payer: identity, assertCurrent: check,
+            createSigningHandoff(context: NativeInfrastructureHandoffCapture) {
+              if (selected.type !== 'Trezor') return null;
+              check();
+              if (context.attemptId !== preparedAttemptId) throw new KeyringRuntimeError('CANCELLED');
+              const action = snapshotNativeInfrastructureLocalAction({kind: 'infrastructure', contractId: context.contractId,
+                attemptId: context.attemptId, unsignedTransaction: context.unsignedTransaction});
+              if (origin.kind === 'suite-resume') {
+                if (!handoff || JSON.stringify(action) !== JSON.stringify(origin.descriptor.action)) throw new KeyringRuntimeError('CANCELLED');
+                getNativeInfrastructureContinuation(handoff);
+              } else {
+                if (handoff) retireNativeSigningHandoff(handoff);
+                handoff = localSmartHandoffs.captureInfrastructure(localEntry(action, readLocalInfrastructureScope(walletFingerprint), context.expiresAt), snapshotNativeInfrastructureLocalAction);
+              }
+              localInfrastructureContext = {handoff, controller, drain};
+              return handoff;
+            },
+            background: () => {if (selected.type === 'Trezor') backgroundLocalSmart();},
+            dispose() {
+              if (localInfrastructureContext?.controller === controller) localInfrastructureContext = undefined;
+              if (!handoff) return;
+              const suspended = handoff.isSuspended();
+              retireNativeSigningHandoff(handoff);
+              if (!suspended && pendingTrezor?.operation === 'infrastructure' && pendingTrezor.resume?.id === handoff.id)
+                void cancelTrezor().catch(() => undefined);
+            },
             admit<T>(work: () => Promise<T>): Promise<T> {
               check();
               if (admission || !preparedAttemptId || storageRetired) return Promise.reject(new KeyringRuntimeError('BUSY'));
@@ -4417,10 +4482,12 @@ export function createKeyringRuntimeFactory(
                 if (admission === admitted) admission = null;
                 pendingSubmissions.delete(tracked);
               });
+              admittedWork = tracked;
               pendingSubmissions.add(tracked);
               return tracked;
             },
             async settleUnsent(attemptId) {
+              if (origin.kind === 'suite-resume') throw new KeyringRuntimeError('CANCELLED');
               const admitted = admission;
               if (!admitted || admitted.attemptId !== attemptId) throw new KeyringRuntimeError('CANCELLED');
               const prior = active;
@@ -4513,6 +4580,64 @@ export function createKeyringRuntimeFactory(
                   return withLedgerSigningSession(ring, authority.signal, guard, (session, assertConnected) => sdk.signLedgerEvmTransaction(session.signer,
                     { accountIndex: selected.index, expectedAddress: identity.address, unsignedTransaction }, {signal: authority.signal, assertCurrent: assertConnected}));
                 },
+              } : selected.type === 'Trezor' ? {
+                keyring: () => { check(); return ring; },
+                async signTransaction(unsignedTransaction, authority) {
+                  requireNativeSigningHandoff(handoff);
+                  const ownedHandoff = handoff, continuation = getNativeInfrastructureContinuation(ownedHandoff);
+                  const admittedEpoch = trezorEpoch;
+                  const guard = () => {
+                    check(); checkGuard(authority.assertCurrent); continuation.assertResumeCurrent();
+                    if (trezorEpoch !== admittedEpoch || handoff !== ownedHandoff || continuation.unsignedTransaction !== unsignedTransaction)
+                      throw new KeyringRuntimeError('CANCELLED');
+                  };
+                  guard();
+                  const resume: NativeTrezorResumeIntent = Object.freeze({kind:'infrastructure', id:ownedHandoff.id,
+                    accountId:selected.id, networkId:network.id});
+                  const session = await admitTrezorAttempt(captured, guard, 'infrastructure', selected.label, resume, null, ownedHandoff.beforeSuiteOpen);
+                  guard();
+                  // Hardware-only worker: the public vault and its journal capability stay in place.
+                  const worker = sdk.createTrezorHardware(session.host).trezorSigner;
+                  trezorDeviceWorker = worker;
+                  let retirement: Promise<void> | undefined;
+                  const owns = () => trezorSession === session || pendingTrezor?.job === session.job;
+                  const retire = () => { if (owns()) { retirement ??= ownedHandoff.isSuspended() ? retireTrezor() : cancelTrezor(); void retirement?.catch(() => undefined); } };
+                  authority.signal.addEventListener('abort', retire, {once:true});
+                  try {
+                    const signed = await sdk.signTrezorEvmTransaction(worker, {
+                      accountIndex:selected.index, expectedAddress:identity.address, coin:'eth', slip44:60, unsignedTransaction,
+                    }, {signal:authority.signal, assertCurrent:guard});
+                    guard(); ownedHandoff.beforeSignature(); guard();
+                    await finishTrezor(session, guard); guard();
+                    return signed;
+                  } catch (error) {
+                    if (!ownedHandoff.isSuspended()) {
+                      // A foreground device failure retires the hardware request, not
+                      // its still-owned result screen. Let confirm() publish the
+                      // failure and retain/reconcile the original reservation.
+                      let currentOwner = false;
+                      try { check(); currentOwner = true; } catch { /* Retired views remain cancelled. */ }
+                      const foregroundFailure = currentOwner && localInfrastructureContext?.handoff === ownedHandoff &&
+                          localInfrastructureContext.controller === controller;
+                      if (foregroundFailure) {
+                        localInfrastructureContext = undefined;
+                        retireNativeSigningHandoff(ownedHandoff);
+                      }
+                      await failTrezor(captured, admittedEpoch, error);
+                      if (foregroundFailure) {
+                        check();
+                        const failure = error instanceof Error ? error : new Error('Trezor signing failed', {cause:error});
+                        infrastructureSigningFailures.add(failure);
+                        throw failure;
+                      }
+                    }
+                    throw error;
+                  } finally {
+                    authority.signal.removeEventListener('abort', retire);
+                    if (owns()) retire();
+                    await retirement;
+                  }
+                },
               } : null, async () => {
                 check();
                 if (selected.type === 'Ledger' && !ledger.isConnected()) throw new KeyringRuntimeError('NOT_READY');
@@ -4523,7 +4648,39 @@ export function createKeyringRuntimeFactory(
               return preparedAttemptId;
             },
             submissionFailure: error => sdk.evmSubmissionFailure(error),
-          }, signal);
+          }, signal, origin.kind === 'suite-resume' ? {kind: 'suite-resume', handoff: handoff!} : {kind: 'new'});
+          if (handoff) localInfrastructureContext = {handoff, controller, drain};
+          if (origin.kind === 'suite-resume') localSmartHandoffs.discard(origin.descriptor, false);
+          return controller;
+          } catch (error) {
+            if (handoff) retireNativeSigningHandoff(handoff);
+            if (localInfrastructureContext?.controller === controller) localInfrastructureContext = undefined;
+            controller?.dispose();
+            throw error;
+          }
+        };
+        const openSmartInfrastructure = (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthentication | null) => openInfrastructure(signal, assertOwner, {kind: 'new'}, authentication);
+        const openResumedSmartInfrastructure = async (id: string, signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthentication | null) => {
+          const saved = localSmartHandoffs.infrastructureDescriptor(id), captured = generation;
+          if (!saved || signal.aborted) throw new KeyringRuntimeError('NOT_READY');
+          const check = () => {
+            current(captured); checkGuard(assertOwner);
+            if (signal.aborted || localSmartHandoffs.infrastructureDescriptor(id) !== saved) throw new KeyringRuntimeError('CANCELLED');
+          };
+          let controller: NativeInfrastructureController | undefined;
+          try {
+            check(); await localSmartHandoffs.drain(id); check(); await trezorCleanup; check(); await localSmartHandoffs.retired(); check();
+            const pending = await assertPendingTrezorOwner(captured, check); check();
+            if (pending.operation !== 'infrastructure' || pending.job !== saved.job || !pending.accepted || pending.resume?.id !== id)
+              throw new KeyringRuntimeError('CANCELLED');
+            controller = await openInfrastructure(signal, assertOwner, {kind: 'suite-resume', descriptor: saved}, authentication);
+            await controller.reviewResume(controller.getSnapshot().revision);
+            current(captured); checkGuard(assertOwner);
+            if (signal.aborted) throw new KeyringRuntimeError('CANCELLED');
+            return controller;
+          } catch (error) {
+            localSmartHandoffs.discard(saved); controller?.dispose(); throw error;
+          }
         };
         const openGuardianRecovery = async (
           draft: NativeGuardianRecoveryDraft,
@@ -5619,7 +5776,7 @@ export function createKeyringRuntimeFactory(
           ledger,
           trezor,
           getGuardianRecoveryIntent,
-          openSmartInfrastructure,
+          openSmartInfrastructure, openResumedSmartInfrastructure,
           openGuardianRecovery,
           canManageGuardianPolicy,
           inspectGuardianRemoval,

@@ -38,6 +38,9 @@ function fixture(error: Error, enterSigner: boolean) {
   const reservations: NativeInfrastructurePending[] = [];
   const cleanupRequests: string[] = [];
   const owner: NativeInfrastructureOwner = {
+    createSigningHandoff() {return null;},
+    background() {},
+    dispose() {},
     network,
     payer: { id: 'hd:60:0', label: 'Fee payer', address: payer, xpub: 'public-owner-reference' },
     admit<T>(work: () => Promise<T>): Promise<T> {
@@ -113,7 +116,7 @@ function fixture(error: Error, enterSigner: boolean) {
     randomId: () => attemptId,
     submissionFailure: () => undefined,
   };
-  const controller = createNativeInfrastructure().open(owner, lifetime.signal);
+  const controller = createNativeInfrastructure().open(owner, lifetime.signal, {kind:'new'});
   return {
     controller, events, reservations, cleanupRequests, lifetime,
     get pending() { return pending; },

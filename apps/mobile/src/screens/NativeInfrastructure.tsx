@@ -12,11 +12,12 @@ import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticatio
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 type Props = {
+  mode: Readonly<{kind:'new';reviewNext?:boolean} | {kind:'suite-resume';id:string;onContinue():void}>;
   open(signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeInfrastructureController>;
   onBack(): void;
   ledgerConnection?: NativeLedgerConnectionView;
 };
-type Scope = Readonly<{ source: Props['open'] }>;
+type Scope = Readonly<{ source: Props['open']; mode: 'new' | 'suite-resume'; id: string | null; reviewNext: boolean }>;
 type Owner = { scope: Scope; live: boolean; abort: AbortController; authentication: NativePrivateAuthenticationScope; controller?: NativeInfrastructureController };
 const empty: NativeInfrastructureSnapshot = Object.freeze({ phase: 'loading', revision: 0, status: null, feeReview: null, error: null });
 const emptySnapshot = () => empty;
@@ -31,9 +32,11 @@ const setupPurpose: Record<string, string> = {
   factory: 'Deploy smart accounts', multicall3: 'Read account data efficiently',
 };
 
-export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) {
+export function NativeInfrastructure({ mode, open, onBack, ledgerConnection }: Props) {
   const { t } = useNativeTranslation();
-  const scope = useMemo<Scope>(() => ({ source: open }), [open]);
+  const modeId = mode.kind === 'suite-resume' ? mode.id : null;
+  const reviewNext = mode.kind === 'new' && mode.reviewNext === true;
+  const scope = useMemo<Scope>(() => ({ source: open, mode: mode.kind, id: modeId, reviewNext }), [open, mode.kind, modeId, reviewNext]);
   const owner = useRef<Owner | null>(null);
   const back = useRef(onBack);
   const [session, setSession] = useState<{ owner: Owner; controller: NativeInfrastructureController }>();
@@ -63,16 +66,25 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
         check();
         controller = await open(current.abort.signal, check, current.authentication);
         check();
+        if (controller.origin.kind !== scope.mode || controller.origin.kind === 'suite-resume' &&
+            (controller.origin.id !== scope.id || controller.getSnapshot().phase !== 'review' || controller.getSnapshot().feeReview?.kind !== 'suite-resume'))
+          throw new Error('CANCELLED');
         current.controller = controller;
         setSession({ owner: current, controller });
-        await controller.refresh(controller.getSnapshot().revision);
+        if (controller.origin.kind === 'new') {
+          await controller.refresh(controller.getSnapshot().revision);
+          check();
+          // Only the explicit Continue action requests this fresh next-contract review.
+          if (scope.reviewNext) await controller.reviewNext(controller.getSnapshot().revision);
+        }
       } catch {
         controller?.dispose();
         if (isCurrent(current)) setOpeningError(scope);
       }
     })();
-    const change = AppState.addEventListener('change', next => { if (next !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, next)) close(); });
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { if (!allowsPrivateAuthenticationInterruption(current.authentication, 'blur')) close(); }) : undefined;
+    const background = () => { current.controller?.background(); close(); };
+    const change = AppState.addEventListener('change', next => { if (next !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, next)) background(); });
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { if (!allowsPrivateAuthenticationInterruption(current.authentication, 'blur')) background(); }) : undefined;
     const hardwareBack = BackHandler.addEventListener('hardwareBackPress', () => { close(); return true; });
     return () => {
       current.live = false;
@@ -105,7 +117,7 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
     if (!controller || !current || !isCurrent(current) || !review || performance.now() >= review.expiresAtMonotonicMilliseconds) return false;
     const latest = controller.getSnapshot();
     return latest.revision === state.revision && latest.phase === 'review' && latest.feeReview === review &&
-      !latest.status?.pending && !latest.error;
+      (!latest.status?.pending || controller.origin.kind === 'suite-resume') && !latest.error;
   }, [controller, current, isCurrent, review, state.revision]);
   // eslint-disable-next-line react-hooks/refs -- Hide expired/retired approvals as well as rejecting them in the event handler.
   const reviewAvailable = state.phase === 'review' && isReviewCurrent();
@@ -125,7 +137,18 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
           if (!ledger.blocked && isReviewCurrent() && ledger.canApprove()) act(() => controller!.confirm(review.id));
         }} />
       : readyToReview
-      ? <Button title={t(reviewLabel)} onPress={() => act(() => controller!.reviewNext(state.revision))} />
+      ? mode.kind === 'suite-resume'
+        ? <Button title={t('buttons.continue')} onPress={() => {
+          if (!controller || !current || !isCurrent(current) || controller.getSnapshot() !== state || !readyToReview) return;
+          const active = owner.current;
+          if (!active || active !== current) return;
+          active.live = false;
+          active.authentication.retire();
+          active.abort.abort();
+          controller.dispose();
+          mode.onContinue();
+        }} />
+        : <Button title={t(reviewLabel)} onPress={() => act(() => controller!.reviewNext(state.revision))} />
       : <Button title={t('mobile.infrastructure.refresh')} variant="secondary" size="compact" disabled={!controller || busy} onPress={() => act(() => controller!.refresh(state.revision))} />}
     <Button title={t('buttons.close')} variant="secondary" size="compact" onPress={close} />
   </>}>
@@ -161,9 +184,9 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
         onPress={() => { if (current && isCurrent(current) && controller?.getSnapshot().feeReview?.id === review.id) setDetailsId(detailsId === review.id ? null : review.id); }} />
       {detailsId === review.id && <><Text style={s.label}>Contract address</Text><Text selectable style={s.address}>{review.contract.address}</Text><TransactionDetails key={review.id} transaction={review.transaction} /></>}
     </>}
-    {(pending || state.phase === 'unknown') && <Notice title={t('settings.smartAccountInfrastructure')} tone="amber"
+    {(pending && state.phase !== 'review' || state.phase === 'unknown') && <Notice title={t('settings.smartAccountInfrastructure')} tone="amber"
       body={t(state.phase === 'unknown' ? 'mobile.infrastructure.unknown' : 'mobile.infrastructure.pending')} />}
-    {pending && <Card style={s.card}>
+    {pending && state.phase !== 'review' && <Card style={s.card}>
       <Text>{state.status?.observation.contracts.find(contract => contract.id === pending.contractId)?.displayName}</Text>
       {pending.transactionHash && <><Text style={s.label}>{t('transactions.replay.hash')}</Text><Text selectable style={s.address}>{pending.transactionHash}</Text></>}
     </Card>}

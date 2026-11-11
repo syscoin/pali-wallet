@@ -25,6 +25,7 @@ async function fixture() {
   const runtime: KeyringRuntime = {
     canUsePasskeys: () => false,
     async openPasskeyAuthenticator() { throw Error('Passkey is outside this fixture'); },
+    async openResumedSmartInfrastructure() { throw Error('Infrastructure resume is outside this fixture'); },
     async resumeSmartAccountOperation() { throw Error('Smart resume is outside this fixture'); },
     trezor: { background() {}, getSnapshot: () => ({ phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, signer: null, error: null }),
       subscribe: () => () => {}, async startImport() { throw new Error('Hardware is outside this fixture'); },

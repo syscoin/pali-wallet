@@ -44,7 +44,7 @@ const code = ts.transpileModule(
   }
 ).outputText;
 
-function harness(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false, slh = false) {
+function harness(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false, slh = false, infrastructure = false) {
   let now = 1000,
     cursor = 0,
     selectionCalls = 0;
@@ -57,6 +57,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   const openedLinks: string[] = [];
   const lifecycleEvents: string[] = [];
   const resumedSmart: {id: string; signal: AbortSignal; check: () => void}[] = [];
+  const resumedInfrastructure: {id: string; signal: AbortSignal; check: () => void}[] = [];
   const psbtLifecycle = {
     backgroundSigning() { lifecycleEvents.push('psbt-background'); },
     async cancelSigningHandoff() { lifecycleEvents.push('psbt-cancel'); },
@@ -163,17 +164,17 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   let catalogue = {
     revision: 1,
     active: {
-      accountId: smartAccount ? 'smart:60:0' : 'hd:60:0',
+      accountId: infrastructure ? 'trezor:60:0' : smartAccount ? 'smart:60:0' : 'hd:60:0',
       networkId: 'ethereum',
     },
     networks: networks.NATIVE_NETWORKS,
     utxoNetworks: [],
     accounts: [
       {
-        id: smartAccount ? 'smart:60:0' : 'hd:60:0',
+        id: infrastructure ? 'trezor:60:0' : smartAccount ? 'smart:60:0' : 'hd:60:0',
         index: 0,
         slip44: 60,
-        type: smartAccount ? 'SmartAccount' : 'HDAccount',
+        type: infrastructure ? 'Trezor' : smartAccount ? 'SmartAccount' : 'HDAccount',
         ...(smartAccount ? { smartAccount: { isDeployed: false, localEcdsa: true, chainId: 1 } } : {}),
         address: '0x' + '11'.repeat(20),
         label: 'Account 1',
@@ -251,6 +252,10 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     },
     async openResumedSmartAccountOperation(id: string, signal: AbortSignal, check: () => void) {
       check(); resumedSmart.push({id, signal, check}); return {async dispose() {}};
+    },
+    async openSmartInfrastructure() { throw Error('New infrastructure deployment is outside this fixture'); },
+    async openResumedSmartInfrastructure(id: string, signal: AbortSignal, check: () => void) {
+      check(); resumedInfrastructure.push({id, signal, check}); return {dispose() {}};
     },
     canManageGuardianPolicy: () => smartAccount && canManage,
     canSignSmartAccount: () => smartAccount && (canManage || slh), canManageSlhDsa: () => smartAccount && slh,
@@ -392,6 +397,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       NativeSmartAccountOperationRoute: 'NativeSmartAccountOperationRoute',
     },
     './NativeTrezor': {NativeTrezor: 'NativeTrezor', NativeTrezorResumeNotice: 'NativeTrezorResumeNotice'},
+    './NativeInfrastructure': {NativeInfrastructure: 'NativeInfrastructure'},
     './NativeConnections': { NativeConnections: 'NativeConnections' },
     './NativeEncryptionReview': { NativeEncryptionReviewScreen: 'NativeEncryptionReviewScreen' },
     './NativeMessageReview': {
@@ -448,6 +454,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     content: module.exports.NativeWalletContent,
     lifecycle: () => lifecycleEvents,
     resumedSmart: () => resumedSmart,
+    resumedInfrastructure: () => resumedInfrastructure,
     showTools() { shellTab = 'tools'; },
     showWallet() { shellTab = 'wallet'; },
     guardianReads: () => guardianReads,
@@ -521,8 +528,8 @@ function find(
     : [...node.children, node.props.footer].flatMap((child) => find(child, predicate) ?? []).at(0);
 }
 
-async function mounted(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false, slh = false) {
-  const f = harness(ready, smartAccount, withPairing, canManage, handoff, slh);
+async function mounted(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false, slh = false, infrastructure = false) {
+  const f = harness(ready, smartAccount, withPairing, canManage, handoff, slh, infrastructure);
   f.render();
   await settle();
   f.render();
@@ -976,4 +983,55 @@ for (const routeKind of ['authenticator', 'slh'] as const) test(`actual NativeWa
     assert.throws(guard, /CANCELLED/);
     assert.notEqual(f.render().type, route.type);
   } finally { scope.retire(); f.dispose(); }
+});
+
+test('Trezor infrastructure Continue opens only its dedicated fresh-review route with exact request and signal binding', async () => {
+  const f = await mounted(true, false, false, true, false, false, true);
+  try {
+    find(f.render(), node => node.type === 'NativePortfolio')!.props.hardwareRequest.props.onResume();
+    const trezor = f.render(); assert.equal(trezor.type, 'NativeTrezor');
+    await trezor.props.onResumeSend({ kind: 'infrastructure', id: 'infrastructure-suite-job', accountId: 'trezor:60:0', networkId: 'ethereum' });
+    assert.deepEqual(f.resumedInfrastructure(), [], 'Continue only changes the route; no signing or host operation starts');
+    const route = f.render();
+    assert.equal(route.type, 'NativeInfrastructure');
+    assert.equal(route.props.mode.kind, 'suite-resume'); assert.equal(route.props.mode.id, 'infrastructure-suite-job');
+    assert.equal(route.props.ledgerConnection, undefined);
+    assert.equal(f.hardwareBack(), false, 'the infrastructure leaf owns cancellation and disposal');
+    const lifetime = new AbortController();
+    await route.props.open(lifetime.signal, () => undefined, privateAuthentication.createNativePrivateAuthenticationScope());
+    assert.equal(f.resumedInfrastructure().length, 1);
+    assert.equal(f.resumedInfrastructure()[0]!.id, 'infrastructure-suite-job');
+    assert.equal(f.resumedInfrastructure()[0]!.signal, lifetime.signal); f.resumedInfrastructure()[0]!.check();
+    f.readyAtRevision(2); assert.equal(f.render().props.open, route.props.open);
+    route.props.onBack(); assert(find(f.render(), node => node.type === 'NativePortfolio'));
+    assert.throws(f.resumedInfrastructure()[0]!.check, /CANCELLED/);
+    await assert.rejects(route.props.open(lifetime.signal, () => undefined, privateAuthentication.createNativePrivateAuthenticationScope()), /CANCELLED/);
+    assert.equal(f.resumedInfrastructure().length, 1); assert.deepEqual(f.resumedSmart(), []);
+  } finally { f.dispose(); }
+});
+
+test('wallet background captures the infrastructure Suite departure before lock and invalidates its old opener', async () => {
+  const f = await mounted(true, false, false, true, false, false, true);
+  try {
+    find(f.render(), node => node.type === 'NativePortfolio')!.props.hardwareRequest.props.onResume();
+    await f.render().props.onResumeSend({ kind: 'infrastructure', id: 'infrastructure-suite-job', accountId: 'trezor:60:0', networkId: 'ethereum' });
+    const route = f.render(), lifetime = new AbortController();
+    await route.props.open(lifetime.signal, () => undefined, privateAuthentication.createNativePrivateAuthenticationScope());
+    const offset = f.lifecycle().length; f.background();
+    assert.deepEqual(f.lifecycle().slice(offset), ['trezor-background', 'psbt-background', 'lock']);
+    assert.throws(f.resumedInfrastructure()[0]!.check, /CANCELLED/);
+    assert.notEqual(f.render().type, 'NativeInfrastructure');
+    f.foreground(); f.ready(); f.render();
+    assert.equal(f.resumedInfrastructure().length, 1, 'unlock must not resume or approve the operation');
+  } finally { f.dispose(); }
+});
+
+test('an infrastructure resume discriminator cannot route a selected software account into its hardware continuation', async () => {
+  const f = await mounted(true, false, false);
+  try {
+    find(f.render(), node => node.type === 'NativePortfolio')!.props.hardwareRequest.props.onResume();
+    await assert.rejects(f.render().props.onResumeSend({ kind: 'infrastructure', id: 'forged-suite-job', accountId: 'hd:60:0', networkId: 'ethereum' }), /CANCELLED/);
+    assert.deepEqual(f.resumedInfrastructure(), []);
+    assert.equal(f.render().type, 'NativeTrezor');
+  } finally { f.dispose(); }
 });

@@ -18,6 +18,7 @@ export type NativeInfrastructureFeeReview = Readonly<
   Pick<NativePreparedConnectionTransaction,
     'transaction' | 'maximumFeeUnits' | 'maximumTotalUnits' | 'expiresAtMonotonicMilliseconds'> & {
     id: number;
+    kind: 'deployment' | 'suite-resume';
     contract: Readonly<{ id: PaliInfrastructureContractId; address: string; displayName: string; optional: boolean }>;
   }
 >;
@@ -32,12 +33,16 @@ export type NativeInfrastructureSnapshot = Readonly<{
 }>;
 
 type Host = Readonly<{
+  origin: Readonly<{kind:'new'} | {kind:'suite-resume';id:string;prepare(signal:AbortSignal):Promise<{
+    status:NativeInfrastructureStatus;contractId:PaliInfrastructureContractId;prepared:NativePreparedConnectionTransaction;
+  }>}>;
   networkLabel: string;
   currencySymbol: string;
   payerLabel: string;
   payerAddress: string;
   assertCurrent(): void;
   dispose(): void;
+  background(): void;
   observe(signal: AbortSignal): Promise<NativeInfrastructureStatus>;
   prepare(contractId: PaliInfrastructureContractId, signal: AbortSignal): Promise<NativePreparedConnectionTransaction>;
   submissionFailure(error: unknown): Readonly<{
@@ -55,6 +60,7 @@ function errorKey(error: unknown): string {
 
 /** The host owns journal reconciliation. Code presence is an observation, not an identity attestation. */
 export class NativeInfrastructureController {
+  readonly origin: Readonly<{kind:'new'} | {kind:'suite-resume';id:string}>;
   readonly networkLabel: string;
   readonly currencySymbol: string;
   readonly payerLabel: string;
@@ -76,11 +82,15 @@ export class NativeInfrastructureController {
   private readonly now: () => number;
 
   constructor(host: Host, parent: AbortSignal, now = () => performance.now()) {
-    for (const port of ['assertCurrent', 'dispose', 'observe', 'prepare', 'submissionFailure'] as const)
+    for (const port of ['assertCurrent', 'dispose', 'background', 'observe', 'prepare', 'submissionFailure'] as const)
       if (typeof host[port] !== 'function') throw new Error('Infrastructure host ports are required');
     for (const label of ['networkLabel', 'currencySymbol', 'payerLabel', 'payerAddress'] as const)
       if (typeof host[label] !== 'string' || !host[label]) throw new Error('Infrastructure context is required');
     this.host = host;
+    if (!host.origin || (host.origin.kind !== 'new' && host.origin.kind !== 'suite-resume') ||
+        (host.origin.kind === 'suite-resume' && (!host.origin.id || typeof host.origin.prepare !== 'function')))
+      throw new Error('Infrastructure origin is required');
+    this.origin = Object.freeze(host.origin.kind === 'new' ? {kind:'new'} : {kind:'suite-resume',id:host.origin.id});
     this.parent = parent;
     this.now = now;
     this.networkLabel = host.networkLabel;
@@ -159,6 +169,7 @@ export class NativeInfrastructureController {
     finally { if (this.operation === operation) this.operation = null; }
   }
   async reviewNext(revision: number): Promise<void> {
+    if (this.origin.kind !== 'new') return;
     // An uncertain attempt needs a separate explicit refresh to reconcile its journal.
     if (['pending', 'unknown', 'submitting'].includes(this.snapshot.phase)) return;
     const operation = this.admit(revision);
@@ -177,33 +188,53 @@ export class NativeInfrastructureController {
         throw new Error('Infrastructure deployment unavailable');
       const prepared = await this.host.prepare(contract.id, this.lifetime.signal);
       this.check(operation);
-      if (!Number.isFinite(prepared.expiresAtMonotonicMilliseconds) || prepared.expiresAtMonotonicMilliseconds <= this.now())
-        throw new Error('Review expired');
-      if (this.submitted.has(prepared)) throw new Error('Infrastructure quote already consumed');
-      this.prepared = prepared;
-      const id = this.snapshot.revision + 1;
-      const expire = () => {
-        if (this.disposed || this.prepared !== prepared || this.snapshot.feeReview?.id !== id) return;
-        const remaining = prepared.expiresAtMonotonicMilliseconds - this.now();
-        if (remaining > 0) { this.timer = setTimeout(expire, Math.min(remaining, 2147483647)); return; }
-        this.clearReview();
-        this.publish({ phase: status.observation.ready ? 'complete' : 'ready', feeReview: null, error: 'mobile.infrastructure.reviewExpired' });
-      };
-      this.publish({
-        phase: 'review', error: null,
-        feeReview: Object.freeze({
-          id,
-          contract: Object.freeze({ id: contract.id, address: contract.address, displayName: contract.displayName, optional: Boolean(contract.optional) }),
-          transaction: prepared.transaction,
-          maximumFeeUnits: prepared.maximumFeeUnits,
-          maximumTotalUnits: prepared.maximumTotalUnits,
-          expiresAtMonotonicMilliseconds: prepared.expiresAtMonotonicMilliseconds,
-        }),
-      });
-      this.check(operation);
-      this.timer = setTimeout(expire, Math.min(prepared.expiresAtMonotonicMilliseconds - this.now(), 2147483647));
+      this.installReview(status, contract, prepared, operation, 'deployment');
     } catch (error) { this.failed(error); }
     finally { if (this.operation === operation) this.operation = null; }
+  }
+  async reviewResume(revision: number): Promise<void> {
+    if (this.host.origin.kind !== 'suite-resume' || this.snapshot.phase !== 'loading') return;
+    const operation = this.admit(revision);
+    if (!operation) return;
+    this.publish({phase:'preparing',feeReview:null,error:null});
+    try {
+      this.check(operation);
+      const result = await this.host.origin.prepare(this.lifetime.signal);
+      this.check(operation);
+      const contract = PALI_INFRASTRUCTURE_METADATA.find(entry => entry.id === result.contractId);
+      if (!contract || result.status.pending?.contractId !== result.contractId || result.status.pending.transactionHash !== null)
+        throw new Error('Infrastructure continuation unavailable');
+      this.publish({status:result.status});
+      this.installReview(result.status, contract, result.prepared, operation, 'suite-resume');
+    } catch (error) { this.failed(error); }
+    finally { if (this.operation === operation) this.operation = null; }
+  }
+  private installReview(status: NativeInfrastructureStatus, contract: typeof PALI_INFRASTRUCTURE_METADATA[number],
+    prepared: NativePreparedConnectionTransaction, operation: object, kind: NativeInfrastructureFeeReview['kind']) {
+    if (!Number.isFinite(prepared.expiresAtMonotonicMilliseconds) || prepared.expiresAtMonotonicMilliseconds <= this.now()) throw new Error('Review expired');
+    if (this.submitted.has(prepared)) throw new Error('Infrastructure quote already consumed');
+    this.prepared = prepared;
+    const id = this.snapshot.revision + 1;
+    const expire = () => {
+      if (this.disposed || this.prepared !== prepared || this.snapshot.feeReview?.id !== id) return;
+      const remaining = prepared.expiresAtMonotonicMilliseconds - this.now();
+      if (remaining > 0) { this.timer = setTimeout(expire, Math.min(remaining, 2147483647)); return; }
+      this.clearReview();
+      this.publish({phase:status.pending?'pending':status.observation.ready?'complete':'ready',feeReview:null,error:'mobile.infrastructure.reviewExpired'});
+    };
+    this.publish({phase:'review',error:null,feeReview:Object.freeze({id,kind,
+      contract:Object.freeze({id:contract.id,address:contract.address,displayName:contract.displayName,optional:Boolean(contract.optional)}),
+      transaction:prepared.transaction,maximumFeeUnits:prepared.maximumFeeUnits,maximumTotalUnits:prepared.maximumTotalUnits,
+      expiresAtMonotonicMilliseconds:prepared.expiresAtMonotonicMilliseconds,
+    })});
+    this.check(operation);
+    this.timer = setTimeout(expire, Math.min(prepared.expiresAtMonotonicMilliseconds - this.now(), 2147483647));
+  }
+  background() {
+    if (this.disposed) return;
+    // This event already changed AppState; only the private owned-launch proof
+    // may preserve a continuation. Foreground signing checks do not apply here.
+    this.host.background();
   }
   async confirm(reviewId: number): Promise<void> {
     if (this.snapshot.phase !== 'review' || this.snapshot.feeReview?.id !== reviewId || !this.prepared) return;
@@ -217,7 +248,7 @@ export class NativeInfrastructureController {
     try {
       this.check(operation);
       if (prepared.expiresAtMonotonicMilliseconds <= this.now()) {
-        this.publish({ phase: this.snapshot.status?.observation.ready ? 'complete' : 'ready', feeReview: null, error: 'mobile.infrastructure.reviewExpired' });
+        this.publish({ phase: this.snapshot.status?.pending ? 'pending' : this.snapshot.status?.observation.ready ? 'complete' : 'ready', feeReview: null, error: 'mobile.infrastructure.reviewExpired' });
         return;
       }
       this.submitted.add(prepared);

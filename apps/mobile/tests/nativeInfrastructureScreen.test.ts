@@ -70,10 +70,12 @@ function button(elements: ReturnType<typeof screenElements>, key: string) {
   return element;
 }
 const text = (elements: ReturnType<typeof screenElements>) => elements.flatMap(node => node.children.filter(value => typeof value === 'string')).join(' ');
-function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing' | 'optional-only' | 'all-present' | 'pending-optional' = 'missing', create2Deployed = true, now = () => 0) {
+function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing' | 'optional-only' | 'all-present' | 'pending-optional' = 'missing', create2Deployed = true, now = () => 0, resumeId: string | null = null) {
   const transaction = Object.freeze({ chainId: '1', from: payer, to: '0x4e59b44847b379578588920cA78FbF26c0B4956C', nonce: '0', value: '0', data: '0xab', gasLimit: '21000', type: 2 as const, maxFeePerGas: '2', maxPriorityFeePerGas: '1', accessList: [] });
   let signatures = 0, wires = 0, submissions = 0, disposed = 0;
-  let refuseSubmission = false;
+  let observations = 0;
+  const backgrounds: boolean[] = [];
+  let refuseSubmission = false, unknownSubmission = false;
   let quoteWait: Promise<void> = Promise.resolve(), sendWait: Promise<void> = Promise.resolve();
   let broadcastWait: Promise<void> = Promise.resolve();
   const prepared: NativePreparedConnectionTransaction = Object.freeze({
@@ -84,16 +86,23 @@ function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing'
       submissions++;
       await sendWait; guard(); signatures++;
       if (refuseSubmission) throw Object.assign(new Error('refused'), { transactionNotBroadcast: true });
+      if (unknownSubmission) throw Error('Uncertain synthetic submission');
       await broadcastWait; guard(); broadcast(hash); wires++;
       return hash;
     },
   });
   const observation = projectSmartAccountInfrastructureObservation(1, [create2Deployed ? '0x01' : '0x', ...PALI_INFRASTRUCTURE_METADATA.map(entry => mode === 'all-present' || mode !== 'missing' && !entry.optional ? '0x01' : '0x')])!;
+  const status = { observation, pending: mode === 'pending-optional' ? { contractId: 'multicall3' as const, transactionHash: resumeId === null ? hash : null } : null };
   const controller = new NativeInfrastructureController({
+    origin: resumeId === null ? { kind: 'new' } : { kind: 'suite-resume', id: resumeId, async prepare(requestSignal) {
+      assertCurrent(); if (requestSignal.aborted) throw Error('CANCELLED');
+      return { status, contractId: 'multicall3', prepared };
+    } },
+    background() { backgrounds.push(signal.aborted); },
     networkLabel: 'Ethereum', currencySymbol: 'ETH', payerLabel: 'Fee wallet', payerAddress: payer,
     assertCurrent,
     dispose() { disposed++; },
-    async observe() { assertCurrent(); return { observation, pending: mode === 'pending-optional' ? { contractId: 'multicall3' as const, transactionHash: hash } : null }; },
+    async observe() { assertCurrent(); observations++; return status; },
     async prepare() { await quoteWait; assertCurrent(); return prepared; },
     submissionFailure(error: unknown) {
       return error && typeof error === 'object' && 'transactionNotBroadcast' in error ? { transactionNotBroadcast: true } : undefined;
@@ -105,7 +114,14 @@ function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing'
     holdSigning(promise: Promise<void>) { sendWait = promise; },
     holdBroadcast(promise: Promise<void>) { broadcastWait = promise; },
     failSubmission() { refuseSubmission = true; },
-    get counts() { return { disposed, signatures, wires, submissions }; },
+    failUnknownSubmission() { unknownSubmission = true; },
+    async prepareResume() { await controller.reviewResume(controller.getSnapshot().revision); },
+    backgrounds,
+    reconcileOriginal() {
+      status.pending = null;
+      status.observation = projectSmartAccountInfrastructureObservation(1, ['0x01', ...PALI_INFRASTRUCTURE_METADATA.map(entry => entry.id === 'factory' ? '0x' : '0x01')])!;
+    },
+    get counts() { return { disposed, signatures, wires, submissions, observations }; },
   };
 }
 
@@ -139,7 +155,7 @@ for (const action of ['close', 'back', 'background', 'blur', 'unmount'] as const
   test(`the ${action} path retires an opening and disposes its late controller`, async () => {
     const screen = nativeScreen(), held = deferred<NativeInfrastructureController>();
     let check!: () => void, signal!: AbortSignal, backs = 0;
-    const props = { open(parent: AbortSignal, assertCurrent: () => void) { signal = parent; check = assertCurrent; return held.promise; }, onBack() { backs++; } };
+    const props = { mode: {kind:'new' as const}, open(parent: AbortSignal, assertCurrent: () => void) { signal = parent; check = assertCurrent; return held.promise; }, onBack() { backs++; } };
     const tree = screen.render(props);
     if (action === 'close') button(tree, 'buttons.close').props.onPress();
     if (action === 'back') screen.emit('hardwareBackPress');
@@ -159,10 +175,10 @@ test('old opening guards and close callbacks cannot adopt the next screen owner'
   const screen = nativeScreen(), first = deferred<NativeInfrastructureController>(), second = deferred<NativeInfrastructureController>();
   let firstSignal!: AbortSignal, firstCheck!: () => void, secondSignal!: AbortSignal, secondCheck!: () => void, backs = 0;
   const onBack = () => { backs++; };
-  const oldProps = { open(signal: AbortSignal, check: () => void) { firstSignal = signal; firstCheck = check; return first.promise; }, onBack };
+  const oldProps = { mode: {kind:'new' as const}, open(signal: AbortSignal, check: () => void) { firstSignal = signal; firstCheck = check; return first.promise; }, onBack };
   const oldTree = screen.render(oldProps);
   const staleClose = button(oldTree, 'buttons.close').props.onPress;
-  const newProps = { open(signal: AbortSignal, check: () => void) { secondSignal = signal; secondCheck = check; return second.promise; }, onBack };
+  const newProps = { mode: {kind:'new' as const}, open(signal: AbortSignal, check: () => void) { secondSignal = signal; secondCheck = check; return second.promise; }, onBack };
   screen.render(newProps);
   staleClose();
   assert.equal(backs, 0); assert.throws(firstCheck, /CANCELLED/); secondCheck();
@@ -176,7 +192,7 @@ test('old opening guards and close callbacks cannot adopt the next screen owner'
 
 test('the real controller screen separates Review from Confirm and displays the exact prepared transaction', async () => {
   const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;
-  const props = { async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check); return value.controller; }, onBack() {} };
+  const props = { mode: {kind:'new' as const}, async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check); return value.controller; }, onBack() {} };
   try {
     screen.render(props); await tick();
     let tree = screen.render(props);
@@ -203,7 +219,7 @@ test('the real controller screen separates Review from Confirm and displays the 
 
 test('a stale rendered Confirm cannot approve a review created after Refresh', async () => {
   const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;
-  const props = { async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check); return value.controller; }, onBack() {} };
+  const props = { mode: {kind:'new' as const}, async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check); return value.controller; }, onBack() {} };
   try {
     screen.render(props); await tick();
     button(screen.render(props), 'mobile.infrastructure.reviewNext').props.onPress(); await tick();
@@ -218,7 +234,7 @@ test('a stale rendered Confirm cannot approve a review created after Refresh', a
 
 test('the review keeps its sole primary action in the fixed footer for a short 320px screen', async () => {
   const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;
-  const props = { async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check); return value.controller; }, onBack() {} };
+  const props = { mode: {kind:'new' as const}, async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check); return value.controller; }, onBack() {} };
   try {
     screen.render(props); await tick();
     const before = screen.render(props).find(node => node.type === 'Screen')!;
@@ -248,7 +264,7 @@ test('the review keeps its sole primary action in the fixed footer for a short 3
 
 test('status and result actions stay in a two-button footer and failure text precedes inventory', async () => {
   const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;
-  const props = { async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check); return value.controller; }, onBack() {} };
+  const props = { mode: {kind:'new' as const}, async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check); return value.controller; }, onBack() {} };
   const footer = (tree: ReturnType<typeof screenElements>) => screenElements(tree.find(node => node.type === 'Screen')!.props.footer);
   try {
     screen.render(props); await tick();
@@ -273,7 +289,7 @@ test('status and result actions stay in a two-button footer and failure text pre
 
 test('optional-only status remains visibly ready and offers a labelled optional fee review', async () => {
   const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;
-  const props = { async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check, 'optional-only'); return value.controller; }, onBack() {} };
+  const props = { mode: {kind:'new' as const}, async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check, 'optional-only'); return value.controller; }, onBack() {} };
   const fixed = (tree: ReturnType<typeof screenElements>) => screenElements(tree.find(node => node.type === 'Screen')!.props.footer);
   try {
     screen.render(props); await tick();
@@ -299,7 +315,7 @@ test('optional-only status remains visibly ready and offers a labelled optional 
 for (const mode of ['missing', 'optional-only', 'all-present', 'pending-optional'] as const)
   test(`missing CREATE2 explains unavailable setup instead of showing Ready with ${mode} contracts`, async () => {
     const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;
-    const props = { async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check, mode, false); return value.controller; }, onBack() {} };
+    const props = { mode: {kind:'new' as const}, async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check, mode, false); return value.controller; }, onBack() {} };
     try {
       screen.render(props); await tick();
       let tree = screen.render(props); const fixed = screenElements(tree.find(node => node.type === 'Screen')!.props.footer);
@@ -326,7 +342,7 @@ for (const mode of ['missing', 'optional-only', 'all-present', 'pending-optional
 for (const mode of ['missing', 'all-present', 'pending-optional'] as const)
   test(`${mode} keeps the appropriate status and two-button footer`, async () => {
     const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;
-    const props = { async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check, mode); return value.controller; }, onBack() {} };
+    const props = { mode: {kind:'new' as const}, async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check, mode); return value.controller; }, onBack() {} };
     try {
       screen.render(props); await tick();
       let tree = screen.render(props); const fixed = screenElements(tree.find(node => node.type === 'Screen')!.props.footer);
@@ -343,7 +359,7 @@ for (const mode of ['missing', 'all-present', 'pending-optional'] as const)
 for (const stage of ['quote', 'signing', 'broadcast'] as const)
   test(`background while awaiting ${stage} prevents the next signing or publication boundary`, async () => {
     const screen = nativeScreen(), held = deferred<void>(); let value!: ReturnType<typeof runtime>;
-    const props = { async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check); return value.controller; }, onBack() {} };
+    const props = { mode: {kind:'new' as const}, async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check); return value.controller; }, onBack() {} };
     try {
       screen.render(props); await tick();
       if (stage === 'quote') value.holdQuote(held.promise);
@@ -361,7 +377,7 @@ for (const stage of ['quote', 'signing', 'broadcast'] as const)
 
 test('infrastructure connects Ledger in the fixed footer and requires a separate fresh Confirm', async () => {
   const screen = nativeScreen(), ledger = ledgerConnection(); let value!: ReturnType<typeof runtime>;
-  const props = { ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
+  const props = { mode: {kind:'new' as const}, ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
     value = runtime(signal, check); return value.controller;
   }, onBack() {} };
   try {
@@ -393,7 +409,7 @@ test('infrastructure connects Ledger in the fixed footer and requires a separate
 
 test('Ledger disconnect makes a held infrastructure Confirm inert and restores Connect', async () => {
   const screen = nativeScreen(), ledger = ledgerConnection(true); let value!: ReturnType<typeof runtime>;
-  const props = { ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
+  const props = { mode: {kind:'new' as const}, ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
     value = runtime(signal, check); return value.controller;
   }, onBack() {} };
   try {
@@ -411,7 +427,7 @@ test('Ledger disconnect makes a held infrastructure Confirm inert and restores C
 
 test('a replacement infrastructure review retires its old Ledger picker without closing its successor', async () => {
   const screen = nativeScreen(), ledger = ledgerConnection(); let value!: ReturnType<typeof runtime>;
-  const props = { ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
+  const props = { mode: {kind:'new' as const}, ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
     value = runtime(signal, check); return value.controller;
   }, onBack() {} };
   try {
@@ -438,7 +454,7 @@ test('a replacement infrastructure review retires its old Ledger picker without 
 test('monotonic quote expiry rejects held Ledger callbacks before any expiry timer runs', async () => {
   const clock = { wall: 100_000, monotonic: 100 }, screen = nativeScreen(clock), ledger = ledgerConnection();
   let value!: ReturnType<typeof runtime>;
-  const props = { ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
+  const props = { mode: {kind:'new' as const}, ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
     value = runtime(signal, check, 'missing', true, () => clock.monotonic); return value.controller;
   }, onBack() {} };
   try {
@@ -464,7 +480,7 @@ test('monotonic quote expiry rejects held Ledger callbacks before any expiry tim
 test('a connected Ledger cannot use a held Confirm after monotonic expiry even if the wall clock moves backwards', async () => {
   const clock = { wall: 100_000, monotonic: 0 }, screen = nativeScreen(clock), ledger = ledgerConnection(true);
   let value!: ReturnType<typeof runtime>;
-  const props = { ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
+  const props = { mode: {kind:'new' as const}, ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
     value = runtime(signal, check, 'missing', true, () => clock.monotonic); return value.controller;
   }, onBack() {} };
   try {
@@ -481,7 +497,7 @@ test('a connected Ledger cannot use a held Confirm after monotonic expiry even i
 
 test('background retires infrastructure and its Ledger picker before retained device callbacks can act', async () => {
   const screen = nativeScreen(), ledger = ledgerConnection(); let value!: ReturnType<typeof runtime>;
-  const props = { ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
+  const props = { mode: {kind:'new' as const}, ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
     value = runtime(signal, check); return value.controller;
   }, onBack() {} };
   try {
@@ -500,7 +516,7 @@ test('background retires infrastructure and its Ledger picker before retained de
 for (const mode of ['all-present', 'pending-optional', 'missing-create2'] as const)
   test(`Ledger connection is not offered for ${mode} infrastructure status`, async () => {
     const screen = nativeScreen(), ledger = ledgerConnection(); let value!: ReturnType<typeof runtime>;
-    const props = { ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
+    const props = { mode: {kind:'new' as const}, ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
       value = runtime(signal, check, mode === 'missing-create2' ? 'optional-only' : mode, mode !== 'missing-create2'); return value.controller;
     }, onBack() {} };
     try {
@@ -516,7 +532,7 @@ for (const mode of ['all-present', 'pending-optional', 'missing-create2'] as con
 for (const boundary of ['back', 'background', 'unmount', 'foreign-prompt'] as const) test(`infrastructure keeps only its own OS interruption and retires on ${boundary}`, async () => {
   const screen = nativeScreen();
   let scope!: privateAuthentication.NativePrivateAuthenticationScope, guard!: () => void, value!: ReturnType<typeof runtime>, returned = 0;
-  const props = { async open(signal: AbortSignal, check: () => void, authentication: privateAuthentication.NativePrivateAuthenticationScope) {
+  const props = { mode: {kind:'new' as const}, async open(signal: AbortSignal, check: () => void, authentication: privateAuthentication.NativePrivateAuthenticationScope) {
     scope = authentication; guard = check; value = runtime(signal, check); return value.controller;
   }, onBack() { returned++; } };
   screen.render(props); await tick(); screen.render(props);
@@ -534,4 +550,137 @@ for (const boundary of ['back', 'background', 'unmount', 'foreign-prompt'] as co
     assert.throws(guard, /CANCELLED/); assert.equal(scope.isAuthenticating(), false);
     assert.equal(returned, boundary === 'unmount' ? 0 : 1);
   } finally { held.resolve(); await proof.catch(() => undefined); promptScope.retire(); screen.close(); }
+});
+
+for (const outcome of ['pending', 'unknown'] as const)
+  test(`an exact Suite resume adopts the fresh fee review without refresh, then restores the ${outcome} notice after Confirm`, async () => {
+    const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;
+    const props = { mode: { kind: 'suite-resume' as const, id: 'original-infrastructure-job' },
+      async open(signal: AbortSignal, check: () => void) {
+        value = runtime(signal, check, 'pending-optional', true, () => 0, 'original-infrastructure-job');
+        await value.prepareResume(); return value.controller;
+      }, onBack() {} };
+    try {
+      screen.render(props); await tick();
+      let tree = screen.render(props);
+      assert.equal(value.counts.observations, 0, 'opening a verified resume must not replace it with a generic pending refresh');
+      assert.equal(value.controller.origin.kind, 'suite-resume');
+      assert.equal(value.controller.getSnapshot().feeReview?.kind, 'suite-resume');
+      assert(value.controller.getSnapshot().status?.pending);
+      assert.equal(tree.some(node => node.type === 'Notice'), false, 'only the trusted owned resume review suppresses generic pending guidance');
+      assert.equal(footer(tree).filter(node => node.type === 'Button').length, 2);
+      assert.equal(button(footer(tree), 'buttons.confirm').props.disabled, false);
+      assert.equal(value.counts.submissions, 0); assert.equal(value.counts.signatures, 0);
+      assert(text(tree).includes(title('settings.optional')));
+      assert.equal(text(tree).split('Multicall3').length - 1, 1, 'the pending summary must not duplicate the contract during its fresh review');
+      if (outcome === 'unknown') value.failUnknownSubmission();
+      button(footer(tree), 'buttons.confirm').props.onPress(); await tick();
+      tree = screen.render(props);
+      assert.equal(value.counts.submissions, 1);
+      assert.equal(tree.some(node => node.type === 'Button' && node.props.title === title('buttons.confirm')), false);
+      assert(tree.some(node => node.type === 'Notice' && node.props.body === title(`mobile.infrastructure.${outcome}`)));
+      assert.equal(value.controller.getSnapshot().phase, outcome);
+    } finally { screen.close(); }
+  });
+
+for (const mismatch of ['request', 'origin', 'unprepared'] as const)
+  test(`Suite resume rejects a ${mismatch} controller before adopting or refreshing it`, async () => {
+    const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;
+    const props = { mode: { kind: 'suite-resume' as const, id: 'expected-infrastructure-job' },
+      async open(signal: AbortSignal, check: () => void) {
+        value = runtime(signal, check, 'pending-optional', true, () => 0,
+          mismatch === 'origin' ? null : mismatch === 'request' ? 'different-infrastructure-job' : 'expected-infrastructure-job');
+        if (mismatch !== 'unprepared' && mismatch !== 'origin') await value.prepareResume();
+        return value.controller;
+      }, onBack() {} };
+    try {
+      screen.render(props); await tick();
+      const tree = screen.render(props);
+      assert.equal(value.counts.disposed, 1); assert.equal(value.counts.observations, 0);
+      assert.equal(value.counts.submissions, 0);
+      assert(tree.some(node => node.props.accessibilityRole === 'alert'));
+      assert.equal(tree.some(node => node.props.title === title('buttons.confirm')), false);
+    } finally { screen.close(); }
+  });
+
+for (const boundary of ['background', 'blur', 'close', 'back'] as const)
+  test(`the infrastructure ${boundary} path distinguishes Suite capture from explicit cancellation before abort`, async () => {
+    const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;
+    const props = { mode: { kind: 'suite-resume' as const, id: 'original-infrastructure-job' },
+      async open(signal: AbortSignal, check: () => void) {
+        value = runtime(signal, check, 'pending-optional', true, () => 0, 'original-infrastructure-job');
+        await value.prepareResume(); return value.controller;
+      }, onBack() {} };
+    try {
+      screen.render(props); await tick();
+      const tree = screen.render(props), confirm = button(footer(tree), 'buttons.confirm').props.onPress;
+      if (boundary === 'background') screen.emit('change', 'background');
+      if (boundary === 'blur') screen.emit('blur');
+      if (boundary === 'close') button(footer(tree), 'buttons.close').props.onPress();
+      if (boundary === 'back') screen.emit('hardwareBackPress');
+      assert.deepEqual(value.backgrounds, boundary === 'background' || boundary === 'blur' ? [false] : [], 'capture runs before the view AbortSignal retires');
+      confirm(); await tick();
+      assert.equal(value.counts.disposed, 1); assert.equal(value.counts.submissions, 0);
+    } finally { screen.close(); }
+  });
+
+test('changing the explicit resume id retires old Confirm and Close handlers even when the opener is unchanged', async () => {
+  const screen = nativeScreen();
+  const values: ReturnType<typeof runtime>[] = [];
+  let id = 'first-infrastructure-job', backs = 0;
+  const open = async (signal: AbortSignal, check: () => void) => {
+    const value = runtime(signal, check, 'pending-optional', true, () => 0, id);
+    values.push(value); await value.prepareResume(); return value.controller;
+  };
+  const onBack = () => { backs++; };
+  try {
+    const first = { mode: { kind: 'suite-resume' as const, id }, open, onBack };
+    screen.render(first); await tick();
+    const tree = screen.render(first), oldConfirm = button(footer(tree), 'buttons.confirm').props.onPress,
+      oldClose = button(footer(tree), 'buttons.close').props.onPress;
+    id = 'second-infrastructure-job';
+    const second = { mode: { kind: 'suite-resume' as const, id }, open, onBack };
+    screen.render(second); await tick();
+    oldConfirm(); oldClose(); await tick();
+    assert.equal(values[0]!.counts.disposed, 1); assert.equal(values[0]!.counts.submissions, 0);
+    assert.equal(values[1]!.counts.disposed, 0); assert.equal(values[1]!.counts.submissions, 0); assert.equal(backs, 0);
+    button(footer(screen.render(second)), 'buttons.confirm').props.onPress(); await tick();
+    assert.equal(values[1]!.counts.submissions, 1);
+  } finally { screen.close(); }
+});
+
+for (const outcome of ['pending', 'unknown'] as const) test(`reconciled ${outcome} Suite deployment opens a fresh controller before the next fee review`, async () => {
+  const screen = nativeScreen(); let value!: ReturnType<typeof runtime>, fresh!: ReturnType<typeof runtime>, resumes = true, transitions = 0;
+  const continueSetup = () => { transitions++; resumes = false; };
+  const openResume = async (signal: AbortSignal, check: () => void) => {
+    value = runtime(signal, check, 'pending-optional', true, () => 0, 'settled-suite-job');
+    await value.prepareResume(); return value.controller;
+  };
+  const openFresh = async (signal: AbortSignal, check: () => void) => {
+    fresh = runtime(signal, check); return fresh.controller;
+  };
+  const props = () => resumes
+    ? {mode:{kind:'suite-resume' as const,id:'settled-suite-job',onContinue:continueSetup},open:openResume,onBack() {}}
+    : {mode:{kind:'new' as const,reviewNext:true},open:openFresh,onBack() {}};
+  try {
+    screen.render(props()); await tick();
+    if (outcome === 'unknown') value.failUnknownSubmission();
+    button(footer(screen.render(props())), 'buttons.confirm').props.onPress(); await tick();
+    assert.equal(value.controller.getSnapshot().phase, outcome);
+    assert.equal(footer(screen.render(props())).some(node => node.props.title === title('buttons.continue')), false);
+    assert.equal(transitions, 0);
+    value.reconcileOriginal();
+    button(footer(screen.render(props())), 'mobile.infrastructure.refresh').props.onPress(); await tick();
+    const tree = screen.render(props());
+    const continueButton = button(footer(tree), 'buttons.continue');
+    assert.equal(value.counts.submissions, 1); assert.equal(transitions, 0);
+    continueButton.props.onPress();
+    screen.render(props()); await tick();
+    assert.equal(transitions, 1); assert.equal(value.counts.disposed, 1);
+    assert.equal(fresh.controller.origin.kind, 'new'); assert.equal(fresh.counts.submissions, 0);
+    assert.equal(fresh.controller.getSnapshot().phase, 'review', 'the explicit Continue action opens the fresh next review directly');
+    assert.equal(fresh.controller.getSnapshot().feeReview?.kind, 'deployment');
+    assert.equal(fresh.counts.submissions, 0, 'Continue and Review never automatically sign');
+    continueButton.props.onPress(); assert.equal(transitions, 1, 'stale Continue cannot reopen its retired route');
+  } finally {screen.close();}
 });

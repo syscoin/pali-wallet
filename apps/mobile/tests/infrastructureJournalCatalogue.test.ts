@@ -57,13 +57,34 @@ const clear = (f: Awaited<ReturnType<typeof fixture>>, expectedAttemptId = f.pen
   kind: 'set-infrastructure-pending', chainId: f.pending.chainId, expectedAttemptId, pending: null,
 });
 
-async function ledgerPayer(f: Awaited<ReturnType<typeof fixture>>) {
-  const derived = await f.sdk.derive(2, 'Ledger fee payer');
+async function hardwarePayer(f: Awaited<ReturnType<typeof fixture>>, type:'Ledger'|'Trezor') {
+  const derived = await f.sdk.derive(2, `${type} fee payer`);
   // Public metadata only. Device ownership is verified by the runtime, not this catalogue test.
-  const account = { ...derived, id: 0, xprv: '', isLedgerWallet: true, isImported: false, isTrezorWallet: false, isSmartAccount: false };
-  await f.change({ kind: 'import-ledger', account });
-  return { account, reference: { id: 'ledger:60:0', address: account.address, xpub: `0x${account.xpub.replace(/^0x/, '')}`.toLowerCase() } };
+  const account = { ...derived, id: 0, xprv: '', isLedgerWallet: type==='Ledger', isImported: false, isTrezorWallet: type==='Trezor', isSmartAccount: false };
+  await f.change(type==='Ledger'?{kind:'import-ledger',account}:{kind:'import-trezor',account});
+  return { account, reference: { id: `${type.toLowerCase()}:60:0`, address: account.address, xpub: `0x${account.xpub.replace(/^0x/, '')}`.toLowerCase() } };
 }
+const ledgerPayer = (f:Awaited<ReturnType<typeof fixture>>) => hardwarePayer(f,'Ledger');
+
+test('Trezor infrastructure reservations retain exact hardware identity through reopen and recovery', async () => {
+  const f=await fixture();
+  try {
+    const {reference}=await hardwarePayer(f,'Trezor');
+    assert.deepEqual(captureNativeInfrastructurePayerReference(reference,f.catalogue.privateRecords),reference);
+    f.pending={...f.pending,payer:reference,entry:{...f.pending.entry,payerAddress:reference.address}};
+    await store(f);await f.reopen();
+    assert.deepEqual(f.catalogue.privateRecords.infrastructurePending,[f.pending]);
+    await f.change({kind:'select',id:'hd:60:0'});
+    await assert.rejects(f.change({kind:'remove',id:reference.id}));
+    const record=f.catalogue.privateRecords;
+    assert.deepEqual(replaceRecoveredAccountRecords(record,f.identity.walletFingerprint,record.groups).infrastructurePending,[f.pending]);
+    for(const invalid of [{isLedgerWallet:true},{isTrezorWallet:false},{isImported:true},{xprv:'not a hardware secret'}]) {
+      const changed=structuredClone(record);Object.assign(changed.groups[0]!.accounts.Trezor[0]!,invalid);
+      assert.throws(()=>captureNativeInfrastructurePayerReference(reference,changed));
+    }
+    await clear(f);await f.change({kind:'remove',id:reference.id});
+  } finally {await f.cleanup();}
+});
 
 test('Ledger infrastructure reservations persist, retain their exact public payer and protect removal', async () => {
   const f = await fixture();

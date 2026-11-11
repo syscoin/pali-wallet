@@ -2,9 +2,48 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NativeSigningHandoffs, captureNativeSigningContinuation, completeNativeSigningOwnerStep, retireNativeSigningHandoff, sameSigningResumeOwner, type LocalSigningResumeScope } from '../src/connections/signingHandoff.ts';
 import { snapshotNativeSmartLocalAction } from '../src/smartAccount/localAction.ts';
-import type { NativeSmartLocalAction } from '../src/custody/trezorAccounts.ts';
+import { snapshotNativeInfrastructureLocalAction, type NativeInfrastructureLocalAction, type NativeSmartLocalAction } from '../src/custody/trezorAccounts.ts';
+import { getNativeInfrastructureContinuation } from '../src/custody/nativeInfrastructure.ts';
 
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
+
+test('infrastructure uses its own descriptor and transfers only the existing private continuation', async()=>{
+  const cancelled:object[]=[],drain=Promise.withResolvers<void>();
+  const manager=new NativeSigningHandoffs({async cancel(job){cancelled.push(job);},changed(){}});
+  const action:NativeInfrastructureLocalAction={kind:'infrastructure',contractId:'factory',attemptId:`0x${'12'.repeat(32)}`,unsignedTransaction:'0x1234'};
+  const scope:LocalSigningResumeScope={wallet:'wallet',unlockGeneration:1,accountId:'trezor:60:0',address:'0x'+'22'.repeat(20),type:'Trezor',xpub:'public',registration:'exact-rpc-registration',signing:JSON.stringify(action),trezor:true};
+  let live=true,retired=0;
+  const entry={id:'owned-infrastructure',scope,action,expiresAt:Date.now()+60000,order:0,assertCurrent(){assert(live);},eligible:()=>true,drain:()=>drain.promise,retire(){live=false;}};
+  const handoff=manager.captureInfrastructure(entry,snapshotNativeInfrastructureLocalAction);
+  const privateReceipt={retire(){retired++;}};
+  captureNativeSigningContinuation(handoff,()=>privateReceipt);
+  let next:typeof handoff|undefined;
+  try {
+    const job={};handoff.beforeSuiteOpen(entry.expiresAt,job)(true);assert(manager.background(handoff));
+    const descriptor=manager.infrastructureDescriptor(entry.id);assert(descriptor);
+    assert.equal(descriptor.kind,'local-infrastructure');assert.equal(manager.localDescriptor(entry.id),null);assert.equal(manager.descriptor(entry.id),null);
+    assert.deepEqual(descriptor.action,action);assert.equal('binding' in descriptor,false);assert.equal('wire' in descriptor,false);
+    drain.resolve();await manager.drain(entry.id);live=true;
+    const resumed={...entry,scope:{...scope,unlockGeneration:2},expiresAt:descriptor.expiresAt};
+    next=manager.resumeInfrastructure(resumed,snapshotNativeInfrastructureLocalAction,descriptor);
+    assert.equal(captureNativeSigningContinuation(next,()=>assert.fail('must transfer the original receipt')),privateReceipt);
+    assert.throws(()=>getNativeInfrastructureContinuation(next!),/Infrastructure continuation missing/,'a different receipt class grants no infrastructure authority');
+    assert.throws(()=>manager.resumeInfrastructure(resumed,snapshotNativeInfrastructureLocalAction,descriptor),/REQUEST_EXPIRED/);
+    assert.equal(retired,0);
+    manager.discard(descriptor,false);retireNativeSigningHandoff(next);assert.equal(retired,1);await manager.retired();
+    assert.deepEqual(cancelled,[job]);
+  } finally {drain.resolve();manager.cancelLocal();retireNativeSigningHandoff(handoff);if(next)retireNativeSigningHandoff(next);await manager.retired();}
+});
+
+test('infrastructure action capture rejects extra authority fields and accessors without reading them',()=>{
+  const action:NativeInfrastructureLocalAction={kind:'infrastructure',contractId:'factory',attemptId:`0x${'12'.repeat(32)}`,unsignedTransaction:'0x1234'};
+  assert.deepEqual(snapshotNativeInfrastructureLocalAction(action),action);
+  assert(Object.isFrozen(snapshotNativeInfrastructureLocalAction(action)));
+  for(const invalid of [{...action,nonce:'7'},{...action,attemptId:'arbitrary'},{...action,unsignedTransaction:'0xABCDEF'}])
+    assert.throws(()=>snapshotNativeInfrastructureLocalAction(invalid));
+  let reads=0;const accessor={...action};Object.defineProperty(accessor,'unsignedTransaction',{enumerable:true,get(){reads++;throw Error('accessor');}});
+  assert.throws(()=>snapshotNativeInfrastructureLocalAction(accessor));assert.equal(reads,0);
+});
 function fixture(action: NativeSmartLocalAction = {kind:'operation',intent:{kind:'native-transfer',recipient:'0x'+'11'.repeat(20),amountUnits:'123'}}) {
   const canceled:object[]=[],events:string[]=[],drain=Promise.withResolvers<void>();let live=true,changed=()=>{},eligibility=()=>true;
   const scope:LocalSigningResumeScope={wallet:'wallet',unlockGeneration:1,accountId:'smart:60:0',address:'0x'+'22'.repeat(20),type:'SmartAccount',xpub:'public',registration:'full-network',signing:'public-policy-and-owner',trezor:true};
