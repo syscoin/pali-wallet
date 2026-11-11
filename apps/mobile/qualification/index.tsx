@@ -129,6 +129,8 @@ function QualificationApp() {
       let storage: OpenWalletStorage | undefined;
       let runtime: KeyringRuntime | undefined;
       let capturedHost: InstanceType<NativeKeyringSdk['HostKeyring']> | undefined;
+      let capturedHostStorage: OpenWalletStorage['keyringStorage'] | undefined;
+      const hostStorage = new WeakMap<object, OpenWalletStorage['keyringStorage']>();
       let fullSlh: FullSlhEvidence | undefined;
       let fullSlhResources: import('./slh-resource-evidence.ts').SlhResourceEvidence | undefined;
       let authority: NativeCustodyAuthority | undefined;
@@ -556,8 +558,15 @@ function QualificationApp() {
             setStatus(stage);
             if (fullSlhConfiguration !== undefined) {
               const Host = sdk.HostKeyring;
-              return { ...sdk, HostKeyring: class extends Host {
-                constructor(...args: ConstructorParameters<NativeKeyringSdk['HostKeyring']>) { super(...args); capturedHost = this; }
+              return { ...sdk, createKeyringHost(...args: Parameters<NativeKeyringSdk['createKeyringHost']>) {
+                const host = sdk.createKeyringHost(...args);
+                hostStorage.set(host, args[0] as OpenWalletStorage['keyringStorage']);
+                return host;
+              }, HostKeyring: class extends Host {
+                constructor(...args: ConstructorParameters<NativeKeyringSdk['HostKeyring']>) {
+                  super(...args);
+                  capturedHost = this; capturedHostStorage = hostStorage.get(args[0]);
+                }
               } };
             }
             return sdk;
@@ -642,15 +651,15 @@ function QualificationApp() {
         if (fullSlhConfiguration !== undefined) {
           const { fullSlhBuild, readFullSlhEvidence, qualifyNativeSlhFull, FULL_SLH_CHECK } = await import('./native-slh-full.ts');
           const build = fullSlhBuild(fullSlhConfiguration);
-          const ring = capturedHost, opened = storage, custody = authority, activeRuntime = runtime;
-          if (!ring || !opened || !activeRuntime || !FileSystem.documentDirectory) throw Error('FULL_SLH_QUALIFICATION_OWNER_MISSING');
+          const ring = capturedHost, checkpointStorage = capturedHostStorage, opened = storage, custody = authority, activeRuntime = runtime;
+          if (!ring || !checkpointStorage || !opened || !activeRuntime || !FileSystem.documentDirectory) throw Error('FULL_SLH_QUALIFICATION_OWNER_MISSING');
           const snapshot = custody.getSnapshot(), catalogue = custody.getCatalogue();
           const owner = new AbortController();
           const appState = AppState.addEventListener('change', state => { if (state !== 'active') owner.abort(); });
           const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => owner.abort()) : undefined;
           const assertCurrent = () => {
             if (owner.signal.aborted || qualificationLifetime.signal.aborted || AppState.currentState !== 'active' ||
-                capturedHost !== ring || storage !== opened || runtime !== activeRuntime || custody.getSnapshot() !== snapshot ||
+                capturedHost !== ring || capturedHostStorage !== checkpointStorage || storage !== opened || runtime !== activeRuntime || custody.getSnapshot() !== snapshot ||
                 snapshot.phase !== 'ready' || custody.getCatalogue() !== catalogue || !ring.hasPublicSession())
               throw Error('FULL_SLH_QUALIFICATION_RETIRED');
           };
@@ -674,7 +683,7 @@ function QualificationApp() {
             const resourceId = parameters.physical ? nativeModule.beginSlhQualificationResources() as string : null;
             try {
             fullSlh = await check(FULL_SLH_CHECK, () => qualifyNativeSlhFull({
-              phase: parameters!.phase as Phase, build, keyring: ring, storage: opened, pin: PUBLIC_PASSWORD,
+              phase: parameters!.phase as Phase, build, keyring: ring, storage: { ...opened, keyringStorage: checkpointStorage }, pin: PUBLIC_PASSWORD,
               pinCredential: qualificationPinCredential, signal: owner.signal,
               productionCapability: qualificationSlhExecution, nativeModule, previous,
               assertCurrent, onStorageFault: () => { custody.lock(); },
@@ -835,6 +844,8 @@ function QualificationApp() {
           checks,
           networkCalls,
           failedStage: stage,
+          ...(fullSlh ? { fullSlh } : {}),
+          ...(fullSlhResources ? { fullSlhResources } : {}),
           ...(privateProofDiagnostic.report() ? { privateProofDiagnostic: privateProofDiagnostic.report() } : {}),
           ...(sentryIsolatedDiagnostic.report() ? { sentryIsolatedDiagnostic: sentryIsolatedDiagnostic.report() } : {}),
           ...(verifiedQuickCryptoIdentity ? { quickCryptoIdentity: verifiedQuickCryptoIdentity } : {}),

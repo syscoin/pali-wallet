@@ -477,7 +477,17 @@ export function createKeyringRuntimeFactory(
         const deviceUnlock = dependencies.deviceUnlock && storage.deviceUnlockEnrollment
           ? createDeviceUnlockEnrollment({ ...dependencies.deviceUnlock, enrollment: storage.deviceUnlockEnrollment }) : undefined;
         const pinVault = dependencies.pinCredential ? createNativePinVault(storage.pin, dependencies.pinCredential) : undefined;
-        const host = sdk.createKeyringHost(storage.keyringStorage);
+        // Bind the same fixed checkpoint adapter to the SDK and native controllers.
+        const checkpointStorage: typeof storage.keyringStorage = Object.freeze({ ...storage.keyringStorage,
+          compareAndSet: (key: string, expected: unknown, value: unknown, removeIfEqual?: Readonly<Record<string, unknown>>, guard?: () => void) => {
+            if (key !== WALLET_CATALOGUE_KEY && parseSLHDSAStateStorageKey(key) === null)
+              return storage.keyringStorage.compareAndSet(key, expected, value, removeIfEqual, guard);
+            if (!guard) throw new KeyringRuntimeError('INVALID_INPUT');
+            return commitPublicCheckpoint([{ key, expected, value }, ...Object.entries(removeIfEqual ?? {}).map(([key, expected]) => ({ key, expected, value: undefined }))], guard);
+          },
+          compareAndSetMany: (...args: Parameters<typeof storage.keyringStorage.compareAndSetMany>) => commitPublicCheckpoint(...args),
+        });
+        const host = sdk.createKeyringHost(checkpointStorage);
         const initialEvmNetwork = getNativeNetwork('ethereum');
         const sdkEvmNetwork = (network: NativeNetworkRegistration): SdkNetwork => ({
           kind: sdk.INetworkType.Ethereum, chainId: Number(network.chainId), slip44: network.slip44,
@@ -673,15 +683,6 @@ export function createKeyringRuntimeFactory(
           if (saved) currentPublicSessionRecord = next;
           return saved;
         };
-        const checkpointStorage: typeof storage.keyringStorage = Object.freeze({ ...storage.keyringStorage,
-          compareAndSet: (key: string, expected: unknown, value: unknown, removeIfEqual?: Readonly<Record<string, unknown>>, guard?: () => void) => {
-            if (key !== WALLET_CATALOGUE_KEY && parseSLHDSAStateStorageKey(key) === null)
-              return storage.keyringStorage.compareAndSet(key, expected, value, removeIfEqual, guard);
-            if (!guard) throw new KeyringRuntimeError('INVALID_INPUT');
-            return commitPublicCheckpoint([{ key, expected, value }, ...Object.entries(removeIfEqual ?? {}).map(([key, expected]) => ({ key, expected, value: undefined }))], guard);
-          },
-          compareAndSetMany: commitPublicCheckpoint,
-        });
         const catalogue = new NativeWalletCatalogue(checkpointStorage);
         const infrastructure = createNativeInfrastructure();
         const passkeyRegistry = createNativePasskeyRegistry(storage.keyringStorage);

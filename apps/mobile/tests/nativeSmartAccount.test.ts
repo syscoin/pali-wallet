@@ -6,7 +6,9 @@ import { bindNativePrivateAuthentication, createNativePrivateAuthenticationScope
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { prepareRecoveryPin } from './fixtures/recoveryPin.ts';
 import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
-import { createTestPinRecordKeyring } from './fixtures/pinOperation.ts';
+import { createTestPinRecordKeyring, withTestPinOperation } from './fixtures/pinOperation.ts';
+import { createSlhDsaProfileStateCrypto } from '../../../source/wallet/slhDsaStateCrypto.ts';
+import { qualifyNativeHdAccounts } from '../qualification/hd-accounts.ts';
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import { normalizeSmartAccountModuleRequest } from '../../../source/shared/smartAccountModuleRequest.ts';
 import type { NativeSmartCreationAllocation } from '../src/smartAccount/preparation.ts';
@@ -118,6 +120,9 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let observedPasskey = false;
   const slhDerivations: number[] = [];
   const sdkInstances: { isUnlocked(): boolean }[] = [];
+  const sdkHostStores = new WeakMap<object, SqliteWalletStorage['keyringStorage']>();
+  let sdkHost: InstanceType<Awaited<ReturnType<typeof loadNativeKeyringSdk>>['HostKeyring']> | undefined;
+  let sdkHostStorage: SqliteWalletStorage['keyringStorage'] | undefined;
   let captureJournal: (() => ReturnType<EvmSignedRecords['captureSmartAccountPendingRecords']>) | undefined;
   let readPreparedRecord: ((chainId: string, from: string, hash: string) => Promise<string | null>) | undefined;
   let mutateSelectedSmart: ((mutate: (account: IKeyringAccountState) => void) => void) | undefined;
@@ -292,9 +297,14 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     ...(recordSignatures || slhFactory !== null ? { loadSdk: async () => {
       const sdk = await loadNativeKeyringSdk();
       const Base = sdk.HostKeyring;
-      return { ...sdk, HostKeyring: class extends Base {
+      return { ...sdk, createKeyringHost(...args: Parameters<typeof sdk.createKeyringHost>) {
+        const host = sdk.createKeyringHost(...args);
+        sdkHostStores.set(host, args[0] as SqliteWalletStorage['keyringStorage']);
+        return host;
+      }, HostKeyring: class extends Base {
         constructor(...args: ConstructorParameters<typeof Base>) {
           super(...args);
+          sdkHost = this; sdkHostStorage = sdkHostStores.get(args[0]);
           sdkInstances.push(this);
           const deriveSlh = this.deriveSLHDSASetupSecretForAccount.bind(this);
           this.deriveSLHDSASetupSecretForAccount = async (...input: Parameters<typeof deriveSlh>) => {
@@ -371,7 +381,9 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     mutateLedgerOwner(index: number, mutate: (account: IKeyringAccountState) => void) {assert(mutateLedgerOwner); mutateLedgerOwner(index, mutate);},
     mutateSelectedSmart(mutate: (account: IKeyringAccountState) => void) { assert(mutateSelectedSmart); mutateSelectedSmart(mutate); },
     installSlh() { assert(installSlh); installSlh(); },
-    get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; }, get physicalStorageCloses() { return physicalStorageCloses; }, calls, submitted, signatures, payerSignatures, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
+    get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; },
+    get sdkHost() { assert(sdkHost); return sdkHost; }, get sdkHostStorage() { assert(sdkHostStorage); return sdkHostStorage; },
+    get physicalStorageCloses() { return physicalStorageCloses; }, calls, submitted, signatures, payerSignatures, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
     infrastructureCode(id: PaliInfrastructureContractId, present: boolean) {
       const address = PALI_INFRASTRUCTURE_METADATA_BY_ID[id].address.toLowerCase();
       if (present) missingInfrastructure.delete(address); else missingInfrastructure.add(address);
@@ -3565,6 +3577,35 @@ test('prepared uninstalled SLH status survives cold unlock without rederivation 
     f.mutateSelectedSmart(account => { account.smartAccount!.descriptor!.accountIndex++; });
     await assert.rejects(Promise.resolve().then(() => facade.readPrepared()), /CANCELLED/);
     assert.deepEqual(f.slhDerivations, [0]); assert.equal(backend.actions.length, 0);
+  } finally { await f.close(); }
+});
+
+test('the fixed SDK host adapter checkpoints SLH writes before lock and HD journal qualification', async () => {
+  const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability);
+  try {
+    await f.change({ kind: 'create-smart', label: 'Checkpointed SLH fixture' });
+    const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal, null);
+    const key = await facade.prepareFresh(() => undefined);
+    const ring = f.sdkHost, adapter = f.sdkHostStorage, storageKey = getSLHDSAStateStorageKey(key.keyId);
+    const check = () => { assert.equal(f.sdkHost, ring); assert.equal(f.sdkHostStorage, adapter); assert(ring.hasPublicSession()); };
+    await withTestPinOperation(f.storage.pin, pinCredential, ring, PASSWORD, check, async () => {
+      const previous = await adapter.get(storageKey) as { cipherText: string; updatedAt: number };
+      const crypto = createSlhDsaProfileStateCrypto(ring, check);
+      const state = JSON.parse(await crypto.decrypt(previous.cipherText, key.keyId));
+      state.signatureCount++;
+      const next = { ...previous, cipherText: await crypto.encrypt(JSON.stringify(state), key.keyId), updatedAt: previous.updatedAt + 1 };
+      assert.equal(await adapter.compareAndSetMany([{ key: storageKey, expected: previous, value: next }], check), true);
+    });
+    f.assertNoSigningKeys();
+    f.owner.lock(); await f.owner.unlock(PASSWORD);
+    const restored = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal, null);
+    assert.equal((await restored.readPrepared())[0]!.signatureCount, 1);
+    await f.change({ kind: 'select', id: 'hd:60:0' });
+    const evidence = await qualifyNativeHdAccounts({ phase: 'create', authority: f.owner, runtime: f.runtime, storage: f.storage,
+      password: PASSWORD, expectedSecondAddress: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', check: async (_name, work) => work() });
+    assert.equal(evidence.nativeHdAccountsVerified, true);
+    assert.notEqual(evidence.transferHash, evidence.firstTransferHash);
+    f.assertNoSigningKeys();
   } finally { await f.close(); }
 });
 
