@@ -44,7 +44,7 @@ import { NativeActivity } from '../activity/nativeActivity.ts';
 import { ActivityExplorerReader } from '../activity/explorerReader.ts';
 import { ActivityReceiptReader } from '../activity/receiptReader.ts';
 import { createErc20Reader } from '../portfolio/erc20ReadRpc.ts';
-import { createNftOwnershipReader } from '../portfolio/nftOwnershipReadRpc.ts';
+import { createNftEnumerationReader, createNftOwnershipReader } from '../portfolio/nftOwnershipReadRpc.ts';
 import { createOwnedTokenReader } from '../portfolio/ownedTokenReader.ts';
 import { findUtxoNetwork, isCustomUtxoNetworkId, type UtxoNetwork } from '../core/utxoNetworks.ts';
 import { exactUtxoResponseFetch } from '../core/utxoReadSession.ts';
@@ -396,7 +396,7 @@ export function createNativeWalletControllers() {
   const transfers = new NativeTransfers(authority, () => runtime?.transfers, { fetch: walletFetch });
   const tokens = new NativeTokens(
     authority, () => runtime?.tokens, createErc20Reader(readRpc), Date.now,
-    () => authority.lock(), createOwnedTokenReader(walletFetch), createNftOwnershipReader(readRpc)
+    () => authority.lock(), createOwnedTokenReader(walletFetch), createNftOwnershipReader(readRpc), createNftEnumerationReader(readRpc)
   );
   const activity = new NativeActivity(authority, () => runtime?.activity,
     new ActivityExplorerReader(walletFetch), new ActivityReceiptReader({ fetch: walletFetch }));

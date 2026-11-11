@@ -169,6 +169,7 @@ async function fixture(smart = true) {
     '../portfolio/ownedTokenReader.ts': { createOwnedTokenReader: () => ({}) },
     '../portfolio/nftOwnershipReadRpc.ts': {
       createNftOwnershipReader: () => ({}),
+      createNftEnumerationReader: () => () => assert.fail('guardian recovery must not enumerate collectibles'),
     },
     '../custody/utxoActivity.ts': { createNativeUtxoActivity: () => ({}) },
     '../core/utxoActivity.ts': { createUtxoActivityReader: () => ({}) },

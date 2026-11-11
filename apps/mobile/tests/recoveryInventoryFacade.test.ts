@@ -169,7 +169,10 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
     '../activity/receiptReader.ts': { ActivityReceiptReader: PassiveController },
     '../portfolio/erc20ReadRpc.ts': { createErc20Reader: () => ({}) },
     '../portfolio/ownedTokenReader.ts': { createOwnedTokenReader: () => () => assert.fail('inventory must not discover tokens') },
-    '../portfolio/nftOwnershipReadRpc.ts': { createNftOwnershipReader: () => () => assert.fail('inventory must not check collectibles') },
+    '../portfolio/nftOwnershipReadRpc.ts': {
+      createNftOwnershipReader: () => () => assert.fail('inventory must not check collectibles'),
+      createNftEnumerationReader: () => () => assert.fail('inventory must not enumerate collectibles'),
+    },
     '../core/utxoBalanceReader.ts': { createUtxoBalanceReader: () => assert.fail('inventory must not read UTXO balances') },
     '../core/utxoNetworks.ts': { isCustomUtxoNetworkId },
     '../core/utxoReadSession.ts': { exactUtxoResponseFetch },

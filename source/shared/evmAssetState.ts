@@ -1,15 +1,15 @@
 import { getAddress } from 'ethers/address';
 
-import {
-  normalizeNftExecutionRevert,
-  verifyERC1155OwnershipHelper,
-  verifyERC721OwnershipHelper,
-} from '../scripts/Background/controllers/assets/nft-utils.ts';
 import { normalizeNftTokenId } from '../utils/nftTokenId.ts';
 
 import { decodeErc20Transfer, parseErc20Units } from './erc20.ts';
 import { snapshotEvmFeeEnvelope } from './evmFeeApproval.ts';
 import type { EvmFeeEnvelope } from './evmFeeApproval.ts';
+import {
+  normalizeNftExecutionRevert,
+  verifyERC1155OwnershipHelper,
+  verifyERC721OwnershipHelper,
+} from './nftReads.ts';
 import { decodeNftTransferData } from './nftTransfer.ts';
 
 export type EvmTransferAsset = Readonly<{

@@ -602,7 +602,7 @@ test('manual ERC1155 token ID guidance distinguishes malformed input from health
           if (data === abi.encodeFunctionData('symbol'))
             result = abi.encodeFunctionResult('symbol', [SYMBOL]);
 
-          // nft-utils.ts uses one real entropy-generated uint256 negative probe
+          // nftReads.ts uses one real entropy-generated uint256 negative probe
           // before the requested batch. No entropy/result replacement is used.
           // Admit that one canonical owner-only balance read per armed UI phase,
           // not arbitrary selectors, owners, contract targets or repeated IDs.

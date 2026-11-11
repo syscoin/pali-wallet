@@ -6,6 +6,8 @@ export type NftReadRunner = Required<Pick<ContractRunner, 'call'>> &
   Pick<ContractRunner, 'resolveName'>;
 type NftReadTransaction = Parameters<NftReadRunner['call']>[0];
 
+export const MAX_ENUMERATED_NFTS = 10;
+
 const MAX_REVERT_HEX_LENGTH = 2 + 4096 * 2;
 
 const isBoundedRevertData = (data: unknown): data is string =>
@@ -315,7 +317,9 @@ export async function discoverNftTokens(
   method: 'enumeration' | 'manual' | 'api';
   requiresManualEntry: boolean;
   tokens?: INftTokenInfo[];
+  totalOwned?: string;
 }> {
+  let totalOwned: string | undefined;
   // For ERC-721, try enumeration first
   if (tokenStandard === 'ERC-721') {
     try {
@@ -326,9 +330,10 @@ export async function discoverNftTokens(
         contract,
         INTERFACE_ID_ERC721_ENUMERABLE
       );
+      // The collection count is useful even without enumerable token IDs.
+      const balance = await contract.balanceOf!(ownerAddress);
+      totalOwned = balance.toString();
       if (isEnumerable) {
-        // Get balance first
-        const balance = await contract.balanceOf!(ownerAddress);
         const tokenCount = Number(balance);
 
         if (tokenCount === 0) {
@@ -336,11 +341,12 @@ export async function discoverNftTokens(
             method: 'enumeration',
             tokens: [],
             requiresManualEntry: true, // Still allow manual entry
+            totalOwned,
           };
         }
 
         // Limit to first 10 tokens
-        const limit = Math.min(tokenCount, 10);
+        const limit = Math.min(tokenCount, MAX_ENUMERATED_NFTS);
         const tokens: INftTokenInfo[] = [];
 
         // Fetch tokens in parallel (up to limit)
@@ -367,6 +373,7 @@ export async function discoverNftTokens(
           tokens,
           requiresManualEntry: true, // Always allow manual entry
           hasMore: tokenCount > limit,
+          totalOwned,
         };
       }
     } catch {
@@ -388,5 +395,6 @@ export async function discoverNftTokens(
     method: 'manual',
     tokens: [],
     requiresManualEntry: true,
+    ...(totalOwned !== undefined ? { totalOwned } : {}),
   };
 }

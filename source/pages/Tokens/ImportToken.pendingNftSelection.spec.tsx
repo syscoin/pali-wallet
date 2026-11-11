@@ -6,10 +6,10 @@ import React from 'react';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 
+import { verifyERC1155OwnershipHelper } from '../../shared/nftReads';
 import { AddToken } from 'pages/Tokens/AddToken';
 import EthAccountController from 'scripts/Background/controllers/account/evm';
 import EvmAssetsController from 'scripts/Background/controllers/assets/evm';
-import { verifyERC1155OwnershipHelper } from 'scripts/Background/controllers/assets/nft-utils';
 import vaultReducer, { createAccount, setActiveAccount } from 'state/vault';
 import vaultGlobalReducer from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';

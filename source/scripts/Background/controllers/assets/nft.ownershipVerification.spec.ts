@@ -9,7 +9,8 @@ import {
   normalizeNftExecutionRevert,
   verifyERC1155OwnershipHelper,
   verifyERC721OwnershipHelper,
-} from './nft-utils';
+} from '../../../../shared/nftReads';
+
 import type { JsonRpcError, TransactionRequest } from 'ethers/providers';
 
 const CONTRACT = '0x0000000000000000000000000000000000000721';

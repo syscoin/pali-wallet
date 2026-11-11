@@ -451,6 +451,10 @@ test('native factory explicitly wires one owned transport to all network consume
         captures.nft = [options];
         return 'nft-reader';
       },
+      createNftEnumerationReader: (options: unknown) => {
+        captures.nftEnumeration = [options];
+        return 'nft-enumeration-reader';
+      },
     },
     '../core/utxoBalanceReader.ts': {
       createUtxoBalanceReader() {
@@ -498,7 +502,9 @@ test('native factory explicitly wires one owned transport to all network consume
   assert.equal(captures.tokens![0][2], 'token-reader');
   assert.equal(captures.tokens![0][5], 'holdings-reader');
   assert.equal(captures.tokens![0][6], 'nft-reader');
+  assert.equal(captures.tokens![0][7], 'nft-enumeration-reader');
   assert.equal(captures.nft![0], captures.erc20![0]);
+  assert.equal(captures.nftEnumeration![0], captures.erc20![0]);
   assert.equal(captures.activity![0].length, 4);
   assert.equal(captures.utxoActivity![0], bundle.authority);
   assert.equal(captures.utxoActivity![2], 'utxo-activity-reader');

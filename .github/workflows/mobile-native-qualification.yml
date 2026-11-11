@@ -51,7 +51,6 @@ on:
       - 'source/types/network.ts'
       - 'source/types/security.ts'
       - 'source/types/utxoTransaction.ts'
-      - 'source/scripts/Background/controllers/assets/nft-utils.ts'
       - 'source/utils/accountCompatibility.ts'
       - 'source/utils/asyncMutex.ts'
       - 'source/utils/cleanErrorStack.ts'

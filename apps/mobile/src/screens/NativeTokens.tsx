@@ -440,6 +440,8 @@ function TokenContent({
               network={network.name}
               busy={busy}
               canCheck={snapshot.canCheckCollectible === true}
+              enumerate={snapshot.canEnumerateCollectible ? (query, signal) =>
+                controller.enumerateCollectible(route.account, query, signal) : undefined}
               check={(query, signal) => route.source === 'explorer'
                 ? controller.checkCollectible(route.item, query.tokenId, signal)
                 : route.source === 'saved'
@@ -755,12 +757,13 @@ function TokenContent({
 
 const collectibleStandards = ['ERC-721', 'ERC-1155'] as const;
 
-function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, onRemove, onSend, onLeaveChange }: {
+export function CollectibleOwnership({ item, network, check, enumerate, busy, canCheck, onSave, onRemove, onSend, onLeaveChange }: {
   item: OwnedCollectibleSuggestion | SavedCollectible | null;
   network: string;
   busy: boolean;
   canCheck: boolean;
   check(query: CollectibleQuery, signal: AbortSignal): ReturnType<NativeTokenView['checkCollectible']>;
+  enumerate?(query: { contractAddress: string; tokenStandard: 'ERC-721' }, signal: AbortSignal): ReturnType<NativeTokenView['enumerateCollectible']>;
   onSave(ticket: CollectibleSaveTicket): Promise<void>;
   onRemove?(): Promise<void>;
   onSend?(): void;
@@ -775,6 +778,13 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
     tokenStandard: CollectibleQuery['tokenStandard'] | null;
   }>({ contractAddress: item?.contractAddress ?? '', tokenId: fixedId ?? '', tokenStandard: item?.tokenStandard ?? null });
   const currentDraft = useRef(draft);
+  type Enumeration = { kind: 'idle' | 'loading' | 'error' } | {
+    kind: 'ready'; draft: typeof draft; tokenIds: readonly string[]; hasMore: boolean; method: 'enumeration' | 'manual'; totalOwned?: string;
+  };
+  const [enumeration, setEnumeration] = useState<Enumeration>({ kind: 'idle' });
+  const enumerationRequest = useRef<AbortController | null>(null);
+  const enumerationResult = useRef<Extract<Enumeration, { kind: 'ready' }> | null>(null);
+  const autoEnumerated = useRef<{ item: NonNullable<typeof item> } | null>(null);
   const [result, setResult] = useState<
     | { kind: 'idle' | 'loading' | 'error' }
     | { kind: 'invalid'; message: string }
@@ -783,18 +793,25 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
   const active = useRef<AbortController | null>(null);
   const reviewed = useRef<{ request: AbortController; ticket: CollectibleSaveTicket } | null>(null);
   const alive = useRef(false);
-  const cancel = useCallback(() => {
+  const cancel = useCallback((preserveEnumeration = false) => {
     const request = active.current;
     active.current = null;
     request?.abort();
     const review = reviewed.current;
     reviewed.current = null;
     review?.request.abort();
+    if (!preserveEnumeration) {
+      const enumeration = enumerationRequest.current;
+      enumerationRequest.current = null;
+      enumeration?.abort();
+      enumerationResult.current = null;
+    }
   }, []);
   useLayoutEffect(() => {
     alive.current = true;
     const leave = () => {
       alive.current = false;
+      autoEnumerated.current = null;
       cancel();
     };
     onLeaveChange(leave);
@@ -810,11 +827,14 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
     currentDraft.current = next;
     setDraft(next);
     setResult({ kind: 'idle' });
+    setEnumeration({ kind: 'idle' });
   };
-  const read = async () => {
-    if (!alive.current || active.current || busy || !canCheck) return;
-    cancel();
-    const { contractAddress: address, tokenId: id, tokenStandard } = currentDraft.current;
+  const read = async (selected?: CollectibleQuery) => {
+    if (!alive.current || active.current || enumerationRequest.current || busy || !canCheck) return;
+    const preserveEnumeration = enumerationResult.current?.draft === currentDraft.current;
+    cancel(preserveEnumeration);
+    if (!preserveEnumeration) setEnumeration({ kind: 'idle' });
+    const { contractAddress: address, tokenId: id, tokenStandard } = selected ?? currentDraft.current;
     if (!tokenStandard) return;
     let contractAddress: string, tokenId: string;
     try { contractAddress = normalizeErc20Address(address.trim()); }
@@ -837,6 +857,50 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
       if (active.current === request) active.current = null;
     }
   };
+  const findTokenIds = async () => {
+    if (!alive.current || busy || active.current || enumerationRequest.current || !enumerate) return;
+    const selected = currentDraft.current;
+    if (selected.tokenStandard !== 'ERC-721' || fixedId !== undefined) return;
+    let contractAddress: string;
+    try { contractAddress = normalizeErc20Address(selected.contractAddress.trim()); }
+    catch { setResult({ kind: 'invalid', message: 'Enter a valid contract address.' }); return; }
+    cancel();
+    setResult({ kind: 'idle' });
+    const request = new AbortController();
+    enumerationRequest.current = request;
+    setEnumeration({ kind: 'loading' });
+    Keyboard.dismiss();
+    try {
+      const result = await enumerate({ contractAddress, tokenStandard: 'ERC-721' }, request.signal);
+      if (!alive.current || enumerationRequest.current !== request || currentDraft.current !== selected) return;
+      const next = { kind: 'ready' as const, draft: selected, ...result };
+      enumerationResult.current = next;
+      setEnumeration(next);
+    } catch {
+      if (alive.current && enumerationRequest.current === request) setEnumeration({ kind: 'error' });
+    } finally {
+      if (enumerationRequest.current === request) enumerationRequest.current = null;
+      request.abort();
+    }
+  };
+  const selectTokenId = (listing: Extract<Enumeration, { kind: 'ready' }>, tokenId: string) => {
+    if (!alive.current || busy || active.current || enumerationResult.current !== listing || currentDraft.current !== listing.draft || !listing.tokenIds.includes(tokenId)) return;
+    const selected = { contractAddress: listing.draft.contractAddress, tokenStandard: 'ERC-721' as const, tokenId };
+    currentDraft.current = selected;
+    setDraft(selected);
+    const next = { ...listing, draft: selected };
+    enumerationResult.current = next;
+    setEnumeration(next);
+    void read(selected);
+  };
+  useEffect(() => {
+    if (!alive.current || !item || item.tokenStandard !== 'ERC-721' || fixedId !== undefined || !enumerate || busy || autoEnumerated.current?.item === item) return;
+    const request = { item };
+    autoEnumerated.current = request;
+    void Promise.resolve().then(() => {
+      if (alive.current && autoEnumerated.current === request) return findTokenIds();
+    });
+  });
   return <View style={s.section} testID="native-collectible-ownership">
     {item ? <Card style={s.tokenRow}>
       {'name' in item && <Text style={s.provenance}>Explorer-reported name</Text>}
@@ -882,9 +946,9 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
         </View>
       </View>
     </>}
-    {!confirmRemove && onSend && <Button title="Send collectible" icon="arrow-up-right" disabled={busy || result.kind === 'loading'}
+    {!confirmRemove && onSend && <Button title="Send collectible" icon="arrow-up-right" disabled={busy || result.kind === 'loading' || enumeration.kind === 'loading'}
       onPress={() => {
-        if (!alive.current || active.current || busy) return;
+        if (!alive.current || active.current || enumerationRequest.current || busy) return;
         cancel();
         setResult({ kind: 'idle' });
         onSend();
@@ -896,6 +960,26 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
         keyboardType="number-pad" autoCapitalize="none" autoCorrect={false}
         maxLength={256} style={s.input} />
     </View>}
+    {!confirmRemove && enumerate && draft.tokenStandard === 'ERC-721' && fixedId === undefined && <>
+      <Button title={enumeration.kind === 'loading' ? 'Finding token IDs…' : enumeration.kind === 'ready' ? 'Refresh token IDs' : 'Find token IDs'} variant="secondary"
+        disabled={busy || !draft.contractAddress.trim() || result.kind === 'loading' || enumeration.kind === 'loading'} onPress={() => void findTokenIds()} />
+      {enumeration.kind === 'loading' && <ActivityIndicator color={colors.pink} accessibilityLabel="Finding token IDs" />}
+      {enumeration.kind === 'error' && <Notice title="Token IDs unavailable" body="The network couldn’t list token IDs. Try again or enter a token ID manually." tone="amber" />}
+      {enumeration.kind === 'ready' && <Card style={s.tokenRow} testID="native-collectible-enumeration">
+        {enumeration.totalOwned !== undefined && <Text selectable style={s.contract} testID="native-collection-balance"
+          accessibilityLabel={hideBalances ? 'Collection balance hidden' : `Collection balance: ${enumeration.totalOwned} NFTs`}>
+          Collection balance: {hideBalances ? HIDDEN_BALANCE : `${enumeration.totalOwned} NFTs`}
+        </Text>}
+        {enumeration.method === 'manual' ? <Text style={styles.muted}>Token ID lookup is unavailable. Enter a token ID manually.</Text>
+          : !enumeration.tokenIds.length ? <Text style={styles.muted}>No token IDs found for this account. You can still enter a token ID manually.</Text>
+          : <>
+            <Text style={styles.muted}>Choose a token ID to check ownership.</Text>
+            {enumeration.tokenIds.map(tokenId => <Button key={tokenId} title={`Token ID ${tokenId}`} variant="secondary" size="compact"
+              icon={draft.tokenId === tokenId ? 'check' : undefined} disabled={busy || result.kind === 'loading'} onPress={() => selectTokenId(enumeration, tokenId)} />)}
+            {enumeration.hasMore && <Text style={styles.muted}>Showing the first 10 token IDs. Enter another token ID manually.</Text>}
+          </>}
+      </Card>}
+    </>}
     {result.kind === 'invalid' && <Text accessibilityRole="alert" style={s.error}>{result.message}</Text>}
     {result.kind === 'error' && <Notice title="Ownership unavailable" body="The network couldn’t confirm this item. Try again." tone="amber" />}
     {result.kind === 'ready' && <Text selectable accessibilityLiveRegion="polite" testID="native-collectible-quantity">
@@ -903,7 +987,7 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
     </Text>}
     {!confirmRemove && canCheck && <Button title={result.kind === 'loading' ? 'Checking ownership…' : 'Check ownership'}
       variant={onSend ? 'secondary' : 'primary'}
-      disabled={busy || !draft.contractAddress.trim() || !draft.tokenId.trim() || !draft.tokenStandard || result.kind === 'loading'}
+      disabled={busy || !draft.contractAddress.trim() || !draft.tokenId.trim() || !draft.tokenStandard || result.kind === 'loading' || enumeration.kind === 'loading'}
       onPress={() => void read()} />}
     {result.kind === 'loading' && <ActivityIndicator color={colors.pink} accessibilityLabel="Checking ownership" />}
     {result.kind === 'ready' && result.alreadySaved && <Text style={styles.muted}>Already in your saved list.</Text>}

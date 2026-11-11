@@ -10,7 +10,7 @@ import {
 } from '../../src/custody/networkContext';
 import { NativeTokens, type NativeTokenRuntime } from '../../src/portfolio/nativeTokens';
 import { createOwnedTokenReader } from '../../src/portfolio/ownedTokenReader';
-import { createNftOwnershipReader } from '../../src/portfolio/nftOwnershipReadRpc';
+import { createNftEnumerationReader, createNftOwnershipReader } from '../../src/portfolio/nftOwnershipReadRpc';
 import {
   NativeTokenRegistry,
   type NativeTokenScope,
@@ -171,11 +171,14 @@ const reader: Erc20Reader = {
   },
 };
 const nftAbi = new Interface([
+  'function supportsInterface(bytes4) view returns (bool)',
+  'function balanceOf(address) view returns (uint256)',
+  'function tokenOfOwnerByIndex(address,uint256) view returns (uint256)',
   'function ownerOf(uint256) view returns (address)',
   'function balanceOf(address,uint256) view returns (uint256)',
   'function balanceOfBatch(address[],uint256[]) view returns (uint256[])',
 ]);
-const readNft = query.has('collectible-check') ? createNftOwnershipReader({
+const nftReadOptions: Parameters<typeof createNftOwnershipReader>[0] = {
   registrations: () => [getNativeNetwork('ethereum')],
   fetch: async (url, init) => {
   if (url !== getNativeNetwork('ethereum').rpcUrl) throw new Error('Unexpected fixture network');
@@ -201,14 +204,19 @@ const readNft = query.has('collectible-check') ? createNftOwnershipReader({
     init.signal?.removeEventListener('abort', aborted);
   }
   if (failNft) { failNft = false; return new Response(null, { status: 503 }); }
+  if (call.name === 'supportsInterface') return respond(nftAbi.encodeFunctionResult('supportsInterface', [true]));
+  if (call.name === 'balanceOf' && call.args.length === 1) return respond(nftAbi.encodeFunctionResult('balanceOf(address)', [12n]));
+  if (call.name === 'tokenOfOwnerByIndex') return respond(nftAbi.encodeFunctionResult('tokenOfOwnerByIndex', [call.args[1] === 1n ? (1n << 256n) - 1n : call.args[1]]));
   if (call.name === 'ownerOf') {
-    if (call.args[0] === 0n) return respond(nftAbi.encodeFunctionResult('ownerOf', [owner]));
+    if (call.args[0] === 0n || query.has('collectible-enumeration') && call.args[0] === (1n << 256n) - 1n) return respond(nftAbi.encodeFunctionResult('ownerOf', [owner]));
     if (call.args[0] === 1n) return respond(nftAbi.encodeFunctionResult('ownerOf', ['0x1111111111111111111111111111111111111111']));
     return Response.json({ jsonrpc: '2.0', id, error: { code: 3, message: 'execution reverted', data: '0x' } });
   }
-  if (call.name === 'balanceOf') return respond(nftAbi.encodeFunctionResult('balanceOf', [0n]));
+  if (call.name === 'balanceOf') return respond(nftAbi.encodeFunctionResult('balanceOf(address,uint256)', [0n]));
   return respond(nftAbi.encodeFunctionResult('balanceOfBatch', [[900719925474099312345n]]));
-} }) : undefined;
+} };
+const readNft = query.has('collectible-check') ? createNftOwnershipReader(nftReadOptions) : undefined;
+const enumerateNft = query.has('collectible-enumeration') ? createNftEnumerationReader(nftReadOptions) : undefined;
 const tokenRuntime: NativeTokenRuntime = {
   load: (guard) => registry.load(scope(), guard),
   add: (revision, metadata, guard) =>
@@ -227,7 +235,8 @@ const controller = new NativeTokens(
   () => 1000,
   undefined,
   readHoldings,
-  readNft
+  readNft,
+  enumerateNft
 );
 let setVisible: (value: boolean) => void = () => undefined;
 let sends = 0;
