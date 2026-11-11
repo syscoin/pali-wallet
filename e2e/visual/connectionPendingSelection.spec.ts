@@ -452,7 +452,11 @@ test('connection selection stays on the reviewed account until real switch and g
           });
           await expect(pendingConfirm).toBeDisabled();
           await expect(pendingConfirm).toHaveAttribute('aria-busy', 'true');
-          const spinner = pendingConfirm.locator(':scope > svg');
+          const spinner = pendingConfirm.locator(
+            ':scope > span[aria-hidden="true"] > svg'
+          );
+          await expect(spinner).toHaveCount(1);
+          await expect(spinner).toBeVisible();
           const progress = await captureForegroundContrast(
             pendingConfirm,
             info,

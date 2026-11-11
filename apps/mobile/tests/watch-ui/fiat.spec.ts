@@ -46,10 +46,15 @@ test('display currency saves explicitly and quotes never relabel the exact balan
   await expect(page.getByTestId('native-portfolio-balance')).toHaveText(exact!);
   await page.screenshot({ path: testInfo.outputPath('wallet-quote-320.png') });
   await page.clock.fastForward(300_001);
-  await expect(quote).toHaveCount(0);
+  const expectedQuotes = ['usd', 'eur', 'eur'].map((code) => `https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=${code}&include_24hr_change=true`);
+  await expect.poll(() => page.evaluate(() => window.__watchFixture.quotes())).toEqual(expectedQuotes);
+  await expect(quote).toHaveText(/^≈ .+ EUR$/);
   await expect(page.getByTestId('native-portfolio-balance')).toHaveText(exact!);
-  const calls = await page.evaluate(() => window.__watchFixture.quotes());
-  expect(calls).toEqual(['usd', 'eur'].map((code) => `https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=${code}&include_24hr_change=true`));
+  await tab('Settings').click();
+  await button('Lock wallet').click();
+  await expect(quote).toHaveCount(0);
+  await page.clock.fastForward(600_001);
+  expect(await page.evaluate(() => window.__watchFixture.quotes())).toEqual(expectedQuotes);
 });
 
 test('a held watch-only quote preserves Receive geometry at large text', async ({ page, baseURL }) => {

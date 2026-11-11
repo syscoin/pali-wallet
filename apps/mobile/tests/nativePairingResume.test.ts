@@ -194,7 +194,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     for (const listener of authorityListeners) listener(snapshot);
   };
   const controllers = {
-    authentication: { isActive: () => promptActive, cancel() { promptActive = false; } },
+    authentication: { isAnyPromptActive: () => promptActive, isActive: () => promptActive, cancel() { promptActive = false; } },
     authority: {
       getSnapshot: () => snapshot,
       getCatalogue: () => (snapshot.phase === 'ready' ? catalogue : null),

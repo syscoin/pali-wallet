@@ -507,7 +507,7 @@ const measureLocalizedCard = (card: Locator, translations: Translations) =>
     },
     {
       heading: translations.tokens.marketInformation,
-      verified: translations.tokens.verifiedByCoinGecko,
+      verified: translations.tokens.listedOnCoinGecko,
       labels: {
         currentPrice: translations.tokens.currentPrice,
         rank: translations.tokens.rank,
@@ -516,7 +516,7 @@ const measureLocalizedCard = (card: Locator, translations: Translations) =>
         circulatingSupply: translations.tokens.circulatingSupply,
         categories: translations.tokens.categories,
         viewOnCoinGecko: translations.tokens.viewOnCoinGecko,
-        verification: translations.tokens.verification,
+        verification: translations.tokens.marketDataSource,
         about: translations.tokens.about,
       },
     }
@@ -1545,7 +1545,7 @@ test('ordinary preference pickers retain centered SVG boxes while localized mark
               locale.text.tokens.circulatingSupply,
               locale.text.tokens.categories,
               locale.text.tokens.viewOnCoinGecko,
-              locale.text.tokens.verification,
+              locale.text.tokens.marketDataSource,
               locale.text.tokens.about,
             ])
               await expect(
@@ -1569,7 +1569,7 @@ test('ordinary preference pickers retain centered SVG boxes while localized mark
                 card().getByText(label, { exact: true }).locator('..')
               ).toHaveText(label + text);
             await expect(
-              card().getByText('✓ ' + locale.text.tokens.verifiedByCoinGecko, {
+              card().getByText(locale.text.tokens.listedOnCoinGecko, {
                 exact: true,
               })
             ).toHaveCount(1);
@@ -1659,7 +1659,7 @@ test('ordinary preference pickers retain centered SVG boxes while localized mark
                       .locator('..')
                       .locator('..')
                   : card()
-                      .getByText(locale.text.tokens.verification, {
+                      .getByText(locale.text.tokens.marketDataSource, {
                         exact: true,
                       })
                       .locator('..');
@@ -1784,7 +1784,7 @@ test('ordinary preference pickers retain centered SVG boxes while localized mark
             locale.text.tokens.marketInformation
           );
           expect(geometry.verificationText).toBe(
-            '✓ ' + locale.text.tokens.verifiedByCoinGecko
+            locale.text.tokens.listedOnCoinGecko
           );
           expect(geometry.candidate.noTextCollision).toBe(true);
           expect(geometry.candidate.noHorizontalClipping).toBe(true);

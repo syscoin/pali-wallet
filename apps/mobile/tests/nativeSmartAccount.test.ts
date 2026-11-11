@@ -1213,7 +1213,7 @@ test('recovery lists smart accounts on every saved chain and preserves their met
 });
 
 
-test('real smart deployment uses the owned payer, separate consent and durable SDK submission', async () => {
+test('real smart deployment uses the owned payer, separate consent and durable SDK submission', { timeout: 45_000 }, async () => {
   const f = await fixture();
   let deployment: Awaited<ReturnType<KeyringRuntime['openSmartAccountDeployment']>> | undefined;
   try {
@@ -1222,17 +1222,32 @@ test('real smart deployment uses the owned payer, separate consent and durable S
     const smart = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
     deployment = await f.runtime.openSmartAccountDeployment(() => undefined, null);
     const submissionAtWire: boolean[] = [];
-    f.onBroadcast(() => { submissionAtWire.push(deployment!.getSnapshot().userOperationSubmissionStarted); });
+    f.onBroadcast(async () => {
+      submissionAtWire.push(deployment!.getSnapshot().userOperationSubmissionStarted);
+      if (f.submitted.length === 1) await new Promise(resolve => setTimeout(resolve, 1750));
+    });
     await deployment.prepare();
     assert.equal(deployment.getSnapshot().phase, 'authorize');
     assert.equal(f.submitted.length, 0);
-    const pending = deployment.authorize(deployment.getSnapshot().revision);
-    for (let attempt = 0; attempt < 300 && !['complete', 'failed'].includes(deployment.getSnapshot().phase); attempt++) {
-      const state = deployment.getSnapshot();
-      if (state.payerReview) deployment.confirmPayer(state.payerReview.id);
-      await new Promise(resolve => setTimeout(resolve, 5));
+    const operation = deployment, started = performance.now();
+    const payerReviews: { purpose: string; elapsed: number }[] = [];
+    const unsubscribe = operation.subscribe(() => {
+      const review = operation.getSnapshot().payerReview;
+      if (review) {
+        payerReviews.push({ purpose: review.purpose, elapsed: performance.now() - started });
+        operation.confirmPayer(review.id);
+      }
+    });
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; operation.cancel(); }, 30_000);
+    try {
+      await operation.authorize(operation.getSnapshot().revision);
+      assert.equal(timedOut, false, JSON.stringify(operation.getSnapshot()));
+    } finally {
+      clearTimeout(timeout); unsubscribe();
     }
-    await pending;
+    assert.deepEqual(payerReviews.map(review => review.purpose), ['fund-account', 'submit-operation']);
+    assert(payerReviews[1]!.elapsed > 1500, 'the second consent must arrive after the former polling window');
     assert.equal(deployment.getSnapshot().phase, 'complete', JSON.stringify(deployment.getSnapshot()));
     assert.equal(f.submitted.length, 2);
     assert.deepEqual(submissionAtWire, [false, true], 'funding must not retire the UserOperation review');
