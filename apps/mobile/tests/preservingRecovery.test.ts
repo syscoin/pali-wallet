@@ -215,6 +215,13 @@ async function fixture(
     read,
     write,
     writeUtxoBytes(value: string) { const db = new DatabaseSync(file); try { db.prepare('INSERT OR REPLACE INTO keyring_records VALUES (?, ?)').run(UTXO_SIGNED_RECORD_KEY, value); } finally { db.close(); } },
+    writeSignedRow(row: { profile_id: string; wallet_binding: string; value: string } | null) {
+      const db = new DatabaseSync(file);
+      try {
+        if (row) db.prepare('INSERT OR REPLACE INTO evm_signed_records VALUES (?, ?, ?)').run(row.profile_id, row.wallet_binding, row.value);
+        else db.prepare('DELETE FROM evm_signed_records').run();
+      } finally { db.close(); }
+    },
     coordinator,
     remove(key: string) { const db = new DatabaseSync(file); try { db.prepare('DELETE FROM keyring_records WHERE key = ?').run(key); } finally { db.close(); } },
     meta(key: string, value: unknown) {
@@ -477,6 +484,51 @@ test('recovery authenticates captured UTXO bytes even if an ABA swap supplies a 
     await assert.rejects(prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined), { code: 'INVALID_SAVED_DATA' });
     assert.equal(f.read().records.find(({ key: name }) => name === UTXO_SIGNED_RECORD_KEY)?.value, valid);
   } finally { if (corrupt) f.writeUtxoBytes(corrupt); await recovery?.dispose(); await f.close(); }
+});
+
+for (const liveRow of ['valid', 'missing'] as const) test(`recovery authenticates captured EVM bytes when the live row is ${liveRow}`, async () => {
+  const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
+  let captured: { profile_id: string; wallet_binding: string; value: string } | undefined;
+  try {
+    const rawTransaction = await sourceWallet.signTransaction({ type: 2, chainId: 1, nonce: 0,
+      to: importedWallet.address, value: 1n, gasLimit: 21000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
+    const tx = Transaction.from(rawTransaction);
+    await new EvmSignedRecords(f.store.signedRecords).append({ keyring: f.keyring, assertCurrent() {} }, {
+      rawTransaction, hash: tx.hash!, from: sourceWallet.address, chainId: '1', nonce: 0, type: 2,
+      context: { account: { id: 0, type: 'HDAccount', address: sourceWallet.address }, operation: 'send',
+        network: { kind: 'ethereum', chainId: 1, slip44: 60, url: getNativeNetwork('ethereum').rpcUrl } },
+    });
+    const valid = f.read().signedRecords[0] as { profile_id: string; wallet_binding: string; value: string };
+    const damaged = JSON.parse(valid.value);
+    damaged.root.ciphertext = (damaged.root.ciphertext[0] === 'A' ? 'B' : 'A') + damaged.root.ciphertext.slice(1);
+    captured = { ...valid, value: JSON.stringify(damaged) };
+    f.writeSignedRow(captured);
+    const before = f.read();
+    f.owner.lock();
+    class ProbeKeyring extends sdk.SoftwareKeyring {
+      async decryptPrivateRecord(input: Parameters<InstanceType<typeof sdk.SoftwareKeyring>['decryptPrivateRecord']>[0]) {
+        const output = await super.decryptPrivateRecord(input);
+        if (input.domain === 'org.syscoin.pali.evm.signed.root.v1') f.writeSignedRow(captured!);
+        return output;
+      }
+    }
+    recovery = f.coordinator(async () => {
+      f.writeSignedRow(liveRow === 'valid' ? valid : null);
+      if (liveRow === 'missing') f.setAfter(sql => {
+        if (sql.includes('FROM evm_signed_records')) { f.setAfter(undefined); f.writeSignedRow(captured!); }
+      });
+      return { ...sdk, SoftwareKeyring: ProbeKeyring };
+    });
+    await assert.rejects(recovery.prepare(PHRASE, () => undefined), { code: 'INVALID_SAVED_DATA' });
+    assert.deepEqual(f.read().records, before.records);
+    assert.deepEqual(f.read().metadata, before.metadata);
+    assert.equal(f.read().signedRecords[0]?.value, liveRow === 'valid' ? valid.value : undefined);
+    assert.equal(f.read().metadata.some(row => row.key === PENDING_PIN_REMOVAL), false);
+  } finally {
+    f.setAfter(undefined);
+    if (captured) f.writeSignedRow(captured);
+    await recovery?.dispose(); await f.close();
+  }
 });
 
 test('known wrong-root failure is charged once even when its request is cancelled before accounting finishes', async () => {

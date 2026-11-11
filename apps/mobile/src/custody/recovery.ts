@@ -244,13 +244,21 @@ export class NativeRecoveryCoordinator {
                 catch { check(); return fail('INVALID_SAVED_DATA'); }
               }
               if (before.signedRecords.length) {
-          const { EvmSignedRecords } = await import(
+                const row = before.signedRecords[0]!;
+                if (before.signedRecords.length !== 1 || row.profileId !== profileId ||
+                    row.walletBindingId !== before.identity!.walletBindingId) return fail('INVALID_SAVED_DATA');
+                const captured = row.value;
+                const { EvmSignedRecords } = await import(
                   '../../../../source/wallet/evmSignedRecords.ts'
                 );
                 check();
-          try { await new EvmSignedRecords(storage!.signedRecords).validate({ keyring, assertCurrent: check }); check(); }
-          catch { check(); return fail('INVALID_SAVED_DATA'); }
-        }
+                const snapshot = {
+                  read: async (profile: string) => { check(); return profile === profileId ? captured : fail('INVALID_SAVED_DATA'); },
+                  compareAndSet: async () => fail('INVALID_SAVED_DATA'),
+                };
+                try { await new EvmSignedRecords(snapshot).validate({ keyring, assertCurrent: check }); check(); }
+                catch { check(); return fail('INVALID_SAVED_DATA'); }
+              }
         if (before.notes.length) {
                 const { readPrivateVaultBundle } = await import('../../../../source/wallet/privateVaultInspection.ts'); check();
           for (const row of before.notes) {
