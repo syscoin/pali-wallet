@@ -136,6 +136,9 @@ static void store_bigendian_64(uint8_t *x, uint64_t u) {
 static size_t crypto_hashblocks_sha256(uint8_t *statebytes,
                                        const uint8_t *in, size_t inlen) {
 #if defined(PALI_SLH_OPENSSL_SHA256)
+    /* No complete block means no state change. Avoid copying and clearing
+     * temporary compression state for the short tails used by SLH hashes. */
+    if (inlen < 64) return inlen;
     uint32_t words[8];
     PALI_SLH_CLEAR_ON_RETURN(words);
     for (size_t i = 0; i < 8; ++i)
