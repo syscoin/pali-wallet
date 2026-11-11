@@ -1,3 +1,4 @@
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import { NativeSentrySettings } from './NativeSentrySettings';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import {
@@ -82,7 +83,7 @@ function errorText(cause: unknown) {
     case 'DUPLICATE':
       return 'This key is already saved for this role.';
     case 'INVALID_CREDENTIAL':
-      return 'Incorrect PIN. Start a new review to try again.';
+      return 'Device authentication was not completed. Start a new review to try again.';
     case 'AUTH_THROTTLED':
       return 'Too many attempts. Wait before trying again.';
     case 'CANCELLED':
@@ -166,7 +167,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
       ownerRef.current === owner &&
       !owner.lifetime.signal.aborted &&
       (AppState.currentState === 'active' ||
-        (AppState.currentState === 'inactive' && owner.manager?.isAuthenticating() === true)),
+        (!!owner.manager && allowsPrivateAuthenticationInterruption(owner.manager, AppState.currentState))),
     []
   );
   const navigate = useCallback((owner: Owner, next: Step) => {
@@ -253,7 +254,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
       setStep({ kind: 'list' });
     };
     const change = AppState.addEventListener('change', (state) => {
-      if (state !== 'active' && !(state === 'inactive' && owner.manager?.isAuthenticating() === true)) hide();
+      if (state !== 'active' && !(!!owner.manager && allowsPrivateAuthenticationInterruption(owner.manager, state))) hide();
     });
     const blur =
       Platform.OS === 'android'

@@ -8,7 +8,7 @@ import { SecurityPreferences } from '../src/core/securityPreferences.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
-const PASSWORD = '123456';
+const DEVICE_AUTHORIZATION = Object.freeze({ method: 'device' as const });
 const deferred = () => {
   let resolve!: () => void;
   const promise = new Promise<void>((done) => { resolve = done; });
@@ -71,7 +71,7 @@ async function fixture() {
       isAuthenticationRefusal: error => !!error && typeof error === 'object' && refusals.has(error),
       async readPhrase(password) {
         assert.ok(unlocked);
-        if (password !== PASSWORD) throw refuse('INVALID_CREDENTIAL');
+        if (password.method !== 'device') throw refuse('INVALID_CREDENTIAL');
         return PHRASE.split(' ');
       },
       async fingerprint() { return fingerprint; },
@@ -92,7 +92,7 @@ async function fixture() {
   idle.begin(authority, () => authority.lock());
   const flow = new SeedBackupFlow(authority, () => runtime.backup);
   await authority.initialize();
-  await authority.unlock(PASSWORD);
+  await authority.unlock();
   return { authority, flow, runtime, refuse, get confirms() { return confirms; },
     replaceWallet() { fingerprint = 'wallet-two'; },
     expire() { now += 300_000; },
@@ -102,7 +102,7 @@ async function fixture() {
 test('fresh phrase presentation waits for an explicit one-use confirmation of the same durable wallet', async () => {
   const f = await fixture();
   try {
-    const shown = await f.flow.begin(PASSWORD);
+    const shown = await f.flow.begin(DEVICE_AUTHORIZATION);
     assert.equal(shown.words.join(' '), PHRASE);
     assert.deepEqual(Object.keys(shown).sort(), ['id', 'words']);
     assert.equal(JSON.stringify(f.authority.getSnapshot()).includes(PHRASE), false);
@@ -121,7 +121,7 @@ test('fresh phrase presentation waits for an explicit one-use confirmation of th
 test('wrong order, missing slots and getter-backed words cannot verify a backup', async () => {
   const f = await fixture();
   try {
-    const shown = await f.flow.begin(PASSWORD);
+    const shown = await f.flow.begin(DEVICE_AUTHORIZATION);
     await assert.rejects(f.flow.confirm(shown.id, [...shown.words].reverse()), /BACKUP_WORDS_MISMATCH/);
     await assert.rejects(f.flow.confirm(shown.id, shown.words.slice(1)), /BACKUP_WORDS_MISMATCH/);
     const accessor = [...shown.words]; let read = false;
@@ -135,7 +135,7 @@ test('wrong order, missing slots and getter-backed words cannot verify a backup'
 test('repeated wrong answers expire the presentation and require fresh authentication', async () => {
   const f = await fixture();
   try {
-    const shown = await f.flow.begin(PASSWORD);
+    const shown = await f.flow.begin(DEVICE_AUTHORIZATION);
     for (let attempt = 0; attempt < 4; attempt++) await assert.rejects(f.flow.confirm(shown.id, []), /BACKUP_WORDS_MISMATCH/);
     await assert.rejects(f.flow.confirm(shown.id, []), /BACKUP_EXPIRED/);
     await assert.rejects(f.flow.confirm(shown.id, shown.words), /BACKUP_EXPIRED/);
@@ -149,12 +149,12 @@ test('ordinary rejected authentication preserves public state and never returns 
     const before = f.authority.getSnapshot();
     for (const code of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED', 'DEVICE_UNLOCK_UNAVAILABLE'] as const) {
       f.runtime.backup.readPhrase = async () => { throw f.refuse(code); };
-      await assert.rejects(f.flow.begin('000000'), new RegExp(`^Error: ${code}$`));
+      await assert.rejects(f.flow.begin(DEVICE_AUTHORIZATION), new RegExp(`^Error: ${code}$`));
       assert.equal(f.authority.getSnapshot(), before);
     }
     assert.equal(f.confirms, 0);
     f.runtime.backup.readPhrase = async () => { throw new Error('unknown storage outcome'); };
-    await assert.rejects(f.flow.begin(PASSWORD), /BACKUP_UNAVAILABLE/);
+    await assert.rejects(f.flow.begin(DEVICE_AUTHORIZATION), /BACKUP_UNAVAILABLE/);
     assert.equal(f.authority.getSnapshot().phase, 'locked');
   } finally { await f.close(); }
 });
@@ -164,7 +164,7 @@ for (const code of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED', 'DEVICE_UNLOCK_UNAVA
     const f = await fixture();
     try {
       f.runtime.backup.readPhrase = async () => { throw new KeyringRuntimeError(code); };
-      await assert.rejects(f.flow.begin(PASSWORD), /BACKUP_UNAVAILABLE/);
+      await assert.rejects(f.flow.begin(DEVICE_AUTHORIZATION), /BACKUP_UNAVAILABLE/);
       assert.equal(f.authority.getSnapshot().phase, 'locked');
       assert.equal(f.confirms, 0);
     } finally { await f.close(); }
@@ -174,8 +174,8 @@ test('a late obsolete phrase failure cannot lock a newly unlocked session', asyn
   const f = await fixture(), entered = deferred(), held = Promise.withResolvers<readonly string[]>();
   f.runtime.backup.readPhrase = () => { entered.resolve(); return held.promise; };
   try {
-    const pending = f.flow.begin(PASSWORD); void pending.catch(() => undefined); await entered.promise;
-    f.authority.lock(); await f.authority.unlock(PASSWORD);
+    const pending = f.flow.begin(DEVICE_AUTHORIZATION); void pending.catch(() => undefined); await entered.promise;
+    f.authority.lock(); await f.authority.unlock();
     const replacement = f.authority.getSnapshot();
     held.reject(new KeyringRuntimeError('DEVICE_UNLOCK_UNAVAILABLE'));
     await assert.rejects(pending, /BACKUP_UNAVAILABLE/);
@@ -188,7 +188,7 @@ test('lock while authentication is pending discards late secret results', async 
   const started = deferred(); const release = deferred();
   f.runtime.backup.readPhrase = async () => { started.resolve(); await release.promise; return PHRASE.split(' '); };
   try {
-    const pending = f.flow.begin(PASSWORD);
+    const pending = f.flow.begin(DEVICE_AUTHORIZATION);
     await started.promise;
     f.authority.lock(); release.resolve();
     await assert.rejects(pending, /CANCELLED/);
@@ -200,7 +200,7 @@ test('lock while authentication is pending discards late secret results', async 
 test('wallet replacement cannot receive a stale backup receipt', async () => {
   const f = await fixture();
   try {
-    const shown = await f.flow.begin(PASSWORD); f.replaceWallet();
+    const shown = await f.flow.begin(DEVICE_AUTHORIZATION); f.replaceWallet();
     await assert.rejects(f.flow.confirm(shown.id, PHRASE.split(' ')), /^Error: BACKUP_UNAVAILABLE$/);
     assert.equal(f.confirms, 0);
     assert.equal(f.authority.getSnapshot().phase, 'locked');
@@ -213,7 +213,7 @@ test('late persistence after lock cannot reopen the wallet', async () => {
   const original = f.runtime.backup.confirm;
   f.runtime.backup.confirm = async (fingerprint) => { await original(fingerprint); started.resolve(); await release.promise; };
   try {
-    const shown = await f.flow.begin(PASSWORD);
+    const shown = await f.flow.begin(DEVICE_AUTHORIZATION);
     const pending = f.flow.confirm(shown.id, PHRASE.split(' '));
     await started.promise; f.authority.lock(); release.resolve();
     await assert.rejects(pending, /^Error: BACKUP_UNAVAILABLE$/);
@@ -225,22 +225,22 @@ test('late persistence after lock cannot reopen the wallet', async () => {
 test('clear observers cannot start concurrent authentication or revive disposed flows', async () => {
   const f = await fixture();
   const attempts: Promise<unknown>[] = [];
-  const unsubscribe = f.flow.onClear(() => { attempts.push(f.flow.begin(PASSWORD).catch((error) => error.message)); });
+  const unsubscribe = f.flow.onClear(() => { attempts.push(f.flow.begin(DEVICE_AUTHORIZATION).catch((error) => error.message)); });
   try {
-    await f.flow.begin(PASSWORD);
+    await f.flow.begin(DEVICE_AUTHORIZATION);
     assert.deepEqual(await Promise.all(attempts), ['BUSY']);
     unsubscribe(); f.flow.dispose();
-    await assert.rejects(f.flow.begin(PASSWORD), /BACKUP_EXPIRED/);
+    await assert.rejects(f.flow.begin(DEVICE_AUTHORIZATION), /BACKUP_EXPIRED/);
   } finally { unsubscribe(); await f.close(); }
 });
 
 test('cancelled or superseded presentation IDs cannot confirm a new presentation', async () => {
   const f = await fixture();
   try {
-    const first = await f.flow.begin(PASSWORD);
+    const first = await f.flow.begin(DEVICE_AUTHORIZATION);
     f.flow.cancel();
     await assert.rejects(f.flow.confirm(first.id, PHRASE.split(' ')), /BACKUP_EXPIRED/);
-    const second = await f.flow.begin(PASSWORD);
+    const second = await f.flow.begin(DEVICE_AUTHORIZATION);
     assert.notEqual(first.id, second.id);
     await assert.rejects(f.flow.confirm(first.id, PHRASE.split(' ')), /BACKUP_EXPIRED/);
     assert.equal(f.confirms, 0);
@@ -253,7 +253,7 @@ for (const interruption of ['lock', 'expiry', 'dispose'] as const) {
   test(`${interruption} refuses a captured confirmation before persistence`, async () => {
     const f = await fixture();
     try {
-      const shown = await f.flow.begin(PASSWORD);
+      const shown = await f.flow.begin(DEVICE_AUTHORIZATION);
       if (interruption === 'lock') f.authority.lock();
       if (interruption === 'expiry') f.expire(); // No timer callback fires: the authority guard checks the deadline.
       if (interruption === 'dispose') f.flow.dispose();
@@ -269,7 +269,7 @@ test('failed durable confirmation locks and consumes the presentation without ma
   const f = await fixture();
   f.runtime.backup.confirm = async () => { throw Error('storage refused confirmation'); };
   try {
-    const shown = await f.flow.begin(PASSWORD);
+    const shown = await f.flow.begin(DEVICE_AUTHORIZATION);
     await assert.rejects(f.flow.confirm(shown.id, PHRASE.split(' ')), /BACKUP_UNAVAILABLE/);
     assert.equal(f.authority.getSnapshot().backup, 'unconfirmed');
     assert.equal(f.authority.getSnapshot().phase, 'locked');
@@ -284,8 +284,8 @@ test('pending confirmation is single-flight and completion observers cannot star
   f.runtime.backup.confirm = async (fingerprint) => { started.resolve(); await release.promise; await original(fingerprint); };
   const attempts: Promise<unknown>[] = [];
   try {
-    const shown = await f.flow.begin(PASSWORD);
-    const off = f.flow.onClear(() => { attempts.push(f.flow.begin(PASSWORD).catch(error => error.message)); });
+    const shown = await f.flow.begin(DEVICE_AUTHORIZATION);
+    const off = f.flow.onClear(() => { attempts.push(f.flow.begin(DEVICE_AUTHORIZATION).catch(error => error.message)); });
     const pending = f.flow.confirm(shown.id, PHRASE.split(' '));
     await started.promise;
     await assert.rejects(f.flow.confirm(shown.id, PHRASE.split(' ')), /BUSY/);

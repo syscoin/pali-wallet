@@ -1,4 +1,4 @@
-import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { createTestCredentialPort } from './fixtures/credential.ts';
 import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -19,7 +19,7 @@ import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { deferred, metadata } from './publicWatchFixtures.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
-const pinCredential = createTestPinCredentialPort();
+const credentialPort = createTestCredentialPort();
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = '123456';
@@ -85,7 +85,7 @@ test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows
     Object.defineProperty(response, 'url', { value: url });
     return response;
   });
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
+  const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: class extends sdk.HostKeyring {
       constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) {
         super(...args);
@@ -129,7 +129,7 @@ test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows
   const readPage = () => activity.readUtxoActivityPage({ page: 1 }, new AbortController().signal);
   try {
     await authority.initialize();
-    await authority.importPhrase(PHRASE, PASSWORD);
+    await authority.importPhrase(PHRASE);
     await runtime!.backup.confirm(await runtime!.backup.fingerprint());
     await authority.refreshAuthenticatedMetadata();
     assert.equal(activity.getUtxoActivityContext(), null);

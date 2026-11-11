@@ -3,8 +3,7 @@ import type { NativeSentryReview as SentryReview } from '../../src/connections/s
 import type { NativeDappControlReview as ControlReview } from '../../src/connections/controlRequests';
 import { NativeSentryReview } from '../../src/screens/NativeSentryReview';
 import { NativeDappControlReview } from '../../src/screens/NativeDappControlReview';
-import { NativeOperationAuthentication } from '../../src/screens/NativeOperationAuthentication';
-import { nativeOperationAuthentication } from '../../src/platform/operationAuthentication';
+import { FixtureDeviceAuthorization, fixtureDeviceAuthorization } from './fixtureDeviceAuthorization';
 import { Screen, Text } from '../../src/ui';
 
 // Public presentation fixture only. No transport, keyring, secrets or signing capability.
@@ -37,16 +36,11 @@ export function NativeDappConsentFixture() {
   const reject = async () => { setResult('Fixture rejected'); };
   const approveSentry = async () => {
     const current = () => { if (lifetime.current.signal.aborted) throw Error('CANCELLED'); };
-    await nativeOperationAuthentication.request({ id: 'fixture-sentry-authentication', purpose: 'transaction', biometricsEnabled: false },
-      lifetime.current.signal, current, async (credential, guard) => {
-        guard();
-        return credential.method === 'pin' && credential.pin === '123456'
-          ? { accepted: true } : { accepted: false, reason: 'INVALID_CREDENTIAL' };
-      });
+    await fixtureDeviceAuthorization.request('transaction', lifetime.current.signal, current);
     current(); await done();
   };
   return new URLSearchParams(location.search).has('control-consent')
     ? <NativeDappControlReview review={control} controller={{ approveControl: done, rejectControl: reject }} />
     : <><NativeSentryReview review={operation} controller={{ approveSentry, rejectSentry: reject }} />
-      <NativeOperationAuthentication isProtectedPromptActive={() => false} /></>;
+      <FixtureDeviceAuthorization /></>;
 }

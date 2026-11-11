@@ -1,7 +1,9 @@
 const path = require('node:path');
+const fs = require('node:fs');
 const { getDefaultConfig } = require('expo/metro-config');
 const mobileRoot = path.resolve(__dirname, '../..');
 const config = getDefaultConfig(__dirname);
-config.watchFolders = [path.resolve(mobileRoot, '../..')];
-config.resolver.nodeModulesPaths = [path.join(mobileRoot, 'node_modules')];
+const dependencies = fs.realpathSync(path.join(mobileRoot, 'node_modules'));
+config.watchFolders = [path.resolve(mobileRoot, '../..'), dependencies];
+config.resolver.nodeModulesPaths = [dependencies];
 module.exports = config;

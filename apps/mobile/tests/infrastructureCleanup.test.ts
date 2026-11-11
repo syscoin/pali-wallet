@@ -10,7 +10,7 @@ import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import type { KeyringStoragePort, WalletIdentityRead } from '../src/storage/types.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
-import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { createTestCredentialPort } from './fixtures/credential.ts';
 import { digest, INSTALLATION, nodeConnection, type SqlHook } from './storageHelpers.ts';
 
 const current = () => {};
@@ -20,15 +20,14 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   const file = path.join(directory, 'wallet.sqlite');
   let storage = await SqliteWalletStorage.open(nodeConnection(file, hooks).connection, digest, INSTALLATION, true);
   let ring!: InstanceType<typeof sdk.HostKeyring>;
-  const runtime = await createKeyringRuntimeFactory({
+  const runtime = await createKeyringRuntimeFactory({ isAuthenticationActive: () => false,
     ensureCryptoReady: async () => {}, openStorage: async () => storage,
     loadSdk: async () => ({ ...sdk, HostKeyring: class extends sdk.HostKeyring {
       constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) { super(...args); ring = this; }
-    } }), pinCredential: createTestPinCredentialPort(),
-    async requestOperationCredential() { throw Error('Detached cleanup must not request credentials'); },
+    } }), credentialPort: createTestCredentialPort(),
     readEvmRetirement: null, privacyServiceSettings: null, passkeys: null, slhExecution: null,
   }).open() as KeyringRuntime;
-  await runtime.session.importWallet('abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about', '123456');
+  await runtime.session.importWallet('abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about');
   const identity = (await storage.recovery.readIdentity())!;
   const record = recoveryVerificationRecords(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), identity.walletBindingId);
   const checkpoint = await storage.keyringStorage.get(NATIVE_PUBLIC_SESSION_KEY) as NativePublicSessionRecord;

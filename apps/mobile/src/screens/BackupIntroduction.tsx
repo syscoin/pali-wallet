@@ -1,13 +1,14 @@
 import React from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, colors, Header, Icon, Screen, Text } from '../ui';
+import { Button, Card, colors, Header, Icon, Notice, Screen, Text } from '../ui';
 
 export type BackupIntroductionProps = {
   onBack(): void;
   onStart(): void;
   onLater(): void;
   disabled?: boolean;
+  error?: string;
 };
 
 const steps = [
@@ -17,7 +18,7 @@ const steps = [
 ] as const;
 
 /** Public introduction only; the parent owns authentication and phrase access. */
-export function BackupIntroduction({ onBack, onStart, onLater, disabled = false }: BackupIntroductionProps) {
+export function BackupIntroduction({ onBack, onStart, onLater, disabled = false, error }: BackupIntroductionProps) {
   const compact = useWindowDimensions().height < 700;
   return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <Screen gap={16} footer={<>
@@ -45,6 +46,7 @@ export function BackupIntroduction({ onBack, onStart, onLater, disabled = false 
           </View>)}
         </Card>
       </View>
+      {error && <Notice title="Backup was not opened" body={error} tone="amber" />}
     </Screen>
   </SafeAreaView>;
 }

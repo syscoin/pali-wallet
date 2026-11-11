@@ -1,11 +1,11 @@
 import { createTestPrivateAuthentication, bindTestRequestAuthentication } from './fixtures/privateAuthentication.ts';
 import { createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { storageOnlyPublicSession } from './fixtures/publicSessionRecord.ts';
-import { prepareRecoveryPin } from './fixtures/recoveryPin.ts';
+import { prepareRecoveryCredential } from './fixtures/recoveryCredential.ts';
 import { createPrivateVaultSession } from '../../../source/wallet/privateVault.ts';
-import { withTestPinOperation } from './fixtures/pinOperation.ts';
-import { createTestPinRecord } from './fixtures/pinRecord.ts';
-import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { withTestCredentialOperation } from './fixtures/credentialOperation.ts';
+import { createTestCredentialReference } from './fixtures/credentialReference.ts';
+import { createTestCredentialPort } from './fixtures/credential.ts';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -48,13 +48,13 @@ import { createSentryKeyVault, deriveSentryVaultId } from '../../../source/walle
 import { SENTRY_SLOT_KEYS } from '../src/storage/sentryKeyDomain.ts';
 import type { DeriveSentryPublicKey } from '../src/custody/sentryKeyManagement.ts';
 import { parseSentrySettingsStorageKey } from '../../../source/shared/sentrySettings.ts';
-import { OperationAuthentication, type OperationAuthenticationPrompt } from '../src/core/operationAuthentication.ts';
+import type { NativeCredentialPort } from '../src/custody/credentialVault.ts';
+import { operationAuthenticationCancellation } from '../src/core/operationAuthentication.ts';
 
-const pinCredential = createTestPinCredentialPort();
+const credentialPort = createTestCredentialPort();
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const WRONG = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
-const OLD = '123456';
 const NEXT = '654321';
 const KEY = `0x${'11'.repeat(32)}`;
 const KEY2 = `0x${'22'.repeat(32)}`;
@@ -89,15 +89,11 @@ async function fixture(
   utxoFetch?: typeof globalThis.fetch,
   deriveSentryPublicKey?: DeriveSentryPublicKey
 ) {
-  let currentPin = OLD;
-  let operationPin: string | undefined;
   let operationRequests = 0;
-  const operationBroker = new OperationAuthentication();
-  let refusedOperation = Promise.withResolvers<OperationAuthenticationPrompt>();
-  const detachOperationBroker = operationBroker.attach(prompt => {
-    if (prompt?.error) refusedOperation.resolve(prompt);
-    else if (prompt && !prompt.busy) queueMicrotask(() => prompt.confirm({ method: 'pin', pin: operationPin! }));
-  });
+  const protectedPort: NativeCredentialPort = { ...credentialPort,
+    async withSecret(reference, owner, consume) { operationRequests++; return credentialPort.withSecret(reference, owner, consume); },
+    async authorize(reference, owner) { operationRequests++; return credentialPort.authorize(reference, owner); },
+  };
   const directory = await mkdtemp(
     path.join(tmpdir(), 'pali-preserving-recovery-')
   );
@@ -129,16 +125,12 @@ async function fixture(
       await local.recovery.recordFailureForPair!(fingerprint);
     } };
     let closed = false;
-    return { pin: local.pin,
+    return { credential: local.credential,
       keyringStorage: local.keyringStorage, signedRecords: local.signedRecords, utxoSignedRecords: local.utxoSignedRecords, authGuard: local.authGuard, recovery, removal: local.removal, sentryKeys: local.sentryKeys,
       readState: () => local.readState(), getWalletFingerprint: () => local.getWalletFingerprint(), confirmBackup: (fp) => local.confirmBackup(fp),
       async close() { if (!closed) { await local.close(); if (closeFailure) throw new Error('synthetic close acknowledgement failure'); closed = true; leased = false; } } };
   };
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (request, signal, check, verify) => {
-    operationRequests++; check();
-    if (operationPin !== undefined) return operationBroker.request(request, signal, check, verify);
-    const result = await verify({ method: 'pin', pin: currentPin }, check); if (!result.accepted) throw Error(result.reason);
-  }, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort: protectedPort, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     openStorage: open,
     readUtxoAccount,
@@ -165,14 +157,12 @@ async function fixture(
       },
     });
     await authority.initialize();
-    const unlock = authority.unlock.bind(authority);
-    authority.unlock = async (pin) => { await unlock(pin); currentPin = pin; };
     return authority;
   };
   let owner = await newOwner();
-  await owner.importPhrase(PHRASE, OLD);
+  await owner.importPhrase(PHRASE);
   if (confirmed) { await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata(); }
-  const coordinator = (loadSdk?: () => Promise<typeof sdk>, monotonicMilliseconds?: () => number) => new NativeRecoveryCoordinator({ pinCredential, owner,
+  const coordinator = (loadSdk?: () => Promise<typeof sdk>, monotonicMilliseconds?: () => number) => new NativeRecoveryCoordinator({ isAuthenticationActive: () => false, credentialPort: protectedPort, owner,
     async retireControllers() { retires++; }, ensureCryptoReady: async () => undefined, openStorage: open, loadSdk, monotonicMilliseconds: monotonicMilliseconds ?? clocks?.monotonic });
   const read = () => {
     const db = new DatabaseSync(file, { readOnly: true });
@@ -188,8 +178,7 @@ async function fixture(
     try { db.prepare(`INSERT OR REPLACE INTO ${table} VALUES (?, ?)`).run(key, encodeStorageValue(value)); } finally { db.close(); }
   };
   return { notes(profile: string, value: unknown, binding: string) { const db = new DatabaseSync(file); try { db.prepare('INSERT OR REPLACE INTO private_note_records VALUES (?, ?, ?)').run(profile, binding, JSON.stringify(value)); } finally { db.close(); } },
-    setOperationPin(pin?: string) { operationPin = pin; refusedOperation = Promise.withResolvers<OperationAuthenticationPrompt>(); },
-    waitOperationRefusal: () => refusedOperation.promise,
+    refuseOperation() { credentialPort.refuseNext(operationAuthenticationCancellation()); },
     get operationRequests() { return operationRequests; },
     get owner() {
       return owner;
@@ -200,7 +189,7 @@ async function fixture(
     get keyring() {
       const ring = liveKeyrings.find((keyring) => keyring.hasPublicSession())!;
       const check = ring.capturePublicSessionGuard();
-      const run = <T>(work: () => Promise<T>) => withTestPinOperation(store.pin, pinCredential, ring, currentPin, check, work);
+      const run = <T>(work: () => Promise<T>) => withTestCredentialOperation(store.credential, credentialPort, ring, check, work);
       return {
         getPrivateRecordProfileId: () => run(() => ring.getPrivateRecordProfileId()),
         encryptPrivateRecord: (input: Parameters<typeof ring.encryptPrivateRecord>[0]) => run(() => ring.encryptPrivateRecord(input)),
@@ -268,10 +257,10 @@ async function fixture(
       owner = await newOwner();
       return owner;
     },
-    async close() { detachOperationBroker(); hook = undefined; afterHook = undefined; await owner.dispose().catch(() => undefined); if (leased) await store.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); },
+    async close() { hook = undefined; afterHook = undefined; await owner.dispose().catch(() => undefined); if (leased) await store.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); },
   };
 }
-const PENDING_PIN_REMOVAL = 'removed-pin-credential';
+const PENDING_PIN_REMOVAL = 'removed-credential';
 function withoutPendingPinRemoval(state: ReturnType<Awaited<ReturnType<typeof fixture>>['read']>) {
   return { ...state, metadata: state.metadata.filter(row => row.key !== PENDING_PIN_REMOVAL) };
 }
@@ -301,7 +290,7 @@ function retained(
   };
 }
 
-test('real SDK recovery preserves imported ciphertext, account IDs and three-chain signed bytes through repeated password changes', async () => {
+test('real SDK recovery preserves imported ciphertext, account IDs and three-chain signed bytes through repeated protected credential replacement', async () => {
   const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
   const collection = { contractAddress: `0x${'33'.repeat(20)}`, tokenStandard: 'ERC-721' as const };
   const item = { contractAddress: `0x${'44'.repeat(20)}`, tokenStandard: 'ERC-1155' as const, tokenId: ((1n << 256n) - 1n).toString() };
@@ -344,9 +333,9 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     assert.equal(inventory.counts?.tokenEntries, 3);
     assert.equal(JSON.stringify(inventory).includes(item.contractAddress), false);
     const before = f.read(); f.owner.lock(); recovery = f.coordinator();
-    const proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
+    const proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined);
     assert.deepEqual(Object.keys(proof), []); assert.equal(f.owner.getSnapshot().phase, 'disposed'); assert.equal(f.retires, 1);
-    assertOnlyStagedPinReceipt(f.read(), before);
+    assert.deepEqual(f.read(), before);
     await assert.rejects(recovery.commit({}), { code: 'STATE_CHANGED' });
     assert.equal(await recovery.commit(proof), 'committed-locked');
     await assert.rejects(recovery.commit(proof), { code: 'STATE_CHANGED' });
@@ -355,8 +344,7 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     await f.reopen();
     assert.equal((await f.store.recovery.readIdentity())?.walletBindingId, fingerprint);
     assert.notEqual(await f.store.getWalletFingerprint(), fingerprint);
-    await assert.rejects(f.owner.unlock(OLD));
-    await f.owner.unlock(NEXT); assert.equal(f.owner.getSnapshot().phase, 'ready');
+    await f.owner.unlock(); assert.equal(f.owner.getSnapshot().phase, 'ready');
     assert.equal(f.owner.getCatalogue()!.accounts.length, 4);
     assert.equal(f.owner.getCatalogue()!.active.accountId, 'imported:60:1');
     const saved = await f.runtime.tokens!.load(() => undefined);
@@ -368,9 +356,9 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
       accountId: 'imported:60:1', index: 1, address: importedWallet2.address, networkId: 'ethereum', registrationHash: ethereum.registrationHash }, new AbortController().signal, () => undefined, createTestPrivateAuthentication(() => undefined)), KEY2);
     const rootBinding = await f.store.recovery.readIdentity(); assert.equal(rootBinding?.root?.address, sourceWallet.address);
     f.owner.lock(); await recovery.dispose(); recovery = f.coordinator();
-    const again = await prepareRecoveryPin(recovery, PHRASE, '456789', () => undefined); await recovery.commit(again);
+    const again = await prepareRecoveryCredential(recovery, PHRASE, () => undefined); await recovery.commit(again);
     assert.deepEqual(retained(f.read()), retained(before));
-    await f.reopen(); await f.owner.unlock('456789');
+    await f.reopen(); await f.owner.unlock();
     assert.equal((await f.store.recovery.readIdentity())?.walletBindingId, fingerprint);
     assert.equal(f.owner.getSnapshot().phase, 'ready');
   } finally { await recovery?.dispose(); await f.close(); }
@@ -398,7 +386,7 @@ test('protected collectible operations revoke on lock and quarantine a lost SQL 
     pause.release();
     await pending;
     assert.deepEqual(record(), before);
-    await f.owner.unlock(OLD);
+    await f.owner.unlock();
     assert.deepEqual((await tokens.load(current)).collectibles, [item]);
 
     f.setAfter((kind, sql) => {
@@ -411,7 +399,7 @@ test('protected collectible operations revoke on lock and quarantine a lost SQL 
     assert.equal(f.unlockedKeyrings(), 0);
     await assert.rejects(tokens.removeCollectible(2, sibling, current), { code: 'CLEANUP_FAILED' });
     await f.reopen(true);
-    await f.owner.unlock(OLD);
+    await f.owner.unlock();
     assert.deepEqual((await f.runtime.tokens!.load(current)).collectibles, [item, sibling]);
     assert.deepEqual((await f.runtime.tokens!.removeCollectible(2, item, current)).collectibles, [sibling]);
   } finally { pause.release(); await f.close(); }
@@ -439,7 +427,7 @@ for (const mutation of ['root-ciphertext', 'missing-entry'] as const) test(`reco
     assert.equal(await f.store.signedRecords.compareAndSet(profileId, beforeRaw, JSON.stringify(changed), () => undefined), true);
     assert.equal((await readRecoveryInventory(f.store)).status, 'needs-matching-phrase-verification');
     const before = f.read(); f.owner.lock(); recovery = f.coordinator();
-    await assert.rejects(prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined), { code: 'INVALID_SAVED_DATA' });
+    await assert.rejects(prepareRecoveryCredential(recovery, PHRASE, () => undefined), { code: 'INVALID_SAVED_DATA' });
     assert.deepEqual(f.read(), before);
   } finally { await recovery?.dispose(); await f.close(); }
 });
@@ -482,7 +470,7 @@ test('recovery authenticates captured UTXO bytes even if an ABA swap supplies a 
       f.writeUtxoBytes(valid);
       return { ...sdk, SoftwareKeyring: ProbeKeyring };
     });
-    await assert.rejects(prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined), { code: 'INVALID_SAVED_DATA' });
+    await assert.rejects(prepareRecoveryCredential(recovery, PHRASE, () => undefined), { code: 'INVALID_SAVED_DATA' });
     assert.equal(f.read().records.find(({ key: name }) => name === UTXO_SIGNED_RECORD_KEY)?.value, valid);
   } finally { if (corrupt) f.writeUtxoBytes(corrupt); await recovery?.dispose(); await f.close(); }
 });
@@ -535,7 +523,7 @@ for (const liveRow of ['valid', 'missing'] as const) test(`recovery authenticate
 test('known wrong-root failure is charged once even when its request is cancelled before accounting finishes', async () => {
   const f = await fixture(); const pause = latch(); f.pauseFailure(pause); f.owner.lock(); const recovery = f.coordinator();
   try {
-    const before = f.read(); const pending = prepareRecoveryPin(recovery, WRONG, NEXT, () => undefined);
+    const before = f.read(); const pending = prepareRecoveryCredential(recovery, WRONG, () => undefined);
     await pause.reached; recovery.cancel(); pause.release();
     await assert.rejects(pending, { code: 'CANCELLED' });
     assert.deepEqual(f.read().records, before.records);
@@ -551,7 +539,7 @@ test('malformed input and a forged private envelope do not count as a wrong phra
     await f.owner.importAccount({ privateKey: KEY, expectedAddress: importedWallet.address, label: 'Imported' }, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision, new AbortController().signal, createTestPrivateAuthentication(() => undefined));
     f.owner.lock();
     recovery = f.coordinator();
-    const before = f.read(); await assert.rejects(prepareRecoveryPin(recovery, 'not a phrase', NEXT, () => undefined), { code: 'INVALID_INPUT' });
+    const before = f.read(); await assert.rejects(prepareRecoveryCredential(recovery, 'not a phrase', () => undefined), { code: 'INVALID_INPUT' });
     assert.deepEqual(f.read(), before);
     const catalogue = JSON.parse(
       before.records.find((row) => row.key === WALLET_CATALOGUE_KEY)!.value
@@ -561,7 +549,7 @@ test('malformed input and a forged private envelope do not count as a wrong phra
     f.write(WALLET_CATALOGUE_KEY, catalogue);
     const corrupt = f.read();
     await assert.rejects(
-      prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined),
+      prepareRecoveryCredential(recovery, PHRASE, () => undefined),
       { code: 'INVALID_SAVED_DATA' }
     );
     assert.deepEqual(f.read(), corrupt);
@@ -592,7 +580,7 @@ test('late successful staging after cancel is discarded without replacing the pa
     SoftwareKeyring: Delayed,
   }));
   try {
-    const before = f.read(); const pending = prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
+    const before = f.read(); const pending = prepareRecoveryCredential(recovery, PHRASE, () => undefined);
     await pause.reached; recovery.cancel(); pause.release(); await assert.rejects(pending, { code: 'CANCELLED' });
     assert.deepEqual(f.read(), before);
   } finally { pause.release(); await recovery.dispose(); await f.close(); }
@@ -602,12 +590,12 @@ for (const fault of ['before-write', 'commit-not-applied', 'commit-applied'] as 
   test(`recovery ${fault} has one complete old/new state and never compensates by deletion`, async () => {
     const f = await fixture(); const recovery = f.coordinator();
     try {
-      const enrollment = f.store.deviceUnlockEnrollment;
-      assert.equal(await enrollment.compareAndSet((await enrollment.read())!, 'b2'.repeat(16), () => undefined), true);
       f.owner.lock();
-      const before = f.read(), proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined); let injected = false;
+      const before = f.read(), proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined); let injected = false;
+      let replacement = false;
       const fail = (_kind: unknown, sql: string) => {
-        if (!injected && (fault === 'before-write' ? sql.startsWith('INSERT INTO keyring_records') : sql === 'COMMIT')) { injected = true; throw new Error('Injected commit fault'); }
+        if (sql.startsWith('INSERT INTO keyring_records')) replacement = true;
+        if (!injected && replacement && (fault === 'before-write' ? sql.startsWith('INSERT INTO keyring_records') : sql === 'COMMIT')) { injected = true; throw new Error('Injected commit fault'); }
       };
       if (fault === 'commit-applied') f.setAfter(fail); else f.setHook(fail);
       if (fault === 'commit-applied') assert.equal(await recovery.commit(proof), 'committed-locked');
@@ -615,8 +603,8 @@ for (const fault of ['before-write', 'commit-not-applied', 'commit-applied'] as 
       f.setHook(); f.setAfter(); assert.equal(injected, true);
       assert.deepEqual(retained(f.read()), retained(before));
       if (fault !== 'commit-applied') assert.deepEqual(f.read(), before);
-      else assert.equal(f.read().metadata.some((row) => row.key === 'device-unlock-enrollment'), false);
-      await f.reopen(); await f.owner.unlock(fault === 'commit-applied' ? NEXT : OLD);
+      else assert.notDeepEqual(f.read().metadata.find(row => row.key === 'local-credential-v1'), before.metadata.find(row => row.key === 'local-credential-v1'));
+      await f.reopen(); await f.owner.unlock();
       assert.equal(f.owner.getSnapshot().phase, 'ready');
     } finally { f.setHook(); f.setAfter(); await recovery.dispose(); await f.close(); }
   });
@@ -628,7 +616,7 @@ test('changed snapshot and unknown data refuse replacement without overwriting t
   const recovery = f.coordinator();
   try {
     const before = f.read(),
-      proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
+      proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined);
     const catalogue = JSON.parse(
       before.records.find((row) => row.key === WALLET_CATALOGUE_KEY)!.value
     );
@@ -637,17 +625,19 @@ test('changed snapshot and unknown data refuse replacement without overwriting t
     const changed = f.read();
     await assert.rejects(recovery.commit(proof), { code: 'STATE_CHANGED' });
     assert.deepEqual(f.read(), withoutPendingPinRemoval(changed));
-    f.write('unsupported-private-note-domain', {});
-    const unknown = f.read();
-    await assert.rejects(
-      prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined),
-      { code: 'INVALID_SAVED_DATA' }
-    );
-    assert.deepEqual(f.read(), unknown);
   } finally {
     await recovery.dispose();
     await f.close();
   }
+});
+
+test('unknown saved data refuses preserving recovery without overwriting records', async () => {
+  const f = await fixture(); f.owner.lock(); const recovery = f.coordinator();
+  try {
+    f.write('unsupported-private-note-domain', {}); const unknown = f.read();
+    await assert.rejects(recovery.prepare(PHRASE, () => undefined), { code: 'INVALID_SAVED_DATA' });
+    assert.deepEqual(f.read(), unknown);
+  } finally { await recovery.dispose(); await f.close(); }
 });
 
 test('mobile dispatch rejects missing or changed approval before retaining or broadcasting signed bytes', async () => {
@@ -714,13 +704,13 @@ test('retired imported signed bytes survive recovery without resurrecting an acc
     f.owner.lock();
     recovery = f.coordinator();
     const state = f.read();
-    const proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
-    assertOnlyStagedPinReceipt(f.read(), state);
+    const proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined);
+    assert.deepEqual(f.read(), state);
     await recovery.commit(proof);
     assert.deepEqual(f.read().signedRecords, state.signedRecords);
     assert.equal(state.signedRecords.length, 1);
     await f.reopen();
-    await f.owner.unlock(NEXT);
+    await f.owner.unlock();
     assert.equal(f.owner.getCatalogue()!.accounts.some((account) => account.type === 'Imported'), false);
     const restored = await new EvmSignedRecords(f.store.signedRecords).readExact({ keyring: f.keyring, assertCurrent() {} }, '1', importedWallet.address, transaction.hash!);
     assert.equal(restored?.rawTransaction, raw);
@@ -749,7 +739,7 @@ test('a live imported account missing its recovery envelope still blocks preserv
     recovery = f.coordinator();
     const before = f.read();
     await assert.rejects(
-      prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined),
+      prepareRecoveryCredential(recovery, PHRASE, () => undefined),
       { code: 'INVALID_SAVED_DATA' }
     );
     assert.deepEqual(f.read(), before);
@@ -774,18 +764,18 @@ test('recovery waits for a locked old owner to drain an admitted real SDK secret
     }
   }
   const f = await fixture(async () => ({ ...sdk, HostKeyring: DelayedOperation }));
-  f.owner.lock(); await f.owner.unlock(OLD); hold = true;
+  f.owner.lock(); await f.owner.unlock(); hold = true;
   // Public unlock no longer opens a signing-secret lease. Hold a real
   // authorized backup operation to exercise retirement's existing drain.
-  const oldSecret = f.runtime.backup.readPhrase(OLD).catch((error) => error);
+  const oldSecret = f.runtime.backup.readPhrase({ method: 'device' }).catch((error) => error);
   await pause.reached; f.owner.lock(); const recovery = f.coordinator();
   try {
-    const pending = prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
+    const pending = prepareRecoveryCredential(recovery, PHRASE, () => undefined);
     await new Promise<void>((resolve) => setImmediate(resolve));
     assert.equal(f.opens, 1, 'recovery cannot acquire the old lease early');
     hold = false; pause.release(); await oldSecret;
     const proof = await pending; assert.equal(f.opens, 2);
-    await recovery.commit(proof); await f.reopen(); await f.owner.unlock(NEXT);
+    await recovery.commit(proof); await f.reopen(); await f.owner.unlock();
     assert.equal(f.owner.getSnapshot().phase, 'ready');
   } finally { pause.release(); await recovery.dispose(); await f.close(); }
 });
@@ -794,9 +784,10 @@ for (const boundary of ['write', 'committed'] as const) {
   test(`cancellation at ${boundary} discards completion while preserving an atomic old or new state`, async () => {
     const f = await fixture(); f.owner.lock(); const recovery = f.coordinator(); const pause = latch();
     try {
-      const before = f.read(), proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined); let held = false;
+      const before = f.read(), proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined); let held = false, replacement = false;
       const pauseOnce: SqlHook = async (_kind, sql) => {
-        if (!held && (boundary === 'write' ? sql.startsWith('INSERT INTO keyring_records') : sql === 'COMMIT')) { held = true; pause.enter(); await pause.gate; }
+        if (sql.startsWith('INSERT INTO keyring_records')) replacement = true;
+        if (!held && replacement && (boundary === 'write' ? sql.startsWith('INSERT INTO keyring_records') : sql === 'COMMIT')) { held = true; pause.enter(); await pause.gate; }
       };
       if (boundary === 'write') f.setHook(pauseOnce); else f.setAfter(pauseOnce);
       const pending = recovery.commit(proof); await pause.reached;
@@ -804,7 +795,7 @@ for (const boundary of ['write', 'committed'] as const) {
       f.setHook(); f.setAfter();
       assert.deepEqual(retained(f.read()), retained(before));
       if (boundary === 'write') assert.deepEqual(f.read(), before);
-      await f.reopen(); await f.owner.unlock(boundary === 'write' ? OLD : NEXT);
+      await f.reopen(); await f.owner.unlock();
       assert.equal(f.owner.getSnapshot().phase, 'ready');
     } finally { pause.release(); f.setHook(); f.setAfter(); await recovery.dispose(); await f.close(); }
   });
@@ -815,13 +806,13 @@ test('normal unlock verifies the declared profile and stale data operations reje
   f.owner.lock();
   const recovery = f.coordinator();
   try {
-    const proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined); await recovery.commit(proof);
-    await f.reopen(); await f.owner.unlock(NEXT);
+    const proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined); await recovery.commit(proof);
+    await f.reopen(); await f.owner.unlock();
     const identity = (await f.store.recovery.readIdentity())!;
     const before = await f.store.recovery.readSnapshot(), pair = validPair(77);
-    const write = await f.store.recovery.prepareReplacement!(before, { publicSession: storageOnlyPublicSession(identity.walletBindingId), vault: pair.vault, keys: pair['vault-keys'], pin: await createTestPinRecord(f.store, { vault: pair.vault, keys: pair['vault-keys'] }, identity.walletBindingId) }, identity.root!, () => undefined);
+    const write = await f.store.recovery.prepareReplacement!(before, { publicSession: storageOnlyPublicSession(identity.walletBindingId), vault: pair.vault, keys: pair['vault-keys'], credential: await createTestCredentialReference(f.store, { vault: pair.vault, keys: pair['vault-keys'] }, identity.walletBindingId) }, identity.root!, () => undefined);
     await f.store.recovery.commitReplacement!(write, () => undefined);
-    await f.store.removal!.settlePinCredential(record => pinCredential.remove(record));
+    await f.store.removal!.settleCredential(record => credentialPort.remove(record));
     await assert.rejects(f.runtime.tokens!.load(() => undefined), { code: 'CANCELLED' });
   } finally { await recovery.dispose(); await f.close(); }
 
@@ -840,7 +831,7 @@ test('normal unlock verifies the declared profile and stale data operations reje
       },
     });
     g.owner.lock();
-    await assert.rejects(g.owner.unlock(OLD));
+    await assert.rejects(g.owner.unlock());
     assert.equal(g.owner.getSnapshot().phase, 'locked');
     await assert.rejects(g.runtime.transfers!.journal(() => undefined));
   } finally {
@@ -864,7 +855,7 @@ test('operational SDK failure is sanitized and never charged as a wrong phrase',
     SoftwareKeyring: Failed,
   }));
   try {
-    const before = f.read(); await assert.rejects(prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined), { code: 'UNAVAILABLE', message: 'UNAVAILABLE' });
+    const before = f.read(); await assert.rejects(prepareRecoveryCredential(recovery, PHRASE, () => undefined), { code: 'UNAVAILABLE', message: 'UNAVAILABLE' });
     assert.deepEqual(f.read(), before);
   } finally { await recovery.dispose(); await f.close(); }
 });
@@ -872,15 +863,15 @@ test('operational SDK failure is sanitized and never charged as a wrong phrase',
 test('five wrong phrases retain throttling and successful recovery does not invent an unconfirmed backup', async () => {
   const f = await fixture(undefined, false); f.owner.lock(); const recovery = f.coordinator();
   try {
-    for (let i = 0; i < 5; i++) await assert.rejects(prepareRecoveryPin(recovery, WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
-    await assert.rejects(prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined), { code: 'AUTH_THROTTLED' });
+    for (let i = 0; i < 5; i++) await assert.rejects(prepareRecoveryCredential(recovery, WRONG, () => undefined), { code: 'WRONG_PHRASE' });
+    await assert.rejects(prepareRecoveryCredential(recovery, PHRASE, () => undefined), { code: 'AUTH_THROTTLED' });
     assert.equal(JSON.parse(f.read().metadata.find((row) => row.key === 'auth')!.value).failures, 5);
   } finally { await recovery.dispose(); await f.close(); }
 
   const g = await fixture(undefined, false); g.owner.lock(); const unconfirmed = g.coordinator();
   try {
-    const proof = await prepareRecoveryPin(unconfirmed, PHRASE, NEXT, () => undefined); await unconfirmed.commit(proof);
-    await g.reopen(); await g.owner.unlock(NEXT);
+    const proof = await prepareRecoveryCredential(unconfirmed, PHRASE, () => undefined); await unconfirmed.commit(proof);
+    await g.reopen(); await g.owner.unlock();
     assert.equal(g.owner.getSnapshot().phase, 'backup-required');
     assert.equal(g.read().metadata.some((row) => row.key === 'backup'), false);
   } finally { await unconfirmed.dispose(); await g.close(); }
@@ -889,7 +880,7 @@ test('five wrong phrases retain throttling and successful recovery does not inve
 test('missing required vault keys refuse recovery without recreating or erasing the remaining data', async () => {
   const f = await fixture(); f.owner.lock(); f.remove('vault-keys'); const recovery = f.coordinator();
   try {
-    const before = f.read(); await assert.rejects(prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined), { code: 'UNAVAILABLE' });
+    const before = f.read(); await assert.rejects(prepareRecoveryCredential(recovery, PHRASE, () => undefined), { code: 'UNAVAILABLE' });
     assert.deepEqual(f.read(), before);
   } finally { await recovery.dispose(); await f.close(); }
 });
@@ -899,33 +890,27 @@ test('recovery retry cooldown elapses on the owned connection despite wall-clock
   const f = await fixture(undefined, false, { wall: () => wall, monotonic: () => monotonic });
   f.owner.lock(); const recovery = f.coordinator();
   try {
-    for (let i = 0; i < 5; i++) await assert.rejects(prepareRecoveryPin(recovery, WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
+    for (let i = 0; i < 5; i++) await assert.rejects(prepareRecoveryCredential(recovery, WRONG, () => undefined), { code: 'WRONG_PHRASE' });
     const saved = f.read(); monotonic = 29999; wall += 86400000;
-    await assert.rejects(prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined), { code: 'AUTH_THROTTLED' });
+    await assert.rejects(prepareRecoveryCredential(recovery, PHRASE, () => undefined), { code: 'AUTH_THROTTLED' });
     assert.deepEqual(f.read(), saved);
     assert.equal(f.opens, 2, 'retryable attempts must retain one recovery-owned connection');
     monotonic = 30000; wall = 1;
-    const proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
-    await recovery.commit(proof); await f.reopen(); await f.owner.unlock(NEXT);
+    const proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined);
+    await recovery.commit(proof); await f.reopen(); await f.owner.unlock();
     assert.equal(f.owner.getSnapshot().phase, 'backup-required');
     assert.equal(JSON.parse(f.read().metadata.find((row) => row.key === 'auth')!.value).failures, 0);
   } finally { await recovery.dispose(); await f.close(); }
 });
 
-test('recovery can wait out failures inherited from ordinary password authentication', async () => {
-  let monotonic = 0;
-  const f = await fixture(undefined, true, { wall: () => 1_000_000, monotonic: () => monotonic });
-  f.owner.lock(); let recovery: NativeRecoveryCoordinator | undefined;
+test('OS authorization refusals do not consume phrase recovery attempts', async () => {
+  const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
   try {
-    for (let i = 0; i < 5; i++) await assert.rejects(f.owner.unlock('000000'), { code: 'INVALID_CREDENTIAL' });
-    recovery = f.coordinator();
-    await assert.rejects(prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined), { code: 'AUTH_THROTTLED' });
-    monotonic = 29999;
-    await assert.rejects(prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined), { code: 'AUTH_THROTTLED' });
-    assert.equal(f.opens, 2);
-    monotonic = 30000; const proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
-    await recovery.commit(proof); await f.reopen(); await f.owner.unlock(NEXT);
-    assert.equal(f.owner.getSnapshot().phase, 'ready');
+    for (let i = 0; i < 5; i++) { f.refuseOperation(); await assert.rejects(f.runtime.backup.readPhrase({ method: 'device' })); }
+    assert.equal(JSON.parse(f.read().metadata.find(row => row.key === 'auth')!.value).failures, 0);
+    f.owner.lock(); recovery = f.coordinator();
+    await recovery.commit(await recovery.prepare(PHRASE, () => undefined));
+    await f.reopen(); assert.equal(f.owner.getSnapshot().phase, 'ready');
   } finally { await recovery?.dispose(); await f.close(); }
 });
 
@@ -934,14 +919,14 @@ test('another wrong phrase after waiting preserves escalation and cannot reset t
   const f = await fixture(undefined, true, { wall: () => 1_000_000, monotonic: () => monotonic });
   f.owner.lock(); const recovery = f.coordinator();
   try {
-    for (let i = 0; i < 5; i++) await assert.rejects(prepareRecoveryPin(recovery, WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
+    for (let i = 0; i < 5; i++) await assert.rejects(prepareRecoveryCredential(recovery, WRONG, () => undefined), { code: 'WRONG_PHRASE' });
     monotonic = 30000;
-    await assert.rejects(prepareRecoveryPin(recovery, WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
+    await assert.rejects(prepareRecoveryCredential(recovery, WRONG, () => undefined), { code: 'WRONG_PHRASE' });
     const saved = f.read(); assert.equal(JSON.parse(saved.metadata.find((row) => row.key === 'auth')!.value).failures, 6);
     monotonic = 89999;
-    await assert.rejects(prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined), { code: 'AUTH_THROTTLED' });
+    await assert.rejects(prepareRecoveryCredential(recovery, PHRASE, () => undefined), { code: 'AUTH_THROTTLED' });
     assert.deepEqual(f.read(), saved); assert.equal(f.opens, 2);
-    monotonic = 90000; const proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
+    monotonic = 90000; const proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined);
     await recovery.commit(proof);
   } finally { await recovery.dispose(); await f.close(); }
 });
@@ -951,11 +936,14 @@ test('cancel drains a retained recovery connection and a fresh owner still enfor
   const f = await fixture(undefined, true, { wall: () => 1_000_000, monotonic: () => monotonic });
   f.owner.lock(); const recovery = f.coordinator();
   try {
-    for (let i = 0; i < 5; i++) await assert.rejects(prepareRecoveryPin(recovery, WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
+    for (let i = 0; i < 5; i++) await assert.rejects(prepareRecoveryCredential(recovery, WRONG, () => undefined), { code: 'WRONG_PHRASE' });
     assert.equal(f.leased, true); const before = f.read();
     recovery.cancel(); await recovery.dispose(); assert.equal(f.leased, false); assert.deepEqual(f.read(), before);
-    await f.reopen(); await assert.rejects(f.owner.unlock(OLD), { code: 'AUTH_THROTTLED' });
-    monotonic = 30000; await f.owner.unlock(OLD); assert.equal(f.owner.getSnapshot().phase, 'ready');
+    await f.reopen(); assert.equal(f.owner.getSnapshot().phase, 'ready');
+    const fresh = f.coordinator();
+    try { await assert.rejects(fresh.prepare(PHRASE, () => undefined), { code: 'AUTH_THROTTLED' });
+      monotonic = 30000; await fresh.prepare(PHRASE, () => undefined);
+    } finally { await fresh.dispose(); }
   } finally { await recovery.dispose(); await f.close(); }
 });
 
@@ -965,7 +953,7 @@ test('expiry closes a retryable recovery lease without another submission', asyn
   const f = await fixture(undefined, true, { wall: () => 1_000_000, monotonic: () => monotonic });
   f.owner.lock(); const recovery = f.coordinator();
   try {
-    await assert.rejects(prepareRecoveryPin(recovery, WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
+    await assert.rejects(prepareRecoveryCredential(recovery, WRONG, () => undefined), { code: 'WRONG_PHRASE' });
     assert.equal(f.leased, true); const before = f.read();
     monotonic = 600001; context.mock.timers.tick(600001);
     await new Promise<void>((resolve) => setImmediate(resolve));
@@ -976,10 +964,10 @@ test('expiry closes a retryable recovery lease without another submission', asyn
 test('retained recovery close failure quarantines retries without changing saved bytes', async () => {
   const f = await fixture(); f.owner.lock(); const recovery = f.coordinator();
   try {
-    await assert.rejects(prepareRecoveryPin(recovery, WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
+    await assert.rejects(prepareRecoveryCredential(recovery, WRONG, () => undefined), { code: 'WRONG_PHRASE' });
     const before = f.read(); f.failClose(); recovery.cancel();
     await assert.rejects(recovery.dispose(), { code: 'REOPEN_REQUIRED' });
-    await assert.rejects(prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined), { code: 'NOT_READY' });
+    await assert.rejects(prepareRecoveryCredential(recovery, PHRASE, () => undefined), { code: 'NOT_READY' });
     assert.deepEqual(f.read(), before); assert.equal(f.opens, 2);
   } finally { await recovery.dispose().catch(() => undefined); await f.close(); }
 });
@@ -987,13 +975,13 @@ test('retained recovery close failure quarantines retries without changing saved
 test('an old recovery coordinator cannot charge or replace a newer recovered pair', async () => {
   const f = await fixture(); f.owner.lock(); const old = f.coordinator(); let next: NativeRecoveryCoordinator | undefined;
   try {
-    await assert.rejects(prepareRecoveryPin(old, WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
+    await assert.rejects(prepareRecoveryCredential(old, WRONG, () => undefined), { code: 'WRONG_PHRASE' });
     old.cancel(); await new Promise<void>((resolve) => setImmediate(resolve));
     assert.equal(f.leased, false);
     await f.reopen(); next = f.coordinator();
-    await next.commit(await prepareRecoveryPin(next, PHRASE, NEXT, () => undefined));
+    await next.commit(await prepareRecoveryCredential(next, PHRASE, () => undefined));
     const committed = f.read();
-    await assert.rejects(prepareRecoveryPin(old, PHRASE, '456789', () => undefined), { code: 'STATE_CHANGED' });
+    await assert.rejects(prepareRecoveryCredential(old, PHRASE, () => undefined), { code: 'STATE_CHANGED' });
     assert.deepEqual(f.read(), committed);
   } finally { await old.dispose(); await next?.dispose(); await f.close(); }
 });
@@ -1005,9 +993,9 @@ test('a reentrant cancellation from the final commit guard rolls back before COM
     if (metadataWrites === expectedWrites && ++finalChecks === 2) { cancelled = true; recovery.cancel(); }
   };
   try {
-    const before = f.read(), proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, guard);
-    expectedWrites = before.metadata.filter(row => ['identity', 'auth', 'backup', 'local-pin-v1'].includes(String(row.key))).length + Number(before.metadata.some(row => row.key === 'local-pin-v1'));
-    f.setAfter((_kind, sql) => { if (sql.startsWith('INSERT INTO wallet_metadata')) metadataWrites++; });
+    const before = f.read(), proof = await prepareRecoveryCredential(recovery, PHRASE, guard);
+    expectedWrites = before.metadata.filter(row => ['identity', 'auth', 'backup', 'local-credential-v1'].includes(String(row.key))).length + Number(before.metadata.some(row => row.key === 'local-credential-v1'));
+    f.setAfter((_kind, sql) => { if (sql.startsWith('INSERT INTO wallet_metadata') && sql.includes('ON CONFLICT')) metadataWrites++; });
     await assert.rejects(recovery.commit(proof), { code: 'CANCELLED' });
     assert.equal(cancelled, true);
     assert.deepEqual(f.read(), before);
@@ -1026,13 +1014,13 @@ for (const boundary of ['cancellation', 'expiry'] as const) {
       }
     };
     try {
-      const before = f.read(), proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, guard);
-    expectedWrites = before.metadata.filter(row => ['identity', 'auth', 'backup', 'local-pin-v1'].includes(String(row.key))).length + Number(before.metadata.some(row => row.key === 'local-pin-v1'));
+      const before = f.read(), proof = await prepareRecoveryCredential(recovery, PHRASE, guard);
+    expectedWrites = before.metadata.filter(row => ['identity', 'auth', 'backup', 'local-credential-v1'].includes(String(row.key))).length + Number(before.metadata.some(row => row.key === 'local-credential-v1'));
       f.dispatched.length = 0;
-      f.setAfter((_kind, sql) => { if (sql.startsWith('INSERT INTO wallet_metadata')) metadataWrites++; });
+      f.setAfter((_kind, sql) => { if (sql.startsWith('INSERT INTO wallet_metadata') && sql.includes('ON CONFLICT')) metadataWrites++; });
       await assert.rejects(recovery.commit(proof), { code: 'CANCELLED' });
       assert.equal(revoked, true);
-      assert.equal(f.dispatched.slice(0, f.dispatched.indexOf('ROLLBACK')).includes('COMMIT'), false, 'revoked wallet replacement must roll back before any later cleanup commit');
+      assert.equal(f.dispatched.slice(f.dispatched.findIndex(sql => sql.startsWith('INSERT INTO keyring_records')), f.dispatched.indexOf('ROLLBACK')).includes('COMMIT'), false, 'revoked wallet replacement must roll back before any later cleanup commit');
       assert.equal(f.dispatched.includes('ROLLBACK'), true);
       assert.deepEqual(f.read(), before);
     } finally { f.setAfter(); await recovery.dispose(); await f.close(); }
@@ -1041,21 +1029,21 @@ for (const boundary of ['cancellation', 'expiry'] as const) {
 
 test('cancellation after COMMIT dispatch reconciles the complete new pair without compensation', async () => {
   const f = await fixture(); f.owner.lock(); const recovery = f.coordinator();
-  let queued = false, cleanupDeletes = 0;
+  let queued = false, replacement = false, cleanupDeletes = 0;
   try {
-    const before = f.read(), proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
+    const before = f.read(), proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined);
     f.dispatched.length = 0;
-    f.setAfter((kind, sql) => { if (kind === 'run' && sql === 'DELETE FROM wallet_metadata WHERE key = ? AND value = ?') cleanupDeletes++; });
-    f.setDispatch((sql) => { if (sql === 'COMMIT' && !queued) { queued = true; queueMicrotask(() => recovery.cancel()); } });
+    f.setAfter((kind, sql) => { if (sql.startsWith('INSERT INTO keyring_records')) replacement = true; if (kind === 'run' && sql === 'DELETE FROM wallet_metadata WHERE key = ? AND value = ?') cleanupDeletes++; });
+    f.setDispatch((sql) => { if (sql.startsWith('INSERT INTO keyring_records')) replacement = true; if (replacement && sql === 'COMMIT' && !queued) { queued = true; queueMicrotask(() => recovery.cancel()); } });
     await assert.rejects(recovery.commit(proof), { code: 'CANCELLED' });
     f.setDispatch();
     assert.equal(queued, true);
     assert.equal(cleanupDeletes, 1, 'the second commit retires the acknowledged old credential receipt');
-    assert.equal(f.dispatched.filter((sql) => sql === 'COMMIT').length, 2);
+    assert.equal(f.dispatched.filter((sql) => sql === 'COMMIT').length, 3, 'candidate receipt, replacement, then old credential cleanup');
     assert.deepEqual(retained(f.read()), retained(before));
     assert.notDeepEqual(f.read().records.filter((row) => ['vault', 'vault-keys'].includes(row.key)),
       before.records.filter((row) => ['vault', 'vault-keys'].includes(row.key)));
-    await f.reopen(); await f.owner.unlock(NEXT);
+    await f.reopen(); await f.owner.unlock();
     assert.equal(f.owner.getSnapshot().phase, 'ready');
   } finally { f.setDispatch(); f.setAfter(); await recovery.dispose(); await f.close(); }
 });
@@ -1067,30 +1055,30 @@ test('cancellation before the first snapshot cannot let an old helper adopt a ne
     f.setAfter((_kind, sql) => {
       if (!cancelled && sql.includes('ORDER BY source, key')) { cancelled = true; old.cancel(); }
     });
-    await assert.rejects(prepareRecoveryPin(old, PHRASE, NEXT, () => undefined), { code: 'CANCELLED' });
+    await assert.rejects(prepareRecoveryCredential(old, PHRASE, () => undefined), { code: 'CANCELLED' });
     f.setAfter(); assert.equal(cancelled, true);
     await f.reopen(); next = f.coordinator();
-    await next.commit(await prepareRecoveryPin(next, PHRASE, NEXT, () => undefined));
+    await next.commit(await prepareRecoveryCredential(next, PHRASE, () => undefined));
     const newer = f.read();
-    await assert.rejects(prepareRecoveryPin(old, PHRASE, '456789', () => undefined), { code: 'STATE_CHANGED' });
+    await assert.rejects(prepareRecoveryCredential(old, PHRASE, () => undefined), { code: 'STATE_CHANGED' });
     assert.deepEqual(f.read(), newer);
   } finally { f.setAfter(); await old.dispose(); await next?.dispose(); await f.close(); }
 });
 
 test('the first in-flight recovery retains its original pair across retirement and a newer recovery', async () => {
   const f = await fixture(); f.owner.lock(); const pause = latch();
-  const old = new NativeRecoveryCoordinator({ pinCredential, owner: f.owner, async retireControllers() {}, openStorage: f.open,
+  const old = new NativeRecoveryCoordinator({ isAuthenticationActive: () => false, credentialPort, owner: f.owner, async retireControllers() {}, openStorage: f.open,
     ensureCryptoReady: async () => { pause.enter(); await pause.gate; } });
   let next: NativeRecoveryCoordinator | undefined;
   try {
-    const pending = prepareRecoveryPin(old, PHRASE, '456789', () => undefined);
+    const pending = prepareRecoveryCredential(old, PHRASE, () => undefined);
     await pause.reached;
     await f.reopen(); next = f.coordinator();
-    await next.commit(await prepareRecoveryPin(next, PHRASE, NEXT, () => undefined));
+    await next.commit(await prepareRecoveryCredential(next, PHRASE, () => undefined));
     const newer = f.read(); pause.release();
     await assert.rejects(pending, { code: 'STATE_CHANGED' });
     assert.deepEqual(f.read(), newer);
-    await f.reopen(); await f.owner.unlock(NEXT);
+    await f.reopen(); await f.owner.unlock();
     assert.equal(f.owner.getSnapshot().phase, 'ready');
   } finally { pause.release(); await old.dispose(); await next?.dispose(); await f.close(); }
 });
@@ -1111,7 +1099,7 @@ test('original-pair capture drains runtime work outside authority pending before
   const original = await f.store.getWalletFingerprint();
   hold = true;
   const reading = f.runtime
-    .backup!.readPhrase(OLD)
+    .backup!.readPhrase({ method: 'device' })
     .catch((error: unknown) => error);
   await pause.reached;
   const owned = f.store,
@@ -1121,7 +1109,7 @@ test('original-pair capture drains runtime work outside authority pending before
   f.owner.lock();
   const recovery = f.coordinator();
   try {
-    const pending = prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
+    const pending = prepareRecoveryCredential(recovery, PHRASE, () => undefined);
     await new Promise<void>((resolve) => setImmediate(resolve));
     assert.equal(captures, 0);
     assert.equal(f.opens, 1);
@@ -1140,7 +1128,7 @@ test('original-pair capture drains runtime work outside authority pending before
     assert.equal(f.opens, 2);
     await recovery.commit(proof);
     await f.reopen();
-    await f.owner.unlock(NEXT);
+    await f.owner.unlock();
     assert.equal(f.owner.getSnapshot().phase, 'ready');
   } finally {
     hold = false;
@@ -1155,11 +1143,11 @@ test('failure to capture the original pair still closes its lease and returns no
   const before = f.read();
   f.store.getWalletFingerprint = async () => { throw Error('private capture diagnostic'); };
   try {
-    await assert.rejects(prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined), { code: 'UNAVAILABLE', message: 'UNAVAILABLE' });
+    await assert.rejects(prepareRecoveryCredential(recovery, PHRASE, () => undefined), { code: 'UNAVAILABLE', message: 'UNAVAILABLE' });
     assert.deepEqual(f.read(), before);
     // A failed retirement remains failed; a fresh owner must qualify a new lease.
-    const replacement = new NativeCustodyAuthority(createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: OLD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined, openStorage: f.open }));
-    try { await replacement.initialize(); await replacement.unlock(OLD); assert.equal(replacement.getSnapshot().phase, 'ready'); }
+    const replacement = new NativeCustodyAuthority(createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined, openStorage: f.open }));
+    try { await replacement.initialize(); await replacement.unlock(); assert.equal(replacement.getSnapshot().phase, 'ready'); }
     finally { await replacement.dispose(); }
   } finally { await recovery.dispose(); await f.close(); }
 });
@@ -1173,7 +1161,7 @@ test('recovery view model drives the real SDK and SQLite coordinator then requir
     async finish(outcome) {
       assert.equal(outcome.kind, 'success');
       await coordinator!.dispose(); await f.owner.dispose(); await f.reopen();
-      assert.equal(f.owner.getSnapshot().phase, 'locked'); completed = true;
+      assert.equal(f.owner.getSnapshot().phase, 'ready'); completed = true;
     },
   });
   const waitFor = async (condition: () => boolean) => {
@@ -1187,9 +1175,9 @@ test('recovery view model drives the real SDK and SQLite coordinator then requir
     await waitFor(() => flow.getSnapshot().phase === 'review');
     assert.equal(f.owner.getSnapshot().phase, 'disposed'); assert.deepEqual(f.read(), before);
     assert(!JSON.stringify(flow.getSnapshot()).includes(PHRASE)); assert(!JSON.stringify(flow.getSnapshot()).includes(NEXT));
-    flow.commit(); assert.equal(flow.submitPin(NEXT), true); await waitFor(() => completed && flow.getSnapshot().phase === 'closed');
+    flow.commit(); await waitFor(() => completed && flow.getSnapshot().phase === 'closed');
     assert.deepEqual(retained(f.read()), retained(before));
-    await assert.rejects(f.owner.unlock(OLD)); await f.owner.unlock(NEXT);
+    await f.owner.unlock();
     assert.equal(f.owner.getSnapshot().phase, 'ready');
   } finally { flow.cancel(); await coordinator?.dispose(); await f.close(); }
 });
@@ -1218,62 +1206,28 @@ async function noteBundle(count = 17) {
 test('real SDK recovery retires the exact enrollment and preserves multi-shard notes and retained records', async () => {
   const f = await fixture(), data = await noteBundle(); let recovery: NativeRecoveryCoordinator | undefined;
   try {
-    const enrollment = f.store.deviceUnlockEnrollment;
-    const old = (await enrollment.read())!;
-    const id = 'a1'.repeat(16);
-    assert.equal(await enrollment.compareAndSet(old, id, () => undefined), true);
-    const active = (await enrollment.read())!;
-    assert.equal(active.enrollmentId, id);
+    const old = (await f.store.credential.read())!;
+    const id = old.enrollmentId;
     f.notes(data.profile, data.bundle, await f.store.getWalletFingerprint());
     const original = f.read(); const inventory = await readRecoveryInventory(f.store);
     assert.equal(inventory.privateNotes, 'requires-matching-phrase-verification');
     assert.equal(JSON.stringify(inventory).includes(data.profile), false);
     assert.equal(JSON.stringify(inventory).includes(id), false);
-    f.owner.lock(); recovery = f.coordinator(); const proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
+    f.owner.lock(); recovery = f.coordinator(); const proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined);
     assert.equal(await recovery.commit(proof), 'committed-locked');
     assert.deepEqual(f.read().notes, original.notes); assert.deepEqual(retained(f.read()), retained(original));
     assert.equal(f.read().metadata.some((row) => row.key === 'device-unlock-enrollment'), false);
-    await f.reopen(); await f.owner.unlock(NEXT);
-    const newEnrollment = f.store.deviceUnlockEnrollment;
-    const fresh = (await newEnrollment.read())!;
-    assert.equal(fresh.enrollmentId, null);
+    await f.reopen(); await f.owner.unlock();
+    const fresh = (await f.store.credential.read())!;
+    assert.notEqual(fresh.enrollmentId, old.enrollmentId);
     assert.equal(fresh.walletBindingId, old.walletBindingId);
     assert.notEqual(fresh.pairFingerprint, old.pairFingerprint);
-    await assert.rejects(newEnrollment.compareAndSet(active, id, () => undefined), { code: 'STORAGE_CHANGED' });
+    assert.equal((await credentialPort.capabilities(old)).credentialPresent, false);
+    assert.equal((await credentialPort.capabilities(fresh)).credentialPresent, true);
     const result = await readPrivateVaultBundle(data.bundle, createPrivateVaultSession({ keyring: data.keyring, generation: 1, assertCurrent() {} }));
     assert.equal(result.manifest.notes.length, 17);
   } finally { await data.keyring.lockWallet(); await recovery?.dispose(); await f.close(); }
 });
-
-for (const [shape, bytes] of [
-  ['oversized text', '78'.repeat(300)],
-  ['embedded NUL', '610062'],
-  ['invalid UTF-8', '8061'],
-] as const) {
-  test(`enrollment with ${shape} cannot block password unlock or matching-phrase recovery`, async () => {
-    const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
-    const metadataKey = 'device-unlock-enrollment';
-    try {
-      f.metaHex(metadataKey, bytes);
-      await f.reopen(); await f.owner.unlock(OLD);
-      assert.equal(f.owner.getSnapshot().phase, 'ready');
-      const enrollment = f.store.deviceUnlockEnrollment;
-      const inactive = (await enrollment.read())!;
-      assert.equal(inactive.enrollmentId, null);
-      if (shape === 'oversized text')
-        await assert.rejects(enrollment.compareAndSet(inactive, 'a1'.repeat(16), () => undefined), { code: 'STORAGE_CHANGED' });
-      assert.equal(f.metaHex(metadataKey), bytes.toUpperCase());
-      const original = f.read(); f.owner.lock(); recovery = f.coordinator();
-      const proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
-      assert.equal(await recovery.commit(proof), 'committed-locked');
-      assert.deepEqual(retained(f.read()), retained(original));
-      assert.equal(f.metaHex(metadataKey), undefined);
-      await f.reopen(); await f.owner.unlock(NEXT);
-      assert.equal(f.owner.getSnapshot().phase, 'ready');
-      assert.equal((await f.store.deviceUnlockEnrollment.read())?.enrollmentId, null);
-    } finally { await recovery?.dispose(); await f.close(); }
-  });
-}
 
 test('matching phrase plus damaged retained note AEAD refuses recovery without any rewrite', async () => {
   const f = await fixture(), data = await noteBundle(1); let recovery: NativeRecoveryCoordinator | undefined;
@@ -1286,7 +1240,7 @@ test('matching phrase plus damaged retained note AEAD refuses recovery without a
     root.shards[0].hash = envelopeHash(data.bundle.shards[0]!);
     data.bundle.root = await data.keyring.encryptPrivateRecord({ domain: data.bundle.root.domain, recordId: data.bundle.root.recordId, plaintext: new TextEncoder().encode(JSON.stringify(root)) });
     f.notes(data.profile, data.bundle, await f.store.getWalletFingerprint()); f.owner.lock(); recovery = f.coordinator(); const before = f.read();
-    await assert.rejects(prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined), { code: 'INVALID_SAVED_DATA' }); assert.deepEqual(f.read(), before);
+    await assert.rejects(prepareRecoveryCredential(recovery, PHRASE, () => undefined), { code: 'INVALID_SAVED_DATA' }); assert.deepEqual(f.read(), before);
   } finally { await data.keyring.lockWallet(); await recovery?.dispose(); await f.close(); }
 });
 
@@ -1294,7 +1248,7 @@ test('a changed note row after proof invalidates the whole replacement CAS', asy
   const f = await fixture(), data = await noteBundle(1); let recovery: NativeRecoveryCoordinator | undefined;
   try {
     const binding = await f.store.getWalletFingerprint(); f.notes(data.profile, data.bundle, binding); f.owner.lock(); recovery = f.coordinator();
-    const proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
+    const proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined);
     data.bundle.root.ciphertext = (data.bundle.root.ciphertext[0] === 'A' ? 'B' : 'A') + data.bundle.root.ciphertext.slice(1); f.notes(data.profile, data.bundle, binding); const changed = f.read();
     await assert.rejects(recovery.commit(proof), { code: 'STATE_CHANGED' }); assert.deepEqual(f.read(), withoutPendingPinRemoval(changed));
   } finally { await data.keyring.lockWallet(); await recovery?.dispose(); await f.close(); }
@@ -1319,7 +1273,7 @@ test('cancellation during actualSDK note decrypt discards successful stale work 
   }
   try {
     f.notes(data.profile, data.bundle, await f.store.getWalletFingerprint()); f.owner.lock(); recovery = f.coordinator(async () => ({ ...sdk, SoftwareKeyring: Delayed }));
-    const before = f.read(), pending = prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined); await pause.reached; recovery.cancel(); pause.release();
+    const before = f.read(), pending = prepareRecoveryCredential(recovery, PHRASE, () => undefined); await pause.reached; recovery.cancel(); pause.release();
     await assert.rejects(pending, { code: 'CANCELLED' }); assert.deepEqual(f.read(), before);
   } finally { pause.release(); await data.keyring.lockWallet(); await recovery?.dispose(); await f.close(); }
 });
@@ -1328,7 +1282,7 @@ test('wrong valid phrase with retained notes counts one failure and leaves every
   const f = await fixture(), data = await noteBundle(1); let recovery: NativeRecoveryCoordinator | undefined;
   try {
     f.notes(data.profile, data.bundle, await f.store.getWalletFingerprint()); f.owner.lock(); recovery = f.coordinator(); const before = f.read();
-    await assert.rejects(prepareRecoveryPin(recovery, WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
+    await assert.rejects(prepareRecoveryCredential(recovery, WRONG, () => undefined), { code: 'WRONG_PHRASE' });
     assert.deepEqual(f.read().notes, before.notes); assert.deepEqual(f.read().records, before.records);
     assert.equal(JSON.parse(f.read().metadata.find((row) => row.key === 'auth')!.value).failures, 1);
   } finally { await data.keyring.lockWallet(); await recovery?.dispose(); await f.close(); }
@@ -1452,7 +1406,7 @@ test('Sentry buckets survive cold unlock and recovery, then explicit wallet remo
     await removal.dispose();
     removal = undefined;
     await f.reopen();
-    await f.owner.unlock(OLD);
+    await f.owner.unlock();
     assert.equal(f.owner.getSnapshot().phase, 'ready');
     assert.equal(
       (await readRecoveryInventory(f.store)).status,
@@ -1468,11 +1422,11 @@ test('Sentry buckets survive cold unlock and recovery, then explicit wallet remo
 
     f.owner.lock();
     recovery = f.coordinator();
-    const proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, current);
+    const proof = await prepareRecoveryCredential(recovery, PHRASE, current);
     assert.equal(await recovery.commit(proof), 'committed-locked');
     assert.deepEqual(sentryRows(), saved);
     await f.reopen();
-    await f.owner.unlock(NEXT);
+    await f.owner.unlock();
     assert.equal(f.owner.getSnapshot().phase, 'ready');
     for (const { network, vaultId, id } of scopes) {
       const identity = (await f.store.recovery.readIdentity())!;
@@ -1513,7 +1467,7 @@ test('Sentry buckets survive cold unlock and recovery, then explicit wallet remo
     await recovery.dispose();
     f.owner.lock();
     recovery = f.coordinator();
-    await assert.rejects(prepareRecoveryPin(recovery, PHRASE, OLD, current), {
+    await assert.rejects(prepareRecoveryCredential(recovery, PHRASE, current), {
       code: 'INVALID_SAVED_DATA',
     });
     assert.deepEqual(f.read(), beforeRejected);
@@ -1521,7 +1475,7 @@ test('Sentry buckets survive cold unlock and recovery, then explicit wallet remo
     await recovery.dispose();
     recovery = undefined;
     await f.reopen();
-    await f.owner.unlock(NEXT);
+    await f.owner.unlock();
     removal = removalForCurrentOwner();
     const confirmed = await removal.authorize(new AbortController().signal, createNativePrivateAuthenticationScope(), current);
     assert.equal(await removal.confirm(confirmed, current), 'wallet-records-removed');
@@ -1612,13 +1566,9 @@ test('Sentry key management keeps approvals public and bound to the selected wal
     assert.notEqual(firstCall.signal, scope.signal);
     assert.equal(firstCall.signal.aborted, false);
     assert(firstCall.bytes.every((byte) => byte === 0));
-    f.setOperationPin(NEXT);
-    const rejectedImport = assert.rejects(manager.confirmImport(firstReview), { code: 'CANCELLED' });
-    const refusedImport = await f.waitOperationRefusal();
-    assert.match(refusedImport.error!, /PIN not accepted/);
+    f.refuseOperation();
+    await assert.rejects(manager.confirmImport(firstReview), { code: 'CANCELLED' });
     assert.equal(mainRow(), undefined);
-    refusedImport.cancel(); await rejectedImport;
-    f.setOperationPin();
     assert.equal(firstCall.signal.aborted, true);
     assert.equal(mainRow(), undefined);
     await assert.rejects(manager.confirmImport(firstReview), {
@@ -1626,7 +1576,6 @@ test('Sentry key management keeps approvals public and bound to the selected wal
     });
     const invalidReview = await manager.prepareImport(input, 'operator', 'bls-basic');
     const invalidCall = calls.at(-1)!;
-    const invalidPin = '000000';
     const erased: Uint8Array[] = [];
     const fill = Uint8Array.prototype.fill;
     const observeWipe = t.mock.method(Uint8Array.prototype, 'fill', function (
@@ -1638,12 +1587,9 @@ test('Sentry key management keeps approvals public and bound to the selected wal
       return fill.call(this, value, start, end);
     });
     try {
-      f.setOperationPin(invalidPin);
-      const rejected = assert.rejects(manager.confirmImport(invalidReview), { code: 'CANCELLED' });
-      const refused = await f.waitOperationRefusal();
-      assert.match(refused.error!, /PIN not accepted/);
-      refused.cancel(); await rejected;
-    } finally { f.setOperationPin(); observeWipe.mock.restore(); }
+      f.refuseOperation();
+      await assert.rejects(manager.confirmImport(invalidReview), { code: 'CANCELLED' });
+    } finally { observeWipe.mock.restore(); }
     assert.equal(invalidCall.signal.aborted, true);
     assert.equal(erased.length, 1);
     assert(erased[0]!.every((byte) => byte === 0));
@@ -1772,7 +1718,7 @@ test('Sentry key management keeps approvals public and bound to the selected wal
       assert.equal(calls.length, priorCalls);
       hold = undefined;
       if (retirement === 'expiry') t.mock.timers.reset();
-      if (retirement === 'lock') await f.owner.unlock(OLD);
+      if (retirement === 'lock') await f.owner.unlock();
     }
     assert.deepEqual(JSON.parse(mainRow()!.value).keys, []);
     assert.equal(
@@ -1828,7 +1774,7 @@ test('Sentry approval retired before SQLite COMMIT leaves the vault unchanged', 
   }
 });
 
-test('Sentry public settings preserve each network through cold unlock and password recovery', async () => {
+test('Sentry public settings preserve each network through cold unlock and phrase recovery', async () => {
   const f = await fixture(undefined, true, undefined, undefined, undefined, async () => { throw Error('Unexpected key derivation'); });
   const guard = () => undefined;
   let recovery: NativeRecoveryCoordinator | undefined;
@@ -1842,13 +1788,8 @@ test('Sentry public settings preserve each network through cold unlock and passw
       assert.deepEqual(await manager.getSettings(guard), {
         serviceUrl: network === 'syscoin' ? 'https://sysnode.info' : '', maxFeeSatoshis: '100000',
       });
-      f.setOperationPin(NEXT);
-      const rejected = assert.rejects(manager.saveSettings({ serviceUrl, maxFeeSatoshis: fee }, guard), { code: 'CANCELLED' });
-      const refused = await f.waitOperationRefusal();
-      assert.match(refused.error!, /PIN not accepted/);
-      assert.equal(f.read().records.filter(({ key }) => parseSentrySettingsStorageKey(key)).length, network === 'syscoin' ? 0 : 1);
-      refused.cancel(); await rejected;
-      f.setOperationPin();
+      f.refuseOperation();
+      await assert.rejects(manager.saveSettings({ serviceUrl, maxFeeSatoshis: fee }, guard), { code: 'CANCELLED' });
       assert.equal(f.read().records.filter(({ key }) => parseSentrySettingsStorageKey(key)).length, network === 'syscoin' ? 0 : 1);
       await manager.saveSettings({ serviceUrl, maxFeeSatoshis: fee }, guard);
       manager.dispose();
@@ -1857,14 +1798,14 @@ test('Sentry public settings preserve each network through cold unlock and passw
     assert.equal(saved.length, 2);
     assert.equal((await readRecoveryInventory(f.store)).status, 'needs-matching-phrase-verification');
     await f.reopen();
-    await f.owner.unlock(OLD);
+    await f.owner.unlock();
     assert.deepEqual(f.read().records.filter(({ key }) => parseSentrySettingsStorageKey(key)), saved);
     f.owner.lock();
     recovery = f.coordinator();
-    const proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, guard);
+    const proof = await prepareRecoveryCredential(recovery, PHRASE, guard);
     assert.equal(await recovery.commit(proof), 'committed-locked');
     await f.reopen();
-    await f.owner.unlock(NEXT);
+    await f.owner.unlock();
     assert.deepEqual(f.read().records.filter(({ key }) => parseSentrySettingsStorageKey(key)), saved);
     const manager = await f.runtime.openSentryKeyManagement!(new AbortController().signal, guard, createTestPrivateAuthentication(() => undefined));
     assert.deepEqual(await manager.getSettings(guard), { serviceUrl: 'http://127.0.0.1:8800', maxFeeSatoshis: '300000' });
@@ -1954,7 +1895,7 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
     previous.addOutput(bitcoin.address.toOutputScript(account.address, network.addressNetwork), 100000n);
     const recipient = bitcoin.payments.p2wpkh({ hash: Buffer.alloc(20, 9), network: network.addressNetwork }).address!;
     let send = await f.runtime.openUtxoSend!(current);
-    const { txid } = await send.confirm(await send.prepare({ amount: '0.0004', recipient }), { method: 'pin', pin: OLD });
+    const { txid } = await send.confirm(await send.prepare({ amount: '0.0004', recipient }), { method: 'device' });
     assert.equal(txid, posted?.txid);
     const observation = ['/api/v2/', '/api/v2/block-index/0', `/api/v2/tx/${txid}`];
     assert.equal(await send.check(txid), 'seen');
@@ -1962,7 +1903,7 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
 
     await manage({ kind: 'select', id: primary });
     await assert.rejects(manage(remove), { code: 'PENDING_TRANSFER' });
-    await f.owner.unlock(OLD);
+    await f.owner.unlock();
     assert.equal(f.owner.getCatalogue()!.active.accountId, primary);
     assert(f.owner.getCatalogue()!.accounts.some(({ id }) => id === sending));
 
@@ -1980,7 +1921,7 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
   }
 });
 
-test('UTXO custody uses SDK groups, preserves EVM selection and survives real password recovery', async () => {
+test('UTXO custody uses SDK groups, preserves EVM selection and survives real phrase recovery', async () => {
   const f = await fixture();
   let recovery: NativeRecoveryCoordinator | undefined;
   const manage = (request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) =>
@@ -2028,7 +1969,7 @@ test('UTXO custody uses SDK groups, preserves EVM selection and survives real pa
     assert.deepEqual(f.owner.getSnapshot().account, gap);
 
     await f.reopen();
-    await f.owner.unlock(OLD);
+    await f.owner.unlock();
     assert.deepEqual(f.owner.getSnapshot().account, gap);
     assert.equal(f.unlockedKeyrings(), 0);
     assert.equal(f.publicKeyrings(), 1);
@@ -2038,11 +1979,11 @@ test('UTXO custody uses SDK groups, preserves EVM selection and survives real pa
     const before = f.read();
     f.owner.lock();
     recovery = f.coordinator();
-    const proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
+    const proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined);
     assert.equal(await recovery.commit(proof), 'committed-locked');
     assert.deepEqual(retained(f.read()), retained(before));
     await f.reopen();
-    await f.owner.unlock(NEXT);
+    await f.owner.unlock();
     assert.deepEqual(f.owner.getSnapshot().account, gap);
     assert.deepEqual((await f.store.recovery.readIdentity())?.root, originalRoot.root);
     assert.equal((await f.store.recovery.readIdentity())?.walletBindingId, originalRoot.walletBindingId);
@@ -2152,7 +2093,7 @@ test('UTXO custody lock revokes the sole staged owner before a held derivation r
     await denied;
     assert.deepEqual(await accountRecord(f), before);
     await f.reopen();
-    await f.owner.unlock(OLD);
+    await f.owner.unlock();
     assert.equal(f.owner.getSnapshot().account?.network, 'ethereum');
     await selectNetwork(f, 'bitcoin');
     assert.equal(f.owner.getCatalogue()?.active.accountId, 'hd:0:0');
@@ -2194,7 +2135,7 @@ for (const fault of ['CAS miss', 'lost COMMIT acknowledgement']) {
       assert.equal(f.owner.getSnapshot().account, null);
       f.setHook(); f.setAfter();
       await f.reopen(fault === 'lost COMMIT acknowledgement');
-      await f.owner.unlock(OLD);
+      await f.owner.unlock();
       assert.equal(f.owner.getSnapshot().account?.network, fault === 'CAS miss' ? 'ethereum' : 'bitcoin');
       assert.equal((await accountRecord(f)).groups.length, fault === 'CAS miss' ? 1 : 2);
       assert.equal(f.unlockedKeyrings(), 0);
@@ -2249,7 +2190,7 @@ test('UTXO custody reopens and recovers using current defaults when saved endpoi
     };
     f.write(WALLET_CATALOGUE_KEY, changed);
     await f.reopen();
-    await f.owner.unlock(OLD);
+    await f.owner.unlock();
     assert.deepEqual(f.owner.getSnapshot().account, account);
     assert.deepEqual(await accountRecord(f), changed, 'unlock must not rewrite the account row');
     const observed = await f.runtime.readUtxoBalance!(
@@ -2261,7 +2202,7 @@ test('UTXO custody reopens and recovers using current defaults when saved endpoi
 
     f.owner.lock();
     recovery = f.coordinator(async () => ({ ...sdk, SoftwareKeyring: ObservedRecoverySigner }));
-    const proof = await prepareRecoveryPin(recovery, PHRASE, NEXT, () => undefined);
+    const proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined);
     assert.equal(await recovery.commit(proof), 'committed-locked');
     assert.deepEqual(recoveryEndpoints, new Map([
       [57, getUtxoSdkNetwork('syscoin').url],
@@ -2269,7 +2210,7 @@ test('UTXO custody reopens and recovers using current defaults when saved endpoi
     ]));
     assert.equal(requests.length, 3, 'recovery must remain local');
     await f.reopen();
-    await f.owner.unlock(NEXT);
+    await f.owner.unlock();
     assert.deepEqual(f.owner.getSnapshot().account, account);
     assert.deepEqual((await f.store.recovery.readIdentity())?.root, root);
     assert.deepEqual((await accountRecord(f)).groups.map((group) => group.activeNetwork.url),
@@ -2301,8 +2242,7 @@ for (const field of ['chain', 'account'] as const) {
         }),
       };
       f.write(WALLET_CATALOGUE_KEY, changed);
-      await f.reopen();
-      await assert.rejects(f.owner.unlock(OLD), { code: 'OPERATION_FAILED' });
+      await assert.rejects(f.reopen(), { code: 'UNAVAILABLE' });
       assert.equal(f.owner.getSnapshot().account, null);
       assert.equal(f.unlockedKeyrings(), 0);
       assert.deepEqual(await accountRecord(f), changed);
@@ -2312,85 +2252,102 @@ for (const field of ['chain', 'account'] as const) {
   });
 }
 
-test('cancel retains a failed staged PIN deletion receipt and cold reopen retries it', async () => {
-  const f = await fixture();
-  f.owner.lock();
-  const before = f.read();
-  const recovery = new NativeRecoveryCoordinator({
-    pinCredential: { ...pinCredential, async remove() { throw Error('Synthetic OS cleanup refusal'); } },
-    owner: f.owner, async retireControllers() {}, async ensureCryptoReady() {}, openStorage: f.open,
+test('cancel retains a failed staged credential cleanup receipt and cold reopen retries it', async () => {
+  const f = await fixture(); f.owner.lock(); const before = f.read(), stage = latch();
+  const recovery = new NativeRecoveryCoordinator({ isAuthenticationActive: () => false,
+    credentialPort: { ...credentialPort,
+      async stage(reference, value, owner) { await credentialPort.stage(reference, value, owner); stage.enter(); await stage.gate; },
+      async remove() { throw Error('Synthetic OS cleanup refusal'); },
+    }, owner: f.owner, async retireControllers() {}, async ensureCryptoReady() {}, openStorage: f.open,
   });
   try {
     const proof = await recovery.prepare(PHRASE, () => undefined);
-    await recovery.setPin(proof, NEXT);
-    assert.equal(f.leased, true);
-    recovery.cancel();
+    const commit = assert.rejects(recovery.commit(proof)); await stage.reached;
+    recovery.cancel(); stage.release(); await commit;
     await assert.rejects(recovery.dispose(), { code: 'REOPEN_REQUIRED' });
-    assert.equal(f.leased, false);
-    const pending = f.read();
-    assertOnlyStagedPinReceipt(pending, before);
+    assert.equal(f.leased, false); const pending = f.read(); assertOnlyStagedPinReceipt(pending, before);
     const staged = JSON.parse(pending.metadata.find(row => row.key === PENDING_PIN_REMOVAL)!.value);
-    assert.notEqual(await pinCredential.readSecret(staged, () => undefined), null);
-    await f.reopen();
-    assert.deepEqual(f.read(), before, 'cold open removes only the failed staged alias and its receipt');
-    assert.equal(await pinCredential.readSecret(staged, () => undefined), null);
-    await f.owner.unlock(OLD);
+    assert.equal((await credentialPort.capabilities(staged)).credentialPresent, true);
+    await f.reopen(); assert.deepEqual(f.read(), before);
+    assert.equal((await credentialPort.capabilities(staged)).credentialPresent, false);
     assert.equal(f.owner.getSnapshot().phase, 'ready');
-  } finally { await recovery.dispose().catch(() => undefined); await f.close(); }
+  } finally { stage.release(); await recovery.dispose().catch(() => undefined); await f.close(); }
 });
 
-test('recovery without a current PIN record cancels without orphaning a receipt or candidate credential', async () => {
-  const f = await fixture();
-  let recovery: NativeRecoveryCoordinator | undefined;
+test('recovery without a current credential cancels without orphaning a receipt or candidate', async () => {
+  const f = await fixture(), stage = latch(); let recovery: NativeRecoveryCoordinator | undefined;
   try {
     f.owner.lock();
-    // Fault injection: the encrypted wallet and public catalogue survive, but
-    // their current local PIN metadata is missing and needs phrase recovery.
     const db = Reflect.get(f.store, 'db') as { runAsync(sql: string, params: string[]): Promise<unknown> };
-    await db.runAsync('DELETE FROM wallet_metadata WHERE key = ?', ['local-pin-v1']);
+    await db.runAsync('DELETE FROM wallet_metadata WHERE key = ?', ['local-credential-v1']);
     const before = f.read();
-    assert.equal(before.metadata.some(row => row.key === 'local-pin-v1'), false);
-    recovery = f.coordinator();
+    recovery = new NativeRecoveryCoordinator({ isAuthenticationActive: () => false,
+      credentialPort: { ...credentialPort, async stage(reference, value, owner) { await credentialPort.stage(reference, value, owner); stage.enter(); await stage.gate; } },
+      owner: f.owner, async retireControllers() {}, async ensureCryptoReady() {}, openStorage: f.open,
+    });
     const proof = await recovery.prepare(PHRASE, () => undefined);
-    await recovery.setPin(proof, NEXT);
-    const pending = f.read();
-    assertOnlyStagedPinReceipt(pending, before);
+    const commit = assert.rejects(recovery.commit(proof)); await stage.reached;
+    const pending = f.read(); assertOnlyStagedPinReceipt(pending, before);
     const staged = JSON.parse(pending.metadata.find(row => row.key === PENDING_PIN_REMOVAL)!.value);
-    assert.notEqual(await pinCredential.readSecret(staged, () => undefined), null);
-    assert.notEqual(await pinCredential.readPublic(staged, () => undefined), null);
-    recovery.cancel();
-    await recovery.dispose();
-    await f.reopen();
-    assert.equal(f.owner.getSnapshot().phase, 'locked');
-    assert.deepEqual(f.read(), before, 'cancellation retains the entire existing wallet without the temporary receipt');
-    assert.equal(await pinCredential.readSecret(staged, () => undefined), null);
-    assert.equal(await pinCredential.readPublic(staged, () => undefined), null);
-  } finally { await recovery?.dispose().catch(() => undefined); await f.close(); }
+    assert.equal((await credentialPort.capabilities(staged)).credentialPresent, true);
+    recovery.cancel(); stage.release(); await commit; await recovery.dispose();
+    await assert.rejects(f.reopen(), { code: 'UNAVAILABLE' }); assert.deepEqual(f.read(), before);
+    assert.equal((await credentialPort.capabilities(staged)).credentialPresent, false);
+    assert.equal(await credentialPort.readPublic(staged, () => undefined), null);
+  } finally { stage.release(); await recovery?.dispose().catch(() => undefined); await f.close(); }
 });
 
-test('recovery without a current PIN record commits a usable replacement and clears its candidate receipt', async () => {
+test('recovery without a current credential commits a usable replacement and clears its candidate receipt', async () => {
   const f = await fixture();
   let recovery: NativeRecoveryCoordinator | undefined;
   try {
     const address = f.owner.getSnapshot().account!.address;
     f.owner.lock();
     const db = Reflect.get(f.store, 'db') as { runAsync(sql: string, params: string[]): Promise<unknown> };
-    await db.runAsync('DELETE FROM wallet_metadata WHERE key = ?', ['local-pin-v1']);
+    await db.runAsync('DELETE FROM wallet_metadata WHERE key = ?', ['local-credential-v1']);
     const before = f.read();
     recovery = f.coordinator();
     const proof = await recovery.prepare(PHRASE, () => undefined);
-    await recovery.setPin(proof, NEXT);
-    assertOnlyStagedPinReceipt(f.read(), before);
     assert.equal(await recovery.commit(proof), 'committed-locked');
     const committed = f.read();
     assert.equal(committed.metadata.some(row => row.key === PENDING_PIN_REMOVAL), false);
-    assert.equal(committed.metadata.filter(row => row.key === 'local-pin-v1').length, 1);
+    assert.equal(committed.metadata.filter(row => row.key === 'local-credential-v1').length, 1);
     assert.deepEqual(retained(committed), retained(before));
     await f.reopen();
-    await f.owner.unlock(NEXT);
+    await f.owner.unlock();
     assert.equal(f.owner.getSnapshot().phase, 'ready');
     assert.equal(f.owner.getSnapshot().account!.address, address);
-    assert.equal((await f.runtime.backup.readPhrase(NEXT)).join(' '), PHRASE);
+    assert.equal((await f.runtime.backup.readPhrase({ method: 'device' })).join(' '), PHRASE);
     assert.equal(f.unlockedKeyrings(), 0);
   } finally { await recovery?.dispose().catch(() => undefined); await f.close(); }
+});
+
+test('recovery OS Cancel returns to the same verified review only after exact cleanup, then retries once', async () => {
+  const f = await fixture(); f.owner.lock(); const before = f.read();
+  let stages = 0, completed = false;
+  const coordinator = new NativeRecoveryCoordinator({ isAuthenticationActive: () => false,
+    credentialPort: { ...credentialPort, async stage(reference, value, owner) {
+      if (++stages === 1) throw operationAuthenticationCancellation();
+      await credentialPort.stage(reference, value, owner);
+    } }, owner: f.owner, async retireControllers() {}, async ensureCryptoReady() {}, openStorage: f.open,
+  });
+  const flow = new NativeRecoveryFlow({ readInventory: () => readRecoveryInventory(f.store), isCurrent: () => true,
+    createCoordinator: () => coordinator,
+    async finish(outcome) { assert.equal(outcome.kind, 'success'); completed = true; },
+  });
+  const until = async (predicate: () => boolean) => {
+    const deadline = performance.now() + 10000;
+    while (!predicate() && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 1));
+    assert(predicate());
+  };
+  try {
+    flow.start(); await until(() => flow.getSnapshot().phase === 'scope'); flow.enter(); flow.submit({ phrase: PHRASE });
+    await until(() => flow.getSnapshot().phase === 'review');
+    flow.commit(); await until(() => stages === 1 && flow.getSnapshot().phase === 'review');
+    assert.equal(flow.getSnapshot().error, ''); assert.deepEqual(f.read(), before);
+    assert.equal(completed, false); assert.equal(f.leased, true);
+    flow.commit(); await until(() => completed && flow.getSnapshot().phase === 'closed');
+    assert.equal(stages, 2); assert.deepEqual(retained(f.read()), retained(before));
+    await f.reopen(); assert.equal(f.owner.getSnapshot().phase, 'ready');
+  } finally { flow.cancel(); await coordinator.dispose(); await f.close(); }
 });

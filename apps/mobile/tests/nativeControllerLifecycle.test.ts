@@ -27,7 +27,7 @@ test('retirement cancels native authentication before locking and closing its ow
   assert.deepEqual(events, ['cancel-authentication', 'lock', 'close']);
 });
 
-function fixture() {
+function fixture(existingPhase: 'locked' | 'ready' | 'backup-required' = 'locked') {
   const events: string[] = []; let count = 0;
   let close: Promise<void> = Promise.resolve(), recoveryClose: Promise<void> = Promise.resolve();
   let removalClose: Promise<void> = Promise.resolve(), removed = false;
@@ -38,7 +38,7 @@ function fixture() {
     async protect() { events.push('privacy'); },
     create() {
       const id = ++count; events.push(`create${id}`); onCreate();
-      let state: CustodySnapshot = { phase: presence === 'existing' ? 'locked' : 'empty', presence, backup: 'confirmed', revision: 0, account: null, error: null };
+      let state: CustodySnapshot = { phase: presence === 'existing' ? existingPhase : 'empty', presence, backup: 'confirmed', revision: 0, account: null, error: null };
       return {
         authority: { getSnapshot: () => state, async initialize() { events.push(`init${id}`); }, lock() { events.push(`lock${id}`); onLock(); }, async dispose() { events.push(`close${id}`); await close; state = { ...state, phase: 'disposed' }; } },
         backup: { dispose() { events.push(`backup${id}`); } }, keyExport: { dispose() {} }, disposeTokens() {}, disposeTransfers() {},
@@ -180,4 +180,15 @@ test('same mounted token joins one admission and asynchronous guards never grant
   await one; assert.equal(f.count(), 1); await f.gate.release(a);
   const invalid = () => Promise.resolve(true);
   assert.equal(await f.gate.acquire({}, invalid as unknown as () => boolean), null); assert.equal(f.count(), 1);
+});
+
+for (const phase of ['ready', 'backup-required'] as const) test(`auto-open ${phase} public view survives reacquire and permits explicit recovery`, async () => {
+  const f = fixture(phase), first = {}, next = {};
+  const opened = await f.gate.acquire(first, () => true); assert(opened);
+  assert.equal(opened.authority.getSnapshot().phase, phase);
+  assert(f.gate.startRecovery(first, opened));
+  await f.gate.release(first);
+  const reopened = await f.gate.acquire(next, () => true); assert(reopened);
+  assert.equal(reopened.authority.getSnapshot().phase, phase);
+  await f.gate.release(next);
 });

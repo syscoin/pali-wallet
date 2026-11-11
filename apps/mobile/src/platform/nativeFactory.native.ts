@@ -13,7 +13,7 @@ import { NativeLedgerAccounts } from '../custody/ledgerAccounts.ts';
 import { createNativeSentryPublicKeyDeriver } from '../crypto/sentryPublicKey.native';
 import { createNativeSentryCryptoExecutor } from '../crypto/sentryCrypto.native';
 import type { NativeSentryApprovals } from '../custody/sentryApprovals';
-import { Linking } from 'react-native';
+import { AppState, Linking } from 'react-native';
 import { createNativeNetworkView } from '../custody/networkView';
 import { createNativeDappControlHost } from '../custody/dappControl';
 import { createNativeDappRpcReadHost } from '../custody/dappRpcReads';
@@ -25,9 +25,8 @@ import { createNativeTrezorSessions } from '../hardware/trezorTransport.native';
 import type { NativeTrezorSessions } from '../hardware/trezorSessions';
 import type { NativeTrezorView, NativeTrezorSnapshot } from '../custody/trezorAccounts';
 import { prepareWalletConnectRuntime } from './walletConnectRuntime';
-import { createNativeDeviceUnlockCapability } from './deviceUnlockCredential.native';
-import { createNativePinCredentialPort } from './pinCredential.native';
-import { nativeOperationAuthentication } from './operationAuthentication';
+import { isNonBackgroundNativePromptActive } from './credentialPort.ts';
+import { createNativeCredentialPort, isNativeCredentialPromptActive, nativeCredentialAuthentication } from './credential.native';
 import { NativeConnectionsController } from '../connections/controller.ts';
 import { blacklistService } from '../../../../source/utils/security/blacklistService';
 import { EvmTransferReadRpc } from '../custody/evmTransferReadRpc.ts';
@@ -69,6 +68,9 @@ import type { NativeSentryKeyManagement } from '../custody/sentryKeyManagement.t
 import type { NativeSentryNodeManagement } from '../custody/sentryNodeManagement.ts';
 import type { NativePsbtRequest } from '../connections/psbtRequests.ts';
 
+// Passkey browser handoffs do not inherit the OS credential Activity exception.
+const isBoundNativePasskeyPromptActive = (owner?: AbortSignal) => isNonBackgroundNativePromptActive(AppState.currentState, () => isNativePasskeyPromptActive(owner));
+
 async function openStorage(expectedInstallationId?: string) {
   const crypto = await ensureNativeCryptoReady();
   return openNativeWalletStorage({
@@ -81,7 +83,7 @@ function custodyGuard() {
   const guard = custodyIdle.captureGuard();
   return () => { if (securityPreferences.getSnapshot().status !== 'ready') throw new Error('CANCELLED'); guard(); };
 }
-function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertActive = custodyGuard(), deviceUnlock = createNativeDeviceUnlockCapability(), trezorSessions?: NativeTrezorSessions) {
+function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertActive = custodyGuard(), credentialPort = createNativeCredentialPort(), trezorSessions?: NativeTrezorSessions) {
   let privacySettings: ReturnType<typeof createNativePrivacyServiceSettings> | undefined;
   const getPrivacySettings = () => {
     if (!privacySettings) throw new CustodyOperationError('CANCELLED');
@@ -99,9 +101,8 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
     slhExecution: null,
     passkeys: createNativePasskeyCapability(),
     assertActive,
-    deviceUnlock,
-    pinCredential: createNativePinCredentialPort(),
-    requestOperationCredential: nativeOperationAuthentication.request,
+    credentialPort,
+    isAuthenticationActive: isNativeCredentialPromptActive,
     deriveSentryPublicKey: createNativeSentryPublicKeyDeriver(),
     runSentryCrypto: createNativeSentryCryptoExecutor(null),
     trezorSessions,
@@ -190,7 +191,7 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
 export function createNativeRecoveryCoordinator(controllers: ReturnType<typeof createNativeWalletControllers>) {
   return new NativeRecoveryCoordinator({ owner: controllers.authority,
     async retireControllers() { controllers.authentication.cancel(); controllers.disposeTokens(); controllers.disposeTransfers(); controllers.keyExport.dispose(); controllers.backup.dispose(); await controllers.disposeConnections(); },
-    ensureCryptoReady: async () => { await ensureNativeCryptoReady(); }, openStorage, assertActive: custodyGuard(), pinCredential: createNativePinCredentialPort() });
+    ensureCryptoReady: async () => { await ensureNativeCryptoReady(); }, openStorage, assertActive: custodyGuard(), credentialPort: createNativeCredentialPort(), isAuthenticationActive: isNativeCredentialPromptActive });
 }
 
 export function createNativeCustodyAuthority(): NativeCustodyAuthority {
@@ -201,13 +202,13 @@ export function createNativeWalletControllers() {
   let runtime: KeyringRuntime | undefined;
   let ownedStorage: OpenWalletStorage | undefined;
   const assertActive = custodyGuard();
-  const deviceUnlock = createNativeDeviceUnlockCapability();
+  const credentialPort = createNativeCredentialPort();
   const trezorSessions = createNativeTrezorSessions({
     randomBytes: (length) => globalThis.crypto.getRandomValues(new Uint8Array(length)),
   });
   const trezorListeners = new Set<() => void>();
   let unsubscribeTrezor: (() => void) | undefined;
-  const base = factory((storage) => { ownedStorage = storage; }, assertActive, deviceUnlock, trezorSessions);
+  const base = factory((storage) => { ownedStorage = storage; }, assertActive, credentialPort, trezorSessions);
   const authority = new NativeCustodyAuthority({
     async open() {
       runtime = await base.open() as KeyringRuntime;
@@ -283,7 +284,7 @@ export function createNativeWalletControllers() {
           if (runtime !== captured || !captured.catalogue.getSnapshot()) throw new CustodyOperationError('CANCELLED');
           assertSynchronousEvmFeeGuard(check);
         },
-        isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner),
+        isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner),
       });
     },
     source: authority,
@@ -370,7 +371,7 @@ export function createNativeWalletControllers() {
     source: () => runtime && ownedStorage ? { runtime, storage: ownedStorage } : undefined,
     bindAuthentication: (scope, assertOwner) => bindNativePrivateAuthentication(scope, {
       assertCurrent: assertOwner,
-      isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner),
+      isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner),
     }),
     reopen: openStorage,
     async clearNativeSelection(check) {
@@ -383,31 +384,12 @@ export function createNativeWalletControllers() {
   const bindOperationAuthentication = (scope: NativePrivateAuthenticationScope, selected: KeyringRuntime) =>
     bindNativePrivateAuthentication(scope, {
       assertCurrent() { if (runtime !== selected || !selected.catalogue.getSnapshot()) throw new CustodyOperationError('CANCELLED'); },
-      isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner),
+      isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner),
     });
   const saveIdlePreference = (expected: import('../core/securityPreferences').SecurityPreferenceSnapshot, minutes: number,
     signal: AbortSignal, authentication: NativePrivateAuthenticationScope, assertCurrent: () => void) => {
     if (!runtime) return Promise.reject(new CustodyOperationError('NOT_READY'));
     return authority.saveIdlePreference(expected, minutes, signal, bindOperationAuthentication(authentication, runtime), assertCurrent);
-  };
-  const configureDeviceUnlock = async (enabled: boolean, signal: AbortSignal, authentication: NativePrivateAuthenticationScope, assertOwner: () => void): Promise<void> => {
-    const selected = runtime, before = authority.getSnapshot(), catalogue = authority.getCatalogue();
-    if (!selected?.deviceUnlock || !catalogue || !['ready', 'backup-required'].includes(before.phase))
-      throw new CustodyOperationError('NOT_READY');
-    const checkOwnership = () => {
-      if (signal.aborted || runtime !== selected || authority.getSnapshot() !== before || authority.getCatalogue() !== catalogue)
-        throw new CustodyOperationError('CANCELLED');
-    };
-    const check = () => { checkOwnership(); assertSynchronousEvmFeeGuard(assertOwner); checkOwnership(); };
-    check();
-    const binding = bindNativePrivateAuthentication(authentication, {
-      assertCurrent: checkOwnership, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner),
-    });
-    try { await selected.deviceUnlock.configure(enabled, signal, binding, check); check(); }
-    catch (error) {
-      if (runtime === selected && authority.getSnapshot() === before && !selected.catalogue.getSnapshot()) authority.lock();
-      throw error;
-    }
   };
   const keyExportFacades = new WeakMap<KeyringRuntime, NativeHdKeyExportRuntime>();
   const keyExport = new HdKeyExportFlow(authority, () => {
@@ -474,7 +456,7 @@ export function createNativeWalletControllers() {
     const revision = authority.getSnapshot().revision;
     const assertCurrent = () => {
       const snapshot = authority.getSnapshot();
-      if (ownedStorage !== storage || snapshot.phase !== 'locked' || snapshot.revision !== revision)
+      if (ownedStorage !== storage || !['locked', 'ready', 'backup-required'].includes(snapshot.phase) || snapshot.revision !== revision)
         throw new CustodyOperationError('CANCELLED');
     };
     assertCurrent();
@@ -512,7 +494,7 @@ export function createNativeWalletControllers() {
     signingAvailable: () => authority.getSnapshot().phase === 'ready' && !!runtime?.getSentryKeyNetwork?.() && !!runtime.openSentryApprovals,
     async openApprovals(lifetime: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeSentryApprovals> {
       const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-      const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+      const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
       const open = selected.openSentryApprovals;
       if (!open) throw new CustodyOperationError('NOT_READY');
       const manager = await observeFailure(() => open(lifetime, assertCurrent, binding));
@@ -529,7 +511,7 @@ export function createNativeWalletControllers() {
       if (!open) throw new CustodyOperationError('NOT_READY');
       const authentication = createNativePrivateAuthenticationScope();
       const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent,
-        isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+        isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
       let manager: NativeSentryKeyManagement;
       try { manager = await observeFailure(() => open(lifetime, assertCurrent, binding)); }
       catch (cause) { authentication.retire(); throw cause; }
@@ -546,7 +528,7 @@ export function createNativeWalletControllers() {
     },
     async openNodes(lifetime: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeSentryNodeManagement> {
       const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-      const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+      const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
       const open = selected.openSentryNodeManagement;
       if (!open) throw new CustodyOperationError('NOT_READY');
       const manager = await observeFailure(() => open(lifetime, assertCurrent, binding));
@@ -608,7 +590,7 @@ export function createNativeWalletControllers() {
   };
   const openNoteBackup = async (assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeNoteBackupRuntime> => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     const open = selected.openNoteBackup;
     if (!open) throw new CustodyOperationError('NOT_READY');
     const notes = await observeFailure(() => open(assertCurrent, binding));
@@ -621,13 +603,13 @@ export function createNativeWalletControllers() {
   };
   const openSmartAccountDeployment = async (assertOwner: () => void, signal: AbortSignal, authentication: NativePrivateAuthenticationScope) => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
     return observeFailure(() => selected.openSmartAccountDeployment(check, binding));
   };
   const openResumedSmartAccountOperation = async (id: string, signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
     check();
     const operation = await observeFailure(() => selected.resumeSmartAccountOperation(id, signal, check, binding));
@@ -635,7 +617,7 @@ export function createNativeWalletControllers() {
   };
   const openSmartInfrastructure = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
     check();
     const value = await observeFailure(() => selected.openSmartInfrastructure(signal, check, binding));
@@ -643,7 +625,7 @@ export function createNativeWalletControllers() {
   };
   const openResumedSmartInfrastructure = async (id: string, signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
     check();
     const value = await observeFailure(() => selected.openResumedSmartInfrastructure(id, signal, check, binding));
@@ -651,7 +633,7 @@ export function createNativeWalletControllers() {
   };
   const openSmartAccountModules = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeSmartModuleManagement> => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
     check();
     const snapshot = authority.getSnapshot(), catalogue = authority.getCatalogue();
@@ -679,7 +661,7 @@ export function createNativeWalletControllers() {
   };
   const openSlhDsaManagement = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeSlhDsaManagement> => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
     check();
     const account = await selected.openSlhDsaAccount(check, signal, binding); check();
@@ -706,12 +688,12 @@ export function createNativeWalletControllers() {
   };
   const openWalletAuthenticator = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     return observeFailure(() => selected.openWalletAuthenticator(signal, assertCurrent, binding));
   };
   const openSmartAccountSend = async (recipient: string, amount: Parameters<KeyringRuntime['openSmartAccountSend']>[1], assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     return observeFailure(() => selected.openSmartAccountSend(recipient, amount, assertCurrent, binding));
   };
   const guardianRecovery = Object.freeze({
@@ -719,13 +701,13 @@ export function createNativeWalletControllers() {
     hasIntent: () => authority.getSnapshot().phase === 'ready' && !!runtime?.getGuardianRecoveryIntent(),
     async open(draft: Parameters<KeyringRuntime['openGuardianRecovery']>[0], signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) {
       const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-      const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+      const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
       return observeFailure(() => selected.openGuardianRecovery(draft, signal, assertCurrent, binding));
     },
   });
   const openGuardianPolicy = async (draft: Parameters<KeyringRuntime['openGuardianPolicy']>[0], signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     return observeFailure(() => selected.openGuardianPolicy(draft, signal, assertCurrent, binding));
   };
   const inspectGuardianRemoval = async (signal: AbortSignal, assertOwner: () => void) => {
@@ -741,7 +723,7 @@ export function createNativeWalletControllers() {
   };
   const openNoteMaintenance = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeNoteMaintenanceRuntime> => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     if (!selected.openNoteMaintenance) throw new CustodyOperationError('NOT_READY');
     const value = await observeFailure(() => selected.openNoteMaintenance!(signal, assertCurrent, binding));
     return Object.freeze({
@@ -758,7 +740,7 @@ export function createNativeWalletControllers() {
   };
   const openNoteCapacity = async (assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeNoteCapacityRuntime> => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     const open = selected.openNoteCapacity;
     if (!open) throw new CustodyOperationError('NOT_READY');
     const capacity = await observeFailure(() => open(assertCurrent, binding));
@@ -769,7 +751,7 @@ export function createNativeWalletControllers() {
   };
   const readNoteInventory = async (assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeNoteInventory> => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     const read = selected.readNoteInventory;
     if (!read) throw new CustodyOperationError('NOT_READY');
     const inventory = await observeFailure(() => read(assertCurrent, binding));
@@ -797,13 +779,13 @@ export function createNativeWalletControllers() {
   };
   const openPrivateDeposit = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     if (!selected.openPrivateDeposit) throw new CustodyOperationError('NOT_READY');
     return observeFailure(() => selected.openPrivateDeposit!(signal, assertCurrent, binding));
   };
   const openNoteImport = async (assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeNoteImportRuntime> => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
-    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner) });
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     if (!selected.openNoteImport) throw new CustodyOperationError('NOT_READY');
     const importer = await observeFailure(() => selected.openNoteImport!(assertCurrent, binding));
     return Object.freeze({
@@ -867,6 +849,6 @@ export function createNativeWalletControllers() {
       networkId: scope.network.id, registrationHash: 'registrationHash' in scope.network ? scope.network.registrationHash : '' }, check);
   };
   const activityReaders = Object.freeze({ explorer: new ActivityExplorerReader(walletFetch), receipts: new ActivityReceiptReader({ fetch: walletFetch }) });
-  return { getNotificationChoices, readPortfolioAssets, getScopedActivityRuntime, activityReaders, authority, saveIdlePreference, configureDeviceUnlock, sentry, recipientResolver, openSmartInfrastructure, openResumedSmartInfrastructure, openSmartAccountModules, canManageSmartAccountModules: () => runtime?.canUseWalletAuthenticator() === true, openSlhDsaManagement, canManageSlhDsa: () => runtime?.canManageSlhDsa() === true, canSignSmartAccount: () => runtime?.canSignSmartAccount() === true, guardianRecovery, authentication: { isActive: (owner: AbortSignal) => deviceUnlock.prompt.isActive(owner) || isNativePasskeyPromptActive(owner), isAnyPromptActive: () => deviceUnlock.prompt.isAnyPromptActive() || isNativePasskeyPromptActive(), cancel: () => deviceUnlock.prompt.cancel(), run: deviceUnlock.prompt.run.bind(deviceUnlock.prompt) }, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openResumedSmartAccountOperation, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, openNoteMaintenance, openPrivacyControls, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { getNotificationChoices, readPortfolioAssets, getScopedActivityRuntime, activityReaders, authority, saveIdlePreference, sentry, recipientResolver, openSmartInfrastructure, openResumedSmartInfrastructure, openSmartAccountModules, canManageSmartAccountModules: () => runtime?.canUseWalletAuthenticator() === true, openSlhDsaManagement, canManageSlhDsa: () => runtime?.canManageSlhDsa() === true, canSignSmartAccount: () => runtime?.canSignSmartAccount() === true, guardianRecovery, authentication: { isActive: (owner: AbortSignal) => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner), isAnyPromptActive: () => isNativeCredentialPromptActive() || isBoundNativePasskeyPromptActive(), cancel: () => nativeCredentialAuthentication.cancel(), run: nativeCredentialAuthentication.run }, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openResumedSmartAccountOperation, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, openNoteMaintenance, openPrivacyControls, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

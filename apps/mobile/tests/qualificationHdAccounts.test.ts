@@ -1,4 +1,4 @@
-import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { createTestCredentialPort } from './fixtures/credential.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -16,7 +16,7 @@ import { readSignedRecordEvidence } from '../qualification/signed-record-evidenc
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
-const pinCredential = createTestPinCredentialPort();
+const credentialPort = createTestCredentialPort();
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = '123456';
@@ -56,7 +56,7 @@ test('HD fixture guard rejects A-B-A revisions even when address and readiness m
     },
   } as unknown as KeyringRuntime;
   await assert.rejects(qualifyNativeHdAccounts({
-    phase: 'create', authority, runtime, storage: {} as OpenWalletStorage, password: PASSWORD,
+    phase: 'create', authority, runtime, storage: {} as OpenWalletStorage,
     expectedSecondAddress: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0',
     check: async (_name, operation) => operation(),
   }), /QUALIFICATION_HD_ASSERTION_FAILED/);
@@ -71,7 +71,7 @@ for (const scenario of ['import', 'generate'] as const) {
     let initialized = false;
     let runtime!: KeyringRuntime;
     let physicalStorage!: SqliteWalletStorage;
-    const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
+    const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
       ensureCryptoReady: async () => undefined,
       openStorage: async () => {
         physicalStorage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, !initialized);
@@ -87,16 +87,16 @@ for (const scenario of ['import', 'generate'] as const) {
     const check = async <T,>(name: string, operation: () => Promise<T>) => { checks.push(name); return operation(); };
     try {
       await authority.initialize();
-      if (scenario === 'import') await authority.importPhrase(PHRASE, PASSWORD);
-      else await authority.create(PASSWORD);
-      const words = await runtime.backup.readPhrase(PASSWORD);
+      if (scenario === 'import') await authority.importPhrase(PHRASE);
+      else await authority.create();
+      const words = await runtime.backup.readPhrase({ method: 'device' });
       const expectedSecondAddress = HDNodeWallet.fromPhrase(words.join(' '), undefined, "m/44'/60'/0'/0/1").address;
       if (scenario === 'import') assert.equal(expectedSecondAddress, '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0');
       await runtime.backup.confirm(await runtime.backup.fingerprint());
       await authority.refreshAuthenticatedMetadata();
       const fingerprint = await physicalStorage.getWalletFingerprint();
-      await assert.rejects(qualifyNativeHdAccounts({ phase: 'create', authority, runtime, storage: physicalStorage, password: PASSWORD, check }), /QUALIFICATION_HD_ASSERTION_FAILED/);
-      const created = await qualifyNativeHdAccounts({ phase: 'create', authority, runtime, storage: physicalStorage, password: PASSWORD, expectedSecondAddress, check });
+      await assert.rejects(qualifyNativeHdAccounts({ phase: 'create', authority, runtime, storage: physicalStorage,  check }), /QUALIFICATION_HD_ASSERTION_FAILED/);
+      const created = await qualifyNativeHdAccounts({ phase: 'create', authority, runtime, storage: physicalStorage,  expectedSecondAddress, check });
       assert.equal(created.address, expectedSecondAddress);
       assert.equal(created.selectedAccountId, 'hd:60:1');
       assert.notEqual(created.transferHash, created.firstTransferHash);
@@ -118,10 +118,9 @@ for (const scenario of ['import', 'generate'] as const) {
       await authority.dispose();
       authority = new NativeCustodyAuthority(owner);
       await authority.initialize();
-      assert.equal(authority.getSnapshot().phase, 'locked');
-      await authority.unlock(PASSWORD);
+      assert.equal(authority.getSnapshot().phase, 'ready');
       assert.equal(authority.getCatalogue()?.active.accountId, 'hd:60:1');
-      const restored = await qualifyNativeHdAccounts({ phase: 'restart', authority, runtime, storage: physicalStorage, password: PASSWORD,
+      const restored = await qualifyNativeHdAccounts({ phase: 'restart', authority, runtime, storage: physicalStorage,
         expectedSecondAddress, expectedRestartAddress: created.address, check });
       assert.deepEqual(restored, created);
       await checkContainers();

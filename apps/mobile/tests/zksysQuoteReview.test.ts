@@ -33,6 +33,7 @@ function fixture() {
   };
   const operationAuthorization = createTestOperationAuthorizer((credential, check): Promise<void> => runtime.authenticateOperation(credential, check), unsignedTransferBytes);
   const runtime = {
+    isAuthenticationRefusal: () => false,
     authorizeOperation: operationAuthorization.authorizeOperation,
     releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
     async authenticateOperation(_credential: unknown, check: () => void) { check(); },
@@ -129,7 +130,7 @@ for (const kind of ['base-fee', 'nonce'] as const) {
       if (kind === 'base-fee') f.setBaseFee('0x12c');
       else f.setNonce('0x1');
       await assert.rejects(
-        f.controller.confirm(review.id, { method: 'pin', pin: '123456' }),
+        f.controller.confirm(review.id, { method: 'device' }),
         { code: 'EXPIRED' }
       );
       const state = f.controller.getSnapshot();
@@ -166,7 +167,7 @@ for (const kind of ['base-fee', 'nonce'] as const) {
       if (kind === 'base-fee') f.setBaseFee('0xnot-a-quantity');
       else f.setNonce('0xnot-a-quantity');
       await assert.rejects(
-        f.controller.confirm(review.id, { method: 'pin', pin: '123456' }),
+        f.controller.confirm(review.id, { method: 'device' }),
         { code: 'FAILED' }
       );
       const state = f.controller.getSnapshot();

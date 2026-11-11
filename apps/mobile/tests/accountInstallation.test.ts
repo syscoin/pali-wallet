@@ -1,7 +1,9 @@
 import { storageOnlyPublicSession } from './fixtures/publicSessionRecord.ts';
 import { PUBLIC_SESSION_RECORD_KEY, PUBLIC_SESSION_RECORD_LIMITS } from '../src/storage/publicSessionRecordKey.ts';
-import { createTestPinRecord } from './fixtures/pinRecord.ts';
+import { createTestCredentialReference } from './fixtures/credentialReference.ts';
 import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import { encodeStorageValue } from '../src/storage/json.ts';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -46,7 +48,7 @@ async function fixture() {
       publicSession: storageOnlyPublicSession(binding),
       vault: pair.vault,
       keys: pair['vault-keys'],
-      pin: await createTestPinRecord(store, { vault: pair.vault, keys: pair['vault-keys'] }, await store.recovery.fingerprintPair!({ vault: pair.vault, keys: pair['vault-keys'] })),
+      credential: await createTestCredentialReference(store, { vault: pair.vault, keys: pair['vault-keys'] }, await store.recovery.fingerprintPair!({ vault: pair.vault, keys: pair['vault-keys'] })),
       accountRecords: {
         version: 1,
         walletFingerprint: await store.recovery.fingerprintPair!({
@@ -62,6 +64,8 @@ async function fixture() {
       return store;
     },
     candidate,
+    readExternalRecord() { const db = new DatabaseSync(file); try { return db.prepare('SELECT value FROM keyring_records WHERE key = ?').get('unexpected-record'); } finally { db.close(); } },
+    addExternalRecord() { const db = new DatabaseSync(file); try { db.prepare('INSERT INTO keyring_records (key,value) VALUES (?,?)').run('unexpected-record', encodeStorageValue({ untouched: true })); } finally { db.close(); } },
     setBefore(value?: SqlHook) {
       before = value;
     },
@@ -73,6 +77,7 @@ async function fixture() {
       after = undefined;
       await store.close();
       store = await open(false);
+      await store.credential.settleCredentialRemoval(async () => {});
     },
     async close() {
       before = undefined;
@@ -88,11 +93,11 @@ test('first installation atomically writes the pair, complete account value and 
   try {
     const before = await f.store.recovery.readSnapshot(),
       value = await f.candidate();
-    const pending = f.store.recovery.prepareCreation!(before, value, root);
+    const pending = f.store.recovery.prepareCreation!(before, value, root, () => undefined);
     value.accountRecords.groups[0]!.encrypted = 'caller mutation';
     const plan = await pending,
       expected = f.store.recovery.plannedSnapshot!(plan);
-    assert(sameRecoverySnapshot(await f.store.recovery.readSnapshot(), before));
+    await assert.rejects(f.store.recovery.readSnapshot(), { code: 'STORAGE_REOPEN_REQUIRED' });
     await f.store.recovery.commitReplacement!(plan, () => undefined);
     assert(
       sameRecoverySnapshot(await f.store.recovery.readSnapshot(), expected)
@@ -124,7 +129,7 @@ for (const fault of ['account', 'checkpoint', 'identity', 'auth', 'commit'] as c
       const plan = await f.store.recovery.prepareCreation!(
         before,
         await f.candidate(),
-        root
+        root, () => undefined
       );
       if (fault === 'checkpoint') assert.equal(f.store.recovery.plannedSnapshot!(plan).records[0]!.key, PUBLIC_SESSION_RECORD_KEY);
       let records = 0,
@@ -166,7 +171,7 @@ test('a lost COMMIT acknowledgement retains the complete installed wallet and re
     const plan = await f.store.recovery.prepareCreation!(
       await f.store.recovery.readSnapshot(),
       await f.candidate(),
-      root
+      root, () => undefined
     );
     const expected = f.store.recovery.plannedSnapshot!(plan);
     f.setAfter((_kind, sql) => {
@@ -187,36 +192,17 @@ test('a lost COMMIT acknowledgement retains the complete installed wallet and re
   }
 });
 
-test('initial installation refuses orphan data and a concurrent write without removing it', async () => {
+test('initial installation refuses an externally inserted orphan without removing it', async () => {
   const f = await fixture();
   try {
     const plan = await f.store.recovery.prepareCreation!(
-      await f.store.recovery.readSnapshot(),
-      await f.candidate(),
-      root
-    );
-    await f.store.keyringStorage.set('unexpected-record', { untouched: true });
-    const occupied = await f.store.recovery.readSnapshot();
-    await assert.rejects(
-      f.store.recovery.commitReplacement!(plan, () => undefined),
-      { code: 'STORAGE_CHANGED' }
-    );
-    assert(
-      sameRecoverySnapshot(await f.store.recovery.readSnapshot(), occupied)
-    );
-    await assert.rejects(
-      f.store.recovery.prepareCreation!(
-        await f.store.recovery.readSnapshot(),
-        await f.candidate(),
-        root
-      )
-    );
-    assert(
-      sameRecoverySnapshot(await f.store.recovery.readSnapshot(), occupied)
-    );
-  } finally {
-    await f.close();
-  }
+      await f.store.recovery.readSnapshot(), await f.candidate(), root, () => undefined);
+    f.addExternalRecord();
+    const occupied = f.readExternalRecord();
+    await assert.rejects(f.store.recovery.commitReplacement!(plan, () => undefined), { code: 'STORAGE_CORRUPT' });
+    assert.deepEqual(f.readExternalRecord(), occupied);
+    await assert.rejects(f.store.recovery.readSnapshot());
+  } finally { await f.close(); }
 });
 
 
@@ -228,9 +214,9 @@ test('the account-only four MiB bound survives cold load and refuses overflow be
     large.payload = 'x'.repeat(ACCOUNT_RECORD_LIMITS.valueBytes - Buffer.byteLength(encodeAccountRecord(large)));
     assert.equal(Buffer.byteLength(encodeAccountRecord(large)), ACCOUNT_RECORD_LIMITS.valueBytes);
     const empty = await f.store.recovery.readSnapshot();
-    await assert.rejects(async () => f.store.recovery.prepareCreation!(empty, { ...value, accountRecords: { ...large, payload: large.payload + 'x' } }, root));
+    await assert.rejects(async () => f.store.recovery.prepareCreation!(empty, { ...value, accountRecords: { ...large, payload: large.payload + 'x' } }, root, () => undefined));
     assert(sameRecoverySnapshot(await f.store.recovery.readSnapshot(), empty));
-    const plan = await f.store.recovery.prepareCreation!(await f.store.recovery.readSnapshot(), { ...value, accountRecords: large }, root);
+    const plan = await f.store.recovery.prepareCreation!(await f.store.recovery.readSnapshot(), { ...value, accountRecords: large }, root, () => undefined);
     await f.store.recovery.commitReplacement!(plan, () => undefined);
     await f.reopen();
     assert.deepEqual(await f.store.keyringStorage.get(ACCOUNT_RECORD_KEY), large);
@@ -253,7 +239,7 @@ test('missing, mismatched and oversized public checkpoints fail before initial w
       if (fault === 'missing') Reflect.deleteProperty(value, 'publicSession');
       if (fault === 'binding') value.publicSession.checkpoint.recordId = 'cd'.repeat(32);
       if (fault === 'capacity') value.publicSession.checkpoint.ciphertext = 'x'.repeat(PUBLIC_SESSION_RECORD_LIMITS.valueBytes);
-      await assert.rejects(async () => f.store.recovery.prepareCreation!(before, value, root));
+      await assert.rejects(async () => f.store.recovery.prepareCreation!(before, value, root, () => undefined));
       assert(sameRecoverySnapshot(await f.store.recovery.readSnapshot(), before));
     }
   } finally { await f.close(); }

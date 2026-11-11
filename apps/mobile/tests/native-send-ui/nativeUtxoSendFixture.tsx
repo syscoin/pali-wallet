@@ -1,4 +1,5 @@
 import React from 'react';
+import { FixtureDeviceAuthorization, fixtureDeviceAuthorization } from './fixtureDeviceAuthorization';
 import { createLedgerConnectionFixture } from './nativeLedgerConnectionFixture';
 
 import { parseDecimalAmount } from '../../src/core/amounts';
@@ -32,10 +33,12 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
   opens++;
   const options = new URLSearchParams(window.location.search);
   const expireAfterSave = options.has('saved-before-expiry');
+  let owner: AbortController | undefined;
+  let cancelled = false;
   let saved = !expireAfterSave;
   let seen = false;
   return {
-    cancel() {},
+    cancel() { cancelled = true; owner?.abort(); },
     async list() {
       return saved ? [{ txid, accepted: false }] : [];
     },
@@ -70,8 +73,13 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
         retryTxid: txid,
       };
     },
-    async confirm() {
+    async confirm(_review, credential) {
       assertCurrent();
+      if (credential.method !== 'device' || cancelled) throw Error('CANCELLED');
+      const current = new AbortController(); owner = current;
+      const check = () => { assertCurrent(); if (cancelled || owner !== current || current.signal.aborted) throw Error('CANCELLED'); };
+      try { await fixtureDeviceAuthorization.request('transaction', current.signal, check); check(); }
+      finally { if (owner === current) owner = undefined; }
       if (expired) throw new CustodyRuntimeError('CANCELLED');
           confirmations++;
       saved = true;
@@ -84,14 +92,13 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
 
 export function NativeUtxoSendFixture() {
   return (
-    <NativeUtxoSendScreen
-      authenticationMethod="pin"
+    <><NativeUtxoSendScreen
       ledgerConnection={ledgerConnection}
       accountLabel="Account 1"
       network={network}
       asset={asset}
       open={open}
       onBack={() => undefined}
-    />
+    /><FixtureDeviceAuthorization /></>
   );
 }

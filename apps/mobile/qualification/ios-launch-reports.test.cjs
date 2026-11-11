@@ -177,7 +177,7 @@ test('exact input byte limit is accepted but UTF-8 bytes over it are refused bef
 });
 
 function passedReport() {
-  return report({ status: 'passed', failedStage: undefined, checks: CHECKS.map(name => ({ name, durationMs: 1 })), quickCryptoIdentity: expectedQuickCryptoIdentity, networkCalls: 0,
+  return report({ status: 'passed', authorizationMode: 'test-only-fixture', failedStage: undefined, checks: CHECKS.map(name => ({ name, durationMs: 1 })), quickCryptoIdentity: expectedQuickCryptoIdentity, networkCalls: 0,
     nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1,
     journalContainerVersion: 1, firstTransferHash: '0x' + 'c'.repeat(64), transferHash: '0x' + 'b'.repeat(64),
     address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', storageDiagnostic: { stage: 'ready' },

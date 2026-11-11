@@ -4,12 +4,13 @@ import { createTrezorSessions } from '../src/hardware/trezorSessions.ts';
 import type { NativeTrezorClient } from '../src/hardware/trezorHost.ts';
 import { bindNativePrivateAuthentication, createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
-import { prepareRecoveryPin } from './fixtures/recoveryPin.ts';
+import { prepareRecoveryCredential } from './fixtures/recoveryCredential.ts';
 import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
-import { createTestPinRecordKeyring, withTestPinOperation } from './fixtures/pinOperation.ts';
+import { createTestCredentialRecordKeyring, withTestCredentialOperation } from './fixtures/credentialOperation.ts';
 import { createSlhDsaProfileStateCrypto } from '../../../source/wallet/slhDsaStateCrypto.ts';
 import { qualifyNativeHdAccounts } from '../qualification/hd-accounts.ts';
-import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { createTestCredentialPort } from './fixtures/credential.ts';
+import type { NativeCredentialPort } from '../src/custody/credentialVault.ts';
 import { normalizeSmartAccountModuleRequest } from '../../../source/shared/smartAccountModuleRequest.ts';
 import type { NativeSmartCreationAllocation } from '../src/smartAccount/preparation.ts';
 import { nativeSmartTrezorDevice } from './nativeSmartTrezorDevice.ts';
@@ -63,10 +64,9 @@ import { getZkSysGasTankAddress, PALI_ACCOUNT_PROXY_CREATION_CODE, PALI_CANONICA
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } from '../../../source/utils/smartAccount/infrastructureObservation.ts';
 
-const pinCredential = createTestPinCredentialPort();
+const credentialPort = createTestCredentialPort();
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = '123456';
 const coder = AbiCoder.defaultAbiCoder();
 const moduleTuple = 'tuple(address module,bytes data)';
 process.env.NODE_ENV = 'production';
@@ -80,8 +80,9 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let runtime!: KeyringRuntime;
   let storage!: SqliteWalletStorage;
   const calls: string[] = [];
+  let credentialReads = 0, secretLeases = 0, completedSecretLeases = 0;
+  let afterSecretLease: (() => void) | undefined;
   const signatures: { address: string; digest: string; signature: string; intentPersisted: boolean }[] = [];
-  let currentPin = PASSWORD;
   let onCredentialRequest: ((check: () => void) => void | Promise<void>) | undefined;
   const submitted: string[] = [];
   const payerSignatures: string[] = [];
@@ -293,7 +294,18 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
         } else assert.fail(`Unexpected RPC ${request.method}`);
         return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { headers: { 'content-type': 'application/json' } });
   };
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); await onCredentialRequest?.(check); check(); const result = await verify({ method: 'pin', pin: currentPin }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys, slhExecution: slhFactory, ...(trezorSessions ? {trezorSessions} : {}), ...(ledgerFactory ? {createLedgerTransport: ledgerFactory} : {}),
+  const protectedCredentials: NativeCredentialPort = { ...credentialPort,
+    async withSecret(reference, owner, consume) {
+      credentialReads++;
+      await onCredentialRequest?.(owner.assertCurrent);
+      return credentialPort.withSecret(reference, owner, consume);
+    },
+    async authorize(reference, owner) {
+      await onCredentialRequest?.(owner.assertCurrent);
+      return credentialPort.authorize(reference, owner);
+    },
+  };
+  const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort: protectedCredentials, privacyServiceSettings: null, passkeys, slhExecution: slhFactory, ...(trezorSessions ? {trezorSessions} : {}), ...(ledgerFactory ? {createLedgerTransport: ledgerFactory} : {}),
     ...(recordSignatures || slhFactory !== null ? { loadSdk: async () => {
       const sdk = await loadNativeKeyringSdk();
       const Base = sdk.HostKeyring;
@@ -302,6 +314,16 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
         sdkHostStores.set(host, args[0] as SqliteWalletStorage['keyringStorage']);
         return host;
       }, HostKeyring: class extends Base {
+        override async withSecretOperation<T>(
+          credential: Parameters<InstanceType<typeof Base>['withSecretOperation']>[0],
+          options: Parameters<InstanceType<typeof Base>['withSecretOperation']>[1],
+          work: (secret: string) => T | Promise<T>
+        ): Promise<T> {
+          assert.equal(this.isUnlocked(), false, 'a new SDK lease starts without a retained root');
+          secretLeases++;
+          try { return await super.withSecretOperation(credential, options, work); }
+          finally { assert.equal(this.isUnlocked(), false, 'every SDK lease clears its root'); completedSecretLeases++; afterSecretLease?.(); }
+        }
         constructor(...args: ConstructorParameters<typeof Base>) {
           super(...args);
           sdkHost = this; sdkHostStorage = sdkHostStores.get(args[0]);
@@ -316,7 +338,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             setState(getter);
             captureJournal = () => {
               const selected = getter().accounts.SmartAccount[getter().activeAccount.id]; assert(selected?.smartAccount);
-              return new EvmSignedRecords(storage.signedRecords).captureSmartAccountPendingRecords({keyring:createTestPinRecordKeyring(storage.pin, pinCredential, this, () => currentPin, () => { assert(this.hasPublicSession()); }),assertCurrent:()=>{assert(this.hasPublicSession());}},'1',selected.address);
+              return new EvmSignedRecords(storage.signedRecords).captureSmartAccountPendingRecords({keyring:createTestCredentialRecordKeyring(storage.credential, credentialPort, this, () => { assert(this.hasPublicSession()); }),assertCurrent:()=>{assert(this.hasPublicSession());}},'1',selected.address);
             };
             mutateLedgerOwner = (index, mutate) => {const account = getter().accounts.Ledger[index]; assert(account); mutate(account);};
             mutateSelectedSmart = mutate => {
@@ -347,7 +369,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const signPrepared = this.signPreparedEvmTransaction.bind(this);
           readPreparedRecord = async (chainId, from, hash) => {
             const entry = await new EvmSignedRecords(storage.signedRecords).readExact(
-              { keyring: createTestPinRecordKeyring(storage.pin, pinCredential, this, () => currentPin, () => { assert(this.hasPublicSession()); }), assertCurrent: () => { assert(this.hasPublicSession()); } }, chainId, from, hash);
+              { keyring: createTestCredentialRecordKeyring(storage.credential, credentialPort, this, () => { assert(this.hasPublicSession()); }), assertCurrent: () => { assert(this.hasPublicSession()); } }, chainId, from, hash);
             return entry?.rawTransaction ?? null;
           };
           this.signPreparedEvmTransaction = (...input: Parameters<typeof signPrepared>) => {
@@ -371,11 +393,15 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     return owner;
   };
   let owner = await open();
-  await owner.importPhrase(PHRASE, PASSWORD);
+  await owner.importPhrase(PHRASE);
   await runtime.backup.confirm(await runtime.backup.fingerprint());
   await owner.refreshAuthenticatedMetadata();
   return {
     slhDerivations,
+    get credentialReads() { return credentialReads; },
+    get secretLeases() { return secretLeases; },
+    get completedSecretLeases() { return completedSecretLeases; },
+    afterSecretLease(hook?: () => void) { afterSecretLease = hook; },
     assertNoSigningKeys() { for (const instance of sdkInstances) assert.equal(instance.isUnlocked(), false); },
     assertOneSigningOperation() { assert.equal(sdkInstances.filter(instance => instance.isUnlocked()).length, 1); },
     mutateLedgerOwner(index: number, mutate: (account: IKeyringAccountState) => void) {assert(mutateLedgerOwner); mutateLedgerOwner(index, mutate);},
@@ -440,17 +466,16 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
       const record = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY);
       return { record, accounts: inspectRecoveryCatalogue(record, binding).accounts };
     },
-    async resetPassword(password: string) {
+    async restoreCredential() {
       owner.lock();
-      const recovery = new NativeRecoveryCoordinator({ pinCredential, owner, async retireControllers() {},
+      const recovery = new NativeRecoveryCoordinator({ credentialPort, isAuthenticationActive: () => false, owner, async retireControllers() {},
         ensureCryptoReady: async () => undefined, openStorage });
       try {
-        const proof = await prepareRecoveryPin(recovery, PHRASE, password, () => undefined);
+        const proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined);
         assert.equal(await recovery.commit(proof), 'committed-locked');
-        currentPin = password;
       } finally { await recovery.dispose(); }
       owner = await open();
-      await owner.unlock(password);
+      await owner.unlock();
     },
     async reopen() { await owner.dispose(); owner = await open(); },
     async reopenQuarantined() {
@@ -462,7 +487,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
       const retired = nodeConnection(file);
       try { await retired.connection.runAsync('DELETE FROM evm_signed_records'); }
       finally { await retired.connection.closeAsync(); }
-      owner = await open(); await owner.unlock(PASSWORD);
+      owner = await open(); await owner.unlock();
     },
     async captureOriginalJournal() { assert(captureJournal); return captureJournal(); },
     async close() { await owner.dispose(); await rm(directory, { recursive: true, force: true }); },
@@ -549,7 +574,7 @@ for (const uncertain of [false, true]) test(`Ledger infrastructure private SDK p
     await controller.reviewNext(controller.getSnapshot().revision);
     assert.equal(owned.deviceTransactions.length, 1); assert.equal(f.submitted.length, 1);
     controller.dispose(); controller = undefined; f.onBroadcast(() => undefined);
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined, null);
     await controller.refresh(controller.getSnapshot().revision);
     assert.equal(controller.getSnapshot().phase, 'pending', JSON.stringify(controller.getSnapshot()));
@@ -605,7 +630,7 @@ for (const failure of ['context-retired', 'unproven-retirement'] as const) test(
     assert.equal(owned.deviceTransactions.length, 1); assert.equal(f.submitted.length, 0);
     controller.dispose(); controller = undefined;
     if (failure === 'unproven-retirement') await f.reopenQuarantined(); else await f.reopen();
-    await f.owner.unlock(PASSWORD);
+    await f.owner.unlock();
     const stored = (await f.inspectRecovery()).record as {infrastructurePending: readonly NativeInfrastructurePending[]};
     assert.equal(stored.infrastructurePending.length, 1); assert.equal(stored.infrastructurePending[0]!.entry.transactionHash, undefined);
     controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined, null);
@@ -640,7 +665,7 @@ test('Ledger infrastructure private SDK drains retired pre-signer cleanup before
     assert.equal(owned.deviceTransactions.length, 0); assert.equal(f.runtime.catalogue.getSnapshot(), null);
     release.resolve(); await confirmation; await closing;
     assert.equal(f.physicalStorageCloses, closes + 1);
-    controller = undefined; await f.reopen(); await f.owner.unlock(PASSWORD);
+    controller = undefined; await f.reopen(); await f.owner.unlock();
     assert.deepEqual(((await f.inspectRecovery()).record as {infrastructurePending: unknown[]}).infrastructurePending, []);
     assert.equal(f.submitted.length, 0);
   } finally {release.resolve(); await confirmation?.catch(() => undefined); await closing?.catch(() => undefined); controller?.dispose(); await owned.close();}
@@ -693,7 +718,7 @@ for (const uncertain of [false, true]) test(`native infrastructure private SDK r
     assert.equal(f.payerSignatures.length, 1); assert.equal(f.submitted.length, 1);
     controller.dispose(); controller = undefined;
     f.onBroadcast(() => undefined);
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined, null);
     await controller.refresh(controller.getSnapshot().revision);
     assert.equal(controller.getSnapshot().phase, 'pending', JSON.stringify(controller.getSnapshot()));
@@ -732,7 +757,7 @@ test('native infrastructure private SDK retains a broadcast reservation when its
     const reserved = ((await f.inspectRecovery()).record as { infrastructurePending: readonly NativeInfrastructurePending[] }).infrastructurePending[0]!;
     assert.equal(reserved.entry.nonce, 9); assert.equal(reserved.entry.transactionHash, undefined);
     controller.dispose(); controller = undefined; f.onBroadcast(() => undefined);
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined, null);
     await controller.refresh(controller.getSnapshot().revision);
     assert.equal(controller.getSnapshot().phase, 'pending', JSON.stringify(controller.getSnapshot()));
@@ -806,7 +831,7 @@ test('native infrastructure private SDK drains admitted unsigned cleanup after r
     release.resolve(); await confirmation; await closing;
     assert.equal(f.physicalStorageCloses, closes + 1);
     controller = undefined;
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     assert.deepEqual(((await f.inspectRecovery()).record as { infrastructurePending: unknown[] }).infrastructurePending, []);
     assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
   } finally {
@@ -842,7 +867,7 @@ test('a failed main-catalogue adoption after detached cleanup quarantines custod
     assert.equal(f.runtime.catalogue.getSnapshot(), null);
     assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
     controller.dispose(); controller = undefined;
-    await f.reopenQuarantined(); await f.owner.unlock(PASSWORD);
+    await f.reopenQuarantined(); await f.owner.unlock();
     assert.deepEqual(((await f.inspectRecovery()).record as { infrastructurePending: unknown[] }).infrastructurePending, []);
   } finally { controller?.dispose(); await f.close(); }
 });
@@ -866,7 +891,7 @@ test('creation allocation saves the canonical bootstrap before publication witho
     await assert.rejects(host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined, null), { code: 'INVALID_INPUT' });
     assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
     lifetime.abort(); assert.throws(allocation.assertCurrent, { code: 'CANCELLED' });
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     assert.equal(f.owner.getCatalogue()!.accounts.find(account => account.id === allocation.account.id)!.address, allocation.account.address);
   } finally { await f.close(); }
 });
@@ -933,7 +958,7 @@ test('creation allocation serializes the real allocator and cancellation before 
     await entered.promise;
     await assert.rejects(host.allocateSmartAccount(input, lifetime.signal, () => undefined, () => undefined, null), /BUSY/);
     lifetime.abort(); release.resolve(); await rejected;
-    f.owner.lock(); await f.owner.unlock(PASSWORD);
+    f.owner.lock(); await f.owner.unlock();
     assert.equal(f.owner.getCatalogue()!.accounts.length, 1); assert.equal(f.submitted.length, 0);
   } finally { release.resolve(); await f.close(); }
 });
@@ -1011,7 +1036,7 @@ test('real SDK smart account creation, selection and cold unlock retain the orig
     assert.equal(connection.context().accounts.some(account => account.id === smart.id), true);
     await f.change({ kind: 'rename', id: smart.id, label: 'Renamed savings' });
     await f.reopen();
-    await f.owner.unlock(PASSWORD);
+    await f.owner.unlock();
     assert.equal(f.owner.getSnapshot().account!.address, smart.address);
     assert.equal(f.owner.getCatalogue()!.active.accountId, smart.id);
     assert.equal(f.owner.getCatalogue()!.accounts.find(account => account.id === smart.id)!.label, 'Renamed savings');
@@ -1065,7 +1090,7 @@ test('native passkey setup survives owned inactive/blur prompts and cold reopen 
     first = await f.runtime.openPasskeyAuthenticator(false, lifetime.signal, viewGuard, binding);
     assert.equal(creates, 1); assert.equal(assertions, 0); assert.equal(f.signatures.length, 0);
     await first.dispose(); first = undefined;
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     second = await f.runtime.openPasskeyAuthenticator(false, lifetime.signal, viewGuard, binding);
     assert.equal(creates, 1); assert.equal(assertions, 1);
     assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0); f.assertNoSigningKeys();
@@ -1127,7 +1152,7 @@ for (const delayedMetadata of [false, 'stale', 'unavailable'] as const) test(`wa
     }
     const stored = savedSmartAccount((await f.inspectRecovery()).record).smartAccount;
     assert.equal(stored.auth.data, encodeEcdsaValidatorInitData([target], 1));
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.auth.data, stored.auth.data);
   } finally { operation?.dispose(); await f.close(); }
 });
@@ -1190,7 +1215,7 @@ test('wallet authenticator disposal drains held owner signing before another wal
     release.resolve();
     await Promise.all([submitting, disposing]);
     f.owner.lock();
-    await f.owner.unlock(PASSWORD);
+    await f.owner.unlock();
     await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
     assert.equal(f.submitted.length, 0);
   } finally { release.resolve(); await submitting; operation?.dispose(); await f.close(); }
@@ -1216,7 +1241,7 @@ test('a substituted factory address cannot create a saved smart account', async 
   try {
     f.substitute();
     await assert.rejects(f.change({ kind: 'create-smart', label: 'Rejected account',}));
-    await f.owner.unlock(PASSWORD);
+    await f.owner.unlock();
     assert.equal(f.owner.getCatalogue()!.accounts.length, 1);
   } finally { await f.close(); }
 });
@@ -1232,7 +1257,7 @@ test('lock while the owned factory read is pending prevents creation', async () 
     await reached;
     f.owner.lock(); finish();
     await assert.rejects(creating, { code: 'CANCELLED' });
-    await f.owner.unlock(PASSWORD);
+    await f.owner.unlock();
     assert.equal(f.owner.getCatalogue()!.accounts.length, 1);
   } finally { finish(); await f.close(); }
 });
@@ -1248,7 +1273,7 @@ test('recovery lists smart accounts on every saved chain and preserves their met
     const smart = before.accounts.filter(account => account.type === 'SmartAccount');
     assert.deepEqual(smart.map(account => account.smartAccount!.chainId).sort((a, b) => a - b), [1, 57]);
     const smartRecords = (before.record as any).groups[0].accounts.SmartAccount;
-    await f.resetPassword('654321');
+    await f.restoreCredential();
     const after = await f.inspectRecovery();
     assert.deepEqual(after.accounts.filter(account => account.type === 'SmartAccount'), smart);
     assert.deepEqual((after.record as any).groups[0].accounts.SmartAccount, smartRecords);
@@ -1309,7 +1334,7 @@ test('real smart deployment uses the owned payer, separate consent and durable S
     assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === smart.id)!.smartAccount!.isDeployed, true);
     deployment.dispose(); deployment = undefined;
     await f.reopen();
-    await f.owner.unlock(PASSWORD);
+    await f.owner.unlock();
     const recovered = f.owner.getCatalogue()!.accounts.find(account => account.id === smart.id)!;
     assert.equal(recovered.address, smart.address);
     assert.equal(recovered.smartAccount!.isDeployed, true);
@@ -1361,7 +1386,7 @@ for (const failure of [null, 'invalid-code', 'owner-loss'] as const)
       assert.deepEqual(after.smartAccount, { ...before.smartAccount, isDeployed: !failure });
       if (!failure) {
         deployment.dispose(); deployment = undefined;
-        await f.reopen(); await f.owner.unlock(PASSWORD);
+        await f.reopen(); await f.owner.unlock();
         assert.deepEqual(f.owner.getCatalogue()!.accounts.find(account => account.id === before.id)!.smartAccount, after.smartAccount);
       }
     } finally { deployment?.dispose(); await f.close(); }
@@ -1401,7 +1426,7 @@ test('restart after the deployment receipt refreshes metadata without another tr
     assert.equal(deployment.getSnapshot().phase, 'failed');
     assert.equal(f.submitted.length, 2);
     deployment.dispose();
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     assert.equal(f.owner.getCatalogue()!.accounts.find(account => account.id === smartId)!.smartAccount!.isDeployed, false);
     deployment = await f.runtime.openSmartAccountDeployment(() => undefined, null);
     await deployment.prepare();
@@ -1577,7 +1602,7 @@ for (const change of ['deployed', 'malformed', 'account', 'network'] as const) t
     if (change === 'deployed') {
       const smart = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
       assert.equal(smart.smartAccount!.isDeployed, true);
-      await f.reopen(); await f.owner.unlock(PASSWORD);
+      await f.reopen(); await f.owner.unlock();
       assert.equal(f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!.smartAccount!.isDeployed, true);
     }
   } finally { operation?.dispose(); await f.close(); }
@@ -1605,7 +1630,7 @@ for (const point of ['before-commit', 'lost-ack'] as const) test(`deployment rac
     assert.equal(f.submitted.length, 0);
     assert.equal(f.owner.getCatalogue(), null);
     operation.dispose(); operation = undefined;
-    await f.reopenQuarantined(); await f.owner.unlock(PASSWORD);
+    await f.reopenQuarantined(); await f.owner.unlock();
     assert.equal(f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!.smartAccount!.isDeployed, point === 'lost-ack');
   } finally { armed = false; operation?.dispose(); await f.close(); }
 });
@@ -1652,7 +1677,7 @@ for (const success of [true, false]) test(`Smart Activity survives reopen and di
     await sending;
     assert.equal(operation.getSnapshot().phase, 'complete');
     operation.dispose();
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     const loaded = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     assert.equal(loaded.locals.length, 1);
     const row = loaded.locals[0]!;
@@ -1694,7 +1719,7 @@ for (const success of [true, false]) test(`Smart Activity survives reopen and di
     assert.equal(checkedAgain.status === 'mined' && checkedAgain.outcome, success ? 'confirmed' : 'reverted');
     f.reorg();
     assert.equal((await f.runtime.activity!.observeLocal!(archivedRow, () => undefined, new AbortController().signal)).status, 'missing');
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     const afterRestart = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     assert.equal(afterRestart.saved.archived[0]!.phase, 'submitted');
     assert.equal(afterRestart.saved.archived[0]!.smartAccount!.operationHash, row.smartAccount!.operationHash);
@@ -1765,7 +1790,7 @@ test('Smart ERC20 send preserves 255-decimal base units through approval, signin
     assert.equal('0x' + payload.slice(2, 42), metadata.contractAddress);
     assert.equal(BigInt('0x' + payload.slice(42, 106)), 0n);
     assert.deepEqual(decodeErc20Transfer('0x' + payload.slice(106)), { recipient, amountUnits: '9' });
-    operation.dispose(); await f.reopen(); await f.owner.unlock(PASSWORD);
+    operation.dispose(); await f.reopen(); await f.owner.unlock();
     const activity = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     assert.equal(activity.locals[0]!.amountUnits, '9');
     assert.deepEqual(activity.locals[0]!.token, metadata);
@@ -1820,7 +1845,7 @@ for (const standard of ['ERC-721', 'ERC-1155'] as const) test(`Smart ${standard}
     const [, execution] = paliSmartAccountInterface.decodeFunctionData('execute', ops[0].callData);
     assert.equal('0x' + execution.slice(2, 42), contractAddress);
     assert.deepEqual(decodeNftSafeTransferData('0x' + execution.slice(106), ready.intent), ready.intent);
-    operation.dispose(); await f.reopen(); await f.owner.unlock(PASSWORD);
+    operation.dispose(); await f.reopen(); await f.owner.unlock();
     const activity = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     assert.deepEqual(activity.locals[0]!.collectibleTransfer, ready.intent);
     f.showReceipts(false);
@@ -1884,7 +1909,7 @@ for (const [data, self] of [['0x', false], ['0x12345678', false], ['0x', true]] 
     assert.equal('0x' + execution.slice(2, 42), recipient.toLowerCase());
     assert.equal(BigInt('0x' + execution.slice(42, 106)), 0n);
     assert.equal('0x' + execution.slice(106), data);
-    operation.dispose(); approval.dispose(); await f.reopen(); await f.owner.unlock(PASSWORD);
+    operation.dispose(); approval.dispose(); await f.reopen(); await f.owner.unlock();
     const activity = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     assert.equal(activity.locals[0]!.contractInteraction, true);
     assert.equal(activity.locals[0]!.amountUnits, '0');
@@ -2014,7 +2039,7 @@ for (const outcome of ['success', 'revert', 'lock-after-broadcast']) test(`real 
     const [executions] = coder.decode(['tuple(address target,uint256 value,bytes callData)[]'], encoded);
     assert.deepEqual([...executions].map(call => ({ to: call.target.toLowerCase(), value: '0x' + call.value.toString(16), data: call.callData })), calls);
     if (outcome !== 'lock-after-broadcast') assert.equal((await host.readCallsStatus(origin, bundleId, () => undefined)).status, 100);
-    operation.dispose(); approval.dispose(); await f.reopen(); await f.owner.unlock(PASSWORD); f.showReceipts(outcome !== 'revert');
+    operation.dispose(); approval.dispose(); await f.reopen(); await f.owner.unlock(); f.showReceipts(outcome !== 'revert');
     const restarted = await f.runtime.openConnectionHost();
     const status = await restarted.readCallsStatus(origin, bundleId, () => undefined);
     assert.equal(status.status, outcome !== 'revert' ? 200 : 500);
@@ -2050,7 +2075,7 @@ test('owned Smart metadata refresh commits shared observations and survives auth
     assert.deepEqual(immutable(accountAfter.smartAccount), immutable(accountBefore.smartAccount));
     assert.equal(f.submitted.length, 0);
     await f.reopen();
-    await f.owner.unlock(PASSWORD);
+    await f.owner.unlock();
     assert.deepEqual(savedSmartAccount((await f.inspectRecovery()).record), accountAfter);
     f.guardianStatus('no-policy');
     await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
@@ -2097,7 +2122,7 @@ for (const change of ['signal', 'owner', 'lock', 'account', 'network', 'account-
     guardian.release();
     await refused;
     if (change !== 'lock') assert.equal(f.owner.getSnapshot().phase, 'ready');
-    if (change === 'lock') await f.owner.unlock(PASSWORD);
+    if (change === 'lock') await f.owner.unlock();
     assert.deepEqual(savedSmartAccount((await f.inspectRecovery()).record), before);
     assert.equal(f.submitted.length, 0);
   } finally { guardian?.release(); await f.close(); }
@@ -2115,7 +2140,7 @@ for (const point of ['before-commit', 'lost-ack'] as const) test(`Smart metadata
     f.guardianStatus(); armed = true;
     await assert.rejects(f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined));
     assert.equal(f.owner.getCatalogue(), null);
-    await f.reopenQuarantined(); await f.owner.unlock(PASSWORD);
+    await f.reopenQuarantined(); await f.owner.unlock();
     const after = savedSmartAccount((await f.inspectRecovery()).record);
     assert.deepEqual({ ...after, smartAccount: undefined }, { ...before, smartAccount: undefined });
     assert.equal(after.smartAccount.installedModules?.some((module: any) => module.id === 'guardian-recovery') ?? false, point === 'lost-ack');
@@ -2164,7 +2189,7 @@ test('cancellation while metadata SQL is held cannot commit or publish the new p
     signal.abort(); release();
     await rejected;
     assert.equal(f.owner.getCatalogue(), null);
-    await f.reopenQuarantined(); await f.owner.unlock(PASSWORD);
+    await f.reopenQuarantined(); await f.owner.unlock();
     assert.deepEqual(savedSmartAccount((await f.inspectRecovery()).record), before);
   } finally { release(); await f.close(); }
 });
@@ -2218,7 +2243,7 @@ for (const existing of [false, true]) test(`guardian policy ${existing ? 'update
     const policy = savedSmartAccount((await f.inspectRecovery()).record).smartAccount.installedModules.find((module: any) => module.id === 'guardian-recovery');
     assert.deepEqual(policy.config.guardians, [guardian]);
     assert.equal(policy.config.delaySeconds, delaySeconds);
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     assert.deepEqual(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.installedModules.find((module: any) => module.id === 'guardian-recovery'), policy);
   } finally { operation?.dispose(); await f.close(); }
 });
@@ -2510,7 +2535,7 @@ for (const lag of [false, true]) test(`guardian removal commits canonical absenc
     }
     assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.installedModules.some((module: any) => module.id === 'guardian-recovery'), false);
     operation.dispose(); operation = undefined;
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     assert.equal((await f.runtime.inspectGuardianRemoval(new AbortController().signal, () => undefined)).status, 'removed');
     assert.equal(f.submitted.length, 1);
   } finally { operation?.dispose(); await f.close(); }
@@ -2531,7 +2556,7 @@ test('unresolved guardian removal is recovered from the signed journal after res
     for (let i = 0; i < 300 && !f.submitted.length; i++) await new Promise(resolve => setTimeout(resolve, 5));
     assert.equal(f.submitted.length, 1);
     operation.dispose(); await pending; operation = undefined;
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     const status = await f.runtime.inspectGuardianRemoval(new AbortController().signal, () => undefined);
     assert.equal(status.status, 'pending'); assert.equal(status.transactions.length, 1);
     await assert.rejects(f.runtime.openGuardianPolicy(removalDraft, new AbortController().signal, () => undefined, null), /GUARDIAN_REMOVAL_PENDING/);
@@ -2643,7 +2668,7 @@ for (const delayedMetadata of [false, true]) test(`native guardian recovery pers
     assert.equal(recovery.getSnapshot().phase, 'waiting', JSON.stringify(recovery.getSnapshot()));
     assert.equal(f.submitted.length, 1);
     recovery.dispose(); recovery = undefined;
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     recovery = await f.runtime.openGuardianRecovery({ kind: 'resume' }, new AbortController().signal, () => undefined, null);
     await recovery.prepare(); assert.equal(recovery.getSnapshot().phase, 'waiting');
     status.recover(intent.operation, 'ready');
@@ -2735,7 +2760,7 @@ for (const composite of [false, true]) test(`native Smart guardian uses shared E
       signature: composite ? coder.encode(['bytes[]'], [[f.signatures[1]!.signature, '0x']]) : f.signatures[1]!.signature,
     }));
     controller.dispose(); controller = undefined;
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     controller = await f.runtime.openGuardianRecovery({ kind: 'resume' }, new AbortController().signal, () => undefined, null);
     await controller.prepare(); await controller.review();
     assert.equal(controller.getSnapshot().phase, 'waiting', JSON.stringify(controller.getSnapshot()));
@@ -2883,7 +2908,7 @@ test('an uncertain scheduled recovery survives restart without signing a second 
     assert.equal(controller.getSnapshot().phase, 'unknown');
     const hash = controller.getSnapshot().transactionHash;
     assert(hash); assert.equal(f.submitted.length, 1); assert.equal(f.signatures.length, 2);
-    controller.dispose(); await f.reopen(); await f.owner.unlock(PASSWORD);
+    controller.dispose(); await f.reopen(); await f.owner.unlock();
     resumed = await f.runtime.openGuardianRecovery({ kind: 'resume' }, new AbortController().signal, () => undefined, null);
     await resumed.prepare(); await resumed.review();
     assert.equal(resumed.getSnapshot().phase, 'waiting');
@@ -2920,7 +2945,7 @@ test('P256 guardian replacement survives an unknown submission and restart witho
     await controller.confirm(controller.getSnapshot().feeReview!.id);
     assert.equal(controller.getSnapshot().phase, 'unknown'); const hash = controller.getSnapshot().transactionHash;
     controller.dispose(); controller = undefined;
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     assert.deepEqual(f.runtime.getGuardianRecoveryIntent()!.target, intent.target);
     controller = await f.runtime.openGuardianRecovery({kind:'resume'}, lifetime.signal, () => undefined, binding);
     await controller.prepare(); await controller.review();
@@ -2940,7 +2965,7 @@ test('locking during new recovery observation cannot persist an intent or sign',
     for (let i = 0; !held.methods().length && i < 200; i++) await new Promise(resolve => setTimeout(resolve, 5));
     assert(held.methods().length); f.owner.lock(); held.release(); await rejected;
     assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
-    await f.owner.unlock(PASSWORD); assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
+    await f.owner.unlock(); assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
   } finally { held?.release(); await f.close(); }
 });
 
@@ -3101,7 +3126,7 @@ for (const method of ['eth_signTypedData', 'eth_signTypedData_v3'] as const) tes
 });
 
 
-test('Smart native transfers collect the configured local ECDSA threshold before payer review', async () => {
+test('one Smart owner consent shares its OS read across two SDK leases; payer and next action require fresh reads', async () => {
   const f = await fixture({}, true);
   let operation: NativeSmartAccountOperation | undefined;
   try {
@@ -3115,17 +3140,23 @@ test('Smart native transfers collect the configured local ECDSA threshold before
       { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
     await operation.prepare();
     assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+    const reads = f.credentialReads, leases = f.secretLeases;
     const pending = operation.authorize(operation.getSnapshot().revision);
     for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
       await new Promise(resolve => setTimeout(resolve, 5));
     const review = operation.getSnapshot().payerReview;
     assert(review, JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.credentialReads - reads, 1, 'one reviewed owner proof has one OS read');
+    assert.equal(f.secretLeases - leases, 2);
+    assert.equal(f.completedSecretLeases, f.secretLeases); f.assertNoSigningKeys();
     assert.equal(f.signatures.length, 2);
     assert.deepEqual(f.signatures.map(signed => signed.address.toLowerCase()), owners.map(owner => owner.address.toLowerCase()));
     assert.equal(f.submitted.length, 0);
     operation.confirmPayer(review.id);
     await pending;
     assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.credentialReads - reads, 2, 'separate payer consent performs a fresh OS read');
+    assert.equal(f.completedSecretLeases, f.secretLeases); f.assertNoSigningKeys();
     assert.equal(f.submitted.length, 1);
     const outer = Transaction.from(f.submitted[0]!);
     const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', outer.data);
@@ -3134,6 +3165,14 @@ test('Smart native transfers collect the configured local ECDSA threshold before
     signatures.forEach((signature, index) => {
       assert.equal(recoverAddress(f.signatures[index]!.digest, signature).toLowerCase(), owners[index]!.address.toLowerCase());
     });
+    const connection = await smartMessageApproval(f);
+    try {
+      await connection.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: connection.selected.id, networkId: 'ethereum',
+        request: { method: 'personal_sign', address: connection.selected.address, message: 'A fresh, separately reviewed action' }, approval: connection.approval }, null);
+      assert.equal(f.credentialReads - reads, 3, 'a new action cannot reuse the previous owner or payer credential');
+      assert.equal(f.completedSecretLeases, f.secretLeases); f.assertNoSigningKeys();
+    } finally { connection.approval.dispose(); }
+
   } finally { operation?.dispose(); await f.close(); }
 });
 
@@ -3189,7 +3228,7 @@ test('executed recovery followed by a later owner change can retire tracking wit
     await f.reopen();
     policy.recover(intent.operation, 'executed');
     f.recoveredOwner('0x' + '77'.repeat(20));
-    await f.owner.unlock(PASSWORD);
+    await f.owner.unlock();
     const before = (await f.inspectRecovery()).record as {
       groups: unknown;
       recovery: unknown;
@@ -3233,7 +3272,7 @@ test('executed recovery followed by a later owner change can retire tracking wit
     assert.equal(f.submitted.length, 1);
     assert.equal(f.signatures.length, 2);
     await f.reopen();
-    await f.owner.unlock(PASSWORD);
+    await f.owner.unlock();
     assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
     await f.change({ kind: 'remove', id: replacement.id,});
     assert(
@@ -3566,7 +3605,7 @@ test('prepared uninstalled SLH status survives cold unlock without rederivation 
     const row = await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId));
     assert.deepEqual(await facade.readPrepared(), [key]);
     assert.equal(f.runtime.canManageSlhDsa(), true); assert.equal(f.runtime.canSignSmartAccount(), true);
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     const opened = backend.opened;
     facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal, null);
     assert.deepEqual(await facade.readPrepared(), [key]);
@@ -3588,7 +3627,7 @@ test('the fixed SDK host adapter checkpoints SLH writes before lock and HD journ
     const key = await facade.prepareFresh(() => undefined);
     const ring = f.sdkHost, adapter = f.sdkHostStorage, storageKey = getSLHDSAStateStorageKey(key.keyId);
     const check = () => { assert.equal(f.sdkHost, ring); assert.equal(f.sdkHostStorage, adapter); assert(ring.hasPublicSession()); };
-    await withTestPinOperation(f.storage.pin, pinCredential, ring, PASSWORD, check, async () => {
+    await withTestCredentialOperation(f.storage.credential, credentialPort, ring, check, async () => {
       const previous = await adapter.get(storageKey) as { cipherText: string; updatedAt: number };
       const crypto = createSlhDsaProfileStateCrypto(ring, check);
       const state = JSON.parse(await crypto.decrypt(previous.cipherText, key.keyId));
@@ -3597,12 +3636,12 @@ test('the fixed SDK host adapter checkpoints SLH writes before lock and HD journ
       assert.equal(await adapter.compareAndSetMany([{ key: storageKey, expected: previous, value: next }], check), true);
     });
     f.assertNoSigningKeys();
-    f.owner.lock(); await f.owner.unlock(PASSWORD);
+    f.owner.lock(); await f.owner.unlock();
     const restored = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal, null);
     assert.equal((await restored.readPrepared())[0]!.signatureCount, 1);
     await f.change({ kind: 'select', id: 'hd:60:0' });
     const evidence = await qualifyNativeHdAccounts({ phase: 'create', authority: f.owner, runtime: f.runtime, storage: f.storage,
-      password: PASSWORD, expectedSecondAddress: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', check: async (_name, work) => work() });
+      expectedSecondAddress: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', check: async (_name, work) => work() });
     assert.equal(evidence.nativeHdAccountsVerified, true);
     assert.notEqual(evidence.transferHash, evidence.firstTransferHash);
     f.assertNoSigningKeys();
@@ -3624,7 +3663,7 @@ test('SLH repeated signing and cold status retain only encrypted state and publi
       assert.equal(backend.active, 0, 'no reusable native signer remains'); f.assertNoSigningKeys();
     }
     connection.approval.dispose(); connection = undefined;
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     const opened = backend.opened;
     const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal, null);
     assert.equal((await facade.hydrateInstalled(key.keyId)).signatureCount, 2);
@@ -3646,7 +3685,7 @@ test('previously used uninstalled SLH key explicitly rebuilds missing cache with
     connection.approval.dispose(); connection = undefined;
     f.clearObservedSlh();
     await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
-    await f.reopen(); await f.owner.unlock(PASSWORD); backend.forgetCache();
+    await f.reopen(); await f.owner.unlock(); backend.forgetCache();
     const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal, null), opened = backend.opened;
     const [saved] = await facade.readPrepared(); assert(saved);
     assert.equal(saved.signatureCount, 1); assert.equal(backend.opened, opened);
@@ -3764,8 +3803,8 @@ test('lost storage acknowledgement quarantines before held SLH drainage and stil
     await entered.promise; await fault.promise;
     await new Promise<void>(resolve => setImmediate(resolve));
     assert.equal(f.owner.getSnapshot().phase, 'unavailable', 'quarantine must not await native drainage');
-    await assert.rejects(f.owner.unlock(PASSWORD), /NOT_READY/);
-    await assert.rejects(f.runtime.backup.readPhrase(PASSWORD), /CANCELLED/);
+    await assert.rejects(f.owner.unlock(), /NOT_READY/);
+    await assert.rejects(f.runtime.backup.readPhrase({ method: 'device' }), /CANCELLED/);
     await rejected;
     let closed = false;
     const close = f.owner.dispose().finally(() => { closed = true; });
@@ -3773,7 +3812,7 @@ test('lost storage acknowledgement quarantines before held SLH drainage and stil
     await new Promise<void>(resolve => setImmediate(resolve));
     assert.equal(closed, false, 'quarantined close must still join the native drain');
     release.resolve(); await closeRejected; await signingRejected;
-    await f.reopenQuarantined(); await f.owner.unlock(PASSWORD);
+    await f.reopenQuarantined(); await f.owner.unlock();
     assert.deepEqual(await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId)), retained);
     assert.deepEqual(f.slhDerivations, [0]);
   } finally { armed = false; release.resolve(); await f.close().catch(() => undefined); }
@@ -3890,7 +3929,7 @@ for (const retirement of ['revoke-before', 'network-before', 'lock-before', 'rev
     assert.equal(f.submitted.length, 0); assert.equal(f.signatures.length, 0);
     if (retirement === 'revoke-after-dispatch') {
       await f.reopen();
-      await f.owner.unlock(PASSWORD);
+      await f.owner.unlock();
       const account = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal, null);
       assert.equal((await account.hydrateInstalled(key.keyId)).signatureCount, 1);
     }
@@ -3898,17 +3937,16 @@ for (const retirement of ['revoke-before', 'network-before', 'lock-before', 'rev
 });
 
 
-test('actual Smart password reset preserves SLH encrypted high-water state and signing without rederivation', async () => {
+test('actual Smart credential recovery preserves SLH encrypted high-water state and signing without rederivation', async () => {
   const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability);
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
-  const password = '123456';
   try {
     const key = await provisionSlhSmart(f);
     connection = await smartMessageApproval(f);
     await connection.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: connection.selected.id, networkId: 'ethereum', approval: connection.approval,
       request: { method: 'personal_sign', address: connection.selected.address, message: 'Before password reset' } }, null);
     const before = await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId));
-    await f.resetPassword(password);
+    await f.restoreCredential();
     assert.deepEqual(await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId)), before);
     const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal, null);
     assert.equal((await facade.hydrateInstalled(key.keyId)).signatureCount, 1);
@@ -3930,7 +3968,7 @@ test('actual Smart password reset authenticates retained SLH ciphertext before a
     inner.ciphertext = (inner.ciphertext[0] === 'A' ? 'B' : 'A') + inner.ciphertext.slice(1);
     await f.storage.keyringStorage.set(storageKey, { ...saved, cipherText: JSON.stringify(inner) });
     const before = await f.storage.recovery.readSnapshot();
-    await assert.rejects(f.resetPassword('654321'), { code: 'INVALID_SAVED_DATA' });
+    await assert.rejects(f.restoreCredential(), { code: 'INVALID_SAVED_DATA' });
     await f.reopen();
     assert.deepEqual(await f.storage.recovery.readSnapshot(), before);
     assert.deepEqual(f.slhDerivations, [0]); assert.deepEqual(backend.actions, []); assert.equal(f.submitted.length, 0);
@@ -4159,7 +4197,7 @@ for(const ledgerFirst of [false,true]) test(`Ledger and Trezor Smart owners resu
     const rejected=assert.rejects(signing);await Promise.race([entered.promise,signing.then(()=>{throw Error('Expected Suite departure');})]);
     assert.equal(ledger.signatures.length,ledgerFirst?1:0);
     continuation.suspend();f.owner.lock();await rejected;release.resolve();await new Promise(resolve=>setImmediate(resolve));
-    connection.approval.dispose();await f.owner.unlock(PASSWORD);await connect();connection=await smartMessageApproval(f);
+    connection.approval.dispose();await f.owner.unlock();await connect();connection=await smartMessageApproval(f);
     await f.runtime.trezor.resumeSend();const handoff=continuation.resume(connection);
     await connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval},null);
     assert.equal(ledger.signatures.length,1,'an admitted Ledger proof is reused instead of signing twice');
@@ -4205,7 +4243,7 @@ for(const ecdsaFirst of [false,true]) test(`mixed P256 Trezor continuation survi
     const signing=connection.host.signMessage({handoff:continuation.handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval},binding);
     const rejected=assert.rejects(signing);await Promise.race([entered.promise,signing.then(()=>{throw Error('Expected Suite departure');})]);
     continuation.suspend();f.owner.lock();await rejected;release.resolve();await new Promise(resolve=>setImmediate(resolve));
-    connection.approval.dispose();await f.owner.unlock(PASSWORD);connection=await smartMessageApproval(f);
+    connection.approval.dispose();await f.owner.unlock();connection=await smartMessageApproval(f);
     await f.runtime.trezor.resumeSend();const handoff=continuation.resume(connection);
     await connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval},binding);
     assert.equal(calls(),1);assert.equal(device.signatures.length,2);f.assertNoSigningKeys();continuation.terminal();
@@ -4277,7 +4315,7 @@ for(const change of ['none','message','policy'] as const)test(`partial native Tr
     assert(signer);assert.equal(signer.step,2);assert.equal(signer.total,2);assert.equal(signer.address,device.wallets[0]!.address);
     continuation.suspend();f.owner.lock();await rejected;
     release.resolve();await new Promise(resolve=>setImmediate(resolve));
-    connection.approval.dispose();await f.owner.unlock(PASSWORD);connection=await smartMessageApproval(f);
+    connection.approval.dispose();await f.owner.unlock();connection=await smartMessageApproval(f);
     const resume=await f.runtime.trezor.resumeSend();assert.equal(resume.kind,'external-signing');
     const handoff=continuation.resume(connection),opened=device.urls.length;
     if(change==='policy')f.observedEcdsaOwners(device.wallets.map(wallet=>wallet.address),2);
@@ -4408,7 +4446,7 @@ test('native Smart Trezor return creates a fresh private message approval after 
     const signing=connection.host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval}, null),rejected=assert.rejects(signing);
     await entered.promise;continuation.suspend();f.owner.lock();await rejected;
     release.resolve();await new Promise(resolve=>setImmediate(resolve));assert.equal(device.sessions.getSnapshot()?.phase,'response-ready');
-    connection.approval.dispose();await f.owner.unlock(PASSWORD);connection=await smartMessageApproval(f);
+    connection.approval.dispose();await f.owner.unlock();connection=await smartMessageApproval(f);
     const resume=await f.runtime.trezor.resumeSend();assert.equal(resume.kind,'external-signing');assert.equal(resume.accountId,selected);assert.equal(resume.id,handoff.id);
     const opened=device.urls.length;handoff=continuation.resume(connection);
     const result=await connection.host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval}, null);
@@ -4429,7 +4467,7 @@ test('native Smart Trezor return after network change discards the old public tr
     const request=readDappMessageRequest('personal_sign',['0x6162',connection.selected.address],connection.selected.address)!;
     const signing=connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval}, null),rejected=assert.rejects(signing);
     await entered.promise;continuation.suspend();f.owner.lock();await rejected;release.resolve();await new Promise(resolve=>setImmediate(resolve));
-    connection.approval.dispose();await f.owner.unlock(PASSWORD);await f.selectNetwork('base');
+    connection.approval.dispose();await f.owner.unlock();await f.selectNetwork('base');
     await assert.rejects(f.runtime.trezor.resumeSend());assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
   }finally{release.resolve();await continuation?.dispose();connection?.approval.dispose();await close();}
 });
@@ -4445,7 +4483,7 @@ test('local Smart Trezor wallet send resumes through a fresh operation and separ
     const signing=original.authorize(original.getSnapshot().revision);await entered.promise;const suiteDeadline=device.sessions.getSnapshot()!.expiresAt;
     original.background();f.runtime.trezor.background();f.owner.lock();await signing;
     release.resolve();await new Promise(resolve=>setImmediate(resolve));assert.equal(device.sessions.getSnapshot()?.phase,'response-ready');
-    await f.owner.unlock(PASSWORD);const draft=await f.runtime.trezor.resumeSend();assert.equal(draft.kind,'smart-operation');assert.equal(draft.accountId,selected);
+    await f.owner.unlock();const draft=await f.runtime.trezor.resumeSend();assert.equal(draft.kind,'smart-operation');assert.equal(draft.accountId,selected);
     resumed=await f.runtime.resumeSmartAccountOperation(draft.id,new AbortController().signal,()=>undefined, null);assert.notEqual(resumed,original);
     await resumed.prepare();assert.equal(resumed.getSnapshot().phase,'authorize');assert(resumed.authorizationExpiresAt<=suiteDeadline);
     assert.equal(device.signatures.length,1);assert.equal(f.submitted.length,0);assert.equal(f.owner.getCatalogue()!.active.accountId,selected);
@@ -4467,7 +4505,7 @@ async function suspendedLocalTrezorSend(bundle:Awaited<ReturnType<typeof readyTr
     const signing=operation.authorize(operation.getSnapshot().revision);
     await Promise.race([entered.promise,signing.then(()=>{throw Error('Expected Suite signing launch');})]);
     operation.background();f.runtime.trezor.background();f.owner.lock();await signing;release.resolve();await new Promise(resolve=>setImmediate(resolve));
-    await f.owner.unlock(PASSWORD);const resume=await f.runtime.trezor.resumeSend();assert.equal(resume.kind,'smart-operation');
+    await f.owner.unlock();const resume=await f.runtime.trezor.resumeSend();assert.equal(resume.kind,'smart-operation');
     return {operation,resume,hash};
   }catch(error){await operation?.dispose();throw error;}finally{release.resolve();}
 }
@@ -4496,7 +4534,7 @@ test('an accepted local Smart Trezor signature cannot become resumable during pa
     const signing=operation.authorize(operation.getSnapshot().revision);
     for(let i=0;i<1000&&operation.getSnapshot().phase!=='review-fee'&&!['complete','failed'].includes(operation.getSnapshot().phase);i++)await new Promise(resolve=>setTimeout(resolve,5));
     assert.equal(operation.getSnapshot().phase,'review-fee');assert.equal(device.signatures.length,1);
-    operation.background();f.owner.lock();await signing;await f.owner.unlock(PASSWORD);
+    operation.background();f.owner.lock();await signing;await f.owner.unlock();
     await assert.rejects(f.runtime.trezor.resumeSend());assert.equal(device.sessions.getSnapshot(),null);assert.equal(f.submitted.length,0);
   }finally{await operation?.dispose();await close();}
 });
@@ -4524,7 +4562,7 @@ for(const action of ['guardian-policy','wallet-authenticator','slh-installation'
     await original.prepare();assert.equal(original.getSnapshot().phase,'authorize');
     const signing=original.getSnapshot().intent.kind==='modules'?authorizeReviewedModule(original):original.authorize(original.getSnapshot().revision);await Promise.race([entered.promise,signing.then(()=>{throw Error('Expected Suite authorization');})]);
     const deadline=device.sessions.getSnapshot()!.expiresAt;original.background();f.owner.lock();await signing;release.resolve();await new Promise(resolve=>setImmediate(resolve));
-    await f.owner.unlock(PASSWORD);const draft=await f.runtime.trezor.resumeSend();assert.equal(draft.kind,'smart-operation');
+    await f.owner.unlock();const draft=await f.runtime.trezor.resumeSend();assert.equal(draft.kind,'smart-operation');
     resumed=await f.runtime.resumeSmartAccountOperation(draft.id,new AbortController().signal,()=>undefined, null);await resumed.prepare();
     assert.equal(resumed.getSnapshot().phase,'authorize');assert(resumed.authorizationExpiresAt<=deadline);assert.equal(f.owner.getCatalogue()!.active.accountId,selected);
     assert.equal(device.signatures.length,1);assert.equal(f.submitted.length,0);
@@ -4672,7 +4710,7 @@ for (const delayed of [false, true]) test(`module management custom install surv
     assert.equal(f.submitted.length, 1); assert.equal(f.signatures.length, 1);
     assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.customModules?.[0]?.address, CUSTOM_MODULE);
     await operation.dispose(); operation = undefined;
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     const observed = await f.runtime.readSmartAccountModules(new AbortController().signal, () => undefined);
     assert.equal(observed.auth?.module, 'ecdsa');
     assert.equal(observed.installedModules?.find(module => module.address === CUSTOM_MODULE)?.id, 'custom');
@@ -4737,7 +4775,7 @@ test('module management cancellation while saving a discovery record rolls back 
     assert.equal(f.signatures.length, 1); assert.equal(f.submitted.length, 0);
     assert.equal(f.runtime.catalogue.getSnapshot(), null, 'a revoked write quarantines its runtime even after SQL rollback');
     await assert.rejects(f.runtime.session.readSelectedAddress(), /CLEANUP_FAILED|CANCELLED|NOT_READY/);
-    await f.reopenQuarantined(); await f.owner.unlock(PASSWORD);
+    await f.reopenQuarantined(); await f.owner.unlock();
     assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.customModules?.length ?? 0, 0);
   } finally { await f.close(); }
 });
@@ -5061,7 +5099,7 @@ async function suspendTrezorInfrastructure(bundle: Awaited<ReturnType<typeof rea
     const job = device.sessions.getSnapshot()!.job;
     controller.background(); f.runtime.trezor.background(); f.owner.lock(); await confirmation;
     release.resolve(); await new Promise<void>(resolve => setImmediate(resolve));
-    await f.owner.unlock(PASSWORD);
+    await f.owner.unlock();
     const resume = await f.runtime.trezor.resumeSend(); assert.equal(resume.kind, 'infrastructure');
     return {controller, review, pending, resume, job};
   } catch (error) {controller?.dispose(); throw error;}
@@ -5113,7 +5151,7 @@ for (const uncertain of [false, true]) test(`Trezor infrastructure private SDK r
     assert.equal(f.infrastructureBroadcasts[0]!.pending.entry.attemptId, suspended.pending.entry.attemptId);
     assert.equal(device.sessions.getSnapshot(), null); assert.deepEqual(device.callbackErrors, []);
     suspended.controller.dispose(); suspended = undefined; resumed.dispose(); resumed = undefined;
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    await f.reopen(); await f.owner.unlock();
     await assert.rejects(f.runtime.openResumedSmartInfrastructure('missing-continuation', new AbortController().signal, () => undefined, null));
     resumed = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined, null);
     await resumed.refresh(resumed.getSnapshot().revision); await resumed.reviewNext(resumed.getSnapshot().revision);
@@ -5133,7 +5171,7 @@ for (const changed of ['automatic-nonce', 'insufficient-funds', 'network', 'cold
     if (changed === 'automatic-nonce') f.initialEoaNonce(8);
     if (changed === 'insufficient-funds') f.gasSponsored();
     if (changed === 'network') await f.selectNetwork('base');
-    if (changed === 'cold-reopen') {await f.reopen(); await f.owner.unlock(PASSWORD);}
+    if (changed === 'cold-reopen') {await f.reopen(); await f.owner.unlock();}
     if (changed === 'network' || changed === 'cold-reopen')
       await assert.rejects(f.runtime.openResumedSmartInfrastructure(suspended.resume.id, new AbortController().signal, () => undefined, null));
     else {
@@ -5168,7 +5206,7 @@ for (const poisoned of [false, true]) test(`Trezor infrastructure private SDK ho
     await draining.promise;
     const clients = device.counts().clients, quotes = f.calls.filter(method => method === 'eth_estimateGas').length;
     let unlocked = false;
-    unlock = f.owner.unlock(PASSWORD).then(() => {unlocked = true;});
+    unlock = f.owner.unlock().then(() => {unlocked = true;});
     void unlock.catch(() => undefined);
     await new Promise<void>(resolve => setImmediate(resolve));
     assert.equal(unlocked, false); assert.notEqual(f.owner.getSnapshot().phase, 'ready');
@@ -5180,7 +5218,7 @@ for (const poisoned of [false, true]) test(`Trezor infrastructure private SDK ho
     if (poisoned) {
       await assert.rejects(unlock);
       assert.notEqual(f.owner.getSnapshot().phase, 'ready');
-      await f.reopenQuarantined(); await f.owner.unlock(PASSWORD);
+      await f.reopenQuarantined(); await f.owner.unlock();
       await assert.rejects(f.runtime.openResumedSmartInfrastructure('retired-infrastructure', new AbortController().signal, () => undefined, null));
     } else {
       await unlock;
@@ -5231,4 +5269,67 @@ for (const refusal of ['Failure_ActionCancelled', 'Failure_ProcessError'] as con
     assert.equal(device.methods.filter(method => method === 'ethereumSignTransaction').length, 1, 'new review never signs automatically');
     assert.equal(f.submitted.length, 0); assert.deepEqual(device.callbackErrors, []);
   } finally {controller?.dispose(); await bundle.close();}
+});
+
+
+test('cancelling a two-owner proof after its first SDK lease clears reuse before another owner or payer', async () => {
+  const f = await fixture({}, true); let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create', label: 'Second cancelled owner' });
+    await f.change({ kind: 'create-smart', label: 'Cancelled aggregate proof' });
+    const owners = f.owner.getCatalogue()!.accounts.filter(account => account.type === 'HDAccount' && account.slip44 === 60);
+    f.deployed(); f.fundedSmart(); f.observedEcdsaOwners(owners.map(owner => owner.address), 2);
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    await operation.prepare(); const reads = f.credentialReads, leases = f.secretLeases;
+    f.afterSecretLease(() => { f.afterSecretLease(); f.owner.lock(); });
+    await operation.authorize(operation.getSnapshot().revision);
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.credentialReads - reads, 1); assert.equal(f.secretLeases - leases, 1);
+    assert.equal(f.signatures.length, 1); assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+    assert.equal(f.completedSecretLeases, f.secretLeases); f.assertNoSigningKeys();
+  } finally { f.afterSecretLease(); await operation?.dispose(); await f.close(); }
+});
+
+test('a Ledger prompt between software owners clears the aggregate credential before the next SDK lease', async () => {
+  const owned = await readyLedgerSmartOwner(), { f, device } = owned;
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  try {
+    const smart = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
+    await f.change({ kind: 'create', label: 'Software owner after Ledger' });
+    await f.change({ kind: 'select', id: smart.id });
+    const owners = f.owner.getCatalogue()!.accounts.filter(account => account.type === 'HDAccount' && account.slip44 === 60);
+    f.observedEcdsaOwners([owners[0]!.address, device.wallets[0]!.address, owners[1]!.address], 3);
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    await connectLedgerSmart(owned); connection = await smartMessageApproval(f);
+    const reads = f.credentialReads, leases = f.secretLeases;
+    device.holdSignature(async () => {
+      assert.equal(f.credentialReads - reads, 1); assert.equal(f.completedSecretLeases, f.secretLeases); f.assertNoSigningKeys();
+    });
+    await connection.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: connection.selected.id, networkId: 'ethereum', approval: connection.approval,
+      request: { method: 'personal_sign', address: connection.selected.address, message: 'Fresh software authorization after hardware handoff' } }, null);
+    assert.equal(f.credentialReads - reads, 2, 'hardware handoff invalidates the first software credential');
+    assert.equal(f.secretLeases - leases, 2); assert.equal(f.completedSecretLeases, f.secretLeases);
+    assert.equal(f.signatures.length, 2); assert.equal(device.signatures.length, 1); f.assertNoSigningKeys();
+  } finally { connection?.approval.dispose(); await owned.close(); }
+});
+
+test('Smart guardian aggregate proof shares one OS read but replacement and payer remain separate approvals', async () => {
+  const { f, guardian, owner, payer, open } = await smartGuardianRecoveryFixture(false);
+  let controller: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    f.smartGuardian(guardian.address, [owner.address, payer.address], { threshold: 2 });
+    controller = await open(); await controller.prepare();
+    const reads = f.credentialReads, leases = f.secretLeases;
+    await controller.review();
+    assert.equal(controller.getSnapshot().phase, 'review');
+    assert.equal(f.credentialReads - reads, 2, 'replacement and aggregate guardian proofs each require their own OS authorization');
+    assert.equal(f.secretLeases - leases, 3, 'the two guardian owners still use separate SDK leases');
+    assert.equal(f.completedSecretLeases, f.secretLeases); f.assertNoSigningKeys();
+    assert.equal(f.signatures.length, 3);
+    f.holdReceipts(); await controller.confirm(controller.getSnapshot().feeReview!.id);
+    assert.equal(controller.getSnapshot().phase, 'waiting');
+    assert.equal(f.credentialReads - reads, 3, 'the distinct payer consent does not reuse either proof credential');
+    assert.equal(f.completedSecretLeases, f.secretLeases); f.assertNoSigningKeys();
+    assert.equal(f.submitted.length, 1);
+  } finally { await controller?.dispose(); await f.close(); }
 });

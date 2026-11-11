@@ -83,6 +83,8 @@ export type NativeSmartOperationPorts = Readonly<{
   p256WebAuthn: ((metadata: ISmartAccountMetadata, intent: SmartAccountOwnerSigningIntent, assertCurrent: () => void, signal: AbortSignal) => NonNullable<SmartAccountAuthenticatorPorts['p256WebAuthn']>) | null;
   slhDsa: ((metadata: ISmartAccountMetadata, actionHash: string, assertCurrent: () => void, signal: AbortSignal) => NonNullable<SmartAccountAuthenticatorPorts['slhDsa']>) | null;
   checkAddress(address: string): Promise<IBlacklistCheckResult>;
+  /** One reviewed aggregate owner proof; ends before a separate payer approval. */
+  withOwnerProof<T>(signal: AbortSignal, guard: () => void, work: () => Promise<T>): Promise<T>;
   signOwner(
     address: string,
     digest: string,
@@ -419,7 +421,7 @@ export function createNativeSmartOperation(
         userOperation: prepared.userOperation,
         assertCurrent,
       });
-      const signature = await signNativeSmartAccountActionHash({
+      const signature = await ports.withOwnerProof(signal, assertCurrent, () => signNativeSmartAccountActionHash({
         metadata,
         actionHash: prepared.actionHash,
         accountId: account.id,
@@ -438,7 +440,7 @@ export function createNativeSmartOperation(
             buildSmartAccountUserOpSigningIntent(prepared.userOperation, chainId),
             signal, metadata
           ),
-      });
+      }));
       if (intent.kind === 'modules' && intent.command.draft.kind === 'install-custom') {
         const record = await ports.rememberCustomModule!(signal, assertCurrent);
         assertCurrent();

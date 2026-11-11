@@ -1,3 +1,4 @@
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AccessibilityInfo, ActivityIndicator, AppState, BackHandler, findNodeHandle, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text as NativeText, View } from 'react-native';
@@ -5,17 +6,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeRecoveryFlow } from '../custody/recoveryFlow';
 import type { RecoveryInventory } from '../custody/recoveryInventory';
 import { Button, Card, colors, Icon, Notice, Screen, SegmentedControl, styles, Text } from '../ui';
-import { PinSetup } from './PinEntry';
 
 type Snapshot = ReturnType<NativeRecoveryFlow['getSnapshot']>;
 const blankWords = (count: number) => Array<string>(count).fill('');
 const titles: Record<Snapshot['phase'], string> = {
   reading: 'Recover access', scope: 'Recover access', entry: 'Recovery phrase',
-  verifying: 'Verifying your wallet', review: 'Wallet verified', pin: 'Create PIN', committing: 'Changing your PIN',
+  verifying: 'Verifying your wallet', review: 'Wallet verified', committing: 'Restoring access',
   reopening: 'Reopening your wallet', closed: 'Recovery closed', blocked: 'Recovery unavailable',
 };
 
-/** Transient phrase/PIN inputs only. The supplied flow owns all recovery authority. */
+/** Transient recovery phrase inputs only. The supplied flow owns all recovery authority. */
 export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
   const snapshot = useSyncExternalStore(useCallback(listener => flow.subscribe(listener), [flow]),
     useCallback(() => flow.getSnapshot(), [flow]), useCallback(() => flow.getSnapshot(), [flow]));
@@ -44,8 +44,11 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
     alive.current = true; cancelled.current = false; activeFlow.current = flow;
     clear();
     const cancel = () => { cancelled.current = true; clear(); flow.cancel(); };
-    const change = AppState.addEventListener('change', state => { if (state !== 'active') cancel(); });
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', cancel) : null;
+    const expectedPrompt = () => flow.getSnapshot().phase === 'committing' && flow.isAuthenticating();
+    const change = AppState.addEventListener('change', state => {
+      if (state !== 'active' && !allowsPrivateAuthenticationInterruption({ isAuthenticating: expectedPrompt }, state)) cancel();
+    });
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { if (!expectedPrompt()) cancel(); }) : null;
     const hardware = BackHandler.addEventListener('hardwareBackPress', () => { latestBack.current(); return true; });
     if (AppState.currentState === 'active') flow.start(); else cancel();
     return () => {
@@ -83,18 +86,9 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
     const phrase = entered.current.join(' ');
     if (flow.submit({ phrase })) clear();
   };
-  if (snapshot.phase === 'pin') return <PinSetup
-    key={`recovery-pin-${entrySequence}`} title="Create a new 6-digit PIN" offerBiometrics={false}
-    error={snapshot.fieldErrors.pin || snapshot.error}
-    onBack={back}
-    onComplete={pin => {
-      if (!current() || flow.getSnapshot().phase !== 'pin') return;
-      if (flow.submitPin(pin)) clear();
-    }} />;
-
   const progress = snapshot.phase === 'reading' ? ['Checking saved wallet data…', 'Checking saved data']
     : snapshot.phase === 'verifying' ? ['Verifying your wallet…', 'Verifying wallet']
-      : snapshot.phase === 'committing' ? ['Changing your PIN…', 'Changing PIN']
+      : snapshot.phase === 'committing' ? ['Restoring secure access…', 'Restoring access']
         : snapshot.phase === 'reopening' ? ['Reopening your wallet securely…', 'Reopening wallet'] : null;
   const inventory = snapshot.inventory?.status === 'needs-matching-phrase-verification' && snapshot.inventory.counts ? snapshot.inventory : null;
   const showInventory = snapshot.phase === 'scope' || snapshot.phase === 'review';
@@ -106,7 +100,7 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
     <Button title="Continue" disabled={!complete} onPress={verifyPhrase} />
     <Button title="Cancel" variant="secondary" onPress={back} />
   </> : snapshot.phase === 'review' ? <>
-    <Button title="Create new PIN" onPress={() => { if (current() && flow.getSnapshot().phase === 'review') { clear(); flow.commit(); } }} />
+    <Button title="Restore secure access" onPress={() => { if (current() && flow.getSnapshot().phase === 'review') { clear(); flow.commit(); } }} />
     <Button title="Cancel recovery" variant="secondary" onPress={back} />
   </> : <Button title={snapshot.phase === 'committing' || snapshot.phase === 'reopening' ? 'Leave recovery'
     : snapshot.phase === 'blocked' || snapshot.phase === 'closed' ? 'Back to unlock' : 'Cancel recovery'} variant="secondary" onPress={back} />;
@@ -122,12 +116,12 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
         {progress && <View style={s.progress}><ActivityIndicator color={colors.pink} accessibilityLabel={progress[1]} /><Text accessibilityLiveRegion="polite" style={s.body}>{progress[0]}</Text></View>}
         {snapshot.phase === 'scope' && <>
           <View style={s.intro}><View style={s.keyIcon}><Icon name="key" size={40} color={colors.blue} /></View>
-            <Text accessibilityRole="header" style={s.heroTitle}>Forgot your PIN?</Text>
-            <Text style={s.introBody}>Restore with your recovery phrase, then create a new Pali PIN.</Text></View>
-          <Notice title="Your phrase restores the wallet" body="You cannot recover your old PIN. Your recovery phrase is required to regain access." tone="amber" />
+            <Text accessibilityRole="header" style={s.heroTitle}>Restore wallet access</Text>
+            <Text style={s.introBody}>Verify your recovery phrase, then protect your wallet with your device.</Text></View>
+          <Notice title="Your phrase restores the wallet" body="Your recovery phrase verifies this wallet before access is restored." tone="amber" />
           <Text style={s.caption}>This checks the wallet saved on this phone. Nothing is erased automatically.</Text>
         </>}
-        {snapshot.phase === 'review' && <Notice title="Your phrase matches this saved wallet." body="Only the PIN for this phone will change. Saved accounts, imported-key records, tokens and transaction records will be kept." />}
+        {snapshot.phase === 'review' && <Notice title="Your phrase matches this saved wallet." body="Device-protected access will be restored. Saved accounts, imported-key records, tokens and transaction records will be kept." />}
         {showInventory && inventory && <>
           <Button title={details ? 'Hide saved-data details' : 'Saved-data details'} variant="secondary" size="compact" icon={details ? 'chevron-up' : 'chevron-down'} expanded={details} onPress={() => setDetails(!details)} />
           {details && <Inventory inventory={inventory} />}
@@ -150,7 +144,7 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
           <Notice title="Keep your phrase private" body="Pali support will never ask for these words." tone="amber" />
           {!!(entryError || snapshot.fieldErrors.phrase) && <Text accessibilityRole="alert" style={s.error}>{entryError || snapshot.fieldErrors.phrase}</Text>}
         </>}
-        {snapshot.phase === 'committing' && <Text style={s.body}>Leaving now stops this screen. The PIN change may already have completed.</Text>}
+        {snapshot.phase === 'committing' && <Text style={s.body}>Leaving now stops this screen. The access change may already have completed.</Text>}
         {snapshot.phase === 'closed' && !snapshot.error && <Text style={s.body}>Returning to unlock…</Text>}
         {snapshot.phase === 'blocked' && !snapshot.error && <Text style={s.body}>Your saved wallet could not be verified for this recovery. Nothing has been reset.</Text>}
         {!!snapshot.error && <NativeText ref={error} allowFontScaling accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.text, s.error]}>{snapshot.error}</NativeText>}

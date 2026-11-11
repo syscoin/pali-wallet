@@ -365,8 +365,8 @@ test('native factory explicitly wires one owned transport to all network consume
     '../portfolio/nativeRecipientResolver': { createNativeRecipientResolver: () => ({ resolve: unexpectedFeature }) },
     './security': security,
     './walletConnectRuntime': { prepareWalletConnectRuntime },
-    './pinCredential.native': {
-      createNativePinCredentialPort: () => ({ read: unexpectedFeature, stage: unexpectedFeature, remove: unexpectedFeature }),
+    './credentialPort.native': {
+      createNativeCredentialPort: () => ({ read: unexpectedFeature, stage: unexpectedFeature, remove: unexpectedFeature }),
     },
     './operationAuthentication': {
       nativeOperationAuthentication: { request: unexpectedFeature, cancel() {} },

@@ -62,7 +62,7 @@ function fullSlhEvidence(phase, lockfileSha256) {
 function report(phase, scenario, runId, lockfileSha256) {
   return {
     version: 1,
-    status: 'passed',
+    status: 'passed', authorizationMode: 'test-only-fixture',
     phase,
     scenario: scenario === 'full_slh' ? 'import' : scenario,
     platform: 'ios',
@@ -101,9 +101,9 @@ function report(phase, scenario, runId, lockfileSha256) {
     checks: [
       ...CHECKS,
       ...(scenario === 'full_slh' ? [FULL_SLH_CHECK] : []),
-      'synchronous lock and wrong password refusal',
+      'synchronous lock and OS authorization refusal',
       phase === 'create'
-        ? 'fresh password-backed seed confirmation'
+        ? 'public-fixture authorized seed confirmation'
         : 'seed reauthentication after cold restart',
     ].map((name) => ({ name, durationMs: 1 })),
     storageDiagnostic: { stage: 'ready' },
@@ -1144,4 +1144,14 @@ test('physical imported evidence rejects missing claims and cross-restart key/ch
     assert.throws(() => decodePhysicalReport(JSON.stringify({ ...created, ...change }), expected));
   assert.doesNotThrow(() => assertPhysicalRestart(created, restored));
   assert.throws(() => assertPhysicalRestart(created, { ...restored, importedTransferHashes: ['0x' + 'f'.repeat(64), ...restored.importedTransferHashes.slice(1)] }));
+});
+
+test('crypto fixture reports cannot claim native OS authorization', () => {
+  const runId = '0'.repeat(32), current = report('create', 'import', runId);
+  const expected = { runId, sourceRevision: SOURCE, bundleIdentifier: PHYSICAL_BUNDLES.import, phase: 'create', scenario: 'import' };
+  for (const authorizationMode of [undefined, 'native-os', 'biometric', false]) {
+    const changed = { ...current, authorizationMode };
+    assert.throws(() => decodePhysicalReport(JSON.stringify(changed), expected));
+  }
+  assert.equal(decodePhysicalReport(JSON.stringify(current), expected).authorizationMode, 'test-only-fixture');
 });

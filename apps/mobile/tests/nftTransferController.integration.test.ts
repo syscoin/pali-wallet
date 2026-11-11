@@ -1,4 +1,4 @@
-import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { createTestCredentialPort } from './fixtures/credential.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -17,7 +17,7 @@ import type { SavedCollectible } from '../src/portfolio/tokenRegistry.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
-const pinCredential = createTestPinCredentialPort();
+const credentialPort = createTestCredentialPort();
 
 const phrase =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -107,7 +107,7 @@ async function withController(
   let runtime!: KeyringRuntime;
   const committed = Promise.withResolvers<void>();
   const acknowledge = Promise.withResolvers<void>();
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: password }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
     async ensureCryptoReady() { assert.ok(globalThis.crypto.subtle); },
     async openStorage() {
       let wroteSignedRecord = false;
@@ -335,10 +335,10 @@ async function withController(
   let transfers = openTransfers();
   try {
     await authority.initialize();
-    await authority.importPhrase(phrase, password);
+    await authority.importPhrase(phrase);
     await runtime.backup.confirm(await runtime.backup.fingerprint());
     authority.lock();
-    await authority.unlock(password);
+    await authority.unlock();
     assert.equal(authority.getSnapshot().account?.address, owner);
     const registry = runtime.tokens!;
     let revision = (await registry.addCollectible(0, asset.collectible, current)).revision;
@@ -357,7 +357,7 @@ async function withController(
         authority = openAuthority();
         transfers = openTransfers();
         await authority.initialize();
-        await authority.unlock(password);
+        await authority.unlock();
         return transfers;
       },
       setPendingNonce(nonce) { pendingNonce = nonce; },
@@ -442,7 +442,7 @@ test('collectible review preserves an explicit override below the external pendi
     const approved = transfers.getSnapshot().review!;
     assert.equal(approved.nonce, '0');
     assert.equal(approved.nonceOverride, 0);
-    await transfers.confirm(approved.id, { method: 'pin', pin: password });
+    await transfers.confirm(approved.id, { method: 'device' });
     assert.deepEqual(posted.map((bytes) => Transaction.from(bytes).nonce), [0]);
   });
 });
@@ -452,7 +452,7 @@ test('a collectible queues behind an acknowledged native send before it is canon
   await withController(asset, 'success', async ({ transfers, calls, posted, retained, setPendingNonce, setExpectedEstimateNonce, acknowledgeCommit }) => {
     acknowledgeCommit();
     await transfers.prepare(recipient, '0.000000000000000001');
-    await transfers.confirm(transfers.getSnapshot().review!.id, { method: 'pin', pin: password });
+    await transfers.confirm(transfers.getSnapshot().review!.id, { method: 'device' });
     assert.equal(posted.length, 1);
     setPendingNonce('0x1');
     setExpectedEstimateNonce('0x1', 'pending');
@@ -460,7 +460,7 @@ test('a collectible queues behind an acknowledged native send before it is canon
     const approved = transfers.getSnapshot().review!;
     assert.equal(approved.nonce, '1');
     const firstConfirmCall = calls.length;
-    await transfers.confirm(approved.id, { method: 'pin', pin: password });
+    await transfers.confirm(approved.id, { method: 'device' });
     assert.deepEqual(posted.map((bytes) => Transaction.from(bytes).nonce), [0, 1]);
     assert.equal((await retained()).length, 2);
     assert.equal(calls.slice(firstConfirmCall).filter(({ method, params }) =>
@@ -474,13 +474,13 @@ for (const tokenStandard of ['ERC-721', 'ERC-1155'] as const) {
     await withController(asset, 'success', async ({
       transfers, calls, posted, retained, signedCommit, acknowledgeCommit,
     }) => {
-      await assert.rejects(transfers.confirm('no-review', { method: 'pin', pin: password }), { code: 'EXPIRED' });
+      await assert.rejects(transfers.confirm('no-review', { method: 'device' }), { code: 'EXPIRED' });
       assert.equal(calls.length, 0);
       const id = await reviewCollectible(transfers, asset);
       assert.equal(calls.filter((call) => call.method === 'eth_estimateGas').length, 1);
       assert.equal(calls.some((call) => call.method === 'eth_sendRawTransaction'), false);
       assert.deepEqual(await retained(), []);
-      const confirmation = transfers.confirm(id, { method: 'pin', pin: password });
+      const confirmation = transfers.confirm(id, { method: 'device' });
       await Promise.race([
         signedCommit,
         confirmation.then(() => assert.fail('Confirmation crossed the held SQLite acknowledgement')),
@@ -503,7 +503,7 @@ for (const tokenStandard of ['ERC-721', 'ERC-1155'] as const) {
       const [record] = await retained();
       assert.equal(record?.hash, hash);
       assert.equal(record?.phase, 'submitted');
-      await assert.rejects(transfers.confirm(id, { method: 'pin', pin: password }), { code: 'EXPIRED' });
+      await assert.rejects(transfers.confirm(id, { method: 'device' }), { code: 'EXPIRED' });
       assert.equal(posted.length, 1);
     });
   });
@@ -515,7 +515,7 @@ test('remove and re-add retires an existing NFT review before signing or POST', 
     const id = await reviewCollectible(transfers, asset);
     const requestCount = calls.length;
     await replaceSaved();
-    await assert.rejects(transfers.confirm(id, { method: 'pin', pin: password }), { code: 'COLLECTIBLE_CHANGED' });
+    await assert.rejects(transfers.confirm(id, { method: 'device' }), { code: 'COLLECTIBLE_CHANGED' });
     assert.equal(calls.length, requestCount);
     assert.equal(posted.length, 0);
     assert.deepEqual(await retained(), []);
@@ -529,7 +529,7 @@ test('remove and re-add while NFT broadcast preflight waits preserves the signed
     transfers, calls, posted, retained, replaceSaved, preflight, releasePreflight,
   }) => {
     const id = await reviewCollectible(transfers, asset);
-    const pending = transfers.confirm(id, { method: 'pin', pin: password });
+    const pending = transfers.confirm(id, { method: 'device' });
     await Promise.race([
       preflight,
       pending.then(() => assert.fail('Confirmation finished before the held chain preflight')),
@@ -555,7 +555,7 @@ test('remove and re-add while NFT broadcast preflight waits preserves the signed
     assert.equal(retry?.collectible?.tokenStandard, 'ERC-721');
     assert.equal(retry?.replay?.hash, saved?.hash);
     assert.equal(posted.length, 0);
-    await transfers.confirm(retry!.id, { method: 'pin', pin: password });
+    await transfers.confirm(retry!.id, { method: 'device' });
     assert.equal(transfers.getSnapshot().phase, 'pending');
     assert.equal(posted.length, 1);
     assert.equal(Transaction.from(posted[0]!).hash, saved?.hash);
@@ -569,7 +569,7 @@ test('inventory retirement after NFT POST invocation preserves the exact acknowl
     adapterObservedAbort, releaseAdapter,
   }) => {
     const id = await reviewCollectible(transfers, asset);
-    const pending = transfers.confirm(id, { method: 'pin', pin: password });
+    const pending = transfers.confirm(id, { method: 'device' });
     const signal = await Promise.race([
       adapterEntered,
       pending.then(() => assert.fail('Confirmation finished before the async adapter hold')),
@@ -601,7 +601,7 @@ test('NFT POST with a lost acknowledgement stays unknown and has no automatic re
   const asset = collectibleFixture('ERC-1155');
   await withController(asset, 'lost-ack', async ({ transfers, calls, posted, retained }) => {
     const id = await reviewCollectible(transfers, asset);
-    await transfers.confirm(id, { method: 'pin', pin: password });
+    await transfers.confirm(id, { method: 'device' });
     const outcome = transfers.getSnapshot();
     assert.equal(outcome.phase, 'unknown');
     assert.equal(outcome.review, null);
@@ -617,7 +617,7 @@ test('NFT POST with a lost acknowledgement stays unknown and has no automatic re
     assert.equal(transfers.getSnapshot().phase, 'review');
     assert.equal(retry?.collectible?.tokenStandard, 'ERC-1155');
     assert.equal(posted.length, 1);
-    await transfers.confirm(retry!.id, { method: 'pin', pin: password });
+    await transfers.confirm(retry!.id, { method: 'device' });
     assert.equal(transfers.getSnapshot().phase, 'unknown');
     assert.deepEqual(posted, [posted[0], posted[0]]);
   });
@@ -626,13 +626,13 @@ test('NFT POST with a lost acknowledgement stays unknown and has no automatic re
 test('an explicitly approved NFT retry cannot dispatch after a held preflight expires', { timeout: 5_000 }, async () => {
   const asset = collectibleFixture('ERC-721');
   await withController(asset, 'hold-replay', async ({ transfers, calls, posted, retained, advanceClock, preflight, releasePreflight }) => {
-    await transfers.confirm(await reviewCollectible(transfers, asset), { method: 'pin', pin: password });
+    await transfers.confirm(await reviewCollectible(transfers, asset), { method: 'device' });
     const first = transfers.getSnapshot().hash!;
     assert.equal(posted.length, 1);
     await transfers.recover(true, first);
     const review = transfers.getSnapshot().review!;
     assert.equal(review.replay?.hash, first);
-    const pending = transfers.confirm(review.id, { method: 'pin', pin: password });
+    const pending = transfers.confirm(review.id, { method: 'device' });
     await Promise.race([preflight, pending.then(() => assert.fail('Retry did not enter preflight'))]);
     advanceClock(review.replay!.validForMs);
     releasePreflight();
@@ -650,7 +650,7 @@ test('a saved NFT that loses ownership can be explicitly cancelled after restart
     transfers, calls, posted, retained, retainedBytes, reopen, confirmOnChain,
     invalidateCancellationObservation, holdOriginalObservation, reorg, removeHolding, signedCommit, acknowledgeCommit,
   }) => {
-    const pending = transfers.confirm(await reviewCollectible(transfers, asset), { method: 'pin', pin: password });
+    const pending = transfers.confirm(await reviewCollectible(transfers, asset), { method: 'device' });
     await Promise.race([signedCommit, pending.then(() => assert.fail('Send did not commit a signed record'))]);
     removeHolding();
     acknowledgeCommit();
@@ -668,7 +668,7 @@ test('a saved NFT that loses ownership can be explicitly cancelled after restart
     await reopened.recover(true, hash);
     const retry = reopened.getSnapshot().review;
     assert.equal(retry?.collectible?.tokenId, asset.tokenId);
-    await reopened.confirm(retry!.id, { method: 'pin', pin: password });
+    await reopened.confirm(retry!.id, { method: 'device' });
     assert.match(reopened.getSnapshot().message ?? '', /no longer has enough/);
     assert.equal(reopened.getSnapshot().hash, hash);
     assert.deepEqual(await retained(), [saved]);
@@ -685,7 +685,7 @@ test('a saved NFT that loses ownership can be explicitly cancelled after restart
     assert.equal(review.nonce, '0');
     assert.equal(review.amountUnits, '0');
     assert.equal(posted.length, 0);
-    await reopened.confirm(review.id, { method: 'pin', pin: password });
+    await reopened.confirm(review.id, { method: 'device' });
     assert.equal(posted.length, 1);
     const cancel = Transaction.from(posted[0]);
     assert.equal(cancel.from, owner);
@@ -739,7 +739,7 @@ test('a saved NFT that loses ownership can be explicitly cancelled after restart
     await reopened.prepare(recipient, '0.000000000000000001');
     const unexpectedSpend = reopened.getSnapshot().review;
     if (unexpectedSpend)
-      await reopened.confirm(unexpectedSpend.id, { method: 'pin', pin: password }).catch(() => undefined);
+      await reopened.confirm(unexpectedSpend.id, { method: 'device' }).catch(() => undefined);
     assert.deepEqual(await retained(), beforeFence, 'No new spending record may cross the cancellation fence');
     assert.equal(posted.length, 1);
     assert.equal(reopened.getSnapshot().phase, 'unknown');
@@ -763,7 +763,7 @@ test('a saved NFT that loses ownership can be explicitly cancelled after restart
     await reopened.prepare(recipient, '0.000000000000000001');
     const next = reopened.getSnapshot().review!;
     assert.equal(next.nonce, '1');
-    await reopened.confirm(next.id, { method: 'pin', pin: password });
+    await reopened.confirm(next.id, { method: 'device' });
     assert.equal(posted.length, 2);
     assert.equal(Transaction.from(posted[1]).nonce, 1);
     assert.equal(await retainedBytes(hash), original);

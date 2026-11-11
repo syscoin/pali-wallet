@@ -1,5 +1,5 @@
 import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
-import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { createTestCredentialPort } from './fixtures/credential.ts';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -27,7 +27,7 @@ import { metadata } from './publicWatchFixtures.ts';
 import { resolveUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
-const pinCredential = createTestPinCredentialPort();
+const credentialPort = createTestCredentialPort();
 
 const softwarePsbtHandoff = { id: 'software-fixture', expiresAt: Number.MAX_SAFE_INTEGER, beforeSuiteOpen() { throw Error('Unexpected hardware handoff'); }, beforeSignature() { throw Error('Unexpected hardware signature'); }, isSuspended: () => false };
 const PHRASE =
@@ -89,7 +89,7 @@ test('actual native runtime binds encrypted Sentry approvals to topic lifetime, 
   };
   let signatures = 0,
     posts = 0;
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { stages.push('auth-before'); check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); stages.push('auth-after'); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys: null, slhExecution: null,
+  const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: null, passkeys: null, slhExecution: null,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
     readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
@@ -148,7 +148,7 @@ test('actual native runtime binds encrypted Sentry approvals to topic lifetime, 
     , () => {});
   try {
     await authority.initialize();
-    await authority.importPhrase(PHRASE, PASSWORD);
+    await authority.importPhrase(PHRASE);
     await runtime.backup.confirm(await runtime.backup.fingerprint());
     await authority.refreshAuthenticatedMetadata();
     await select('syscoin');
@@ -231,7 +231,7 @@ test('actual runtime carries a disclosed Sentry operation into one child fee PSB
   let funding: InstanceType<typeof bitcoin.Transaction>, address = '', xpub = '', posts = 0, roleSignatures = 0;
   let held: { entered: ReturnType<typeof Promise.withResolvers<void>>; release: ReturnType<typeof Promise.withResolvers<void>>; signal?: AbortSignal } | undefined;
   t.mock.method(globalThis, 'fetch', () => { throw new Error('Ambient transport forbidden'); });
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
+  const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
     openStorage: () => SqliteWalletStorage.open(connection, digest, INSTALLATION, true),
     deriveSentryPublicKey: createSentryClassicalExecutor(deriveSentryClassicalPublicKey),
     runSentryCrypto: createSentryCryptoExecutor(async () => async (job, check) => {
@@ -260,7 +260,7 @@ test('actual runtime carries a disclosed Sentry operation into one child fee PSB
   let currentGrant: object | undefined = grant;
   const checkGrant = () => { if (currentGrant !== grant) throw new Error('Grant retired'); };
   try {
-    await authority.initialize(); await authority.importPhrase(PHRASE, PASSWORD);
+    await authority.initialize(); await authority.importPhrase(PHRASE);
     await runtime.backup.confirm(await runtime.backup.fingerprint()); await authority.refreshAuthenticatedMetadata();
     await authority.selectNetwork('syscoin', authority.getSnapshot().revision, authority.getCatalogue()!.revision, () => undefined);
     const context = (await runtime.openConnectionHost()).context();

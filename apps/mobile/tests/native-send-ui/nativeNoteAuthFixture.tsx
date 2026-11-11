@@ -2,8 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { NativeNoteExport, type NativeNoteExportStep } from '../../src/screens/NativeNoteExport';
 import { NativeNoteRestore } from '../../src/screens/NativeNoteRestore';
 import { NativeNoteMaintenance } from '../../src/screens/NativeNoteMaintenance';
-import { NativeOperationAuthentication } from '../../src/screens/NativeOperationAuthentication';
-import { nativeOperationAuthentication } from '../../src/platform/operationAuthentication';
+import { FixtureDeviceAuthorization, fixtureDeviceAuthorization } from './fixtureDeviceAuthorization';
 import { bindNativePrivateAuthentication, withNativePrivateAuthentication, type NativePrivateAuthenticationScope } from '../../src/custody/privateAuthentication';
 import type { NativeNoteMaintenanceRuntime } from '../../src/custody/noteBackupRuntime';
 import { Screen, Text } from '../../src/ui';
@@ -21,11 +20,7 @@ export function NativeNoteAuthFixture() {
     return () => { lifetime.abort(); if (owner.current === lifetime) owner.current = null; };
   }, []);
   const authorize = useCallback(async (signal: AbortSignal, check: () => void) => {
-    await nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'secret-read', biometricsEnabled: false }, signal, check,
-      async (credential, guard) => {
-        guard();
-        return credential.method === 'pin' && credential.pin === '123456' ? { accepted: true } : { accepted: false, reason: 'INVALID_CREDENTIAL' };
-      });
+    await fixtureDeviceAuthorization.request('secret-read', signal, check);
     check();
   }, []);
   const complete = async () => {
@@ -41,7 +36,7 @@ export function NativeNoteAuthFixture() {
   const openMaintenance = useCallback(async (signal: AbortSignal, guard: () => void, scope: NativePrivateAuthenticationScope): Promise<NativeNoteMaintenanceRuntime> => {
     let disposed = false;
     const current = () => { if (signal.aborted || disposed) throw Error('CANCELLED'); };
-    const binding = bindNativePrivateAuthentication(scope, { assertCurrent: current, isPromptActive: () => false });
+    const binding = bindNativePrivateAuthentication(scope, { assertCurrent: current, isPromptActive: owner => fixtureDeviceAuthorization.isActive(owner) });
     return {
       async getNotes(check) { current(); guard(); check(); return { notes: [{ id: 'public-note', poolId: 'eth-1', amount: '1', createdAt: 1762000000000,
         phase: 'verified', withdrawal: { canCheckRecovery: true, mode: 'direct', phase: 'submitted', transactionHash: '0x' + 'ab'.repeat(32) } }] }; },
@@ -61,6 +56,6 @@ export function NativeNoteAuthFixture() {
       <NativeNoteExport step={exportStep} busy={busy} error={error} onChoose={() => setExportStep({ phase: 'passwords' })}
         onSave={password => { if (password.length >= 12) void complete(); }} onShowVerify={() => setExportStep({ phase: 'verify', noteCount: 2 })}
         onVerify={() => {}} onBack={back} />}
-    <NativeOperationAuthentication isProtectedPromptActive={() => false} />
+    <FixtureDeviceAuthorization />
   </>;
 }

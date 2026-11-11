@@ -1,6 +1,5 @@
 import type { SentryNodeStorage } from './sentryNodeDomain.ts';
-import type { DeviceUnlockEnrollmentPort } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
-import type { NativePinRecord, NativePinStorage } from '../custody/pinVault.ts';
+import type { NativeCredentialReference, NativeCredentialStorage } from '../custody/credentialVault.ts';
 import type { EvmSignedRecordStorage } from '../../../../source/wallet/evmSignedRecords.ts';
 import type { UtxoRecordStorage } from '../../../../source/wallet/utxoSignedRecords.ts';
 import type { ISentryKeyVaultHost } from '../../../../source/wallet/sentryKeyVault.ts';
@@ -86,7 +85,7 @@ export type WalletIdentityRead = Readonly<{
 export type NoteDomainRow = Readonly<{ profileId: string; walletBindingId: string; value: string }>;
 /** Opaque common-codec bundle bytes; no transaction policy lives in this row. */
 export type SignedRecordDomainRow = Readonly<{ profileId: string; walletBindingId: string; value: string }>;
-/** Private, byte-preserving wallet snapshot. The device enrollment value is opaque SQL hex. */
+/** Private, byte-preserving wallet snapshot. Credential references contain no key material. */
 export type RecoveryStorageSnapshot = Readonly<{
   identity: WalletIdentityRead | null;
   state: WalletStoredState;
@@ -115,7 +114,7 @@ export type SentryStorageScope = Readonly<{
 }>;
 
 export interface OpenWalletStorage {
-  readonly pin: NativePinStorage;
+  readonly credential: NativeCredentialStorage;
   readonly keyringStorage: KeyringStoragePort;
   readonly signedRecords: EvmSignedRecordStorage;
   readonly utxoSignedRecords?: UtxoRecordStorage;
@@ -126,7 +125,6 @@ export interface OpenWalletStorage {
       assertCurrent: () => void
     ): Pick<ISentryKeyVaultHost, 'read' | 'write'>;
   }>;
-  readonly deviceUnlockEnrollment?: DeviceUnlockEnrollmentPort;
   /** Private note domain, sharing this owner’s SQL queue and lease. */
   readonly notes?: Readonly<{
     read(): Promise<readonly NoteDomainRow[]>;
@@ -139,15 +137,16 @@ export interface OpenWalletStorage {
       assertCurrent: () => void
     ): Promise<boolean>;
   }>;
+  /** Matching-phrase recovery throttling; OS credential prompts own their policy. */
   readonly authGuard: Readonly<{
     checkAllowed(): Promise<void>;
     recordFailure(): Promise<void>;
     recordSuccess(): Promise<void>;
   }>;
   readonly removal?: Readonly<{
-    /** Finish an acknowledged removal's exact protected PIN alias before any
+    /** Finish an acknowledged removal's exact protected credential alias before any
      * ordinary storage access. The durable receipt survives failed cleanup. */
-    settlePinCredential(remove: (record: NativePinRecord) => Promise<void>): Promise<void>;
+    settleCredential(remove: (record: NativeCredentialReference) => Promise<void>): Promise<void>;
     /** Trusted host only, after fresh authentication and explicit confirmation.
      * The one-use snapshot must come from this owner after authentication.
      * The synchronous guard binds the exact retired custody generation. */
@@ -159,7 +158,8 @@ export interface OpenWalletStorage {
     fingerprintPair?(
       candidate: Readonly<{ vault: unknown; keys: unknown }>
     ): Promise<string>;
-    /** Initial installation of pair, full records and root as one transaction. */
+    /** Durably reserve candidate-alias cleanup before its OS write. Commit then
+     * installs the pair, full records and root and removes that receipt atomically. */
     prepareCreation?(
       snapshot: RecoveryStorageSnapshot,
       candidate: Readonly<{
@@ -167,15 +167,16 @@ export interface OpenWalletStorage {
         keys: unknown;
         accountRecords: unknown;
         publicSession: unknown;
-        pin: NativePinRecord;
+        credential: NativeCredentialReference;
       }>,
-      root: RecoveryRoot
+      root: RecoveryRoot,
+      assertCurrent: () => void
     ): Promise<RecoveryWritePlan>;
     readIdentity(): Promise<WalletIdentityRead | null>;
     readSnapshot(): Promise<RecoveryStorageSnapshot>;
     /** Called only after the SDK authenticates the root/profile for this exact pair. */
     bindIdentity(expectedPairFingerprint: string, root: RecoveryRoot, assertCurrent: () => void): Promise<void>;
-    prepareReplacement?(snapshot: RecoveryStorageSnapshot, pair: Readonly<{ vault: unknown; keys: unknown; pin: NativePinRecord;
+    prepareReplacement?(snapshot: RecoveryStorageSnapshot, pair: Readonly<{ vault: unknown; keys: unknown; credential: NativeCredentialReference;
         accountRecords?: unknown;
         publicSession: unknown;
       }>, root: RecoveryRoot, assertCurrent: () => void): Promise<RecoveryWritePlan>;

@@ -117,26 +117,27 @@ for (const failure of ['missing', 'throw', 'uppercase', 'short'] as const) {
   });
 }
 
-test('opening is explicit and known empty/complete stores determine onboarding', async () => {
+test('initialization keeps an empty wallet in onboarding and automatically opens an existing public view', async () => {
   const fresh = fixture();
   assert.equal(fresh.authority.getSnapshot().phase, 'opening');
-  await rejectsCode(fresh.authority.create(PASSWORD), 'NOT_READY');
+  await rejectsCode(fresh.authority.create(), 'NOT_READY');
   const opening = fresh.authority.initialize();
   assert.equal(fresh.authority.initialize(), opening);
   await opening;
   assert.equal(fresh.authority.getSnapshot().phase, 'empty');
   const existing = fixture(true);
   await existing.authority.initialize();
-  assert.equal(existing.authority.getSnapshot().phase, 'locked');
-  await rejectsCode(existing.authority.create(PASSWORD), 'NOT_READY');
+  assert.equal(existing.authority.getSnapshot().phase, 'backup-required');
+  assert.deepEqual(existing.authority.getSnapshot().account, { network: 'ethereum', address: ADDRESS });
+  await rejectsCode(existing.authority.create(), 'NOT_READY');
 });
 
 test('create and import expose only a detached normalized address and never confirm backup', async () => {
   for (const operation of ['create', 'import'] as const) {
     const f = fixture();
     await f.authority.initialize();
-    if (operation === 'create') await f.authority.create(PASSWORD);
-    else await f.authority.importPhrase(PHRASE, PASSWORD);
+    if (operation === 'create') await f.authority.create();
+    else await f.authority.importPhrase(PHRASE);
     const state = f.authority.getSnapshot();
     assert.equal(state.phase, 'backup-required');
     assert.deepEqual(state.account, { network: 'ethereum', address: ADDRESS });
@@ -153,7 +154,7 @@ test('only persisted backup status of an existing wallet permits ready', async (
   const f = fixture(true);
   f.setStored({ presence: 'existing', backup: 'confirmed' });
   await f.authority.initialize();
-  await f.authority.unlock(PASSWORD);
+  await f.authority.unlock();
   assert.equal(f.authority.getSnapshot().phase, 'ready');
   assert.equal('confirmBackup' in f.authority, false);
   assert.equal('revealPhrase' in f.authority, false);
@@ -171,7 +172,7 @@ test('read errors, incomplete records and orphan confirmed metadata never become
     await rejectsCode(f.authority.initialize(), 'UNAVAILABLE');
     assert.equal(f.authority.getSnapshot().phase, 'unavailable');
     assert.equal(f.authority.getSnapshot().presence, 'unknown');
-    await rejectsCode(f.authority.create(PASSWORD), 'NOT_READY');
+    await rejectsCode(f.authority.create(), 'NOT_READY');
     assert.equal(JSON.stringify(f.authority.getSnapshot()).includes(PHRASE), false);
   }
 });
@@ -180,14 +181,15 @@ test('credential rejection is explicit; thrown or malformed results are operatio
   for (const kind of ['rejected', 'throw', 'malformed'] as const) {
     const f = fixture(true);
     await f.authority.initialize();
+    f.authority.lock(); f.events.length = 0;
     f.runtime.session.unlock = async () => {
       if (kind === 'throw') throw new Error(`${PASSWORD} ${PHRASE}`);
       return (kind === 'rejected'
         ? { authenticated: false }
         : { authenticated: 'false' }) as { authenticated: boolean };
     };
-    const code = kind === 'rejected' ? 'INVALID_CREDENTIAL' : 'OPERATION_FAILED';
-    await rejectsCode(f.authority.unlock(PASSWORD), code);
+    const code = kind === 'rejected' ? 'UNAVAILABLE' : 'OPERATION_FAILED';
+    await rejectsCode(f.authority.unlock(), code);
     assert.equal(f.authority.getSnapshot().error, code);
     assert.equal(f.authority.getSnapshot().account, null);
     assert.equal(f.unlocked, false);
@@ -198,11 +200,12 @@ test('only typed runtime throttling and input errors reach the public classifica
   for (const typed of [true, false]) {
     const f = fixture(true);
     await f.authority.initialize();
+    f.authority.lock(); f.events.length = 0;
     f.runtime.session.unlock = async () => {
       if (typed) throw new CustodyRuntimeError('AUTH_THROTTLED');
       throw new Error('AUTH_THROTTLED');
     };
-    await rejectsCode(f.authority.unlock(PASSWORD), typed ? 'AUTH_THROTTLED' : 'OPERATION_FAILED');
+    await rejectsCode(f.authority.unlock(), typed ? 'AUTH_THROTTLED' : 'OPERATION_FAILED');
     assert.equal(f.authority.getSnapshot().phase, 'locked');
     assert.equal(f.authority.getSnapshot().account, null);
     await f.authority.dispose();
@@ -215,15 +218,15 @@ test('double submissions are rejected before any second SDK operation', async ()
   const started = deferred<void>();
   const release = deferred<void>();
   const create = f.runtime.session.createWallet;
-  f.runtime.session.createWallet = async (password) => {
+  f.runtime.session.createWallet = async () => {
     started.resolve();
     await release.promise;
-    await create(password);
+    await create();
   };
-  const pending = f.authority.create(PASSWORD);
+  const pending = f.authority.create();
   await started.promise;
-  await rejectsCode(f.authority.importPhrase(PHRASE, PASSWORD), 'BUSY');
-  await rejectsCode(f.authority.create(PASSWORD), 'BUSY');
+  await rejectsCode(f.authority.importPhrase(PHRASE), 'BUSY');
+  await rejectsCode(f.authority.create(), 'BUSY');
   release.resolve();
   await pending;
   assert.equal(f.events.filter((event) => event === 'create').length, 1);
@@ -232,6 +235,7 @@ test('double submissions are rejected before any second SDK operation', async ()
 test('lock during an SDK unlock revokes immediately and drains late completion before new authentication', async () => {
   const f = fixture(true);
   await f.authority.initialize();
+    f.authority.lock(); f.events.length = 0;
   const started = deferred<void>();
   const release = deferred<void>();
   let attempts = 0;
@@ -241,17 +245,17 @@ test('lock during an SDK unlock revokes immediately and drains late completion b
     f.unlocked = true; // SDK unlock completion can occur after lock.
     return { authenticated: true };
   };
-  const pending = f.authority.unlock(PASSWORD);
+  const pending = f.authority.unlock();
   await started.promise;
   f.authority.lock();
   assert.equal(f.authority.getSnapshot().phase, 'locked');
   assert.equal(f.unlocked, false);
-  await rejectsCode(f.authority.unlock(PASSWORD), 'BUSY');
+  await rejectsCode(f.authority.unlock(), 'BUSY');
   release.resolve();
   await rejectsCode(pending, 'CANCELLED');
   assert.equal(f.unlocked, false);
   assert.equal(f.events.includes('address'), false);
-  await f.authority.unlock(PASSWORD);
+  await f.authority.unlock();
   assert.equal(f.unlocked, true);
   assert.equal(f.authority.getSnapshot().phase, 'backup-required');
 });
@@ -262,10 +266,10 @@ test('lock during creation preserves its committed wallet and prevents repeated 
   const started = deferred<void>();
   const release = deferred<void>();
   const create = f.runtime.session.createWallet;
-  f.runtime.session.createWallet = async (password) => {
-    started.resolve(); await release.promise; await create(password);
+  f.runtime.session.createWallet = async () => {
+    started.resolve(); await release.promise; await create();
   };
-  const pending = f.authority.create(PASSWORD);
+  const pending = f.authority.create();
   await started.promise;
   f.authority.lock();
   release.resolve();
@@ -273,8 +277,8 @@ test('lock during creation preserves its committed wallet and prevents repeated 
   assert.equal(f.authority.getSnapshot().presence, 'existing');
   assert.equal(f.authority.getSnapshot().phase, 'locked');
   assert.equal(f.unlocked, false);
-  await rejectsCode(f.authority.create(PASSWORD), 'NOT_READY');
-  await f.authority.unlock(PASSWORD);
+  await rejectsCode(f.authority.create(), 'NOT_READY');
+  await f.authority.unlock();
   assert.equal(f.authority.getSnapshot().phase, 'backup-required');
 });
 
@@ -282,14 +286,14 @@ test('a lost creation acknowledgment reconciles durable presence without deletin
   const f = fixture();
   await f.authority.initialize();
   const create = f.runtime.session.createWallet;
-  f.runtime.session.createWallet = async (password) => {
-    await create(password);
+  f.runtime.session.createWallet = async () => {
+    await create();
     throw new Error('commit acknowledged after transport failed');
   };
-  await rejectsCode(f.authority.create(PASSWORD), 'OPERATION_FAILED');
+  await rejectsCode(f.authority.create(), 'OPERATION_FAILED');
   assert.equal(f.authority.getSnapshot().phase, 'locked');
   assert.equal(f.authority.getSnapshot().presence, 'existing');
-  await rejectsCode(f.authority.create(PASSWORD), 'NOT_READY');
+  await rejectsCode(f.authority.create(), 'NOT_READY');
   assert.equal(f.events.filter((event) => event === 'create').length, 1);
 });
 
@@ -300,7 +304,7 @@ test('new creation rejects an unexpected confirmed backup receipt', async () => 
     f.setStored({ presence: 'existing', backup: 'confirmed' });
     f.unlocked = true;
   };
-  await rejectsCode(f.authority.create(PASSWORD), 'UNAVAILABLE');
+  await rejectsCode(f.authority.create(), 'UNAVAILABLE');
   assert.equal(f.authority.getSnapshot().phase, 'unavailable');
   assert.equal(f.unlocked, false);
 });
@@ -309,21 +313,22 @@ test('storage failure after creation quarantines the authority rather than reope
   const f = fixture();
   await f.authority.initialize();
   f.runtime.storage.readState = async () => { throw new Error('database unavailable'); };
-  await rejectsCode(f.authority.create(PASSWORD), 'UNAVAILABLE');
+  await rejectsCode(f.authority.create(), 'UNAVAILABLE');
   assert.equal(f.authority.getSnapshot().phase, 'unavailable');
-  await rejectsCode(f.authority.create(PASSWORD), 'NOT_READY');
+  await rejectsCode(f.authority.create(), 'NOT_READY');
 });
 
 test('observer exceptions and reentrant lock cannot publish stale ready data', async () => {
   const f = fixture(true);
   await f.authority.initialize();
+    f.authority.lock(); f.events.length = 0;
   const later: string[] = [];
   f.authority.subscribe((state) => {
     if (state.account) f.authority.lock();
     throw new Error('broken view');
   });
   f.authority.subscribe((state) => { later.push(state.phase); });
-  await rejectsCode(f.authority.unlock(PASSWORD), 'CANCELLED');
+  await rejectsCode(f.authority.unlock(), 'CANCELLED');
   assert.equal(later.includes('backup-required'), false);
   assert.equal(f.authority.getSnapshot().phase, 'locked');
   assert.equal(f.unlocked, false);
@@ -335,11 +340,11 @@ test('reentrant submission is busy and lock from authenticating prevents SDK acc
   let nested: Promise<void> | undefined;
   f.authority.subscribe((state) => {
     if (state.phase === 'authenticating') {
-      nested = rejectsCode(f.authority.create(PASSWORD), 'BUSY');
+      nested = rejectsCode(f.authority.create(), 'BUSY');
       f.authority.lock();
     }
   });
-  await rejectsCode(f.authority.create(PASSWORD), 'CANCELLED');
+  await rejectsCode(f.authority.create(), 'CANCELLED');
   await nested;
   assert.equal(f.events.includes('create'), false);
 });
@@ -352,7 +357,7 @@ test('lock cleanup failures quarantine the authority and never classify as wrong
   await Promise.resolve();
   await Promise.resolve();
   assert.equal(f.authority.getSnapshot().phase, 'unavailable');
-  await rejectsCode(f.authority.unlock(PASSWORD), 'NOT_READY');
+  await rejectsCode(f.authority.unlock(), 'NOT_READY');
   await rejectsCode(f.authority.dispose(), 'CLEANUP_FAILED');
 });
 
@@ -362,10 +367,10 @@ test('dispose waits for an in-flight durable commit then relocks and closes exac
   const started = deferred<void>();
   const release = deferred<void>();
   const create = f.runtime.session.createWallet;
-  f.runtime.session.createWallet = async (password) => {
-    started.resolve(); await release.promise; await create(password); f.events.push('commit');
+  f.runtime.session.createWallet = async () => {
+    started.resolve(); await release.promise; await create(); f.events.push('commit');
   };
-  const pending = f.authority.create(PASSWORD);
+  const pending = f.authority.create();
   await started.promise;
   const disposal = f.authority.dispose();
   assert.equal(f.authority.dispose(), disposal);
@@ -393,13 +398,12 @@ test('dispose during runtime opening waits for the late handle and closes it wit
   assert.equal(f.events.at(-1), 'close');
 });
 
-test('disposal is reentrant, and input bounds reject before any secret-bearing port call', async () => {
+test('disposal is reentrant, and phrase bounds reject before any secret-bearing port call', async () => {
   const f = fixture();
   await f.authority.initialize();
-  for (const input of ['', 'x'.repeat(1025), 123]) {
-    await rejectsCode(f.authority.create(input as string), 'INVALID_INPUT');
+  for (const input of ['', 'x'.repeat(4097), 123]) {
+    await rejectsCode(f.authority.importPhrase(input as string), 'INVALID_INPUT');
   }
-  await rejectsCode(f.authority.importPhrase('x'.repeat(4097), PASSWORD), 'INVALID_INPUT');
   const states: CustodySnapshot[] = [];
   let nested: Promise<void> | undefined;
   f.authority.subscribe((state) => {
@@ -417,6 +421,7 @@ test('disposal is reentrant, and input bounds reject before any secret-bearing p
 test('a delayed lock cleanup blocks the next authentication until the retired session is clean', async () => {
   const f = fixture(true);
   await f.authority.initialize();
+  f.events.length = 0;
   const cleanup = deferred<void>();
   const originalLock = f.runtime.session.lock;
   f.runtime.session.lock = async () => {
@@ -424,7 +429,7 @@ test('a delayed lock cleanup blocks the next authentication until the retired se
     await cleanup.promise;
   };
   f.authority.lock();
-  const next = f.authority.unlock(PASSWORD);
+  const next = f.authority.unlock();
   await Promise.resolve();
   await Promise.resolve();
   assert.equal(f.events.includes('unlock'), false);
@@ -437,13 +442,14 @@ test('a delayed lock cleanup blocks the next authentication until the retired se
 test('lock during public-account loading discards the late response and relocks the SDK', async () => {
   const f = fixture(true);
   await f.authority.initialize();
+    f.authority.lock(); f.events.length = 0;
   const loading = deferred<void>();
   const address = deferred<string>();
   f.runtime.session.readSelectedAddress = async () => {
     loading.resolve();
     return address.promise;
   };
-  const pending = f.authority.unlock(PASSWORD);
+  const pending = f.authority.unlock();
   await loading.promise;
   f.authority.lock();
   address.resolve(ADDRESS);
@@ -456,12 +462,13 @@ test('lock during public-account loading discards the late response and relocks 
 test('a lock failure while authentication is pending cannot publish a ready state', async () => {
   const f = fixture(true);
   await f.authority.initialize();
+    f.authority.lock(); f.events.length = 0;
   const loading = deferred<void>();
   const address = deferred<string>();
   f.runtime.session.readSelectedAddress = async () => {
     loading.resolve(); return address.promise;
   };
-  const pending = f.authority.unlock(PASSWORD);
+  const pending = f.authority.unlock();
   await loading.promise;
   f.runtime.session.lock = () => { throw new Error(PASSWORD); };
   f.authority.lock();
@@ -478,7 +485,7 @@ test('dispose from an authenticating observer drains admission without starting 
   f.authority.subscribe((state) => {
     if (state.phase === 'authenticating') disposal = f.authority.dispose();
   });
-  await rejectsCode(f.authority.create(PASSWORD), 'CANCELLED');
+  await rejectsCode(f.authority.create(), 'CANCELLED');
   await disposal;
   assert.equal(f.events.includes('create'), false);
   assert.equal(f.events.at(-1), 'close');
@@ -488,8 +495,9 @@ test('dispose from an authenticating observer drains admission without starting 
 test('invalid account output and close failures expose only safe error codes', async () => {
   const f = fixture(true);
   await f.authority.initialize();
+    f.authority.lock(); f.events.length = 0;
   f.runtime.session.readSelectedAddress = async () => `${PASSWORD} ${PHRASE}`;
-  await rejectsCode(f.authority.unlock(PASSWORD), 'OPERATION_FAILED');
+  await rejectsCode(f.authority.unlock(), 'OPERATION_FAILED');
   assert.equal(f.unlocked, false);
   assert.equal(f.authority.getSnapshot().account, null);
   f.runtime.storage.close = async () => { throw new Error(PHRASE); };
@@ -502,15 +510,16 @@ test('a known existing wallet cannot become onboarding after a successful unlock
   const f = fixture(true);
   f.setStored({ presence: 'existing', backup: 'confirmed' });
   await f.authority.initialize();
+    f.authority.lock(); f.events.length = 0;
   f.runtime.session.unlock = async () => {
     f.setStored({ presence: 'empty', backup: 'unconfirmed' });
     f.unlocked = true;
     return { authenticated: true };
   };
-  await rejectsCode(f.authority.unlock(PASSWORD), 'UNAVAILABLE');
+  await rejectsCode(f.authority.unlock(), 'UNAVAILABLE');
   assert.equal(f.authority.getSnapshot().phase, 'unavailable');
   assert.equal(f.authority.getSnapshot().presence, 'existing');
-  await rejectsCode(f.authority.create(PASSWORD), 'NOT_READY');
+  await rejectsCode(f.authority.create(), 'NOT_READY');
   assert.equal(f.events.includes('create'), false);
   assert.equal(f.unlocked, false);
 });
@@ -519,9 +528,9 @@ test('successful creation without durable records quarantines instead of permitt
   const f = fixture();
   await f.authority.initialize();
   f.runtime.session.createWallet = async () => { f.unlocked = true; };
-  await rejectsCode(f.authority.create(PASSWORD), 'UNAVAILABLE');
+  await rejectsCode(f.authority.create(), 'UNAVAILABLE');
   assert.equal(f.authority.getSnapshot().phase, 'unavailable');
-  await rejectsCode(f.authority.create(PASSWORD), 'NOT_READY');
+  await rejectsCode(f.authority.create(), 'NOT_READY');
   assert.equal(f.unlocked, false);
 });
 
@@ -561,14 +570,14 @@ test('a stale successful create/import still requires durable records before all
     f.runtime.session.createWallet = succeedWithoutCommit;
     f.runtime.session.importWallet = succeedWithoutCommit;
     const pending = operation === 'create'
-      ? f.authority.create(PASSWORD)
-      : f.authority.importPhrase(PHRASE, PASSWORD);
+      ? f.authority.create()
+      : f.authority.importPhrase(PHRASE);
     await entered.promise;
     f.authority.lock();
     release.resolve();
     await rejectsCode(pending, 'CANCELLED');
     assert.equal(f.authority.getSnapshot().phase, 'unavailable');
-    await rejectsCode(f.authority.create(PASSWORD), 'NOT_READY');
+    await rejectsCode(f.authority.create(), 'NOT_READY');
     assert.equal(f.unlocked, false);
   }
 });
@@ -578,10 +587,10 @@ test('a failed create with a verified empty store may be retried', async () => {
   await f.authority.initialize();
   const original = f.runtime.session.createWallet;
   f.runtime.session.createWallet = async () => { throw new Error('before commit'); };
-  await rejectsCode(f.authority.create(PASSWORD), 'OPERATION_FAILED');
+  await rejectsCode(f.authority.create(), 'OPERATION_FAILED');
   assert.equal(f.authority.getSnapshot().phase, 'empty');
   f.runtime.session.createWallet = original;
-  await f.authority.create(PASSWORD);
+  await f.authority.create();
   assert.equal(f.authority.getSnapshot().phase, 'backup-required');
 });
 
@@ -619,7 +628,7 @@ test('initialization preserves quarantine after cleanup fails during its storage
   state.resolve({ presence: 'existing', backup: 'confirmed' });
   await rejectsCode(opening, 'UNAVAILABLE');
   assert.equal(f.authority.getSnapshot().phase, 'unavailable');
-  await rejectsCode(f.authority.unlock(PASSWORD), 'NOT_READY');
+  await rejectsCode(f.authority.unlock(), 'NOT_READY');
 });
 
 test('an unavailable observer requesting lock cannot sustain a rejected-cleanup event loop', async () => {

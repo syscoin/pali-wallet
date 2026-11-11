@@ -25,8 +25,8 @@ type Owner = { live: boolean; authentication: NativePrivateAuthenticationScope; 
 const CONFIRM_MS = 30_000;
 const failure = (cause: unknown) => {
   const code = cause instanceof WalletRemovalError ? cause.code : undefined;
-  if (code === 'INVALID_CREDENTIAL') return 'That PIN is incorrect.';
-  if (code === 'AUTH_THROTTLED') return 'Too many incorrect PINs. Wait before trying again.';
+  if (code === 'INVALID_CREDENTIAL') return 'Device authentication was not completed.';
+  if (code === 'AUTH_THROTTLED') return 'Too many unsuccessful authorization attempts. Wait before trying again.';
   return 'Could not authorize wallet removal. Try again.';
 };
 

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
-import { OperationAuthentication, isOperationAuthenticationCancellation, type OperationAuthenticationPrompt } from '../src/core/operationAuthentication.ts';
+import { operationAuthenticationCancellation, isOperationAuthenticationCancellation } from '../src/core/operationAuthentication.ts';
+import { credentialPromptActivityState } from '../src/platform/credentialPort.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { screenElements, screenFixture, type ScreenElement } from './screenFixture.ts';
 
@@ -9,13 +10,12 @@ function fixture(backupConfirmed = true) {
   let authorizations = 0, tickets = 0, confirmations = 0, backs = 0, continuations = 0, sequence = 0;
   let holdProof = false, proofActive = false, holdCommit = false;
   let operationSignal: AbortSignal | undefined;
-  let prompt: OperationAuthenticationPrompt | null = null;
+  let prompt: { approve(): void; cancel(): void; refuse(): void } | null = null;
+  let nativeWindow = false;
   const requests: { signal: AbortSignal; authentication: privateAuthentication.NativePrivateAuthenticationScope; check(): void }[] = [];
   const proof = Promise.withResolvers<void>(), commit = Promise.withResolvers<'removed' | 'unchanged' | 'unconfirmed'>();
   const timers = new Map<number, () => void>(), listeners = new Map<string, Set<(state: string) => void>>();
   const ticket = Object.freeze({}), appState = { currentState: 'active', addEventListener };
-  const broker = new OperationAuthentication();
-  const detach = broker.attach(value => { prompt = value; });
   function addEventListener(event: string, listener: (state: string) => void) {
     const group = listeners.get(event) ?? new Set(); group.add(listener); listeners.set(event, group);
     return { remove() { group.delete(listener); } };
@@ -40,17 +40,27 @@ function fixture(backupConfirmed = true) {
       async authorize(signal: AbortSignal, authentication: privateAuthentication.NativePrivateAuthenticationScope, check: () => void) {
         check(); authorizations++; requests.push({ signal, authentication, check });
         const binding = privateAuthentication.bindNativePrivateAuthentication(authentication, {
-          assertCurrent: check, isPromptActive: owner => proofActive && owner === operationSignal,
+          assertCurrent: check, isPromptActive: owner => proofActive && owner === operationSignal &&
+            credentialPromptActivityState('android', appState.currentState, { isCredentialPromptActive: () => nativeWindow }) !== 'background',
         });
         await privateAuthentication.withNativePrivateAuthentication(binding, signal, check, async owner => {
           operationSignal = owner;
-          await broker.request({ id: `removal-${authorizations}`, purpose: 'account-change', biometricsEnabled: true }, owner, check,
-            async (credential, assertAttempt) => {
-              if (credential.method === 'pin' && credential.pin !== '123456') return { accepted: false, reason: 'INVALID_CREDENTIAL' };
-              proofActive = true;
-              try { if (holdProof) await proof.promise; assertAttempt(); return { accepted: true }; }
-              finally { proofActive = false; }
+          proofActive = true; nativeWindow = true;
+          try {
+            await new Promise<void>((resolve, reject) => {
+              let complete = false;
+              const done = (error?: Error) => {
+                if (complete) return; complete = true; owner.removeEventListener('abort', abort); prompt = null;
+                if (error) reject(error); else resolve();
+              };
+              const abort = () => done(Error('CANCELLED'));
+              prompt = { approve: () => done(), cancel: () => done(operationAuthenticationCancellation()), refuse: () => done(Error('DEVICE_UNLOCK_UNAVAILABLE')) };
+              owner.addEventListener('abort', abort, { once: true }); if (owner.aborted) abort();
             });
+            if (holdProof) await proof.promise;
+            check();
+          } finally { proofActive = false; nativeWindow = false; }
+
         });
         check(); tickets++; return ticket;
       },
@@ -62,10 +72,11 @@ function fixture(backupConfirmed = true) {
     },
     onBack() { backs++; }, async onContinue() { continuations++; } };
   return { render: () => f.render(props), requests,
-    close() { proof.resolve(); commit.resolve('unconfirmed'); f.close(); detach(); },
+    close() { proof.resolve(); commit.resolve('unconfirmed'); f.close(); },
     counts: () => ({ authorizations, tickets, confirmations, backs, continuations }),
     get prompt() { return prompt; },
     expire() { for (const callback of [...timers.values()]) callback(); },
+    retireNativePrompt() { proofActive = false; nativeWindow = false; },
     holdProof() { holdProof = true; }, releaseProof() { proof.resolve(); },
     holdCommit() { holdCommit = true; }, finishCommit(outcome: 'removed' | 'unchanged' | 'unconfirmed') { commit.resolve(outcome); },
     emit(state: string) {
@@ -86,7 +97,7 @@ function hasText(tree: ScreenElement, value: string) {
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 async function authorize(f: ReturnType<typeof fixture>) {
   button(f.render(), 'Continue').props.onPress();
-  assert(f.prompt); f.prompt.confirm({ method: 'pin', pin: '123456' });
+  assert(f.prompt); f.prompt.approve();
   await settle(); return f.render();
 }
 
@@ -149,23 +160,22 @@ test('shared prompt Cancel returns to the unchanged removal intro and permits on
   } finally { f.close(); }
 });
 
-test('a refused PIN remains in the shared prompt without issuing a removal ticket', async () => {
+test('a refused device prompt issues no removal ticket and allows a fresh request', async () => {
   const f = fixture();
   try {
     button(f.render(), 'Continue').props.onPress(); assert(f.prompt);
-    f.prompt.confirm({ method: 'pin', pin: '000000' }); await settle();
-    assert.equal(f.prompt?.error, 'PIN not accepted. Try again.');
-    assert.equal(f.counts().tickets, 0); assert.equal(f.counts().confirmations, 0);
-    f.prompt!.confirm({ method: 'pin', pin: '123456' }); await settle();
-    assert(button(f.render(), 'Remove wallet')); assert.equal(f.counts().tickets, 1);
+    f.prompt.refuse(); await settle();
+    assert.equal(f.prompt, null); assert.equal(f.counts().tickets, 0); assert.equal(f.counts().confirmations, 0);
+    assert(hasText(f.render(), 'Could not authorize wallet removal. Try again.'));
+    await authorize(f); assert(button(f.render(), 'Remove wallet')); assert.equal(f.counts().tickets, 1);
   } finally { f.close(); }
 });
 
-test('only the matching active biometric proof survives inactive and Android blur', async () => {
+test('only the matching active device proof survives inactive and Android blur', async () => {
   const f = fixture();
   try {
     f.holdProof(); button(f.render(), 'Continue').props.onPress(); assert(f.prompt);
-    f.prompt.confirm({ method: 'biometric' });
+    f.prompt.approve();
     const request = f.requests[0]!; assert.equal(request.authentication.isAuthenticating(), true);
     f.emit('inactive'); f.emit('blur');
     assert.equal(request.signal.aborted, false); assert.equal(f.counts().backs, 0);
@@ -179,8 +189,8 @@ for (const state of ['inactive', 'blur', 'background']) test(`unprotected ${stat
   try {
     button(f.render(), 'Continue').props.onPress(); assert(f.prompt);
     const stale = f.prompt, request = f.requests[0]!;
-    f.emit(state); assert.equal(request.signal.aborted, true); assert.equal(f.prompt, null);
-    f.emit('active'); stale.confirm({ method: 'pin', pin: '123456' }); await settle();
+    f.retireNativePrompt(); f.emit(state); assert.equal(request.signal.aborted, true); assert.equal(f.prompt, null);
+    f.emit('active'); stale.approve(); await settle();
     assert(button(f.render(), 'Continue')); assert.equal(f.counts().tickets, 0); assert.equal(f.counts().confirmations, 0);
   } finally { f.close(); }
 });
@@ -188,7 +198,7 @@ for (const state of ['inactive', 'blur', 'background']) test(`unprotected ${stat
 for (const boundary of ['back', 'unmount'] as const) test(`${boundary} aborts the matching authorization and ignores its late proof`, async () => {
   const f = fixture();
   try {
-    f.holdProof(); button(f.render(), 'Continue').props.onPress(); f.prompt!.confirm({ method: 'biometric' });
+    f.holdProof(); button(f.render(), 'Continue').props.onPress(); f.prompt!.approve();
     const request = f.requests[0]!;
     if (boundary === 'back') button(f.render(), 'Cancel').props.onPress(); else f.close();
     assert.equal(request.signal.aborted, true); assert.equal(request.authentication.isAuthenticating(), false);
@@ -198,10 +208,10 @@ for (const boundary of ['back', 'unmount'] as const) test(`${boundary} aborts th
   } finally { f.close(); }
 });
 
-test('biometric success cannot expose a destructive review while still inactive', async () => {
+test('device authentication success cannot expose a destructive review while still inactive', async () => {
   const f = fixture();
   try {
-    f.holdProof(); button(f.render(), 'Continue').props.onPress(); f.prompt!.confirm({ method: 'biometric' });
+    f.holdProof(); button(f.render(), 'Continue').props.onPress(); f.prompt!.approve();
     f.emit('inactive'); f.releaseProof(); await settle();
     assert.equal(f.requests[0]!.signal.aborted, true);
     assert.equal(screenElements(f.render()).some(node => node.type === 'Button' && node.props.title === 'Remove wallet'), false);

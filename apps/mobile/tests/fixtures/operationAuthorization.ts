@@ -30,13 +30,12 @@ export function createTestOperationAuthorizer<T>(
 /** Exercise the real runtime's authorization and one-use signing contracts. */
 export async function signTestTransfer(
   runtime: NativeTransferRuntime,
-  pin: string,
   transaction: Parameters<NativeTransferRuntime['sign']>[0],
   authority: Omit<Parameters<NativeTransferRuntime['sign']>[1], 'authorization'>,
   intent?: Parameters<NativeTransferRuntime['sign']>[2],
   replacement?: Parameters<NativeTransferRuntime['sign']>[3]
 ) {
-  const authorization = await runtime.authorizeOperation({ method: 'pin', pin }, transaction, authority.assertCurrent);
+  const authorization = await runtime.authorizeOperation({ method: 'device' }, transaction, authority.assertCurrent);
   try { return await runtime.sign(transaction, { ...authority, authorization }, intent, replacement); }
   finally { runtime.releaseOperationAuthorization(authorization); }
 }

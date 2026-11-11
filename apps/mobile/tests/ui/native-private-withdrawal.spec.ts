@@ -1,4 +1,4 @@
-import { pinField, enterPin } from './operationAuthentication';
+import { deviceAuthorizationPrompt, authenticateNativeOperation, refuseNativeOperation } from './operationAuthentication';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const baseURL = process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179';
@@ -47,7 +47,7 @@ test('saved note opens direct by default and requires confirmation after proof',
   await expect(
     page.getByRole('radio', { name: 'Direct', exact: true })
   ).toBeChecked();
-  await expect(pinField(page, 'Confirm your wallet PIN')).toHaveCount(0);
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
   await page.getByRole('radio', { name: 'Direct', exact: true }).focus();
   await page.keyboard.press('ArrowRight');
   await expect(
@@ -424,12 +424,13 @@ test('restored prerequisite uses shared authentication and returns to ordinary e
   await page
     .getByRole('button', { name: 'Review restored note', exact: true })
     .click();
-  await enterPin(page, '000000');
+  await refuseNativeOperation(page);
   await expect(page.getByRole('alert')).toHaveText(
-    'PIN not accepted. Try again.'
+    'Could not review this restored note. Try again.'
   );
-  await enterPin(page, '123456');
-  await expect(page.getByRole('button', { name: 'PIN digit 1', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Review restored note', exact: true }).click();
+  await authenticateNativeOperation(page);
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
   await prepare(page);
   await expect(
     page.getByRole('button', { name: 'Confirm withdrawal', exact: true })

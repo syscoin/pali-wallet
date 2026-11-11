@@ -103,7 +103,7 @@ for (const committed of [false, true]) test(`real authority ${committed ? 'held 
   const retired: WalletConnectRequest[] = [], responses: unknown[] = [];
   let manager: NativeDappControlRequests | undefined;
   try {
-    await authority.initialize(); await authority.unlock('test-only password');
+    await authority.initialize(); await authority.unlock();
     const contextRevision = authority.getSnapshot().revision;
     const networks = createNativeNetworkView(authority, { utxoSendAvailable: true, fetch: async () => { assert.fail('Mode selection must not use HTTP'); } });
     const context = () => { const state = authority.getSnapshot(), value = authority.getCatalogue(); return state.phase === 'ready' && value ? { revision: state.revision, catalogueRevision: value.revision, activeAccountId: value.active.accountId, networkId: value.active.networkId, networkLabel: 'Ethereum', accounts: value.accounts } : null; };

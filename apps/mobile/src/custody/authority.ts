@@ -487,6 +487,7 @@ export class NativeCustodyAuthority {
       resolveInitialization = resolve;
       rejectInitialization = reject;
     });
+    const openingRevision = this.revision;
     void (async () => {
       try {
         this.runtime = await this.factory.open();
@@ -501,6 +502,7 @@ export class NativeCustodyAuthority {
           this.publish({
             phase: this.snapshot.presence === 'empty' ? 'empty' : 'locked',
           });
+          if (this.snapshot.presence === 'existing' && this.revision === openingRevision) await this.unlock();
         }
       } catch {
         this.failUnavailable();
@@ -533,8 +535,8 @@ export class NativeCustodyAuthority {
     this.revoking = false;
   }
 
-  create(password: string): Promise<void> {
-    return this.authenticate('create', password);
+  create(): Promise<void> {
+    return this.authenticate('create');
   }
 
   async previewPhrase(phrase: string, assertCurrent: () => void) {
@@ -550,105 +552,25 @@ export class NativeCustodyAuthority {
     return addresses;
   }
 
-  importPhrase(phrase: string, password: string): Promise<void> {
-    return this.authenticate('import', password, phrase);
+  importPhrase(phrase: string): Promise<void> {
+    return this.authenticate('import', phrase);
   }
 
-  unlock(password: string): Promise<void> {
-    return this.authenticate('unlock', password);
+  unlock(): Promise<void> {
+    if (['ready', 'backup-required'].includes(this.getSnapshot().phase)) return Promise.resolve();
+    return this.authenticate('unlock');
   }
 
-  async getDeviceUnlockStatus(): Promise<Readonly<{ available: boolean; enabled: boolean }> | null> {
-    const runtime = this.runtime, revision = this.revision;
-    if (!runtime?.deviceUnlock || this.snapshot.phase === 'disposed') return null;
-    const status = await runtime.deviceUnlock.status();
-    const current = this.getSnapshot();
-    if (runtime !== this.runtime || revision !== this.revision || current.phase === 'disposed')
-      throw new CustodyOperationError('CANCELLED');
-    return status;
+  isAuthenticating(): boolean {
+    return this.snapshot.phase === 'authenticating' && this.runtime?.security?.isAuthenticating() === true;
   }
 
-  unlockWithDevice(assertCurrent: () => void): Promise<void> {
-    return this.authenticate('device-unlock', '', undefined, assertCurrent);
-  }
-
-  setDeviceUnlock(enabled: boolean, password: string, assertCurrent: () => void): Promise<void> {
-    return this.authenticate(enabled ? 'enroll-device' : 'disable-device', password, undefined, assertCurrent);
-  }
-
-  async getAuthenticationStatus(): Promise<Readonly<{ pinConfigured: boolean; biometricsAvailable: boolean; biometricsEnabled: boolean }> | null> {
+  async getAuthenticationStatus(): Promise<Readonly<{ deviceAuth: 'ready' | 'missing' | 'unsupported'; credentialPresent: boolean }> | null> {
     const runtime = this.runtime, revision = this.revision;
     if (!runtime?.security || this.snapshot.phase === 'disposed') return null;
     const result = await runtime.security.authenticationStatus();
     if (runtime !== this.runtime || revision !== this.revision || this.getSnapshot().phase === 'disposed') throw new CustodyOperationError('CANCELLED');
     return result;
-  }
-
-  /** Verify the current PIN without releasing spending material or changing it. */
-  verifyPin(pin: string, assertOwner: () => void): Promise<void> {
-    const runtime = this.runtime, revision = this.revision;
-    if (!runtime?.security || !['ready', 'backup-required'].includes(this.snapshot.phase)) return Promise.reject(new CustodyOperationError('NOT_READY'));
-    if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
-    const check = () => {
-      this.checkIdle();
-      if (runtime !== this.runtime || revision !== this.revision || !['ready', 'backup-required'].includes(this.snapshot.phase)) throw new CustodyOperationError('CANCELLED');
-      assertSynchronousEvmFeeGuard(assertOwner);
-    };
-    let release!: () => void;
-    this.pending = new Promise<void>(resolve => { release = resolve; });
-    return (async () => {
-      try { check(); await runtime.security!.authenticateOperation({ method: 'pin', pin }, check); check(); }
-      catch (caught) {
-        let cause = caught;
-        if (runtime.security!.isAuthenticationRefusal(cause) && cause instanceof Error &&
-            (cause.message === 'INVALID_CREDENTIAL' || cause.message === 'AUTH_THROTTLED')) {
-          const refusal = cause.message;
-          try { check(); } catch (guardFailure) { cause = guardFailure; }
-          if (cause === caught) throw new CustodyOperationError(refusal);
-        }
-        if (runtime === this.runtime && revision === this.revision && this.snapshot.phase !== 'disposed') {
-          this.requestLock();
-          try { await this.drainLocks(); } catch { /* Cleanup publishes quarantine. */ }
-          if (this.lockFailed || this.snapshot.phase === 'unavailable') throw new CustodyOperationError('UNAVAILABLE');
-          if (revision === this.revision)
-            this.publish({ phase: 'locked', account: null, error: cause instanceof CustodyRuntimeError || cause instanceof CustodyOperationError ? cause.code : 'OPERATION_FAILED' });
-        }
-        throw new CustodyOperationError(cause instanceof CustodyRuntimeError || cause instanceof CustodyOperationError ? cause.code : 'OPERATION_FAILED');
-      }
-      finally { this.pending = null; release(); }
-    })();
-  }
-
-  changePin(currentPin: string, nextPin: string, assertOwner: () => void): Promise<void> {
-    const runtime = this.runtime, revision = this.revision;
-    if (!runtime?.security || !['ready', 'backup-required'].includes(this.snapshot.phase)) return Promise.reject(new CustodyOperationError('NOT_READY'));
-    if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
-    const check = () => {
-      this.checkIdle();
-      if (runtime !== this.runtime || revision !== this.revision || !['ready', 'backup-required'].includes(this.snapshot.phase)) throw new CustodyOperationError('CANCELLED');
-      assertSynchronousEvmFeeGuard(assertOwner);
-    };
-    let release!: () => void;
-    this.pending = new Promise<void>(resolve => { release = resolve; });
-    return (async () => {
-      try { check(); await runtime.security!.changePin(currentPin, nextPin, check); check(); }
-      catch (cause) {
-        if (runtime.security!.isAuthenticationRefusal(cause) && cause instanceof CustodyRuntimeError) {
-          check();
-          this.publish({ error: cause.code });
-          throw new CustodyOperationError(cause.code);
-        }
-        if (runtime === this.runtime && revision === this.revision && this.snapshot.phase !== 'disposed') {
-          this.requestLock();
-          try { await this.drainLocks(); } catch { /* Cleanup publishes quarantine. */ }
-          if (this.lockFailed || this.snapshot.phase === 'unavailable') throw new CustodyOperationError('UNAVAILABLE');
-          if (revision === this.revision)
-            this.publish({ phase: 'locked', account: null, error: cause instanceof CustodyRuntimeError ? cause.code : 'OPERATION_FAILED' });
-        }
-        throw new CustodyOperationError(cause instanceof CustodyRuntimeError ? cause.code : 'OPERATION_FAILED');
-      }
-      finally { this.pending = null; release(); }
-    })();
   }
 
   /** Refresh wallet-bound setup metadata only while the same session is live. */
@@ -724,127 +646,53 @@ export class NativeCustodyAuthority {
     })();
   }
 
-  private authenticate(
-    operation: 'create' | 'import' | 'unlock' | 'device-unlock' | 'enroll-device' | 'disable-device',
-    password: string,
-    phrase?: string,
-    assertOwner: () => void = () => undefined
-  ): Promise<void> {
-    const creating = operation === 'create' || operation === 'import';
-    const deviceUnlock = operation === 'device-unlock';
-    const settingDevice = operation === 'enroll-device' || operation === 'disable-device';
-    if (
-      (!deviceUnlock && (typeof password !== 'string' || password.length === 0 || password.length > 1024)) ||
-      (operation === 'import' &&
-        (typeof phrase !== 'string' || phrase.length === 0 || phrase.length > 4096))
-    ) return Promise.reject(new CustodyOperationError('INVALID_INPUT'));
+  private authenticate(operation: 'create' | 'import' | 'unlock', phrase?: string): Promise<void> {
+    const creating = operation !== 'unlock';
+    if (operation === 'import' && (typeof phrase !== 'string' || !phrase || phrase.length > 4096)) return Promise.reject(new CustodyOperationError('INVALID_INPUT'));
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
     try { this.checkIdle(); } catch (error) { return Promise.reject(error); }
-    const expectedPhase = creating ? 'empty' : 'locked';
-    if (!this.runtime || (settingDevice
-      ? !['ready', 'backup-required'].includes(this.snapshot.phase)
-      : this.snapshot.phase !== expectedPhase))
-      return Promise.reject(new CustodyOperationError('NOT_READY'));
-    if ((deviceUnlock || settingDevice) && !this.runtime.deviceUnlock)
-      return Promise.reject(new CustodyOperationError('NOT_READY'));
-    const runtime = this.runtime;
-    const revision = this.revision;
-    let attempted = false;
-    let operationSucceeded = false;
-    let credentialRejected = false;
-    const assertCurrent = () => {
-      if (revision !== this.revision || this.snapshot.phase === 'disposed')
-        throw new CustodyOperationError('CANCELLED');
+    if (!this.runtime || this.snapshot.phase !== (creating ? 'empty' : 'locked')) return Promise.reject(new CustodyOperationError('NOT_READY'));
+    const runtime = this.runtime, revision = this.revision;
+    let attempted = false, operationSucceeded = false;
+    const check = () => {
+      if (revision !== this.revision || this.snapshot.phase === 'disposed') throw new CustodyOperationError('CANCELLED');
       this.checkIdle();
-      const result: unknown = assertOwner();
-      if (result !== undefined) {
-        void Promise.resolve(result).catch(() => undefined);
-        throw new CustodyOperationError('CANCELLED');
-      }
-      if (this.lockFailed || this.snapshot.phase === 'unavailable')
-        throw new CustodyOperationError('UNAVAILABLE');
+      if (this.lockFailed || this.snapshot.phase === 'unavailable') throw new CustodyOperationError('UNAVAILABLE');
     };
-    // Set admission before publishing: observers may synchronously submit again.
-    let resolveAdmission!: () => void;
-    this.pending = new Promise<void>((resolve) => { resolveAdmission = resolve; });
+    let release!: () => void;
+    this.pending = new Promise<void>(resolve => { release = resolve; });
     this.publish({ phase: 'authenticating', account: null, error: null });
-    const task = (async () => {
+    return (async () => {
       try {
-        await this.drainLocks();
-        assertCurrent();
-        attempted = true;
-        if (operation === 'create') {
-          await runtime.session.createWallet(password);
-          operationSucceeded = true;
-        } else if (operation === 'import') {
-          await runtime.session.importWallet(phrase!, password);
-          operationSucceeded = true;
-        }
-        else {
-          const result = deviceUnlock ? await runtime.deviceUnlock!.unlock(assertCurrent)
-            : settingDevice ? await runtime.deviceUnlock![operation === 'enroll-device' ? 'enroll' : 'disable'](password, assertCurrent)
-            : await runtime.session.unlock(password);
-          assertCurrent();
-          if (!result || typeof result.authenticated !== 'boolean')
-            throw new CustodyOperationError('OPERATION_FAILED');
-          if (!result.authenticated) {
-            credentialRejected = !deviceUnlock;
-            throw new CustodyOperationError(deviceUnlock ? 'DEVICE_UNLOCK_UNAVAILABLE' : 'INVALID_CREDENTIAL');
-          }
-        }
-        assertCurrent();
-        await this.readState(true);
-        assertCurrent();
+        await this.drainLocks(); check(); attempted = true;
+        if (operation === 'create') await runtime.session.createWallet();
+        else if (operation === 'import') await runtime.session.importWallet(phrase!);
+        else if (!(await runtime.session.unlock()).authenticated) throw new CustodyOperationError('UNAVAILABLE');
+        operationSucceeded = true; check(); await this.readState(true); check();
         if (creating && this.snapshot.backup !== 'unconfirmed') {
           this.failUnavailable();
           throw new CustodyOperationError('UNAVAILABLE');
         }
         const network = this.selectedNetwork(runtime);
-        const address = normalizePublicAddress(
-          await runtime.session.readSelectedAddress(), network, runtime.accounts?.getSnapshot()?.utxoNetworks
-        );
-        assertCurrent();
-        this.publish({
-          phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required',
-          account: Object.freeze({ network, address }),
-          error: null,
-        });
-        assertCurrent();
+        const address = normalizePublicAddress(await runtime.session.readSelectedAddress(), network, runtime.accounts?.getSnapshot()?.utxoNetworks);
+        check(); this.publish({ phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required', account: Object.freeze({ network, address }), error: null }); check();
       } catch (cause) {
-        // Raw SDK unlock can finish after lock. Retire its late session before
-        // admitting the next attempt; cleanup must never target a newer session.
-        this.requestLock();
-        try { await this.drainLocks(); } catch { /* quarantined by requestLock */ }
+        this.requestLock(); try { await this.drainLocks(); } catch { /* cleanup quarantines */ }
         if (attempted && creating && this.snapshot.phase !== 'disposed') {
           try { await this.readState(operationSucceeded); } catch { this.failUnavailable(); }
+          // A lock may have published empty before an admitted creation committed.
+          // Reconcile its durable presence without reviving the retired operation.
+          if (this.snapshot.phase === 'empty' && this.snapshot.presence === 'existing')
+            this.publish({ phase: 'locked', account: null });
         }
-        if (this.snapshot.phase === 'disposed' || revision !== this.revision) {
-          if (this.snapshot.phase !== 'disposed' && this.snapshot.phase !== 'unavailable') {
-            this.publish({ phase: this.snapshot.presence === 'empty' ? 'empty' : 'locked', account: null });
-          }
-          throw new CustodyOperationError('CANCELLED');
-        }
+        if (this.snapshot.phase === 'disposed' || revision !== this.revision) throw new CustodyOperationError('CANCELLED');
         this.checkIdle();
-        if (this.lockFailed || this.snapshot.phase === 'unavailable')
-          throw new CustodyOperationError('UNAVAILABLE');
-        const code = credentialRejected ? 'INVALID_CREDENTIAL' :
-          cause instanceof CustodyRuntimeError &&
-          (cause.code === 'AUTH_THROTTLED' || cause.code === 'INVALID_INPUT')
-            ? cause.code : deviceUnlock ? 'DEVICE_UNLOCK_UNAVAILABLE' : 'OPERATION_FAILED';
-        this.publish({
-          phase: this.snapshot.presence === 'empty' ? 'empty' : 'locked',
-          account: null,
-          error: code,
-        });
+        if (this.lockFailed || this.snapshot.phase === 'unavailable') throw new CustodyOperationError('UNAVAILABLE');
+        const code = cause instanceof CustodyRuntimeError || cause instanceof CustodyOperationError ? cause.code : 'OPERATION_FAILED';
+        this.publish({ phase: this.snapshot.presence === 'empty' ? 'empty' : 'locked', account: null, error: code });
         throw new CustodyOperationError(code);
-      } finally {
-        this.pending = null;
-        resolveAdmission();
-      }
+      } finally { this.pending = null; release(); }
     })();
-    // The admission promise lets dispose wait even when called by an observer
-    // before this task has reached its first await.
-    return task;
   }
 
   private close(): Promise<void> {
@@ -855,7 +703,7 @@ export class NativeCustodyAuthority {
   /** Only this owner's original runtime may supply recovery's freshness identity. */
   retireForRecovery(): Promise<string> {
     if (this.recoveryRetirement) return this.recoveryRetirement;
-    if (this.disposal || this.snapshot.phase !== 'locked' || !this.runtime)
+    if (this.disposal || !['locked', 'ready', 'backup-required'].includes(this.snapshot.phase) || !this.runtime)
       return Promise.reject(new CustodyOperationError('NOT_READY'));
     this.startDisposal(true);
     return this.recoveryRetirement!;

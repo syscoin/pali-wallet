@@ -43,29 +43,6 @@ function expand(value: unknown): unknown {
   return { ...element, children: element.children.map(expand), props: { ...element.props, footer: expand(element.props.footer) } };
 }
 
-test('PIN field accepts a completed PIN through a fresh inline callback and retires closed callbacks', () => {
-  const env = environment(), received: string[] = [];
-  const f = screenFixture(new URL('../src/screens/PinEntry.tsx', import.meta.url), 'PinField', env.ports);
-  const render = () => f.render({ label: 'Wallet PIN', value: '', busy: false, onChange: (pin: string) => received.push(pin) });
-  try {
-    find(render(), 'Button', 'Enter PIN').props.onPress();
-    let tree = render();
-    const first = find(tree, 'Modal').children[0] as ScreenElement;
-    first.props.onComplete('123456');
-    first.props.onComplete('654321');
-    assert.deepEqual(received, ['123456']);
-    tree = render(); assert.equal(screenElements(tree).some(node => node.type === 'Modal'), false);
-    find(tree, 'Button', 'Enter PIN').props.onPress(); tree = render();
-    const stale = (find(tree, 'Modal').children[0] as ScreenElement).props.onComplete;
-    find(tree, 'Modal').props.onRequestClose(); render(); stale('654321');
-    assert.deepEqual(received, ['123456']);
-    find(render(), 'Button', 'Enter PIN').props.onPress(); tree = render();
-    const backgrounded = (find(tree, 'Modal').children[0] as ScreenElement).props.onComplete;
-    env.background(); backgrounded('654321');
-    assert.deepEqual(received, ['123456', '']);
-  } finally { f.close(); }
-});
-
 for (const cancel of [false, true]) test(`key import submits only its reviewed key and owned authentication scope (${cancel ? 'Back cancels' : 'success'})`, async () => {
   const env = environment(), held = Promise.withResolvers<void>();
   let imported = 0, cancelled = 0;

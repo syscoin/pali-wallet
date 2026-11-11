@@ -45,7 +45,6 @@ import type { FullCryptoQualification } from '../src/crypto/qualificationFull.ts
 // qualification configuration and never imported by the production entry.
 const PUBLIC_PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PUBLIC_PASSWORD = '123456';
 const EXPECTED_ADDRESS = '0x9858EfFD232B4033E47d90003D41EC34EcaEda94';
 const EXPECTED_HD_ADDRESS = '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0';
 const EXPECTED_ERC20_HD_ADDRESS = '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A';
@@ -498,19 +497,21 @@ function QualificationApp() {
           { createKeyringRuntimeFactory },
           { SeedBackupFlow },
           { openNativeWalletStorage },
-          { createNativePinCredentialPort },
+          { createQualificationCredentialPort, QUALIFICATION_AUTHORIZATION_MODE },
           bip39,
         ] = await Promise.all([
           import('../src/custody/authority.ts'),
           import('../src/custody/keyringRuntime.ts'),
           import('../src/custody/seedBackup.ts'),
           import('../src/storage/native'),
-          import('../src/platform/pinCredential.native'),
+          import('./fixture-credentials.ts'),
           import('bip39'),
         ]);
         const qualificationSlhExecution = null;
-        const qualificationPinCredential = createNativePinCredentialPort();
-        const factory = createKeyringRuntimeFactory({ pinCredential: qualificationPinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PUBLIC_PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys: null, slhExecution: qualificationSlhExecution, readEvmRetirement: null,
+        const SecureStore = await import('expo-secure-store');
+        const options = { keychainService: 'org.pali.qualification.fixture-only.v1', keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY, requireAuthentication: false };
+        const qualificationCredentials = createQualificationCredentialPort({ get: name => SecureStore.getItemAsync(name, options), set: (name, value) => SecureStore.setItemAsync(name, value, options), remove: name => SecureStore.deleteItemAsync(name, options) }, Constants.expoConfig?.ios?.bundleIdentifier, Constants.expoConfig?.android?.package);
+        const factory = createKeyringRuntimeFactory({ credentialPort: qualificationCredentials, isAuthenticationActive: () => false, privacyServiceSettings: null, passkeys: null, slhExecution: qualificationSlhExecution, readEvmRetirement: null,
           ensureCryptoReady: async () => {
             await ensureNativeCryptoReady();
           },
@@ -587,19 +588,19 @@ function QualificationApp() {
           expect(authority.getSnapshot().phase === 'empty');
           await check('create or import real SDK wallet', async () => {
             if (parameters!.scenario !== 'generate')
-              await authority!.importPhrase(PUBLIC_PHRASE, PUBLIC_PASSWORD);
+              await authority!.importPhrase(PUBLIC_PHRASE);
             else {
               observingGeneration = true;
               try {
-                await authority!.create(PUBLIC_PASSWORD);
+                await authority!.create();
               } finally {
                 observingGeneration = false;
               }
             }
           });
           expect(authority.getSnapshot().phase === 'backup-required');
-          await check('fresh password-backed seed confirmation', async () => {
-            const presentation = await backup!.begin(PUBLIC_PASSWORD);
+          await check('public-fixture authorized seed confirmation', async () => {
+            const presentation = await backup!.begin({ method: 'device' });
             expect(presentation.words.length === 12);
             const { HDNodeWallet } = await import('ethers/wallet');
             expectedHdAddress = HDNodeWallet.fromPhrase(presentation.words.join(' '), undefined, "m/44'/60'/0'/0/1").address;
@@ -639,12 +640,10 @@ function QualificationApp() {
             expect(authority!.getSnapshot().phase === 'ready');
           });
         } else {
-          expect(authority.getSnapshot().phase === 'locked');
           expect(authority.getSnapshot().backup === 'confirmed');
-          await check('unlock wallet after process restart', () =>
-            authority!.unlock(PUBLIC_PASSWORD)
-          );
-          expect(authority.getSnapshot().phase === 'ready');
+          await check('public session after process restart', async () => {
+            expect(authority!.getSnapshot().phase === 'ready' && qualificationCredentials.getSecretReads() === 0);
+          });
         }
         const rootAccount = authority.getCatalogue()?.accounts.find((account) => account.id === 'hd:60:0');
         expect(rootAccount && /^0x[0-9a-fA-F]{40}$/.test(rootAccount.address));
@@ -672,7 +671,7 @@ function QualificationApp() {
               const info = await FileSystem.getInfoAsync(file); assertCurrent();
               if (!info.exists || info.isDirectory || typeof info.size !== 'number' || info.size < 1 || info.size > 100000) throw Error('FULL_SLH_RESTART_REPORT_INVALID');
               const text = await FileSystem.readAsStringAsync(file); assertCurrent();
-              if (text.length > 100000 || text.includes(PUBLIC_PHRASE) || text.includes(PUBLIC_PASSWORD)) throw Error('FULL_SLH_RESTART_REPORT_INVALID');
+              if (text.length > 100000 || text.includes(PUBLIC_PHRASE)) throw Error('FULL_SLH_RESTART_REPORT_INVALID');
               const prior = JSON.parse(text);
               if (prior.version !== 1 || prior.phase !== 'create' || prior.scenario !== 'import' || prior.platform !== Platform.OS || prior.status !== 'passed' || prior.networkCalls !== 0) throw Error('FULL_SLH_RESTART_REPORT_INVALID');
               if (parameters.physical && Object.entries(physicalReportFields(parameters)).some(([key, value]) => prior[key] !== value))
@@ -684,8 +683,8 @@ function QualificationApp() {
             const resourceId = parameters.physical ? nativeModule.beginSlhQualificationResources() as string : null;
             try {
             fullSlh = await check(FULL_SLH_CHECK, () => qualifyNativeSlhFull({
-              phase: parameters!.phase as Phase, build, keyring: ring, storage: { ...opened, keyringStorage: checkpointStorage }, pin: PUBLIC_PASSWORD,
-              pinCredential: qualificationPinCredential, signal: owner.signal,
+              phase: parameters!.phase as Phase, build, keyring: ring, storage: { ...opened, keyringStorage: checkpointStorage },
+              credentialPort: qualificationCredentials, signal: owner.signal,
               productionCapability: qualificationSlhExecution, nativeModule, previous,
               assertCurrent, onStorageFault: () => { custody.lock(); },
               onDiagnostic: value => { fullSlhDiagnostic = value; },
@@ -705,49 +704,48 @@ function QualificationApp() {
         }
         const { qualifyNativeHdAccounts } = await import('./hd-accounts.ts');
         const hdEvidence = await qualifyNativeHdAccounts({
-          phase: parameters.phase, authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD,
+          phase: parameters.phase, authority, runtime: runtime!, storage: storage!,
           expectedSecondAddress: expectedHdAddress ?? (parameters.scenario !== 'generate' ? EXPECTED_HD_ADDRESS : undefined),
           expectedRestartAddress: parameters.address, check,
         });
         const { address } = hdEvidence;
         const { qualifyNativeErc20Transfer } = await import('./erc20-transfer.ts');
         const erc20Evidence = await qualifyNativeErc20Transfer({
-          phase: parameters.phase, authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD,
+          phase: parameters.phase, authority, runtime: runtime!, storage: storage!,
           expectedThirdAddress: expectedErc20Address ?? (parameters.scenario !== 'generate' ? EXPECTED_ERC20_HD_ADDRESS : undefined), check,
         });
         const { qualifyNativeNevmTransfer } = await import('./nevm-transfer.ts');
         const nevmEvidence = await qualifyNativeNevmTransfer({
-          phase: parameters.phase, authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD,
+          phase: parameters.phase, authority, runtime: runtime!, storage: storage!,
           expectedFourthAddress: expectedNevmAddress ?? (parameters.scenario !== 'generate' ? EXPECTED_NEVM_HD_ADDRESS : undefined), check,
         });
         const { qualifyNativeZksysTransfer } = await import('./zksys-transfer.ts');
         const zksysEvidence = await qualifyNativeZksysTransfer({
-          phase: parameters.phase, authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD,
+          phase: parameters.phase, authority, runtime: runtime!, storage: storage!,
           expectedFifthAddress: expectedZksysAddress ?? (parameters.scenario !== 'generate' ? EXPECTED_ZKSYS_HD_ADDRESS : undefined), check,
         });
         expect(authority.getSnapshot().account?.address === address && authority.getCatalogue()?.active.accountId === 'hd:60:1');
         const { qualifyNativeHdKeyReveal } = await import('./hd-key-reveal.ts');
         const keyRevealEvidence = await qualifyNativeHdKeyReveal({
-          authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD, expectedAddress: address, check,
+          authority, runtime: runtime!, storage: storage!, expectedAddress: address, check,
         });
         const { qualifyNativeImportedEvm } = await import('./imported-evm.ts');
         const importedEvidence = await qualifyNativeImportedEvm({
-          phase: parameters.phase, authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD, check,
+          phase: parameters.phase, authority, runtime: runtime!, storage: storage!, check,
         });
-        await check('synchronous lock and wrong password refusal', async () => {
+        await check('synchronous lock and OS authorization refusal', async () => {
           authority!.lock();
           expect(
             authority!.getSnapshot().phase === 'locked' &&
               authority!.getSnapshot().account === null
           );
+          const reads = qualificationCredentials.getSecretReads();
+          await authority!.unlock();
+          expect(qualificationCredentials.getSecretReads() === reads);
+          qualificationCredentials.refuseNextAuthorization();
           let rejected = false;
-          try {
-            await authority!.unlock('PUBLIC wrong password');
-          } catch {
-            rejected = true;
-          }
-          expect(rejected && authority!.getSnapshot().account === null);
-          await authority!.unlock(PUBLIC_PASSWORD);
+          try { await backup!.begin({ method: 'device' }); } catch { rejected = true; }
+          expect(rejected);
           expect(
             authority!.getSnapshot().phase === 'ready' &&
               authority!.getSnapshot().account?.address === address
@@ -757,7 +755,7 @@ function QualificationApp() {
         expect(/^[0-9a-f]{64}$/.test(fingerprint));
         if (parameters.phase === 'restart') {
           await check('seed reauthentication after cold restart', async () => {
-            const presentation = await backup!.begin(PUBLIC_PASSWORD);
+            const presentation = await backup!.begin({ method: 'device' });
             expect(presentation.words.length === 12);
             if (parameters!.scenario !== 'generate')
               expect(presentation.words.join(' ') === PUBLIC_PHRASE);
@@ -776,6 +774,7 @@ function QualificationApp() {
           ...(parameters.physical ? physicalReportFields(parameters) : {}),
           version: 1,
           status: 'passed',
+          authorizationMode: QUALIFICATION_AUTHORIZATION_MODE,
           phase: parameters.phase,
           scenario: parameters.scenario === 'full_slh' ? 'import' : parameters.scenario,
           platform: Platform.OS,

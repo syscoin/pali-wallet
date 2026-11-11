@@ -1,4 +1,4 @@
-import { enterPin } from '../ui/operationAuthentication';
+import { waitForNativePublicSession } from '../ui/operationAuthentication';
 import { expect, test } from '@playwright/test';
 import { watchAccountName } from '../accountControlNames';
 
@@ -16,7 +16,7 @@ test('display currency saves explicitly and quotes never relabel the exact balan
   await page.goto('/?fiat-fixture');
   await button('Accounts').click();
   await button('Open wallet').click();
-  await enterPin(page, '123456');
+  await waitForNativePublicSession(page);
   const quote = page.getByTestId('native-portfolio-quote');
   await expect(quote).toHaveText(/^≈ .+ USD$/);
   const exact = await page.getByTestId('native-portfolio-balance').textContent();

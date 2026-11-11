@@ -1,8 +1,7 @@
 import { PALI_RECOVERY_ALERTS_URL } from '../../../source/shared/smartAccountLinks.ts';
 import { getNativeGuardianRecoveryChoices } from '../src/smartAccount/guardianRecovery.ts';
+import { credentialPromptActivityState } from '../src/platform/credentialPort.ts';
 import { DeviceUnlockPrompt } from '../src/platform/deviceUnlockPrompt.ts';
-import * as passwordPolicy from '../src/custody/password.ts';
-import { isNativePin } from '../src/custody/pinVault.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -26,26 +25,16 @@ import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecy
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { NativeRecoveryFlow } from '../src/custody/recoveryFlow.ts';
 import { createNativeNoteRestore } from '../src/custody/nativeNoteRestore.ts';
-import { createNativePrivateAuthenticationScope, createNativePrivateAuthenticationChild, type NativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { createNoteBackupCodec } from '../../../source/wallet/noteBackup.ts';
 import * as networkContext from '../src/custody/networkContext.ts';
 import { isAllowedSentryKeyRoleScheme, type SentryKeySummary } from '../../../source/wallet/sentryKeyVault.ts';
 import { containsSentryPrivateKey, parseSentryKeyBatch } from '../../../source/utils/sentry/importBatch.ts';
 import { createNativeSentryKeyManagement, type NativeSentryKeyManagement } from '../src/custody/sentryKeyManagement.ts';
-import { OperationAuthentication, isOperationAuthenticationCancellation, type OperationAuthenticationPrompt } from '../src/core/operationAuthentication.ts';
 import type { NativeConnectionsView } from '../src/connections/types.ts';
 import type { NativeTrezorView } from '../src/custody/trezorAccounts.ts';
 import { quietActivityNotifications, type NotificationTestPort } from './notificationFixture.ts';
-
-// Leaf tests inject completed PIN values; the actual numeric pad has dedicated coverage.
-function pinFieldFixture(f: ReturnType<typeof setup>) {
-  return { PinField: (props: { label: string; value: string; onChange(value: string): void; busy: boolean }) =>
-    f.hook.createElement(f.idle.components.IdleTextInput, {
-      accessibilityLabel: props.label, value: props.value, onChangeText: props.onChange,
-      editable: !props.busy, secureTextEntry: true, maxLength: 6,
-    }) };
-}
 
 function trezorLifecycle() {
   return {background() {}, async cancel() {}, subscribe: () => () => undefined,
@@ -74,11 +63,8 @@ const walletScreenPorts = {
   '../notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
   '../activity/accountActivity': { AccountActivityController: class {} },
   './BackupIntroduction': { BackupIntroduction: 'BackupIntroduction' },
-  './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
   './WalletUpdatePanel': { LockedWalletUpdate: () => null },
-  './NativeDeviceUnlockSettings': { NativeDeviceUnlockSettings: 'NativeDeviceUnlockSettings' },
   './NativeImportWallet': { NativeImportWallet: 'NativeImportWallet' },
-  './PinEntry': { PinEntryScreen: 'PinEntryScreen', PinSetup: 'PinSetup', PinField: 'PinField', isWalletPin: isNativePin },
   './BackupVerification': { BackupVerification: 'BackupVerification' },
 };
 function evaluate(source: string, dependencies: Record<string, unknown>, flow = false) {
@@ -131,17 +117,16 @@ function setup(phase = 'entry') {
   const idle = createIdleComponentFixture(hook, native);
   const loaded = evaluate(readFileSync(new NodeURL('../src/screens/NativeRecovery.tsx', import.meta.url), 'utf8'), {
     './IdleActivityBoundary': idle.components,
-    '../custody/pinVault': { isNativePin }, './PinEntry': { PinSetup: 'PinSetup' },
     react: hook, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
   });
   const snapshot: Snapshot = { phase, inventory, error: '', fieldErrors: {} };
   const calls = { starts: 0, backs: 0, cancels: 0, submits: 0, commits: 0 };
   let admitted = true;
-  const flow = { getSnapshot: () => snapshot, subscribe: () => () => {}, start() { calls.starts++; },
+  const flow = { getSnapshot: () => snapshot, isAuthenticating: () => false, subscribe: () => () => {}, start() { calls.starts++; },
     back() { calls.backs++; }, cancel() { calls.cancels++; }, enter() { snapshot.phase = 'entry'; },
     submit(input: Record<string, string>) { calls.submits++; assert.deepEqual(Object.keys(input).sort(), ['phrase']); if (admitted) snapshot.phase = 'verifying'; return admitted; },
-    commit() { calls.commits++; snapshot.phase = 'pin'; },
-    submitPin(_pin: string) { snapshot.phase = 'committing'; return true; },
+    commit() { calls.commits++; snapshot.phase = 'committing'; },
   };
   const expand = (value: unknown): unknown => {
     if (!value || typeof value !== 'object' || !('children' in value)) return value;
@@ -193,7 +178,7 @@ test('recovery keeps numbered input bounded with native autofill disabled', () =
   assert.equal(f.calls.starts, 1); f.dispose();
 });
 
-test('recovery verifies the phrase before showing wallet confirmation and PIN setup', () => {
+test('recovery verifies the phrase before device-protected restoration', () => {
   const f = setup(); let tree = f.render();
   (field(tree, 'Recovery word 1').props.onChangeText as (text: string) => void)('abandon '.repeat(11) + 'about');
   tree = f.render(); press(button(tree, 'Continue'));
@@ -201,9 +186,8 @@ test('recovery verifies the phrase before showing wallet confirmation and PIN se
   tree = f.render(); assert.equal(all(tree).filter(e => e.type === 'TextInput').length, 0);
   assert.notEqual(tree.type, 'PinSetup');
   f.snapshot.phase = 'review'; tree = f.render();
-  assert.ok(all(tree).some(e => e.type === 'Notice' && /phrase matches/.test(String(e.props.title)))); press(button(tree, 'Create new PIN'));
-  tree = f.render(); assert.equal(tree.type, 'PinSetup');
-  (tree.props.onComplete as (pin: string) => void)('123456');
+  assert.ok(all(tree).some(e => e.type === 'Notice' && /phrase matches/.test(String(e.props.title)))); press(button(tree, 'Restore secure access'));
+  tree = f.render(); assert.notEqual(tree.type, 'PinSetup');
   assert.equal(f.snapshot.phase, 'committing');
   f.dispose();
 });
@@ -246,9 +230,9 @@ test('recovery shows public inventory only in the expanded disclosure', () => {
   f.dispose();
 });
 
-test('committing copy does not promise cancellation rolls back a completed PIN change', () => {
+test('committing copy does not promise cancellation rolls back a completed access change', () => {
   const f = setup('committing'); const tree = f.render();
-  assert.match(text(tree), /PIN change may already have completed/); assert.ok(button(tree, 'Leave recovery'));
+  assert.match(text(tree), /access change may already have completed/); assert.ok(button(tree, 'Leave recovery'));
   assert.equal(all(tree).filter(e => e.type === 'TextInput').length, 0); f.dispose();
 });
 
@@ -269,7 +253,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
     canUseWalletAuthenticator: () => false,
     guardianRecovery: { supportsPasskeys: () => false, hasIntent: () => false, async open() { throw Error('Unavailable in this fixture'); } },
     authority: { getSnapshot: () => state, getCatalogue: () => null, supportsAccountManagement: () => false,
-      async getAuthenticationStatus() { return { pinConfigured: true, biometricsAvailable: false, biometricsEnabled: false }; },
+      async getAuthenticationStatus() { return { deviceAuth: 'ready', credentialPresent: true };  },
       async initialize() {}, subscribe: () => () => {}, lock() {}, async dispose() { state = { ...state, phase: 'disposed' }; } },
     accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
     trezor: trezorLifecycle(), connections: { ...psbtLifecycle(), getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
@@ -292,7 +276,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
     '../platform/nativeFactory': { createNativeWalletControllers: () => controllers, createNativeRecoveryCoordinator: () => { throw Error('not used before verification'); } },
     '../platform/privacyShield.native': { async ensurePrivacyShield() {} },
     '../core/utxoNetworks': { findUtxoNetwork },
-    '../custody/password': passwordPolicy,
+
     '../custody/nativeControllerLifecycle': { NativeControllerLifecycle }, '../custody/recoveryFlow': { NativeRecoveryFlow },
     './NativeRecovery': { NativeRecovery: leaf.component }, '../custody/networkView': { createNativeNetworkView: () => ({}) },
     './useNativeNoteBackup': { useNativeNoteBackup: () => noteRestore },
@@ -302,7 +286,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   const props = { controllerRef: { current: null }, onExit() { exits++; } };
   owner = 'parent'; root.renderOwner(Root, props);
   await new Promise((resolve) => setImmediate(resolve));
-  let tree = root.renderOwner(Root, props); press(button(tree, 'Forgot PIN?'));
+  let tree = root.renderOwner(Root, props); press(button(tree, 'Restore access'));
   tree = root.renderOwner(Root, props); const flow = tree.props.flow as NativeRecoveryFlow;
   assert(flow instanceof NativeRecoveryFlow);
   owner = 'child'; leaf.renderFlow(flow); await new Promise((resolve) => setImmediate(resolve));
@@ -321,7 +305,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
 });
 
 async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED'; verifyCalls?: string[]; wait?: Promise<void> }, notificationPort: NotificationTestPort = quietActivityNotifications,
-  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number }, networkOverride?: networkContext.NativeNetworkRegistration) {
+  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number }, networkOverride?: networkContext.NativeNetworkRegistration, publicNavigation?: { initialAccountId: string }) {
   const root = setup();
   const networkId = networkMode === 'utxo' ? utxoResume ? 'syscoin' : 'bitcoin' : networkOverride?.id ?? 'ethereum';
   const address = `0x${'11'.repeat(20)}`;
@@ -330,8 +314,11 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     networks: networkOverride ? [...networkContext.NATIVE_NETWORKS.filter(network => network.id !== networkOverride.id), networkOverride] : networkContext.NATIVE_NETWORKS, utxoNetworks: networkMode ? UTXO_NETWORKS : [] };
   let state: { phase: string; revision: number; presence: string; backup: string; account: { address: string; network: string } | null; error: string | null } =
     { phase: setting || depositMode || networkMode || pinChange ? 'ready' : empty ? 'empty' : 'locked', revision: 1, presence: empty ? 'empty' : 'existing', backup: empty ? 'unconfirmed' : 'confirmed', account: setting || depositMode || networkMode || pinChange ? { address, network: networkId } : null, error: null };
+  if (publicNavigation) catalogue = { ...catalogue, accounts: [...catalogue.accounts, { ...catalogue.accounts[0]!, id: 'hd:60:1', index: 1, address: '0x' + '22'.repeat(20), label: 'Account 2' }] };
+  const selectedAccounts: string[] = [];
   let observer: (snapshot: typeof state) => void = () => {};
   let nextError: string | null = null;
+  let credentialPresent = !empty, recoveryInventoryReads = 0;
   let releasePrompt!: () => void;
   let locks = 0;
   const lifecycle: string[] = [];
@@ -383,16 +370,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
       },
       cancelAccountOperation() {},
       async initialize() {}, subscribe(fn: typeof observer) { observer = fn; return () => { observer = () => {}; }; },
-      async verifyPin(pin: string, check: () => void) {
-        assert(pinChange); check(); pinChange.verifyCalls?.push(pin);
-        await pinChange.wait; check();
-        if (pin !== '123456') throw new Error(pinChange.refusal);
-      },
-      async changePin(current: string, next: string, check: () => void) {
-        assert(pinChange); check(); pinChange.calls.push([current, next]);
-        if (current !== '123456') throw new Error(pinChange.refusal);
-      },
-      async getAuthenticationStatus() { return { pinConfigured: !empty, biometricsAvailable: deviceUnlock, biometricsEnabled }; },
+      async getAuthenticationStatus() { return { deviceAuth: 'ready', credentialPresent }; },
       async getDeviceUnlockStatus() { return { available: deviceUnlock, enabled: biometricsEnabled }; },
       async create() { publish({ phase: 'backup-required', presence: 'existing', backup: 'unconfirmed' }); },
       async setDeviceUnlock(enabled: boolean, password: string, check: () => void) {
@@ -411,16 +389,23 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
       async unlock() {
         publish({ phase: 'authenticating', error: null });
         if (nextError) { const code = nextError; publish({ phase: 'locked', error: code }); throw new Error(code); }
-        publish({ phase: 'backup-required', backup: 'unconfirmed', error: null });
+        publish({ phase: 'backup-required', backup: 'unconfirmed', account: { address, network: networkId }, error: null });
       } },
-    accounts: {}, balanceReader: {}, transfers: { cancel() {} }, tokens: {}, activity: {},
+    accounts: { async execute(request: { kind: string; id: string }, contextRevision: number, catalogueRevision: number) {
+      assert(publicNavigation); assert.equal(request.kind, 'select');
+      assert.equal(state.revision, contextRevision); assert.equal(catalogue.revision, catalogueRevision);
+      const selected = catalogue.accounts.find(account => account.id === request.id); assert(selected);
+      selectedAccounts.push(request.id);
+      catalogue = { ...catalogue, revision: catalogue.revision + 1, active: { ...catalogue.active, accountId: request.id } };
+      publish({ phase: 'ready', revision: state.revision + 1, account: { address: selected.address, network: networkId } });
+    } }, balanceReader: {}, transfers: { cancel() {} }, tokens: {}, activity: {},
     trezor: trezorLifecycle(), connections: { ...psbtLifecycle(lifecycle), getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
     removal: { requiresControllerReopen: () => false, cancel() {}, async dispose() {}, hasVerifiedRemoval: () => false },
     keyExport: { cancel() {}, dispose() {} }, backup: {
       cancel() {}, dispose() {}, onClear: () => () => {},
       async begin(password: string) {
         assert(backupCompletion, 'Backup is outside this fixture');
-        assert.equal((password as unknown as { pin: string }).pin, '123456');
+        assert.equal((password as unknown as { method: string }).method, 'device');
         return { id: 'public-backup-review', words: [...Array(11).fill('abandon'), 'about'] };
       },
       async confirm(id: string, words: readonly string[]) {
@@ -432,6 +417,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
       },
     },
     disposeTokens() {}, disposeTransfers() {}, async disposeConnections() {},
+    async readRecoveryInventory() { recoveryInventoryReads++; return inventory; },
   };
   let realAuthority: NativeCustodyAuthority | undefined, renderTransition: (() => void) | undefined;
   if (networkLifecycle) {
@@ -460,7 +446,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   }
   const source = readFileSync(new NodeURL('../src/screens/NativeWallet.native.tsx', import.meta.url), 'utf8');
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
-  const noteRestore = { cancel() {}, lock() {}, step: { phase: 'select' }, exportStep: { phase: 'select' } as { phase: 'select' | 'saved'; noteCount?: number }, busy: false, error: '',
+  const noteRestore = { cancel() {}, lock() {}, resume: () => false, step: { phase: 'select' }, exportStep: { phase: 'select' } as { phase: 'select' | 'saved'; noteCount?: number }, busy: false, error: '',
     begin(mode: string) { assert(depositMode && mode === 'export'); return true; } };
   Object.assign(dependencies, {
     ...walletScreenPorts,
@@ -479,7 +465,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     '../ui': { ...root.ui, Header: 'Header', PaliMark: 'PaliMark' },
     '../platform/nativeFactory': { createNativeWalletControllers: () => controllers, createNativeRecoveryCoordinator: () => { throw Error('unused'); } },
     '../platform/privacyShield.native': { async ensurePrivacyShield() {} },
-    '../core/utxoNetworks': { findUtxoNetwork, supportsUtxoSoftwareCustody }, '../custody/password': passwordPolicy,
+    '../core/utxoNetworks': { findUtxoNetwork, supportsUtxoSoftwareCustody },
     '../../../../source/shared/sptInventory': { supportsSptUtxoChain, sptBalanceTotalUnits },
     '../custody/nativeControllerLifecycle': { NativeControllerLifecycle }, '../custody/recoveryFlow': { NativeRecoveryFlow },
     '../custody/networkContext': networkContext,
@@ -526,77 +512,21 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     });
   }
   const Root = evaluate(source, dependencies).NativeWalletContent as (props: object) => Element;
-  const props = { controllerRef: { current: null }, onExit() {} };
+  const props = { controllerRef: { current: null }, initialAccountId: publicNavigation?.initialAccountId, onExit() {} };
   const render = () => root.renderOwner(Root, props);
   render(); await new Promise((resolve) => setImmediate(resolve));
-  if (realAuthority) { await realAuthority.unlock('123456'); render(); renderTransition = render; }
+  if (realAuthority) { await realAuthority.unlock(); render(); renderTransition = render; }
   const unlock = async (error: string | null) => {
     nextError = error;
-    let tree = render();
-    const pinEntry = all(tree).find(node => node.type === 'PinEntryScreen'); assert(pinEntry);
-    (pinEntry.props.onComplete as (pin: string) => void)('123456');
+    const tree = render();
+    press(button(tree, 'Open wallet'));
     await new Promise((resolve) => setImmediate(resolve));
     return render();
   };
-  return { render, unlock, publish, noteRestore, notificationRoutes, selectedNetwork: () => state.account?.network, authority: realAuthority, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, configurations, backupAcknowledgements, lifecycle, get locks() { return locks; } };
+  return { render, unlock, publish, noteRestore, notificationRoutes,
+    loseCredential() { credentialPresent = false; publish({}); }, get recoveryInventoryReads() { return recoveryInventoryReads; },
+    selectedAccounts, selectedAddress: () => state.account?.address, requestAccount(id: string) { props.initialAccountId = id; return render(); }, selectedNetwork: () => state.account?.network, authority: realAuthority, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, configurations, backupAcknowledgements, lifecycle, get locks() { return locks; } };
 }
-
-for (const refusal of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED'] as const) test(`Change PIN returns to a fresh current-PIN entry after ${refusal}`, async () => {
-  const change = { calls: [] as [string, string][], verifyCalls: [] as string[], refusal };
-  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, undefined, change);
-  const find = (type: string) => {
-    const entry = all(f.render()).find(node => node.type === type);
-    assert(entry, type); return entry;
-  };
-  try {
-    (find('NativePortfolio').props.onSecurity as () => void)();
-    (find('NativeSecurity').props.onChangePin as () => void)();
-    assert.equal(find('PinEntryScreen').props.title, 'Enter your current PIN');
-    const firstReset = find('PinEntryScreen').props.resetKey;
-    (find('PinEntryScreen').props.onComplete as (pin: string) => void)('000000');
-    assert.equal(all(f.render()).filter(node => node.type === 'PinSetup').length, 0, 'A wrong current PIN never opens new-PIN setup');
-    await new Promise(resolve => setImmediate(resolve));
-    const retry = find('PinEntryScreen');
-    assert.equal(retry.props.title, 'Enter your current PIN');
-    assert(retry.props.error, 'The refusal remains visible beside current-PIN entry');
-    assert.equal(retry.props.busy, false);
-    assert.notEqual(retry.props.resetKey, firstReset);
-    assert.equal(all(f.render()).filter(node => node.type === 'PinSetup').length, 0, 'Old PIN setup is unmounted');
-    assert.deepEqual(change.calls, []);
-    (retry.props.onComplete as (pin: string) => void)('123456');
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(find('PinSetup').props.error, '', 'The previous refusal does not leak into new-PIN setup');
-    (find('PinSetup').props.onComplete as (pin: string) => void)('654321');
-    await new Promise(resolve => setImmediate(resolve));
-    assert(find('NativeSecurity'));
-    assert.deepEqual(change.verifyCalls, ['000000', '123456']);
-    assert.deepEqual(change.calls, [['123456', '654321']]);
-  } finally { f.dispose(); }
-});
-
-for (const retirement of ['back', 'lock', 'context'] as const) test(`Change PIN refuses a late current-PIN verification after ${retirement}`, async () => {
-  const gate = Promise.withResolvers<void>();
-  const change = { calls: [] as [string, string][], verifyCalls: [] as string[], refusal: 'INVALID_CREDENTIAL' as const, wait: gate.promise };
-  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, undefined, change);
-  const find = (type: string) => { const node = all(f.render()).find(entry => entry.type === type); assert(node, type); return node; };
-  try {
-    (find('NativePortfolio').props.onSecurity as () => void)();
-    (find('NativeSecurity').props.onChangePin as () => void)();
-    (find('PinEntryScreen').props.onComplete as (pin: string) => void)('123456');
-    assert.equal(find('PinEntryScreen').props.busy, true);
-    assert.equal(all(f.render()).filter(node => node.type === 'PinSetup').length, 0);
-    if (retirement === 'back') (find('PinEntryScreen').props.onBack as () => void)();
-    else if (retirement === 'lock') f.emit('change', 'background');
-    else {
-      f.publish({ revision: 2 });
-      f.publish({ revision: 3 });
-    }
-    gate.resolve(); await new Promise(resolve => setImmediate(resolve));
-    assert.equal(all(f.render()).filter(node => node.type === 'PinSetup').length, 0);
-    assert.deepEqual(change.verifyCalls, ['123456']); assert.deepEqual(change.calls, []);
-    if (retirement !== 'context') assert(f.locks > 0);
-  } finally { gate.resolve(); f.dispose(); }
-});
 
 test('backup completion waits for verification and durable save, then clears displayed words', async () => {
   for (const action of ['done', 'back'] as const) {
@@ -608,9 +538,6 @@ test('backup completion waits for verification and durable save, then clears dis
       (home.props.onBackup as () => void)(); tree = f.render();
       const intro = all(tree).find(node => node.type === 'BackupIntroduction'); assert(intro);
       (intro.props.onStart as () => void)(); tree = f.render();
-      const authentication = all(tree).find(node => node.type === 'TransactionAuthentication'); assert(authentication);
-      assert.equal(authentication.props.method, 'pin');
-      (authentication.props.onConfirm as (credential: object) => void)({ method: 'pin', pin: '123456' });
       await new Promise(resolve => setImmediate(resolve));
       tree = f.render(); assert.match(text(tree), /abandon/);
       assert.deepEqual(f.backupAcknowledgements, []);
@@ -631,147 +558,64 @@ test('backup completion waits for verification and durable save, then clears dis
   }
 });
 
-test('PIN setup offers biometric enrollment while preserving Not now', async () => {
-  for (const enable of [false, true]) {
-    const f = await walletFeedbackFixture(true, true);
-    try {
-      press(row(f.render(), 'Create a wallet'));
-      let tree = f.render(); assert.equal(tree.type, 'PinSetup'); assert.equal(tree.props.available, true);
-      (tree.props.onBack as () => void)();
-      assert(row(f.render(), 'Import existing wallet'));
-      press(row(f.render(), 'Create a wallet'));
-      tree = f.render(); assert.equal(tree.type, 'PinSetup');
-      (tree.props.onComplete as (pin: string, enabled: boolean) => void)('123456', enable);
-      await new Promise(resolve => setImmediate(resolve));
-      assert.deepEqual(f.enrollments, enable ? [{ enabled: true, password: '123456' }] : []);
-    } finally { f.dispose(); }
-  }
-});
-
-for (const interruption of ['inactive', 'blur']) test(`native wallet discards a biometric result returned during ${interruption} and permits a fresh attempt`, async () => {
-  const f = await walletFeedbackFixture(true);
+test('automatic public entry selects the requested native account once without device authentication', async () => {
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, undefined,
+    undefined, undefined, undefined, undefined, { initialAccountId: 'hd:60:1' });
   try {
-    let tree = f.render();
-    assert.equal(tree.type, 'PinEntryScreen');
-    press(button(tree, 'Use biometrics'));
-    await new Promise(resolve => setImmediate(resolve));
-    if (interruption === 'inactive') f.emit('change', 'inactive'); else f.emit('blur');
-    f.render();
-    assert.equal(f.locks, 0);
-    f.releasePrompt(); await new Promise(resolve => setImmediate(resolve));
-    tree = f.render(); assert.equal(tree.type, 'PinEntryScreen');
-    assert.match(String(tree.props.error), /Biometric unlock was not completed/);
-    if (interruption === 'inactive') f.emit('change', 'active');
-    else f.emit('focus');
-    await new Promise(resolve => setImmediate(resolve));
-    tree = f.render(); assert.equal(tree.type, 'PinEntryScreen');
-    press(button(tree, 'Use biometrics'));
-    await new Promise(resolve => setImmediate(resolve));
-    f.releasePrompt(); await new Promise(resolve => setImmediate(resolve));
-    tree = f.render();
-    const home = all(tree).find(node => node.type === 'NativePortfolio'); assert(home);
-    (home.props.onBackup as () => void)(); tree = f.render();
-    const intro = all(tree).find(node => node.type === 'BackupIntroduction'); assert(intro);
-    (intro.props.onStart as () => void)(); tree = f.render();
-    assert.ok(all(tree).some(node => node.type === 'TransactionAuthentication' && node.props.method === 'biometric'));
-    const lifecycleOffset = f.lifecycle.length;
-    f.emit('blur'); f.render();
-    assert.equal(f.locks, 1);
-    assert.deepEqual(f.lifecycle.slice(lifecycleOffset), ['psbt-background', 'lock']);
+    assert.deepEqual(f.selectedAccounts, ['hd:60:1']);
+    assert.equal(f.selectedAddress(), '0x' + '22'.repeat(20));
+    const tree = f.render(); const home = all(tree).find(node => node.type === 'NativePortfolio'); assert(home, text(tree));
+    assert.equal((home.props.source as { getSnapshot(): { account: { address: string } } }).getSnapshot().account.address, f.selectedAddress());
+    f.render(); await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(f.selectedAccounts, ['hd:60:1'], 'ordinary rerender must not replay account selection');
+    assert.equal(f.enrollments.length, 0);
   } finally { f.dispose(); }
 });
 
-function deviceUnlockSettingsLeaf(route: Element) {
-  assert.equal(route.type, 'NativeDeviceUnlockSettings');
-  const leaf = setup();
-  const loaded = evaluate(readFileSync(new NodeURL('../src/screens/NativeDeviceUnlockSettings.tsx', import.meta.url), 'utf8'), {
-    react: leaf.hook, 'react-native': leaf.native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
-    '../ui': { ...leaf.ui, Header: 'Header' },
-    '../custody/privateAuthentication': { createNativePrivateAuthenticationScope, createNativePrivateAuthenticationChild },
-    '../core/operationAuthentication': { isOperationAuthenticationCancellation },
-    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
-  });
-  return { render: () => leaf.renderOwner(loaded.NativeDeviceUnlockSettings as (props: object) => Element, route.props), dispose: leaf.dispose };
-}
-
-for (const enabled of [false, true]) test(`a queued settings Cancel revokes pending biometric ${enabled ? 'disable' : 'enrollment'}`, async () => {
-  let finish!: () => void;
-  const f = await walletFeedbackFixture(true, false, { enabled, wait: new Promise(resolve => { finish = resolve; }) });
-  let leaf: ReturnType<typeof deviceUnlockSettingsLeaf> | undefined;
+test('a changed requested native account is selected on the mounted public wallet', async () => {
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, undefined,
+    undefined, undefined, undefined, undefined, { initialAccountId: 'hd:60:0' });
   try {
-    const portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
-    (portfolio.props.onSecurity as () => void)();
-    const security = f.render();
-    assert.equal(security.type, 'NativeSecurity');
-    (security.props.onDeviceUnlock as () => void)();
-    const route = f.render();
-    assert.equal(route.type, 'NativeDeviceUnlockSettings');
-    assert.equal(route.props.enabled, enabled); assert.equal(route.props.available, true);
-    assert.equal(all(route).some(node => node.type === 'PinField'), false);
-    leaf = deviceUnlockSettingsLeaf(route);
-    let tree = leaf.render();
-    const cancel = button(tree, 'Cancel');
-    assert.equal(all(tree).some(node => node.type === 'PinField'), false);
-    press(button(tree, `${enabled ? 'Turn off' : 'Enable'} ${String(route.props.label)}`));
-    tree = leaf.render();
-    assert.equal(button(tree, 'Updating…').props.disabled, true);
-    assert.equal(f.render().type, 'NativeDeviceUnlockSettings', 'Public configuration keeps the settings route mounted');
-    assert.equal(f.configurations.length, 1); assert.equal(f.configurations[0]!.enabled, !enabled);
-    const lifecycleOffset = f.lifecycle.length;
-    press(cancel);
-    assert.equal(f.configurations[0]!.signal.aborted, true);
-    assert.equal(f.locks, 0);
-    assert.deepEqual(f.lifecycle.slice(lifecycleOffset), []);
-    finish(); await new Promise(resolve => setImmediate(resolve));
-    assert.deepEqual(f.enrollments, []);
-    assert.equal(f.render().type, 'NativeSecurity');
-  } finally { finish(); leaf?.dispose(); f.dispose(); }
-});
-
-for (const enabled of [false, true]) test(`shared biometric ${enabled ? 'disable' : 'enable'} refreshes the parent status after configuration`, async () => {
-  let finish!: () => void;
-  const f = await walletFeedbackFixture(true, false, { enabled, wait: new Promise(resolve => { finish = resolve; }) });
-  let leaf: ReturnType<typeof deviceUnlockSettingsLeaf> | undefined;
-  try {
-    const portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
-    (portfolio.props.onSecurity as () => void)();
-    (f.render().props.onDeviceUnlock as () => void)();
-    const route = f.render(); leaf = deviceUnlockSettingsLeaf(route);
-    press(button(leaf.render(), `${enabled ? 'Turn off' : 'Enable'} ${String(route.props.label)}`));
-    assert.equal(f.render().type, 'NativeDeviceUnlockSettings');
-    finish(); await new Promise(resolve => setImmediate(resolve));
-    const security = f.render(); assert.equal(security.type, 'NativeSecurity');
-    assert.equal(security.props.deviceUnlockEnabled, !enabled);
-    assert.deepEqual(f.enrollments, [{ enabled: !enabled }]);
-  } finally { finish(); leaf?.dispose(); f.dispose(); }
-});
-
-test('native wallet background revokes a pending biometric prompt', async () => {
-  const f = await walletFeedbackFixture(true);
-  try {
-    press(button(f.render(), 'Use biometrics'));
-    await new Promise(resolve => setImmediate(resolve));
-    f.emit('blur'); f.render();
-    assert.equal(f.locks, 0);
-    const lifecycleOffset = f.lifecycle.length;
-    f.emit('change', 'background'); f.render();
-    assert.equal(f.locks, 1);
-    assert.deepEqual(f.lifecycle.slice(lifecycleOffset), ['psbt-background', 'lock']);
-    f.emit('change', 'active'); f.releasePrompt();
-    await new Promise(resolve => setImmediate(resolve));
-    const tree = f.render(); assert.equal(tree.type, 'PinEntryScreen');
-    assert.equal(all(tree).some(node => node.type === 'TransactionAuthentication'), false);
+    assert.deepEqual(f.selectedAccounts, []);
+    f.requestAccount('hd:60:1'); await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(f.selectedAccounts, ['hd:60:1']);
+    assert.equal(f.selectedAddress(), '0x' + '22'.repeat(20));
+    f.requestAccount('hd:60:1'); await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(f.selectedAccounts, ['hd:60:1']);
   } finally { f.dispose(); }
 });
 
-for (const code of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED'] as const) test(`PIN unlock shows its failure and clears it after retry (${code})`, async () => {
-  const f = await walletFeedbackFixture();
+for (const phase of ['ready', 'backup-required'] as const) test(`missing device credential opens phrase recovery from ${phase} security`, async () => {
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm');
   try {
-    let tree = await f.unlock(code);
-    assert.equal(tree.type, 'PinEntryScreen');
-    assert.match(String(tree.props.error), code === 'INVALID_CREDENTIAL' ? /incorrect/ : /Too many/);
-    tree = await f.unlock(null);
-    assert.equal(all(tree).some(node => node.type === 'PinEntryScreen'), false);
+    const home = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(home);
+    (home.props.onSecurity as () => void)(); f.render();
+    f.loseCredential();
+    f.publish({ phase, backup: phase === 'backup-required' ? 'unconfirmed' : 'confirmed' });
+    await new Promise(resolve => setImmediate(resolve));
+    const security = all(f.render()).find(node => node.type === 'NativeSecurity'); assert(security);
+    assert.equal(typeof security.props.onRestoreAccess, 'function');
+    (security.props.onRestoreAccess as () => void)();
+    const recovery = f.render(); assert.equal(recovery.type, 'NativeRecovery');
+    const flow = recovery.props.flow as NativeRecoveryFlow;
+    flow.start(); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(flow.getSnapshot().phase, 'scope');
+    assert.equal(f.recoveryInventoryReads, 1);
+    assert.equal(flow.getSnapshot().inventory?.status, 'needs-matching-phrase-verification');
+    flow.cancel(); await new Promise(resolve => setImmediate(resolve));
+  } finally { f.dispose(); }
+});
+
+test('wallet creation uses explicit device protection without offering a Pali PIN', async () => {
+  const f = await walletFeedbackFixture(false, true);
+  try {
+    press(row(f.render(), 'Create a wallet')); const tree = f.render();
+    assert.match(text(tree), /Protected by your phone/);
+    assert.match(text(tree), /device’s biometrics or passcode/);
+    assert.equal(all(tree).some(node => node.type === 'PinSetup' || node.type === 'PinEntryScreen'), false);
+    assert.equal(button(tree, 'Create wallet').props.disabled, false);
+    press(button(tree, 'Create wallet')); await new Promise(resolve => setImmediate(resolve));
+    assert(!all(f.render()).some(node => node.type === 'PinSetup'));
   } finally { f.dispose(); }
 });
 
@@ -780,6 +624,7 @@ test('actual native Sentry surface reviews once, copies only public data and ret
   const f = setup();
   const load = (name: string) => readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8');
   const common = {
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     react: f.hook, 'react-native': f.native, '../ui': { ...f.ui, Row: 'Row' },
     './IdleActivityBoundary': f.idle.components,
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
@@ -789,7 +634,7 @@ test('actual native Sentry surface reviews once, copies only public data and ret
   const view = evaluate(load('NativeSentryKeys'), {
     ...common,
     './NativeSentrySettings': { NativeSentrySettings: () => null },
-    './NoteBackupPasswordField': secure, './PinEntry': pinFieldFixture(f),
+    './NoteBackupPasswordField': secure,
     '../../../../source/wallet/sentryKeyVault': { isAllowedSentryKeyRoleScheme },
     '../../../../source/utils/sentry/importBatch': { containsSentryPrivateKey, parseSentryKeyBatch },
     'expo-clipboard': { async setStringAsync(value: string) { copied.push(value); return true; } },
@@ -949,6 +794,7 @@ for (const interruption of ['owned', 'background', 'unowned'] as const) test(`Se
   const f = setup();
   const load = (name: string) => readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8');
   const common = {
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     react: f.hook, 'react-native': f.native, '../ui': { ...f.ui, Row: 'Row' },
     './IdleActivityBoundary': f.idle.components,
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
@@ -976,7 +822,7 @@ for (const interruption of ['owned', 'background', 'unowned'] as const) test(`Se
   let keys: readonly SentryKeySummary[] = [];
   const unused = async (): Promise<never> => { throw Error('Unexpected operation'); };
   const manager: NativeSentryKeyManagement = {
-    isAuthenticating: () => proofOwned && nativePrompt.isActive(scope),
+    isAuthenticating: () => credentialPromptActivityState('android', f.native.AppState.currentState, { isCredentialPromptActive: () => false }) !== 'background' && proofOwned && nativePrompt.isActive(scope),
     getSettings: unused, saveSettings: unused, list: async () => keys,
     prepareImport: async () => ({ network: 'mainnet', expiresAt: performance.now() + 90000, keys: [key] }),
     async confirmImport() {
@@ -1015,6 +861,7 @@ test('Sentry batch paste reviews ordered public keys and rejects duplicates, ove
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const f = setup();
   const common = {
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     react: f.hook, 'react-native': f.native, '../ui': { ...f.ui, Row: 'Row' },
     './IdleActivityBoundary': f.idle.components,
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
@@ -1024,7 +871,7 @@ test('Sentry batch paste reviews ordered public keys and rejects duplicates, ove
   const view = evaluate(load('NativeSentryKeys'), {
     ...common,
     './NativeSentrySettings': { NativeSentrySettings: () => null },
-    './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common), './PinEntry': pinFieldFixture(f),
+    './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common),
     '../../../../source/wallet/sentryKeyVault': { isAllowedSentryKeyRoleScheme },
     '../../../../source/utils/sentry/importBatch': { containsSentryPrivateKey },
     'expo-clipboard': { getStringAsync: () => pendingClipboard ?? Promise.resolve(clipboard), setStringAsync: async () => true },
@@ -1093,16 +940,17 @@ for (const parentLast of [false, true]) test(`Sentry settings Android Back drain
   child.native.AppState = parent.native.AppState;
   const load = (name: string) => readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8');
   const common = (f: ReturnType<typeof setup>) => ({
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     react: f.hook, 'react-native': f.native, '../ui': { ...f.ui, Header: 'Header', Row: 'Row' },
     './IdleActivityBoundary': f.idle.components,
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
   });
   const settingsView = evaluate(load('NativeSentrySettings'), {
-    ...common(child), './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common(child)), './PinEntry': pinFieldFixture(child),
+    ...common(child), './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common(child)),
   }).NativeSentrySettings as (props: object) => Element;
   const parentView = evaluate(load('NativeSentryKeys'), {
     ...common(parent), './NativeSentrySettings': { NativeSentrySettings: 'SettingsChild' },
-    './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common(parent)), './PinEntry': pinFieldFixture(parent),
+    './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common(parent)),
     '../../../../source/wallet/sentryKeyVault': { isAllowedSentryKeyRoleScheme },
     '../../../../source/utils/sentry/importBatch': { containsSentryPrivateKey },
     'expo-clipboard': {},
@@ -1157,12 +1005,13 @@ test('Sentry settings Back cannot return a replacement owner after its old read 
   const f = setup();
   const load = (name: string) => readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8');
   const common = {
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     react: f.hook, 'react-native': f.native, '../ui': { ...f.ui, Header: 'Header' },
     './IdleActivityBoundary': f.idle.components,
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
   };
   const view = evaluate(load('NativeSentrySettings'), {
-    ...common, './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common), './PinEntry': pinFieldFixture(f),
+    ...common, './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common),
   }).NativeSentrySettings as (props: object) => Element;
   const held = Promise.withResolvers<{ serviceUrl: string; maxFeeSatoshis: string }>();
   let oldReturns = 0, newReturns = 0;
@@ -1190,12 +1039,13 @@ test('Sentry settings repeated Save keeps Back joined to the original operation'
   const f = setup();
   const load = (name: string) => readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8');
   const common = {
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     react: f.hook, 'react-native': f.native, '../ui': { ...f.ui, Header: 'Header' },
     './IdleActivityBoundary': f.idle.components,
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
   };
   const view = evaluate(load('NativeSentrySettings'), {
-    ...common, './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common), './PinEntry': pinFieldFixture(f),
+    ...common, './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common),
   }).NativeSentrySettings as (props: object) => Element;
   const held = Promise.withResolvers<void>();
   let saves = 0, returned = 0, writes = 0;
@@ -1230,17 +1080,18 @@ test('Sentry settings repeated Save keeps Back joined to the original operation'
   } finally { held.resolve(); f.dispose(); }
 });
 
-test('Sentry settings Back cancels the common authorization prompt before any write', async () => {
+test('Sentry settings Back cancels its device authorization before any write', async () => {
   const f = setup();
   const source = readFileSync(new NodeURL('../src/screens/NativeSentrySettings.tsx', import.meta.url), 'utf8');
   const view = evaluate(source, {
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     react: f.hook, 'react-native': f.native, '../ui': { ...f.ui, Header: 'Header' },
     './IdleActivityBoundary': f.idle.components,
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
   }).NativeSentrySettings as (props: object) => Element;
-  const broker = new OperationAuthentication();
-  let prompt: OperationAuthenticationPrompt | null = null;
-  const detach = broker.attach(value => { prompt = value; });
+  let promptOwner: AbortSignal | null = null;
+  let releasePrompt: (() => void) | undefined;
+  const nativePrompt = new DeviceUnlockPrompt({ state: () => f.native.AppState.currentState, subscribe: () => () => {} });
   const lifetime = new AbortController();
   let writes = 0, returned = 0, requested = 0;
   const unused = async (): Promise<never> => { throw Error('Unexpected private key access'); };
@@ -1250,17 +1101,18 @@ test('Sentry settings Back cancels the common authorization prompt before any wr
     vaultHost: { crypto: () => globalThis.crypto, read: unused, write: unused },
     readSettings: async () => ({ serviceUrl: 'https://sysnode.info', maxFeeSatoshis: '100000' }),
     async authenticate(check, signal) {
-      requested++;
-      await broker.request({ id: 'sentry-settings', purpose: 'account-change', biometricsEnabled: true }, signal, check, async (credential, assertAttemptCurrent) => {
-        assertAttemptCurrent();
-        return credential.method === 'pin' && credential.pin === '123456' ? { accepted: true } : { accepted: false, reason: 'INVALID_CREDENTIAL' };
-      });
+      requested++; promptOwner = signal;
+      await nativePrompt.run(signal, () => new Promise<void>((resolve, reject) => {
+        const abort = () => reject(Error('CANCELLED'));
+        signal.addEventListener('abort', abort, { once: true });
+        releasePrompt = () => { signal.removeEventListener('abort', abort); resolve(); };
+        if (signal.aborted) abort();
+      }));
       check();
     },
     async writeSettings(_settings, check) { check(); writes++; },
   });
   const props = { manager: { ...manager,
-    // The evaluated component runs in a separate VM realm; transport its DTO.
     saveSettings(input: Parameters<typeof manager.saveSettings>[0], check: () => void) {
       return manager.saveSettings(structuredClone(input), check);
     },
@@ -1268,33 +1120,27 @@ test('Sentry settings Back cancels the common authorization prompt before any wr
   const render = () => f.expand(f.renderOwner(view, props)) as Element;
   const tick = () => new Promise<void>(resolve => setImmediate(resolve));
   try {
-    render(); await tick();
-    press(button(render(), 'Save settings')); await tick();
-    assert.equal(requested, 1);
-    assert.equal(manager.isAuthenticating(), true);
-    const readPrompt = (): OperationAuthenticationPrompt | null => prompt;
-    const held = readPrompt();
-    assert.ok(held);
+    render(); await tick(); press(button(render(), 'Save settings')); await tick();
+    assert.equal(requested, 1); assert.equal(manager.isAuthenticating(), true);
+    const held = promptOwner as AbortSignal | null; assert.ok(held); assert.equal(nativePrompt.isActive(held), true);
     press(button(render(), 'Cancel')); await tick();
-    assert.equal(prompt, null);
-    assert.equal(manager.isAuthenticating(), false);
-    assert.equal(returned, 1);
-    assert.equal(writes, 0);
-    held.confirm({ method: 'pin', pin: '123456' }); await tick();
-    assert.equal(writes, 0);
-  } finally { manager.dispose(); detach(); f.dispose(); }
+    assert.equal(held.aborted, true); assert.equal(nativePrompt.isAnyPromptActive(), false);
+    assert.equal(manager.isAuthenticating(), false); assert.equal(returned, 1); assert.equal(writes, 0);
+    releasePrompt?.(); await tick(); assert.equal(writes, 0);
+  } finally { manager.dispose(); f.dispose(); }
 });
 
 test('Sentry settings handles a synchronous stale-at-open failure without a read', async () => {
   const f = setup();
   const load = (name: string) => readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8');
   const common = {
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     react: f.hook, 'react-native': f.native, '../ui': { ...f.ui, Header: 'Header' },
     './IdleActivityBoundary': f.idle.components,
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
   };
   const view = evaluate(load('NativeSentrySettings'), {
-    ...common, './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common), './PinEntry': pinFieldFixture(f),
+    ...common, './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common),
   }).NativeSentrySettings as (props: object) => Element;
   let writes = 0;
   const props = { manager: {
@@ -1314,7 +1160,7 @@ test('Sentry settings handles a synchronous stale-at-open failure without a read
 });
 
 
-test('ambiguous note restore shows its recovery instructions on the PIN screen', async () => {
+test('ambiguous note restore retains its recovery instructions on the public reopen screen', async () => {
   const failure = { commits: 0 };
   const f = await walletFeedbackFixture(false, false, undefined, undefined, true, undefined, undefined,
     quietActivityNotifications, undefined, undefined, failure);
@@ -1333,16 +1179,17 @@ test('ambiguous note restore shows its recovery instructions on the PIN screen',
     assert.equal(step.phase, 'review');
     await (restore.props.onRestore as (id: string) => Promise<void>)(step.preview.id);
     const locked = f.render();
-    assert.equal(locked.type, 'PinEntryScreen');
+    assert.equal(button(locked, 'Open wallet').props.disabled, false);
+    assert(!all(locked).some(node => node.type === 'PinEntryScreen'));
     assert.equal(failure.commits, 1);
     assert.equal(f.locks, 1);
-    const notices = all(locked.props.notice);
+    const notices = all(locked);
     assert(notices.some(node => node.type === 'Notice' && node.props.title === 'Restore could not be confirmed'));
     assert(notices.some(node => String(node.props.body).includes('after unlocking')));
     assert(!notices.some(node => node.props.title === 'Notes restored'));
     const retry = await f.unlock('INVALID_CREDENTIAL');
-    assert.equal(retry.type, 'PinEntryScreen');
-    assert(all(retry.props.notice).some(node => node.props.title === 'Restore could not be confirmed'), 'a failed unlock must retain the restore warning');
+    assert.equal(button(retry, 'Open wallet').props.disabled, false);
+    assert(all(retry).some(node => node.props.title === 'Restore could not be confirmed'), 'a failed unlock must retain the restore warning');
     assert.equal(failure.commits, 1, 'unlock retry must not repeat the restore');
   } finally { f.dispose(); }
 });

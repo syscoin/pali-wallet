@@ -1,11 +1,13 @@
-import { enterPin } from '../ui/operationAuthentication';
+import { authenticateNativeOperation, waitForNativePublicSession } from '../ui/operationAuthentication';
 import { expect, test, type Page } from '@playwright/test';
 const PHRASE = [...Array(11).fill('abandon'), 'about'].join(' ');
-const PIN = '654321';
 async function open(page: Page) {
-  await page.goto('/'); await page.getByRole('button', { name: 'Accounts', exact: true }).click();
+  await page.goto('/?credential-missing'); await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
-  await page.getByRole('button', { name: 'Forgot PIN?', exact: true }).click();
+  await waitForNativePublicSession(page);
+  await page.getByRole('tab', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: /^Security & backups/ }).click();
+  await page.getByRole('button', { name: /^Restore secure access/ }).click();
   await expect(page.getByRole('button', { name: 'Restore Wallet', exact: true })).toBeVisible();
 }
 async function verify(page: Page) {
@@ -16,11 +18,9 @@ async function verify(page: Page) {
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Wallet verified', exact: true })).toBeVisible();
 }
-async function chooseNewPin(page: Page) {
-  await page.getByRole('button', { name: 'Create new PIN', exact: true }).click();
-  await enterPin(page, PIN);
-  await expect(page.getByRole('heading', { name: 'Confirm your PIN', exact: true })).toBeVisible();
-  await enterPin(page, PIN);
+async function restoreDeviceAccess(page: Page) {
+  await page.getByRole('button', { name: 'Restore secure access', exact: true }).click();
+  await authenticateNativeOperation(page);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -29,28 +29,25 @@ test.beforeEach(async ({ page }) => {
     await route.abort(); throw new Error('Unexpected external request');
   });
 });
-test('actual NativeWallet preserves recovery across expected owner disposal and installs locked replacement', async ({ page }) => {
+test('actual NativeWallet preserves recovery across expected owner disposal and reopens public replacement', async ({ page }) => {
   await open(page); await verify(page);
   await expect(page.getByRole('heading', { name: 'Wallet verified', exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.nativePhase())).toBe('disposed');
   await expect(page.getByRole('textbox')).toHaveCount(0);
-  await chooseNewPin(page);
-  await expect(page.getByText('PIN changed. Unlock with your new PIN.', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('PIN, 0 of 6 digits entered', { exact: true })).toBeVisible();
-  expect(await page.evaluate(() => window.__watchFixture.nativePhase())).toBe('locked');
-  await enterPin(page, PIN);
+  await restoreDeviceAccess(page);
+  await waitForNativePublicSession(page);
+  expect(await page.evaluate(() => window.__watchFixture.nativePhase())).toBe('ready');
   await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
 });
 test('background while committing clears recovery and retains honest possible-completion outcome', async ({ page }) => {
   await open(page); await verify(page);
   await page.evaluate(() => window.__watchFixture.holdRecovery('commit'));
-  await chooseNewPin(page);
+  await restoreDeviceAccess(page);
   await page.evaluate(() => window.__watchFixture.lifecycle('background'));
   await expect(page.getByRole('textbox')).toHaveCount(0);
   await page.evaluate(() => window.__watchFixture.releaseRecovery('commit'));
   await page.evaluate(() => window.__watchFixture.lifecycle('active'));
-  await expect(page.getByText(/It may have completed/)).toBeVisible();
-  await expect(page.getByLabel('PIN, 0 of 6 digits entered', { exact: true })).toBeVisible();
+  await waitForNativePublicSession(page);
   expect(await page.evaluate(() => window.__watchFixture.recoveryAudit().committed)).toBe(1);
 });
 test('leaving and reentering waits for a prepared coordinator to drain', async ({ page }) => {
@@ -63,6 +60,6 @@ test('leaving and reentering waits for a prepared coordinator to drain', async (
   await expect(page.getByRole('button', { name: 'PIN digit 1', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__watchFixture.oldPhases().length)).toBe(1);
   await page.evaluate(() => window.__watchFixture.releaseRecovery('dispose'));
-  await expect(page.getByRole('button', { name: 'PIN digit 1', exact: true })).toBeVisible();
+  await waitForNativePublicSession(page);
   expect(await page.evaluate(() => window.__watchFixture.oldPhases().length)).toBe(2);
 });

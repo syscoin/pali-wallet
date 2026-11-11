@@ -30,7 +30,6 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     ...Object.fromEntries(['ActivityIndicator','KeyboardAvoidingView','Modal','ScrollView','View'].map(name=>[name,name]))};
   const ui={...Object.fromEntries(['Button','Card','Coin','Header','Icon','IconButton','Notice','Screen','Text'].map(name=>[name,name])),colors:{},styles:{}};
   const deps: Record<string,unknown> = {
-    './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
     './RecipientQrScanner': { RecipientQrScanner: 'RecipientQrScanner' },
     './SendNetworkCard': { SendNetworkCard: 'SendNetworkCard' },
     './SendAssetSelector': { SendAssetSelector: 'SendAssetSelector' },
@@ -53,7 +52,6 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   const prepared: unknown[] = [];
   const confirmed: string[] = [];
   const credentials: NativeOperationCredential[] = [];
-  let authenticationMethod: NativeOperationCredential['method'] = 'pin';
   let confirmationFailure: Error | undefined;
   let confirmationGate: Promise<void> | undefined, signatures = 0;
   const prepare = async (recipient: string, amount: string, nonce?: string) => {
@@ -75,9 +73,8 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     }, async prepareToken(...args: unknown[]) { prepared.push(args); }};
   let context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false,registrationHash:'ethereum-registration'};
   let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
-  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,beforeClose,recipientResolver,account,authenticationMethod,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
+  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,beforeClose,recipientResolver,account,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
   return {render,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
-    useBiometrics() { authenticationMethod = 'biometric'; },
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
     holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
     refreshProps(){account={...account};context={...context};},
@@ -90,9 +87,6 @@ function one(tree:Element,type:string,predicate:(e:Element)=>boolean=()=>true) {
 function modal(tree:Element){return one(tree,'Modal');}
 function button(tree:Element,title:string){return one(tree,'Button',e=>e.props.title===title);}
 function headerBack(tree:Element){one(tree,'Header').props.onBack();}
-function authenticateSend(f: ReturnType<typeof setup>) {
-  one(f.render(), 'TransactionAuthentication').props.onConfirm({ method: 'pin', pin: '123456' });
-}
 function openRecipientScanner(f: ReturnType<typeof setup>) {
   const field = all(f.render()).find(node => node.props.label === 'Ethereum address'); assert(field);
   assert.equal(field.props.trailing.props.label, 'Scan recipient address');
@@ -100,25 +94,18 @@ function openRecipientScanner(f: ReturnType<typeof setup>) {
   return one(f.render(), 'RecipientQrScanner');
 }
 
-for (const fallback of ['pin', 'biometric'] as const) test(`biometric refusal keeps the same EVM authorization page for ${fallback} retry`, async () => {
-  const f = setup(); f.useBiometrics(); f.snapshot.phase = 'idle';
+test('device authorization refusal keeps the exact EVM review available for retry', async () => {
+  const f = setup(); f.snapshot.phase = 'idle';
   editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
   editSend(f, 'Amount in ETH', '1'); reviewSend(f); await settle();
   const review = f.snapshot.review;
-  assert.equal(all(f.render()).some(node => node.props.title === 'Use PIN instead'), false);
-  button(f.render(), 'Confirm and send').props.onPress();
-  const initial = one(f.render(), 'TransactionAuthentication');
-  assert.equal(initial.props.method, 'biometric');
   f.failConfirmation('DEVICE_UNLOCK_UNAVAILABLE');
-  initial.props.onConfirm({ method: 'biometric' }); await settle();
-  const retry = one(f.render(), 'TransactionAuthentication');
-  assert.equal(retry.props.identity, initial.props.identity);
-  assert.equal(retry.props.method, 'biometric'); assert.equal(retry.props.busy, false);
-  assert(retry.props.error); assert.strictEqual(f.snapshot.review, review);
+  button(f.render(), 'Confirm and send').props.onPress(); await settle();
+  assert.strictEqual(f.snapshot.review, review);
   assert.equal(f.signatures(), 0); assert.equal(f.confirmed.length, 1);
-  retry.props.onConfirm(fallback === 'pin' ? { method: 'pin', pin: '123456' } : { method: 'biometric' });
-  await settle();
-  assert.deepEqual(f.credentials.map(value => value.method), ['biometric', fallback]);
+  assert(all(f.render()).some(node => node.props.accessibilityRole === 'alert'));
+  button(f.render(), 'Confirm and send').props.onPress(); await settle();
+  assert.deepEqual(f.credentials.map(value => value.method), ['device', 'device']);
   assert.equal(f.signatures(), 1); f.dispose();
 });
 
@@ -242,66 +229,58 @@ test('review has one primary action and Header Back returns to the unchanged dra
   f.dispose();
 });
 
-test('send review opens authentication without confirming and cancellation preserves the exact review', async () => {
-  const f = setup(); f.snapshot.phase = 'idle';
-  editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
-  editSend(f, 'Amount in ETH', '1'); reviewSend(f); await settle();
-  const review = f.snapshot.review;
-  button(f.render(), 'Confirm and send').props.onPress();
-  const authentication = one(f.render(), 'TransactionAuthentication');
-  assert.equal(authentication.props.method, 'pin');
-  assert.deepEqual(f.confirmed, []);
-  authentication.props.onCancel();
-  assert.equal(all(f.render()).some(node => node.type === 'TransactionAuthentication'), false);
-  assert.strictEqual(f.snapshot.review, review); assert.equal(f.counts().cancels, 0);
-  authentication.props.onConfirm({ method: 'pin', pin: 'stale' }); await settle();
-  assert.deepEqual(f.confirmed, []); f.dispose();
+test('send review directly requests device authorization once without a local PIN page', async () => {
+  const f = setup(), held = Promise.withResolvers<void>(); f.snapshot.phase = 'idle';
+  try {
+    editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+    editSend(f, 'Amount in ETH', '1'); reviewSend(f); await settle();
+    const review = f.snapshot.review;
+    f.holdConfirmation(held.promise);
+    const confirm = button(f.render(), 'Confirm and send'); confirm.props.onPress(); confirm.props.onPress();
+    assert.deepEqual(f.confirmed, ['review']); assert.deepEqual(f.credentials.map(value => value.method), ['device']);
+    assert.equal(f.signatures(), 0); assert.strictEqual(f.snapshot.review, review);
+    assert.equal(all(f.render()).some(node => node.type === 'TransactionAuthentication'), false);
+    held.resolve(); await settle(); assert.equal(f.signatures(), 1);
+  } finally { held.resolve(); f.dispose(); }
 });
 
-test('authentication captured for a replaced review cannot confirm its successor', async () => {
+test('confirmation captured for a replaced review cannot authorize its successor', async () => {
   const f = setup(); f.snapshot.phase = 'idle';
   editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
   editSend(f, 'Amount in ETH', '1'); reviewSend(f); await settle();
-  button(f.render(), 'Confirm and send').props.onPress();
-  const authentication = one(f.render(), 'TransactionAuthentication');
+  const confirm = button(f.render(), 'Confirm and send');
   f.setSnapshot({ ...f.snapshot, review: { ...f.snapshot.review } }); f.render();
-  authentication.props.onConfirm({ method: 'pin', pin: 'stale' }); await settle();
+  confirm.props.onPress(); await settle();
   assert.deepEqual(f.confirmed, []); f.dispose();
 });
 
-test('Back in a held authentication cancels the controller and discards its late outcome', async () => {
+test('Back during device authorization cancels the controller and discards its late outcome', async () => {
   const f = setup(), held = Promise.withResolvers<void>(); f.snapshot.phase = 'idle';
   try {
     editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
     editSend(f, 'Amount in ETH', '1'); reviewSend(f); await settle();
     f.holdConfirmation(held.promise); button(f.render(), 'Confirm and send').props.onPress();
-    const authentication = one(f.render(), 'TransactionAuthentication');
-    authentication.props.onConfirm({ method: 'pin', pin: '123456' });
-    assert.equal(one(f.render(), 'TransactionAuthentication').props.busy, true);
-    authentication.props.onCancel();
+    assert.equal(f.confirmed.length, 1); assert.equal(button(f.render(), 'Confirm and send').props.disabled, true);
+    headerBack(f.render());
     assert.equal(f.counts().cancels, 1); assert.equal(f.snapshot.review, null);
-    assert.equal(all(f.render()).some(node => node.type === 'TransactionAuthentication'), false);
     held.resolve(); await settle();
     assert.equal(f.signatures(), 0);
     assert.equal(all(f.render()).some(node => node.props.accessibilityRole === 'alert'), false);
   } finally { held.resolve(); f.dispose(); }
 });
 
-test('signing and submitting retire authentication so submission Back uses the existing Leave prompt', async () => {
+test('signing and submitting keep submission Back behind the existing Leave prompt', async () => {
   const f = setup(), held = Promise.withResolvers<void>(); f.snapshot.phase = 'idle';
   try {
     editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
     editSend(f, 'Amount in ETH', '1'); reviewSend(f); await settle();
     f.holdConfirmation(held.promise); button(f.render(), 'Confirm and send').props.onPress();
-    const authentication = one(f.render(), 'TransactionAuthentication');
-    authentication.props.onConfirm({ method: 'pin', pin: '123456' });
     f.snapshot.phase = 'signing';
     assert.equal(all(f.render()).some(node => node.type === 'TransactionAuthentication'), false);
-    f.snapshot.phase = 'submitting'; let tree = f.render();
-    assert.equal(all(tree).some(node => node.type === 'TransactionAuthentication'), false);
-    authentication.props.onCancel(); assert.equal(f.counts().cancels, 0);
-    headerBack(tree); tree = f.render(); assert.equal(modal(tree).props.visible, true);
-    assert(button(tree, 'Stay')); assert(button(tree, 'Leave'));
+    f.snapshot.phase = 'submitting'; const tree = f.render();
+    assert.equal(f.counts().cancels, 0);
+    headerBack(tree); assert.equal(modal(f.render()).props.visible, true);
+    assert(button(f.render(), 'Stay')); assert(button(f.render(), 'Leave'));
   } finally { held.resolve(); await settle(); f.dispose(); }
 });
 
@@ -388,7 +367,7 @@ test('ENS review and final confirmation keep the exact resolved address and name
   const tree=f.render();const text=all(tree).flatMap(node=>node.children).join(' ');
   assert.match(text,/recipient.eth/);assert.match(text,/RESOLVED ADDRESS/);
   assert.equal(one(tree,'Text',node=>node.props.testID==='native-send-recipient').children[0],'0x2222222222222222222222222222222222222222');
-  button(tree,'Confirm and send').props.onPress();authenticateSend(f);await settle();assert.deepEqual(f.confirmed,['review']);assert.equal(lookups,1);f.dispose();
+  button(tree,'Confirm and send').props.onPress();await settle();assert.deepEqual(f.confirmed,['review']);assert.equal(lookups,1);f.dispose();
 });
 
 for(const change of ['edit','account','close'] as const)test(`held ENS result cannot prepare after ${change}`,async()=>{
@@ -434,7 +413,7 @@ for (const edit of ['amount', 'nonce', 'controller cancellation'] as const) test
   assert.equal(tickets.length, 2); assert.equal(f.prepared.length, 2);
   assert.equal((f.prepared[1] as string[])[1], edit === 'amount' ? '2' : '1');
   if (edit === 'nonce') assert.equal((f.prepared[1] as string[])[2], '7');
-  button(f.render(), 'Confirm and send').props.onPress(); authenticateSend(f); await settle();
+  button(f.render(), 'Confirm and send').props.onPress();  await settle();
   assert.deepEqual(f.confirmed, ['review']); f.dispose();
 });
 
@@ -447,7 +426,7 @@ test('retiring an ENS review does not cancel its successor review or an authoriz
     const f = setup(undefined, undefined, resolver); f.snapshot.phase = 'idle';
     editSend(f, 'Ethereum address', 'recipient.eth'); editSend(f, 'Amount in ETH', '1');
     reviewSend(f); await settle();
-    if (authorized) { button(f.render(), 'Confirm and send').props.onPress(); authenticateSend(f); await settle(); }
+    if (authorized) { button(f.render(), 'Confirm and send').props.onPress();  await settle(); }
     const cancels = f.counts().cancels;
     const successor = authorized ? null : { ...f.snapshot.review, id: 'successor' };
     f.setSnapshot({ ...f.snapshot, phase: authorized ? 'submitting' : 'review', review: successor });

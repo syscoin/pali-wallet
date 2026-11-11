@@ -22,7 +22,7 @@ import {
 } from '../src/smartAccount/slhDsaRuntime.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
 import type { NativeKeyringSdk } from '../src/custody/keyringSdk.ts';
-import { createNativePinVault, type NativePinCredentialPort } from '../src/custody/pinVault.ts';
+import { createNativeCredentialVault, type NativeCredentialPort } from '../src/custody/credentialVault.ts';
 import { decodeStorageValue } from '../src/storage/json.ts';
 import { parseSLHDSAStateStorageKey } from '../../../source/wallet/slhDsaState.ts';
 import { SLH_DSA_PROFILE_STATE_DOMAIN } from '../../../source/wallet/slhDsaStateCrypto.ts';
@@ -322,8 +322,7 @@ export async function qualifyNativeSlhFull(
     phase: Phase;
     build: Build;
     keyring: Keyring;
-    pin: string;
-    pinCredential: NativePinCredentialPort;
+    credentialPort: NativeCredentialPort;
     signal: AbortSignal;
     storage: OpenWalletStorage;
     productionCapability: null;
@@ -397,15 +396,15 @@ export async function qualifyNativeSlhFull(
     !/^0x[0-9a-f]{64}$/.test(namespace)
   )
     fail();
-  const vault = createNativePinVault(ports.storage.pin, ports.pinCredential);
+  const vault = createNativeCredentialVault(ports.storage.credential, ports.credentialPort);
   const withSecret = async <T>(signal: AbortSignal, guard: () => void, work: () => Promise<T>): Promise<T> => {
-    let authenticated: (() => Promise<void>) | undefined;
+    let authenticated = false;
     const result = await ports.keyring.withSecretOperation({ async withSecret(sdkCheck, consume) {
       const check = () => { owner(); assertSynchronousEvmFeeGuard(guard); assertSynchronousEvmFeeGuard(sdkCheck); };
-      await vault.withVerifiedSecret(ports.pin, check, async (secret, complete) => { authenticated = complete; await consume(secret); });
+      await vault.withSecret({ purpose: 'transaction', signal, assertCurrent: check }, async secret => { authenticated = true; await consume(secret); });
     } }, { signal, assertCurrent: () => { owner(); assertSynchronousEvmFeeGuard(guard); } }, async () => {
       if (!authenticated) fail();
-      await authenticated(); owner();
+      owner();
       return work();
     });
     owner(); if (ports.keyring.isUnlocked()) fail();

@@ -1,27 +1,21 @@
-import type { Locator, Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
-/** Explicit user action through the real PIN keypad with a public fixture PIN. */
+/** Explicit browser-fixture response; it grants no native credential or signing proof. */
 export async function authenticateNativeOperation(page: Page) {
-  await enterPin(page, '123456');
+  await page.getByRole('button', { name: 'Approve test device', exact: true }).click();
 }
 
-export async function enterPin(page: Page, pin: string) {
-  if (!/^\d{1,6}$/.test(pin)) throw Error('A public test PIN must contain one to six digits');
-  for (const digit of pin) await page.getByRole('button', { name: `PIN digit ${digit}`, exact: true }).click();
+export async function refuseNativeOperation(page: Page) {
+  await page.getByRole('button', { name: 'Cancel test device', exact: true }).click();
 }
 
-export function pinField(page: Page, label: string) {
-  return page.getByText(label, { exact: true }).locator('..').getByRole('button');
-}
-
-export async function fillPinField(control: Locator, pin: string) {
-  await control.click();
-  await enterPin(control.page(), pin);
+export function deviceAuthorizationPrompt(page: Page) {
+  return page.getByText('Test device authorization', { exact: true });
 }
 
 export async function revealBackupPhrase(page: Page) {
   await page.getByRole('button', { name: 'Back Up Now', exact: true }).click();
-  await enterPin(page, '123456');
+  await authenticateNativeOperation(page);
 }
 
 export async function confirmFixtureBackup(page: Page) {
@@ -35,4 +29,13 @@ export async function confirmFixtureBackup(page: Page) {
     if (!selected) throw Error('The expected fixture recovery word is unavailable');
   }
   await page.getByRole('button', { name: 'Confirm backup', exact: true }).click();
+}
+
+/** Public entry deliberately has no PIN or device approval. */
+export async function waitForNativePublicSession(page: Page) {
+  const open = page.getByRole('button', { name: 'Open wallet', exact: true });
+  if (await open.isVisible()) await open.click();
+  await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'PIN digit 1', exact: true })).toHaveCount(0);
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
 }

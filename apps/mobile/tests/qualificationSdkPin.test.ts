@@ -55,7 +55,7 @@ for (const pin of [
   'file:apps/mobile/vendor/sysweb3-keyring-2.1.10.tgz',
   undefined,
 ])
-  test(`qualification refuses a non-exact or temporary package pin: ${pin}`, () => {
+  test(`qualification refuses a non-exact or temporary package credential: ${pin}`, () => {
     const f = fixture();
     try {
       f.json(path.join(f.mobile, 'package.json'), {

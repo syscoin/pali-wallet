@@ -1,4 +1,4 @@
-import { enterPin, pinField } from './operationAuthentication';
+import { authenticateNativeOperation, deviceAuthorizationPrompt } from './operationAuthentication';
 import { test, expect } from '@playwright/test';
 
 test.use({ baseURL: 'http://127.0.0.1:4179' });
@@ -11,7 +11,7 @@ test('actual account screen creates, selects, renames, removes and re-adds an ad
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
   await page.getByLabel('Account name', { exact: true }).fill('Savings');
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
-  await enterPin(page, '123456');
+  await authenticateNativeOperation(page);
   await expect(page.getByRole('button', { name: 'Select Savings', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Select Account 1', exact: true }).click();
   const savings = page.getByRole('button', { name: 'Select Savings', exact: true }).locator('..');
@@ -22,14 +22,14 @@ test('actual account screen creates, selects, renames, removes and re-adds an ad
   await travel.getByRole('button', { name: 'Remove Travel', exact: true }).click();
   await expect(page.getByText('Your funds stay at this address', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Remove from this device', exact: true }).click();
-  await enterPin(page, '123456');
+  await authenticateNativeOperation(page);
   await expect(page.getByRole('button', { name: 'Select Travel', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Add account', exact: true }).click();
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
   await page.getByLabel('Account name', { exact: true }).fill('Account 3');
-  await expect(pinField(page, 'Confirm wallet PIN')).toHaveCount(0);
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
-  await enterPin(page, '123456');
+  await authenticateNativeOperation(page);
   await expect(page.getByRole('button', { name: 'Select Account 3', exact: true })).toBeVisible();
   const requests = await page.evaluate(() => window.__nativeAccountsFixture.requests());
   expect(requests.map((request) => request.kind)).toEqual(['create', 'select', 'rename', 'remove', 'create']);
@@ -42,11 +42,11 @@ test('context replacement clears the account draft and requires a fresh form', a
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
   await page.getByLabel('Account name', { exact: true }).fill('Private label');
   await page.evaluate(() => window.__nativeAccountsFixture.revise());
-  await expect(pinField(page, 'Confirm wallet PIN')).toHaveCount(0);
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
   await page.getByRole('button', { name: 'Add account', exact: true }).click();
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
   await expect(page.getByLabel('Account name', { exact: true })).toHaveValue('');
-  await expect(pinField(page, 'Confirm wallet PIN')).toHaveCount(0);
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
   expect(await page.evaluate(() => window.__nativeAccountsFixture.requests())).toEqual([]);
 });
 
@@ -70,14 +70,14 @@ test('expected account limit rejection remains visible without changing the read
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
   await page.getByLabel('Account name', { exact: true }).fill('Savings');
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
-  await enterPin(page, '123456');
+  await authenticateNativeOperation(page);
   await expect(page.getByRole('alert')).toContainText('There is not enough protected storage for this account.');
-  await expect(pinField(page, 'Confirm wallet PIN')).toHaveCount(0);
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
   expect(await page.evaluate(() => window.__nativeAccountsFixture.contextRevision())).toBe(0);
 });
 
 for (const [failure, message] of [
-  ['credential', 'That PIN is incorrect. Unlock your wallet to try again.'],
+  ['credential', 'Device authentication was not completed. Please try again.'],
   ['uncertain', 'Pali could not confirm the saved wallet state.'],
 ] as const) {
   test(`parent retains safe feedback after ${failure} unmounts account controls`, async ({ page }) => {
@@ -86,8 +86,8 @@ for (const [failure, message] of [
     await page.getByRole('button', { name: 'Create account', exact: true }).click();
     await page.getByLabel('Account name', { exact: true }).fill('Savings');
     await page.getByRole('button', { name: 'Create account', exact: true }).click();
-    await enterPin(page, '123456');
-    await expect(pinField(page, 'Confirm wallet PIN')).toHaveCount(0);
+    await authenticateNativeOperation(page);
+    await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
     await expect(page.getByRole('alert')).toContainText(message);
     await expect(page.getByText('Wallet locked', { exact: true })).toBeVisible();
   });

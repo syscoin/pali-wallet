@@ -1,4 +1,4 @@
-import { authenticateNativeOperation, pinField } from './operationAuthentication';
+import { authenticateNativeOperation, deviceAuthorizationPrompt } from './operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 import { Transaction } from 'ethers';
 import { decodeErc20Transfer } from '../../../../source/shared/erc20';
@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
 const recipient = '0x1111111111111111111111111111111111111111';
 const contract = '0x3333333333333333333333333333333333333333';
 const password = (page: Page) =>
-  pinField(page, 'Confirm your wallet PIN');
+  deviceAuthorizationPrompt(page);
 async function prepare(page: Page, amount = '2.5') {
   await page.getByLabel('Ethereum address', { exact: true }).fill(recipient);
   await page.getByLabel('Amount in FIX', { exact: true }).fill(amount);

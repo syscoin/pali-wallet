@@ -14,6 +14,10 @@ import java.nio.ByteBuffer
 import java.util.UUID
 
 class PaliWalletStorageModule : Module() {
+  private var protectedCredentials: PaliCredentialOwner? = null
+  private fun credentials(): PaliCredentialOwner = protectedCredentials ?: synchronized(this) {
+    protectedCredentials ?: PaliCredentialOwner(requireNotNull(appContext.reactContext).applicationContext) { appContext.currentActivity }.also { protectedCredentials = it }
+  }
   private val noteBackupPickerOwner = PaliNoteBackupPicker.Owner()
   private val publicSnapshots = PaliPublicSnapshotBridge()
 
@@ -71,6 +75,16 @@ class PaliWalletStorageModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("PaliWalletStorage")
+    Function("isCredentialPromptActive") { protectedCredentials?.isAuthenticating() == true }
+    Function("credentialCapabilities") { binding: String? -> credentials().capabilities(binding) }
+    Function("prepareCredentialAuthorization") { binding: String -> PaliCredentialRequest(credentials(), binding, authorizationOnly = true) }
+    Function("prepareCredentialRead") { binding: String -> PaliCredentialRequest(credentials(), binding) }
+    Function("prepareCredentialStage") { binding: String, secret: String -> PaliCredentialRequest(credentials(), binding, secret) }
+    AsyncFunction("removeCredential") { binding: String -> credentials().remove(binding) }
+    Class("CredentialRequest", PaliCredentialRequest::class) {
+      Function("cancel") { request: PaliCredentialRequest -> request.cancel() }
+      AsyncFunction("run") { request: PaliCredentialRequest, promise: Promise -> request.run(promise) }
+    }
     AsyncFunction("prepareNotificationStorage") { create: Boolean ->
       PaliNotificationStoragePolicy.prepare(appContext.reactContext ?: failure(), create)
     }
@@ -117,7 +131,7 @@ class PaliWalletStorageModule : Module() {
       try { publicSnapshots.release(token) { promise.resolve(null) } }
       catch (error: Exception) { rejectSnapshot(promise, error) }
     }
-    OnActivityEntersBackground { publicSnapshots.cancelActive() }
+    OnActivityEntersBackground { publicSnapshots.cancelActive(); protectedCredentials?.background() }
     AsyncFunction("pickEncryptedNoteBackup") { promise: Promise ->
       val activity = appContext.currentActivity.takeIf { appContext.hasActiveReactInstance }
       PaliNoteBackupPicker.pick(noteBackupPickerOwner, activity, false, promise)
@@ -137,6 +151,7 @@ class PaliWalletStorageModule : Module() {
     }
     OnActivityDestroys { PaliNoteBackupPicker.activityDestroyed(noteBackupPickerOwner) }
     OnDestroy {
+      protectedCredentials?.close()
       publicSnapshots.close()
       PaliNoteBackupPicker.invalidate(noteBackupPickerOwner)
     }

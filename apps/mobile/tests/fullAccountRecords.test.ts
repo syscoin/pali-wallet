@@ -1,9 +1,9 @@
-import { withTestPinOperation } from './fixtures/pinOperation.ts';
+import { withTestCredentialOperation } from './fixtures/credentialOperation.ts';
 import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
 import { createNativePublicSessionRecord, NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
 import { signTestTransfer } from './fixtures/operationAuthorization.ts';
-import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
-import { createNativePinVault } from '../src/custody/pinVault.ts';
+import { createTestCredentialPort } from './fixtures/credential.ts';
+import { createNativeCredentialVault } from '../src/custody/credentialVault.ts';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import assert from 'node:assert/strict';
@@ -23,7 +23,7 @@ import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
-const pinCredential = createTestPinCredentialPort();
+const credentialPort = createTestCredentialPort();
 
 process.env.NODE_ENV = 'production';
 const PHRASE =
@@ -77,7 +77,7 @@ async function fixture() {
   }
   let runtime!: KeyringRuntime;
   let storage!: SqliteWalletStorage;
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
     async ensureCryptoReady() {
       assert(globalThis.crypto.subtle);
     },
@@ -102,10 +102,10 @@ async function fixture() {
     });
   let authority = open();
   await authority.initialize();
-  await authority.importPhrase(PHRASE, PASSWORD);
+  await authority.importPhrase(PHRASE);
   await runtime.backup.confirm(await runtime.backup.fingerprint());
   authority.lock();
-  await authority.unlock(PASSWORD);
+  await authority.unlock();
   return {
     calls,
     get keyring() { return keyrings.find((keyring) => keyring.hasPublicSession())!; },
@@ -134,7 +134,7 @@ async function fixture() {
       await authority.dispose();
       authority = open();
       await authority.initialize();
-      await authority.unlock(PASSWORD);
+      await authority.unlock();
     },
     async close() {
       try {
@@ -162,7 +162,7 @@ test('complete SDK records survive normal unlock without deriving or importing a
     assert.deepEqual(f.calls, { first: 1, derive: 0, imports: 0, adds: 0 });
     const before = JSON.stringify(record);
     f.authority.lock();
-    await f.authority.unlock(PASSWORD);
+    await f.authority.unlock();
     await f.reopen();
     assert.deepEqual(f.calls, { first: 1, derive: 0, imports: 0, adds: 0 });
     assert.equal(JSON.stringify(await f.record()), before);
@@ -215,7 +215,7 @@ test('the existing SDK reuses a deleted HD ID and the canonical map preserves a 
     await f.reopen();
     assert.deepEqual(f.calls, counters);
     assert.deepEqual(await f.record(), before);
-    const signed = await signTestTransfer(f.runtime.transfers!, PASSWORD,
+    const signed = await signTestTransfer(f.runtime.transfers!,
       {
         type: 2, accessList: [],
         from: second.address,
@@ -255,11 +255,11 @@ test('an actual SDK HD4096 record survives nonactive cold loading, selection and
     const identity = await f.storage.recovery.readIdentity();
     assert(identity); assert(identity.root);
     const previousCheckpoint = await f.storage.keyringStorage.get(NATIVE_PUBLIC_SESSION_KEY);
-    const account = await withTestPinOperation(f.storage.pin, pinCredential, ring, PASSWORD, check,
+    const account = await withTestCredentialOperation(f.storage.credential, credentialPort, ring, check,
       async () => {
         const derived = await ring.deriveEvmHdRuntimeAccount({index: 4096}, {assertCurrent: check});
         group.accounts.HDAccount[4096] = derived;
-        const checkpoint = await createNativePinVault(f.storage.pin, pinCredential).withPublicKey(check,
+        const checkpoint = await createNativeCredentialVault(f.storage.credential, credentialPort).withPublicKey(check,
           key => createNativePublicSessionRecord(ring, record, identity, new Map(), key, check));
         assert.equal(await f.storage.keyringStorage.compareAndSetMany([
           { key: WALLET_CATALOGUE_KEY, expected: previous, value: record },
@@ -271,7 +271,7 @@ test('an actual SDK HD4096 record survives nonactive cold loading, selection and
     assert(f.authority.getCatalogue()!.accounts.some((row) => row.id === 'hd:60:4096'));
     assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:0');
     await f.execute({kind: 'select', id: 'hd:60:4096'});
-    const signed = await signTestTransfer(f.runtime.transfers!, PASSWORD, {type: 2, accessList: [], from: account.address, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1'}, { assertCurrent: () => undefined, signal: new AbortController().signal });
+    const signed = await signTestTransfer(f.runtime.transfers!, {type: 2, accessList: [], from: account.address, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1'}, { assertCurrent: () => undefined, signal: new AbortController().signal });
     assert.equal(Transaction.from(signed.rawTransaction).from, account.address);
     const current = f.authority.getCatalogue()!;
     const secret = await f.runtime.keyExport!.readSelected({ authorityRevision: f.authority.getSnapshot().revision, catalogueRevision: current.revision,

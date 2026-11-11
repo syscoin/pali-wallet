@@ -46,12 +46,11 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
   authority: NativeCustodyAuthority;
   runtime: KeyringRuntime;
   storage: Pick<OpenWalletStorage, 'signedRecords' | 'recovery' | 'getWalletFingerprint'>;
-  password: string;
   expectedSecondAddress?: string;
   expectedRestartAddress?: string | null;
   check: Check;
 }>): Promise<HdQualificationEvidence> {
-  const { authority, runtime, storage, password, check } = options;
+  const { authority, runtime, storage, check } = options;
   if (options.phase === 'create') requireEvidence(
     typeof options.expectedSecondAddress === 'string' && /^0x[0-9a-fA-F]{40}$/.test(options.expectedSecondAddress)
   );
@@ -110,7 +109,7 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
     return stored.hash;
   };
   const sign = async (address: string, index: number) => {
-    const signed = await signQualificationTransfer(transfer, password, {
+    const signed = await signQualificationTransfer(transfer, {
       type: 2, accessList: [], from: address, to: '0x1111111111111111111111111111111111111111',
       chainId: '1', nonce: '0', value: '123', gasLimit: '21000', data: '0x',
       maxFeePerGas: '3', maxPriorityFeePerGas: '1',
@@ -148,7 +147,7 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
       await manage({ kind: 'select', id: first.id });
       requireEvidence(await readSigned(firstAddress, 0) === firstTransferHash);
       await assertRejected({ kind: 'remove', id: 'hd:60:1',}, 'PENDING_TRANSFER', true);
-      await authority.unlock(password);
+      await authority.unlock();
       requireEvidence(catalogue().active.accountId === first.id && selected() === firstAddress);
       await manage({ kind: 'select', id: 'hd:60:1' });
       requireEvidence(await readSigned(address, 1) === transferHash);

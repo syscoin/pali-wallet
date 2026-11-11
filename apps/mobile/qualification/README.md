@@ -575,3 +575,7 @@ The artifacts were rebuilt with TypeScript 5.9.3, Rollup 4.60.1 and rollup-plugi
 The existing native HTTP qualification lane also writes a separate `pali-native-walletconnect-<token>.json` sidecar for this candidate. It exercises an actual loopback WebSocket through the production adapter, closes an established connection, cancels an unfinished handshake, and checks that both public SDK owners are retired. The host independently checks socket closure and a quiet interval. The sidecar is required and matched to the build, launch, session and candidate identity before the host accepts that lane.
 
 Node protocol tests exercise the same fixture and adapter. Android and iOS execution of this added lane remains a release gate until evidence is recorded against the exact candidate head.
+
+### OS authorization boundary
+
+The native crypto/SLH and transfer fixture uses `authorizationMode: test-only-fixture` for its disposable public wallets. It is confined to qualification bundle identifiers, persists only fixture credentials in a separate namespace for restart tests, and does **not** qualify OS user presence or hardware-backed credential storage. Production uses the native protected credential port; its biometric and system-device-passcode success, cancellation, background, invalidation, and cold-reopen paths require separate device qualification.

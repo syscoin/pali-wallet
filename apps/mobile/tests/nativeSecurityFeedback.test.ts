@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 for (const ending of ['failure', 'back', 'background', 'account-change', 'cancel'] as const) {
   test(`key reveal ${ending} only publishes feedback for its current request`, async () => {
@@ -10,6 +11,7 @@ for (const ending of ['failure', 'back', 'background', 'account-change', 'cancel
     const keyExport = { onClear(listener: () => void) { listeners.add(listener); return () => listeners.delete(listener); }, cancel: clear,
       begin() { clear(); return pending.promise; }, isAuthenticating: () => false, isCurrent: () => false };
     const f = screenFixture(new URL('../src/screens/NativeSecurity.tsx', import.meta.url), 'NativeSecurity', {
+      './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
       'react-native': { View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView', ActivityIndicator: 'ActivityIndicator', Switch: 'Switch', AppState: app,
         BackHandler: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} }, Platform: { OS: 'ios' }, StyleSheet: { create: (x: unknown) => x } },
       'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
@@ -17,13 +19,13 @@ for (const ending of ['failure', 'back', 'background', 'account-change', 'cancel
       '../platform/balancePrivacy': { useBalancePrivacy: () => ({ status: 'ready', hidden: false }), reloadBalancePrivacy() {}, saveBalancePrivacy() {} },
       './BalancePrivacySetting': { BalancePrivacySetting: 'BalancePrivacySetting' },
       '../platform/localization': { useNativeTranslation: () => ({ t: (key: string) => key }) },
-      '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'Face ID', icon: 'face-id' }) },
     });
     let props = { keyExport, keyFormat: 'evm', accountId: 'hd:60:0', accountType: 'HDAccount', accountLabel: 'Wallet', address: '0x' + '1'.repeat(40), backupConfirmed: true,
       onViewRecovery() {}, onLock() {}, onBack() {}, captureFailureHandler: () => () => {} };
     const nodes = () => screenElements(f.render(props));
     const control = (type: string, prop: string, value?: string) => { const node = nodes().find(n => n.type === type && (value === undefined || n.props[prop] === value)); assert(node); return node; };
     try {
+      assert(!nodes().some(node => node.type === 'Row' && ['Change PIN', 'Face ID', 'Fingerprint unlock', 'mobile.security.biometric'].includes(node.props.title)));
       control('Row', 'title', 'mobile.security.revealAccountKey').props.onPress();
       const work = control('Button', 'title', 'mobile.security.reveal').props.onPress();
       if (ending === 'back') control('Header', '').props.onBack();

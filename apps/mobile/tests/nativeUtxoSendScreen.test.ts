@@ -51,7 +51,6 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
     react, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
     '../core/amounts': { formatBaseUnits }, './NativeLedger': { NativeLedgerConnectionModal: 'Ledger' },
     './IdleActivityBoundary': { IdleTextInput: 'Input' },
-    './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
     './UtxoRecipientQrScanner': { UtxoRecipientQrScanner: 'UtxoRecipientQrScanner' },
     '../../../../source/shared/syscoinAssetIds': { SYSX_ASSET_GUID, SYSX_ASSET_DECIMALS },
     '../../../../source/utils/syscoinAssetAmount': { isAssetAmountEqualToBalance, toEightDecimalBuilderAmount },
@@ -60,8 +59,7 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
   const module = { exports: {} as any };
   runInNewContext(code, { module, exports: module.exports, Error, require(name: string) { assert(Object.hasOwn(imports, name), name); return imports[name]; } });
   const requests: any[] = []; let cancels = 0, confirmations = 0, networkChanges = 0, gate: Promise<void> | undefined, release: (() => void) | undefined;
-  let authenticationMethod: NativeOperationCredential['method'] = 'pin';
-  let confirmationFailure: Error | undefined;
+  let confirmationFailure: Error | undefined, confirmationGate: Promise<void> | undefined, signatures = 0;
   let retryReview: NativeUtxoReview | undefined;
   const authorized: { review: NativeUtxoReview; credential: NativeOperationCredential }[] = [];
   const openedTransactions: string[] = [];
@@ -86,22 +84,23 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
       reviews.push(view); return view;
     },
     async confirm(review: NativeUtxoReview, credential: NativeOperationCredential) {
-      confirmations++; authorized.push({ review, credential });
+      const cancelAtStart = cancels; confirmations++; authorized.push({ review, credential });
       if (confirmationFailure) { const failure = confirmationFailure; confirmationFailure = undefined; throw failure; }
-      return { txid: 'ab'.repeat(32) };
+      if (confirmationGate) await confirmationGate;
+      if (cancels !== cancelAtStart) throw Error('CANCELLED');
+      signatures++; return { txid: 'ab'.repeat(32) };
     },
   };
   const open = async () => service;
   const render = () => { cursor = 0; const tree = module.exports.NativeUtxoSendScreen({ accountLabel: 'Account', asset,
-    authenticationMethod, maximumAmount: maximum, availableAmount, network, open, onChangeNetwork(draft: unknown) { networkDrafts.push(draft); networkChanges++; }, onViewTransaction(txid: string) { openedTransactions.push(txid); }, onBack() {} }) as Element;
+    maximumAmount: maximum, availableAmount, network, open, onChangeNetwork(draft: unknown) { networkDrafts.push(draft); networkChanges++; }, onViewTransaction(txid: string) { openedTransactions.push(txid); }, onBack() {} }) as Element;
     effects.splice(0).forEach((run) => run()); return tree; };
   const press = (title: string) => { const button = all(render()).find((node) => node.type === 'Button' && node.props.title === title); assert(button, title); button.props.onPress(); };
   const edit = (label: string, value: string) => { const input = all(render()).find((node) => node.type === 'Input' && node.props.accessibilityLabel === label); assert(input, label); input.props.onChangeText(value); };
   const review = () => { const screen = all(render()).find((node) => node.type === 'Screen')!; screen.props.footer.props.onPress(); };
-  const authentication = () => { const modal = all(render()).find(node => node.type === 'TransactionAuthentication'); assert(modal); return modal; };
-  return { render, press, edit, review, requests, reviews, authorized, openedTransactions, networkDrafts, authentication, counts: () => ({ cancels, confirmations, networkChanges }),
+  return { render, press, edit, review, requests, reviews, authorized, openedTransactions, networkDrafts, counts: () => ({ cancels, confirmations, networkChanges }),
     seedSaved(records: typeof saved) { saved = records; }, listReads: () => listReads, refreshReads: () => refreshReads,
-    useBiometrics() { authenticationMethod = 'biometric'; },
+    holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
     failSubmissionUnknown() { confirmationFailure = Object.assign(new Error('UTXO_SUBMISSION_UNKNOWN'), { code: 'UTXO_SUBMISSION_UNKNOWN', txid: 'ab'.repeat(32) }); },
     seedRetryReview(review: NativeUtxoReview) { retryReview = review; },
@@ -127,24 +126,19 @@ test('explicit saved status check reloads the filtered recovery list', async () 
   f.close();
 });
 
-for (const fallback of ['pin', 'biometric'] as const) test(`biometric refusal keeps the same UTXO authorization page for ${fallback} retry`, async () => {
-  const f = fixture(); f.useBiometrics(); f.render(); await tick();
-  f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1'); f.review(); await tick();
-  assert.equal(all(f.render()).some(node => node.props.title === 'Use PIN instead'), false);
-  f.press('Confirm and send'); const initial = f.authentication();
-  assert.equal(initial.props.method, 'biometric');
-  f.failConfirmation('DEVICE_UNLOCK_UNAVAILABLE');
-  initial.props.onConfirm({ method: 'biometric' }); await tick();
-  const retry = f.authentication();
-  assert.equal(retry.props.identity, initial.props.identity);
-  assert.equal(retry.props.method, 'biometric'); assert.equal(retry.props.busy, false);
-  assert(retry.props.error); assert.equal(f.counts().confirmations, 1);
-  retry.props.onConfirm(fallback === 'pin' ? { method: 'pin', pin: '123456' } : { method: 'biometric' });
-  await tick();
-  assert.deepEqual(f.authorized.map(value => value.credential.method), ['biometric', fallback]);
-  assert.strictEqual(f.authorized[0]?.review, f.authorized[1]?.review);
-  assert.equal(all(f.render()).some(node => node.type === 'TransactionAuthentication'), false);
-  f.close();
+test('device refusal keeps the exact UTXO review available for retry', async () => {
+  const f = fixture(); f.render(); await tick();
+  try {
+    f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1'); f.review(); await tick();
+    const reviewed = f.reviews[0]; f.failConfirmation('DEVICE_UNLOCK_UNAVAILABLE');
+    f.press('Confirm and send'); await tick();
+    assert.equal(f.counts().confirmations, 1); assert.equal(f.signatures(), 0);
+    assert(all(f.render()).some(node => node.props.accessibilityRole === 'alert'));
+    f.press('Confirm and send'); await tick();
+    assert.deepEqual(f.authorized.map(value => value.credential.method), ['device', 'device']);
+    assert.strictEqual(f.authorized[0]?.review, reviewed); assert.strictEqual(f.authorized[1]?.review, reviewed);
+    assert.equal(f.signatures(), 1);
+  } finally { f.close(); }
 });
 
 test('native options start collapsed, preserve RBF default and bind a changed option to review', async () => {
@@ -156,39 +150,40 @@ test('native options start collapsed, preserve RBF default and bind a changed op
   f.press('Advanced options'); f.press('Replace-by-fee enabled'); f.review(); await tick();
   assert.equal(f.requests[1].rbf, false);
   const text = all(f.render()).flatMap((node) => node.children).join(' '); assert.match(text, /Replace-by-fee/); assert.match(text, /Disabled/);
-  f.press('Confirm and send'); f.authentication().props.onConfirm({ method: 'pin', pin: '123456' });
+  f.press('Confirm and send');
   await tick(); assert.equal(f.counts().confirmations, 1); f.close();
 });
 
-test('UTXO confirmation opens authentication and cancel preserves the reviewed transfer', async () => {
+test('UTXO confirmation directly requests device authorization once without a local PIN page', async () => {
+  const f = fixture(), held = Promise.withResolvers<void>(); f.render(); await tick();
+  try {
+    f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1'); f.review(); await tick();
+    const reviewed = f.reviews[0]; f.holdConfirmation(held.promise);
+    f.press('Confirm and send'); f.press('Confirm and send');
+    assert.equal(f.counts().confirmations, 1); assert.equal(f.signatures(), 0);
+    assert.equal(f.authorized[0]?.credential.method, 'device'); assert.strictEqual(f.authorized[0]?.review, reviewed);
+    assert.equal(all(f.render()).some(node => node.type === 'TransactionAuthentication'), false);
+    held.resolve(); await tick(); assert.equal(f.signatures(), 1);
+  } finally { held.resolve(); f.close(); }
+});
+
+for (const replacement of [false, true]) test(`stale UTXO confirmation after Back${replacement ? ' and a new review' : ''} cannot authorize`, async () => {
   const f = fixture(); f.render(); await tick();
   try {
     f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1'); f.review(); await tick();
-    const reviewed = f.reviews[0], cancelledBeforeAuthentication = f.counts().cancels;
-    f.press('Confirm and send');
-    const authentication = f.authentication();
-    assert.equal(authentication.props.method, 'pin'); assert.equal(f.counts().confirmations, 0);
-    authentication.props.onCancel();
-    assert.equal(all(f.render()).some(node => node.type === 'TransactionAuthentication'), false);
-    assert.equal(f.counts().cancels, cancelledBeforeAuthentication);
-    f.press('Confirm and send');
-    f.authentication().props.onConfirm({ method: 'pin', pin: '123456' }); await tick();
-    assert.equal(f.counts().confirmations, 1); assert.strictEqual(f.authorized[0]?.review, reviewed);
-    assert.equal(f.authorized[0]?.credential.method, 'pin');
+    const confirm = all(f.render()).find(node => node.type === 'Button' && node.props.title === 'Confirm and send')!;
+    all(f.render()).find(node => node.type === 'Header')!.props.onBack(); f.render();
+    if (replacement) { f.edit('Amount in BTC', '0.2'); f.review(); await tick(); }
+    confirm.props.onPress(); await tick(); assert.equal(f.counts().confirmations, 0);
+    if (replacement) { f.press('Confirm and send'); await tick(); assert.equal(f.counts().confirmations, 1); }
   } finally { f.close(); }
 });
 
-for (const replacement of [false, true]) test(`stale UTXO authentication after Back${replacement ? ' and a new review' : ''} cannot confirm`, async () => {
-  const f = fixture(); f.render(); await tick();
-  try {
-    f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1'); f.review(); await tick();
-    f.press('Confirm and send'); const authentication = f.authentication();
-    all(f.render()).find(node => node.type === 'Header')!.props.onBack(); f.render();
-    if (replacement) { f.edit('Amount in BTC', '0.2'); f.review(); await tick(); }
-    authentication.props.onConfirm({ method: 'pin', pin: '123456' }); await tick();
-    assert.equal(f.counts().confirmations, 0);
-    if (replacement) { f.press('Confirm and send'); assert.equal(f.authentication().props.busy, false); }
-  } finally { f.close(); }
+test('UTXO unmount during device authorization discards the late result', async () => {
+  const f = fixture(), held = Promise.withResolvers<void>(); f.render(); await tick();
+  f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1'); f.review(); await tick();
+  f.holdConfirmation(held.promise); f.press('Confirm and send'); assert.equal(f.counts().confirmations, 1);
+  f.close(); held.resolve(); await tick(); assert.equal(f.signatures(), 0);
 });
 
 test('SPT Z-DAG uses the inverse RBF option and MAX fills the selected exact total once', async () => {
@@ -313,7 +308,7 @@ test('UTXO Change captures the unsigned amount and options before retiring its c
 test('submitted UTXO transaction action uses the saved hash and retires with the screen', async () => {
   const f = fixture(); f.render(); await tick();
   f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1'); f.review(); await tick();
-  f.press('Confirm and send'); f.authentication().props.onConfirm({ method: 'pin', pin: '123456' }); await tick();
+  f.press('Confirm and send'); await tick();
   const shown = all(f.render());
   const view = shown.find(node => node.type === 'Button' && node.props.title === 'View transaction');
   assert(view); view.props.onPress();
@@ -329,7 +324,7 @@ test('successful native UTXO outcome retains the exact reviewed amount, recipien
     f.render(); await tick();
     f.edit('Recipient address', 'bc1qreviewedrecipient'); f.edit('Amount in BTC', '0.12345678');
     f.review(); await tick();
-    f.press('Confirm and send'); f.authentication().props.onConfirm({ method: 'pin', pin: '123456' }); await tick();
+    f.press('Confirm and send'); await tick();
     const shown = all(f.render());
     assert.equal(shown.find(node => node.props.testID === 'native-utxo-outcome-amount')?.children.join(''), '0.12345678 BTC');
     assert.equal(shown.find(node => node.props.testID === 'native-utxo-outcome-recipient')?.children.join(''), 'bc1qreviewedrecipient');
@@ -347,7 +342,7 @@ test('unknown SPT submission retains its exact public summary through a status c
     f.render(); await tick();
     f.edit('Recipient address', 'sys1qreviewedrecipient'); f.edit('Amount in SPT', '9007199254740.993');
     f.review(); await tick(); f.failSubmissionUnknown();
-    f.press('Confirm and send'); f.authentication().props.onConfirm({ method: 'pin', pin: '123456' }); await tick();
+    f.press('Confirm and send'); await tick();
     const assertSummary = (title: string) => {
       const shown = all(f.render());
       assert.equal(shown.find(node => node.props.testID === 'native-utxo-outcome-amount')?.children.join(''), '9007199254740.993 SPT');
@@ -378,9 +373,9 @@ test('saved UTXO replay outcome keeps Output 1 without identifying it as the rec
     f.render(); await tick();
     f.edit('Recipient address', 'bc1qreviewedrecipient'); f.edit('Amount in BTC', '0.12345678');
     f.review(); await tick(); f.failSubmissionUnknown();
-    f.press('Confirm and send'); f.authentication().props.onConfirm({ method: 'pin', pin: '123456' }); await tick();
+    f.press('Confirm and send'); await tick();
     f.press('Review saved transfer'); await tick();
-    f.press('Resend saved transfer'); f.authentication().props.onConfirm({ method: 'pin', pin: '123456' }); await tick();
+    f.press('Resend saved transfer'); await tick();
     const assertSummary = () => {
       const shown = all(f.render());
       assert(shown.some(node => node.type === 'Text' && node.children.join('') === 'Output 1'));

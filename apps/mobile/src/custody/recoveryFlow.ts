@@ -1,16 +1,16 @@
-import { isNativePin } from './pinVault.ts';
 import type { RecoveryInventory } from './recoveryInventory.ts';
 import type { NativeRecoveryCoordinator, RecoveryProof } from './recovery.ts';
+import { isOperationAuthenticationCancellation } from '../core/operationAuthentication.ts';
 
 export type RecoveryOutcome = Readonly<{ kind: 'success' | 'cancelled' | 'expired' | 'failed' | 'uncertain'; operationPhase: 'inventory' | 'prepare' | 'review' | 'commit'; code: string; message: string; cleanupFailed?: boolean }>;
 export type RecoveryFlowSnapshot = Readonly<{
-  phase: 'reading' | 'scope' | 'entry' | 'verifying' | 'review' | 'pin' | 'committing' | 'reopening' | 'closed' | 'blocked';
+  phase: 'reading' | 'scope' | 'entry' | 'verifying' | 'review' | 'committing' | 'reopening' | 'closed' | 'blocked';
   inventory: RecoveryInventory | null; error: string;
-  fieldErrors: Readonly<{ phrase?: string; pin?: string }>;
+  fieldErrors: Readonly<{ phrase?: string }>;
 }>;
-type Coordinator = Pick<NativeRecoveryCoordinator, 'prepare' | 'setPin' | 'commit' | 'cancel'>;
+type Coordinator = Pick<NativeRecoveryCoordinator, 'prepare' | 'commit' | 'cancel' | 'isAuthenticating'>;
 const SAVED = 'Your saved wallet could not be verified for this recovery. Nothing has been reset.';
-const UNCERTAIN = 'We could not confirm the PIN change. It may have completed. Unlock with your new PIN first; if it does not work, try your previous unlock method.';
+const UNCERTAIN = 'We could not confirm device authorization recovery. Close and reopen Pali before trying again.';
 const UNAVAILABLE = 'Recovery could not be completed. Your saved wallet was not reset. Close and reopen Pali before trying again.';
 const safeCode = (cause: unknown): string => cause instanceof Error && ['BUSY', 'NOT_READY', 'INVALID_INPUT', 'WRONG_PHRASE', 'INVALID_SAVED_DATA', 'AUTH_THROTTLED', 'CANCELLED', 'EXPIRED', 'STATE_CHANGED', 'UNAVAILABLE', 'REOPEN_REQUIRED'].includes(cause.message) ? cause.message : 'UNAVAILABLE';
 
@@ -30,6 +30,7 @@ export class NativeRecoveryFlow {
   private readonly dependencies: { readInventory(): Promise<RecoveryInventory>; createCoordinator(): Coordinator; isCurrent(): boolean; finish(outcome: RecoveryOutcome): Promise<void>; leave?(): void; now?(): number };
   constructor(dependencies: { readInventory(): Promise<RecoveryInventory>; createCoordinator(): Coordinator; isCurrent(): boolean; finish(outcome: RecoveryOutcome): Promise<void>; leave?(): void; now?(): number }) { this.dependencies = dependencies; }
   getSnapshot = (): RecoveryFlowSnapshot => this.state;
+  isAuthenticating = (): boolean => !this.ended && this.state.phase === 'committing' && this.coordinator?.isAuthenticating() === true;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   private publish(change: Partial<RecoveryFlowSnapshot>) {
     this.state = Object.freeze({ ...this.state, ...change });
@@ -65,7 +66,7 @@ export class NativeRecoveryFlow {
   }
   submit(input: { phrase: string }): boolean {
     if (this.ended || this.working || this.state.phase !== 'entry') return false;
-    const fieldErrors: { phrase?: string; pin?: string } = {};
+    const fieldErrors: { phrase?: string } = {};
     const phrase = typeof input.phrase === 'string' && input.phrase.isWellFormed() ? input.phrase.normalize('NFKD').trim().replace(/\s+/gu, ' ') : '';
     if (!phrase || input.phrase.length > 4096 || ![12, 24].includes(phrase.split(' ').length)) fieldErrors.phrase = 'Enter your 12 or 24 recovery words in order.';
     if (Object.keys(fieldErrors).length) { this.publish({ fieldErrors: Object.freeze(fieldErrors), error: '' }); return false; }
@@ -96,37 +97,26 @@ export class NativeRecoveryFlow {
   commit(): void {
     if (this.ended || this.working || this.state.phase !== 'review' || !this.proof || !this.coordinator) return;
     try { this.check(this.request); } catch { this.cancel('expired'); return; }
-    this.publish({ phase: 'pin', error: '', fieldErrors: Object.freeze({}) });
-  }
-  submitPin(pin: string): boolean {
-    if (this.ended || this.working || this.state.phase !== 'pin' || !this.proof || !this.coordinator) return false;
-    if (!isNativePin(pin)) {
-      this.publish({ fieldErrors: Object.freeze({ pin: 'Enter a 6-digit PIN.' }) });
-      return false;
-    }
-    try { this.check(this.request); } catch { this.cancel('expired'); return false; }
     this.working = true; const proof = this.proof;
     this.publish({ phase: 'committing', error: '', fieldErrors: Object.freeze({}) });
-    let dispatched = false;
     void (async () => {
       try {
-        await this.coordinator!.setPin(proof, pin);
-        this.check(this.request);
-        dispatched = true;
         await this.coordinator!.commit(proof);
-        this.finish({ kind: 'success', operationPhase: 'commit', code: 'committed-locked', message: 'PIN changed. Unlock with your new PIN.' });
+        this.finish({ kind: 'success', operationPhase: 'commit', code: 'committed-locked', message: 'Device authorization restored. Reopening your wallet.' });
       } catch (cause) {
-        this.finish({ kind: dispatched ? 'uncertain' : 'failed', operationPhase: dispatched ? 'commit' : 'prepare',
-          code: safeCode(cause), message: dispatched ? UNCERTAIN : UNAVAILABLE });
+        if (isOperationAuthenticationCancellation(cause)) {
+          try { this.check(this.request); this.publish({ phase: 'review', error: '' }); return; }
+          catch { /* A retired view cannot retain a retryable proof. */ }
+        }
+        this.finish({ kind: 'uncertain', operationPhase: 'commit', code: safeCode(cause), message: UNCERTAIN });
       } finally { this.working = false; }
     })();
-    return true;
   }
   private clearTimer() { if (this.timer) clearTimeout(this.timer); this.timer = null; }
   cancel(reason: 'cancelled' | 'expired' = 'cancelled'): void {
     if (this.ended) return;
     const committing = this.state.phase === 'committing';
-    this.finish({ kind: committing ? 'uncertain' : reason, operationPhase: committing ? 'commit' : ['review', 'pin'].includes(this.state.phase) ? 'review' : this.coordinator ? 'prepare' : 'inventory', code: reason,
+    this.finish({ kind: committing ? 'uncertain' : reason, operationPhase: committing ? 'commit' : this.state.phase === 'review' ? 'review' : this.coordinator ? 'prepare' : 'inventory', code: reason,
       message: committing ? UNCERTAIN : reason === 'expired' ? 'Recovery expired. Start again to verify your wallet.' : 'Recovery was cancelled.' });
   }
   private finish(outcome: RecoveryOutcome) {

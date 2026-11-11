@@ -1,4 +1,4 @@
-import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { createTestCredentialPort } from './fixtures/credential.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -23,7 +23,7 @@ import { readSignedRecordEvidence, retainedSignedEntries } from '../qualificatio
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
-const pinCredential = createTestPinCredentialPort();
+const credentialPort = createTestCredentialPort();
 
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -125,7 +125,7 @@ async function sqliteDisk() {
   let initialized = false;
   let storage!: SqliteWalletStorage;
   let runtime!: KeyringRuntime;
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
     ensureCryptoReady: async () => { assert(globalThis.crypto.subtle); },
     async openStorage() {
       storage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, !initialized);
@@ -186,9 +186,9 @@ for (const scenario of ['import', 'generate'] as const) {
       try {
         await authority.initialize();
         if (scenario === 'import')
-          await authority.importPhrase(PHRASE, PASSWORD);
-        else await authority.create(PASSWORD);
-        const words = await disk.runtime.backup.readPhrase(PASSWORD);
+          await authority.importPhrase(PHRASE);
+        else await authority.create();
+        const words = await disk.runtime.backup.readPhrase({ method: 'device' });
         const derived = [1, 2, 3].map(
           (index) =>
             HDNodeWallet.fromPhrase(
@@ -207,7 +207,7 @@ for (const scenario of ['import', 'generate'] as const) {
           authority,
           runtime: disk.runtime,
           storage: disk.storage,
-          password: PASSWORD,
+
           expectedSecondAddress: derived[0],
           check,
         });
@@ -216,7 +216,7 @@ for (const scenario of ['import', 'generate'] as const) {
           authority,
           runtime: disk.runtime,
           storage: disk.storage,
-          password: PASSWORD,
+
           expectedThirdAddress: derived[1],
           check,
         });
@@ -245,7 +245,7 @@ for (const scenario of ['import', 'generate'] as const) {
             authority,
             runtime: createRuntime,
             storage: disk.storage,
-            password: PASSWORD,
+
             expectedFourthAddress: 'invalid',
             check,
           }),
@@ -257,7 +257,7 @@ for (const scenario of ['import', 'generate'] as const) {
           authority,
           runtime: createRuntime,
           storage: disk.storage,
-          password: PASSWORD,
+
           expectedFourthAddress: scenario === 'import' ? derived[2] : undefined,
           check,
         });
@@ -311,8 +311,7 @@ for (const scenario of ['import', 'generate'] as const) {
         await authority.dispose();
         authority = new NativeCustodyAuthority(disk.owner);
         await authority.initialize();
-        assert.equal(authority.getSnapshot().phase, 'locked');
-        await authority.unlock(PASSWORD);
+        assert.equal(authority.getSnapshot().phase, 'ready');
         const restartRuntime: KeyringRuntime = {
           ...disk.runtime,
           transfers: {
@@ -330,7 +329,7 @@ for (const scenario of ['import', 'generate'] as const) {
           authority,
           runtime: restartRuntime,
           storage: disk.storage,
-          password: PASSWORD,
+
           expectedFourthAddress: derived[2],
           check,
         });
@@ -356,7 +355,7 @@ for (const scenario of ['import', 'generate'] as const) {
         );
         if (scenario === 'import') {
           const restoreSelection = async () => {
-            if (authority.getSnapshot().phase === 'locked') await authority.unlock(PASSWORD);
+            if (authority.getSnapshot().phase === 'locked') await authority.unlock();
             if (authority.getSnapshot().account?.network !== 'ethereum')
               await authority.selectNetwork(
                 'ethereum',
@@ -385,7 +384,7 @@ for (const scenario of ['import', 'generate'] as const) {
                 authority,
                 runtime: restartRuntime,
                 storage: disk.storage,
-                password: PASSWORD,
+
                 expectedFourthAddress: derived[2],
                 check,
               })

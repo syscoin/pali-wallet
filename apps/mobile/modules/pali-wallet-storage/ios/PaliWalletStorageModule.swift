@@ -57,6 +57,7 @@ public final class PaliWalletStorageModule: Module {
   private let noteBackupPickerOwner = PaliNoteBackupPickerOwner()
   private let publicSnapshots = PaliPublicSnapshotBridge()
   #endif
+  private let credentials = PaliCredentialOwner()
   private let state = WalletStorageLeaseState.shared
   private let files = FileManager.default
   private let allowedNames: Set<String> = ["wallet.sqlite", "wallet.sqlite-wal", "wallet.sqlite-shm", "wallet.sqlite-journal"]
@@ -140,6 +141,16 @@ public final class PaliWalletStorageModule: Module {
 
   public func definition() -> ModuleDefinition {
     Name("PaliWalletStorage")
+    Function("isCredentialPromptActive") { self.credentials.isAuthenticating() }
+    Function("credentialCapabilities") { (binding: String?) in try self.credentials.capabilities(binding) }
+    Function("prepareCredentialAuthorization") { (binding: String) in try PaliCredentialRequest(owner: self.credentials, binding: binding, authorizationOnly: true) }
+    Function("prepareCredentialRead") { (binding: String) in try PaliCredentialRequest(owner: self.credentials, binding: binding) }
+    Function("prepareCredentialStage") { (binding: String, secret: String) in try PaliCredentialRequest(owner: self.credentials, binding: binding, secret: secret) }
+    AsyncFunction("removeCredential") { (binding: String) in try self.credentials.remove(binding) }
+    Class("CredentialRequest", PaliCredentialRequest.self) {
+      Function("cancel") { (request: PaliCredentialRequest) in request.cancel() }
+      AsyncFunction("run") { (request: PaliCredentialRequest, promise: Promise) in request.run(promise) }
+    }
     AsyncFunction("prepareNotificationStorage") { (create: Bool) throws -> [String: Any] in
       try PaliNotificationStoragePolicy.prepare(create: create)
     }
@@ -202,7 +213,7 @@ public final class PaliWalletStorageModule: Module {
         promise.reject((error as? PaliPublicSnapshotDownloadError ?? .unavailable).rawValue, "Public snapshot unavailable")
       }
     }
-    OnAppEntersBackground { self.publicSnapshots.cancelActive() }
+    OnAppEntersBackground { self.publicSnapshots.cancelActive(); self.credentials.cancel() }
     AsyncFunction("pickEncryptedNoteBackup") { (promise: Promise) in
       MainActor.assumeIsolated {
         PaliNoteBackupPicker.shared.pick(owner: self.noteBackupPickerOwner,
@@ -226,6 +237,7 @@ public final class PaliWalletStorageModule: Module {
       }
     }.runOnQueue(.main)
     OnDestroy {
+      self.credentials.close()
       self.publicSnapshots.close()
       let owner = self.noteBackupPickerOwner
       owner.retire()

@@ -44,6 +44,7 @@ const FIELDS = new Set([
   ...IMPORTED_REPORT_FIELDS,
   'version',
   'status',
+  'authorizationMode',
   'phase',
   'scenario',
   'platform',
@@ -171,7 +172,9 @@ function decodeNativeReport(
     report.phase !== phase ||
     report.scenario !== scenario ||
     report.platform !== platform ||
-    report.version !== 1
+    report.version !== 1 ||
+    (report.status === 'passed' && report.authorizationMode !== 'test-only-fixture') ||
+    (report.authorizationMode !== undefined && report.authorizationMode !== 'test-only-fixture')
   )
     throw Error('Unexpected qualification report schema');
   if (simulatorContract) assertSimulatorRefusal(report, simulatorVersion, EXPECTED_QUICK_CRYPTO_IDENTITY);
@@ -272,13 +275,13 @@ function decodePhysicalReport(text, expected) {
     checked.checks.filter(item => item.name === FULL_SLH_CHECK).length !== (fullSlh ? 1 : 0) ||
     CHECKS.some((name, index) => checked.checks[index]?.name !== name) ||
     !checked.checks.some(
-      (item) => item.name === 'synchronous lock and wrong password refusal'
+      (item) => item.name === 'synchronous lock and OS authorization refusal'
     ) ||
     !checked.checks.some(
       (item) =>
         item.name ===
         (expected.phase === 'create'
-          ? 'fresh password-backed seed confirmation'
+          ? 'public-fixture authorized seed confirmation'
           : 'seed reauthentication after cold restart')
     )
   )

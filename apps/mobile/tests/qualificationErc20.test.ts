@@ -1,4 +1,4 @@
-import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { createTestCredentialPort } from './fixtures/credential.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -23,7 +23,7 @@ import { readSignedRecordEvidence } from '../qualification/signed-record-evidenc
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
-const pinCredential = createTestPinCredentialPort();
+const credentialPort = createTestCredentialPort();
 
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -131,7 +131,7 @@ for (const scenario of ['import', 'generate'] as const)
       let initialized = false;
       let runtime!: KeyringRuntime;
       let storage!: SqliteWalletStorage;
-      const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
+      const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
         ensureCryptoReady: async () => undefined,
         openStorage: async () => {
           storage = await SqliteWalletStorage.open(
@@ -165,9 +165,9 @@ for (const scenario of ['import', 'generate'] as const)
       try {
         await authority.initialize();
         if (scenario === 'import')
-          await authority.importPhrase(PHRASE, PASSWORD);
-        else await authority.create(PASSWORD);
-        const words = await runtime.backup.readPhrase(PASSWORD);
+          await authority.importPhrase(PHRASE);
+        else await authority.create();
+        const words = await runtime.backup.readPhrase({ method: 'device' });
         const expectedSecondAddress = HDNodeWallet.fromPhrase(
           words.join(' '),
           undefined,
@@ -186,7 +186,7 @@ for (const scenario of ['import', 'generate'] as const)
           authority,
           runtime,
           storage,
-          password: PASSWORD,
+
           expectedSecondAddress,
           check,
         });
@@ -195,7 +195,7 @@ for (const scenario of ['import', 'generate'] as const)
           authority,
           runtime,
           storage,
-          password: PASSWORD,
+
           expectedThirdAddress,
           check,
         });
@@ -212,13 +212,13 @@ for (const scenario of ['import', 'generate'] as const)
         await authority.dispose();
         authority = new NativeCustodyAuthority(owner);
         await authority.initialize();
-        await authority.unlock(PASSWORD);
+        await authority.unlock();
         const hdRestored = await qualifyNativeHdAccounts({
           phase: 'restart',
           authority,
           runtime,
           storage,
-          password: PASSWORD,
+
           expectedSecondAddress,
           expectedRestartAddress: hdCreated.address,
           check,
@@ -228,7 +228,7 @@ for (const scenario of ['import', 'generate'] as const)
           authority,
           runtime,
           storage,
-          password: PASSWORD,
+
           expectedThirdAddress,
           check,
         });

@@ -31,7 +31,6 @@ export async function qualifyNativeHdKeyReveal(options: Readonly<{
   authority: NativeCustodyAuthority;
   runtime: KeyringRuntime;
   storage: Pick<OpenWalletStorage, 'keyringStorage' | 'signedRecords' | 'recovery' | 'getWalletFingerprint'>;
-  password: string;
   expectedAddress: string;
   check: <T>(name: string, operation: () => Promise<T>) => Promise<T>;
 }>): Promise<HdKeyRevealEvidence> {
