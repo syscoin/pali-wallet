@@ -1,0 +1,146 @@
+{
+  "sourceRevision": "95265026a71e1b1489cad081773a8c70d619b184",
+  "sourceFiles": {
+    "apps/mobile/src/screens/NativeTransactionReview.tsx": "f8555926e0aae80c6f7b743f1fa682bd49cfe57c6988124c6e0b3b40f72d1cde",
+    "apps/mobile/src/screens/NativeSentryReview.tsx": "3a6ac50c9777436f08939427cae9c9dede3ac2df8cb1afb98f3b4ff1227d0d6b",
+    "apps/mobile/src/screens/NativeSmartAccountOperation.tsx": "3aed11936b1a595f392715df0461f5bfe7ea4e5434da41bf6a793d9f423fe7ed",
+    "source/shared/assetTransferDisplay.ts": "e8fe845b796f6136f837649540c18eec3d54c756cf5f76faa2709c20794a3a49",
+    "source/shared/outputScriptAddress.ts": "4f72588697a2d92806f973792108f152477d97d91aba5850eae5ac193148707a"
+  },
+  "capturedAt": "2026-11-11T00:53:48.309Z",
+  "method": "Actual React Native Web components with synthetic public adapters; Chromium sandbox enabled and external network blocked. Not native-device qualification.",
+  "frames": [
+    {
+      "id": "dapp-erc20",
+      "label": "Token transfer review",
+      "file": "dapp-erc20-390.png",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc20",
+      "sha256": "1319925b6ec9a8302489bd93738c6661e5ff6167032a6bee8fd3cc7a89ecac51",
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-20 transfer\n123.456789\nTOK\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
+    },
+    {
+      "id": "dapp-erc721",
+      "label": "NFT transfer review",
+      "file": "dapp-erc721-390.png",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc721",
+      "sha256": "a0f945239b32109177c6b526284a31adf1c10e3a67ac619a3f0cf822e2e00aca",
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-721 transfer\n#42\n1 NFT\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
+    },
+    {
+      "id": "dapp-erc1155",
+      "label": "NFT batch transfer review",
+      "file": "dapp-erc1155-390.png",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc1155",
+      "sha256": "9180fa90075b22ebb68b22eec931552122af50b2b0f4ae16dcbea867d3e1e0c2",
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
+    },
+    {
+      "id": "smart-token",
+      "label": "Smart-account token transfer",
+      "file": "smart-token-390.png",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4179/?smart-dapp&asset-transfer=token",
+      "sha256": "e9be513ae9f3e9a1132c854097e844e4128c101458510df62c0ac38ce23c13f6",
+      "overflow": false,
+      "text": "Review transaction\nExample swap\nhttps://swap.example.invalid\nWebsite origin matched by WalletConnect\nEthereum\nChain ID 1\n0x1111111111111111111111111111111111111111\nToken transfer\nToken metadata is supplied by the contract.\n1.25\nTOK\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAlso sending\n0.000000000000000009 ETH\nTransaction data\nTransaction details\n{\n  \"to\": \"0x3333333333333333333333333333333333333333\",\n  \"value\": \"9\",\n  \"data\": \"0xa9059cbb000000000000000000000000444444444444444444444444444444444444444400000000000000000000000000000000000000000000000000000000001312d0\"\n}\nAuthorize this transaction\nAuthorize this smart account transaction. The following review confirms the paying account and submission fee.\nMaximum account charge\n0.00021\nETH\nUnused prefund stays with your account.\nView authorization details\nAuthorize transaction\nClose"
+    },
+    {
+      "id": "smart-batch",
+      "label": "Smart-account mixed batch",
+      "file": "smart-batch-390.png",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4179/?smart-dapp&asset-transfer=batch",
+      "sha256": "559a92f5685185db8d9fed348ce1a8fad34f77756fc0333555a2579fcf644ed0",
+      "overflow": false,
+      "text": "Review calls\nExample swap\nhttps://swap.example.invalid\nWebsite origin matched by WalletConnect\nEthereum\nChain ID 1\n0x1111111111111111111111111111111111111111\nCall 1 of 3\nToken transfer\nToken metadata is supplied by the contract.\n1.25\nTOK\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nTransaction details\n{\n  \"to\": \"0x3333333333333333333333333333333333333333\",\n  \"value\": \"0\",\n  \"data\": \"0xa9059cbb000000000000000000000000444444444444444444444444444444444444444400000000000000000000000000000000000000000000000000000000001312d0\"\n}\nCall 2 of 3\nNFT transfer\nToken metadata is supplied by the contract.\n#0\n2 NFTs\n#91\n3 NFTs\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x1111111111111111111111111111111111111111\nTransaction details\n{\n  \"to\": \"0x3333333333333333333333333333333333333333\",\n  \"value\": \"0\",\n  \"data\": \"0x2eb2c2d60000000000000000000000001111111111111111111111111111111111111111000000000000000000000000444444444444444444444444444444444444444400000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005b0000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000000\"\n}\nCall 3 of 3\nTo\n0x4444444444444444444444444444444444444444\nNative currency sent\n0.000000000000000001\nETH\nTransaction details\n{\n  \"to\": \"0x4444444444444444444444444444444444444444\",\n  \"value\": \"1\",\n  \"data\": \"0x\"\n}\nAuthorize these calls\nAuthorize the ordered calls together. The following review confirms the paying account and submission fee.\nMaximum account charge\n0.00021\nETH\nUnused prefund stays with your account.\nView authorization details\nAuthorize calls\nClose"
+    },
+    {
+      "id": "sentry-review",
+      "label": "Sentry service change",
+      "file": "sentry-review-390.png",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4179/?sentry-consent",
+      "sha256": "4682af1f0faf13ea0a735f037dc550c4d1061a93cdba4ad35490d9ede059141f",
+      "overflow": false,
+      "text": "Update node service\nExample staking app · Syscoin\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nService address\nProposed\nnew.example.test:8369\nCurrent\nold.example.test:8369\nNEVM address\nProposed\n0x5555555555555555555555555555555555555555\nCurrent\n0x4444444444444444444444444444444444444444\nOperator payout address\nProposed\nsys1qwamhwamhwamhwamhwamhwamhwamhwamhjx836v\nCurrent\nsys1qvenxvenxvenxvenxvenxvenxvenxvenxqcsv07\nRequest account\nDaily wallet · sys1qexamplepublicaddress\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator · bls-basic\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key · operator\nbls-basic · Selected\nView request details\nUpdate node service\nReject"
+    },
+    {
+      "id": "dapp-erc20",
+      "label": "Token transfer review",
+      "file": "dapp-erc20-320.png",
+      "width": 320,
+      "height": 740,
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc20",
+      "sha256": "b6fb17cf48d2447f52ae4ee212abaed3aed3350da9f890b4cbe26255783e30e0",
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-20 transfer\n123.456789\nTOK\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
+    },
+    {
+      "id": "dapp-erc721",
+      "label": "NFT transfer review",
+      "file": "dapp-erc721-320.png",
+      "width": 320,
+      "height": 740,
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc721",
+      "sha256": "da6b3eba70e19f2c87441b73f043220d071e56b4645661833bf94921ca1b171a",
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-721 transfer\n#42\n1 NFT\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
+    },
+    {
+      "id": "dapp-erc1155",
+      "label": "NFT batch transfer review",
+      "file": "dapp-erc1155-320.png",
+      "width": 320,
+      "height": 740,
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc1155",
+      "sha256": "bb69f2179502f9817c42407ae1276edaadda6dd1bd73335a14e3d8ad56de0059",
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm"
+    },
+    {
+      "id": "smart-token",
+      "label": "Smart-account token transfer",
+      "file": "smart-token-320.png",
+      "width": 320,
+      "height": 740,
+      "url": "http://127.0.0.1:4179/?smart-dapp&asset-transfer=token",
+      "sha256": "5b5c632bff9be24e4e0744aab29bf5c569c52e72f535f18f74d75be84cb8722e",
+      "overflow": false,
+      "text": "Review transaction\nExample swap\nhttps://swap.example.invalid\nWebsite origin matched by WalletConnect\nEthereum\nChain ID 1\n0x1111111111111111111111111111111111111111\nToken transfer\nToken metadata is supplied by the contract.\n1.25\nTOK\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAlso sending\n0.000000000000000009 ETH\nTransaction data\nTransaction details\n{\n  \"to\": \"0x3333333333333333333333333333333333333333\",\n  \"value\": \"9\",\n  \"data\": \"0xa9059cbb000000000000000000000000444444444444444444444444444444444444444400000000000000000000000000000000000000000000000000000000001312d0\"\n}\nAuthorize this transaction\nAuthorize this smart account transaction. The following review confirms the paying account and submission fee.\nMaximum account charge\n0.00021\nETH\nUnused prefund stays with your account.\nView authorization details\nAuthorize transaction\nClose"
+    },
+    {
+      "id": "smart-batch",
+      "label": "Smart-account mixed batch",
+      "file": "smart-batch-320.png",
+      "width": 320,
+      "height": 740,
+      "url": "http://127.0.0.1:4179/?smart-dapp&asset-transfer=batch",
+      "sha256": "e175df62ca00ec46fa8e107343a1467c0745bca3b809796d35cd124028e50a23",
+      "overflow": false,
+      "text": "Review calls\nExample swap\nhttps://swap.example.invalid\nWebsite origin matched by WalletConnect\nEthereum\nChain ID 1\n0x1111111111111111111111111111111111111111\nCall 1 of 3\nToken transfer\nToken metadata is supplied by the contract.\n1.25\nTOK\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nTransaction details\n{\n  \"to\": \"0x3333333333333333333333333333333333333333\",\n  \"value\": \"0\",\n  \"data\": \"0xa9059cbb000000000000000000000000444444444444444444444444444444444444444400000000000000000000000000000000000000000000000000000000001312d0\"\n}\nCall 2 of 3\nNFT transfer\nToken metadata is supplied by the contract.\n#0\n2 NFTs\n#91\n3 NFTs\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x1111111111111111111111111111111111111111\nTransaction details\n{\n  \"to\": \"0x3333333333333333333333333333333333333333\",\n  \"value\": \"0\",\n  \"data\": \"0x2eb2c2d60000000000000000000000001111111111111111111111111111111111111111000000000000000000000000444444444444444444444444444444444444444400000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005b0000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000000\"\n}\nCall 3 of 3\nTo\n0x4444444444444444444444444444444444444444\nNative currency sent\n0.000000000000000001\nETH\nTransaction details\n{\n  \"to\": \"0x4444444444444444444444444444444444444444\",\n  \"value\": \"1\",\n  \"data\": \"0x\"\n}\nAuthorize these calls\nAuthorize the ordered calls together. The following review confirms the paying account and submission fee.\nMaximum account charge\n0.00021\nETH\nUnused prefund stays with your account.\nView authorization details\nAuthorize calls\nClose"
+    },
+    {
+      "id": "sentry-review",
+      "label": "Sentry service change",
+      "file": "sentry-review-320.png",
+      "width": 320,
+      "height": 740,
+      "url": "http://127.0.0.1:4179/?sentry-consent",
+      "sha256": "23724935ff7dbce70c7c214489afcc766e22d1a71bf0dec37f599b536fdb0744",
+      "overflow": false,
+      "text": "Update node service\nExample staking app · Syscoin\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nService address\nProposed\nnew.example.test:8369\nCurrent\nold.example.test:8369\nNEVM address\nProposed\n0x5555555555555555555555555555555555555555\nCurrent\n0x4444444444444444444444444444444444444444\nOperator payout address\nProposed\nsys1qwamhwamhwamhwamhwamhwamhwamhwamhjx836v\nCurrent\nsys1qvenxvenxvenxvenxvenxvenxvenxvenxqcsv07\nRequest account\nDaily wallet · sys1qexamplepublicaddress\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator · bls-basic\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key · operator\nbls-basic · Selected\nView request details\nUpdate node service\nReject"
+    }
+  ]
+}

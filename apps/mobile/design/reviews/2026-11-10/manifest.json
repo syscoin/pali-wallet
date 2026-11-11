@@ -761,7 +761,7 @@
       "component": "NativeTransactionReviewScreen",
       "status": "adapted",
       "actual_label": "Transaction request",
-      "note": "App identity, exact amount, compact From/To/network/maximum-fee facts and real Reject/Confirm buttons. All fee, phishing, account-switch and uncertain-delivery safeguards remain.",
+      "note": "Exact asset amount, recipient before account detail, contract and separate native fee; compact origin and persistent Reject/Confirm.",
       "title": "Transaction request",
       "comparison": "32-transaction-request.png",
       "comparison_size": [
@@ -773,13 +773,13 @@
         390,
         844
       ],
-      "actual_sha256": "1e0b54b6a5bf1f1d8a5490e333db106709e241d4a52736556745a25ba8fe8a35",
+      "actual_sha256": "1319925b6ec9a8302489bd93738c6661e5ff6167032a6bee8fd3cc7a89ecac51",
       "reference": "PDF reference embedded in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-32-320.png",
-      "comparison_sha256": "8ebe67290783dfeb7d882aefb992b4bd71a8e868db3b2ee4f1a42273fc5438b1",
-      "source_commit": "a7c370a22656574043007ccc8d15fe2af342351a",
-      "narrow_actual_sha256": "1c6f02451ac0d862f8040714fa56b9856f91b7a10ecf511f6d0a9abb6eb09cbc"
+      "comparison_sha256": "accb9050af84cee99f6973cabbf2053cb454996ca3e7b719e2c6f10b53a748f2",
+      "source_commit": "95265026a71e1b1489cad081773a8c70d619b184",
+      "narrow_actual_sha256": "b6fb17cf48d2447f52ae4ee212abaed3aed3350da9f890b4cbe26255783e30e0"
     }
   ],
   "source_commit": "04466c2e9498dfd250ac575e393db72fceec0e1f",

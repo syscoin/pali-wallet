@@ -1237,7 +1237,7 @@ These are actual implemented React Native Web screens. Existing Recover access, 
 
 Recovery verifies the existing wallet before new PIN setup. Sensitive leaves use the shared authentication screen, and portable-file passwords remain separate. Authentication Back was checked in the DOM and by cancellation without entering a PIN.
 
-![Updated flow contact sheet](flow-updates/contact-sheet.png)
+[Earlier flow contact sheet](flow-updates/contact-sheet.png). Current transfer/Sentry captures are refreshed below and in the final review section.
 
 <details>
 <summary>Shared authorization for key reveal</summary>
@@ -1958,3 +1958,29 @@ Search Ethereum → Existing enrollment remains removable.
 </details>
 
 <!-- saved-pending-updates:end -->
+
+<!-- consent-updates:start -->
+
+## Latest consent review
+
+Source `95265026a71e1b1489cad081773a8c70d619b184`. [Exact capture provenance](consent-updates/manifest.json). The existing transaction-request comparison and transfer/Sentry panels above are updated in place. These public fixtures verify presentation at 390px and 320px; native biometric and hardware qualification remain separate.
+
+<details>
+<summary>Smart-account token transfer</summary>
+
+![Smart-account token transfer at 390px](consent-updates/smart-token-390.png)
+
+![Smart-account token transfer at 320px](consent-updates/smart-token-320.png)
+
+</details>
+
+<details>
+<summary>Smart-account mixed batch</summary>
+
+![Smart-account mixed batch at 390px](consent-updates/smart-batch-390.png)
+
+![Smart-account mixed batch at 320px](consent-updates/smart-batch-320.png)
+
+</details>
+
+<!-- consent-updates:end -->

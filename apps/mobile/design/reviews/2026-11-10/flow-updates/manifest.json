@@ -20,7 +20,7 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nContract interaction\nNative currency sent\n0.00123456789\nCOIN\nThis amount excludes any tokens or NFTs the contract may move.\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nTo\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.001234567890252 COIN\nView transaction details\nReject\nConfirm",
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nContract interaction\nNative currency sent\n0.00123456789\nCOIN\nThis amount excludes any tokens or NFTs the contract may move.\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nTo\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.001234567890252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "1e0b54b6a5bf1f1d8a5490e333db106709e241d4a52736556745a25ba8fe8a35"
@@ -107,7 +107,7 @@
         }
       ],
       "overflow": false,
-      "text": "Review imported account\nEthereum \u00b7 EVM account\nKeep a separate copy of this key\nYour recovery phrase cannot restore an imported account. Keep its original private key backed up securely before continuing.\nImported savings\n0x1563915e194D8CfBA1943570603F7606A3115508\nCheck the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.\n\u2713\nI have a separate backup of this private key.\nEdit private key\nDevelopment build \u00b7 Use a test wallet\nImport account",
+      "text": "Review imported account\nEthereum · EVM account\nKeep a separate copy of this key\nYour recovery phrase cannot restore an imported account. Keep its original private key backed up securely before continuing.\nImported savings\n0x1563915e194D8CfBA1943570603F7606A3115508\nCheck the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.\n✓\nI have a separate backup of this private key.\nEdit private key\nDevelopment build · Use a test wallet\nImport account",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "a90146992199c160dd9135b7f2cb7863fe1ca5e299df0be6b6576571fe798411"
@@ -136,7 +136,7 @@
         }
       ],
       "overflow": false,
-      "text": "Review imported account\nEthereum \u00b7 EVM account\nKeep a separate copy of this key\nYour recovery phrase cannot restore an imported account. Keep its original private key backed up securely before continuing.\nImported savings\n0x1563915e194D8CfBA1943570603F7606A3115508\nCheck the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.\n\u2713\nI have a separate backup of this private key.\nDevelopment build \u00b7 Use a test wallet\nImport account\nAuthorize change\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "text": "Review imported account\nEthereum · EVM account\nKeep a separate copy of this key\nYour recovery phrase cannot restore an imported account. Keep its original private key backed up securely before continuing.\nImported savings\n0x1563915e194D8CfBA1943570603F7606A3115508\nCheck the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.\n✓\nI have a separate backup of this private key.\nDevelopment build · Use a test wallet\nImport account\nAuthorize change\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "238c8e25f364168e238c5f8788797d099d750f55f6c39b67c336f15ebd26b151"
@@ -178,7 +178,7 @@
         }
       ],
       "overflow": false,
-      "text": "Back up private notes\nUse a separate backup password with at least 12 characters. Pali cannot recover it for you.\nBackup password\nConfirm backup password\nWorking\u2026\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "text": "Back up private notes\nUse a separate backup password with at least 12 characters. Pali cannot recover it for you.\nBackup password\nConfirm backup password\nWorking…\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "0eaaab4ced8ad90cdeb709773d0e2b50387c601014a44b6e1a144590b36556f8"
@@ -220,7 +220,7 @@
         }
       ],
       "overflow": false,
-      "text": "Review restore\nNew notes\n2\nAlready in this wallet\n1\nExisting notes are kept. The backup may flag notes that need a status check before use.\nRestoring\u2026\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "text": "Review restore\nNew notes\n2\nAlready in this wallet\n1\nExisting notes are kept. The backup may flag notes that need a status check before use.\nRestoring…\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "0eaaab4ced8ad90cdeb709773d0e2b50387c601014a44b6e1a144590b36556f8"
@@ -241,7 +241,7 @@
         }
       ],
       "overflow": false,
-      "text": "Your notes\nYour notes \u00b7 1\nRecovery is available only after the transaction is finalized as failed and its original proof can no longer execute. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.\nThis check shares the transaction hash, original proof root and public note nullifier with your selected Ethereum RPC.\nCheck and recover\nCancel\nClose",
+      "text": "Your notes\nYour notes · 1\nRecovery is available only after the transaction is finalized as failed and its original proof can no longer execute. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.\nThis check shares the transaction hash, original proof root and public note nullifier with your selected Ethereum RPC.\nCheck and recover\nCancel\nClose",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "30137affcdd5286c7ef81400b1bb5af16ea6be45e6743a9235c04b331988eabc"
@@ -262,7 +262,7 @@
         }
       ],
       "overflow": false,
-      "text": "Your notes\nYour notes \u00b7 1\nRecovery is available only after the transaction is finalized as failed and its original proof can no longer execute. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.\nThis check shares the transaction hash, original proof root and public note nullifier with your selected Ethereum RPC.\nCheck and recover\nCancel\nClose\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "text": "Your notes\nYour notes · 1\nRecovery is available only after the transaction is finalized as failed and its original proof can no longer execute. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.\nThis check shares the transaction hash, original proof root and public note nullifier with your selected Ethereum RPC.\nCheck and recover\nCancel\nClose\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "0eaaab4ced8ad90cdeb709773d0e2b50387c601014a44b6e1a144590b36556f8"
@@ -274,7 +274,7 @@
       "width": 390,
       "height": 844,
       "file": "sentry-review-390.png",
-      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "sourceCommit": "95265026a71e1b1489cad081773a8c70d619b184",
       "url": "http://127.0.0.1:4179/?sentry-consent",
       "assets": [
         {
@@ -283,10 +283,11 @@
         }
       ],
       "overflow": false,
-      "text": "Update node service\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet \u00b7 Syscoin\nsys1qexamplepublicaddress\nUpdate node service\nChange the service information for this node using the selected authority key.\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator \u00b7 bls-basic\nService address\nCurrent\nold.example.test:8369\nProposed\nnew.example.test:8369\nNEVM address\nCurrent\n0x4444444444444444444444444444444444444444\nProposed\n0x5555555555555555555555555555555555555555\nOperator payout script\nCurrent\n00146666666666666666666666666666666666666666\nProposed\n00147777777777777777777777777777777777777777\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key \u00b7 operator\nbls-basic \u00b7 Selected\nView request details\nUpdate node service\nReject",
+      "text": "Update node service\nExample staking app · Syscoin\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nService address\nProposed\nnew.example.test:8369\nCurrent\nold.example.test:8369\nNEVM address\nProposed\n0x5555555555555555555555555555555555555555\nCurrent\n0x4444444444444444444444444444444444444444\nOperator payout address\nProposed\nsys1qwamhwamhwamhwamhwamhwamhwamhwamhjx836v\nCurrent\nsys1qvenxvenxvenxvenxvenxvenxvenxvenxqcsv07\nRequest account\nDaily wallet · sys1qexamplepublicaddress\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator · bls-basic\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key · operator\nbls-basic · Selected\nView request details\nUpdate node service\nReject",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
-      "sha256": "6fd5ed73bb86c79e221458714f5c2138bae655967c7a69a1b00dc30b087f7326"
+      "sha256": "4682af1f0faf13ea0a735f037dc550c4d1061a93cdba4ad35490d9ede059141f",
+      "provenance": "../consent-updates/manifest.json"
     },
     {
       "id": "sentry-auth",
@@ -304,7 +305,7 @@
         }
       ],
       "overflow": false,
-      "text": "Update node service\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet \u00b7 Syscoin\nsys1qexamplepublicaddress\nUpdate node service\nChange the service information for this node using the selected authority key.\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator \u00b7 bls-basic\nService address\nCurrent\nold.example.test:8369\nProposed\nnew.example.test:8369\nNEVM address\nCurrent\n0x4444444444444444444444444444444444444444\nProposed\n0x5555555555555555555555555555555555555555\nOperator payout script\nCurrent\n00146666666666666666666666666666666666666666\nProposed\n00147777777777777777777777777777777777777777\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key \u00b7 operator\nbls-basic \u00b7 Selected\nView request details\nAuthorizing\u2026\nReject\nAuthorize transaction\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "text": "Update node service\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet · Syscoin\nsys1qexamplepublicaddress\nUpdate node service\nChange the service information for this node using the selected authority key.\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator · bls-basic\nService address\nCurrent\nold.example.test:8369\nProposed\nnew.example.test:8369\nNEVM address\nCurrent\n0x4444444444444444444444444444444444444444\nProposed\n0x5555555555555555555555555555555555555555\nOperator payout script\nCurrent\n00146666666666666666666666666666666666666666\nProposed\n00147777777777777777777777777777777777777777\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key · operator\nbls-basic · Selected\nView request details\nAuthorizing…\nReject\nAuthorize transaction\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "85a9edc2a8fbea4be3ba95ac9b1e2642d39fb1285bc57f48fbda55a80c71d272"
@@ -346,7 +347,7 @@
         }
       ],
       "overflow": false,
-      "text": "Release collateral\nSyscoin\nAllow this collateral to be spent?\nSpending this output stops the Sentry node. Releasing protection does not send a transaction or remove saved authority keys.\n3333333333333333333333333333333333333333333333333333333333333333:0\nI intend to stop this node and allow its collateral to be spent.\nReleasing\u2026\nAuthorize change\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "text": "Release collateral\nSyscoin\nAllow this collateral to be spent?\nSpending this output stops the Sentry node. Releasing protection does not send a transaction or remove saved authority keys.\n3333333333333333333333333333333333333333333333333333333333333333:0\nI intend to stop this node and allow its collateral to be spent.\nReleasing…\nAuthorize change\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "238c8e25f364168e238c5f8788797d099d750f55f6c39b67c336f15ebd26b151"
@@ -367,7 +368,7 @@
         }
       ],
       "overflow": false,
-      "text": "Withdraw note\n1 ETH\nEthereum Mainnet \u00b7 Private note\nReview this restored note before withdrawing.\nReview restored note\nCancel",
+      "text": "Withdraw note\n1 ETH\nEthereum Mainnet · Private note\nReview this restored note before withdrawing.\nReview restored note\nCancel",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "3a462c18bb214522f54b3e33e1e27d139eb71f1875e816519e2dfdae29ab157e"
@@ -388,7 +389,7 @@
         }
       ],
       "overflow": false,
-      "text": "Withdraw note\n1 ETH\nEthereum Mainnet \u00b7 Private note\nReview this restored note before withdrawing.\nReview restored note\nCancel\nReview private transaction\nUnlock this private note to review its saved transaction. This does not sign or resend it.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "text": "Withdraw note\n1 ETH\nEthereum Mainnet · Private note\nReview this restored note before withdrawing.\nReview restored note\nCancel\nReview private transaction\nUnlock this private note to review its saved transaction. This does not sign or resend it.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "92eeebbe303334268e0bcbb64655120f04cdf9199d630c947b746bccfdeb8427"
@@ -409,7 +410,7 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nContract interaction\nNative currency sent\n0.00123456789\nCOIN\nThis amount excludes any tokens or NFTs the contract may move.\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nTo\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.001234567890252 COIN\nView transaction details\nReject\nConfirm",
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nContract interaction\nNative currency sent\n0.00123456789\nCOIN\nThis amount excludes any tokens or NFTs the contract may move.\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nTo\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.001234567890252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "1c6f02451ac0d862f8040714fa56b9856f91b7a10ecf511f6d0a9abb6eb09cbc"
@@ -496,7 +497,7 @@
         }
       ],
       "overflow": false,
-      "text": "Review imported account\nEthereum \u00b7 EVM account\nKeep a separate copy of this key\nYour recovery phrase cannot restore an imported account. Keep its original private key backed up securely before continuing.\nImported savings\n0x1563915e194D8CfBA1943570603F7606A3115508\nCheck the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.\n\u2713\nI have a separate backup of this private key.\nEdit private key\nDevelopment build \u00b7 Use a test wallet\nImport account",
+      "text": "Review imported account\nEthereum · EVM account\nKeep a separate copy of this key\nYour recovery phrase cannot restore an imported account. Keep its original private key backed up securely before continuing.\nImported savings\n0x1563915e194D8CfBA1943570603F7606A3115508\nCheck the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.\n✓\nI have a separate backup of this private key.\nEdit private key\nDevelopment build · Use a test wallet\nImport account",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "7fe960611d145e1c4bdeb922010ca740af1df37a7631d70403817050781993d6"
@@ -525,7 +526,7 @@
         }
       ],
       "overflow": false,
-      "text": "Review imported account\nEthereum \u00b7 EVM account\nKeep a separate copy of this key\nYour recovery phrase cannot restore an imported account. Keep its original private key backed up securely before continuing.\nImported savings\n0x1563915e194D8CfBA1943570603F7606A3115508\nCheck the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.\n\u2713\nI have a separate backup of this private key.\nDevelopment build \u00b7 Use a test wallet\nImport account\nAuthorize change\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "text": "Review imported account\nEthereum · EVM account\nKeep a separate copy of this key\nYour recovery phrase cannot restore an imported account. Keep its original private key backed up securely before continuing.\nImported savings\n0x1563915e194D8CfBA1943570603F7606A3115508\nCheck the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.\n✓\nI have a separate backup of this private key.\nDevelopment build · Use a test wallet\nImport account\nAuthorize change\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "ca249beb0e6db3171260b9c641bddc51c21123196bc1e2b2ad5da386c464657d"
@@ -567,7 +568,7 @@
         }
       ],
       "overflow": false,
-      "text": "Back up private notes\nUse a separate backup password with at least 12 characters. Pali cannot recover it for you.\nBackup password\nConfirm backup password\nWorking\u2026\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "text": "Back up private notes\nUse a separate backup password with at least 12 characters. Pali cannot recover it for you.\nBackup password\nConfirm backup password\nWorking…\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "9b941670ecae301b3b872f883837febec45da824de56931cbcadf8f3074eed6d"
@@ -609,7 +610,7 @@
         }
       ],
       "overflow": false,
-      "text": "Review restore\nNew notes\n2\nAlready in this wallet\n1\nExisting notes are kept. The backup may flag notes that need a status check before use.\nRestoring\u2026\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "text": "Review restore\nNew notes\n2\nAlready in this wallet\n1\nExisting notes are kept. The backup may flag notes that need a status check before use.\nRestoring…\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "9b941670ecae301b3b872f883837febec45da824de56931cbcadf8f3074eed6d"
@@ -630,7 +631,7 @@
         }
       ],
       "overflow": false,
-      "text": "Your notes\nYour notes \u00b7 1\nRecovery is available only after the transaction is finalized as failed and its original proof can no longer execute. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.\nThis check shares the transaction hash, original proof root and public note nullifier with your selected Ethereum RPC.\nCheck and recover\nCancel\nClose",
+      "text": "Your notes\nYour notes · 1\nRecovery is available only after the transaction is finalized as failed and its original proof can no longer execute. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.\nThis check shares the transaction hash, original proof root and public note nullifier with your selected Ethereum RPC.\nCheck and recover\nCancel\nClose",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "df5b168303f58de9f001a747d3c216a23885214deb02a76e541933400c802a16"
@@ -651,7 +652,7 @@
         }
       ],
       "overflow": false,
-      "text": "Your notes\nYour notes \u00b7 1\nRecovery is available only after the transaction is finalized as failed and its original proof can no longer execute. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.\nThis check shares the transaction hash, original proof root and public note nullifier with your selected Ethereum RPC.\nCheck and recover\nCancel\nClose\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "text": "Your notes\nYour notes · 1\nRecovery is available only after the transaction is finalized as failed and its original proof can no longer execute. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.\nThis check shares the transaction hash, original proof root and public note nullifier with your selected Ethereum RPC.\nCheck and recover\nCancel\nClose\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "9b941670ecae301b3b872f883837febec45da824de56931cbcadf8f3074eed6d"
@@ -663,7 +664,7 @@
       "width": 320,
       "height": 568,
       "file": "sentry-review-320.png",
-      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "sourceCommit": "95265026a71e1b1489cad081773a8c70d619b184",
       "url": "http://127.0.0.1:4179/?sentry-consent",
       "assets": [
         {
@@ -672,10 +673,11 @@
         }
       ],
       "overflow": false,
-      "text": "Update node service\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet \u00b7 Syscoin\nsys1qexamplepublicaddress\nUpdate node service\nChange the service information for this node using the selected authority key.\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator \u00b7 bls-basic\nService address\nCurrent\nold.example.test:8369\nProposed\nnew.example.test:8369\nNEVM address\nCurrent\n0x4444444444444444444444444444444444444444\nProposed\n0x5555555555555555555555555555555555555555\nOperator payout script\nCurrent\n00146666666666666666666666666666666666666666\nProposed\n00147777777777777777777777777777777777777777\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key \u00b7 operator\nbls-basic \u00b7 Selected\nView request details\nUpdate node service\nReject",
+      "text": "Update node service\nExample staking app · Syscoin\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nService address\nProposed\nnew.example.test:8369\nCurrent\nold.example.test:8369\nNEVM address\nProposed\n0x5555555555555555555555555555555555555555\nCurrent\n0x4444444444444444444444444444444444444444\nOperator payout address\nProposed\nsys1qwamhwamhwamhwamhwamhwamhwamhwamhjx836v\nCurrent\nsys1qvenxvenxvenxvenxvenxvenxvenxvenxqcsv07\nRequest account\nDaily wallet · sys1qexamplepublicaddress\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator · bls-basic\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key · operator\nbls-basic · Selected\nView request details\nUpdate node service\nReject",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
-      "sha256": "507dbb855c710f3edb15c1ef30007a31d6579bfe0194a1130130a39c47489727"
+      "sha256": "23724935ff7dbce70c7c214489afcc766e22d1a71bf0dec37f599b536fdb0744",
+      "provenance": "../consent-updates/manifest.json"
     },
     {
       "id": "sentry-auth",
@@ -693,7 +695,7 @@
         }
       ],
       "overflow": false,
-      "text": "Update node service\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet \u00b7 Syscoin\nsys1qexamplepublicaddress\nUpdate node service\nChange the service information for this node using the selected authority key.\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator \u00b7 bls-basic\nService address\nCurrent\nold.example.test:8369\nProposed\nnew.example.test:8369\nNEVM address\nCurrent\n0x4444444444444444444444444444444444444444\nProposed\n0x5555555555555555555555555555555555555555\nOperator payout script\nCurrent\n00146666666666666666666666666666666666666666\nProposed\n00147777777777777777777777777777777777777777\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key \u00b7 operator\nbls-basic \u00b7 Selected\nView request details\nAuthorizing\u2026\nReject\nAuthorize transaction\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "text": "Update node service\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet · Syscoin\nsys1qexamplepublicaddress\nUpdate node service\nChange the service information for this node using the selected authority key.\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator · bls-basic\nService address\nCurrent\nold.example.test:8369\nProposed\nnew.example.test:8369\nNEVM address\nCurrent\n0x4444444444444444444444444444444444444444\nProposed\n0x5555555555555555555555555555555555555555\nOperator payout script\nCurrent\n00146666666666666666666666666666666666666666\nProposed\n00147777777777777777777777777777777777777777\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key · operator\nbls-basic · Selected\nView request details\nAuthorizing…\nReject\nAuthorize transaction\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "4451be9523044bb6513eefd01205aa8e38c5f0e621e8cd0092f293766632cd68"
@@ -735,7 +737,7 @@
         }
       ],
       "overflow": false,
-      "text": "Release collateral\nSyscoin\nAllow this collateral to be spent?\nSpending this output stops the Sentry node. Releasing protection does not send a transaction or remove saved authority keys.\n3333333333333333333333333333333333333333333333333333333333333333:0\nI intend to stop this node and allow its collateral to be spent.\nReleasing\u2026\nAuthorize change\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "text": "Release collateral\nSyscoin\nAllow this collateral to be spent?\nSpending this output stops the Sentry node. Releasing protection does not send a transaction or remove saved authority keys.\n3333333333333333333333333333333333333333333333333333333333333333:0\nI intend to stop this node and allow its collateral to be spent.\nReleasing…\nAuthorize change\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "ca249beb0e6db3171260b9c641bddc51c21123196bc1e2b2ad5da386c464657d"
@@ -756,7 +758,7 @@
         }
       ],
       "overflow": false,
-      "text": "Withdraw note\n1 ETH\nEthereum Mainnet \u00b7 Private note\nReview this restored note before withdrawing.\nReview restored note\nCancel",
+      "text": "Withdraw note\n1 ETH\nEthereum Mainnet · Private note\nReview this restored note before withdrawing.\nReview restored note\nCancel",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "7667d446ace5cd7f41dcef4681990d86ef706dd0360ab550c65e9ad11e7846ea"
@@ -777,7 +779,7 @@
         }
       ],
       "overflow": false,
-      "text": "Withdraw note\n1 ETH\nEthereum Mainnet \u00b7 Private note\nReview this restored note before withdrawing.\nReview restored note\nCancel\nReview private transaction\nUnlock this private note to review its saved transaction. This does not sign or resend it.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "text": "Withdraw note\n1 ETH\nEthereum Mainnet · Private note\nReview this restored note before withdrawing.\nReview restored note\nCancel\nReview private transaction\nUnlock this private note to review its saved transaction. This does not sign or resend it.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "d2fab1f6e44606a62175ddbd396456ccb1b84c45eae9fa29191a4727230c893c"
@@ -789,7 +791,7 @@
       "width": 390,
       "height": 844,
       "file": "dapp-erc20-390.png",
-      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "sourceCommit": "95265026a71e1b1489cad081773a8c70d619b184",
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc20",
       "assets": [
         {
@@ -798,10 +800,11 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-20 transfer\n123.456789\nTOK\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-20 transfer\n123.456789\nTOK\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
-      "sha256": "2cf38a9bd94acd7794de98381a111d3344a084cca07de6af5ce68cbdacc5ce4e"
+      "sha256": "1319925b6ec9a8302489bd93738c6661e5ff6167032a6bee8fd3cc7a89ecac51",
+      "provenance": "../consent-updates/manifest.json"
     },
     {
       "id": "dapp-erc721",
@@ -810,7 +813,7 @@
       "width": 390,
       "height": 844,
       "file": "dapp-erc721-390.png",
-      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "sourceCommit": "95265026a71e1b1489cad081773a8c70d619b184",
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc721",
       "assets": [
         {
@@ -819,10 +822,11 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-721 transfer\n#42\n1 NFT\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-721 transfer\n#42\n1 NFT\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
-      "sha256": "ec5c9d834ebe199b8233a5e03ef3891fd636c1a4d38242adb231d7dc8e94fae1"
+      "sha256": "a0f945239b32109177c6b526284a31adf1c10e3a67ac619a3f0cf822e2e00aca",
+      "provenance": "../consent-updates/manifest.json"
     },
     {
       "id": "dapp-erc1155",
@@ -831,7 +835,7 @@
       "width": 390,
       "height": 844,
       "file": "dapp-erc1155-390.png",
-      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "sourceCommit": "95265026a71e1b1489cad081773a8c70d619b184",
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc1155",
       "assets": [
         {
@@ -840,10 +844,11 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
-      "sha256": "19d2f5cd4240438faeb5b6b68361baa8329918a7cbc5b60253d7db56b011adaa"
+      "sha256": "9180fa90075b22ebb68b22eec931552122af50b2b0f4ae16dcbea867d3e1e0c2",
+      "provenance": "../consent-updates/manifest.json"
     },
     {
       "id": "note-reveal-review",
@@ -869,7 +874,7 @@
         }
       ],
       "overflow": false,
-      "text": "Back up this note\nAnyone with this note can withdraw\nKeep your backup private. Your recovery phrase can\u2019t restore this note.\nReveal private note\nLock wallet",
+      "text": "Back up this note\nAnyone with this note can withdraw\nKeep your backup private. Your recovery phrase can’t restore this note.\nReveal private note\nLock wallet",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "7ade5607eb0e324239febea7bf60a309a50a55f0b2da2ab570d601eb3df43d30"
@@ -898,7 +903,7 @@
         }
       ],
       "overflow": false,
-      "text": "Back up this note\nAnyone with this note can withdraw\nKeep your backup private. Your recovery phrase can\u2019t restore this note.\nAuthorizing\u2026\nLock wallet\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "text": "Back up this note\nAnyone with this note can withdraw\nKeep your backup private. Your recovery phrase can’t restore this note.\nAuthorizing…\nLock wallet\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "0eaaab4ced8ad90cdeb709773d0e2b50387c601014a44b6e1a144590b36556f8"
@@ -927,7 +932,7 @@
         }
       ],
       "overflow": false,
-      "text": "Back up this note\nAnyone with this note can withdraw\nKeep your backup private. Your recovery phrase can\u2019t restore this note.\nReveal private note\nLock wallet",
+      "text": "Back up this note\nAnyone with this note can withdraw\nKeep your backup private. Your recovery phrase can’t restore this note.\nReveal private note\nLock wallet",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "1145295a154f10deb0bc95fc8d9378aaafa14ddfe71438c2caa00eac44f6a459"
@@ -956,7 +961,7 @@
         }
       ],
       "overflow": false,
-      "text": "Back up this note\nAnyone with this note can withdraw\nKeep your backup private. Your recovery phrase can\u2019t restore this note.\nAuthorizing\u2026\nLock wallet\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "text": "Back up this note\nAnyone with this note can withdraw\nKeep your backup private. Your recovery phrase can’t restore this note.\nAuthorizing…\nLock wallet\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "9b941670ecae301b3b872f883837febec45da824de56931cbcadf8f3074eed6d"
@@ -968,7 +973,7 @@
       "width": 320,
       "height": 568,
       "file": "dapp-erc20-320.png",
-      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "sourceCommit": "95265026a71e1b1489cad081773a8c70d619b184",
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc20",
       "assets": [
         {
@@ -977,10 +982,11 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-20 transfer\n123.456789\nTOK\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-20 transfer\n123.456789\nTOK\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
-      "sha256": "25a6651d41ca2403d4393c2993759880a080db5da61bbe850a198094a7b1a957"
+      "sha256": "b6fb17cf48d2447f52ae4ee212abaed3aed3350da9f890b4cbe26255783e30e0",
+      "provenance": "../consent-updates/manifest.json"
     },
     {
       "id": "dapp-erc20-details",
@@ -998,7 +1004,7 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-20 transfer\n123.456789\nTOK\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nERC-20 transfer\n123.456789\nTOK\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "42a98b4f854c61474d2e8cb9c454b4e38bc9f32d698da21214652e456b1f43fd"
@@ -1027,7 +1033,7 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction details\nActivity watch \u00b7 Bitcoin\nAll\nSent\nReceived\nNov 14, 2023\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nOlder activity\n20 transactions shown\nSent\n-9 BTC\nConfirmed\nNetwork\nBitcoin\nDate\nNov 14, 2023, 2:13 PM\nFrom\nbc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4\nTo\nbc1qw508d6qejxtd\u2026V7uhcoDz92PH\nNetwork fee\n1.0 BTC\nTransaction ID\n0000000000000000\u2026000000000001\nView on explorer\nDetails",
+      "text": "Transaction details\nActivity watch · Bitcoin\nAll\nSent\nReceived\nNov 14, 2023\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nOlder activity\n20 transactions shown\nSent\n-9 BTC\nConfirmed\nNetwork\nBitcoin\nDate\nNov 14, 2023, 2:13 PM\nFrom\nbc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4\nTo\nbc1qw508d6qejxtd…V7uhcoDz92PH\nNetwork fee\n1.0 BTC\nTransaction ID\n0000000000000000…000000000001\nView on explorer\nDetails",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "f484283917fbb4e40307a1736037bc304c6d3eb26bc6d53da751100dcfda6a71"
@@ -1242,7 +1248,7 @@
       "width": 320,
       "height": 568,
       "file": "dapp-erc721-320.png",
-      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "sourceCommit": "95265026a71e1b1489cad081773a8c70d619b184",
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc721",
       "assets": [
         {
@@ -1251,10 +1257,11 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-721 transfer\n#42\n1 NFT\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-721 transfer\n#42\n1 NFT\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
-      "sha256": "f2976203604668653ba094eb4f90194e8b491b75aaab2c1d8ae0c3f12d638e1c"
+      "sha256": "da6b3eba70e19f2c87441b73f043220d071e56b4645661833bf94921ca1b171a",
+      "provenance": "../consent-updates/manifest.json"
     },
     {
       "id": "dapp-erc721-recipient",
@@ -1272,7 +1279,7 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-721 transfer\n#42\n1 NFT\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nERC-721 transfer\n#42\n1 NFT\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "248fcaa608fa71441c1fb4820ff9fd12f137e586a17dd01619be9dd9dd3e6410"
@@ -1293,7 +1300,7 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-721 transfer\n#42\n1 NFT\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nERC-721 transfer\n#42\n1 NFT\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "ddddc6f9a73150c79b4bc38103df1b9e13c8c97d18c841514b395c9558947550"
@@ -1305,7 +1312,7 @@
       "width": 320,
       "height": 568,
       "file": "dapp-erc1155-320.png",
-      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "sourceCommit": "95265026a71e1b1489cad081773a8c70d619b184",
       "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc1155",
       "assets": [
         {
@@ -1314,10 +1321,11 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nWebsite origin matched by WalletConnect\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nRecipient\n0x4444444444444444444444444444444444444444\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
-      "sha256": "6b14360345f08b9cccf3322df64a635a3fca487e7ee0b08c6e026139e24b33f2"
+      "sha256": "bb69f2179502f9817c42407ae1276edaadda6dd1bd73335a14e3d8ad56de0059",
+      "provenance": "../consent-updates/manifest.json"
     },
     {
       "id": "dapp-erc1155-recipient",
@@ -1335,7 +1343,7 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "248fcaa608fa71441c1fb4820ff9fd12f137e586a17dd01619be9dd9dd3e6410"
@@ -1356,7 +1364,7 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "text": "Transaction request\nE\nExample app\nCustom network · https://example.invalid\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "ddddc6f9a73150c79b4bc38103df1b9e13c8c97d18c841514b395c9558947550"
@@ -1385,7 +1393,7 @@
         }
       ],
       "overflow": false,
-      "text": "Transaction details\nActivity watch \u00b7 Bitcoin\nAll\nSent\nReceived\nNov 14, 2023\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nOlder activity\n20 transactions shown\nSent\n-9 BTC\nConfirmed\nNetwork\nBitcoin\nDate\nNov 14, 2023, 2:13 PM\nFrom\nbc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4\nTo\nbc1qw508d6qejxtd\u2026V7uhcoDz92PH\nNetwork fee\n1.0 BTC\nTransaction ID\n0000000000000000\u2026000000000001\nView on explorer\nDetails",
+      "text": "Transaction details\nActivity watch · Bitcoin\nAll\nSent\nReceived\nNov 14, 2023\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin · Confirmed\n-10 BTC\n2:13 PM\nOlder activity\n20 transactions shown\nSent\n-9 BTC\nConfirmed\nNetwork\nBitcoin\nDate\nNov 14, 2023, 2:13 PM\nFrom\nbc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4\nTo\nbc1qw508d6qejxtd…V7uhcoDz92PH\nNetwork fee\n1.0 BTC\nTransaction ID\n0000000000000000…000000000001\nView on explorer\nDetails",
       "errors": [],
       "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
       "sha256": "dea55690d6595136e3652266777727f2971c7e069f76bef59c8624c568961f96"
