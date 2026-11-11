@@ -291,7 +291,7 @@ export async function readWalletReleaseFeed(
   }
 }
 
-/** Severity is publisher metadata; it never changes ordering or permits a downgrade. */
+/** Keep the newest target and the highest urgency of fixes this installation lacks. */
 export function selectWalletRelease(
   feed: WalletReleaseFeed,
   current: WalletReleaseIdentity,
@@ -306,6 +306,7 @@ export function selectWalletRelease(
   )
     return null;
   let selected: WalletRelease | null = null;
+  let severity: WalletReleaseSeverity = 'routine';
   for (const release of admitted.releases) {
     if (
       release.platform !== current.platform ||
@@ -326,6 +327,11 @@ export function selectWalletRelease(
     )
       continue;
     if (
+      release.severity === 'critical' ||
+      (release.severity === 'important' && severity === 'routine')
+    )
+      severity = release.severity;
+    if (
       !selected ||
       (release.platform === 'android'
         ? release.build! - selected.build!
@@ -334,5 +340,9 @@ export function selectWalletRelease(
     )
       selected = release;
   }
-  return selected;
+  // Later routine releases include earlier fixes. Do not lose their urgency,
+  // or keep warning once the installed version/build already contains them.
+  return selected && selected.severity !== severity
+    ? Object.freeze({ ...selected, severity })
+    : selected;
 }

@@ -167,7 +167,7 @@ describe('wallet release metadata', () => {
     ).toBeNull();
   });
 
-  it('selects numeric maximum for the installed platform without severity inference', () => {
+  it('selects the numeric maximum and retains outstanding publisher urgency', () => {
     const value = admitted(
       release({ version: '4.9', severity: 'critical' }),
       release({ version: '4.10', severity: 'routine' }),
@@ -180,7 +180,9 @@ describe('wallet release metadata', () => {
       now
     );
     expect(selected?.version).toBe('4.10');
-    expect(selected?.severity).toBe('routine');
+    expect(selected?.severity).toBe('critical');
+    expect(Object.isFrozen(selected)).toBe(true);
+    expect(value.releases[1]!.severity).toBe('routine');
     expect(
       selectWalletRelease(value, { platform: 'chrome', version: '4.10.0' }, now)
     ).toBeNull();
@@ -190,6 +192,86 @@ describe('wallet release metadata', () => {
     expect(
       selectWalletRelease(value, { platform: 'chrome', version: 'broken' }, now)
     ).toBeNull();
+  });
+
+  it.each(['chrome', 'android', 'ios'] as const)(
+    'carries only unapplied %s urgency to the latest installation target',
+    (platform) => {
+      const identity = (version: string, build: number) => ({
+        platform,
+        version,
+        ...(platform === 'chrome' ? {} : { build }),
+      });
+      const value = admitted(
+        release({ ...identity('5.0.1', 2), severity: 'critical' }),
+        release({ ...identity('5.0.2', 3), title: 'Latest improvements' }),
+        release({
+          ...identity('5.0.3', 4),
+          severity: 'critical',
+          publishedAt: '2050-01-01T00:00:00Z',
+        })
+      );
+      expect(
+        selectWalletRelease(value, identity('5.0.0', 1), now)
+      ).toMatchObject({
+        version: '5.0.2',
+        severity: 'critical',
+        title: 'Latest improvements',
+      });
+      expect(
+        selectWalletRelease(
+          { ...value, releases: [...value.releases].reverse() },
+          identity('5.0.0', 1),
+          now
+        )
+      ).toEqual(selectWalletRelease(value, identity('5.0.0', 1), now));
+      expect(
+        selectWalletRelease(value, identity('5.0.1', 2), now)
+      ).toMatchObject({
+        version: '5.0.2',
+        severity: 'routine',
+      });
+      expect(selectWalletRelease(value, identity('5.0.2', 3), now)).toBeNull();
+    }
+  );
+
+  it('excludes other platforms and ineligible Android builds from outstanding urgency', () => {
+    const value = admitted(
+      release({ platform: 'ios', version: '5.0.1', severity: 'critical' }),
+      release({
+        platform: 'android',
+        version: '4.9.0',
+        build: 90,
+        severity: 'critical',
+      }),
+      release({
+        platform: 'android',
+        version: '5.0.1',
+        build: 1,
+        severity: 'critical',
+      }),
+      release({
+        platform: 'android',
+        version: '5.0.1',
+        build: 2,
+        severity: 'important',
+      }),
+      release({ platform: 'android', version: '5.0.2', build: 3 })
+    );
+    expect(
+      selectWalletRelease(
+        value,
+        { platform: 'android', version: '5.0.0', build: 1 },
+        now
+      )
+    ).toMatchObject({ version: '5.0.2', build: 3, severity: 'important' });
+    expect(
+      selectWalletRelease(
+        value,
+        { platform: 'android', version: '5.0.1', build: 2 },
+        now
+      )
+    ).toMatchObject({ version: '5.0.2', build: 3, severity: 'routine' });
   });
 
   it('requires a newer Android install build and rejects marketing-version downgrades', () => {
@@ -251,6 +333,35 @@ describe('wallet release metadata', () => {
         now
       )
     ).toBeNull();
+  });
+
+  it('does not inherit same-version iOS urgency without a known newer build', () => {
+    const value = admitted(
+      release({
+        platform: 'ios',
+        version: '5.0.0',
+        build: 12,
+        severity: 'critical',
+      }),
+      release({ platform: 'ios', version: '5.0.1' })
+    );
+    expect(
+      selectWalletRelease(value, { platform: 'ios', version: '5.0.0' }, now)
+    ).toMatchObject({ version: '5.0.1', severity: 'routine' });
+    expect(
+      selectWalletRelease(
+        value,
+        { platform: 'ios', version: '5.0.0', build: 12 },
+        now
+      )
+    ).toMatchObject({ version: '5.0.1', severity: 'routine' });
+    expect(
+      selectWalletRelease(
+        value,
+        { platform: 'ios', version: '5.0.0', build: 11 },
+        now
+      )
+    ).toMatchObject({ version: '5.0.1', severity: 'critical' });
   });
 
   it('uses only the fixed bounded HTTPS source and omits ambient credentials', async () => {

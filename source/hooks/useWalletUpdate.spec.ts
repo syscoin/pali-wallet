@@ -6,10 +6,10 @@ type Runtime = NonNullable<
 type Callback = Parameters<Runtime['requestUpdateCheck']>[0];
 const emptyFeed = { version: 1 as const, releases: [] };
 
-function fixture() {
+function fixture(installedVersion = '1.0.0') {
   let receive: ((details: { version: string }) => void) | undefined;
   const runtime = {
-    getManifest: jest.fn(() => ({ version: '1.0.0' })),
+    getManifest: jest.fn(() => ({ version: installedVersion })),
     onUpdateAvailable: {
       addListener: jest.fn((listener) => {
         receive = listener;
@@ -31,6 +31,39 @@ function fixture() {
     receive: (version: string) => receive?.({ version }),
   };
 }
+
+it.each([
+  ['5.0.0', 'critical'],
+  ['5.0.1', 'routine'],
+])(
+  'uses outstanding shared urgency for extension %s',
+  async (installed, severity) => {
+    const f = fixture(installed);
+    f.fetchFeed.mockResolvedValue({
+      version: 1,
+      releases: ['5.0.1', '5.0.2'].map((version, index) => ({
+        platform: 'chrome',
+        version,
+        severity: index ? 'routine' : 'critical',
+        title: 'Pali update',
+        summary: 'Cumulative improvements.',
+        publishedAt: '2026-01-01T00:00:00Z',
+        releaseNotesUrl: `https://github.com/syscoin/pali-wallet/releases/tag/v${version}`,
+        availability: { status: 'published' },
+      })),
+    });
+    try {
+      await f.store.check();
+      expect(f.store.getSnapshot().release).toMatchObject({
+        version: '5.0.2',
+        severity,
+      });
+      expect(f.runtime.reload).not.toHaveBeenCalled();
+    } finally {
+      f.store.dispose();
+    }
+  }
+);
 
 it('automatically checks public metadata but asks Chrome only after a manual check', async () => {
   const f = fixture();

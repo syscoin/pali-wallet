@@ -2029,3 +2029,15 @@ no published update (the development-build qualification copy is unchanged).
 | About · 320 px | About · 390 px |
 | --- | --- |
 | ![Compact updates entry at 320 px](update-notices/about-updates-320.png) | ![Compact updates entry at 390 px](update-notices/about-updates-390.png) |
+
+### Store-only update progress
+
+The implemented update panel remains visible while Google Play reports pending or downloading,
+including when release metadata is absent. These browser renders use public synthetic Play
+observations (42% downloaded), not a device download. Native listener tests separately cover the
+locked modal through pending, downloading, downloaded, failed and cancelled states. Installation
+still requires the explicit **Restart and install** action on an eligible surface.
+
+| 320px | 390px |
+| --- | --- |
+| ![Store-only update progress at 320px](update-notices/update-progress-320.png) | ![Store-only update progress at 390px](update-notices/update-progress-390.png) |

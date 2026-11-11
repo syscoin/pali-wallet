@@ -8,14 +8,18 @@ import { WalletReleaseMonitor } from '../../../source/shared/walletReleaseMonito
 import { parseWalletReleaseFeed } from '../../../source/shared/walletRelease.ts';
 import type { MobileUpdateService } from '../src/updates/types.ts';
 
-function fixture(options: { ios?: boolean; severity?: string; store?: string | null } = {}) {
+function fixture(options: { ios?: boolean; severity?: string; store?: string | null;
+  newerRoutine?: boolean; currentVersion?: string; currentBuild?: string } = {}) {
   let clock = Date.now(), reads = 0, posts = 0, requests = 0, failPost = false, failFeed = false;
   const data = new Map<string, string>(), removed: string[] = [];
   const platform = options.ios ? 'ios' : 'android';
   const feed = parseWalletReleaseFeed({ version: 1, releases: [{ platform, version: '5.0.1', build: 2,
     severity: options.severity ?? 'important', title: 'Recovery fixes', summary: 'Improves interrupted transfer recovery.',
     publishedAt: '2026-01-01T00:00:00Z', releaseNotesUrl: 'https://github.com/syscoin/pali-wallet/releases/tag/v5.0.1',
-    availability: { status: 'published' } }] });
+    availability: { status: 'published' } }, ...(options.newerRoutine ? [{ platform, version: '5.0.2', build: 3,
+    severity: 'routine', title: 'Latest improvements', summary: 'Cumulative improvements.',
+    publishedAt: '2026-01-02T00:00:00Z', releaseNotesUrl: 'https://github.com/syscoin/pali-wallet/releases/tag/v5.0.2',
+    availability: { status: 'published' } }] : [])] });
   let permission = true, failRead = false, registered = false, interval = 0;
   let hold: ReturnType<typeof Promise.withResolvers<void>> | undefined;
   let backgroundHold: { entered: ReturnType<typeof Promise.withResolvers<void>>; release: ReturnType<typeof Promise.withResolvers<void>> } | undefined;
@@ -33,7 +37,7 @@ function fixture(options: { ios?: boolean; severity?: string; store?: string | n
   const imports: Record<string, unknown> = {
     '@react-native-async-storage/async-storage': store,
     'react-native': { Platform: { OS: platform }, AppState: { currentState: 'active' } },
-    'expo-application': { nativeApplicationVersion: '5.0.0', nativeBuildVersion: '1' },
+    'expo-application': { nativeApplicationVersion: options.currentVersion ?? '5.0.0', nativeBuildVersion: options.currentBuild ?? '1' },
     'expo-background-task': { BackgroundTaskStatus: { Available: 1 }, getStatusAsync: async () => {
       if (backgroundHold) { backgroundHold.entered.resolve(); await backgroundHold.release.promise; } return 1;
     }, registerTaskAsync: async (_name: string, options: { minimumInterval: number }) => { registered = true; interval = options.minimumInterval; }, unregisterTaskAsync: async () => { registered = false; } },
@@ -77,6 +81,21 @@ test('public update monitoring posts and deduplicates important releases without
 test('routine updates get a badge but no notification', async () => {
   const f = fixture({ severity: 'routine' }); await f.mobileUpdates.check();
   assert.equal(f.mobileUpdates.getSnapshot().release?.version, '5.0.1'); assert.equal(f.posts, 0);
+});
+test('a newer routine target still notifies for an unapplied critical fix', async () => {
+  const f = fixture({ severity: 'critical', newerRoutine: true });
+  await f.mobileUpdates.check();
+  assert.equal(f.mobileUpdates.getSnapshot().release?.version, '5.0.2');
+  assert.equal(f.mobileUpdates.getSnapshot().release?.severity, 'critical');
+  assert.equal(f.posts, 1);
+  f.advance(); await f.mobileUpdates.check(); assert.equal(f.posts, 1);
+});
+test('installing the critical fix stops critical notifications for a later routine target', async () => {
+  const f = fixture({ severity: 'critical', newerRoutine: true, currentVersion: '5.0.1', currentBuild: '2' });
+  await f.mobileUpdates.check();
+  assert.equal(f.mobileUpdates.getSnapshot().release?.version, '5.0.2');
+  assert.equal(f.mobileUpdates.getSnapshot().release?.severity, 'routine');
+  assert.equal(f.posts, 0);
 });
 test('failed delivery is retryable, not remembered as notified', async () => {
   const f = fixture(); f.failPost(true);

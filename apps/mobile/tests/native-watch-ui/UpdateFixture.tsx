@@ -9,7 +9,7 @@ const failed = new URLSearchParams(window.location.search).get('update-state') =
 const snapshot: MobileUpdateSnapshot = {
   status: failed ? 'error' : 'ready', error: failed ? 'unavailable' : null,
   lastCheckedAt: 1, lastAttemptAt: 1, alertsEnabled: true, permission: 'granted',
-  release: { platform: 'android', version: '5.0.1', build: 2, severity: 'important',
+  release: new URLSearchParams(window.location.search).has('update-progress') ? null : { platform: 'android', version: '5.0.1', build: 2, severity: 'important',
     title: 'Improved transaction recovery', summary: 'Recover interrupted transfers more reliably. This release also improves wallet accessibility.',
     publishedAt: '2026-01-01T00:00:00Z', releaseNotesUrl: 'https://github.com/syscoin/pali-wallet/releases/tag/v5.0.1', availability: { status: 'published' } },
 };
