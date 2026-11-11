@@ -18,6 +18,9 @@ import { createNativeNetworkView } from '../src/custody/networkView.ts';
 import type { NativeNetworkSelectionProof } from '../src/custody/accounts.ts';
 import { networkSelectionReceiptFixture } from './networkSelectionReceiptFixture.ts';
 import { sendDraftForNetwork, NETWORK_CHANGED_DRAFT_NOTICE } from '../src/screens/sendNetworkDraft.ts';
+import { trezorResumeDraft } from '../src/screens/trezorResumeDraft.ts';
+import { formatBaseUnits } from '../src/core/amounts.ts';
+import { sameNativePortfolioAccount } from '../src/portfolio/nativePortfolio.ts';
 import { UTXO_ADDRESSES } from './publicWatchFixtures.ts';
 import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecycle.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
@@ -312,12 +315,12 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
 });
 
 async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED'; verifyCalls?: string[]; wait?: Promise<void> }, notificationPort: NotificationTestPort = quietActivityNotifications,
-  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }) {
+  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }) {
   const root = setup();
-  const networkId = networkMode === 'utxo' ? 'bitcoin' : 'ethereum';
+  const networkId = networkMode === 'utxo' ? utxoResume ? 'syscoin' : 'bitcoin' : 'ethereum';
   const address = `0x${'11'.repeat(20)}`;
   let catalogue = { revision: 1, active: { accountId: 'hd:60:0', networkId },
-    accounts: [{ id: 'hd:60:0', type: 'HDAccount', index: 0, slip44: 60, address, label: 'Account 1' }],
+    accounts: [{ id: 'hd:60:0', type: utxoResume ? 'Trezor' : 'HDAccount', index: 0, slip44: 60, address, label: 'Account 1' }],
     networks: networkContext.NATIVE_NETWORKS, utxoNetworks: networkMode ? UTXO_NETWORKS : [] };
   let state: { phase: string; revision: number; presence: string; backup: string; account: { address: string; network: string } | null; error: string | null } =
     { phase: setting || depositMode || networkMode || pinChange ? 'ready' : empty ? 'empty' : 'locked', revision: 1, presence: empty ? 'empty' : 'existing', backup: empty ? 'unconfirmed' : 'confirmed', account: setting || depositMode || networkMode || pinChange ? { address, network: networkId } : null, error: null };
@@ -447,7 +450,11 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   Object.assign(dependencies, {
     ...walletScreenPorts,
     '../notifications/service': { nativeActivityNotifications: notificationPort, isNotificationPermissionPromptActive: () => false },
-    '../portfolio/nativePortfolio': { NativePortfolioController: class { getSnapshot = () => null; subscribe = () => () => {}; connect() { return () => {}; } }, sameNativePortfolioAccount: () => false },
+    '../portfolio/nativePortfolio': { NativePortfolioController: class {
+      getSnapshot = () => utxoResume && state.account ? { status: 'available', units: utxoResume.nativeUnits, account: { ...state.account, revision: state.revision } } : null;
+      subscribe = () => () => {}; connect() { return () => {}; }
+    }, sameNativePortfolioAccount },
+    '../core/amounts': { formatBaseUnits },
     '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'biometrics', icon: 'fingerprint' }) },
     '../platform/localization': nativeTranslationFixture,
     '../../../../source/shared/smartAccountLinks.ts': { PALI_RECOVERY_ALERTS_URL },
@@ -463,6 +470,8 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     '../custody/networkContext': networkContext,
     '../../../../source/shared/evmNetworks': { EVM_NETWORK_DEFINITIONS: [{ id: 'ethereum', name: 'Ethereum' }] },
     './NativeSend': { NativeSend: 'NativeSend' }, './NativeUtxoSend': { NativeUtxoSendScreen: 'NativeUtxoSendScreen' },
+    './NativeTrezor': { NativeTrezor: 'NativeTrezor', NativeTrezorResumeNotice: 'NativeTrezorResumeNotice' },
+    './trezorResumeDraft': { trezorResumeDraft },
     './NativeNetworks': { NativeNetworks: 'NativeNetworks' },
     './sendNetworkDraft': { sendDraftForNetwork, NETWORK_CHANGED_DRAFT_NOTICE },
     '../platform/http': { walletFetch: async () => { throw Error('Network picker fixture performs no HTTP requests'); } },
@@ -1303,6 +1312,32 @@ test('UTXO Send opens its known network directly without a source selector', asy
     (portfolio.props.onSend as () => void)();
     const send = f.render(); assert.equal(send.type, 'NativeUtxoSendScreen'); assert.equal(send.props.onChangeNetwork, undefined);
   } finally { f.dispose(); }
+});
+
+test('resumed Trezor SPT drafts never label native funds as tokens while native and fresh SPT availability stay exact', async () => {
+  const asset = { assetGuid: '123456', symbol: 'SPT', decimals: 3 };
+  for (const resumedAsset of [undefined, asset]) {
+    const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'utxo', undefined, quietActivityNotifications, undefined, { nativeUnits: '125000001' });
+    try {
+      const home = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(home);
+      ((home.props.hardwareRequest as Element).props.onResume as () => void)();
+      const trezor = f.render(); assert.equal(trezor.type, 'NativeTrezor');
+      await (trezor.props.onResumeSend as (intent: object) => Promise<void>)({
+        id: 'utxo-resume', accountId: 'hd:60:0', networkId: 'syscoin', kind: 'utxo',
+        recipient: UTXO_ADDRESSES.syscoin, amount: '2', ...(resumedAsset ? { asset: resumedAsset } : {}),
+      });
+      const send = f.render(); assert.equal(send.type, 'NativeUtxoSendScreen');
+      assert.equal(send.props.asset, resumedAsset);
+      assert.equal(send.props.maximumAmount, undefined);
+      assert.equal(send.props.availableAmount, resumedAsset ? undefined : '1.25000001');
+      (send.props.onBack as () => void)();
+      const returned = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(returned);
+      (returned.props.onSendSpt as (holding: object) => void)({ ...asset, confirmedUnits: '20500', pendingDeltaUnits: '0' });
+      const fresh = f.render(); assert.equal(fresh.type, 'NativeUtxoSendScreen');
+      assert.equal(fresh.props.availableAmount, '20.5');
+      assert.equal(fresh.props.maximumAmount, '20.5');
+    } finally { f.dispose(); }
+  }
 });
 
 test('same-network asset changes preserve recipient but clear amount, MAX, and advanced draft state', async () => {

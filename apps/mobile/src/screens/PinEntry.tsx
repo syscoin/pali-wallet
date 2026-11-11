@@ -73,7 +73,11 @@ export function PinEntryScreen({ title, description, onComplete, onBack, footer,
   const compact = height < 700;
   // Reserve space for retry actions and multi-line errors before expanding the hero.
   const spacious = height >= 800 && fontScale <= 1.2 && !footer && !error && !notice;
-  useLayoutEffect(() => { const back = BackHandler.addEventListener('hardwareBackPress', () => { onBack?.(); return true; }); return () => back.remove(); }, [onBack]);
+  useLayoutEffect(() => {
+    if (!onBack) return;
+    const back = BackHandler.addEventListener('hardwareBackPress', () => { onBack(); return true; });
+    return () => back.remove();
+  }, [onBack]);
   return <SafeAreaView style={s.root} edges={['top', 'bottom']}>
     <Screen footer={footer} gap={compact ? notice ? 8 : 12 : 20}>
       {brand ? <View style={[s.brand, compact && s.brandCompact]}><PaliMark size={compact ? 32 : 44} /><Text style={s.brandName}>Pali Wallet</Text></View> :

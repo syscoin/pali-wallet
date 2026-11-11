@@ -30,7 +30,7 @@ function fixture(kind: 'control' | 'sentry') {
   const render = () => screenElements(f.render({ review, controller }));
   const button = () => screenElements(render().find(e => e.type === 'Screen')!.props.footer).find(e => e.type === 'Button' && e.props.title !== 'Reject')!;
   const tick = async () => { await Promise.resolve(); await Promise.resolve(); };
-  return { get review() { return review; }, replaceReview(update: Record<string, unknown>) { review = { ...review, ...update }; }, controller, render, button, approvals, rejections, tick,
+  return { get review() { return review; }, replaceReview(update: Record<string, unknown>) { review = Object.freeze({ ...review, ...update }); }, controller, render, button, approvals, rejections, tick,
     expire() { clock = 1001; [...timers.values()].forEach(run => run()); },
     background() { native.AppState.currentState = 'background'; app?.('background'); },
     back: () => back?.(), close: f.close };
@@ -63,6 +63,46 @@ test('Sentry signature requests shared authorization for the displayed role/slot
   assert(f.button().props.disabled); held.resolve(); await f.tick(); f.close();
 });
 
+test('immutable Sentry busy/error snapshots settle pending feedback without re-enabling terminal errors', async () => {
+  const f = fixture('sentry'), held = Promise.withResolvers<void>();
+  try {
+    f.controller.approveSentry = async (...args: unknown[]) => { f.approvals.push(args); await held.promise; };
+    const submit = f.button().props.onPress;
+    submit(); submit();
+    f.replaceReview({ revision: 2, busy: true }); f.render();
+    assert.equal(f.button().props.title, 'Authorizing…');
+    submit(); assert.equal(f.approvals.length, 1);
+    f.replaceReview({ revision: 3, busy: false, error: 'SENTRY_UNAVAILABLE' }); f.render();
+    held.reject(new Error('Authentication cancelled')); await f.tick();
+    assert.equal(f.button().props.title, 'Authorize Sentry update');
+    assert(f.button().props.disabled);
+    assert(f.render().some(node => node.type === 'Notice' && node.props.title === 'Request unavailable'));
+    assert(!f.render().some(node => node.type === 'Notice' && node.props.title === 'Authorization unsuccessful'));
+    f.button().props.onPress(); assert.equal(f.approvals.length, 1);
+    assert.equal(f.back(), true); await f.tick();
+    assert.deepEqual(f.rejections, ['request-1']);
+  } finally { held.resolve(); f.close(); }
+});
+
+test('replacing Sentry request details retires the old pending completion without clearing a new attempt', async () => {
+  const f = fixture('sentry'), first = Promise.withResolvers<void>(), second = Promise.withResolvers<void>();
+  try {
+    f.controller.approveSentry = async (...args: unknown[]) => {
+      f.approvals.push(args); await (f.approvals.length === 1 ? first.promise : second.promise);
+    };
+    f.button().props.onPress();
+    f.replaceReview({ revision: 2, details: structuredClone(f.review.details) }); f.render();
+    assert(!f.button().props.disabled);
+    f.button().props.onPress();
+    assert.equal(f.approvals.length, 2);
+    first.reject(new Error('Old request retired')); await f.tick();
+    assert(f.button().props.disabled);
+    assert(!f.render().some(node => node.type === 'Notice' && node.props.title === 'Authorization unsuccessful'));
+    second.resolve(); await f.tick();
+    assert(!f.button().props.disabled);
+  } finally { first.resolve(); second.resolve(); f.close(); }
+});
+
 test('Sentry expiry, background and replaced review cannot launch stale authorization', () => {
   const f = fixture('sentry'); f.render();
   const stale = f.button().props.onPress;
@@ -71,6 +111,13 @@ test('Sentry expiry, background and replaced review cannot launch stale authoriz
   f.background(); f.button().props.onPress();
   assert.deepEqual(f.approvals, []);
   assert.equal(f.back(), true); f.close();
+});
+
+test('an unmounted Sentry review cannot start authorization', () => {
+  const f = fixture('sentry');
+  const submit = f.button().props.onPress;
+  f.close(); submit();
+  assert.deepEqual(f.approvals, []);
 });
 
 test('linking uses no password and sends no UI-authored node or transaction payload', async () => {

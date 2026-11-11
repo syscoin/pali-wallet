@@ -136,7 +136,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
         </>}
         <View style={mode === 'asset' ? { display: 'none' } : s.assetList} accessibilityElementsHidden={mode === 'asset'} aria-hidden={mode === 'asset'}>
           {network.kind === 'utxo' && supportsSptUtxoChain(network.chainId) && <NativeSptAssets
-            key={`${account.id}:${network.id}`} holdings={snapshot.balance.status === 'available' && 'kind' in snapshot.balance && snapshot.balance.kind === 'utxo' ? snapshot.balance.assets ?? null : null}
+            key={`${account.id}:${network.id}`} chainId={network.chainId} holdings={snapshot.balance.status === 'available' && 'kind' in snapshot.balance && snapshot.balance.kind === 'utxo' ? snapshot.balance.assets ?? null : null}
             loading={loading} onRefresh={() => void authority.refresh()} onModeChange={setTokenTitle} onBackHandlerChange={setTokenBack} onReceive={receive} />}
         </View>
         {mode === 'home' && !tokenTitle && <>

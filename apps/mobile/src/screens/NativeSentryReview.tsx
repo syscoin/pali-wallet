@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeSentryAssent, NativeSentryReview as Review } from '../connections/sentryRequests';
@@ -14,15 +14,17 @@ function Field({ name, value }: { name: string; value: string }) {
 /** Render only the independently checked, public shared approval; no UI-authored signing payload. */
 export function NativeSentryReview({ review, controller }: { review: Review; controller: Pick<NativeConnectionsView, 'approveSentry' | 'rejectSentry'> }) {
   const identity = `${review.id}:${review.expiresAt}`;
+  const details = review.details;
+  const requestScope = useMemo(() => ({ controller, identity, details }), [controller, identity, details]);
   const currentReview = useRef(review);
   useLayoutEffect(() => { currentReview.current = review; }, [review]);
   const [selection, setSelection] = useState({ id: identity, index: 0 });
   const [expiredReview, setExpiredReview] = useState<string | null>(null);
-  const [pendingIdentity, setPendingIdentity] = useState<string | null>(null);
-  const expired = expiredReview === identity, submitting = pendingIdentity === identity;
-  const [error, setError] = useState('');
+  const [pendingScope, setPendingScope] = useState<object | null>(null);
+  const expired = expiredReview === identity, submitting = pendingScope === requestScope;
+  const [failure, setFailure] = useState<{ scope: object; message: string } | null>(null);
+  const error = failure?.scope === requestScope ? failure.message : '';
   const busy = useRef(false), alive = useRef(true), attempt = useRef<object | null>(null);
-  const details = review.details;
   const [expandedReview, setExpandedReview] = useState<string | null>(null);
   const showDetails = expandedReview === identity;
   const operation = details?.kind === 'operation' ? details.approval : null;
@@ -45,22 +47,26 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
   const blocked = unavailable || review.busy || submitting ||
     !!operation && !key || !!vote && (!vote.nodes.length || !!vote.missingVotingKeys.length);
   const reject = useCallback(() => { if (currentReview.current === review) void controller.rejectSentry(review.id).catch(() => undefined); }, [controller, review]);
-  useEffect(() => {
+  // Busy/error snapshots replace the review object without replacing its request.
+  useLayoutEffect(() => {
     alive.current = true; busy.current = false; attempt.current = null;
     const timer = setTimeout(() => { setExpiredReview(identity); }, Math.max(0, review.expiresAt - Date.now()));
+    return () => { alive.current = false; attempt.current = null; clearTimeout(timer); };
+  }, [requestScope, review.expiresAt, identity]);
+  useEffect(() => {
     const back = BackHandler.addEventListener('hardwareBackPress', () => { reject(); return true; });
-    return () => { alive.current = false; attempt.current = null; clearTimeout(timer); back.remove(); };
-  }, [controller, review.id, review.expiresAt, details, identity, reject]);
+    return () => back.remove();
+  }, [reject]);
   const approve = async () => {
-    if (currentReview.current !== review || blocked || busy.current || Date.now() >= review.expiresAt || AppState.currentState !== 'active' || !details) return;
+    if (!alive.current || currentReview.current !== review || blocked || busy.current || Date.now() >= review.expiresAt || AppState.currentState !== 'active' || !details) return;
     const ticket = {}; attempt.current = ticket;
-    busy.current = true; setPendingIdentity(identity); setError(''); Keyboard.dismiss();
+    busy.current = true; setPendingScope(requestScope); setFailure(null); Keyboard.dismiss();
     const assent: NativeSentryAssent = details.kind === 'link' ? { kind: 'link' } : details.kind === 'vote'
       ? { kind: 'vote' } : { kind: 'operation', keyId: key!.id,
         ...(key!.authorizationId ? { authorizationId: key!.authorizationId } : {}) };
     try { await controller.approveSentry(review.id, review.revision, assent); }
-    catch { if (alive.current && currentReview.current === review && attempt.current === ticket) setError('Could not authorize this request. Try again.'); }
-    finally { if (attempt.current === ticket) { attempt.current = null; busy.current = false; if (alive.current && currentReview.current === review) setPendingIdentity(null); } }
+    catch { if (alive.current && attempt.current === ticket && !currentReview.current.error) setFailure({ scope: requestScope, message: 'Could not authorize this request. Try again.' }); }
+    finally { if (attempt.current === ticket) { attempt.current = null; busy.current = false; if (alive.current) setPendingScope(null); } }
   };
   return <SafeAreaView edges={['top', 'bottom']} style={s.root}>
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>

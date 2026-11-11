@@ -23,7 +23,7 @@ const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 function fixture(asset?: NativeUtxoAsset, maximum?: string) {
   let network = getUtxoNetwork(asset ? 'syscoin' : 'bitcoin');
-  let availableAmount = '1.25000001';
+  let availableAmount: string | undefined = '1.25000001';
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
@@ -100,7 +100,7 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
     changeBalance(value: string) { maximum = value; },
     changeNetwork(id: string) { network = getUtxoNetwork(id); },
-    changeAvailable(value: string) { availableAmount = value; },
+    changeAvailable(value: string | undefined) { availableAmount = value; },
     hold() { gate = new Promise<void>((resolve) => { release = resolve; }); },
     release() { release?.(); gate = undefined; },
     close() { cells.forEach((value) => value.cleanup?.()); } };
@@ -240,6 +240,18 @@ test('UTXO draft shows the selected network, exact available amount and bordered
   f.changeAvailable('0.99999999');
   assert(all(f.render()).some(node => node.props.accessibilityLabel === 'Available 0.99999999 BTC'));
   f.close();
+});
+
+test('resumed SPT without an observed token balance displays unavailable and does not offer MAX', async () => {
+  const f = fixture({ assetGuid: '123456', decimals: 3, symbol: 'SPT' });
+  f.changeAvailable(undefined); f.render(); await tick();
+  try {
+    const elements = all(f.render());
+    const balance = elements.find(node => node.type === 'Text' && node.props.accessibilityLabel === 'Available unavailable SPT');
+    assert(balance); assert.equal(balance.children.join(''), 'Available — SPT');
+    assert(!elements.some(node => node.props.title === 'MAX'));
+    assert.equal(f.requests.length, 0);
+  } finally { f.close(); }
 });
 
 test('UTXO scan fills only the live draft and never prepares or confirms it', async () => {

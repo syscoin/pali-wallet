@@ -219,6 +219,22 @@ test('PIN screen owns and removes its hardware Back handler', () => {
   f.close(); assert.equal(f.backCount, 0);
 });
 
+test('PIN screen without a Back callback leaves Android Back to the parent', () => {
+  const f = fixture('PinEntryScreen');
+  const props = { title: 'Welcome back', brand: true, onComplete() {} };
+  f.render(props);
+  assert.equal(f.backCount, 0);
+  assert.equal(f.hardwareBack(), false);
+  let cancelled = 0;
+  f.render({ ...props, onBack() { cancelled++; } });
+  assert.equal(f.hardwareBack(), true);
+  assert.equal(cancelled, 1);
+  f.render(props);
+  assert.equal(f.backCount, 0, 'Removing the callback releases its Back handler');
+  assert.equal(f.hardwareBack(), false);
+  f.close();
+});
+
 
 test('PIN setup displays detected Face ID without changing the enrollment choice', () => {
   const f = fixture('PinSetup'), completed: boolean[] = [];
