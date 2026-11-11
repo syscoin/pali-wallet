@@ -37,7 +37,7 @@ test('recovery choices distinguish software owners and fee payers from same-chai
   const hd = account('HDAccount', 0);
   const imported = account('Imported', 1);
   const smart = account('SmartAccount', 2, 60, smartMetadata(1));
-  const choices = getNativeGuardianRecoveryChoices([hd, imported, smart], 1);
+  const choices = getNativeGuardianRecoveryChoices([hd, imported, smart], 1, false);
 
   assert.deepEqual(choices.guardians, [hd, imported, smart].map(choice));
   assert.deepEqual(choices.replacements, [hd, imported].map(choice));
@@ -51,7 +51,7 @@ test('same-chain Smart guardians remain selectable despite cached deployment or 
     account('SmartAccount', 2, 60, smartMetadata(1, true, false)),
     account('SmartAccount', 3, 60, smartMetadata(1, true, true)),
   ];
-  const choices = getNativeGuardianRecoveryChoices(accounts, 1);
+  const choices = getNativeGuardianRecoveryChoices(accounts, 1, false);
 
   assert.deepEqual(choices.guardians, accounts.map(choice));
   assert.deepEqual(choices.replacements, []);
@@ -71,7 +71,7 @@ test('hardware, UTXO and Smart accounts from another chain cannot enter recovery
     account('SmartAccount', 8, 60, smartMetadata(11155111)),
     account('SmartAccount', 9),
   ];
-  const choices = getNativeGuardianRecoveryChoices([hd, ...excluded, imported], 1);
+  const choices = getNativeGuardianRecoveryChoices([hd, ...excluded, imported], 1, false);
 
   for (const role of ['guardians', 'replacements', 'payers'] as const)
     assert.deepEqual(choices[role], [hd, imported].map(choice), role);
@@ -83,7 +83,7 @@ test('Smart guardian membership follows the requested chain while software choic
   const testnet = account('SmartAccount', 2, 60, smartMetadata(11155111, false, false));
 
   assert.deepEqual(
-    getNativeGuardianRecoveryChoices([hd, mainnet, testnet], 11155111).guardians,
+    getNativeGuardianRecoveryChoices([hd, mainnet, testnet], 11155111, false).guardians,
     [hd, testnet].map(choice)
   );
 });
@@ -96,7 +96,7 @@ test('public recovery choices are immutable detached identity snapshots with no 
     privateKey: 'private sentinel',
     smartAccount: smartMetadata(1),
   };
-  const choices = getNativeGuardianRecoveryChoices([source], 1);
+  const choices = getNativeGuardianRecoveryChoices([source], 1, false);
   const expected = choice(source);
   source.label = 'Changed label';
   source.address = address(200);
@@ -113,7 +113,8 @@ test('public recovery choices are immutable detached identity snapshots with no 
 });
 
 test('an empty catalogue exposes no recovery identity or payer', () => {
-  assert.deepEqual(getNativeGuardianRecoveryChoices([], 1), {
+  assert.deepEqual(getNativeGuardianRecoveryChoices([], 1, false), {
+    passkeysAvailable: false,
     guardians: [],
     replacements: [],
     payers: [],

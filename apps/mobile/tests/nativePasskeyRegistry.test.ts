@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createNativePasskeyRegistry } from '../src/smartAccount/passkeyRegistry.ts';
+import { createNativePasskeyRegistry, inspectNativePasskeyStorageRecord } from '../src/smartAccount/passkeyRegistry.ts';
 import { buildP256WebAuthnAuthenticator } from '../../../source/utils/smartAccount/authenticators.ts';
 import type { KeyringStoragePort } from '../src/storage/types.ts';
-import { passkeyAccountRecordsKey } from '../../../source/utils/passkey/registry.ts';
+import { passkeyAccountRecordsKey, PASSKEY_CREATION_PENDING_KEY } from '../../../source/utils/passkey/registry.ts';
+import { encodeStorageValue } from '../src/storage/json.ts';
 
 const account = '0x' + '11'.repeat(20);
 const profile = { credentialId: 'AQ', credentialIdHash: '0x' + '01'.repeat(32), passkeyName: 'Pali Smart account',
@@ -55,4 +56,23 @@ test('creation handoff cannot erase a newer profile or commit after cancellation
   f.cancelAtCommit();
   await assert.rejects(f.registry.transferCreation(account, replacement, f.check), /CANCELLED/);
   assert.equal(f.data.has(passkeyAccountRecordsKey(account)), false);
+});
+
+test('native passkey admission and runtime reads reject non-public or malformed fields', async () => {
+  const invalidProfiles = [
+    { ...profile, extraSecret: 'must not be admitted' },
+    { ...profile, publicKey: { ...profile.publicKey, extra: 'unknown' } },
+    { ...profile, backupStatus: 'unknown' },
+  ];
+  for (const invalid of invalidProfiles) {
+    const f = fixture(), value = { active: invalid };
+    f.data.set(passkeyAccountRecordsKey(account), value);
+    await assert.rejects(f.registry.read(account, f.check), /Invalid saved passkey/);
+    assert.throws(() => inspectNativePasskeyStorageRecord(passkeyAccountRecordsKey(account), encodeStorageValue(value)), /Invalid saved passkey/);
+  }
+  const extraPending = { createdAt: 1, profile, extraField: 'unknown' };
+  const f = fixture(); f.data.set(PASSKEY_CREATION_PENDING_KEY, extraPending);
+  await assert.rejects(f.registry.creation(f.check), /Invalid saved passkey/);
+  assert.throws(() => inspectNativePasskeyStorageRecord(PASSKEY_CREATION_PENDING_KEY, encodeStorageValue(extraPending)), /Invalid saved passkey/);
+  assert.throws(() => inspectNativePasskeyStorageRecord(passkeyAccountRecordsKey(account), encodeStorageValue({ pending: extraPending })), /Invalid saved passkey/);
 });

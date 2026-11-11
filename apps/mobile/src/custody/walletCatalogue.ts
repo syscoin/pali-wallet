@@ -1,3 +1,4 @@
+import { captureGuardianRecoveryClaim } from '../../../../source/utils/smartAccount/guardianRecoveryClaim.ts';
 import { getAddress } from 'ethers/address';
 import { computeAddress } from 'ethers/transaction';
 import { parseUtxoPublicIdentifier } from '../core/utxoIdentifier.ts';
@@ -103,12 +104,15 @@ export type NativeGuardianRecoveryAccountRef = Readonly<{
   address: string;
   xpub: string;
 }>;
+export type NativeGuardianRecoveryReplacement =
+  | Readonly<{ kind: 'software'; account: NativeGuardianRecoveryAccountRef }>
+  | Readonly<{ kind: 'passkey'; credential: import('../../../../source/utils/smartAccount/guardianRecoveryClaim.ts').GuardianRecoveryReplacement }>;
 export type NativeGuardianRecoveryIntent = Readonly<{
   accountId: string;
   operation: SmartAccountGuardianRecoveryOperation;
   target: PaliRecoveryTarget;
   guardian: NativeGuardianRecoveryAccountRef;
-  replacement: NativeGuardianRecoveryAccountRef;
+  replacement: NativeGuardianRecoveryReplacement;
   payer: NativeGuardianRecoveryAccountRef;
 }>;
 export type NativeInfrastructurePending = Readonly<{
@@ -280,11 +284,24 @@ function snapshotGuardianRecoveryIntent(value: unknown, record: NativeAccountRec
   requireSmartAccountAddressIdentity(account, operation.chainId);
   if (getAddress(account.address) !== operation.account) return invalid();
   const guardian = recoveryAccountReference(raw.guardian, record, 'guardian', operation.chainId);
-  const replacement = recoveryAccountReference(raw.replacement, record, 'software', operation.chainId);
+  const kind = raw.replacement && typeof raw.replacement === 'object' ? Object.getOwnPropertyDescriptor(raw.replacement, 'kind')?.value : undefined;
+  let replacement: NativeGuardianRecoveryReplacement;
+  if (kind === 'software') {
+    const input = object(raw.replacement, ['kind', 'account']);
+    const account = recoveryAccountReference(input.account, record, 'software', operation.chainId);
+    if (target.auth.module !== 'ecdsa' ||
+        getAddress(target.auth.validator) !== getAddress(getConfiguredAuthenticatorAddress(operation.chainId, 'ecdsa')) ||
+        target.auth.data.toLowerCase() !== encodeEcdsaValidatorInitData([account.address], 1).toLowerCase()) return invalid();
+    replacement = Object.freeze({ kind, account });
+  } else if (kind === 'passkey') {
+    const input = object(raw.replacement, ['kind', 'credential']);
+    const claim = captureGuardianRecoveryClaim({ intent: { operation, target }, readyAt: 0,
+      guardian: { kind: parseNativeAccountId(guardian.id).type === 'SmartAccount' ? 'contract' : 'ecdsa', guardian: guardian.address },
+      replacement: input.credential as Parameters<typeof captureGuardianRecoveryClaim>[0]['replacement'] });
+    if (claim.replacement.kind !== 'p256-webauthn') return invalid();
+    replacement = Object.freeze({ kind, credential: claim.replacement });
+  } else return invalid();
   const payer = recoveryAccountReference(raw.payer, record, 'software', operation.chainId);
-  if (target.auth.module !== 'ecdsa' ||
-      getAddress(target.auth.validator) !== getAddress(getConfiguredAuthenticatorAddress(operation.chainId, 'ecdsa')) ||
-      target.auth.data.toLowerCase() !== encodeEcdsaValidatorInitData([replacement.address], 1).toLowerCase()) return invalid();
   return Object.freeze({ accountId: identity.id, operation, target, guardian, replacement, payer });
 }
 function snapshotInfrastructurePending(value: unknown, record: NativeAccountRecord): NativeInfrastructurePending {
@@ -989,7 +1006,7 @@ export class NativeWalletCatalogue {
             active.accountId === mutation.id ||
             projection(record).accounts.length <= 1 ||
             guardianRecoveryIntents?.some(intent => intent.accountId === mutation.id ||
-              intent.guardian.id === mutation.id || intent.replacement.id === mutation.id || intent.payer.id === mutation.id) ||
+              intent.guardian.id === mutation.id || intent.replacement.kind === 'software' && intent.replacement.account.id === mutation.id || intent.payer.id === mutation.id) ||
             infrastructurePending?.some(pending => pending.payer.id === mutation.id)
           )
             throw new WalletCatalogueError('CATALOGUE_NOT_REMOVABLE');

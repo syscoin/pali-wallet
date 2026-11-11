@@ -79,7 +79,7 @@ const intent: NativeGuardianRecoveryIntent = {
   },
   target: { auth: { module: 'ecdsa', validator: moduleAddress, data: '0x' } },
   guardian: accountRef(guardianChoice),
-  replacement: accountRef(replacementChoice),
+  replacement: { kind: 'software', account: accountRef(replacementChoice) },
   payer: accountRef(payerChoice),
 };
 const observation: GuardianRecoveryObservation = {
@@ -115,7 +115,7 @@ export function NativeGuardianRecoveryFixture() {
         setClosed(true);
       }}
       recovery={{
-        chainId: 1,
+        passkeysAvailable: false, chainId: 1,
         currency: 'ETH',
         hasIntent: query.has('resume'),
         async openRecoveryAlerts() {
@@ -139,7 +139,7 @@ export function NativeGuardianRecoveryFixture() {
             ? {
                 ...intent,
                 guardian: accountRef(guardians.find(({ id }) => id === draft.guardianId)!),
-                replacement: accountRef(replacements.find(({ id }) => id === draft.replacementId)!),
+                replacement: { kind: 'software' as const, account: accountRef(replacements.find(({ id }) => id === (draft.replacement.kind === 'software' ? draft.replacement.accountId : ''))!) },
                 payer: accountRef(payers.find(({ id }) => id === draft.payerId)!),
               }
             : intent;

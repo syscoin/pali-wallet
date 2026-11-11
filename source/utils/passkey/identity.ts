@@ -1,11 +1,12 @@
-import { defaultAbiCoder } from 'utils/ethersV6Compat';
-import { AddressZero } from 'utils/ethersV6Compat';
-import { keccak256 } from 'utils/ethersV6Compat';
-import { getSmartAccountAuthHash } from 'utils/smartAccount';
-import type { PaliRecoveryTarget } from 'utils/smartAccount';
+import { defaultAbiCoder } from '../ethersV6Compat.ts';
+import { AddressZero } from '../ethersV6Compat.ts';
+import { keccak256 } from '../ethersV6Compat.ts';
+import { getSmartAccountAuthHash } from '../smartAccount/account.ts';
 
-export { encodeRecoveryTargetExecution } from 'utils/smartAccount';
-export type { PaliRecoveryTarget } from 'utils/smartAccount';
+import type { PaliRecoveryTarget } from '../smartAccount/account.ts';
+
+export { encodeRecoveryTargetExecution } from '../smartAccount/account.ts';
+export type { PaliRecoveryTarget } from '../smartAccount/account.ts';
 
 export const getPaliRecoveryTargetHash = (
   recovery: PaliRecoveryTarget

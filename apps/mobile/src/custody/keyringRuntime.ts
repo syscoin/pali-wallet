@@ -1,3 +1,6 @@
+import type { PaliRecoveryTarget } from '../../../../source/utils/smartAccount/account.ts';
+import { toP256WebAuthnRecoveryTarget } from '../../../../source/utils/passkey/identity.ts';
+import { captureGuardianRecoveryClaim, type GuardianRecoveryReplacement } from '../../../../source/utils/smartAccount/guardianRecoveryClaim.ts';
 import { createNativePasskeyRegistry } from '../smartAccount/passkeyRegistry.ts';
 import { passkeyRegistrationToProfile } from '../../../../source/utils/passkey/registry.ts';
 import { bytesToHex } from '../../../../source/utils/passkey/base64url.ts';
@@ -4497,19 +4500,32 @@ export function createKeyringRuntimeFactory(
           const kind = Object.getOwnPropertyDescriptor(draft, 'kind')?.value;
           const input = readOwnData(
             draft,
-            kind === 'start' ? ['kind', 'guardianId', 'replacementId', 'payerId'] : ['kind']
+            kind === 'start' ? ['kind', 'guardianId', 'replacement', 'payerId'] : ['kind']
           );
           if (
             (kind !== 'start' && kind !== 'resume') ||
             (kind === 'start' &&
               (typeof input.guardianId !== 'string' ||
-                typeof input.replacementId !== 'string' || typeof input.payerId !== 'string'))
+                typeof input.payerId !== 'string'))
           )
             throw new KeyringRuntimeError('INVALID_INPUT');
+          let replacementRequest: Extract<NativeGuardianRecoveryDraft, {kind:'start'}>['replacement'] | null = null;
+          if (kind === 'start') {
+            const replacementKind = input.replacement && typeof input.replacement === 'object' ? Object.getOwnPropertyDescriptor(input.replacement, 'kind')?.value : undefined;
+            if (replacementKind === 'software') {
+              const replacement = readOwnData(input.replacement, ['kind', 'accountId']);
+              if (typeof replacement.accountId !== 'string') throw new KeyringRuntimeError('INVALID_INPUT');
+              replacementRequest = Object.freeze({ kind: 'software', accountId: replacement.accountId });
+            } else if (replacementKind === 'passkey') {
+              const replacement = readOwnData(input.replacement, ['kind', 'recreate']);
+              if (typeof replacement.recreate !== 'boolean' || !passkeys || !authentication) throw new KeyringRuntimeError('INVALID_INPUT');
+              replacementRequest = Object.freeze({ kind: 'passkey', recreate: replacement.recreate });
+            } else throw new KeyringRuntimeError('INVALID_INPUT');
+          }
           const request = Object.freeze({
             kind,
             guardianId: input.guardianId as string,
-            replacementId: input.replacementId as string,
+            replacement: replacementRequest,
             payerId: input.payerId as string,
           });
           const lifetime = new AbortController();
@@ -4687,7 +4703,7 @@ export function createKeyringRuntimeFactory(
               if (intent)
                 throw new Error('Resume or clear the existing recovery first');
               const guardian = reference(request.guardianId, 'guardian'),
-                replacement = reference(request.replacementId, 'software'),
+                replacement = request.replacement!.kind === 'software' ? reference(request.replacement!.accountId, 'software') : null,
                 payer = reference(request.payerId, 'software');
               const status = await readPolicy();
               if (
@@ -4701,16 +4717,34 @@ export function createKeyringRuntimeFactory(
               )
                 throw new Error('The selected guardian cannot start this recovery');
               await readGuardianSigningState(guardian);
-              const target = {
-                auth: {
-                  module: 'ecdsa' as const,
-                  validator: getConfiguredAuthenticatorAddress(
-                    Number(network.chainId),
-                    'ecdsa'
-                  ),
-                  data: encodeEcdsaValidatorInitData([replacement.ref.address], 1),
-                },
-              };
+              let replacementCredential: GuardianRecoveryReplacement | undefined;
+              let target: PaliRecoveryTarget;
+              if (replacement) {
+                target = { auth: { module: 'ecdsa', validator: getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa'),
+                  data: encodeEcdsaValidatorInitData([replacement.ref.address], 1) } };
+              } else {
+                if (!passkeys || !authentication || request.replacement?.kind !== 'passkey') throw new KeyringRuntimeError('NOT_READY');
+                const saved = await passkeyRegistry.read(account.address, check); check();
+                let profile = request.replacement.recreate ? undefined : saved.pending?.profile;
+                if (profile) {
+                  try {
+                    await passkeyCeremony(authentication, signal, check, owner => passkeys.sign({
+                      actionHash: bytesToHex(crypto.getRandomValues(new Uint8Array(32))), credentialId: profile!.credentialId,
+                      expectedCredentialIdHash: profile!.credentialIdHash, expectedPublicKey: profile!.publicKey,
+                      signal: owner, assertCurrent: check,
+                    }));
+                  } catch (error) { check(); throw Object.assign(new Error('Passkey could not be verified'), { code: 'PASSKEY_POSSESSION_FAILED', cause: error }); }
+                } else {
+                  const name = `Pali recovery ${account.label || account.address}`.slice(0, 80);
+                  profile = passkeyRegistrationToProfile(await passkeyCeremony(authentication, signal, check,
+                    owner => passkeys.create({ accountName: name, signal: owner, assertCurrent: check })), name);
+                }
+                check(); await passkeyRegistry.savePending(account.address, profile, check); check();
+                replacementCredential = { kind: 'p256-webauthn', authenticator: { id: 'p256-webauthn', config: profile },
+                  credentialId: profile.credentialId, credentialIdHash: profile.credentialIdHash,
+                  ...(profile.backupStatus ? { backupStatus: profile.backupStatus } : {}), ...(profile.userHandle ? {userHandle:profile.userHandle} : {}) };
+                target = toP256WebAuthnRecoveryTarget({ validator: getConfiguredAuthenticatorAddress(Number(network.chainId), 'p256-webauthn'), ...profile.publicKey });
+              }
               const operation = await buildGuardianRecoveryStart(
                 {
                   account: account.address,
@@ -4728,13 +4762,14 @@ export function createKeyringRuntimeFactory(
                 }
               );
               check();
-              guardian.assertCurrent(); replacement.assertCurrent(); payer.assertCurrent();
+              guardian.assertCurrent(); replacement?.assertCurrent(); payer.assertCurrent();
               const canonical = captureGuardianRecoveryIntent({ operation, target });
               intent = Object.freeze({
                 accountId: selected.id,
                 ...canonical,
                 guardian: guardian.ref,
-                replacement: replacement.ref,
+                replacement: replacement ? { kind: 'software' as const, account: replacement.ref } : { kind: 'passkey' as const,
+                  credential: captureGuardianRecoveryClaim({ intent: canonical, readyAt: 0, guardian: { kind: guardian.saved.type === 'SmartAccount' ? 'contract' : 'ecdsa', guardian: guardian.ref.address }, replacement: replacementCredential! }).replacement },
                 payer: payer.ref,
               });
               await commit({
@@ -4746,14 +4781,14 @@ export function createKeyringRuntimeFactory(
             } else if (!intent) throw new Error('No saved recovery is available');
             const savedIntent = intent!;
             const operationId = getGuardianRecoveryOperationId(savedIntent.operation);
-            let guardian: ReturnType<typeof reference>, replacement: ReturnType<typeof reference>, payer: ReturnType<typeof reference>;
+            let guardian: ReturnType<typeof reference>, replacement: ReturnType<typeof reference> | null, payer: ReturnType<typeof reference>;
             rebindRoles = () => {
               guardian = reference(savedIntent.guardian.id, 'guardian');
-              replacement = reference(savedIntent.replacement.id, 'software');
+              replacement = savedIntent.replacement.kind === 'software' ? reference(savedIntent.replacement.account.id, 'software') : null;
               payer = reference(savedIntent.payer.id, 'software');
-              for (const [actual, saved] of [[guardian.ref, savedIntent.guardian], [replacement.ref, savedIntent.replacement], [payer.ref, savedIntent.payer]] as const)
+              for (const [actual, saved] of [[guardian.ref, savedIntent.guardian], ...(replacement && savedIntent.replacement.kind === 'software' ? [[replacement.ref, savedIntent.replacement.account] as const] : []), [payer.ref, savedIntent.payer]] as const)
                 if (actual.address !== saved.address || actual.xpub !== saved.xpub) throw new KeyringRuntimeError('INVALID_INPUT');
-              roleChecks = [guardian.assertCurrent, replacement.assertCurrent, payer.assertCurrent];
+              roleChecks = [guardian.assertCurrent, ...(replacement ? [replacement.assertCurrent] : []), payer.assertCurrent];
             };
             rebindRoles();
             const validate = async () => {
@@ -4927,7 +4962,18 @@ export function createKeyringRuntimeFactory(
                   };
                   let transaction;
                   if (action === 'schedule') {
-                    await sign(replacement, savedIntent.operation.hash, validateAuthority);
+                    if (replacement) await sign(replacement, savedIntent.operation.hash, validateAuthority);
+                    else {
+                      if (savedIntent.replacement.kind !== 'passkey' || !passkeys || !authentication) throw new KeyringRuntimeError('NOT_READY');
+                      const credential = savedIntent.replacement.credential;
+                      if (credential.authenticator.id !== 'p256-webauthn') throw new KeyringRuntimeError('INVALID_INPUT');
+                      const publicKey = credential.authenticator.config.publicKey;
+                      await validateAuthority();
+                      await passkeyCeremony(authentication, signal, check, owner => passkeys.sign({ actionHash: savedIntent.operation.hash,
+                        credentialId: credential.credentialId, expectedCredentialIdHash: credential.credentialIdHash,
+                        expectedPublicKey: publicKey, signal: owner, assertCurrent: check }));
+                      await validateAuthority();
+                    }
                     let signature: string;
                     if (smartGuardian) {
                       const actionHash = getPaliErc7739PersonalSignHash({ accountAddress: guardian.ref.address, chainId: Number(network.chainId), hash: savedIntent.operation.hash });
@@ -5021,6 +5067,15 @@ export function createKeyringRuntimeFactory(
                       ...(metadata.installedModules ?? []),
                       projectGuardianPolicyModule(policy),
                     ];
+                  if (savedIntent.replacement.kind === 'passkey') {
+                    const credential = savedIntent.replacement.credential;
+                    if (credential.authenticator.id !== 'p256-webauthn' || !credential.credentialId || !credential.credentialIdHash) throw new KeyringRuntimeError('INVALID_INPUT');
+                    const profile: IPasskeyCredentialProfile = { ...credential.authenticator.config, credentialId: credential.credentialId,
+                      credentialIdHash: credential.credentialIdHash, passkeyName: credential.authenticator.config.passkeyName || 'Pali recovery',
+                      ...(credential.userHandle ? {userHandle:credential.userHandle} : {}) };
+                    await passkeyRegistry.savePending(account.address, profile, check); check();
+                    await passkeyRegistry.activateObserved(account.address, metadata, check); check();
+                  }
                   await commit({
                     kind: 'complete-guardian-recovery',
                     id: selected.id,

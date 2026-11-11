@@ -707,6 +707,7 @@ export function createNativeWalletControllers() {
     return observeFailure(() => selected.openSmartAccountSend(recipient, amount, assertCurrent, binding));
   };
   const guardianRecovery = Object.freeze({
+    supportsPasskeys: () => runtime?.canUsePasskeys() === true,
     hasIntent: () => authority.getSnapshot().phase === 'ready' && !!runtime?.getGuardianRecoveryIntent(),
     async open(draft: Parameters<KeyringRuntime['openGuardianRecovery']>[0], signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) {
       const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);

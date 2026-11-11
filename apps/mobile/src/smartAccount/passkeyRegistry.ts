@@ -1,33 +1,54 @@
 import type { IPasskeyCredentialProfile , ISmartAccountMetadata } from '../../../../source/types/network.ts';
+import { PasskeyBackupStatus } from '../../../../source/types/passkey.ts';
 import { passkeyAccountRecordsKey, PASSKEY_CREATION_PENDING_KEY, withActivePasskey, withPendingPasskey, type PasskeyAccountRecords, type PasskeyPendingRecord } from '../../../../source/utils/passkey/registry.ts';
 import { encodeP256WebAuthnAuthData } from '../../../../source/utils/passkey/account.ts';
 import type { KeyringStoragePort } from '../storage/types.ts';
+import { decodeStorageValue } from '../storage/json.ts';
 
+function fields(value: unknown, required: readonly string[], optional: readonly string[] = []): void {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getOwnPropertySymbols(value).length ||
+      Object.getOwnPropertyNames(value).some(key => !required.includes(key) && !optional.includes(key)) ||
+      required.some(key => !Object.hasOwn(value, key)) ||
+      Object.values(Object.getOwnPropertyDescriptors(value)).some(field => !('value' in field))) throw Error('Invalid saved passkey');
+}
 function profile(value: unknown): IPasskeyCredentialProfile {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('Invalid saved passkey');
+  fields(value, ['credentialId', 'credentialIdHash', 'passkeyName', 'publicKey'], ['backupStatus', 'userHandle']);
+  fields((value as IPasskeyCredentialProfile).publicKey, ['x', 'y', 'rpIdHash', 'originHash', 'originLength']);
   const copy = JSON.parse(JSON.stringify(value)) as IPasskeyCredentialProfile;
   if (typeof copy.credentialId !== 'string' || !/^[A-Za-z0-9_-]{1,1364}$/.test(copy.credentialId) ||
       !/^0x[0-9a-f]{64}$/i.test(copy.credentialIdHash) || typeof copy.passkeyName !== 'string' ||
       copy.passkeyName.length > 120 || !copy.publicKey || !Number.isSafeInteger(copy.publicKey.originLength) ||
       copy.publicKey.originLength < 1 || copy.publicKey.originLength > 512 ||
       ['x', 'y', 'rpIdHash', 'originHash'].some(key => !/^0x[0-9a-f]{64}$/i.test(copy.publicKey[key as 'x'])) ||
+      (copy.backupStatus !== undefined && !Object.values(PasskeyBackupStatus).includes(copy.backupStatus)) ||
       (copy.userHandle !== undefined && !/^[A-Za-z0-9_-]{1,86}$/.test(copy.userHandle))) throw Error('Invalid saved passkey');
   return copy;
 }
 function records(value: unknown): PasskeyAccountRecords {
   if (value === undefined || value === null) return {};
-  if (typeof value !== 'object' || Array.isArray(value)) throw Error('Invalid saved passkeys');
+  fields(value, [], ['active', 'pending']);
   const row = value as PasskeyAccountRecords;
-  if (Object.keys(row).some(key => key !== 'active' && key !== 'pending')) throw Error('Invalid saved passkeys');
   return {
-    ...(row.active ? { active: profile(row.active) } : {}),
-    ...(row.pending ? { pending: pending(row.pending) } : {}),
+    ...(Object.hasOwn(row, 'active') ? { active: profile(row.active) } : {}),
+    ...(Object.hasOwn(row, 'pending') ? { pending: pending(row.pending) } : {}),
   };
 }
 function pending(value: unknown): PasskeyPendingRecord {
+  fields(value, ['createdAt', 'profile']);
   const row = value as PasskeyPendingRecord;
   if (!row || !Number.isSafeInteger(row.createdAt) || row.createdAt < 0) throw Error('Invalid saved passkey');
   return { createdAt: row.createdAt, profile: profile(row.profile) };
+}
+
+/** Admit only the shared public-profile records, never arbitrary prefixed data. */
+export function inspectNativePasskeyStorageRecord(key: string, encodedValue: string): boolean {
+  if (key === PASSKEY_CREATION_PENDING_KEY) { pending(decodeStorageValue(encodedValue)); return true; }
+  const account = key.slice(passkeyAccountRecordsKey('').length);
+  if (!/^0x[0-9a-f]{40}$/.test(account) || key !== passkeyAccountRecordsKey(account)) return false;
+  const value = decodeStorageValue(encodedValue);
+  if (value === undefined || value === null) throw Error('Invalid saved passkeys');
+  records(value);
+  return true;
 }
 
 /** Wallet-scoped encrypted database adapter for the shared public profile records. */

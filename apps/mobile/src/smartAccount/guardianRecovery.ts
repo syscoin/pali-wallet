@@ -14,7 +14,7 @@ export type NativeGuardianRecoveryDraft = Readonly<
   | {
       kind: 'start';
       guardianId: string;
-      replacementId: string;
+      replacement: Readonly<{ kind: 'software'; accountId: string }> | Readonly<{ kind: 'passkey'; recreate: boolean }>;
       payerId: string;
     }
   | { kind: 'resume' }
@@ -25,6 +25,7 @@ export type NativeGuardianRecoveryChoice = Readonly<{
   label: string;
 }>;
 export type NativeGuardianRecoveryChoices = Readonly<{
+  passkeysAvailable: boolean;
   guardians: readonly NativeGuardianRecoveryChoice[];
   replacements: readonly NativeGuardianRecoveryChoice[];
   payers: readonly NativeGuardianRecoveryChoice[];
@@ -33,7 +34,8 @@ export type NativeGuardianRecoveryChoices = Readonly<{
 /** Public role choices; the host verifies current policy and signing eligibility. */
 export function getNativeGuardianRecoveryChoices(
   accounts: readonly NativeCatalogueAccount[],
-  chainId: number
+  chainId: number,
+  passkeysAvailable: boolean
 ): NativeGuardianRecoveryChoices {
   const software: NativeGuardianRecoveryChoice[] = [],
     guardians: NativeGuardianRecoveryChoice[] = [];
@@ -58,6 +60,7 @@ export function getNativeGuardianRecoveryChoices(
     if (isSoftware) software.push(choice);
   }
   return Object.freeze({
+    passkeysAvailable,
     guardians: Object.freeze(guardians),
     replacements: Object.freeze(software),
     payers: Object.freeze([...software]),
