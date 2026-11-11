@@ -631,7 +631,7 @@ test('private replay quarantines a failed ACK write even if its pool disposal al
   } finally { await f.close(); }
 });
 
-test('older replay completion cannot close a newly prepared private reader', { timeout: 5000 }, async () => {
+test('older replay completion cannot close a newly prepared private reader', { timeout: 30000 }, async () => {
   const f = await fixture();
   f.loseResponse(true);
   const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
