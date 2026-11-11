@@ -3,7 +3,7 @@ import { AppState, Platform } from 'react-native';
 import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 import { useFiatCurrency } from '../platform/fiatPreferences';
 import { walletFetch } from '../platform/http';
-import { createNativeCoinQuoteReader, nativeCoinQuoteSource, type NativeCoinQuote } from './nativeCoinQuote.ts';
+import { createNativeCoinQuoteReader, nativeCoinQuoteSource, QUOTE_LIFETIME_MS, type NativeCoinQuote } from './nativeCoinQuote.ts';
 import { formatIndicativeFiat } from './fiatDisplay.ts';
 
 const read = createNativeCoinQuoteReader(walletFetch);
@@ -25,24 +25,28 @@ export function useNativeCoinQuote(id: string | null, amount: string | null, reg
     let timer: ReturnType<typeof setTimeout> | undefined;
     const stop = () => { owner?.abort(); owner = undefined; clearTimeout(timer); };
     const retire = () => { stop(); setQuote(null); };
+    const schedule = (request: AbortController, deadline: number) => {
+      const renew = () => {
+        if (owner !== request || request.signal.aborted || AppState.currentState !== 'active') return;
+        const remaining = deadline - performance.now();
+        if (remaining > 0) timer = setTimeout(renew, Math.ceil(remaining));
+        else { owner = undefined; start(); }
+      };
+      renew();
+    };
     const start = () => {
       if (owner || AppState.currentState !== 'active') return;
       const request = new AbortController();
       owner = request;
       setQuote(null);
-      void read(source, currency, request.signal).then((value) => {
-        if (request.signal.aborted || AppState.currentState !== 'active' || !value) return;
-        const expire = () => {
-          if (request.signal.aborted) return;
-          const remaining = value.expiresAt - performance.now();
-          if (remaining > 0) timer = setTimeout(expire, Math.ceil(remaining));
-          else setQuote(null);
-        };
-        if (value.expiresAt > performance.now()) {
+      const settled = (value: NativeCoinQuote | null) => {
+        if (owner !== request || request.signal.aborted || AppState.currentState !== 'active') return;
+        if (value && value.expiresAt > performance.now()) {
           setQuote({ key: sourceKey, value });
-          expire();
-        }
-      });
+          schedule(request, value.expiresAt);
+        } else schedule(request, performance.now() + QUOTE_LIFETIME_MS);
+      };
+      void read(source, currency, request.signal).then(settled, () => settled(null));
     };
     const change = AppState.addEventListener('change', (state) => { if (state === 'active') start(); else retire(); });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', retire) : null;

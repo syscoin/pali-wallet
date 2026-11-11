@@ -10,7 +10,7 @@ import type { WalletHttpFetch } from '../platform/httpPolicy.ts';
 import { abortable, boundedResponseText, cancelResponseBody } from '../platformRpc.ts';
 
 type QuoteSource = Readonly<{ kind: 'utxo'; endpoint: string } | { kind: 'evm'; asset: string }>;
-const QUOTE_LIFETIME_MS = 5 * 60_000;
+export const QUOTE_LIFETIME_MS = 5 * 60_000;
 export type NativeCoinQuote = Readonly<{ price: number; expiresAt: number }>;
 const MAX_QUOTES = 24;
 const QUOTE_RESPONSE_BYTES = 16 * 1024;
