@@ -11,23 +11,41 @@ for (const mode of ['pin', 'biometric', 'reduced-motion'] as const) test(`authen
   await page.getByLabel('Ethereum address', { exact: true }).fill('0x' + '1'.repeat(40));
   await page.getByLabel('Amount in ETH', { exact: true }).fill('0.001');
   await page.getByTestId('native-send-review').click();
-  await page.getByTestId('native-send-confirm').click();
-  if (mode !== 'biometric') for (let digit = 0; digit < 6; digit++) await page.getByRole('button', { name: 'PIN digit 0', exact: true }).click();
-  const feedback = page.getByTestId('pin-error-feedback');
-  await expect(page.getByRole('dialog').getByRole('alert')).toBeVisible();
-  const positions = await feedback.evaluate(element => new Promise<number[]>(resolve => {
-    const values: number[] = [], started = performance.now();
+  // Automatic biometric failure can finish shaking before Playwright observes
+  // the alert. Record in-page before opening the modal or entering the PIN.
+  const recording = await page.evaluateHandle(() => {
+    const values: number[] = [];
+    let frame = 0;
     const sample = () => {
-      const transform = getComputedStyle(element).transform;
-      values.push(transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m41);
-      if (performance.now() - started < 500) requestAnimationFrame(sample);
-      else resolve(values);
+      const element = document.querySelector('[data-testid="pin-error-feedback"]');
+      if (element) {
+        const transform = getComputedStyle(element).transform;
+        values.push(transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m41);
+      }
+      frame = requestAnimationFrame(sample);
     };
     sample();
-  }));
-  if (mode === 'reduced-motion') expect(positions.every(value => value === 0)).toBe(true);
-  else expect(positions.some(value => Math.abs(value) > 0.1)).toBe(true);
-  expect(positions.at(-1)).toBe(0);
-  await expect(page.getByLabel('PIN, 0 of 6 digits entered', { exact: true })).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
+    return { values, stop: () => cancelAnimationFrame(frame) };
+  });
+  try {
+    await page.getByTestId('native-send-confirm').click();
+    if (mode !== 'biometric') for (let digit = 0; digit < 6; digit++) await page.getByRole('button', { name: 'PIN digit 0', exact: true }).click();
+    await expect(page.getByRole('dialog').getByRole('alert')).toBeVisible();
+    const positions = await recording.evaluate(recorder => new Promise<number[]>(resolve => {
+      const started = performance.now();
+      const settled = () => {
+        if (performance.now() - started < 500) requestAnimationFrame(settled);
+        else { recorder.stop(); resolve(recorder.values); }
+      };
+      settled();
+    }));
+    if (mode === 'reduced-motion') expect(positions.every(value => value === 0)).toBe(true);
+    else expect(positions.some(value => Math.abs(value) > 0.1)).toBe(true);
+    expect(positions.at(-1)).toBe(0);
+    await expect(page.getByLabel('PIN, 0 of 6 digits entered', { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
+  } finally {
+    await recording.evaluate(recorder => recorder.stop());
+    await recording.dispose();
+  }
 });
