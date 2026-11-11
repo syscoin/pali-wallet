@@ -1,6 +1,6 @@
 import { WALLET_RELEASE_FEED_URL } from '../../source/shared/walletRelease';
 
-import type { Page, Route } from '@playwright/test';
+import type { Page, Request, Route } from '@playwright/test';
 
 const feed = new URL(WALLET_RELEASE_FEED_URL);
 
@@ -33,4 +33,22 @@ export async function installOfflineWalletRelease(page: Page) {
     (url) => url.origin === feed.origin && url.pathname === feed.pathname,
     fulfillOfflineWalletRelease
   );
+}
+
+/** Optional metadata can be cancelled while its response body is released. */
+export function isOfflineWalletReleaseAbort(request: Request, page: Page) {
+  if (
+    request.url() !== WALLET_RELEASE_FEED_URL ||
+    request.method() !== 'GET' ||
+    request.postData() !== null ||
+    request.resourceType() !== 'fetch' ||
+    request.failure()?.errorText !== 'net::ERR_ABORTED'
+  )
+    return false;
+  try {
+    return request.frame() === page.mainFrame();
+  } catch {
+    // Service-worker requests have no frame and are outside this UI fixture.
+    return false;
+  }
 }

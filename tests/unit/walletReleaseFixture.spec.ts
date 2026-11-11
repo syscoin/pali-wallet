@@ -3,10 +3,11 @@ import { PaliWallet } from '../../e2e/harness/pali';
 import {
   fulfillOfflineWalletRelease,
   installOfflineWalletRelease,
+  isOfflineWalletReleaseAbort,
 } from '../../e2e/harness/walletReleaseFixture';
 import { WALLET_RELEASE_FEED_URL } from '../../source/shared/walletRelease';
 
-import type { Page, Route } from '@playwright/test';
+import type { Page, Request, Route } from '@playwright/test';
 
 jest.mock('../../e2e/harness/launch', () => ({ launchExtension: jest.fn() }));
 jest.mock('../../e2e/harness/runtimeIdentity', () => ({
@@ -31,6 +32,55 @@ const fixtureRoute = (
 });
 
 afterEach(() => jest.restoreAllMocks());
+
+const walletFrame = {} as ReturnType<Page['mainFrame']>;
+const walletPage = { mainFrame: () => walletFrame } as Page;
+const abortedReleaseRequest = (overrides: Partial<Request> = {}) =>
+  ({
+    url: () => WALLET_RELEASE_FEED_URL,
+    method: () => 'GET',
+    postData: () => null,
+    resourceType: () => 'fetch',
+    failure: () => ({ errorText: 'net::ERR_ABORTED' }),
+    frame: () => walletFrame,
+    ...overrides,
+  } as Request);
+
+it('recognizes only the optional feed fetch abort in the wallet main frame', () => {
+  expect(isOfflineWalletReleaseAbort(abortedReleaseRequest(), walletPage)).toBe(
+    true
+  );
+});
+
+it.each<[string, Partial<Request>]>([
+  ['POST', { method: () => 'POST' }],
+  ['HEAD', { method: () => 'HEAD' }],
+  ['GET with a body', { postData: () => 'unexpected body' }],
+  ['GET with an empty body', { postData: () => '' }],
+  ['query variant', { url: () => WALLET_RELEASE_FEED_URL + '?unexpected=1' }],
+  ['fragment variant', { url: () => WALLET_RELEASE_FEED_URL + '#fragment' }],
+  ['unknown URL', { url: () => 'https://unknown.invalid/wallet-updates.json' }],
+  ['document navigation', { resourceType: () => 'document' }],
+  ['failed connection', { failure: () => ({ errorText: 'net::ERR_FAILED' }) }],
+  [
+    'blocked request',
+    { failure: () => ({ errorText: 'net::ERR_BLOCKED_BY_CLIENT' }) },
+  ],
+  ['successful request', { failure: () => null }],
+  ['another frame', { frame: () => ({} as ReturnType<Page['mainFrame']>) }],
+  [
+    'frameless worker',
+    {
+      frame: () => {
+        throw new Error('No frame for service worker');
+      },
+    },
+  ],
+])('keeps %s in the HTTP failure audit', (_name, overrides) => {
+  expect(
+    isOfflineWalletReleaseAbort(abortedReleaseRequest(overrides), walletPage)
+  ).toBe(false);
+});
 
 it('fulfills only the known public GET with a deterministic empty release feed', async () => {
   const route = fixtureRoute();

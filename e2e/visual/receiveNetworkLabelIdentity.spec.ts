@@ -19,6 +19,7 @@ import { PaliWallet } from '../harness/pali';
 import { verifyExecutingWorker } from '../harness/runtimeIdentity';
 import { extensionEvidence } from '../harness/testDappConformance';
 import { UTXO_FIXTURE_SEED } from '../harness/utxoFixture';
+import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 // Real Receive-context regression with a distinct-label healthy control.
 // Registration/switching/Home Receive use the ordinary UI and exact HTTP-only
@@ -655,6 +656,7 @@ for (const scenario of [
         }
       });
       wallet.context.on('requestfailed', (request) => {
+        if (isOfflineWalletReleaseAbort(request, page)) return;
         if (/^https?:/.test(request.url()))
           unexpectedWalletHttpFailures.push({
             method: request.method(),
