@@ -623,7 +623,13 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
     assert(bitcoin.Transaction.fromHex(published!).ins.every(({ sequence }: { sequence: number }) => sequence >= 0xfffffffe));
     assert.equal(txid, ackId);
     assert.equal(calls.filter((entry) => entry.startsWith('POST')).length, 1);
+    assert.deepEqual(await send.refreshSaved(), []);
     assert.equal(await send.check(txid), 'confirmed');
+    const afterStatus = calls.length;
+    showSavedTransfer = false;
+    assert.deepEqual(await send.list(), []);
+    assert.equal(calls.length, afterStatus, 'Stored-list reload must not re-observe a confirmed transaction');
+    showSavedTransfer = true;
     if (network.id === 'bitcoin' && type === 'HDAccount') {
       const sign = t.mock.method(ring.syscoinTransaction, 'signPSBT');
       const credential = { method: 'pin' as const, pin: syntheticPin };
@@ -1384,9 +1390,14 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
       assert.equal(shown.accountId, restoredId);
     } finally { keyFlow.dispose(); }
     const restored = await runtime.openUtxoSend!(current);
+    assert.deepEqual(await restored.list(), [], 'Confirmed records are hidden from recovery after reopening');
+    const oldRaw = posts.at(-1);
+    missingSavedTransfer = true;
+    await restored.refreshSaved();
     const [previousSend] = await restored.list();
     assert(previousSend);
-    const oldRaw = posts.at(-1);
+    assert.equal(previousSend.txid, bitcoin.Transaction.fromHex(oldRaw!).getId());
+    missingSavedTransfer = false;
     assert.equal((await restored.confirm(await restored.prepareRetry(previousSend.txid), { method: 'pin', pin: nextPassword })).txid, previousSend.txid);
     assert.equal(posts.at(-1), oldRaw);
   } finally {

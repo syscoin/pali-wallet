@@ -653,7 +653,7 @@ export function createNativeWalletControllers() {
     ...(hdUtxoFixture ? { async openUtxoSend(check: () => void) {
       check();
       const unused = async () => { throw Error('Synthetic route fixture does not sign'); };
-      return { cancel() {}, async list() { return []; }, prepare: unused, prepareRetry: unused, confirm: unused, check: unused };
+      return { cancel() {}, async list() { return []; }, async refreshSaved() { return []; }, prepare: unused, prepareRetry: unused, confirm: unused, check: unused };
     } } : {}),
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose(),
     async disposeConnections() { await connections.dispose(); events.push('connections:dispose'); } };

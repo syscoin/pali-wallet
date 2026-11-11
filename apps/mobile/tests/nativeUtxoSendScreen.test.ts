@@ -66,8 +66,11 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
   const openedTransactions: string[] = [];
   const networkDrafts: unknown[] = [];
   const reviews: NativeUtxoReview[] = [];
+  let saved: { accepted: boolean; txid: string }[] = [], listReads = 0, refreshReads = 0;
   const service = {
-    cancel() { cancels++; }, async list() { return []; },
+    cancel() { cancels++; }, async list() { listReads++; return saved; },
+    async refreshSaved() { refreshReads++; return service.list(); },
+    async check() { saved = []; return 'confirmed' as const; },
     async prepare(input: any): Promise<NativeUtxoReview> {
       requests.push(structuredClone(input));
       if (gate) await gate; // Deliberately deliver a late result after cancellation.
@@ -92,6 +95,7 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
   const review = () => { const screen = all(render()).find((node) => node.type === 'Screen')!; screen.props.footer.props.onPress(); };
   const authentication = () => { const modal = all(render()).find(node => node.type === 'TransactionAuthentication'); assert(modal); return modal; };
   return { render, press, edit, review, requests, reviews, authorized, openedTransactions, networkDrafts, authentication, counts: () => ({ cancels, confirmations, networkChanges }),
+    seedSaved(records: typeof saved) { saved = records; }, listReads: () => listReads, refreshReads: () => refreshReads,
     useBiometrics() { authenticationMethod = 'biometric'; },
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
     changeBalance(value: string) { maximum = value; },
@@ -101,6 +105,20 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
     release() { release?.(); gate = undefined; },
     close() { cells.forEach((value) => value.cleanup?.()); } };
 }
+
+test('explicit saved status check reloads the filtered recovery list', async () => {
+  const f = fixture();
+  f.seedSaved([{ accepted: true, txid: 'ab'.repeat(32) }]);
+  f.render(); await tick();
+  assert.equal(f.listReads(), 1);
+  assert.equal(f.refreshReads(), 1);
+  f.press('Submitted abababab…'); await tick();
+  assert.equal(f.listReads(), 2);
+  assert.equal(f.refreshReads(), 1, 'Explicit status reload must not observe the network again');
+  assert.equal(all(f.render()).some(node => node.props.title === 'Submitted abababab…'), false);
+  assert.equal(f.counts().confirmations, 0);
+  f.close();
+});
 
 for (const fallback of ['pin', 'biometric'] as const) test(`biometric refusal keeps the same UTXO authorization page for ${fallback} retry`, async () => {
   const f = fixture(); f.useBiometrics(); f.render(); await tick();

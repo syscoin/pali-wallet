@@ -165,6 +165,7 @@ import {
 } from '../../../wallet/utxoSignedRecords';
 import {
   observeRetainedUtxo,
+  reconcileRetainedUtxo,
   createUtxoSubmissionDisposition,
   submitRetainedUtxo,
   submitReviewedUtxo,
@@ -1327,13 +1328,65 @@ class MainController {
 
   public async listRetainedUtxoTransfers() {
     const signing = this.captureUtxoSigningContext();
+    return this.listCapturedRetainedUtxoTransfers(signing);
+  }
+
+  public async refreshRetainedUtxoTransfers() {
+    const signing = this.captureUtxoSigningContext();
+    await this.reconcileRetainedUtxoTransfers(signing);
+    return this.listCapturedRetainedUtxoTransfers(signing);
+  }
+
+  private listCapturedRetainedUtxoTransfers(
+    signing: ReturnType<MainController['captureUtxoSigningContext']>
+  ) {
     const network = store.getState().vault.activeNetwork;
+    signing.assertWalletReviewCurrent();
     return this.getRetainedUtxoRecords().list(
       {
         keyring: signing.keyring,
         assertCurrent: signing.assertWalletReviewCurrent,
       },
       this.utxoRecordOwner(network, signing.context.account)
+    );
+  }
+
+  private async reconcileRetainedUtxoTransfers(
+    captured?: ReturnType<MainController['captureUtxoSigningContext']>
+  ): Promise<void> {
+    // Public history polling also runs while locked. It must never open the
+    // encrypted journal or acquire a private-record session in that state.
+    if (!this.isUnlocked()) return;
+    const signing = captured ?? this.captureUtxoSigningContext();
+    const assertCurrent = signing.assertWalletReviewCurrent;
+    assertCurrent();
+    const { vault, vaultGlobal } = store.getState();
+    const network = vault.activeNetwork;
+    const owner = this.utxoRecordOwner(network, signing.context.account);
+    const backendChain = resolvePinnedUtxoBackendChain(
+      network,
+      vaultGlobal.networks?.syscoin?.[network.chainId]
+    );
+    if (!backendChain)
+      throw new Error('Verify this UTXO network before checking transfers');
+    await this.withUtxoReadOwner(assertCurrent, (signal) =>
+      reconcileRetainedUtxo({
+        records: this.getRetainedUtxoRecords(),
+        session: { keyring: signing.keyring, assertCurrent },
+        owner,
+        backendChain,
+        signal,
+        async fetch(input, init) {
+          if (typeof input !== 'string' || init?.method !== 'GET')
+            throw new Error('Invalid saved UTXO status request');
+          return withWalletBackend(input, () => {
+            assertCurrent();
+            if (init.signal?.aborted)
+              throw new Error('Saved UTXO status changed');
+            return globalThis.fetch(input, init);
+          });
+        },
+      })
     );
   }
 
@@ -9014,6 +9067,11 @@ class MainController {
                 activeAccount,
                 activeNetwork.chainId
               );
+            } else if (!isRapidPolling) {
+              // The bounded saved-record pass does not delay public history or
+              // change its result. Its captured wallet scope outlives same-scope
+              // rapid polls, while the shared helper coalesces concurrent passes.
+              void this.reconcileRetainedUtxoTransfers().catch(() => undefined);
             }
 
             // No-op for loading flags; transactions update fully in background

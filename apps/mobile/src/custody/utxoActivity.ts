@@ -26,7 +26,7 @@ export function createNativeUtxoActivity(
     return { context, catalogue, network, selected };
   };
   const getUtxoActivityContext = () => capture()?.context ?? null;
-  const rows = new UtxoActivityRows(reader, getUtxoActivityContext, (signal, assertView, read) => {
+  const rows = new UtxoActivityRows(reader, getUtxoActivityContext, (signal, assertView, read, refresh) => {
     const owner = capture();
     if (!owner) return Promise.reject(new CustodyOperationError('NOT_READY'));
     const assertOwner = () => {
@@ -35,7 +35,7 @@ export function createNativeUtxoActivity(
           !['ready', 'backup-required'].includes(live.phase) || live.revision !== generation || live.account?.network !== networkId ||
           live.account.address !== address) throw new CustodyOperationError('CANCELLED');
     };
-    return owner.selected.withUtxoActivityRead(owner.context, signal, assertOwner, assertView, read);
+    return owner.selected.withUtxoActivityRead(owner.context, signal, assertOwner, assertView, read, refresh);
   });
   return Object.freeze<UtxoActivityOwner>({
     getUtxoActivityContext,

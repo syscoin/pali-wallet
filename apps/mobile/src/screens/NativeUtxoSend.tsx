@@ -161,7 +161,7 @@ export function NativeUtxoSendScreen({
           return;
         }
         setSend(opened);
-        const records = await opened.list();
+        const records = await opened.refreshSaved();
         check();
         setSaved([...records].reverse());
       })
@@ -274,7 +274,10 @@ export function NativeUtxoSendScreen({
   const checkStatus = (txid: string) =>
     run(async (current) => {
       const phase = await send!.check(txid);
-      if (current()) setOutcome({ txid, phase });
+      if (!current()) return;
+      setOutcome({ txid, phase });
+      const records = await send!.list();
+      if (current()) setSaved([...records].reverse());
     });
   const confirmAuthenticated = (credential: NativeOperationCredential) => {
     if (!review || !send || currentReview.current !== review) return;

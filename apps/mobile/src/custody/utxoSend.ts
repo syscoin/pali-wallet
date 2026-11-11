@@ -21,6 +21,7 @@ import {
 import { reviewSavedUtxoOutputs } from '../../../../source/wallet/utxoSavedReview.ts';
 import {
   observeRetainedUtxo,
+  reconcileRetainedUtxo,
   submitRetainedUtxo,
   submitReviewedUtxo,
 } from '../../../../source/wallet/utxoSubmission.ts';
@@ -352,6 +353,23 @@ export function createNativeUtxoSend(
     },
     list() {
       return records.list(session, owner);
+    },
+    async refreshSaved() {
+      return run(async () => {
+        const check = capture(revision, now() + REVIEW_MS);
+        const controller = new AbortController();
+        readController = controller;
+        try {
+          check();
+          await reconcileRetainedUtxo({ backendChain: network.backendChain, fetch, owner, records,
+            session: { ...session, assertCurrent: check }, signal: controller.signal });
+          check();
+          return await records.list({ ...session, assertCurrent: check }, owner);
+        } finally {
+          controller.abort();
+          if (readController === controller) readController = undefined;
+        }
+      });
     },
     async check(txid: string): Promise<'confirmed' | 'seen' | 'unknown'> {
       return run(async () => {

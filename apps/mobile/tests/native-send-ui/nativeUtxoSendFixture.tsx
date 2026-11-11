@@ -39,6 +39,9 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
     async list() {
       return saved ? [{ txid, accepted: false }] : [];
     },
+    async refreshSaved() {
+      return saved ? [{ txid, accepted: false }] : [];
+    },
     async check() {
       return seen ? 'seen' : 'unknown';
     },

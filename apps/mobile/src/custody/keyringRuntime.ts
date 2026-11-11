@@ -371,6 +371,7 @@ export interface KeyringRuntime extends CustodyRuntime {
     assertOwner: () => void,
     assertView: () => void,
     read: (source: UtxoActivitySource & { readonly readSentry?: never }, signal: AbortSignal, check: () => void) => Promise<T>,
+    refresh?: 'page',
   ): Promise<T>;
   /** Selected software key only, consumed by the context-bound secret presentation flow. */
   readonly keyExport?: NativeHdKeyExportRuntime<NativePrivateAuthentication>;
@@ -919,6 +920,28 @@ export function createKeyringRuntimeFactory(
               return invoke(access => access.decryptPrivateRecord(captured));
             },
           });
+        };
+        const reconcilePublicUtxo = (network: UtxoNetwork, account: Readonly<{ id: number; type: string; xpub: string }>, assertScope: () => void) => {
+          if (!utxoRecords || !dependencies.utxoFetch) return;
+          const ring = keyring, signal = (contextReadLifetime ??= new AbortController()).signal;
+          const check = () => { assertScope(); if (signal.aborted) throw new KeyringRuntimeError('CANCELLED'); };
+          const work = async () => {
+            check();
+            const { reconcileRetainedUtxo } = await import('../../../../source/wallet/utxoSubmission.ts');
+            check();
+            await reconcileRetainedUtxo({
+              records: utxoRecords,
+              session: { keyring: transactionRecordKeyring(ring, check), assertCurrent: check },
+              owner: { chainId: network.chainId, slip44: network.slip44, genesisHash: network.genesisHash, account },
+              backendChain: network.backendChain,
+              fetch: dependencies.utxoFetch!,
+              signal,
+            });
+            check();
+          };
+          // Public results remain usable while this scope-owned status pass runs.
+          // The journal's onUnavailable callback still locks on storage uncertainty.
+          void work().catch(() => undefined);
         };
         const operationAuthorizations = new Map<NativeOperationAuthorization, {
           generation: number; ring: IndexedKeyring;
@@ -6607,7 +6630,7 @@ export function createKeyringRuntimeFactory(
             await dataBinding(captured, check);
             return result;
           },
-          async withUtxoActivityRead(expected, signal, assertOwner, assertView, read) {
+          async withUtxoActivityRead(expected, signal, assertOwner, assertView, read, refresh) {
             const captured = generation, ring = keyring, snapshot = catalogueSnapshot;
             const { accountId, networkId, address } = expected;
             const network = snapshot && findUtxoNetwork(networkId, snapshot.utxoNetworks);
@@ -6635,6 +6658,7 @@ export function createKeyringRuntimeFactory(
             const result = await read(Object.freeze({ context: expected, identifier: parsed.identifier,
               isAccount: parsed.kind === 'account', registration: network, assertCurrent: assertScope }), signal, check);
             await dataBinding(captured, check);
+            if (refresh === 'page') reconcilePublicUtxo(network, { id: selected.index, type: selected.type, xpub: identifier }, assertScope);
             return result;
           },
           ...(dependencies.readUtxoAccount ? { async readUtxoBalance(id: UtxoNetworkId, address: string, external: AbortSignal) {
@@ -6643,12 +6667,12 @@ export function createKeyringRuntimeFactory(
             if (!network) throw new KeyringRuntimeError('NOT_READY');
             const controller = new AbortController();
             const abort = () => controller.abort();
-            const guard = () => {
+            const assertScope = () => {
               current(captured);
-              if (controller.signal.aborted || external.aborted ||
-                  catalogueSnapshot !== snapshot || snapshot.active.networkId !== id || selectedAccount().address !== address)
+              if (catalogueSnapshot !== snapshot || snapshot.active.networkId !== id || selectedAccount().address !== address)
                 throw new KeyringRuntimeError('CANCELLED');
             };
+            const guard = () => { assertScope(); if (controller.signal.aborted || external.aborted) throw new KeyringRuntimeError('CANCELLED'); };
             guard();
             const previous = pendingBalance;
             pendingBalance = controller;
@@ -6663,6 +6687,7 @@ export function createKeyringRuntimeFactory(
                 : dependencies.readUtxoAccount!(network, xpub, controller.signal, guard));
               if (!result) throw new KeyringRuntimeError('NOT_READY');
               guard();
+              reconcilePublicUtxo(network, { id: index, type, xpub }, assertScope);
               return result;
             } finally {
               external.removeEventListener('abort', abort);
@@ -6869,6 +6894,7 @@ export function createKeyringRuntimeFactory(
             return Object.freeze<NativeUtxoSend>({ ...opened,
               cancel: () => opened.cancel(),
               list: () => opened.list(),
+              refreshSaved: () => opened.refreshSaved(),
               check: txid => opened.check(txid),
               async prepareRetry(txid) {
                 if (trezorAttempt && trezorSession === trezorAttempt.session) await cancelTrezor(false);
