@@ -420,6 +420,48 @@ module.exports = {
           minChunks: 2,
           enforce: true,
         },
+        // The native-safe passkey helper no longer eagerly imports the browser
+        // smart-account barrel. Share the execution graph across its lazy UI
+        // routes instead of packaging a separate copy for every approval page.
+        smartAccountExecutionShared: {
+          test(module) {
+            const resource = (module.resource || '')
+              .split(String.fromCharCode(92))
+              .join('/');
+            return (
+              /\/source\/utils\/smartAccount\/(?:adapter|aggregate|authenticatorDispatch|authenticators|capabilities|custom|erc7739|execution|gas|guardianPolicy|index|modules|ownerSigningIntent|recovery|signature|slhDsaPurpose|templates|userOperationHash|validatorSignability)\.ts$/.test(
+                resource
+              ) ||
+              /\/source\/utils\/(?:evmTransactionContext|smartAccountErrors|slhDsa\/constants)\.ts$/.test(
+                resource
+              ) ||
+              /\/node_modules\/ethers\/lib\.esm\/(?:crypto\/(?:signature|signing-key)|constants\/hashes|transaction\/address)\.js$/.test(
+                resource
+              ) ||
+              /\/node_modules\/ethers\/node_modules\/@noble\/(?:curves\/esm\/(?:secp256k1|_shortw_utils|abstract\/(?:modular|utils|weierstrass|curve))|hashes\/esm\/(?:hmac|sha256|_sha2))\.js$/.test(
+                resource
+              )
+            );
+          },
+          chunks(chunk) {
+            const runtimes =
+              typeof chunk.runtime === 'string'
+                ? [chunk.runtime]
+                : [...(chunk.runtime || [])];
+            return (
+              !chunk.canBeInitial() &&
+              runtimes.length > 0 &&
+              runtimes.every(
+                (runtime) => runtime === 'app' || runtime === 'external'
+              )
+            );
+          },
+          name: 'smart-account-execution-shared',
+          // Different approval routes use different exports of the same graph.
+          usedExports: false,
+          minChunks: 2,
+          enforce: true,
+        },
         // Share only identical privacy modules across pre-registered background chunks.
         privacyBackgroundShared: {
           test(module) {
