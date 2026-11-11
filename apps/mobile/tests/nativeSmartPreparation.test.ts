@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildECDSAAuthenticator, buildP256WebAuthnAuthenticator } from '../../../source/utils/smartAccount/authenticators.ts';
+import { buildECDSAAuthenticator, buildP256WebAuthnAuthenticator, buildSLHDSAAuthenticator } from '../../../source/utils/smartAccount/authenticators.ts';
+import { getSLHDSAKeyId, SLH_DSA_SIGNATURE_LIMIT } from '../../../source/utils/slhDsa/constants.ts';
+import { getAddress } from '../../../source/utils/ethersV6Compat.ts';
 import { buildSmartAccountValidatorSwitch } from '../../../source/utils/smartAccount/validatorSwitch.ts';
 import { buildSmartAccountUserOperation, encodeSmartAccountGasFees, encodeSmartAccountGasLimits } from '../../../source/utils/smartAccount/account.ts';
 import { NativeSmartPreparationRequests } from '../src/connections/smartPreparationRequests.ts';
@@ -19,23 +21,25 @@ const local = '0x1111111111111111111111111111111111111111', external = '0x222222
 const validator = buildECDSAAuthenticator({ chainId: 1, config: { owners: [local], threshold: 1 } }).auth.validator;
 const hash = '0x' + 'ab'.repeat(32), t = englishI18n.t.bind(englishI18n);
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
-function fixture(options: { passkey?: boolean; authentication?: boolean; configured?: boolean; external?: boolean; deployed?: boolean; exact?: boolean; owners?: readonly string[]; corruptTarget?: 'owners' | 'data' | 'validator' } = {}) {
+function fixture(options: { passkey?: boolean; slh?: boolean; authentication?: boolean; configured?: boolean; external?: boolean; deployed?: boolean; exact?: boolean; owners?: readonly string[]; corruptTarget?: 'owners' | 'data' | 'validator' } = {}) {
   let promptActive = false, credentialWait: Promise<void> = Promise.resolve();
   let live = true, session = true, selected = 'hd:60:0', deployed = options.deployed ?? false, exact = options.exact ?? false, revision = 0;
   let allocations = 0, preparations = 0, signatures = 0, submissions = 0, metadataReads = 0, savedAccounts = 0;
   let prepareFailures = 0, connectFailures = 0, failMetadata = false, failSignature = false, failResponse = false, dispatchBeforeFailure = false;
-  let allocationWait = Promise.resolve(), afterCommitWait = Promise.resolve(), metadataWait = Promise.resolve(), connectWait = Promise.resolve();
+  let allocationWait = Promise.resolve(), afterCommitWait = Promise.resolve(), preparationWait = Promise.resolve(), metadataWait = Promise.resolve(), connectWait = Promise.resolve();
   const responses: unknown[] = [], connections: NativeSmartCreationAllocation[] = [], receipts: NativeSmartCreationAllocation[] = [], externalAssents: boolean[] = [];
   const allocationCurrent = () => { assert(live && session && selected === 'smart:60:0', 'ALLOCATION_EXPIRED'); };
   const owner = { order: 1, networkId: 'ethereum', networkLabel: 'Ethereum', chainId: '1',
     assertCurrent() { assert(live && session && selected === 'hd:60:0', 'OWNER_EXPIRED'); }, assertSessionCurrent() { assert(live && session, 'SESSION_EXPIRED'); } };
   const requestedOwners = options.owners ?? (options.external ? [external] : [local]);
-  const request: NativeSmartPreparationRequest = { label: 'Requested Smart account', authenticator: options.passkey ? { id: 'p256-webauthn' } : options.configured ? { id: 'ecdsa', config: { owners: requestedOwners, threshold: 1 } } : { id: 'ecdsa' } };
+  const request: NativeSmartPreparationRequest = { label: 'Requested Smart account', authenticator: options.slh ? { id: 'slh-dsa' } : options.passkey ? { id: 'p256-webauthn' } : options.configured ? { id: 'ecdsa', config: { owners: requestedOwners, threshold: 1 } } : { id: 'ecdsa' } };
   const wire = { id: 10, method: 'wallet_prepareSmartAccount', params: [{}], chainId: 'eip155:1', freshness: 'fresh', expiresAt: Date.now() + 60000,
     session: { binding: { topic: 'topic', origin: 'https://app.example', peerPublicKey: 'ab'.repeat(32) }, metadata: { name: 'Reported application', description: '', url: 'https://reported.example', icons: [] }, expiry: Math.floor(Date.now() / 1000) + 120, namespaces: {} }, verification: { validation: 'UNKNOWN', isScam: false } } as WalletConnectRequest;
   let manager!: NativeSmartPreparationRequests;
   const registration = getNativeNetwork('ethereum');
   const passkey = buildP256WebAuthnAuthenticator({ chainId: 1, config: { publicKey: { x: '0x' + '01'.repeat(32), y: '0x' + '02'.repeat(32), rpIdHash: '0x' + '03'.repeat(32), originHash: '0x' + '04'.repeat(32), originLength: 24 } } });
+  const slhPublicKey = { pkRoot: '0x' + '05'.repeat(16) + '00'.repeat(16), pkSeed: '0x' + '06'.repeat(16) + '00'.repeat(16) };
+  const slh = buildSLHDSAAuthenticator({ chainId: 1, config: { ...slhPublicKey, keyId: getSLHDSAKeyId(slhPublicKey), parameterSet: 'SLH-DSA-SHA2-128-24', signatureLimit: SLH_DSA_SIGNATURE_LIMIT } });
   const host = {
     context: () => ({ accounts: [{ id: 'hd:60:0', type: 'HDAccount', index: 0, address: local, xpub: local, label: 'Local owner' }], activeAccountId: selected, unlocked: live, networkId: 'ethereum', networkLabel: 'Ethereum',
       network: { chainId: Number(registration.chainId), currency: registration.symbol, kind: 'ethereum' as ReturnType<NativeConnectionSigningHost['context']>['network']['kind'], label: registration.name, slip44: registration.slip44, url: registration.rpcUrl } }),
@@ -49,19 +53,19 @@ function fixture(options: { passkey?: boolean; authentication?: boolean; configu
         });
       }
       allocations++; externalAssents.push(input.externalOwnersAcknowledged); guard(); await allocationWait; guard(); assert(!signal.aborted);
-      const allocation: NativeSmartCreationAllocation = Object.freeze({ account: { id: 'smart:60:0', index: 0, type: 'SmartAccount' as const, address: smart, xpub: smart, label: input.label }, networkId: 'ethereum', chainId: 1, target: input.target, ...(input.target.id === 'p256-webauthn' ? {targetAuth:passkey.auth} : {}), assertCurrent: allocationCurrent });
+      const allocation: NativeSmartCreationAllocation = Object.freeze({ account: { id: 'smart:60:0', index: 0, type: 'SmartAccount' as const, address: smart, xpub: smart, label: input.label }, networkId: 'ethereum', chainId: 1, target: input.target, ...(input.target.id === 'p256-webauthn' ? {targetAuth:passkey.auth} : input.target.id === 'slh-dsa' ? {targetAuth:slh.auth} : {}), assertCurrent: allocationCurrent });
       savedAccounts++; receipts.push(allocation); onCommitted(allocation);
       // An observer may run here while the new private state is not published.
       manager.revalidate(); await afterCommitWait; selected = 'smart:60:0'; guard(); assert(!signal.aborted); return allocation;
     },
     async prepareSmartAccountCreationOperation(allocation, handoff, guard, authentication) {
-      preparations++; guard(); assert.equal(allocation, receipts[0]);
+      preparations++; guard(); await preparationWait; guard(); assert.equal(allocation, receipts[0]);
       assert.throws(() => handoff.beforeSuiteOpen(Date.now() + 1000, {}), /Suite continuation/);
       if (prepareFailures-- > 0) throw Error('Pre-sign canonical read unavailable');
-      const target = allocation.target; assert(target.id === 'p256-webauthn' || target.id === 'ecdsa' && target.config);
+      const target = allocation.target; assert(target.id === 'slh-dsa' || target.id === 'p256-webauthn' || target.id === 'ecdsa' && target.config);
       const config = target.id === 'ecdsa' ? target.config : undefined;
-      const source = target.id === 'p256-webauthn' && exact ? passkey : buildECDSAAuthenticator({ chainId: 1, config: exact && config ? { owners: [...config.owners], threshold: config.threshold } : { owners: [local], threshold: 1 } });
-      const requested = target.id === 'p256-webauthn' ? passkey : buildECDSAAuthenticator({ chainId: 1, config: { owners: options.corruptTarget === 'owners' ? [...config!.owners].reverse() : [...config!.owners], threshold: config!.threshold } });
+      const source = target.id === 'slh-dsa' && exact ? slh : target.id === 'p256-webauthn' && exact ? passkey : buildECDSAAuthenticator({ chainId: 1, config: exact && config ? { owners: [...config.owners], threshold: config.threshold } : { owners: [local], threshold: 1 } });
+      const requested = target.id === 'slh-dsa' ? slh : target.id === 'p256-webauthn' ? passkey : buildECDSAAuthenticator({ chainId: 1, config: { owners: options.corruptTarget === 'owners' ? [...config!.owners].reverse() : [...config!.owners], threshold: config!.threshold } });
       let intent: NativeSmartAccountResolvedIntent = deployed ? { kind: 'authenticator', command: buildSmartAccountValidatorSwitch({ accountAddress: smart, chainId: 1,
         metadata: { chainId: 1, contractVersion: '1', deploymentSalt: '0x00', isDeployed: true, auth: source.auth, ...source.metadata }, target: requested }) } : { kind: 'deploy' };
       if (intent.kind === 'authenticator' && options.corruptTarget === 'data') intent = { ...intent, command: { ...intent.command, target: { ...intent.command.target, data: '0xdead' }, targetModule: { ...intent.command.targetModule, data: '0xdead' } } };
@@ -100,7 +104,7 @@ function fixture(options: { passkey?: boolean; authentication?: boolean; configu
     counts: () => ({ allocations, preparations, signatures, submissions, metadataReads, savedAccounts }),
     failPrepare(value = 1) { prepareFailures = value; }, failConnect(value = 1) { connectFailures = value; }, failMetadata(value: boolean) { failMetadata = value; },
     failSign() { failSignature = true; }, failRespond(afterDispatch = false) { failResponse = true; dispatchBeforeFailure = afterDispatch; },
-    holdAllocation(wait: Promise<void>) { allocationWait = wait; }, holdAfterCommit(wait: Promise<void>) { afterCommitWait = wait; }, holdMetadata(wait: Promise<void>) { metadataWait = wait; }, holdConnect(wait: Promise<void>) { connectWait = wait; },
+    holdAllocation(wait: Promise<void>) { allocationWait = wait; }, holdAfterCommit(wait: Promise<void>) { afterCommitWait = wait; }, holdPreparation(wait: Promise<void>) { preparationWait = wait; }, holdMetadata(wait: Promise<void>) { metadataWait = wait; }, holdConnect(wait: Promise<void>) { connectWait = wait; },
     revoke() { live = false; manager.revalidate(); }, revokeSession() { session = false; manager.revalidate(); }, selectOther() { selected = 'other'; manager.revalidate(); } };
 }
 async function authorizeAndPay(f: ReturnType<typeof fixture>) {
@@ -133,7 +137,7 @@ test('configured ECDSA reuses one allocation through deployment, authenticator a
   } finally { await f.manager.dispose(); }
 });
 
-for (const id of ['slh-dsa', 'composite', 'custom']) test(`${id} is unavailable before any allocation or fallback`, async () => {
+for (const id of ['composite', 'custom']) test(`${id} is unavailable before any allocation or fallback`, async () => {
   const f = fixture(); f.enqueue({ label: 'Unsupported', authenticator: { id } });
   try { assert.equal(f.review().error, 'PREPARATION_UNAVAILABLE'); await assert.rejects(async () => f.manager.approve(f.review().id, false)); assert.equal(f.counts().allocations, 0); }
   finally { await f.manager.dispose(); }
@@ -152,6 +156,45 @@ test('wallet-acquired P256 creation keeps separate deployment and authenticator 
     assert.equal(f.responses.length, 1); assert.equal(f.connections.length, 1);
     assert.equal(f.counts().allocations, 1); assert.equal(f.counts().signatures, 2);
   } finally { await f.manager.dispose(); }
+});
+
+test('wallet-prepared SLH creation keeps deployment, installation and payer approval separate', async () => {
+  const f = fixture({ slh: true }); f.enqueue();
+  try {
+    assert.equal(f.review().requestedAuthenticatorId, 'slh-dsa'); assert.equal(f.counts().allocations, 0);
+    await f.manager.approve(f.review().id, false);
+    assert.equal(f.review().operation?.intent.kind, 'deploy'); assert.equal(f.counts().signatures, 0);
+    await authorizeAndPay(f);
+    assert.equal(f.review().operation?.intent.kind, 'authenticator'); assert.equal(f.responses.length, 0);
+    await authorizeAndPay(f);
+    assert.equal(f.counts().allocations, 1); assert.equal(f.counts().signatures, 2); assert.equal(f.counts().submissions, 2);
+    assert.equal(f.connections[0], f.receipts[0]);
+    assert.deepEqual(f.responses, [{ result: { address: smart, chainId: '0x1', installedValidator: getAddress(f.receipts[0]!.targetAuth!.validator) } }]);
+  } finally { await f.manager.dispose(); }
+});
+
+for (const corruptTarget of ['data', 'validator'] as const) test(`SLH creation refuses substituted ${corruptTarget} before signing`, async () => {
+  const f = fixture({ slh: true, deployed: true, corruptTarget }); f.enqueue();
+  try {
+    await assert.rejects(f.manager.approve(f.review().id, false), /Creation target changed/);
+    assert.equal(f.counts().signatures, 0); assert.equal(f.counts().submissions, 0); assert.equal(f.connections.length, 0);
+  } finally { await f.manager.dispose(); }
+});
+
+test('SLH preparation retry reuses its allocation, and cancellation prevents late operation delivery', async () => {
+  const f = fixture({ slh: true, deployed: true, exact: true }); f.failPrepare(); f.enqueue();
+  try {
+    await assert.rejects(f.manager.approve(f.review().id, false), /canonical read/);
+    assert.equal(f.review().canRetry, true);
+    await f.manager.approve(f.review().id, false);
+    assert.equal(f.counts().allocations, 1); assert.equal(f.counts().signatures, 0); assert.equal(f.connections[0], f.receipts[0]);
+  } finally { await f.manager.dispose(); }
+  const cancelled = fixture({ slh: true }), held = Promise.withResolvers<void>(); cancelled.holdPreparation(held.promise); cancelled.enqueue();
+  const work = cancelled.manager.approve(cancelled.review().id, false);
+  const rejected = assert.rejects(work, /REQUEST_EXPIRED/);
+  await tick();
+  const disposing = cancelled.manager.dispose(); held.resolve(); await Promise.all([rejected, disposing]);
+  assert.equal(cancelled.counts().allocations, 1); assert.equal(cancelled.counts().signatures, 0); assert.equal(cancelled.connections.length, 0); assert.equal(cancelled.responses.length, 0);
 });
 
 for (const corruptTarget of ['data', 'validator'] as const) test(`P256 creation refuses substituted ${corruptTarget} before signing`, async () => {

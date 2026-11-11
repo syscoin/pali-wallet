@@ -12,6 +12,7 @@ import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGu
 import { NativeLedgerAccounts } from '../custody/ledgerAccounts.ts';
 import { createNativeSentryPublicKeyDeriver } from '../crypto/sentryPublicKey.native';
 import { createNativeSentryCryptoExecutor } from '../crypto/sentryCrypto.native';
+import { createNativeSlhCapability } from '../crypto/native';
 import type { NativeSentryApprovals } from '../custody/sentryApprovals';
 import { AppState, Linking } from 'react-native';
 import { createNativeNetworkView } from '../custody/networkView';
@@ -84,6 +85,7 @@ function custodyGuard() {
   return () => { if (securityPreferences.getSnapshot().status !== 'ready') throw new Error('CANCELLED'); guard(); };
 }
 function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertActive = custodyGuard(), credentialPort = createNativeCredentialPort(), trezorSessions?: NativeTrezorSessions) {
+  let crypto: Crypto | undefined;
   let privacySettings: ReturnType<typeof createNativePrivacyServiceSettings> | undefined;
   const getPrivacySettings = () => {
     if (!privacySettings) throw new CustodyOperationError('CANCELLED');
@@ -97,8 +99,10 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
       getOrigin: () => getPrivacySettings().getOrigin(),
       changeOrigin: (value, invalidate, expected, guard) => getPrivacySettings().changeOrigin(value, invalidate, expected, guard),
     },
-    // Full native SLH primitive/cache qualification is required before activation.
-    slhExecution: null,
+    slhExecution: createNativeSlhCapability(bytes => {
+      if (!crypto) throw new CustodyOperationError('NOT_READY');
+      crypto.getRandomValues(bytes);
+    }),
     passkeys: createNativePasskeyCapability(),
     assertActive,
     credentialPort,
@@ -177,7 +181,7 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
       if (typeof input !== 'string' || !init) throw new Error('Invalid native Blockbook request');
       return walletFetch(input, init);
     },
-    ensureCryptoReady: async () => { await ensureNativeCryptoReady(); },
+    ensureCryptoReady: async () => { crypto = await ensureNativeCryptoReady(); },
     openStorage: async () => {
       const storage = await openStorage();
       privacySettings = createNativePrivacyServiceSettings(storage.keyringStorage);

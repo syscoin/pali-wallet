@@ -9,5 +9,9 @@ export function createNativePublicMerkleExecutor(): (
   throw new Error('Native public Merkle arithmetic is unavailable on web');
 }
 
+export function createNativeSlhCapability(_randomFill: (bytes: Uint8Array) => void): never {
+  throw new Error('Native SLH execution is unavailable on web');
+}
+
 export { disposeWalletCrypto } from './provider.ts';
 export { qualifyWalletCrypto } from './qualification.ts';

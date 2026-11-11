@@ -3067,6 +3067,7 @@ export function createKeyringRuntimeFactory(
         };
         const smartCreationAllocations = new WeakMap<NativeSmartCreationAllocation, Readonly<{
           signal: AbortSignal; target: NativeSmartCreationAllocation['target']; passkey?: IPasskeyCredentialProfile; ring: IndexedKeyring; generation: number; bootstrapAuthHash: string;
+          slh?: { prepared?: Readonly<{ keyId: string; target: SmartAccountAuthenticatorBuildResult }> };
         }>>();
         const reserveContext = (input:
             | NativeAccountRequest | import('./accounts.ts').NativeNetworkRequest, expectedRevision: number, networkSelection: boolean) => {
@@ -5915,10 +5916,9 @@ export function createKeyringRuntimeFactory(
                     Object.values(targetFields).some(field => !Object.hasOwn(field, 'value'))) throw new KeyringRuntimeError('INVALID_INPUT');
                 const config = targetFields.config?.value;
                 const target = resolveSmartAccountPreparationTarget({ id: targetFields.id.value,
-                  config: config === undefined ? undefined : decodeStorageValue(encodeStorageValue(config)) }, { slhDsaSupported: false });
-                // Credential acquisition is a separate real capability. This
-                // foundation never manufactures passkeys or PQ setup material.
-                if (target.id !== 'ecdsa' && (target.id !== 'p256-webauthn' || !passkeys || !authentication)) throw new KeyringRuntimeError('NOT_READY');
+                  config: config === undefined ? undefined : decodeStorageValue(encodeStorageValue(config)) }, { slhDsaSupported: slhCapability !== null });
+                if (target.id !== 'ecdsa' && (!authentication || (target.id === 'p256-webauthn' ? !passkeys : target.id !== 'slh-dsa' || !slhCapability)))
+                  throw new KeyringRuntimeError('NOT_READY');
                 const before = catalogueSnapshot, ring = keyring, captured = generation;
                 if (!before || !ring.hasPublicSession() || before.active.networkId !== request.networkId ||
                     findUtxoNetwork(request.networkId, before.utxoNetworks) || !dependencies.prepareSmartAccount)
@@ -5955,6 +5955,7 @@ export function createKeyringRuntimeFactory(
                     check(); await passkeyRegistry.saveCreation(passkey, check); check();
                   }
                 }
+                const slh: { prepared?: Readonly<{ keyId: string; target: SmartAccountAuthenticatorBuildResult }> } | undefined = target.id === 'slh-dsa' ? {} : undefined;
                 let allocation: NativeSmartCreationAllocation | undefined, publishing = true;
                 await run(async () => {
                   check();
@@ -5966,10 +5967,11 @@ export function createKeyringRuntimeFactory(
                       deploymentSalt: metadata.deploymentSalt, factoryAddress: metadata.factoryAddress,
                     });
                     const expectedIdentity = identity(created.smartAccount);
+                    const passkeyAuth = passkey ? Object.freeze(buildP256WebAuthnAuthenticator({ chainId: Number(network.chainId), config: passkey }).auth) : undefined;
                     const receipt: NativeSmartCreationAllocation = Object.freeze({
                       account: Object.freeze({ id: saved.id, index: saved.index, type: 'SmartAccount', address: saved.address, xpub: created.xpub, label: saved.label }),
                       networkId: request.networkId, chainId: Number(network.chainId), target,
-                      ...(passkey ? { targetAuth: Object.freeze(buildP256WebAuthnAuthenticator({ chainId: Number(network.chainId), config: passkey }).auth) } : {}),
+                      get targetAuth() { return passkeyAuth ?? slh?.prepared?.target.auth; },
                       assertCurrent() {
                         assertOwner(); current(captured); checkGuard(assertRequestCurrent);
                         const snapshot = catalogueSnapshot, provisional = publishing && snapshot === before;
@@ -5983,7 +5985,7 @@ export function createKeyringRuntimeFactory(
                         requireSmartAccountAddressIdentity(record, Number(network.chainId));
                       },
                     });
-                    smartCreationAllocations.set(receipt, Object.freeze({ signal, target, passkey, ring, generation: captured,
+                    smartCreationAllocations.set(receipt, Object.freeze({ signal, target, passkey, slh, ring, generation: captured,
                       bootstrapAuthHash: getSmartAccountAuthHash(created.smartAccount.auth) }));
                     allocation = receipt;
                     checkGuard(() => onCommitted(receipt));
@@ -5998,18 +6000,32 @@ export function createKeyringRuntimeFactory(
               async prepareSmartAccountCreationOperation(allocation, handoff, assertRequestCurrent, authentication) {
                 if (authentication !== null) assertNativePrivateAuthentication(authentication);
                 const owned = smartCreationAllocations.get(allocation);
-                if (!owned || (owned.target.id === 'ecdsa' ? !owned.target.config : owned.target.id !== 'p256-webauthn' || !owned.passkey)) throw new KeyringRuntimeError('INVALID_INPUT');
+                if (!owned || (owned.target.id === 'ecdsa' ? !owned.target.config : owned.target.id === 'p256-webauthn' ? !owned.passkey : owned.target.id !== 'slh-dsa' || !owned.slh || !authentication))
+                  throw new KeyringRuntimeError('INVALID_INPUT');
                 requireNativeSigningHandoff(handoff);
                 const check = () => {
                   current(owned.generation); allocation.assertCurrent(); checkGuard(assertRequestCurrent);
                   if (keyring !== owned.ring || allocation.target !== owned.target) throw new KeyringRuntimeError('CANCELLED');
                 };
                 check();
+                if (owned.slh && !owned.slh.prepared) {
+                  const facade = await openSlhDsaAccount(check, owned.signal, authentication); check();
+                  const existing = await facade.readPrepared(); check();
+                  if (existing.length > 1) throw new KeyringRuntimeError('NOT_READY');
+                  const key = existing[0] ?? await facade.prepareFresh(() => undefined); check();
+                  const prepared = Object.freeze({ keyId: key.keyId, target: Object.freeze(buildSLHDSAAuthenticator({ chainId: allocation.chainId, config: {
+                    keyId: key.keyId, parameterSet: key.parameterSet, pkRoot: key.pkRoot, pkSeed: key.pkSeed, signatureLimit: key.signatureLimit,
+                  } })) });
+                  Object.freeze(prepared.target.auth);
+                  const concurrent = smartCreationAllocations.get(allocation)?.slh?.prepared;
+                  if (concurrent && concurrent.keyId !== prepared.keyId) throw new KeyringRuntimeError('CANCELLED');
+                  owned.slh.prepared = prepared;
+                }
                 const target = owned.target.id === 'p256-webauthn'
                   ? buildP256WebAuthnAuthenticator({ chainId: allocation.chainId, config: owned.passkey! })
                   : owned.target.id === 'ecdsa' && owned.target.config
                     ? buildECDSAAuthenticator({ chainId: allocation.chainId, config: { owners: [...owned.target.config.owners], threshold: owned.target.config.threshold } })
-                    : (() => { throw new KeyringRuntimeError('INVALID_INPUT'); })();
+                    : owned.slh?.prepared?.target ?? (() => { throw new KeyringRuntimeError('INVALID_INPUT'); })();
                 const assertSource = () => {
                   check();
                   const metadata = state.accounts.SmartAccount[allocation.account.index]?.smartAccount;
@@ -6019,6 +6035,8 @@ export function createKeyringRuntimeFactory(
                 await refreshSmartAccountMetadata(owned.signal, check); assertSource();
                 if (!state.accounts.SmartAccount[allocation.account.index]!.smartAccount!.isDeployed)
                   return openSmartAccountOperation({ kind: 'deploy' }, assertSource, { kind: 'dapp', handoff }, authentication);
+                if (owned.slh?.prepared)
+                  return openSlhDsaInstallation(owned.slh.prepared.keyId, owned.signal, assertSource, { kind: 'dapp', handoff }, authentication);
                 return openSmartAccountAuthenticator(target, owned.signal, assertSource, { kind: 'dapp', handoff }, authentication);
               },
               async prepareModuleChange(input, assertRequestCurrent, authentication) {

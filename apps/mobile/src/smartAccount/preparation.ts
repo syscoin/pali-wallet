@@ -14,7 +14,7 @@ export type NativeSmartCreationAllocation = Readonly<{
   networkId: string;
   chainId: number;
   target: SmartAccountPreparationTarget;
-  /** Public, wallet-acquired target; no externally supplied passkey config. */
+  /** Public, wallet-acquired target, available after credential preparation. */
   targetAuth?: Readonly<{ validator: string; data: string }>;
   assertCurrent(): void;
 }>;

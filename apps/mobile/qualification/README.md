@@ -16,7 +16,7 @@ described below before any protected-storage admission.
 
 The explicit `full_slh` dispatch retains the Android real-OS-RNG setup,
 healthy six-FORS signature, forced cached fallback and cold-restart usage
-checks. Production native SLH capability remains disabled. Reports record
+checks. The normal native factory now wires the SHA2 SLH capability in the development branch. This historical component harness retains `productionCapability: null`; its isolation is unchanged and its reports do not qualify the current normal app or Sentry SHAKE signing. Reports record
 monotonic SDK setup-secret derivation, inclusive `prepareFresh`, initial
 hydration and individual signing durations. Signing durations include state,
 cache and usage persistence, and stop before report verification and readback.
