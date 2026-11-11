@@ -36,7 +36,7 @@ if (process.env.PALI_NATIVE_FULL_SLH_QUALIFICATION !== undefined && !['0', '1'].
   throw Error('Full SLH qualification requires an explicit boolean mode');
 let fullSlh;
 if (fullSlhEnabled) {
-  if (httpEnabled || publicPoolEnabled || privateProofEnabled || physicalScenario !== undefined ||
+  if (httpEnabled || publicPoolEnabled || privateProofEnabled || physicalScenario !== undefined && physicalScenario !== 'full_slh' ||
       !/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA || '') ||
       ['paliFullSlhQualification', 'paliPrivateProofQualification', 'paliPublicPoolQualification', 'paliHttpQualification', 'paliPhysicalQualification'].some(key => app.expo.extra?.[key] !== undefined))
     throw Error('Full SLH qualification requires a dedicated isolated build');
@@ -82,6 +82,8 @@ if (physicalScenario !== undefined) {
   const { PHYSICAL_BUNDLES } = require('../qualification/physical-contract.ts');
   if (
     !Object.hasOwn(PHYSICAL_BUNDLES, physicalScenario) ||
+    (physicalScenario === 'full_slh') !== fullSlhEnabled ||
+    httpEnabled || publicPoolEnabled || privateProofEnabled ||
     !/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA || '') ||
     app.expo.extra?.paliPhysicalQualification
   )
@@ -145,7 +147,7 @@ if (physical) {
   app.expo.name =
     physicalScenario === 'import'
       ? 'PaliPhysicalImport'
-      : 'PaliPhysicalGenerate';
+      : physicalScenario === 'full_slh' ? 'PaliPhysicalSLH' : 'PaliPhysicalGenerate';
   app.expo.ios.bundleIdentifier = physical.bundleIdentifier;
   app.expo.extra = { ...app.expo.extra, paliPhysicalQualification: physical };
   app.expo.ios.infoPlist = {
@@ -154,6 +156,7 @@ if (physical) {
     PaliQualificationScenario: physical.scenario,
     PaliQualificationSourceRevision: physical.sourceRevision,
     PaliQualificationLockfileSHA256: physical.lockfileSha256,
+    ...(fullSlh ? { PaliQualificationFullSLH: true } : {}),
   };
 }
 const write = (file, value) => {

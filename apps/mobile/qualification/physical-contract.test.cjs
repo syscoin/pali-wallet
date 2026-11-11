@@ -90,6 +90,19 @@ test('reset and qualification launches bind the exact scenario, route and fresh 
     assert.throws(() => physicalLaunch(value, build()));
 });
 
+test('physical full SLH has one exact separate identity and does not become a general launch mode', () => {
+  const value = { ...build(), scenario: 'full_slh', bundleIdentifier: PHYSICAL_BUNDLES.full_slh };
+  const parsed = physicalBuild(value, PHYSICAL_BUNDLES.full_slh, 'com.paliwallet.qualification');
+  assert.equal(physicalLaunch(link('create').replace('scenario=import', 'scenario=full_slh'), parsed).scenario, 'full_slh');
+  assert.throws(() => physicalBuild(value, PHYSICAL_BUNDLES.import, 'com.paliwallet.qualification'));
+  assert.throws(() => physicalBuild({ ...value, bundleIdentifier: 'com.paliwallet.mobile' }, 'com.paliwallet.mobile', 'com.paliwallet.qualification'));
+  assert.throws(() => parseQualificationLaunch(link('create').replace('physical?', 'run?').replace('scenario=import', 'scenario=full_slh')));
+  const source = fs.readFileSync(path.join(path.dirname(require.resolve('./physical-contract.test.cjs')), '../modules/pali-wallet-crypto/ios/PaliWalletCryptoModule.swift'), 'utf8');
+  const list = /slhQualificationBundles: Set<String> = \[([^\]]+)\]/.exec(source)?.[1];
+  assert(list);
+  assert.deepEqual([...list.matchAll(/"([^"]+)"/g)].map(match => match[1]), ['com.paliwallet.qualification', PHYSICAL_BUNDLES.import, PHYSICAL_BUNDLES.generate, PHYSICAL_BUNDLES.full_slh]);
+});
+
 test('only explicit reset deletes the fixture key and acknowledges after null readback', async () => {
   const calls = [];
   const ports = {
@@ -139,7 +152,7 @@ test('only explicit reset deletes the fixture key and acknowledges after null re
   );
 });
 
-for (const scenario of ['import', 'generate'])
+for (const scenario of ['import', 'generate', 'full_slh'])
   test(`physical ${scenario} configuration changes only a fresh dedicated fixture and records the actual lock hash`, () => {
     const directory = fs.mkdtempSync(
       path.join(os.tmpdir(), 'pali-physical-config-')
@@ -193,6 +206,7 @@ for (const scenario of ['import', 'generate'])
         PALI_NATIVE_QUALIFICATION: '1',
         PALI_NATIVE_HTTP_QUALIFICATION: '0',
         PALI_PHYSICAL_QUALIFICATION: scenario,
+        ...(scenario === 'full_slh' ? { PALI_NATIVE_FULL_SLH_QUALIFICATION: '1' } : {}),
         GITHUB_SHA: 'a'.repeat(40),
       };
       const command = [
@@ -208,12 +222,18 @@ for (const scenario of ['import', 'generate'])
         JSON.parse(fs.readFileSync(path.join(directory, 'package.json'))).main,
         'index.ts'
       );
+      if (scenario === 'full_slh') {
+        assert.notEqual(spawnSync(process.execPath, command, { env: { ...env, PALI_NATIVE_FULL_SLH_QUALIFICATION: '0' } }).status, 0);
+        assert.notEqual(spawnSync(process.execPath, command, { env: { ...env, PALI_NATIVE_HTTP_QUALIFICATION: '1' } }).status, 0);
+      }
       assert.equal(spawnSync(process.execPath, command, { env }).status, 0);
       const configured = JSON.parse(
         fs.readFileSync(path.join(directory, 'app.json'))
       ).expo;
       assert.equal(configured.ios.bundleIdentifier, PHYSICAL_BUNDLES[scenario]);
       assert.equal(configured.android.package, 'com.paliwallet.qualification');
+      assert.equal(configured.ios.infoPlist.PaliQualificationFullSLH, scenario === 'full_slh' ? true : undefined);
+      assert.equal(configured.extra.paliFullSlhQualification !== undefined, scenario === 'full_slh');
       assert.equal(
         configured.ios.infoPlist.PaliQualificationSourceRevision,
         'a'.repeat(40)

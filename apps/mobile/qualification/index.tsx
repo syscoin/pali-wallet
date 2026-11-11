@@ -130,6 +130,7 @@ function QualificationApp() {
       let runtime: KeyringRuntime | undefined;
       let capturedHost: InstanceType<NativeKeyringSdk['HostKeyring']> | undefined;
       let fullSlh: FullSlhEvidence | undefined;
+      let fullSlhResources: import('./slh-resource-evidence.ts').SlhResourceEvidence | undefined;
       let authority: NativeCustodyAuthority | undefined;
       let backup: SeedBackupFlow | undefined;
       let cryptoEvidence: FullCryptoQualification | undefined;
@@ -163,7 +164,8 @@ function QualificationApp() {
       };
       try {
         parameters = await launchParameters();
-        if (fullSlhConfiguration !== undefined && (parameters.physical || parameters.scenario !== 'import' || parameters.http || parameters.publicPool || parameters.privateProof ||
+        if ((parameters.physical?.scenario === 'full_slh') !== (parameters.physical !== undefined && fullSlhConfiguration !== undefined) ||
+          fullSlhConfiguration !== undefined && ((parameters.physical ? parameters.scenario !== 'full_slh' : parameters.scenario !== 'import' || parameters.http || parameters.publicPool || parameters.privateProof) ||
           Constants.expoConfig?.extra?.paliPrivateProofQualification !== undefined || publicPoolConfiguration !== undefined || Constants.expoConfig?.extra?.paliHttpQualification !== undefined))
           throw Error('FULL_SLH_QUALIFICATION_BUILD_INVALID');
         const { getWalletConnectWebSocket } = await import('../src/platform/walletConnectRuntime.native');
@@ -574,7 +576,7 @@ function QualificationApp() {
         if (parameters.phase === 'create') {
           expect(authority.getSnapshot().phase === 'empty');
           await check('create or import real SDK wallet', async () => {
-            if (parameters!.scenario === 'import')
+            if (parameters!.scenario !== 'generate')
               await authority!.importPhrase(PUBLIC_PHRASE, PUBLIC_PASSWORD);
             else {
               observingGeneration = true;
@@ -594,11 +596,11 @@ function QualificationApp() {
             expectedErc20Address = HDNodeWallet.fromPhrase(presentation.words.join(' '), undefined, "m/44'/60'/0'/0/2").address;
             expectedNevmAddress = HDNodeWallet.fromPhrase(presentation.words.join(' '), undefined, "m/44'/60'/0'/0/3").address;
             expectedZksysAddress = HDNodeWallet.fromPhrase(presentation.words.join(' '), undefined, "m/44'/60'/0'/0/4").address;
-            if (parameters!.scenario === 'import') expect(expectedHdAddress === EXPECTED_HD_ADDRESS);
-            if (parameters!.scenario === 'import') expect(expectedErc20Address === EXPECTED_ERC20_HD_ADDRESS);
-            if (parameters!.scenario === 'import') expect(expectedNevmAddress === EXPECTED_NEVM_HD_ADDRESS);
-            if (parameters!.scenario === 'import') expect(expectedZksysAddress === EXPECTED_ZKSYS_HD_ADDRESS);
-            if (parameters!.scenario === 'import')
+            if (parameters!.scenario !== 'generate') expect(expectedHdAddress === EXPECTED_HD_ADDRESS);
+            if (parameters!.scenario !== 'generate') expect(expectedErc20Address === EXPECTED_ERC20_HD_ADDRESS);
+            if (parameters!.scenario !== 'generate') expect(expectedNevmAddress === EXPECTED_NEVM_HD_ADDRESS);
+            if (parameters!.scenario !== 'generate') expect(expectedZksysAddress === EXPECTED_ZKSYS_HD_ADDRESS);
+            if (parameters!.scenario !== 'generate')
               expect(presentation.words.join(' ') === PUBLIC_PHRASE);
             else {
               const generatedEntropy = bip39.mnemonicToEntropy(
@@ -636,7 +638,7 @@ function QualificationApp() {
         }
         const rootAccount = authority.getCatalogue()?.accounts.find((account) => account.id === 'hd:60:0');
         expect(rootAccount && /^0x[0-9a-fA-F]{40}$/.test(rootAccount.address));
-        if (parameters.scenario === 'import') expect(rootAccount?.address === EXPECTED_ADDRESS);
+        if (parameters.scenario !== 'generate') expect(rootAccount?.address === EXPECTED_ADDRESS);
         if (fullSlhConfiguration !== undefined) {
           const { fullSlhBuild, readFullSlhEvidence, qualifyNativeSlhFull, FULL_SLH_CHECK } = await import('./native-slh-full.ts');
           const build = fullSlhBuild(fullSlhConfiguration);
@@ -656,20 +658,25 @@ function QualificationApp() {
             assertCurrent();
             let previous: FullSlhEvidence | null = null;
             if (parameters.phase === 'restart') {
-              const file = `${FileSystem.documentDirectory}pali-native-qualification-create.json`;
+              const file = `${FileSystem.documentDirectory}pali-native-qualification-create${parameters.physical ? `-${parameters.runId}` : ''}.json`;
               const info = await FileSystem.getInfoAsync(file); assertCurrent();
               if (!info.exists || info.isDirectory || typeof info.size !== 'number' || info.size < 1 || info.size > 100000) throw Error('FULL_SLH_RESTART_REPORT_INVALID');
               const text = await FileSystem.readAsStringAsync(file); assertCurrent();
               if (text.length > 100000 || text.includes(PUBLIC_PHRASE) || text.includes(PUBLIC_PASSWORD)) throw Error('FULL_SLH_RESTART_REPORT_INVALID');
               const prior = JSON.parse(text);
               if (prior.version !== 1 || prior.phase !== 'create' || prior.scenario !== 'import' || prior.platform !== Platform.OS || prior.status !== 'passed' || prior.networkCalls !== 0) throw Error('FULL_SLH_RESTART_REPORT_INVALID');
+              if (parameters.physical && Object.entries(physicalReportFields(parameters)).some(([key, value]) => prior[key] !== value))
+                throw Error('FULL_SLH_RESTART_REPORT_INVALID');
               previous = readFullSlhEvidence(prior.fullSlh, 'create', build);
             }
             const { requireNativeModule } = await import('expo-modules-core');
+            const nativeModule = requireNativeModule('PaliWalletCrypto');
+            const resourceId = parameters.physical ? nativeModule.beginSlhQualificationResources() as string : null;
+            try {
             fullSlh = await check(FULL_SLH_CHECK, () => qualifyNativeSlhFull({
               phase: parameters!.phase as Phase, build, keyring: ring, storage: opened, pin: PUBLIC_PASSWORD,
               pinCredential: qualificationPinCredential, signal: owner.signal,
-              productionCapability: qualificationSlhExecution, nativeModule: requireNativeModule('PaliWalletCrypto'), previous,
+              productionCapability: qualificationSlhExecution, nativeModule, previous,
               assertCurrent, onStorageFault: () => { custody.lock(); },
               randomFill: bytes => { nativeCrypto.getRandomValues(bytes); },
               yield: () => new Promise(resolve => setTimeout(resolve, 0)),
@@ -677,29 +684,35 @@ function QualificationApp() {
               now: () => performance.now(),
             }));
             assertCurrent();
+            if (resourceId !== null) {
+              const { readSlhResourceEvidence } = await import('./slh-resource-evidence.ts');
+              fullSlhResources = readSlhResourceEvidence(nativeModule.finishSlhQualificationResources(resourceId));
+              assertCurrent();
+            }
+            } finally { if (resourceId !== null) nativeModule.cancelSlhQualificationResources(resourceId); }
           } finally { owner.abort(); appState.remove(); blur?.remove(); }
         }
         const { qualifyNativeHdAccounts } = await import('./hd-accounts.ts');
         const hdEvidence = await qualifyNativeHdAccounts({
           phase: parameters.phase, authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD,
-          expectedSecondAddress: expectedHdAddress ?? (parameters.scenario === 'import' ? EXPECTED_HD_ADDRESS : undefined),
+          expectedSecondAddress: expectedHdAddress ?? (parameters.scenario !== 'generate' ? EXPECTED_HD_ADDRESS : undefined),
           expectedRestartAddress: parameters.address, check,
         });
         const { address } = hdEvidence;
         const { qualifyNativeErc20Transfer } = await import('./erc20-transfer.ts');
         const erc20Evidence = await qualifyNativeErc20Transfer({
           phase: parameters.phase, authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD,
-          expectedThirdAddress: expectedErc20Address ?? (parameters.scenario === 'import' ? EXPECTED_ERC20_HD_ADDRESS : undefined), check,
+          expectedThirdAddress: expectedErc20Address ?? (parameters.scenario !== 'generate' ? EXPECTED_ERC20_HD_ADDRESS : undefined), check,
         });
         const { qualifyNativeNevmTransfer } = await import('./nevm-transfer.ts');
         const nevmEvidence = await qualifyNativeNevmTransfer({
           phase: parameters.phase, authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD,
-          expectedFourthAddress: expectedNevmAddress ?? (parameters.scenario === 'import' ? EXPECTED_NEVM_HD_ADDRESS : undefined), check,
+          expectedFourthAddress: expectedNevmAddress ?? (parameters.scenario !== 'generate' ? EXPECTED_NEVM_HD_ADDRESS : undefined), check,
         });
         const { qualifyNativeZksysTransfer } = await import('./zksys-transfer.ts');
         const zksysEvidence = await qualifyNativeZksysTransfer({
           phase: parameters.phase, authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD,
-          expectedFifthAddress: expectedZksysAddress ?? (parameters.scenario === 'import' ? EXPECTED_ZKSYS_HD_ADDRESS : undefined), check,
+          expectedFifthAddress: expectedZksysAddress ?? (parameters.scenario !== 'generate' ? EXPECTED_ZKSYS_HD_ADDRESS : undefined), check,
         });
         expect(authority.getSnapshot().account?.address === address && authority.getCatalogue()?.active.accountId === 'hd:60:1');
         const { qualifyNativeHdKeyReveal } = await import('./hd-key-reveal.ts');
@@ -735,7 +748,7 @@ function QualificationApp() {
           await check('seed reauthentication after cold restart', async () => {
             const presentation = await backup!.begin(PUBLIC_PASSWORD);
             expect(presentation.words.length === 12);
-            if (parameters!.scenario === 'import')
+            if (parameters!.scenario !== 'generate')
               expect(presentation.words.join(' ') === PUBLIC_PHRASE);
             const { HDNodeWallet } = await import('ethers/wallet');
             expect(HDNodeWallet.fromPhrase(presentation.words.join(' '), undefined, "m/44'/60'/0'/0/1").address === address);
@@ -753,7 +766,7 @@ function QualificationApp() {
           version: 1,
           status: 'passed',
           phase: parameters.phase,
-          scenario: parameters.scenario,
+          scenario: parameters.scenario === 'full_slh' ? 'import' : parameters.scenario,
           platform: Platform.OS,
           osVersion: String(Platform.Version),
           sessionId: Constants.sessionId,
@@ -780,6 +793,7 @@ function QualificationApp() {
           nativeBridgeExercised: true,
           sdkVersion: verifiedSdkVersion,
           ...(fullSlh ? { fullSlh } : {}),
+          ...(fullSlhResources ? { fullSlhResources } : {}),
           ...(verifiedQuickCryptoIdentity ? { quickCryptoIdentity: verifiedQuickCryptoIdentity } : {}),
           ...hdEvidence,
           ...erc20Evidence,
@@ -814,7 +828,7 @@ function QualificationApp() {
           version: 1,
           status: 'failed',
           phase: parameters?.phase ?? 'unknown',
-          scenario: parameters?.scenario ?? 'unknown',
+          scenario: parameters?.scenario === 'full_slh' ? 'import' : parameters?.scenario ?? 'unknown',
           platform: Platform.OS,
           osVersion: String(Platform.Version),
           sessionId: Constants.sessionId,
