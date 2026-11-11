@@ -30,3 +30,26 @@ test('the pre-prompt AAD regression is rejected by the platform-contract gate', 
   const regressed = source.replace(aad, '').replace('        val ownedAlias = created', `${aad}        val ownedAlias = created`);
   assert.throws(() => assertAuthenticatedAadOrder(regressed), /AAD must wait/);
 });
+
+const moduleSource = readFileSync(new URL('../modules/pali-wallet-storage/android/src/main/java/org/syscoin/pali/storage/PaliWalletStorageModule.kt', import.meta.url), 'utf8');
+
+function assertFactoryOnlyCredentialRegistration(candidate: string) {
+  const start = candidate.indexOf('Class("CredentialRequest", PaliCredentialRequest::class)');
+  const end = candidate.indexOf('AsyncFunction("prepareNotificationStorage")', start);
+  assert(start >= 0 && end > start);
+  // Expo requires a constructor even when handles are returned by native factories.
+  // It must refuse JS allocation before an unowned request can be created.
+  const registration = candidate.slice(start, end);
+  assert.match(registration, /Constructor\s*\{\s*throw PaliCredentialFailure\("CREDENTIAL_UNAVAILABLE"\)\s*\}/);
+  assert.equal((registration.match(/Constructor\s*\{/g) ?? []).length, 1);
+}
+
+test('the native credential class declares a refusing constructor for factory-only handles', () => {
+  assertFactoryOnlyCredentialRegistration(moduleSource);
+});
+
+test('missing credential class constructor is rejected before another startup regression', () => {
+  const regressed = moduleSource.replace('      Constructor { throw PaliCredentialFailure("CREDENTIAL_UNAVAILABLE") }\n', '');
+  assert.notEqual(regressed, moduleSource);
+  assert.throws(() => assertFactoryOnlyCredentialRegistration(regressed));
+});

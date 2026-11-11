@@ -82,6 +82,7 @@ class PaliWalletStorageModule : Module() {
     Function("prepareCredentialStage") { binding: String, secret: String -> PaliCredentialRequest(credentials(), binding, secret) }
     AsyncFunction("removeCredential") { binding: String -> credentials().remove(binding) }
     Class("CredentialRequest", PaliCredentialRequest::class) {
+      Constructor { throw PaliCredentialFailure("CREDENTIAL_UNAVAILABLE") }
       Function("cancel") { request: PaliCredentialRequest -> request.cancel() }
       AsyncFunction("run") { request: PaliCredentialRequest, promise: Promise -> request.run(promise) }
     }
