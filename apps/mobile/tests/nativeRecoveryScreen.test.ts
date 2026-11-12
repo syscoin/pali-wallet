@@ -36,7 +36,7 @@ import { isAllowedSentryKeyRoleScheme, type SentryKeySummary } from '../../../so
 import { containsSentryPrivateKey, parseSentryKeyBatch } from '../../../source/utils/sentry/importBatch.ts';
 import { createNativeSentryKeyManagement, type NativeSentryKeyManagement } from '../src/custody/sentryKeyManagement.ts';
 import type { NativeConnectionsView } from '../src/connections/types.ts';
-import type { NativeTrezorView } from '../src/custody/trezorAccounts.ts';
+import type { NativeTrezorResumeIntent, NativeTrezorView } from '../src/custody/trezorAccounts.ts';
 import { quietActivityNotifications, type NotificationTestPort } from './notificationFixture.ts';
 
 function trezorLifecycle() {
@@ -1393,11 +1393,14 @@ test('resumed Trezor SPT drafts never label native funds as tokens while native 
       const home = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(home);
       ((home.props.hardwareRequest as Element).props.onResume as () => void)();
       const trezor = f.render(); assert.equal(trezor.type, 'NativeTrezor');
-      await (trezor.props.onResumeSend as (intent: object) => Promise<void>)({
+      const resume = {
         id: 'utxo-resume', accountId: 'hd:60:0', networkId: 'syscoin', kind: 'utxo',
-        recipient: UTXO_ADDRESSES.syscoin, amount: '2', ...(resumedAsset ? { asset: resumedAsset } : {}),
-      });
+        recipient: UTXO_ADDRESSES.syscoin, amount: '2', feeChoice: { kind: 'custom', satPerVbyte: '7' },
+        ...(resumedAsset ? { asset: resumedAsset } : {}),
+      } satisfies NativeTrezorResumeIntent;
+      await (trezor.props.onResumeSend as (intent: NativeTrezorResumeIntent) => Promise<void>)(resume);
       const send = f.render(); assert.equal(send.type, 'NativeUtxoSendScreen');
+      assert.deepEqual((send.props.initialDraft as { feeChoice: unknown }).feeChoice, resume.feeChoice);
       assert.equal(send.props.asset, resumedAsset);
       assert.equal(send.props.maximumAmount, undefined);
       assert.equal(send.props.availableAmount, resumedAsset ? undefined : '1.25000001');
