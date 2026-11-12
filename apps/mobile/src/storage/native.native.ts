@@ -7,6 +7,8 @@ import {
   WALLET_DATABASE_NAME,
   WALLET_KEY_NAME,
   WALLET_KEY_SERVICE,
+  canResetOrphanedWalletStorage,
+  resetOrphanedWalletStorage,
 } from './coordinator.ts';
 import type { StoragePolicy } from './coordinator.ts';
 import { requireSqlCipher } from './sqlCipher.ts';
@@ -20,6 +22,39 @@ import type {
   StorageDigest,
 } from './types.ts';
 
+const keyOptions: SecureStore.SecureStoreOptions = {
+  keychainService: WALLET_KEY_SERVICE,
+  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  requireAuthentication: false,
+};
+const orphanResetPorts = () => ({
+  policy: requireNativeModule<StoragePolicy>('PaliWalletStorage'),
+  keyStore: {
+    get: () => SecureStore.getItemAsync(WALLET_KEY_NAME, keyOptions),
+    remove: () => SecureStore.deleteItemAsync(WALLET_KEY_NAME, keyOptions),
+  },
+});
+
+let orphanProbe: Promise<boolean> | null = null;
+export function canResetNativeWalletStorage(): Promise<boolean> {
+  // A remount joins the leased read instead of mistaking its busy lease for absence.
+  if (!orphanProbe) {
+    const pending = Promise.resolve().then(() => canResetOrphanedWalletStorage(orphanResetPorts()));
+    orphanProbe = pending;
+    void pending.finally(() => { if (orphanProbe === pending) orphanProbe = null; }).catch(() => undefined);
+  }
+  return orphanProbe;
+}
+
+/** Only the named, rechecked orphan database key is removed; no credential namespace purge. */
+export function resetNativeWalletStorage(authorization: {
+  signal: AbortSignal;
+  assertCurrent(): void;
+  authorize(): Promise<void>;
+}): Promise<void> {
+  return resetOrphanedWalletStorage(orphanResetPorts(), authorization);
+}
+
 /** Only call after qualified native crypto bootstrap; importing this does not open storage. */
 export async function openNativeWalletStorage(
   crypto: {
@@ -32,11 +67,6 @@ export async function openNativeWalletStorage(
   observeStorageOpen(observeOpen, 'native-module');
   const nativePolicy = requireNativeModule<StoragePolicy>('PaliWalletStorage');
   const policy = observeNativeStoragePolicy(nativePolicy, observeOpen);
-  const keyOptions: SecureStore.SecureStoreOptions = {
-    keychainService: WALLET_KEY_SERVICE,
-    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-    requireAuthentication: false,
-  };
   return openWalletStorage({
     policy,
     ...crypto,

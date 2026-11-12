@@ -4076,6 +4076,18 @@
       "unavailable": "Netzwerkgebühren sind nicht verfügbar. Du kannst Automatisch beibehalten und es erneut versuchen.",
       "apply": "Gebühr übernehmen",
       "satPerVbyte": "Gebührensatz (sat/vB)"
+    },
+    "storageRecovery": {
+      "title": "Wallet-Daten nicht gefunden",
+      "body": "Einige lokale Einrichtungsdaten sind noch vorhanden, aber die Wallet-Daten fehlen. Setze die Einrichtung zurück, um eine Wallet zu erstellen oder wiederherzustellen.",
+      "confirmTitle": "Lokale Einrichtung zurücksetzen?",
+      "confirmBody": "Dadurch wird die lokale Einrichtung von Pali zurückgesetzt. Zum Wiederherstellen benötigst du deine Wiederherstellungsphrase und weitere Sicherungen.",
+      "action": "Lokale Einrichtung zurücksetzen",
+      "working": "Einrichtung wird zurückgesetzt…",
+      "failed": "Die Einrichtung konnte nicht zurückgesetzt werden. Schließe Pali und öffne es erneut.",
+      "complete": "Lokale Einrichtung zurückgesetzt",
+      "restart": "Pali wird zum Abschluss neu geöffnet. Falls nicht, schließe die App und öffne sie erneut.",
+      "reopenRequired": "Pali erneut öffnen, um die Einrichtung zu prüfen"
     }
   }
 }

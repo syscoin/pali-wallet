@@ -4076,6 +4076,18 @@
       "unavailable": "Les frais de réseau sont indisponibles. Vous pouvez conserver Automatique et réessayer.",
       "apply": "Appliquer les frais",
       "satPerVbyte": "Taux de frais (sat/vB)"
+    },
+    "storageRecovery": {
+      "title": "Données du portefeuille introuvables",
+      "body": "Des données de configuration locale subsistent, mais celles du portefeuille sont absentes. Réinitialisez la configuration pour créer ou restaurer un portefeuille.",
+      "confirmTitle": "Réinitialiser la configuration locale ?",
+      "confirmBody": "Cela réinitialise la configuration locale de Pali. Pour restaurer votre portefeuille, vous aurez besoin de votre phrase de récupération et de vos autres sauvegardes.",
+      "action": "Réinitialiser la configuration",
+      "working": "Réinitialisation en cours…",
+      "failed": "Impossible de réinitialiser la configuration. Fermez puis rouvrez Pali.",
+      "complete": "Configuration locale réinitialisée",
+      "restart": "Pali va se rouvrir pour terminer. Sinon, fermez puis rouvrez l’application.",
+      "reopenRequired": "Rouvrez Pali pour vérifier la configuration"
     }
   }
 }

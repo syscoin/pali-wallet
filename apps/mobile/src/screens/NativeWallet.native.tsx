@@ -23,6 +23,7 @@ import { walletFetch } from '../platform/http';
 import { custodyIdle, publicViewLock, securityPreferences } from '../platform/security';
 import { authorizePublicView, isNativeCredentialPromptActive } from '../platform/credential';
 import { isCameraPermissionPromptActive } from '../platform/cameraPermission';
+import { OrphanedStorageRecovery } from './OrphanedStorageRecovery';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { AutoLockSettings, type IdlePreferenceSave } from './AutoLockSettings';
 import { BackupVerification } from './BackupVerification';
@@ -307,6 +308,12 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const [presentation, setPresentation] = useState<SeedBackupPresentation | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [orphanedStorage, setOrphanedStorage] = useState(false);
+  const storageResetOwner = useRef<AbortSignal | null>(null);
+  const setStorageResetOwner = useCallback((signal: AbortSignal, active: boolean) => {
+    if (active) storageResetOwner.current = signal;
+    else if (storageResetOwner.current === signal) storageResetOwner.current = null;
+  }, []);
   const rootOrigin = useRef<RootOrigin | null>(null);
   const noteRestore = useNativeNoteBackup(() => {
     const local = controllersRef.current;
@@ -1115,7 +1122,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const install = useCallback(async () => {
     // Android blur leaves AppState active. Controllers must capture an active
     // idle owner, so focus restores it before any replacement is created.
-    if (updateSession.current || pausedIdle.current) return;
+    if (updateSession.current || pausedIdle.current || storageResetOwner.current) return;
     const token = screenToken.current, captured = epoch.current;
     const current = () => !updateSession.current && !pausedIdle.current && mounted.current &&
       screenToken.current === token && epoch.current === captured && AppState.currentState === 'active';
@@ -1215,7 +1222,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     mounted.current = true;
     void install().catch(() => undefined);
     const resume = () => {
-      if (updateSession.current || publicViewLock.getSnapshot().phase !== 'unlocked' || !mounted.current || AppState.currentState !== 'active') return;
+      if (updateSession.current || storageResetOwner.current || publicViewLock.getSnapshot().phase !== 'unlocked' || !mounted.current || AppState.currentState !== 'active') return;
       const restoreIdle = pausedIdle.current; pausedIdle.current = null;
       if (restoreIdle && !restoreIdle()) { lockWallet(); return; }
       custodyIdle.begin(screenToken.current, lockWallet);
@@ -1245,12 +1252,13 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       }
     };
     const lifecycle = AppState.addEventListener('change', (state) => {
-      if (((state === 'inactive' || state === 'background') && controllersRef.current?.authentication?.isAnyPromptActive()) || state === 'inactive' && (isNotificationPermissionPromptActive() || isCameraPermissionPromptActive())) { clearSecrets(); Keyboard.dismiss(); }
+      if (((state === 'inactive' || state === 'background') && (controllersRef.current?.authentication?.isAnyPromptActive() ||
+          storageResetOwner.current && isNativeCredentialPromptActive(storageResetOwner.current))) || state === 'inactive' && (isNotificationPermissionPromptActive() || isCameraPermissionPromptActive())) { clearSecrets(); Keyboard.dismiss(); }
       else if (state !== 'active') revoke(true);
       else resume();
     });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
-      if (controllersRef.current?.authentication?.isAnyPromptActive() || isNotificationPermissionPromptActive() || isCameraPermissionPromptActive()) { clearSecrets(); Keyboard.dismiss(); } else revoke(true);
+      if (controllersRef.current?.authentication?.isAnyPromptActive() || storageResetOwner.current && isNativeCredentialPromptActive(storageResetOwner.current) || isNotificationPermissionPromptActive() || isCameraPermissionPromptActive()) { clearSecrets(); Keyboard.dismiss(); } else revoke(true);
     }) : null;
     const focus = AppState.addEventListener('focus', resume);
     return () => {
@@ -1803,8 +1811,16 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const restoreUnconfirmed = stage === 'restore-notes' && noteRestore.step.phase === 'unconfirmed';
   let body: React.ReactNode;
   let footer: React.ReactNode;
-  if (unavailable) body = restoreUnconfirmed ? <NoteRestoreUnconfirmedNotice reopen /> :
-    <Notice title={t("mobile.walletViews.walletUnavailable")} body={t("mobile.walletViews.yourSavedWalletHasBeenPreservedCloseAndReopenPaliToTryAgain")} tone="amber" />;
+  if (unavailable) body = restoreUnconfirmed ? <NoteRestoreUnconfirmedNotice reopen /> : <>
+    {!orphanedStorage && <Notice title={t("mobile.walletViews.walletUnavailable")} body={t("mobile.walletViews.yourSavedWalletHasBeenPreservedCloseAndReopenPaliToTryAgain")} tone="amber" />}
+    <OrphanedStorageRecovery onAvailability={setOrphanedStorage} onResetOwner={setStorageResetOwner} captureOwner={() => {
+      const captured = epoch.current, token = screenToken.current;
+      return () => {
+        if (!mounted.current || epoch.current !== captured || screenToken.current !== token || controllersRef.current ||
+            nativeLifecycle.current(token) || updateSession.current || recoveryRef.current || removalRef.current) throw Error('CANCELLED');
+      };
+    }} />
+  </>;
   else if (!protectedScreen || snapshot.phase === 'opening') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>{t("mobile.walletViews.openingYourWalletSecurely")}</Text></View>;
   else if (snapshot.phase === 'authenticating') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>{t("mobile.walletViews.unlockingYourWalletSecurely")}</Text></View>;
   else if (stage === 'words' && presentation) {

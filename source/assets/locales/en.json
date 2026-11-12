@@ -4076,6 +4076,18 @@
       "unavailable": "Network fees are unavailable. You can keep Automatic and try again.",
       "apply": "Apply fee",
       "satPerVbyte": "Fee rate (sat/vB)"
+    },
+    "storageRecovery": {
+      "title": "Wallet data not found",
+      "body": "Some local setup remains, but the wallet data is missing. Reset setup to create or restore a wallet.",
+      "confirmTitle": "Reset local setup?",
+      "confirmBody": "This resets Pali’s local setup. To restore your wallet, you’ll need your recovery phrase and any separate backups.",
+      "action": "Reset local setup",
+      "working": "Resetting local setup…",
+      "failed": "Setup could not be reset. Close and reopen Pali to try again.",
+      "complete": "Local setup reset",
+      "restart": "Pali will reopen to finish. If it doesn’t, close and reopen the app.",
+      "reopenRequired": "Reopen Pali to check local setup"
     }
   }
 }

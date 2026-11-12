@@ -377,6 +377,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     './BackupIntroduction': { BackupIntroduction: 'BackupIntroduction' },
     './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
     './NativeImportWallet': { NativeImportWallet: 'NativeImportWallet' },
+    './OrphanedStorageRecovery': { OrphanedStorageRecovery: 'OrphanedStorageRecovery' },
     './NativeOperationAuthentication': { NativeOperationAuthentication: 'NativeOperationAuthentication' },
     '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'biometrics', icon: 'fingerprint' }) },
     '../platform/localization': nativeTranslationFixture,
