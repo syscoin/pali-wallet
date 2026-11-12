@@ -157,6 +157,7 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
               <IconButton icon={copied ? 'check' : 'copy'} label={t(copied ? 'components.copied' : 'mobile.security.copyPrivateKey')}
                 disabled={copying} onPress={() => copyKey(shown)} />
             </View>
+            {copied && <Text accessibilityLiveRegion="polite" style={s.copied}>{t('components.copied')}</Text>}
             <Text style={styles.muted}>{t('mobile.security.sessionOnly')}</Text>
           </> : <>
             {busy && <ActivityIndicator accessibilityLabel={t('mobile.security.confirming')} color={colors.pink} />}
@@ -176,5 +177,6 @@ const s = StyleSheet.create({
   input: { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 17, minHeight: 56, fontSize: 16 },
   secret: { padding: 20, borderRadius: 16, backgroundColor: colors.surface, borderColor: colors.amber, borderWidth: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   key: { flex: 1, minWidth: 0, fontSize: 16, lineHeight: 26, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  copied: { color: colors.blue, fontSize: 14, lineHeight: 20 },
   error: { color: colors.red, fontSize: 14, lineHeight: 21 },
 });

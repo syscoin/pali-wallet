@@ -82,7 +82,9 @@ for (const platform of ['ios', 'android']) for (const kind of ['evm', 'wif', 'ex
     const expiry = options.ios?.expiresAt?.getTime(); assert(expiry);
     assert(expiry >= requestedAt + 120000 && expiry <= time + 120000);
     assert.equal(f.copy().props.icon, 'check'); assert.equal(f.copy().props.label, copiedLabel());
+    assert(f.render().some(node => node.type === 'Text' && node.children.includes(copiedLabel())), 'Copy success is visible as text, not only an accessibility label');
     f.hide(); assert.equal(f.render().some(node => node.type === 'IconButton'), false);
+    assert(!f.render().some(node => node.type === 'Text' && node.children.includes(copiedLabel())));
     await f.reveal(); assert.equal(f.copy().props.icon, 'copy'); assert.equal(f.copy().props.label, copyLabel());
   } finally { f.close(); }
 });
