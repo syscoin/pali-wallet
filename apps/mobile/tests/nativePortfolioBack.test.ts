@@ -19,7 +19,7 @@ function elements(value: unknown): Element[] {
 }
 
 /** Actual overview, portfolio and shell handlers with public data and native event ports. */
-function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', unbacked = false) {
+function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', unbacked = false, receiveAcknowledged = true) {
   const cells = new Map<unknown, Cell[]>(), nativeBacks = new Set<() => boolean>();
   let current: Cell[] = [], cursor = 0, pendingEffects: (() => void)[] = [], dirty = false;
   let exits = 0, sends = 0, backups = 0, consumed = 0, shell: any, currentAccount = true;
@@ -118,7 +118,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
   const scope = () => 'hd:60:0:ethereum', exit = () => { exits++; }, onSend = () => { sends++; };
   const reader = {}, tokenView = {};
   let detail = receiveEntry === 'detail' ? { accountId: 'hd:60:0', networkId: network.id, receive: true } : undefined;
-  let continuation = receiveEntry === 'continuation' ? { account, backupAcknowledged: true } : undefined;
+  let continuation = receiveEntry === 'continuation' ? { account, backupAcknowledged: receiveAcknowledged } : undefined;
   function Root() {
     shell = useRealShell(scope(), scope, exit);
     const portfolio = { source, reader, tokenView, accountLabel: 'Account 1', onExit: exit, onLock() {}, onViewRecovery() { backups++; },
@@ -263,5 +263,23 @@ test('unbacked asset address copies without entering Receive or acknowledging ba
     assert(send); send.props.onPress(); assert.equal(f.backups, 0); assert.equal(f.sends, 1);
     f.retireAccount(); copy.props.onCopy(); await Promise.resolve();
     assert.equal(f.copied.length, 1, 'a stale public address must not be copied');
+  } finally { f.close(); }
+});
+
+
+for (const overview of [false, true]) test(`unacknowledged Receive continuation opens its own warning (${overview ? 'overview' : 'direct'} route)`, () => {
+  const f = fixture(overview, 'continuation', true, false);
+  try {
+    const tree = f.render();
+    const warning = elements(tree).find(value => value.type === 'Button' && value.props.title === 'Receive Anyway');
+    assert(warning, 'changing network must not silently land on the balance screen');
+    assert(!elements(tree).some(value => value.props.testID === 'native-receive-address'), 'the previous network acknowledgement is not reused');
+    assert.equal(f.consumed, 1);
+    warning.props.onPress();
+    assert(elements(f.render()).some(value => value.props.testID === 'native-receive-address'));
+    assert.equal(f.backups, 0);
+    f.back();
+    f.remountPortfolio();
+    assert(!elements(f.render()).some(value => value.props.testID === 'native-receive-address' || value.props.title === 'Receive Anyway'), 'the completed continuation is not replayed');
   } finally { f.close(); }
 });
