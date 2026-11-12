@@ -324,3 +324,40 @@ test('receipt reads accept bounded batch logs while preserving scalar and receip
  const scalar = fixture(custom, call => call.method === 'eth_getBalance' ? '0x' + '1'.repeat(16 * 1024) : undefined);
  await assert.rejects(scalar.rpc.smartAccountRead('eth_getBalance', [from, 'pending'], signal(), () => undefined), { code: 'UNAVAILABLE' });
 });
+
+for (const maximum of [false, true]) test(`explicit fees bind the initial ${maximum ? 'MAX' : 'ordinary'} quote and remain unchanged on requote`, async () => {
+  let base = '0x4', estimate = 21000;
+  const f = fixture(custom, call => {
+    if (call.method === 'eth_getBlockByNumber') return { number: call.params[0] === 'latest' ? '0x64' : call.params[0], hash: blockHash, baseFeePerGas: base, gasLimit: '0x1c9c380' };
+    if (call.method === 'eth_gasPrice') return '0xa';
+    if (call.method === 'eth_maxPriorityFeePerGas') return '0x2';
+    if (call.method === 'eth_getTransactionCount') return '0x0';
+    if (call.method === 'eth_estimateGas') return '0x' + estimate.toString(16);
+  });
+  const choice = { kind: 'custom' as const, type: 2 as const, maxFeePerGas: '12', maxPriorityFeePerGas: '2', gasLimit: '30000' };
+  const quote = maximum
+    ? await f.rpc.prepareMaximum(from, to, 0n, signal(), () => undefined, undefined, emptyNoncePlanner, choice)
+    : await f.rpc.prepare({ from, to, value: '100', data: '0x' }, signal(), () => undefined, undefined, undefined, emptyNoncePlanner, undefined, undefined, choice);
+  assert.equal(quote.transaction.gasLimit, '30000');
+  assert.equal(quote.transaction.type, 2);
+  assert.equal(quote.maximumFeeUnits, '360000');
+  if (maximum) assert.equal(BigInt(quote.transaction.value) + 360000n, BigInt(quote.balanceUnits));
+  estimate = 23000;
+  const updated = await f.rpc.prepare({ from, to, value: quote.transaction.value, data: '0x' }, signal(), () => undefined, quote.transaction, undefined, emptyNoncePlanner);
+  assert.deepEqual(updated.transaction, quote.transaction);
+  base = '0xd';
+  await assert.rejects(f.rpc.prepare({ from, to, value: quote.transaction.value, data: '0x' }, signal(), () => undefined, quote.transaction, undefined, emptyNoncePlanner), { code: 'REVIEW_REQUIRED' });
+});
+
+for (const [gasLimit, fee, balance] of [['21000', '12', '0xffffffffffff'], ['30000001', '12', '0xffffffffffff'], ['30000', '12000000000', '0x100']] as const) {
+  test(`custom fee quote rejects insufficient gas/bounds/funding ${gasLimit}/${fee}/${balance}`, async () => {
+    const f = fixture(custom, call => call.method === 'eth_gasPrice' ? '0xa'
+      : call.method === 'eth_maxPriorityFeePerGas' ? '0x2'
+      : call.method === 'eth_estimateGas' ? '0x55f0'
+      : call.method === 'eth_getBalance' ? balance : undefined);
+    await assert.rejects(f.rpc.prepare({ from, to, value: '100', data: '0x' }, signal(), () => undefined,
+      undefined, undefined, emptyNoncePlanner, undefined, undefined,
+      { kind: 'custom', type: 2, maxFeePerGas: fee, maxPriorityFeePerGas: '2', gasLimit }));
+    assert.equal(f.calls.some(call => call.method === 'eth_sendRawTransaction'), false);
+  });
+}

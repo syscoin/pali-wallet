@@ -10,7 +10,8 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { createIdleComponentFixture } from './idleComponentFixture.ts';
-import { nativeTranslationFixture } from './localizationFixture.ts';
+import { nativeTranslationFixture, languageMessages } from './localizationFixture.ts';
+import { createInstance } from 'i18next';
 import { findUtxoNetwork, UTXO_NETWORKS, supportsUtxoSoftwareCustody } from '../src/core/utxoNetworks.ts';
 import { supportsSptUtxoChain, sptBalanceTotalUnits } from '../../../source/shared/sptInventory.ts';
 import { createNativeNetworkView } from '../src/custody/networkView.ts';
@@ -24,6 +25,7 @@ import { UTXO_ADDRESSES } from './publicWatchFixtures.ts';
 import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecycle.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { NativeRecoveryFlow } from '../src/custody/recoveryFlow.ts';
+import * as recoveryCopy from '../src/screens/recoveryCopy.ts';
 import { createNativeNoteRestore } from '../src/custody/nativeNoteRestore.ts';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
@@ -59,6 +61,7 @@ const inventory = { status: 'needs-matching-phrase-verification', reason: null, 
   historySummaries: 7, cachedTransactions: 8, activityPreferences: 9,
 } };
 const walletScreenPorts = {
+  './recoveryCopy': recoveryCopy,
   './NativeAccountOverview': { NativePortfolioRoute: 'NativePortfolio' },
   '../notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
   '../activity/accountActivity': { AccountActivityController: class {} },
@@ -81,7 +84,7 @@ function evaluate(source: string, dependencies: Record<string, unknown>, flow = 
   } });
   return module.exports;
 }
-function setup(phase = 'entry') {
+function setup(phase = 'entry', translation = nativeTranslationFixture) {
   const cells: Cell[] = []; let cursor = 0, dirty = false;
   const layouts: (() => void)[] = [];
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
@@ -117,8 +120,9 @@ function setup(phase = 'entry') {
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Icon', 'Notice', 'Row', 'Screen', 'Text', 'SegmentedControl'].map((name) => [name, name])), colors: {}, styles: {} };
   const idle = createIdleComponentFixture(hook, native);
   const loaded = evaluate(readFileSync(new NodeURL('../src/screens/NativeRecovery.tsx', import.meta.url), 'utf8'), {
-    '../platform/localization': nativeTranslationFixture,
+    '../platform/localization': translation,
     './IdleActivityBoundary': idle.components,
+    './recoveryCopy': recoveryCopy,
     react: hook, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
   });
@@ -306,6 +310,19 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   installed.forEach((s) => s.remove()); leaf.dispose(); root.dispose();
 });
 
+test('recovery renders controller errors in the chosen language without English fallback', async () => {
+  const i18n = createInstance();
+  await i18n.init({ initImmediate: false, lng: 'de', fallbackLng: false,
+    resources: { de: { translation: languageMessages('de') } } });
+  const f = setup('entry', { nativeI18n: i18n, useNativeTranslation: () => ({ t: i18n.t.bind(i18n), i18n }) });
+  try {
+    f.snapshot.error = 'WRONG_PHRASE';
+    const tree = f.render();
+    assert.match(text(tree), /Diese Wiederherstellungsphrase gehört nicht zu dieser Wallet/);
+    assert.doesNotMatch(text(tree), /WRONG_PHRASE|does not match/);
+  } finally { f.dispose(); }
+});
+
 async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED'; verifyCalls?: string[]; wait?: Promise<void> }, notificationPort: NotificationTestPort = quietActivityNotifications,
   networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number }, networkOverride?: networkContext.NativeNetworkRegistration, publicNavigation?: { initialAccountId: string }) {
   const root = setup();
@@ -323,6 +340,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   let credentialPresent = !empty, recoveryInventoryReads = 0;
   let releasePrompt!: () => void;
   let locks = 0;
+  let backupFailure: Error | undefined;
   const lifecycle: string[] = [];
   const notificationRoutes: { tab: string; identity: string }[] = [];
   const enrollments: { enabled: boolean; password?: string }[] = [];
@@ -406,6 +424,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     keyExport: { cancel() {}, dispose() {} }, backup: {
       cancel() {}, dispose() {}, onClear: () => () => {},
       async begin(password: string) {
+        if (backupFailure) throw backupFailure;
         assert(backupCompletion, 'Backup is outside this fixture');
         assert.equal((password as unknown as { method: string }).method, 'device');
         return { id: 'public-backup-review', words: [...Array(11).fill('abandon'), 'about'] };
@@ -526,6 +545,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     return render();
   };
   return { render, unlock, publish, noteRestore, notificationRoutes,
+    failBackup(error: Error) { backupFailure = error; },
     loseCredential() { credentialPresent = false; publish({}); }, get recoveryInventoryReads() { return recoveryInventoryReads; },
     selectedAccounts, selectedAddress: () => state.account?.address, requestAccount(id: string) { props.initialAccountId = id; return render(); }, selectedNetwork: () => state.account?.network, authority: realAuthority, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, configurations, backupAcknowledgements, lifecycle, get locks() { return locks; } };
 }
@@ -558,6 +578,25 @@ test('backup completion waits for verification and durable save, then clears dis
       assert.equal(f.backupAcknowledgements.length, 1);
     } finally { f.dispose(); }
   }
+});
+
+test('cancelled backup authorization returns to its introduction without locking the public wallet', async () => {
+  const f = await walletFeedbackFixture(false, false, undefined, Promise.resolve());
+  try {
+    f.failBackup(new Error('CANCELLED'));
+    let tree = await f.unlock(null);
+    const home = all(tree).find(node => node.type === 'NativePortfolio'); assert(home);
+    (home.props.onBackup as () => void)(); tree = f.render();
+    const intro = all(tree).find(node => node.type === 'BackupIntroduction'); assert(intro);
+    (intro.props.onStart as () => void)();
+    await new Promise(resolve => setImmediate(resolve));
+    tree = f.render();
+    assert(all(tree).some(node => node.type === 'BackupIntroduction'));
+    const returned = all(tree).find(node => node.type === 'BackupIntroduction'); assert(returned);
+    assert.equal(returned.props.error, 'Request cancelled. You can try again.');
+    assert.doesNotMatch(text(tree), /session was locked|abandon/);
+    assert.equal(f.locks, 0);
+  } finally { f.dispose(); }
 });
 
 test('automatic public entry selects the requested native account once without device authentication', async () => {

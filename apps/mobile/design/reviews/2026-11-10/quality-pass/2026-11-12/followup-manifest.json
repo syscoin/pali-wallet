@@ -1,0 +1,242 @@
+{
+  "base": "b42e9fffafdc136a730b31bfe56b75f33683d5cb",
+  "sourceState": "Working source after GPT Pro fixes; per-file hashes bind changed bundle inputs.",
+  "sourceFiles": [
+    {
+      "path": "apps/mobile/App.tsx",
+      "sha256": "cb2efc2928415db3c46d0d380377f86f1f8c1fd058b77434c1d009be03616570"
+    },
+    {
+      "path": "apps/mobile/src/activity/historyStore.ts",
+      "sha256": "2bafd25de0ffdff9b5466d44f2037ac8e363f6dd268fbca83c36025ea9abcb2c"
+    },
+    {
+      "path": "apps/mobile/src/custody/evmTransferReadRpc.ts",
+      "sha256": "f49b03b1949468629d687586aa3798f32392665b781b83f0a31a33712b4ecd91"
+    },
+    {
+      "path": "apps/mobile/src/custody/keyringRuntime.ts",
+      "sha256": "2082814fdbefb662e7ac14a87282d084897eafd5ddc3a040bcc83aa87c72ede4"
+    },
+    {
+      "path": "apps/mobile/src/custody/recoveryFlow.ts",
+      "sha256": "4b3b9498e7bda7da5272ed609ffc2d9cbe807eb7d9fc0917ba11b4fd1184bfd1"
+    },
+    {
+      "path": "apps/mobile/src/custody/sharedSignedRecords.ts",
+      "sha256": "cc4ce62b1931d2cde7df4043139c526e250777915e3913928a69954bb856d4d8"
+    },
+    {
+      "path": "apps/mobile/src/custody/transferRpc.ts",
+      "sha256": "505272e40bf5af48efe411a614fb0deb109bb5522e3694a39a36b6c46ac52145"
+    },
+    {
+      "path": "apps/mobile/src/custody/transfers.ts",
+      "sha256": "e5c538eef154023b4cfd7149560d6b92f48fa4bfb1dae827b05ab088d5743e4f"
+    },
+    {
+      "path": "apps/mobile/src/custody/utxoSend.ts",
+      "sha256": "0e195c10de4b076e2c02f19ed5200b520ef3172a4c171dff3742e5c14309c0a1"
+    },
+    {
+      "path": "apps/mobile/src/portfolio/fiatDisplay.ts",
+      "sha256": "b357952336139bd446e20318205bd39c2e85f016007623e6c9729740590e0f30"
+    },
+    {
+      "path": "apps/mobile/src/portfolio/useNativeCoinQuote.ts",
+      "sha256": "89cbd8d1bb9c180de86773f9ce8cbce1f6f7786c56d790b2b9a3ba01600c53db"
+    },
+    {
+      "path": "apps/mobile/src/screens/HelpAbout.tsx",
+      "sha256": "a81dc7fd7b4dd76c9cb6fdd0bcb606229e13e72ead6e775075a326b114df78a1"
+    },
+    {
+      "path": "apps/mobile/src/screens/NativeAccountOverview.tsx",
+      "sha256": "1b0361be33e53e01914cbc373c26e812e32a18abf8ace85a634e6b90aa6227db"
+    },
+    {
+      "path": "apps/mobile/src/screens/NativeActivity.tsx",
+      "sha256": "759a8bf54cd32e49872592d5b7eea9d03280e1a67502a4774ea2a446aa8ad2d8"
+    },
+    {
+      "path": "apps/mobile/src/screens/NativeGuardianRecovery.tsx",
+      "sha256": "7170b5554d151b36ffd0ead387518610b16df9b2a7f02b896f749bab6c69ea86"
+    },
+    {
+      "path": "apps/mobile/src/screens/NativeRecovery.tsx",
+      "sha256": "5b8f9950f965e1a2adadee999dcb87a0773a3e008b2b031d7c6c9b501effed68"
+    },
+    {
+      "path": "apps/mobile/src/screens/NativeSend.tsx",
+      "sha256": "99872e7faa81245cda58d599a551c19969b9ccc69608541f56756c93ce6598d7"
+    },
+    {
+      "path": "apps/mobile/src/screens/NativeSmartAccountOperation.tsx",
+      "sha256": "229557613e4a071d855099d38746176402c802cffa1dc6e6db216b095ecfbea5"
+    },
+    {
+      "path": "apps/mobile/src/screens/NativeSmartAccountSend.tsx",
+      "sha256": "d3d4949ba0354095608931ba96ddd55fab758607c4a2ed23f18d70e2000f8b82"
+    },
+    {
+      "path": "apps/mobile/src/screens/NativeUtxoSend.tsx",
+      "sha256": "88902021873e5fa1411244b75b8349a667c95a65609f702a048f4566635bfe5d"
+    },
+    {
+      "path": "apps/mobile/src/screens/NativeWallet.native.tsx",
+      "sha256": "cc02cd8989b181d3e669dcb48e542606f299558f9c70315430e7f73bfe75ff4a"
+    },
+    {
+      "path": "apps/mobile/src/screens/NetworkFeeSheet.tsx",
+      "sha256": "69b4b71a50c84639ba3c1c0956fee5bde45844e6412537e2c7d36557a7a7d661"
+    },
+    {
+      "path": "apps/mobile/src/screens/RealSettings.tsx",
+      "sha256": "b579d25eaa9b283e9a336ad82a692e370dc1199642c5c5a0f49e70e4d18e8500"
+    },
+    {
+      "path": "apps/mobile/src/screens/recoveryCopy.ts",
+      "sha256": "fb33105d0ee3c035ff1c75ff2982b8cdec8e027f0a18def181d245ddfdda80c1"
+    },
+    {
+      "path": "apps/mobile/src/smartAccount/localAction.ts",
+      "sha256": "e8d6fb0b5d591dcb4ff809cccf82cd55d8c1f19e63803b90cea6cdca5a271fb7"
+    },
+    {
+      "path": "apps/mobile/src/smartAccount/operation.ts",
+      "sha256": "710a1f55135d341e60f492fd1210611b2e9358343ed2deed11cc49a3127d4c5d"
+    },
+    {
+      "path": "apps/mobile/src/smartAccount/runtime.ts",
+      "sha256": "b2f72c7bdf22037bbd00b0628d0a25bfa02778cf74ffd8a25e645a57fc30c214"
+    },
+    {
+      "path": "apps/mobile/tests/native-send-ui/entry.tsx",
+      "sha256": "ec4e0b260673bc2c21934cb33b0d58fb7361e51359da8f41659dc415536a98ff"
+    },
+    {
+      "path": "apps/mobile/tests/native-send-ui/nativeSmartAccountDeploymentFixture.tsx",
+      "sha256": "b5f8ed62c06f70b0860e82911f5f1c4fb9791ad411efc1510a14ee62c767f57c"
+    },
+    {
+      "path": "apps/mobile/tests/native-send-ui/nativeSmartCurrencyFixture.tsx",
+      "sha256": "16327b62b73798b966ed40428f708d23581fbbfb07cde003cf55ebbd20e863b2"
+    },
+    {
+      "path": "apps/mobile/tests/native-send-ui/nativeUtxoSendFixture.tsx",
+      "sha256": "687e543cb5cb27c22d7fd34b3898c77b192afbaedc0edb88787ebcbd4019be91"
+    },
+    {
+      "path": "apps/mobile/tests/native-watch-ui/sysxSendFixture.ts",
+      "sha256": "f70c62fbf8a87d3e7e1fb5fb7a1ba61bee222e781e554f8e24c06ef93ecdd5d9"
+    },
+    {
+      "path": "source/assets/locales/de.json",
+      "sha256": "cb2f833a8db89b2908caf4b1f139e9e9f499e7ce06cd2dd762fe2ca4ac689396"
+    },
+    {
+      "path": "source/assets/locales/en.json",
+      "sha256": "c19edfee554a4aeec93319e3faac48e01d8b9f8350e48f7c2685c61a61b28a08"
+    },
+    {
+      "path": "source/assets/locales/es.json",
+      "sha256": "4a737d10a767355389806544495e9617c71e619ebf1719109bdf9dda92c4c985"
+    },
+    {
+      "path": "source/assets/locales/fr.json",
+      "sha256": "a32487eb4b5553b67a371c0ff8a4e92d29fb3a9916f2cbb18448e83be48d0951"
+    },
+    {
+      "path": "source/assets/locales/ja.json",
+      "sha256": "ed3192c9f0f2f3ad19d24a338c61824ec5007b8bb744ea70003e21315f14b4cc"
+    },
+    {
+      "path": "source/assets/locales/ko.json",
+      "sha256": "4d3ebffdf4277f53b921e70373c154e0f70d531d14e3313cf87879f96d5ff022"
+    },
+    {
+      "path": "source/assets/locales/pt.json",
+      "sha256": "f8bfa0e02d11c5ee0c554dbb6f943d64dfbefe34f53590c416250cb167d02d2b"
+    },
+    {
+      "path": "source/assets/locales/ru.json",
+      "sha256": "31cf7695a690d2d4c0cb54fd39e46f6457376b2c064fc12182725f1eb12bcaea"
+    },
+    {
+      "path": "source/assets/locales/zh.json",
+      "sha256": "c0843f45c0c88c932c4f104656c1ae1b337aa027d8e9c440cf35a3d8dbabed12"
+    },
+    {
+      "path": "source/shared/decimalInput.ts",
+      "sha256": "3aa3d6540b968ef1fa887c8cc95c09b3ae4266d72b00fd2e9999a85a4fb929c4"
+    },
+    {
+      "path": "source/shared/transactionFeeChoice.ts",
+      "sha256": "42af5c233587ab6a79f088a2a38e138ceb8f518b2c87235ed46db3c202a9b844"
+    },
+    {
+      "path": "source/utils/customFee.ts",
+      "sha256": "78087ea9b73a0a40e5728d69ae9957b0587491757c5effcf9972c56e6b392bf2"
+    },
+    {
+      "path": "source/wallet/evmSignedRecords.ts",
+      "sha256": "d04f2e4051ab8b99b3a68fd0b2e020e4d08304d859f847784012d5727f4d7704"
+    },
+    {
+      "path": "source/wallet/smartAccountActivity.ts",
+      "sha256": "5421fe86195077eb47ed441de86811ab55985f6372c9ea2f24e50b687f687b03"
+    }
+  ],
+  "artifacts": [
+    {
+      "file": "evm-fee-320.png",
+      "sha256": "b07d3e657da8174110d09198b80e0bd8876a7e4414ee1995089535daaeead4ae",
+      "source": "/private/tmp/pali-quality-fee-final/native-fee-editor-evm-fee--aa601-and-actions-usable-at-320px/evm-custom-fee-320.png"
+    },
+    {
+      "file": "utxo-fee-320.png",
+      "sha256": "911a93718d348f5e0b0f59dd9914064fc7544c1d089c23ba1acb7b94e533c34b",
+      "source": "/private/tmp/pali-quality-fee-final/native-fee-editor-utxo-fee-79998-and-actions-usable-at-320px/utxo-custom-fee-320.png"
+    },
+    {
+      "file": "evm-fee-390.png",
+      "sha256": "da8be249b7dbbd068aab2368ed3599af6d4aacf2ffa6a3566207057678f22e62",
+      "source": "/private/tmp/pali-quality-fee-final/native-fee-editor-evm-fee--a59fe-and-actions-usable-at-390px/evm-custom-fee-390.png"
+    },
+    {
+      "file": "utxo-fee-390.png",
+      "sha256": "5ab5a9cf1fdad81ee6cc32b679427218840ca7711a924c3b49a4830e726057a4",
+      "source": "/private/tmp/pali-quality-fee-final/native-fee-editor-utxo-fee-fd61a-and-actions-usable-at-390px/utxo-custom-fee-390.png"
+    },
+    {
+      "file": "guardian-review-320.png",
+      "sha256": "4633e46c3469a30156c6ec51fafcdd4a308fe8b56a0de9c833f358d2524dfe2c",
+      "source": "/private/tmp/pali-quality-browser-results/native-guardian-recovery-n-1103c-t-actions-before-submission/guardian-recovery-fee-320.png"
+    },
+    {
+      "file": "smart-complete-320.png",
+      "sha256": "eb4c954b70114269bbdd310837e953733138ba5e0241ae208b092e6d801f7d2e",
+      "source": "/private/tmp/pali-quality-browser-results/native-smart-account-deplo-2fd75-ntained-and-usable-at-320px/deployment-complete-320.png"
+    },
+    {
+      "file": "settings-current-320.png",
+      "sha256": "0b9c8c3826a149617c9af1ab1a03cc1f71817718c405b4eabfe36ab4684880c2",
+      "source": "/private/tmp/pali-review-settings-values-320.png"
+    },
+    {
+      "file": "settings-current-390.png",
+      "sha256": "7ea51883cabced3b8376dc8ae73b9d85df7e8497fb8454fd1ead73e03eaf047f",
+      "source": "/private/tmp/pali-review-settings-390.png"
+    },
+    {
+      "file": "about-maintenance-320.png",
+      "sha256": "6ecdd584d9a6b24a59763ee8d5f66cb7c5eeb178d8d0e583c963e4e930386f51",
+      "source": "/private/tmp/pali-review-help-maintenance-320.png"
+    }
+  ],
+  "qualification": "Synthetic public-data browser fixtures. No physical-device, native OS prompt, live funds or physical-hardware qualification.",
+  "postCaptureChanges": [
+    "Shared fee selection replaced an unused rest-destructuring binding with an equivalent explicit field copy to satisfy root ESLint. Fee selection regression tests rechecked.",
+    "The normal root lint hook formatted shared helper/record files after capture; no rendered UI changed. The fee-copy correction was rechecked by focused tests."
+  ]
+}

@@ -431,3 +431,19 @@ test('localized transaction status preserves semantic tones and exact amounts', 
     }
   } finally { await englishI18n.changeLanguage('en'); }
 });
+
+test('scoped Smart Activity exposes replacement navigation without direct signer callbacks', async () => {
+  const navigation: [string, string][] = [];
+  const f = fixture(undefined, false, { onNavigateToReview: (action: string, value: string) => navigation.push([action, value]) });
+  try {
+    const row = pendingScopedRow({ speedUp: true });
+    Object.assign(row.local, { accountId: 'smart:60:0', smartAccount: { payer: row.local.address,
+      operationHash: '0x' + 'ab'.repeat(32), operationNonce: '0' } });
+    const tree = await openFixtureRow(f, row);
+    for (const title of ['Speed Up', 'Cancel pending transaction']) {
+      const button = all(tree).find(node => node.type === 'Button' && node.props.title === title); assert(button, title);
+      button.props.onPress(); await settle();
+    }
+    assert.deepEqual(navigation, [['speed-up', hash], ['cancel', hash]]);
+  } finally { f.dispose(); }
+});

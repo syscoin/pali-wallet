@@ -80,11 +80,13 @@ function applyWalletConnectTerminalPatch(mobileRoot) {
   for (const { target, output } of updates) {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     const temporary = `${target}.pali-terminal-${process.pid}`;
+    let created = false;
     try {
-      fs.writeFileSync(temporary, output);
+      fs.writeFileSync(temporary, output, { flag: 'wx', mode: 0o600 });
+      created = true;
       fs.renameSync(temporary, target);
     } finally {
-      fs.rmSync(temporary, { force: true });
+      if (created) fs.rmSync(temporary, { force: true });
     }
   }
 }

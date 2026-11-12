@@ -2,16 +2,15 @@ import type { RecoveryInventory } from './recoveryInventory.ts';
 import type { NativeRecoveryCoordinator, RecoveryProof } from './recovery.ts';
 import { isOperationAuthenticationCancellation } from '../core/operationAuthentication.ts';
 
-export type RecoveryOutcome = Readonly<{ kind: 'success' | 'cancelled' | 'expired' | 'failed' | 'uncertain'; operationPhase: 'inventory' | 'prepare' | 'review' | 'commit'; code: string; message: string; cleanupFailed?: boolean }>;
+export type RecoveryOutcome = Readonly<{ kind: 'success' | 'cancelled' | 'expired' | 'failed' | 'uncertain'; operationPhase: 'inventory' | 'prepare' | 'review' | 'commit'; code: string; cleanupFailed?: boolean }>;
+export type RecoveryErrorCode = 'SAVED_WALLET_UNVERIFIED' | 'WRONG_PHRASE' | 'AUTH_THROTTLED' | 'INVALID_INPUT' | 'REOPEN_REQUIRED';
 export type RecoveryFlowSnapshot = Readonly<{
   phase: 'reading' | 'scope' | 'entry' | 'verifying' | 'review' | 'committing' | 'reopening' | 'closed' | 'blocked';
-  inventory: RecoveryInventory | null; error: string;
-  fieldErrors: Readonly<{ phrase?: string }>;
+  inventory: RecoveryInventory | null; error: RecoveryErrorCode | '';
+  fieldErrors: Readonly<{ phrase?: 'INVALID_WORD_COUNT' }>;
 }>;
 type Coordinator = Pick<NativeRecoveryCoordinator, 'prepare' | 'commit' | 'cancel' | 'isAuthenticating'>;
-const SAVED = 'Your saved wallet could not be verified for this recovery. Nothing has been reset.';
-const UNCERTAIN = 'We could not confirm device authorization recovery. Close and reopen Pali before trying again.';
-const UNAVAILABLE = 'Recovery could not be completed. Your saved wallet was not reset. Close and reopen Pali before trying again.';
+const SAVED = 'SAVED_WALLET_UNVERIFIED';
 const safeCode = (cause: unknown): string => cause instanceof Error && ['BUSY', 'NOT_READY', 'INVALID_INPUT', 'WRONG_PHRASE', 'INVALID_SAVED_DATA', 'AUTH_THROTTLED', 'CANCELLED', 'EXPIRED', 'STATE_CHANGED', 'UNAVAILABLE', 'REOPEN_REQUIRED'].includes(cause.message) ? cause.message : 'UNAVAILABLE';
 
 /** Secret inputs and the opaque proof never enter this public state projection. */
@@ -60,21 +59,21 @@ export class NativeRecoveryFlow {
   enter(): void { if (!this.ended && !this.working && this.state.phase === 'scope') this.publish({ phase: 'entry', error: '', fieldErrors: Object.freeze({}) }); }
   back(): void {
     if (this.ended) { if (this.state.phase === 'reopening') this.dependencies.leave?.(); return; }
-    if (this.state.phase === 'blocked') { this.finish({ kind: 'failed', operationPhase: 'inventory', code: 'INVALID_SAVED_DATA', message: SAVED }); return; }
+    if (this.state.phase === 'blocked') { this.finish({ kind: 'failed', operationPhase: 'inventory', code: 'INVALID_SAVED_DATA' }); return; }
     if (!this.ended && !this.working && this.state.phase === 'entry' && !this.coordinator) this.publish({ phase: 'scope', error: '', fieldErrors: Object.freeze({}) });
     else this.cancel();
   }
   submit(input: { phrase: string }): boolean {
     if (this.ended || this.working || this.state.phase !== 'entry') return false;
-    const fieldErrors: { phrase?: string } = {};
+    const fieldErrors: { phrase?: 'INVALID_WORD_COUNT' } = {};
     const phrase = typeof input.phrase === 'string' && input.phrase.isWellFormed() ? input.phrase.normalize('NFKD').trim().replace(/\s+/gu, ' ') : '';
-    if (!phrase || input.phrase.length > 4096 || ![12, 24].includes(phrase.split(' ').length)) fieldErrors.phrase = 'Enter your 12 or 24 recovery words in order.';
+    if (!phrase || input.phrase.length > 4096 || ![12, 24].includes(phrase.split(' ').length)) fieldErrors.phrase = 'INVALID_WORD_COUNT';
     if (Object.keys(fieldErrors).length) { this.publish({ fieldErrors: Object.freeze(fieldErrors), error: '' }); return false; }
     this.working = true; const request = ++this.request;
     try {
       this.check(request); this.deadline = this.now() + 600000;
       this.coordinator ??= this.dependencies.createCoordinator();
-    } catch { this.working = false; this.finish({ kind: 'failed', operationPhase: 'prepare', code: 'UNAVAILABLE', message: UNAVAILABLE }); return true; }
+    } catch { this.working = false; this.finish({ kind: 'failed', operationPhase: 'prepare', code: 'UNAVAILABLE' }); return true; }
     this.timer && clearTimeout(this.timer);
     this.timer = setTimeout(() => this.cancel('expired'), 600000);
     this.publish({ phase: 'verifying', error: '', fieldErrors: Object.freeze({}) });
@@ -87,9 +86,9 @@ export class NativeRecoveryFlow {
         const code = safeCode(cause);
         if (['WRONG_PHRASE', 'AUTH_THROTTLED', 'INVALID_INPUT'].includes(code)) {
           this.clearTimer(); this.deadline = null;
-          this.publish({ phase: 'entry', error: code === 'WRONG_PHRASE' ? 'This recovery phrase does not match this wallet.' : code === 'AUTH_THROTTLED' ? 'Too many unsuccessful attempts. Wait a few minutes before trying again.' : 'Check your recovery phrase.' });
+          this.publish({ phase: 'entry', error: code === 'WRONG_PHRASE' ? 'WRONG_PHRASE' : code === 'AUTH_THROTTLED' ? 'AUTH_THROTTLED' : 'INVALID_INPUT' });
         } else if (code === 'CANCELLED' || code === 'EXPIRED') this.cancel(code === 'EXPIRED' ? 'expired' : 'cancelled');
-        else this.finish({ kind: 'failed', operationPhase: 'prepare', code, message: ['STATE_CHANGED', 'INVALID_SAVED_DATA'].includes(code) ? SAVED : UNAVAILABLE });
+        else this.finish({ kind: 'failed', operationPhase: 'prepare', code });
       } finally { this.working = false; }
     })();
     return true;
@@ -102,13 +101,13 @@ export class NativeRecoveryFlow {
     void (async () => {
       try {
         await this.coordinator!.commit(proof);
-        this.finish({ kind: 'success', operationPhase: 'commit', code: 'committed-locked', message: 'Device authorization restored. Reopening your wallet.' });
+        this.finish({ kind: 'success', operationPhase: 'commit', code: 'committed-locked' });
       } catch (cause) {
         if (isOperationAuthenticationCancellation(cause)) {
           try { this.check(this.request); this.publish({ phase: 'review', error: '' }); return; }
           catch { /* A retired view cannot retain a retryable proof. */ }
         }
-        this.finish({ kind: 'uncertain', operationPhase: 'commit', code: safeCode(cause), message: UNCERTAIN });
+        this.finish({ kind: 'uncertain', operationPhase: 'commit', code: safeCode(cause) });
       } finally { this.working = false; }
     })();
   }
@@ -116,15 +115,14 @@ export class NativeRecoveryFlow {
   cancel(reason: 'cancelled' | 'expired' = 'cancelled'): void {
     if (this.ended) return;
     const committing = this.state.phase === 'committing';
-    this.finish({ kind: committing ? 'uncertain' : reason, operationPhase: committing ? 'commit' : this.state.phase === 'review' ? 'review' : this.coordinator ? 'prepare' : 'inventory', code: reason,
-      message: committing ? UNCERTAIN : reason === 'expired' ? 'Recovery expired. Start again to verify your wallet.' : 'Recovery was cancelled.' });
+    this.finish({ kind: committing ? 'uncertain' : reason, operationPhase: committing ? 'commit' : this.state.phase === 'review' ? 'review' : this.coordinator ? 'prepare' : 'inventory', code: reason });
   }
   private finish(outcome: RecoveryOutcome) {
     if (this.ended) return;
     this.ended = true; this.request++; this.proof = null; this.clearTimer();
     try { this.coordinator?.cancel(); } catch { outcome = { ...outcome, cleanupFailed: true }; }
     this.publish({ phase: 'reopening', error: '' });
-    const failed = () => this.publish({ phase: 'blocked', error: `${outcome.message} The wallet could not be reopened. Close and reopen Pali to unlock.` });
+    const failed = () => this.publish({ phase: 'blocked', error: 'REOPEN_REQUIRED' });
     try { void this.dependencies.finish(Object.freeze(outcome)).then(() => this.publish({ phase: 'closed' }), failed); }
     catch { failed(); }
   }

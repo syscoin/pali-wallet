@@ -201,6 +201,11 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     for (const listener of authorityListeners) listener(snapshot);
   };
   const controllers = {
+    getNotificationChoices: () => [{ label: 'Account 1', networkName: 'Ethereum', symbol: 'ETH', scope: {
+      id: `native:${catalogue.active.accountId}:ethereum`, accountId: catalogue.active.accountId,
+      accountType: smartAccount ? 'SmartAccount' : 'HDAccount', accountAddress: snapshot.account.address,
+      network: networks.getNativeNetwork('ethereum'), guardian: false,
+    } }],
     authentication: { isAnyPromptActive: () => promptActive, isActive: () => promptActive, cancel() { promptActive = false; } },
     authority: {
       getSnapshot: () => snapshot,
@@ -474,6 +479,8 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     showTools() { shellTab = 'tools'; },
     showWallet() { shellTab = 'wallet'; },
     showSettings() { shellTab = 'settings'; },
+    showActivity() { shellTab = 'activity'; },
+    activityChoice() { return controllers.getNotificationChoices()[0]!; },
     holdRelease() { return releaseGate = Promise.withResolvers<void>(); },
     acquisitions: () => acquisitions,
     releases: () => releases,
@@ -1152,5 +1159,25 @@ test('an infrastructure resume discriminator cannot route a selected software ac
     await assert.rejects(f.render().props.onResumeSend({ kind: 'infrastructure', id: 'forged-suite-job', accountId: 'hd:60:0', networkId: 'ethereum' }), /CANCELLED/);
     assert.deepEqual(f.resumedInfrastructure(), []);
     assert.equal(f.render().type, 'NativeTrezor');
+  } finally { f.dispose(); }
+});
+
+for (const action of ['speed-up', 'cancel', 'cancel-saved'] as const) test(`Smart Activity ${action} reaches the retained-payer review and bound result without an owner connection`, async () => {
+  const f = await mounted(true, true, false, false);
+  try {
+    f.showActivity();
+    const activity = find(f.render(), node => node.type === 'AllNetworksActivity'); assert(activity);
+    assert.equal(typeof activity.props.onAction, 'function');
+    const hash = '0x' + 'ab'.repeat(32), result = '0x' + 'cd'.repeat(32);
+    await activity.props.onAction({ choice: f.activityChoice(), row: { hash } }, action, hash, () => undefined);
+    await settle(); f.render(); await settle();
+    const review = f.render();
+    assert.equal(review.type, 'NativeSend');
+    assert.equal(review.props.replacement.mode, action); assert.equal(review.props.replacement.hash, hash);
+    review.props.onViewTransaction(result);
+    const completed = find(f.render(), node => node.type === 'AllNetworksActivity'); assert(completed);
+    assert.equal(completed.props.initialTarget.networkId, 'ethereum'); assert.equal(completed.props.initialTarget.hash, result);
+    review.props.onViewTransaction(hash);
+    assert.equal(find(f.render(), node => node.type === 'AllNetworksActivity')!.props.initialTarget.hash, result);
   } finally { f.dispose(); }
 });

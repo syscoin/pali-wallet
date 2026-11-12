@@ -32,14 +32,14 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
-function harness(watch = false) {
-  const viewPrivacy = createTestPublicViewLock(watch ? 'locked' : 'unlocked');
+function harness(watch = false, locked = watch) {
+  const viewPrivacy = createTestPublicViewLock(locked ? 'locked' : 'unlocked');
   const authorization = deferred<void>();
   let promptActive = false, authCalls = 0, publicOpens = 0;
   let authSignal: AbortSignal | undefined;
   const appListeners = new Map<string, Set<(state: string) => void>>();
   const initial = deferred<string | null>(),
-    selection = deferred<null | { kind: 'hd'; id: string }>();
+    selection = deferred<null | { kind: 'hd' | 'watch'; id: string }>();
   const load = deferred<void>();
   const cells: Cell[] = [],
     effects: (() => void)[] = [];
@@ -123,11 +123,13 @@ function harness(watch = false) {
     capabilities: {},
   };
   const authorityListeners = new Set<(state: typeof blank) => void>();
+  let watchIdle: { begin(): void; stop(): void } | undefined;
+  let expireIdle: (() => void) | undefined;
   const publish = () => { for (const notify of authorityListeners) notify(blank); };
   const authority = {
     getSnapshot: () => blank,
-    lock() { blank = { ...blank, status: 'locked' }; publish(); },
-    unlock() { publicOpens++; blank = { ...blank, status: 'ready' }; publish(); },
+    lock() { watchIdle?.stop(); blank = { ...blank, status: 'locked' }; publish(); },
+    unlock() { watchIdle?.begin(); publicOpens++; blank = { ...blank, status: 'ready' }; publish(); },
     selectAccount(id: string) { blank = { ...blank, selectedAccountId: id }; publish(); },
     async refresh() {},
     restoreSelection() {},
@@ -199,7 +201,7 @@ function harness(watch = false) {
     './src/platform/security': {
       publicViewLock: viewPrivacy.viewLock,
       securityPreferences: {},
-      watchIdle: { allowNewInput() {} },
+      watchIdle: { allowNewInput() {}, begin(_owner: unknown, expire: () => void) { expireIdle = expire; }, stop() { expireIdle = undefined; }, check: () => true },
       custodyIdle: { allowNewInput() {} },
     },
     './src/platform/credential': {
@@ -228,7 +230,7 @@ function harness(watch = false) {
     './src/screens/Settings': {},
     './src/core/index': {
       ...core,
-      WatchOnlyAuthority: { openRecords: async () => authority },
+      WatchOnlyAuthority: { openRecords: async (options: { idle: typeof watchIdle }) => { watchIdle = options.idle; return authority; } },
     },
     './src/platform': {
       publicAccountRecords: {},
@@ -291,12 +293,14 @@ function harness(watch = false) {
     viewPrivacy, authorization,
     authCalls: () => authCalls,
     publicOpens: () => publicOpens,
+    expireIdle() { assert(expireIdle); expireIdle(); },
     authSignal: () => authSignal,
     state(value: string, owned = true) {
       if (!owned) promptActive = false;
       native.AppState.currentState = value;
       for (const notify of appListeners.get('change') ?? []) notify(value);
     },
+    focus(value: 'blur' | 'focus') { for (const notify of appListeners.get(value) ?? []) notify(value); },
     warm(url: string) {
       assert.ok(listener);
       listener({ url });
@@ -505,4 +509,77 @@ test('a persisted privacy lock also guards Welcome and remains unlockable withou
     assert(f.find(f.render(), 'Welcome'));
     assert.equal(f.authCalls(), 1); assert.equal(f.publicOpens(), 0);
   } finally { f.authorization.resolve(); f.dispose(); }
+});
+
+async function openRememberedWatch() {
+  const f = harness(true, false);
+  await f.viewPrivacy.ready;
+  f.initial.resolve(null); f.load.resolve(); f.selection.resolve({ kind: 'watch', id: 'watch-1' });
+  await settle(); f.render(); await settle();
+  assert(f.find(f.render(), 'WatchSession'));
+  assert.equal(f.authCalls(), 0);
+  return f;
+}
+
+test('remembered public watch resumes on cold and warm entry when no privacy or idle lock is set', async () => {
+  const f = await openRememberedWatch();
+  try {
+    assert.equal(f.publicOpens(), 1);
+    f.state('inactive', false); f.render();
+    f.state('background', false); f.render();
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined, 'background still hides the public view');
+    f.state('active'); await settle();
+    assert(f.find(f.render(), 'WatchSession'));
+    assert.equal(f.publicOpens(), 2); assert.equal(f.authCalls(), 0);
+    assert.equal(f.viewPrivacy.marker(), 'unlocked');
+  } finally { f.dispose(); }
+});
+
+test('Android watch blur and focus hide then resume without reading credentials', async () => {
+  const f = await openRememberedWatch();
+  try {
+    f.focus('blur'); f.render();
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined);
+    f.focus('focus'); await settle();
+    assert(f.find(f.render(), 'WatchSession'));
+    assert.equal(f.authCalls(), 0); assert.equal(f.publicOpens(), 2);
+  } finally { f.dispose(); }
+});
+
+for (const kind of ['explicit', 'idle'] as const) test(`${kind} public lock prevents automatic watch resume`, async () => {
+  const f = await openRememberedWatch();
+  try {
+    if (kind === 'idle') f.expireIdle(); else await f.viewPrivacy.viewLock.lock();
+    await settle(); f.render();
+    f.state('background', false); f.render(); f.state('active'); await settle();
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined);
+    assert.equal(f.find(f.render(), 'Button')?.props.title, 'Unlock wallet');
+    assert.equal(f.publicOpens(), 1); assert.equal(f.authCalls(), 0);
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+  } finally { f.dispose(); }
+});
+
+test('a pairing navigation supersedes the suspended watch return', async () => {
+  const f = await openRememberedWatch();
+  try {
+    f.state('background', false); f.render();
+    f.warm(LINK); f.render(); f.state('active'); await settle();
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined);
+    assert.equal(f.find(f.render(), 'NativeWalletScreen')?.props.incomingPairing.uri, URI);
+    assert.equal(f.authCalls(), 0); assert.equal(f.publicOpens(), 1);
+  } finally { f.dispose(); }
+});
+
+test('a remembered watch account stays locked on cold entry when the persistent marker requires authorization', async () => {
+  const f = harness(true);
+  try {
+    await f.viewPrivacy.ready;
+    f.initial.resolve(null); f.load.resolve(); f.selection.resolve({ kind: 'watch', id: 'watch-1' });
+    await settle(); f.render(); await settle();
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined);
+    assert.equal(f.find(f.render(), 'Button')?.props.title, 'Unlock wallet');
+    f.state('background', false); f.render(); f.state('active'); await settle();
+    assert.equal(f.publicOpens(), 0); assert.equal(f.authCalls(), 0);
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+  } finally { f.dispose(); }
 });

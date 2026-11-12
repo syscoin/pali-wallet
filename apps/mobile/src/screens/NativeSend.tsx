@@ -1,4 +1,7 @@
+import { AUTOMATIC_FEE, type EvmFeeChoice } from '../../../../source/shared/transactionFeeChoice';
+import { NetworkFeeSheet } from './NetworkFeeSheet';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
+import { normalizeDecimalInput } from '../../../../source/shared/decimalInput';
 import { sameNativePortfolioAccount, type NativePortfolioAccount } from '../portfolio/nativePortfolio';
 import type { NativeUnsignedSendDraft } from './sendNetworkDraft';
 import type { NativeOperationCredential } from '../custody/types';
@@ -157,7 +160,7 @@ export function NativeSendInput({ label, value, onChange, onEdit, busy, keyboard
   placeholder?: string;
   trailing?: React.ReactNode;
 }) {
-  useNativeTranslation();
+  const { i18n } = useNativeTranslation();
   return (
     <View style={s.field}>
       <Text style={s.label}>{label}</Text>
@@ -165,7 +168,7 @@ export function NativeSendInput({ label, value, onChange, onEdit, busy, keyboard
         accessibilityLabel={label}
         value={value}
         onChangeText={(next) => {
-          onChange(next);
+          onChange(keyboardType === 'decimal-pad' ? normalizeDecimalInput(next, i18n.resolvedLanguage ?? i18n.language) : next);
           onEdit?.();
         }}
         editable={!busy}
@@ -258,6 +261,11 @@ export function NativeSend({
     tokenView?.getSnapshot ?? emptyTokenSnapshot
   );
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+  const feeScope = JSON.stringify([account.address, account.network, account.revision, context.registrationHash]);
+  const [feeSelection, setFeeSelection] = useState({ scope: feeScope, controller, choice: AUTOMATIC_FEE as EvmFeeChoice });
+  const feeChoice = feeSelection.scope === feeScope && feeSelection.controller === controller ? feeSelection.choice : AUTOMATIC_FEE;
+  const [feeDialog, setFeeDialog] = useState<{ scope: string; controller: NativeTransferView } | null>(null);
+  const feeOpen = feeDialog?.scope === feeScope && feeDialog.controller === controller;
   const readTokenInventory = !!token || assetPickerOpen && !assetChoices;
   useLayoutEffect(
     () => readTokenInventory ? tokenView?.connect() : undefined,
@@ -463,7 +471,7 @@ export function NativeSend({
       return;
     }
     finishClose();
-  }, [controller, finishClose, setLeavePrompt]);
+  }, [controller, finishClose, setLeavePrompt, setError]);
   const leaveDuringSubmission = () => {
     // If it completed while the dialog was open, retain the visible outcome.
     if (!promptMatches(controller.getSnapshot())) {
@@ -639,9 +647,9 @@ export function NativeSend({
     };
     if (!draftCollectible) {
       prepareRecipient((address) => token
-        ? controller.prepareToken(token.contractAddress, address, amount, nonceOverride)
-        : maximum ? controller.prepareMaximum(address, nonceOverride)
-        : controller.prepare(address, amount, nonceOverride));
+        ? controller.prepareToken(token.contractAddress, address, amount, nonceOverride, feeChoice)
+        : maximum ? controller.prepareMaximum(address, nonceOverride, feeChoice)
+        : controller.prepare(address, amount, nonceOverride, feeChoice));
       return;
     }
     let id: string;
@@ -664,7 +672,7 @@ export function NativeSend({
       return;
     }
     Keyboard.dismiss();
-    prepareRecipient((address) => controller.prepareCollectible(draftCollectible, address, id, quantity, nonceOverride));
+    prepareRecipient((address) => controller.prepareCollectible(draftCollectible, address, id, quantity, nonceOverride, feeChoice));
   };
   const clearCollectibleError = () => {
     if (draftCollectible && error) setError('');
@@ -680,6 +688,11 @@ export function NativeSend({
       'nonce-consumed',
       'unavailable',
     ].includes(snapshot.phase);
+  const availableBalanceAmount = token ? nativeTokenAvailableAmount(token, account, tokenSnapshot) : availableAmount;
+  const availableBalanceSymbol = token?.symbol ?? capturedContext.symbol;
+  const availableBalanceLabel = typeof availableBalanceAmount === 'string'
+    ? t('mobile.sendAssetViews.utxo.availableAmount', { amount: availableBalanceAmount, symbol: availableBalanceSymbol })
+    : `${t(token && tokenSnapshot?.status === 'loading' ? 'mobile.activityViews.nativeSptAssets.loadingBalance' : 'mobile.accountPortfolio.balanceUnavailable')} · ${availableBalanceSymbol}`;
   const footer = review ? <>
               <Button
                 title={reviewCancellation ? t('mobile.sendAssetViews.evm.submitCancellation') : review.replacement ? t('mobile.sendAssetViews.evm.submitSpeedUp') : review.retry ? t('mobile.sendAssetViews.evm.resendSignedTransaction') : t('mobile.sendAssetViews.evm.confirmAndSend')}
@@ -1076,11 +1089,13 @@ export function NativeSend({
                         setMaximum(true);
                         setAmount(availableAmount);
                       }} />} />
-                  <Text style={styles.muted} accessibilityLabel={t('mobile.smartSendViews.availableBalance')}>
+                  <Text style={styles.muted} accessibilityLabel={availableBalanceLabel}>
                     {t('mobile.smartSendViews.available')}{' '}{token ? nativeTokenAvailableAmount(token, account, tokenSnapshot) ?? '—' : availableAmount ?? '—'} {token?.symbol ?? capturedContext.symbol}
                   </Text>
                 </>
               )}
+              <Button title={`${t('send.networkFee')} · ${t(feeChoice.kind === 'custom' ? 'mobile.feeChoice.custom' : feeChoice.kind === 'automatic' ? 'mobile.sendAssetViews.evm.automatic' : `send.${feeChoice.kind}`)}`}
+                variant="secondary" icon="settings" size="compact" disabled={busy} onPress={() => { closeScanner(); setFeeDialog({ scope: feeScope, controller }); }} />
               <Button title={advanced ? t('mobile.sendAssetViews.evm.hideAdvancedOptions') : t('mobile.sendAssetViews.evm.advancedOptions')} variant="secondary" icon={advanced ? 'chevron-up' : 'chevron-down'} size="compact"
                 disabled={busy} expanded={advanced} onPress={() => {
                   if (advanced) {
@@ -1101,6 +1116,14 @@ export function NativeSend({
             {t('mobile.common.development')}</Text>}
         </Screen>
       </KeyboardAvoidingView>
+      {feeOpen && <NetworkFeeSheet key={`${account.address}:${account.network}:${account.revision}:${context.registrationHash}`}
+        mode="evm" choice={feeChoice} load={signal => controller.feeRecommendations(signal)}
+        onClose={() => { if (lifetime.current.alive) setFeeDialog(null); }}
+        onApply={choice => {
+          if (!lifetime.current.alive || latestRecipientOwner.current.controller !== controller || latestRecipientOwner.current.account !== account ||
+              latestRecipientOwner.current.context.registrationHash !== context.registrationHash) return;
+          retireResolution(); controller.cancel(); setFeeSelection({ scope: feeScope, controller, choice }); setFeeDialog(null); setError('');
+        }} />}
       {ledgerPicker && ledgerPicker === ledgerConnection && <NativeLedgerConnectionModal
         controller={ledgerPicker}
         onClose={() => setLedgerPicker(null)}

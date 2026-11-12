@@ -18,6 +18,7 @@ import {
   type GuardianPolicyCommand,
 } from '../../../../source/utils/smartAccount/guardianPolicy.ts';
 import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
+import type { EvmFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import {
   SMART_ACCOUNT_EXECUTION_LIFETIME_MS,
@@ -25,7 +26,7 @@ import {
 } from '../../../../source/utils/smartAccount/prepareOperation.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
 
-export type NativeSmartAccountResolvedIntent =
+export type NativeSmartAccountResolvedIntent = (
   | Readonly<{ kind: 'deploy' }>
   | Readonly<{
       kind: 'authenticator';
@@ -53,9 +54,9 @@ export type NativeSmartAccountResolvedIntent =
       maxFeePerGas?: string;
       maxPriorityFeePerGas?: string;
     }>
-  | NftTransferIntent;
+  | NftTransferIntent) & Readonly<{ feeChoice?: EvmFeeChoice }>;
 
-export type NativeSmartAccountAmount =
+export type NativeSmartAccountAmount = (
   | Readonly<{ kind: 'exact'; amount: string }>
   | Readonly<{ kind: 'maximum' }>
   | Readonly<{ kind: 'erc20'; contractAddress: string; amount: string }>
@@ -64,10 +65,10 @@ export type NativeSmartAccountAmount =
       collectible: SavedCollectible;
       tokenId: string;
       amountUnits: string;
-    }>;
+    }>) & Readonly<{ feeChoice?: EvmFeeChoice }>;
 export type NativeSmartAccountIntent =
   | NativeSmartAccountResolvedIntent
-  | Readonly<{ kind: 'native-max'; recipient: string }>;
+  | Readonly<{ kind: 'native-max'; recipient: string; feeChoice?: EvmFeeChoice }>;
 
 export type NativeGuardianPolicyDraft =
   | Readonly<{
@@ -377,7 +378,7 @@ export class NativeSmartAccountOperation {
           throw new Error('SMART_OPERATION_EXPIRED');
         const expected =
           intent.kind === 'nft-transfer'
-            ? buildSmartAccountNftTransfer(intent)
+            ? (() => { const { feeChoice: _choice, ...transfer } = intent; return buildSmartAccountNftTransfer(transfer); })()
             : intent.kind === 'erc20-transfer'
             ? buildSmartAccountErc20Transfer(
                 intent.token.contractAddress,
@@ -393,6 +394,7 @@ export class NativeSmartAccountOperation {
         if (
           requested.kind === 'deploy' ||
           requested.recipient !== intent.recipient ||
+          requested.feeChoice !== intent.feeChoice ||
           (requested.kind === 'native-max' &&
             intent.kind !== 'native-transfer') ||
           (requested.kind !== 'native-max' &&

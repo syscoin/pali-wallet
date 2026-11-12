@@ -9,6 +9,7 @@ import test from 'node:test';
 import type { GuardianRecoveryObservation } from '../../../source/utils/smartAccount/guardianStatus.ts';
 import type { NativeGuardianRecoveryIntent } from '../src/custody/walletCatalogue.ts';
 import { formatBaseUnits } from '../src/core/amounts.ts';
+import { guardianDelayLabel } from '../src/screens/guardianPolicyLabels.ts';
 import {
   NativeGuardianRecoveryController,
   type NativeGuardianRecoveryChoice,
@@ -81,6 +82,7 @@ const intent: NativeGuardianRecoveryIntent = {
 };
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 const imports = {
+  './guardianPolicyLabels': { guardianDelayLabel },
   '../../../../source/utils/smartAccount/guardianRecoveryLifecycle': {
     guardianRecoveryTerminalNotice,
   },
@@ -90,6 +92,7 @@ const imports = {
   'react-native': {
     AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
     ActivityIndicator: 'ActivityIndicator',
+    View: 'View',
     BackHandler: { addEventListener: () => ({ remove() {} }) },
     FlatList: 'FlatList',
     KeyboardAvoidingView: 'KeyboardAvoidingView',
@@ -452,6 +455,12 @@ test('saved review and Activity use the captured payer while proofs and submissi
     await tick();
     assert(text(render()).includes(guardian.address));
     assert(text(render()).includes(payer.address));
+    const initial = render();
+    const intentIndex = initial.findIndex(element => element.type === 'Notice' && element.props.title === 'Authorize the recovery');
+    const identityIndex = initial.findIndex(element => element.children.includes(address));
+    assert(intentIndex >= 0 && intentIndex < identityIndex, 'Recovery intent precedes exact account identities');
+    assert.match(text(initial), /ready after 3 days/);
+    assert(!initial.some(element => element.type === 'Button' && element.props.title === 'Clear local recovery tracking'));
     assert.equal(preparations, 0);
     assert.equal(submissions, 0);
     button(render(), 'Authorize recovery').props.onPress();
@@ -590,6 +599,9 @@ for (const [status, reason, title] of [
       assert(refreshed >= 2);
       await controller.review();
       assert.equal(prepared, 0);
+      assert(!tree.some(element => element.type === 'Button' && element.props.title === 'Clear local recovery tracking'));
+      button(tree, 'Troubleshooting').props.onPress();
+      tree = screenElements(f.render(props));
       button(tree, 'Clear local recovery tracking').props.onPress();
       const confirm = screenElements(f.render(props));
       assert(

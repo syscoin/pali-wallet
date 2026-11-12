@@ -1,3 +1,5 @@
+import { AUTOMATIC_FEE, type EvmFeeChoice, type EvmFeeRates } from '../../../../source/shared/transactionFeeChoice';
+import { NetworkFeeSheet } from './NetworkFeeSheet';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId';
@@ -87,6 +89,7 @@ function disposeSend(owner: SendOwner): Promise<void> {
 
 export function NativeSmartAccountSend({
   open,
+  feeRecommendations,
   context,
   accountLabel,
   source,
@@ -102,8 +105,10 @@ export function NativeSmartAccountSend({
   onChangeAsset,
   initialRecipient,
   availableNative,
+  onViewTransaction,
 }: {
   ledgerConnection?: NativeLedgerConnectionView;
+  feeRecommendations(signal: AbortSignal): Promise<EvmFeeRates>;
   open(
     recipient: string,
     amount: NativeSmartAccountAmount,
@@ -124,6 +129,7 @@ export function NativeSmartAccountSend({
   onChangeAsset?(draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>, token?: Erc20Metadata): void;
   initialRecipient?: string;
   availableNative?: string;
+  onViewTransaction?(hash: string): void;
 }) {
   useNativeTranslation();
   const portfolio = useMemo(
@@ -166,6 +172,9 @@ export function NativeSmartAccountSend({
   const loadingBalance = token
     ? selectedToken?.status === 'loading'
     : balance.status === 'loading';
+  const availableBalanceLabel = typeof displayedBalance === 'string'
+    ? t('mobile.sendAssetViews.utxo.availableAmount', { amount: displayedBalance, symbol })
+    : `${t(loadingBalance ? 'mobile.activityViews.nativeSptAssets.loadingBalance' : 'mobile.accountPortfolio.balanceUnavailable')} · ${symbol}`;
   const [recipient, setRecipient] = useState(initialRecipient ?? '');
   const [amount, setAmount] = useState(
     collectible?.tokenStandard === 'ERC-721' ? '1' : ''
@@ -174,6 +183,11 @@ export function NativeSmartAccountSend({
     collectible?.tokenStandard === 'ERC-1155' ? collectible.tokenId : ''
   );
   const [maximum, setMaximum] = useState(false);
+  const feeScope = JSON.stringify([account.address, account.network, account.revision, context.registrationHash]);
+  const [feeSelection, setFeeSelection] = useState({ open, scope: feeScope, choice: AUTOMATIC_FEE as EvmFeeChoice });
+  const feeChoice = feeSelection.open === open && feeSelection.scope === feeScope ? feeSelection.choice : AUTOMATIC_FEE;
+  const [feeDialog, setFeeDialog] = useState<{ open: typeof open; scope: string } | null>(null);
+  const feeOpen = feeDialog?.open === open && feeDialog.scope === feeScope;
   const [tokenDetails, setTokenDetails] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -339,12 +353,12 @@ export function NativeSmartAccountSend({
       check();
       current.opening = open(
         address,
-        nftRequest ??
+        { ...(nftRequest ??
           (token
             ? { kind: 'erc20', contractAddress: token.contractAddress, amount }
             : maximum
             ? { kind: 'maximum' }
-            : { kind: 'exact', amount }),
+            : { kind: 'exact', amount })), feeChoice },
         check,
         current.authentication
       ).then(async (operation) => {
@@ -426,7 +440,7 @@ export function NativeSmartAccountSend({
       </SafeAreaView>
     );
   if (controller && !resolvedRecipient)
-    return <NativeSmartAccountOperationScreen authentication={operationAuthentication} ledgerConnection={ledgerConnection} controller={controller} onBack={back} />;
+    return <NativeSmartAccountOperationScreen authentication={operationAuthentication} ledgerConnection={ledgerConnection} controller={controller} onBack={back} onViewTransaction={onViewTransaction} />;
   if (controller)
     return (
       <>
@@ -434,7 +448,7 @@ export function NativeSmartAccountSend({
           <Text selectable style={styles.muted}>{t("mobile.smartSendViews.ensName")}{' '}{resolvedRecipient.input}</Text>
           <Text selectable style={styles.muted}>{t("mobile.smartSendViews.resolvedAddress")}{' '}{resolvedRecipient.address}</Text>
         </SafeAreaView>}
-        <NativeSmartAccountOperationScreen authentication={operationAuthentication} ledgerConnection={ledgerConnection} controller={controller} onBack={back} />
+        <NativeSmartAccountOperationScreen authentication={operationAuthentication} ledgerConnection={ledgerConnection} controller={controller} onBack={back} onViewTransaction={onViewTransaction} />
       </>
     );
   return (
@@ -526,8 +540,10 @@ export function NativeSmartAccountSend({
               />
             </>
           )}
-          {!collectible && <Text accessibilityLabel={t("mobile.smartSendViews.availableBalance")} style={styles.muted}>{t("mobile.smartSendViews.available")}{' '}{displayedBalance ?? '—'} {symbol}</Text>}
+          {!collectible && <Text accessibilityLabel={availableBalanceLabel} style={styles.muted}>{t("mobile.smartSendViews.available")}{' '}{displayedBalance ?? '—'} {symbol}</Text>}
           {!collectible && loadingBalance && <Text style={styles.muted}>{t("mobile.activityViews.nativeSptAssets.loadingBalance")}</Text>}
+          <Button title={`${t('send.networkFee')} · ${t(feeChoice.kind === 'custom' ? 'mobile.feeChoice.custom' : feeChoice.kind === 'automatic' ? 'mobile.sendAssetViews.evm.automatic' : `send.${feeChoice.kind}`)}`}
+            variant="secondary" size="compact" icon="settings" disabled={busy} onPress={() => { closeScanner(); setFeeDialog({ open, scope: feeScope }); }} />
           {error ? (
             <Notice title={t("send.savedUtxo.check")} body={error} tone="amber" />
           ) : null}
@@ -535,6 +551,12 @@ export function NativeSmartAccountSend({
 
         </Screen>
       </KeyboardAvoidingView>
+      {feeOpen && <NetworkFeeSheet key={feeScope} mode="evm" choice={feeChoice} load={feeRecommendations} allowGasLimit={false}
+        onClose={() => setFeeDialog(null)} onApply={choice => {
+          if (!owner.current.active || latestOwner.current.open !== open || !sameNativePortfolioAccount(latestOwner.current.account, account) ||
+              latestOwner.current.context.registrationHash !== context.registrationHash) return;
+          retireRecipient(); setFeeSelection({ open, scope: feeScope, choice }); setFeeDialog(null); setError('');
+        }} />}
       {scanner && scanner.account.address === account.address && scanner.account.network === account.network &&
         scanner.account.revision === account.revision && scanner.registrationHash === context.registrationHash &&
         sameScanDraft(scanner.scope, { open, account, context, recipientResolver, recipient, amount, tokenId, maximum, token, collectible }) &&

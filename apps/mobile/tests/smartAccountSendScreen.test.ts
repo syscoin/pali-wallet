@@ -1,3 +1,4 @@
+import { AUTOMATIC_FEE } from '../../../source/shared/transactionFeeChoice.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
@@ -92,6 +93,8 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
   };
   const imports: Record<string, any> = {
     '../platform/localization': nativeTranslationFixture,
+    '../../../../source/shared/transactionFeeChoice': { AUTOMATIC_FEE },
+    './NetworkFeeSheet': { NetworkFeeSheet: 'NetworkFeeSheet' },
     react,
     '../custody/privateAuthentication': privateAuthentication,
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
@@ -161,6 +164,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
     index = 0;
     return module.exports.NativeSmartAccountSend({
       open,
+      feeRecommendations: async () => ({ type: 2, maxFeePerGas: '2000000000', maxPriorityFeePerGas: '1000000000' }),
       account,recipientResolver,
       context: getNativeSendContext('ethereum'),
       accountLabel: 'Smart account',
@@ -189,6 +193,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
     render,
     edit,
     press,
+    setBalanceStatus(status: string) { balance.status = status; },
     changeAccount(){account={...account,revision:account.revision+1};balance.account=account;inventory.account=account;},
     changeNetwork(){account={...account,network:'sepolia'};},
     background(){(imports['react-native'].AppState as any).currentState='background';events.get('change')?.('background');},
@@ -245,14 +250,14 @@ test('Smart send form displays the shared balance and binds exact fields to its 
     assert.equal(initial.find(node => node.type === 'Header')!.props.title, 'Send ETH');
     assert.equal(initial.find(node => node.type === 'Header')!.props.subtitle, 'Smart account · Ethereum');
     assert.equal(initial.find(node => node.type === 'SendNetworkCard')!.props.context.name, 'Ethereum');
-    assert.match(initial.find(node => node.props.accessibilityLabel === 'Available balance')!.children.join(''), /Available 5\.0 ETH/);
+    assert.match(initial.find(node => node.props.accessibilityLabel === 'Available 5.0 ETH')!.children.join(''), /Available 5\.0 ETH/);
     f.edit('Recipient address', '0x2222222222222222222222222222222222222222');
     f.edit('Amount in ETH', '0.000000000000000009');
     f.press();
     await tick();
     assert.deepEqual(JSON.parse(JSON.stringify(requests[0]!.slice(0, 2))), [
       '0x2222222222222222222222222222222222222222',
-      { kind: 'exact', amount: '0.000000000000000009' },
+      { kind: 'exact', amount: '0.000000000000000009', feeChoice: { kind: 'automatic' } },
     ]);
     assert.equal(f.render().type, 'Operation');
     assert.equal(f.render().props.controller, operation);
@@ -609,4 +614,15 @@ test('Smart ENS a late marker cannot release the review of a canceled operation'
     t.beforeWire.release(); await t.settle();
     assert.equal(t.counts().operationWires, 0);
   } finally { await t.close(); }
+});
+
+test('Smart send announces available, loading and unavailable balance with its unit', () => {
+  const f = fixture(async () => ({ dispose() {} }));
+  try {
+    assert(all(f.render()).some(node => node.props.accessibilityLabel === 'Available 5.0 ETH'));
+    f.setBalanceStatus('loading');
+    assert(all(f.render()).some(node => node.props.accessibilityLabel === 'Loading balance… · ETH'));
+    f.setBalanceStatus('error');
+    assert(all(f.render()).some(node => node.props.accessibilityLabel === 'Balance unavailable · ETH'));
+  } finally { f.close(); }
 });

@@ -18,6 +18,8 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
+      - 'scripts/apply-keyring-fee-rate.cjs'
+      - 'scripts/keyring-fee-rate.json'
       - 'scripts/apply-walletconnect-terminal.cjs'
       - 'scripts/walletconnect-terminal.json'
       - 'scripts/apply-quickcrypto-sentry.cjs'
@@ -146,6 +148,7 @@ jobs:
         working-directory: .
         run: |
           yarn install --frozen-lockfile --ignore-scripts
+          node scripts/apply-keyring-fee-rate.cjs
           node apps/mobile/scripts/qualification-sdk.cjs
           node scripts/prepare-native-private-prover.cjs # pinned public artifacts
           mkdir -p "$RUNNER_TEMP/pali-native-ios"
@@ -271,6 +274,7 @@ jobs:
         working-directory: .
         run: |
           yarn install --frozen-lockfile --ignore-scripts
+          node scripts/apply-keyring-fee-rate.cjs
           node apps/mobile/scripts/qualification-sdk.cjs
           node scripts/prepare-native-private-prover.cjs # pinned public artifacts
           mkdir -p "$RUNNER_TEMP/pali-native-android"

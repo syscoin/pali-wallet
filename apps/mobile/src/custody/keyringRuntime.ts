@@ -1,4 +1,5 @@
 import type { PaliRecoveryTarget } from '../../../../source/utils/smartAccount/account.ts';
+import { AUTOMATIC_FEE, chooseEvmFees, snapshotEvmFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
 import { toP256WebAuthnRecoveryTarget } from '../../../../source/utils/passkey/identity.ts';
 import { captureGuardianRecoveryClaim, type GuardianRecoveryReplacement } from '../../../../source/utils/smartAccount/guardianRecoveryClaim.ts';
 import { createNativePasskeyRegistry } from '../smartAccount/passkeyRegistry.ts';
@@ -3435,7 +3436,7 @@ export function createKeyringRuntimeFactory(
         const inspectionOnly = <T extends object>(local: T, navigation = false): T & { inspectionOnly: true } => {
           const eligibility = local as { inspectionOnly?: true; speedUpEligible?: true; smartAccount?: unknown };
           const record = { ...local, inspectionOnly: true as const,
-            ...(navigation && !eligibility.inspectionOnly && !eligibility.smartAccount
+            ...(navigation && (!eligibility.inspectionOnly || eligibility.smartAccount)
               ? { reviewNavigation: Object.freeze({ speedUp: eligibility.speedUpEligible === true }) } : {}) };
           delete (record as { speedUpEligible?: true }).speedUpEligible;
           return record;
@@ -5713,6 +5714,8 @@ export function createKeyringRuntimeFactory(
           async openSmartAccountSend(recipient, amount, assertOwner, authentication) {
             let intent: NativeSmartAccountIntent;
             try {
+              const feeChoice = snapshotEvmFeeChoice(amount.feeChoice ?? AUTOMATIC_FEE);
+              if (feeChoice.kind === 'custom' && feeChoice.gasLimit !== undefined) throw new KeyringRuntimeError('INVALID_INPUT');
               const target = normalizePublicAddress(recipient, 'ethereum');
               if (amount.kind === 'maximum') intent = Object.freeze({ kind: 'native-max', recipient: target });
               else if (amount.kind === 'exact') intent = Object.freeze({ kind: 'native-transfer', recipient: target,
@@ -5747,6 +5750,22 @@ export function createKeyringRuntimeFactory(
                 });
                 check();
               } else throw new KeyringRuntimeError('INVALID_INPUT');
+              if (feeChoice.kind !== 'automatic' && feeChoice.kind !== 'medium') {
+                let capturedFees = feeChoice;
+                if (feeChoice.kind !== 'custom') {
+                  const captured = generation, snapshot = catalogueSnapshot, selected = selectedAccount();
+                  const network = getNativeNetwork(snapshot!.active.networkId, snapshot!.networks);
+                  const check = () => { current(captured); checkGuard(assertOwner);
+                    if (catalogueSnapshot !== snapshot || selectedAccount() !== selected) throw new KeyringRuntimeError('CANCELLED'); };
+                  const request = new AbortController();
+                  try {
+                    check();
+                    const rates = await new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch }).feeRecommendations(request.signal, check);
+                    check(); capturedFees = snapshotEvmFeeChoice({ kind: 'custom', ...chooseEvmFees(rates, feeChoice) });
+                  } finally { request.abort(); }
+                }
+                intent = Object.freeze({ ...intent, feeChoice: capturedFees });
+              }
             } catch (error) { if (error instanceof KeyringRuntimeError) throw error; throw new KeyringRuntimeError('INVALID_INPUT'); }
             return openSmartAccountOperation(intent, assertOwner, {kind:'local-new',action:{kind:'operation',intent}}, authentication);
           },
@@ -7291,7 +7310,15 @@ export function createKeyringRuntimeFactory(
                 guard();
                 const saved = transfer ? null : await activityHistory.load(scope, guard);
                 guard();
-                const record = transfer ? {
+                const record = transfer && 'cancellation' in transfer ? {
+                  walletFingerprint, accountId: scope.accountId, address, networkId: scope.network.id,
+                  registrationHash: scope.network.registrationHash, chainId, hash,
+                  nonce: transfer.entry.nonce, createdAt: transfer.entry.createdAt,
+                  recipient: normalizePublicAddress(transfer.entry.from, scope.network.id), amountUnits: '0',
+                  maximumFeeUnits: (Transaction.from(transfer.entry.rawTransaction).gasLimit *
+                    (Transaction.from(transfer.entry.rawTransaction).maxFeePerGas ?? Transaction.from(transfer.entry.rawTransaction).gasPrice ?? 0n)).toString(),
+                  smartAccount: { ...transfer.original, cancellation: true as const },
+                } : transfer ? {
                   walletFingerprint, accountId: scope.accountId, address, networkId: scope.network.id,
                   registrationHash: scope.network.registrationHash, chainId, hash,
                   nonce: transfer.entry.nonce, createdAt: transfer.entry.createdAt,

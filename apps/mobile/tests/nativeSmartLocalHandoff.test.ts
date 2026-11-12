@@ -220,3 +220,23 @@ for(const boundary of [1,2])for(const final of [false,true])test(`eligibility co
     assert.equal(f.manager.localDescriptor(f.handoff.id),null);
   }finally{await f.close();}
 });
+
+test('Smart handoff snapshots exact custom fees and rejects an EOA gas limit', () => {
+  const feeChoice = { kind: 'custom' as const, type: 2 as const, maxFeePerGas: '7', maxPriorityFeePerGas: '2' };
+  const action = { kind: 'operation' as const, intent: { kind: 'native-transfer' as const, recipient: '0x' + '11'.repeat(20), amountUnits: '1', feeChoice } };
+  const copied = snapshotNativeSmartLocalAction(action);
+  feeChoice.maxFeePerGas = '99';
+  assert.equal(copied.kind === 'operation' && copied.intent.feeChoice?.kind === 'custom' && copied.intent.feeChoice.type === 2 && copied.intent.feeChoice.maxFeePerGas, '7');
+  assert.throws(() => snapshotNativeSmartLocalAction({ ...action, intent: { ...action.intent, feeChoice: { ...feeChoice, gasLimit: '30000' } } }), /Invalid public/);
+});
+
+for (const kind of ['erc20-transfer', 'nft-transfer'] as const) test(`Smart ${kind} handoff preserves its exact fee selection`, () => {
+  const feeChoice = { kind: 'custom' as const, type: 2 as const, maxFeePerGas: '7', maxPriorityFeePerGas: '2' };
+  const recipient = '0x' + '11'.repeat(20), contract = '0x' + '22'.repeat(20);
+  const intent = kind === 'erc20-transfer'
+    ? { kind, recipient, amountUnits: '1', token: { contractAddress: contract, symbol: 'TOK', name: 'Token', decimals: 6 }, feeChoice }
+    : { kind, recipient, amountUnits: '1', chainId: '1', from: '0x' + '33'.repeat(20), contractAddress: contract, tokenStandard: 'ERC-721' as const, tokenId: '7', feeChoice };
+  const copied = snapshotNativeSmartLocalAction({ kind: 'operation', intent });
+  assert(copied.kind === 'operation'); assert.deepEqual(copied.intent.feeChoice, feeChoice);
+  assert.equal(copied.intent.kind, kind);
+});

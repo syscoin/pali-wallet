@@ -1,3 +1,4 @@
+import { AUTOMATIC_FEE, chooseUtxoFeeRate, snapshotUtxoFeeChoice, utxoFeeRateUnits, type UtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
 import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks.ts';
 import { unionUtxoExclusions } from '../../../../source/shared/utxoExclusions.ts';
 import { inspectUtxoRbf, reviewUtxoTransactionOptions, snapshotUtxoRbf, type UtxoTransactionOptions } from '../../../../source/shared/utxoTransactionOptions.ts';
@@ -207,6 +208,21 @@ export function createNativeUtxoSend(
   };
   return Object.freeze({
     cancel,
+    async feeRecommendations(external?: AbortSignal): Promise<string> {
+      return run(async () => {
+        const current = revision, expires = now() + REVIEW_MS;
+        const check = () => { capture(current, expires)(); if (external?.aborted) throw new CustodyRuntimeError('CANCELLED'); };
+        check();
+        const abort = () => { if (revision === current) readController?.abort(); };
+        external?.addEventListener('abort', abort, { once: true });
+        try {
+          const read = await ownedRead(check);
+          const rate = await sdk.getRecommendedFee(scope.network.url, read);
+          check();
+          return String(utxoFeeRateUnits(rate));
+        } finally { external?.removeEventListener('abort', abort); }
+      });
+    },
     async prepare(
       input: Readonly<{
         recipient: string;
@@ -214,6 +230,7 @@ export function createNativeUtxoSend(
         max?: boolean;
         asset?: NativeUtxoAsset;
         rbf?: boolean;
+        feeChoice?: UtxoFeeChoice;
       }>
     ): Promise<NativeUtxoReview> {
       return run(async () => {
@@ -230,6 +247,7 @@ export function createNativeUtxoSend(
             ? undefined
             : Object.freeze({ ...input.asset });
         const max = input.max === true;
+        const feeChoice = snapshotUtxoFeeChoice(input.feeChoice ?? AUTOMATIC_FEE);
         try {
           rbf = snapshotUtxoRbf(input.rbf);
           recipient = normalizeUtxoAddress(input.recipient.trim(), network);
@@ -278,9 +296,13 @@ export function createNativeUtxoSend(
             await protectedPoints(check)
           );
           check();
+          const rate = feeChoice.kind === 'automatic' || feeChoice.kind === 'medium' ? undefined
+            : chooseUtxoFeeRate(feeChoice.kind === 'custom' ? 1e-8 : await sdk.getRecommendedFee(scope.network.url, read), feeChoice);
+          check();
           const result = await sdk.getEstimateSysTransactionFee(
             {
               amount: amount.builderAmount,
+              ...(rate === undefined ? {} : { feeRate: rate }),
               receivingAddress: recipient,
               txOptions: { rbf },
               excludedOutpoints,

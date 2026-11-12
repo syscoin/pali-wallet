@@ -1,3 +1,4 @@
+import { AUTOMATIC_FEE, snapshotEvmFeeChoice, type EvmFeeChoice, type EvmFeeRates } from '../../../../source/shared/transactionFeeChoice.ts';
 import { Transaction } from 'ethers/transaction';
 import { EVM_SIGNED_RECORD_LIMITS } from '../../../../source/shared/evmSignedRecordLimits.ts';
 import { assertSignedEvmTransactionMatches, type EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
@@ -181,6 +182,7 @@ export type NativeTransferView = Readonly<
     | 'subscribe'
     | 'cancel'
     | 'prepare'
+    | 'feeRecommendations'
     | 'prepareMaximum'
     | 'prepareCancellation'
     | 'prepareSavedCancellation'
@@ -235,16 +237,17 @@ export class NativeTransfers {
     subscribe: (listener: (snapshot: NativeTransferSnapshot) => void) =>
       this.subscribe(listener),
     cancel: () => this.cancel(),
-    prepare: (recipient: string, amount: string, nonce?: string) =>
-      this.prepare(recipient, amount, nonce),
-    prepareMaximum: (recipient: string, nonce?: string) => this.prepareMaximum(recipient, nonce),
+    prepare: (recipient: string, amount: string, nonce?: string, feeChoice?: EvmFeeChoice) =>
+      this.prepare(recipient, amount, nonce, feeChoice),
+    feeRecommendations: (signal?: AbortSignal) => this.feeRecommendations(signal),
+    prepareMaximum: (recipient: string, nonce?: string, feeChoice?: EvmFeeChoice) => this.prepareMaximum(recipient, nonce, feeChoice),
     prepareCancellation: (hash: string) => this.prepareCancellation(hash),
     prepareSavedCancellation: (hash: string) => this.prepareSavedCancellation(hash),
     prepareSpeedUp: (hash: string) => this.prepareSpeedUp(hash),
-    prepareToken: (contract: string, recipient: string, amount: string, nonce?: string) =>
-      this.prepareToken(contract, recipient, amount, nonce),
-    prepareCollectible: (saved: SavedCollectible, recipient: string, tokenId: string, amountUnits: string, nonce?: string) =>
-      this.prepareCollectible(saved, recipient, tokenId, amountUnits, nonce),
+    prepareToken: (contract: string, recipient: string, amount: string, nonce?: string, feeChoice?: EvmFeeChoice) =>
+      this.prepareToken(contract, recipient, amount, nonce, feeChoice),
+    prepareCollectible: (saved: SavedCollectible, recipient: string, tokenId: string, amountUnits: string, nonce?: string, feeChoice?: EvmFeeChoice) =>
+      this.prepareCollectible(saved, recipient, tokenId, amountUnits, nonce, feeChoice),
     confirm: (id: string, credential: NativeOperationCredential) => this.confirm(id, credential),
     recover: (offerRetry?: boolean, hash?: string) => this.recover(offerRetry, hash),
     loadMorePredecessors: () => this.loadMorePredecessors(),
@@ -762,11 +765,34 @@ export class NativeTransfers {
     }
     throw error;
   }
-  prepare(recipient: string, amount: string, nonce?: string): Promise<void> {
+  async feeRecommendations(external?: AbortSignal): Promise<EvmFeeRates> {
+    if (external?.aborted) throw new NativeTransferError('CANCELLED');
+    let rates: EvmFeeRates | undefined;
+    await this.perform(async ({ rpc, signal, assertCurrent }) => {
+      const request = new AbortController();
+      const abort = () => request.abort();
+      signal.addEventListener('abort', abort, { once: true });
+      external?.addEventListener('abort', abort, { once: true });
+      try {
+        if (external?.aborted) request.abort();
+        rates = await rpc.feeRecommendations(request.signal); assertCurrent();
+        if (external?.aborted) throw new NativeTransferError('CANCELLED');
+      } catch (error) {
+        if (external?.aborted) throw new NativeTransferError('CANCELLED');
+        throw error;
+      } finally {
+        signal.removeEventListener('abort', abort); external?.removeEventListener('abort', abort); request.abort();
+      }
+    });
+    if (!rates) throw new NativeTransferError('FAILED');
+    return rates;
+  }
+  prepare(recipient: string, amount: string, nonce?: string, feeChoice: EvmFeeChoice = AUTOMATIC_FEE): Promise<void> {
     let units: string;
     let to: string;
     let nonceOverride: number | undefined;
     try {
+      feeChoice = snapshotEvmFeeChoice(feeChoice);
       nonceOverride = parseNonceOverride(nonce);
       units = parseDecimalAmount(amount, 18).toString();
       to = normalizePublicAddress(recipient, 'ethereum');
@@ -788,7 +814,7 @@ export class NativeTransfers {
       const journal = await runtime.journal(assertCurrent);
       assertCurrent();
       const quote = await rpc.prepare(address, to, units, signal, nonceOverride,
-        journal.planAutomaticNonce).catch((error: unknown) =>
+        journal.planAutomaticNonce, feeChoice).catch((error: unknown) =>
           this.rejectDraftNonce(error, journal, nonceOverride !== undefined));
       assertCurrent();
       await this.checkDraftNonce(journal, quote.transaction.nonce, nonceOverride !== undefined);
@@ -796,11 +822,12 @@ export class NativeTransfers {
       this.showReview(quote.transaction, undefined, context, { nonceOverride });
     });
   }
-  prepareMaximum(recipient: string, nonce?: string): Promise<void> {
+  prepareMaximum(recipient: string, nonce?: string, feeChoice: EvmFeeChoice = AUTOMATIC_FEE): Promise<void> {
     let to: string;
     let nonceOverride: number | undefined;
     try {
       to = normalizePublicAddress(recipient, 'ethereum');
+      feeChoice = snapshotEvmFeeChoice(feeChoice);
       nonceOverride = parseNonceOverride(nonce);
     } catch (error) {
       return Promise.reject(error instanceof NativeTransferError ? error : new NativeTransferError('INVALID_INPUT'));
@@ -818,7 +845,7 @@ export class NativeTransfers {
       const saved = await journal.load();
       assertCurrent();
       if (saved && ['signed', 'attempted', 'submitted'].includes(saved.phase)) throw new NativeTransferError('MAX_PENDING');
-      const quote = await rpc.prepareMaximum(address, to, reserve, signal, nonceOverride, journal.planAutomaticNonce)
+      const quote = await rpc.prepareMaximum(address, to, reserve, signal, nonceOverride, journal.planAutomaticNonce, feeChoice)
         .catch((error: unknown) => this.rejectDraftNonce(error, journal, nonceOverride !== undefined));
       assertCurrent();
       await this.checkDraftNonce(journal, quote.transaction.nonce, nonceOverride !== undefined);
@@ -830,11 +857,13 @@ export class NativeTransfers {
     contractAddress: string,
     recipient: string,
     amount: string,
-    nonce?: string
+    nonce?: string,
+    feeChoice: EvmFeeChoice = AUTOMATIC_FEE
   ): Promise<void> {
     let contract: string, to: string;
     let nonceOverride: number | undefined;
     try {
+      feeChoice = snapshotEvmFeeChoice(feeChoice);
       nonceOverride = parseNonceOverride(nonce);
       contract = normalizeErc20Address(contractAddress);
       to = normalizeErc20Address(recipient);
@@ -877,7 +906,7 @@ export class NativeTransfers {
         throw new NativeTransferError('FAILED');
       this.publish({ intent });
       const quote = await rpc.prepareToken(address, intent, signal, undefined, nonceOverride,
-        journal.planAutomaticNonce).catch((error: unknown) =>
+        journal.planAutomaticNonce, feeChoice).catch((error: unknown) =>
           this.rejectDraftNonce(error, journal, nonceOverride !== undefined));
       assertCurrent();
       await this.checkDraftNonce(journal, quote.transaction.nonce, nonceOverride !== undefined);
@@ -885,10 +914,11 @@ export class NativeTransfers {
       this.showReview(quote.transaction, intent, context, { nonceOverride });
     });
   }
-  prepareCollectible(candidate: SavedCollectible, recipient: string, tokenId: string, amountUnits: string, nonce?: string): Promise<void> {
+  prepareCollectible(candidate: SavedCollectible, recipient: string, tokenId: string, amountUnits: string, nonce?: string, feeChoice: EvmFeeChoice = AUTOMATIC_FEE): Promise<void> {
     let saved: SavedCollectible;
     let nonceOverride: number | undefined;
     try {
+      feeChoice = snapshotEvmFeeChoice(feeChoice);
       nonceOverride = parseNonceOverride(nonce);
       saved = snapshotSavedCollectible(candidate);
     } catch (error) {
@@ -924,7 +954,7 @@ export class NativeTransfers {
       guard();
       const selection = Object.freeze({ network, owner: address, saved: inventory.collectible });
       const quote = await withNftInventorySignal(signal, inventory.signal, (owned) =>
-        rpc.prepareNft(selection, request, owned, guard, nonceOverride, journal.planAutomaticNonce))
+        rpc.prepareNft(selection, request, owned, guard, nonceOverride, journal.planAutomaticNonce, feeChoice))
         .catch((error: unknown) => {
           guard();
           return this.rejectDraftNonce(error, journal, nonceOverride !== undefined);

@@ -5,6 +5,7 @@ import { useFiatCurrency } from '../platform/fiatPreferences';
 import { walletFetch } from '../platform/http';
 import { createNativeCoinQuoteReader, nativeCoinQuoteSource, QUOTE_LIFETIME_MS, type NativeCoinQuote } from './nativeCoinQuote.ts';
 import { formatIndicativeFiat } from './fiatDisplay.ts';
+import { useNativeTranslation } from '../platform/localization';
 
 const read = createNativeCoinQuoteReader(walletFetch);
 
@@ -12,6 +13,7 @@ const read = createNativeCoinQuoteReader(walletFetch);
 export function useNativeCoinQuote(id: string | null, amount: string | null, registration?: NativeNetworkRegistration | null): Readonly<{
   supported: boolean; quote: string | null;
 }> {
+  const { i18n } = useNativeTranslation();
   const source = useMemo(() => id ? nativeCoinQuoteSource(id, registration) : null, [id, registration]);
   const supported = source !== null;
   const available = amount !== null;
@@ -57,5 +59,5 @@ export function useNativeCoinQuote(id: string | null, amount: string | null, reg
   if (!supported || !available || !currency || !sourceKey || quote?.key !== sourceKey)
     return { supported, quote: null };
   const value = Number(amount) * quote.value.price;
-  return { supported, quote: formatIndicativeFiat(value, currency) };
+  return { supported, quote: formatIndicativeFiat(value, currency, i18n.resolvedLanguage ?? i18n.language) };
 }

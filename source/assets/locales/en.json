@@ -2027,7 +2027,8 @@
       "helpTitle": "Help & about",
       "helpSubtitle": "Support, documentation and version",
       "hide": "Hide accounts",
-      "lock": "Lock wallet"
+      "lock": "Lock wallet",
+      "maintenanceTitle": "Troubleshooting"
     },
     "resetActivity": {
       "title": "Reset activity",
@@ -2427,7 +2428,9 @@
       "collectibles": "Saved collectibles: {{count}} · {{network}}",
       "refresh": "Refresh portfolio",
       "lastKnownBalance": "Last known balance",
-      "balanceUnavailable": "Balance unavailable"
+      "balanceUnavailable": "Balance unavailable",
+      "estimatedExcludingTestnets": "Estimated total · excludes test networks",
+      "partialExcludingTestnets": "Known value · some balances or prices unavailable · excludes test networks"
     },
     "sendAssets": {
       "choose": "Choose asset",
@@ -4056,6 +4059,31 @@
       "restoreSecureDescription": "Verify your recovery phrase to restore access on this phone",
       "autoWalletHint": "Choose when the wallet locks",
       "autoWatchHint": "Choose when watch accounts hide"
+    },
+    "recoveryCopy": {
+      "wrongPhrase": "This recovery phrase does not match this wallet.",
+      "wordCount": "Enter your 12 or 24 recovery words in order.",
+      "restored": "Device authorization restored. Reopening your wallet.",
+      "uncertain": "We could not confirm device authorization recovery. Close and reopen Pali before trying again.",
+      "cancelled": "Recovery was cancelled.",
+      "expired": "Recovery expired. Start again to verify your wallet.",
+      "unavailable": "Recovery could not be completed. Your saved wallet was not reset. Close and reopen Pali before trying again.",
+      "requestCancelled": "Request cancelled. You can try again.",
+      "backupExpired": "The backup view expired. Authorize again to continue."
+    },
+    "feeChoice": {
+      "automaticHint": "Choose a network fee. Lower fees may wait longer. A change requires a fresh review.",
+      "custom": "Custom",
+      "gasPrice": "Gas price (Gwei)",
+      "maximumPrice": "Maximum fee per gas (Gwei)",
+      "priorityPrice": "Priority fee per gas (Gwei)",
+      "gasHint": "Leave the gas limit blank to estimate it automatically.",
+      "rateHint": "Enter a whole number from 1 to 4,999 sat/vB.",
+      "loading": "Checking network fees…",
+      "invalid": "Check the fee values and try again.",
+      "unavailable": "Network fees are unavailable. You can keep Automatic and try again.",
+      "apply": "Apply fee",
+      "satPerVbyte": "Fee rate (sat/vB)"
     }
   }
 }

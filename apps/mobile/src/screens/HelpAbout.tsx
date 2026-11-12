@@ -9,7 +9,7 @@ import { Button, Card, colors, Header, Row, Screen, Text } from '../ui';
 import { mobileUpdates } from '../updates/service';
 
 /** Public information only: actions never receive an account, key or wallet authority. */
-export function HelpAbout({ onBack, onUpdates }: { onBack(): void; onUpdates?(): void }) {
+export function HelpAbout({ onBack, onUpdates, onResetActivity }: { onBack(): void; onUpdates?(): void; onResetActivity?(): void }) {
   const { t } = useNativeTranslation();
   const update = useSyncExternalStore(mobileUpdates.subscribe, mobileUpdates.getSnapshot, mobileUpdates.getSnapshot);
   const life = useRef({ mounted: false, focused: true, epoch: 0, pending: null as object | null });
@@ -57,6 +57,10 @@ export function HelpAbout({ onBack, onUpdates }: { onBack(): void; onUpdates?():
       <Button icon="help" title={t('mobile.generalViews.getSupport')} disabled={busy} onPress={() => void act('support')} />{feedbackFor('support')}
       <Button icon="copy" title={t('mobile.generalViews.copySupport')} variant="secondary" disabled={busy} onPress={() => void act('copy')} />{feedbackFor('copy')}
       <Button icon="external" title={t('mobile.generalViews.documentation')} variant="secondary" disabled={busy} onPress={() => void act('documentation')} />{feedbackFor('documentation')}</View>
+    {onResetActivity && <View style={{ gap: 12 }}>
+      <Text accessibilityRole="header" style={{ fontSize: 18, fontWeight: '600' }}>{t('mobile.settings.maintenanceTitle')}</Text>
+      <Card><Row icon="activity" title={t('mobile.settings.activityTitle')} subtitle={t('mobile.settings.activitySubtitle')} onPress={onResetActivity} dense last /></Card>
+    </View>}
     <View style={{ gap: 12 }}><Text accessibilityRole="header" style={{ fontSize: 18, fontWeight: '600' }}>{t('mobile.generalViews.dataProvider')}</Text>
       <Button title={PALI_INFORMATION.dataProvider.name} variant="quiet" disabled={busy} onPress={() => void act('provider')} />{feedbackFor('provider')}</View>
   </Screen></SafeAreaView>;

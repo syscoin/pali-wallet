@@ -7,6 +7,7 @@ import {
 } from '../../../source/shared/erc20.ts';
 import {
   decodeRetainedSmartAccountTransfer,
+  decodeRetainedSmartAccountCancellation,
   decodeRetainedSmartAccountOperations,
   observeSmartAccountActivity,
 } from '../../../source/wallet/smartAccountActivity.ts';
@@ -196,6 +197,28 @@ test('outer success without the exact inner event cannot confirm a Smart transfe
     ),
     /outcome unavailable/
   );
+});
+
+test('Smart cancellation projects only through its authenticated original and uses an ordinary outer receipt', async () => {
+  const { entry, transfer } = await signed();
+  const rawTransaction = await payer.signTransaction({ chainId: 1, type: 0, nonce: entry.nonce,
+    to: payer.address, value: 0, data: '0x', gasLimit: 21000, gasPrice: 4 });
+  const cancellation: EvmRetainedSignedRecord = { ...entry, rawTransaction, hash: Transaction.from(rawTransaction).hash!,
+    operation: 'cancel', originalHash: entry.hash };
+  const projected = decodeRetainedSmartAccountCancellation(cancellation, entry, account); assert(projected);
+  assert.equal(decodeRetainedSmartAccountTransfer(cancellation, account), null, 'the Smart decoder must reject the ordinary self-call');
+  for (const patch of [{ originalHash: blockHash }, { chainId: '2' }, { nonce: 1 }, { from: recipient }])
+    assert.equal(decodeRetainedSmartAccountCancellation({ ...cancellation, ...patch }, entry, account), null);
+  assert.equal(decodeRetainedSmartAccountCancellation(cancellation, { ...entry, hash: blockHash }, account), null);
+  const result = await observeSmartAccountActivity({ account, chainId: '1', hash: cancellation.hash, nonce: 0,
+    payer: projected.original.payer, operationHash: transfer.operationHash, operationNonce: transfer.operationNonce, cancellation: true }, async method => {
+    if (method === 'eth_chainId') return '0x1';
+    if (method === 'eth_getBlockByNumber') return { number: '0x10', hash: blockHash, gasLimit: '0x100000' };
+    if (method === 'eth_getTransactionReceipt') return { transactionHash: cancellation.hash, from: payer.address, to: payer.address,
+      status: '0x1', blockNumber: '0x10', blockHash, logs: [] };
+    assert.fail(method);
+  }, () => undefined);
+  assert.equal(result.status === 'mined' && result.outcome, 'confirmed');
 });
 
 test('Smart ERC20 Activity binds display metadata to the authenticated inner token contract', async () => {

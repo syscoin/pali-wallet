@@ -11,7 +11,7 @@ for (const width of [390, 320]) test(`selected EVM account overview and source s
   await expect(page.getByRole('button', { name: 'Choose account, Account 1', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Choose network filter, All networks', exact: true })).toBeVisible();
   await expect(page.getByTestId('account-portfolio-value')).toContainText('3,024.00');
-  await expect(page.getByText('Test network funds excluded', { exact: true })).toBeVisible();
+  await expect(page.getByText('Estimated total · excludes test networks', { exact: true })).toBeVisible();
   for (const tab of ['wallet', 'activity', 'tools', 'settings']) await expect(page.getByTestId(`main-tab-caption-${tab}`)).toBeInViewport();
   await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toHaveAttribute('aria-selected', 'true');
   expect(await page.evaluate(() => window.__accountPortfolio.reads.every(read => read.endsWith('0x' + '1'.padStart(40, '0'))))).toBe(true);

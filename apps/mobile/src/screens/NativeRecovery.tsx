@@ -1,4 +1,5 @@
 import { useNativeTranslation } from '../platform/localization';
+import { recoveryErrorText } from './recoveryCopy';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -145,12 +146,12 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
               autoComplete="off" textContentType="none" importantForAutofill="noExcludeDescendants" maxLength={index === 0 ? 4096 : 64} style={s.input} />
           </View>)}</View>
           <Notice title={t('mobile.recoveryDevices.recovery.keepYourPhrasePrivate')} body={t('mobile.recoveryDevices.recovery.paliSupportWillNeverAskForThese')} tone="amber" />
-          {!!(entryError || snapshot.fieldErrors.phrase) && <Text accessibilityRole="alert" style={s.error}>{entryError || snapshot.fieldErrors.phrase}</Text>}
+          {!!(entryError || snapshot.fieldErrors.phrase) && <Text accessibilityRole="alert" style={s.error}>{entryError || (snapshot.fieldErrors.phrase && recoveryErrorText(snapshot.fieldErrors.phrase, t))}</Text>}
         </>}
         {snapshot.phase === 'committing' && <Text style={s.body}>{t('mobile.recoveryDevices.recovery.leavingNowStopsThisScreenTheAccess')}</Text>}
         {snapshot.phase === 'closed' && !snapshot.error && <Text style={s.body}>{t('mobile.recoveryDevices.recovery.returningToUnlock')}</Text>}
         {snapshot.phase === 'blocked' && !snapshot.error && <Text style={s.body}>{t('mobile.recoveryDevices.recovery.yourSavedWalletCouldNotBeVerified')}</Text>}
-        {!!snapshot.error && <NativeText ref={error} allowFontScaling accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.text, s.error]}>{snapshot.error}</NativeText>}
+        {!!snapshot.error && <NativeText ref={error} allowFontScaling accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.text, s.error]}>{recoveryErrorText(snapshot.error, t)}</NativeText>}
       </Screen>
     </KeyboardAvoidingView>
   </SafeAreaView>;

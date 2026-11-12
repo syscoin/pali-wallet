@@ -275,6 +275,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigationGeneration = useRef(0);
   const lifecycleGeneration = useRef(0);
+  const watchResume = useRef<{ authority: WatchOnlyAuthority; selection: AccountSelection; navigation: number } | null>(null);
   const foreground = useRef(
     Platform.OS === 'web' || AppState.currentState === 'active'
   );
@@ -442,27 +443,41 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   }, [watchAccounts, openWatch]);
   useEffect(() => {
     const hide = () => {
-      if (isNotificationPermissionPromptActive() || isNativeCredentialPromptActive()) return;
+      if (isNativeCredentialPromptActive()) return;
+      const local = authority.current, state = local?.getSnapshot();
+      if (!preview && requestedRoute === 'home' && state?.status === 'ready' && state.selectedAccountId &&
+          publicViewLock.getSnapshot().phase === 'unlocked') {
+        watchResume.current = { authority: local!, selection: { kind: 'watch', id: state.selectedAccountId }, navigation: navigationGeneration.current };
+      } else if (watchResume.current?.navigation !== navigationGeneration.current) watchResume.current = null;
       if (openingView.current) publicViewLock.cancelUnlock();
       lifecycleGeneration.current++; authority.current?.lock(); setSheet(null); setAmount(''); setRecipient('');
     };
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', hide) : null;
+    const resume = () => {
+      const pending = watchResume.current;
+      watchResume.current = null;
+      if (!pending || preview || !foreground.current || authority.current !== pending.authority ||
+          navigationGeneration.current !== pending.navigation || publicViewLock.getSnapshot().phase !== 'unlocked') return;
+      void openWatch(pending.selection);
+    };
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
+      if (isNotificationPermissionPromptActive() || isNativeCredentialPromptActive()) return;
+      foreground.current = false; hide();
+    }) : null;
+    const focus = Platform.OS === 'android' ? AppState.addEventListener('focus', () => {
+      if (AppState.currentState !== 'active') return;
+      foreground.current = true; resume();
+    }) : null;
     const sub = AppState.addEventListener('change', (state) => {
       foreground.current = state === 'active';
       if (state === 'inactive' && isNotificationPermissionPromptActive() || state !== 'active' && isNativeCredentialPromptActive()) return;
-      if (state !== 'active') {
-        if (openingView.current) publicViewLock.cancelUnlock();
-        lifecycleGeneration.current++;
-        authority.current?.lock();
-        setSheet(null);
-        setAmount('');
-        setRecipient('');
-        if (requestedRoute !== 'native' && !preview && authority.current?.getSnapshot().accounts.length)
-          go('locked');
-      }
+      if (state === 'active') { resume(); return; }
+      hide();
+      if (requestedRoute !== 'native' && !preview && authority.current?.getSnapshot().accounts.length)
+        go('locked');
+      if (watchResume.current) watchResume.current.navigation = navigationGeneration.current;
     });
-    return () => { sub.remove(); blur?.remove(); };
-  }, [preview, requestedRoute, setSheet, go]);
+    return () => { sub.remove(); blur?.remove(); focus?.remove(); };
+  }, [preview, requestedRoute, setSheet, go, openWatch]);
   useEffect(() => {
     if (route === 'design' || route === 'native' || route === 'accounts' || route === 'add' || Platform.OS === 'web') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {

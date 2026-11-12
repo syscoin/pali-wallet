@@ -764,8 +764,10 @@ test('Smart activity is a bounded authenticated projection and preserves the out
   const newest = await reading;
   assert.equal(newest.total, 3);
   assert.deepEqual(newest.transfers.map(transfer => transfer.entry.hash), [inputs[2]!.hash]);
-  assert.equal(newest.transfers[0]!.recipient, recipient);
-  assert.equal(newest.transfers[0]!.amountUnits, '9');
+  const transfer = newest.transfers[0]!;
+  assert(!('cancellation' in transfer));
+  assert.equal(transfer.recipient, recipient);
+  assert.equal(transfer.amountUnits, '9');
   await f.store.updatePhase(session, '7654321', signer.address, inputs[1]!.hash, 'confirmed');
   const older = await f.store.readSmartAccountActivity(session, '7654321', address, { maximum: 1, beforeHash: newest.nextCursor! });
   assert.deepEqual(older.transfers.map(transfer => transfer.entry.hash), [inputs[1]!.hash]);

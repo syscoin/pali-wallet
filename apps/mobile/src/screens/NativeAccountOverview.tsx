@@ -42,7 +42,8 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
   send(choice: NotificationChoice, token: Erc20Metadata | undefined, assertCurrent: () => void): Promise<void>;
   cancelSelection?(): void;
 }) {
-  const { t } = useNativeTranslation();
+  const { t, i18n } = useNativeTranslation();
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const preference = useFiatCurrency();
   const { hidden } = useBalancePrivacy();
@@ -122,7 +123,7 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
   const filterAvailable = snapshot.filter === 'all' ? snapshot.choices.length > 0 : !!selectedNetwork;
   const hasTestnets = snapshot.rows.some(row => 'testnet' in row.choice.scope.network && row.choice.scope.network.testnet);
   const amount = hidden ? HIDDEN_BALANCE : snapshot.knownValue === null || !snapshot.currency ? '—' : snapshot.knownValue >= 1e9
-    ? `≈ ${compactActivityAmountLabel(String(snapshot.knownValue))} ${snapshot.currency.toUpperCase()}` : formatIndicativeFiat(snapshot.knownValue, snapshot.currency) ?? '—';
+    ? `≈ ${new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 2 }).format(snapshot.knownValue)} ${snapshot.currency.toUpperCase()}` : formatIndicativeFiat(snapshot.knownValue, snapshot.currency, locale) ?? '—';
   const selectSource = (id: string) => {
     if (sheet === 'filter') { void run(async check => { await controller.selectFilter(id); check(); setSheet(null); }); return; }
     const source = sources.find(entry => entry.id === id); if (!source) return;
@@ -138,8 +139,9 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
     </View>}
     {portfolio.source.getSnapshot().backup === 'unconfirmed' && portfolio.onBackup && <WalletBackupBadge onPress={portfolio.onBackup} />}
     <View style={s.hero}><Text style={s.label}>{t('mobile.accountPortfolio.value').toLocaleUpperCase()}</Text><Text testID="account-portfolio-value" style={s.value} numberOfLines={1} adjustsFontSizeToFit>{amount}</Text>
-      <Text style={s.help}>{t(snapshot.partial ? 'mobile.accountPortfolio.partial' : 'mobile.accountPortfolio.estimated')}</Text>
-      {hasTestnets && <Text style={s.help}>{t('mobile.accountPortfolio.testnetsExcluded')}</Text>}</View>
+      <Text style={s.help}>{t(snapshot.partial
+        ? hasTestnets ? 'mobile.accountPortfolio.partialExcludingTestnets' : 'mobile.accountPortfolio.partial'
+        : hasTestnets ? 'mobile.accountPortfolio.estimatedExcludingTestnets' : 'mobile.accountPortfolio.estimated')}</Text></View>
     <View style={s.actions}>
       {(portfolio.onSend || portfolio.source.getSnapshot().backup !== 'confirmed') && <Button title={t('buttons.send')} icon="arrow-up-right" style={s.flex} disabled={busy || snapshot.status !== 'ready' || !filterAvailable} onPress={() => {
         if (portfolio.source.getSnapshot().backup !== 'confirmed') { (portfolio.onBackup ?? portfolio.onViewRecovery)(); return; }
@@ -159,14 +161,14 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
       return <Card key={row.choice.scope.id} style={s.card}>
       <IdlePressable accessibilityRole="button" accessibilityLabel={`${row.choice.symbol}, ${row.choice.networkName}, ${hidden ? HIDDEN_BALANCE : balance(row)}${balanceLabel ? `, ${balanceLabel}` : ''}`} disabled={busy} onPress={() => void openDetail(row.choice)} style={s.row}>
         <Coin id={row.choice.scope.network.id} fallbackSymbol={row.choice.symbol} size={36} /><View style={s.names}><Text style={s.name}>{row.choice.symbol}</Text><Text style={s.help}>{row.choice.networkName}{'testnet' in row.choice.scope.network && row.choice.scope.network.testnet ? ` · ${t('mobile.common.testNetwork')}` : ''}</Text></View>
-        <View style={s.amounts}><Text style={s.name} numberOfLines={2} accessibilityLabel={hidden ? HIDDEN_BALANCE : `${balance(row)} ${row.choice.symbol}`}>{hidden ? HIDDEN_BALANCE : compactActivityAmountLabel(`${balance(row)} ${row.choice.symbol}`)}</Text><Text style={s.help}>{balanceLabel ?? (row.status === 'loading' ? t('buttons.loading') : row.price !== null && row.units !== null && snapshot.currency ? hidden ? HIDDEN_BALANCE : formatIndicativeFiat(Number(balance(row)) * row.price, snapshot.currency) : '—')}</Text></View>
+        <View style={s.amounts}><Text style={s.name} numberOfLines={2} accessibilityLabel={hidden ? HIDDEN_BALANCE : `${balance(row)} ${row.choice.symbol}`}>{hidden ? HIDDEN_BALANCE : compactActivityAmountLabel(`${balance(row)} ${row.choice.symbol}`)}</Text><Text style={s.help}>{balanceLabel ?? (row.status === 'loading' ? t('buttons.loading') : row.price !== null && row.units !== null && snapshot.currency ? hidden ? HIDDEN_BALANCE : formatIndicativeFiat(Number(balance(row)) * row.price, snapshot.currency, locale) : '—')}</Text></View>
       </IdlePressable>
       {row.tokens.map(token => {
         const tokenBalanceLabel = failedBalanceLabel(row.status === 'error' || token.status === 'error', token.units);
         return <IdlePressable key={token.metadata.contractAddress} accessibilityRole="button" accessibilityLabel={`${token.metadata.symbol}, ${row.choice.networkName}, ${hidden ? HIDDEN_BALANCE : token.units === null ? '—' : formatTokenUnits(token.units, token.metadata.decimals)}${tokenBalanceLabel ? `, ${tokenBalanceLabel}` : ''}`} disabled={busy} onPress={() => void openDetail(row.choice, false, token.metadata.contractAddress)} style={[s.row, s.divider]}>
         <Coin id={token.metadata.contractAddress} asset={{ kind: 'evm', chainId: row.choice.scope.network.chainId, contractAddress: token.metadata.contractAddress, decimals: token.metadata.decimals }} registrationHash={'registrationHash' in row.choice.scope.network ? row.choice.scope.network.registrationHash : undefined} fallbackSymbol={token.metadata.symbol} size={36} /><View style={s.names}><Text style={s.name}>{token.metadata.symbol}</Text><Text style={s.help}>{row.choice.networkName}</Text></View>
         <View style={s.amounts}><Text style={s.name} numberOfLines={2} accessibilityLabel={hidden ? HIDDEN_BALANCE : token.units === null ? '—' : formatTokenUnits(token.units, token.metadata.decimals)}>{hidden ? HIDDEN_BALANCE : token.units === null ? '—' : compactActivityAmountLabel(formatTokenUnits(token.units, token.metadata.decimals))}</Text>
-          <Text style={s.help}>{tokenBalanceLabel ?? (hidden ? HIDDEN_BALANCE : token.price !== null && token.units !== null && snapshot.currency ? formatIndicativeFiat(Number(formatTokenUnits(token.units, token.metadata.decimals)) * token.price, snapshot.currency) : '—')}</Text></View>
+          <Text style={s.help}>{tokenBalanceLabel ?? (hidden ? HIDDEN_BALANCE : token.price !== null && token.units !== null && snapshot.currency ? formatIndicativeFiat(Number(formatTokenUnits(token.units, token.metadata.decimals)) * token.price, snapshot.currency, locale) : '—')}</Text></View>
       </IdlePressable>; })}
       {row.collectibles.length > 0 && <Text style={s.collectibles}>{t('mobile.accountPortfolio.collectibles', { count: row.collectibles.length, network: row.choice.networkName })}</Text>}
     </Card>; })}

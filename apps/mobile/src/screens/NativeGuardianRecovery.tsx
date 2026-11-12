@@ -15,6 +15,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus';
@@ -41,6 +42,7 @@ import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
 import { TransactionDetails } from './NativeTransactionReview';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
+import { guardianDelayLabel } from './guardianPolicyLabels';
 const t = nativeI18n.t.bind(nativeI18n);
 
 export type NativeGuardianRecoveryTool = NativeGuardianRecoveryChoices & {
@@ -550,6 +552,7 @@ export function NativeGuardianRecoveryView({
   );
   const [details, setDetails] = useState(false);
   const [forget, setForget] = useState(false);
+  const [maintenance, setMaintenance] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [activityBusy, setActivityBusy] = useState(false);
   const [activityError, setActivityError] = useState('');
@@ -651,8 +654,37 @@ export function NativeGuardianRecoveryView({
             tone="amber"
           />
         )}
+        {(state.phase === 'authorize' || state.phase === 'ready') && (
+          <>
+            <Notice
+              title={
+                state.action === 'finalize'
+                  ? t('mobile.recoveryStatusViews.guardian.recoveryIsReady')
+                  : t('mobile.recoveryStatusViews.guardian.authorizeTheRecovery')
+              }
+              body={
+                state.action === 'finalize'
+                  ? t('mobile.recoveryStatusViews.guardian.finalizeTheSavedRecoveryToActivateTheReplacementOwnerReview')
+                  : t('mobile.recoveryStatusViews.guardian.authorizeTheGuardianAndReplacementkeyProofsForThisExactRecovery')
+              }
+            />
+          </>
+        )}
+        {state.phase === 'review' && state.feeReview && (
+            <Notice
+              title={
+                state.action === 'finalize'
+                  ? t('mobile.recoveryStatusViews.guardian.confirmFinalization')
+                  : t('mobile.recoveryStatusViews.guardian.confirmRecoverySchedule')
+              }
+              body={t('mobile.recoveryStatusViews.guardian.theSelectedFeePayerPaysTheNetworkFeeForThe')}
+            />
+        )}
+        {state.action === 'schedule' && state.observation?.exists && <Text style={s.label}>
+          {t('mobile.recoveryDevices.guardianPolicy.timing', { delay: guardianDelayLabel(state.observation.delaySeconds, t), window: guardianDelayLabel(state.observation.expirationSeconds, t) })}
+        </Text>}
         <Card style={s.card}>
-          <Text style={s.label}>{t('mobile.recoveryStatusViews.guardian.smartAccountChainID')}{' '}{chainId}</Text>
+          <View style={s.identityHeading}><Icon name="shield" size={22} color={colors.blue} /><Text style={s.heading}>{t('receive.smartAccount')}</Text></View>
           <Text selectable style={s.address}>
             {address}
           </Text>
@@ -677,6 +709,7 @@ export function NativeGuardianRecoveryView({
               </Text>
             </>
           )}
+          <Text style={s.label}>{t('mobile.recoveryStatusViews.guardian.smartAccountChainID')}{' '}{chainId}</Text>
         </Card>
         {pending && (
           <>
@@ -688,32 +721,8 @@ export function NativeGuardianRecoveryView({
             </Text>
           </>
         )}
-        {(state.phase === 'authorize' || state.phase === 'ready') && (
-          <>
-            <Notice
-              title={
-                state.action === 'finalize'
-                  ? t('mobile.recoveryStatusViews.guardian.recoveryIsReady')
-                  : t('mobile.recoveryStatusViews.guardian.authorizeTheRecovery')
-              }
-              body={
-                state.action === 'finalize'
-                  ? t('mobile.recoveryStatusViews.guardian.finalizeTheSavedRecoveryToActivateTheReplacementOwnerReview')
-                  : t('mobile.recoveryStatusViews.guardian.authorizeTheGuardianAndReplacementkeyProofsForThisExactRecovery')
-              }
-            />
-          </>
-        )}
         {state.phase === 'review' && state.feeReview && (
           <>
-            <Notice
-              title={
-                state.action === 'finalize'
-                  ? t('mobile.recoveryStatusViews.guardian.confirmFinalization')
-                  : t('mobile.recoveryStatusViews.guardian.confirmRecoverySchedule')
-              }
-              body={t('mobile.recoveryStatusViews.guardian.theSelectedFeePayerPaysTheNetworkFeeForThe')}
-            />
             <Card style={s.card}>
               <Text style={s.label}>{t('mobile.infrastructure.feePayer')}</Text>
               <Text selectable style={s.address}>
@@ -842,6 +851,15 @@ export function NativeGuardianRecoveryView({
           />
         )}
 
+        {(state.canAbandon || state.observation?.exists) && <Button
+          title={t('mobile.settings.maintenanceTitle')}
+          variant="secondary"
+          size="compact"
+          icon={maintenance ? 'chevron-up' : 'chevron-down'}
+          expanded={maintenance}
+          onPress={() => { setMaintenance(!maintenance); setForget(false); setAcknowledged(false); }}
+        />}
+        {maintenance && <>
         {state.canAbandon && !forget && (
           <Button
             title={t('mobile.recoveryStatusViews.guardian.clearLocalRecoveryTracking')}
@@ -901,6 +919,8 @@ export function NativeGuardianRecoveryView({
             }}
           />
         )}
+        </>}
+
       </Screen>
     </SafeAreaView>
   );
@@ -908,6 +928,7 @@ export function NativeGuardianRecoveryView({
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   card: { padding: 16, gap: 8 },
+  identityHeading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   label: { color: colors.muted, fontSize: 14, lineHeight: 21 },
   heading: { color: colors.text, fontSize: 17, fontWeight: '600' },
   address: { color: colors.text, fontSize: 14, lineHeight: 21 },

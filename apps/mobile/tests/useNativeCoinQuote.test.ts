@@ -9,7 +9,7 @@ type QuoteView = Readonly<{ supported: boolean; quote: string | null }>;
 const flush = () => new Promise<void>(resolve => setImmediate(resolve));
 const response = (price = 100) => Response.json({ ethereum: { usd: price, eur: price }, rates: { usd: price, eur: price } });
 
-function fixture(platform = 'ios') {
+function fixture(platform = 'ios', language = 'en') {
   let now = 0, serial = 0, currency = 'usd';
   let responder: (index: number) => Promise<Response> = async () => response();
   const requests: { url: string; signal: AbortSignal }[] = [];
@@ -25,6 +25,7 @@ function fixture(platform = 'ios') {
   };
   const host = screenFixture(new URL('../src/portfolio/useNativeCoinQuote.ts', import.meta.url), 'useNativeCoinQuote', {
     'react-native': { AppState: appState, Platform: { OS: platform } },
+    '../platform/localization': { useNativeTranslation: () => ({ i18n: { resolvedLanguage: language, language } }) },
     '../platform/fiatPreferences': { useFiatCurrency: () => ({ status: 'ready', currency }) },
     '../platform/http': { walletFetch: async (url: string, init: { signal: AbortSignal }) => {
       requests.push({ url, signal: init.signal });
@@ -44,6 +45,7 @@ function fixture(platform = 'ios') {
       return host.render(id, amount, registration) as unknown as QuoteView;
     },
     setCurrency(value: string) { currency = value; },
+    setLanguage(value: string) { language = value; },
     setResponder(value: typeof responder) { responder = value; },
     async advance(milliseconds: number) {
       const target = now + milliseconds;
@@ -66,14 +68,14 @@ test('an active quote refreshes at its existing expiry without overlapping a hel
   try {
     f.setResponder(async index => index === 1 ? response(100) : renewal.promise);
     f.render(); await flush();
-    assert.equal(f.render().quote, formatIndicativeFiat(200, 'usd'));
+    assert.equal(f.render().quote, formatIndicativeFiat(200, 'usd', 'en'));
     await f.advance(QUOTE_LIFETIME_MS - 1); assert.equal(f.requests.length, 1);
     await f.advance(1); assert.equal(f.requests.length, 2);
     assert.equal(f.render().quote, null, 'The expired price must not remain visible during renewal');
     f.emit('change', 'active'); await f.advance(QUOTE_LIFETIME_MS);
     assert.equal(f.requests.length, 2, 'Only one renewal may be in flight');
     renewal.resolve(response(120)); await flush();
-    assert.equal(f.render().quote, formatIndicativeFiat(240, 'usd'));
+    assert.equal(f.render().quote, formatIndicativeFiat(240, 'usd', 'en'));
   } finally { renewal.resolve(response()); f.close(); }
 });
 
@@ -88,7 +90,7 @@ for (const failure of ['unavailable', 'rejected'] as const) test(`an initial ${f
     f.render(); await flush(); assert.equal(f.render().quote, null);
     await f.advance(QUOTE_LIFETIME_MS - 1); assert.equal(f.requests.length, 1);
     await f.advance(1); assert.equal(f.requests.length, 2);
-    assert.equal(f.render().quote, formatIndicativeFiat(200, 'usd'));
+    assert.equal(f.render().quote, formatIndicativeFiat(200, 'usd', 'en'));
   } finally { f.close(); }
 });
 
@@ -96,11 +98,11 @@ test('amount-only updates recalculate locally and a fresh cache survives tempora
   const f = fixture();
   try {
     f.render(); await flush();
-    assert.equal(f.render('ethereum', '3').quote, formatIndicativeFiat(300, 'usd'));
+    assert.equal(f.render('ethereum', '3').quote, formatIndicativeFiat(300, 'usd', 'en'));
     assert.equal(f.requests.length, 1);
     assert.equal(f.render('ethereum', null).quote, null);
     f.render(); await flush();
-    assert.equal(f.render().quote, formatIndicativeFiat(200, 'usd'));
+    assert.equal(f.render().quote, formatIndicativeFiat(200, 'usd', 'en'));
     assert.equal(f.requests.length, 1, 'The same reader must reuse its unexpired cache');
   } finally { f.close(); }
 });
@@ -118,7 +120,7 @@ for (const event of ['background', 'blur', 'unmount'] as const) test(`${event} c
       assert.equal(f.render().quote, null);
       f.emit(event === 'background' ? 'change' : 'focus', 'active'); await flush();
       assert.equal(f.requests.length, 2);
-      assert.equal(f.render().quote, formatIndicativeFiat(200, 'usd'));
+      assert.equal(f.render().quote, formatIndicativeFiat(200, 'usd', 'en'));
     }
   } finally { if (!closed) f.close(); }
 });
@@ -146,11 +148,23 @@ for (const change of ['network', 'currency', 'registration', 'background', 'blur
     else if (change === 'currency') view = f.render('ethereum', '2', canonical);
     if (change === 'network' || change === 'currency') {
       assert.equal(f.requests.length, 2);
-      assert.equal(view?.quote, formatIndicativeFiat(300, change === 'currency' ? 'eur' : 'usd'));
+      assert.equal(view?.quote, formatIndicativeFiat(300, change === 'currency' ? 'eur' : 'usd', 'en'));
     } else {
       assert.equal(f.requests.length, 1);
       if (view) assert.equal(view.quote, null);
       await f.advance(QUOTE_LIFETIME_MS * 2); assert.equal(f.requests.length, 1);
     }
   } finally { pending.resolve(response()); if (!closed) f.close(); }
+});
+
+test('changing Pali language reformats an existing quote without another price request', async () => {
+  const f = fixture('ios', 'de');
+  try {
+    f.setCurrency('eur'); f.render('ethereum', '12.3456'); await flush();
+    assert.equal(f.render('ethereum', '12.3456').quote, '≈ 1.234,56 EUR');
+    const requests = f.requests.length;
+    f.setLanguage('en');
+    assert.equal(f.render('ethereum', '12.3456').quote, '≈ 1,234.56 EUR');
+    assert.equal(f.requests.length, requests);
+  } finally { f.close(); }
 });

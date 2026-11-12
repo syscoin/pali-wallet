@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { DisplayCurrency } from './DisplayCurrency';
 import { BalancePrivacySetting } from './BalancePrivacySetting';
 import { HelpAbout } from './HelpAbout';
@@ -7,6 +7,10 @@ import { NativePreferences } from './NativePreferences';
 import { WalletBackupBadge } from './WalletBackupBadge';
 import { ActivityNotifications, type NotificationSettingsTarget } from './ActivityNotifications';
 import { useNativeTranslation } from '../platform/localization';
+import { useFiatCurrency } from '../platform/fiatPreferences';
+import { nativeActivityNotifications } from '../notifications/service';
+import { currencyFlag } from '../../../../source/shared/currencyFlags';
+import { PALI_LANGUAGE_OPTIONS } from '../../../../source/shared/languagePolicy';
 import type { ShellLeafNavigation } from './RealAppShell';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, colors, Header, Notice, Row, Screen, Text } from '../ui';
@@ -59,16 +63,33 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
   activityReset?: ActivityResetTarget;
   notifications?: NotificationSettingsTarget;
 }) {
-  const { t } = useNativeTranslation();
+  const { t, i18n } = useNativeTranslation();
+  const currency = useFiatCurrency();
+  const selectedLanguage = PALI_LANGUAGE_OPTIONS.find(language => language.value === (i18n.resolvedLanguage ?? i18n.language));
+  const notificationState = useSyncExternalStore(nativeActivityNotifications.subscribe, nativeActivityNotifications.getSnapshot, nativeActivityNotifications.getSnapshot);
+  const notificationScope = notifications?.scope;
+  useEffect(() => { if (notificationScope !== undefined) void nativeActivityNotifications.load().catch(() => undefined); }, [notificationScope]);
+  let alertsEnabled: boolean | null = false;
+  if (notifications) {
+    try {
+      notifications.assertCurrent();
+      alertsEnabled = notifications.readChoices().some(choice => notificationState.enabledScopeIds.includes(choice.scope.id));
+    } catch { alertsEnabled = null; }
+  }
+  const notificationValue = notificationState.status === 'loading' ? t('buttons.loading')
+    : alertsEnabled === null || notificationState.status === 'unavailable' || alertsEnabled && notificationState.permission === 'unknown' ? t('settings.unavailable')
+    : t(alertsEnabled && notificationState.permission === 'granted' ? 'components.enabled' : 'components.disabled');
+  const currencyValue = currency.status === 'ready' ? `${currencyFlag(currency.currency)} ${currency.currency.toUpperCase()}`
+    : t(currency.status === 'loading' ? 'buttons.loading' : 'settings.unavailable');
   const [opened, setOpened] = useState<Readonly<{ leaf: 'about' | 'updates' | 'currency' | 'activity' | 'language' | 'notifications'; scope?: string }> | null>(null);
   const languageOwner = useRef<typeof opened>(null);
   const notificationsOwner = useRef<typeof opened>(null);
   const leaf = opened?.leaf === 'activity' && opened.scope !== activityReset?.scope || opened?.leaf === 'notifications' && opened.scope !== notifications?.scope ? null : opened?.leaf ?? null;
-  const back = () => { languageOwner.current = null; notificationsOwner.current = null; if (leaf === 'updates') setOpened({ leaf: 'about' }); else if (leaf) setOpened(null); else onBack(); };
+  const back = () => { languageOwner.current = null; notificationsOwner.current = null; if (leaf === 'updates' || leaf === 'activity') setOpened({ leaf: 'about' }); else if (leaf) setOpened(null); else onBack(); };
   useLayoutEffect(() => () => { languageOwner.current = null; notificationsOwner.current = null; }, []);
   useLayoutEffect(() => navigation?.registerBack(() => { back(); return true; }));
   useLayoutEffect(() => { navigation?.setImmersive(leaf !== null); return () => navigation?.setImmersive(false); }, [navigation, leaf]);
-  if (leaf === 'about') return <HelpAbout onBack={back} onUpdates={() => setOpened({ leaf: 'updates' })} />;
+  if (leaf === 'about') return <HelpAbout onBack={back} onUpdates={() => setOpened({ leaf: 'updates' })} onResetActivity={activityReset ? () => setOpened({ leaf: 'activity', scope: activityReset.scope }) : undefined} />;
   if (leaf === 'updates') return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
     <Screen footer={<Button title={t('privacy.deposit.done')} variant="secondary" onPress={back} />}>
       <Header title={t('mobile.generalViews.appUpdates')} onBack={back} /><WalletUpdatePanel allowInstall={watchOnly} onCloseWallet={onUpdate} />
@@ -86,22 +107,21 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
   }>
     <Header title={t('mobile.settings.title')} subtitle={accountLabel} onBack={navigation ? undefined : onBack} />
     {backupRequired && onBackup && <WalletBackupBadge onPress={onBackup} />}
-    {(onSecurity || onConnections || onInfrastructure || activityReset) && <Card>
-      {onSecurity && <Row title={t('mobile.settings.securityTitle')} subtitle={t('mobile.settings.securitySubtitle')} icon="shield" onPress={onSecurity} dense last={!onConnections && !onInfrastructure && !activityReset} />}
-      {onConnections && <Row title={t('mobile.tools.connections')} subtitle={t('mobile.tools.connectionsBody')} icon="globe" onPress={onConnections} dense last={!onInfrastructure && !activityReset} />}
-      {onInfrastructure && <Row title={t('settings.smartAccountInfrastructure')} subtitle={t('settings.smartAccountInfrastructureCheckStatus')} icon="shield" onPress={onInfrastructure} dense last={!activityReset} />}
-      {activityReset && <Row title={t('mobile.settings.activityTitle')} subtitle={t('mobile.settings.activitySubtitle')} icon="activity" onPress={() => setOpened({ leaf: 'activity', scope: activityReset.scope })} dense last />}
+    {(onSecurity || onConnections || onInfrastructure) && <Card>
+      {onSecurity && <Row title={t('mobile.settings.securityTitle')} subtitle={t('mobile.settings.securitySubtitle')} icon="shield" onPress={onSecurity} dense last={!onConnections && !onInfrastructure} />}
+      {onConnections && <Row title={t('mobile.tools.connections')} subtitle={t('mobile.tools.connectionsBody')} icon="globe" onPress={onConnections} dense last={!onInfrastructure} />}
+      {onInfrastructure && <Row title={t('settings.smartAccountInfrastructure')} subtitle={t('settings.smartAccountInfrastructureCheckStatus')} icon="shield" onPress={onInfrastructure} dense last />}
     </Card>}
     <Card>
-      {notifications && <Row title={t('mobile.notifications.title')} subtitle={t('mobile.notifications.description')} icon="activity" onPress={() => {
+      {notifications && <Row title={t('mobile.notifications.title')} subtitle={notificationValue} icon="activity" onPress={() => {
         const next = { leaf: 'notifications' as const, scope: notifications.scope }; notificationsOwner.current = next; setOpened(next);
       }} dense />}
       {watchOnly && onAutoLock && <Row title={t('mobile.viewLock.autoTitle')} subtitle={t('mobile.onboarding.autoWatchHint')} icon="clock" onPress={onAutoLock} dense />}
       {watchOnly && <BalancePrivacySetting />}
-      <Row title={t('generalMenu.languages')} subtitle={t('settings.currentLanguage')} icon="globe" dense onPress={() => {
+      <Row title={t('generalMenu.languages')} subtitle={selectedLanguage ? `${selectedLanguage.flag} ${selectedLanguage.nativeName}` : i18n.language} icon="globe" dense onPress={() => {
         const next = { leaf: 'language' as const }; languageOwner.current = next; setOpened(next);
       }} />
-      <Row title={t('mobile.settings.currencyTitle')} subtitle={t('mobile.settings.currencySubtitle')} icon="globe" onPress={() => setOpened({ leaf: 'currency' })} dense />
+      <Row title={t('mobile.settings.currencyTitle')} subtitle={currencyValue} icon="globe" onPress={() => setOpened({ leaf: 'currency' })} dense />
       <Row title={t('mobile.settings.helpTitle')} subtitle={t('mobile.settings.helpSubtitle')} icon="info" onPress={() => setOpened({ leaf: 'about' })} dense last />
     </Card>
     {watchOnly && <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>{t('mobile.settings.watchBody')}</Text>}

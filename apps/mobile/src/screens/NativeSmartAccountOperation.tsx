@@ -58,10 +58,12 @@ export function NativeSmartAccountOperationRoute({
   open,
   onBack,
   ledgerConnection,
+  onViewTransaction,
 }: {
   ledgerConnection?: NativeLedgerConnectionView;
   open(assertCurrent: () => void, signal: AbortSignal, authentication: NativePrivateAuthenticationScope): Promise<NativeSmartAccountOperation>;
   onBack(): void;
+  onViewTransaction?(hash: string): void;
 }) {
   useNativeTranslation();
   const owner = useRef<DeploymentOwner | undefined>(undefined);
@@ -148,6 +150,7 @@ export function NativeSmartAccountOperationRoute({
         controller={current.controller}
         ledgerConnection={ledgerConnection}
         onBack={() => back()}
+        onViewTransaction={onViewTransaction}
       />
     );
   return (
@@ -180,11 +183,13 @@ export function NativeSmartAccountOperationScreen({
   onBack,
   ledgerConnection,
   authentication,
+  onViewTransaction,
 }: {
   authentication?: NativePrivateAuthenticationScope;
   ledgerConnection?: NativeLedgerConnectionView;
   controller: NativeSmartAccountOperation;
   onBack(): void;
+  onViewTransaction?(hash: string): void;
 }) {
   useNativeTranslation();
   const state = useSyncExternalStore(
@@ -210,6 +215,7 @@ export function NativeSmartAccountOperationScreen({
       authentication={authentication}
       state={state}
       onBack={onBack}
+      onViewTransaction={onViewTransaction}
       disabled={state.phase === 'authorize' && ledger.blocked}
       before={<>{ledger.showConnect && <Button title={t('mobile.accounts.connectLedger')} variant="secondary" size="compact" onPress={ledger.connect} />}{ledger.modal}</>}
       authorize={(acknowledgedCustomRisk) => {
@@ -241,10 +247,12 @@ export function NativeSmartAccountOperationContent({
   batchAssetTransfers,
   disabled = false,
   authentication,
+  onViewTransaction,
 }: {
   authentication?: Pick<NativePrivateAuthenticationScope, 'isAuthenticating'>;
   state: NativeSmartAccountOperationSnapshot;
   onBack(): void;
+  onViewTransaction?(hash: string): void;
   authorize(acknowledgedCustomRisk: boolean): void;
   confirmPayer(id: number): void;
   retryMetadata?(): void;
@@ -260,12 +268,12 @@ export function NativeSmartAccountOperationContent({
   const [riskAcknowledgement, setRiskAcknowledgement] = useState<RiskAcknowledgement | null>(null);
   const risk = useRef<RiskAcknowledgement | null>(null), live = useRef(false);
   const intent = state.intent, hash = state.userOperationHash, phase = state.phase;
-  const latest = useRef({ intent, hash, phase });
+  const latest = useRef({ intent, hash, phase, transactionHash: state.transactionHash });
   const clearRisk = useCallback(() => {
     if (!risk.current) return;
     risk.current = null; setRiskAcknowledgement(null);
   }, []);
-  useLayoutEffect(() => { latest.current = { intent, hash, phase }; clearRisk(); }, [intent, hash, phase, clearRisk]);
+  useLayoutEffect(() => { latest.current = { intent, hash, phase, transactionHash: state.transactionHash }; clearRisk(); }, [intent, hash, phase, state.transactionHash, clearRisk]);
   useLayoutEffect(() => {
     live.current = true;
     const retire = () => { live.current = false; clearRisk(); };
@@ -392,9 +400,14 @@ export function NativeSmartAccountOperationContent({
               onPress={() => { if (live.current && AppState.currentState === 'active') confirmPayer(payer.id); }}
             />
   ) : null;
+  const viewableHash = state.transactionHash && /^0x[0-9a-f]{64}$/i.test(state.transactionHash) &&
+    (state.phase === 'complete' || state.userOperationSubmissionStarted) ? state.transactionHash : null;
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
-      <Screen scrollResetKey={`${state.phase}:${payer?.id ?? ''}`} footer={<>{primary}<Button title={t('buttons.close')} variant="secondary" size="compact" onPress={close} /></>}>
+      <Screen scrollResetKey={`${state.phase}:${payer?.id ?? ''}`} footer={<>{primary}{viewableHash && onViewTransaction && <Button title={t('mobile.sendAssetViews.evm.viewTransaction')} onPress={() => {
+        if (!live.current || AppState.currentState !== 'active' || latest.current.transactionHash !== viewableHash || latest.current.phase !== phase) return;
+        onViewTransaction(viewableHash);
+      }} />}<Button title={t(viewableHash && onViewTransaction ? 'privacy.deposit.done' : 'buttons.close')} variant="secondary" size="compact" onPress={close} /></>}>
         <Header
           title={
             state.phase === 'authorize'

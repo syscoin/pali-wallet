@@ -262,6 +262,7 @@ export function NativeSmartCurrencyFixture() {
     <NativeSmartAccountSend
       account={{ address: account, network: network.id, revision: 1 }}
       open={open}
+      feeRecommendations={async () => ({ type: 2, maxFeePerGas: '2000000000', maxPriorityFeePerGas: '1000000000' })}
       token={token}
       collectible={collectible}
       tokenView={tokenView}

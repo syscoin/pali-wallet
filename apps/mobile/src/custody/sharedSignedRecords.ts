@@ -1,7 +1,7 @@
 import { Transaction } from 'ethers/transaction';
 import { EvmSignedRecords, type EvmSignedRecordSession, type EvmRetainedSignedRecord } from '../../../../source/wallet/evmSignedRecords.ts';
 import { projectSavedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
-import type { RetainedSmartAccountTransfer } from '../../../../source/wallet/smartAccountActivity.ts';
+import type { RetainedSmartAccountActivity } from '../../../../source/wallet/smartAccountActivity.ts';
 import { decodeRetainedNftTransfer, isRetainedNftReplayEnvelope } from '../../../../source/shared/nftTransfer.ts';
 import type { EvmAutoNonceSnapshot } from '../../../../source/shared/evmAutoNonce.ts';
 import type { NativeAutomaticNoncePlanner } from './evmTransferReadRpc.ts';
@@ -75,7 +75,10 @@ export function createNativeSignedRecordView(
       ...(speedUpEligible ? { speedUpEligible: true as const } : {}),
       ...(saved.collectibleTransfer ? { collectibleTransfer: saved.collectibleTransfer } : {})});
   };
-  const smartActivity = (transfer: RetainedSmartAccountTransfer): LocalActivityRecord => Object.freeze({
+  const smartActivity = (transfer: RetainedSmartAccountActivity): LocalActivityRecord => {
+    if ('cancellation' in transfer) return Object.freeze({ ...activity(transfer.entry), inspectionOnly: true,
+      smartAccount: Object.freeze({ ...transfer.original, cancellation: true }) });
+    return Object.freeze({
     walletFingerprint: walletBindingId, accountId: nativeAccountId(account.type, account.index),
     address: account.address, networkId: network.id, registrationHash: network.registrationHash,
     chainId: network.chainId, hash: transfer.entry.hash, nonce: transfer.entry.nonce,
@@ -87,9 +90,10 @@ export function createNativeSignedRecordView(
     // The outer transaction's terminal status does not establish the UserOperation outcome.
     phase: 'submitted', inspectionOnly: true,
     operation: transfer.entry.operation, transactionType: Transaction.from(transfer.entry.rawTransaction).type ?? undefined,
+    ...(transfer.entry.originalHash ? { originalHash: transfer.entry.originalHash } : {}),
     ...(maySpeedUp(transfer.entry, Transaction.from(transfer.entry.rawTransaction).type) ? { speedUpEligible: true as const, reviewNavigation: Object.freeze({ speedUp: true }) } : {}),
     smartAccount: Object.freeze({ payer: transfer.entry.from, operationHash: transfer.operationHash, operationNonce: transfer.operationNonce }),
-  });
+  }); };
   return Object.freeze({
     planAutomaticNonce: (...args: Parameters<NativeAutomaticNoncePlanner>) => checked(() => planAutomaticNonce(...args)),
     assertSpendingNonce(nonce: number) {

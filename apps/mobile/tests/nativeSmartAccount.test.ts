@@ -4193,6 +4193,28 @@ test('Smart fee replacement uses only the retained software payer despite a disc
     assert.equal(transfers.getSnapshot().phase, 'pending', JSON.stringify(transfers.getSnapshot()));
     assert.equal(device.signatures.length, signatures, 'the retained payer signs, not the Smart owner');
     assert.equal(f.submitted.length, 2);
+    const speedUp = Transaction.from(f.submitted[1]!);
+    const spedUp = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.equal(spedUp.locals.find(row => row.hash === speedUp.hash)?.originalHash, original.hash);
+    transfers.cancel();
+    await transfers.prepareCancellation(speedUp.hash!);
+    const cancelReview = transfers.getSnapshot().review; assert(cancelReview);
+    await transfers.confirm(cancelReview.id, { method: 'device' });
+    assert.equal(transfers.getSnapshot().phase, 'pending', JSON.stringify(transfers.getSnapshot()));
+    const cancelHash = Transaction.from(f.submitted[2]!).hash!;
+    const cancelled = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    const cancellation = cancelled.locals.find(row => row.hash === cancelHash); assert(cancellation);
+    assert.equal(cancellation.operation, 'cancel'); assert.equal(cancellation.originalHash, speedUp.hash);
+    assert.equal(cancellation.smartAccount?.cancellation, true);
+    assert.equal(cancellation.smartAccount?.payer.toLowerCase(), original.from!.toLowerCase());
+    const saved = await f.runtime.activity!.loadSavedPending!(cancelled.scope, undefined, () => undefined);
+    assert(saved.records.some(row => row.hash === cancelHash));
+    f.showReceipts();
+    const observation = await f.runtime.activity!.observeLocal!(cancellation, () => undefined, new AbortController().signal);
+    assert.equal(observation.status === 'mined' && observation.outcome, 'confirmed');
+    const observed = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.equal(observed.locals.find(row => row.hash === cancelHash)?.phase, 'confirmed');
+    assert.equal(observed.locals.find(row => row.hash === cancelHash)?.smartAccount?.cancellation, true);
     f.assertNoSigningKeys();
     transfers.cancel();
     assert.deepEqual(f.runtime.ledger.getConnectionTargets(), ['ledger:60:0']);
@@ -5742,4 +5764,63 @@ test('Smart guardian aggregate proof shares one OS read but replacement and paye
     assert.equal(f.completedSecretLeases, f.secretLeases); f.assertNoSigningKeys();
     assert.equal(f.submitted.length, 1);
   } finally { await controller?.dispose(); await f.close(); }
+});
+
+for (const kind of ['exact', 'maximum'] as const) test(`Smart ${kind} preserves custom UserOperation fees through MAX/review/signing`, async () => {
+  const f = await fixture(); let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Custom fees' }); f.fundedSmart(); f.deployed(); f.holdReceipts();
+    const fees = { kind: 'custom' as const, type: 2 as const, maxFeePerGas: '7', maxPriorityFeePerGas: '2' };
+    const opening = f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', kind === 'exact'
+      ? { kind, amount: '0.000001', feeChoice: fees } : { kind, feeChoice: fees }, () => undefined, null);
+    fees.maxFeePerGas = '99';
+    operation = await opening; await operation.prepare();
+    const review = operation.getSnapshot(); assert.equal(review.phase, 'authorize', JSON.stringify(review));
+    assert.equal(review.intent.feeChoice?.kind, 'custom');
+    assert.equal((review.intent.feeChoice as typeof fees).maxFeePerGas, '7');
+    if (kind === 'maximum') {
+      assert.equal(review.intent.kind, 'native-transfer');
+      assert.equal(review.intent.kind === 'native-transfer' && review.intent.amountUnits,
+        (BigInt('0x1000000000000000') - BigInt(review.maximumPrefundUnits!) - 1000000000000n).toString());
+    }
+    const stop = operation.subscribe(() => { const payer = operation!.getSnapshot().payerReview; if (payer) operation!.confirmPayer(payer.id); });
+    try { await operation.authorize(review.revision); } finally { stop(); }
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    const tx = Transaction.from(f.submitted[0]!);
+    const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', tx.data);
+    const packed = BigInt(operations[0].gasFees);
+    assert.equal(packed & ((1n << 128n) - 1n), 7n); assert.equal(packed >> 128n, 2n);
+    assert.equal(tx.maxFeePerGas, 7n); assert.equal(tx.maxPriorityFeePerGas, 2n);
+    f.assertNoSigningKeys();
+  } finally { await operation?.dispose(); await f.close(); }
+});
+
+test('Smart send refuses an EOA gas-limit override before any signing or fee read', async () => {
+  const f = await fixture();
+  try {
+    await f.change({ kind: 'create-smart', label: 'Invalid custom gas' });
+    const calls = f.calls.length, reads = f.credentialReads;
+    await assert.rejects(f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222',
+      { kind: 'exact', amount: '1', feeChoice: { kind: 'custom', type: 2, maxFeePerGas: '7', maxPriorityFeePerGas: '2', gasLimit: '30000' } },
+      () => undefined, null), /INVALID_INPUT/);
+    assert.equal(f.calls.length, calls); assert.equal(f.credentialReads, reads);
+  } finally { await f.close(); }
+});
+
+test('Smart fee recommendations use the existing public read and resolve urgency before authorization', async () => {
+  const f = await fixture(); let operation: NativeSmartAccountOperation | undefined;
+  const transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+  try {
+    await f.change({ kind: 'create-smart', label: 'Urgency fees' }); f.fundedSmart(); f.deployed();
+    const reads = f.credentialReads;
+    const rates = await transfers.feeRecommendations(new AbortController().signal);
+    assert.equal(rates.type, 2); assert.equal(f.credentialReads, reads);
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222',
+      { kind: 'exact', amount: '0.000001', feeChoice: { kind: 'high' } }, () => undefined, null);
+    await operation.prepare();
+    const choice = operation.getSnapshot().intent.feeChoice;
+    assert(choice?.kind === 'custom' && choice.type === 2 && rates.type === 2);
+    assert(BigInt(choice.maxFeePerGas) >= BigInt(rates.maxFeePerGas));
+    assert.equal(f.credentialReads, reads); assert.equal(f.submitted.length, 0);
+  } finally { transfers.dispose(); await operation?.dispose(); await f.close(); }
 });

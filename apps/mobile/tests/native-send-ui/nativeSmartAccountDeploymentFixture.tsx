@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
 import { createNativeNetwork } from '../../src/custody/networkContext';
 import { NativeSmartAccountOperationScreen } from '../../src/screens/NativeSmartAccountOperation';
 import type {
@@ -6,13 +6,16 @@ import type {
   NativeSmartAccountOperationSnapshot,
   SmartAccountPayerReview,
 } from '../../src/smartAccount/operation';
-import { Text } from '../../src/ui';
+import { Button, Header, Screen, Text } from '../../src/ui';
+import { TransactionDetailLayout } from '../../src/screens/TransactionDetailLayout';
 
 const query = new URLSearchParams(window.location.search);
 const account = '0x1111111111111111111111111111111111111111';
 const payer = '0x2222222222222222222222222222222222222222';
 const entryPoint = '0x3333333333333333333333333333333333333333';
 const transactionHash = '0x' + 'ab'.repeat(32);
+type ViewedTransaction = Readonly<{ account: string; hash: string; chainId: string; registrationHash: string; networkName: string; status: 'Confirmed' | 'Pending' | 'Unknown' }>;
+let viewedTransaction: ViewedTransaction | null = null;
 const longValues = query.has('long-values');
 const maximumFeeUnits = '420000000000000';
 const maximumPrefundUnits = longValues
@@ -103,6 +106,7 @@ function show(phase: FixturePhase) {
     transactionHash: ['waiting', 'complete', 'failed'].includes(phase)
       ? transactionHash
       : null,
+    userOperationSubmissionStarted: ['waiting', 'complete', 'failed'].includes(phase),
     error:
       phase === 'pending-predecessor'
         ? 'Waiting for the network to include the earlier pending operation.'
@@ -156,6 +160,7 @@ declare global {
       calls(): Call[];
       show(phase: FixturePhase): void;
       revision(): number;
+      viewed(): ViewedTransaction | null;
     };
   }
 }
@@ -163,19 +168,35 @@ window.__nativeSmartAccountDeploymentFixture = {
   calls: () => calls,
   show,
   revision: () => snapshot.revision,
+  viewed: () => viewedTransaction,
 };
 
 export function NativeSmartAccountOperationFixture() {
+  const current = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [closed, setClosed] = useState(false);
+  const [viewed, setViewed] = useState<ViewedTransaction | null>(null);
+  const close = () => { calls.push({ method: 'close' }); setClosed(true); };
   return closed ? (
     <Text>Deployment screen closed</Text>
+  ) : viewed ? (
+    <Screen footer={<Button title="Done" onPress={close} />}>
+      <Header title="Transaction details" onBack={close} />
+      <TransactionDetailLayout amount="0 ETH" direction="Deployment" status={viewed.status} tone={viewed.status === 'Confirmed' ? 'confirmed' : viewed.status === 'Pending' ? 'pending' : 'unknown'} rows={[
+        { label: 'Account', value: viewed.account }, { label: 'Network', value: `${viewed.networkName} · Chain ID ${viewed.chainId}` },
+        { label: 'Transaction hash', value: viewed.hash },
+      ]} />
+    </Screen>
   ) : (
     <NativeSmartAccountOperationScreen
       controller={controller}
-      onBack={() => {
-        calls.push({ method: 'close' });
-        setClosed(true);
+      onViewTransaction={hash => {
+        if (controller.getSnapshot() !== current || current.transactionHash !== hash) throw Error('Stale fixture navigation');
+        const target = Object.freeze({ account: current.account, hash, chainId: current.network.chainId,
+          registrationHash: current.network.registrationHash, networkName: current.network.name,
+          status: current.phase === 'complete' ? 'Confirmed' as const : current.phase === 'failed' ? 'Unknown' as const : 'Pending' as const });
+        viewedTransaction = target; setViewed(target); calls.push({ method: 'viewTransaction' });
       }}
+      onBack={close}
     />
   );
 }

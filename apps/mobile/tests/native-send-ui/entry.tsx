@@ -98,6 +98,7 @@ const publish = (next: NativeTransferSnapshot) => {
   for (const listener of listeners) listener(snapshot);
 };
 const controller: NativeTransferView = {
+  feeRecommendations: async () => ({ type: 2, maxFeePerGas: '2000000000', maxPriorityFeePerGas: '1000000000' }),
   getSnapshot: () => snapshot,
   subscribe(listener) {
     listeners.add(listener);

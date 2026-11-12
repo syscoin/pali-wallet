@@ -345,12 +345,13 @@ function NativeActivityContent({
     chosen.retainedObservation.latestNonce === String(chosen.local.nonce);
   const reviewAction = (action: NativeActivityReviewAction, direct: ((hash: string) => void) | undefined) => {
     if (!chosen?.local) return undefined;
-    if (chosen.local.smartAccount && ['speed-up', 'cancel', 'cancel-saved'].includes(action)) return direct;
+    if (chosen.local.smartAccount && ['speed-up', 'cancel', 'cancel-saved'].includes(action))
+      return direct ?? (onNavigateToReview ? (hash: string) => onNavigateToReview(action, hash) : undefined);
     if (!chosen.local.inspectionOnly) return direct;
     if (!chosen.local.reviewNavigation || !onNavigateToReview) return undefined;
     return (hash: string) => onNavigateToReview(action, hash);
   };
-  const speedUp = (chosen?.local?.inspectionOnly && !chosen.local.smartAccount ? chosen.local.reviewNavigation?.speedUp : chosen?.local?.speedUpEligible)
+  const speedUp = (chosen?.local?.inspectionOnly ? chosen.local.reviewNavigation?.speedUp : chosen?.local?.speedUpEligible)
     ? reviewAction('speed-up', onSpeedUpPending) : undefined;
   const cancelPending = reviewAction('cancel', onCancelPending);
   const cancelSaved = reviewAction('cancel-saved', onCancelSaved);

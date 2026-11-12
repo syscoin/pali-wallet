@@ -96,7 +96,8 @@ export const sysxSendFixture = {
       throw Error('The SYSX screen fixture does not sign or submit');
     };
     return {
-      cancel() {
+      feeRecommendations: async () => '7',
+    cancel() {
         revision++;
         counts.cancellations++;
       },

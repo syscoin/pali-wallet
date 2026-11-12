@@ -1,4 +1,7 @@
+import { AUTOMATIC_FEE, type UtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice';
+import { NetworkFeeSheet } from './NetworkFeeSheet';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
+import { normalizeDecimalInput } from '../../../../source/shared/decimalInput';
 import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   ActivityIndicator,
@@ -134,6 +137,10 @@ export function NativeUtxoSendScreen({
     isAssetAmountEqualToBalance(amount, maximumAmount, asset.decimals));
   const [rbf, setRbf] = useState(snapshotUtxoRbf(initialDraft?.rbf));
   const [advanced, setAdvanced] = useState(false);
+  const [feeSelection, setFeeSelection] = useState({ open, network, choice: AUTOMATIC_FEE as UtxoFeeChoice });
+  const feeChoice = feeSelection.open === open && feeSelection.network === network ? feeSelection.choice : AUTOMATIC_FEE;
+  const [feeDialog, setFeeDialog] = useState<{ open: typeof open; network: UtxoNetwork } | null>(null);
+  const feeOpen = feeDialog?.open === open && feeDialog.network === network;
   const [working, setBusy] = useState(true);
   const [closingHardware, setClosingHardware] = useState(false);
   const busy = working || closingHardware;
@@ -360,6 +367,7 @@ export function NativeUtxoSendScreen({
             max,
             asset,
             rbf,
+            feeChoice,
           });
           if (current()) setReview(next);
         });
@@ -578,7 +586,7 @@ export function NativeUtxoSendScreen({
                   onChangeText={(value) => {
                     invalidateDraft();
                     setMax(false);
-                    setAmount(value);
+                    setAmount(normalizeDecimalInput(value, nativeI18n.resolvedLanguage ?? nativeI18n.language));
                   }}
                   editable={!busy}
                   keyboardType="decimal-pad"
@@ -589,6 +597,8 @@ export function NativeUtxoSendScreen({
                   onSubmitEditing={() => Keyboard.dismiss()}
                 />
               </Card>
+              <Button title={`${t('send.networkFee')} · ${t(feeChoice.kind === 'custom' ? 'mobile.feeChoice.custom' : feeChoice.kind === 'automatic' ? 'mobile.sendAssetViews.evm.automatic' : `send.${feeChoice.kind}`)}`}
+                variant="secondary" size="compact" icon="settings" disabled={busy || !send} onPress={() => { closeScanner(); setFeeDialog({ open, network }); }} />
               <Button title={advanced ? t('mobile.sendAssetViews.evm.hideAdvancedOptions') : t('mobile.sendAssetViews.evm.advancedOptions')} variant="secondary" size="compact" icon={advanced ? 'chevron-up' : 'chevron-down'}
                 disabled={busy} expanded={advanced} onPress={() => setAdvanced(!advanced)} />
               {advanced && <Card style={s.insetCard}>
@@ -627,6 +637,12 @@ export function NativeUtxoSendScreen({
           )}
         </Screen>
       </KeyboardAvoidingView>
+      {feeOpen && send && <NetworkFeeSheet key={`${network.id}:${accountLabel}`} mode="utxo" choice={feeChoice}
+        load={signal => send.feeRecommendations(signal)} onClose={() => { if (screenActive.current) setFeeDialog(null); }}
+        onApply={choice => {
+          if (!screenActive.current || currentNetwork.current.network !== network || currentNetwork.current.open !== open) return;
+          invalidateDraft(); setFeeSelection({ open, network, choice }); setFeeDialog(null);
+        }} />}
       {scanner && scanner.network === network && scanner.open === open && !review && !outcome && <Modal
         visible animationType="slide" onRequestClose={closeScanner}>
         <UtxoRecipientQrScanner network={scanner.network} onClose={closeScanner} onScan={value => {

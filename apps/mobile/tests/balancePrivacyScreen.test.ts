@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createBalancePrivacy } from '../src/core/balancePrivacy.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
+import { PALI_LANGUAGE_OPTIONS } from '../../../source/shared/languagePolicy.ts';
+import { currencyFlag } from '../../../source/shared/currencyFlags.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 import * as privateAuthenticationLifecycle from '../src/screens/privateAuthenticationLifecycle.ts';
 
@@ -104,6 +106,11 @@ test('watch Settings can recover a failed privacy read without opening a custody
     './WalletUpdatePanel': { WalletUpdatePanel: 'WalletUpdatePanel' },
     './NativePreferences': { NativePreferences: 'NativePreferences' }, './WalletBackupBadge': { WalletBackupBadge: 'WalletBackupBadge' },
     './ActivityNotifications': { ActivityNotifications: 'ActivityNotifications' },
+    '../platform/fiatPreferences': { useFiatCurrency: () => ({ status: 'ready', currency: 'usd' }) },
+    '../notifications/service': { nativeActivityNotifications: { subscribe: () => () => undefined,
+      getSnapshot: () => ({ status: 'ready', enabledScopeIds: [], permission: 'denied' }), load: async () => undefined } },
+    '../../../../source/shared/languagePolicy': { PALI_LANGUAGE_OPTIONS },
+    '../../../../source/shared/currencyFlags': { currencyFlag },
     '../platform/localization': nativeTranslationFixture,
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {} },

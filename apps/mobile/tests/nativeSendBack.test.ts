@@ -1,3 +1,4 @@
+import { AUTOMATIC_FEE } from '../../../source/shared/transactionFeeChoice.ts';
 import { languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
 import { createInstance } from 'i18next';
 import assert from 'node:assert/strict';
@@ -9,7 +10,8 @@ import ts from 'typescript';
 import type { NativeRecipientResolver, NativeRecipientResolution } from '../src/portfolio/nativeRecipientResolver.ts';
 import type { NativeUnsignedSendDraft } from '../src/screens/sendNetworkDraft.ts';
 import type { NativeOperationCredential } from '../src/custody/types.ts';
-import { formatBaseUnits } from '../src/core/amounts.ts';
+import { formatBaseUnits, parseDecimalAmount } from '../src/core/amounts.ts';
+import { normalizeDecimalInput } from '../../../source/shared/decimalInput.ts';
 import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE } from '../src/custody/transfers.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
@@ -34,6 +36,8 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   const ui={...Object.fromEntries(['Button','Card','Coin','Header','Icon','IconButton','Notice','Screen','Text'].map(name=>[name,name])),colors:{},styles:{}};
   const deps: Record<string,unknown> = {
     '../platform/localization': localization,
+    '../../../../source/shared/transactionFeeChoice': { AUTOMATIC_FEE },
+    './NetworkFeeSheet': { NetworkFeeSheet: 'NetworkFeeSheet' },
     './RecipientQrScanner': { RecipientQrScanner: 'RecipientQrScanner' },
     './SendNetworkCard': { SendNetworkCard: 'SendNetworkCard' },
     './SendAssetSelector': { SendAssetSelector: 'SendAssetSelector' },
@@ -43,6 +47,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     react,'react-native':native,'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},'../ui':ui,
     './IdleActivityBoundary':{IdlePressable:'IdlePressable',IdleTextInput:'IdleTextInput'},
     '../core/amounts':{formatBaseUnits},
+    '../../../../source/shared/decimalInput': { normalizeDecimalInput },
     '../../../../source/shared/erc20':{formatTokenUnits:()=>'',parseErc20Units:()=>''},
     '../../../../source/shared/evmRecipientChoices':{findLocalEvmRecipientChoices:()=>[]},
     '../../../../source/utils/nftTokenId':{normalizeNftTokenId:()=>''},
@@ -59,14 +64,15 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   let confirmationFailure: Error | undefined;
   let recoveryFailure: Error | undefined;
   let confirmationGate: Promise<void> | undefined, signatures = 0;
-  const prepare = async (recipient: string, amount: string, nonce?: string) => {
-    prepared.push([recipient, amount, nonce]); snapshot = { ...snapshot, phase: 'review', review: {
+  const selectedFees: unknown[] = [];
+  const prepare = async (recipient: string, amount: string, nonce?: string, feeChoice?: unknown) => {
+    selectedFees.push(feeChoice); prepared.push([recipient, amount, nonce]); snapshot = { ...snapshot, phase: 'review', review: {
       id: 'review', recipient, context, amountUnits: '1', maximumFeeUnits: '1', totalUnits: '2' } };
   };
   const maximumPrepared: unknown[] = [];
   const controller={getSnapshot:()=>snapshot,subscribe:()=>()=>{},cancel(){cancels++;snapshot={...snapshot,phase:'idle',review:null};},prepare,
-    async prepareMaximum(recipient: string, nonce?: string) {
-      maximumPrepared.push([recipient, nonce]); await prepare(recipient, 'maximum', nonce);
+    async prepareMaximum(recipient: string, nonce?: string, feeChoice?: unknown) {
+      maximumPrepared.push([recipient, nonce]); await prepare(recipient, 'maximum', nonce, feeChoice);
       snapshot = { ...snapshot, review: { ...snapshot.review, amountUnits: '1999999999999937000', maximumFeeUnits: '63000', totalUnits: '2000000000000000000' } };
     },
     async confirm(id: string, credential: NativeOperationCredential) {
@@ -80,7 +86,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   let context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false,registrationHash:'ethereum-registration'};
   let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
   const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,ledgerConnection,beforeClose,recipientResolver,account,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
-  return {render,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
+  return {render, selectedFees, renderInput: (props: unknown) => module.exports.NativeSendInput(props) as Element,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
     failRecovery(message: string) { recoveryFailure = new Error(message); },
     holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
@@ -542,4 +548,52 @@ test('Smart replacement confirmation follows the retained payer connection requi
     button(f.render(), 'Submit Speed Up').props.onPress(); await settle();
     assert.deepEqual(f.confirmed, ['review']);
   } finally { f.dispose(); }
+});
+
+test('shared decimal input normalizes locale commas only for decimal fields', async () => {
+  const i18n = createInstance();
+  await i18n.init({ initImmediate: false, lng: 'fr', fallbackLng: false,
+    resources: { fr: { translation: languageMessages('fr') } }, interpolation: { escapeValue: false } });
+  const localization = { nativeI18n: i18n, useNativeTranslation: () => ({ t: i18n.t.bind(i18n), i18n }) };
+  const f = setup(undefined, undefined, undefined, undefined, undefined, undefined, undefined, localization);
+  const values: string[] = [];
+  try {
+    const input = (keyboardType: string) => one(f.renderInput({ label: 'Amount', value: '', busy: false,
+      onChange: (value: string) => values.push(value), keyboardType }), 'IdleTextInput');
+    input('decimal-pad').props.onChangeText('0,25');
+    assert.equal(values.at(-1), '0.25');
+    assert.equal(parseDecimalAmount(values.at(-1)!, 18), 250000000000000000n);
+    input('decimal-pad').props.onChangeText('1.234,56');
+    assert.equal(values.at(-1), '1.234,56');
+    assert.throws(() => parseDecimalAmount(values.at(-1)!, 18));
+    input('decimal-pad').props.onChangeText('0,');
+    assert.equal(values.at(-1), '0.');
+    input('number-pad').props.onChangeText('1,2');
+    assert.equal(values.at(-1), '1,2');
+    input('default').props.onChangeText('name,example');
+    assert.equal(values.at(-1), 'name,example');
+  } finally { f.dispose(); }
+});
+
+test('EVM available balance accessibility retains the exact value and unit', () => {
+  const f = setup();
+  try {
+    f.snapshot.phase = 'idle';
+    assert(one(f.render(), 'Text', node => node.props.accessibilityLabel === 'Available 2 ETH'));
+  } finally { f.dispose(); }
+});
+
+
+test('fee choice retires prior consent and preserves MAX for a fresh quote', async () => {
+  const f = setup(); f.snapshot.phase = 'idle'; f.render();
+  editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+  button(f.render(), 'MAX').props.onPress();
+  button(f.render(), 'Network Fee · Automatic').props.onPress();
+  const sheet = one(f.render(), 'NetworkFeeSheet');
+  sheet.props.onApply({ kind: 'custom', type: 2, maxFeePerGas: '7000000000', maxPriorityFeePerGas: '1000000000' });
+  assert(f.counts().cancels > 0); assert.equal(f.snapshot.review, null);
+  reviewSend(f); await settle();
+  assert.equal(f.maximumPrepared.length, 1);
+  assert.equal((f.selectedFees[0] as any).maxFeePerGas, '7000000000');
+  f.dispose();
 });

@@ -1,3 +1,4 @@
+import { AUTOMATIC_FEE, type EvmFeeChoice, type EvmFeeRates } from '../../../../source/shared/transactionFeeChoice.ts';
 import { serializePreparedEvmTransaction, snapshotEvmAccessList, type EvmAccessList, type PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { keccak256 } from 'ethers/crypto';
 import { assertEvmGasLimit, EVM_CANCELLATION_GAS_LIMIT } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
@@ -377,18 +378,21 @@ export class NativeTransferRpc {
     if (error instanceof NativeTransferRpcError) throw error;
     throw new NativeTransferRpcError('UNAVAILABLE');
   }
+  feeRecommendations(signal: AbortSignal): Promise<EvmFeeRates> {
+    return this.receiptRpc.feeRecommendations(signal, () => undefined).catch(error => this.mapReadError(error));
+  }
   prepare(from: string, to: string, valueUnits: string, signal: AbortSignal, nonceOverride: number | undefined,
-    automaticNonce: NativeAutomaticNoncePlanner): Promise<NativeTransferQuote> {
+    automaticNonce: NativeAutomaticNoncePlanner, feeChoice: EvmFeeChoice = AUTOMATIC_FEE): Promise<NativeTransferQuote> {
     const sender = normalizePublicAddress(from, this.context.networkId);
     const recipient = normalizePublicAddress(to, this.context.networkId);
     const value = assertBaseUnits(valueUnits);
     if (value <= 0n) return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
-    return this.receiptRpc.prepare({ from: sender, to: recipient, value: value.toString(), data: '0x' }, signal, () => undefined, undefined, nonceOverride, automaticNonce)
+    return this.receiptRpc.prepare({ from: sender, to: recipient, value: value.toString(), data: '0x' }, signal, () => undefined, undefined, nonceOverride, automaticNonce, undefined, undefined, feeChoice)
       .then((quote) => this.checkedQuote(quote)).catch((error) => this.mapReadError(error));
   }
   prepareMaximum(from: string, to: string, reserveUnits: bigint, signal: AbortSignal, nonceOverride: number | undefined,
-    automaticNonce: NativeAutomaticNoncePlanner): Promise<NativeTransferQuote> {
-    return this.receiptRpc.prepareMaximum(from, to, reserveUnits, signal, () => undefined, nonceOverride, automaticNonce)
+    automaticNonce: NativeAutomaticNoncePlanner, feeChoice: EvmFeeChoice = AUTOMATIC_FEE): Promise<NativeTransferQuote> {
+    return this.receiptRpc.prepareMaximum(from, to, reserveUnits, signal, () => undefined, nonceOverride, automaticNonce, feeChoice)
       .then((quote) => this.checkedQuote(quote)).catch((error) => this.mapReadError(error));
   }
   /** Every EVM rechecks the exact reviewed type, fees, nonce and calldata before signing. */
@@ -401,19 +405,19 @@ export class NativeTransferRpc {
       .then((quote) => this.checkedQuote(quote)).catch((error) => this.mapReadError(error));
   }
   prepareToken(from: string, input: Erc20TransferIntent, signal: AbortSignal,
-    approved: NativeTransferQuote['transaction'] | undefined, nonceOverride: number | undefined, planner: NativeAutomaticNoncePlanner): Promise<NativeTransferQuote> {
+    approved: NativeTransferQuote['transaction'] | undefined, nonceOverride: number | undefined, planner: NativeAutomaticNoncePlanner, feeChoice: EvmFeeChoice = AUTOMATIC_FEE): Promise<NativeTransferQuote> {
     const intent = snapshotErc20TransferIntent(input);
     const sender = normalizePublicAddress(from, this.context.networkId);
     if (intent.chainId !== this.context.chainId) return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
     const asset: EvmTransferAsset = { standard: 'ERC20', contractAddress: intent.token.contractAddress, amountUnits: intent.amountUnits };
     return this.receiptRpc.prepare({ from: sender, to: asset.contractAddress, value: '0', data: encodeErc20Transfer(intent.recipient, intent.amountUnits) },
-      signal, () => undefined, approved, nonceOverride, planner, asset, intent.token.decimals)
+      signal, () => undefined, approved, nonceOverride, planner, asset, intent.token.decimals, feeChoice)
       .then((quote) => Object.freeze({ ...this.checkedQuote(quote), intent, tokenBalanceUnits: quote.assetBalanceUnits! }))
       .catch((error) => this.mapReadError(error));
   }
   prepareNft(selection: NftTransferSelection, request: NftTransferRequest, signal: AbortSignal,
-    assertCurrent: () => void, nonceOverride: number | undefined, automaticNonce: NativeAutomaticNoncePlanner): Promise<EvmNftPreparedQuote> {
-    return this.receiptRpc.prepareNft(selection, request, signal, assertCurrent, nonceOverride, automaticNonce).catch((error) => this.mapReadError(error, 'nft'));
+    assertCurrent: () => void, nonceOverride: number | undefined, automaticNonce: NativeAutomaticNoncePlanner, feeChoice: EvmFeeChoice = AUTOMATIC_FEE): Promise<EvmNftPreparedQuote> {
+    return this.receiptRpc.prepareNft(selection, request, signal, assertCurrent, nonceOverride, automaticNonce, feeChoice).catch((error) => this.mapReadError(error, 'nft'));
   }
   requoteNft(selection: NftTransferSelection, approval: EvmNftPreparedQuote, signal: AbortSignal,
     assertCurrent: () => void, automaticNonce: NativeAutomaticNoncePlanner): Promise<EvmNftPreparedQuote> {

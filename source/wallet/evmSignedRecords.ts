@@ -15,10 +15,11 @@ import { decodeRetainedNftTransfer } from '../shared/nftTransfer.ts';
 
 import {
   decodeRetainedSmartAccountTransfer,
+  decodeRetainedSmartAccountCancellation,
   decodeRetainedSmartAccountOperations,
   type RetainedSmartAccountOperation,
   isSmartAccountActivityCandidate,
-  type RetainedSmartAccountTransfer,
+  type RetainedSmartAccountActivity,
 } from './smartAccountActivity.ts';
 import type { EvmAutoNonceSnapshot } from '../shared/evmAutoNonce.ts';
 import type { EvmTransactionObservation } from '../shared/evmTransactionObservation.ts';
@@ -2082,7 +2083,7 @@ export class EvmSignedRecords {
     Readonly<{
       nextCursor: string | null;
       total: number;
-      transfers: readonly RetainedSmartAccountTransfer[];
+      transfers: readonly RetainedSmartAccountActivity[];
     }>
   > {
     const owner = getAddress(address);
@@ -2110,12 +2111,20 @@ export class EvmSignedRecords {
       if (end < 0) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
       const visible = candidates.slice(0, end);
       const start = Math.max(0, visible.length - maximum),
-        transfers: RetainedSmartAccountTransfer[] = [];
+        transfers: RetainedSmartAccountActivity[] = [];
       for (const entry of visible.slice(start).reverse()) {
-        const decoded = decodeRetainedSmartAccountTransfer(
-          await this.materialize(session, entry),
-          owner
-        );
+        const materialized = await this.materialize(session, entry);
+        const original =
+          entry.operation === 'cancel' && entry.originalHash
+            ? bundle?.entries.find((value) => value.hash === entry.originalHash)
+            : undefined;
+        const decoded = original
+          ? decodeRetainedSmartAccountCancellation(
+              materialized,
+              await this.materialize(session, original),
+              owner
+            )
+          : decodeRetainedSmartAccountTransfer(materialized, owner);
         if (decoded) transfers.push(decoded);
       }
       guard(session);
@@ -2132,7 +2141,7 @@ export class EvmSignedRecords {
     chainId: string,
     address: string,
     hash: string
-  ): Promise<RetainedSmartAccountTransfer | null> {
+  ): Promise<RetainedSmartAccountActivity | null> {
     const owner = getAddress(address);
     if (!HASH.test(hash)) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
     session = this.captureSession(session);
@@ -2145,12 +2154,19 @@ export class EvmSignedRecords {
           item.hash === hash &&
           isSmartAccountActivityCandidate(item, owner)
       );
-      return entry
-        ? decodeRetainedSmartAccountTransfer(
-            await this.materialize(session, entry),
+      if (!entry) return null;
+      const materialized = await this.materialize(session, entry);
+      const original =
+        entry.operation === 'cancel' && entry.originalHash
+          ? bundle?.entries.find((value) => value.hash === entry.originalHash)
+          : undefined;
+      return original
+        ? decodeRetainedSmartAccountCancellation(
+            materialized,
+            await this.materialize(session, original),
             owner
           )
-        : null;
+        : decodeRetainedSmartAccountTransfer(materialized, owner);
     });
   }
 

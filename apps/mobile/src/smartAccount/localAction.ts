@@ -2,6 +2,7 @@ import { snapshotNativeSmartModuleDraft } from './modules.ts';
 import { getAddress } from 'ethers/address';
 import { createErc20Policy, parseErc20Units } from '../../../../source/shared/erc20.ts';
 import { snapshotNftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
+import { snapshotEvmFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
 import type { NativeSmartLocalAction } from '../custody/trezorAccounts.ts';
 
 const { parseMetadata } = createErc20Policy(getAddress);
@@ -32,13 +33,19 @@ export function snapshotNativeSmartLocalAction(action: NativeSmartLocalAction): 
   }
   if (action.kind !== 'operation' || !action.intent) return invalid();
   const intent = action.intent;
+  const choice = intent.feeChoice === undefined ? undefined : snapshotEvmFeeChoice(intent.feeChoice);
+  if (choice && (choice.kind !== 'custom' || choice.gasLimit !== undefined)) return invalid();
+  const fees = choice ? { feeChoice: choice } : {};
   if (intent.kind === 'deploy') return Object.freeze({ kind: action.kind, intent: Object.freeze({ kind: intent.kind }) });
   if (intent.kind === 'native-max')
-    return Object.freeze({ kind: action.kind, intent: Object.freeze({ kind: intent.kind, recipient: getAddress(intent.recipient) }) });
+    return Object.freeze({ kind: action.kind, intent: Object.freeze({ kind: intent.kind, recipient: getAddress(intent.recipient), ...fees }) });
   if (intent.kind === 'native-transfer')
-    return Object.freeze({ kind: action.kind, intent: Object.freeze({ kind: intent.kind, recipient: getAddress(intent.recipient), amountUnits: parseErc20Units(intent.amountUnits) }) });
+    return Object.freeze({ kind: action.kind, intent: Object.freeze({ kind: intent.kind, recipient: getAddress(intent.recipient), amountUnits: parseErc20Units(intent.amountUnits), ...fees }) });
   if (intent.kind === 'erc20-transfer')
-    return Object.freeze({ kind: action.kind, intent: Object.freeze({ kind: intent.kind, recipient: getAddress(intent.recipient), amountUnits: parseErc20Units(intent.amountUnits), token: parseMetadata(intent.token) }) });
-  if (intent.kind === 'nft-transfer') return Object.freeze({ kind: action.kind, intent: snapshotNftTransferIntent(intent) });
+    return Object.freeze({ kind: action.kind, intent: Object.freeze({ kind: intent.kind, recipient: getAddress(intent.recipient), amountUnits: parseErc20Units(intent.amountUnits), token: parseMetadata(intent.token), ...fees }) });
+  if (intent.kind === 'nft-transfer') {
+    const { feeChoice: _choice, ...transfer } = intent;
+    return Object.freeze({ kind: action.kind, intent: Object.freeze({ ...snapshotNftTransferIntent(transfer), ...fees }) });
+  }
   return invalid();
 }

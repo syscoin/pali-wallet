@@ -35,33 +35,33 @@ class FixtureFlow {
   private listeners = new Set<() => void>();
   getSnapshot = () => this.snapshot;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
-  publish(phase: Phase, error = '', fieldErrors: Record<string, string> = {}) {
+  publish(phase: Phase, error: ReturnType<NativeRecoveryFlow['getSnapshot']>['error'] = '', fieldErrors: ReturnType<NativeRecoveryFlow['getSnapshot']>['fieldErrors'] = {}) {
     this.snapshot = Object.freeze({ phase, inventory: params.has('unavailable') ? unavailable : inventory, error, fieldErrors: Object.freeze(fieldErrors) });
     this.listeners.forEach((listener) => listener());
   }
   start() { audit.starts++; if (!params.has('reading')) queueMicrotask(() => { if (this.snapshot.phase === 'reading') this.read(); }); }
-  read() { this.publish(params.has('unavailable') ? 'blocked' : 'scope', params.has('unavailable') ? 'Your saved wallet could not be verified for this recovery. Nothing has been reset.' : ''); }
+  read() { this.publish(params.has('unavailable') ? 'blocked' : 'scope', params.has('unavailable') ? 'SAVED_WALLET_UNVERIFIED' : ''); }
   enter() { if (this.snapshot.phase === 'scope') this.publish('entry'); }
   back() { audit.backs++; if (this.snapshot.phase === 'entry') this.publish('scope'); else this.cancel(); }
   submit({ phrase }: { phrase: string }) {
     if (this.snapshot.phase !== 'entry') return false;
     audit.submissions++;
     const words = phrase.trim().split(/\s+/u).length;
-    const errors: Record<string, string> = {};
-    if (![12, 24].includes(words)) errors.phrase = 'Enter 12 or 24 words in their original order.';
+    const errors: { phrase?: 'INVALID_WORD_COUNT' } = {};
+    if (![12, 24].includes(words)) errors.phrase = 'INVALID_WORD_COUNT';
     if (Object.keys(errors).length) { this.publish('entry', '', errors); return false; }
     audit.admissions++; audit.admittedWordCounts.push(words); this.publish('verifying'); return true;
   }
   verify(outcome: 'match' | 'wrong') {
     if (this.snapshot.phase !== 'verifying') return;
-    this.publish(outcome === 'match' ? 'review' : 'entry', outcome === 'wrong' ? 'This recovery phrase does not match this wallet.' : '');
+    this.publish(outcome === 'match' ? 'review' : 'entry', outcome === 'wrong' ? 'WRONG_PHRASE' : '');
   }
   isAuthenticating = () => false;
   commit() { if (this.snapshot.phase === 'review') { audit.commits++; this.publish('committing'); } }
   cancel() {
     if (this.snapshot.phase === 'closed') return;
     audit.cancels++;
-    this.publish('closed', this.snapshot.phase === 'committing' ? 'We could not confirm device authorization recovery. Close and reopen Pali before trying again.' : 'Recovery was cancelled');
+    this.publish('closed');
   }
 }
 const flow = new FixtureFlow();

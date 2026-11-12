@@ -37,7 +37,7 @@ test('invalid input is field-associated and never retires or invokes the coordin
 });
 test('wrong phrase can deliberately retry on the same original coordinator', async () => {
   const f = fixture(); await enter(f); f.prepare(async () => { throw new Error('WRONG_PHRASE'); });
-  assert(submit(f)); await tick(); assert.match(f.flow.getSnapshot().error, /does not match/); assert.equal(f.flow.getSnapshot().phase, 'entry');
+  assert(submit(f)); await tick(); assert.equal(f.flow.getSnapshot().error, 'WRONG_PHRASE'); assert.equal(f.flow.getSnapshot().phase, 'entry');
   f.prepare(async () => proof); assert(submit(f)); await tick(); assert.equal(f.created(), 1); assert.equal(f.calls(), 2); assert.equal(f.flow.getSnapshot().phase, 'review');
 });
 test('single-flight reservation precedes reentrant subscribers and duplicate commit', async () => {
@@ -56,7 +56,7 @@ test('commit cancellation and commit rejection remain uncertain, never claim rol
     const f = fixture(); await enter(f); submit(f); await tick();
     const held = deferred<'committed-locked'>(); f.commit(cancel ? () => held.promise : async () => { throw new Error('CANCELLED'); }); f.flow.commit(); await tick();
     if (cancel) { f.flow.cancel(); held.resolve('committed-locked'); }
-    await tick(); assert.equal(f.outcomes.length, 1); assert.equal(f.outcomes[0]?.kind, 'uncertain'); assert.match(f.outcomes[0]!.message, /Close and reopen Pali/);
+    await tick(); assert.equal(f.outcomes.length, 1); assert.equal(f.outcomes[0]?.kind, 'uncertain'); assert.equal(f.outcomes[0]?.operationPhase, 'commit'); assert.equal(Object.hasOwn(f.outcomes[0]!, 'message'), false);
   }
 });
 test('expiry is measured from initial prepare, not entry into review', async () => {
@@ -71,7 +71,7 @@ test('stale inventory and unavailable counts cannot turn into a recovery scope o
 });
 test('confirmed commit outcome survives a later reopen failure', async () => {
   const f = fixture(); await enter(f); submit(f); await tick(); f.finish(async () => { throw new Error('REOPEN_REQUIRED'); }); f.flow.commit(); await tick();
-  assert.equal(f.outcomes[0]?.kind, 'success'); assert.equal(f.flow.getSnapshot().phase, 'blocked'); assert.match(f.flow.getSnapshot().error, /could not be reopened/);
+  assert.equal(f.outcomes[0]?.kind, 'success'); assert.equal(f.flow.getSnapshot().phase, 'blocked'); assert.equal(f.flow.getSnapshot().error, 'REOPEN_REQUIRED');
 });
 test('Back before preparation clears entry without retiring; Back after wrong phrase cancels', async () => {
   const f = fixture(); await enter(f); f.flow.back(); assert.equal(f.flow.getSnapshot().phase, 'scope'); assert.equal(f.outcomes.length, 0);

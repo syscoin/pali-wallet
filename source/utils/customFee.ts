@@ -16,13 +16,17 @@ export const getCustomFeeGwei = (
   if (!Number.isFinite(number) || (allowZero ? number < 0 : number <= 0))
     return null;
   // Reject underflow to zero even beyond the decimal library's exponent range.
-  if (number === 0 && /[1-9]/.test(input.split(/[eE]/)[0])) return null;
+  if (number === 0 && /[1-9]/.test(input.split(/[eE]/)[0] ?? '')) return null;
 
   // At 1e21 and above toFixed emits an exponent, which parseUnits rejects.
   const encoded = number.toFixed(9);
   if (/[eE]/.test(encoded)) return null;
   const exact = new Decimal(input);
-  if (exact.decimalPlaces() > 9 || !exact.eq(number) || !exact.eq(encoded))
+  if (
+    (exact.decimalPlaces() ?? Infinity) > 9 ||
+    !exact.eq(number) ||
+    !exact.eq(encoded)
+  )
     return null;
   return number;
 };

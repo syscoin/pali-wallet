@@ -1,4 +1,7 @@
-import { nativeTranslationFixture } from './localizationFixture.ts';
+import { AUTOMATIC_FEE } from '../../../source/shared/transactionFeeChoice.ts';
+import { languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
+import { createInstance } from 'i18next';
+import { normalizeDecimalInput } from '../../../source/shared/decimalInput.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -22,7 +25,7 @@ const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKi
   target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-function fixture(asset?: NativeUtxoAsset, maximum?: string) {
+function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativeTranslationFixture) {
   let network = getUtxoNetwork(asset ? 'syscoin' : 'bitcoin');
   let availableAmount: string | undefined = '1.25000001';
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
@@ -49,7 +52,10 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
     BackHandler: { addEventListener: () => ({ remove() {} }) } };
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'IconButton', 'Notice', 'Screen', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
   const imports: Record<string, unknown> = {
-    '../platform/localization': nativeTranslationFixture,
+    '../platform/localization': localization,
+    '../../../../source/shared/transactionFeeChoice': { AUTOMATIC_FEE },
+    './NetworkFeeSheet': { NetworkFeeSheet: 'NetworkFeeSheet' },
+    '../../../../source/shared/decimalInput': { normalizeDecimalInput },
     react, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
     '../core/amounts': { formatBaseUnits }, './NativeLedger': { NativeLedgerConnectionModal: 'Ledger' },
     './IdleActivityBoundary': { IdleTextInput: 'Input' },
@@ -195,7 +201,7 @@ test('SPT Z-DAG uses the inverse RBF option and MAX fills the selected exact tot
   assert.equal(all(f.render()).find((node) => node.props.accessibilityLabel === 'Amount in SPT')!.props.value, '2.125');
   f.changeBalance('3.0'); f.render(); f.render();
   f.review(); await tick();
-  assert.deepEqual(f.requests[0], { recipient: 'sys1qfixture', amount: '2.125', max: false, asset, rbf: false });
+  assert.deepEqual(f.requests[0], { recipient: 'sys1qfixture', amount: '2.125', max: false, asset, rbf: false, feeChoice: AUTOMATIC_FEE });
   f.close();
 });
 
@@ -389,4 +395,34 @@ test('saved UTXO replay outcome keeps Output 1 without identifying it as the rec
     f.press('Check status'); await tick(); assertSummary();
     assert.equal(f.counts().confirmations, 2);
   } finally { f.close(); }
+});
+
+test('UTXO amount entry normalizes the selected language decimal before exact preparation', async () => {
+  const i18n = createInstance();
+  await i18n.init({ initImmediate: false, lng: 'de', fallbackLng: false,
+    resources: { de: { translation: languageMessages('de') } }, interpolation: { escapeValue: false } });
+  const f = fixture(undefined, undefined, { nativeI18n: i18n, useNativeTranslation: () => ({ t: i18n.t.bind(i18n), i18n }) });
+  try {
+    f.render(); await tick();
+    f.edit(i18n.t('blacklist.recipientDescription'), 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
+    f.edit(i18n.t('mobile.smartSendViews.amountInSymbol', { symbol: 'BTC' }), '0,25');
+    f.review(); await tick();
+    assert.equal(f.requests.length, 1);
+    assert.equal(f.requests[0].amount, '0.25');
+    assert.equal(f.reviews[0]!.outputs[0]!.amountSatoshis, '25000000');
+    assert.equal(f.signatures(), 0);
+  } finally { f.close(); }
+});
+
+
+test('UTXO fee sheet selection reaches a fresh prepare and cannot reuse consent', async () => {
+  const f = fixture(); f.render(); await tick();
+  f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1');
+  f.press('Network Fee · Automatic');
+  const sheet = all(f.render()).find(node => node.type === 'NetworkFeeSheet'); assert(sheet);
+  sheet.props.onApply({ kind: 'custom', satPerVbyte: '7' });
+  assert(f.counts().cancels > 0);
+  f.review(); await tick();
+  assert.deepEqual(f.requests[0].feeChoice, { kind: 'custom', satPerVbyte: '7' });
+  f.close();
 });
