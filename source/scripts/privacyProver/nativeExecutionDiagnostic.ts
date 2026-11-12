@@ -6,6 +6,57 @@ export const NATIVE_EXECUTION_CODES = Object.freeze([
   'disposal-timeout',
 ] as const);
 export type NativeExecutionCode = (typeof NATIVE_EXECUTION_CODES)[number];
+export type NativeExecutionTiming = Readonly<{
+  elapsedMs: number;
+  sdkStartedAfterMs: number | null;
+}>;
+const timings = new WeakMap<object, NativeExecutionTiming>();
+
+/** Only first-party runner observations enter this map; exception fields are not read. */
+export function readNativeExecutionTiming(
+  error: unknown
+): NativeExecutionTiming | undefined {
+  return error !== null &&
+    (typeof error === 'object' || typeof error === 'function')
+    ? timings.get(error)
+    : undefined;
+}
+
+export function recordNativeExecutionTiming(
+  error: Error,
+  startedAt: number | undefined,
+  sdkStartedAt: number | undefined
+): Error {
+  timings.delete(error);
+  try {
+    const now = performance.now();
+    if (
+      startedAt === undefined ||
+      !Number.isFinite(startedAt) ||
+      !Number.isFinite(now) ||
+      now < startedAt ||
+      now - startedAt > 300000 ||
+      (sdkStartedAt !== undefined &&
+        (!Number.isFinite(sdkStartedAt) ||
+          sdkStartedAt < startedAt ||
+          sdkStartedAt > now))
+    )
+      return error;
+    timings.set(
+      error,
+      Object.freeze({
+        elapsedMs: Math.floor(now - startedAt),
+        sdkStartedAfterMs:
+          sdkStartedAt === undefined
+            ? null
+            : Math.floor(sdkStartedAt - startedAt),
+      })
+    );
+  } catch {
+    /* Diagnostic clocks cannot replace the original failure. */
+  }
+  return error;
+}
 
 function ownData(value: unknown, key: string): unknown {
   if (!value || typeof value !== 'object') return undefined;
@@ -39,6 +90,8 @@ export function nativeExecutionError(
   const code = readNativeExecutionCode(failure);
   if (code)
     Object.defineProperty(error, 'nativeExecutionCode', { value: code });
+  const timing = readNativeExecutionTiming(failure);
+  if (timing) timings.set(error, timing);
   return error;
 }
 
