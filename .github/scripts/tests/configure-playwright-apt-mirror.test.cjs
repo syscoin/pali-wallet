@@ -150,3 +150,70 @@ test('link refusal is distinguished from content drift without printing file byt
   assert.equal(result.stderr.includes('prefix_hex='), false);
   assert.equal(fs.readFileSync(f.file, 'utf8'), original);
 });
+
+// The first fixture is the exact 152-byte input captured from AWS runner
+// image 20261111.127.1 in run 43255871079, job 131313793818.
+for (const region of ['us-east-2', 'eu-west-1', 'ap-southeast-2']) {
+  test(`preserves the ${region} EC2 mirror first with fixed fallbacks and idempotence`, (t) => {
+    const f = fixture(t);
+    const from = 'azure.archive.ubuntu.com';
+    const to = `${region}.ec2.archive.ubuntu.com`;
+    const regional = original.replace(from, to);
+    if (region === 'us-east-2') assert.equal(Buffer.byteLength(regional), 152);
+    fs.writeFileSync(f.file, regional);
+    const before = fs.statSync(f.file);
+    const result = f.run();
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), 'True');
+    assert.equal(fs.readFileSync(f.file, 'utf8'), preferred.replace(from, to));
+    const after = fs.statSync(f.file);
+    for (const key of ['mode', 'uid', 'gid'])
+      assert.equal(after[key], before[key]);
+    const again = f.run();
+    assert.equal(again.status, 0, again.stderr);
+    assert.equal(again.stdout.trim(), 'False');
+    assert.equal(fs.statSync(f.file).ino, after.ino);
+  });
+}
+
+for (const first of [
+  'http://us-east-2.ec2.archive.ubuntu.com.evil.example/ubuntu/',
+  'http://us-east-2.ec2.archive.ubuntu.com@evil.example/ubuntu/',
+  'http://user@us-east-2.ec2.archive.ubuntu.com/ubuntu/',
+  'http://us-east-2.ec2.archive.ubuntu.com:80/ubuntu/',
+  'http://us-east-2.ec2.archive.ubuntu.com/ubuntu/../other/',
+  'http://us-east-2.ec2.archive.ubuntu.com/other/',
+  'https://us-east-2.ec2.archive.ubuntu.com/ubuntu/',
+  'http://us-east-2.ec2.archive.ubuntu.com/ubuntu/?mirror=evil',
+  'http://us-east-2.ec2.archive.ubuntu.com/ubuntu/#fragment',
+  'http://us-east-2.EC2.archive.ubuntu.com/ubuntu/',
+  'http://us-east-0.ec2.archive.ubuntu.com/ubuntu/',
+  'http://us-fake-2.ec2.archive.ubuntu.com/ubuntu/',
+])
+  test(`refuses unrecognized regional entry ${first}`, (t) => {
+    const f = fixture(t);
+    const input = original.replace(
+      'http://azure.archive.ubuntu.com/ubuntu/',
+      first
+    );
+    fs.writeFileSync(f.file, input);
+    assert.notEqual(f.run().status, 0);
+    assert.equal(fs.readFileSync(f.file, 'utf8'), input);
+  });
+
+test('regional recognition cannot change canonical fallback entries or accept extra content', (t) => {
+  const f = fixture(t),
+    regional = original.replace(
+      'azure.archive.ubuntu.com',
+      'us-east-2.ec2.archive.ubuntu.com'
+    );
+  for (const input of [
+    regional + 'https://evil.example/ubuntu/\tpriority:4\n',
+    regional.replace('priority:3', 'priority:9'),
+    regional.replace('https://security.ubuntu.com', 'https://evil.example'),
+  ]) {
+    fs.writeFileSync(f.file, input);
+    assert.notEqual(f.run().status, 0);
+    assert.equal(fs.readFileSync(f.file, 'utf8'), input);
+  }
+});
