@@ -148,7 +148,7 @@ test('Settings language leaf revokes its exact owner synchronously on hardware B
   page.props.assertCurrent();assert.equal(f.back(),true);assert.throws(page.props.assertCurrent);assert.equal(f.backs(),0);f.dispose();
 });
 test('both real session owners pass existing navigation to the shared settings component', () => {
-  for (const owner of ['NativeWallet.native', 'WatchSession']) assert.match(source(`../src/screens/${owner}.tsx`), /<RealSettings navigation=\{shell\.navigation\}/);
+  for (const owner of ['NativeWallet.native', 'WatchSession']) assert.match(source(`../src/screens/${owner}.tsx`), /<RealSettings\b[^>]*\bnavigation=\{shell\.navigation\}/);
 });
 
 test('custody Settings keeps security and connected apps without a duplicate Auto-lock entry', () => {
