@@ -660,3 +660,26 @@ test('an unavailable observer requesting lock cannot sustain a rejected-cleanup 
   assert.equal(lockCalls, 3);
   assert.equal(f.unlocked, false);
 });
+
+for (const cleanupFails of [false, true]) test(`public initialization cancellation ${cleanupFails ? 'preserves cleanup quarantine' : 'leaves the existing wallet locked and retryable'}`, async () => {
+  const f = fixture(true), started = deferred<void>(), resume = deferred<void>();
+  const unlock = f.runtime.session.unlock;
+  f.runtime.session.unlock = async () => { started.resolve(); await resume.promise; return unlock(); };
+  const opening = f.authority.initialize();
+  await started.promise;
+  if (cleanupFails) f.runtime.session.lock = async () => { throw new Error('cleanup failed'); };
+  f.authority.lock();
+  resume.resolve();
+  if (cleanupFails) {
+    await rejectsCode(opening, 'UNAVAILABLE');
+    assert.equal(f.authority.getSnapshot().phase, 'unavailable');
+  } else {
+    await opening;
+    assert.equal(f.authority.getSnapshot().phase, 'locked');
+    assert.equal(f.authority.getSnapshot().presence, 'existing');
+    assert.equal(f.unlocked, false);
+    assert.equal(f.events.includes('address'), false, 'cancelled initialization cannot publish an address');
+    await f.authority.unlock();
+    assert.equal(f.authority.getSnapshot().phase, 'backup-required');
+  }
+});

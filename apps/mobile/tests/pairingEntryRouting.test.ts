@@ -200,7 +200,7 @@ function harness(watch = false) {
       publicViewLock: viewPrivacy.viewLock,
       securityPreferences: {},
       watchIdle: { allowNewInput() {} },
-      custodyIdle: {},
+      custodyIdle: { allowNewInput() {} },
     },
     './src/platform/credential': {
       isNativeCredentialPromptActive: () => promptActive,
@@ -310,6 +310,7 @@ function harness(watch = false) {
 test('a warm pairing link wins a racing saved-account restore without persisting an account selection', async () => {
   const f = harness();
   try {
+    await f.viewPrivacy.ready;
     f.warm(LINK);
     let wallet = f.find(f.render(), 'NativeWalletScreen');
     assert.ok(wallet);
@@ -427,5 +428,81 @@ for (const owned of [true, false]) test(`watch OS unlock ${owned ? 'survives its
     assert.equal(f.publicOpens(), owned ? 1 : 0);
     assert.equal(f.viewPrivacy.marker(), owned ? 'unlocked' : 'locked');
     if (owned) assert(f.find(f.render(), 'WatchSession'));
+  } finally { f.authorization.resolve(); f.dispose(); }
+});
+
+for (const watch of [true, false]) test(`locked ${watch ? 'watch-only' : 'native-only'} entry cannot expose native setup or account routes through a pairing link`, async () => {
+  const f = harness(watch);
+  try {
+    await f.viewPrivacy.ready;
+    if (!watch) await f.viewPrivacy.viewLock.lock();
+    f.warm(LINK);
+    assert.equal(f.find(f.render(), 'NativeWalletScreen'), undefined, 'do not mount empty-vault setup or its Watch-account chooser before authorization');
+    f.initial.resolve(null); f.load.resolve(); f.selection.resolve(null); await settle();
+    assert.equal(f.find(f.render(), 'NativeWalletScreen'), undefined);
+    assert.equal(f.find(f.render(), 'AddWatchAccount'), undefined);
+    const unlock = f.find(f.render(), 'Button'); assert(unlock);
+    assert.equal(unlock.props.title, 'Unlock wallet'); unlock.props.onPress(); await settle();
+    assert.equal(f.authCalls(), 1); assert.equal(f.publicOpens(), 0);
+    assert.equal(f.find(f.render(), 'NativeWalletScreen'), undefined);
+    f.authorization.resolve(); await settle();
+    const wallet = f.find(f.render(), 'NativeWalletScreen'); assert(wallet);
+    assert.equal(wallet.props.incomingPairing.uri, URI);
+    assert.equal(f.publicOpens(), 0, 'native entry must not unlock or select a watch account');
+    assert.equal(f.viewPrivacy.marker(), 'unlocked');
+  } finally { f.authorization.resolve(); f.dispose(); }
+});
+
+test('cancelled OS authorization preserves a locked saved-native route without exposing watch accounts', async () => {
+  const f = harness(true);
+  try {
+    await f.viewPrivacy.ready;
+    f.initial.resolve(null); f.load.resolve(); f.selection.resolve({ kind: 'hd', id: 'hd:60:7' }); await settle();
+    assert.equal(f.find(f.render(), 'NativeWalletScreen'), undefined);
+    f.find(f.render(), 'Button')!.props.onPress(); await settle();
+    assert.equal(f.authCalls(), 1);
+    f.state('background', false); f.state('active');
+    f.authorization.resolve(); await settle();
+    assert.equal(f.authSignal()?.aborted, true);
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+    assert.equal(f.publicOpens(), 0);
+    assert.equal(f.find(f.render(), 'NativeWalletScreen'), undefined);
+    assert.equal(f.find(f.render(), 'AddWatchAccount'), undefined);
+    assert.equal(f.find(f.render(), 'WalletAccounts'), undefined);
+  } finally { f.authorization.resolve(); f.dispose(); }
+});
+
+test('locking an open native wallet replaces setup and public views with the lock screen even without watch accounts', async () => {
+  const f = harness();
+  try {
+    await f.viewPrivacy.ready;
+    f.initial.resolve(null); f.load.resolve(); f.selection.resolve({ kind: 'hd', id: 'hd:60:7' }); await settle();
+    assert(f.find(f.render(), 'NativeWalletScreen'));
+    await f.viewPrivacy.viewLock.lock();
+    const locked = f.render();
+    assert.equal(f.find(locked, 'NativeWalletScreen'), undefined);
+    assert.equal(f.find(locked, 'Welcome'), undefined);
+    assert.equal(f.find(locked, 'AddWatchAccount'), undefined);
+    assert.equal(f.find(locked, 'Button')!.props.title, 'Unlock wallet');
+    assert.equal(f.authCalls(), 0, 'locking must not start an authorization prompt');
+    f.find(locked, 'Button')!.props.onPress(); await settle();
+    f.authorization.resolve(); await settle();
+    assert(f.find(f.render(), 'NativeWalletScreen'));
+    assert.equal(f.authCalls(), 1);
+    assert.equal(f.publicOpens(), 0);
+  } finally { f.authorization.resolve(); f.dispose(); }
+});
+
+test('a persisted privacy lock also guards Welcome and remains unlockable without saved accounts', async () => {
+  const f = harness();
+  try {
+    await f.viewPrivacy.ready; await f.viewPrivacy.viewLock.lock();
+    f.initial.resolve(null); f.load.resolve(); f.selection.resolve(null); await settle();
+    assert.equal(f.find(f.render(), 'Welcome'), undefined);
+    const unlock = f.find(f.render(), 'Button'); assert(unlock);
+    assert.equal(unlock.props.title, 'Unlock wallet'); unlock.props.onPress(); await settle();
+    f.authorization.resolve(); await settle();
+    assert(f.find(f.render(), 'Welcome'));
+    assert.equal(f.authCalls(), 1); assert.equal(f.publicOpens(), 0);
   } finally { f.authorization.resolve(); f.dispose(); }
 });

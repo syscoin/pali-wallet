@@ -39,3 +39,22 @@ export async function waitForNativePublicSession(page: Page) {
   await expect(page.getByRole('button', { name: 'PIN digit 1', exact: true })).toHaveCount(0);
   await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
 }
+
+
+/** Deliberate privacy locks require the OS-only view authorization, never a vault credential. */
+export async function unlockPublicView(page: Page) {
+  await expect(page.getByRole('heading', { name: 'Wallet locked', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Unlock wallet', exact: true }).click();
+  await authenticateNativeOperation(page);
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
+}
+
+/** An unprotected public watch session may reopen automatically after a restart. */
+export async function waitForWatchPublicSession(page: Page) {
+  const open = page.getByRole('button', { name: 'View my accounts', exact: true });
+  const wallet = page.getByRole('tab', { name: 'Wallet', exact: true });
+  await expect.poll(async () => await open.isVisible() || await wallet.isVisible()).toBe(true);
+  if (await open.isVisible()) await open.click();
+  await expect(wallet).toBeVisible();
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
+}

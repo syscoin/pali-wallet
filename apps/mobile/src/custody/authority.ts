@@ -505,7 +505,16 @@ export class NativeCustodyAuthority {
             phase: this.snapshot.presence === 'empty' ? 'empty' : 'locked',
           });
           if (this.snapshot.presence === 'existing' && this.revision === openingRevision &&
-              (!this.policy?.viewLock || this.policy.viewLock.getSnapshot().phase === 'unlocked')) await this.unlock();
+              (!this.policy?.viewLock || this.policy.viewLock.getSnapshot().phase === 'unlocked')) {
+            try { await this.unlock(); }
+            catch (cause) {
+              // Backgrounding may revoke public hydration. Its cleanup has to
+              // finish, but a safely locked wallet is still initialized.
+              await this.drainLocks();
+              if (!(cause instanceof CustodyOperationError) || cause.code !== 'CANCELLED' ||
+                  !['locked', 'disposed'].includes(this.snapshot.phase)) throw cause;
+            }
+          }
         }
       } catch {
         this.failUnavailable();
@@ -619,12 +628,13 @@ export class NativeCustodyAuthority {
 
   saveIdlePreference(expected: SecurityPreferenceSnapshot, proposed: number, signal: AbortSignal, authentication: NativePrivateAuthentication, assertScreen: () => void): Promise<SecurityPreferenceSnapshot> {
     const minutes = idleMinutes(proposed);
-    if (!this.policy || !this.runtime || this.snapshot.phase !== 'ready') return Promise.reject(new CustodyOperationError('NOT_READY'));
+    const phase = this.snapshot.phase;
+    if (!this.policy || !this.runtime || (phase !== 'ready' && phase !== 'backup-required')) return Promise.reject(new CustodyOperationError('NOT_READY'));
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
     const runtime = this.runtime, policy = this.policy, revision = this.revision;
     const check = () => {
       this.checkIdle();
-      if (signal.aborted || runtime !== this.runtime || revision !== this.revision || this.snapshot.phase !== 'ready') throw new CustodyOperationError('CANCELLED');
+      if (signal.aborted || runtime !== this.runtime || revision !== this.revision || this.snapshot.phase !== phase) throw new CustodyOperationError('CANCELLED');
       const result: unknown = assertScreen();
       if (result !== undefined) { if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined); throw new CustodyOperationError('CANCELLED'); }
     };
