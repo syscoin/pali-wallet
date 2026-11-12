@@ -119,16 +119,18 @@ class PaliSlhTree internal constructor(
     }
     immediate?.let { waiter(it); return }
     if (!schedule) return
-    PaliSlhLeafWorker.cleanup {
-      val good = runCatching { mapping.withLock {
+    var good = false
+    PaliSlhLeafWorker.cleanup(work = {
+      good = runCatching { mapping.withLock {
         if (!released) {
           try { files.abort(this) } finally { released = true; check(PaliSlhNative.closeDescriptor(descriptor)) }
         }
       } }.isSuccess && mappingGood.get()
       context.releaseTreeOwnership(this, good)
+    }, complete = {
       val callbacks = synchronized(this) { releaseResult = good; releaseWaiters.toList().also { releaseWaiters.clear() } }
       callbacks.forEach { runCatching { it(good) } }
-    }
+    })
   }
   override fun sharedObjectDidRelease() { release() }
 }
@@ -192,15 +194,16 @@ class PaliSlhContext internal constructor(
         disposalGood = disposalGood && good
         remaining.decrementAndGet() == 0
       }
-      if (complete) PaliSlhLeafWorker.cleanup {
-        val callbacks = synchronized(this) {
+      if (complete) PaliSlhLeafWorker.cleanup(work = {
+        synchronized(this) {
           val filesClosed = runCatching { files.close() }.isSuccess
           disposalGood = disposalGood && filesClosed
           owner.closeNamespace(namespace, disposalGood)
-          disposed = true; waiters.toList().also { waiters.clear() }
         }
+      }, complete = {
+        val callbacks = synchronized(this) { disposed = true; waiters.toList().also { waiters.clear() } }
         callbacks.forEach { runCatching { finishPromise(it) } }
-      }
+      })
     }
     live.forEach { it.release(complete = ::finish) }; finish(true)
   }

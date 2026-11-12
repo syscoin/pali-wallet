@@ -159,10 +159,15 @@ final class PaliSlhLeafWorker: @unchecked Sendable {
     pump(); mutex.unlock()
   }
   func cleanup(_ work: @escaping @Sendable () -> Void) {
+    cleanup(work, complete: {})
+  }
+  // Publish cleanup completion only after its admission barrier has been retired.
+  func cleanup(_ work: @escaping @Sendable () -> Void, complete: @escaping @Sendable () -> Void) {
     mutex.lock(); cleanups += 1
     pending.append(Entry(kind: .exclusive, run: { [self] in
-      defer { finish(.exclusive, cleanup: true) }
       work()
+      finish(.exclusive, cleanup: true)
+      complete()
     }))
     pump(); mutex.unlock()
   }
