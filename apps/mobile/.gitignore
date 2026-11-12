@@ -4,5 +4,6 @@ dist/
 dist-*/
 /ios/
 /android/
+.pali-build/
 playwright-report/
 test-results/

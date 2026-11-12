@@ -77,10 +77,13 @@ test('private proof workflow remains opt-in, exclusive and within existing owned
   assert.equal(workflow.jobs.android.steps.find(step => step.name === 'Stop isolated emulator').if, 'always()');
 });
 
-test('ordinary native build hooks package pinned assets without a qualification flag', async () => {
+test('ordinary native build wrapper packages pinned assets without a qualification flag', async () => {
   const mobile = JSON.parse(fs.readFileSync(path.join(root, 'apps/mobile/package.json'), 'utf8'));
-  for (const platform of ['ios', 'android'])
-    assert.equal(mobile.scripts[`pre${platform}`], 'node ../../scripts/prepare-native-private-prover.cjs --app');
+  for (const platform of ['ios', 'android']) {
+    assert.equal(mobile.scripts[platform], `node scripts/run-native-build.cjs ${platform}`);
+    assert.equal(mobile.scripts[`pre${platform}`], undefined, 'asset preparation belongs inside the checkout lock');
+  }
+  assert.match(fs.readFileSync(path.join(root, 'apps/mobile/scripts/run-native-build.cjs'), 'utf8'), /\.\.\/\.\.\/scripts\/prepare-native-private-prover\.cjs/);
   const key = Buffer.from('abc');
   const hash = crypto.createHash('sha256').update(key).digest('hex');
   for (const status of [0, 1]) {
