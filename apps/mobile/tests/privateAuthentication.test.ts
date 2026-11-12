@@ -118,6 +118,7 @@ test('a cancelled native read cannot lend prompt status to a successor or secret
   let reads = 0, consumed = 0;
   const reference = { version: 1 as const, installationId: '11'.repeat(16), walletBindingId: '22'.repeat(32), pairFingerprint: '33'.repeat(32), enrollmentId: '44'.repeat(16) };
   const port = createCredentialPort({
+    language: () => 'en',
     native: {
       credentialCapabilities: async () => ({ deviceAuth: 'ready', credentialPresent: true }),
       isCredentialPromptActive: () => false,

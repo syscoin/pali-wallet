@@ -143,10 +143,10 @@ public final class PaliWalletStorageModule: Module {
     Name("PaliWalletStorage")
     Function("isCredentialPromptActive") { self.credentials.isAuthenticating() }
     Function("credentialCapabilities") { (binding: String?) in try self.credentials.capabilities(binding) }
-    Function("prepareViewAuthorization") { PaliCredentialRequest(viewOwner: self.credentials) }
-    Function("prepareCredentialAuthorization") { (binding: String) in try PaliCredentialRequest(owner: self.credentials, binding: binding, authorizationOnly: true) }
-    Function("prepareCredentialRead") { (binding: String) in try PaliCredentialRequest(owner: self.credentials, binding: binding) }
-    Function("prepareCredentialStage") { (binding: String, secret: String) in try PaliCredentialRequest(owner: self.credentials, binding: binding, secret: secret) }
+    Function("prepareViewAuthorization") { (language: String) in try PaliCredentialRequest(viewOwner: self.credentials, language: language) }
+    Function("prepareCredentialAuthorization") { (binding: String, language: String) in try PaliCredentialRequest(owner: self.credentials, binding: binding, language: language, authorizationOnly: true) }
+    Function("prepareCredentialRead") { (binding: String, language: String) in try PaliCredentialRequest(owner: self.credentials, binding: binding, language: language) }
+    Function("prepareCredentialStage") { (binding: String, secret: String, language: String) in try PaliCredentialRequest(owner: self.credentials, binding: binding, language: language, secret: secret) }
     AsyncFunction("removeCredential") { (binding: String) in try self.credentials.remove(binding) }
     Class("CredentialRequest", PaliCredentialRequest.self) {
       Function("cancel") { (request: PaliCredentialRequest) in request.cancel() }

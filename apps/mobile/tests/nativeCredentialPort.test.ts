@@ -15,7 +15,7 @@ function fixture() {
     prepareCredentialAuthorization: binding => { calls.push(`authorize:${binding}`); return request(); },
     prepareCredentialRead: binding => { calls.push(`read:${binding}`); return request(); },
     prepareCredentialStage: binding => { calls.push(`stage:${binding}`); return request(); }, removeCredential: async () => { calls.push('remove'); } };
-  const ports = { native, publicStore: { get: async (name: string) => entries.get(name) ?? null, set: async (name: string, value: string) => { entries.set(name, value); }, remove: async (name: string) => { entries.delete(name); } },
+  const ports = { native, language: () => 'en' as const, publicStore: { get: async (name: string) => entries.get(name) ?? null, set: async (name: string, value: string) => { entries.set(name, value); }, remove: async (name: string) => { entries.delete(name); } },
     prompt: async <T>(_signal: AbortSignal, work: () => Promise<T>) => work(), setActive: (value: NativeCredentialRequest | null) => { if (value && active) throw Error('busy'); active = value; } };
   const owner = { signal: signal.signal, assertCurrent: () => { if (!valid) throw Error('stale'); }, purpose: 'secret-read' as const };
   return { port: createCredentialPort(ports), second: () => createCredentialPort(ports), owner, signal, calls, entries, setResult: (value: Promise<unknown>) => { result = value; }, retire: () => { valid = false; }, active: () => active };
@@ -106,6 +106,7 @@ test('a passkey prompt cannot borrow the native credential background window or 
 test('public-view authentication has no credential or storage capability and refuses a secret result', async () => {
   let active: NativeCredentialRequest | null = null, prompts = 0, requests = 0, result: unknown = null;
   const authorize = createPublicViewAuthorizer({
+    language: () => 'en',
     native: { prepareViewAuthorization() { requests++; return { run: async () => result, cancel() {} }; } },
     prompt: async (_signal, work) => { prompts++; return work(); },
     setActive: value => { active = value; },
@@ -123,6 +124,7 @@ test('public-view authentication discards late success after cancellation or cha
     const held = Promise.withResolvers<unknown>(), owner = new AbortController();
     let current = true, cancelled = 0, active: NativeCredentialRequest | null = null;
     const authorize = createPublicViewAuthorizer({
+      language: () => 'en',
       native: { prepareViewAuthorization: () => ({ run: () => held.promise, cancel() { cancelled++; } }) },
       prompt: async (_signal, work) => work(), setActive: value => { active = value; },
     });
@@ -132,4 +134,33 @@ test('public-view authentication discards late success after cancellation or cha
     held.resolve(null); await rejected;
     assert.equal(active, null); assert(cancelled > 0);
   }
+});
+
+test('each OS request captures the selected Pali language without changing the credential binding', async () => {
+  let language: 'en' | 'fr' = 'fr'; const requests: { binding: string; language: string }[] = [];
+  const native: NativeCredentialModule = {
+    isCredentialPromptActive: () => false,
+    credentialCapabilities: async () => ({ deviceAuth: 'ready', credentialPresent: true }),
+    prepareCredentialRead(binding, selected) { requests.push({ binding, language: selected }); return { run: async () => { language = 'en'; return secret; }, cancel() {} }; },
+    prepareCredentialAuthorization() { throw Error('unused'); }, prepareCredentialStage() { throw Error('unused'); }, removeCredential: async () => {},
+  };
+  const port = createCredentialPort({ native, language: () => language,
+    publicStore: { get: async () => null, set: async () => {}, remove: async () => {} },
+    prompt: async (_owner, work) => work(), setActive() {},
+  });
+  const owner = { signal: new AbortController().signal, assertCurrent() {}, purpose: 'secret-read' as const };
+  await port.withSecret(reference, owner, async value => assert.equal(value, secret));
+  await port.withSecret(reference, owner, async value => assert.equal(value, secret));
+  assert.deepEqual(requests.map(item => item.language), ['fr', 'en']);
+  assert.equal(requests[0]?.binding, requests[1]?.binding);
+});
+
+test('unknown language values cannot reach native prompt creation', async () => {
+  let requested = false;
+  const authorize = createPublicViewAuthorizer({ language: () => 'arbitrary prompt' as 'en',
+    native: { prepareViewAuthorization() { requested = true; throw Error('unexpected'); } },
+    prompt: async (_owner, work) => work(), setActive() {},
+  });
+  await assert.rejects(authorize(new AbortController().signal, () => {}), /CREDENTIAL_UNAVAILABLE/);
+  assert.equal(requested, false);
 });

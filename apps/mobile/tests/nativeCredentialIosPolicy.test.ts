@@ -80,7 +80,7 @@ test('wrong-policy metadata and opaque ACL comparisons remain rejected', () => {
 });
 
 test('public-view mode uses OS policy and returns before any Keychain read', () => {
-  assert.match(source, /init\(viewOwner owner: PaliCredentialOwner\)/);
+  assert.match(source, /init\(viewOwner owner: PaliCredentialOwner, language: String\) throws/);
   const run = source.slice(source.indexOf('  func run(_ promise: Promise)'));
   const view = run.slice(run.indexOf('guard let binding else {'), run.indexOf('var error: Unmanaged<CFError>?'));
   assert.match(view, /evaluatePolicy\(\.deviceOwnerAuthentication/);

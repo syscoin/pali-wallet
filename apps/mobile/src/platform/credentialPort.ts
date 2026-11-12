@@ -1,3 +1,4 @@
+import { PALI_LANGUAGE_OPTIONS, type PaliLanguage } from '../../../../source/shared/languagePolicy.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import { captureNativeCredentialReference, type NativeCredentialOwner, type NativeCredentialPort, type NativeCredentialReference } from '../custody/credentialVault.ts';
 import { operationAuthenticationCancellation } from '../core/operationAuthentication.ts';
@@ -6,13 +7,13 @@ export type NativeCredentialRequest = Readonly<{ run(): Promise<unknown>; cancel
 export type NativeCredentialModule = Readonly<{
   isCredentialPromptActive(): boolean;
   credentialCapabilities(binding: string | null): Promise<Readonly<{ deviceAuth: 'ready' | 'missing' | 'unsupported'; credentialPresent: boolean }>>;
-  prepareCredentialRead(binding: string): NativeCredentialRequest;
-  prepareCredentialAuthorization(binding: string): NativeCredentialRequest;
-  prepareCredentialStage(binding: string, secret: string): NativeCredentialRequest;
+  prepareCredentialRead(binding: string, language: PaliLanguage): NativeCredentialRequest;
+  prepareCredentialAuthorization(binding: string, language: PaliLanguage): NativeCredentialRequest;
+  prepareCredentialStage(binding: string, secret: string, language: PaliLanguage): NativeCredentialRequest;
   removeCredential(binding: string): Promise<void>;
 }>;
 export type NativeViewAuthorizationModule = Readonly<{
-  prepareViewAuthorization(): NativeCredentialRequest;
+  prepareViewAuthorization(language: PaliLanguage): NativeCredentialRequest;
 }>;
 /** Only native-owned Android system credential UI may pause the host Activity. */
 export function credentialPromptActivityState(platform: string, state: string, native: Pick<NativeCredentialModule, 'isCredentialPromptActive'>): string {
@@ -21,11 +22,17 @@ export function credentialPromptActivityState(platform: string, state: string, n
 export const isNonBackgroundNativePromptActive = (state: string | null | undefined, isActive: () => boolean): boolean => (state === 'active' || state === 'inactive') && isActive();
 type Ports = Readonly<{
   native: NativeCredentialModule;
+  language(): PaliLanguage;
   publicStore: Readonly<{ get(name: string): Promise<string | null>; set(name: string, value: string): Promise<void>; remove(name: string): Promise<void> }>;
   prompt<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T>;
   setActive(request: NativeCredentialRequest | null): void;
 }>;
 const failure = (code = 'CREDENTIAL_UNAVAILABLE') => Object.assign(new Error(code), { code });
+function credentialLanguage(ports: Pick<Ports, 'language'>): PaliLanguage {
+  const value = ports.language();
+  if (!PALI_LANGUAGE_OPTIONS.some(option => option.value === value)) throw failure();
+  return value;
+}
 const binding = (reference: NativeCredentialReference) => {
   const value = captureNativeCredentialReference(reference);
   return JSON.stringify([1, value.installationId, value.walletBindingId, value.pairFingerprint, value.enrollmentId]);
@@ -70,11 +77,11 @@ async function runRequest(ports: Pick<Ports, 'prompt' | 'setActive'>, owner: Req
 }
 
 /** A public-view authorization has no credential reference or storage capability. */
-export function createPublicViewAuthorizer(ports: Pick<Ports, 'prompt' | 'setActive'> & { native: NativeViewAuthorizationModule }) {
+export function createPublicViewAuthorizer(ports: Pick<Ports, 'prompt' | 'setActive' | 'language'> & { native: NativeViewAuthorizationModule }) {
   return async (signal: AbortSignal, assertCurrent: () => void): Promise<void> => {
     const owner = Object.freeze({ signal, assertCurrent });
     check(owner);
-    const result = await runRequest(ports, owner, () => ports.native.prepareViewAuthorization());
+    const result = await runRequest(ports, owner, () => ports.native.prepareViewAuthorization(credentialLanguage(ports)));
     if (result !== null && result !== undefined) throw failure();
     check(owner);
   };
@@ -100,7 +107,7 @@ export function createCredentialPort(ports: Ports): NativeCredentialPort {
     },
     async authorize(reference, owner) {
       const expected = binding(reference); owner = captureOwner(owner);
-      const result = await run(owner, () => ports.native.prepareCredentialAuthorization(expected));
+      const result = await run(owner, () => ports.native.prepareCredentialAuthorization(expected, credentialLanguage(ports)));
       if (result !== null && result !== undefined) throw failure();
       check(owner);
     },
@@ -109,7 +116,7 @@ export function createCredentialPort(ports: Ports): NativeCredentialPort {
       owner = captureOwner(owner);
       let secret: unknown;
       try {
-        secret = await run(owner, () => ports.native.prepareCredentialRead(expected));
+        secret = await run(owner, () => ports.native.prepareCredentialRead(expected, credentialLanguage(ports)));
         if (!secretValid(secret)) throw failure();
         check(owner); const result = await consume(secret); check(owner); return result;
       } finally { secret = undefined; }
@@ -126,7 +133,7 @@ export function createCredentialPort(ports: Ports): NativeCredentialPort {
         const raw = JSON.stringify([expected, Array.from(publicBytes, byte => byte.toString(16).padStart(2, '0')).join('')]);
         if (await ports.publicStore.get(publicName(captured)) !== null) throw failure();
         check(owner);
-        const result = await run(owner, () => ports.native.prepareCredentialStage(expected, secret));
+        const result = await run(owner, () => ports.native.prepareCredentialStage(expected, secret, credentialLanguage(ports)));
         if (result !== null && result !== undefined) throw failure();
         check(owner); await ports.publicStore.set(publicName(captured), raw); check(owner);
         if (await ports.publicStore.get(publicName(captured)) !== raw) throw failure();

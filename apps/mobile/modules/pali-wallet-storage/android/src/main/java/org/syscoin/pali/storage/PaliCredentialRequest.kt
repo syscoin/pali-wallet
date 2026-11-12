@@ -41,6 +41,19 @@ internal class PaliCredentialBinding(val value: String) {
   }
   val alias get() = "org.pali.mobile.protected-vault.v1.$id"
 }
+private data class PaliCredentialCopy(val unlock: String, val authorize: String)
+private fun credentialCopy(language: String): PaliCredentialCopy = when (language) {
+  "en" -> PaliCredentialCopy("Unlock Pali Wallet", "Authorize access to Pali Wallet")
+  "es" -> PaliCredentialCopy("Desbloquear Pali Wallet", "Autorizar el acceso a Pali Wallet")
+  "pt" -> PaliCredentialCopy("Desbloquear a Pali Wallet", "Autorizar o acesso à Pali Wallet")
+  "fr" -> PaliCredentialCopy("Déverrouiller Pali Wallet", "Autoriser l’accès à Pali Wallet")
+  "de" -> PaliCredentialCopy("Pali Wallet entsperren", "Zugriff auf Pali Wallet erlauben")
+  "zh" -> PaliCredentialCopy("解锁 Pali Wallet", "授权访问 Pali Wallet")
+  "ja" -> PaliCredentialCopy("Pali Walletのロックを解除", "Pali Walletへのアクセスを許可")
+  "ko" -> PaliCredentialCopy("Pali Wallet 잠금 해제", "Pali Wallet 접근 허용")
+  "ru" -> PaliCredentialCopy("Разблокировать Pali Wallet", "Разрешить доступ к Pali Wallet")
+  else -> credentialFailure()
+}
 private fun credentialFailure(code: String = "CREDENTIAL_UNAVAILABLE"): Nothing = throw PaliCredentialFailure(code)
 private val credentialExecutor = Executors.newSingleThreadExecutor { task -> Thread(task, "PaliCredential").apply { isDaemon = true } }
 private val credentialMain = Handler(Looper.getMainLooper())
@@ -176,7 +189,8 @@ internal class PaliCredentialStore(private val app: Context) {
   }
 }
 
-class PaliCredentialRequest internal constructor(private val owner: PaliCredentialOwner, raw: String? = null, secret: String? = null, private val authorizationOnly: Boolean = false) : SharedObject() {
+class PaliCredentialRequest internal constructor(private val owner: PaliCredentialOwner, language: String, raw: String? = null, secret: String? = null, private val authorizationOnly: Boolean = false) : SharedObject() {
+  private val copy = credentialCopy(language)
   internal val binding = raw?.let { PaliCredentialBinding(it) }
   private val started = AtomicBoolean(false)
   private val cancelled = AtomicBoolean(false)
@@ -230,7 +244,7 @@ class PaliCredentialRequest internal constructor(private val owner: PaliCredenti
       try {
         check()
         if (Build.VERSION.SDK_INT < 30) credentialFailure()
-        val prompt = BiometricPrompt.Builder(host ?: credentialFailure("CREDENTIAL_CANCELLED")).setTitle("Unlock Pali Wallet")
+        val prompt = BiometricPrompt.Builder(host ?: credentialFailure("CREDENTIAL_CANCELLED")).setTitle(copy.unlock)
           .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL).build()
         authenticating = true
         prompt.authenticate(cancellation, credentialExecutor, object : BiometricPrompt.AuthenticationCallback() {
@@ -280,7 +294,7 @@ class PaliCredentialRequest internal constructor(private val owner: PaliCredenti
           try {
             check()
             if (Build.VERSION.SDK_INT < 30) credentialFailure()
-            val prompt = BiometricPrompt.Builder(host ?: credentialFailure("CREDENTIAL_CANCELLED")).setTitle("Authorize access to Pali Wallet")
+            val prompt = BiometricPrompt.Builder(host ?: credentialFailure("CREDENTIAL_CANCELLED")).setTitle(copy.authorize)
               .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL).build()
             // Only this OS-owned, still-unconsumed CryptoObject may span the system credential Activity.
             authenticating = true

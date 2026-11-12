@@ -60,5 +60,5 @@ test('public-view mode has no CryptoObject, Keystore or credential-file operatio
   assert.match(view, /whenForeground\(promise, false, null\)/);
   assert.match(view, /check\(\); finish\(promise, null, null, false, null\)/);
   assert.doesNotMatch(view, /owner\.store|KeyStore|Cipher\.|CryptoObject\(|doFinal|updateAAD/);
-  assert.match(moduleSource, /Function\("prepareViewAuthorization"\) \{ PaliCredentialRequest\(credentials\(\)\) \}/);
+  assert.match(moduleSource, /Function\("prepareViewAuthorization"\) \{ language: String -> PaliCredentialRequest\(credentials\(\), language\) \}/);
 });
