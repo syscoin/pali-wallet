@@ -53,6 +53,7 @@ async function fixture(language = 'en') {
   const imported = {
     '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'biometrics', icon: 'fingerprint' }) },
     '../platform/localization': { useNativeTranslation: () => ({ t: engine.t.bind(engine), i18n: engine }) },
+    '../platform/secretClipboard': { copyNativeSecret() { assert.fail('Management localization must not copy a key'); } },
     'react-native': { View: 'View', FlatList: 'FlatList', KeyboardAvoidingView: 'KeyboardAvoidingView', ActivityIndicator: 'ActivityIndicator',
       Switch: 'Switch', Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
       BackHandler: { addEventListener: (_event: string, handler: () => boolean) => { backHandlers.add(handler); return { remove() { backHandlers.delete(handler); } }; } }, Keyboard: { dismiss() {} }, StyleSheet: { create: (value: unknown) => value } },
