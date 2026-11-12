@@ -127,7 +127,7 @@ test('initialization keeps an empty wallet in onboarding and automatically opens
   assert.equal(fresh.authority.getSnapshot().phase, 'empty');
   const existing = fixture(true);
   await existing.authority.initialize();
-  assert.equal(existing.authority.getSnapshot().phase, 'backup-required');
+  assert.equal(existing.authority.getSnapshot().phase, 'ready');
   assert.deepEqual(existing.authority.getSnapshot().account, { network: 'ethereum', address: ADDRESS });
   await rejectsCode(existing.authority.create(), 'NOT_READY');
 });
@@ -139,7 +139,9 @@ test('create and import expose only a detached normalized address and never conf
     if (operation === 'create') await f.authority.create();
     else await f.authority.importPhrase(PHRASE);
     const state = f.authority.getSnapshot();
-    assert.equal(state.phase, 'backup-required');
+    assert.equal(state.phase, 'ready');
+    assert.equal(state.presence, 'existing');
+    assert.equal(state.backup, 'unconfirmed');
     assert.deepEqual(state.account, { network: 'ethereum', address: ADDRESS });
     assert.equal(Object.isFrozen(state), true);
     assert.equal(Object.isFrozen(state.account), true);
@@ -150,7 +152,7 @@ test('create and import expose only a detached normalized address and never conf
   }
 });
 
-test('only persisted backup status of an existing wallet permits ready', async () => {
+test('persisted confirmed backup stays confirmed without adding backup mutation APIs', async () => {
   const f = fixture(true);
   f.setStored({ presence: 'existing', backup: 'confirmed' });
   await f.authority.initialize();
@@ -257,7 +259,7 @@ test('lock during an SDK unlock revokes immediately and drains late completion b
   assert.equal(f.events.includes('address'), false);
   await f.authority.unlock();
   assert.equal(f.unlocked, true);
-  assert.equal(f.authority.getSnapshot().phase, 'backup-required');
+  assert.equal(f.authority.getSnapshot().phase, 'ready');
 });
 
 test('lock during creation preserves its committed wallet and prevents repeated initialization', async () => {
@@ -279,7 +281,7 @@ test('lock during creation preserves its committed wallet and prevents repeated 
   assert.equal(f.unlocked, false);
   await rejectsCode(f.authority.create(), 'NOT_READY');
   await f.authority.unlock();
-  assert.equal(f.authority.getSnapshot().phase, 'backup-required');
+  assert.equal(f.authority.getSnapshot().phase, 'ready');
 });
 
 test('a lost creation acknowledgment reconciles durable presence without deleting or overwriting', async () => {
@@ -329,7 +331,7 @@ test('observer exceptions and reentrant lock cannot publish stale ready data', a
   });
   f.authority.subscribe((state) => { later.push(state.phase); });
   await rejectsCode(f.authority.unlock(), 'CANCELLED');
-  assert.equal(later.includes('backup-required'), false);
+  assert.equal(later.includes('ready'), false);
   assert.equal(f.authority.getSnapshot().phase, 'locked');
   assert.equal(f.unlocked, false);
 });
@@ -436,7 +438,7 @@ test('a delayed lock cleanup blocks the next authentication until the retired se
   cleanup.resolve();
   await next;
   assert.equal(f.unlocked, true);
-  assert.equal(f.authority.getSnapshot().phase, 'backup-required');
+  assert.equal(f.authority.getSnapshot().phase, 'ready');
 });
 
 test('lock during public-account loading discards the late response and relocks the SDK', async () => {
@@ -591,7 +593,7 @@ test('a failed create with a verified empty store may be retried', async () => {
   assert.equal(f.authority.getSnapshot().phase, 'empty');
   f.runtime.session.createWallet = original;
   await f.authority.create();
-  assert.equal(f.authority.getSnapshot().phase, 'backup-required');
+  assert.equal(f.authority.getSnapshot().phase, 'ready');
 });
 
 test('a read that completes after disposal cannot change the terminal snapshot', async () => {
@@ -680,6 +682,6 @@ for (const cleanupFails of [false, true]) test(`public initialization cancellati
     assert.equal(f.unlocked, false);
     assert.equal(f.events.includes('address'), false, 'cancelled initialization cannot publish an address');
     await f.authority.unlock();
-    assert.equal(f.authority.getSnapshot().phase, 'backup-required');
+    assert.equal(f.authority.getSnapshot().phase, 'ready');
   }
 });

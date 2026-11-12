@@ -872,7 +872,7 @@ test('five wrong phrases retain throttling and successful recovery does not inve
   try {
     const proof = await prepareRecoveryCredential(unconfirmed, PHRASE, () => undefined); await unconfirmed.commit(proof);
     await g.reopen(); await g.owner.unlock();
-    assert.equal(g.owner.getSnapshot().phase, 'backup-required');
+    assert.equal(g.owner.getSnapshot().phase, 'ready');
     assert.equal(g.read().metadata.some((row) => row.key === 'backup'), false);
   } finally { await unconfirmed.dispose(); await g.close(); }
 });
@@ -898,7 +898,7 @@ test('recovery retry cooldown elapses on the owned connection despite wall-clock
     monotonic = 30000; wall = 1;
     const proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined);
     await recovery.commit(proof); await f.reopen(); await f.owner.unlock();
-    assert.equal(f.owner.getSnapshot().phase, 'backup-required');
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
     assert.equal(JSON.parse(f.read().metadata.find((row) => row.key === 'auth')!.value).failures, 0);
   } finally { await recovery.dispose(); await f.close(); }
 });

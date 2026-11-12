@@ -165,9 +165,8 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
     const current = account;
     if (!canReceive || !current || !lifecycle.current.alive || AppState.currentState !== 'active' || !model.isCurrent(current) || lifecycle.current.busy) return;
     // Copying the visible public address does not acknowledge backup or enter Receive.
-    if (kind !== 'copy' && requiresBackup() && (kind === 'faucet' || receiveAcknowledgement.current?.scope !== scopeOf(current) || receiveAcknowledgement.current.model !== model)) {
-      if (kind === 'faucet') (onBackup ?? onViewRecovery)();
-      else requestReceive();
+    if (kind === 'share' && requiresBackup() && (receiveAcknowledgement.current?.scope !== scopeOf(current) || receiveAcknowledgement.current.model !== model)) {
+      requestReceive();
       return;
     }
     if (kind === 'faucet' && AppState.currentState !== 'active') return;
@@ -233,7 +232,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
     if (!warningCurrent(captured)) return;
     invalidateActions(); (onBackup ?? onViewRecovery)();
   };
-  const faucetCard = !backupRequired && faucet && account && <TestnetFaucetCard registration={registration!} busy={!!pendingAction} opening={pendingAction === 'faucet'} onCopy={receiving ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
+  const faucetCard = faucet && account && <TestnetFaucetCard registration={registration!} busy={!!pendingAction} opening={pendingAction === 'faucet'} onCopy={receiving ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
   const feedbackView = currentFeedback && <Text accessibilityRole={currentFeedback.failed ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[s.feedback, currentFeedback.failed && { color: colors.red }]}>{currentFeedback.text}</Text>;
   const actions = receiving ? <View style={[s.actions, stackActions && s.stackedActions]}>
     <Button title={t('transactions.copyAddress')} icon="copy" style={actionStyle} size="compact" disabled={!account || !!pendingAction} onPress={() => publicAction('copy')} testID="native-receive-copy" />

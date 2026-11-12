@@ -9,7 +9,6 @@ export type CustodySnapshot = Readonly<{
     | 'empty'
     | 'locked'
     | 'authenticating'
-    | 'backup-required'
     | 'ready'
     | 'unavailable'
     | 'disposed';

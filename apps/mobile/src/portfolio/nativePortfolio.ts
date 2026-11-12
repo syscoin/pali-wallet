@@ -88,8 +88,7 @@ export class NativePortfolioController {
     try {
       const current = this.source.getSnapshot();
       if (
-        !['ready', 'backup-required'].includes(current.phase) || !current.account ||
-        current.phase === 'backup-required' && current.backup !== 'unconfirmed' ||
+        current.phase !== 'ready' || !current.account ||
         !Number.isSafeInteger(current.revision) || current.revision < 0
       ) return null;
       const network = this.getUtxoNetwork(current.account.network) ??

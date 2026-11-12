@@ -605,7 +605,7 @@ test('ticket expiry, wallet A-B-A and asynchronous confirmation guards cannot ad
     await assert.rejects(f.removal.confirm(obsolete, current), { code: 'STATE_CHANGED' });
     const currentTicket = await f.authorize();
     await assert.rejects(f.removal.confirm(currentTicket, async () => undefined), { code: 'CANCELLED' });
-    assert.equal(f.owner.getSnapshot().phase, 'backup-required');
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
     assert.equal(f.removalCommits, 0);
     assert.equal(f.values.get(ACCOUNT_SELECTION_KEY), NATIVE_HINT);
   } finally { await f.close(); }
@@ -632,7 +632,7 @@ test('runtime retirement alone invalidates a ticket even before the public autho
   try {
     const ticket = await f.authorize();
     await f.runtime.session.lock();
-    assert.equal(f.owner.getSnapshot().phase, 'backup-required');
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
     await assert.rejects(f.removal.confirm(ticket, current), { code: 'CANCELLED' });
     assert.equal(f.values.get(ACCOUNT_SELECTION_KEY), NATIVE_HINT);
     assert.equal(f.removalCommits, 0);

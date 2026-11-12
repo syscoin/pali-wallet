@@ -515,7 +515,7 @@ test('real published software SDK imports, locks and cold-reopens at production 
   try {
     await authority.initialize();
     await authority.importPhrase(PHRASE);
-    assert.equal(authority.getSnapshot().phase, 'backup-required');
+    assert.equal(authority.getSnapshot().phase, 'ready');
     assert.equal(authority.getSnapshot().account?.address, ADDRESS);
     const persisted = JSON.stringify([...disk.records]);
     assert.equal(persisted.includes(PHRASE), false);
@@ -524,7 +524,7 @@ test('real published software SDK imports, locks and cold-reopens at production 
     await authority.dispose();
     const restarted = new NativeCustodyAuthority(disk.factory);
     await restarted.initialize();
-    assert.equal(restarted.getSnapshot().phase, 'backup-required');
+    assert.equal(restarted.getSnapshot().phase, 'ready');
     assert.equal(disk.credentialPort.secretReads, 0);
     assert.equal(JSON.stringify([...disk.records]), persisted);
     await restarted.unlock();
@@ -737,7 +737,7 @@ test('lost catalogue acknowledgement quarantines authority but close and fresh-r
     assert.equal(disk.closes, 1, 'quarantined lock does not skip storage.close');
     authority = new NativeCustodyAuthority(disk.factory);
     await authority.initialize();
-    assert.equal(authority.getSnapshot().phase, 'backup-required');
+    assert.equal(authority.getSnapshot().phase, 'ready');
     await authority.unlock();
     assert.equal(authority.getSnapshot().account?.address, ADDRESS);
     assert.equal(JSON.stringify([...disk.records]), preserved);
@@ -747,13 +747,13 @@ test('lost catalogue acknowledgement quarantines authority but close and fresh-r
 });
 
 
-async function readyAccounts(loadSdk?: KeyringRuntimeDependencies['loadSdk'], connectionFetch?: KeyringRuntimeDependencies['connectionFetch'], beforeCredential?: (owner: NativeCredentialOwner) => Promise<void>) {
+async function readyAccounts(loadSdk?: KeyringRuntimeDependencies['loadSdk'], connectionFetch?: KeyringRuntimeDependencies['connectionFetch'], beforeCredential?: (owner: NativeCredentialOwner) => Promise<void>, backupConfirmed = true) {
   const disk = memoryDisk(loadSdk, undefined, connectionFetch, undefined, undefined, undefined, beforeCredential); disk.denyNetwork();
   let runtime!: KeyringRuntime;
   const authority = new NativeCustodyAuthority({ async open() { runtime = await disk.factory.open() as KeyringRuntime; return runtime; } });
   await authority.initialize();
   await authority.importPhrase(PHRASE);
-  await runtime.backup.confirm(await runtime.backup.fingerprint());
+  if (backupConfirmed) await runtime.backup.confirm(await runtime.backup.fingerprint());
   authority.lock(); await authority.unlock();
   const execute = (request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) => authority.manageAccounts(request, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
   return { disk, authority, get runtime() { return runtime; }, execute };
@@ -2253,6 +2253,27 @@ function selectedKeyScope(f: Awaited<ReturnType<typeof readyAccounts>>): HdKeyEx
 function readTestSelectedKey(runtime: KeyringRuntime, scope: HdKeyExportScope, check: () => void) {
   return runtime.keyExport!.readSelected(scope, new AbortController().signal, check, createTestPrivateAuthentication(() => undefined));
 }
+test('unconfirmed seed backup permits key recovery only through fresh OS authorization', async () => {
+  const f = await readyAccounts(undefined, undefined, undefined, false);
+  const flow = new HdKeyExportFlow(f.authority, () => testHdKeyExportRuntime(f.runtime.keyExport!));
+  try {
+    assert.equal(f.authority.getSnapshot().phase, 'ready');
+    assert.equal(f.authority.getSnapshot().backup, 'unconfirmed');
+    const before = f.disk.credentialPort.secretReads;
+    f.disk.credentialPort.refuseNext(operationAuthenticationCancellation());
+    await assert.rejects(flow.begin());
+    assert.equal(f.disk.credentialPort.secretReads, before + 1, 'the rejected OS request cannot consume its protected secret');
+    assert.equal(f.authority.getSnapshot().phase, 'ready');
+    const shown = await flow.begin();
+    assert.equal(shown.privateKey, HDNodeWallet.fromPhrase(PHRASE, undefined, "m/44'/60'/0'/0/0").privateKey);
+    assert.equal(f.disk.credentialPort.secretReads, before + 2);
+    assert.equal(f.authority.getSnapshot().backup, 'unconfirmed');
+    assert.deepEqual(await f.runtime.storage.readState(), { presence: 'existing', backup: 'unconfirmed' });
+    f.authority.lock();
+    await assert.rejects(flow.begin(), /KEY_EXPORT_UNAVAILABLE/);
+  } finally { flow.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
+});
+
 test('HD key reveal uses real SDK across registered networks and recreated nonzero indices', async () => {
   const f = await readyAccounts(), flow = new HdKeyExportFlow(f.authority, () => testHdKeyExportRuntime(f.runtime.keyExport!));
   try {
@@ -2418,12 +2439,13 @@ test('HD key presentation expires on network/account A-B-A, reentrant clear and 
   } finally { unsubscribe(); flow.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
-test('HD key runtime refuses unconfirmed backup without mutating stored records', async () => {
+test('HD key recovery leaves an unconfirmed backup marker and stored records unchanged', async () => {
   const disk = memoryDisk(); disk.denyNetwork(); const runtime = await disk.factory.open() as KeyringRuntime;
   try {
     await runtime.session.importWallet(PHRASE); const c = runtime.catalogue.getSnapshot()!, before = JSON.stringify([...disk.records]);
-    await assert.rejects(readTestSelectedKey(runtime, { authorityRevision: 0, catalogueRevision: c.revision,
-      accountId: 'hd:60:0', index: 0, address: ADDRESS, networkId: 'ethereum', registrationHash: getNativeNetwork('ethereum').registrationHash }, () => undefined), /NOT_READY/);
+    const key = await readTestSelectedKey(runtime, { authorityRevision: 0, catalogueRevision: c.revision,
+      accountId: 'hd:60:0', index: 0, address: ADDRESS, networkId: 'ethereum', registrationHash: getNativeNetwork('ethereum').registrationHash }, () => undefined);
+    assert.equal(key, HDNodeWallet.fromPhrase(PHRASE, undefined, "m/44'/60'/0'/0/0").privateKey);
     assert.equal(JSON.stringify([...disk.records]), before);
     assert.deepEqual(await runtime.storage.readState(), { presence: 'existing', backup: 'unconfirmed' });
   } finally { await runtime.storage.close(); disk.restoreNetwork(); }
@@ -2492,15 +2514,16 @@ test('obsolete export failure cannot revoke a replacement flow started by a clea
   } finally { release.resolve(); off(); old.dispose(); next.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
-test('HD key flow is unavailable before backup, while locked, and on the web host', async () => {
+test('HD key flow is unavailable before wallet initialization, while locked, and on the web host', async () => {
   const disk = memoryDisk(); disk.denyNetwork(); let runtime!: KeyringRuntime, portReads = 0;
   const authority = new NativeCustodyAuthority({ async open() { runtime = await disk.factory.open() as KeyringRuntime; return runtime; } });
   const flow = new HdKeyExportFlow(authority, () => { portReads++; return runtime.keyExport && testHdKeyExportRuntime(runtime.keyExport); });
   try {
-    await authority.initialize(); await authority.importPhrase(PHRASE);
-    assert.equal(authority.getSnapshot().phase, 'backup-required');
+    await authority.initialize();
+    assert.equal(authority.getSnapshot().phase, 'empty');
     await assert.rejects(flow.begin(), /KEY_EXPORT_UNAVAILABLE/);
-    assert.equal(authority.getSnapshot().phase, 'backup-required'); assert.equal(portReads, 0);
+    assert.equal(portReads, 0);
+    await authority.importPhrase(PHRASE);
     authority.lock(); await assert.rejects(flow.begin(), /KEY_EXPORT_UNAVAILABLE/);
     assert.equal(authority.getSnapshot().phase, 'locked'); assert.equal(portReads, 0);
     const web = await import('../src/platform/nativeFactory.web.ts');

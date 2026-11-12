@@ -92,7 +92,7 @@ export class AccountActivityController {
   }
   private context() {
     const state = this.ports.source.getSnapshot(), catalogue = this.ports.source.getCatalogue?.();
-    if (!['ready', 'backup-required'].includes(state.phase) || !state.account || !catalogue) return null;
+    if (state.phase !== 'ready' || !state.account || !catalogue) return null;
     const choices = this.ports.choices().filter(choice => 'kind' in choice.scope.network && choice.scope.network.kind === 'evm' &&
       choice.scope.accountId === catalogue.active.accountId && choice.scope.accountAddress === state.account!.address);
     return { state, id: catalogue.active.accountId, choices };

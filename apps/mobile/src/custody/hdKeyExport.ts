@@ -68,7 +68,7 @@ function capture(authority: NativeCustodyAuthority): HdKeyExportScope {
   const catalogue = authority.getCatalogue();
   const selected = catalogue?.accounts.find((account) => account.id === catalogue.active.accountId);
   const utxo = catalogue && findUtxoNetwork(catalogue.active.networkId, catalogue.utxoNetworks);
-  if ((selected?.type !== 'HDAccount' && selected?.type !== 'Imported') || state.phase !== 'ready' || state.backup !== 'confirmed' || !state.account || !catalogue || !selected ||
+  if ((selected?.type !== 'HDAccount' && selected?.type !== 'Imported') || state.phase !== 'ready' || state.presence !== 'existing' || !state.account || !catalogue || !selected ||
       selected.type !== parseNativeAccountId(selected.id).type || selected.slip44 !== (utxo?.slip44 ?? 60) ||
       state.account.address !== selected.address ||
       state.account.network !== catalogue.active.networkId) throw new Error('NOT_READY');

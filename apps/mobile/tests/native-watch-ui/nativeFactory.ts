@@ -454,7 +454,7 @@ export function createNativeWalletControllers() {
   const activity = new NativeActivity(authority, () => undefined);
   const getNotificationChoices = () => {
     const state = authority.getSnapshot();
-    if (!sessionUnlocked || !['ready', 'backup-required'].includes(state.phase)) throw Error('Inactive fixture activity owner');
+    if (!sessionUnlocked || !['ready'].includes(state.phase)) throw Error('Inactive fixture activity owner');
     return catalogue.accounts.filter(account => account.slip44 === 60).flatMap(account => catalogue.networks.map(network => ({
       label: account.label, networkName: network.name, symbol: network.symbol,
       scope: { id: `native:${account.id}:${network.id}`, accountId: account.id, accountType: account.type,

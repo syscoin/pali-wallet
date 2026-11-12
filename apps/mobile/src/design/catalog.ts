@@ -3335,7 +3335,7 @@ const baseScreens: ScreenSpec[] = [
   ),
   make('sentry', 'sentry.import-review', 'Review key import', 'review', {
     purpose:
-      'Local key import is a backup-confirmed vault mutation, not an on-chain Sentry registration.',
+      'Local key import requires fresh device authorization; it does not register a Sentry key on chain.',
     rows: [
       row('Import scope', 'Selected single key or parsed batch'),
       row('Roles and algorithms', 'Review each parsed record'),

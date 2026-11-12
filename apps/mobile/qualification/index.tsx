@@ -601,7 +601,7 @@ function QualificationApp() {
               }
             }
           });
-          expect(authority.getSnapshot().phase === 'backup-required');
+          expect(authority.getSnapshot().phase === 'ready');
           await check('public-fixture authorized seed confirmation', async () => {
             const presentation = await backup!.begin({ method: 'device' });
             expect(presentation.words.length === 12);

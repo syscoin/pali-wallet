@@ -166,7 +166,7 @@ export class NativeWalletRemoval {
       const owner = this.dependencies.owner.getSnapshot(), source = this.dependencies.source();
       const authorize = source?.runtime.authorizeWalletRemoval;
       if (!source?.storage.removal || !source.storage.recovery || !authorize ||
-          owner.presence !== 'existing' || !['ready', 'backup-required'].includes(owner.phase)) return fail('NOT_READY');
+          owner.presence !== 'existing' || owner.phase !== 'ready') return fail('NOT_READY');
       this.authorizingOwner = owner;
       const scope = { owner, source, generation, signal: cancellation.signal, guard };
       const check = () => this.check(scope, owner);

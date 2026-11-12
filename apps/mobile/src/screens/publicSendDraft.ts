@@ -13,8 +13,7 @@ export type PublicSendContext = Readonly<{
 }>;
 
 export function publicSendContext(state?: CustodySnapshot, catalogue?: NativeWalletCatalogueSnapshot | null): PublicSendContext | null {
-  if (!state?.account || !catalogue || !['ready', 'backup-required'].includes(state.phase) ||
-      state.phase === 'backup-required' && state.backup !== 'unconfirmed') return null;
+  if (!state?.account || !catalogue || state.phase !== 'ready') return null;
   const selected = catalogue.accounts.find(account => account.id === catalogue.active.accountId);
   if (catalogue.active.networkId !== state.account.network || selected?.address !== state.account.address) return null;
   try {
@@ -24,10 +23,4 @@ export function publicSendContext(state?: CustodySnapshot, catalogue?: NativeWal
       accountId: catalogue.active.accountId, address: state.account.address,
       networkIdentity: JSON.stringify(network) });
   } catch { return null; }
-}
-
-/** Backup may advance the revision, but cannot change the draft's destination. */
-export function samePublicSendDestination(before: PublicSendContext, after: PublicSendContext): boolean {
-  return before.identity === after.identity && before.accountId === after.accountId &&
-    before.address === after.address && before.networkIdentity === after.networkIdentity;
 }

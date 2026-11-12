@@ -221,7 +221,7 @@ test('shared SDK and SQLite admit a different pending nonce and retain reorg pre
   }
 });
 
-async function cancellationFixture(type: 0 | 2 = 2) {
+async function cancellationFixture(type: 0 | 2 = 2, backupConfirmed = true) {
   const sdk = await loadNativeKeyringSdk();
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-send-cancel-'));
   const file = path.join(directory, 'wallet.sqlite');
@@ -481,7 +481,7 @@ async function cancellationFixture(type: 0 | 2 = 2) {
   try {
     await authority.initialize();
     await authority.importPhrase(PHRASE);
-    await runtime.backup.confirm(await runtime.backup.fingerprint());
+    if (backupConfirmed) await runtime.backup.confirm(await runtime.backup.fingerprint());
     authority.lock();
     await authority.unlock();
   } catch (error) {
@@ -641,6 +641,27 @@ async function cancellationFixture(type: 0 | 2 = 2) {
     },
   };
 }
+
+test('an unconfirmed wallet can review and send only after fresh OS credential approval', async () => {
+  const f = await cancellationFixture(2, false);
+  let held: ReturnType<typeof f.holdAuthentication> | undefined;
+  try {
+    assert.equal(f.authority.getSnapshot().phase, 'ready');
+    assert.equal(f.authority.getSnapshot().backup, 'unconfirmed');
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    assert.equal(f.signatures, 0); assert.equal(f.broadcasts.length, 0);
+    assert.equal(f.sdkUnlocked, false);
+    held = f.holdAuthentication();
+    const pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'device' });
+    await held.started;
+    assert.equal(f.signatures, 0); assert.equal(f.broadcasts.length, 0);
+    held.finish(); await pending;
+    assert.equal(f.signatures, 1); assert.equal(f.broadcasts.length, 1);
+    assert.equal(f.sdkUnlocked, false);
+    assert.equal(f.authority.getSnapshot().backup, 'unconfirmed');
+    assert.deepEqual(await f.runtime.storage.readState(), { presence: 'existing', backup: 'unconfirmed' });
+  } finally { held?.finish(); await f.close(); }
+});
 
 for (const fault of ['expiry', 'storage'] as const) test(`real SDK authentication ${fault} retires public custody once without signing`, async () => {
   const f = await cancellationFixture();
