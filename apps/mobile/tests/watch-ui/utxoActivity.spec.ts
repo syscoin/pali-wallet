@@ -424,7 +424,15 @@ test('SPT one-atom direction and full bridge operation come from shared interpre
   await expandDetails(page);
   await expect(page.getByTestId('watch-activity-detail').getByText('Asset operation amount', { exact: true })).toBeVisible();
   await expect(page.getByTestId('watch-activity-detail').getByText('9007199254740994 BIG', { exact: true })).toBeVisible();
-  await expect(page.getByTestId('watch-activity-detail').getByText('To', { exact: true })).toHaveCount(0);
+  const detail = page.getByTestId('watch-activity-detail');
+  // The summary always names the field. This burn has no valid address output:
+  // OP_RETURN is not a recipient and must not leak into the hydrated card.
+  await expect(detail.getByText('To', { exact: true }).locator('..')).toContainText('Not available');
+  const participants = detail.getByText('Whole transaction fee: 1.0 SYS', { exact: true }).locator('..');
+  await expect(participants.getByText('From', { exact: true })).toHaveCount(0);
+  await expect(participants.getByText('To', { exact: true })).toHaveCount(0);
+  await expect(participants.getByText('Native account change: −10.0 SYS', { exact: true })).toBeVisible();
+  await expect(detail.getByText('OP_RETURN synthetic', { exact: true })).toHaveCount(0);
 });
 
 test('SPT unavailable quantity and unsafe optional metadata never substitute or echo funding', async ({ page }) => {
