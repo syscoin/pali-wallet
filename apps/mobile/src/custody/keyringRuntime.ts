@@ -3410,8 +3410,7 @@ export function createKeyringRuntimeFactory(
         const replacementOwners = new WeakMap<EvmVerifiedReplacementBinding, ReplacementOwner>();
         let replacementEpoch = 0;
         let activeReplacement: ReplacementOwner | undefined;
-        let replacementLedgerOwner: ReplacementOwner | undefined;
-        const releaseReplacement = () => { replacementEpoch++; activeReplacement = undefined; replacementLedgerOwner = undefined; };
+        const releaseReplacement = () => { replacementEpoch++; activeReplacement = undefined; };
         const replacementOwner = (replacement: NativeReplacementApproval): ReplacementOwner => {
           const owner = replacementOwners.get(replacement.binding);
           if (!owner) throw new KeyringRuntimeError('INVALID_INPUT');
@@ -3588,9 +3587,10 @@ export function createKeyringRuntimeFactory(
           const selected = selectedAccount();
           if (selected.type === 'Ledger') return Object.freeze([selected.id]);
           if (selected.type !== 'SmartAccount' || selected.slip44 !== 60) throw new KeyringRuntimeError('NOT_READY');
-          if (replacementLedgerOwner) {
-            replacementLedgerOwner.assertCurrent();
-            return Object.freeze([replacementLedgerOwner.payer.id]);
+          if (activeReplacement) {
+            activeReplacement.assertCurrent();
+            // An outer replacement needs only its retained payer, not fresh Smart owner proofs.
+            return Object.freeze(activeReplacement.payer.type === 'Ledger' ? [activeReplacement.payer.id] : []);
           }
           const metadata = state.accounts.SmartAccount[selected.index]?.smartAccount;
           if (!metadata) throw new KeyringRuntimeError('NOT_READY');
@@ -7394,7 +7394,6 @@ export function createKeyringRuntimeFactory(
               } });
               replacementOwners.set(binding, owner);
               activeReplacement = owner;
-              replacementLedgerOwner = payer.type === 'Ledger' && selected.type === 'SmartAccount' ? owner : undefined;
               const intent = mode === 'speed-up' && original.metadata?.intent !== undefined
                 ? snapshotErc20TransferIntent(original.metadata.intent) : undefined;
               const tx = Transaction.from(original.rawTransaction);

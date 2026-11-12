@@ -248,11 +248,15 @@ function retainedReplacementLineage(
 
 function replacementMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined,
-  original: EvmRetainedSignedRecord | null | undefined
+  original: EvmRetainedSignedRecord | null | undefined,
+  operation: 'cancel' | 'speed-up'
 ) {
   const fields = { ...metadata };
   delete fields.nftTransfer;
+  // Cancellation is an empty self-call; the original asset intent is not its consent.
+  if (operation === 'cancel') delete fields.intent;
   const nftTransfer =
+    operation === 'speed-up' &&
     original &&
     decodeRetainedNftTransfer(
       original,
@@ -1216,7 +1220,17 @@ export class EvmSignedRecords {
             const original = originalEntry
               ? await this.materialize(session, originalEntry)
               : undefined;
-            retainedMetadata = replacementMetadata(metadataSnapshot, original);
+            retainedMetadata = replacementMetadata(
+              metadataSnapshot,
+              original,
+              'speed-up'
+            );
+          } else {
+            retainedMetadata = replacementMetadata(
+              metadataSnapshot,
+              undefined,
+              'cancel'
+            );
           }
         } else {
           await this.assertOrdinaryNonceAvailable(
@@ -2546,14 +2560,16 @@ export function createEvmSignedRecordLifecycle(
         }),
       });
       const replacement = options.replacement && (await options.replacement);
-      if (signed.context.operation === 'speed-up' && replacement) {
+      if (signed.context.operation === 'cancel') {
+        metadata = replacementMetadata(metadata, undefined, 'cancel');
+      } else if (signed.context.operation === 'speed-up' && replacement) {
         const original = await records.readExact(
           session,
           signed.chainId,
           signed.from,
           replacement.originalHash
         );
-        metadata = replacementMetadata(metadata, original);
+        metadata = replacementMetadata(metadata, original, 'speed-up');
       }
       try {
         await records.append(session, signed, metadata, replacement);

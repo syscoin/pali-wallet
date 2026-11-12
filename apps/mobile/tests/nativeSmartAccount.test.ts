@@ -4160,6 +4160,41 @@ async function connectLedgerSmart(f: Awaited<ReturnType<typeof readyLedgerSmartO
   await f.connection.start(); await f.connection.select(f.connection.getSnapshot().devices[0]!.id); await f.connection.finishConnection();
 }
 
+test('Smart fee replacement uses only the retained software payer despite a disconnected Ledger owner', async () => {
+  const owned = await readyLedgerSmartOwner(), { f, device } = owned;
+  let operation: NativeSmartAccountOperation | undefined, transfers: NativeTransfers | undefined;
+  let connection: NativeLedgerAccounts<'connect'> | undefined;
+  try {
+    await connectLedgerSmart(owned); f.holdReceipts(); f.deployed();
+    operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), { kind: 'exact', amount: '0.000001' }, () => undefined, null);
+    await operation.prepare();
+    const stop = operation.subscribe(() => { const review = operation!.getSnapshot().payerReview; if (review) operation!.confirmPayer(review.id); });
+    try { await operation.authorize(operation.getSnapshot().revision); } finally { stop(); }
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    const original = Transaction.from(f.submitted[0]!);
+    await operation.dispose(); operation = undefined;
+    await f.reopen(); await f.owner.unlock();
+    connection = new NativeLedgerAccounts(f.owner, () => f.runtime.ledger, 'connect');
+    assert.equal(connection.isConnected(), false, 'normal Smart owner signing still needs the disconnected Ledger');
+    assert.deepEqual(f.runtime.ledger.getConnectionTargets(), ['ledger:60:0']);
+    const signatures = device.signatures.length;
+    transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+    await transfers.prepareSpeedUp(original.hash!);
+    const review = transfers.getSnapshot().review; assert(review, JSON.stringify(transfers.getSnapshot()));
+    assert.equal(review.execution?.smartAccount, f.owner.getSnapshot().account!.address);
+    assert.deepEqual(f.runtime.ledger.getConnectionTargets(), []);
+    assert.equal(connection.isConnected(), true, 'the UI connection gate needs no Ledger for this software payer');
+    await transfers.confirm(review.id, { method: 'device' });
+    assert.equal(transfers.getSnapshot().phase, 'pending', JSON.stringify(transfers.getSnapshot()));
+    assert.equal(device.signatures.length, signatures, 'the retained payer signs, not the Smart owner');
+    assert.equal(f.submitted.length, 2);
+    f.assertNoSigningKeys();
+    transfers.cancel();
+    assert.deepEqual(f.runtime.ledger.getConnectionTargets(), ['ledger:60:0']);
+    assert.equal(connection.isConnected(), false, 'leaving replacement restores normal Smart owner requirements');
+  } finally { await operation?.dispose(); transfers?.dispose(); await connection?.dispose(); await owned.close(); }
+});
+
 test('Ledger Smart owner connection verifies every planned key while preserving selected Smart account and consent', async () => {
   const owned = await readyLedgerSmartOwner(2), {f, device} = owned;
   try {
