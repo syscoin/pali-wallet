@@ -2,7 +2,7 @@ import { useNativeTranslation } from '../platform/localization';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { useDappLedgerConnection } from './useDappLedgerConnection';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, StyleSheet } from 'react-native';
+import { BackHandler, StyleSheet, View } from 'react-native';
 import type {
   NativeConnectionsView,
   NativeSmartTransactionReview,
@@ -11,7 +11,7 @@ import { NativeSmartAccountOperationContent } from './NativeSmartAccountOperatio
 import { ApprovalReview } from './ApprovalReview';
 import { DappSiteStatus } from './DappSiteStatus';
 import { IdlePressable } from './IdleActivityBoundary';
-import { Button, Card, Notice, Text } from '../ui';
+import { Button, Card, colors, Notice, Text } from '../ui';
 
 export function NativeSmartTransactionReviewScreen({
   review,
@@ -59,7 +59,7 @@ export function NativeSmartTransactionReviewScreen({
         editing === intent
       }
       authorize={(acknowledgedCustomRisk) => {
-        if (editingRef.current === intent || !ledger.canApprove()) return;
+        if (!warningsAccepted || editingRef.current === intent || !ledger.canApprove()) return;
         const requiresCustomRisk = intent.kind === 'modules' && intent.command.draft.kind === 'install-custom';
         if (requiresCustomRisk && acknowledgedCustomRisk !== true) return;
         void controller
@@ -137,10 +137,8 @@ export function NativeSmartTransactionReviewScreen({
             <Notice
               key={entry.address + entry.field}
               title={entry.field}
-              body={
-                entry.reason ??
-                t('mobile.dappConsent.messageReview.thisAddressAppearsOnAKnownUnsafe')
-              }
+              tone="amber"
+              body={`${entry.address}\n${entry.reason ?? t('mobile.dappConsent.messageReview.thisAddressAppearsOnAKnownUnsafe')}`}
             />
           ))}
           {review.requiresWarningAcknowledgement && (
@@ -153,10 +151,12 @@ export function NativeSmartTransactionReviewScreen({
               }}
               disabled={review.busy}
               onPress={() => setAcknowledged(warningsAccepted ? null : intent)}
+              style={styles.acknowledgement}
             >
-              <Text>
-                {warningsAccepted ? '✓ ' : ''}{t('mobile.dappConsent.messageReview.iUnderstandTheAddressWarning1')}
-              </Text>
+              <View style={[styles.checkbox, warningsAccepted && styles.checked]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                <Text style={styles.checkmark}>{warningsAccepted ? '✓' : ''}</Text>
+              </View>
+              <Text style={styles.acknowledgementText}>{t('mobile.dappConsent.messageReview.iUnderstandTheAddressWarning1')}</Text>
             </IdlePressable>
           )}
           {review.needsAccountSwitch && (
@@ -185,4 +185,11 @@ export function NativeSmartTransactionReviewScreen({
   );
 }
 
-const styles = StyleSheet.create({ site: { padding: 16, gap: 8 } });
+const styles = StyleSheet.create({
+  site: { padding: 16, gap: 8 },
+  acknowledgement: { flexDirection: 'row', gap: 12, alignItems: 'center', minHeight: 48 },
+  acknowledgementText: { flex: 1, fontSize: 14, lineHeight: 21 },
+  checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 1, borderColor: colors.muted, alignItems: 'center', justifyContent: 'center' },
+  checked: { backgroundColor: colors.blue, borderColor: colors.blue },
+  checkmark: { color: colors.bg, fontWeight: '700' },
+});

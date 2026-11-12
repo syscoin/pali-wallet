@@ -3369,7 +3369,7 @@
     "sendAssetViews": {
       "evm": {
         "validRecipient": "Enter a valid {{network}} recipient address.",
-        "validAddressAmount": "Enter a {{network}} address and an amount greater than zero.",
+        "validAddressAmount": "Enter an address on {{network}} and an amount greater than zero.",
         "notEnoughForTheExecutionFeeLimit": "Not enough {{symbol}} for the execution fee limit.",
         "notEnoughForTheMaximumNetworkFee": "Not enough {{symbol}} for the maximum network fee.",
         "notEnoughForTheAmountAndMaximumNetworkFee": "Not enough {{symbol}} for the amount and maximum network fee.",

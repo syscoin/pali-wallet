@@ -24,6 +24,6 @@ export function CopyableAddress({ address, label, onCopy, disabled = false, styl
 }
 const s = StyleSheet.create({
   container: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  address: { flex: 1, flexShrink: 1 },
+  address: { flex: 1, flexShrink: 1, minWidth: 0 },
   pressed: { opacity: 0.65 },
 });

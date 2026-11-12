@@ -47,7 +47,7 @@ for (const [kind, amount] of [
     await page.getByTestId('native-send-review').click();
     await expect(
       page.getByText(
-        'Enter an Ethereum address and an amount greater than zero.',
+        'Enter an address on Ethereum and an amount greater than zero.',
         { exact: true }
       )
     ).toBeVisible();

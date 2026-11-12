@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 
-import { colors, Icon, PaliMark, WelcomeBackdrop } from '../ui';
+import { Button, colors, Icon, PaliMark, WelcomeBackdrop } from '../ui';
 import { useNativeTranslation } from '../platform/localization';
 import { createWatchAccount, type WatchAccountNetwork } from '../core/watchOnlyAuthority';
 import { parseUtxoPublicIdentifier } from '../core/utxoIdentifier';
@@ -221,10 +221,9 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks, utxoNetwor
             style={[styles.networkChoice, network === choice.id && styles.networkChoiceSelected, !available.includes(choice.id) && styles.disabled]}>
             <Text style={styles.networkChoiceTitle}>{choice.title}</Text>{!available.includes(choice.id) && <Text style={styles.fieldHint}>{t('mobile.onboarding.notAvailable')}</Text>}
           </IdlePressable>)}</View>
-          {networkSettings && onNetworksChanged && <IdlePressable accessibilityRole="button" accessibilityLabel={t('mobile.onboarding.manageWatchNetworks')}
-            onPress={() => { setError(null); setManagingNetworks(true); }}>
-            <Text style={styles.fieldHint}>{t('networkMenu.manageNetworks')}</Text>
-          </IdlePressable>}
+          {networkSettings && onNetworksChanged && <Button title={t('mobile.onboarding.manageWatchNetworks')}
+            icon="globe" variant="secondary" size="compact"
+            onPress={() => { setError(null); setManagingNetworks(true); }} />}
         </View>
         <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>{t('mobile.accounts.accountName')}</Text>
           <IdleTextInput accessibilityLabel={t('mobile.accounts.accountName')} autoCapitalize="words" autoComplete="off" autoCorrect={false} editable={!submitting} importantForAutofill="no" maxLength={40}

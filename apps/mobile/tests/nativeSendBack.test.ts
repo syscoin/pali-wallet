@@ -143,7 +143,7 @@ test('French saved-state and capacity notices keep raw controller identity and s
   for (const [message, failure, titleKey, bodyKey] of [
     [ASSET_STATE_SAVED_MESSAGE, 'EXPIRED', 'savedNotSubmitted', 'asset_state_saved_message'],
     [SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE, 'SIGNED_STORAGE_FULL', 'checkEarlierTransaction', 'signed_storage_full_previous_message'],
-  ]) {
+  ] as const) {
     const f = setup(undefined, undefined, undefined, undefined, undefined, undefined, undefined, localization);
     try {
       f.setSnapshot({ ...f.snapshot, phase: 'unknown', hash: '0xsaved', message });

@@ -336,7 +336,7 @@ test('only a current saved collectible can open the Send draft', async ({ page }
   await page.getByRole('button', { name: 'Check ownership', exact: true }).click();
   await expect(send).toHaveCount(0);
   await page.getByRole('button', { name: 'Save collectible', exact: true }).click();
-  await page.getByRole('button', { name: `View saved token 0, ${long}`, exact: true }).click();
+  await page.getByRole('button', { name: `View Saved token 0, ${long}`, exact: true }).click();
   await expect(send).toBeEnabled();
   const requests = await page.evaluate(() => window.__nativeTokenPortfolio.requests());
   await send.press('Space');
@@ -375,8 +375,8 @@ test('saves only the checked collectible and removes just one saved item', async
   expect(await requestCount()).toBe(7);
   await check.click();
   await save.click();
-  const one = page.getByRole('button', { name: `View saved token 1, ${long}`, exact: true });
-  const zeroItem = page.getByRole('button', { name: `View saved token 0, ${long}`, exact: true });
+  const one = page.getByRole('button', { name: `View Saved token 1, ${long}`, exact: true });
+  const zeroItem = page.getByRole('button', { name: `View Saved token 0, ${long}`, exact: true });
   await expect(one).toBeVisible();
   await expect(zeroItem).toHaveCount(0);
   expect(await requestCount()).toBe(14);
@@ -471,7 +471,7 @@ test('real native token controller imports, persists, shows exact units, receive
     '90071992547409.93 FIXTURE'
   );
   await expect(
-    page.getByRole('heading', { name: 'Import token', exact: true })
+    page.getByRole('heading', { name: 'Import Token', exact: true })
   ).toBeVisible();
   await expect(page.getByTestId('native-portfolio-balance')).toHaveCount(0);
   await expect(
@@ -711,7 +711,7 @@ for (const refresh of ['list', 'selected'] as const)
 
     await page.getByTestId('native-token-import').click();
     await expect(
-      page.getByRole('heading', { name: 'Import token', exact: true })
+      page.getByRole('heading', { name: 'Import Token', exact: true })
     ).toBeVisible();
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await page.evaluate(() => window.__nativeTokenPortfolio.releaseBalances());

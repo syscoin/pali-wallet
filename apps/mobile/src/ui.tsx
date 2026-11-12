@@ -1,4 +1,5 @@
 import { IdlePressable } from './screens/IdleActivityBoundary';
+import { useNativeTranslation } from './platform/localization';
 import { useWelcomeBackdropMotion } from './screens/useWelcomeBackdropMotion';
 import React, { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { knownAssetIcon, type AssetIconIdentity } from '../../../source/shared/assetIconIdentity';
@@ -483,6 +484,7 @@ export function Header({
   subtitle?: string;
   brand?: boolean;
 }) {
+  const { t } = useNativeTranslation();
   return (
     <View style={styles.header}>
       {brand && <PaliMark size={32} />}
@@ -490,7 +492,7 @@ export function Header({
         <IdlePressable
           onPress={onBack}
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={t('buttons.back')}
           hitSlop={6}
           style={({ pressed }) => [
             styles.iconButton,

@@ -43,6 +43,29 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test('Receive keeps the full address and its copy icon inside a narrow screen', async ({ page, context }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/');
+  await openNative(page);
+  await page.getByRole('button', { name: 'Receive', exact: true }).click();
+  const address = page.getByTestId('native-receive-address');
+  const copy = page.getByTestId('native-receive-address-copy');
+  await expect(address).toHaveText(ADDRESS);
+  expect(await address.evaluate(element => {
+    const row = element.parentElement!.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    return Array.from(range.getClientRects()).every(rect => rect.left >= row.left && rect.right <= row.right && rect.right <= innerWidth);
+  })).toBe(true);
+  expect(await copy.locator('svg').evaluate(element => {
+    const rect = element.getBoundingClientRect();
+    return rect.left >= 0 && rect.right <= innerWidth;
+  })).toBe(true);
+  await copy.click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(ADDRESS);
+});
+
 test('actual App switches HD to watch to HD; shared address never inherits authority', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));

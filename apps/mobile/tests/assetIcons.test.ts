@@ -82,6 +82,7 @@ test('only an existing verified market result populates the captured registratio
 
 test('NativeAssetIcon shows a found image, falls back after decode failure, and never brands symbol spoofing', () => {
   const f = screenFixture(new URL('../src/ui.tsx', import.meta.url), 'NativeAssetIcon', {
+    './platform/localization': nativeTranslationFixture,
     './screens/IdleActivityBoundary': { IdlePressable: 'Pressable' }, './screens/useWelcomeBackdropMotion': { useWelcomeBackdropMotion() {} },
     '../../../source/shared/assetIconIdentity': { knownAssetIcon }, './portfolio/assetIconCache': { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, subscribeNativeAssetIcon },
     'react-native': { Image: 'Image', StyleSheet: { create: (value: unknown) => value } }, 'react-native-svg': {},
