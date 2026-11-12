@@ -18,7 +18,9 @@ import {
   assertSmartAccountOwnerSigningIntent,
   type SmartAccountOwnerSigningIntent,
 } from '../../../../source/utils/smartAccount/ownerSigningIntent.ts';
-import type { SmartAccountP256WebAuthnConfig } from '../../../../source/types/network.ts';
+import type { SmartAccountP256WebAuthnConfig, SmartAccountSLHDSAConfig } from '../../../../source/types/network.ts';
+import { getSLHDSAKeyId, SLH_DSA_ABSOLUTE_SIGNATURE_LIMIT, SLH_DSA_PARAMETER_SET, SLH_DSA_SIGNATURE_HEX_LENGTH } from '../../../../source/utils/slhDsa/constants.ts';
+import { normalizeSLHDSAPublicKeyField } from '../../../../source/utils/slhDsa/hex.ts';
 import {
   encodePasskeyWebAuthnProof,
   type PasskeyWebAuthnProof,
@@ -44,6 +46,12 @@ export type NativePasskeyProofStep = Readonly<{
   childIndex: number;
   config: SmartAccountP256WebAuthnConfig;
 }>;
+export type NativeSlhProofStep = Readonly<{
+  ordinal: number;
+  validator: string;
+  childIndex: number;
+  config: SmartAccountSLHDSAConfig;
+}>;
 declare const handleBrand: unique symbol;
 export type NativeOwnerProofHandle = Readonly<{ [handleBrand]: true }>;
 export type NativeOwnerProofCapture = Readonly<{
@@ -64,16 +72,23 @@ export type NativePasskeyProofRequest = Readonly<{
   intent: SmartAccountOwnerSigningIntent;
   step: NativePasskeyProofStep;
 }>;
+export type NativeSlhProofRequest = Readonly<{
+  binding: string;
+  intent: SmartAccountOwnerSigningIntent;
+  step: NativeSlhProofStep;
+}>;
 type State = {
   binding: string;
   intent: SmartAccountOwnerSigningIntent;
   intentJson: string;
   steps: readonly NativeOwnerProofStep[];
   passkeys: readonly NativePasskeyProofStep[];
+  slh: readonly NativeSlhProofStep[];
   order: readonly string[];
   expiresAt: number;
   outputs: string[];
   passkeyOutputs: string[];
+  slhOutputs: string[];
   completed: number;
 };
 
@@ -221,6 +236,29 @@ function canonicalPasskeyProof(signature: string): string {
     throw Error('Invalid retained passkey proof');
   return signature.toLowerCase();
 }
+function slhStep(value: unknown): NativeSlhProofStep {
+  const input = fields(value, ['ordinal', 'validator', 'childIndex', 'config']);
+  const config = fields(input.config, ['keyId', 'parameterSet', 'pkRoot', 'pkSeed', 'signatureLimit']);
+  if (!Number.isSafeInteger(input.ordinal) || Number(input.ordinal) < 0 ||
+      !Number.isSafeInteger(input.childIndex) || Number(input.childIndex) < 0 ||
+      typeof input.validator !== 'string' || typeof config.pkRoot !== 'string' ||
+      typeof config.pkSeed !== 'string' || config.parameterSet !== SLH_DSA_PARAMETER_SET ||
+      ![34, 66].includes(config.pkRoot.length) || ![34, 66].includes(config.pkSeed.length) ||
+      !isHexString(config.pkRoot) || !isHexString(config.pkSeed) ||
+      !Number.isSafeInteger(config.signatureLimit) || Number(config.signatureLimit) < 1 ||
+      Number(config.signatureLimit) > SLH_DSA_ABSOLUTE_SIGNATURE_LIMIT)
+    throw Error('Invalid SLH proof occurrence');
+  const pkRoot = normalizeSLHDSAPublicKeyField(config.pkRoot), pkSeed = normalizeSLHDSAPublicKeyField(config.pkSeed);
+  if (config.keyId !== getSLHDSAKeyId({ pkRoot, pkSeed })) throw Error('Invalid SLH proof key');
+  return Object.freeze({ ordinal: Number(input.ordinal), validator: getAddress(input.validator),
+    childIndex: Number(input.childIndex), config: Object.freeze({ keyId: config.keyId,
+      parameterSet: SLH_DSA_PARAMETER_SET, pkRoot, pkSeed, signatureLimit: Number(config.signatureLimit) }) });
+}
+function canonicalSlhProof(signature: string): string {
+  if (typeof signature !== 'string' || signature.length !== SLH_DSA_SIGNATURE_HEX_LENGTH || !isHexString(signature))
+    throw Error('Invalid retained SLH proof');
+  return signature.toLowerCase();
+}
 function captureSteps(
   plan: SmartAccountSigningPlan,
   owners: readonly NativeOwnerProofIdentity[]
@@ -234,6 +272,7 @@ function captureSteps(
   const inventory = captured.owners.map(identity),
     steps: NativeOwnerProofStep[] = [],
     passkeys: NativePasskeyProofStep[] = [],
+    slh: NativeSlhProofStep[] = [],
     order: string[] = [];
   const identities = new Set<string>();
   for (const owner of inventory) {
@@ -247,6 +286,12 @@ function captureSteps(
     if (entry.validator.id !== 'ecdsa') {
       if (entry.owners.length)
         throw Error('Only ECDSA owner proofs can be retained');
+      if (entry.validator.id === 'slh-dsa') {
+        const ordinal = slh.length;
+        slh.push(slhStep({ ordinal, validator: entry.validator.address, childIndex: entry.index, config: entry.validator.config }));
+        order.push(`slh:${ordinal}`);
+        continue;
+      }
       if (entry.validator.id !== 'p256-webauthn')
         throw Error('Unsupported retained authenticator');
       const ordinal = passkeys.length;
@@ -285,6 +330,7 @@ function captureSteps(
   return {
     steps: Object.freeze(steps),
     passkeys: Object.freeze(passkeys),
+    slh: Object.freeze(slh),
     order: Object.freeze(order),
   };
 }
@@ -316,6 +362,7 @@ export class NativeOwnerProofReceipts {
     handle: NativeOwnerProofHandle;
     steps: readonly NativeOwnerProofStep[];
     passkeys: readonly NativePasskeyProofStep[];
+    slh: readonly NativeSlhProofStep[];
     expiresAt: number;
   }> {
     const now = this.current(assertCurrent);
@@ -349,12 +396,14 @@ export class NativeOwnerProofReceipts {
       expiresAt,
       outputs: [],
       passkeyOutputs: [],
+      slhOutputs: [],
       completed: 0,
     });
     return Object.freeze({
       handle,
       steps: occurrences.steps,
       passkeys: occurrences.passkeys,
+      slh: occurrences.slh,
       expiresAt,
     });
   }
@@ -380,7 +429,8 @@ export class NativeOwnerProofReceipts {
           JSON.stringify(state.steps[requested.ordinal])
       )
         throw Error('Owner proof context changed or expired');
-      if (requested.ordinal > state.outputs.length)
+      if (requested.ordinal > state.outputs.length ||
+          (requested.ordinal === state.outputs.length && state.order[state.completed] !== `owner:${requested.ordinal}`))
         throw Error('Owner proof order changed');
       if (this.current(assertCurrent) >= state.expiresAt)
         throw Error('Owner proof receipts expired');
@@ -429,9 +479,10 @@ export class NativeOwnerProofReceipts {
       throw error;
     }
   }
-  private accessPasskey(
+  private accessProof(
+    kind: 'passkey' | 'slh',
     handle: NativeOwnerProofHandle,
-    request: NativePasskeyProofRequest,
+    request: NativePasskeyProofRequest | NativeSlhProofRequest,
     assertCurrent: () => void
   ) {
     const state = this.#states.get(handle);
@@ -442,22 +493,26 @@ export class NativeOwnerProofReceipts {
       const intent = captureIntent(
           source.intent as SmartAccountOwnerSigningIntent
         ),
-        requested = passkeyStep(source.step);
+        requested = kind === 'passkey' ? passkeyStep(source.step) : slhStep(source.step);
+      const steps = kind === 'passkey' ? state.passkeys : state.slh;
+      const outputs = kind === 'passkey' ? state.passkeyOutputs : state.slhOutputs;
       if (
         now >= state.expiresAt ||
         binding(source.binding) !== state.binding ||
         intent.json !== state.intentJson ||
         JSON.stringify(requested) !==
-          JSON.stringify(state.passkeys[requested.ordinal]) ||
-        requested.ordinal > state.passkeyOutputs.length
+          JSON.stringify(steps[requested.ordinal]) ||
+        requested.ordinal > outputs.length
       )
         throw Error('Owner proof context changed or expired');
+      if (requested.ordinal === outputs.length && state.order[state.completed] !== `${kind}:${requested.ordinal}`)
+        throw Error('Owner proof order changed');
       if (
         this.current(assertCurrent) >= state.expiresAt ||
         this.#states.get(handle) !== state
       )
         throw Error('Owner proof receipts expired');
-      return { state, requested };
+      return { state, requested, outputs };
     } catch (error) {
       this.retire(handle);
       throw error;
@@ -468,12 +523,13 @@ export class NativeOwnerProofReceipts {
     request: NativePasskeyProofRequest,
     assertCurrent: () => void
   ): string | null {
-    const { state, requested } = this.accessPasskey(
+    const { requested, outputs } = this.accessProof(
+      'passkey',
       handle,
       request,
       assertCurrent
     );
-    return state.passkeyOutputs[requested.ordinal] ?? null;
+    return outputs[requested.ordinal] ?? null;
   }
   /** Called only with the private native capability's already-validated assertion. */
   recordPasskey(
@@ -482,24 +538,39 @@ export class NativeOwnerProofReceipts {
     signature: string,
     assertCurrent: () => void
   ): void {
-    const { state, requested } = this.accessPasskey(
+    this.recordProof('passkey', handle, request, signature, assertCurrent);
+  }
+  readSlh(handle: NativeOwnerProofHandle, request: NativeSlhProofRequest, assertCurrent: () => void): string | null {
+    const { requested, outputs } = this.accessProof('slh', handle, request, assertCurrent);
+    return outputs[requested.ordinal] ?? null;
+  }
+  /** Only the private host may retain a proof returned after the shared signer's durable usage commit. */
+  recordSlh(handle: NativeOwnerProofHandle, request: NativeSlhProofRequest, signature: string, assertCurrent: () => void): void {
+    this.recordProof('slh', handle, request, signature, assertCurrent);
+  }
+  private recordProof(
+    kind: 'passkey' | 'slh', handle: NativeOwnerProofHandle,
+    request: NativePasskeyProofRequest | NativeSlhProofRequest, signature: string, assertCurrent: () => void
+  ): void {
+    const { state, requested, outputs } = this.accessProof(
+      kind,
       handle,
       request,
       assertCurrent
     );
     try {
       if (
-        requested.ordinal !== state.passkeyOutputs.length ||
-        state.order[state.completed] !== `passkey:${requested.ordinal}`
+        requested.ordinal !== outputs.length ||
+        state.order[state.completed] !== `${kind}:${requested.ordinal}`
       )
         throw Error('Owner proof order changed');
-      const proof = canonicalPasskeyProof(signature);
+      const proof = kind === 'passkey' ? canonicalPasskeyProof(signature) : canonicalSlhProof(signature);
       if (
         this.current(assertCurrent) >= state.expiresAt ||
         this.#states.get(handle) !== state
       )
         throw Error('Owner proof receipts expired');
-      state.passkeyOutputs.push(proof);
+      outputs.push(proof);
       state.completed++;
     } catch (error) {
       this.retire(handle);
@@ -511,6 +582,7 @@ export class NativeOwnerProofReceipts {
     if (state) {
       state.outputs.length = 0;
       state.passkeyOutputs.length = 0;
+      state.slhOutputs.length = 0;
     }
     this.#states.delete(handle);
   }

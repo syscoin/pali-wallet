@@ -81,7 +81,7 @@ export type NativeSmartOperationPorts = Readonly<{
   signingOwners: readonly NativeSmartAccountSigningOwner[];
   assertOwnerCurrent(owner: NativeSmartAccountSigningOwner): void;
   p256WebAuthn: ((metadata: ISmartAccountMetadata, intent: SmartAccountOwnerSigningIntent, assertCurrent: () => void, signal: AbortSignal) => NonNullable<SmartAccountAuthenticatorPorts['p256WebAuthn']>) | null;
-  slhDsa: ((metadata: ISmartAccountMetadata, actionHash: string, assertCurrent: () => void, signal: AbortSignal) => NonNullable<SmartAccountAuthenticatorPorts['slhDsa']>) | null;
+  slhDsa: ((metadata: ISmartAccountMetadata, intent: SmartAccountOwnerSigningIntent, assertCurrent: () => void, signal: AbortSignal) => NonNullable<SmartAccountAuthenticatorPorts['slhDsa']>) | null;
   checkAddress(address: string): Promise<IBlacklistCheckResult>;
   /** One reviewed aggregate owner proof; ends before a separate payer approval. */
   withOwnerProof<T>(signal: AbortSignal, guard: () => void, work: () => Promise<T>): Promise<T>;
@@ -421,13 +421,14 @@ export function createNativeSmartOperation(
         userOperation: prepared.userOperation,
         assertCurrent,
       });
+      const signingIntent = buildSmartAccountUserOpSigningIntent(prepared.userOperation, chainId);
       const signature = await ports.withOwnerProof(signal, assertCurrent, () => signNativeSmartAccountActionHash({
         metadata,
         actionHash: prepared.actionHash,
         accountId: account.id,
         allowReservedSLHDSASignature: canUseReservedSLHDSASignature({ accountAddress: account.address, executions: prepared.executions, smartAccount: metadata }),
-        p256WebAuthn: ports.p256WebAuthn === null ? null : ports.p256WebAuthn(metadata, buildSmartAccountUserOpSigningIntent(prepared.userOperation, chainId), assertCurrent, signal),
-        slhDsa: ports.slhDsa === null ? null : ports.slhDsa(metadata, prepared.actionHash, assertCurrent, signal),
+        p256WebAuthn: ports.p256WebAuthn === null ? null : ports.p256WebAuthn(metadata, signingIntent, assertCurrent, signal),
+        slhDsa: ports.slhDsa === null ? null : ports.slhDsa(metadata, signingIntent, assertCurrent, signal),
         localOwners: ports.signingOwners,
         assertCurrent,
         assertOwnerCurrent: ports.assertOwnerCurrent,
@@ -437,7 +438,7 @@ export function createNativeSmartOperation(
             digest,
             { id: owner.id, type: owner.type as SmartAccountGasPayer['type'] },
             guard,
-            buildSmartAccountUserOpSigningIntent(prepared.userOperation, chainId),
+            signingIntent,
             signal, metadata
           ),
       }));

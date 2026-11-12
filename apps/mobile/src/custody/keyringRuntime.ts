@@ -3941,7 +3941,7 @@ export function createKeyringRuntimeFactory(
         };
         };
         const smartOwnerProofSequence = (handoff: NativeSigningHandoff | null) => {
-          let ordinal = 0, passkeyOrdinal = 0;
+          let ordinal = 0, passkeyOrdinal = 0, slhOrdinal = 0;
           type Intent = Parameters<typeof signSmartAccountOwnerIntent>[0]['intent'];
           type Inventory = ReturnType<typeof captureSmartSigningOwners>;
           type PasskeyRequest = Parameters<NonNullable<SmartAccountAuthenticatorPorts['p256WebAuthn']>['signActionHash']>[0];
@@ -3990,7 +3990,7 @@ export function createKeyringRuntimeFactory(
               return { continuation, captured, binding, ownedHandoff };
             } catch (error) { retireNativeSigningHandoff(ownedHandoff); throw error; }
           };
-          const isFinal = (captured: ReturnType<NativeOwnerProofReceipts['capture']>) => ordinal + passkeyOrdinal === captured.steps.length + captured.passkeys.length;
+          const isFinal = (captured: ReturnType<NativeOwnerProofReceipts['capture']>) => ordinal + passkeyOrdinal + slhOrdinal === captured.steps.length + captured.passkeys.length + captured.slh.length;
           return {
           async owner(owner: NativeSmartAccountSigningOwner, metadata: ISmartAccountMetadata, intent: Intent, inventory: Inventory,
             check: () => void, sign: (acceptTrezorProof: (signature: string) => void, position: Readonly<{step:number;total:number}> | null) => Promise<string>) {
@@ -4039,6 +4039,32 @@ export function createKeyringRuntimeFactory(
               if (isFinal(captured)) completeNativeSigningOwnerStep(ownedHandoff, true);
               check(); return { signature: signed.signature };
             } catch (error) { retireNativeSigningHandoff(ownedHandoff); throw error; }
+          },
+          slh(metadata: ISmartAccountMetadata, intent: Intent, inventory: Inventory,
+            port: NonNullable<SmartAccountAuthenticatorPorts['slhDsa']>, check: () => void): NonNullable<SmartAccountAuthenticatorPorts['slhDsa']> {
+            return Object.freeze({ signMessageActionHash: null, async signActionHash(input) {
+              const request = Object.freeze({ ...input });
+              const ctx = context(metadata, intent, inventory, check);
+              if (!ctx) return port.signActionHash!(request);
+              const { continuation, captured, binding, ownedHandoff } = ctx;
+              try {
+                const step = captured.slh[slhOrdinal++];
+                if (!step || request.accountId !== selectedAccount().index || request.actionHash !== intent.actionHash ||
+                    request.keyId !== step.config.keyId || request.parameterSet !== step.config.parameterSet ||
+                    normalizeSLHDSAPublicKeyField(request.pkRoot) !== normalizeSLHDSAPublicKeyField(step.config.pkRoot) ||
+                    normalizeSLHDSAPublicKeyField(request.pkSeed) !== normalizeSLHDSAPublicKeyField(step.config.pkSeed))
+                  throw new KeyringRuntimeError('CANCELLED');
+                const receipt = { binding, intent, step };
+                const previous = continuation.receipts.readSlh(captured.handle, receipt, check);
+                if (previous !== null) { check(); if (isFinal(captured)) completeNativeSigningOwnerStep(ownedHandoff, true); return previous; }
+                // The shared signer releases this output only after its encrypted
+                // usage counter commits. Retain that proof, never sign it again on return.
+                const signature = await port.signActionHash!(request); check();
+                continuation.receipts.recordSlh(captured.handle, receipt, signature, check);
+                if (isFinal(captured)) completeNativeSigningOwnerStep(ownedHandoff, true);
+                check(); return signature;
+              } catch (error) { retireNativeSigningHandoff(ownedHandoff); throw error; }
+            } });
           },
           };
         };
@@ -5227,8 +5253,11 @@ export function createKeyringRuntimeFactory(
                     () => passkeyCeremony(authentication, signal, guard, owner => passkeys.sign({ ...request, signal: owner, assertCurrent: guard })));
                 },
               }),
-              slhDsa: slhCapability === null ? null : (metadata, actionHash, assertCurrent, signal) =>
-                slhDsaSigningPort(captured, metadata, accountId, actionHash, () => { check(); checkGuard(assertCurrent); }, null, signal, authentication),
+              slhDsa: slhCapability === null ? null : (metadata, intent, assertCurrent, signal) => {
+                const guard = () => { check(); checkGuard(assertCurrent); };
+                return signOwnerProof.slh(metadata, intent, ownerInventory,
+                  slhDsaSigningPort(captured, metadata, accountId, intent.actionHash, guard, null, signal, authentication), guard);
+              },
               withOwnerProof(signal, assertCurrent, work) {
                 check(); checkGuard(assertCurrent);
                 if (signal.aborted) throw new KeyringRuntimeError('CANCELLED');
@@ -6464,7 +6493,8 @@ export function createKeyringRuntimeFactory(
                       metadata, actionHash: prepared.actionHash, localOwners, assertCurrent: guard,
                       accountId: account.id, allowReservedSLHDSASignature: false,
                       p256WebAuthn: passkeys === null ? null : { signActionHash: request => signOwnerProof.passkey(metadata, prepared.ownerSigningIntent, inventory, request, guard, () => passkeyCeremony(authentication, approval.signal, guard, owner => passkeys.sign({ ...request, assertCurrent: guard, signal: owner }))) },
-                      slhDsa: slhCapability === null ? null : slhDsaSigningPort(captured, metadata, account.id, prepared.actionHash, guard, { assertCurrent: guard, async checkDocument() { guard(); } }, approval.signal, authentication),
+                      slhDsa: slhCapability === null ? null : signOwnerProof.slh(metadata, prepared.ownerSigningIntent, inventory,
+                        slhDsaSigningPort(captured, metadata, account.id, prepared.actionHash, guard, { assertCurrent: guard, async checkDocument() { guard(); } }, approval.signal, authentication), guard),
                       assertOwnerCurrent(owner) {
                         const original = ownerRecords.get(`${owner.type}:${owner.id}`), currentOwner = findLocalEcdsaOwner(owner.address);
                         if (!original || !currentOwner || currentOwner.id !== owner.id || currentOwner.type !== owner.type ||
