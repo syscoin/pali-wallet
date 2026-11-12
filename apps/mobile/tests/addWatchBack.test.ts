@@ -202,22 +202,23 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         tokens.props.onSend({symbol:'PUBLIC'}); tokens.props.onSendCollectible({contractAddress:'public'});
         assert.equal(tokenSent, 1); assert.equal(collectibleSent, 1);
         assert(!JSON.stringify(tree).includes('signing is not yet available'));
-        // Stale Home actions keep Send gated; Receive first needs its own warning.
+        // Home and asset callbacks open public drafts; backup still gates preparation in nativeSendBack.test.ts.
+        // Receive keeps its own explicit warning rather than starting backup automatically.
         backupRequired = true;
         press(get(tree, element => element.props.title === 'Send'));
         press(get(tree, element => element.props.title === 'Receive'));
         tokens.props.onSend({symbol:'PUBLIC'}); tokens.props.onSendCollectible({contractAddress:'public'});
-        assert.equal(backupRequests, 3);
-        assert.equal(sent, 1); assert.equal(tokenSent, 1); assert.equal(collectibleSent, 1);
+        assert.equal(backupRequests, 0);
+        assert.equal(sent, 2); assert.equal(tokenSent, 2); assert.equal(collectibleSent, 2);
         tree = render.render(child, leaf, props()); render.flush(child);
         assert.equal(find(tree, element => element.type === 'QRCode'), undefined);
         assert.equal(get(tree, element => element.type === 'Modal').props.transparent, true);
         press(get(tree, element => element.props.title === 'Back Up Now'));
-        assert.equal(backupRequests, 4);
+        assert.equal(backupRequests, 1);
         tree = render.render(child, leaf, props()); render.flush(child);
         assert.equal(find(tree, element => element.type === 'Modal'), undefined);
         press(named(tree, 'Back up your wallet'));
-        assert.equal(backupRequests, 5);
+        assert.equal(backupRequests, 2);
 
         press(get(tree, element => element.props.title === 'Receive'));
         tree = render.render(child, leaf, props()); render.flush(child);
@@ -233,6 +234,9 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         press(staleAllowance);
         tree = render.render(child, leaf, props()); render.flush(child);
         assert.equal(find(tree, element => element.type === 'QRCode'), undefined);
+        // A retained asset callback from the prior account scope cannot open a draft.
+        tokens.props.onSend({symbol:'PUBLIC'}); tokens.props.onSendCollectible({contractAddress:'public'});
+        assert.equal(tokenSent, 2); assert.equal(collectibleSent, 2);
         const guardedSend = get(tree, element => element.props.title === 'Send');
         press(get(tree, element => element.props.title === 'Receive'));
         tree = render.render(child, leaf, props()); render.flush(child);
@@ -245,11 +249,14 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         await press(copy); await press(get(footer, element => element.props.title === 'Share address'));
         assert.deepEqual(copied, [account.addresses.ethereum]);
         assert.equal(shared.length, 1); assert(shared[0]!.includes(account.addresses.ethereum!));
-        press(guardedSend); assert.equal(sent, 1); assert.equal(backupRequests, 6);
+        press(guardedSend); assert.equal(sent, 3); assert.equal(backupRequests, 2);
         (get(tree, element => element.type === 'Header').props.onBack as () => void)();
-        await press(copy);
-        assert.equal(copied.length, 1);
+        tree = render.render(child, leaf, props()); render.flush(child);
+        assert.equal(find(tree, element => element.type === 'QRCode'), undefined);
+        assert.equal(find(tree, element => element.type === 'Modal'), undefined);
         accountRevision++;
+        await press(copy); assert.equal(copied.length, 1, 'a prior-scope Receive action cannot copy');
+        press(guardedSend); assert.equal(sent, 3, 'a prior-scope Home action cannot open a draft');
         tree = render.render(child, leaf, props()); render.flush(child);
         assert.equal(find(tree, element => element.type === 'QRCode'), undefined);
         backupRequired = false;
