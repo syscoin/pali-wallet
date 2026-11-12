@@ -1,6 +1,6 @@
 /** @jest-environment node */
 /* eslint-disable @typescript-eslint/no-var-requires, camelcase */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -27,12 +27,12 @@ afterEach(() => {
     .forEach((root) => rmSync(root, { recursive: true, force: true }));
 });
 
-function fixture() {
+function fixture(packageVersion = '5.0.0') {
   const root = mkdtempSync(join(tmpdir(), 'pali-extension-build-'));
   roots.push(root);
   writeFileSync(
     join(root, 'package.json'),
-    JSON.stringify({ version: '4.0.121' })
+    JSON.stringify({ version: packageVersion })
   );
   writeFileSync(
     join(root, 'manifest.json'),
@@ -40,7 +40,7 @@ function fixture() {
   );
   const receipt = {
     channel: 'canary',
-    series: '5.0.0',
+    series: packageVersion,
     buildNumber: 47,
     sourceRevision: 'a'.repeat(40),
     purpose: 'qa',
@@ -54,7 +54,7 @@ function fixture() {
     async (script: string, _args: string[], env: NodeJS.ProcessEnv) => {
       const version = extensionBuildVersion(
         env.NODE_ENV,
-        '4.0.121',
+        packageVersion,
         env.PALI_CANARY_BUILD_NUMBER
       );
       if (script.endsWith('generateManifest.js')) {
@@ -118,7 +118,7 @@ test('Canary reserves once and binds the manifest, ZIP, label and receipt to tha
 });
 
 test('production keeps its version and never allocates or inherits a Canary number', async () => {
-  const f = fixture();
+  const f = fixture('4.0.121');
   const previous = process.env.PALI_CANARY_BUILD_NUMBER;
   const previousStore = process.env.PALI_EXTENSION_STORE_BUILD;
   process.env.PALI_CANARY_BUILD_NUMBER = '600';
@@ -141,6 +141,31 @@ test('production keeps its version and never allocates or inherits a Canary numb
     else process.env.PALI_EXTENSION_STORE_BUILD = previousStore;
   }
 });
+
+test('an upgrade-test version selects its own series without publishing production', async () => {
+  const f = fixture('5.0.1');
+  const result = await buildExtension(['canary'], f.ports);
+  expect(f.reserve).toHaveBeenCalledWith({
+    cwd: f.root,
+    channel: 'canary',
+    series: '5.0.1',
+    purpose: 'qa',
+  });
+  expect(result.version).toBe('5.0.1.47');
+  expect(result.version_name).toBe('5.0.1 Canary (47)');
+  expect(result.artifact).toMatch(
+    /pali-wallet-canary-chrome-5\.0\.1\.47\.zip$/
+  );
+});
+
+test.each(['5.0.1-dev', '5.0', '5.0.1.2', '05.0.1', '65536.0.1'])(
+  'refuses a non-Store numeric base %s',
+  (version) => {
+    expect(() => extensionBuildVersion('canary', version, 1)).toThrow(
+      'INVALID_SERIES'
+    );
+  }
+);
 
 test('reservation failure stops before generating or building and releases the checkout lock', async () => {
   const f = fixture();
@@ -279,5 +304,127 @@ test.each([false, true])(
     if (store) expect(manifest).not.toHaveProperty('key');
     else expect(manifest.key).toMatch(/^MIIB/);
     expect(readFileSync(resolve('manifest.json')).equals(tracked)).toBe(true);
+  }
+);
+
+test('both manifest templates and the committed manifest follow the package release fields', () => {
+  const pkg = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
+  const { MV2_OPTIONS, MV3_OPTIONS } = require('../../source/config/consts.js');
+  const committed = JSON.parse(readFileSync(resolve('manifest.json'), 'utf8'));
+  for (const manifest of [MV2_OPTIONS, MV3_OPTIONS, committed]) {
+    expect(manifest.version).toBe(pkg.version);
+    expect(manifest.description).toBe(pkg.description);
+  }
+  expect(pkg.description.length).toBeLessThanOrEqual(132);
+});
+
+test.each(['development', 'production'])(
+  'the real %s generator labels development without changing the numeric release version',
+  (mode) => {
+    const f = fixture();
+    const output = join(f.root, 'generated.json');
+    const pkg = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
+    execFileSync(
+      process.execPath,
+      [resolve('source/config/generateManifest.js')],
+      {
+        cwd: resolve('.'),
+        env: {
+          ...process.env,
+          NODE_ENV: mode,
+          MANIFEST_TYPE: 'MV3',
+          PALI_EXTENSION_MANIFEST: output,
+        },
+      }
+    );
+    const manifest = JSON.parse(readFileSync(output, 'utf8'));
+    expect(manifest.version).toBe(pkg.version);
+    expect(manifest.description).toBe(pkg.description);
+    expect(manifest.version_name).toBe(
+      mode === 'development' ? `${pkg.version} Development` : undefined
+    );
+    expect(manifest.permissions.includes('webRequest')).toBe(
+      mode === 'development'
+    );
+  }
+);
+
+test.each([false, true])(
+  'the development package command uses the platform shell without nested quotes (generation fails: %s)',
+  (failGeneration) => {
+    const f = fixture();
+    const bin = join(f.root, 'node_modules/.bin');
+    const scripts = join(f.root, 'scripts with spaces');
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(scripts);
+    mkdirSync(join(f.root, 'source/config'), { recursive: true });
+    const eventScript = `
+      require('node:fs').appendFileSync('events.jsonl', JSON.stringify({
+        step: process.env.PALI_COMMAND_STEP || 'generate',
+        mode: process.env.NODE_ENV, browser: process.env.TARGET_BROWSER,
+        args: process.argv.slice(2)
+      }) + '\\n');
+    `;
+    writeFileSync(
+      join(f.root, 'source/config/generateManifest.js'),
+      eventScript + (failGeneration ? 'process.exit(7);' : '')
+    );
+    const webpack = join(scripts, 'webpack.cjs');
+    writeFileSync(
+      webpack,
+      `process.env.PALI_COMMAND_STEP = 'webpack';\n${eventScript}`
+    );
+    for (const [name, target] of [
+      ['cross-env', require.resolve('cross-env/src/bin/cross-env.js')],
+      ['webpack', webpack],
+    ]) {
+      writeFileSync(
+        join(bin, name),
+        `#!/usr/bin/env node\nrequire(${JSON.stringify(target)});\n`,
+        { mode: 0o755 }
+      );
+      writeFileSync(
+        join(bin, `${name}.cmd`),
+        `@"${process.execPath}" "${target}" %*\r\n`
+      );
+    }
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      NODE_ENV: 'canary',
+      TARGET_BROWSER: 'firefox',
+    };
+    const pathKey =
+      Object.keys(env).find((key) => key.toLowerCase() === 'path') || 'PATH';
+    env[pathKey] = `${bin}${process.platform === 'win32' ? ';' : ':'}${
+      env[pathKey] || ''
+    }`;
+    const command = JSON.parse(readFileSync(resolve('package.json'), 'utf8'))
+      .scripts['dev:chrome'];
+    const result = spawnSync(command, {
+      shell: true,
+      cwd: f.root,
+      env,
+      encoding: 'utf8',
+      timeout: 10000,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(failGeneration ? 7 : 0);
+    const events = readFileSync(join(f.root, 'events.jsonl'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    expect(events).toEqual([
+      { step: 'generate', mode: 'development', browser: 'chrome', args: [] },
+      ...(failGeneration
+        ? []
+        : [
+            {
+              step: 'webpack',
+              mode: 'development',
+              browser: 'chrome',
+              args: ['--config', 'source/config/webpack.dev.js', '--watch'],
+            },
+          ]),
+    ]);
   }
 );

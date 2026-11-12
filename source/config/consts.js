@@ -1,15 +1,18 @@
 /* eslint-disable camelcase */
+// CommonJS build configuration reads the canonical package metadata.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { version, description } = require('../../package.json');
 const MV2_OPTIONS = {
   manifest_version: 2,
   name: 'Pali Wallet',
-  version: '2.0.16',
+  version,
   icons: {
     16: 'assets/all_assets/favicon-32.png',
     32: 'assets/all_assets/favicon-32.png',
     48: 'assets/all_assets/favicon-32.png',
     128: 'assets/all_assets/favicon-32.png',
   },
-  description: 'A Non-Custodial Crypto Wallet',
+  description,
   short_name: 'pali',
   permissions: [
     'http://*/*',
@@ -78,14 +81,14 @@ const CANARY_EXTENSION_KEY =
 const MV3_OPTIONS = {
   manifest_version: 3,
   name: 'Pali Wallet',
-  version: '4.0.121',
+  version,
   icons: {
     16: 'assets/all_assets/favicon-32.png',
     32: 'assets/all_assets/favicon-32.png',
     48: 'assets/all_assets/favicon-32.png',
     128: 'assets/all_assets/favicon-32.png',
   },
-  description: 'A Non-Custodial Crypto Wallet',
+  description,
   short_name: 'pali',
   permissions: [
     'hid',
@@ -99,11 +102,7 @@ const MV3_OPTIONS = {
     'notifications',
     'declarativeNetRequestWithHostAccess',
   ],
-  host_permissions: [
-    'http://*/*',
-    'https://*/*',
-    'http://localhost:8545/',
-  ],
+  host_permissions: ['http://*/*', 'https://*/*', 'http://localhost:8545/'],
   externally_connectable: {
     matches: ['https://suite.trezor.io/*'],
   },

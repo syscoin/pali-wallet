@@ -1,5 +1,4 @@
 /** Public build and installation identities; release metadata cannot replace these. */
-export const CANARY_BASE_VERSION = '5.0.0';
 export const STABLE_EXTENSION_ID = 'mgffkfbidihjpoaomajlbgchddlicgpn';
 // The local packaging key identifies Canary, but does not establish a store listing.
 export const CANARY_EXTENSION_ID = 'eaapkkbcdfhchkhgkmgimhihepifmehi';

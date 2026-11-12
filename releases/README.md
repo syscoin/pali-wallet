@@ -50,8 +50,8 @@ empty until publication. Android's package and the Chrome listing are compiled
 into Pali. Remote metadata cannot substitute a different store/link.
 
 Extension channels and store identities are fixed in
-`source/shared/extensionReleaseChannel.ts`. Canary uses marketing base `5.0.0`
-and its own numbered manifest versions. Its local packaging key is not proof of
+`source/shared/extensionReleaseChannel.ts`. Canary uses the version in `package.json`
+as its base and adds its own numbered manifest suffix. Its local packaging key is not proof of
 a Chrome Web Store listing: the verified Canary store ID and URL remain unset
 until that listing is confirmed. Do not add Canary releases to the stable feed.
 The existing stable listing is unchanged. Create a separate Canary item with its

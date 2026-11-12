@@ -5,7 +5,6 @@ const { spawnSync } = require('node:child_process');
 const { reserveBuildNumber, assertBuildSource } = require('./build-number.cjs');
 const {
   extensionBuildVersion,
-  CANARY_BASE_VERSION,
 } = require('../source/config/extensionBuildVersion.cjs');
 
 const repositoryRoot = path.resolve(__dirname, '..');
@@ -53,7 +52,7 @@ async function buildExtension(argv, ports = {}) {
             cwd: root,
             purpose: options.purpose,
             channel: 'canary',
-            series: CANARY_BASE_VERSION,
+            series: pkg.version,
           })
         : null;
     const version = extensionBuildVersion(
