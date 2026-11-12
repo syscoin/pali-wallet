@@ -12,11 +12,9 @@ function readQualificationSdkPin(root) {
   const pkg = readJson(path.join(root, 'package.json'));
   const version = pkg.dependencies[name];
   const quickCryptoIdentity = readQuickCryptoSentryIdentity(root);
-  const feeRateIdentity = readKeyringFeeRateIdentity(root);
   return {
     version,
-    identity: composeQualificationSdkIdentity(version, quickCryptoIdentity, feeRateIdentity),
-    ...(feeRateIdentity ? { feeRateIdentity } : {}),
+    identity: composeQualificationSdkIdentity(version, quickCryptoIdentity),
     ...(quickCryptoIdentity ? { quickCryptoIdentity } : {}),
   };
 }
@@ -28,19 +26,6 @@ function verifyInstalledQualificationSdk(root, pin) {
   if (readQualificationSdkPin(root).identity !== pin.identity)
     throw Error('Native qualification SDK identity mismatch');
   readWalletConnectSdkIdentity(root);
-}
-
-function readKeyringFeeRateIdentity(root) {
-  const pkg = readJson(path.join(root, 'package.json'));
-  if (pkg.paliKeyringFeeRatePatch === undefined) {
-    if (pkg.scripts?.postinstall?.includes('apply-keyring-fee-rate'))
-      throw Error('Keyring fee candidate requires qualification provenance');
-    return undefined;
-  }
-  const { identity, verifyKeyringFeeRatePatch } = require(path.resolve(__dirname, '../../../scripts/apply-keyring-fee-rate.cjs'));
-  if (pkg.paliKeyringFeeRatePatch !== identity) throw Error('Keyring fee candidate provenance mismatch');
-  verifyKeyringFeeRatePatch(root);
-  return identity;
 }
 
 function readQuickCryptoSentryIdentity(root) {

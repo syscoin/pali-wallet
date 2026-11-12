@@ -384,10 +384,10 @@ function QualificationApp() {
         await check(SENTRY_APPROVAL_CHECK, () => qualifyNativeSentryApprovals(qualificationLifetime.signal,
           createNativeSentryCryptoExecutor()));
         stage = QUALIFICATION_SDK_IDENTITY_STAGE;
-        const { paliQuickCryptoSentryIdentity, paliKeyringFeeRateIdentity, paliQualificationSdkVersion, paliQualificationSdkIdentity } = Constants.expoConfig?.extra ?? {};
+        const { paliQuickCryptoSentryIdentity, paliQualificationSdkVersion, paliQualificationSdkIdentity } = Constants.expoConfig?.extra ?? {};
         expect(typeof paliQuickCryptoSentryIdentity === 'string' && paliQuickCryptoSentryIdentity.length > 0);
         assertQualificationSdkIdentity(paliQualificationSdkIdentity, paliQualificationSdkVersion,
-          paliQuickCryptoSentryIdentity, paliKeyringFeeRateIdentity);
+          paliQuickCryptoSentryIdentity);
         verifiedQuickCryptoIdentity = paliQuickCryptoSentryIdentity;
         if (publicPoolConfiguration !== undefined || (!parameters.physical && parameters.publicPool)) {
           stage = 'public pool configuration';

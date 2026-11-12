@@ -7,33 +7,28 @@ const vm = require('node:vm');
 const { spawnSync } = require('node:child_process');
 const { composeQualificationSdkIdentity, assertQualificationSdkIdentity, QUALIFICATION_SDK_IDENTITY_STAGE } = require('../scripts/qualificationSdkIdentity.ts');
 
-const version = '2.1.12';
+const version = '2.1.13';
 const quick = `quickcrypto.1.1.9.source.${'a'.repeat(40)}.sha256.${'b'.repeat(64)}`;
-const fee = `keyring.e75b239.sha256.${'c'.repeat(64)}`;
 
-test('qualification identity includes every present candidate in one exact order', () => {
+test('qualification identity binds the exact official package and any native candidate', () => {
   assert.equal(composeQualificationSdkIdentity(version), version);
-  assert.equal(composeQualificationSdkIdentity(version, quick), `${version}.${quick}`);
-  assert.equal(composeQualificationSdkIdentity(version, undefined, fee), `${version}.${fee}`);
-  const identity = `${version}.${quick}.${fee}`;
-  assert.equal(composeQualificationSdkIdentity(version, quick, fee), identity);
-  assert.doesNotThrow(() => assertQualificationSdkIdentity(identity, version, quick, fee));
-  for (const actual of [undefined, `${version}.${quick}`, `${version}.${fee}.${quick}`, `${identity}.extra`])
-    assert.throws(() => assertQualificationSdkIdentity(actual, version, quick, fee));
-  assert.throws(() => assertQualificationSdkIdentity(identity, version, quick));
-  assert.throws(() => assertQualificationSdkIdentity(identity, version, quick, `${fee}0`));
+  const identity = `${version}.${quick}`;
+  assert.equal(composeQualificationSdkIdentity(version, quick), identity);
+  assert.doesNotThrow(() => assertQualificationSdkIdentity(identity, version, quick));
+  for (const actual of [undefined, version, `${quick}.${version}`, `${identity}.extra`])
+    assert.throws(() => assertQualificationSdkIdentity(actual, version, quick));
+  assert.throws(() => assertQualificationSdkIdentity(identity, version));
+  assert.throws(() => assertQualificationSdkIdentity(identity, version, `${quick}0`));
 });
 
 test('qualification identities reject coercion, empty values and malformed components', () => {
-  for (const invalid of [undefined, null, 2, '', '^2.1.12', '2.1', '02.1.12', '2.1.12\n', '2.1.12\r'])
+  for (const invalid of [undefined, null, 2, '', '^2.1.13', '2.1', '02.1.13', '2.1.13\n', '2.1.13\r'])
     assert.throws(() => composeQualificationSdkIdentity(invalid));
-  for (const invalid of [null, {}, 2, '', 'a b', 'a\n', 'a'.repeat(513)]) {
+  for (const invalid of [null, {}, 2, '', 'a b', 'a\n', 'a'.repeat(513)])
     assert.throws(() => composeQualificationSdkIdentity(version, invalid));
-    assert.throws(() => composeQualificationSdkIdentity(version, quick, invalid));
-  }
 });
 
-test('native qualification validates the generated fee identity and names identity failures separately', () => {
+test('native qualification validates the generated candidate identity and names identity failures separately', () => {
   const source = fs.readFileSync(require.resolve('./index.tsx'), 'utf8');
   const start = source.indexOf('stage = QUALIFICATION_SDK_IDENTITY_STAGE;');
   const end = source.indexOf('verifiedQuickCryptoIdentity = paliQuickCryptoSentryIdentity;', start);
@@ -44,21 +39,21 @@ test('native qualification validates the generated fee identity and names identi
     expect(value) { assert(value); },
   });
   const extra = { paliQualificationSdkVersion: version, paliQuickCryptoSentryIdentity: quick,
-    paliKeyringFeeRateIdentity: fee, paliQualificationSdkIdentity: composeQualificationSdkIdentity(version, quick, fee) };
+    paliQualificationSdkIdentity: composeQualificationSdkIdentity(version, quick) };
   assert.equal(run(extra).stage, QUALIFICATION_SDK_IDENTITY_STAGE);
   assert.equal(run(extra).verifiedQuickCryptoIdentity, quick);
-  assert.throws(() => run({ ...extra, paliKeyringFeeRateIdentity: undefined }), /IDENTITY_MISMATCH/);
-  assert.throws(() => run({ ...extra, paliKeyringFeeRateIdentity: `${fee}0` }), /IDENTITY_MISMATCH/);
-  assert.throws(() => run({ ...extra, paliQualificationSdkIdentity: `${version}.${quick}` }), /IDENTITY_MISMATCH/);
+  assert.throws(() => run({ ...extra, paliQuickCryptoSentryIdentity: undefined }));
+  assert.throws(() => run({ ...extra, paliQuickCryptoSentryIdentity: `${quick}0` }), /IDENTITY_MISMATCH/);
+  assert.throws(() => run({ ...extra, paliQualificationSdkIdentity: version }), /IDENTITY_MISMATCH/);
 });
 
-test('isolated configuration forwards both candidate components without changing their identity', () => {
+test('isolated configuration forwards the exact package and native candidate without changing identity', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-sdk-identity-'));
   try {
     fs.mkdirSync(path.join(root, 'scripts'));
     fs.copyFileSync(require.resolve('../scripts/configure-native-qualification.cjs'), path.join(root, 'scripts/configure-native-qualification.cjs'));
-    const pin = { version, quickCryptoIdentity: quick, feeRateIdentity: fee,
-      identity: composeQualificationSdkIdentity(version, quick, fee) };
+    const pin = { version, quickCryptoIdentity: quick,
+      identity: composeQualificationSdkIdentity(version, quick) };
     fs.writeFileSync(path.join(root, 'scripts/qualification-sdk.cjs'), `const pin = ${JSON.stringify(pin)}; module.exports = { readQualificationSdkPin() { return pin; }, verifyInstalledQualificationSdk() {}, readWalletConnectSdkIdentity() {} };`);
     fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ main: 'index.ts' }));
     fs.writeFileSync(path.join(root, 'app.json'), JSON.stringify({ expo: {
@@ -72,8 +67,7 @@ test('isolated configuration forwards both candidate components without changing
     const extra = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8')).expo.extra;
     assert.equal(extra.paliQualificationSdkVersion, version);
     assert.equal(extra.paliQuickCryptoSentryIdentity, quick);
-    assert.equal(extra.paliKeyringFeeRateIdentity, fee);
     assertQualificationSdkIdentity(extra.paliQualificationSdkIdentity, extra.paliQualificationSdkVersion,
-      extra.paliQuickCryptoSentryIdentity, extra.paliKeyringFeeRateIdentity);
+      extra.paliQuickCryptoSentryIdentity);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

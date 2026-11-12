@@ -35,3 +35,11 @@ test('UTXO custom and urgency rates go through the same exact SDK converter', ()
   for (const rate of ['0','-1','7.5','5000','NaN'])
     assert.throws(() => snapshotUtxoFeeChoice({ kind: 'custom', satPerVbyte: rate }));
 });
+
+test('the installed SDK preserves decimal fee ceilings and refuses unsafe rates', () => {
+  for (const [rate, units] of [[7e-8, 7], [7.01e-8, 8], [1e-9, 1], [Number.MIN_VALUE, 1],
+    [90071992.5474099, 9007199254740990]] as const)
+    assert.equal(utxoFeeRateUnits(rate), units);
+  for (const rate of [0, -1, NaN, Infinity, -Infinity, Number.MAX_VALUE, 90071992.54740992])
+    assert.throws(() => utxoFeeRateUnits(rate), /Invalid UTXO fee rate/);
+});
