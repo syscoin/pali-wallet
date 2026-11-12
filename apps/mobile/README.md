@@ -49,7 +49,7 @@ The account document has a 4 MiB budget. Public watch records separately allow 2
 
 **Restore secure access** verifies the matching recovery phrase and reviews retained data before replacing the device credential. Imported keys require their retained encrypted recovery copy or an independent backup. A phrase alone cannot recreate missing independently imported keys or missing private notes on a lost device. Interrupted staging is durably cleaned up; an uncertain commit requires reopening and reconciliation rather than a blind retry.
 
-Settings → Security & backups → Auto-lock stores a device-local preference for custody and watch views. The default is five minutes, with Off or 5–120 whole minutes available. Increasing the custody timeout or choosing Off requires fresh OS approval without reading the spending credential. Backgrounding closes private presentation and cancels work, except for the exact owned native authentication window. Asynchronous work does not extend the deadline.
+Settings → Security & backups → Auto-lock stores a device-local preference for custody and watch views. Auto-lock is disabled by default, with Off or 5–120 whole minutes available. Increasing the custody timeout or choosing Off requires fresh OS approval without reading the spending credential. Backgrounding closes private presentation and cancels work, except for the exact owned native authentication window. Asynchronous work does not extend the deadline.
 
 ## Remaining implementation and qualification
 

@@ -1,3 +1,4 @@
+import type { NativeAccountChangeReview } from './accountChangeRequests.ts';
 import type { AssetTransferCall } from '../../../../source/shared/assetTransfer.ts';
 import type { DappEncryptionMethod } from '../../../../source/shared/dappEncryptionRequest.ts';
 import type { SmartAccountModuleRequestMethod } from '../../../../source/shared/smartAccountModuleRequest.ts';
@@ -128,6 +129,7 @@ export type NativeSigningReview =
   | NativeSmartTransactionReview;
 
 export type NativeConnectionsSnapshot = Readonly<{
+  accountChangeReview?: NativeAccountChangeReview | null;
   preparationReview: NativeSmartPreparationReview | null;
   psbtReview: NativePsbtReview | null;
   sentryReview: NativeSentryReview | null;
@@ -170,6 +172,9 @@ export type NativeConnectionsSnapshot = Readonly<{
 
 /** Public view commands carry identifiers only, never transport or keyring handles. */
 export type NativeConnectionsView = Readonly<{
+  selectConnectionAccount(id: string, accountId: string, revision: number): void;
+  approveAccountChange(id: string, revision: number): Promise<void>;
+  rejectAccountChange(id: string): Promise<void>;
   /** Status only for the exact current request; never grants signing authority. */
   isRequestAuthenticating(id: string): boolean;
   approveSmartPreparation(id: string, revision: number, externalOwnersAck: boolean): Promise<void>;

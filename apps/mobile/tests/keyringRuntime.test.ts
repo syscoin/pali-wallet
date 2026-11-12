@@ -3085,7 +3085,7 @@ for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject
       async openTransport(options) {
         event = options.onEvent;
         return {
-          async updatePreparedAccount() { throw Error('Smart creation is outside this fixture'); },
+          async updateSessionAccount() { throw Error('Smart creation is outside this fixture'); },
           async pending() { return null; },
           async sessions() { return [session]; },
           async pair() { throw Error('Unexpected pair'); },
@@ -3678,4 +3678,24 @@ for (const maximum of [false, true]) test(`Trezor runtime resumes a zero-step UT
     assert.equal(methods.filter(method => method === 'signTransaction').length, 1);
     assert.equal(broadcasts, 1);
   } finally { await owner.dispose(); await sessions.dispose(); }
+});
+
+
+test('connection public accounts stay on the selected family across mixed catalogue groups', async () => {
+  const f = await readyAccounts();
+  try {
+    await f.authority.selectNetwork('syscoin', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
+    const host = await f.runtime.openConnectionHost();
+    const utxo = host.context();
+    assert(utxo.accounts.length > 0);
+    assert(utxo.accounts.every(account => account.id.includes(':57:')));
+    assert.equal(utxo.accounts[0]!.id, 'hd:57:0');
+    assert(f.runtime.catalogue.getControlSnapshot()!.accounts.some(account => account.id === 'hd:60:0'));
+    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
+    const evm = host.context();
+    assert(evm.accounts.length > 0);
+    assert(evm.accounts.every(account => account.id.includes(':60:')));
+    assert.equal(evm.accounts[0]!.id, 'hd:60:0');
+    assert.equal(JSON.stringify(evm).includes('encrypted'), false);
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });

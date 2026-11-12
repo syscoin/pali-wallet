@@ -1,5 +1,15 @@
 # Pali mobile screen review — 10 November 2026
 
+## Dapp account selection — 12 November
+
+The native `wallet_changeAccount` chooser uses the shared permission engine and requires explicit selection and approval. These are actual React Native browser renders using synthetic public accounts; they do not qualify native transport, hardware or device behavior. The footer remains visible while the account list scrolls. [Capture provenance](account-switch/manifest.json).
+
+| 320px | 390px |
+| --- | --- |
+| ![Account chooser at 320px](account-switch/account-change-320.png) | ![Account chooser at 390px](account-switch/account-change-390.png) |
+
+Selected-row scroll states: [320px](account-switch/account-change-selected-320.png) · [390px](account-switch/account-change-selected-390.png).
+
 ## Current local access flow — 12 November
 
 The current mobile app has **no Pali PIN setup, PIN unlock or biometric toggle**. Ordinary opening restores the public wallet; each sensitive action invokes the OS-protected credential with device biometrics or system-passcode fallback. Manual lock, or optional Auto-lock, hides the public view until fresh OS authorization without reading spending credentials. Auto-lock is Off by default and is available before backup is confirmed. The older PIN comparison frames below are historical reference captures, superseded by this flow.

@@ -87,6 +87,9 @@ export function NativeTransactionReviewFixture() {
   }, []);
   const unavailable = () => { throw new Error('Outside transaction review fixture'); };
   const controller: NativeConnectionsView = {
+    selectConnectionAccount() { throw Error('Account switching is outside this fixture'); },
+    async approveAccountChange() { throw Error('Account switching is outside this fixture'); },
+    async rejectAccountChange() { throw Error('Account switching is outside this fixture'); },
     isRequestAuthenticating: () => false,
   ...unsupportedDappViews,
     async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },

@@ -1,3 +1,4 @@
+import { NativeAccountChangeFixture } from './nativeAccountChangeFixture';
 import { NativeGuardianRecoveryFixture } from './nativeGuardianRecoveryFixture';
 import { NativeGuardianPolicyFixture } from './nativeGuardianPolicyFixture';
 import { NativeEoaBatchFixture } from './nativeEoaBatchFixture';
@@ -461,6 +462,8 @@ function Fixture() {
         <NativeEoaBatchFixture />
       ) : new URLSearchParams(window.location.search).has('smart-batch') ? (
         <NativeSmartBatchFixture />
+      ) : route.has('change-account') ? (
+        <NativeAccountChangeFixture />
       ) : new URLSearchParams(window.location.search).has('sentry-consent') || new URLSearchParams(window.location.search).has('control-consent') ? (
         <NativeDappConsentFixture />
       ) : new URLSearchParams(window.location.search).has('sentry-nodes') ? (

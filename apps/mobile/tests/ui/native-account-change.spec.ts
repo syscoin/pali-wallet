@@ -1,0 +1,22 @@
+import { test, expect } from '@playwright/test';
+test.use({ baseURL: process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179' });
+for (const width of [320, 390]) test(`account chooser stays clear and requires consent at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 700 });
+  await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
+  await page.goto('/?change-account');
+  await expect(page.getByRole('heading', { name: 'Change Account' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Daily wallet.*Currently connected.*Selected/ })).toBeVisible();
+  await page.getByRole('button', { name: /Ledger savings/ }).click();
+  await expect(page.getByRole('button', { name: /Ledger savings.*Selected/ })).toBeVisible();
+  const approve = page.getByRole('button', { name: 'Switch Account', exact: true });
+  await expect(approve).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reject', exact: true })).toBeVisible();
+  const box = await approve.boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(700);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  await page.screenshot({ path: info.outputPath(`account-change-selected-${width}.png`), fullPage: true });
+  await page.getByRole('heading', { name: 'Change Account' }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath(`account-change-${width}.png`), fullPage: true });
+  await approve.click(); await expect(page.getByText('Account selection approved')).toBeVisible();
+});

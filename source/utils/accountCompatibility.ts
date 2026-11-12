@@ -6,7 +6,12 @@ import type {
 } from '../types/network.ts';
 
 type AccountForCompatibility = Pick<IKeyringAccountState, 'address'> &
-  Partial<Pick<IKeyringAccountState, 'slip44' | 'smartAccount'>>;
+  Partial<Pick<IKeyringAccountState, 'slip44'>> & {
+    smartAccount?: Pick<
+      NonNullable<IKeyringAccountState['smartAccount']>,
+      'chainId'
+    >;
+  };
 
 /**
  * Account buckets can briefly be delivered separately from the active network

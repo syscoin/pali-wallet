@@ -1,3 +1,4 @@
+import { isAccountCompatibleWithNetwork } from '../../../../source/utils/accountCompatibility.ts';
 import type { PaliRecoveryTarget } from '../../../../source/utils/smartAccount/account.ts';
 import { AUTOMATIC_FEE, chooseEvmFees, snapshotEvmFeeChoice, snapshotUtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
 import { toP256WebAuthnRecoveryTarget } from '../../../../source/utils/passkey/identity.ts';
@@ -6636,6 +6637,7 @@ export function createKeyringRuntimeFactory(
                 const unlocked = keyring.hasPublicSession() && snapshot !== null;
                 const accounts = unlocked
                   ? snapshot.accounts.flatMap((account) => {
+                      if (!isAccountCompatibleWithNetwork(account, account.type, selectedNetwork)) return [];
                       if ((account.type === 'Ledger' || account.type === 'Trezor') &&
                           (account.slip44 !== 60 || selectedNetwork.kind !== sdk.INetworkType.Ethereum)) return [];
                       const type = account.type;

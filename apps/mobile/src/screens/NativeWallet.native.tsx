@@ -1,3 +1,4 @@
+import { NativeAccountChangeReview } from './NativeAccountChangeReview';
 import type { NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import { NativeInfrastructure as NativeInfrastructureScreen } from './NativeInfrastructure';
@@ -789,7 +790,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     if (!eventId || !local || !protectedScreen || snapshot.phase !== 'ready' || stage !== 'choose' || busy || shell.immersive ||
         rootOrigin.current || notificationTransition.current || lastNotificationAttempt.current === attemptKey || AppState.currentState !== 'active') return;
     const connections = local.connections.getSnapshot();
-    if (connections.status !== 'ready' || connections.proposals.length || connections.preparationReview || connections.controlReview ||
+    if (connections.status !== 'ready' || connections.proposals.length || connections.accountChangeReview || connections.preparationReview || connections.controlReview ||
         connections.sentryReview || connections.psbtReview || connections.signingReview) return;
     const token = {}, capturedEpoch = epoch.current;
     notificationTransition.current = token; lastNotificationAttempt.current = attemptKey;
@@ -852,7 +853,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     if (AppState.currentState !== 'active' || !protectedScreen || busy ||
         snapshot.phase !== 'ready' || stage !== 'choose' || shell.immersive ||
         !connectionView || connectionSnapshot?.status !== 'ready' ||
-        connectionSnapshot.proposals.length || connectionSnapshot.preparationReview || connectionSnapshot.controlReview || connectionSnapshot.sentryReview || connectionSnapshot.psbtReview || signingReview) return;
+        connectionSnapshot.proposals.length || connectionSnapshot.accountChangeReview || connectionSnapshot.preparationReview || connectionSnapshot.controlReview || connectionSnapshot.sentryReview || connectionSnapshot.psbtReview || signingReview) return;
     const current = readyContext();
     if (!current) return;
     const capturedEpoch = epoch.current;
@@ -863,7 +864,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       const scanCurrent = scanIntentExpiresAt !== null && scanIntentExpiresAt > Date.now();
       if ((!linkCurrent && !scanCurrent) || !active || !mounted.current || rootOrigin.current || epoch.current !== capturedEpoch ||
           AppState.currentState !== 'active' || readyContext()?.context !== current.context ||
-          connections.status !== 'ready' || connections.proposals.length || connections.preparationReview || connections.controlReview || connections.sentryReview || connections.psbtReview || connections.signingReview) return;
+          connections.status !== 'ready' || connections.proposals.length || connections.accountChangeReview || connections.preparationReview || connections.controlReview || connections.sentryReview || connections.psbtReview || connections.signingReview) return;
       rootOrigin.current = { tab: shell.tab, stage: 'connections', ...current, epoch: capturedEpoch };
       setStage('connections');
     });
@@ -1204,7 +1205,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         return true;
       }
       // Full-screen leaf flows own their Back behavior regardless of listener order.
-      if (snapshot.phase === 'ready' && (stage === 'choose' || stage === 'connections') && (signingReview || connectionSnapshot?.preparationReview || connectionSnapshot?.controlReview || connectionSnapshot?.sentryReview || connectionSnapshot?.psbtReview)) return false;
+      if (snapshot.phase === 'ready' && (stage === 'choose' || stage === 'connections') && (signingReview || connectionSnapshot?.accountChangeReview || connectionSnapshot?.preparationReview || connectionSnapshot?.controlReview || connectionSnapshot?.sentryReview || connectionSnapshot?.psbtReview)) return false;
       if ((stage === 'private-notes' || stage === 'connections') && snapshot.phase === 'ready') {
         if (stage === 'connections') {
           scanFinished();
@@ -1602,6 +1603,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         }} />
     </>;
   }
+  if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && connectionSnapshot?.accountChangeReview && connectionView)
+    return <NativeAccountChangeReview key={connectionSnapshot.accountChangeReview.id} review={connectionSnapshot.accountChangeReview} controller={connectionView} onUnavailable={() => openStage('connections')} />;
   if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && connectionSnapshot?.preparationReview && connectionView)
     return <NativeSmartPreparationReview key={connectionSnapshot.preparationReview.id} review={connectionSnapshot.preparationReview} controller={connectionView} />;
   if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && connectionSnapshot?.psbtReview && connectionView)

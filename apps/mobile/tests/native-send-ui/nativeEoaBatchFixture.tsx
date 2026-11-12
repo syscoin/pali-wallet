@@ -132,6 +132,9 @@ export function NativeEoaBatchFixture() {
     throw new Error('Outside EOA batch presentation fixture');
   };
   const controller: NativeConnectionsView = {
+    selectConnectionAccount() { throw Error('Account switching is outside this fixture'); },
+    async approveAccountChange() { throw Error('Account switching is outside this fixture'); },
+    async rejectAccountChange() { throw Error('Account switching is outside this fixture'); },
     isRequestAuthenticating: () => false,
   ...unsupportedDappViews,
     getSnapshot: () => ({
