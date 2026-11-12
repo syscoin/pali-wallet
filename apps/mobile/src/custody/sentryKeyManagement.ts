@@ -1,4 +1,5 @@
 import { utils as syscoinUtils } from 'syscoinjs-lib';
+import { isSentryKeyValidationBusy } from '../core/sentryKeyValidation.ts';
 
 import type { SentryNetwork } from '../../../../source/shared/sentryNetworks.ts';
 import {
@@ -46,6 +47,7 @@ export class NativeSentryKeysError extends Error {
     | 'INVALID_INPUT'
     | 'DUPLICATE'
     | 'CANCELLED'
+    | 'BUSY'
     | 'BACKUP_REQUIRED';
   readonly issues: readonly SentryImportIssue[];
   constructor(
@@ -331,8 +333,9 @@ export function createNativeSentryKeyManagement(ports: Ports) {
             let publicKey: unknown;
             try {
               publicKey = await derive(role, scheme, secret, approval);
-            } catch {
+            } catch (error) {
               check(approval);
+              if (isSentryKeyValidationBusy(error)) throw new NativeSentryKeysError('BUSY');
               throw invalid([{ line, reason: 'key' }]);
             }
             check(approval);

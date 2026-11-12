@@ -1,6 +1,7 @@
 import { isAllowedSentryKeyRoleScheme } from '../../../../source/wallet/sentryKeyVault.ts';
 import type { DeriveSentryPublicKey } from '../custody/sentryKeyManagement.ts';
 import type { SentryAuthorityScheme } from '../../../../source/wallet/sentryKeyVault.ts';
+import { isSentryKeyValidationBusy } from '../core/sentryKeyValidation.ts';
 
 const typedArray = Object.getPrototypeOf(Uint8Array.prototype);
 const tag = Object.getOwnPropertyDescriptor(typedArray, Symbol.toStringTag)!
@@ -43,7 +44,8 @@ export function createSentryPublicKeyDeriver(
       const publicKey = await derive(role, scheme, owned, signal);
       if (signal.aborted) throw new Error('CANCELLED');
       return publicKey;
-    } catch {
+    } catch (error) {
+      if (!signal.aborted && isSentryKeyValidationBusy(error)) throw error;
       throw new Error(
         signal.aborted ? 'CANCELLED' : 'SENTRY_PUBLIC_KEY_VALIDATION_FAILED'
       );

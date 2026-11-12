@@ -3,7 +3,7 @@ import { createSentryClassicalExecutor } from './sentryClassicalExecutor';
 import { createSentryPublicKeyDeriver } from './sentryPublicKeyExecutor.ts';
 import {
   createSentryShakeExecutor,
-  type NativeSlhDsaConstructor,
+  type NativeSentryKeyFactory,
 } from './sentryShakeExecutor';
 import type { DeriveSentryPublicKey } from '../custody/sentryKeyManagement';
 
@@ -15,11 +15,12 @@ export function createNativeSentryPublicKeyDeriver(): DeriveSentryPublicKey {
     if (scheme === 'slh-dsa-shake-128s') {
       shake ??= ensureNativeCryptoReady().then(async () => {
         const { default: crypto } = await import('react-native-quick-crypto');
-        const Constructor: unknown = Reflect.get(crypto, 'SlhDsa');
-        if (typeof Constructor !== 'function')
+        const createPrivateKeyAsync: unknown = Reflect.get(crypto, 'createPrivateKeyAsync');
+        const createPublicKey: unknown = Reflect.get(crypto, 'createPublicKey');
+        if (typeof createPrivateKeyAsync !== 'function' || typeof createPublicKey !== 'function')
           throw new Error('SENTRY_SHAKE_UNAVAILABLE');
         return createSentryShakeExecutor(
-          Constructor as NativeSlhDsaConstructor
+          { createPrivateKeyAsync, createPublicKey } as NativeSentryKeyFactory
         );
       });
       return shake;

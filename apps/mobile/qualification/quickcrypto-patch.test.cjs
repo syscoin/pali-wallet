@@ -51,14 +51,20 @@ function fixture() {
   return { parent, root, directory, appPackage, target: (file) => path.join(directory, file.path) };
 }
 
-test('the adoption artifact has exactly the five reviewed production files and exact output hashes', () => {
-  assert.equal(manifest.source, 'a470f8220db63b9d7c6deef72c403e69f8a89408');
+test('the adoption artifact has exactly the reviewed import files and stock API guards', () => {
+  assert.equal(manifest.source, '273ae4f76166b0954737fa1f0cf4e486f7956d83');
   assert.equal(manifest.baseSource, '27ca9a067e4e7c5721fb0b213418b8e247d14967');
   assert.equal(pkg.version, '1.1.9');
   assert.deepEqual(pkg.files.map((file) => file.path), [
+    'cpp/keys/HybridKeyObjectHandle.cpp', 'cpp/keys/HybridKeyObjectHandle.hpp',
     'cpp/slhdsa/HybridSlhDsaKeyPair.cpp', 'cpp/slhdsa/HybridSlhDsaKeyPair.hpp',
-    'cpp/slhdsa/SlhDsaRawPrivateKeyValidation.hpp', 'src/index.ts', 'src/slhdsa.ts',
+    'cpp/slhdsa/SlhDsaRawPrivateKeyValidation.hpp', 'src/index.ts', 'src/keys/index.ts',
+    'src/slhdsa.ts', 'src/utils/types.ts',
   ]);
+  for (const path of ['src/index.ts', 'src/slhdsa.ts', 'cpp/slhdsa/HybridSlhDsaKeyPair.hpp']) {
+    const guard = pkg.files.find(file => file.path === path);
+    assert.equal(guard.before, guard.after, `${path} must retain its stock API rather than the former standalone validator`);
+  }
   for (const file of pkg.files) {
     const output = inflateRawSync(Buffer.from(file.deflate, 'base64'), { maxOutputLength: file.bytes });
     assert.equal(output.length, file.bytes);
@@ -67,6 +73,17 @@ test('the adoption artifact has exactly the five reviewed production files and e
   }
   assert(identity.includes(manifest.source));
   assert(identity.endsWith(digest(fs.readFileSync(require.resolve('../../../scripts/quickcrypto-sentry.json')))));
+});
+
+test('former standalone validator exports cannot be silently retained', () => {
+  for (const path of ['src/index.ts', 'src/slhdsa.ts', 'cpp/slhdsa/HybridSlhDsaKeyPair.hpp']) {
+    const f = fixture();
+    try {
+      fs.appendFileSync(f.target({ path }), '\n// Old standalone validator patch\n');
+      assert.throws(() => applyQuickCryptoSentryPatch(f.root), /unexpected bytes/);
+      assert.throws(() => verifyQuickCryptoSentryPatch(f.root), /unexpected bytes/);
+    } finally { fs.rmSync(f.parent, { recursive: true, force: true }); }
+  }
 });
 
 test('adoption installs the absent native header and is idempotent after interruption', () => {
