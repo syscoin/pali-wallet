@@ -45,8 +45,9 @@ function generateManifest() {
   if (process.env.NODE_ENV === 'canary') {
     manifestOptions.name = manifestOptions.name.replace(
       'Pali Wallet',
-      'Pali Wallet Canary'
+      'Pali Wallet Canary BETA'
     );
+    manifestOptions.description = 'THIS EXTENSION IS FOR BETA TESTING. Pali Wallet for Bitcoin and supported EVM/UTXO networks.';
     // Store uploads reject `key`; it only stabilizes unpacked Canary identity.
     if (manifestOptions.manifest_version === 3 && process.env.PALI_EXTENSION_STORE_BUILD !== '1') {
       manifestOptions.key = CANARY_EXTENSION_KEY;
