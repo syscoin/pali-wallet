@@ -1,4 +1,5 @@
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
+import { nativeExecutionError } from '../../../../source/scripts/privacyProver/nativeExecutionDiagnostic.ts';
 import type {
   RunSentryCrypto,
   SentryCryptoJob,
@@ -135,7 +136,7 @@ export function createSentryCryptoExecutor(
         error.message === 'SENTRY_SHAKE_EXECUTION_UNAVAILABLE'
       )
         throw error;
-      throw new Error('SENTRY_EXECUTION_FAILED');
+      throw nativeExecutionError('SENTRY_EXECUTION_FAILED', error);
     } finally {
       if (job && 'key' in job) job.key.secretKey = '';
       if (job?.type === 'import') job.secretKey = '';

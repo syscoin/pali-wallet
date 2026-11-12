@@ -350,8 +350,8 @@ test('native factory explicitly wires one owned transport to all network consume
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
     'react-native': { AppState: { currentState: 'active' }, Linking: { openURL: unexpectedFeature } },
     '../crypto/sentryCrypto.native': {
-      createNativeSentryCryptoExecutor: (isolated: unknown) => {
-        assert.equal(isolated, null, 'production isolated signing stays gated');
+      createNativeSentryCryptoExecutor: (...options: unknown[]) => {
+        assert.equal(options.length, 0, 'production chooses its fixed isolated host');
         return unexpectedFeature;
       },
     },

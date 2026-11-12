@@ -4,7 +4,7 @@ import test from 'node:test';
 import { Worker } from 'node:worker_threads';
 import { URL } from 'node:url';
 import { qualifyNativeSentryIsolated } from '../qualification/native-sentry-isolated.ts';
-import { createSentryCryptoExecutor } from '../src/crypto/sentryCryptoExecutor.ts';
+import { nativeSentryCryptoFixture } from './fixtures/nativeSentryCrypto.ts';
 import {
   captureNativeSentryInput,
   readNativeSentryMessage,
@@ -70,9 +70,7 @@ test('exact production SDK worker performs real SHAKE key validation, service an
         check();
         return result as never;
       };
-    const executor = createSentryCryptoExecutor(async () => {
-      throw new Error('PQ job reached renderer crypto');
-    }, run);
+    const executor = nativeSentryCryptoFixture({ ready: async () => undefined, isolated: () => run });
     assert.equal(
       await qualifyNativeSentryIsolated(new AbortController().signal, executor,
         (step, phase) => observed.push(`${step}:${phase}`)),

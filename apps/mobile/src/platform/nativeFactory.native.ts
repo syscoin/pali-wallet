@@ -108,7 +108,7 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
     credentialPort,
     isAuthenticationActive: isNativeCredentialPromptActive,
     deriveSentryPublicKey: createNativeSentryPublicKeyDeriver(),
-    runSentryCrypto: createNativeSentryCryptoExecutor(null),
+    runSentryCrypto: createNativeSentryCryptoExecutor(),
     trezorSessions,
     async createLedgerTransport(owner) {
       const { createNativeLedgerTransport } = await import('../hardware/ledgerTransport.native');
