@@ -592,6 +592,26 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     selectedAccounts, selectedAddress: () => state.account?.address, requestAccount(id: string) { props.initialAccountId = id; return render(); }, selectedNetwork: () => state.account?.network, authority: realAuthority, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, configurations, backupAcknowledgements, lifecycle, get locks() { return locks; } };
 }
 
+for (const route of ['create', 'import'] as const) for (const action of ['header', 'android'] as const)
+  test(`empty ${route} security setup returns to its parent with ${action} Back`, async () => {
+    const f = await walletFeedbackFixture(false, true);
+    try {
+      press(row(f.render(), route === 'create' ? 'Create a wallet' : 'Import existing wallet'));
+      if (route === 'import') (f.render().props.onConfirmed as (value: string) => void)('abandon '.repeat(11) + 'about');
+      const header = all(f.render()).find(node => node.type === 'Header')!;
+      assert.equal(header.props.title, 'Secure with your device');
+      if (action === 'header') (header.props.onBack as () => void)(); else f.hardware();
+      const parent = f.render();
+      assert.equal(f.exits(), 0);
+      assert.equal(f.state().phase, 'empty');
+      if (route === 'import') assert.equal(parent.type, 'NativeImportWallet');
+      else {
+        assert.equal(all(parent).find(node => node.type === 'Header')?.props.title, 'Set up your wallet');
+        f.hardware(); f.render(); assert.equal(f.exits(), 1);
+      }
+    } finally { f.dispose(); }
+  });
+
 for (const route of ['create', 'import'] as const) test(`abandoned empty ${route} setup returns through Welcome once after background`, async () => {
   const f = await walletFeedbackFixture(false, true);
   try {

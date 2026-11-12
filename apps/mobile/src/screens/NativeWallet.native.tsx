@@ -1216,11 +1216,15 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     updateSession.current = null; setUpdatePhase(null);
     if (AppState.currentState === 'active') void install().catch(() => undefined);
   }
+  const backFromSetupSecurity = () => setStage(stage === 'import-security' ? 'import' : 'choose');
   const latestBack = useRef<() => boolean>(() => true);
   useLayoutEffect(() => {
     latestBack.current = () => {
       if (updateSession.current) { void closeWalletUpdate(); return true; }
       if (accountNavigation.current) { revoke(); return true; }
+      if (snapshot.phase === 'empty' && (stage === 'create' || stage === 'import-security' && !!phrase)) {
+        backFromSetupSecurity(); return true;
+      }
       if (['backup-intro', 'backup-auth', 'words', 'backup-verify'].includes(stage) && snapshot.phase === 'ready') { closeBackup(); return true; }
       if (stage === 'backup-complete' && snapshot.phase === 'ready') {
         closeBackup();
@@ -1551,7 +1555,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
       <Screen gap={24} footer={<Button title={busy ? t("mobile.walletViews.securingWallet") : stage === 'import-security' ? t("titles.importWallet") : t("mobile.walletViews.createWallet")}
         disabled={busy || authenticationStatus !== 'ready'} onPress={createOrImport} />}>
-        <Header title={t("mobile.walletViews.secureWithYourDevice")} onBack={() => setStage(stage === 'import-security' ? 'import' : 'choose')} />
+        <Header title={t("mobile.walletViews.secureWithYourDevice")} onBack={backFromSetupSecurity} />
         <View style={{ alignItems: 'center', paddingVertical: 32, gap: 24 }}>
           <Icon name="shield" size={64} color={colors.blue} />
           <Text style={{ fontSize: 28, lineHeight: 36, fontWeight: '600', textAlign: 'center' }}>{t("mobile.walletViews.yourWalletProtectedByYourPhone")}</Text>
