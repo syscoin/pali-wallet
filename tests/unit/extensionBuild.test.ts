@@ -97,6 +97,7 @@ test('Canary reserves once and binds the manifest, ZIP, label and receipt to tha
   expect(result.version).toBe('5.0.0.47');
   expect(result.version_name).toBe('5.0.0 Canary (47)');
   expect(f.execute.mock.calls[0][2]).toBe(f.execute.mock.calls[1][2]);
+  expect(f.execute.mock.calls[0][2].PALI_EXTENSION_STORE_BUILD).toBe('1');
   expect(f.assertSource).toHaveBeenCalledTimes(3);
   expect(
     JSON.parse(
@@ -119,19 +120,25 @@ test('Canary reserves once and binds the manifest, ZIP, label and receipt to tha
 test('production keeps its version and never allocates or inherits a Canary number', async () => {
   const f = fixture();
   const previous = process.env.PALI_CANARY_BUILD_NUMBER;
+  const previousStore = process.env.PALI_EXTENSION_STORE_BUILD;
   process.env.PALI_CANARY_BUILD_NUMBER = '600';
+  process.env.PALI_EXTENSION_STORE_BUILD = '1';
   try {
     const result = await buildExtension(['production'], f.ports);
     expect(result).toMatchObject({ version: '4.0.121', receipt: null });
     expect(result.version_name).toBeUndefined();
     expect(f.reserve).not.toHaveBeenCalled();
     expect(f.execute.mock.calls[0][2].PALI_CANARY_BUILD_NUMBER).toBeUndefined();
+    expect(f.execute.mock.calls[0][2].PALI_EXTENSION_STORE_BUILD).toBe('0');
     expect(
       JSON.parse(readFileSync(join(f.root, 'package.json'), 'utf8')).version
     ).toBe('4.0.121');
   } finally {
     if (previous === undefined) delete process.env.PALI_CANARY_BUILD_NUMBER;
     else process.env.PALI_CANARY_BUILD_NUMBER = previous;
+    if (previousStore === undefined)
+      delete process.env.PALI_EXTENSION_STORE_BUILD;
+    else process.env.PALI_EXTENSION_STORE_BUILD = previousStore;
   }
 });
 
@@ -238,28 +245,35 @@ test.each([undefined, 0, '01', 65536, '5.0.0.1'])(
   }
 );
 
-test('real manifest generator uses an isolated file and exact Chrome-compatible Canary version', () => {
-  const f = fixture();
-  const output = join(f.root, 'generated.json');
-  const tracked = readFileSync(resolve('manifest.json'));
-  execFileSync(
-    process.execPath,
-    [resolve('source/config/generateManifest.js')],
-    {
-      cwd: resolve('.'),
-      env: {
-        ...process.env,
-        NODE_ENV: 'canary',
-        MANIFEST_TYPE: 'MV3',
-        PALI_CANARY_BUILD_NUMBER: '65535',
-        PALI_EXTENSION_MANIFEST: output,
-      },
-    }
-  );
-  expect(JSON.parse(readFileSync(output, 'utf8'))).toMatchObject({
-    name: 'Pali Wallet Canary',
-    version: '5.0.0.65535',
-    version_name: '5.0.0 Canary (65535)',
-  });
-  expect(readFileSync(resolve('manifest.json')).equals(tracked)).toBe(true);
-});
+test.each([false, true])(
+  'real generator isolates the manifest and excludes local keys from store builds (%s)',
+  (store) => {
+    const f = fixture();
+    const output = join(f.root, 'generated.json');
+    const tracked = readFileSync(resolve('manifest.json'));
+    execFileSync(
+      process.execPath,
+      [resolve('source/config/generateManifest.js')],
+      {
+        cwd: resolve('.'),
+        env: {
+          ...process.env,
+          NODE_ENV: 'canary',
+          MANIFEST_TYPE: 'MV3',
+          PALI_CANARY_BUILD_NUMBER: '65535',
+          PALI_EXTENSION_MANIFEST: output,
+          PALI_EXTENSION_STORE_BUILD: store ? '1' : '0',
+        },
+      }
+    );
+    expect(JSON.parse(readFileSync(output, 'utf8'))).toMatchObject({
+      name: 'Pali Wallet Canary',
+      version: '5.0.0.65535',
+      version_name: '5.0.0 Canary (65535)',
+    });
+    const manifest = JSON.parse(readFileSync(output, 'utf8'));
+    if (store) expect(manifest).not.toHaveProperty('key');
+    else expect(manifest.key).toMatch(/^MIIB/);
+    expect(readFileSync(resolve('manifest.json')).equals(tracked)).toBe(true);
+  }
+);

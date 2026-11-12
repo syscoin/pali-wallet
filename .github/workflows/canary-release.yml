@@ -1,0 +1,77 @@
+name: Canary release candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Require the merged master branch
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          if [ "$RELEASE_REF" != "refs/heads/master" ]; then
+            echo "::error::Run this workflow from master after required checks and reviews pass."
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26.12.1'
+      - name: Install pinned dependencies
+        run: yarn install --frozen-lockfile
+      - name: Build numbered Canary for the Web Store
+        run: yarn build:canary:store
+      - name: Verify the build receipt
+        id: build
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const { createHash } = require('node:crypto');
+          const { CANARY_BASE_VERSION } = require('./source/config/extensionBuildVersion.cjs');
+          const { parseBuildNumber } = require('./scripts/build-number.cjs');
+          const receipts = fs.readdirSync('.pali-build').filter(name => /^canary-[0-9.]+\.json$/.test(name));
+          if (receipts.length !== 1) throw Error('Expected one Canary receipt.');
+          const file = `.pali-build/${receipts[0]}`;
+          const receipt = JSON.parse(fs.readFileSync(file, 'utf8'));
+          if (receipt.status !== 'built' || receipt.purpose !== 'store' || receipt.sourceDirty ||
+              receipt.channel !== 'canary' || receipt.series !== CANARY_BASE_VERSION ||
+              receipt.sourceRevision !== process.env.GITHUB_SHA ||
+              receipt.version !== `${CANARY_BASE_VERSION}.${parseBuildNumber(receipt.buildNumber, 'canary')}`)
+            throw Error('Unexpected Canary build receipt.');
+          const artifact = `build/pali-wallet-canary-chrome-${receipt.version}.zip`;
+          const sha256 = createHash('sha256').update(fs.readFileSync(artifact)).digest('hex');
+          if (receipt.sha256 !== sha256) throw Error('Canary archive does not match its receipt.');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${receipt.version}\nartifact=${artifact}\nreceipt=${file}\n`);
+          NODE
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pali-wallet-canary-${{ steps.build.outputs.version }}
+          path: |
+            ${{ steps.build.outputs.artifact }}
+            ${{ steps.build.outputs.receipt }}
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+      - name: Create draft Canary release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANARY_VERSION: ${{ steps.build.outputs.version }}
+          CANARY_ARTIFACT: ${{ steps.build.outputs.artifact }}
+          CANARY_RECEIPT: ${{ steps.build.outputs.receipt }}
+        run: |
+          gh release create "v${CANARY_VERSION}-canary" \
+            "$CANARY_ARTIFACT" "$CANARY_RECEIPT" \
+            --target "$GITHUB_SHA" \
+            --title "Pali Wallet Canary ${CANARY_VERSION}" \
+            --notes "Canary candidate built from ${GITHUB_SHA}. Upload only to the separate Canary Web Store item after review." \
+            --draft --prerelease

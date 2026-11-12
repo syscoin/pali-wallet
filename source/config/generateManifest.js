@@ -47,7 +47,8 @@ function generateManifest() {
       'Pali Wallet',
       'Pali Wallet Canary'
     );
-    if (manifestOptions.manifest_version === 3) {
+    // Store uploads reject `key`; it only stabilizes unpacked Canary identity.
+    if (manifestOptions.manifest_version === 3 && process.env.PALI_EXTENSION_STORE_BUILD !== '1') {
       manifestOptions.key = CANARY_EXTENSION_KEY;
     }
     if (manifestOptions.permissions) {

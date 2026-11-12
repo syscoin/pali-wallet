@@ -87,6 +87,7 @@ async function buildExtension(argv, ports = {}) {
     };
     // An inherited number must never select an unrelated build.
     delete env.PALI_CANARY_BUILD_NUMBER;
+    env.PALI_EXTENSION_STORE_BUILD = options.purpose === 'store' ? '1' : '0';
     if (receipt) env.PALI_CANARY_BUILD_NUMBER = String(receipt.buildNumber);
     const execute =
       ports.execute ??

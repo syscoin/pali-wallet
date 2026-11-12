@@ -64,6 +64,10 @@ Keep the production release version synchronized in `package.json`, the root `ma
 
 Canary numbers use a fast-forward-only Git counter at `refs/heads/pali-canary-builds/5.0.0`, separate from mobile build numbers. Concurrent builders reserve distinct numbers; failed builds consume their number. GitHub access to the canonical repository is required, and an unavailable/malformed counter fails the build instead of choosing a local or timestamp fallback. The suffix is capped at Chrome's 65,535 limit; change the three-part Canary base deliberately before exhaustion. Store builds and receipts identify the exact clean source commit, but still require normal release review and store submission.
 
+Use `build:canary:store` for Web Store uploads: it omits the local development `key` field, which the store rejects. Regular `build:canary` keeps that key so unpacked builds retain their local extension ID.
+
+After the reviewed PRs merge, run **Canary release candidate** in GitHub Actions from `master`. It checks out the exact selected master commit, reserves the next Canary number, verifies the archive against its receipt, and creates a draft GitHub prerelease with both files. It does not publish to the Web Store. This provides a Canary build without bumping the production package version or triggering a production release.
+
 The [release workflow](.github/workflows/release.yml) runs on pushes to `master`, `develop`, and `pre-release`. It skips release builds when the package version is unchanged. A version change builds the Chrome production and Canary ZIPs, checks that exactly one of each exists and that the release tag is new, then creates a **draft prerelease** tied to the triggering commit. Review the artifacts and required checks before publishing. Creating a GitHub draft does not submit or publish the extension to the Chrome Web Store.
 
 See the [documentation index](docs/README.md) for user guides, API documentation, and implementation notes.
