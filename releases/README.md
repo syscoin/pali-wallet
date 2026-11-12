@@ -41,9 +41,11 @@ installations still need their fixes; removing an entry removes that history
 from the urgency calculation. Release summaries should describe cumulative
 improvements for users updating from earlier versions.
 
-Before first iOS publication, set its assigned App Store URL in
-`source/shared/walletStores.ts`. Android's package and the Chrome listing are
-compiled into Pali. Remote metadata cannot substitute a different store/link.
+Store destinations are configured in `source/shared/walletStores.ts`, including
+the assigned iOS listing at `https://apps.apple.com/app/id6834040718`. A configured
+listing does not imply store approval or a published release; the feed remains
+empty until publication. Android's package and the Chrome listing are compiled
+into Pali. Remote metadata cannot substitute a different store/link.
 
 Pali checks at launch/resume and at most every six hours in a running process.
 Manual checks have a one-minute cooldown. The shared Expo background worker keeps
@@ -64,5 +66,5 @@ remain disabled. Store review and platform signing still control executable code
 
 These identifiers and policy must be checked against the final signed store builds.
 Play installation/update testing needs a store-installed build in an eligible
-track; sideloaded/emulator builds are not evidence of Play delivery. iOS needs the
-assigned listing, and background delivery/notifications need physical-device QA.
+track; sideloaded/emulator builds are not evidence of Play delivery. iOS still
+needs store publication, and background delivery/notifications need physical-device QA.
