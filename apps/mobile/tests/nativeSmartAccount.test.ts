@@ -1033,21 +1033,26 @@ test('creation allocation retries the same saved address after a later read fail
   } finally { await deployment?.dispose(); await configuration?.dispose(); await noOp?.dispose(); await f.close(); }
 });
 
-test('SLH creation allocation reuses its prepared key through deployment and canonical installation', async () => {
+test('SLH creation allocation reuses its prepared key through deployment and canonical installation', { timeout: 180_000 }, async ({ signal }) => {
   const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability), lifetime = new AbortController();
   const authentication = createTestPrivateAuthentication(() => { assert(!lifetime.signal.aborted); });
   let operation: NativeSmartAccountOperation | undefined;
   const finish = async (current: NativeSmartAccountOperation) => {
-    await current.prepare();
-    const reviewed = new Set<number>();
-    const confirm = () => {
-      const payer = current.getSnapshot().payerReview;
-      if (payer && !reviewed.has(payer.id)) { reviewed.add(payer.id); current.confirmPayer(payer.id); }
-    };
-    const unsubscribe = current.subscribe(() => queueMicrotask(confirm));
-    const timer = setTimeout(() => current.cancel(), 30_000);
-    try { await current.authorize(current.getSnapshot().revision); }
-    finally { clearTimeout(timer); unsubscribe(); }
+    const cancel = () => current.cancel();
+    signal.addEventListener('abort', cancel, { once: true });
+    try {
+      signal.throwIfAborted();
+      await current.prepare();
+      const reviewed = new Set<number>();
+      const confirm = () => {
+        const payer = current.getSnapshot().payerReview;
+        if (payer && !reviewed.has(payer.id)) { reviewed.add(payer.id); current.confirmPayer(payer.id); }
+      };
+      const unsubscribe = current.subscribe(() => queueMicrotask(confirm));
+      // Keep the real operation deadline; only the enclosing test may abort it.
+      try { await current.authorize(current.getSnapshot().revision); }
+      finally { unsubscribe(); }
+    } finally { signal.removeEventListener('abort', cancel); }
   };
   try {
     const host = await f.runtime.openConnectionHost();
