@@ -51,7 +51,7 @@ async function openWatch(page: Page) {
 test('Receive footer hides retained public account data when the mounted watch authority locks', async ({ page }) => {
   await page.goto('/?watch-receive-fixture');
   await page.getByRole('button', { name: 'Receive', exact: true }).click();
-  const address = page.getByLabel('Ethereum address 0x52908400098527886E0F7030069857D2E4169EE7', { exact: true });
+  const address = page.getByRole('button', { name: 'Copy address: Ethereum address 0x52908400098527886E0F7030069857D2E4169EE7', exact: true }).getByText('0x52908400098527886E0F7030069857D2E4169EE7', { exact: true });
   await expect(address).toBeVisible();
   await page.evaluate(() => window.__watchReceiveFixture.lock());
   await expect.poll(() => page.evaluate(() => window.__watchReceiveFixture.status())).toBe('locked');
@@ -69,7 +69,7 @@ for (const viewport of receiveViewports) {
       await openWatch(page);
       await page.getByRole('button', { name: 'Receive', exact: true }).click();
       if (scale !== 1) await scaleReceiveText(page, scale);
-      const address = page.getByLabel('Ethereum address 0x52908400098527886E0F7030069857D2E4169EE7', { exact: true });
+      const address = page.getByRole('button', { name: 'Copy address: Ethereum address 0x52908400098527886E0F7030069857D2E4169EE7', exact: true }).getByText('0x52908400098527886E0F7030069857D2E4169EE7', { exact: true });
       const qr = page.getByRole('img', { name: 'QR code for Ethereum address 0x52908400098527886E0F7030069857D2E4169EE7', exact: true });
       if (scale === 1 && viewport.height >= 568) {
         await expect(address).toBeInViewport({ ratio: 1 });
@@ -319,7 +319,7 @@ test('native network without an explorer shows saved-transfer coverage and retai
   await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Activity network: Base', exact: true })).toBeVisible();
   await expect(page.getByText('Some activity is unavailable', { exact: true })).toBeVisible();
-  await expect(page.getByText('Some network activity is unavailable.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Some history could not load on Base.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Activity options', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Show zero-value token activity', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
