@@ -24,7 +24,7 @@ function fixture() {
   fs.mkdirSync(path.join(parent, 'scripts'));
   for (const file of ['apply-quickcrypto-sentry.cjs', 'quickcrypto-sentry.json'])
     fs.copyFileSync(require.resolve(`../../../scripts/${file}`), path.join(parent, 'scripts', file));
-  for (const file of ['qualification-sdk.cjs', 'configure-native-qualification.cjs'])
+  for (const file of ['qualification-sdk.cjs', 'configure-native-qualification.cjs', 'qualificationSdkIdentity.ts'])
     fs.copyFileSync(require.resolve(`../scripts/${file}`), path.join(root, 'scripts', file));
   const directory = path.join(root, 'node_modules', pkg.name);
   fs.mkdirSync(directory, { recursive: true });

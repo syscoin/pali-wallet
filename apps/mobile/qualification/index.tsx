@@ -1,3 +1,4 @@
+import { assertQualificationSdkIdentity, QUALIFICATION_SDK_IDENTITY_STAGE } from '../scripts/qualificationSdkIdentity.ts';
 import { registerRootComponent } from 'expo';
 import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -382,9 +383,11 @@ function QualificationApp() {
         const { createNativeSentryCryptoExecutor } = await import('../src/crypto/sentryCrypto.native');
         await check(SENTRY_APPROVAL_CHECK, () => qualifyNativeSentryApprovals(qualificationLifetime.signal,
           createNativeSentryCryptoExecutor()));
-        const { paliQuickCryptoSentryIdentity, paliQualificationSdkVersion, paliQualificationSdkIdentity } = Constants.expoConfig?.extra ?? {};
-        expect(typeof paliQuickCryptoSentryIdentity === 'string' && paliQuickCryptoSentryIdentity.length > 0 &&
-          typeof paliQualificationSdkVersion === 'string' && paliQualificationSdkIdentity === `${paliQualificationSdkVersion}.${paliQuickCryptoSentryIdentity}`);
+        stage = QUALIFICATION_SDK_IDENTITY_STAGE;
+        const { paliQuickCryptoSentryIdentity, paliKeyringFeeRateIdentity, paliQualificationSdkVersion, paliQualificationSdkIdentity } = Constants.expoConfig?.extra ?? {};
+        expect(typeof paliQuickCryptoSentryIdentity === 'string' && paliQuickCryptoSentryIdentity.length > 0);
+        assertQualificationSdkIdentity(paliQualificationSdkIdentity, paliQualificationSdkVersion,
+          paliQuickCryptoSentryIdentity, paliKeyringFeeRateIdentity);
         verifiedQuickCryptoIdentity = paliQuickCryptoSentryIdentity;
         if (publicPoolConfiguration !== undefined || (!parameters.physical && parameters.publicPool)) {
           stage = 'public pool configuration';

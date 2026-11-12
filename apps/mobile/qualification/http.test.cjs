@@ -461,7 +461,7 @@ test('HTTP build gate is source-bound, fixture-only and leaves production config
     fs.mkdirSync(path.join(root, 'scripts'));
     fs.mkdirSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring'), { recursive: true });
     fs.writeFileSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: keyringVersion }));
-    for (const script of ['configure-native-qualification.cjs', 'qualification-sdk.cjs'])
+    for (const script of ['configure-native-qualification.cjs', 'qualification-sdk.cjs', 'qualificationSdkIdentity.ts'])
       fs.copyFileSync(require.resolve(`../scripts/${script}`), path.join(root, 'scripts', script));
     fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ main: 'index.ts', dependencies: { '@sidhujag/sysweb3-keyring': keyringVersion } }));
     fs.writeFileSync(path.join(root, 'package-lock.json'), '{}');

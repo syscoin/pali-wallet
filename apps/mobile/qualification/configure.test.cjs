@@ -15,7 +15,7 @@ test('qualification configuration is explicit, isolated, and preserves the produ
     fs.mkdirSync(path.join(root, 'scripts'));
     fs.mkdirSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring'), { recursive: true });
     fs.writeFileSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: keyringVersion }));
-    for (const script of ['configure-native-qualification.cjs', 'qualification-sdk.cjs'])
+    for (const script of ['configure-native-qualification.cjs', 'qualification-sdk.cjs', 'qualificationSdkIdentity.ts'])
       fs.copyFileSync(require.resolve(`../scripts/${script}`), path.join(root, 'scripts', script));
     fs.writeFileSync(
       path.join(root, 'package.json'),
@@ -102,7 +102,7 @@ test('private proof build mode binds immutable source and lock metadata without 
     const sdk = path.join(root, 'node_modules/@sidhujag/sysweb3-keyring');
     fs.mkdirSync(sdk, { recursive: true });
     fs.writeFileSync(path.join(sdk, 'package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: '3.9.7' }));
-    for (const script of ['configure-native-qualification.cjs', 'qualification-sdk.cjs'])
+    for (const script of ['configure-native-qualification.cjs', 'qualification-sdk.cjs', 'qualificationSdkIdentity.ts'])
       fs.copyFileSync(require.resolve(`../scripts/${script}`), path.join(root, 'scripts', script));
     const pkg = { main: 'index.ts', dependencies: { '@sidhujag/sysweb3-keyring': '3.9.7' } };
     fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify(pkg));
@@ -166,7 +166,7 @@ test('full SLH is manual, mutually exclusive, source/lock bound and never a prod
     fs.mkdirSync(path.join(root, 'scripts'));
     const sdk = path.join(root, 'node_modules/@sidhujag/sysweb3-keyring'); fs.mkdirSync(sdk, { recursive: true });
     fs.writeFileSync(path.join(sdk, 'package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: '3.9.7' }));
-    for (const script of ['configure-native-qualification.cjs', 'qualification-sdk.cjs']) fs.copyFileSync(require.resolve(`../scripts/${script}`), path.join(root, 'scripts', script));
+    for (const script of ['configure-native-qualification.cjs', 'qualification-sdk.cjs', 'qualificationSdkIdentity.ts']) fs.copyFileSync(require.resolve(`../scripts/${script}`), path.join(root, 'scripts', script));
     const pkg = { main: 'index.ts', dependencies: { '@sidhujag/sysweb3-keyring': '3.9.7' } };
     fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify(pkg)); fs.writeFileSync(path.join(root, 'package-lock.json'), '{}');
     fs.writeFileSync(path.join(root, 'index.ts'), 'PUBLIC untouched production entry');

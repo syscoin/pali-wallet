@@ -37,6 +37,7 @@ on:
       - 'apps/mobile/plugins/**'
       - 'apps/mobile/scripts/configure-native-qualification.cjs'
       - 'apps/mobile/scripts/qualification-sdk.cjs'
+      - 'apps/mobile/scripts/qualificationSdkIdentity.ts'
       - 'apps/mobile/scripts/register-shared-test-dependencies.mjs'
       - 'apps/mobile/vendor/*.tgz'
       - 'package.json'

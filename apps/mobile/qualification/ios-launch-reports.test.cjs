@@ -445,3 +445,11 @@ test('large discarded fields cannot grow the diagnostic output and public fixtur
   assert.equal(credentials.evidence.reports[1].availability, 'invalid');
   assert(!credentials.text.includes('PUBLIC native qualification password'));
 });
+
+test('candidate identity failures retain their own closed diagnostic stage', () => {
+  const { QUALIFICATION_SDK_IDENTITY_STAGE } = require('../scripts/qualificationSdkIdentity.ts');
+  const value = report({ failedStage: QUALIFICATION_SDK_IDENTITY_STAGE });
+  const result = collect({ [filename('create')]: JSON.stringify(value) });
+  assert.equal(result.evidence.reports[1].failedStage, QUALIFICATION_SDK_IDENTITY_STAGE);
+  assert.equal(result.evidence.reports[1].completedCheckCount, 0);
+});
