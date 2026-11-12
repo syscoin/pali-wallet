@@ -1,3 +1,4 @@
+import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { sameNativePortfolioAccount, type NativePortfolioAccount } from '../portfolio/nativePortfolio';
 import type { NativeUnsignedSendDraft } from './sendNetworkDraft';
 import type { NativeOperationCredential } from '../custody/types';
@@ -42,7 +43,8 @@ import {
   type EvmRecipientChoice,
 } from '../../../../source/shared/evmRecipientChoices';
 import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId';
-import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE, type NativeTransferReview, type NativeTransferView } from '../custody/transfers';
+import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE,
+  type NativeTransferReview, type NativeTransferView } from '../custody/transfers';
 import type { NativeReplacementMode } from '../custody/transferRpc';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
 import {
@@ -61,6 +63,17 @@ import {
   styles,
   Text,
 } from '../ui';
+const t = nativeI18n.t.bind(nativeI18n);
+const savedTransferMessages = [ASSET_STATE_SAVED_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE];
+const displayTransferMessage = (message: string | null) => {
+  switch (message) {
+    case ASSET_STATE_SAVED_MESSAGE: return t('mobile.sendAssetViews.evm.asset_state_saved_message');
+    case ASSET_STATE_WAIT_MESSAGE: return t('mobile.sendAssetViews.evm.asset_state_wait_message');
+    case SIGNED_STORAGE_FULL_MESSAGE: return t('send.signedStorageFull');
+    case SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE: return t('mobile.sendAssetViews.evm.signed_storage_full_previous_message');
+    default: return message;
+  }
+};
 
 export const nativeTransferFailure = (
   error: unknown,
@@ -70,59 +83,57 @@ export const nativeTransferFailure = (
   cancellation: boolean
 ) => {
   const code = error instanceof Error ? error.message : '';
-  if (code === 'ENS_UNAVAILABLE') return 'This ENS name could not be resolved. Check the name and try again.';
-  if (code === 'RECIPIENT_EXPIRED') return 'The recipient lookup expired or changed. Review the transfer again.';
-  if (code === 'INVALID_CREDENTIAL') return 'Device authentication was not completed. Please try again.';
-  if (code === 'AUTH_THROTTLED') return 'Too many unsuccessful authorization attempts. Wait a few minutes before trying again.';
-  if (code === 'DEVICE_UNLOCK_UNAVAILABLE') return 'Device authentication was not completed. Please try again.';
+  if (code === 'ENS_UNAVAILABLE') return t('mobile.sendAssetViews.evm.thisENSNameCouldNotBeResolvedCheckTheName');
+  if (code === 'RECIPIENT_EXPIRED') return t('mobile.smartSendViews.theRecipientLookupExpiredOrChangedReviewTheTransferAgain');
+  if (code === 'INVALID_CREDENTIAL') return t('mobile.accounts.invalidCredential');
+  if (code === 'AUTH_THROTTLED') return t('mobile.sendAssetViews.evm.tooManyUnsuccessfulAuthorizationAttemptsWaitAFewMinutesBefore');
+  if (code === 'DEVICE_UNLOCK_UNAVAILABLE') return t('mobile.accounts.invalidCredential');
   if (code === 'SIGNED_STORAGE_FULL') return hasSavedTransaction ? SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE : SIGNED_STORAGE_FULL_MESSAGE;
   if (code === 'CANCELLATION_QUEUED')
     return hasSavedTransaction
-      ? 'Your signed transaction is saved. It must wait for earlier transactions. Check Activity before retrying.'
-      : 'This cancellation must wait for earlier transactions. Check Activity before trying again.';
-  if (code === 'INVALID_NONCE') return 'Enter a valid whole number for the nonce.';
-  if (code === 'NONCE_RETAINED') return 'A saved transaction uses this nonce. Choose another nonce or check Activity.';
+      ? t('mobile.sendAssetViews.evm.yourSignedTransactionIsSavedItMustWaitForEarlier')
+      : t('mobile.sendAssetViews.evm.thisCancellationMustWaitForEarlierTransactionsCheckActivityBefore');
+  if (code === 'INVALID_NONCE') return t('mobile.sendAssetViews.evm.enterAValidWholeNumberForTheNonce');
+  if (code === 'NONCE_RETAINED') return t('mobile.sendAssetViews.evm.aSavedTransactionUsesThisNonceChooseAnotherNonceOr');
   if (code === 'NONCE_UNAVAILABLE')
-    return hasSavedTransaction ? 'Check the saved transaction in Activity.'
-      : 'This nonce has already been used on-chain. Choose another or leave it blank.';
+    return hasSavedTransaction ? t('mobile.sendAssetViews.evm.checkTheSavedTransactionInActivity')
+      : t('mobile.sendAssetViews.evm.thisNonceHasAlreadyBeenUsedOnchainChooseAnotherOr');
   if (code === 'INVALID_INPUT')
     return asset === 'collectible'
-      ? `Enter a valid ${context.name} recipient address.`
-      : `Enter ${context.networkId === 'ethereum' ? 'an' : 'a'} ${
-          context.name
-        } address and an amount greater than zero.`;
+      ? t('mobile.sendAssetViews.evm.validRecipient', { network: context.name })
+      : t('mobile.sendAssetViews.evm.validAddressAmount', { network: context.name });
   if (code === 'ASSET_STATE_WAIT')
     return hasSavedTransaction
       ? ASSET_STATE_SAVED_MESSAGE
       : ASSET_STATE_WAIT_MESSAGE;
   if (code === 'EXPIRED')
     return hasSavedTransaction
-      ? 'Your signed transaction is saved. Check it before sending again.'
-      : cancellation ? 'This cancellation is unavailable. Check the original transaction or try again.'
-      : 'Network conditions changed or this review expired. Review the transfer again.';
+      ? t('mobile.sendAssetViews.evm.yourSignedTransactionIsSavedCheckItBeforeSendingAgain')
+      : cancellation ? t('mobile.sendAssetViews.evm.thisCancellationIsUnavailableCheckTheOriginalTransactionOrTry')
+      : t('mobile.sendAssetViews.evm.networkConditionsChangedOrThisReviewExpiredReviewTheTransfer');
   if (code === 'INSUFFICIENT_BALANCE') {
     if (asset === 'collectible')
-      return `Not enough ${context.symbol} for the execution fee limit.`;
+      return t('mobile.sendAssetViews.evm.notEnoughForTheExecutionFeeLimit', { symbol: context.symbol });
     return asset !== 'coin' || cancellation
-      ? `Not enough ${context.symbol} for the maximum network fee.`
-      : `Not enough ${context.symbol} for the amount and maximum network fee.`;
+      ? t('mobile.sendAssetViews.evm.notEnoughForTheMaximumNetworkFee', { symbol: context.symbol })
+      : t('mobile.sendAssetViews.evm.notEnoughForTheAmountAndMaximumNetworkFee', { symbol: context.symbol });
   }
   if (code === 'INSUFFICIENT_TOKEN_BALANCE')
-    return 'Not enough tokens for this transfer.';
+    return t('mobile.sendAssetViews.evm.notEnoughTokensForThisTransfer');
   if (code === 'TOKEN_CHANGED')
-    return 'Token precision changed. Review the token before sending again.';
+    return t('mobile.sendAssetViews.evm.tokenPrecisionChangedReviewTheTokenBeforeSendingAgain');
   if (code === 'TOKEN_TRANSFER_REJECTED')
-    return 'The token contract rejected this transfer.';
+    return t('mobile.sendAssetViews.evm.theTokenContractRejectedThisTransfer');
   if (['COLLECTIBLE_CHANGED', 'INSUFFICIENT_NFT_BALANCE', 'NFT_TRANSFER_REJECTED'].includes(code))
     return ''; // Show the controller's specific collectible error.
-  if (code === 'BUSY') return 'Wait for the current request to finish.';
+  if (code === 'BUSY') return t('mobile.sendAssetViews.evm.waitForTheCurrentRequestToFinish');
   if (code === 'CANCELLED' || code === 'NOT_READY')
-    return 'Your wallet was locked. Unlock to continue.';
+    return t('mobile.sendAssetViews.evm.yourWalletWasLockedUnlockToContinue');
   if (code === 'PENDING_TRANSFER') return '';
-  if (code === 'MAX_PENDING') return 'MAX is unavailable while an outgoing transaction is pending. Check Activity before trying again.';
+  if (code === 'MAX_PENDING') return t('mobile.sendAssetViews.evm.mAXIsUnavailableWhileAnOutgoingTransactionIsPendingCheck');
   return hasSavedTransaction
-    ? 'This request could not be completed. Check your pending transaction before sending again.'
-    : 'This request could not be completed. Try again or check Activity for an existing transaction.';
+    ? t('mobile.sendAssetViews.evm.thisRequestCouldNotBeCompletedCheckYourPendingTransaction')
+    : t('mobile.sendAssetViews.evm.thisRequestCouldNotBeCompletedTryAgainOrCheck');
 };
 
 export type NativeRecipientPicker = Readonly<{
@@ -146,6 +157,7 @@ export function NativeSendInput({ label, value, onChange, onEdit, busy, keyboard
   placeholder?: string;
   trailing?: React.ReactNode;
 }) {
+  useNativeTranslation();
   return (
     <View style={s.field}>
       <Text style={s.label}>{label}</Text>
@@ -192,7 +204,7 @@ export type NativeSendInitialDraft = Readonly<{
 export function NativeSend({
   controller,
   onBack,
-  accountLabel = 'Account 1',
+  accountLabel = t('mobile.sendAssetViews.evm.account1'),
   account,
   token,
   tokenView,
@@ -234,6 +246,7 @@ export function NativeSend({
   recipientPicker?: NativeRecipientPicker;
   replacement?: Readonly<{ hash: string; mode: NativeReplacementMode | 'cancel-saved' }>;
 }) {
+  useNativeTranslation();
   const snapshot = useSyncExternalStore(
     (listener) => controller.subscribe(listener),
     () => controller.getSnapshot(),
@@ -352,9 +365,7 @@ export function NativeSend({
     : cancellation ? controller.prepareCancellation : controller.prepareSpeedUp;
   const reviewCancellation = review?.replacement?.mode === 'cancel';
   const capturedContext = review?.context ?? snapshot.context ?? context;
-  const networkLabel = `${capturedContext.name}${
-    capturedContext.testnet ? ' · Test network' : ''
-  }`;
+  const networkLabel = `${capturedContext.name}${capturedContext.testnet ? ` · ${t('mobile.common.testNetwork')}` : ''}`;
   const reviewedToken = review?.intent?.token;
   const reviewedCollectible = review?.collectible;
   const outcomeToken = snapshot.intent?.token;
@@ -369,12 +380,12 @@ export function NativeSend({
       <View style={s.networkCard}>
         <Coin id="custom-token" asset={{ kind: 'evm', chainId: capturedContext.chainId, contractAddress: asset.contractAddress, decimals: asset.decimals }} registrationHash={capturedContext.registrationHash} fallbackSymbol={asset.symbol} size={32} />
         <View style={s.networkDescription}><Text numberOfLines={1}>{asset.name}</Text><Text style={s.hint}>{asset.symbol} · {capturedContext.name}</Text></View>
-        <Button title="Details" variant="quiet" size="compact" expanded={tokenDetails} onPress={() => setTokenDetails(value => !value)} />
+        <Button title={t('send.details')} variant="quiet" size="compact" expanded={tokenDetails} onPress={() => setTokenDetails(value => !value)} />
       </View>
-      <Text style={s.hint}>Custom token · Unverified issuer metadata</Text>
-      {tokenDetails && <><Text style={s.label}>TOKEN CONTRACT</Text>
+      <Text style={s.hint}>{t('mobile.smartSendViews.customTokenUnverifiedIssuerMetadata')}</Text>
+      {tokenDetails && <><Text style={s.label}>{t('mobile.smartSendViews.tokenContract')}</Text>
         <Text selectable style={s.address} testID="native-send-token-contract">{asset.contractAddress}</Text>
-        <Text style={s.label}>DECIMALS</Text><Text testID="native-send-token-decimals">{asset.decimals}</Text></>}
+        <Text style={s.label}>{t('settings.decimals')}</Text><Text testID="native-send-token-decimals">{asset.decimals}</Text></>}
     </Card>
   );
   const collectibleIdentity = (asset: {
@@ -385,13 +396,13 @@ export function NativeSend({
   }) => (
     <Card style={s.summary}>
       <Coin id="collectible" asset={{ kind: 'evm', chainId: capturedContext.chainId, contractAddress: asset.contractAddress }} registrationHash={capturedContext.registrationHash} fallbackSymbol="NFT" size={36} />
-      <Text style={s.label}>COLLECTIBLE CONTRACT · {asset.tokenStandard}</Text>
+      <Text style={s.label}>{t('mobile.smartSendViews.collectibleContract')}{' '}{asset.tokenStandard}</Text>
       <Text selectable style={s.address} testID="native-send-collectible-contract">
         {asset.contractAddress}
       </Text>
       {asset.tokenId !== undefined && (
         <>
-          <Text style={s.label}>TOKEN ID</Text>
+          <Text style={s.label}>{t('send.tokenId')}</Text>
           <Text selectable style={s.address} testID="native-send-collectible-id">
             {asset.tokenId}
           </Text>
@@ -399,11 +410,11 @@ export function NativeSend({
       )}
       {asset.amountUnits !== undefined && (
         <>
-          <Text style={s.label}>QUANTITY</Text>
+          <Text style={s.label}>{t('mobile.activityViews.nativeActivity.quantity')}</Text>
           <Text
             selectable
             style={s.address}
-            accessibilityLabel={`${asset.amountUnits} ${asset.amountUnits === '1' ? 'collectible' : 'collectibles'}`}
+            accessibilityLabel={t('mobile.sendAssetViews.evm.collectiblesAmount', { count: asset.amountUnits === '1' ? 1 : 2, amount: asset.amountUnits })}
             testID="native-send-amount"
           >
             {asset.amountUnits}
@@ -432,7 +443,7 @@ export function NativeSend({
       if (lifetime.current.alive && lifetime.current.epoch === closingEpoch) {
         leaving.current = false;
         setClosingHardware(false);
-        setError('The hardware request is still closing. Try again.');
+        setError(t('mobile.sendAssetViews.evm.theHardwareRequestIsStillClosingTryAgain'));
       }
     });
   }, [beforeClose, controller, retirePicker, retireResolution, setError, setScanner]);
@@ -504,12 +515,12 @@ export function NativeSend({
       void prepareReplacement(replacementHash).catch((cause) => {
         if (lifetime.current.alive && captured === lifetime.current.epoch)
           setError(cause instanceof Error && cause.message === 'CANCELLATION_QUEUED'
-            ? 'This cancellation must wait for earlier transactions. Check Activity before trying again.'
+            ? t('mobile.sendAssetViews.evm.thisCancellationMustWaitForEarlierTransactionsCheckActivityBefore')
             : cause instanceof Error && cause.message === 'INSUFFICIENT_BALANCE'
-            ? 'The account cannot cover the replacement amount and maximum fee.'
+            ? t('mobile.sendAssetViews.evm.theAccountCannotCoverTheReplacementAmountAndMaximumFee')
             : replacementMode === 'cancel-saved'
-              ? 'Pali could not verify that this saved transaction can still be cancelled.'
-              : 'Pali could not verify that this transaction is still pending.');
+              ? t('mobile.sendAssetViews.evm.paliCouldNotVerifyThatThisSavedTransactionCanStill')
+              : t('mobile.sendAssetViews.evm.paliCouldNotVerifyThatThisTransactionIsStillPending'));
       });
       return;
     }
@@ -526,7 +537,7 @@ export function NativeSend({
             (reviewedCollectible?.recipient ?? review.recipient).toLowerCase() !== held.ticket.address.toLowerCase()) throw new Error('RECIPIENT_EXPIRED');
       } catch {
         retireResolution();
-        setError('The recipient lookup expired or changed. Review the transfer again.');
+        setError(t('mobile.smartSendViews.theRecipientLookupExpiredOrChangedReviewTheTransferAgain'));
         return;
       }
     }
@@ -551,7 +562,7 @@ export function NativeSend({
     if (resolved?.ticket && !held.review.retry) {
       try { resolved.ticket.assertCurrent(); resolved.authorized = true; }
       catch { retireResolution(); authenticationOwner.current = null;
-        setError('The recipient lookup expired or changed. Review the transfer again.'); return; }
+        setError(t('mobile.smartSendViews.theRecipientLookupExpiredOrChangedReviewTheTransferAgain')); return; }
     }
     held.submitted = true;
     setAuthenticationBusy(true);
@@ -569,7 +580,7 @@ export function NativeSend({
     const chosenOwner = recipientDraft.owner;
     if (chosenOwner && (chosenOwner !== recipientPicker || !chosenOwner.current())) {
       setRecipient('');
-      setError('Choose an account again or enter a recipient address.');
+      setError(t('mobile.sendAssetViews.evm.chooseAnAccountAgainOrEnterARecipientAddress'));
       return;
     }
     const nonceOverride = advanced ? nonce.trim() || undefined : undefined;
@@ -606,7 +617,7 @@ export function NativeSend({
             retireResolution();
             if (lifetime.current.alive) {
               setResolving(false);
-              setError('The recipient lookup expired or changed. Review the transfer again.');
+              setError(t('mobile.smartSendViews.theRecipientLookupExpiredOrChangedReviewTheTransferAgain'));
             }
           }, { once: true });
           setResolvedRecipient(ticket);
@@ -639,7 +650,7 @@ export function NativeSend({
         ? draftCollectible.tokenId
         : normalizeNftTokenId(tokenId.trim());
     } catch {
-      setError('Enter a valid token ID.');
+      setError(t('mobile.smartSendViews.enterAValidTokenId'));
       return;
     }
     let quantity: string;
@@ -649,7 +660,7 @@ export function NativeSend({
         : '1';
       if (quantity === '0') throw new Error('Quantity must be positive');
     } catch {
-      setError('Enter a whole quantity greater than zero.');
+      setError(t('mobile.smartSendViews.enterAWholeQuantityGreaterThanZero'));
       return;
     }
     Keyboard.dismiss();
@@ -671,18 +682,18 @@ export function NativeSend({
     ].includes(snapshot.phase);
   const footer = review ? <>
               <Button
-                title={reviewCancellation ? 'Submit cancellation' : review.replacement ? 'Submit Speed Up' : review.retry ? 'Resend signed transaction' : 'Confirm and send'}
+                title={reviewCancellation ? t('mobile.sendAssetViews.evm.submitCancellation') : review.replacement ? t('mobile.sendAssetViews.evm.submitSpeedUp') : review.retry ? t('mobile.sendAssetViews.evm.resendSignedTransaction') : t('mobile.sendAssetViews.evm.confirmAndSend')}
                 disabled={busy || !review.retry && !ledgerReady}
                 onPress={() => submit()}
                 testID="native-send-confirm"
               />
   </> : hasOutcome && knownOutcome ? <>
-    {onViewTransaction && <Button title="View transaction" onPress={() => {
+    {onViewTransaction && <Button title={t('mobile.sendAssetViews.evm.viewTransaction')} onPress={() => {
       if (lifetime.current.alive && snapshot.hash && controller.getSnapshot().hash === snapshot.hash) onViewTransaction(snapshot.hash);
     }} />}
-    <Button title="Done" variant={onViewTransaction ? 'secondary' : 'primary'} onPress={close} />
-  </> : hasOutcome ? <Button title={replacementHash ? 'Back to Activity' : 'Back to wallet'} variant="secondary" onPress={close} /> : !replacementHash ? (
-    <Button title="Review transfer" disabled={busy || !recipient.trim() ||
+    <Button title={t('privacy.deposit.done')} variant={onViewTransaction ? 'secondary' : 'primary'} onPress={close} />
+  </> : hasOutcome ? <Button title={replacementHash ? t('mobile.sendAssetViews.evm.backToActivity') : t('mobile.sendAssetViews.evm.backToWallet')} variant="secondary" onPress={close} /> : !replacementHash ? (
+    <Button title={t('mobile.smartSendViews.reviewTransfer')} disabled={busy || !recipient.trim() ||
       (draftCollectible?.tokenStandard === 'ERC-721' ? !tokenId.trim() : !amount && !maximum)}
       onPress={prepare} testID="native-send-review" />
   ) : undefined;
@@ -696,18 +707,18 @@ export function NativeSend({
           <Header
             title={
               cancellation
-                ? hasOutcome ? 'Cancellation status' : 'Review cancellation'
+                ? hasOutcome ? t('mobile.sendAssetViews.evm.cancellationStatus') : t('transactions.replay.reviewCancellation')
                 : replacementHash
-                ? hasOutcome ? 'Speed Up status' : 'Review Speed Up'
+                ? hasOutcome ? t('mobile.sendAssetViews.evm.speedUpStatus') : t('mobile.sendAssetViews.evm.reviewSpeedUp')
                 : review
-                ? (review.retry ? 'Review resend' : reviewedCollectible ? 'Review collectible' : 'Review transfer')
+                ? (review.retry ? t('transactions.replay.review') : reviewedCollectible ? t('mobile.sendAssetViews.evm.reviewCollectible') : t('mobile.smartSendViews.reviewTransfer'))
                 : hasOutcome
-                ? 'Transfer status'
+                ? t('mobile.sendAssetViews.evm.transferStatus')
                 : draftCollectible
-                ? 'Send collectible'
+                ? t('mobile.smartSendViews.sendCollectible')
                 : token
-                ? `Send ${token.symbol}`
-                : `Send ${capturedContext.symbol}`
+                ? t('mobile.smartSendViews.sendSymbol', { symbol: token.symbol })
+                : t('mobile.smartSendViews.sendSymbol', { symbol: capturedContext.symbol })
             }
             subtitle={`${accountLabel} · ${networkLabel}`}
             onBack={close}
@@ -716,32 +727,32 @@ export function NativeSend({
             <View style={s.progress}>
               <ActivityIndicator color={colors.pink} />
               <Text style={styles.muted}>
-                {resolving ? 'Resolving ENS recipient…' : snapshot.phase === 'signing'
-                  ? 'Authenticating and signing…'
+                {resolving ? t('mobile.sendAssetViews.evm.resolvingENSRecipient') : snapshot.phase === 'signing'
+                  ? t('mobile.sendAssetViews.evm.authenticatingAndSigning')
                   : snapshot.phase === 'submitting'
-                  ? 'Submitting the transaction…'
-                  : 'Checking the network…'}
+                  ? t('mobile.sendAssetViews.evm.submittingTheTransaction')
+                  : t('mobile.sendAssetViews.evm.checkingTheNetwork')}
               </Text>
             </View>
           )}
-          {!!error && !(hasOutcome && [ASSET_STATE_SAVED_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE].includes(error) && error === snapshot.message) && (
+          {!!error && !(hasOutcome && savedTransferMessages.includes(error) && error === snapshot.message) && (
             <Text
               accessibilityRole="alert"
               accessibilityLiveRegion="polite"
               style={s.error}
             >
-              {error}
+              {displayTransferMessage(error)}
             </Text>
           )}
           {!error && snapshot.message && !hasOutcome && !review && (
             <Text accessibilityRole="alert" style={s.error}>
-              {snapshot.message}
+              {displayTransferMessage(snapshot.message)}
             </Text>
           )}
           {capturedContext.testnet && (
             <Notice
-              title="Test network"
-              body={`Use test funds only. This transfer is on ${capturedContext.name} (chain ${capturedContext.chainId}).`}
+              title={t('mobile.common.testNetwork')}
+              body={t('mobile.sendAssetViews.evm.testFundsNotice', { network: capturedContext.name, chainId: capturedContext.chainId })}
               tone="amber"
             />
           )}
@@ -769,22 +780,22 @@ export function NativeSend({
                 </View>
               )}
               {review.replay?.missingNonce !== undefined && <Card style={s.summary}>
-                <Text style={s.label}>PREVIOUS TRANSACTION · NONCE {review.replay.missingNonce}</Text>
-                <Text style={s.hint}>This transaction is waiting for an earlier nonce.</Text>
-                {!review.replay.predecessorCount && <Text style={s.hint}>No earlier transaction is available to retry on this device.</Text>}
+                <Text style={s.label}>{t('mobile.sendAssetViews.evm.pREVIOUSTRANSACTIONNONCE')}{' '}{review.replay.missingNonce}</Text>
+                <Text style={s.hint}>{t('mobile.sendAssetViews.evm.thisTransactionIsWaitingForAnEarlierNonce')}</Text>
+                {!review.replay.predecessorCount && <Text style={s.hint}>{t('mobile.sendAssetViews.evm.noEarlierTransactionIsAvailableToRetryOnThisDevice')}</Text>}
                 {review.replay.predecessors.map(candidate => <Button key={candidate.hash} variant="secondary"
-                  title={`${candidate.operation === 'cancel' ? 'Cancellation' : candidate.operation === 'speed-up' ? 'Replacement' : 'Transaction'} ${candidate.hash.slice(0, 10)}…`}
+                  title={`${candidate.operation === 'cancel' ? t('transactions.cancellation') : candidate.operation === 'speed-up' ? t('mobile.sendAssetViews.evm.replacement') : t('notifications.transaction')} ${candidate.hash.slice(0, 10)}…`}
                   onPress={() => void run(() => controller.recover(true, candidate.hash))} />)}
-                {review.replay.predecessors.length < review.replay.predecessorCount && <Button title="Load more saved transactions" variant="secondary" size="compact" disabled={busy}
+                {review.replay.predecessors.length < review.replay.predecessorCount && <Button title={t('mobile.sendAssetViews.evm.loadMoreSavedTransactions')} variant="secondary" size="compact" disabled={busy}
                   onPress={() => void run(() => controller.loadMorePredecessors())} />}
               </Card>}
               <Card style={s.summary}>
                 {resolvedRecipient && !review.retry && !review.replacement && <>
-                  <Text style={s.label}>ENS NAME</Text>
+                  <Text style={s.label}>{t('mobile.sendAssetViews.evm.eNSNAME')}</Text>
                   <Text selectable style={s.address}>{resolvedRecipient.input}</Text>
-                  <Text style={s.label}>RESOLVED ADDRESS</Text>
+                  <Text style={s.label}>{t('mobile.sendAssetViews.evm.rESOLVEDADDRESS')}</Text>
                 </>}
-                <Text style={s.label}>{reviewCancellation ? 'TO · YOUR ADDRESS' : reviewedCollectible ? 'RECIPIENT' : 'TO'}</Text>
+                <Text style={s.label}>{reviewCancellation ? t('mobile.sendAssetViews.evm.tOYOURADDRESS') : reviewedCollectible ? t('assetTransfer.recipient') : t('send.to')}</Text>
                 <Text
                   selectable
                   style={s.address}
@@ -794,12 +805,12 @@ export function NativeSend({
                 </Text>
                 {review.nonceOverride !== undefined && <>
                   <View style={s.separator} />
-                  <Text style={s.label}>MANUAL NONCE</Text>
+                  <Text style={s.label}>{t('mobile.sendAssetViews.evm.mANUALNONCE')}</Text>
                   <Text testID="native-send-reviewed-nonce">{review.nonce}</Text>
-                  <Text style={s.hint}>This can replace a pending transaction with the same nonce, including one sent from another wallet.</Text>
+                  <Text style={s.hint}>{t('mobile.sendAssetViews.evm.thisCanReplaceAPendingTransactionWithTheSameNonce')}</Text>
                 </>}
                 <View style={s.separator} />
-                <Text style={s.label}>EXECUTION FEE LIMIT</Text>
+                <Text style={s.label}>{t('mobile.sendAssetViews.evm.eXECUTIONFEELIMIT')}</Text>
                 <Text testID="native-send-fee">
                   {formatBaseUnits(review.maximumFeeUnits, 18)}{' '}
                   {capturedContext.symbol}
@@ -807,7 +818,7 @@ export function NativeSend({
                 {!reviewedToken && !reviewedCollectible && !reviewCancellation && (
                   <>
                     <View style={s.separator} />
-                    <Text style={s.label}>AMOUNT + EXECUTION FEE LIMIT</Text>
+                    <Text style={s.label}>{t('mobile.sendAssetViews.evm.aMOUNTEXECUTIONFEELIMIT')}</Text>
                     <Text>
                       {formatBaseUnits(review.totalUnits, 18)}{' '}
                       {capturedContext.symbol}
@@ -815,54 +826,50 @@ export function NativeSend({
                   </>
                 )}
                 <Text style={s.hint}>
-                  The final fee depends on network execution. This review limits the gas price and gas used by this transaction.
-                </Text>
+                  {t('mobile.sendAssetViews.evm.theFinalFeeDependsOnNetworkExecutionThisReviewLimits')}</Text>
               </Card>
               {reviewedToken && tokenIdentity(reviewedToken)}
               {reviewedToken && (
                 <Notice
-                  title="Token transfer"
-                  body={`The token amount and ${capturedContext.symbol} network fee are separate. Token contracts may deduct fees or apply other rules, so the received amount can differ.`}
+                  title={t('assetTransfer.token-transfer')}
+                  body={t('mobile.sendAssetViews.evm.tokenFeeNotice', { symbol: capturedContext.symbol })}
                   tone="amber"
                 />
               )}
               {review.replacement && <Card style={s.summary}>
-                <Text style={s.label}>ORIGINAL TRANSACTION · NONCE {review.nonce}</Text>
+                <Text style={s.label}>{t('mobile.sendAssetViews.evm.oRIGINALTRANSACTIONNONCE')}{' '}{review.nonce}</Text>
                 <Text selectable style={s.address}>{review.replacement.originalHash}</Text>
                 {review.execution && <>
-                  <Text>{review.execution.kind === 'contract-creation' ? 'Contract deployment' : review.execution.kind === 'contract-call' ? 'Contract interaction' : 'Transfer'}</Text>
-                  {review.execution.dataBytes > 0 && <Text style={s.hint}>{review.execution.dataBytes} bytes of unchanged contract data</Text>}
-                  {review.execution.accessListEntries > 0 && <Text style={s.hint}>{review.execution.accessListEntries} unchanged access-list entries</Text>}
+                  <Text>{review.execution.kind === 'contract-creation' ? t('mobile.dappConsent.transactionReview.contractDeployment') : review.execution.kind === 'contract-call' ? t('mobile.dappConsent.transactionReview.contractInteraction') : t('transactions.methodNames.transfer')}</Text>
+                  {review.execution.dataBytes > 0 && <Text style={s.hint}>{review.execution.dataBytes} {t('mobile.sendAssetViews.evm.bytesOfUnchangedContractData')}</Text>}
+                  {review.execution.accessListEntries > 0 && <Text style={s.hint}>{review.execution.accessListEntries} {t('mobile.sendAssetViews.evm.unchangedAccesslistEntries')}</Text>}
                   {review.execution.smartAccount && <>
-                    <Text style={s.label}>SMART ACCOUNT</Text><Text selectable style={s.address}>{review.execution.smartAccount}</Text>
-                    <Text style={s.label}>ORIGINAL FEE PAYER</Text><Text selectable style={s.address}>{review.from}</Text>
+                    <Text style={s.label}>{t('receive.smartAccount')}</Text><Text selectable style={s.address}>{review.execution.smartAccount}</Text>
+                    <Text style={s.label}>{t('mobile.sendAssetViews.evm.oRIGINALFEEPAYER')}</Text><Text selectable style={s.address}>{review.from}</Text>
                   </>}
                 </>}
                 {!reviewCancellation && <Text style={s.hint}>
-                  Original execution fee limit: {formatBaseUnits(review.replacement.originalMaximumFeeUnits, 18)} {capturedContext.symbol}
+                  {t('mobile.sendAssetViews.evm.originalExecutionFeeLimit')}{' '}{formatBaseUnits(review.replacement.originalMaximumFeeUnits, 18)} {capturedContext.symbol}
                 </Text>}
                 <Text style={s.hint}>{reviewCancellation
-                  ? 'This sends zero to your own address with a higher fee. The original can still confirm first.'
-                  : 'Only the network fee changes. The original recipient, value and contract data stay unchanged. The original can still confirm first.'}</Text>
+                  ? t('mobile.sendAssetViews.evm.thisSendsZeroToYourOwnAddressWithAHigher')
+                  : t('mobile.sendAssetViews.evm.onlyTheNetworkFeeChangesTheOriginalRecipientValueAnd')}</Text>
               </Card>}
               {review.replay && <Card style={s.summary}>
-                <Text style={s.label}>SAVED TRANSACTION · NONCE {review.nonce}</Text>
+                <Text style={s.label}>{t('mobile.sendAssetViews.evm.sAVEDTRANSACTIONNONCE')}{' '}{review.nonce}</Text>
                 <Text selectable style={s.address}>{review.replay.hash}</Text>
-                <Text style={s.hint}>Connection: {new URL(capturedContext.rpcUrl).host}</Text>
-                <Text>{review.replay.operation === 'cancel' ? 'Cancellation' : review.replay.operation === 'speed-up' ? 'Fee replacement' : review.replay.to === null ? 'Contract creation' : review.replay.dataBytes ? 'Contract interaction' : 'Transfer'}</Text>
-                {review.replay.dataBytes > 0 && <Text style={s.hint}>{review.replay.selector ?? 'Contract data'} · {review.replay.dataBytes} bytes</Text>}
-                {!!review.replay.accessListEntries && <Text style={s.hint}>{review.replay.accessListEntries} access-list entries</Text>}
-                {review.replay.tokenTransfer && !reviewedToken && <Text>Token base units: {review.replay.tokenTransfer.amountUnits}</Text>}
+                <Text style={s.hint}>{t('mobile.sendAssetViews.evm.connection')}{' '}{new URL(capturedContext.rpcUrl).host}</Text>
+                <Text>{review.replay.operation === 'cancel' ? t('transactions.cancellation') : review.replay.operation === 'speed-up' ? t('mobile.sendAssetViews.evm.feeReplacement') : review.replay.to === null ? t('transactions.replay.creation') : review.replay.dataBytes ? t('mobile.dappConsent.transactionReview.contractInteraction') : t('transactions.methodNames.transfer')}</Text>
+                {review.replay.dataBytes > 0 && <Text style={s.hint}>{review.replay.selector ?? t('mobile.sendAssetViews.evm.contractData')} · {review.replay.dataBytes} {t('transactions.replay.bytes')}</Text>}
+                {!!review.replay.accessListEntries && <Text style={s.hint}>{review.replay.accessListEntries} {t('mobile.sendAssetViews.evm.accesslistEntries')}</Text>}
+                {review.replay.tokenTransfer && !reviewedToken && <Text>{t('mobile.sendAssetViews.evm.tokenBaseUnits')}{' '}{review.replay.tokenTransfer.amountUnits}</Text>}
                 <Text style={s.hint} testID="native-replay-same-nonce-warning">
-                  If another transaction uses this nonce, resending may replace it or be rejected. Either transaction may confirm. Check Activity and any other wallet using this account before continuing.
-                </Text>
+                  {t('transactions.replay.sameNonceWarning')}</Text>
               </Card>}
               {!review.replacement && <Text style={s.hint}>
-                Confirm the full address and network before sending. Completed
-                transfers cannot be reversed.
-              </Text>}
+                {t('mobile.sendAssetViews.evm.confirmTheFullAddressAndNetworkBeforeSendingCompletedTransfers')}</Text>}
               {ledgerConnection && !review.retry && !ledgerReady && <Button
-                title="Connect Ledger" disabled={busy}
+                title={t('mobile.accounts.connectLedger')} disabled={busy}
                 onPress={() => { Keyboard.dismiss(); setLedgerPicker(ledgerConnection); }}
               />}
 
@@ -877,47 +884,47 @@ export function NativeSend({
                 <Text style={s.title}>
                   {snapshot.phase === 'confirmed'
                     ? cancellation
-                      ? 'Cancellation confirmed'
-                      : replacementHash ? 'Replacement confirmed'
+                      ? t('mobile.sendAssetViews.evm.cancellationConfirmed')
+                      : replacementHash ? t('mobile.sendAssetViews.evm.replacementConfirmed')
                       : outcomeToken || outcomeCollectible
-                      ? 'Transaction confirmed'
-                      : 'Transfer confirmed'
+                      ? t('mobile.connections.transactionConfirmed')
+                      : t('mobile.sendAssetViews.evm.transferConfirmed')
                     : snapshot.phase === 'reverted'
-                    ? cancellation ? 'Cancellation reverted' : replacementHash ? 'Replacement reverted' : 'Transfer reverted'
+                    ? cancellation ? t('mobile.sendAssetViews.evm.cancellationReverted') : replacementHash ? t('mobile.sendAssetViews.evm.replacementReverted') : t('mobile.sendAssetViews.evm.transferReverted')
                     : snapshot.phase === 'nonce-consumed'
-                    ? 'Check account history'
+                    ? t('mobile.sendAssetViews.evm.checkAccountHistory')
                     : snapshot.phase === 'unknown'
-                    ? snapshot.message === SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE ? 'Check earlier transaction' : snapshot.message === ASSET_STATE_SAVED_MESSAGE ? 'Saved, not submitted' : 'Checking submission'
+                    ? snapshot.message === SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE ? t('mobile.sendAssetViews.evm.checkEarlierTransaction') : snapshot.message === ASSET_STATE_SAVED_MESSAGE ? t('mobile.sendAssetViews.evm.savedNotSubmitted') : t('mobile.sendAssetViews.evm.checkingSubmission')
                     : snapshot.phase === 'unavailable'
-                    ? 'Status unavailable'
-                    : cancellation ? 'Cancellation submitted' : replacementHash ? 'Replacement submitted' : 'Transaction submitted'}
+                    ? t('mobile.sendAssetViews.evm.statusUnavailable')
+                    : cancellation ? t('mobile.sendAssetViews.evm.cancellationSubmitted') : replacementHash ? t('mobile.sendAssetViews.evm.replacementSubmitted') : t('privacy.deposit.submitted')}
                 </Text>
               </View>
               {receipt?.controller === controller && receipt.hash === snapshot.hash && <Card style={s.summary}>
-                <Text style={s.label}>AMOUNT</Text>
+                <Text style={s.label}>{t('send.amount')}</Text>
                 <Text testID="native-send-receipt-amount">{receipt.review.collectible
-                  ? `${receipt.review.collectible.amountUnits} collectible${receipt.review.collectible.amountUnits === '1' ? '' : 's'}`
+                  ? t('mobile.sendAssetViews.evm.collectiblesAmount', { count: receipt.review.collectible.amountUnits === '1' ? 1 : 2, amount: receipt.review.collectible.amountUnits })
                   : `${receipt.review.intent ? formatTokenUnits(receipt.review.amountUnits, receipt.review.intent.token.decimals) : formatBaseUnits(receipt.review.amountUnits, 18)} ${receipt.review.intent?.token.symbol ?? capturedContext.symbol}`}</Text>
-                <Text style={s.label}>TO</Text>
+                <Text style={s.label}>{t('send.to')}</Text>
                 <Text selectable style={s.address}>{receipt.review.collectible?.recipient ?? receipt.review.recipient}</Text>
                 <Text style={s.hint}>{capturedContext.name}</Text>
               </Card>}
               {outcomeToken && tokenIdentity(outcomeToken)}
               {outcomeCollectible && collectibleIdentity(outcomeCollectible)}
               <View
-                accessibilityRole={[ASSET_STATE_SAVED_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE].includes(snapshot.message ?? '') ? 'alert' : undefined}
-                accessibilityLiveRegion={[ASSET_STATE_SAVED_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE].includes(snapshot.message ?? '') ? 'polite' : undefined}
+                accessibilityRole={savedTransferMessages.includes(snapshot.message ?? '') ? 'alert' : undefined}
+                accessibilityLiveRegion={savedTransferMessages.includes(snapshot.message ?? '') ? 'polite' : undefined}
               >
                 <Notice
                   title={
                     snapshot.phase === 'unknown'
-                      ? 'Keep this transaction'
-                      : `${capturedContext.name} transaction`
+                      ? t('mobile.sendAssetViews.evm.keepThisTransaction')
+                      : t('mobile.sendAssetViews.evm.transactionLabel', { network: capturedContext.name })
                   }
                   body={
-                    snapshot.message ?? (snapshot.phase === 'pending'
-                      ? 'View this transaction in Activity to track confirmation.'
-                      : 'Check the transaction status before sending again.')
+                    displayTransferMessage(snapshot.message) ?? (snapshot.phase === 'pending'
+                      ? t('mobile.sendAssetViews.evm.viewThisTransactionInActivityToTrackConfirmation')
+                      : t('mobile.sendAssetViews.evm.checkTheTransactionStatusBeforeSendingAgain'))
                   }
                   tone={
                     snapshot.phase === 'unknown' ||
@@ -930,20 +937,20 @@ export function NativeSend({
                 />
               </View>
               <Card style={s.summary}>
-                <Text style={s.label}>TRANSACTION HASH</Text>
+                <Text style={s.label}>{t('transactions.replay.hash')}</Text>
                 <Text selectable style={s.address} testID="native-send-hash">
                   {snapshot.hash}
                 </Text>
               </Card>
               {!knownOutcome && <Button
-                title="Check status"
+                title={t('settings.smartAccountInfrastructureCheckStatus')}
                 variant="primary"
                 disabled={busy}
                 onPress={() => void run(() => controller.recover(false, snapshot.hash ?? undefined))}
               />}
               {snapshot.phase === 'unknown' && !snapshot.inspectionOnly && (
                 <Button
-                  title="Review retry"
+                  title={t('mobile.sendAssetViews.evm.reviewRetry')}
                   variant="secondary"
                   disabled={busy}
                   onPress={() => void run(() => controller.recover(true, snapshot.hash ?? undefined))}
@@ -951,7 +958,7 @@ export function NativeSend({
               )}
             </>
           ) : replacementHash ? (
-            !busy && <Button title="Check again" variant="secondary" onPress={() => void run(() => prepareReplacement(replacementHash))} />
+            !busy && <Button title={t('mobile.sendAssetViews.evm.checkAgain')} variant="secondary" onPress={() => void run(() => prepareReplacement(replacementHash))} />
           ) : (
             <>
               {onChangeAsset && !draftCollectible ? <SendAssetSelector context={capturedContext} token={token} nativeAvailable={availableAmount}
@@ -969,14 +976,14 @@ export function NativeSend({
                 } : undefined} />}
               {draftNotice && <Text accessibilityLiveRegion="polite" style={styles.muted}>{draftNotice}</Text>}
               <NativeSendInput
-                label={draftCollectible ? 'Recipient address' : `${capturedContext.name} address`}
+                label={draftCollectible ? t('blacklist.recipientDescription') : t('mobile.sendAssetViews.evm.addressLabel', { network: capturedContext.name })}
                 value={recipient}
                 onChange={setRecipient}
                 onEdit={clearCollectibleError}
                 busy={busy}
                 max={255}
                 placeholder="0x… or name.eth"
-                trailing={<IconButton label="Scan recipient address" icon="scan" disabled={busy} onPress={() => {
+                trailing={<IconButton label={t('mobile.smartSendViews.scanRecipientAddress')} icon="scan" disabled={busy} onPress={() => {
                   if (busy || !lifetime.current.alive || controller.getSnapshot().review) return;
                   retirePicker(); Keyboard.dismiss();
                   const next = { scope: latestRecipientOwner.current, epoch: lifetime.current.epoch, account, registrationHash: context.registrationHash };
@@ -986,7 +993,7 @@ export function NativeSend({
               {recipientPicker && !savedHash && !replacementHash && !token && !draftCollectible && (
                 <>
                   <Button
-                    title={picker ? 'Hide accounts' : 'Choose account'}
+                    title={picker ? t('mobile.settings.hide') : t('mobile.sendAssetViews.evm.chooseAccount')}
                     variant="secondary"
                     disabled={busy}
                     onPress={() => {
@@ -1004,7 +1011,7 @@ export function NativeSend({
                   {picker && (
                     <Card style={s.summary}>
                       <NativeSendInput
-                        label="Find account"
+                        label={t('mobile.sendAssetViews.evm.findAccount')}
                         value={picker.query}
                         onChange={(query) => {
                           const { session } = picker;
@@ -1032,7 +1039,7 @@ export function NativeSend({
                           <Text>{label}</Text>
                           <Text style={styles.muted}>{address.slice(0, 10)}…{address.slice(-8)}</Text>
                         </IdlePressable>
-                      )) : <Text style={styles.muted}>No matching accounts.</Text>}
+                      )) : <Text style={styles.muted}>{t('mobile.sendAssetViews.evm.noMatchingAccounts')}</Text>}
                     </Card>
                   )}
                 </>
@@ -1041,15 +1048,15 @@ export function NativeSend({
                 <>
                   {collectibleIdentity(draftCollectible)}
                   {draftCollectible.tokenStandard === 'ERC-721'
-                    ? <NativeSendInput label="Token ID" value={tokenId} onChange={setTokenId}
+                    ? <NativeSendInput label={t('send.tokenId')} value={tokenId} onChange={setTokenId}
                         onEdit={clearCollectibleError} busy={busy} keyboardType="number-pad" max={257} />
-                    : <NativeSendInput label="Quantity" value={amount} onChange={setAmount}
+                    : <NativeSendInput label={t('mobile.activityViews.nativeActivity.quantity')} value={amount} onChange={setAmount}
                         onEdit={clearCollectibleError} busy={busy} keyboardType="number-pad" max={79} />}
                 </>
               ) : (
                 <>
                   {token && tokenIdentity(token)}
-                  <NativeSendInput label={`Amount in ${token?.symbol ?? capturedContext.symbol}`} value={amount}
+                  <NativeSendInput label={t('mobile.smartSendViews.amountInSymbol', { symbol: token?.symbol ?? capturedContext.symbol })} value={amount}
                     onChange={(value) => { setMaximum(false); setAmount(value); }} busy={busy} keyboardType="decimal-pad" max={token ? 334 : 100}
                     trailing={token ? <NativeTokenMaximum
                       owner={account}
@@ -1062,19 +1069,19 @@ export function NativeSend({
                         setMaximum(true);
                         setAmount(value);
                       }}
-                    /> : <Button title={maximum ? 'MAX selected' : 'MAX'} variant="secondary" size="compact"
+                    /> : <Button title={maximum ? t('mobile.portfolioCopy.maxSelected') : 'MAX'} variant="secondary" size="compact"
                       disabled={busy || !availableAmount || !/[1-9]/.test(availableAmount)} onPress={() => {
                         if (!lifetime.current.alive || busy || !availableAmount || latestRecipientOwner.current.account !== account ||
                           latestRecipientOwner.current.context.registrationHash !== context.registrationHash) return;
                         setMaximum(true);
                         setAmount(availableAmount);
                       }} />} />
-                  <Text style={styles.muted} accessibilityLabel="Available balance">
-                    Available {token ? nativeTokenAvailableAmount(token, account, tokenSnapshot) ?? '—' : availableAmount ?? '—'} {token?.symbol ?? capturedContext.symbol}
+                  <Text style={styles.muted} accessibilityLabel={t('mobile.smartSendViews.availableBalance')}>
+                    {t('mobile.smartSendViews.available')}{' '}{token ? nativeTokenAvailableAmount(token, account, tokenSnapshot) ?? '—' : availableAmount ?? '—'} {token?.symbol ?? capturedContext.symbol}
                   </Text>
                 </>
               )}
-              <Button title={advanced ? 'Hide advanced options' : 'Advanced options'} variant="secondary" icon={advanced ? 'chevron-up' : 'chevron-down'} size="compact"
+              <Button title={advanced ? t('mobile.sendAssetViews.evm.hideAdvancedOptions') : t('mobile.sendAssetViews.evm.advancedOptions')} variant="secondary" icon={advanced ? 'chevron-up' : 'chevron-down'} size="compact"
                 disabled={busy} expanded={advanced} onPress={() => {
                   if (advanced) {
                     setNonce('');
@@ -1083,16 +1090,15 @@ export function NativeSend({
                   setAdvanced(!advanced);
                 }} />
               {advanced && <>
-                <NativeSendInput label="Transaction nonce" value={nonce} onChange={setNonce}
-                  busy={busy} keyboardType="number-pad" max={64} placeholder="Automatic"
+                <NativeSendInput label={t('mobile.sendAssetViews.evm.transactionNonce')} value={nonce} onChange={setNonce}
+                  busy={busy} keyboardType="number-pad" max={64} placeholder={t('mobile.sendAssetViews.evm.automatic')}
                   onEdit={() => { if (error) setError(''); }} />
-                <Text style={s.hint}>Leave blank for automatic selection. A higher nonce can wait for earlier transactions.</Text>
+                <Text style={s.hint}>{t('mobile.sendAssetViews.evm.leaveBlankForAutomaticSelectionAHigherNonceCanWait')}</Text>
               </>}
             </>
           )}
           {typeof __DEV__ !== 'undefined' && __DEV__ && <Text style={s.buildLabel}>
-            Development build · Use a test wallet
-          </Text>}
+            {t('mobile.common.development')}</Text>}
         </Screen>
       </KeyboardAvoidingView>
       {ledgerPicker && ledgerPicker === ledgerConnection && <NativeLedgerConnectionModal
@@ -1123,12 +1129,11 @@ export function NativeSend({
         <SafeAreaView style={s.leaveOverlay} accessibilityViewIsModal>
           <ScrollView contentContainerStyle={s.leaveContent}>
             <Card style={s.leaveCard}>
-              <Text accessibilityRole="header" style={s.leaveTitle}>Submission in progress</Text>
+              <Text accessibilityRole="header" style={s.leaveTitle}>{t('mobile.sendAssetViews.evm.submissionInProgress')}</Text>
               <Text accessibilityLiveRegion="polite" style={styles.muted}>
-                This transaction may already have been sent. Check Activity before sending again.
-              </Text>
-              <Button title="Stay" onPress={() => setLeavePrompt(null)} />
-              <Button title="Leave" variant="secondary" onPress={leaveDuringSubmission} />
+                {t('mobile.sendAssetViews.evm.thisTransactionMayAlreadyHaveBeenSentCheckActivityBefore')}</Text>
+              <Button title={t('mobile.sendAssetViews.evm.stay')} onPress={() => setLeavePrompt(null)} />
+              <Button title={t('mobile.sendAssetViews.evm.leave')} variant="secondary" onPress={leaveDuringSubmission} />
             </Card>
           </ScrollView>
         </SafeAreaView>

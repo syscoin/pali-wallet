@@ -1,3 +1,4 @@
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { screenElements, screenFixture } from './screenFixture.ts';
@@ -20,6 +21,7 @@ function fixture(kind: 'control' | 'sentry') {
     approveSentry: async (...args: unknown[]) => { approvals.push(structuredClone(args)); }, rejectSentry: async (id: string) => { rejections.push(id); } };
   const f = screenFixture(new URL(`../src/screens/${kind === 'control' ? 'NativeDappControlReview' : 'NativeSentryReview'}.tsx`, import.meta.url),
     kind === 'control' ? 'NativeDappControlReview' : 'NativeSentryReview', {
+      '../platform/localization': nativeTranslationFixture,
       'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
       '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
       './DappSiteStatus': { DappSiteStatus: 'SiteStatus' }, './IdleActivityBoundary': { IdleTextInput: 'Input' },

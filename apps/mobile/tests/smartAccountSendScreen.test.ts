@@ -1,5 +1,6 @@
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import { freshSmartOperationDeadline } from './nonSuiteSigningHandoff.ts';
 import { normalizeNftTokenId } from '../../../source/utils/nftTokenId.ts';
 import type { SavedCollectible } from '../src/portfolio/tokenRegistry.ts';
@@ -90,6 +91,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
     },
   };
   const imports: Record<string, any> = {
+    '../platform/localization': nativeTranslationFixture,
     react,
     '../custody/privateAuthentication': privateAuthentication,
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },

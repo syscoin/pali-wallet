@@ -1,3 +1,4 @@
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -51,6 +52,7 @@ test('real React StrictMode gives Withdrawal a fresh effect scope and preserves 
   const controller = { getSnapshot: () => snapshot, subscribe: () => () => undefined,
     async dispose() { disposed++; }, async refresh() {}, async loadRelayers() {} };
   const imports: Record<string, unknown> = {
+    '../platform/localization': nativeTranslationFixture,
     react: React,
     'react-native': { AppState: { get currentState() { return state; }, addEventListener(event: string, callback: (value: string) => void) { return { remove: subscribe(event, callback) }; } },
       Platform: { OS: 'android' }, StyleSheet: { create: (value: unknown) => value }, Keyboard: { dismiss() {} },

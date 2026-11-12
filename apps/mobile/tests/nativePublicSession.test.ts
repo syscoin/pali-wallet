@@ -307,3 +307,22 @@ test('account removal refreshes the checkpoint atomically before public-only reo
     assert.deepEqual(f.authority.getCatalogue()!.accounts.map(account => account.id), ['hd:60:0']);
   } finally { await f.close(); }
 });
+
+for (const backedUp of [false, true]) test(`public-only EVM network selection preserves account without spending material (backed up: ${backedUp})`, async () => {
+  const f = await fixture();
+  try {
+    await f.create(); if (backedUp) await f.ready(); f.blockSecrets();
+    const address = f.authority.getSnapshot().account!.address;
+    if (!backedUp) await assert.rejects(f.authority.manageAccounts(
+      { kind: 'create', label: 'Not admitted' }, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision
+    ), /NOT_READY/);
+    for (const networkId of ['base', 'arbitrum', 'rollux', 'syscoin-nevm-testnet', 'zksys-testnet', 'syscoin-nevm', 'ethereum']) {
+      const state = f.authority.getSnapshot(), catalogue = f.authority.getCatalogue()!;
+      await f.authority.selectNetwork(networkId, state.revision, catalogue.revision, () => undefined);
+      assert.equal(f.authority.getSnapshot().phase, backedUp ? 'ready' : 'backup-required');
+      assert.equal(f.authority.getSnapshot().account!.network, networkId);
+      assert.equal(f.authority.getSnapshot().account!.address, address);
+      assert.equal(f.rootEntries, 0); assert.equal(f.secretReads, 0);
+    }
+  } finally { await f.close(); }
+});

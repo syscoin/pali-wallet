@@ -40,6 +40,7 @@ for (const kind of ['address', 'xpub', 'descriptor'] as const) test(`${kind} wat
     '../core/amounts': { formatBalanceDelta, formatBaseUnits },
     '../custody/networkContext': { getNativeNetwork() { assert.fail('No EVM network'); } },
     '../custody/testnetFaucet': {}, '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => ({ supported: false, quote: null }) },
+    './CopyableAddress': { CopyableAddress: 'CopyableAddress' },
     './PortfolioQuote': { PortfolioQuote: 'PortfolioQuote' }, '../portfolio/AssetMarketCard': { AssetMarketCard: 'AssetMarketCard' },
     './NativeSptAssets': { NativeSptAssets: 'NativeSptAssets' }, '../../../../source/shared/sptInventory': { supportsSptUtxoChain: () => false },
     './TestnetFaucetCard': {}, '../ui': { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'IconButton', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {}, styles: {} },

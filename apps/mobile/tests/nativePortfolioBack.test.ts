@@ -7,6 +7,7 @@ import ts from 'typescript';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import { getNativeNetwork, getNativeSendContext, nativeSigningEnabled } from '../src/custody/networkContext.ts';
 import { TabDeparture } from '../src/navigation/tabDeparture.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 
 type Element = { type: any; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
@@ -18,10 +19,10 @@ function elements(value: unknown): Element[] {
 }
 
 /** Actual overview, portfolio and shell handlers with public data and native event ports. */
-function fixture(overview: boolean) {
+function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation') {
   const cells = new Map<unknown, Cell[]>(), nativeBacks = new Set<() => boolean>();
   let current: Cell[] = [], cursor = 0, pendingEffects: (() => void)[] = [], dirty = false;
-  let exits = 0, sends = 0, shell: any;
+  let exits = 0, sends = 0, backups = 0, consumed = 0, shell: any;
   const cell = () => current[cursor++] ?? (current[cursor - 1] = {});
   const react = {
     createElement: (type: unknown, props: object | null, ...children: unknown[]): Element => ({ type, props: props ?? {}, children }),
@@ -52,7 +53,7 @@ function fixture(overview: boolean) {
   };
   const network = getNativeNetwork('ethereum'), address = '0x' + '11'.repeat(20);
   const account = { address, network: network.id, revision: 1 };
-  const source = { getSnapshot: () => ({ phase: 'ready', backup: 'confirmed', revision: 1, account }),
+  const source = { getSnapshot: () => ({ phase: 'ready', backup: receiveEntry ? 'unconfirmed' : 'confirmed', revision: 1, account }),
     getCatalogue: () => ({ active: { accountId: 'hd:60:0', networkId: network.id }, networks: [network] }), subscribe: () => () => {} };
   const choice = { networkName: network.name, symbol: network.symbol,
     scope: { id: 'native:hd:60:0:ethereum', accountId: 'hd:60:0', accountAddress: address, network } };
@@ -69,7 +70,7 @@ function fixture(overview: boolean) {
     react, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Icon', 'IconButton', 'Notice', 'Row', 'Screen', 'Text'].map(value => [value, value])), colors: {}, styles: {} },
     './IdleActivityBoundary': { IdlePressable: 'IdlePressable' },
-    '../platform/localization': { useNativeTranslation: () => ({ t: (value: string) => value }) },
+    '../platform/localization': nativeTranslationFixture,
     '../platform/balancePrivacy': { useBalancePrivacy: () => ({ hidden: false }), HIDDEN_BALANCE: 'hidden' },
     '../platform/fiatPreferences': { useFiatCurrency: () => ({ status: 'ready', currency: 'usd' }) },
     '../core/amounts': { formatBaseUnits },
@@ -98,7 +99,7 @@ function fixture(overview: boolean) {
       react.createElement('Button', { title: 'Open token', onPress: () => setSelected(true) }));
   }
   const { NativePortfolio } = load('NativePortfolio', { ...common,
-    'expo-clipboard': {}, 'react-native-qrcode-svg': { default: 'QRCode' },
+    'expo-clipboard': {}, 'react-native-qrcode-svg': { default: 'QRCode' }, './CopyableAddress': { CopyableAddress: 'CopyableAddress' },
     '../custody/testnetFaucet': { getTestnetFaucet: () => null }, '../core/utxoAddresses': {},
     '../platformRpc': {}, '../platform/http': {}, '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => ({ supported: false }) },
     '../portfolio/nativePortfolio': { NativePortfolioController: class {
@@ -108,17 +109,22 @@ function fixture(overview: boolean) {
     '../portfolio/AssetMarketCard': { AssetMarketCard: 'AssetMarketCard' }, './TestnetFaucetCard': {},
     '../../../../source/shared/sptInventory': {}, './NativeSptAssets': {},
   });
-  const { NativeAccountOverview } = load('NativeAccountOverview', { ...common,
+  const { NativeAccountOverview, NativePortfolioRoute } = load('NativeAccountOverview', { ...common,
     '../portfolio/accountPortfolio': {}, '../../../../source/shared/erc20': {}, './NativePortfolio': { NativePortfolio },
     './NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' }, './WalletBackupBadge': {},
   });
   const { useRealShell } = load('useRealShell', { react, 'react-native': native, '../navigation/tabDeparture': { TabDeparture } });
   const scope = () => 'hd:60:0:ethereum', exit = () => { exits++; }, onSend = () => { sends++; };
   const reader = {}, tokenView = {};
+  let detail = receiveEntry === 'detail' ? { accountId: 'hd:60:0', networkId: network.id, receive: true } : undefined;
+  let continuation = receiveEntry === 'continuation' ? { account, backupAcknowledged: true } : undefined;
   function Root() {
     shell = useRealShell(scope(), scope, exit);
-    const portfolio = { source, reader, tokenView, accountLabel: 'Account 1', onExit: exit, onLock() {}, onViewRecovery() {},
-      onSend, navigation: shell.navigation };
+    const portfolio = { source, reader, tokenView, accountLabel: 'Account 1', onExit: exit, onLock() {}, onViewRecovery() { backups++; },
+      onReceiveIntentConsumed() { consumed++; if (detail) detail = { ...detail, receive: false }; continuation = undefined; dirty = true; },
+      initialReceive: continuation, onSend, navigation: shell.navigation };
+    if (receiveEntry) return react.createElement(NativePortfolioRoute, { ...portfolio, overview: receiveEntry === 'detail' ? controller : undefined,
+      detail, selectNetwork: async () => {}, sendFrom: async () => {} });
     return overview ? react.createElement(NativeAccountOverview, { controller, portfolio, selectNetwork: async () => {}, send: async () => {} })
       : react.createElement(NativePortfolio, portfolio);
   }
@@ -143,6 +149,13 @@ function fixture(overview: boolean) {
   return { render,
     back(nativeFirst = false) { if (!nativeFirst || ![...nativeBacks].reverse().some(handler => handler())) shell.goBack(); },
     get exits() { return exits; }, get sends() { return sends; },
+    get backups() { return backups; }, get consumed() { return consumed; },
+    remountPortfolio() {
+      for (const [component, slots] of cells) if (component !== Root) {
+        for (const slot of slots) slot.cleanup?.();
+        cells.delete(component);
+      }
+    },
     close() { for (const slots of cells.values()) for (const slot of slots) slot.cleanup?.(); },
   };
 }
@@ -186,5 +199,46 @@ for (const overview of [false, true]) for (const nativeFirst of [false, true]) t
     f.back(nativeFirst);
     assert.equal(f.exits, overview ? 0 : 1);
     if (overview) assert(elements(f.render()).some(value => value.props.accessibilityLabel?.startsWith('ETH, Ethereum')));
+  } finally { f.close(); }
+});
+
+for (const entry of ['detail', 'continuation'] as const) test(`Receive ${entry} is consumed before Back, Send and portfolio remount`, () => {
+  const f = fixture(entry === 'detail', entry);
+  const button = (title: string) => {
+    const found = elements(f.render()).find(value => value.type === 'Button' && value.props.title === title);
+    assert(found, title); return found;
+  };
+  try {
+    if (entry === 'detail') button('Receive Anyway').props.onPress();
+    assert(elements(f.render()).some(value => value.props.testID === 'native-receive-address'));
+    f.back();
+    assert(!elements(f.render()).some(value => value.props.testID === 'native-receive-address'));
+    button('Send').props.onPress();
+    assert.equal(f.backups, 1);
+    assert.equal(f.sends, 0, 'the receive acknowledgement must not authorize spending');
+    f.remountPortfolio();
+    const returned = elements(f.render());
+    assert(!returned.some(value => value.props.testID === 'native-receive-address'), 'the prior receive route must not reopen');
+    assert(!returned.some(value => value.type === 'Button' && value.props.title === 'Receive Anyway'), 'the prior receive warning must not reopen');
+    assert.equal(f.consumed, 1);
+  } finally { f.close(); }
+});
+
+test('cancelled Receive warning stays cancelled across remount and stale acknowledgement', () => {
+  const f = fixture(true, 'detail');
+  try {
+    const oldContinue = elements(f.render()).find(value => value.type === 'Button' && value.props.title === 'Receive Anyway');
+    assert(oldContinue);
+    f.back();
+    oldContinue.props.onPress();
+    f.remountPortfolio();
+    assert(!elements(f.render()).some(value => value.props.testID === 'native-receive-address' || value.props.title === 'Receive Anyway'));
+    assert.equal(f.consumed, 1);
+    elements(f.render()).find(value => value.type === 'Button' && value.props.title === 'Receive')!.props.onPress();
+    oldContinue.props.onPress();
+    assert(!elements(f.render()).some(value => value.props.testID === 'native-receive-address'));
+    const freshContinue = elements(f.render()).find(value => value.type === 'Button' && value.props.title === 'Receive Anyway');
+    assert(freshContinue); freshContinue.props.onPress();
+    assert(elements(f.render()).some(value => value.props.testID === 'native-receive-address'));
   } finally { f.close(); }
 });

@@ -25,11 +25,11 @@ const emptySubscribe = () => () => {};
 
 /** Each presentation owns one bounded host; no pending open can adopt a replacement mount. */
 const setupPurpose: Record<string, string> = {
-  entryPoint: 'Process smart-account transactions', accountImplementation: 'Create smart accounts',
-  ecdsaValidator: 'Approve with wallet owners', p256WebAuthnValidator: 'Approve with passkeys',
-  slhDsaVerifier: 'Verify post-quantum approvals', slhDsaValidator: 'Use post-quantum approval keys',
-  compositeValidator: 'Combine approval methods', guardianRecoveryModule: 'Recover accounts with a guardian',
-  factory: 'Deploy smart accounts', multicall3: 'Read account data efficiently',
+  entryPoint: 'mobile.infrastructure.purposeProcessTransactions', accountImplementation: 'mobile.infrastructure.purposeCreateAccounts',
+  ecdsaValidator: 'mobile.infrastructure.purposeWalletOwners', p256WebAuthnValidator: 'mobile.infrastructure.purposePasskeys',
+  slhDsaVerifier: 'mobile.infrastructure.purposeVerifyPostQuantum', slhDsaValidator: 'mobile.infrastructure.purposePostQuantumKeys',
+  compositeValidator: 'mobile.infrastructure.purposeCombineMethods', guardianRecoveryModule: 'mobile.infrastructure.purposeGuardianRecovery',
+  factory: 'mobile.infrastructure.purposeDeployAccounts', multicall3: 'mobile.infrastructure.purposeReadAccounts',
 };
 
 export function NativeInfrastructure({ mode, open, onBack, ledgerConnection }: Props) {
@@ -154,13 +154,13 @@ export function NativeInfrastructure({ mode, open, onBack, ledgerConnection }: P
   </>}>
     <Header title={t('settings.smartAccountInfrastructure')} onBack={close} />
     {state.status && state.phase !== 'review' && <Card style={s.card}>
-      <Text accessibilityRole="header">{state.status.observation.ready && !create2Missing ? 'Required setup complete' : 'Set up smart-account support'}</Text>
-      <Text>{`${completed} of ${required.length} required setup contracts available`}</Text>
+      <Text accessibilityRole="header">{state.status.observation.ready && !create2Missing ? t('mobile.infrastructure.requiredSetupComplete') : t('mobile.infrastructure.setupSupport')}</Text>
+      <Text>{t('mobile.infrastructure.requiredContracts', { completed, count: required.length })}</Text>
       {next && <>
-        <Text style={s.label}>{next.optional ? t('settings.optional') : 'Next step'}</Text>
-        <Text>{setupPurpose[next.id] ?? next.displayName}</Text>
+        <Text style={s.label}>{next.optional ? t('settings.optional') : t('mobile.infrastructure.nextStep')}</Text>
+        <Text>{setupPurpose[next.id] ? t(setupPurpose[next.id]!) : next.displayName}</Text>
       </>}
-      {!state.status.observation.ready && <Text style={s.label}>Review and confirm one setup transaction at a time. Each step adds shared smart-account support on this network.</Text>}
+      {!state.status.observation.ready && <Text style={s.label}>{t('mobile.infrastructure.setupSteps')}</Text>}
     </Card>}
     {controller && <Card style={s.card}>
       <Text accessibilityRole="header">{controller.networkLabel}</Text>
@@ -174,7 +174,7 @@ export function NativeInfrastructure({ mode, open, onBack, ledgerConnection }: P
       <Card style={s.card}>
         <Text accessibilityRole="header">{review.contract.displayName}</Text>
         {review.contract.optional && <Text style={s.label}>{t('settings.optional')}</Text>}
-        <Text>{setupPurpose[review.contract.id] ?? review.contract.displayName}</Text>
+        <Text>{setupPurpose[review.contract.id] ? t(setupPurpose[review.contract.id]!) : review.contract.displayName}</Text>
         <Text style={s.label}>{t('transactions.replay.maximumFee')}</Text>
         <Text selectable style={s.amount}>{formatBaseUnits(review.maximumFeeUnits, 18)} {controller?.currencySymbol}</Text>
         <Text style={s.label}>{t('mobile.infrastructure.maximumTotal')}</Text>
@@ -182,7 +182,7 @@ export function NativeInfrastructure({ mode, open, onBack, ledgerConnection }: P
       </Card>
       <Button title={t(detailsId === review.id ? 'send.hideDetails' : 'send.showDetails')} icon={detailsId === review.id ? 'chevron-up' : 'chevron-down'} variant="quiet" size="compact" expanded={detailsId === review.id}
         onPress={() => { if (current && isCurrent(current) && controller?.getSnapshot().feeReview?.id === review.id) setDetailsId(detailsId === review.id ? null : review.id); }} />
-      {detailsId === review.id && <><Text style={s.label}>Contract address</Text><Text selectable style={s.address}>{review.contract.address}</Text><TransactionDetails key={review.id} transaction={review.transaction} /></>}
+      {detailsId === review.id && <><Text style={s.label}>{t('settings.contractAddress')}</Text><Text selectable style={s.address}>{review.contract.address}</Text><TransactionDetails key={review.id} transaction={review.transaction} /></>}
     </>}
     {(pending && state.phase !== 'review' || state.phase === 'unknown') && <Notice title={t('settings.smartAccountInfrastructure')} tone="amber"
       body={t(state.phase === 'unknown' ? 'mobile.infrastructure.unknown' : 'mobile.infrastructure.pending')} />}
@@ -194,7 +194,7 @@ export function NativeInfrastructure({ mode, open, onBack, ledgerConnection }: P
       {t(create2Missing ? 'settings.smartAccountCreate2Missing' : 'settings.smartAccountInfrastructureReady')}
     </Text>}
     {(openingError === scope || state.error) && <Text accessibilityRole="alert" style={s.error}>{t(openingError === scope ? 'mobile.infrastructure.unavailable' : state.error!)}</Text>}
-    {state.status && state.phase !== 'review' && <Button title={setupDetails ? 'Hide setup details' : 'View setup details'} variant="quiet" size="compact" expanded={setupDetails} onPress={() => setSetupDetails(!setupDetails)} />}
+    {state.status && state.phase !== 'review' && <Button title={setupDetails ? t('mobile.infrastructure.hideSetupDetails') : t('mobile.infrastructure.viewSetupDetails')} variant="quiet" size="compact" expanded={setupDetails} onPress={() => setSetupDetails(!setupDetails)} />}
     {state.status && state.phase !== 'review' && setupDetails && <Card style={s.card}>
       <Text style={s.label}>{t('mobile.infrastructure.create2Deployer')}</Text>
       <Text selectable style={s.address}>{state.status.observation.create2Deployer.address}</Text>

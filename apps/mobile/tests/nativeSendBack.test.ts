@@ -1,3 +1,5 @@
+import { languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
+import { createInstance } from 'i18next';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -8,10 +10,11 @@ import type { NativeRecipientResolver, NativeRecipientResolution } from '../src/
 import type { NativeUnsignedSendDraft } from '../src/screens/sendNetworkDraft.ts';
 import type { NativeOperationCredential } from '../src/custody/types.ts';
 import { formatBaseUnits } from '../src/core/amounts.ts';
+import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE } from '../src/custody/transfers.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (next: unknown) => void };
-function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>, recipientResolver?: NativeRecipientResolver, onChangeNetwork?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>) => void, onViewTransaction?: (hash: string) => void, onChangeAsset?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>, token?: unknown) => void) {
+function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>, recipientResolver?: NativeRecipientResolver, onChangeNetwork?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>) => void, onViewTransaction?: (hash: string) => void, onChangeAsset?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>, token?: unknown) => void, ledgerConnection?: { subscribe(listener: () => void): () => void; isConnected(): boolean }, localization = nativeTranslationFixture) {
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
@@ -30,6 +33,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     ...Object.fromEntries(['ActivityIndicator','KeyboardAvoidingView','Modal','ScrollView','View'].map(name=>[name,name]))};
   const ui={...Object.fromEntries(['Button','Card','Coin','Header','Icon','IconButton','Notice','Screen','Text'].map(name=>[name,name])),colors:{},styles:{}};
   const deps: Record<string,unknown> = {
+    '../platform/localization': localization,
     './RecipientQrScanner': { RecipientQrScanner: 'RecipientQrScanner' },
     './SendNetworkCard': { SendNetworkCard: 'SendNetworkCard' },
     './SendAssetSelector': { SendAssetSelector: 'SendAssetSelector' },
@@ -42,7 +46,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     '../../../../source/shared/erc20':{formatTokenUnits:()=>'',parseErc20Units:()=>''},
     '../../../../source/shared/evmRecipientChoices':{findLocalEvmRecipientChoices:()=>[]},
     '../../../../source/utils/nftTokenId':{normalizeNftTokenId:()=>''},
-    '../custody/transfers':{ASSET_STATE_SAVED_MESSAGE:'saved',ASSET_STATE_WAIT_MESSAGE:'wait'},
+    '../custody/transfers':{ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE},
   };
   const source=readFileSync(new NodeURL('../src/screens/NativeSend.tsx',import.meta.url),'utf8');
   const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText;
@@ -53,6 +57,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   const confirmed: string[] = [];
   const credentials: NativeOperationCredential[] = [];
   let confirmationFailure: Error | undefined;
+  let recoveryFailure: Error | undefined;
   let confirmationGate: Promise<void> | undefined, signatures = 0;
   const prepare = async (recipient: string, amount: string, nonce?: string) => {
     prepared.push([recipient, amount, nonce]); snapshot = { ...snapshot, phase: 'review', review: {
@@ -70,12 +75,14 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
       if (confirmationGate) await confirmationGate;
       if (snapshot.review !== approved) throw Error('CANCELLED');
       signatures++;
-    }, async prepareToken(...args: unknown[]) { prepared.push(args); }};
+    }, async prepareToken(...args: unknown[]) { prepared.push(args); },
+    async recover() { if (recoveryFailure) throw recoveryFailure; }};
   let context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false,registrationHash:'ethereum-registration'};
   let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
-  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,beforeClose,recipientResolver,account,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
+  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,ledgerConnection,beforeClose,recipientResolver,account,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
   return {render,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
+    failRecovery(message: string) { recoveryFailure = new Error(message); },
     holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
     refreshProps(){account={...account};context={...context};},
     changeNetwork(){account={...account,network:'sepolia'};context={...context,networkId:'sepolia'};},
@@ -125,6 +132,36 @@ test('uncertain submission retains explicit status and retry recovery controls',
   const f = setup(); f.setSnapshot({ ...f.snapshot, phase: 'unknown', review: null, hash: '0xunknown' });
   const tree = f.render(); assert(button(tree, 'Check status')); assert(button(tree, 'Review retry'));
   assert.equal(all(tree).some(node => node.props.title === 'Done'), false); f.dispose();
+});
+
+test('French saved-state and capacity notices keep raw controller identity and suppress duplicate errors', async () => {
+  const i18n = createInstance();
+  await i18n.init({ initImmediate: false, lng: 'fr', fallbackLng: 'en',
+    resources: { fr: { translation: languageMessages('fr') }, en: { translation: languageMessages('en') } },
+    interpolation: { escapeValue: false } });
+  const localization = { nativeI18n: i18n, useNativeTranslation: () => ({ t: i18n.t.bind(i18n), i18n }) };
+  for (const [message, failure, titleKey, bodyKey] of [
+    [ASSET_STATE_SAVED_MESSAGE, 'EXPIRED', 'savedNotSubmitted', 'asset_state_saved_message'],
+    [SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE, 'SIGNED_STORAGE_FULL', 'checkEarlierTransaction', 'signed_storage_full_previous_message'],
+  ]) {
+    const f = setup(undefined, undefined, undefined, undefined, undefined, undefined, undefined, localization);
+    try {
+      f.setSnapshot({ ...f.snapshot, phase: 'unknown', hash: '0xsaved', message });
+      const translated = i18n.t(`mobile.sendAssetViews.evm.${bodyKey}`);
+      assert.notEqual(translated, message);
+      let tree = f.render();
+      assert(all(tree).some(node => node.children.includes(i18n.t(`mobile.sendAssetViews.evm.${titleKey}`))));
+      assert(one(tree, 'View', node => node.props.accessibilityRole === 'alert'));
+      assert.equal(one(tree, 'Notice').props.body, translated);
+      f.failRecovery(failure);
+      button(tree, i18n.t('settings.smartAccountInfrastructureCheckStatus')).props.onPress(); await settle();
+      tree = f.render();
+      assert.equal(f.snapshot.message, message, 'translation must not change model identity');
+      assert.equal(one(tree, 'Notice').props.body, translated);
+      assert.equal(all(tree).filter(node => node.type === 'Text' && node.props.accessibilityRole === 'alert').length, 0,
+        'the saved-state notice supplies the single error explanation');
+    } finally { f.dispose(); }
+  }
 });
 
 for (const phase of ['confirmed', 'reverted']) test(`${phase} transfer keeps its actions in the footer`, () => {
@@ -480,5 +517,29 @@ test('ERC20 review hero retains the reviewed token identity and symbol fallback'
     });
     assert.equal(hero.props.registrationHash, 'reviewed-registration');
     assert.equal(hero.props.fallbackSymbol, 'TOK');
+  } finally { f.dispose(); }
+});
+
+
+test('Smart replacement confirmation follows the retained payer connection requirement', async () => {
+  let payerConnected = false;
+  const f = setup(undefined, undefined, undefined, undefined, undefined, undefined, {
+    subscribe: () => () => undefined, isConnected: () => payerConnected,
+  });
+  try {
+    await f.controller.prepare('0x2222222222222222222222222222222222222222', '1');
+    f.setSnapshot({ ...f.snapshot, review: { ...f.snapshot.review,
+      replacement: { mode: 'speed-up', originalHash: '0xoriginal', originalMaximumFeeUnits: '1' },
+      execution: { kind: 'contract-call', dataBytes: 4, accessListEntries: 0, smartAccount: '0x3333333333333333333333333333333333333333' },
+    } });
+    assert(button(f.render(), 'Submit Speed Up').props.disabled, 'an actual Ledger payer must connect before confirmation');
+    button(f.render(), 'Submit Speed Up').props.onPress(); await settle();
+    assert.equal(f.confirmed.length, 0);
+    // The runtime reports connected with empty targets for a retained software/Trezor payer.
+    payerConnected = true;
+    assert(!button(f.render(), 'Submit Speed Up').props.disabled);
+    assert.equal(all(f.render()).some(node => node.props.title === 'Connect Ledger'), false);
+    button(f.render(), 'Submit Speed Up').props.onPress(); await settle();
+    assert.deepEqual(f.confirmed, ['review']);
   } finally { f.dispose(); }
 });

@@ -1,3 +1,4 @@
+import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, {
@@ -30,6 +31,7 @@ import type { SavedCollectible } from '../portfolio/tokenRegistry';
 import { Button, Card, Coin, colors, Icon, IconButton, Notice, styles, Text } from '../ui';
 import { AssetMarketCard } from '../portfolio/AssetMarketCard';
 import type { NativeNetworkRegistration } from '../custody/networkContext';
+const t = nativeI18n.t.bind(nativeI18n);
 
 type Props = {
   initialContract?: string;
@@ -59,6 +61,7 @@ const scopeOf = (snapshot: NativeTokenSnapshot) =>
 
 /** Issuer metadata is display-only. The controller owns all reads and mutations. */
 export function NativeTokens({ controller, ...props }: Props) {
+  useNativeTranslation();
   const snapshot = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
@@ -87,6 +90,7 @@ function TokenContent({
   onModeChange,
   initialContract,
 }: Props & { snapshot: NativeTokenSnapshot }) {
+  useNativeTranslation();
   const { hidden: hideBalances } = useBalancePrivacy();
   const [route, setRoute] = useState<Route>(initialContract ? { kind: 'detail', contract: initialContract } : { kind: 'list' });
   const [contract, setContract] = useState('');
@@ -96,7 +100,7 @@ function TokenContent({
   const setCollectibleLeave = useCallback((leave: (() => void) | null) => {
     leaveCollectible.current = leave;
   }, []);
-  const network = snapshot.network ?? { name: snapshot.account?.network ?? 'Network', chainId: '', symbol: '', testnet: false };
+  const network = snapshot.network ?? { name: snapshot.account?.network ?? t('transactions.replay.network'), chainId: '', symbol: '', testnet: false };
   const token =
     route.kind === 'detail' || route.kind === 'remove'
       ? snapshot.items.find(
@@ -110,16 +114,16 @@ function TokenContent({
   const canSendToken = !!onSend && !!snapshot.account;
   const title =
     route.kind === 'import'
-      ? 'Import token'
+      ? t('home.importToken')
       : route.kind === 'collectibles'
-      ? 'Collectibles'
+      ? t('mobile.sendAssetViews.tokens.collectibles')
       : route.kind === 'collectible'
-      ? route.source === 'manual' ? 'Check collectible' : 'Collectible'
+      ? route.source === 'manual' ? t('mobile.sendAssetViews.tokens.checkCollectible') : t('mobile.sendAssetViews.tokens.collectible')
       : route.kind === 'detail'
-      ? 'Token details'
+      ? t('mobile.sendAssetViews.tokens.tokenDetails')
       : route.kind === 'remove'
-      ? 'Remove token'
-      : hasNativeAsset ? 'Assets' : 'Tokens';
+      ? t('mobile.sendAssetViews.tokens.removeToken')
+      : hasNativeAsset ? t('buttons.assets') : t('mobile.activityViews.nativeSptAssets.tokens');
   useLayoutEffect(() => {
     onModeChange?.(route.kind === 'list' ? null : title);
     return () => onModeChange?.(null);
@@ -187,7 +191,7 @@ function TokenContent({
         controller.getSnapshot().account === snapshot.account
       )
         setLocalError(
-          'This token request could not be completed. Your saved tokens have been preserved.'
+          t('mobile.sendAssetViews.tokens.thisTokenRequestCouldNotBeCompletedYourSavedTokens')
         );
     } finally {
       if (lifetime.current.epoch === epoch) lifetime.current.running = false;
@@ -223,10 +227,10 @@ function TokenContent({
     item.status === 'available' && item.units !== null
       ? hideBalances ? HIDDEN_BALANCE : formatTokenUnits(item.units, item.metadata.decimals)
       : item.status === 'loading'
-      ? 'Loading…'
+      ? t('localPasskey.loading')
       : item.status === 'error'
-      ? 'Balance unavailable'
-      : 'Balance not loaded';
+      ? t('mobile.accountPortfolio.balanceUnavailable')
+      : t('mobile.sendAssetViews.tokens.balanceNotLoaded');
   const identity = metadata ? (
     <Card style={s.identity}>
       <View style={s.identityTop}>
@@ -236,23 +240,22 @@ function TokenContent({
         <Text style={s.name}>{metadata.name}</Text>
       </View>
       <Text style={styles.muted}>
-        Custom token · Unverified issuer metadata
-      </Text>
-      <Text style={s.label}>NETWORK</Text>
+        {t('mobile.smartSendViews.customTokenUnverifiedIssuerMetadata')}</Text>
+      <Text style={s.label}>{t('transactions.replay.network')}</Text>
       <Text>
-        {network.name} · Chain {network.chainId}
+        {network.name} {t('mobile.sendAssetViews.tokens.chain')}{' '}{network.chainId}
         {network.testnet ? ' · Test network' : ''}
       </Text>
-      <Text style={s.label}>CONTRACT ADDRESS</Text>
+      <Text style={s.label}>{t('settings.contractAddress')}</Text>
       <Text
         selectable
         style={s.contract}
-        accessibilityLabel={`Token contract address ${metadata.contractAddress}`}
+        accessibilityLabel={t('mobile.sendAssetViews.tokens.tokenAddress', { address: metadata.contractAddress })}
         testID="native-token-contract"
       >
         {metadata.contractAddress}
       </Text>
-      <Text style={s.label}>SYMBOL · DECIMALS</Text>
+      <Text style={s.label}>{t('mobile.sendAssetViews.tokens.sYMBOLDECIMALS')}</Text>
       <Text>
         {metadata.symbol} · {metadata.decimals}
       </Text>
@@ -269,15 +272,15 @@ function TokenContent({
           </Text>
           {route.kind === 'list' && hasNativeAsset && (
             <View style={s.actionRow}>
-              <Button title="Import token" icon="plus" size="compact" variant="secondary"
+              <Button title={t('home.importToken')} icon="plus" size="compact" variant="secondary"
                 disabled={busy || snapshot.status !== 'ready'} onPress={openImport} testID="native-token-import" />
-              <IconButton label={snapshot.status === 'loading' ? 'Refreshing tokens' : 'Refresh tokens'} icon="refresh"
+              <IconButton label={snapshot.status === 'loading' ? t('mobile.sendAssetViews.tokens.refreshingTokens') : t('mobile.sendAssetViews.tokens.refreshTokens')} icon="refresh"
                 disabled={busy || snapshot.status === 'loading'} onPress={() => run(() => controller.refresh())} />
             </View>
           )}
           {route.kind !== 'list' && (
             <Button
-              title={route.kind === 'collectible' ? 'Back to collectibles' : 'Back to tokens'}
+              title={route.kind === 'collectible' ? t('mobile.sendAssetViews.tokens.backToCollectibles') : t('mobile.sendAssetViews.tokens.backToTokens')}
               variant="secondary" size="compact" icon="arrow-left"
               disabled={snapshot.busy}
               onPress={() => {
@@ -290,8 +293,8 @@ function TokenContent({
       {route.kind === 'list' && nativeAsset}
       {!snapshot.account || snapshot.status === 'unavailable' ? (
         <Notice
-          title="Tokens unavailable"
-          body="Unlock this wallet to view its saved tokens."
+          title={t('mobile.sendAssetViews.tokens.tokensUnavailable')}
+          body={t('mobile.sendAssetViews.tokens.unlockThisWalletToViewItsSavedTokens')}
         />
       ) : (
         <>
@@ -300,26 +303,26 @@ function TokenContent({
               {snapshot.status === 'loading' && (
                 <ActivityIndicator
                   color={colors.pink}
-                  accessibilityLabel="Loading saved tokens"
+                  accessibilityLabel={t('mobile.sendAssetViews.tokens.loadingSavedTokens')}
                 />
               )}
               {snapshot.status === 'error' ? (
                 <Notice
-                  title="Saved tokens unavailable"
-                  body="Your saved token list has been preserved. Retry to load it again."
+                  title={t('mobile.sendAssetViews.tokens.savedTokensUnavailable')}
+                  body={t('mobile.sendAssetViews.tokens.yourSavedTokenListHasBeenPreservedRetryToLoad')}
                   tone="amber"
                 />
               ) : snapshot.status === 'ready' && snapshot.items.length === 0 ? (
-                hasNativeAsset ? <Text style={s.provenance}>No custom tokens added</Text> : <Notice
-                  title="No custom tokens added"
-                  body="Add a token by its contract address on this network."
+                hasNativeAsset ? <Text style={s.provenance}>{t('mobile.sendAssetViews.tokens.noCustomTokensAdded')}</Text> : <Notice
+                  title={t('mobile.sendAssetViews.tokens.noCustomTokensAdded')}
+                  body={t('mobile.sendAssetViews.tokens.addATokenByItsContractAddressOnThisNetwork')}
                 />
               ) : null}
               {snapshot.items.map((item) => (
                 <IdlePressable
                   key={item.metadata.contractAddress}
                   accessibilityRole="button"
-                  accessibilityLabel={`View token contract ${item.metadata.contractAddress} on ${network.name}`}
+                  accessibilityLabel={t('mobile.sendAssetViews.tokens.viewTokenContract', { address: item.metadata.contractAddress, network: network.name })}
                   disabled={busy}
                   onPress={() => {
                     setLocalError('');
@@ -342,14 +345,14 @@ function TokenContent({
                 </IdlePressable>
               ))}
               {!hasNativeAsset && <View style={s.actionRow}>
-                <Button title="Import token" icon="plus" size="compact" variant="secondary"
+                <Button title={t('home.importToken')} icon="plus" size="compact" variant="secondary"
                   style={s.action} disabled={busy || snapshot.status !== 'ready'} onPress={openImport} testID="native-token-import" />
-                <IconButton label={snapshot.status === 'loading' ? 'Refreshing tokens' : 'Refresh tokens'} icon="refresh"
+                <IconButton label={snapshot.status === 'loading' ? t('mobile.sendAssetViews.tokens.refreshingTokens') : t('mobile.sendAssetViews.tokens.refreshTokens')} icon="refresh"
                   disabled={busy || snapshot.status === 'loading'} onPress={() => run(() => controller.refresh())} />
               </View>}
               {(discovery || snapshot.canCheckCollectible || !!snapshot.collectibles?.length) && (
                 <Button
-                  title="Collectibles"
+                  title={t('mobile.sendAssetViews.tokens.collectibles')}
                   variant="secondary"
                   disabled={busy || (!snapshot.canCheckCollectible && snapshot.status !== 'ready')}
                   onPress={() => {
@@ -364,10 +367,10 @@ function TokenContent({
           ) : route.kind === 'collectibles' ? (
             <View style={s.section} testID="native-collectibles">
               {!!snapshot.collectibles?.length && <>
-                <Text accessibilityRole="header" style={s.name}>Saved</Text>
+                <Text accessibilityRole="header" style={s.name}>{t('mobile.sendAssetViews.tokens.saved')}</Text>
                 {snapshot.collectibles.map((item) => {
                   const id = 'tokenId' in item ? item.tokenId : undefined;
-                  const label = id === undefined ? 'Saved collection' : `Saved token ${id}`;
+                  const label = id === undefined ? t('mobile.sendAssetViews.tokens.savedCollection') : t('mobile.sendAssetViews.tokens.savedToken', { id });
                   return (
                     <Card key={`${item.contractAddress}:${id ?? ''}`} style={s.tokenRow}>
                       <Coin id="collectible" asset={snapshot.network ? { kind: 'evm', chainId: snapshot.network.chainId, contractAddress: item.contractAddress } : undefined} registrationHash={registration?.registrationHash} fallbackSymbol="NFT" size={32} />
@@ -376,30 +379,29 @@ function TokenContent({
                       <Text selectable style={s.contract}>{item.contractAddress}</Text>
                       <IdlePressable
                         accessibilityRole="button"
-                        accessibilityLabel={`View ${label.toLowerCase()}, ${item.contractAddress}`}
+                        accessibilityLabel={t('mobile.sendAssetViews.tokens.viewAddress', { label, address: item.contractAddress })}
                         style={s.collectibleLink}
                         onPress={() => openCollectible({ source: 'saved', item })}
                       >
-                        <Text style={s.collectibleAction}>View collectible</Text><Icon name="chevron-right" size={18} color={colors.text} />
+                        <Text style={s.collectibleAction}>{t('mobile.sendAssetViews.tokens.viewCollectible')}</Text><Icon name="chevron-right" size={18} color={colors.text} />
                       </IdlePressable>
                     </Card>
                   );
                 })}
               </>}
               {snapshot.canCheckCollectible && (
-                <Button title="Check by contract" variant="secondary" onPress={() => openCollectible({ source: 'manual' })} />
+                <Button title={t('mobile.sendAssetViews.tokens.checkByContract')} variant="secondary" onPress={() => openCollectible({ source: 'manual' })} />
               )}
               {discovery && <Text style={styles.muted}>
-                Reported by the explorer. Ownership hasn’t been verified.
-              </Text>}
+                {t('mobile.sendAssetViews.tokens.reportedByTheExplorerOwnershipHasntBeenVerified')}</Text>}
               {discovery?.status === 'loading' && (
-                <ActivityIndicator color={colors.pink} accessibilityLabel="Looking up collectibles" />
+                <ActivityIndicator color={colors.pink} accessibilityLabel={t('mobile.sendAssetViews.tokens.lookingUpCollectibles')} />
               )}
               {discovery?.status === 'error' && (
-                <Notice title="Collectibles unavailable" body="The explorer did not return results. Try again." tone="amber" />
+                <Notice title={t('mobile.sendAssetViews.tokens.collectiblesUnavailable')} body={t('mobile.sendAssetViews.tokens.theExplorerDidNotReturnResultsTryAgain')} tone="amber" />
               )}
               {discovery?.status === 'ready' && !discovery.collectibles?.length && (
-                <Notice title="No collectibles found" body="The explorer returned no collectible suggestions for this account." />
+                <Notice title={t('mobile.sendAssetViews.tokens.noCollectiblesFound')} body={t('mobile.sendAssetViews.tokens.theExplorerReturnedNoCollectibleSuggestionsForThisAccount')} />
               )}
               {discovery?.collectibles?.map((item) => {
                 const { contractAddress, name, tokenStandard, tokenId, units } = item;
@@ -408,20 +410,20 @@ function TokenContent({
                   <Text style={s.name}>{name}</Text>
                   <Text style={styles.muted}>{tokenStandard}</Text>
                   <Text selectable style={s.contract}>{contractAddress}</Text>
-                  {tokenId !== undefined && <Text selectable style={s.contract}>Token ID {tokenId}</Text>}
+                  {tokenId !== undefined && <Text selectable style={s.contract}>{t('send.tokenId')}{' '}{tokenId}</Text>}
                   <Text selectable style={s.contract}>
-                    {tokenStandard === 'ERC-721' ? 'Items reported' : 'Quantity reported'}: {hideBalances ? HIDDEN_BALANCE : units}
+                    {tokenStandard === 'ERC-721' ? t('mobile.sendAssetViews.tokens.itemsReported') : t('mobile.sendAssetViews.tokens.quantityReported')}: {hideBalances ? HIDDEN_BALANCE : units}
                   </Text>
                   {snapshot.canCheckCollectible && <IdlePressable accessibilityRole="button"
-                    accessibilityLabel={`View ${name} ${tokenId === undefined ? 'collection' : `token ${tokenId}`}`}
+                    accessibilityLabel={tokenId === undefined ? t('mobile.sendAssetViews.tokens.viewCollection', { name }) : t('mobile.sendAssetViews.tokens.viewToken', { name, id: tokenId })}
                     style={s.collectibleLink}
-                    onPress={() => openCollectible({ source: 'explorer', item })}><Text style={s.collectibleAction}>View collectible</Text><Icon name="chevron-right" size={18} color={colors.text} /></IdlePressable>}
+                    onPress={() => openCollectible({ source: 'explorer', item })}><Text style={s.collectibleAction}>{t('mobile.sendAssetViews.tokens.viewCollectible')}</Text><Icon name="chevron-right" size={18} color={colors.text} /></IdlePressable>}
                 </Card>;
               })}
-              {discovery?.limited && <Text style={styles.muted}>Showing up to 20 results.</Text>}
+              {discovery?.limited && <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.showingUpTo20Results')}</Text>}
               {discovery && discovery.status !== 'loading' && (
                 <Button
-                  title={discovery.status === 'ready' ? 'Refresh results' : discovery.status === 'error' ? 'Try again' : 'Find collectibles'}
+                  title={discovery.status === 'ready' ? t('mobile.sendAssetViews.tokens.refreshResults') : discovery.status === 'error' ? t('mobile.connections.tryAgain') : t('mobile.sendAssetViews.tokens.findCollectibles')}
                   variant="secondary"
                   disabled={busy || snapshot.status !== 'ready'}
                   onPress={() => {
@@ -465,13 +467,12 @@ function TokenContent({
           ) : route.kind === 'import' ? (
             <>
               <Text style={styles.muted}>
-                Enter the token contract on {network.name}. Its name and symbol
-                do not verify its identity.
+                {t('mobile.sendAssetViews.tokens.importTokenHint', { network: network.name })}
               </Text>
               <View style={s.field}>
-                <Text style={s.label}>CONTRACT ADDRESS</Text>
+                <Text style={s.label}>{t('settings.contractAddress')}</Text>
                 <IdleTextInput
-                  accessibilityLabel="Token contract address"
+                  accessibilityLabel={t('mobile.sendAssetViews.tokens.tokenContractAddress')}
                   value={contract}
                   editable={!busy}
                   autoCapitalize="none"
@@ -494,8 +495,8 @@ function TokenContent({
               <Button
                 title={
                   snapshot.previewStatus === 'loading'
-                    ? 'Reading token…'
-                    : 'Review token'
+                    ? t('mobile.sendAssetViews.tokens.readingToken')
+                    : t('mobile.sendAssetViews.tokens.reviewToken')
                 }
                 disabled={busy || !contract.trim()}
                 onPress={() => run(() => controller.preview(contract))}
@@ -504,34 +505,31 @@ function TokenContent({
               {snapshot.previewStatus === 'loading' && (
                 <ActivityIndicator
                   color={colors.pink}
-                  accessibilityLabel="Reading token metadata and balance"
+                  accessibilityLabel={t('mobile.sendAssetViews.tokens.readingTokenMetadataAndBalance')}
                 />
               )}
               {discovery && ['idle', 'error'].includes(snapshot.previewStatus) && (
                 <View style={s.section} testID="native-token-holdings">
                   <Text accessibilityRole="header" style={s.title}>
-                    Wallet holdings
-                  </Text>
+                    {t('mobile.sendAssetViews.tokens.walletHoldings')}</Text>
                   <Text style={styles.muted}>
-                    Suggestions from the network explorer for this address.
-                    Check the contract before adding a token.
-                  </Text>
+                    {t('mobile.sendAssetViews.tokens.suggestionsFromTheNetworkExplorerForThisAddressCheckThe')}</Text>
                   {discovery.status === 'loading' && (
                     <ActivityIndicator
                       color={colors.pink}
-                      accessibilityLabel="Looking up wallet holdings"
+                      accessibilityLabel={t('mobile.sendAssetViews.tokens.lookingUpWalletHoldings')}
                     />
                   )}
                   {discovery.status === 'error' && (
                     <Notice
-                      title="Holdings unavailable"
-                      body="Retry the explorer or enter a contract above."
+                      title={t('mobile.sendAssetViews.tokens.holdingsUnavailable')}
+                      body={t('mobile.sendAssetViews.tokens.retryTheExplorerOrEnterAContractAbove')}
                       tone="amber"
                     />
                   )}
                   {discovery.status === 'idle' || discovery.status === 'error' ? (
                     <Button
-                      title={discovery.status === 'error' ? 'Retry holdings' : 'Find holdings'}
+                      title={discovery.status === 'error' ? t('mobile.sendAssetViews.tokens.retryHoldings') : t('mobile.sendAssetViews.tokens.findHoldings')}
                       variant="secondary"
                       disabled={busy}
                       onPress={() => {
@@ -542,15 +540,13 @@ function TokenContent({
                   ) : null}
                   {discovery.status === 'ready' && !discovery.tokens.length && (
                     <Text style={styles.muted}>
-                      The explorer returned no new token suggestions. You can
-                      still enter a contract above.
-                    </Text>
+                      {t('mobile.sendAssetViews.tokens.theExplorerReturnedNoNewTokenSuggestionsYouCanStill')}</Text>
                   )}
                   {discovery.tokens.map(({ contractAddress, name, symbol }) => (
                     <IdlePressable
                       key={contractAddress}
                       accessibilityRole="button"
-                      accessibilityLabel={`Review ${symbol} token contract ${contractAddress}`}
+                      accessibilityLabel={t('mobile.sendAssetViews.tokens.reviewTokenContract', { symbol, address: contractAddress })}
                       disabled={busy}
                       onPress={() => {
                         if (controller.getSnapshot().discovery !== discovery) return;
@@ -568,8 +564,7 @@ function TokenContent({
                   ))}
                   {discovery.limited && (
                     <Text style={styles.muted}>
-                      Showing up to 20 suggestions. Enter other contracts above.
-                    </Text>
+                      {t('mobile.sendAssetViews.tokens.showingUpTo20SuggestionsEnterOtherContractsAbove')}</Text>
                   )}
                 </View>
               )}
@@ -578,10 +573,7 @@ function TokenContent({
                   {identity}
                   <Text
                     style={s.balance}
-                    accessibilityLabel={hideBalances ? 'Balance hidden' : `Token balance ${formatTokenUnits(
-                      snapshot.preview.units,
-                      snapshot.preview.metadata.decimals
-                    )}`}
+                    accessibilityLabel={hideBalances ? t('mobile.activityViews.watchAccountPortfolio.balanceHidden') : t('mobile.sendAssetViews.tokens.tokenBalance', { amount: formatTokenUnits(snapshot.preview.units, snapshot.preview.metadata.decimals) })}
                     testID="native-token-preview-balance"
                   >
                     {hideBalances ? HIDDEN_BALANCE : formatTokenUnits(
@@ -591,12 +583,12 @@ function TokenContent({
                     {snapshot.preview.metadata.symbol}
                   </Text>
                   <Notice
-                    title="Check the contract"
-                    body="Anyone can create a token with a familiar name or symbol. Compare this complete contract address with a source you trust."
+                    title={t('mobile.sendAssetViews.tokens.checkTheContract')}
+                    body={t('mobile.sendAssetViews.tokens.anyoneCanCreateATokenWithAFamiliarNameOr')}
                     tone="amber"
                   />
                   <Button
-                    title="Add token"
+                    title={t('buttons.addToken')}
                     disabled={busy}
                     onPress={() => {
                       const selected =
@@ -624,21 +616,21 @@ function TokenContent({
               )}
             </>
           ) : !token && snapshot.status === 'loading' ? (
-            <ActivityIndicator color={colors.pink} accessibilityLabel="Loading saved tokens" />
+            <ActivityIndicator color={colors.pink} accessibilityLabel={t('mobile.sendAssetViews.tokens.loadingSavedTokens')} />
           ) : !token && snapshot.status === 'error' ? (
             <>
               <Notice
-                title="Saved tokens unavailable"
-                body="Your saved token list has been preserved. Retry to load it again."
+                title={t('mobile.sendAssetViews.tokens.savedTokensUnavailable')}
+                body={t('mobile.sendAssetViews.tokens.yourSavedTokenListHasBeenPreservedRetryToLoad')}
                 tone="amber"
               />
-              <Button title="Retry" icon="refresh" variant="secondary" disabled={busy}
+              <Button title={t('receive.retry')} icon="refresh" variant="secondary" disabled={busy}
                 onPress={() => run(() => controller.refresh())} />
             </>
           ) : !token ? (
             <Notice
-              title="Token is no longer in this list"
-              body="Return to your tokens to refresh the current account."
+              title={t('mobile.sendAssetViews.tokens.tokenIsNoLongerInThisList')}
+              body={t('mobile.sendAssetViews.tokens.returnToYourTokensToRefreshTheCurrentAccount')}
             />
           ) : (
             <>
@@ -646,12 +638,12 @@ function TokenContent({
                 <>
                   {identity}
                   <Notice
-                    title="Remove from this token list?"
-                    body="This removes the saved token entry for this account and network. Your funds stay at this address, and you can add the contract again."
+                    title={t('mobile.sendAssetViews.tokens.removeFromThisTokenList')}
+                    body={t('mobile.sendAssetViews.tokens.thisRemovesTheSavedTokenEntryForThisAccountAnd')}
                     tone="amber"
                   />
                   <Button
-                    title="Remove token from list"
+                    title={t('mobile.sendAssetViews.tokens.removeTokenFromList')}
                     variant="danger"
                     disabled={busy}
                     onPress={() => {
@@ -674,7 +666,7 @@ function TokenContent({
                     testID="native-token-remove-confirm"
                   />
                   <Button
-                    title="Keep token"
+                    title={t('mobile.sendAssetViews.tokens.keepToken')}
                     variant="secondary"
                     disabled={busy}
                     onPress={() => {
@@ -689,7 +681,7 @@ function TokenContent({
                     <Text style={s.name}>{token.metadata.name}</Text>
                   <Text
                     style={s.balance}
-                    accessibilityLabel={hideBalances ? 'Balance hidden' : `Token balance ${balance(token)}`}
+                    accessibilityLabel={hideBalances ? t('mobile.activityViews.watchAccountPortfolio.balanceHidden') : t('mobile.sendAssetViews.tokens.tokenBalance', { amount: balance(token) })}
                     testID="native-token-detail-balance"
                   >
                     {balance(token)}
@@ -699,7 +691,7 @@ function TokenContent({
                   </Text>
                   {token.updatedAt !== null && token.status === 'available' && (
                     <Text style={s.provenance}>
-                      Observed{' '}
+                      {t('mobile.sendAssetViews.tokens.observed')}{' '}{' '}
                       {new Date(token.updatedAt).toLocaleTimeString([], {
                         hour: '2-digit',
                         minute: '2-digit',
@@ -708,18 +700,18 @@ function TokenContent({
                   )}
                   </View>
                   {!canSendToken && <Notice
-                    title="Receive only"
-                    body="Sending this token is not available in this build."
+                    title={t('mobile.sendAssetViews.tokens.receiveOnly')}
+                    body={t('mobile.sendAssetViews.tokens.sendingThisTokenIsNotAvailableInThisBuild')}
                   />}
                   <View style={s.actionRow}>
-                    {canSendToken && <Button title="Send" icon="arrow-up-right" size="compact" style={s.action} disabled={busy}
+                    {canSendToken && <Button title={t('buttons.send')} icon="arrow-up-right" size="compact" style={s.action} disabled={busy}
                       onPress={() => onSend?.(token.metadata)} />}
-                    <Button title="Receive" icon="arrow-down-left" size="compact" style={s.action} variant="secondary" disabled={busy} onPress={onReceive} />
+                    <Button title={t('buttons.receive')} icon="arrow-down-left" size="compact" style={s.action} variant="secondary" disabled={busy} onPress={onReceive} />
                   </View>
                   <AssetMarketCard asset={{ kind: 'token', networkId: snapshot.account.network, contractAddress: token.metadata.contractAddress, registration }} />
                   {identity}
                   <Button
-                    title="Refresh token balance"
+                    title={t('mobile.sendAssetViews.tokens.refreshTokenBalance')}
                     size="compact"
                     icon="refresh"
                     variant="secondary"
@@ -731,7 +723,7 @@ function TokenContent({
                     }
                   />
                   <Button
-                    title="Remove token"
+                    title={t('mobile.sendAssetViews.tokens.removeToken')}
                     variant="danger" size="compact" icon="trash"
                     disabled={busy}
                     onPress={() =>
@@ -748,7 +740,7 @@ function TokenContent({
           {snapshot.busy && (
             <ActivityIndicator
               color={colors.pink}
-              accessibilityLabel="Saving token list"
+              accessibilityLabel={t('mobile.sendAssetViews.tokens.savingTokenList')}
             />
           )}
           {!!error && (
@@ -781,6 +773,7 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
   onSend?(): void;
   onLeaveChange(leave: (() => void) | null): void;
 }) {
+  useNativeTranslation();
   const { hidden: hideBalances } = useBalancePrivacy();
   const fixedId = item && 'tokenId' in item ? item.tokenId : undefined;
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -850,9 +843,9 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
     if (!tokenStandard) return;
     let contractAddress: string, tokenId: string;
     try { contractAddress = normalizeErc20Address(address.trim()); }
-    catch { setResult({ kind: 'invalid', message: 'Enter a valid contract address.' }); return; }
+    catch { setResult({ kind: 'invalid', message: t('mobile.sendAssetViews.tokens.enterAValidContractAddress') }); return; }
     try { tokenId = normalizeNftTokenId(id.trim()); }
-    catch { setResult({ kind: 'invalid', message: 'Enter a valid token ID.' }); return; }
+    catch { setResult({ kind: 'invalid', message: t('mobile.smartSendViews.enterAValidTokenId') }); return; }
     const request = new AbortController();
     active.current = request;
     Keyboard.dismiss();
@@ -875,7 +868,7 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
     if (selected.tokenStandard !== 'ERC-721' || fixedId !== undefined) return;
     let contractAddress: string;
     try { contractAddress = normalizeErc20Address(selected.contractAddress.trim()); }
-    catch { setResult({ kind: 'invalid', message: 'Enter a valid contract address.' }); return; }
+    catch { setResult({ kind: 'invalid', message: t('mobile.sendAssetViews.tokens.enterAValidContractAddress') }); return; }
     cancel();
     setResult({ kind: 'idle' });
     const request = new AbortController();
@@ -915,23 +908,23 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
   });
   return <View style={s.section} testID="native-collectible-ownership">
     {item ? <Card style={s.tokenRow}>
-      {'name' in item && <Text style={s.provenance}>Explorer-reported name</Text>}
-      <Text style={s.name}>{'name' in item ? item.name : fixedId === undefined ? 'Saved collection' : 'Saved collectible'}</Text>
+      {'name' in item && <Text style={s.provenance}>{t('mobile.sendAssetViews.tokens.explorerreportedName')}</Text>}
+      <Text style={s.name}>{'name' in item ? item.name : fixedId === undefined ? t('mobile.sendAssetViews.tokens.savedCollection') : t('mobile.sendAssetViews.tokens.savedCollectible')}</Text>
       <Text style={styles.muted}>{item.tokenStandard}</Text>
       <Text selectable style={s.contract}>{item.contractAddress}</Text>
-      {fixedId !== undefined && <Text selectable style={s.contract}>Token ID {fixedId}</Text>}
+      {fixedId !== undefined && <Text selectable style={s.contract}>{t('send.tokenId')}{' '}{fixedId}</Text>}
     </Card> : <>
-      <Text style={styles.muted}>Check this account on {network}.</Text>
+      <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.checkAccountNetwork', { network })}</Text>
       <View style={s.field}>
-        <Text style={s.label}>CONTRACT ADDRESS</Text>
-        <IdleTextInput accessibilityLabel="Collectible contract address" value={draft.contractAddress} editable={!busy}
+        <Text style={s.label}>{t('settings.contractAddress')}</Text>
+        <IdleTextInput accessibilityLabel={t('mobile.sendAssetViews.tokens.collectibleContractAddress')} value={draft.contractAddress} editable={!busy}
           onChangeText={(contractAddress) => edit({ contractAddress })}
           autoCapitalize="none" autoCorrect={false} spellCheck={false}
           autoComplete="off" textContentType="none" maxLength={128} style={s.input}
           placeholder="0x…" placeholderTextColor={colors.muted} />
       </View>
       <View style={s.field}>
-        <Text style={s.label}>TOKEN STANDARD</Text>
+        <Text style={s.label}>{t('transactions.tokenStandard')}</Text>
         <View style={s.standardChoices}>
           {collectibleStandards.map((tokenStandard) => {
             const selected = draft.tokenStandard === tokenStandard;
@@ -958,7 +951,7 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
         </View>
       </View>
     </>}
-    {!confirmRemove && onSend && <Button title="Send collectible" icon="arrow-up-right" disabled={busy || result.kind === 'loading' || enumeration.kind === 'loading'}
+    {!confirmRemove && onSend && <Button title={t('mobile.smartSendViews.sendCollectible')} icon="arrow-up-right" disabled={busy || result.kind === 'loading' || enumeration.kind === 'loading'}
       onPress={() => {
         if (!alive.current || active.current || enumerationRequest.current || busy) return;
         cancel();
@@ -966,45 +959,45 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
         onSend();
       }} />}
     {!confirmRemove && canCheck && fixedId === undefined && <View style={s.field}>
-      <Text style={s.label}>TOKEN ID</Text>
-      <IdleTextInput accessibilityLabel="Token ID" value={draft.tokenId} editable={!busy}
+      <Text style={s.label}>{t('send.tokenId')}</Text>
+      <IdleTextInput accessibilityLabel={t('send.tokenId')} value={draft.tokenId} editable={!busy}
         onChangeText={(tokenId) => edit({ tokenId })}
         keyboardType="number-pad" autoCapitalize="none" autoCorrect={false}
         maxLength={256} style={s.input} />
     </View>}
     {!confirmRemove && enumerate && draft.tokenStandard === 'ERC-721' && fixedId === undefined && <>
-      <Button title={enumeration.kind === 'loading' ? 'Finding token IDs…' : enumeration.kind === 'ready' ? 'Refresh token IDs' : 'Find token IDs'} variant="secondary"
+      <Button title={enumeration.kind === 'loading' ? t('mobile.sendAssetViews.tokens.findingTokenIDs') : enumeration.kind === 'ready' ? t('mobile.sendAssetViews.tokens.refreshTokenIDs') : t('mobile.sendAssetViews.tokens.findTokenIDs')} variant="secondary"
         disabled={busy || !draft.contractAddress.trim() || result.kind === 'loading' || enumeration.kind === 'loading'} onPress={() => void findTokenIds()} />
-      {enumeration.kind === 'loading' && <ActivityIndicator color={colors.pink} accessibilityLabel="Finding token IDs" />}
-      {enumeration.kind === 'error' && <Notice title="Token IDs unavailable" body="The network couldn’t list token IDs. Try again or enter a token ID manually." tone="amber" />}
+      {enumeration.kind === 'loading' && <ActivityIndicator color={colors.pink} accessibilityLabel={t('mobile.sendAssetViews.tokens.findingTokenIDs2')} />}
+      {enumeration.kind === 'error' && <Notice title={t('mobile.sendAssetViews.tokens.tokenIDsUnavailable')} body={t('mobile.sendAssetViews.tokens.theNetworkCouldntListTokenIDsTryAgainOrEnter')} tone="amber" />}
       {enumeration.kind === 'ready' && <Card style={s.tokenRow} testID="native-collectible-enumeration">
         {enumeration.totalOwned !== undefined && <Text selectable style={s.contract} testID="native-collection-balance"
-          accessibilityLabel={hideBalances ? 'Collection balance hidden' : `Collection balance: ${enumeration.totalOwned} NFTs`}>
-          Collection balance: {hideBalances ? HIDDEN_BALANCE : `${enumeration.totalOwned} NFTs`}
+          accessibilityLabel={hideBalances ? t('mobile.sendAssetViews.tokens.collectionBalanceHidden') : t('mobile.sendAssetViews.tokens.collectionBalance', { amount: enumeration.totalOwned })}>
+          {t('mobile.sendAssetViews.tokens.collectionBalance2')}{' '}{hideBalances ? HIDDEN_BALANCE : t('mobile.sendAssetViews.tokens.nftQuantity', { amount: enumeration.totalOwned })}
         </Text>}
-        {enumeration.method === 'manual' ? <Text style={styles.muted}>Token ID lookup is unavailable. Enter a token ID manually.</Text>
-          : !enumeration.tokenIds.length ? <Text style={styles.muted}>No token IDs found for this account. You can still enter a token ID manually.</Text>
+        {enumeration.method === 'manual' ? <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.tokenIDLookupIsUnavailableEnterATokenIDManually')}</Text>
+          : !enumeration.tokenIds.length ? <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.noTokenIDsFoundForThisAccountYouCanStill')}</Text>
           : <>
-            <Text style={styles.muted}>Choose a token ID to check ownership.</Text>
-            {enumeration.tokenIds.map(tokenId => <Button key={tokenId} title={`Token ID ${tokenId}`} variant="secondary" size="compact"
+            <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.chooseATokenIDToCheckOwnership')}</Text>
+            {enumeration.tokenIds.map(tokenId => <Button key={tokenId} title={t('mobile.sendAssetViews.tokens.tokenId', { id: tokenId })} variant="secondary" size="compact"
               icon={draft.tokenId === tokenId ? 'check' : undefined} disabled={busy || result.kind === 'loading'} onPress={() => selectTokenId(enumeration, tokenId)} />)}
-            {enumeration.hasMore && <Text style={styles.muted}>Showing the first 10 token IDs. Enter another token ID manually.</Text>}
+            {enumeration.hasMore && <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.showingTheFirst10TokenIDsEnterAnotherTokenID')}</Text>}
           </>}
       </Card>}
     </>}
     {result.kind === 'invalid' && <Text accessibilityRole="alert" style={s.error}>{result.message}</Text>}
-    {result.kind === 'error' && <Notice title="Ownership unavailable" body="The network couldn’t confirm this item. Try again." tone="amber" />}
+    {result.kind === 'error' && <Notice title={t('mobile.sendAssetViews.tokens.ownershipUnavailable')} body={t('mobile.sendAssetViews.tokens.theNetworkCouldntConfirmThisItemTryAgain')} tone="amber" />}
     {result.kind === 'ready' && <Text selectable accessibilityLiveRegion="polite" testID="native-collectible-quantity">
-      {hideBalances ? 'Balance hidden' : draft.tokenStandard === 'ERC-721' ? (result.units === '0' ? 'This account doesn’t own this item.' : 'This account owns this item.') : `Quantity on network: ${result.units}`}
+      {hideBalances ? t('mobile.activityViews.watchAccountPortfolio.balanceHidden') : draft.tokenStandard === 'ERC-721' ? (result.units === '0' ? t('mobile.sendAssetViews.tokens.thisAccountDoesntOwnThisItem') : t('mobile.sendAssetViews.tokens.thisAccountOwnsThisItem')) : t('mobile.sendAssetViews.tokens.networkQuantity', { amount: result.units })}
     </Text>}
-    {!confirmRemove && canCheck && <Button title={result.kind === 'loading' ? 'Checking ownership…' : 'Check ownership'}
+    {!confirmRemove && canCheck && <Button title={result.kind === 'loading' ? t('mobile.sendAssetViews.tokens.checkingOwnership') : t('mobile.sendAssetViews.tokens.checkOwnership')}
       variant={onSend ? 'secondary' : 'primary'}
       disabled={busy || !draft.contractAddress.trim() || !draft.tokenId.trim() || !draft.tokenStandard || result.kind === 'loading' || enumeration.kind === 'loading'}
       onPress={() => void read()} />}
-    {result.kind === 'loading' && <ActivityIndicator color={colors.pink} accessibilityLabel="Checking ownership" />}
-    {result.kind === 'ready' && result.alreadySaved && <Text style={styles.muted}>Already in your saved list.</Text>}
+    {result.kind === 'loading' && <ActivityIndicator color={colors.pink} accessibilityLabel={t('mobile.sendAssetViews.tokens.checkingOwnership2')} />}
+    {result.kind === 'ready' && result.alreadySaved && <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.alreadyInYourSavedList')}</Text>}
     {result.kind === 'ready' && result.ticket && <Button
-      title="Save collectible" variant="secondary" disabled={busy}
+      title={t('mobile.sendAssetViews.tokens.saveCollectible')} variant="secondary" disabled={busy}
       onPress={() => {
         if (!alive.current || busy || !result.ticket || reviewed.current?.ticket !== result.ticket) return;
         setResult({ kind: 'ready', units: result.units });
@@ -1012,10 +1005,10 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
       }}
     />}
     {onRemove && (confirmRemove ? <>
-      <Notice title="Remove this collectible?" body="It will be removed from your saved list. Its ownership won’t change." />
-      <Button title="Remove from saved list" variant="danger" disabled={busy} onPress={() => void onRemove()} />
-      <Button title="Cancel" variant="secondary" size="compact" disabled={busy} onPress={() => setConfirmRemove(false)} />
-    </> : <Button title="Remove collectible" variant="danger" size="compact" icon="trash" disabled={busy} onPress={() => {
+      <Notice title={t('mobile.sendAssetViews.tokens.removeThisCollectible')} body={t('mobile.sendAssetViews.tokens.itWillBeRemovedFromYourSavedListItsOwnership')} />
+      <Button title={t('mobile.sendAssetViews.tokens.removeFromSavedList')} variant="danger" disabled={busy} onPress={() => void onRemove()} />
+      <Button title={t('buttons.cancel')} variant="secondary" size="compact" disabled={busy} onPress={() => setConfirmRemove(false)} />
+    </> : <Button title={t('mobile.sendAssetViews.tokens.removeCollectible')} variant="danger" size="compact" icon="trash" disabled={busy} onPress={() => {
       cancel();
       setResult({ kind: 'idle' });
       setEnumeration({ kind: 'idle' });

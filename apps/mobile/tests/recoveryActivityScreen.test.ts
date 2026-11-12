@@ -1,3 +1,4 @@
+import { englishI18n, languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
@@ -126,6 +127,7 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
     )
   );
   const dependencies: Record<string, unknown> = {
+    '../platform/localization': nativeTranslationFixture,
     '../platform/balancePrivacy': { HIDDEN_BALANCE: '••••', useBalancePrivacy: () => ({ hidden: privacyHidden, status: 'ready' }) },
     react,
     'react-native': {
@@ -409,4 +411,23 @@ test('a network saved-pending entry never falls back to ordinary history and Bac
     all(tree).find(node => node.type === 'Header')!.props.onBack();
     assert.equal(f.backs(), 1); assert.equal(f.closedPending(), 1);
   } finally { f.dispose(); }
+});
+
+
+test('localized transaction status preserves semantic tones and exact amounts', async () => {
+  englishI18n.addResourceBundle('fr', 'translation', languageMessages('fr'), true, true);
+  await englishI18n.changeLanguage('fr');
+  try {
+    for (const [status, tone] of [['pending', 'pending'], ['confirmed', 'confirmed'], ['reverted', 'failed']] as const) {
+      const f = fixture();
+      try {
+        const row = { ...pendingScopedRow(), observation: { ...pendingScopedRow().observation, status } };
+        const detail = all(await openFixtureRow(f, row)).find(node => node.type === 'TransactionDetailLayout');
+        assert(detail);
+        assert.equal(detail.props.status, englishI18n.t(`send.${status}`));
+        assert.equal(detail.props.tone, tone);
+        assert.equal(detail.props.amount, '-0.000000000000000001 ETH');
+      } finally { f.dispose(); }
+    }
+  } finally { await englishI18n.changeLanguage('en'); }
 });

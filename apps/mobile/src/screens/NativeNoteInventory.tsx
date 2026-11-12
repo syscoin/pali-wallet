@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,6 +25,7 @@ const PAGE_SIZE = 20;
 const recordedDate = (createdAt: number) => new Date(createdAt).toLocaleDateString();
 
 export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
+  const { t } = useNativeTranslation();
   const life = useRef<Owner>({ live: false, authentication: createNativePrivateAuthenticationScope(), revealing: false });
   const [state, setState] = useState<State>(LOADING);
   const selectedNote = useRef<NativeSavedNote | undefined>(undefined);
@@ -167,11 +169,11 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
       if (owner.request === request) { owner.request = undefined; owner.work = undefined; }
     }
   };
-  const statusTitle = checked?.status?.phase === 'verified' ? 'Verified in pool history'
-    : checked?.status?.phase === 'spent' ? 'Already spent'
-    : checked?.status?.phase === 'not-found' ? 'Not found in pool history'
-    : checked?.status?.phase === 'waiting' ? 'Pool verification pending'
-    : 'Status not checked';
+  const statusTitle = checked?.status?.phase === 'verified' ? t('mobile.noteFlows.import.verifiedInPoolHistory')
+    : checked?.status?.phase === 'spent' ? t('mobile.noteFlows.import.alreadySpent')
+    : checked?.status?.phase === 'not-found' ? t('mobile.noteFlows.inventory.notFoundInPoolHistory')
+    : checked?.status?.phase === 'waiting' ? t('mobile.noteFlows.inventory.poolVerificationPending')
+    : t('mobile.noteFlows.inventory.statusNotChecked');
   const page = view.phase === 'ready' ? view.page : 0;
   const start = page * PAGE_SIZE;
   const rows = notes.slice(start, start + PAGE_SIZE);
@@ -190,51 +192,51 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
     key={view.selected} note={note} open={openWithdrawal} onBack={closeWithdrawal} authentication={view.authentication} />;
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
-    <Screen key={note ? 'detail' : 'list'} footer={<Button title="Lock wallet" icon="lock" variant="secondary" onPress={lock} />}>
-      <Header title={note ? 'Note details' : 'Saved notes'} onBack={back} />
+    <Screen key={note ? 'detail' : 'list'} footer={<Button title={t('mobile.settings.lock')} icon="lock" variant="secondary" onPress={lock} />}>
+      <Header title={note ? t('mobile.noteFlows.inventory.noteDetails') : t('mobile.noteFlows.export.savedNotes')} onBack={back} />
       {note ? <>
         <Card>
-          <Row title={`${note.amount} ETH pool`} subtitle={`Recorded ${recordedDate(note.createdAt)}`} />
+          <Row title={t('mobile.noteFlows.inventory.poolAmount', { amount: note.amount })} subtitle={t('mobile.noteFlows.inventory.recorded', { date: recordedDate(note.createdAt) })} />
           <Row title={statusTitle} subtitle={checked?.status?.blockNumber === undefined
-            ? checked?.status ? undefined : 'Pali hasn’t checked this note against its Ethereum pool.'
-            : `Observed at block ${checked.status.blockNumber}`} last />
+            ? checked?.status ? undefined : t('mobile.noteFlows.inventory.paliHasntCheckedThisNoteAgainstItsEthereum')
+            : t('mobile.noteFlows.inventory.observedBlock', { block: checked.status.blockNumber })} last />
         </Card>
-        {note.reconciliation === 'restored-note' && <Notice title="Restored note needs review"
-          body="This note came from a backup and still needs to be checked against the pool." tone="amber" />}
-        {note.reconciliation === 'withdrawal-history' && <Notice title="Saved withdrawal history"
-          body="This note has a saved withdrawal record that needs review. Its outcome hasn’t been checked here." tone="amber" />}
-        {inventory?.checkNote && <Button title={checked?.phase === 'checking' ? 'Checking pool…' : checked?.status ? 'Check status again' : 'Check pool status'}
+        {note.reconciliation === 'restored-note' && <Notice title={t('mobile.noteFlows.inventory.restoredNoteNeedsReview')}
+          body={t('mobile.noteFlows.inventory.thisNoteCameFromABackupAndStill')} tone="amber" />}
+        {note.reconciliation === 'withdrawal-history' && <Notice title={t('mobile.noteFlows.inventory.savedWithdrawalHistory')}
+          body={t('mobile.noteFlows.inventory.thisNoteHasASavedWithdrawalRecordThat')} tone="amber" />}
+        {inventory?.checkNote && <Button title={checked?.phase === 'checking' ? t('mobile.noteFlows.import.checkingPool') : checked?.status ? t('mobile.noteFlows.inventory.checkStatusAgain') : t('mobile.noteFlows.inventory.checkPoolStatus')}
           variant="secondary" disabled={checked?.phase === 'checking'} onPress={() => { void checkNote(); }} />}
-        {checked?.phase === 'failed' && <Text accessibilityRole="alert" style={s.error}>Could not check this note. Try again.</Text>}
+        {checked?.phase === 'failed' && <Text accessibilityRole="alert" style={s.error}>{t('mobile.noteFlows.inventory.couldNotCheckThisNoteTryAgain')}</Text>}
         {inventory?.openWithdrawal && (checked?.status?.phase === 'verified' || note.reconciliation === 'withdrawal-history') && <Button
-          title={note.reconciliation === 'withdrawal-history' ? 'View withdrawal status' : 'Withdraw'}
+          title={note.reconciliation === 'withdrawal-history' ? t('mobile.noteFlows.inventory.viewWithdrawalStatus') : t('transactions.methodNames.withdraw')}
           disabled={checked?.phase === 'checking'} onPress={() => updateReady({ withdrawing: true })} />}
-        <Button title="Back up this note" variant="secondary" disabled={checked?.phase === 'checking'} onPress={() => updateReady({ revealing: true })} />
+        <Button title={t('mobile.noteFlows.reveal.backUpThisNote')} variant="secondary" disabled={checked?.phase === 'checking'} onPress={() => updateReady({ revealing: true })} />
       </> : <>
-        {view.phase === 'loading' && <Text accessibilityLiveRegion="polite" style={styles.muted}>Loading saved notes…</Text>}
+        {view.phase === 'loading' && <Text accessibilityLiveRegion="polite" style={styles.muted}>{t('mobile.noteFlows.inventory.loadingSavedNotes')}</Text>}
         {view.phase === 'error' && <>
-          <Text accessibilityRole="alert" style={s.error}>Could not load saved notes.</Text>
-          <Button title="Retry" variant="secondary" onPress={() => {
+          <Text accessibilityRole="alert" style={s.error}>{t('mobile.noteFlows.inventory.couldNotLoadSavedNotes')}</Text>
+          <Button title={t('receive.retry')} variant="secondary" onPress={() => {
             setState(LOADING);
             void load();
           }} />
         </>}
-        {view.phase === 'retired' && <Text style={styles.muted}>Open Saved notes again to continue.</Text>}
-        {view.phase === 'ready' && notes.length === 0 && <Notice title="No saved notes"
-          body="Private notes you create or import appear here." />}
+        {view.phase === 'retired' && <Text style={styles.muted}>{t('mobile.noteFlows.inventory.openSavedNotesAgainToContinue')}</Text>}
+        {view.phase === 'ready' && notes.length === 0 && <Notice title={t('mobile.noteFlows.inventory.noSavedNotes')}
+          body={t('mobile.noteFlows.inventory.privateNotesYouCreateOrImportAppearHere')} />}
         {view.phase === 'ready' && rows.length > 0 && <>
-          <Text style={styles.muted}>{inventory?.checkNote ? 'Open a note to check its pool status or make a backup.' : 'These notes are saved on this device.'}</Text>
+          <Text style={styles.muted}>{inventory?.checkNote ? t('mobile.noteFlows.inventory.openANoteToCheckItsPoolStatus') : t('mobile.noteFlows.inventory.theseNotesAreSavedOnThisDevice')}</Text>
           {notes.length > PAGE_SIZE && <Text accessibilityLiveRegion="polite" style={styles.muted}>
-            Notes {start + 1}–{start + rows.length} of {notes.length}
+            {t('mobile.noteFlows.inventory.range', { start: start + 1, end: start + rows.length, total: notes.length })}
           </Text>}
           <Card>
-            {rows.map((row, index) => <Row key={start + index} title={`${row.amount} ETH pool`}
-              subtitle={`Note ${start + index + 1} · ${recordedDate(row.createdAt)}`}
+            {rows.map((row, index) => <Row key={start + index} title={t('mobile.noteFlows.inventory.poolAmount', { amount: row.amount })}
+              subtitle={t('mobile.noteFlows.inventory.noteDate', { number: start + index + 1, date: recordedDate(row.createdAt) })}
               onPress={() => { setInspection(null); updateReady({ selected: start + index }); }} last={index === rows.length - 1} />)}
           </Card>
           {(page > 0 || next) && <View style={s.pages}>
-            <View style={s.page}><Button title="Previous" variant="secondary" disabled={page === 0} onPress={() => updateReady({ page: page - 1 })} /></View>
-            <View style={s.page}><Button title="Next" variant="secondary" disabled={!next} onPress={() => updateReady({ page: page + 1 })} /></View>
+            <View style={s.page}><Button title={t('mobile.noteFlows.inventory.previous')} variant="secondary" disabled={page === 0} onPress={() => updateReady({ page: page - 1 })} /></View>
+            <View style={s.page}><Button title={t('buttons.next')} variant="secondary" disabled={!next} onPress={() => updateReady({ page: page + 1 })} /></View>
           </View>}
         </>}
       </>}

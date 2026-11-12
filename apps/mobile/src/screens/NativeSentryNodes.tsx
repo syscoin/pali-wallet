@@ -1,3 +1,4 @@
+import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import {
@@ -20,6 +21,7 @@ import { Button, Card, colors, Header, Screen, Text } from '../ui';
 import { IdleTextInput } from './IdleActivityBoundary';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
+const t = nativeI18n.t.bind(nativeI18n);
 
 type Snapshot = Awaited<ReturnType<NativeSentryNodeManagement['list']>>;
 type Step =
@@ -47,6 +49,7 @@ const outpoint = ({ txid, vout }: SentryCollateralReservation) =>
   `${txid}:${vout}`;
 
 export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
+  useNativeTranslation();
   const ownerRef = useRef<Owner | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [step, setStep] = useState<Step>({ kind: 'list' });
@@ -101,7 +104,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
           clear();
           navigate(owner, { kind: 'list' });
           setNotice(
-            'Could not complete the action. Refresh your nodes or start a new review. Check service settings if the problem continues.'
+            t("mobile.sentryViews.couldNotCompleteTheActionRefreshYourNodesOrStartANewReviewCheckServiceSettingsIfTheProblemContinues")
           );
         }
       } finally {
@@ -221,10 +224,10 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
           <Header
             title={
               step.kind === 'link'
-                ? 'Link node'
+                ? t("sentry.linkNode")
                 : step.kind === 'release'
-                ? 'Release collateral'
-                : 'Linked nodes'
+                ? t("mobile.sentryViews.releaseCollateral")
+                : t("mobile.sentryViews.linkedNodes")
             }
             subtitle={networkLabel}
             onBack={back}
@@ -238,18 +241,15 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
             <>
               {busy && !snapshot && (
                 <Text accessibilityLiveRegion="polite" style={s.muted}>
-                  Loading nodes…
-                </Text>
+                  {t("mobile.sentryViews.loadingNodes")}</Text>
               )}
               {snapshot &&
                 !snapshot.linkedNodes.length &&
                 !snapshot.collateral.length && (
                   <Card style={s.card}>
-                    <Text style={s.heading}>Your nodes, together</Text>
+                    <Text style={s.heading}>{t("mobile.sentryViews.yourNodesTogether")}</Text>
                     <Text style={s.muted}>
-                      Link a registered Sentry node to save its public identity
-                      and protect its collateral from ordinary wallet sends.
-                    </Text>
+                      {t("mobile.sentryViews.linkARegisteredSentryNodeToSaveItsPublicIdentityAndProtectItsCollateralFromOrdinaryWalletSends")}</Text>
                   </Card>
                 )}
               {snapshot?.linkedNodes.map((node) => {
@@ -259,22 +259,22 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                 return (
                   <Card key={node.proTxHash}>
                     <Text style={s.heading}>
-                      {node.service || 'Registered node'}
+                      {node.service || t("sentry.registeredNode")}
                     </Text>
                     <Text selectable style={s.identifier}>
                       {node.proTxHash}
                     </Text>
                     <Text style={s.muted}>
                       {reservation
-                        ? 'Collateral protected'
-                        : 'Collateral protection released'}
+                        ? t("mobile.sentryViews.collateralProtected")
+                        : t("mobile.sentryViews.collateralProtectionReleased")}
                     </Text>
                     <Text selectable style={s.identifier}>
                       {outpoint(node.collateralOutpoint)}
                     </Text>
                     {reservation && (
                       <Button icon="shield"
-                        title="Release collateral"
+                        title={t("mobile.sentryViews.releaseCollateral")}
                         variant="secondary" size="compact"
                         disabled={busy}
                         onPress={() => {
@@ -298,12 +298,12 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                 )
                 .map((reservation) => (
                   <Card key={outpoint(reservation)}>
-                    <Text style={s.heading}>Protected collateral</Text>
+                    <Text style={s.heading}>{t("sentry.protectedCollateral")}</Text>
                     <Text selectable style={s.identifier}>
                       {outpoint(reservation)}
                     </Text>
                     <Button icon="shield"
-                      title="Release collateral"
+                      title={t("mobile.sentryViews.releaseCollateral")}
                       variant="secondary" size="compact"
                       disabled={busy}
                       onPress={() => {
@@ -316,7 +316,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                   </Card>
                 ))}
               <Button icon="plus"
-                title="Link a node"
+                title={t("mobile.sentryViews.linkANode")}
                 disabled={busy || !snapshot}
                 onPress={() => {
                   clear();
@@ -326,7 +326,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                 }}
               />
               <Button icon="refresh"
-                title="Refresh"
+                title={t("mobile.infrastructure.refresh")}
                 variant="secondary" size="compact"
                 disabled={busy}
                 onPress={() => void run(load, step)}
@@ -336,14 +336,12 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
           {step.kind === 'draft' && (
             <>
               <Card style={s.card}>
-                <Text style={s.heading}>Node registration</Text>
+                <Text style={s.heading}>{t("mobile.sentryViews.nodeRegistration")}</Text>
                 <Text style={s.muted}>
-                  Enter the registration transaction ID. Pali checks it with
-                  your configured Sentry service.
-                </Text>
+                  {t("mobile.sentryViews.enterTheRegistrationTransactionIdPaliChecksItWithYourConfiguredSentryService")}</Text>
               </Card>
               <IdleTextInput
-                accessibilityLabel="Registration transaction ID"
+                accessibilityLabel={t("mobile.sentryViews.registrationTransactionId")}
                 value={registration}
                 onChangeText={setRegistration}
                 maxLength={64}
@@ -354,7 +352,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                 style={s.input}
               />
               <Button
-                title={busy ? 'Checking…' : 'Review node'}
+                title={busy ? t("privacy.checking") : t("mobile.sentryViews.reviewNode")}
                 disabled={busy || !registration.trim()}
                 onPress={() => {
                   const value = registration.trim();
@@ -372,34 +370,32 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
           {step.kind === 'link' && (
             <>
               <Card style={s.card}>
-                <Text style={s.heading}>Link this Sentry node?</Text>
+                <Text style={s.heading}>{t("sentry.linkThisSentryNode")}</Text>
                 <Text style={s.muted}>
-                  Linking saves this node’s public identity and protects its
-                  collateral from ordinary wallet sends.
-                </Text>
-                <Text style={s.label}>Trusted source</Text>
+                  {t("mobile.sentryViews.linkingSavesThisNodeSPublicIdentityAndProtectsItsCollateralFromOrdinaryWalletSends")}</Text>
+                <Text style={s.label}>{t("mobile.sentryViews.trustedSource")}</Text>
                 <Text selectable style={s.identifier}>
                   {step.review.serviceUrl}
                 </Text>
-                <Text style={s.label}>Registered node</Text>
+                <Text style={s.label}>{t("sentry.registeredNode")}</Text>
                 <Text selectable style={s.identifier}>
                   {step.review.node.proTxHash}
                 </Text>
-                <Text style={s.label}>Service</Text>
+                <Text style={s.label}>{t("sentry.service")}</Text>
                 <Text selectable style={s.identifier}>
-                  {step.review.node.service || 'Not registered'}
+                  {step.review.node.service || t("sentry.notRegistered")}
                 </Text>
-                <Text style={s.label}>NEVM address</Text>
+                <Text style={s.label}>{t("sentry.nEVMAddress")}</Text>
                 <Text selectable style={s.identifier}>
-                  {step.review.node.nevmAddress || 'Not registered'}
+                  {step.review.node.nevmAddress || t("sentry.notRegistered")}
                 </Text>
-                <Text style={s.label}>Collateral outpoint</Text>
+                <Text style={s.label}>{t("sentry.collateralOutpoint")}</Text>
                 <Text selectable style={s.identifier}>
                   {outpoint(step.review.node.collateralOutpoint)}
                 </Text>
               </Card>
               <Button
-                title={busy ? 'Linking…' : 'Link node'}
+                title={busy ? t("mobile.sentryViews.linking") : t("sentry.linkNode")}
                 disabled={busy}
                 onPress={() => {
                   const review = step.review;
@@ -409,7 +405,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                     await refreshed(
                       owner,
                       check,
-                      'Node linked. Collateral is protected.'
+                      t("mobile.sentryViews.nodeLinkedCollateralIsProtected")
                     );
                   }, step);
                 }}
@@ -420,31 +416,25 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
             <>
               <Card style={s.card}>
                 <Text style={s.heading}>
-                  Allow this collateral to be spent?
-                </Text>
+                  {t("mobile.sentryViews.allowThisCollateralToBeSpent")}</Text>
                 <Text style={s.muted}>
-                  Spending this output stops the Sentry node. Releasing
-                  protection does not send a transaction or remove saved
-                  authority keys.
-                </Text>
+                  {t("mobile.sentryViews.spendingThisOutputStopsTheSentryNodeReleasingProtectionDoesNotSendATransactionOrRemoveSavedAuthorityKeys")}</Text>
                 <Text selectable style={s.identifier}>
                   {outpoint(step.reservation)}
                 </Text>
               </Card>
               <View style={s.consent}>
                 <Text style={s.consentText}>
-                  I intend to stop this node and allow its collateral to be
-                  spent.
-                </Text>
+                  {t("mobile.sentryViews.iIntendToStopThisNodeAndAllowItsCollateralToBeSpent")}</Text>
                 <Switch
-                  accessibilityLabel="Allow collateral spending"
+                  accessibilityLabel={t("mobile.sentryViews.allowCollateralSpending")}
                   value={acknowledged}
                   onValueChange={setAcknowledged}
                   disabled={busy}
                 />
               </View>
               <Button
-                title={busy ? 'Releasing…' : 'Release collateral'}
+                title={busy ? t("mobile.sentryViews.releasing") : t("mobile.sentryViews.releaseCollateral")}
                 variant="danger"
                 disabled={busy || !acknowledged}
                 onPress={() => {
@@ -459,7 +449,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                     await refreshed(
                       owner,
                       check,
-                      'Collateral protection released.'
+                      t("mobile.sentryViews.collateralProtectionReleasedNotice")
                     );
                   }, step);
                 }}

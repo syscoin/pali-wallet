@@ -1,3 +1,4 @@
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type {
@@ -58,7 +59,8 @@ function fixture(
     new URL('../src/screens/NativeTrezor.tsx', import.meta.url),
     'NativeTrezor',
     {
-      'react-native': {
+      '../platform/localization': nativeTranslationFixture,
+    'react-native': {
         ActivityIndicator: 'ActivityIndicator',
         BackHandler: { addEventListener: () => ({ remove() {} }) },
         Keyboard: { dismiss() {} },

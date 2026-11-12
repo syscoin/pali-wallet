@@ -2,14 +2,16 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { colors, Icon, Text } from '../ui';
 import { IdlePressable } from './IdleActivityBoundary';
+import { useNativeTranslation } from '../platform/localization';
 
 export function WalletBackupBadge({ onPress }: { onPress?(): void }) {
+  const { t } = useNativeTranslation();
   const content = <>
     <View style={s.icon}><Icon name="shield-warning" size={19} color={colors.amber} /></View>
-    <View style={s.text}><Text style={s.title}>Back up your wallet</Text><Text style={s.body}>Protect access if this phone is lost.</Text></View>
+    <View style={s.text}><Text style={s.title}>{t('mobile.portfolioCopy.backupTitle')}</Text><Text style={s.body}>{t('mobile.portfolioCopy.backupBody')}</Text></View>
     {onPress && <Icon name="chevron-right" size={17} color={colors.amber} />}
   </>;
-  return onPress ? <IdlePressable accessibilityRole="button" accessibilityLabel="Back up your wallet. Protect access if this phone is lost." onPress={onPress} style={s.badge}>{content}</IdlePressable>
+  return onPress ? <IdlePressable accessibilityRole="button" accessibilityLabel={`${t('mobile.portfolioCopy.backupTitle')}. ${t('mobile.portfolioCopy.backupBody')}`} onPress={onPress} style={s.badge}>{content}</IdlePressable>
     : <View style={s.badge}>{content}</View>;
 }
 

@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, {
   useCallback,
   useLayoutEffect,
@@ -32,6 +33,7 @@ export function NativeLedger({
   onBack(): void;
   onFinished(): void;
 }) {
+  const { t } = useNativeTranslation();
   const subscribe = useCallback(
     (listener: () => void) => controller.subscribe(listener),
     [controller]
@@ -80,7 +82,7 @@ export function NativeLedger({
       if (owner.active && imported) callbacks.current.onFinished();
     } catch {
       if (owner.active)
-        setError('The Ledger request could not be completed. Try again.');
+        setError(t('mobile.recoveryDevices.ledger.theLedgerRequestCouldNotBeCompleted'));
     } finally {
       owner.busy = false;
       if (owner.active) setBusy(false);
@@ -95,19 +97,19 @@ export function NativeLedger({
   const feedback = snapshot.error || error;
   const retryLabel =
     snapshot.failure === 'disconnected'
-      ? 'Reconnect Ledger'
+      ? t('mobile.recoveryDevices.ledger.reconnectLedger')
       : snapshot.phase === 'error'
-      ? 'Try again'
-      : 'Find Ledger';
-  let actionLabel = 'Done';
+      ? t('mobile.connections.tryAgain')
+      : t('mobile.recoveryDevices.ledger.findLedger');
+  let actionLabel = t('privacy.deposit.done');
   if (importingAccount)
-    actionLabel = importing ? 'Adding account…' : 'Add Ledger account';
+    actionLabel = importing ? t('mobile.recoveryDevices.ledger.addingAccount') : t('mobile.recoveryDevices.ledger.addLedgerAccount');
   let description =
-    'Unlock your Ledger and turn on Bluetooth. Keep it nearby while connecting.';
+    t('mobile.recoveryDevices.ledger.unlockYourLedgerAndTurnOnBluetooth');
   if (connected)
     description = importingAccount
-      ? 'Review the address and choose a name for this account.'
-      : 'Your Ledger is connected. Return to review and confirm the transaction.';
+      ? t('mobile.recoveryDevices.ledger.reviewTheAddressAndChooseAName')
+      : t('mobile.recoveryDevices.ledger.yourLedgerIsConnectedReturnToReview');
 
   return (
     <SafeAreaView style={s.safeArea} edges={['top', 'bottom']}>
@@ -139,7 +141,7 @@ export function NativeLedger({
                   (Platform.OS === 'ios' || Platform.OS === 'android') &&
                   typeof Linking.openSettings === 'function' && (
                     <Button
-                      title="Open Settings"
+                      title={t('mobile.recoveryDevices.ledger.openSettings')}
                       disabled={busy}
                       onPress={() => void run(() => Linking.openSettings())}
                     />
@@ -161,8 +163,8 @@ export function NativeLedger({
           }
         >
           <Header
-            title="Connect Ledger"
-            subtitle={snapshot.networkLabel || 'Hardware wallet'}
+            title={t('mobile.accounts.connectLedger')}
+            subtitle={snapshot.networkLabel || t('mobile.recoveryDevices.ledger.hardwareWallet')}
             onBack={close}
           />
           <Text style={s.description}>{description}</Text>
@@ -174,19 +176,19 @@ export function NativeLedger({
           {connected ? (
             <Card style={s.card}>
               <Text style={s.heading}>{snapshot.selectedName || 'Ledger'}</Text>
-              <Text style={s.label}>Address</Text>
+              <Text style={s.label}>{t('mobile.recoveryDevices.ledger.address')}</Text>
               <Text
                 selectable
-                accessibilityLabel="Ledger address"
+                accessibilityLabel={t('mobile.recoveryDevices.ledger.ledgerAddress')}
                 style={s.address}
               >
                 {snapshot.address}
               </Text>
               {importingAccount && (
                 <>
-                  <Text style={s.label}>Account name</Text>
+                  <Text style={s.label}>{t('mobile.accounts.accountName')}</Text>
                   <IdleTextInput
-                    accessibilityLabel="Ledger account name"
+                    accessibilityLabel={t('mobile.recoveryDevices.ledger.ledgerAccountName')}
                     value={label}
                     onChangeText={setLabel}
                     editable={!busy && !importing}
@@ -205,8 +207,8 @@ export function NativeLedger({
                   <ActivityIndicator color={colors.pink} />
                   <Text accessibilityLiveRegion="polite" style={s.statusText}>
                     {connecting
-                      ? 'Confirm the connection on your Ledger…'
-                      : 'Looking for your Ledger…'}
+                      ? t('mobile.recoveryDevices.ledger.confirmTheConnectionOnYourLedger')
+                      : t('mobile.recoveryDevices.ledger.lookingForYourLedger')}
                   </Text>
                 </View>
               )}

@@ -99,6 +99,7 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
   };
   const modal = () => nodes(render()).find(node => node.type === 'Modal' && node.props.visible);
   return { render, nodes, modal, row,
+    setActivity(value: Partial<typeof snapshot>) { Object.assign(snapshot, value); },
     setHidden(value: boolean) { hidden = value; },
     permitSelection() { rejectSelection = false; },
     holdSelection(value: Promise<void>) { selectionGate = value; },
@@ -117,6 +118,23 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
     close() { cells.forEach(value => value.cleanup?.()); },
   };
 }
+
+test('activity pagination waits for refresh and distinguishes an incomplete feed from older history', () => {
+  const f = fixture('activity');
+  const titles = () => f.nodes(f.render()).filter(node => node.type === 'Button').map(node => node.props.title);
+  try {
+    f.setActivity({ hasMore: true, refreshing: true });
+    assert(!titles().includes('Load older activity'));
+    f.setActivity({ refreshing: false });
+    assert(titles().includes('Load older activity'));
+    f.setActivity({ partial: true });
+    assert(titles().includes('Retry activity'));
+    assert(!titles().includes('Load older activity'));
+    f.setActivity({ hasMore: false });
+    assert(!titles().includes('Load older activity'));
+    assert(!titles().includes('Retry activity'));
+  } finally { f.close(); }
+});
 
 for (const screen of ['wallet', 'activity'] as const) test(`${screen} filter failure stays visible inside its chooser and permits retry`, async () => {
   const f = fixture(screen);

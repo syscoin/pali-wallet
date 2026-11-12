@@ -1,3 +1,4 @@
+import { waitForWatchPublicSession } from '../ui/operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 import { watchAccountName } from '../accountControlNames';
 
@@ -62,7 +63,7 @@ test('SYS actual paste, full-address review, fixed scope, QR, copy/share and ren
   await expect(page.getByRole('button', { name: watchAccountName('Select', 'Renamed SYS', 'Syscoin Mainnet', SYS) })).toBeVisible();
   const accounts = await page.evaluate(() => window.__watchFixture.accounts());
   expect(accounts).toHaveLength(1); expect(accounts[0]!.addresses).toEqual({ syscoin: SYS });
-  await page.reload(); await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
+  await page.reload(); await waitForWatchPublicSession(page);
   await expect(page.getByText('Renamed SYS · Watch-only', { exact: true })).toBeVisible(); await watchOnly(page);
 });
 
@@ -173,7 +174,7 @@ test('public account key follows the real add, aggregate refresh, receive, renam
   await page.getByRole('button', { name: watchAccountName('Rename', 'BTC savings watch', 'Bitcoin', publicKey!) }).click();
   await page.getByRole('textbox', { name: 'Watch account name', exact: true }).fill('Public wallet');
   await page.getByRole('button', { name: 'Save name', exact: true }).click();
-  await page.reload(); await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
+  await page.reload(); await waitForWatchPublicSession(page);
   await expect(page.getByText('Public wallet · Watch-only', { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.__watchFixture.events().some((event) => event.startsWith('balance:bitcoin:zpub')))).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('account-key-balance-320.png'), fullPage: true });

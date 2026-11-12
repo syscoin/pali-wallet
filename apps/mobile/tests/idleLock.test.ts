@@ -24,6 +24,36 @@ test('native weakening is a bounded authority operation with no reusable auth ca
  const runtime:CustodyRuntime={security:{isAuthenticating:()=>false,isAuthenticationRefusal:()=>false,async authenticationStatus(){return {deviceAuth:'ready',credentialPresent:true};},async reauthenticateIdlePolicy(signal,scope,check){auth++;check();assert.equal(signal,owner.signal);assert.equal(scope,authentication);}},session:{async createWallet(){},async importWallet(){},async unlock(){return{authenticated:true};},async readSelectedAddress(){return '0x52908400098527886E0F7030069857D2E4169EE7';},async lock(){}},storage:{async readState(){return{presence:'existing',backup:'confirmed'};},async close(){}}};
  const a=new NativeCustodyAuthority({open:async()=>runtime},{preferences:f.p,viewLock:new PublicViewLock({get:async()=>null,set:async()=>undefined}),assertActive(){if(!valid)throw Error();}});await a.initialize();await a.unlock();expected=await a.saveIdlePreference(expected,30,owner.signal,authentication,guard);assert.equal(auth,1);expected=await a.saveIdlePreference(expected,5,owner.signal,authentication,guard);assert.equal(auth,1);valid=false;await assert.rejects(a.saveIdlePreference(expected,0,owner.signal,authentication,guard));assert.equal(auth,1);assert.equal(a.getSnapshot().phase,'locked');
 });
+test('an unbacked wallet can configure public-view auto-lock while weakening still requires authorization', async () => {
+  const f = prefs(), controller = new AbortController();
+  let expected = await f.p.load(), authorizations = 0;
+  const authentication = createTestPrivateAuthentication(guard);
+  const runtime: CustodyRuntime = {
+    security: {
+      isAuthenticating: () => false, isAuthenticationRefusal: () => false,
+      async authenticationStatus() { return { deviceAuth: 'ready', credentialPresent: true }; },
+      async reauthenticateIdlePolicy(signal, scope, check) {
+        check(); assert.equal(signal, controller.signal); assert.equal(scope, authentication); authorizations++;
+      },
+    },
+    session: {
+      async createWallet() {}, async importWallet() {}, async unlock() { return { authenticated: true }; },
+      async readSelectedAddress() { return '0x52908400098527886E0F7030069857D2E4169EE7'; }, async lock() {},
+    },
+    storage: { async readState() { return { presence: 'existing', backup: 'unconfirmed' }; }, async close() {} },
+  };
+  const authority = new NativeCustodyAuthority({ open: async () => runtime }, {
+    preferences: f.p, viewLock: new PublicViewLock({ get: async () => null, set: async () => undefined }), assertActive: guard,
+  });
+  await authority.initialize(); await authority.unlock();
+  assert.equal(authority.getSnapshot().phase, 'backup-required');
+  expected = await authority.saveIdlePreference(expected, 5, controller.signal, authentication, guard);
+  assert.equal(expected.custodyIdleMinutes, 5); assert.equal(authorizations, 0);
+  expected = await authority.saveIdlePreference(expected, 0, controller.signal, authentication, guard);
+  assert.equal(expected.custodyIdleMinutes, 0); assert.equal(authorizations, 1);
+  assert.equal(authority.getSnapshot().phase, 'backup-required');
+  await authority.dispose();
+});
 test('host timer functions retain their required global receiver',()=>{const c=clock();let calls=0;const schedule=function(this:unknown){assert.equal(this,globalThis);calls++;return 1;} as unknown as typeof setTimeout;const cancel=function(this:unknown){assert.equal(this,globalThis);} as typeof clearTimeout;const idle=new IdleLock(c.now,schedule,cancel);idle.setPolicy(5);idle.begin({},()=>assert.fail('valid clock must not expire'));assert.equal(calls,1);assert.ok(idle.check());});
 test('concurrent preference saves retire the other compare token without merging modes accidentally',async()=>{const f=prefs(),a=await f.p.load(),b=await f.p.load();const first=f.p.save(a,'custody',30,guard),second=f.p.save(b,'watch',0,guard);await first;await assert.rejects(second);const current=await f.p.load();assert.equal(current.custodyIdleMinutes,30);assert.equal(current.watchIdleMinutes,0);assert.equal(f.writes(),1);});
 test('a cancellation during an acknowledged write requires reopen and cannot replay its old token',async()=>{let raw:string|null=null,release!:()=>void,entered!:()=>void,current=true;const started=new Promise<void>(r=>{entered=r;});const held=new Promise<void>(r=>{release=r;});let writes=0;const p=new SecurityPreferences({get:async()=>raw,set:async value=>{writes++;entered();await held;raw=value;}});const before=await p.load();const save=p.save(before,'watch',15,()=>{if(!current)throw Error();});await started;current=false;release();await assert.rejects(save);assert.equal(p.getSnapshot().status,'unavailable');const reopened=await p.load();assert.equal(reopened.watchIdleMinutes,15);await assert.rejects(p.save(before,'watch',0,guard));assert.equal(writes,1);});
@@ -46,4 +76,21 @@ test('a press begun after the deadline stays rejected after a new input interval
  const c=clock(), idle=timedIdle(c), owner={};
  idle.begin(owner,()=>idle.stop(owner));c.add(300001);const expiredPress=idle.captureInteraction();
  idle.begin(owner,()=>idle.stop(owner));assert.equal(expiredPress(),false);idle.stop();
+});
+
+test('locked-view input reset permits a fresh press but never revives a captured pre-expiry gesture', () => {
+  const c = clock(), runtime = createSecurityRuntime({ get: async () => null, set: async () => undefined }, c.now);
+  const owner = {};
+  runtime.custodyIdle.setPolicy(5);
+  runtime.custodyIdle.begin(owner, () => runtime.custodyIdle.stop(owner));
+  const previousPress = runtime.captureIdleInteraction();
+  c.add(300001); runtime.custodyIdle.check();
+  assert.equal(runtime.beginIdleInteraction(), false);
+  runtime.custodyIdle.allowNewInput(); runtime.watchIdle.allowNewInput();
+  assert.equal(previousPress(), false);
+  assert.equal(runtime.captureIdleInteraction()(), true);
+  runtime.custodyIdle.begin(owner, () => runtime.custodyIdle.stop(owner));
+  c.add(300001); runtime.custodyIdle.allowNewInput();
+  assert.equal(runtime.custodyIdle.check(owner), false, 'input reset cannot rearm a still-owned expired timer');
+  runtime.custodyIdle.stop(); runtime.watchIdle.stop();
 });

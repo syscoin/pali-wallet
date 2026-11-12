@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, {
   useCallback,
   useEffect,
@@ -61,6 +62,7 @@ const recipientValid = (value: string) => {
 const amount = (value: string) => `${formatBaseUnits(value, 18)} ETH`;
 
 export function NativePrivateWithdrawal({ note, open, onBack, authentication }: Props) {
+  const { t } = useNativeTranslation();
   const owner = useRef<Owner | undefined>(undefined);
   const [opened, setOpened] = useState<{
     source: Props['open'];
@@ -141,23 +143,23 @@ export function NativePrivateWithdrawal({ note, open, onBack, authentication }: 
       <Screen
         footer={
           <Button
-            title="Cancel"
+            title={t('buttons.cancel')}
             variant="secondary" size="compact"
             disabled={current?.closing}
             onPress={back}
           />
         }
       >
-        <Header title="Withdraw note" onBack={back} />
+        <Header title={t('privacy.withdrawal.title')} onBack={back} />
         <Text
           accessibilityRole={current?.failed ? 'alert' : undefined}
           style={styles.muted}
         >
           {current?.failed
-            ? 'Could not open this withdrawal. Check the pool data and your network, then try again.'
+            ? t('mobile.privacyFlows.withdrawal.couldNotOpenThisWithdrawalCheckThePoolDataAnd')
             : current?.closing
-            ? 'Closing withdrawal…'
-            : 'Opening withdrawal…'}
+            ? t('mobile.privacyFlows.withdrawal.closingWithdrawal')
+            : t('mobile.privacyFlows.withdrawal.openingWithdrawal')}
         </Text>
       </Screen>
     </SafeAreaView>
@@ -173,6 +175,7 @@ function WithdrawalContent({
   note: NativeSavedNote;
   onBack(): void;
 }) {
+  const { t } = useNativeTranslation();
   const subscribe = useCallback(
     (notify: () => void) => controller.subscribe(notify),
     [controller]
@@ -285,16 +288,16 @@ function WithdrawalContent({
   };
   const title = submitted
     ? spent
-      ? 'Note already spent'
+      ? t('mobile.privacyFlows.deposit.noteAlreadySpent')
       : unknown
-      ? 'Submission status unknown'
+      ? t('privacy.deposit.unknown')
       : (state.status?.jobId || state.result?.jobId) &&
         !(state.status?.transactionHash || state.result?.transactionHash)
-      ? 'Relayer accepted the request'
-      : 'Withdrawal submitted'
+      ? t('privacy.withdrawal.accepted')
+      : t('mobile.privacyFlows.withdrawal.withdrawalSubmitted')
     : showReview
-    ? 'Review withdrawal'
-    : 'Withdraw note';
+    ? t('privacy.withdrawal.continue')
+    : t('privacy.withdrawal.title');
   const hash =
     state.status?.transactionHash ??
     state.result?.transactionHash ??
@@ -302,24 +305,24 @@ function WithdrawalContent({
   const jobId = state.status?.jobId ?? state.result?.jobId;
   const error =
     state.error === 'expired'
-      ? 'This review expired. Prepare a fresh review before confirming.'
+      ? t('mobile.privacyFlows.withdrawal.thisReviewExpiredPrepareAFreshReviewBeforeConfirming')
       : state.error === 'pending'
-      ? 'This note has a saved withdrawal. Check its status before trying again.'
+      ? t('mobile.privacyFlows.withdrawal.thisNoteHasASavedWithdrawalCheckItsStatusBefore')
       : state.error === 'verification'
-      ? 'Check the pool data before preparing this withdrawal.'
+      ? t('mobile.privacyFlows.withdrawal.checkThePoolDataBeforePreparingThisWithdrawal')
       : state.error === 'restored'
-      ? 'Could not review this restored note. Try again.'
+      ? t('mobile.privacyFlows.withdrawal.couldNotReviewThisRestoredNoteTryAgain')
       : state.error === 'unavailable'
-      ? 'This withdrawal is unavailable in the current account or network.'
+      ? t('mobile.privacyFlows.withdrawal.thisWithdrawalIsUnavailableInTheCurrentAccountOrNetwork')
       : state.error === 'failed'
-      ? 'Could not complete this request. Check the pool data and your network, then try again.'
+      ? t('mobile.privacyFlows.withdrawal.couldNotCompleteThisRequestCheckThePoolDataAnd')
       : null;
   const needsRefresh = reviewExpired || state.phase === 'failed';
   const primary = submitted ? (
-    <Button title="Done" onPress={onBack} />
+    <Button title={t('privacy.deposit.done')} onPress={onBack} />
   ) : state.restored ? (
     <Button
-      title={busy ? 'Reviewing note…' : 'Review restored note'}
+      title={busy ? t('mobile.privacyFlows.withdrawal.reviewingNote') : t('privacy.restoreReview.action')}
       disabled={busy}
       onPress={reviewRestored}
     />
@@ -327,10 +330,10 @@ function WithdrawalContent({
     <Button
       title={
         state.phase === 'submitting'
-          ? 'Submitting…'
+          ? t('privacy.deposit.submitting')
           : needsRefresh
-          ? 'Refresh review'
-          : 'Confirm withdrawal'
+          ? t('privacy.deposit.refresh')
+          : t('privacy.withdrawal.confirm')
       }
       disabled={busy}
       onPress={needsRefresh ? prepare : confirm}
@@ -338,7 +341,7 @@ function WithdrawalContent({
   ) : (
     <Button
       title={
-        state.phase === 'preparing' ? 'Preparing proof…' : 'Review withdrawal'
+        state.phase === 'preparing' ? t('mobile.privacyFlows.withdrawal.preparingProof') : t('privacy.withdrawal.continue')
       }
       disabled={
         busy ||
@@ -361,14 +364,14 @@ function WithdrawalContent({
             <>
               {primary}
               {!submitted && (
-                <Button title="Cancel" variant="secondary" size="compact" onPress={onBack} />
+                <Button title={t('buttons.cancel')} variant="secondary" size="compact" onPress={onBack} />
               )}
             </>
           }
         >
           <Header title={title} onBack={onBack} />
           <Text style={s.denomination}>{note.amount} ETH</Text>
-          <Text style={styles.muted}>Ethereum Mainnet · Private note</Text>
+          <Text style={styles.muted}>{t('mobile.privacyFlows.withdrawal.ethereumMainnetPrivateNote')}</Text>
           {error && (
             <Text accessibilityRole="alert" style={s.error}>
               {error}
@@ -377,14 +380,13 @@ function WithdrawalContent({
           {state.restored && !submitted ? (
             <>
               <Text style={styles.muted}>
-                Review this restored note before withdrawing.
-              </Text>
+                {t('mobile.privacyFlows.withdrawal.reviewThisRestoredNoteBeforeWithdrawing')}</Text>
             </>
           ) : !showReview && !submitted ? (
             <>
-              <Text style={s.label}>Recipient address</Text>
+              <Text style={s.label}>{t('privacy.withdrawal.recipient')}</Text>
               <IdleTextInput
-                accessibilityLabel="Recipient address"
+                accessibilityLabel={t('privacy.withdrawal.recipient')}
                 value={recipient}
                 onChangeText={setRecipient}
                 editable={!busy}
@@ -397,13 +399,12 @@ function WithdrawalContent({
               />
               {touched && !recipientValid(recipient) && (
                 <Text accessibilityRole="alert" style={s.error}>
-                  Enter a valid Ethereum address.
-                </Text>
+                  {t('privacy.withdrawal.recipientInvalid')}</Text>
               )}
-              <Text style={s.label}>Send with</Text>
+              <Text style={s.label}>{t('privacy.withdrawal.method')}</Text>
               <Card
                 accessibilityRole="radiogroup"
-                accessibilityLabel="Withdrawal delivery"
+                accessibilityLabel={t('mobile.privacyFlows.withdrawal.withdrawalDelivery')}
                 style={s.card}
               >
                 {(['direct', 'relayed'] as const).map((item) => (
@@ -415,7 +416,7 @@ function WithdrawalContent({
                     }}
                     accessibilityRole="radio"
                     accessibilityLabel={
-                      item === 'direct' ? 'Direct' : 'Relayer'
+                      item === 'direct' ? t('privacy.withdrawal.direct') : t('privacy.withdrawal.relayed')
                     }
                     accessibilityState={{
                       checked: mode === item,
@@ -436,7 +437,7 @@ function WithdrawalContent({
                     style={[s.option, mode === item && s.selected]}
                   >
                     <Text style={s.optionLabel}>
-                      {item === 'direct' ? 'Direct' : 'Relayer'}
+                      {item === 'direct' ? t('privacy.withdrawal.direct') : t('privacy.withdrawal.relayed')}
                     </Text>
                     <Text aria-hidden>{mode === item ? '●' : '○'}</Text>
                   </IdlePressable>
@@ -444,22 +445,21 @@ function WithdrawalContent({
               </Card>
               {!state.canSign && (
                 <Text style={styles.muted}>
-                  This account cannot sign a direct withdrawal.
-                </Text>
+                  {t('mobile.privacyFlows.withdrawal.thisAccountCannotSignADirectWithdrawal')}</Text>
               )}
               <Text style={styles.muted}>
                 {mode === 'direct'
-                  ? 'Your account pays gas. This can link the gas payer to the recipient.'
-                  : 'The selected relayer learns the recipient and receives the fee.'}
+                  ? t('privacy.withdrawal.directWarning')
+                  : t('privacy.withdrawal.relayedWarning')}
               </Text>
               {mode === 'relayed' && (
                 <>
-                  <Text style={s.label}>Relayer</Text>
+                  <Text style={s.label}>{t('privacy.withdrawal.relayed')}</Text>
                   {state.relayers.length === 0 && (
                     <Text style={styles.muted}>
                       {state.checking
-                        ? 'Loading relayers…'
-                        : 'No available relayers support this pool.'}
+                        ? t('privacy.withdrawal.loadingRelayers')
+                        : t('privacy.withdrawal.noRelayers')}
                     </Text>
                   )}
                   {state.relayers.map((relayer) => (
@@ -472,7 +472,7 @@ function WithdrawalContent({
                       }${
                         relayer.health === 'reported-healthy'
                           ? ''
-                          : ' · Unavailable'
+                          : ` · ${t('privacy.withdrawal.unavailableRelayer')}`
                       }`}
                       variant={
                         relayerId === relayer.id ? 'primary' : 'secondary'
@@ -482,7 +482,7 @@ function WithdrawalContent({
                     />
                   ))}
                   <Button icon="refresh"
-                    title="Refresh relayers"
+                    title={t('mobile.privacyFlows.withdrawal.refreshRelayers')}
                     variant="secondary" size="compact"
                     disabled={busy}
                     onPress={() => {
@@ -496,7 +496,7 @@ function WithdrawalContent({
                 state.phase !== 'preparing' && (
                   <Button
                     title={
-                      state.checking ? 'Checking pool…' : 'Check pool status'
+                      state.checking ? t('mobile.noteFlows.import.checkingPool') : t('mobile.noteFlows.inventory.checkPoolStatus')
                     }
                     variant="secondary" size="compact"
                     disabled={busy}
@@ -511,27 +511,26 @@ function WithdrawalContent({
             <Card style={s.card}>
               <Text accessibilityLiveRegion="polite" style={s.label}>
                 {state.progress?.stage === 'artifacts'
-                  ? 'Loading proof resources…'
+                  ? t('mobile.privacyFlows.withdrawal.loadingProofResources')
                   : state.progress?.stage === 'witness'
-                  ? 'Preparing witness…'
+                  ? t('mobile.privacyFlows.withdrawal.preparingWitness')
                   : state.progress?.stage === 'verifying'
-                  ? 'Checking proof…'
-                  : 'Preparing proof…'}
+                  ? t('mobile.privacyFlows.withdrawal.checkingProof')
+                  : t('mobile.privacyFlows.withdrawal.preparingProof')}
               </Text>
               <Text style={styles.muted}>
-                Preparing a proof locally. This may take up to two minutes.
-              </Text>
+                {t('privacy.withdrawal.proving')}</Text>
             </Card>
           )}
           {showReview && review && (
             <>
               <Card style={s.card}>
-                <Text style={s.label}>Recipient address</Text>
+                <Text style={s.label}>{t('privacy.withdrawal.recipient')}</Text>
                 <Text selectable style={s.address}>
                   {review.recipient}
                 </Text>
                 <Text style={s.label}>
-                  {review.mode === 'direct' ? 'Gas payer' : 'Relayer'}
+                  {review.mode === 'direct' ? t('privacy.withdrawal.gasPayer') : t('privacy.withdrawal.relayed')}
                 </Text>
                 <Text selectable style={s.address}>
                   {review.mode === 'direct'
@@ -543,33 +542,32 @@ function WithdrawalContent({
                     {review.relayerEndpoint}
                   </Text>
                 )}
-                <Text style={s.label}>Pool amount</Text>
+                <Text style={s.label}>{t('mobile.privacyFlows.withdrawal.poolAmount')}</Text>
                 <Text selectable>{review.amount} ETH</Text>
-                <Text style={s.label}>Maximum network fee</Text>
+                <Text style={s.label}>{t('privacy.deposit.networkFee')}</Text>
                 <Text selectable>{amount(review.maxNetworkFeeWei)}</Text>
                 {review.mode === 'relayed' && (
                   <>
-                    <Text style={s.label}>Relayer service fee</Text>
+                    <Text style={s.label}>{t('privacy.withdrawal.serviceFee')}</Text>
                     <Text selectable>{amount(review.serviceFeeWei)}</Text>
-                    <Text style={s.label}>Total fee from note</Text>
+                    <Text style={s.label}>{t('privacy.withdrawal.totalFee')}</Text>
                     <Text selectable>{amount(review.feeWei)}</Text>
                   </>
                 )}
-                <Text style={s.label}>Recipient receives</Text>
+                <Text style={s.label}>{t('privacy.withdrawal.receive')}</Text>
                 <Text selectable>{amount(review.receiveWei)}</Text>
               </Card>
               <Text style={styles.muted}>
                 {review.mode === 'direct'
-                  ? 'Your account pays gas. This can link the gas payer to the recipient.'
-                  : 'The selected relayer learns the recipient and receives the fee.'}
+                  ? t('privacy.withdrawal.directWarning')
+                  : t('privacy.withdrawal.relayedWarning')}
               </Text>
               {reviewExpired && (
                 <Text accessibilityLiveRegion="polite" style={styles.muted}>
-                  This review expired. Prepare a fresh review before confirming.
-                </Text>
+                  {t('mobile.privacyFlows.withdrawal.thisReviewExpiredPrepareAFreshReviewBeforeConfirming')}</Text>
               )}
               <Button icon="edit"
-                title="Edit withdrawal"
+                title={t('mobile.privacyFlows.withdrawal.editWithdrawal')}
                 variant="secondary" size="compact"
                 disabled={busy}
                 onPress={() => setEditing(true)}
@@ -580,16 +578,16 @@ function WithdrawalContent({
             <>
               <Text accessibilityLiveRegion="polite" style={styles.muted}>
                 {spent
-                  ? 'Pool data confirms the note is spent.'
+                  ? t('mobile.privacyFlows.withdrawal.poolDataConfirmsTheNoteIsSpent')
                   : unknown
-                  ? 'Do not submit again. Check the transaction or relayer status before another withdrawal.'
+                  ? t('privacy.withdrawal.unknownHelp')
                   : jobId && !hash
-                  ? 'The relayer has a job ID. This does not mean the withdrawal is mined.'
-                  : 'Wait for public pool data to confirm the withdrawal.'}
+                  ? t('privacy.withdrawal.acceptedHelp')
+                  : t('privacy.withdrawal.submittedHelp')}
               </Text>
               {hash && (
                 <Card style={s.card}>
-                  <Text style={s.label}>Transaction hash</Text>
+                  <Text style={s.label}>{t('privacy.deposit.txHash')}</Text>
                   <Text selectable style={s.address}>
                     {hash}
                   </Text>
@@ -597,14 +595,14 @@ function WithdrawalContent({
               )}
               {jobId && (
                 <Card style={s.card}>
-                  <Text style={s.label}>Relayer job ID</Text>
+                  <Text style={s.label}>{t('privacy.withdrawal.jobId')}</Text>
                   <Text selectable style={s.address}>
                     {jobId}
                   </Text>
                 </Card>
               )}
               <Button
-                title={state.checking ? 'Checking status…' : 'Check status'}
+                title={state.checking ? t('mobile.recoveryDevices.guardianPolicy.checkingStatus') : t('privacy.withdrawal.checkStatus')}
                 variant="secondary" size="compact"
                 disabled={busy}
                 onPress={() => {

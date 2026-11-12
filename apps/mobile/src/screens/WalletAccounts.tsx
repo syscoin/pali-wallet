@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
@@ -34,6 +35,7 @@ export type WatchWalletBridge = Pick<WalletAccountsProps, 'watch' | 'onAdd' | 'o
 
 /** Shared public chooser. It receives no signing, backup or authentication authority. */
 export function WalletAccounts(props: WalletAccountsProps) {
+  const { t } = useNativeTranslation();
   const onBack = props.onBack;
   const [form, setForm] = useState<{ kind: 'rename' | 'remove'; id: string; name: string; address: string } | 'add' | null>(null);
   const [name, setName] = useState('');
@@ -49,7 +51,7 @@ export function WalletAccounts(props: WalletAccountsProps) {
     if (working.current) return;
     working.current = true; setBusy(true); setError('');
     try { await operation(); if (active.current) setForm(null); }
-    catch (cause) { if (active.current) setError(cause instanceof Error ? cause.message : 'This account change could not be completed.'); }
+    catch (cause) { if (active.current) setError(cause instanceof Error ? cause.message : t('mobile.shellViews.walletAccounts.thisAccountChangeCouldNotBeCompleted')); }
     finally { working.current = false; if (active.current) setBusy(false); }
   };
   const entries = projectAccounts(props.catalogue, props.watch.accounts);
@@ -67,47 +69,47 @@ export function WalletAccounts(props: WalletAccountsProps) {
       }
       const addresses = Array.from(grouped, ([address, networks]) =>
         `${networks.length > 1 && networks.every(network => network.kind === 'evm')
-          ? 'Public EVM address' : networks.map(network => network.name).join(' / ')}, ${address}`);
-      return `${entry.name} (watch-only), ${addresses.join('; ')}`;
+          ? t('mobile.shellViews.walletAccounts.publicEvmAddress') : networks.map(network => network.name).join(' / ')}, ${address}`);
+      return t('mobile.shellViews.accounts.watchIdentity', { name: entry.name, addresses: addresses.join('; ') });
     }
-    const kind = entry.kind === 'hd' ? 'Recovery phrase account' : entry.kind === 'imported' ? 'Imported key'
-      : entry.kind === 'smart' ? 'Smart account' : entry.kind === 'ledger' ? 'Ledger hardware wallet' : 'Trezor hardware wallet';
-    return `${entry.name} (wallet), ${kind}, ${entry.address}`;
+    const kind = entry.kind === 'hd' ? t('mobile.accounts.phrase') : entry.kind === 'imported' ? t('mobile.shellViews.walletAccounts.importedKey')
+      : entry.kind === 'smart' ? t('smartAccountHub.menuEntry') : entry.kind === 'ledger' ? t('mobile.accounts.ledger') : t('mobile.shellViews.walletAccounts.trezorHardwareWallet');
+    return t('mobile.shellViews.accounts.walletIdentity', { name: entry.name, kind, address: entry.address });
   };
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}><KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    {form === 'add' ? <AddWatchAccount utxoNetworks={props.watch.utxoNetworks} networkSettings={props.networkSettings} onNetworksChanged={props.onNetworksChanged} availableNetworks={props.availableWatchNetworks} onAdd={props.onAdd} onCancel={() => setForm(null)} /> : <Screen footer={form ? <Button title={form.kind === 'rename' ? 'Save name' : 'Remove watch account'} disabled={!canManageWatch || form.kind === 'rename' && !name.trim()} onPress={() => void run(() => form.kind === 'rename' ? props.onRename(form.id, name) : props.onRemove(form.id))} /> : undefined}>
-      <Header title={form ? form.kind === 'rename' ? 'Rename watch account' : 'Remove watch account' : 'Accounts'} subtitle="Wallet and watch accounts" onBack={() => back.current()} />
-      {props.watch.status === 'opening' && <View style={s.loading}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Opening saved watch accounts…</Text></View>}
-      {props.watch.status === 'unavailable' && <><Notice title="Watch accounts unavailable" body="Your saved watch data has been preserved. Reopen it before making changes." tone="amber" /><Button title="Reopen watch accounts" disabled={busy || props.watch.busy} variant="secondary" onPress={() => void run(props.onRetry)} /></>}
+    {form === 'add' ? <AddWatchAccount utxoNetworks={props.watch.utxoNetworks} networkSettings={props.networkSettings} onNetworksChanged={props.onNetworksChanged} availableNetworks={props.availableWatchNetworks} onAdd={props.onAdd} onCancel={() => setForm(null)} /> : <Screen footer={form ? <Button title={form.kind === 'rename' ? t('mobile.accounts.saveName') : t('mobile.shellViews.walletAccounts.removeWatchAccount')} disabled={!canManageWatch || form.kind === 'rename' && !name.trim()} onPress={() => void run(() => form.kind === 'rename' ? props.onRename(form.id, name) : props.onRemove(form.id))} /> : undefined}>
+      <Header title={form ? form.kind === 'rename' ? t('mobile.shellViews.walletAccounts.renameWatchAccount') : t('mobile.shellViews.walletAccounts.removeWatchAccount') : t('mobile.accounts.title')} subtitle={t('mobile.shellViews.walletAccounts.walletAndWatchAccounts')} onBack={() => back.current()} />
+      {props.watch.status === 'opening' && <View style={s.loading}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>{t('mobile.shellViews.walletAccounts.openingSavedWatchAccounts')}</Text></View>}
+      {props.watch.status === 'unavailable' && <><Notice title={t('mobile.shellViews.walletAccounts.watchAccountsUnavailable')} body={t('mobile.shellViews.walletAccounts.yourSavedWatchDataHasBeenPreservedReopen')} tone="amber" /><Button title={t('mobile.shellViews.walletAccounts.reopenWatchAccounts')} disabled={busy || props.watch.busy} variant="secondary" onPress={() => void run(props.onRetry)} /></>}
       {form && typeof form !== 'string' ? <>
-        <Notice title={form.name} body={form.kind === 'remove' ? 'This removes the watch account from this device. It does not move funds. You can add it again.' : 'Names are saved on this device and do not change the account.'} />
+        <Notice title={form.name} body={form.kind === 'remove' ? t('mobile.shellViews.walletAccounts.thisRemovesTheWatchAccountFromThisDevice') : t('mobile.shellViews.walletAccounts.namesAreSavedOnThisDeviceAndDo')} />
         <Text selectable style={s.address}>{form.address}</Text>
-        {form.kind === 'rename' && <><Text style={styles.muted}>Account name</Text><IdleTextInput accessibilityLabel="Watch account name" value={name} onChangeText={setName} editable={!busy} maxLength={40} autoCorrect={false} style={s.input} /></>}
+        {form.kind === 'rename' && <><Text style={styles.muted}>{t('mobile.accounts.accountName')}</Text><IdleTextInput accessibilityLabel={t('mobile.shellViews.walletAccounts.watchAccountName')} value={name} onChangeText={setName} editable={!busy} maxLength={40} autoCorrect={false} style={s.input} /></>}
       </> : <>
-        <Text style={styles.muted}>Wallet accounts unlock through your wallet. Imported keys need separate backups. Watch accounts can view balances and receive addresses only.</Text>
+        <Text style={styles.muted}>{t('mobile.shellViews.walletAccounts.walletAccountsUnlockThroughYourWalletImportedKeys')}</Text>
         {entries.map((entry) => <Card key={entry.identity} style={s.account}>
-          <IdlePressable accessibilityRole="button" accessibilityLabel={`Select ${accessibleIdentity(entry)}${entry.identity === selected ? ', selected' : ''}`}
+          <IdlePressable accessibilityRole="button" accessibilityLabel={t('mobile.shellViews.accounts.selectIdentity', { identity: accessibleIdentity(entry), selected: entry.identity === selected ? t('mobile.shellViews.accounts.selectedSuffix') : '' })}
             accessibilityState={{ selected: entry.identity === selected, disabled: busy || props.watch.busy || entry.selection.kind === 'watch' && props.watch.status !== 'ready' }}
             disabled={busy || props.watch.busy || entry.selection.kind === 'watch' && props.watch.status !== 'ready'} onPress={() => void run(() => props.onSelect(entry.selection))}>
-            <View style={s.row}><Text style={s.name}>{entry.name}</Text>{entry.identity === selected && <Text style={s.selected}>Selected</Text>}</View>
-            <Text style={s.kind}>{entry.selection.kind === 'hd' ? 'Recovery phrase account' : entry.selection.kind === 'imported' ? 'Imported key · Separate backup' : entry.selection.kind === 'smart' ? 'Smart account' : entry.selection.kind === 'ledger' ? 'Ledger hardware wallet' : entry.selection.kind === 'trezor' ? 'Trezor' : (() => {
+            <View style={s.row}><Text style={s.name}>{entry.name}</Text>{entry.identity === selected && <Text style={s.selected}>{t('mobile.language.selected')}</Text>}</View>
+            <Text style={s.kind}>{entry.selection.kind === 'hd' ? t('mobile.accounts.phrase') : entry.selection.kind === 'imported' ? t('mobile.accounts.imported') : entry.selection.kind === 'smart' ? t('smartAccountHub.menuEntry') : entry.selection.kind === 'ledger' ? t('mobile.accounts.ledger') : entry.selection.kind === 'trezor' ? t('mobile.shellViews.walletAccounts.trezor') : (() => {
               const watched = props.watch.accounts.find((account) => account.id === entry.selection.id)!;
               const network = getNetwork(Object.keys(watched.addresses)[0] as Parameters<typeof getNetwork>[0], props.watch.utxoNetworks);
-              return network.kind === 'utxo' ? `Watch-only · ${network.name}` : 'Watch-only · Public EVM address';
+              return network.kind === 'utxo' ? t('mobile.shellViews.accounts.watchNetwork', { network: network.name }) : t('mobile.shellViews.walletAccounts.watchOnlyPublicEvmAddress');
             })()}</Text>
             <Text selectable style={s.address}>{entry.address}</Text>
           </IdlePressable>
           {entry.selection.kind === 'watch' && <View style={s.actions}>
-            <IconButton label={`Rename ${accessibleIdentity(entry)}`} icon="edit" disabled={!canManageWatch} onPress={() => { setName(entry.name); setForm({ kind: 'rename', id: entry.selection.id, name: entry.name, address: entry.address }); setError(''); }} />
-            <IconButton label={`Remove ${accessibleIdentity(entry)}`} icon="trash" disabled={!canManageWatch} onPress={() => { setForm({ kind: 'remove', id: entry.selection.id, name: entry.name, address: entry.address }); setError(''); }} />
+            <IconButton label={t('mobile.shellViews.accounts.renameIdentity', { identity: accessibleIdentity(entry) })} icon="edit" disabled={!canManageWatch} onPress={() => { setName(entry.name); setForm({ kind: 'rename', id: entry.selection.id, name: entry.name, address: entry.address }); setError(''); }} />
+            <IconButton label={t('mobile.shellViews.accounts.removeIdentity', { identity: accessibleIdentity(entry) })} icon="trash" disabled={!canManageWatch} onPress={() => { setForm({ kind: 'remove', id: entry.selection.id, name: entry.name, address: entry.address }); setError(''); }} />
           </View>}
         </Card>)}
-        {props.onManageHd && <Button title="Manage wallet accounts" variant="secondary" disabled={busy} onPress={props.onManageHd} />}
-        {props.onOpenWallet && <Button title="Open wallet" variant="secondary" disabled={busy} onPress={props.onOpenWallet} />}
-        <Button title="Watch an account" disabled={!canManageWatch} onPress={() => { setForm('add'); setError(''); }} />
-        <Text style={s.kind}>Use a public address, account key or supported descriptor.</Text>
+        {props.onManageHd && <Button title={t('mobile.shellViews.walletAccounts.manageWalletAccounts')} variant="secondary" disabled={busy} onPress={props.onManageHd} />}
+        {props.onOpenWallet && <Button title={t('mobile.shellViews.app.openWallet')} variant="secondary" disabled={busy} onPress={props.onOpenWallet} />}
+        <Button title={t('mobile.welcome.watch')} disabled={!canManageWatch} onPress={() => { setForm('add'); setError(''); }} />
+        <Text style={s.kind}>{t('mobile.shellViews.walletAccounts.useAPublicAddressAccountKeyOrSupported')}</Text>
       </>}
-      {(busy || props.watch.busy) && <ActivityIndicator accessibilityLabel="Saving account change" color={colors.pink} />}
+      {(busy || props.watch.busy) && <ActivityIndicator accessibilityLabel={t('mobile.shellViews.walletAccounts.savingAccountChange')} color={colors.pink} />}
       {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
     </Screen>}
   </KeyboardAvoidingView></SafeAreaView>;

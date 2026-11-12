@@ -10,5 +10,6 @@ await englishI18n.init({ initImmediate: false, lng: 'en', fallbackLng: 'en',
   resources: { en: { translation: languageMessages('en') } }, interpolation: { escapeValue: false } });
 /** VM component hosts keep their React fixture; translations use the real engine. */
 export const nativeTranslationFixture = {
+  nativeI18n: englishI18n,
   useNativeTranslation: () => ({ t: englishI18n.t.bind(englishI18n), i18n: englishI18n }),
 };

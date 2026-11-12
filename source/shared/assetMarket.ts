@@ -22,7 +22,10 @@ const positive = (value: unknown): number | null =>
 export const validMarketId = (value: unknown): value is string =>
   typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,127}$/.test(value);
 
-export function assetMarketLine(prices: readonly number[]): string | null {
+/** Shared plot geometry keeps the visible line and interactive sample marker aligned. */
+export function assetMarketCoordinates(
+  prices: readonly number[]
+): readonly { x: number; y: number }[] | null {
   if (
     prices.length < 2 ||
     prices.length > 241 ||
@@ -31,13 +34,21 @@ export function assetMarketLine(prices: readonly number[]): string | null {
     return null;
   const low = Math.min(...prices),
     range = Math.max(...prices) - low;
-  return prices
-    .map((value, index) => {
-      const x = (index * 300) / (prices.length - 1);
-      const y = range ? 112 - ((value - low) / range) * 104 : 60;
-      return `${index ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`;
-    })
-    .join(' ');
+  return prices.map((value, index) => ({
+    x: (index * 300) / (prices.length - 1),
+    y: range ? 112 - ((value - low) / range) * 104 : 60,
+  }));
+}
+
+export function assetMarketLine(prices: readonly number[]): string | null {
+  return (
+    assetMarketCoordinates(prices)
+      ?.map(
+        ({ x, y }, index) =>
+          `${index ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`
+      )
+      .join(' ') ?? null
+  );
 }
 
 export function assetMarketUrl(id: string, currency: string): string {

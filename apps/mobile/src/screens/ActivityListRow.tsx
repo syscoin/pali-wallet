@@ -1,19 +1,21 @@
+import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Coin, colors, Icon, Text } from '../ui';
 import { IdlePressable } from './IdleActivityBoundary';
 import type { AssetIconIdentity } from '../../../../source/shared/assetIconIdentity';
+const t = nativeI18n.t.bind(nativeI18n);
 
 export function activityDate(milliseconds: number | null | undefined, now = new Date()) {
-  if (!milliseconds || !Number.isFinite(milliseconds)) return { key: 'unknown', label: 'Date unavailable', time: '' };
+  if (!milliseconds || !Number.isFinite(milliseconds)) return { key: 'unknown', label: t('mobile.activityViews.activityListRow.dateUnavailable'), time: '' };
   const date = new Date(milliseconds);
-  if (!Number.isFinite(date.getTime())) return { key: 'unknown', label: 'Date unavailable', time: '' };
+  if (!Number.isFinite(date.getTime())) return { key: 'unknown', label: t('mobile.activityViews.activityListRow.dateUnavailable'), time: '' };
   const key = (value: Date) => `${value.getFullYear()}-${value.getMonth()}-${value.getDate()}`;
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
   return { key: key(date),
-    label: key(date) === key(now) ? 'Today' : key(date) === key(yesterday) ? 'Yesterday'
-      : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) }),
-    time: date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+    label: key(date) === key(now) ? t('transactions.today') : key(date) === key(yesterday) ? t('transactions.yesterday')
+      : date.toLocaleDateString(nativeI18n.resolvedLanguage, { day: 'numeric', month: 'short', ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) }),
+    time: date.toLocaleTimeString(nativeI18n.resolvedLanguage, { hour: 'numeric', minute: '2-digit' }),
   };
 }
 
@@ -30,6 +32,7 @@ export function ActivityListRow({ title, subtitle, amount, time, direction, head
   registrationHash?: string;
   assetSymbol?: string;
 }) {
+  useNativeTranslation();
   const accent = direction === 'sent' ? colors.pink : colors.blue;
   return <View>
     {heading && <Text accessibilityRole="header" style={s.heading}>{heading}</Text>}

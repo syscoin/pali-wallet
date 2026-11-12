@@ -22,12 +22,12 @@ import { getUtxoNetwork, isCustomUtxoNetworkId, UTXO_NETWORKS, type UtxoNetwork 
 import type { WatchUtxoNetworksView } from '../core/publicAccountStorage';
 import { WatchNetworks } from './WatchNetworks';
 
-const watchChoices = (registrations: readonly UtxoNetwork[]) => [
-  { id: 'evm' as const, title: 'EVM networks', shortName: 'Ethereum', inputLabel: 'Public EVM address', prefix: '0x', provider: 'the selected EVM network provider', scope: 'Ethereum and compatible networks. Paste only a public address.' },
+const watchChoices = (registrations: readonly UtxoNetwork[], t: (key: string) => string) => [
+  { id: 'evm' as const, title: t('networkMenu.evmNetworks'), shortName: 'Ethereum', inputLabel: t('mobile.shellViews.walletAccounts.publicEvmAddress'), prefix: '0x', scope: t('mobile.onboarding.evmScope') },
   ...registrations.map((network) => ({
-    id: network.id, title: isCustomUtxoNetworkId(network.id) ? `${network.name} · ${new URL(network.endpoint).hostname}` : network.name, shortName: network.name, inputLabel: 'Public address, account key or descriptor',
+    id: network.id, title: isCustomUtxoNetworkId(network.id) ? `${network.name} · ${new URL(network.endpoint).hostname}` : network.name, shortName: network.name, inputLabel: t('mobile.onboarding.utxoInput'),
     prefix: `${network.addressNetwork.bech32}1, ${network.testnet ? 'vpub' : 'zpub'} or wpkh(…)`,
-    scope: 'A public account key or descriptor includes its receive and change addresses.',
+    scope: t('mobile.onboarding.utxoScope'),
   })),
 ];
 
@@ -114,13 +114,13 @@ export function Welcome({
               pressed && styles.pressed,
             ]}
           >
-            <Text style={styles.primaryButtonText}>Create wallet</Text>
+            <Text style={styles.primaryButtonText}>{t('mobile.walletViews.createWallet')}</Text>
           </IdlePressable>
         )}
         {onImportWallet && (
           <IdlePressable accessibilityRole="button" onPress={onImportWallet}
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
-            <Text style={styles.secondaryButtonText}>Import existing wallet</Text>
+            <Text style={styles.secondaryButtonText}>{t('mobile.walletViews.importExistingWallet')}</Text>
           </IdlePressable>
         )}
         <IdlePressable
@@ -147,10 +147,11 @@ export function Welcome({
 }
 
 export function AddWatchAccount({ onAdd, onCancel, availableNetworks, utxoNetworks = UTXO_NETWORKS, networkSettings, onNetworksChanged }: AddWatchAccountProps) {
-  const choices = watchChoices(utxoNetworks);
+  const { t } = useNativeTranslation();
+  const choices = watchChoices(utxoNetworks, t);
   const available = availableNetworks ?? choices.map(({ id }) => id);
   const [managingNetworks, setManagingNetworks] = useState(false);
-  const [name, setName] = useState('Account 1');
+  const [name, setName] = useState(t('mobile.walletViews.account1'));
   const [address, setAddress] = useState('');
   const [network, setNetwork] = useState<WatchAccountNetwork>('evm');
   const [review, setReview] = useState<{ name: string; address: string; network: WatchAccountNetwork } | null>(null);
@@ -181,18 +182,18 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks, utxoNetwor
   const prepare = () => {
     if (submissionInProgress.current || AppState.currentState !== 'active') return;
     try {
-      if (info.id !== network || !available.includes(network)) throw new Error('This network is not available in this build.');
+      if (info.id !== network || !available.includes(network)) throw new Error(t('mobile.onboarding.networkUnavailable'));
       const source = network === 'evm' ? null : parseUtxoPublicIdentifier(address.trim(), getUtxoNetwork(network, utxoNetworks));
       const account = createWatchAccount('review', name.trim(), source?.address ?? address.trim(), network, utxoNetworks);
       setReview({ name: account.name, address: source?.identifier ?? Object.values(account.addresses)[0]!, network });
       setError(null);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Check the public address.'); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : t('mobile.onboarding.invalidPublicAddress')); }
   };
   const confirm = async () => {
     if (!review || submissionInProgress.current || AppState.currentState !== 'active' || !available.includes(review.network)) return;
     submissionInProgress.current = true; setSubmitting(true); setError(null);
     try { await onAdd(review); }
-    catch (cause) { if (alive.current) setError(cause instanceof Error ? cause.message : 'This account could not be added. Please try again.'); }
+    catch (cause) { if (alive.current) setError(cause instanceof Error ? cause.message : t('mobile.onboarding.addFailed')); }
     finally { submissionInProgress.current = false; if (alive.current) setSubmitting(false); }
   };
   if (managingNetworks && networkSettings && onNetworksChanged)
@@ -200,38 +201,38 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks, utxoNetwor
   return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <View style={styles.formNavigation}>
-        <IdlePressable accessibilityRole="button" accessibilityLabel="Back" disabled={submitting} onPress={back} hitSlop={8} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}><Icon name="arrow-left" size={22} color={colors.text} /></IdlePressable>
-        <Text style={styles.navigationLabel}>{review ? 'REVIEW ACCOUNT' : 'ADD ACCOUNT'}</Text><View style={styles.navigationBalance} />
+        <IdlePressable accessibilityRole="button" accessibilityLabel={t('buttons.back')} disabled={submitting} onPress={back} hitSlop={8} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}><Icon name="arrow-left" size={22} color={colors.text} /></IdlePressable>
+        <Text style={styles.navigationLabel}>{review ? t('mobile.onboarding.reviewAccountBadge') : t('mobile.onboarding.addAccountBadge')}</Text><View style={styles.navigationBalance} />
       </View>
       <View style={styles.formIntro}><View style={styles.largeEye}><Icon name="eye" size={30} color={colors.blue} /></View>
-        <Text accessibilityRole="header" style={styles.formTitle}>{review ? 'Check your watch account' : 'Watch an account'}</Text>
-        <Text style={styles.formDescription}>{review ? 'Check the network and public account before saving.' : 'Keep an eye on a wallet using only its public information.'}</Text>
+        <Text accessibilityRole="header" style={styles.formTitle}>{review ? t('mobile.onboarding.checkWatch') : t('mobile.onboarding.watchAccount')}</Text>
+        <Text style={styles.formDescription}>{review ? t('mobile.onboarding.checkPublicAccount') : t('mobile.onboarding.publicOnly')}</Text>
       </View>
       {review ? <View style={styles.fields}>
-        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Account name</Text><Text style={styles.reviewText}>{review.name}</Text></View>
-        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Network</Text><Text style={styles.reviewText}>{info.title}</Text></View>
-        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Public account</Text><Text selectable accessibilityLabel={`Review ${info.title} address ${review.address}`} style={styles.reviewAddress}>{review.address}</Text></View>
+        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>{t('mobile.accounts.accountName')}</Text><Text style={styles.reviewText}>{review.name}</Text></View>
+        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>{t('transactions.replay.network')}</Text><Text style={styles.reviewText}>{info.title}</Text></View>
+        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>{t('mobile.onboarding.publicAccount')}</Text><Text selectable accessibilityLabel={t('mobile.onboarding.reviewAddress', { network: info.title, address: review.address })} style={styles.reviewAddress}>{review.address}</Text></View>
         <Text style={styles.fieldHint}>{info.scope}</Text>
       </View> : <View style={styles.fields}>
-        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Address network</Text>
+        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>{t('mobile.onboarding.addressNetwork')}</Text>
           <View style={styles.networkChoices}>{choices.map((choice) => <IdlePressable key={choice.id} accessibilityRole="button" accessibilityLabel={choice.title}
             accessibilityState={{ selected: network === choice.id, disabled: !available.includes(choice.id) }} disabled={!available.includes(choice.id) || submitting}
             onPress={() => { setNetwork(choice.id); setAddress(''); setReview(null); setError(null); }}
             style={[styles.networkChoice, network === choice.id && styles.networkChoiceSelected, !available.includes(choice.id) && styles.disabled]}>
-            <Text style={styles.networkChoiceTitle}>{choice.title}</Text>{!available.includes(choice.id) && <Text style={styles.fieldHint}>Not available yet</Text>}
+            <Text style={styles.networkChoiceTitle}>{choice.title}</Text>{!available.includes(choice.id) && <Text style={styles.fieldHint}>{t('mobile.onboarding.notAvailable')}</Text>}
           </IdlePressable>)}</View>
-          {networkSettings && onNetworksChanged && <IdlePressable accessibilityRole="button" accessibilityLabel="Manage watch networks"
+          {networkSettings && onNetworksChanged && <IdlePressable accessibilityRole="button" accessibilityLabel={t('mobile.onboarding.manageWatchNetworks')}
             onPress={() => { setError(null); setManagingNetworks(true); }}>
-            <Text style={styles.fieldHint}>Manage networks</Text>
+            <Text style={styles.fieldHint}>{t('networkMenu.manageNetworks')}</Text>
           </IdlePressable>}
         </View>
-        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Account name</Text>
-          <IdleTextInput accessibilityLabel="Account name" autoCapitalize="words" autoComplete="off" autoCorrect={false} editable={!submitting} importantForAutofill="no" maxLength={40}
-            onChangeText={(value) => { setName(value); setError(null); }} onSubmitEditing={() => addressInput.current?.focus()} placeholder={`e.g. My ${info.shortName} address`}
+        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>{t('mobile.accounts.accountName')}</Text>
+          <IdleTextInput accessibilityLabel={t('mobile.accounts.accountName')} autoCapitalize="words" autoComplete="off" autoCorrect={false} editable={!submitting} importantForAutofill="no" maxLength={40}
+            onChangeText={(value) => { setName(value); setError(null); }} onSubmitEditing={() => addressInput.current?.focus()} placeholder={t('mobile.onboarding.namePlaceholder', { network: info.shortName })}
             placeholderTextColor={colors.muted} returnKeyType="next" selectionColor={colors.pink} style={styles.input} textContentType="none" value={name} />
         </View>
         <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>{info.inputLabel}</Text>
-          <IdleTextInput ref={addressInput} accessibilityLabel={info.inputLabel} accessibilityHint={`Paste public information for ${info.title}. Never enter a recovery phrase or private key.`}
+          <IdleTextInput ref={addressInput} accessibilityLabel={info.inputLabel} accessibilityHint={t('mobile.onboarding.publicInputHint', { network: info.title })}
             autoCapitalize="none" autoComplete="off" autoCorrect={false} editable={!submitting} importantForAutofill="no" maxLength={network === 'evm' ? 256 : 4096}
             onChangeText={(value) => { setAddress(value); setError(null); }} onSubmitEditing={prepare} placeholder={`${info.prefix}…`} placeholderTextColor={colors.muted}
             returnKeyType="done" selectionColor={colors.pink} spellCheck={false} style={[styles.input, styles.addressInput]} textContentType="none" value={address} />
@@ -243,8 +244,8 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks, utxoNetwor
       <View style={styles.formFooter}><IdlePressable accessibilityRole="button" accessibilityState={{ disabled: submitting, busy: submitting }} disabled={submitting}
         onPress={() => review ? void confirm() : prepare()} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, submitting && styles.disabled]}>
         {submitting ? <ActivityIndicator color={colors.bg} /> : <Icon name={review ? 'plus' : 'eye'} size={21} color={colors.bg} />}
-        <Text style={styles.primaryButtonText}>{submitting ? 'Adding account…' : review ? 'Confirm watch account' : 'Review account'}</Text>
-      </IdlePressable><Text style={styles.footerNote}>Use public information only. Never enter a recovery phrase or private key.</Text></View>
+        <Text style={styles.primaryButtonText}>{submitting ? t('mobile.recoveryDevices.ledger.addingAccount') : review ? t('mobile.onboarding.confirmWatch') : t('mobile.onboarding.reviewAccount')}</Text>
+      </IdlePressable><Text style={styles.footerNote}>{t('mobile.onboarding.publicWarning')}</Text></View>
   </KeyboardAvoidingView>;
 }
 

@@ -25,7 +25,7 @@ import type {
   NativeGuardianRecoveryDraft,
 } from '../smartAccount/guardianRecovery';
 import { formatBaseUnits } from '../core/amounts';
-import { useNativeTranslation } from '../platform/localization';
+import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import {
   Button,
   Card,
@@ -41,6 +41,7 @@ import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
 import { TransactionDetails } from './NativeTransactionReview';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
+const t = nativeI18n.t.bind(nativeI18n);
 
 export type NativeGuardianRecoveryTool = NativeGuardianRecoveryChoices & {
   chainId: number;
@@ -184,7 +185,7 @@ export function NativeGuardianRecovery({
         if (current.live && (failure as {code?:string})?.code === 'PASSKEY_POSSESSION_FAILED') setPasskeyNotVerified(true);
         else if (current.live)
           setError(
-            'Recovery could not be opened. Check the current policy and try again.'
+            t('mobile.recoveryStatusViews.guardian.recoveryCouldNotBeOpenedCheckTheCurrentPolicyAnd')
           );
       } finally {
         current.busy = false;
@@ -192,6 +193,7 @@ export function NativeGuardianRecovery({
       }
     },
     [
+      t,
       port,
       lifetime,
       policySupported,
@@ -234,10 +236,10 @@ export function NativeGuardianRecovery({
           <Header
             title={
               choosing === 'guardian'
-                ? 'Choose guardian'
+                ? t('mobile.recoveryStatusViews.guardian.chooseGuardian')
                 : choosing === 'replacement'
-                ? 'Choose replacement owner'
-                : 'Choose fee payer'
+                ? t('mobile.recoveryStatusViews.guardian.chooseReplacementOwner')
+                : t('mobile.recoveryStatusViews.guardian.chooseFeePayer')
             }
             onBack={() => {
               setChoosing(null);
@@ -245,7 +247,7 @@ export function NativeGuardianRecovery({
             }}
           />
           <IdleTextInput
-            accessibilityLabel="Search wallet accounts"
+            accessibilityLabel={t('mobile.recoveryStatusViews.guardian.searchWalletAccounts')}
             value={search}
             onChangeText={setSearch}
             autoCorrect={false}
@@ -257,7 +259,7 @@ export function NativeGuardianRecovery({
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={s.choices}
             ListEmptyComponent={
-              <Text style={styles.muted}>No matching wallet accounts</Text>
+              <Text style={styles.muted}>{t('mobile.recoveryStatusViews.guardian.noMatchingWalletAccounts')}</Text>
             }
             renderItem={({ item }) => (
               <AccountChoice
@@ -305,7 +307,7 @@ export function NativeGuardianRecovery({
           <>
             {!port.hasIntent && (
               <Button
-                title="Review recovery"
+                title={t('mobile.recoveryStatusViews.guardian.reviewRecovery')}
                 disabled={
                   busy ||
                   !policySupported ||
@@ -324,7 +326,7 @@ export function NativeGuardianRecovery({
               />
             )}{' '}
             <Button
-              title="Close"
+              title={t('buttons.close')}
               variant="secondary"
               size="compact"
               onPress={back}
@@ -333,33 +335,33 @@ export function NativeGuardianRecovery({
         }
       >
         <Header
-          title="Recover smart account"
+          title={t('mobile.recoveryStatusViews.guardian.recoverSmartAccount')}
           subtitle={networkLabel}
           onBack={back}
         />
         <Card style={s.card}>
-          <Text style={s.label}>Smart account · Chain ID {port.chainId}</Text>
+          <Text style={s.label}>{t('mobile.recoveryStatusViews.guardian.smartAccountChainID')}{' '}{port.chainId}</Text>
           <Text selectable style={s.address}>
             {address}
           </Text>
         </Card>
         {port.hasIntent ? (
-          <Text style={styles.muted}>Opening saved recovery…</Text>
+          <Text style={styles.muted}>{t('mobile.recoveryStatusViews.guardian.openingSavedRecovery')}</Text>
         ) : (
           <>
             <Notice
               title={
                 policySupported
-                  ? 'Choose the replacement owner'
-                  : 'Guardian policy unsupported'
+                  ? t('mobile.recoveryStatusViews.guardian.chooseTheReplacementOwner')
+                  : t('mobile.recoveryStatusViews.guardian.guardianPolicyUnsupported')
               }
               body={
                 policySupported
-                  ? 'Recovery replaces the account’s current validator with the wallet key you select. The guardian policy’s waiting period applies before finalization.'
-                  : 'Recovery in this wallet currently supports policies that require one guardian. You can still check this account’s recovery status.'
+                  ? t('mobile.recoveryStatusViews.guardian.recoveryReplacesTheAccountsCurrentValidatorWithTheWalletKey')
+                  : t('mobile.recoveryStatusViews.guardian.recoveryInThisWalletCurrentlySupportsPoliciesThatRequireOne')
               }
             />
-            <Text style={s.heading}>Guardian account</Text>
+            <Text style={s.heading}>{t('mobile.recoveryStatusViews.guardian.guardianAccount')}</Text>
             {guardians.length ? (
               <>
                 <Card style={s.card}>
@@ -378,7 +380,7 @@ export function NativeGuardianRecovery({
                 </Card>
                 {guardians.length > 1 && (
                   <Button
-                    title="Choose guardian account"
+                    title={t('mobile.recoveryStatusViews.guardian.chooseGuardianAccount')}
                     variant="secondary"
                     size="compact"
                     disabled={busy}
@@ -388,13 +390,13 @@ export function NativeGuardianRecovery({
               </>
             ) : (
               <Notice
-                title="Guardian account unavailable"
-                body="This recovery requires a guardian account held by this wallet."
+                title={t('mobile.recoveryStatusViews.guardian.guardianAccountUnavailable')}
+                body={t('mobile.recoveryStatusViews.guardian.thisRecoveryRequiresAGuardianAccountHeldByThisWallet')}
                 tone="amber"
               />
             )}
-            <Text style={s.heading}>Replacement owner</Text>
-            {replacementKind === 'passkey' && <Card style={s.card}><Icon name="fingerprint" /><Text>Passkey</Text><Text>{t('smartAccountHub.compositePasskeyDescription')}</Text></Card>}
+            <Text style={s.heading}>{t('mobile.recoveryStatusViews.guardian.replacementOwner')}</Text>
+            {replacementKind === 'passkey' && <Card style={s.card}><Icon name="fingerprint" /><Text>{t('settings.passkeyAuthenticator')}</Text><Text>{t('smartAccountHub.compositePasskeyDescription')}</Text></Card>}
             {replacementKind === 'software' && replacementId && (
               <Card style={s.card}>
                 <Text style={s.label}>
@@ -414,21 +416,21 @@ export function NativeGuardianRecovery({
               </Card>
             )}
             <Button
-              title="Choose replacement owner"
+              title={t('mobile.recoveryStatusViews.guardian.chooseReplacementOwner')}
               variant="secondary"
               size="compact"
               disabled={busy}
               icon="wallet"
               onPress={() => { setReplacementKind('software'); setPasskeyNotVerified(false); setChoosing('replacement'); }}
             />
-            {port.passkeysAvailable && replacementKind !== 'passkey' && <Button title="Use passkey" icon="fingerprint" variant="secondary" size="compact" disabled={busy}
+            {port.passkeysAvailable && replacementKind !== 'passkey' && <Button title={t('mobile.recoveryStatusViews.guardian.usePasskey')} icon="fingerprint" variant="secondary" size="compact" disabled={busy}
               onPress={() => { setReplacementKind('passkey'); setPasskeyNotVerified(false); }} />}
             {passkeyNotVerified && replacementKind === 'passkey' && <>
               <Notice title={t('settings.smartAccountPasskeyRecreateConfirmTitle')} body={t('settings.smartAccountPasskeyRecreateConfirmDescription')} />
               <Button title={t('settings.smartAccountPasskeyRecreateConfirmButton')} icon="fingerprint" disabled={busy || !guardianId || !payerId}
                 onPress={() => void open({kind:'start',guardianId,payerId,replacement:{kind:'passkey',recreate:true}})} />
             </>}
-            <Text style={s.heading}>Fee payer</Text>
+            <Text style={s.heading}>{t('mobile.infrastructure.feePayer')}</Text>
             {payerId && (
               <Card style={s.card}>
                 <Text style={s.label}>
@@ -443,7 +445,7 @@ export function NativeGuardianRecovery({
               </Card>
             )}
             <Button
-              title="Choose fee payer"
+              title={t('mobile.recoveryStatusViews.guardian.chooseFeePayer')}
               variant="secondary"
               size="compact"
               disabled={busy}
@@ -453,7 +455,7 @@ export function NativeGuardianRecovery({
         )}
         {busy && (
           <ActivityIndicator
-            accessibilityLabel="Opening recovery"
+            accessibilityLabel={t('mobile.recoveryStatusViews.guardian.openingRecovery')}
             color={colors.pink}
           />
         )}
@@ -464,7 +466,7 @@ export function NativeGuardianRecovery({
         )}
         {error && port.hasIntent && (
           <Button
-            title="Try again"
+            title={t('mobile.connections.tryAgain')}
             disabled={busy}
             onPress={() => void open({ kind: 'resume' })}
           />
@@ -479,7 +481,7 @@ export function NativeGuardianRecovery({
               if (!owner.current.live || lifetime.aborted) return;
               void openRecoveryAlerts().catch(() => {
                 if (owner.current.live && !lifetime.aborted)
-                  setError('Recovery alerts could not be opened. Try again.');
+                  setError(t('mobile.recoveryStatusViews.guardian.recoveryAlertsCouldNotBeOpenedTryAgain'));
               });
             }}
           />
@@ -500,6 +502,7 @@ function AccountChoice({
   disabled: boolean;
   onPress(): void;
 }) {
+  useNativeTranslation();
   return (
     <IdlePressable
       accessibilityRole="radio"
@@ -511,7 +514,7 @@ function AccountChoice({
     >
       <Text style={s.label}>
         {account.label}
-        {selected ? ' · Selected' : ''}
+        {selected ? ` · ${t('mobile.language.selected')}` : ''}
       </Text>
       <Text selectable style={s.address}>
         {account.address}
@@ -586,8 +589,8 @@ export function NativeGuardianRecoveryView({
               <Button
                 title={
                   state.action === 'finalize'
-                    ? 'Review finalization fee'
-                    : 'Authorize recovery'
+                    ? t('mobile.recoveryStatusViews.guardian.reviewFinalizationFee')
+                    : t('mobile.recoveryStatusViews.guardian.authorizeRecovery')
                 }
                 onPress={() => void act(() => controller.review())}
               />
@@ -596,8 +599,8 @@ export function NativeGuardianRecoveryView({
               <Button
                 title={
                   state.action === 'finalize'
-                    ? 'Confirm finalization'
-                    : 'Confirm schedule'
+                    ? t('mobile.recoveryStatusViews.guardian.confirmFinalization')
+                    : t('mobile.recoveryStatusViews.guardian.confirmSchedule')
                 }
                 onPress={() => void act(() => controller.confirm(state.feeReview!.id))}
               />
@@ -605,7 +608,7 @@ export function NativeGuardianRecoveryView({
             {state.phase === 'complete' &&
               state.metadataRefresh === 'failed' && (
                 <Button
-                  title="Refresh account metadata"
+                  title={t('mobile.recoveryStatusViews.guardian.refreshAccountMetadata')}
                   onPress={() =>
                     void act(() => controller.retryMetadata().catch(() => undefined))
                   }
@@ -614,13 +617,13 @@ export function NativeGuardianRecoveryView({
             {['waiting', 'unknown', 'failed'].includes(state.phase) && (
               <Button
                 title={
-                  terminalNotice ? 'Refresh current policy' : 'Check status'
+                  terminalNotice ? t('mobile.recoveryStatusViews.guardian.refreshCurrentPolicy') : t('settings.smartAccountInfrastructureCheckStatus')
                 }
                 onPress={() => void act(() => controller.refresh())}
               />
             )}
             <Button
-              title={terminalNotice ? 'Return to account' : 'Close'}
+              title={terminalNotice ? t('mobile.recoveryStatusViews.guardian.returnToAccount') : t('buttons.close')}
               variant="secondary"
               size="compact"
               onPress={onBack}
@@ -631,12 +634,12 @@ export function NativeGuardianRecoveryView({
         <Header
           title={
             state.phase === 'cleared'
-              ? 'Recovery tracking cleared'
+              ? t('mobile.recoveryStatusViews.guardian.recoveryTrackingCleared')
               : state.phase === 'complete'
               ? state.metadataRefresh === 'failed'
-                ? 'Recovery confirmed'
-                : 'Recovery complete'
-              : 'Recover smart account'
+                ? t('mobile.recoveryStatusViews.guardian.recoveryConfirmed')
+                : t('mobile.recoveryStatusViews.guardian.recoveryComplete')
+              : t('mobile.recoveryStatusViews.guardian.recoverSmartAccount')
           }
           subtitle={networkLabel}
           onBack={onBack}
@@ -649,7 +652,7 @@ export function NativeGuardianRecoveryView({
           />
         )}
         <Card style={s.card}>
-          <Text style={s.label}>Smart account · Chain ID {chainId}</Text>
+          <Text style={s.label}>{t('mobile.recoveryStatusViews.guardian.smartAccountChainID')}{' '}{chainId}</Text>
           <Text selectable style={s.address}>
             {address}
           </Text>
@@ -658,17 +661,17 @@ export function NativeGuardianRecoveryView({
               <Text style={s.label}>
                 {state.phase === 'complete' &&
                 state.metadataRefresh === 'failed'
-                  ? 'Replacement owner in saved recovery'
-                  : 'Replacement owner'}
+                  ? t('mobile.recoveryStatusViews.guardian.replacementOwnerInSavedRecovery')
+                  : t('mobile.recoveryStatusViews.guardian.replacementOwner')}
               </Text>
               <Text selectable style={s.address}>
-                {state.intent.replacement.kind === 'software' ? state.intent.replacement.account.address : state.intent.replacement.credential.authenticator.id === 'p256-webauthn' ? state.intent.replacement.credential.authenticator.config.passkeyName || 'Passkey' : 'Passkey'}
+                {state.intent.replacement.kind === 'software' ? state.intent.replacement.account.address : state.intent.replacement.credential.authenticator.id === 'p256-webauthn' ? state.intent.replacement.credential.authenticator.config.passkeyName || t('settings.passkeyAuthenticator') : t('settings.passkeyAuthenticator')}
               </Text>
-              <Text style={s.label}>Guardian</Text>
+              <Text style={s.label}>{t('mobile.recoveryStatusViews.guardian.guardian')}</Text>
               <Text selectable style={s.address}>
                 {state.intent.guardian.address}
               </Text>
-              <Text style={s.label}>Fee payer</Text>
+              <Text style={s.label}>{t('mobile.infrastructure.feePayer')}</Text>
               <Text selectable style={s.address}>
                 {state.intent.payer.address}
               </Text>
@@ -680,8 +683,8 @@ export function NativeGuardianRecoveryView({
             <ActivityIndicator color={colors.pink} />
             <Text style={styles.muted}>
               {state.phase === 'submitting'
-                ? 'Submitting recovery…'
-                : 'Checking recovery…'}
+                ? t('mobile.recoveryStatusViews.guardian.submittingRecovery')
+                : t('mobile.recoveryStatusViews.guardian.checkingRecovery')}
             </Text>
           </>
         )}
@@ -690,13 +693,13 @@ export function NativeGuardianRecoveryView({
             <Notice
               title={
                 state.action === 'finalize'
-                  ? 'Recovery is ready'
-                  : 'Authorize the recovery'
+                  ? t('mobile.recoveryStatusViews.guardian.recoveryIsReady')
+                  : t('mobile.recoveryStatusViews.guardian.authorizeTheRecovery')
               }
               body={
                 state.action === 'finalize'
-                  ? 'Finalize the saved recovery to activate the replacement owner. Review the paying account and fee next.'
-                  : 'Authorize the guardian and replacement-key proofs for this exact recovery. Review the paying account and fee next.'
+                  ? t('mobile.recoveryStatusViews.guardian.finalizeTheSavedRecoveryToActivateTheReplacementOwnerReview')
+                  : t('mobile.recoveryStatusViews.guardian.authorizeTheGuardianAndReplacementkeyProofsForThisExactRecovery')
               }
             />
           </>
@@ -706,26 +709,26 @@ export function NativeGuardianRecoveryView({
             <Notice
               title={
                 state.action === 'finalize'
-                  ? 'Confirm finalization'
-                  : 'Confirm recovery schedule'
+                  ? t('mobile.recoveryStatusViews.guardian.confirmFinalization')
+                  : t('mobile.recoveryStatusViews.guardian.confirmRecoverySchedule')
               }
-              body="The selected fee payer pays the network fee for the exact transaction below."
+              body={t('mobile.recoveryStatusViews.guardian.theSelectedFeePayerPaysTheNetworkFeeForThe')}
             />
             <Card style={s.card}>
-              <Text style={s.label}>Fee payer</Text>
+              <Text style={s.label}>{t('mobile.infrastructure.feePayer')}</Text>
               <Text selectable style={s.address}>
                 {state.feeReview.transaction.from}
               </Text>
-              <Text style={s.label}>Maximum network fee</Text>
+              <Text style={s.label}>{t('transactions.replay.maximumFee')}</Text>
               {amount(state.feeReview.maximumFeeUnits)}
-              <Text style={s.label}>Maximum total cost</Text>
+              <Text style={s.label}>{t('mobile.infrastructure.maximumTotal')}</Text>
               {amount(state.feeReview.maximumTotalUnits)}
             </Card>
             <Button
               title={
                 details
-                  ? 'Hide transaction details'
-                  : 'View transaction details'
+                  ? t('mobile.privacyFlows.deposit.hideTransactionDetails')
+                  : t('mobile.privacyFlows.deposit.viewTransactionDetails')
               }
               expanded={details}
               variant="secondary"
@@ -740,22 +743,22 @@ export function NativeGuardianRecoveryView({
         )}
         {state.phase === 'waiting' && (
           <Notice
-            title="Recovery pending"
+            title={t('settings.smartAccountGuardianRecoveryPending')}
             body={
               state.observation?.knownOperation?.status === 'pending'
-                ? 'Check the network status to see when the guardian waiting period has elapsed.'
+                ? t('mobile.recoveryStatusViews.guardian.checkTheNetworkStatusToSeeWhenTheGuardianWaiting')
                 : state.observation?.knownOperation?.status === 'unknown' &&
                   state.observation.active &&
                   ['pending', 'ready'].includes(state.observation.active.status)
-                ? 'Another recovery is pending for this account. Check its status before continuing.'
-                : 'The saved transaction is awaiting a network result. Check its status before continuing.'
+                ? t('mobile.recoveryStatusViews.guardian.anotherRecoveryIsPendingForThisAccountCheckItsStatus')
+                : t('mobile.recoveryStatusViews.guardian.theSavedTransactionIsAwaitingANetworkResultCheckIts')
             }
           />
         )}
         {state.phase === 'unknown' && (
           <Notice
-            title="Submission status unavailable"
-            body="The transaction may have reached the network. Check its status before attempting another recovery."
+            title={t('mobile.recoveryStatusViews.guardian.submissionStatusUnavailable')}
+            body={t('mobile.recoveryStatusViews.guardian.theTransactionMayHaveReachedTheNetworkCheckItsStatus')}
             tone="amber"
           />
         )}
@@ -763,13 +766,13 @@ export function NativeGuardianRecoveryView({
           (state.phase === 'waiting' || state.phase === 'ready') && (
             <Card style={s.card}>
               <Text style={s.label}>
-                Ready{' '}
+                {t('settings.smartAccountInfrastructureReadyStatus')}{' '}{' '}
                 {new Date(
                   state.observation.knownOperation.executableAt * 1000
                 ).toLocaleString()}
               </Text>
               <Text style={s.label}>
-                Expires{' '}
+                {t('mobile.connections.expires')}{' '}{' '}
                 {new Date(
                   state.observation.knownOperation.expiresAt * 1000
                 ).toLocaleString()}
@@ -778,7 +781,7 @@ export function NativeGuardianRecoveryView({
           )}
         {state.transactionHash && (
           <Card style={s.card}>
-            <Text style={s.label}>Transaction hash</Text>
+            <Text style={s.label}>{t('transactions.replay.hash')}</Text>
             <Text selectable style={s.address}>
               {state.transactionHash}
             </Text>
@@ -786,7 +789,7 @@ export function NativeGuardianRecoveryView({
         )}
         {state.transactionHash && state.intent && (
           <Button
-            title="View saved transaction"
+            title={t('mobile.recoveryStatusViews.guardian.viewSavedTransaction')}
             variant="secondary"
             size="compact"
             disabled={activityBusy}
@@ -802,7 +805,7 @@ export function NativeGuardianRecoveryView({
                 .catch(() => {
                   if (live.current)
                     setActivityError(
-                      'The saved transaction could not be opened. Check status or close and resume recovery.'
+                      t('mobile.recoveryStatusViews.guardian.theSavedTransactionCouldNotBeOpenedCheckStatusOr')
                     );
                 })
                 .finally(() => {
@@ -828,20 +831,20 @@ export function NativeGuardianRecoveryView({
           <Notice
             title={
               state.metadataRefresh === 'failed'
-                ? 'Wallet update incomplete'
-                : 'Replacement owner active'
+                ? t('mobile.recoveryStatusViews.guardian.walletUpdateIncomplete')
+                : t('mobile.recoveryStatusViews.guardian.replacementOwnerActive')
             }
             body={
               state.metadataRefresh === 'failed'
-                ? 'The recovery executed on-chain. This wallet has not adopted the observed account metadata. Refresh it or clear local recovery tracking.'
-                : 'This account now uses the replacement owner.'
+                ? t('mobile.recoveryStatusViews.guardian.theRecoveryExecutedOnchainThisWalletHasNotAdoptedThe')
+                : t('mobile.recoveryStatusViews.guardian.thisAccountNowUsesTheReplacementOwner')
             }
           />
         )}
 
         {state.canAbandon && !forget && (
           <Button
-            title="Clear local recovery tracking"
+            title={t('mobile.recoveryStatusViews.guardian.clearLocalRecoveryTracking')}
             variant="danger"
             size="compact"
             icon="trash"
@@ -851,29 +854,27 @@ export function NativeGuardianRecoveryView({
         {state.canAbandon && forget && (
           <>
             <Notice
-              title="Clear local tracking?"
-              body="This forgets the saved recovery intent. It does not cancel transactions or recovery scheduled on the network. Your wallet keys are kept."
+              title={t('mobile.recoveryStatusViews.guardian.clearLocalTracking')}
+              body={t('mobile.recoveryStatusViews.guardian.thisForgetsTheSavedRecoveryIntentItDoesNotCancel')}
               tone="amber"
             />
             <IdlePressable
               accessibilityRole="checkbox"
               accessibilityState={{ checked: acknowledged }}
-              accessibilityLabel="I understand that network recovery is not canceled"
+              accessibilityLabel={t('mobile.recoveryStatusViews.guardian.iUnderstandThatNetworkRecoveryIsNotCanceled')}
               onPress={() => setAcknowledged(!acknowledged)}
               style={s.choice}
             >
               <Text style={s.label}>
-                {acknowledged ? '✓ ' : ''}I understand that network recovery is
-                not canceled.
-              </Text>
+                {acknowledged ? '✓ ' : ''}{t('mobile.recoveryStatusViews.guardian.iUnderstandThatNetworkRecoveryIsNotCanceled2')}</Text>
             </IdlePressable>
             <Button
-              title="Clear saved intent"
+              title={t('mobile.recoveryStatusViews.guardian.clearSavedIntent')}
               disabled={!acknowledged || pending}
               onPress={() => void clear()}
             />
             <Button
-              title="Keep tracking"
+              title={t('mobile.recoveryStatusViews.guardian.keepTracking')}
               variant="secondary"
               size="compact"
               onPress={() => {
@@ -894,7 +895,7 @@ export function NativeGuardianRecoveryView({
               void openRecoveryAlerts().catch(() => {
                 if (live.current)
                   setActivityError(
-                    'Recovery alerts could not be opened. Try again.'
+                    t('mobile.recoveryStatusViews.guardian.recoveryAlertsCouldNotBeOpenedTryAgain')
                   );
               });
             }}

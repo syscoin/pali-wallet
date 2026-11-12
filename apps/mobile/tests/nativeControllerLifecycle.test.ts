@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecycle.ts';
-import type { CustodySnapshot } from '../src/custody/types.ts';
+import type { CustodySnapshot, CustodyRuntime } from '../src/custody/types.ts';
+import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 
 const deferred = () => { let resolve!: () => void; let reject!: (error: Error) => void; const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
@@ -191,4 +192,44 @@ for (const phase of ['ready', 'backup-required'] as const) test(`auto-open ${pha
   const reopened = await f.gate.acquire(next, () => true); assert(reopened);
   assert.equal(reopened.authority.getSnapshot().phase, phase);
   await f.gate.release(next);
+});
+
+test('releasing a real authority during public initialization drains it before healthy reacquisition', async () => {
+  const started = deferred(), resume = deferred(), events: string[] = [];
+  let creates = 0, firstUnlocked = false;
+  const gate = new NativeControllerLifecycle({
+    async protect() {},
+    create() {
+      const id = ++creates;
+      let unlocked = false;
+      const runtime: CustodyRuntime = {
+        session: {
+          async createWallet() {}, async importWallet() {},
+          async unlock() {
+            if (id === 1) { started.resolve(); await resume.promise; }
+            unlocked = true; if (id === 1) firstUnlocked = true;
+            return { authenticated: true };
+          },
+          async readSelectedAddress() { assert(unlocked); events.push(`address${id}`); return '0x52908400098527886E0F7030069857D2E4169EE7'; },
+          async lock() { unlocked = false; if (id === 1) firstUnlocked = false; events.push(`lock${id}`); },
+        },
+        storage: { async readState() { return { presence: 'existing', backup: 'confirmed' }; }, async close() { events.push(`close${id}`); } },
+      };
+      return { authority: new NativeCustodyAuthority({ open: async () => runtime }),
+        keyExport: { dispose() {} }, backup: { dispose() {} }, disposeTokens() {}, disposeTransfers() {}, async disposeConnections() {} };
+    },
+    recovery: () => ({ cancel() {}, async dispose() {} }),
+  });
+  const first = {}, next = {}, opening = gate.acquire(first, () => true);
+  await started.promise;
+  const retiring = gate.release(first), reopening = gate.acquire(next, () => true);
+  await tick(); assert.equal(creates, 1);
+  resume.resolve();
+  assert.equal(await opening, null); await retiring;
+  const healthy = await reopening; assert(healthy);
+  assert.equal(healthy.authority.getSnapshot().phase, 'ready');
+  assert.equal(firstUnlocked, false);
+  assert(!events.includes('address1'));
+  assert(events.indexOf('close1') < events.indexOf('address2'));
+  await gate.release(next);
 });

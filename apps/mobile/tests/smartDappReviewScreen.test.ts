@@ -1,3 +1,4 @@
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -36,6 +37,7 @@ function fixture() {
     useRef(initial: unknown) { const index = cursor++; if (!(index in hooks)) hooks[index] = { current: initial }; return hooks[index]; },
   };
   const imports: Record<string, unknown> = {
+    '../platform/localization': nativeTranslationFixture,
     './useDappLedgerConnection': {
       // This fixture reviews software-owner approval and allowance editing.
       useDappLedgerConnection: () => ({

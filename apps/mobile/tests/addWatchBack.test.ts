@@ -126,10 +126,12 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
       const hooks = evaluate(load('src/screens/useRealShell.ts'), { react: render.api, 'react-native': native, '../navigation/tabDeparture': { TabDeparture } });
       const idle = createIdleComponentFixture(render.api, native);
       const activityListRow = evaluate(load('src/screens/ActivityListRow.tsx'), {
+        '../platform/localization': nativeTranslationFixture,
         react: render.api, 'react-native': native, '../ui': ui, './IdleActivityBoundary': idle.components,
       });
       let privacyHidden = false;
       const dependencies = { '../platform/localization': nativeTranslationFixture, '../activity/activityFiltering': activityFiltering, './IdleActivityBoundary': idle.components, react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+        './CopyableAddress': { CopyableAddress: 'CopyableAddress' },
         'expo-clipboard': { async setStringAsync(value: string) { copied.push(value); return true; } }, 'react-native-qrcode-svg': 'QRCode', '../ui': ui, '../core/amounts': core, '../core/networks': core,
         '../core/utxoAddresses': { canUseUtxoCustodyAddress },
         '../core/utxoNetworks': { findUtxoNetwork, getUtxoNetwork }, '../core/watchOnlyAuthority': core,
@@ -361,6 +363,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   });
   const AddWatch = onboarding.AddWatchAccount as Component;
   const accounts = evaluate(source('src/screens/WalletAccounts.tsx'), {
+    '../platform/localization': nativeTranslationFixture,
     './IdleActivityBoundary': idle.components,
     react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
     '../core/accountDirectory': { projectAccounts: () => [], accountIdentity: () => '' }, './Onboarding': onboarding, '../core/networks': core,

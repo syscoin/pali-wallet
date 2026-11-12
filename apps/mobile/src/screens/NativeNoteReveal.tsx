@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,6 +28,7 @@ function clearAttempt(owner: Owner) {
 }
 
 export function NativeNoteReveal({ inventory, note, authentication, onSecretVisibilityChange, onBack, onLock }: Props) {
+  const { t } = useNativeTranslation();
   const life = useRef<Owner>({ live: false });
   const [state, setState] = useState<State>({ phase: 'protected' });
 
@@ -105,23 +107,21 @@ export function NativeNoteReveal({ inventory, note, authentication, onSecretVisi
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen footer={<>
-        {state.phase === 'shown' ? <Button title="Hide note" icon="eye" onPress={back} /> :
-          <Button title={state.phase === 'working' ? 'Authorizing…' : 'Reveal private note'}
+        {state.phase === 'shown' ? <Button title={t('mobile.noteFlows.reveal.hideNote')} icon="eye" onPress={back} /> :
+          <Button title={state.phase === 'working' ? t('mobile.noteFlows.reveal.authorizing') : t('mobile.noteFlows.reveal.revealPrivateNote')}
             disabled={state.phase !== 'protected'} onPress={() => void reveal()} />}
-        <Button title="Lock wallet" icon="lock" variant="secondary" onPress={() => { clear(); onLock(); }} />
+        <Button title={t('mobile.settings.lock')} icon="lock" variant="secondary" onPress={() => { clear(); onLock(); }} />
       </>}>
-        <Header title="Back up this note" onBack={back} />
-        <Notice title="Anyone with this note can withdraw" body="Keep your backup private. Your recovery phrase can’t restore this note." tone="amber" />
+        <Header title={t('mobile.noteFlows.reveal.backUpThisNote')} onBack={back} />
+        <Notice title={t('mobile.noteFlows.reveal.anyoneWithThisNoteCanWithdraw')} body={t('mobile.noteFlows.reveal.keepYourBackupPrivateYourRecoveryPhraseCant')} tone="amber" />
         {state.phase === 'shown' ? <>
           <Card style={s.secret}><Text style={s.note}>{state.secret}</Text></Card>
-          <Text style={styles.muted}>This note is hidden after 30 seconds.</Text>
+          <Text style={styles.muted}>{t('mobile.noteFlows.reveal.thisNoteIsHiddenAfter30Seconds')}</Text>
         </> : <>
           {state.phase === 'protected' && state.feedback === 'failed' && <Text accessibilityRole="alert" style={s.error}>
-            Could not show this note. Try again.
-          </Text>}
+            {t('mobile.noteFlows.reveal.couldNotShowThisNoteTryAgain')}</Text>}
           {state.phase === 'protected' && state.feedback === 'expired' && <Text accessibilityLiveRegion="polite" style={styles.muted}>
-            Private note hidden. Authorize again to view it.
-          </Text>}
+            {t('mobile.noteFlows.reveal.privateNoteHiddenAuthorizeAgainToViewIt')}</Text>}
         </>}
       </Screen>
     </KeyboardAvoidingView>

@@ -1,3 +1,4 @@
+import { waitForWatchPublicSession } from '../ui/operationAuthentication';
 import { expect, test } from '@playwright/test';
 
 const key = 'xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ';
@@ -33,7 +34,7 @@ test('sets up a verified custom watch network and retains it across reopen', asy
   await page.screenshot({ path: testInfo.outputPath('custom-watch-network-balance.png'), fullPage: true });
 
   await page.reload();
-  await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
+  await waitForWatchPublicSession(page);
   await expect(page.getByLabel('Litecoin confirmed balance 1.23456789 LTC', { exact: true })).toBeVisible();
 });
 

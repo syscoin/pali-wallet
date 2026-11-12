@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Linking, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +9,7 @@ import type { QrScannerProps } from './QrScanner.types';
 
 /** Camera ownership and permission are scoped to this explicitly opened scanner. */
 export function QrScanner<T>({ parse, copy, onScan, onClose }: QrScannerProps<T>) {
+  const { t } = useNativeTranslation();
   const [permission, setPermission] = useState<PermissionResponse | null>(null);
   const [failure, setFailure] = useState(false);
   const [invalidCode, setInvalidCode] = useState(false);
@@ -86,9 +88,9 @@ export function QrScanner<T>({ parse, copy, onScan, onClose }: QrScannerProps<T>
   }); };
 
   return <SafeAreaView edges={['top']} style={s.container}><Screen>
-    <Header title={copy.title} right={<IconButton label="Close scanner" icon="close" onPress={close} />} />
-    {failure ? <Notice title="Camera unavailable" body={copy.unavailable} />
-      : permission === null ? <ActivityIndicator color={colors.blue} accessibilityLabel="Requesting camera access" />
+    <Header title={copy.title} right={<IconButton label={t('mobile.scanner.close')} icon="close" onPress={close} />} />
+    {failure ? <Notice title={t('mobile.scanner.unavailable')} body={copy.unavailable} />
+      : permission === null ? <ActivityIndicator color={colors.blue} accessibilityLabel={t('mobile.scanner.requesting')} />
       : permission.granted ? <>
         {foreground && <View style={s.camera}>
           <CameraView style={StyleSheet.absoluteFill} facing="back" autofocus="on" active={foreground} enableTorch={torch}
@@ -100,14 +102,14 @@ export function QrScanner<T>({ parse, copy, onScan, onClose }: QrScannerProps<T>
           <View pointerEvents="none" style={s.target} />
         </View>}
         <Text style={s.caption}>{copy.instructions}</Text>
-        {foreground && cameraReady && <Button title={torch ? 'Turn off flashlight' : 'Turn on flashlight'} icon="torch" variant="secondary" size="compact" onPress={() => {
+        {foreground && cameraReady && <Button title={torch ? t('mobile.scanner.torchOff') : t('mobile.scanner.torchOn')} icon="torch" variant="secondary" size="compact" onPress={() => {
           if (isCurrentCamera()) setTorch(value => !value);
         }} />}
-        <Text style={s.caption}>Scanning never signs a transaction. You review requests before approving them.</Text>
+        <Text style={s.caption}>{t('mobile.scanner.safety')}</Text>
         {invalidCode && <Notice title={copy.invalidTitle} body={copy.invalidBody} />}
       </> : <>
-        <Notice title="Camera access needed" body={copy.permission} />
-        <Button icon="settings" title="Open Settings" onPress={openSettings} />
+        <Notice title={t('mobile.scanner.accessNeeded')} body={copy.permission} />
+        <Button icon="settings" title={t('mobile.scanner.settings')} onPress={openSettings} />
       </>}
     <Button title={copy.manualAction} variant="secondary" onPress={close} />
   </Screen></SafeAreaView>;

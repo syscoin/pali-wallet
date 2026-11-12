@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { useDappLedgerConnection } from './useDappLedgerConnection';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -21,6 +22,7 @@ export function NativeSmartTransactionReviewScreen({
   review: NativeSmartTransactionReview;
   controller: NativeConnectionsView;
 }) {
+  const { t } = useNativeTranslation();
   const ledger = useDappLedgerConnection({review, controller, ledgerConnection});
   const requestId = review.id;
   const authentication = useMemo(() => ({ isAuthenticating: () => controller.isRequestAuthenticating(requestId) }), [controller, requestId]);
@@ -72,7 +74,7 @@ export function NativeSmartTransactionReviewScreen({
       }}
       before={
         <>
-          {ledger.showConnect && <Button title="Connect Ledger" variant="secondary" size="compact" onPress={ledger.connect} />}
+          {ledger.showConnect && <Button title={t('mobile.accounts.connectLedger')} variant="secondary" size="compact" onPress={ledger.connect} />}
           {ledger.modal}
           <Card style={styles.site}>
             <Text>{review.appName}</Text>
@@ -116,7 +118,7 @@ export function NativeSmartTransactionReviewScreen({
             (summary, index) =>
               summary && (
                 <React.Fragment key={index}>
-                  <Text>Call {index + 1} approval</Text>
+                  <Text>{t('mobile.dappConsent.smartTransactionReview.callApproval', { index: index + 1 })}</Text>
                   <ApprovalReview
                     summary={{ ...summary, canEditAmount: false }}
                     transaction={intent}
@@ -137,14 +139,14 @@ export function NativeSmartTransactionReviewScreen({
               title={entry.field}
               body={
                 entry.reason ??
-                'This address appears on a known unsafe-address list.'
+                t('mobile.dappConsent.messageReview.thisAddressAppearsOnAKnownUnsafe')
               }
             />
           ))}
           {review.requiresWarningAcknowledgement && (
             <IdlePressable
               accessibilityRole="checkbox"
-              accessibilityLabel="I understand the address warning"
+              accessibilityLabel={t('mobile.dappConsent.messageReview.iUnderstandTheAddressWarning')}
               accessibilityState={{
                 checked: warningsAccepted,
                 disabled: review.busy,
@@ -153,13 +155,13 @@ export function NativeSmartTransactionReviewScreen({
               onPress={() => setAcknowledged(warningsAccepted ? null : intent)}
             >
               <Text>
-                {warningsAccepted ? '✓ ' : ''}I understand the address warning.
+                {warningsAccepted ? '✓ ' : ''}{t('mobile.dappConsent.messageReview.iUnderstandTheAddressWarning1')}
               </Text>
             </IdlePressable>
           )}
           {review.needsAccountSwitch && (
             <Button
-              title="Switch account"
+              title={t('mobile.dappConsent.messageReview.switchAccount')}
               onPress={() => {
                 void controller
                   .activateRequestAccount(review.id, review.revision)
@@ -169,11 +171,11 @@ export function NativeSmartTransactionReviewScreen({
           )}
           {review.error && (
             <Notice
-              title="Transaction unavailable"
+              title={t('mobile.dappConsent.transactionReview.transactionUnavailable')}
               body={
                 review.error === 'DELIVERY_UNCERTAIN'
-                  ? 'The result could not be confirmed. Check Activity before trying again.'
-                  : 'This request is no longer available. Request it again from the app.'
+                  ? t('mobile.dappConsent.transactionReview.theResultCouldNotBeConfirmedCheck')
+                  : t('mobile.dappConsent.smartTransactionReview.thisRequestIsNoLongerAvailableRequest')
               }
             />
           )}

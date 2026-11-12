@@ -68,6 +68,7 @@ const walletScreenPorts = {
   './BackupVerification': { BackupVerification: 'BackupVerification' },
 };
 function evaluate(source: string, dependencies: Record<string, unknown>, flow = false) {
+  dependencies = { '../platform/localization': nativeTranslationFixture, ...dependencies };
   const require = createRequire(import.meta.url);
   const babelRequire = createRequire(require.resolve('babel-preset-expo'));
   const babel = babelRequire('@babel/core') as { transformSync(code: string, options: object): { code: string } };
@@ -116,6 +117,7 @@ function setup(phase = 'entry') {
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Icon', 'Notice', 'Row', 'Screen', 'Text', 'SegmentedControl'].map((name) => [name, name])), colors: {}, styles: {} };
   const idle = createIdleComponentFixture(hook, native);
   const loaded = evaluate(readFileSync(new NodeURL('../src/screens/NativeRecovery.tsx', import.meta.url), 'utf8'), {
+    '../platform/localization': nativeTranslationFixture,
     './IdleActivityBoundary': idle.components,
     react: hook, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
@@ -1343,6 +1345,10 @@ test('Receive network selection returns to the canonical address and does not re
     (picker.props.onBack as () => void)();
     portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
     assert.deepEqual(JSON.parse(JSON.stringify(portfolio.props.initialReceive)), continuation);
+    const consumePrevious = portfolio.props.onReceiveIntentConsumed as () => void;
+    consumePrevious();
+    portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
+    assert.equal(portfolio.props.initialReceive, undefined);
     (portfolio.props.onChangeReceiveNetwork as (value: object) => void)(continuation);
     picker = f.render();
     const view = picker.props.controller as ReturnType<typeof createNativeNetworkView>;
@@ -1352,6 +1358,11 @@ test('Receive network selection returns to the canonical address and does not re
     assert.deepEqual(JSON.parse(JSON.stringify(portfolio.props.initialReceive)), {
       account: { address: UTXO_ADDRESSES.bitcoin, network: 'bitcoin', revision: 2 }, backupAcknowledged: false,
     });
+    consumePrevious();
+    portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
+    assert.equal((portfolio.props.initialReceive as typeof continuation).account.network, 'bitcoin', 'a stale consumer cannot clear a newer network continuation');
+    (portfolio.props.onReceiveIntentConsumed as () => void)();
+    assert.equal(all(f.render()).find(node => node.type === 'NativePortfolio')!.props.initialReceive, undefined);
   } finally { f.dispose(); }
 });
 
@@ -1498,17 +1509,28 @@ const currentNavigationChoice = () => {
     scope: { ...choice.scope, id: 'native:hd:60:0:ethereum', network } };
 };
 
-test('unbacked same-network Receive keeps its public continuation and foreign selection stays unavailable', async () => {
+test('unbacked Receive can select another network without authorizing a send', async () => {
   const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, quietActivityNotifications, { backup: 'unconfirmed' });
   try {
     let portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
     await (portfolio.props.navigateDetail as (...args: unknown[]) => Promise<void>)(currentNavigationChoice(), true, undefined, () => {});
     portfolio = all(await settleRootNavigation(f)).find(node => node.type === 'NativePortfolio'); assert(portfolio);
     assert.deepEqual(JSON.parse(JSON.stringify(portfolio.props.detail)), { accountId: 'hd:60:0', networkId: 'ethereum', receive: true });
+    const consumePrevious = portfolio.props.onReceiveIntentConsumed as () => void;
+    consumePrevious();
+    portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
+    assert.deepEqual(JSON.parse(JSON.stringify(portfolio.props.detail)), { accountId: 'hd:60:0', networkId: 'ethereum', receive: false });
+    await (portfolio.props.navigateDetail as (...args: unknown[]) => Promise<void>)(currentNavigationChoice(), true, undefined, () => {});
+    portfolio = all(await settleRootNavigation(f)).find(node => node.type === 'NativePortfolio'); assert(portfolio);
+    consumePrevious();
+    assert.equal((all(f.render()).find(node => node.type === 'NativePortfolio')!.props.detail as { receive: boolean }).receive, true,
+      'consuming the old request cannot swallow a newly requested Receive route');
+    (portfolio.props.onReceiveIntentConsumed as () => void)();
     assert.equal(f.authority!.getSnapshot().phase, 'backup-required');
-    await assert.rejects((portfolio.props.navigateDetail as (...args: unknown[]) => Promise<void>)(navigationChoice(), true, undefined, () => {}), /NOT_READY/);
+    await (portfolio.props.navigateDetail as (...args: unknown[]) => Promise<void>)(navigationChoice(), true, undefined, () => {});
     assert.equal(f.authority!.getSnapshot().phase, 'backup-required');
-    assert.equal(f.authority!.getSnapshot().account?.network, 'ethereum');
+    assert.equal(f.authority!.getSnapshot().account?.network, 'syscoin-nevm');
+    assert(!all(await settleRootNavigation(f)).some(node => node.type === 'NativeSend'));
   } finally { f.dispose(); }
 });
 

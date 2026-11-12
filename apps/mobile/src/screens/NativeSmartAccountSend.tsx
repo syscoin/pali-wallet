@@ -1,3 +1,4 @@
+import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
@@ -51,6 +52,7 @@ import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation
 import { Button, Card, Coin, colors, Header, IconButton, Notice, Screen, styles, Text } from '../ui';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
+const t = nativeI18n.t.bind(nativeI18n);
 
 const emptySubscribe = () => () => undefined;
 const emptyInventory = () => null;
@@ -123,6 +125,7 @@ export function NativeSmartAccountSend({
   initialRecipient?: string;
   availableNative?: string;
 }) {
+  useNativeTranslation();
   const portfolio = useMemo(
     () => new NativePortfolioController(source, reader),
     [source, reader]
@@ -296,7 +299,7 @@ export function NativeSmartAccountSend({
         try {
           id = normalizeNftTokenId(tokenId.trim());
         } catch {
-          setError('Enter a valid token ID.');
+          setError(t("mobile.smartSendViews.enterAValidTokenId"));
           return;
         }
         try {
@@ -306,7 +309,7 @@ export function NativeSmartAccountSend({
               : parseErc20Units(amount.trim());
           if (quantity === '0') throw new Error('Empty quantity');
         } catch {
-          setError('Enter a whole quantity greater than zero.');
+          setError(t("mobile.smartSendViews.enterAWholeQuantityGreaterThanZero"));
           return;
         }
         nftRequest = {
@@ -330,7 +333,7 @@ export function NativeSmartAccountSend({
           void Promise.resolve(current.operation?.dispose()).catch(() => undefined);
           setController(null);
           setResolvedRecipient(null);
-          setError('The recipient lookup expired or changed. Review the transfer again.');
+          setError(t("mobile.smartSendViews.theRecipientLookupExpiredOrChangedReviewTheTransferAgain"));
         }, { once: true });
       }
       check();
@@ -407,7 +410,7 @@ export function NativeSmartAccountSend({
         closeScanner(); setMaximum(true); setAmount(value);
       }} />
   ) : (
-    <Button title={maximum ? 'MAX selected' : 'MAX'} variant="secondary" size="compact"
+    <Button title={maximum ? t("mobile.portfolioCopy.maxSelected") : t('send.max')} variant="secondary" size="compact"
       disabled={busy || displayedBalance === null || !balance.units || BigInt(balance.units) <= BigInt(0)}
       onPress={() => {
         if (!owner.current.active || owner.current.busy || displayedBalance === null || !balance.units || portfolio.getSnapshot() !== balance) return;
@@ -418,7 +421,7 @@ export function NativeSmartAccountSend({
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <Screen>
-          <Text>Closing transfer review…</Text>
+          <Text>{t("mobile.smartSendViews.closingTransferReview")}</Text>
         </Screen>
       </SafeAreaView>
     );
@@ -428,8 +431,8 @@ export function NativeSmartAccountSend({
     return (
       <>
         {resolvedRecipient && <SafeAreaView edges={['top']} style={{ backgroundColor: colors.bg, paddingHorizontal: 24 }}>
-          <Text selectable style={styles.muted}>ENS name: {resolvedRecipient.input}</Text>
-          <Text selectable style={styles.muted}>Resolved address: {resolvedRecipient.address}</Text>
+          <Text selectable style={styles.muted}>{t("mobile.smartSendViews.ensName")}{' '}{resolvedRecipient.input}</Text>
+          <Text selectable style={styles.muted}>{t("mobile.smartSendViews.resolvedAddress")}{' '}{resolvedRecipient.address}</Text>
         </SafeAreaView>}
         <NativeSmartAccountOperationScreen authentication={operationAuthentication} ledgerConnection={ledgerConnection} controller={controller} onBack={back} />
       </>
@@ -442,15 +445,15 @@ export function NativeSmartAccountSend({
       >
         <Screen footer={
           <Button
-            title="Review transfer"
+            title={t("mobile.smartSendViews.reviewTransfer")}
             disabled={
               busy || !recipient || !amount || (!!collectible && !tokenId)
             }
             onPress={() => void review()}
           />
         } gap={16}>
-          <Header title={collectible ? 'Send collectible' : `Send ${symbol}`}
-            subtitle={`${accountLabel} · ${context.name}${context.testnet ? ' · Test network' : ''}`} onBack={back} />
+          <Header title={collectible ? t("mobile.smartSendViews.sendCollectible") : t('mobile.smartSendViews.sendSymbol', { symbol })}
+            subtitle={`${accountLabel} · ${context.name}${context.testnet ? " " + t("mobile.smartSendViews.testNetwork") : ''}`} onBack={back} />
           {onChangeAsset && !collectible ? <SendAssetSelector context={context} token={token} nativeAvailable={availableNative}
             items={inventory?.status === 'ready' && sameNativePortfolioAccount(inventory.account, account) ? inventory.items : assetChoices ?? []}
             loading={assetPickerOpen && !assetChoices && inventory?.status === 'loading'} unavailable={!assetChoices && inventory?.status === 'error'}
@@ -463,7 +466,7 @@ export function NativeSmartAccountSend({
           {collectible && (
             <Card style={s.asset}>
               <Coin id="collectible" asset={{ kind: 'evm', chainId: context.chainId, contractAddress: collectible.contractAddress }} registrationHash={context.registrationHash} fallbackSymbol="NFT" size={36} />
-              <Text style={s.label}>COLLECTIBLE CONTRACT · {collectible.tokenStandard}</Text>
+              <Text style={s.label}>{t("mobile.smartSendViews.collectibleContract")}{' '}{collectible.tokenStandard}</Text>
               <Text selectable style={s.address}>{collectible.contractAddress}</Text>
             </Card>
           )}
@@ -472,21 +475,21 @@ export function NativeSmartAccountSend({
               <View style={s.assetRow}>
                 <Coin id="custom-token" asset={{ kind: 'evm', chainId: context.chainId, contractAddress: token.contractAddress, decimals: token.decimals }} registrationHash={context.registrationHash} fallbackSymbol={token.symbol} size={32} />
                 <View style={s.assetDescription}><Text numberOfLines={1}>{token.name}</Text><Text style={styles.muted}>{token.symbol} · {context.name}</Text></View>
-                <Button title="Details" variant="quiet" size="compact" expanded={tokenDetails} disabled={busy} onPress={() => setTokenDetails(value => !value)} />
+                <Button title={t("send.details")} variant="quiet" size="compact" expanded={tokenDetails} disabled={busy} onPress={() => setTokenDetails(value => !value)} />
               </View>
-              <Text style={styles.muted}>Custom token · Unverified issuer metadata</Text>
-              {tokenDetails && <><Text style={s.label}>TOKEN CONTRACT</Text><Text selectable style={s.address}>{token.contractAddress}</Text>
-                <Text style={s.label}>DECIMALS</Text><Text>{token.decimals}</Text></>}
+              <Text style={styles.muted}>{t("mobile.smartSendViews.customTokenUnverifiedIssuerMetadata")}</Text>
+              {tokenDetails && <><Text style={s.label}>{t("mobile.smartSendViews.tokenContract")}</Text><Text selectable style={s.address}>{token.contractAddress}</Text>
+                <Text style={s.label}>{t('settings.decimals')}</Text><Text>{token.decimals}</Text></>}
             </Card>
           )}
           <NativeSendInput
-            label="Recipient address"
+            label={t("blacklist.recipientDescription")}
             value={recipient}
             onChange={editRecipient}
             busy={busy}
             max={255}
-            placeholder="0x… or name.eth"
-            trailing={<IconButton label="Scan recipient address" icon="scan" disabled={busy} onPress={() => {
+            placeholder={t("mobile.smartSendViews.recipientPlaceholder")}
+            trailing={<IconButton label={t("mobile.smartSendViews.scanRecipientAddress")} icon="scan" disabled={busy} onPress={() => {
               if (!owner.current.active || owner.current.busy || controller || AppState.currentState !== 'active') return;
               Keyboard.dismiss();
               const next = { owner: owner.current, scope: latestOwner.current, account, registrationHash: context.registrationHash };
@@ -495,7 +498,7 @@ export function NativeSmartAccountSend({
           />
           {collectible?.tokenStandard === 'ERC-721' && (
             <NativeSendInput
-              label="Token ID"
+              label={t("send.tokenId")}
               value={tokenId}
               onChange={value => { closeScanner(); setTokenId(value); }}
               busy={busy}
@@ -504,12 +507,12 @@ export function NativeSmartAccountSend({
             />
           )}
           {collectible?.tokenStandard === 'ERC-1155' && (
-            <Text style={styles.muted}>Token ID {collectible.tokenId}</Text>
+            <Text style={styles.muted}>{t("send.tokenId")}{' '}{collectible.tokenId}</Text>
           )}
           {collectible?.tokenStandard !== 'ERC-721' && (
             <>
               <NativeSendInput
-                label={collectible ? 'Quantity' : `Amount in ${symbol}`}
+                label={collectible ? t("mobile.activityViews.nativeActivity.quantity") : t('mobile.smartSendViews.amountInSymbol', { symbol })}
                 value={amount}
                 onChange={(value) => {
                   closeScanner();
@@ -523,10 +526,10 @@ export function NativeSmartAccountSend({
               />
             </>
           )}
-          {!collectible && <Text accessibilityLabel="Available balance" style={styles.muted}>Available {displayedBalance ?? '—'} {symbol}</Text>}
-          {!collectible && loadingBalance && <Text style={styles.muted}>Loading balance…</Text>}
+          {!collectible && <Text accessibilityLabel={t("mobile.smartSendViews.availableBalance")} style={styles.muted}>{t("mobile.smartSendViews.available")}{' '}{displayedBalance ?? '—'} {symbol}</Text>}
+          {!collectible && loadingBalance && <Text style={styles.muted}>{t("mobile.activityViews.nativeSptAssets.loadingBalance")}</Text>}
           {error ? (
-            <Notice title="Check transfer" body={error} tone="amber" />
+            <Notice title={t("send.savedUtxo.check")} body={error} tone="amber" />
           ) : null}
           {busy ? <ActivityIndicator color={colors.pink} /> : null}
 

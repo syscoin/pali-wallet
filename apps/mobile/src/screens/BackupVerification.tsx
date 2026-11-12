@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +9,7 @@ import type { SeedBackupPresentation } from '../custody/seedBackup';
 export function BackupVerification({ presentation, onBack, onConfirm, busy, error }: {
   presentation: SeedBackupPresentation; onBack(): void; onConfirm(words: readonly string[]): void; busy: boolean; error?: string;
 }) {
+  const { t } = useNativeTranslation();
   const scope = presentation;
   const owner = useRef<object | null>(null);
   const submitted = useRef(false);
@@ -33,16 +35,16 @@ export function BackupVerification({ presentation, onBack, onConfirm, busy, erro
   };
   const answer = selected.map(id => presentation.words[id]!);
   return <SafeAreaView style={s.root} edges={['top', 'bottom']}>
-    <Screen footer={<Button title="Confirm backup" disabled={busy || selected.length !== choices.length} onPress={() => {
+    <Screen footer={<Button title={t('mobile.noteFlows.backupVerification.confirmBackup')} disabled={busy || selected.length !== choices.length} onPress={() => {
       if (owner.current !== scope || busy || submitted.current || selected.length !== choices.length) return;
       submitted.current = true; onConfirm(answer);
     }} />}>
-      <Header title="Verify backup" onBack={onBack} right={<Text style={s.step}>2 of 2</Text>} />
-      <Text accessibilityRole="header" style={s.title}>Select your words in order</Text>
-      <Text style={s.description}>This confirms that your written copy is complete.</Text>
+      <Header title={t('mobile.noteFlows.export.verifyBackup')} onBack={onBack} right={<Text style={s.step}>{t('privacy.progress', { completed: 2, total: 2 })}</Text>} />
+      <Text accessibilityRole="header" style={s.title}>{t('mobile.noteFlows.backupVerification.selectYourWordsInOrder')}</Text>
+      <Text style={s.description}>{t('mobile.noteFlows.backupVerification.thisConfirmsThatYourWrittenCopyIsComplete')}</Text>
       <Card style={s.slots}>{presentation.words.map((_, index) => <IdlePressable key={index} accessibilityRole="button"
-        accessibilityLabel={`Word ${index + 1}${answer[index] ? `, ${answer[index]}, selected` : ', empty'}`}
-        accessibilityHint={answer[index] ? 'Remove this and later words.' : undefined}
+        accessibilityLabel={answer[index] ? t('mobile.noteFlows.backupVerification.selectedWord', { number: index + 1, word: answer[index] }) : t('mobile.noteFlows.backupVerification.emptyWord', { number: index + 1 })}
+        accessibilityHint={answer[index] ? t('mobile.noteFlows.backupVerification.removeThisAndLaterWords') : undefined}
         disabled={busy || index >= selected.length} onPress={() => select(values => values.slice(0, index))} style={s.slot}>
         <Text style={s.number}>{index + 1}</Text><Text style={s.word}>{answer[index] ?? '—'}</Text>
       </IdlePressable>)}</Card>

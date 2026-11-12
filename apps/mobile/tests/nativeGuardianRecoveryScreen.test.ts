@@ -19,6 +19,7 @@ import { screenElements, screenFixture } from './screenFixture.ts';
 import {
   nativeTranslationFixture,
   englishI18n,
+  languageMessages,
 } from './localizationFixture.ts';
 
 const address = '0x1111111111111111111111111111111111111111';
@@ -637,4 +638,33 @@ for (const boundary of ['back', 'background', 'unmount', 'foreign-prompt'] as co
     assert.throws(guard, /CANCELLED/); assert.equal(authentication.isAuthenticating(), false);
     assert.equal(returned, boundary === 'unmount' ? 0 : 1);
   } finally { held.resolve(); await proof.catch(() => undefined); promptScope.retire(); f.close(); }
+});
+
+test('watch recovery changes status and date language without repeating the network read', async () => {
+  const f = screenFixture(new URL('../src/screens/WatchGuardianRecovery.tsx', import.meta.url), 'WatchGuardianRecovery', {
+    'react-native': imports['react-native'], 'react-native-safe-area-context': imports['react-native-safe-area-context'],
+    '../ui': imports['../ui'], '../platform/localization': nativeTranslationFixture,
+    './NativeGuardianPolicy': { NativeGuardianPolicy: 'GuardianPolicy' },
+    './NativeGuardianRecovery': { NativeGuardianRecovery: 'GuardianRecovery' },
+  }, { AbortController });
+  let reads = 0;
+  const executableAt = 1_790_000_000, expiresAt = executableAt + 86_400;
+  const props = { address, networkLabel: 'Ethereum', lifetime: new AbortController().signal, onBack() {},
+    async read() { reads++; return { status: 'observed', observation: { exists: true,
+      active: { status: 'pending', executableAt, expiresAt }, observedBlock: { number: 1_234_567 } } }; } };
+  try {
+    const initial = screenElements(f.render(props));
+    button(initial, englishI18n.t('settings.smartAccountInfrastructureCheckStatus')).props.onPress(); await tick();
+    assert.equal(reads, 1);
+    assert(screenElements(f.render(props)).some(node => node.children.includes('Recovery scheduled')));
+    englishI18n.addResourceBundle('ko', 'translation', languageMessages('ko'), true, true);
+    await englishI18n.changeLanguage('ko');
+    const localized = screenElements(f.render(props));
+    assert(localized.some(node => node.children.includes('복구 예약됨')));
+    const dateLabel = englishI18n.t('mobile.recoveryStatusViews.watch.readyAt', {
+      date: new Date(executableAt * 1000).toLocaleString('ko'),
+    });
+    assert(localized.some(node => node.children.includes(dateLabel)));
+    assert.equal(reads, 1);
+  } finally { await englishI18n.changeLanguage('en'); f.close(); }
 });

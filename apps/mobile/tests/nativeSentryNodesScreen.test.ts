@@ -10,6 +10,7 @@ import type { NativeSentryNodeManagement, SentryNodeLinkReview } from '../src/cu
 import { createIdleComponentFixture } from './idleComponentFixture.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
@@ -74,7 +75,7 @@ function renderer() {
   };
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Header', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {} };
   const idle = createIdleComponentFixture(hook, native);
-  const common = { '../../../../source/shared/sentryNetworks': { SENTRY_NETWORKS }, react: hook, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui, './IdleActivityBoundary': idle.components };
+  const common = { '../platform/localization': nativeTranslationFixture, '../../../../source/shared/sentryNetworks': { SENTRY_NETWORKS }, react: hook, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui, './IdleActivityBoundary': idle.components };
   const load = (name: string, additional: Record<string, unknown> = {}) => evaluate(readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8'), { ...common, ...additional });
   const nodes = load('NativeSentryNodes', { '../custody/privateAuthentication': privateAuthentication,
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption } }).NativeSentryNodes as Component;

@@ -152,6 +152,11 @@ function harness(
     Keyboard: { dismiss() {} },
     Modal: 'Modal',
   };
+  const translate = (key: string, values: Record<string, unknown> = {}) => {
+      const dictionary = JSON.parse(readFileSync(new NodeURL(`../../../source/assets/locales/${language}.json`, import.meta.url), 'utf8'));
+      const text = key.split('.').reduce((value: any, part) => value?.[part], dictionary) ?? key;
+      return typeof text === 'string' ? text.replace(/{{-?\s*(\w+)\s*}}/g, (match: string, name: string) => String(values[name] ?? match)) : text;
+    };
   const dependencies: Record<string, unknown> = {
     react,
     './useDappLedgerConnection': {
@@ -164,10 +169,7 @@ function harness(
     },
     '../custody/privateAuthentication': privateAuthentication,
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
-    '../platform/localization': { useNativeTranslation: () => ({ t: (key: string) => {
-      const dictionary = JSON.parse(readFileSync(new NodeURL(`../../../source/assets/locales/${language}.json`, import.meta.url), 'utf8'));
-      return key.split('.').reduce((value: any, part) => value?.[part], dictionary) ?? key;
-    } }) },
+    '../platform/localization': { nativeI18n: { t: translate }, useNativeTranslation: () => ({ t: translate }) },
     'react-native': native,
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': {

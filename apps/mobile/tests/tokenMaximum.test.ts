@@ -10,6 +10,7 @@ import {
 } from '../../../source/shared/erc20.ts';
 import { sameNativePortfolioAccount } from '../src/portfolio/nativePortfolio.ts';
 import type { NativeTokenSnapshot } from '../src/portfolio/nativeTokens.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 
 const owner = {
   address: '0x1111111111111111111111111111111111111111',
@@ -50,6 +51,7 @@ function fixture(units: string | null, precision = 255) {
     '../portfolio/nativePortfolio': { sameNativePortfolioAccount },
     '../../../../source/shared/erc20': { formatTokenUnits },
     '../ui': { Button: 'Button' },
+    '../platform/localization': nativeTranslationFixture,
   };
   const module = {
     exports: {} as {

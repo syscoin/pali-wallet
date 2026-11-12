@@ -245,11 +245,11 @@ export class NativeCustodyAuthority {
         const assertReceipt = () => {
           proof.assertCurrent();
           const current = runtime.accounts?.getSnapshot();
-          if (this.runtime !== runtime || this.snapshot.phase !== 'ready' || this.revision !== expectedRevision + 1 || this.snapshot.account?.network !== id || this.snapshot.account.address !== proof.selection.address || current?.revision !== expectedCatalogueRevision + 1 || current.active.accountId !== proof.selection.accountId || current.active.networkId !== id || !current.accounts.some(account => account.id === proof.selection.accountId && account.address === proof.selection.address)) throw new CustodyOperationError('CANCELLED');
+          if (this.runtime !== runtime || !['ready', 'backup-required'].includes(this.snapshot.phase) || this.revision !== expectedRevision + 1 || this.snapshot.account?.network !== id || this.snapshot.account.address !== proof.selection.address || current?.revision !== expectedCatalogueRevision + 1 || current.active.accountId !== proof.selection.accountId || current.active.networkId !== id || !current.accounts.some(account => account.id === proof.selection.accountId && account.address === proof.selection.address)) throw new CustodyOperationError('CANCELLED');
         };
         return Object.freeze({ ...proof, sourceContextRevision: expectedRevision, contextRevision: expectedRevision + 1, catalogueRevision: expectedCatalogueRevision + 1, assertCurrent: assertReceipt });
       } };
-    }, expectedRevision).then(receipt => { receipt.assertCurrent(); return receipt; });
+    }, expectedRevision, false, true).then(receipt => { receipt.assertCurrent(); return receipt; });
   }
 
   async addUtxoNetwork(draft: import('./accounts.ts').NativeUtxoNetworkDraft, expectedRevision: number,
@@ -324,9 +324,10 @@ export class NativeCustodyAuthority {
     return id;
   }
 
-  private manageContext<T>(reserve: (runtime: CustodyRuntime) => { execute(assertCurrent: () => void): Promise<T>; cancel(): void }, expectedRevision: number, accountAuthentication = false): Promise<T> {
+  private manageContext<T>(reserve: (runtime: CustodyRuntime) => { execute(assertCurrent: () => void): Promise<T>; cancel(): void }, expectedRevision: number, accountAuthentication = false, publicNetworkSelection = false): Promise<T> {
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
-    if (!this.runtime || this.snapshot.phase !== 'ready') return Promise.reject(new CustodyOperationError('NOT_READY'));
+    if (!this.runtime || (this.snapshot.phase !== 'ready' && !(publicNetworkSelection && this.snapshot.phase === 'backup-required')))
+      return Promise.reject(new CustodyOperationError('NOT_READY'));
     if (this.revision !== expectedRevision) return Promise.reject(new CustodyOperationError('CANCELLED'));
     const runtime = this.runtime;
     const previous = this.snapshot;
@@ -505,7 +506,16 @@ export class NativeCustodyAuthority {
             phase: this.snapshot.presence === 'empty' ? 'empty' : 'locked',
           });
           if (this.snapshot.presence === 'existing' && this.revision === openingRevision &&
-              (!this.policy?.viewLock || this.policy.viewLock.getSnapshot().phase === 'unlocked')) await this.unlock();
+              (!this.policy?.viewLock || this.policy.viewLock.getSnapshot().phase === 'unlocked')) {
+            try { await this.unlock(); }
+            catch (cause) {
+              // Backgrounding may revoke public hydration. Its cleanup has to
+              // finish, but a safely locked wallet is still initialized.
+              await this.drainLocks();
+              if (!(cause instanceof CustodyOperationError) || cause.code !== 'CANCELLED' ||
+                  !['locked', 'disposed'].includes(this.snapshot.phase)) throw cause;
+            }
+          }
         }
       } catch {
         this.failUnavailable();
@@ -619,12 +629,13 @@ export class NativeCustodyAuthority {
 
   saveIdlePreference(expected: SecurityPreferenceSnapshot, proposed: number, signal: AbortSignal, authentication: NativePrivateAuthentication, assertScreen: () => void): Promise<SecurityPreferenceSnapshot> {
     const minutes = idleMinutes(proposed);
-    if (!this.policy || !this.runtime || this.snapshot.phase !== 'ready') return Promise.reject(new CustodyOperationError('NOT_READY'));
+    const phase = this.snapshot.phase;
+    if (!this.policy || !this.runtime || (phase !== 'ready' && phase !== 'backup-required')) return Promise.reject(new CustodyOperationError('NOT_READY'));
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
     const runtime = this.runtime, policy = this.policy, revision = this.revision;
     const check = () => {
       this.checkIdle();
-      if (signal.aborted || runtime !== this.runtime || revision !== this.revision || this.snapshot.phase !== 'ready') throw new CustodyOperationError('CANCELLED');
+      if (signal.aborted || runtime !== this.runtime || revision !== this.revision || this.snapshot.phase !== phase) throw new CustodyOperationError('CANCELLED');
       const result: unknown = assertScreen();
       if (result !== undefined) { if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined); throw new CustodyOperationError('CANCELLED'); }
     };

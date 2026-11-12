@@ -148,6 +148,12 @@ for (const key of enKeys) {
     }
   }
 }
+// i18next selects the locale's grammatical variant from a referenced base key.
+// These resources are live without a literal t('key_one') call in application code.
+for (const key of enKeys) {
+  const plural = key.match(/^(.*)_(?:zero|one|two|few|many|other)$/);
+  if (plural && used.has(plural[1])) used.add(key);
+}
 const unused = [...enKeys].filter((k) => !used.has(k)).sort();
 const missingFromEn = [...translationCalls.entries()]
   .filter(([key]) => !enKeys.has(key))

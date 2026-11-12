@@ -70,8 +70,8 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
   useLayoutEffect(() => { navigation?.setImmersive(leaf !== null); return () => navigation?.setImmersive(false); }, [navigation, leaf]);
   if (leaf === 'about') return <HelpAbout onBack={back} onUpdates={() => setOpened({ leaf: 'updates' })} />;
   if (leaf === 'updates') return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
-    <Screen footer={<Button title="Done" variant="secondary" onPress={back} />}>
-      <Header title="App updates" onBack={back} /><WalletUpdatePanel allowInstall={watchOnly} onCloseWallet={onUpdate} />
+    <Screen footer={<Button title={t('privacy.deposit.done')} variant="secondary" onPress={back} />}>
+      <Header title={t('mobile.generalViews.appUpdates')} onBack={back} /><WalletUpdatePanel allowInstall={watchOnly} onCloseWallet={onUpdate} />
     </Screen></SafeAreaView>;
   if (leaf === 'currency') return <DisplayCurrency onBack={back} />;
   if (leaf === 'language') return <NativePreferences onBack={back} assertCurrent={() => {
@@ -96,7 +96,7 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
       {notifications && <Row title={t('mobile.notifications.title')} subtitle={t('mobile.notifications.description')} icon="activity" onPress={() => {
         const next = { leaf: 'notifications' as const, scope: notifications.scope }; notificationsOwner.current = next; setOpened(next);
       }} dense />}
-      {watchOnly && onAutoLock && <Row title="Auto-lock" subtitle="Choose when watch accounts hide" icon="clock" onPress={onAutoLock} dense />}
+      {watchOnly && onAutoLock && <Row title={t('mobile.viewLock.autoTitle')} subtitle={t('mobile.onboarding.autoWatchHint')} icon="clock" onPress={onAutoLock} dense />}
       {watchOnly && <BalancePrivacySetting />}
       <Row title={t('generalMenu.languages')} subtitle={t('settings.currentLanguage')} icon="globe" dense onPress={() => {
         const next = { leaf: 'language' as const }; languageOwner.current = next; setOpened(next);

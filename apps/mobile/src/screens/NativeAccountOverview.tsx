@@ -96,6 +96,10 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
     setSheet(null); setDetail({ accountId: choice.scope.accountId, networkId: choice.scope.network.id, receive, token });
   });
   if (detailCurrent) return <NativePortfolio {...portfolio} onOverviewBack={closeDetail} openReceive={detail.receive}
+    onReceiveIntentConsumed={() => {
+      setDetail(current => current === detail ? { ...current, receive: false } : current);
+      portfolio.onReceiveIntentConsumed?.();
+    }}
     initialTokenContract={detail.token} onExit={closeDetail} />;
 
   const balance = (row: AccountPortfolioRow) => row.units === null ? '—' : formatBaseUnits(row.units, row.decimals);

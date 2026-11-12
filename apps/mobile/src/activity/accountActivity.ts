@@ -114,7 +114,8 @@ export class AccountActivityController {
     .sort((a, b) => (b.row.observation?.timestamp ?? b.row.candidate?.timestamp ?? b.row.local?.createdAt ?? 0) -
       (a.row.observation?.timestamp ?? a.row.candidate?.timestamp ?? a.row.local?.createdAt ?? 0) || a.key.localeCompare(b.key));
     const snapshots = values.map(child => child.controller.getSnapshot());
-    const partial = snapshots.some(snapshot => snapshot.status === 'unavailable' || !!snapshot.error || snapshot.discoveryAvailable === false);
+    const partial = snapshots.some(snapshot => snapshot.status === 'unavailable' ||
+      snapshot.status === 'ready' && !snapshot.loadingMore && (!!snapshot.error || snapshot.discoveryAvailable === false));
     this.emit({ rows: Object.freeze(rows), refreshing: snapshots.some(snapshot => snapshot.status === 'loading'),
       loadingMore: snapshots.some(snapshot => snapshot.loadingMore), hasMore: snapshots.some(snapshot => snapshot.hasMore), partial,
       error: partial ? 'Some network activity is unavailable.' : null });

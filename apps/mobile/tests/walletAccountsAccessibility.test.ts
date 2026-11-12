@@ -1,3 +1,4 @@
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { accountIdentity, projectAccounts } from '../src/core/accountDirectory.ts';
@@ -10,6 +11,7 @@ for (const shared of [false, true]) test(`same-name watch account actions includ
   const second = '0x1111111111111111111111111111111111112222';
   const selections: unknown[] = [];
   const f = screenFixture(new URL('../src/screens/WalletAccounts.tsx', import.meta.url), 'WalletAccounts', {
+    '../platform/localization': nativeTranslationFixture,
     react: {},
     'react-native': { View: 'View', ActivityIndicator: 'ActivityIndicator', KeyboardAvoidingView: 'KeyboardAvoidingView',
       Platform: { OS: 'ios' }, StyleSheet: { create: (value: unknown) => value }, BackHandler: { addEventListener: () => ({ remove() {} }) } },

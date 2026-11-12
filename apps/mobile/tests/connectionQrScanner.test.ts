@@ -4,6 +4,7 @@ import test from 'node:test';
 import { URL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import * as pairingLinks from '../src/connections/pairingLinks.ts';
 import { parseEvmRecipientQr } from '../src/core/recipientQr.ts';
 
@@ -139,6 +140,7 @@ function fixture(
         },
       },
     },
+    '../platform/localization': nativeTranslationFixture,
     '../connections/pairingLinks': pairingLinks,
     '../ui': {
       Button: 'Button',

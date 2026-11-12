@@ -24,7 +24,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNativeTranslation } from '../platform/localization';
+import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { formatBaseUnits } from '../core/amounts';
 import { getNativeSendContext } from '../custody/networkContext';
 import type {
@@ -36,6 +36,7 @@ import { Button, Card, Coin, colors, Header, Notice, Screen, Text } from '../ui'
 import { guardianDelayLabel } from './guardianPolicyLabels';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
+const t = nativeI18n.t.bind(nativeI18n);
 
 type DeploymentOwner = {
   live: boolean;
@@ -62,6 +63,7 @@ export function NativeSmartAccountOperationRoute({
   open(assertCurrent: () => void, signal: AbortSignal, authentication: NativePrivateAuthenticationScope): Promise<NativeSmartAccountOperation>;
   onBack(): void;
 }) {
+  useNativeTranslation();
   const owner = useRef<DeploymentOwner | undefined>(undefined);
   const callbacks = useRef({ onBack });
   const [opened, setOpened] = useState<{
@@ -151,19 +153,19 @@ export function NativeSmartAccountOperationRoute({
   return (
     <SafeAreaView style={s.safe}>
       <Screen>
-        <Header title="Smart account request" onBack={() => back()} />
+        <Header title={t('connections.prepareSmartAccountTitle')} onBack={() => back()} />
         {current?.closing ? (
-          <Text>Closing review…</Text>
+          <Text>{t('mobile.recoveryStatusViews.operation.closingReview')}</Text>
         ) : current?.failed ? (
           <Notice
-            title="Request unavailable"
-            body="Return to your account and try again."
+            title={t('mobile.dappConsent.dappControlReview.requestUnavailable')}
+            body={t('mobile.smartSendViews.returnToYourAccountAndTryAgain')}
           />
         ) : (
           <ActivityIndicator color={colors.pink} />
         )}
         <Button
-          title="Close"
+          title={t('buttons.close')}
           variant="secondary" size="compact"
           disabled={current?.closing}
           onPress={() => back()}
@@ -184,6 +186,7 @@ export function NativeSmartAccountOperationScreen({
   controller: NativeSmartAccountOperation;
   onBack(): void;
 }) {
+  useNativeTranslation();
   const state = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
@@ -208,7 +211,7 @@ export function NativeSmartAccountOperationScreen({
       state={state}
       onBack={onBack}
       disabled={state.phase === 'authorize' && ledger.blocked}
-      before={<>{ledger.showConnect && <Button title="Connect Ledger" variant="secondary" size="compact" onPress={ledger.connect} />}{ledger.modal}</>}
+      before={<>{ledger.showConnect && <Button title={t('mobile.accounts.connectLedger')} variant="secondary" size="compact" onPress={ledger.connect} />}{ledger.modal}</>}
       authorize={(acknowledgedCustomRisk) => {
         if (AppState.currentState !== 'active') return;
         if (!ledger.canApprove()) return;
@@ -313,13 +316,13 @@ export function NativeSmartAccountOperationContent({
       </View>
     </View>
     {display.items.map((item, index) => <View key={index} style={s.transferItem}>
-      <Text selectable style={[s.transferValue, item.value.length > 20 && s.preciseValue]} accessibilityLabel={item.symbol ? `${item.value} ${item.symbol}` : item.tokenId !== null ? `Token ID ${item.tokenId}, quantity ${item.units}` : `${item.units} base units or token ID`}>{item.value}</Text>
-      <Text style={s.unit}>{item.symbol ?? (item.tokenId !== null ? `${item.units} NFT${item.units === '1' ? '' : 's'}` : t('assetTransfer.rawUnits'))}</Text>
+      <Text selectable style={[s.transferValue, item.value.length > 20 && s.preciseValue]} accessibilityLabel={item.symbol ? `${item.value} ${item.symbol}` : item.tokenId !== null ? t('mobile.recoveryStatusViews.operation.tokenQuantity', { id: item.tokenId, amount: item.units }) : t('mobile.recoveryStatusViews.operation.rawQuantity', { amount: item.units })}>{item.value}</Text>
+      <Text style={s.unit}>{item.symbol ?? (item.tokenId !== null ? t('mobile.sendAssetViews.tokens.nftQuantity', { amount: item.units }) : t('assetTransfer.rawUnits'))}</Text>
     </View>)}
     <View style={s.transferFact}><Text style={s.label}>{t('assetTransfer.recipient')}</Text><Text selectable style={s.transferAddress}>{display.recipient}</Text></View>
     <View style={s.transferFact}><Text style={s.label}>{t('assetTransfer.contract')}</Text><Text selectable style={s.transferAddress}>{display.contract}</Text></View>
     {display.from && <View style={s.transferFact}><Text style={s.label}>{t('assetTransfer.owner')}</Text><Text selectable style={s.transferAddress}>{display.from}</Text></View>}
-    {nativeUnits !== '0' && <View style={s.transferFact}><Text style={s.label}>Also sending</Text><Text selectable style={s.transferAddress}>{formatBaseUnits(nativeUnits, network.decimals)} {network.symbol}</Text></View>}
+    {nativeUnits !== '0' && <View style={s.transferFact}><Text style={s.label}>{t('mobile.dappConsent.transactionReview.alsoSending')}</Text><Text selectable style={s.transferAddress}>{formatBaseUnits(nativeUnits, network.decimals)} {network.symbol}</Text></View>}
   </>;
   const batch = state.intent.kind === 'dapp-batch' ? state.intent : null;
   const guardian =
@@ -327,7 +330,7 @@ export function NativeSmartAccountOperationContent({
   const authenticator =
     state.intent.kind === 'authenticator' ? state.intent.command : null;
   const modules = state.intent.kind === 'modules' ? state.intent.command : null;
-  const methodName = (id: string) => id === 'ecdsa' ? 'Wallet owners' : id === 'p256-webauthn' ? 'Passkey' : id === 'slh-dsa' ? 'Post-quantum key' : id === 'composite' ? 'Combined approval methods' : 'Custom approval method';
+  const methodName = (id: string) => id === 'ecdsa' ? t('mobile.recoveryStatusViews.operation.walletOwners') : id === 'p256-webauthn' ? t('settings.passkeyAuthenticator') : id === 'slh-dsa' ? t('mobile.recoveryStatusViews.operation.postquantumKey') : id === 'composite' ? t('mobile.recoveryStatusViews.operation.combinedApprovalMethods') : t('mobile.recoveryStatusViews.operation.customApprovalMethod');
   const transfer =
     state.intent.kind !== 'deploy' &&
     state.intent.kind !== 'dapp-batch' &&
@@ -348,18 +351,18 @@ export function NativeSmartAccountOperationContent({
                 modules
                   ? t('mobile.smartAccountModules.authorize')
                   : authenticator
-                  ? 'Authorize approval change'
+                  ? t('mobile.recoveryStatusViews.operation.authorizeApprovalChange')
                   : guardian
                   ? guardian.kind === 'remove'
-                    ? 'Authorize removal'
-                    : 'Authorize policy'
+                    ? t('mobile.recoveryStatusViews.operation.authorizeRemoval')
+                    : t('mobile.recoveryStatusViews.operation.authorizePolicy')
                   : batch
-                  ? 'Authorize calls'
+                  ? t('mobile.recoveryStatusViews.operation.authorizeCalls')
                   : transfer?.kind === 'dapp-call'
-                  ? 'Authorize transaction'
+                  ? t('mobile.recoveryStatusViews.operation.authorizeTransaction')
                   : transfer
-                  ? 'Authorize transfer'
-                  : 'Authorize deployment'
+                  ? t('mobile.recoveryStatusViews.operation.authorizeTransfer')
+                  : t('mobile.recoveryStatusViews.operation.authorizeDeployment')
               }
               disabled={disabled || customInstall && !riskAcknowledged}
               onPress={authorizeCurrent}
@@ -368,22 +371,22 @@ export function NativeSmartAccountOperationContent({
             <Button
               title={
                 payer.purpose === 'fund-account'
-                  ? 'Confirm funding'
+                  ? t('mobile.recoveryStatusViews.operation.confirmFunding')
                   : modules
                   ? t('mobile.smartAccountModules.confirm')
                   : authenticator
-                  ? 'Change approval method'
+                  ? t('mobile.recoveryStatusViews.operation.changeApprovalMethod')
                   : guardian
                   ? guardian.kind === 'remove'
-                    ? 'Confirm removal'
-                    : 'Confirm policy'
+                    ? t('mobile.recoveryStatusViews.operation.confirmRemoval')
+                    : t('mobile.recoveryStatusViews.operation.confirmPolicy')
                   : batch
-                  ? 'Confirm calls'
+                  ? t('mobile.recoveryStatusViews.operation.confirmCalls')
                   : transfer
                   ? transfer.kind === 'dapp-call'
-                    ? 'Confirm transaction'
-                    : 'Confirm transfer'
-                  : 'Confirm deployment'
+                    ? t('mobile.recoveryStatusViews.operation.confirmTransaction')
+                    : t('mobile.recoveryStatusViews.operation.confirmTransfer')
+                  : t('mobile.recoveryStatusViews.operation.confirmDeployment')
               }
               disabled={disabled}
               onPress={() => { if (live.current && AppState.currentState === 'active') confirmPayer(payer.id); }}
@@ -391,40 +394,40 @@ export function NativeSmartAccountOperationContent({
   ) : null;
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
-      <Screen scrollResetKey={`${state.phase}:${payer?.id ?? ''}`} footer={<>{primary}<Button title="Close" variant="secondary" size="compact" onPress={close} /></>}>
+      <Screen scrollResetKey={`${state.phase}:${payer?.id ?? ''}`} footer={<>{primary}<Button title={t('buttons.close')} variant="secondary" size="compact" onPress={close} /></>}>
         <Header
           title={
             state.phase === 'authorize'
               ? modules
                 ? t('mobile.smartAccountModules.review')
                 : authenticator
-                ? 'Change approval method'
+                ? t('mobile.recoveryStatusViews.operation.changeApprovalMethod')
                 : guardian
                 ? guardian.kind === 'remove'
-                  ? 'Review guardian removal'
-                  : 'Review guardian policy'
+                  ? t('mobile.recoveryStatusViews.operation.reviewGuardianRemoval')
+                  : t('mobile.recoveryStatusViews.operation.reviewGuardianPolicy')
                 : batch
-                ? 'Review calls'
+                ? t('mobile.dappConsent.transactionReview.reviewCalls')
                 : transfer
                 ? transfer.kind === 'dapp-call'
-                  ? 'Review transaction'
-                  : 'Review transfer'
-                : 'Authorize deployment'
+                  ? t('mobile.recoveryStatusViews.operation.reviewTransaction')
+                  : t('mobile.smartSendViews.reviewTransfer')
+                : t('mobile.recoveryStatusViews.operation.authorizeDeployment')
               : payer?.purpose === 'fund-account'
-              ? 'Fund smart account'
+              ? t('mobile.recoveryStatusViews.operation.fundSmartAccount')
               : modules
               ? t('mobile.smartAccountModules.title')
               : authenticator
-              ? 'Change approval method'
+              ? t('mobile.recoveryStatusViews.operation.changeApprovalMethod')
               : guardian
               ? guardian.kind === 'remove'
-                ? 'Guardian removal'
-                : 'Guardian policy'
+                ? t('mobile.recoveryStatusViews.operation.guardianRemoval')
+                : t('mobile.recoveryStatusViews.operation.guardianPolicy')
               : batch
-              ? 'Send calls'
+              ? t('mobile.recoveryStatusViews.operation.sendCalls')
               : transfer
-              ? 'Send'
-              : 'Deploy smart account'
+              ? t('buttons.send')
+              : t('mobile.recoveryStatusViews.operation.deploySmartAccount')
           }
           onBack={close}
         />
@@ -432,7 +435,7 @@ export function NativeSmartAccountOperationContent({
         <Card style={[s.card, s.contextCard]}>
           <View style={s.contextHeading}>
             <Text style={s.label}>{network.name}</Text>
-            <Text style={s.label}>Chain ID {state.network.chainId}</Text>
+            <Text style={s.label}>{t('send.chainId')}{' '}{state.network.chainId}</Text>
           </View>
           <Text selectable style={s.address}>{state.account}</Text>
         </Card>
@@ -454,67 +457,65 @@ export function NativeSmartAccountOperationContent({
           </Card>
         )}
         {authenticator && <>
-          <Text style={s.label}>Replace how this account approves transactions. Review the new owners or approval method before authorizing the change.</Text>
+          <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.replaceHowThisAccountApprovesTransactionsReviewTheNewOwners')}</Text>
           <Card style={s.card}>
-            <Text style={s.label}>Current approval method</Text>
+            <Text style={s.label}>{t('settings.smartAccountCurrentApprovalMethod')}</Text>
             <Text style={s.value}>{methodName(authenticator.sourceModule)}</Text>
           </Card>
           <Card style={s.card}>
-            <Text style={s.label}>New approval method</Text>
+            <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.newApprovalMethod')}</Text>
             <Text style={s.value}>{methodName(authenticator.targetModule.id)}</Text>
             {authenticator.targetModule.id === 'ecdsa' && <>
-              <Text>{`${authenticator.targetModule.config.threshold} of ${authenticator.targetModule.config.owners.length} owners can approve`}</Text>
+              <Text>{t('mobile.recoveryStatusViews.operation.ownersThreshold', { threshold: authenticator.targetModule.config.threshold, count: authenticator.targetModule.config.owners.length })}</Text>
               {authenticator.targetModule.config.owners.map((owner, index) => <View key={owner}>
-                <Text style={s.label}>Owner {index + 1}</Text><Text selectable style={s.address}>{owner}</Text>
+                <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.ownerIndex', { index: index + 1 })}</Text><Text selectable style={s.address}>{owner}</Text>
               </View>)}
             </>}
-            {authenticator.targetModule.id === 'composite' && <Text>{`${authenticator.targetModule.config.threshold} of ${authenticator.targetModule.config.childValidators.length} approval methods can approve`}</Text>}
-            {authenticator.targetModule.id === 'p256-webauthn' && <Text>{authenticator.targetModule.config.passkeyName || 'Use the configured passkey to approve.'}</Text>}
-            {authenticator.targetModule.id === 'slh-dsa' && <Text>Use the configured post-quantum key to approve.</Text>}
+            {authenticator.targetModule.id === 'composite' && <Text>{t('mobile.recoveryStatusViews.operation.methodsThreshold', { threshold: authenticator.targetModule.config.threshold, count: authenticator.targetModule.config.childValidators.length })}</Text>}
+            {authenticator.targetModule.id === 'p256-webauthn' && <Text>{authenticator.targetModule.config.passkeyName || t('mobile.recoveryStatusViews.operation.useTheConfiguredPasskeyToApprove')}</Text>}
+            {authenticator.targetModule.id === 'slh-dsa' && <Text>{t('mobile.recoveryStatusViews.operation.useTheConfiguredPostquantumKeyToApprove')}</Text>}
           </Card>
-          <Button title={authorityDetails ? 'Hide approval details' : 'View approval details'} variant="quiet" size="compact" expanded={authorityDetails} onPress={() => setAuthorityDetails(!authorityDetails)} />
+          <Button title={authorityDetails ? t('mobile.recoveryStatusViews.operation.hideApprovalDetails') : t('mobile.recoveryStatusViews.operation.viewApprovalDetails')} variant="quiet" size="compact" expanded={authorityDetails} onPress={() => setAuthorityDetails(!authorityDetails)} />
           {authorityDetails && <Card style={s.card}>
-            <Text style={s.label}>New validator contract</Text><Text selectable style={s.address}>{authenticator.target.validator}</Text>
+            <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.newValidatorContract')}</Text><Text selectable style={s.address}>{authenticator.target.validator}</Text>
             {authenticator.targetModule.id === 'slh-dsa' && <>
-              <Text style={s.label}>Public key seed</Text><Text selectable style={s.address}>{authenticator.targetModule.config.pkSeed}</Text>
-              <Text style={s.label}>Public key root</Text><Text selectable style={s.address}>{authenticator.targetModule.config.pkRoot}</Text>
+              <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.publicKeySeed')}</Text><Text selectable style={s.address}>{authenticator.targetModule.config.pkSeed}</Text>
+              <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.publicKeyRoot')}</Text><Text selectable style={s.address}>{authenticator.targetModule.config.pkRoot}</Text>
               <Text style={s.label}>{t('settings.slhDsaModuleHint')}</Text>
             </>}
             {authenticator.targetModule.id === 'composite' && authenticator.targetModule.config.childValidators.map(address => <Text key={address} selectable style={s.address}>{address}</Text>)}
-            <Text style={s.label}>New approval configuration</Text><Text selectable style={s.address}>{authenticator.target.data}</Text>
+            <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.newApprovalConfiguration')}</Text><Text selectable style={s.address}>{authenticator.target.data}</Text>
           </Card>}
         </>}
         {guardian && (
           <Card style={s.card}>
             <Text style={s.label}>
               {guardian.kind === 'remove'
-                ? 'Remove guardian'
+                ? t('mobile.recoveryDevices.guardianPolicy.removeGuardian')
                 : guardian.kind === 'install'
-                ? 'Set guardian'
-                : 'Update guardian'}
+                ? t('mobile.recoveryDevices.guardianPolicy.setGuardian')
+                : t('mobile.recoveryDevices.guardianPolicy.updateGuardian')}
             </Text>
             {guardian.kind === 'remove' ? (
               <>
-                <Text style={s.label}>Guardian recovery module</Text>
+                <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.guardianRecoveryModule')}</Text>
                 <Text selectable style={s.address}>
                   {guardian.moduleAddress}
                 </Text>
                 <Text style={s.label}>
-                  This removes the account’s guardian recovery module.
-                </Text>
+                  {t('mobile.recoveryStatusViews.operation.thisRemovesTheAccountsGuardianRecoveryModule')}</Text>
               </>
             ) : (
               <>
                 <Text selectable style={s.address}>
                   {guardian.guardian}
                 </Text>
-                <Text style={s.label}>Guardian threshold · 1</Text>
+                <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.guardianThreshold1')}</Text>
                 <Text style={s.label}>
-                  Recovery delay · {guardianDelayLabel(guardian.delaySeconds)}
+                  {t('mobile.recoveryStatusViews.operation.recoveryDelay', { delay: guardianDelayLabel(guardian.delaySeconds, t) })}
                 </Text>
                 <Text style={s.label}>
-                  Finalization window once ready ·{' '}
-                  {guardianDelayLabel(guardian.delaySeconds * 2)}
+                  {t('mobile.recoveryStatusViews.operation.finalizationWindow', { window: guardianDelayLabel(guardian.delaySeconds * 2, t) })}
                 </Text>
               </>
             )}
@@ -526,14 +527,14 @@ export function NativeSmartAccountOperationContent({
             return (
             <Card key={index} style={s.card}>
               <Text style={s.label}>
-                Call {index + 1} of {batch.calls.length}
+                {t('mobile.dappConsent.transactionReview.callOf', { index: index + 1, count: batch.calls.length })}
               </Text>
               {display ? assetSummary(display, BigInt(call.value).toString()) : <>
-                <Text style={s.label}>{call.data === '0x' ? 'To' : 'Contract'}</Text>
+                <Text style={s.label}>{call.data === '0x' ? t('send.to') : t('transactionDisplay.contract')}</Text>
                 <Text selectable style={s.address}>{call.to}</Text>
-                <Text style={s.label}>Native currency sent</Text>
+                <Text style={s.label}>{t('assetTransfer.nativeValue')}</Text>
                 {amount(BigInt(call.value).toString())}
-                {call.data !== '0x' && <Text style={s.label}>This amount excludes any tokens or NFTs the contract may move.</Text>}
+                {call.data !== '0x' && <Text style={s.label}>{t('mobile.dappConsent.transactionReview.thisAmountExcludesAnyTokensOrNfts')}</Text>}
               </>}
               <TransactionDetails
                 transaction={{
@@ -555,10 +556,10 @@ export function NativeSmartAccountOperationContent({
                 <Text selectable style={s.address}>
                   {transfer.token.contractAddress}
                 </Text>
-                <Text style={s.label}>Decimals {transfer.token.decimals}</Text>
+                <Text style={s.label}>{t('settings.decimals')}{' '}{transfer.token.decimals}</Text>
               </>
             )}
-            <Text style={s.label}>{transfer.kind === 'dapp-call' && transfer.data !== '0x' ? 'Contract' : 'To'}</Text>
+            <Text style={s.label}>{transfer.kind === 'dapp-call' && transfer.data !== '0x' ? t('transactionDisplay.contract') : t('send.to')}</Text>
             <Text selectable style={s.address}>
               {transfer.recipient}
             </Text>
@@ -568,33 +569,33 @@ export function NativeSmartAccountOperationContent({
                 <Text selectable style={s.address}>
                   {transfer.contractAddress}
                 </Text>
-                <Text style={s.label}>Token ID</Text>
+                <Text style={s.label}>{t('send.tokenId')}</Text>
                 <Text selectable style={s.address}>
                   {transfer.tokenId}
                 </Text>
               </>
             )}
             <Text style={s.label}>
-              {transfer.kind === 'nft-transfer' ? 'Quantity' : transfer.kind === 'dapp-call' && transfer.data !== '0x' ? 'Native currency sent' : 'Amount'}
+              {transfer.kind === 'nft-transfer' ? t('mobile.activityViews.nativeActivity.quantity') : transfer.kind === 'dapp-call' && transfer.data !== '0x' ? t('assetTransfer.nativeValue') : t('send.amount')}
             </Text>
             {transfer.kind === 'nft-transfer' ? (
               <Text selectable style={s.value}>
                 {transfer.amountUnits}
               </Text>
             ) : transfer.kind === 'native-max' ? (
-              <Text style={s.label}>Calculating maximum…</Text>
+              <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.calculatingMaximum')}</Text>
             ) : (
               amount(
                 transfer.amountUnits,
                 transfer.kind === 'erc20-transfer' ? transfer.token : undefined
               )
             )}
-            {transfer.kind === 'dapp-call' && transfer.data !== '0x' && <Text style={s.label}>This amount excludes any tokens or NFTs the contract may move.</Text>}
+            {transfer.kind === 'dapp-call' && transfer.data !== '0x' && <Text style={s.label}>{t('mobile.dappConsent.transactionReview.thisAmountExcludesAnyTokensOrNfts')}</Text>}
           </Card>
         )}
         {transfer?.kind === 'dapp-call' && (
           <Card style={s.card}>
-            <Text style={s.label}>Transaction data</Text>
+            <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.transactionData')}</Text>
             <TransactionDetails
               transaction={{
                 to: transfer.recipient,
@@ -611,18 +612,18 @@ export function NativeSmartAccountOperationContent({
                 modules
                   ? t('mobile.smartAccountModules.authorize')
                   : authenticator
-                  ? 'Authorize approval change'
+                  ? t('mobile.recoveryStatusViews.operation.authorizeApprovalChange')
                   : guardian
                   ? guardian.kind === 'remove'
-                    ? 'Authorize guardian removal'
-                    : 'Authorize this guardian policy'
+                    ? t('mobile.recoveryStatusViews.operation.authorizeGuardianRemoval')
+                    : t('mobile.recoveryStatusViews.operation.authorizeThisGuardianPolicy')
                   : batch
-                  ? 'Authorize these calls'
+                  ? t('mobile.recoveryStatusViews.operation.authorizeTheseCalls')
                   : transfer
                   ? transfer.kind === 'dapp-call'
-                    ? 'Authorize this transaction'
-                    : 'Authorize this transfer'
-                  : 'Create this account on the network'
+                    ? t('mobile.recoveryStatusViews.operation.authorizeThisTransaction')
+                    : t('mobile.recoveryStatusViews.operation.authorizeThisTransfer')
+                  : t('mobile.recoveryStatusViews.operation.createThisAccountOnTheNetwork')
               }
               body={
                 modules
@@ -630,31 +631,30 @@ export function NativeSmartAccountOperationContent({
                   : authenticator
                   ? authenticator.targetModule.id === 'slh-dsa'
                     ? t('settings.slhDsaSetupConfirmDescription')
-                    : 'Authorize replacing the current authenticator settings with the owner and threshold shown above. The following review confirms the paying account and submission fee.'
+                    : t('mobile.recoveryStatusViews.operation.authorizeReplacingTheCurrentAuthenticatorSettingsWithTheOwnerAnd')
                   : guardian
                   ? guardian.kind === 'remove'
-                    ? 'Authorize removing guardian recovery from this account. The following review confirms the paying account and submission fee.'
-                    : 'Authorize the guardian and recovery delay shown above. The following review confirms the paying account and submission fee.'
+                    ? t('mobile.recoveryStatusViews.operation.authorizeRemovingGuardianRecoveryFromThisAccountTheFollowingReview')
+                    : t('mobile.recoveryStatusViews.operation.authorizeTheGuardianAndRecoveryDelayShownAboveTheFollowing')
                   : batch
-                  ? 'Authorize the ordered calls together. The following review confirms the paying account and submission fee.'
+                  ? t('mobile.recoveryStatusViews.operation.authorizeTheOrderedCallsTogetherTheFollowingReviewConfirmsThe')
                   : transfer
                   ? transfer.kind === 'dapp-call'
-                    ? 'Authorize this smart account transaction. The following review confirms the paying account and submission fee.'
-                    : 'Authorize this smart account transfer. The following review confirms the paying account and submission fee.'
-                  : 'Authorize the account’s deployment. This operation sends no assets. The following review confirms the wallet account and network fee used to submit it.'
+                    ? t('mobile.recoveryStatusViews.operation.authorizeThisSmartAccountTransactionTheFollowingReviewConfirmsThe')
+                    : t('mobile.recoveryStatusViews.operation.authorizeThisSmartAccountTransferTheFollowingReviewConfirmsThe')
+                  : t('mobile.recoveryStatusViews.operation.authorizeTheAccountsDeploymentThisOperationSendsNoAssetsThe')
               }
             />
             <Card style={s.card}>
-              <Text style={s.label}>Maximum account charge</Text>
+              <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.maximumAccountCharge')}</Text>
               {amount(state.maximumPrefundUnits!)}
               <Text style={s.label}>
-                Unused prefund stays with your account.
-              </Text>
+                {t('mobile.recoveryStatusViews.operation.unusedPrefundStaysWithYourAccount')}</Text>
               <Button
                 title={
                   details
-                    ? 'Hide authorization details'
-                    : 'View authorization details'
+                    ? t('mobile.recoveryStatusViews.operation.hideAuthorizationDetails')
+                    : t('mobile.recoveryStatusViews.operation.viewAuthorizationDetails')
                 }
                 variant="quiet" size="compact"
                 expanded={details}
@@ -662,7 +662,7 @@ export function NativeSmartAccountOperationContent({
               />
               {details && (
                 <>
-                  <Text style={s.label}>User operation nonce</Text>
+                  <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.userOperationNonce')}</Text>
                   <Text selectable style={s.address}>
                     {state.authorization?.nonce}
                   </Text>
@@ -670,15 +670,15 @@ export function NativeSmartAccountOperationContent({
                   <Text selectable style={s.address}>
                     {state.authorization?.entryPoint}
                   </Text>
-                  <Text style={s.label}>Account creation data</Text>
+                  <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.accountCreationData')}</Text>
                   <Text selectable style={s.address}>
                     {state.authorization?.initCode}
                   </Text>
-                  <Text style={s.label}>Account call data</Text>
+                  <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.accountCallData')}</Text>
                   <Text selectable style={s.address}>
                     {state.authorization?.callData}
                   </Text>
-                  <Text style={s.label}>Authorization hash</Text>
+                  <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.authorizationHash')}</Text>
                   <Text selectable style={s.address}>
                     {state.userOperationHash}
                   </Text>
@@ -704,60 +704,60 @@ export function NativeSmartAccountOperationContent({
             <Notice
               title={
                 payer.purpose === 'fund-account'
-                  ? 'Fund the account charge'
+                  ? t('mobile.recoveryStatusViews.operation.fundTheAccountCharge')
                   : modules
                   ? t('mobile.smartAccountModules.submit')
                   : authenticator
-                  ? 'Change approval method'
+                  ? t('mobile.recoveryStatusViews.operation.changeApprovalMethod')
                   : guardian
                   ? guardian.kind === 'remove'
-                    ? 'Submit the authorized removal'
-                    : 'Submit the authorized guardian policy'
+                    ? t('mobile.recoveryStatusViews.operation.submitTheAuthorizedRemoval')
+                    : t('mobile.recoveryStatusViews.operation.submitTheAuthorizedGuardianPolicy')
                   : batch
-                  ? 'Submit the authorized calls'
+                  ? t('mobile.recoveryStatusViews.operation.submitTheAuthorizedCalls')
                   : transfer
                   ? transfer.kind === 'dapp-call'
-                    ? 'Submit the authorized transaction'
-                    : 'Submit the authorized transfer'
-                  : 'Submit the authorized deployment'
+                    ? t('mobile.recoveryStatusViews.operation.submitTheAuthorizedTransaction')
+                    : t('mobile.recoveryStatusViews.operation.submitTheAuthorizedTransfer')
+                  : t('mobile.recoveryStatusViews.operation.submitTheAuthorizedDeployment')
               }
               body={
                 payer.purpose === 'fund-account'
-                  ? 'Move this amount to your smart account so it can cover its network charge.'
+                  ? t('mobile.recoveryStatusViews.operation.moveThisAmountToYourSmartAccountSoItCan')
                   : modules
                   ? t('mobile.smartAccountModules.submitHint')
                   : authenticator
                   ? t('smartAccountHub.compositeOnchainHint')
                   : guardian
                   ? guardian.kind === 'remove'
-                    ? 'This transaction submits the guardian removal you authorized.'
-                    : 'This transaction submits the guardian policy you authorized.'
+                    ? t('mobile.recoveryStatusViews.operation.thisTransactionSubmitsTheGuardianRemovalYouAuthorized')
+                    : t('mobile.recoveryStatusViews.operation.thisTransactionSubmitsTheGuardianPolicyYouAuthorized')
                   : batch
-                  ? 'This transaction submits the calls you authorized.'
+                  ? t('mobile.recoveryStatusViews.operation.thisTransactionSubmitsTheCallsYouAuthorized')
                   : transfer
                   ? transfer.kind === 'dapp-call'
-                    ? 'This transaction submits the operation you authorized.'
-                    : 'This transaction submits the transfer you authorized.'
-                  : 'This transaction submits your existing deployment authorization.'
+                    ? t('mobile.recoveryStatusViews.operation.thisTransactionSubmitsTheOperationYouAuthorized')
+                    : t('mobile.recoveryStatusViews.operation.thisTransactionSubmitsTheTransferYouAuthorized')
+                  : t('mobile.recoveryStatusViews.operation.thisTransactionSubmitsYourExistingDeploymentAuthorization')
               }
             />
             <Card style={s.card}>
-              <Text style={s.label}>Paying account</Text>
+              <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.payingAccount')}</Text>
               <Text selectable style={s.address}>
                 {payer.transaction.from}
               </Text>
-              <Text style={s.label}>Amount</Text>
+              <Text style={s.label}>{t('send.amount')}</Text>
               {amount(payer.transaction.value)}
               <Text style={s.label}>
                 {payer.coveredFeeUnits !== '0'
-                  ? 'Maximum network fee · gas tank'
-                  : 'Maximum network fee'}
+                  ? t('mobile.recoveryStatusViews.operation.maximumNetworkFeeGasTank')
+                  : t('transactions.replay.maximumFee')}
               </Text>
               {amount(payer.maximumFeeUnits)}
               <Text style={s.label}>
                 {payer.coveredFeeUnits !== '0'
-                  ? 'Maximum from paying account'
-                  : 'Maximum total'}
+                  ? t('mobile.recoveryStatusViews.operation.maximumFromPayingAccount')
+                  : t('privacy.deposit.total')}
               </Text>
               {amount(payer.maximumTotalUnits)}
             </Card>
@@ -771,20 +771,20 @@ export function NativeSmartAccountOperationContent({
               {state.error && state.phase === 'preparing'
                 ? state.error
                 : state.phase === 'waiting'
-                ? 'Waiting for the network…'
+                ? t('mobile.recoveryStatusViews.operation.waitingForTheNetwork')
                 : modules
                 ? t('mobile.smartAccountModules.preparing')
                 : authenticator
-                ? 'Preparing authenticator change…'
+                ? t('mobile.recoveryStatusViews.operation.preparingAuthenticatorChange')
                 : guardian
                 ? guardian.kind === 'remove'
-                  ? 'Preparing removal…'
-                  : 'Preparing guardian policy…'
+                  ? t('mobile.recoveryStatusViews.operation.preparingRemoval')
+                  : t('mobile.recoveryStatusViews.operation.preparingGuardianPolicy')
                 : batch
-                ? 'Preparing calls…'
+                ? t('mobile.recoveryStatusViews.operation.preparingCalls')
                 : transfer
-                ? 'Preparing transfer…'
-                : 'Preparing deployment…'}
+                ? t('mobile.recoveryStatusViews.operation.preparingTransfer')
+                : t('mobile.recoveryStatusViews.operation.preparingDeployment')}
             </Text>
           </View>
         )}
@@ -795,61 +795,61 @@ export function NativeSmartAccountOperationContent({
                 ? t('mobile.smartAccountModules.confirmed')
                 : authenticator
                 ? state.transactionHash
-                  ? 'Approval method changed'
+                  ? t('mobile.recoveryStatusViews.operation.approvalMethodChanged')
                   : t('settings.smartAccountAuthenticatorConfigured')
                 : guardian
                 ? guardian.kind === 'remove'
-                  ? 'Guardian recovery removed'
-                  : 'Guardian policy updated'
+                  ? t('mobile.recoveryStatusViews.operation.guardianRecoveryRemoved')
+                  : t('mobile.recoveryStatusViews.operation.guardianPolicyUpdated')
                 : batch
-                ? 'Calls submitted'
+                ? t('mobile.recoveryStatusViews.operation.callsSubmitted')
                 : transfer?.kind === 'dapp-call'
-                ? 'Transaction submitted'
+                ? t('privacy.deposit.submitted')
                 : transfer
-                ? 'Transfer submitted'
-                : 'Smart account deployed'
+                ? t('mobile.recoveryStatusViews.operation.transferSubmitted')
+                : t('mobile.recoveryStatusViews.operation.smartAccountDeployed')
             }
             body={
               modules
                 ? t('mobile.smartAccountModules.confirmedHint')
                 : authenticator
                 ? state.transactionHash
-                  ? 'The network confirmed the authenticator change.'
+                  ? t('mobile.recoveryStatusViews.operation.theNetworkConfirmedTheAuthenticatorChange')
                   : t('settings.smartAccountCurrentApprovalMethodHint')
                 : guardian
                 ? guardian.kind === 'remove'
-                  ? 'The network confirmed this guardian removal transaction.'
-                  : 'The network confirmed this guardian policy transaction.'
+                  ? t('mobile.recoveryStatusViews.operation.theNetworkConfirmedThisGuardianRemovalTransaction')
+                  : t('mobile.recoveryStatusViews.operation.theNetworkConfirmedThisGuardianPolicyTransaction')
                 : batch
-                ? 'The connected app can check this call bundle’s status.'
+                ? t('mobile.recoveryStatusViews.operation.theConnectedAppCanCheckThisCallBundlesStatus')
                 : transfer
-                ? 'Follow this transaction in Activity.'
-                : 'Your account is available on this network.'
+                ? t('mobile.recoveryStatusViews.operation.followThisTransactionInActivity')
+                : t('mobile.recoveryStatusViews.operation.yourAccountIsAvailableOnThisNetwork')
             }
           />
         )}
         {(guardian || authenticator || modules) &&
           state.phase === 'complete' &&
           state.metadataRefresh === 'refreshing' && (
-            <Text>{modules ? t('mobile.smartAccountModules.refreshing') : 'Refreshing account status…'}</Text>
+            <Text>{t('mobile.smartAccountModules.refreshing')}</Text>
           )}
         {(guardian || authenticator || modules) &&
           state.phase === 'complete' &&
           state.metadataRefresh === 'failed' && (
             <>
               <Notice
-                title={modules ? t('mobile.smartAccountModules.statusUnavailable') : 'Account status unavailable'}
+                title={t('mobile.smartAccountModules.statusUnavailable')}
                 body={
                   modules
                     ? t('mobile.smartAccountModules.refreshHint')
                     : authenticator
-                    ? 'The authenticator transaction is confirmed. Refresh the saved account status to see the updated owner.'
-                    : 'The policy transaction is confirmed. Refresh the saved account status to see the updated policy.'
+                    ? t('mobile.recoveryStatusViews.operation.theAuthenticatorTransactionIsConfirmedRefreshTheSavedAccountStatus')
+                    : t('mobile.recoveryStatusViews.operation.thePolicyTransactionIsConfirmedRefreshTheSavedAccountStatus')
                 }
                 tone="amber"
               />
               <Button
-                title={modules ? t('mobile.smartAccountModules.refresh') : 'Refresh account status'}
+                title={t('mobile.smartAccountModules.refresh')}
                 disabled={disabled || !retryMetadata}
                 onPress={() => { if (live.current && AppState.currentState === 'active') retryMetadata?.(); }}
               />
@@ -861,16 +861,16 @@ export function NativeSmartAccountOperationContent({
               modules
                 ? t('mobile.smartAccountModules.checkStatus')
                 : authenticator
-                ? 'Check authenticator status'
+                ? t('mobile.recoveryStatusViews.operation.checkAuthenticatorStatus')
                 : guardian
                 ? guardian.kind === 'remove'
-                  ? 'Check removal status'
-                  : 'Check guardian policy status'
+                  ? t('settings.smartAccountGuardianRecoveryCheckRemoval')
+                  : t('mobile.recoveryStatusViews.operation.checkGuardianPolicyStatus')
                 : batch
-                ? 'Check calls status'
+                ? t('mobile.recoveryStatusViews.operation.checkCallsStatus')
                 : transfer
-                ? 'Check transfer status'
-                : 'Check deployment status'
+                ? t('mobile.recoveryStatusViews.operation.checkTransferStatus')
+                : t('mobile.recoveryStatusViews.operation.checkDeploymentStatus')
             }
             body={state.error}
             tone="amber"
@@ -880,8 +880,8 @@ export function NativeSmartAccountOperationContent({
           <Card style={s.card}>
             <Text style={s.label}>
               {(authenticator || modules) && state.phase === 'complete'
-                ? 'Confirmed transaction'
-                : 'Latest transaction'}
+                ? t('mobile.recoveryStatusViews.operation.confirmedTransaction')
+                : t('mobile.recoveryStatusViews.operation.latestTransaction')}
             </Text>
             <Text selectable style={s.address}>
               {state.transactionHash}

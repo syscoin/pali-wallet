@@ -1,3 +1,4 @@
+import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import { NativeSentrySettings } from './NativeSentrySettings';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
@@ -26,6 +27,7 @@ import type {
 import { Button, Card, colors, Header, Row, Screen, styles, Text } from '../ui';
 import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
 import { NoteBackupPasswordField } from './NoteBackupPasswordField';
+const t = nativeI18n.t.bind(nativeI18n);
 
 type Role = SentryKeySummary['role'];
 type Key = Readonly<SentryKeySummary>;
@@ -55,21 +57,21 @@ type Props = {
   onBack(): void;
 };
 
-const roleLabel = {
-  owner: 'Owner',
-  operator: 'Operator',
-  voting: 'Voting',
-  collateral: 'Collateral',
-} satisfies Record<Role, string>;
+const roleLabel = (): Record<Role, string> => ({
+  owner: t('sentry.roles.owner'),
+  operator: t('sentry.roles.operator'),
+  voting: t('sentry.roles.voting'),
+  collateral: t('sentry.roles.collateral'),
+});
 const schemeLabel = {
   'bls-basic': 'BLS Basic',
   'slh-dsa-shake-128s': 'SLH-DSA (SHAKE-128s)',
   secp256k1: 'secp256k1',
 } satisfies Record<SentryAuthorityScheme, string>;
-const roles = Object.keys(roleLabel) as Role[];
+const roles: Role[] = ['owner', 'operator', 'voting', 'collateral'];
 const schemes = Object.keys(schemeLabel) as SentryAuthorityScheme[];
 const describe = ({ role, scheme }: Pick<Key, 'role' | 'scheme'>) =>
-  `${roleLabel[role]} · ${schemeLabel[scheme]}`;
+  `${roleLabel()[role]} · ${schemeLabel[scheme]}`;
 const singleEntry = /^[^|\u0000-\u001f\u007f-\u009f]+$/u;
 
 const errorCode = (cause: unknown) =>
@@ -79,19 +81,19 @@ const errorCode = (cause: unknown) =>
 function errorText(cause: unknown) {
   switch (errorCode(cause)) {
     case 'INVALID_INPUT':
-      return 'Check the private key and selected key type.';
+      return t("mobile.sentryViews.checkThePrivateKeyAndSelectedKeyType");
     case 'DUPLICATE':
-      return 'This key is already saved for this role.';
+      return t("mobile.sentryViews.thisKeyIsAlreadySavedForThisRole");
     case 'INVALID_CREDENTIAL':
-      return 'Device authentication was not completed. Start a new review to try again.';
+      return t("mobile.sentryViews.deviceAuthenticationWasNotCompletedStartANewReviewToTryAgain");
     case 'AUTH_THROTTLED':
-      return 'Too many attempts. Wait before trying again.';
+      return t("mobile.sentryViews.tooManyAttemptsWaitBeforeTryingAgain");
     case 'CANCELLED':
-      return 'Review ended. Start a new review to continue.';
+      return t("mobile.sentryViews.reviewEndedStartANewReviewToContinue");
     case 'BUSY':
-      return 'Another wallet operation is finishing. Try again shortly.';
+      return t("mobile.sentryViews.anotherWalletOperationIsFinishingTryAgainShortly");
     default:
-      return 'Could not complete the action. Check your saved keys before trying again.';
+      return t("mobile.sentryViews.couldNotCompleteTheActionCheckYourSavedKeysBeforeTryingAgain");
   }
 }
 
@@ -141,7 +143,7 @@ function PublicKeyCard({
     <Card style={s.keyCard}>
       <Text style={s.heading}>{value.label}</Text>
       <Text style={styles.muted}>{describe(value)}</Text>
-      <Text selectable accessibilityLabel={`Public key ${value.publicKey}`}>
+      <Text selectable accessibilityLabel={t('mobile.sentryViews.publicKeyValue', { key: value.publicKey })}>
         {value.publicKey}
       </Text>
     </Card>
@@ -150,6 +152,7 @@ function PublicKeyCard({
 
 /** This leaf never receives wallet seed, stored private keys or signing authority. */
 export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
+  useNativeTranslation();
   const ownerRef = useRef<Owner | null>(null);
   const [step, setStep] = useState<Step>({ kind: 'list' });
   const [keys, setKeys] = useState<readonly Key[] | null>(null);
@@ -307,7 +310,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
       Keyboard.dismiss();
       if (!owner.busy) {
         navigate(owner, { kind: 'list' });
-        setNotice({ text: 'Review expired. Start again to continue.' });
+        setNotice({ text: t("mobile.sentryViews.reviewExpiredStartAgainToContinue") });
       }
     },
     [navigate]
@@ -346,7 +349,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
       containsSentryPrivateKey(label)
     ) {
       setNotice({
-        text: 'Enter one private key and a label without a vertical bar.',
+        text: t("mobile.sentryViews.enterOnePrivateKeyAndALabelWithoutAVerticalBar"),
         error: true,
       });
       return;
@@ -428,8 +431,8 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
         setNotice({
           text:
             step.kind === 'import'
-              ? 'Sentry key saved.'
-              : 'Sentry key removed.',
+              ? t("mobile.sentryViews.sentryKeySaved")
+              : t("mobile.sentryViews.sentryKeyRemoved"),
         });
       },
       (owner, cause) => {
@@ -457,7 +460,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
       if (!(await Clipboard.setStringAsync(step.key.publicKey)))
         throw new Error('COPY_FAILED');
       check();
-      setNotice({ text: 'Public key copied.' });
+      setNotice({ text: t("sentry.publicKeyCopied") });
     });
   };
 
@@ -470,15 +473,15 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
   const title =
     step.kind === 'draft'
       ? step.multiple
-        ? 'Import multiple Sentry keys'
-        : 'Import a Sentry key'
+        ? t("mobile.sentryViews.importMultipleSentryKeys")
+        : t("mobile.sentryViews.importASentryKey")
       : step.kind === 'import'
       ? step.review.keys.length > 1
-        ? 'Review Sentry keys'
-        : 'Review Sentry key'
+        ? t("mobile.sentryViews.reviewSentryKeys")
+        : t("mobile.sentryViews.reviewSentryKey")
       : step.kind === 'remove'
-      ? 'Remove Sentry key'
-      : 'Sentry keys';
+      ? t("mobile.sentryViews.removeSentryKey")
+      : t("mobile.sentryViews.sentryKeys");
   const canRetry = keys === null && active;
   if (step.kind === 'settings' && active) {
     return (
@@ -499,12 +502,12 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
         <Screen gap={16} scrollResetKey={step.kind} footer={previewKeys.length > 0 ? (<Button
                 title={
                   busy
-                    ? 'Confirming…'
+                    ? t("mobile.sentryViews.confirming")
                     : step.kind === 'remove'
-                    ? 'Remove key'
+                    ? t("mobile.sentryViews.removeKey")
                     : previewKeys.length > 1
-                    ? 'Save keys'
-                    : 'Save key'
+                    ? t("mobile.sentryViews.saveKeys")
+                    : t("mobile.sentryViews.saveKey")
                 }
                 variant={step.kind === 'remove' ? 'danger' : 'primary'}
                 disabled={
@@ -517,7 +520,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
             <>
               {keys === null ? (
                 <Text style={styles.muted}>
-                  {busy ? 'Loading Sentry keys…' : 'Sentry keys unavailable.'}
+                  {busy ? t("mobile.sentryViews.loadingSentryKeys") : t("mobile.sentryViews.sentryKeysUnavailable")}
                 </Text>
               ) : keys.length ? (
                 <Card>
@@ -537,13 +540,12 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                 </Card>
               ) : (
                 <Text style={styles.muted}>
-                  No Sentry keys saved on this network.
-                </Text>
+                  {t("mobile.sentryViews.noSentryKeysSavedOnThisNetwork")}</Text>
               )}
               {keys !== null && (
                 <>
                   <Button icon="settings"
-                    title="Service settings"
+                    title={t("mobile.sentryViews.serviceSettings")}
                     variant="secondary" size="compact"
                     disabled={busy}
                     onPress={() => {
@@ -568,12 +570,12 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                     }}
                   />
                   <Button icon="plus"
-                    title="Import key"
+                    title={t("mobile.sentryViews.importKey")}
                     disabled={busy}
                     onPress={() => startDraft(false)}
                   />
                   <Button icon="plus"
-                    title="Import multiple keys"
+                    title={t("mobile.sentryViews.importMultipleKeys")}
                     variant="secondary" size="compact"
                     disabled={busy}
                     onPress={() => startDraft(true)}
@@ -581,7 +583,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                 </>
               )}
               {canRetry && !busy && (
-                <Button icon="refresh" title="Try again" variant="secondary" size="compact" onPress={load} />
+                <Button icon="refresh" title={t("mobile.connections.tryAgain")} variant="secondary" size="compact" onPress={load} />
               )}
             </>
           )}
@@ -589,14 +591,14 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
             <>
               <PublicKeyCard value={step.key} />
               <Button
-                title="Copy public key"
+                title={t("sentry.copyPublicKey")}
                 icon="copy"
                 variant="secondary" size="compact"
                 disabled={busy}
                 onPress={copy}
               />
               <Button icon="trash"
-                title="Remove key"
+                title={t("mobile.sentryViews.removeKey")}
                 variant="secondary" size="compact"
                 disabled={busy}
                 onPress={startRemoval}
@@ -606,10 +608,10 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
           {step.kind === 'draft' && (
             <>
               <Choices
-                label="Role"
+                label={t("mobile.sentryViews.role")}
                 choices={roles}
                 selected={role}
-                labels={roleLabel}
+                labels={roleLabel()}
                 disabled={busy}
                 onSelect={(value) => {
                   if (!editable() || role === value) return;
@@ -624,7 +626,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                 }}
               />
               <Choices
-                label="Key type"
+                label={t("sentry.keyType")}
                 choices={schemes.filter((item) =>
                   isAllowedSentryKeyRoleScheme(role, item)
                 )}
@@ -641,10 +643,9 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
               {step.multiple ? (
                 <View style={s.field}>
                   <Text style={s.label}>
-                    Copy up to 20 lines using Label | Private key.
-                  </Text>
+                    {t("mobile.sentryViews.copyUpTo20LinesUsingLabelPrivateKey")}</Text>
                   <Button icon="copy"
-                    title="Paste and review keys"
+                    title={t("mobile.sentryViews.pasteAndReviewKeys")}
                     disabled={busy}
                     onPress={pasteBatch}
                   />
@@ -652,9 +653,9 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
               ) : (
                 <>
                   <View style={s.field}>
-                    <Text style={s.label}>Key label</Text>
+                    <Text style={s.label}>{t("sentry.keyLabel")}</Text>
                     <IdleTextInput
-                      accessibilityLabel="Key label"
+                      accessibilityLabel={t("sentry.keyLabel")}
                       value={label}
                       editable={!busy}
                       autoCorrect={false}
@@ -671,8 +672,8 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                           setNotice({
                             text:
                               value.length > 80
-                                ? 'Use up to 80 characters for the key label.'
-                                : 'Enter private keys only in the private key field.',
+                                ? t("mobile.sentryViews.useUpTo80CharactersForTheKeyLabel")
+                                : t("mobile.sentryViews.enterPrivateKeysOnlyInThePrivateKeyField"),
                             error: true,
                           });
                         } else setLabel(value);
@@ -680,14 +681,14 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                     />
                   </View>
                   <NoteBackupPasswordField
-                    label="Private key"
+                    label={t("mobile.sentryViews.privateKey")}
                     value={privateKey}
                     onChange={(value) => {
                       if (!editable()) return;
                       if (value.length > 130) {
                         setPrivateKey('');
                         setNotice({
-                          text: 'Enter one complete private key.',
+                          text: t("mobile.sentryViews.enterOneCompletePrivateKey"),
                           error: true,
                         });
                       } else setPrivateKey(value);
@@ -698,7 +699,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
               )}
               {!step.multiple && (
                 <Button
-                  title={busy ? 'Checking key…' : 'Review key'}
+                  title={busy ? t("mobile.sentryViews.checkingKey") : t("mobile.sentryViews.reviewKey")}
                   disabled={busy || !label.trim() || !privateKey}
                   onPress={preview}
                 />
@@ -723,8 +724,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                 >
                   <Text aria-hidden>{backedUp ? '✓' : '○'}</Text>
                   <Text style={s.fill}>
-                    I have a separate backup of this key.
-                  </Text>
+                    {t("mobile.sentryViews.iHaveASeparateBackupOfThisKey")}</Text>
                 </IdlePressable>
               )}
 

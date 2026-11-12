@@ -1,3 +1,4 @@
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -48,6 +49,7 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
     BackHandler: { addEventListener: () => ({ remove() {} }) } };
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'IconButton', 'Notice', 'Screen', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
   const imports: Record<string, unknown> = {
+    '../platform/localization': nativeTranslationFixture,
     react, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
     '../core/amounts': { formatBaseUnits }, './NativeLedger': { NativeLedgerConnectionModal: 'Ledger' },
     './IdleActivityBoundary': { IdleTextInput: 'Input' },

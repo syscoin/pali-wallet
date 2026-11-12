@@ -155,7 +155,6 @@ const initial = (): NativeActivitySnapshot =>
     coverage:
       'Direct transactions and ERC20 transfer events from the selected network are included.',
     truncated: false,
-    discoveryAvailable: false,
     canViewSavedPending: false,
     savedPending: undefined,
   });

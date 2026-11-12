@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,28 +12,29 @@ export type BackupIntroductionProps = {
   error?: string;
 };
 
-const steps = [
-  { title: 'Write it down', body: 'Use pen and paper.' },
-  { title: 'Keep it offline', body: 'Don’t screenshot or save it digitally.' },
-  { title: 'Keep it private', body: 'Anyone with it can control your wallet.' },
-] as const;
 
 /** Public introduction only; the parent owns authentication and phrase access. */
 export function BackupIntroduction({ onBack, onStart, onLater, disabled = false, error }: BackupIntroductionProps) {
+  const { t } = useNativeTranslation();
+const steps = [
+  { title: t('mobile.noteFlows.backupIntroduction.writeItDown'), body: t('mobile.noteFlows.backupIntroduction.usePenAndPaper') },
+  { title: t('mobile.noteFlows.backupIntroduction.keepItOffline'), body: t('mobile.noteFlows.backupIntroduction.dontScreenshotOrSaveItDigitally') },
+  { title: t('mobile.noteFlows.backupIntroduction.keepItPrivate'), body: t('mobile.noteFlows.backupIntroduction.anyoneWithItCanControlYourWallet') },
+] as const;
   const compact = useWindowDimensions().height < 700;
   return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <Screen gap={16} footer={<>
-      <Button title="Back Up Now" disabled={disabled} onPress={onStart} />
-      <Button title="Do It Later" variant="secondary" disabled={disabled} onPress={onLater} style={s.later} />
+      <Button title={t('mobile.noteFlows.backupIntroduction.backUpNow')} disabled={disabled} onPress={onStart} />
+      <Button title={t('mobile.noteFlows.backupIntroduction.doItLater')} variant="secondary" disabled={disabled} onPress={onLater} style={s.later} />
     </>}>
-      <Header title="Wallet Backup" onBack={onBack} />
+      <Header title={t('mobile.noteFlows.backupIntroduction.walletBackup')} onBack={onBack} />
       <View style={[s.content, compact && s.compactContent]}>
         <View style={s.hero}>
           <View style={[s.heroIcon, compact && s.compactIcon]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
             <Icon name="shield" size={36} color={colors.blue} />
           </View>
-          <Text accessibilityRole="header" style={s.title}>Back up your wallet</Text>
-          <Text style={s.body}>Your recovery phrase restores accounts derived from this wallet. Keep it safe.</Text>
+          <Text accessibilityRole="header" style={s.title}>{t('mobile.portfolioCopy.backupTitle')}</Text>
+          <Text style={s.body}>{t('mobile.noteFlows.backupIntroduction.yourRecoveryPhraseRestoresAccountsDerivedFromThis')}</Text>
         </View>
         <Card style={s.steps}>
           {steps.map((step, index) => <View key={step.title} style={[s.step, index < steps.length - 1 && s.divider]}>
@@ -46,7 +48,7 @@ export function BackupIntroduction({ onBack, onStart, onLater, disabled = false,
           </View>)}
         </Card>
       </View>
-      {error && <Notice title="Backup was not opened" body={error} tone="amber" />}
+      {error && <Notice title={t('mobile.noteFlows.backupIntroduction.backupWasNotOpened')} body={error} tone="amber" />}
     </Screen>
   </SafeAreaView>;
 }

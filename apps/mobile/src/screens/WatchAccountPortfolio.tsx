@@ -1,3 +1,5 @@
+import { CopyableAddress } from './CopyableAddress';
+import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -17,11 +19,13 @@ import { supportsSptUtxoChain } from '../../../../source/shared/sptInventory';
 import { TestnetFaucetCard } from './TestnetFaucetCard';
 import { Button, Card, Coin, colors, Header, IconButton, Notice, Row, Screen, styles, Text } from '../ui';
 import type { ShellLeafNavigation } from './RealAppShell';
+const t = nativeI18n.t.bind(nativeI18n);
 
 /** Public observation only: this component never receives native custody. */
 export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, navigation }: {
   authority: WatchOnlyAuthority; onAccounts(): void; onExit(): void; onLock(): void; navigation?: ShellLeafNavigation;
 }) {
+  useNativeTranslation();
   const { width, fontScale } = useWindowDimensions();
   const { hidden: hideBalances } = useBalancePrivacy();
   const receiveQrSize = width <= 340 ? 176 : 204;
@@ -29,6 +33,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
   const actionStyle = [s.flex, width <= 340 && s.compactAction, stackActions && s.stackedAction];
   const [mode, setMode] = useState<'home' | 'receive' | 'networks' | 'asset'>('home');
   const [feedback, setFeedback] = useState('');
+  const [feedbackError, setFeedbackError] = useState(false);
   const assetGeneration = useRef<number | null>(null);
   const receiveReturn = useRef<'home' | 'asset'>('home');
   const [busy, setBusy] = useState(false);
@@ -38,7 +43,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
   const setTokenBack = useCallback((handler: (() => boolean) | null) => { tokenBack.current = handler; }, []);
   const lifecycle = useRef({ alive: true, action: 0, busy: false });
   const observedGeneration = useRef(authority.getSnapshot().generation);
-  const invalidateActions = useCallback(() => { lifecycle.current.action++; lifecycle.current.busy = false; setBusy(false); setOpeningFaucet(false); setFeedback(''); }, []);
+  const invalidateActions = useCallback(() => { lifecycle.current.action++; lifecycle.current.busy = false; setBusy(false); setOpeningFaucet(false); setFeedback(''); setFeedbackError(false); }, []);
   const subscribe = useCallback((listener: () => void) => authority.subscribe((next) => {
     if (observedGeneration.current !== next.generation) { observedGeneration.current = next.generation; assetGeneration.current = null; setMode(value => value === 'asset' ? 'home' : value); invalidateActions(); }
     listener();
@@ -65,16 +70,16 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
     if (kind === 'faucet' && AppState.currentState !== 'active') return;
     const generation = snapshot.generation;
     const action = ++lifecycle.current.action;
-    lifecycle.current.busy = true; setBusy(true); setOpeningFaucet(kind === 'faucet'); setFeedback('');
+    lifecycle.current.busy = true; setBusy(true); setOpeningFaucet(kind === 'faucet'); setFeedback(''); setFeedbackError(false);
     try {
       if (!current(generation)) return;
       if (kind === 'copy') { if (await Clipboard.setStringAsync(address) === false) throw new Error('Copy failed'); }
-      else if (kind === 'share') { const result = await Share.share({ title: `${network.name} receive address`, message: `${network.name} (${network.symbol}) address\n${address}` }); if (result?.action !== Share.sharedAction) return; }
+      else if (kind === 'share') { const result = await Share.share({ title: t('mobile.activityViews.watchAccountPortfolio.receiveTitle', { network: network.name }), message: t('mobile.activityViews.watchAccountPortfolio.shareAddressMessage', { network: network.name, symbol: network.symbol, address }) }); if (result?.action !== Share.sharedAction) return; }
       else await openTestnetFaucet(getNativeNetwork(network.id), (url) => Linking.openURL(url), () => {
         if (!current(generation) || action !== lifecycle.current.action || AppState.currentState !== 'active') throw new Error('CANCELLED');
       });
-      if (current(generation) && action === lifecycle.current.action) setFeedback(kind === 'faucet' ? 'Faucet opened in your browser. Paste your address there to request test funds.' : `${network.name} address ${kind === 'copy' ? 'copied' : 'shared'}.`);
-    } catch { if (current(generation) && action === lifecycle.current.action) setFeedback(kind === 'faucet' ? 'Could not open the faucet. Try again.' : `Could not ${kind} this address. Try again.`); }
+      if (current(generation) && action === lifecycle.current.action) setFeedback(kind === 'faucet' ? t('mobile.activityViews.watchAccountPortfolio.faucetOpenedInYourBrowserPasteYourAddressThere') : kind === 'copy' ? t('mobile.activityViews.watchAccountPortfolio.addressCopied', { network: network.name }) : t('mobile.activityViews.watchAccountPortfolio.addressShared', { network: network.name }));
+    } catch { if (current(generation) && action === lifecycle.current.action) { setFeedbackError(true); setFeedback(kind === 'faucet' ? t('mobile.activityViews.watchAccountPortfolio.couldNotOpenTheFaucetTryAgain') : kind === 'copy' ? t('mobile.activityViews.watchAccountPortfolio.couldNotCopyThisAddressTryAgain') : t('mobile.activityViews.watchAccountPortfolio.couldNotShareThisAddressTryAgain')); } }
     finally { if (action === lifecycle.current.action) { lifecycle.current.busy = false; if (lifecycle.current.alive) { setBusy(false); setOpeningFaucet(false); } } }
   };
   const amount = snapshot.balance.status === 'available' ? formatBaseUnits(snapshot.balance.units, network.decimals) : null;
@@ -87,50 +92,50 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
   const back = () => { invalidateActions(); if (!handleBack()) onExit(); };
   const receive = () => { if (!current(snapshot.generation) || !snapshot.capabilities.receive || !address) return; receiveReturn.current = mode === 'asset' ? 'asset' : 'home'; invalidateActions(); setMode('receive'); };
   const faucetCard = address && network.kind === 'evm' && <TestnetFaucetCard registration={getNativeNetwork(network.id)} busy={busy} opening={openingFaucet} onCopy={mode === 'receive' ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
-  const feedbackView = !!feedback && <Text accessibilityRole={feedback.startsWith('Could not ') ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[s.feedback, feedback.startsWith('Could not ') && { color: colors.red }]}>{feedback}</Text>;
+  const feedbackView = !!feedback && <Text accessibilityRole={feedbackError ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[s.feedback, feedbackError && { color: colors.red }]}>{feedback}</Text>;
   return <SafeAreaView style={s.safe} edges={navigation && mode === 'home' && !tokenTitle ? ['top'] : ['top', 'bottom']}>
     <Screen key={receiving ? 'receive' : 'portfolio'} scrollResetKey={`${mode}:${tokenTitle ?? ''}`} footerScrollable={receiving} gap={receiving ? 12 : 16}
       footer={receiving ? <View style={[s.actions, stackActions && s.stackedActions]}>
-        <Button title="Copy address" icon="copy" size="compact" disabled={busy || !address} onPress={() => void publicAction('copy')} style={actionStyle} />
-        <Button title="Share address" icon="share" size="compact" variant="secondary" disabled={busy || !address} onPress={() => void publicAction('share')} style={actionStyle} />
+        <Button title={t('transactions.copyAddress')} icon="copy" size="compact" disabled={busy || !address} onPress={() => void publicAction('copy')} style={actionStyle} />
+        <Button title={t('mobile.activityViews.watchAccountPortfolio.shareAddress')} icon="share" size="compact" variant="secondary" disabled={busy || !address} onPress={() => void publicAction('share')} style={actionStyle} />
       </View> : undefined}>
-      <Header title={mode === 'receive' ? `Receive ${network.symbol}` : mode === 'networks' ? 'Choose network' : mode === 'asset' ? network.name : tokenTitle ?? 'Pali Wallet'}
-        subtitle={`${account?.name ?? 'Watch account'} · Watch-only`} onBack={mode !== 'home' || !!tokenTitle ? back : undefined} brand={mode === 'home' && !tokenTitle}
+      <Header title={mode === 'receive' ? t('mobile.activityViews.watchAccountPortfolio.receiveAsset', { symbol: network.symbol }) : mode === 'networks' ? t('mobile.activityViews.watchAccountPortfolio.chooseNetwork') : mode === 'asset' ? network.name : tokenTitle ?? 'Pali Wallet'}
+        subtitle={`${account?.name ?? t('mobile.activityViews.watchAccountPortfolio.watchAccount')} · ${t('settings.watchOnly')}`} onBack={mode !== 'home' || !!tokenTitle ? back : undefined} brand={mode === 'home' && !tokenTitle}
         right={(mode === 'home' || mode === 'asset') && !tokenTitle ? <View style={s.toolbar}>
-          <IconButton label={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" disabled={loading} onPress={() => void authority.refresh()} />
-          {mode === 'home' && <IconButton label="Accounts" icon="wallet" onPress={onAccounts} />}
+          <IconButton label={loading ? t('mobile.activityViews.nativeSptAssets.refreshing') : t('mobile.infrastructure.refresh')} icon="refresh" disabled={loading} onPress={() => void authority.refresh()} />
+          {mode === 'home' && <IconButton label={t('mobile.accounts.title')} icon="wallet" onPress={onAccounts} />}
         </View> : undefined} />
-      {snapshot.status !== 'ready' || !address ? <Notice title="Public account hidden" body="Open your watch account to view its public balance." /> : mode === 'networks' ? <>
-        <Text style={styles.muted}>Choose the network for this saved EVM public address.</Text>
-        {authority.getAccountNetworks(account).map((choice) => <Card key={choice.id}><Row title={choice.name} subtitle={`${choice.symbol}${choice.testnet ? ' · Test network' : ''}${choice.id === network.id ? ' · Selected' : ''}`} icon="globe" onPress={() => { authority.selectNetwork(choice.id); setMode('home'); setFeedback(''); void authority.refresh(); }} last /></Card>)}
+      {snapshot.status !== 'ready' || !address ? <Notice title={t('mobile.activityViews.watchAccountPortfolio.publicAccountHidden')} body={t('mobile.activityViews.watchAccountPortfolio.openYourWatchAccountToViewItsPublicBalance')} /> : mode === 'networks' ? <>
+        <Text style={styles.muted}>{t('mobile.activityViews.watchAccountPortfolio.chooseTheNetworkForThisSavedEVMPublicAddress')}</Text>
+        {authority.getAccountNetworks(account).map((choice) => <Card key={choice.id}><Row title={choice.name} subtitle={`${choice.symbol}${choice.testnet ? ` · ${t('mobile.common.testNetwork')}` : ''}${choice.id === network.id ? ` · ${t('mobile.language.selected')}` : ''}`} icon="globe" onPress={() => { authority.selectNetwork(choice.id); setMode('home'); setFeedback(''); setFeedbackError(false); void authority.refresh(); }} last /></Card>)}
       </> : mode === 'receive' ? <>
         <View style={s.receiveIdentity}><Coin id={utxo ? network.symbol : network.id} fallbackSymbol={utxo ? network.symbol : undefined} size={36} /><Text style={s.name}>{network.name}</Text></View>
-        <View style={s.qr} accessible accessibilityRole="image" accessibilityLabel={`QR code for ${network.name} address ${address}`}><QRCode value={address} size={receiveQrSize} quietZone={16} color={colors.bg} backgroundColor="#ffffff" /></View>
-        <Text selectable style={s.receiveAddress} accessibilityLabel={`${network.name} address ${address}`}>{address}</Text>
+        <View style={s.qr} accessible accessibilityRole="image" accessibilityLabel={t('mobile.activityViews.watchAccountPortfolio.addressQr', { network: network.name, address })}><QRCode value={address} size={receiveQrSize} quietZone={16} color={colors.bg} backgroundColor="#ffffff" /></View>
+        <CopyableAddress address={address} label={t('mobile.activityViews.watchAccountPortfolio.addressLabel', { network: network.name, address })} style={s.receiveAddress} disabled={busy} onCopy={() => void publicAction('copy')} />
         {feedbackView}
-        <Notice title="Check the network" body={`Use ${network.name}${network.testnet ? ' (test network)' : ''} for this address. Check the network in the sending wallet before transferring funds.`} />
-        {utxo && authority.getUtxoWatchScope() === 'address' && <Notice title="One address only" body="Other receive and change addresses in the original wallet are not included." />}
+        <Notice title={t('mobile.activityViews.watchAccountPortfolio.checkTheNetwork')} body={t('mobile.activityViews.watchAccountPortfolio.networkWarning', { network: network.testnet ? t('mobile.activityViews.watchAccountPortfolio.testNetworkName', { network: network.name }) : network.name })} />
+        {utxo && authority.getUtxoWatchScope() === 'address' && <Notice title={t('mobile.activityViews.watchAccountPortfolio.oneAddressOnly')} body={t('mobile.activityViews.watchAccountPortfolio.otherReceiveAndChangeAddressesInTheOriginalWallet')} />}
         {faucetCard}
       </> : <>
         {!tokenTitle && <>
           <View style={s.hero}>
             <Coin id={utxo ? network.symbol : network.id} fallbackSymbol={utxo ? network.symbol : undefined} size={46} />
-            <Text style={s.label}>{network.name.toUpperCase()}{utxo ? ' CONFIRMED BALANCE' : ' BALANCE'}</Text>
-            <Text style={[s.amount, mode === 'asset' && !hideBalances && amount !== null && amount.length > 14 && styles.walletBalanceLong, mode === 'asset' && !hideBalances && amount !== null && amount.length > 20 && styles.walletBalancePrecise]} accessibilityLabel={hideBalances ? 'Balance hidden' : amount === null ? loading ? `Loading ${network.name} balance` : 'Balance unavailable' : `${network.name}${utxo ? ' confirmed' : ''} balance ${amount} ${network.symbol}`}>{hideBalances ? HIDDEN_BALANCE : amount === null ? '—' : mode === 'asset' ? amount : compactActivityAmountLabel(amount)}</Text>
-            <Text style={styles.muted}>{amount === null ? loading ? 'Updating…' : 'Balance unavailable' : network.symbol}</Text>
+            <Text style={s.label}>{utxo ? t('mobile.activityViews.watchAccountPortfolio.confirmedBalance', { network: network.name }) : t('mobile.activityViews.watchAccountPortfolio.balance', { network: network.name })}</Text>
+            <Text style={[s.amount, mode === 'asset' && !hideBalances && amount !== null && amount.length > 14 && styles.walletBalanceLong, mode === 'asset' && !hideBalances && amount !== null && amount.length > 20 && styles.walletBalancePrecise]} accessibilityLabel={hideBalances ? t('mobile.activityViews.watchAccountPortfolio.balanceHidden') : amount === null ? loading ? t('mobile.activityViews.watchAccountPortfolio.loadingBalance', { network: network.name }) : t('mobile.accountPortfolio.balanceUnavailable') : utxo ? t('mobile.activityViews.watchAccountPortfolio.confirmedBalanceAmount', { network: network.name, amount, symbol: network.symbol }) : t('mobile.activityViews.watchAccountPortfolio.balanceAmount', { network: network.name, amount, symbol: network.symbol })}>{hideBalances ? HIDDEN_BALANCE : amount === null ? '—' : mode === 'asset' ? amount : compactActivityAmountLabel(amount)}</Text>
+            <Text style={styles.muted}>{amount === null ? loading ? t('mobile.activityViews.watchAccountPortfolio.updating') : t('mobile.accountPortfolio.balanceUnavailable') : network.symbol}</Text>
             <PortfolioQuote {...quote} quote={hideBalances && quote.supported ? HIDDEN_BALANCE : quote.quote} testID="watch-portfolio-quote" />
             {loading && <ActivityIndicator color={colors.pink} />}
-            {utxo && <Text style={s.pending} accessibilityLabel={hideBalances && pendingAmount !== null ? 'Pending balance hidden' : pendingAmount === null ? 'Pending balance change unavailable' : `Pending balance change ${pendingAmount} ${network.symbol}`}>Pending balance change: {hideBalances && pendingAmount !== null ? HIDDEN_BALANCE : pendingAmount === null ? 'Unavailable' : `${pendingAmount} ${network.symbol}`}</Text>}
+            {utxo && <Text style={s.pending} accessibilityLabel={hideBalances && pendingAmount !== null ? t('mobile.activityViews.watchAccountPortfolio.pendingBalanceHidden') : pendingAmount === null ? t('mobile.activityViews.watchAccountPortfolio.pendingBalanceChangeUnavailable') : t('mobile.activityViews.watchAccountPortfolio.pendingChange', { amount: pendingAmount, symbol: network.symbol })}>{t('mobile.activityViews.watchAccountPortfolio.pendingChangeValue', { amount: hideBalances && pendingAmount !== null ? HIDDEN_BALANCE : pendingAmount === null ? t('settings.unavailable') : `${pendingAmount} ${network.symbol}` })}</Text>}
           </View>
-          {snapshot.balance.status === 'error' && <Notice title="Could not load your balance" body="Your address is still available. Refresh to try again." tone="amber" />}
-          <Button title="Receive" icon="arrow-down-left" size="compact" onPress={receive} />
+          {snapshot.balance.status === 'error' && <Notice title={t('mobile.activityViews.watchAccountPortfolio.couldNotLoadYourBalance')} body={t('mobile.activityViews.watchAccountPortfolio.yourAddressIsStillAvailableRefreshToTryAgain')} tone="amber" />}
+          <Button title={t('buttons.receive')} icon="arrow-down-left" size="compact" onPress={receive} />
           {mode === 'asset' ? <>
             <AssetMarketCard asset={{ kind: 'native', networkId: network.id, registration: network.kind === 'evm' ? getNativeNetwork(network.id) : undefined }} />
-            <Card style={s.identity}><Text style={s.label}>{account.name}</Text><Text selectable style={s.address}>{address}</Text></Card>
+            <Card style={s.identity}><Text style={s.label}>{account.name}</Text><CopyableAddress address={address} style={s.address} disabled={busy} onCopy={() => void publicAction('copy')} /></Card>
           </> : <View style={s.assetList}>
-            <Text accessibilityRole="header" style={s.assetHeading}>Assets</Text>
+            <Text accessibilityRole="header" style={s.assetHeading}>{t('buttons.assets')}</Text>
             <Card><Row title={network.symbol} subtitle={network.name} icon={<Coin id={utxo ? network.symbol : network.id} fallbackSymbol={utxo ? network.symbol : undefined} size={32} />}
-              right={<Text style={s.assetBalance} accessibilityLabel={hideBalances ? 'Balance hidden' : `${amount ?? 'Unavailable'} ${network.symbol}`}>{hideBalances ? HIDDEN_BALANCE : amount === null ? '—' : compactActivityAmountLabel(amount)} {network.symbol}</Text>}
+              right={<Text style={s.assetBalance} accessibilityLabel={hideBalances ? t('mobile.activityViews.watchAccountPortfolio.balanceHidden') : `${amount ?? t('settings.unavailable')} ${network.symbol}`}>{hideBalances ? HIDDEN_BALANCE : amount === null ? '—' : compactActivityAmountLabel(amount)} {network.symbol}</Text>}
               onPress={() => { if (current(snapshot.generation)) { assetGeneration.current = snapshot.generation; setMode('asset'); } }} last /></Card>
           </View>}
         </>}
@@ -141,7 +146,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
         </View>
         {mode === 'home' && !tokenTitle && <>
           {faucetCard}
-          <Card><Row title="Network" subtitle={network.name} icon="globe" onPress={utxo ? undefined : () => { invalidateActions(); setMode('networks'); }} /><Row title="Hide public account" icon="lock" onPress={onLock} last /></Card>
+          <Card><Row title={t('transactions.replay.network')} subtitle={network.name} icon="globe" onPress={utxo ? undefined : () => { invalidateActions(); setMode('networks'); }} /><Row title={t('mobile.activityViews.watchAccountPortfolio.hidePublicAccount')} icon="lock" onPress={onLock} last /></Card>
         </>}
       </>}
       {mode !== 'receive' && feedbackView}

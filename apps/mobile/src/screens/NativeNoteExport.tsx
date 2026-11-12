@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,28 +24,30 @@ type Props = {
 };
 
 export function NativeNoteFilesMenu({ onBack, onExport, onRestore, onCapacity, onInventory, onImport, onDeposit, onMaintenance, onPrivacySettings }: { onBack(): void; onExport(): void; onRestore(): void; onCapacity?(): void; onInventory?(): void; onImport?(): void; onDeposit?(): void; onMaintenance?(): void; onPrivacySettings?(): void }) {
+  const { t } = useNativeTranslation();
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}><Screen>
-    <Header title="Private notes" onBack={onBack} />
+    <Header title={t('mobile.tools.notes')} onBack={onBack} />
     <Card>
-      {onDeposit && <Row title="Deposit to pool" subtitle="Create and fund a private note" icon="plus" onPress={onDeposit} />}
-      {onInventory && <Row title="Saved notes" subtitle="View notes stored on this device" icon="wallet" onPress={onInventory} />}
-      {onImport && <Row title="Import one note" subtitle="Restore a raw private note" icon="plus" onPress={onImport} />}
-      <Row title="Back up private notes" subtitle="Save an encrypted copy" icon="lock" onPress={onExport} />
-      <Row title="Restore note backup" subtitle="Add notes from an encrypted file" icon="wallet" onPress={onRestore} last={!onCapacity && !onMaintenance && !onPrivacySettings} />
-      {onCapacity && <Row title="Note capacity" icon="settings" subtitle="Change the saved note limit" onPress={onCapacity} last={!onMaintenance && !onPrivacySettings} />}
-      {onMaintenance && <Row title="Manage completed notes" icon="refresh" subtitle="Clear completed notes or recover a failed withdrawal" onPress={onMaintenance} last={!onPrivacySettings} />}
-      {onPrivacySettings && <Row title="Privacy service" icon="globe" subtitle="Service origin and public pool data" onPress={onPrivacySettings} last />}
+      {onDeposit && <Row title={t('privacy.deposit.title')} subtitle={t('mobile.noteFlows.export.createAndFundAPrivateNote')} icon="plus" onPress={onDeposit} />}
+      {onInventory && <Row title={t('mobile.noteFlows.export.savedNotes')} subtitle={t('mobile.noteFlows.export.viewNotesStoredOnThisDevice')} icon="wallet" onPress={onInventory} />}
+      {onImport && <Row title={t('mobile.noteFlows.export.importOneNote')} subtitle={t('mobile.noteFlows.export.restoreARawPrivateNote')} icon="plus" onPress={onImport} />}
+      <Row title={t('mobile.noteFlows.export.backUpPrivateNotes')} subtitle={t('mobile.noteFlows.export.saveAnEncryptedCopy')} icon="lock" onPress={onExport} />
+      <Row title={t('mobile.noteFlows.export.restoreNoteBackup')} subtitle={t('mobile.noteFlows.export.addNotesFromAnEncryptedFile')} icon="wallet" onPress={onRestore} last={!onCapacity && !onMaintenance && !onPrivacySettings} />
+      {onCapacity && <Row title={t('privacy.capacity.settings')} icon="settings" subtitle={t('mobile.noteFlows.export.changeTheSavedNoteLimit')} onPress={onCapacity} last={!onMaintenance && !onPrivacySettings} />}
+      {onMaintenance && <Row title={t('mobile.noteFlows.export.manageCompletedNotes')} icon="refresh" subtitle={t('mobile.noteFlows.export.clearCompletedNotesOrRecoverAFailedWithdrawal')} onPress={onMaintenance} last={!onPrivacySettings} />}
+      {onPrivacySettings && <Row title={t('privacy.serviceSettings')} icon="globe" subtitle={t('mobile.noteFlows.export.serviceOriginAndPublicPoolData')} onPress={onPrivacySettings} last />}
     </Card>
   </Screen></SafeAreaView>;
 }
 
-export function NativeNoteExport({ step, busy, error, onChoose, onSave, onShowVerify, onVerify, onBack, doneLabel = 'Done' }: Props) {
+export function NativeNoteExport({ step, busy, error, onChoose, onSave, onShowVerify, onVerify, onBack, doneLabel }: Props) {
+  const { t } = useNativeTranslation();
   useLayoutEffect(() => {
     const back = BackHandler.addEventListener('hardwareBackPress', () => { onBack(); return true; });
     return () => back.remove();
   }, [onBack]);
   const feedback = error ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text> : null;
-  const header = <Header title={step.phase === 'verify' ? 'Verify backup' : 'Back up private notes'} onBack={onBack} />;
+  const header = <Header title={step.phase === 'verify' ? t('mobile.noteFlows.export.verifyBackup') : t('mobile.noteFlows.export.backUpPrivateNotes')} onBack={onBack} />;
   let content;
   switch (step.phase) {
     case 'passwords':
@@ -54,25 +57,25 @@ export function NativeNoteExport({ step, busy, error, onChoose, onSave, onShowVe
       break;
     case 'saved':
     case 'verified': {
-      const count = step.noteCount === 1 ? '1 private note' : step.noteCount + ' private notes';
+      const count = t('mobile.noteFlows.export.noteCount', { count: step.noteCount });
       const verified = step.phase === 'verified';
-      content = <Screen footer={<Button title={doneLabel} onPress={onBack} />}>{header}
-        <Notice title={verified ? 'Backup verified' : 'Encrypted backup saved'} body={verified
-          ? 'Pali opened the saved file and confirmed it contains ' + count + '.'
-          : 'The file contains ' + count + '. Keep its password separate from the file.'} />
-        {!verified && step.canVerify !== false && <Button title="Verify saved backup" variant="secondary" onPress={onShowVerify} />}
+      content = <Screen footer={<Button title={doneLabel ?? t('privacy.deposit.done')} onPress={onBack} />}>{header}
+        <Notice title={verified ? t('mobile.noteFlows.export.backupVerified') : t('mobile.noteFlows.export.encryptedBackupSaved')} body={verified
+          ? t('mobile.noteFlows.export.verifiedContents', { notes: count })
+          : t('mobile.noteFlows.export.savedContents', { notes: count })} />
+        {!verified && step.canVerify !== false && <Button title={t('mobile.noteFlows.export.verifySavedBackup')} variant="secondary" onPress={onShowVerify} />}
         {feedback}
       </Screen>;
       break;
     }
     case 'unconfirmed':
-      content = <Screen footer={<Button title="Done" onPress={onBack} />}>{header}
-        <Notice title="Save could not be confirmed" body="Check your chosen folder for the encrypted file before saving another copy." tone="amber" />
+      content = <Screen footer={<Button title={t('privacy.deposit.done')} onPress={onBack} />}>{header}
+        <Notice title={t('mobile.noteFlows.export.saveCouldNotBeConfirmed')} body={t('mobile.noteFlows.export.checkYourChosenFolderForTheEncryptedFile')} tone="amber" />
       </Screen>;
       break;
     default:
-      content = <Screen footer={<Button title={busy ? 'Opening Files…' : 'Choose folder'} onPress={onChoose} disabled={busy} />}>{header}
-        <Text style={styles.muted}>Save an encrypted copy of the private notes in this wallet. A recovery phrase does not restore private notes.</Text>
+      content = <Screen footer={<Button title={busy ? t('mobile.noteFlows.export.openingFiles') : t('mobile.noteFlows.export.chooseFolder')} onPress={onChoose} disabled={busy} />}>{header}
+        <Text style={styles.muted}>{t('mobile.noteFlows.export.saveAnEncryptedCopyOfThePrivateNotes')}</Text>
         {feedback}
       </Screen>;
   }
@@ -84,6 +87,7 @@ function BackupForm({ verify, busy, header, feedback, submit }: {
   verify: boolean; busy: boolean; header: React.ReactNode; feedback: React.ReactNode;
   submit(backup: string): void;
 }) {
+  const { t } = useNativeTranslation();
   const [values, setValues] = useState(empty);
   const entered = useRef(values);
   const reset = () => { entered.current = empty(); setValues(entered.current); Keyboard.dismiss(); };
@@ -102,7 +106,7 @@ function BackupForm({ verify, busy, header, feedback, submit }: {
     }} busy={busy} />;
   };
   return <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <Screen footer={<Button title={busy ? 'Working…' : verify ? 'Verify backup' : 'Save encrypted backup'}
+    <Screen footer={<Button title={busy ? t('mobile.noteFlows.export.working') : verify ? t('mobile.noteFlows.export.verifyBackup') : t('mobile.noteFlows.export.saveEncryptedBackup')}
       variant={disabled ? 'secondary' : 'primary'} disabled={disabled} onPress={() => {
         const value = entered.current;
         if (busy || !valid(value) || AppState.currentState !== 'active') return;
@@ -110,11 +114,11 @@ function BackupForm({ verify, busy, header, feedback, submit }: {
         submit(value.backup);
       }} />}>
       {header}
-      <Text style={styles.muted}>{verify ? 'Enter the password for this file to verify it can be opened.' : 'Use a separate backup password with at least 12 characters. Pali cannot recover it for you.'}</Text>
-      {field('backup', 'Backup password')}
-      {!verify && field('repeat', 'Confirm backup password')}
+      <Text style={styles.muted}>{verify ? t('mobile.noteFlows.export.enterThePasswordForThisFileToVerify') : t('mobile.noteFlows.export.useASeparateBackupPasswordWithAtLeast')}</Text>
+      {field('backup', t('mobile.noteFlows.export.backupPassword'))}
+      {!verify && field('repeat', t('mobile.noteFlows.export.confirmBackupPassword'))}
       {!verify && !!values.repeat && values.backup !== values.repeat &&
-        <Text accessibilityLiveRegion="polite" style={s.error}>The backup passwords do not match.</Text>}
+        <Text accessibilityLiveRegion="polite" style={s.error}>{t('mobile.noteFlows.export.theBackupPasswordsDoNotMatch')}</Text>}
       {feedback}
     </Screen>
   </KeyboardAvoidingView>;

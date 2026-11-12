@@ -1,7 +1,7 @@
 import { NativePairingInbox, observePairingLinks } from './src/connections/pairingLinks';
 import { publicViewLock, securityPreferences, watchIdle, custodyIdle } from './src/platform/security';
 import { authorizePublicView, isNativeCredentialPromptActive } from './src/platform/credential';
-import { useNativeTranslation } from './src/platform/localization';
+import { nativeI18n, useNativeTranslation } from './src/platform/localization';
 import { IdleActivityBoundary, IdleTextInput, IdlePressable } from './src/screens/IdleActivityBoundary';
 import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import {
@@ -243,12 +243,17 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   }, []);
   const [filter, setFilter] = useState<NetworkId | 'all'>('all');
   const [snapshot, setSnapshot] = useState(blankSnapshot);
-  useEffect(() => { if (snapshot.status !== 'ready') watchIdle.allowNewInput(); }, [snapshot.status]);
+  useEffect(() => {
+    // The locked surface admits a new gesture after its previous owner retires.
+    // Existing captured gestures remain invalid because stop() advances the interval.
+    if (viewLock.phase === 'locked') custodyIdle.allowNewInput();
+    if (snapshot.status !== 'ready' || viewLock.phase === 'locked') watchIdle.allowNewInput();
+  }, [snapshot.status, viewLock.phase]);
   const [watchAuthority, setWatchAuthority] = useState<WatchOnlyAuthority | null>(null);
   const notificationSnapshot = useSyncExternalStore(nativeActivityNotifications.subscribe, nativeActivityNotifications.getSnapshot, nativeActivityNotifications.getSnapshot);
   const routedNotification = useRef<string | null>(null);
   const route: Route =
-    !preview && requestedRoute !== 'native' && snapshot.accounts.length > 0 && viewLock.phase !== 'unlocked' ? 'locked' : !preview &&
+    !preview && viewLock.phase !== 'unlocked' ? 'locked' : !preview &&
     !['welcome', 'add', 'locked', 'design', 'native', 'accounts'].includes(requestedRoute) &&
     snapshot.status !== 'ready'
       ? snapshot.accounts.length
@@ -307,7 +312,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     lastSelection.current = selection;
     void saveAccountSelection(selection).then(() => setSelectionError('')).catch(() => {
       if (selection && lastSelection.current?.kind === selection.kind && lastSelection.current.id === selection.id) lastSelection.current = null;
-      setSelectionError('Your last account choice could not be saved. Your accounts are unchanged.');
+      setSelectionError(nativeI18n.t('mobile.shellViews.app.yourLastAccountChoiceCouldNotBeSaved'));
     });
   }, []);
   const openWallet = useCallback((id?: unknown) => {
@@ -339,6 +344,21 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     } catch { setViewError(true); }
     finally { openingView.current = false; setViewBusy(false); }
   }, [watchAccounts, rememberSelection, go, setSheet]);
+  const unlockRequestedView = async () => {
+    if (openingView.current || !foreground.current) return;
+    const navigation = navigationGeneration.current, lifecycle = lifecycleGeneration.current;
+    openingView.current = true; setViewBusy(true); setViewError(false);
+    const check = () => {
+      if (navigationGeneration.current !== navigation || lifecycleGeneration.current !== lifecycle ||
+          (!foreground.current && !isNativeCredentialPromptActive())) throw Error('CANCELLED');
+    };
+    try {
+      check();
+      if (publicViewLock.getSnapshot().phase === 'locked') await publicViewLock.unlock(authorizePublicView, check);
+      publicViewLock.assertUnlocked(); check();
+    } catch { setViewError(true); }
+    finally { openingView.current = false; setViewBusy(false); }
+  };
   useEffect(() => {
     const eventId = notificationSnapshot.pendingEventId;
     if (!eventId || Platform.OS === 'web' || !foreground.current || routedNotification.current === eventId || loading) return;
@@ -379,7 +399,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
         try { void publicViewLock.lock().catch(() => undefined); } finally { next.lock(); }
       }), check: () => watchIdle.check(owner), stop: () => watchIdle.stop(owner) },
     });
-    if (opening.signal.aborted || openingWatch.current !== opening || JSON.stringify(next.getSnapshot().accounts) !== JSON.stringify(accounts)) throw new Error('Saved watch accounts changed. Reopen them.');
+    if (opening.signal.aborted || openingWatch.current !== opening || JSON.stringify(next.getSnapshot().accounts) !== JSON.stringify(accounts)) throw new Error(nativeI18n.t('mobile.shellViews.app.savedWatchAccountsChangedReopenThem'));
     openingWatch.current = null;
     authority.current = next; setWatchAuthority(next);
     setSnapshot(next.getSnapshot());
@@ -410,8 +430,8 @@ function AppContent({ availableWatchNetworks }: AppProps) {
           }
           if (saved && saved.kind !== 'watch' && Platform.OS !== 'web') { setRequestedHdId(saved.id); setRoute('native'); }
           else if (next.accounts.length) setRoute('locked');
-        } catch { if (active && navigationGeneration.current === navigation) { setSelectionError('Your last account choice could not be read. Your accounts are unchanged.'); if (next.accounts.length) setRoute('locked'); } }
-      } catch (cause) { if (active) setStartupError(cause instanceof Error ? cause.message : 'Your saved accounts could not be read. Nothing has been replaced.'); }
+        } catch { if (active && navigationGeneration.current === navigation) { setSelectionError(nativeI18n.t('mobile.shellViews.app.yourLastAccountChoiceCouldNotBeRead')); if (next.accounts.length) setRoute('locked'); } }
+      } catch (cause) { if (active) setStartupError(cause instanceof Error ? cause.message : nativeI18n.t('mobile.shellViews.app.yourSavedAccountsCouldNotBeReadNothing')); }
       finally { if (active) setLoading(false); }
     })();
     return () => {
@@ -527,7 +547,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     let accounts: readonly PublicAccount[];
     try { accounts = await watchAccounts.change(change); }
     catch (cause) {
-      if (watchAccounts.getSnapshot().status === 'unavailable') setStartupError('The watch account change could not be verified. Reopen your saved accounts before continuing. Nothing has been replaced.');
+      if (watchAccounts.getSnapshot().status === 'unavailable') setStartupError(nativeI18n.t('mobile.shellViews.app.theWatchAccountChangeCouldNotBeVerified'));
       throw cause;
     }
     const next = await connect(accounts);
@@ -542,7 +562,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     return next;
   };
   const addAccount = async ({ name, address, network }: { name: string; address: string; network?: WatchAccountNetwork }) => {
-    if (addingAccount.current) throw new Error('Another account is still saving. Please wait.');
+    if (addingAccount.current) throw new Error(nativeI18n.t('mobile.shellViews.app.anotherAccountIsStillSavingPleaseWait'));
     addingAccount.current = true;
     const startNavigation = navigationGeneration.current;
     const startLifecycle = lifecycleGeneration.current;
@@ -617,7 +637,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     onNetworksChanged: async () => { await loadAccounts(); },
   } : {};
   const accountActions = { ...watchNetworkActions, watch: watchState, onAdd: addAccount, onRename: renameWatch, onRemove: removeWatch, onRetry: async () => { await loadAccounts(); setStartupError(''); }, availableWatchNetworks };
-  const selectionNotice = selectionError ? <Notice title="Account choice not saved" body={selectionError} tone="amber" /> : null;
+  const selectionNotice = selectionError ? <Notice title={nativeI18n.t('mobile.shellViews.app.accountChoiceNotSaved')} body={selectionError} tone="amber" /> : null;
   if (route === 'native') return <><NativeWalletScreen onExit={exit} incomingPairing={incomingPairing} onPairingHandled={pairingHandled} initialAccountId={requestedHdId} initialSetup={initialSetup} onWalletRemoved={walletRemoved} onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection(nativeAccountSelection(id)); }} accounts={{ ...accountActions, onSelectWatch: openWatch, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
   if (!preview && route === 'accounts') return <><WalletAccounts {...accountActions} catalogue={null}
     active={snapshot.selectedAccountId ? { kind: 'watch', id: snapshot.selectedAccountId } : null}
@@ -630,7 +650,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     content = (
       <View style={s.center}>
         <ActivityIndicator color={colors.blue} />
-        <Text style={styles.muted}>Opening Pali…</Text>
+        <Text style={styles.muted}>{t('mobile.shellViews.app.openingPali')}</Text>
       </View>
     );
   else if (startupError)
@@ -638,7 +658,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       <Screen
         footer={
           <Button
-            title="Try again"
+            title={nativeI18n.t('mobile.connections.tryAgain')}
             onPress={() => {
               setStartupError('');
               setLoading(true);
@@ -648,7 +668,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
                 })
                 .catch(() =>
                   setStartupError(
-                    'Saved accounts are still unavailable. Nothing has been replaced.'
+                    nativeI18n.t('mobile.shellViews.app.savedAccountsAreStillUnavailableNothingHasBeen')
                   )
                 )
                 .finally(() => setLoading(false));
@@ -656,13 +676,13 @@ function AppContent({ availableWatchNetworks }: AppProps) {
           />
         }
       >
-        <Header title="Unable to open accounts" />
+        <Header title={nativeI18n.t('mobile.shellViews.app.unableToOpenAccounts')} />
         <Notice
-          title="Your saved data is preserved"
+          title={nativeI18n.t('mobile.shellViews.app.yourSavedDataIsPreserved')}
           body={startupError}
           tone="amber"
         />
-        {Platform.OS !== 'web' && <Button title="Open wallet" onPress={openWallet} />}
+        {Platform.OS !== 'web' && <Button title={nativeI18n.t('mobile.shellViews.app.openWallet')} onPress={openWallet} />}
       </Screen>
     );
   else if (route === 'welcome')
@@ -699,32 +719,33 @@ function AppContent({ availableWatchNetworks }: AppProps) {
         footer={
           <>
             <Button
-              title={viewLock.phase === 'locked' ? t(viewBusy ? 'mobile.viewLock.unlocking' : 'mobile.viewLock.unlock') : viewBusy ? 'Opening accounts…' : 'View my accounts'}
+              title={viewLock.phase === 'locked' ? t(viewBusy ? 'mobile.viewLock.unlocking' : 'mobile.viewLock.unlock') : viewBusy ? nativeI18n.t('mobile.shellViews.app.openingAccounts') : nativeI18n.t('mobile.shellViews.app.viewMyAccounts')}
               icon="eye"
               disabled={viewBusy || viewLock.phase === 'opening' || viewLock.phase === 'unavailable'}
               onPress={() => {
                 const id = snapshot.selectedAccountId ?? snapshot.accounts[0]?.id;
-                if (id) void openWatch({ kind: 'watch', id });
+                if (requestedRoute !== 'native' && id) void openWatch({ kind: 'watch', id });
+                else void unlockRequestedView();
               }}
             />
             {viewLock.phase === 'unlocked' && <>
-              <Button title="Accounts" variant="secondary" onPress={() => go('accounts')} />
-              {Platform.OS !== 'web' && <Button title="Open wallet" variant="secondary" onPress={openWallet} />}
+              <Button title={nativeI18n.t('mobile.accounts.title')} variant="secondary" onPress={() => go('accounts')} />
+              {Platform.OS !== 'web' && <Button title={nativeI18n.t('mobile.shellViews.app.openWallet')} variant="secondary" onPress={openWallet} />}
             </>}
           </>
         }
       >
         <View style={[s.center, { flex: 1 }]}>
           {viewLock.phase === 'locked' ? <Icon name="lock" size={64} color={colors.blue} /> : <PaliMark size={64} />}
-          <Text style={[styles.h1, { textAlign: 'center' }]}>
-            {viewLock.phase === 'locked' ? t('mobile.viewLock.title') : 'Welcome back.'}
+          <Text accessibilityRole="header" style={[styles.h1, { textAlign: 'center' }]}>
+            {viewLock.phase === 'locked' ? t('mobile.viewLock.title') : nativeI18n.t('mobile.shellViews.app.welcomeBack')}
           </Text>
           <Text style={[styles.muted, { textAlign: 'center', maxWidth: 280 }]}>
-            {viewLock.phase === 'locked' ? t('mobile.viewLock.hint') : 'Your watch-only accounts are hidden while Pali is in the background.'}
+            {viewLock.phase === 'locked' ? t('mobile.viewLock.hint') : nativeI18n.t('mobile.shellViews.app.yourWatchOnlyAccountsAreHiddenWhilePali')}
           </Text>
           <Notice
-            title="Privacy screen"
-            body={viewLock.phase === 'locked' ? t('mobile.viewLock.publicOnly') : 'Watch-only accounts do not store signing keys. Viewing them does not unlock your wallet.'}
+            title={nativeI18n.t('mobile.shellViews.app.privacyScreen')}
+            body={viewLock.phase === 'locked' ? t('mobile.viewLock.publicOnly') : nativeI18n.t('mobile.shellViews.app.watchOnlyAccountsDoNotStoreSigningKeys')}
           />
           {viewError && <Notice title={t('mobile.viewLock.title')} body={t('mobile.viewLock.openFailed')} tone="amber" />}
         </View>
@@ -1681,11 +1702,12 @@ function TransactionRow({
   );
 }
 function SecurityGate(props: AppProps) {
+  useNativeTranslation();
   const state = useSyncExternalStore(securityPreferences.subscribe, securityPreferences.getSnapshot, securityPreferences.getSnapshot);
   const viewLock = useSyncExternalStore(publicViewLock.subscribe, publicViewLock.getSnapshot, publicViewLock.getSnapshot);
   useEffect(() => { if (state.status !== 'ready') { custodyIdle.allowNewInput(); watchIdle.allowNewInput(); } }, [state.status]);
   useEffect(() => { void securityPreferences.load().catch(() => undefined); void publicViewLock.load().catch(() => undefined); return () => { custodyIdle.invalidate(); watchIdle.invalidate(); }; }, []);
-  return state.status === 'ready' && (viewLock.phase === 'unlocked' || viewLock.phase === 'locked') ? <IdleActivityBoundary><AppContent {...props} /></IdleActivityBoundary> : <Screen><Header title="Security settings" /><Notice title={state.status === 'opening' || viewLock.phase === 'opening' ? 'Opening security settings' : 'Security settings unavailable'} body="Your saved data has not been replaced. Retry before opening your accounts." />{(state.status === 'unavailable' || viewLock.phase === 'unavailable') && <Button title="Retry security settings" onPress={() => { void securityPreferences.load().catch(() => undefined); void publicViewLock.load().catch(() => undefined); }} />}</Screen>;
+  return state.status === 'ready' && (viewLock.phase === 'unlocked' || viewLock.phase === 'locked') ? <IdleActivityBoundary><AppContent {...props} /></IdleActivityBoundary> : <Screen><Header title={nativeI18n.t('mobile.shellViews.app.securitySettings')} /><Notice title={state.status === 'opening' || viewLock.phase === 'opening' ? nativeI18n.t('mobile.shellViews.app.openingSecuritySettings') : nativeI18n.t('mobile.shellViews.app.securitySettingsUnavailable')} body={nativeI18n.t('mobile.shellViews.app.yourSavedDataHasNotBeenReplacedRetry')} />{(state.status === 'unavailable' || viewLock.phase === 'unavailable') && <Button title={nativeI18n.t('mobile.shellViews.app.retrySecuritySettings')} onPress={() => { void securityPreferences.load().catch(() => undefined); void publicViewLock.load().catch(() => undefined); }} />}</Screen>;
 }
 export default function App(props: AppProps = {}) {
   return (

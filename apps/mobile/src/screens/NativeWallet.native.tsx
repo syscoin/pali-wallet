@@ -21,7 +21,7 @@ import { findWifAddressType, UTXO_IMPORT_LABELS, UTXO_IMPORT_TYPES, type UtxoImp
 import { walletFetch } from '../platform/http';
 import { custodyIdle, publicViewLock, securityPreferences } from '../platform/security';
 import { authorizePublicView, isNativeCredentialPromptActive } from '../platform/credential';
-import { useNativeTranslation } from '../platform/localization';
+import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { AutoLockSettings, type IdlePreferenceSave } from './AutoLockSettings';
 import { BackupVerification } from './BackupVerification';
 import { nativeAccountSelection } from '../core/accountDirectory';
@@ -96,6 +96,7 @@ import { RealSettings } from './RealSettings';
 import { useRealShell } from './useRealShell';
 import { nativeActivityNotifications, isNotificationPermissionPromptActive } from '../notifications/service';
 import { LockedWalletUpdate, WalletUpdateScreen } from './WalletUpdatePanel';
+const t = nativeI18n.t.bind(nativeI18n);
 
 type Controllers = ReturnType<typeof createNativeWalletControllers>;
 const nativeLifecycle = new NativeControllerLifecycle({ create: createNativeWalletControllers, protect: ensurePrivacyShield, recovery: createNativeRecoveryCoordinator });
@@ -125,13 +126,13 @@ function custodyContext(state?: CustodySnapshot, catalogue?: NativeWalletCatalog
 
 function message(error: unknown): string {
   const code = error instanceof Error ? error.message : '';
-  if (code === 'INVALID_CREDENTIAL') return 'Device authentication was not completed. Please try again.';
-  if (code === 'DEVICE_UNLOCK_UNAVAILABLE') return 'Confirm with your device to continue.';
-  if (code === 'AUTH_THROTTLED') return 'Authentication is temporarily unavailable. Please try again later.';
-  if (code === 'BACKUP_WORDS_MISMATCH') return 'The words are not in the right order. Check your written backup and try again.';
-  if (code === 'INVALID_INPUT') return 'Check your recovery phrase.';
-  if (code === 'CANCELLED' || code === 'BACKUP_EXPIRED') return 'Your session was locked. Unlock to continue.';
-  return 'This operation could not be completed. Your saved wallet has been preserved.';
+  if (code === 'INVALID_CREDENTIAL') return t("mobile.accounts.invalidCredential");
+  if (code === 'DEVICE_UNLOCK_UNAVAILABLE') return t("mobile.walletViews.confirmWithYourDeviceToContinue");
+  if (code === 'AUTH_THROTTLED') return t("mobile.accounts.throttled");
+  if (code === 'BACKUP_WORDS_MISMATCH') return t("mobile.walletViews.theWordsAreNotInTheRightOrderCheckYourWrittenBackupAndTryAgain");
+  if (code === 'INVALID_INPUT') return t("mobile.walletViews.checkYourRecoveryPhrase");
+  if (code === 'CANCELLED' || code === 'BACKUP_EXPIRED') return t("mobile.walletViews.yourSessionWasLockedUnlockToContinue");
+  return t("mobile.walletViews.thisOperationCouldNotBeCompletedYourSavedWalletHasBeenPreserved");
 }
 
 export type NativeWalletProps = { onExit(): void; accounts?: WatchWalletBridge; initialAccountId?: string; initialSetup?: 'create' | 'import'; onSelectedNative?(id: string): void; onWalletRemoved?(): void;
@@ -144,7 +145,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, initial
 }
 
 export function NativeWalletContent({ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled, controllerRef: controllersRef }: NativeWalletProps & { controllerRef: React.MutableRefObject<Controllers | null> }) {
-  const { t } = useNativeTranslation();
+  useNativeTranslation();
   const viewLock = useSyncExternalStore(publicViewLock.subscribe, publicViewLock.getSnapshot, publicViewLock.getSnapshot);
   useEffect(() => { void publicViewLock.load().catch(() => undefined); }, []);
   const bridge = useRef(accounts);
@@ -655,6 +656,11 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       setPortfolioDetail({ owner: local, context: context.context, detail: { accountId: choice.scope.accountId, networkId: choice.scope.network.id, receive, token } });
       restoreRoot('wallet', context.identity);
     });
+  const consumePortfolioReceiveIntent = () => {
+    setPortfolioDetail(current => current?.owner === controllerOwner && current.context === publicPortfolioContext && current.detail === visiblePortfolioDetail
+      ? { ...current, detail: { ...current.detail, receive: false } } : current);
+    setReceiveContinuation(current => current === receiveContinuation ? undefined : current);
+  };
   const openPortfolioActivity = async (choice: NotificationChoice | undefined, assertView: () => void) => {
     if (!choice) { assertView(); shell.select('activity'); return; }
     await navigateAccount(choice, assertView, context => restoreRoot('activity', context.identity));
@@ -696,7 +702,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         sourceCatalogueRevision: catalogue.revision, target: saved.target, form: Object.freeze({ ...form }) };
       networkReturnOwner.current = route; setNetworkReturn(route); rootOrigin.current = origin;
       setSendDraft(null); setStage('networks');
-    }).catch(() => { if (mounted.current && controllersRef.current === local && epoch.current === captured) setError('The current request is still closing. Try again.'); });
+    }).catch(() => { if (mounted.current && controllersRef.current === local && epoch.current === captured) setError(t("mobile.walletViews.theCurrentRequestIsStillClosingTryAgain")); });
   };
   const openReceiveNetwork = (continuation: NativeReceiveContinuation) => {
     const local = controllersRef.current, current = readyContext(), catalogue = local?.authority.getCatalogue(), account = local?.authority.getSnapshot().account;
@@ -1096,7 +1102,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         await finishPublicOpen.current(local);
       }
     } catch {
-      if (mounted.current) { setProtectedScreen(false); setError('Secure wallet storage is unavailable. Close and reopen Pali to try again.'); }
+      if (mounted.current) { setProtectedScreen(false); setError(t("mobile.walletViews.secureWalletStorageIsUnavailableCloseAndReopenPaliToTryAgain")); }
       throw new Error('REOPEN_REQUIRED');
     }
   }, [attach]);
@@ -1139,7 +1145,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
           AppState.currentState === 'active' && !controllersRef.current) await install();
     }).catch(() => {
       if (mounted.current && epoch.current === generation)
-        setError('Secure wallet storage is unavailable. Close and reopen Pali to try again.');
+        setError(t("mobile.walletViews.secureWalletStorageIsUnavailableCloseAndReopenPaliToTryAgain"));
     });
   }, [stage, snapshot.phase, snapshot.revision, clearOwnerView, clearSecrets, install, controllersRef]);
   useEffect(() => {
@@ -1165,7 +1171,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         const captured = epoch.current;
         void local.authority.unlock().then(() => finishPublicOpen.current(local)).catch(() => {
           if (mounted.current && controllersRef.current === local && epoch.current === captured)
-            setError('Your saved wallet could not be opened. Please try again.');
+            setError(t("mobile.walletViews.yourSavedWalletCouldNotBeOpenedPleaseTryAgain"));
         });
       }
     };
@@ -1384,48 +1390,48 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const locked = snapshot.phase === 'locked' || viewLock.phase !== 'unlocked' && snapshot.presence === 'existing';
   const viewLocked = viewLock.phase === 'locked';
   const unavailable = snapshot.phase === 'unavailable' || !!error && !protectedScreen;
-  const title = locked ? 'Welcome back' : snapshot.phase === 'ready' && stage === 'choose' ? 'Your wallet' :
-    stage === 'words' ? 'Your recovery phrase' : stage === 'backup-complete' ? t('mobile.security.backupComplete') :
-    stage === 'backup-auth' ? 'Back up your wallet' : stage === 'import-security' ? 'Secure your imported wallet' : stage === 'create' ? 'Protect your wallet' : 'Make it yours';
-  const accountLabel = catalogue?.accounts.find((account) => account.id === catalogue.active.accountId)?.label ?? 'Account 1';
+  const title = locked ? t("mobile.walletViews.welcomeBack") : snapshot.phase === 'ready' && stage === 'choose' ? t("mobile.walletViews.yourWallet") :
+    stage === 'words' ? t("mobile.walletViews.yourRecoveryPhrase") : stage === 'backup-complete' ? t('mobile.security.backupComplete') :
+    stage === 'backup-auth' ? t("mobile.portfolioCopy.backupTitle") : stage === 'import-security' ? t("mobile.walletViews.secureYourImportedWallet") : stage === 'create' ? t("mobile.walletViews.protectYourWallet") : t("mobile.walletViews.makeItYours");
+  const accountLabel = catalogue?.accounts.find((account) => account.id === catalogue.active.accountId)?.label ?? t("mobile.walletViews.account1");
   const selectWatch = (selection: import('../core/accountDirectory').AccountSelection) => {
     if (selection.kind !== 'watch') return;
     // Revoke credentials, reviews, transfer work and secret presentation before routing.
     revoke();
     bridge.current?.onSelectWatch(selection);
   };
-  const recoveryNotice = recoveryOutcome && <Notice title={recoveryOutcome.kind === 'success' ? 'Wallet restored' : recoveryOutcome.kind === 'uncertain' ? 'Check your wallet' : 'Recovery update'} body={recoveryOutcome.message + (recoveryOutcome.cleanupFailed ? ' The wallet could not be reopened. Close and reopen Pali to unlock.' : '')} tone={recoveryOutcome.kind === 'success' ? undefined : 'amber'} />;
-  const restoreNotice = noteRestore.step.phase === 'unconfirmed' && <Notice title="Restore could not be confirmed" body="Open this backup again after unlocking to see which notes are already saved." tone="amber" />;
+  const recoveryNotice = recoveryOutcome && <Notice title={recoveryOutcome.kind === 'success' ? t("mobile.walletViews.walletRestored") : recoveryOutcome.kind === 'uncertain' ? t("mobile.walletViews.checkYourWallet") : t("mobile.walletViews.recoveryUpdate")} body={recoveryOutcome.message + (recoveryOutcome.cleanupFailed ? " " + t("mobile.walletViews.theWalletCouldNotBeReopenedCloseAndReopenPaliToUnlock") : '')} tone={recoveryOutcome.kind === 'success' ? undefined : 'amber'} />;
+  const restoreNotice = noteRestore.step.phase === 'unconfirmed' && <Notice title={t("mobile.noteFlows.restore.restoreCouldNotBeConfirmed")} body={t("mobile.walletViews.openThisBackupAgainAfterUnlockingToSeeWhichNotesAreAlreadySaved")} tone="amber" />;
   if (updatePhase) return <WalletUpdateScreen phase={updatePhase} onBack={() => void closeWalletUpdate()} />;
   if (stage === 'recovery' && recoveryFlow) return <NativeRecovery flow={recoveryFlow} />;
   if (snapshot.phase === 'empty' && stage === 'choose') return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <Screen gap={24}>
-      <Header title="Set up your wallet" onBack={exit} />
-      <Text style={styles.muted}>Create a wallet or bring one you already use.</Text>
+      <Header title={t("mobile.walletViews.setUpYourWallet")} onBack={exit} />
+      <Text style={styles.muted}>{t("mobile.walletViews.createAWalletOrBringOneYouAlreadyUse")}</Text>
       <Card>
-        <Row title="Create a wallet" subtitle="Start with a new recovery phrase" icon="plus" onPress={() => setStage('create')} />
-        <Row title="Import existing wallet" subtitle="Use your recovery phrase" icon="key" onPress={() => setStage('import')} last={!accounts} />
-        {accounts && <Row title="Watch an account" subtitle="Follow an address without its private keys" icon="eye" onPress={() => setStage('accounts')} last />}
+        <Row title={t("mobile.walletViews.createAWallet")} subtitle={t("mobile.walletViews.startWithANewRecoveryPhrase")} icon="plus" onPress={() => setStage('create')} />
+        <Row title={t("mobile.walletViews.importExistingWallet")} subtitle={t("mobile.walletViews.useYourRecoveryPhrase")} icon="key" onPress={() => setStage('import')} last={!accounts} />
+        {accounts && <Row title={t("mobile.welcome.watch")} subtitle={t("mobile.walletViews.followAnAddressWithoutItsPrivateKeys")} icon="eye" onPress={() => setStage('accounts')} last />}
       </Card>
     </Screen>
   </SafeAreaView>;
   if (snapshot.phase === 'empty' && (stage === 'create' || stage === 'import-security' && !!phrase))
     return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
-      <Screen gap={24} footer={<Button title={busy ? 'Securing wallet…' : stage === 'import-security' ? 'Import wallet' : 'Create wallet'}
+      <Screen gap={24} footer={<Button title={busy ? t("mobile.walletViews.securingWallet") : stage === 'import-security' ? t("titles.importWallet") : t("mobile.walletViews.createWallet")}
         disabled={busy || authenticationStatus !== 'ready'} onPress={createOrImport} />}>
-        <Header title="Secure with your device" onBack={() => setStage(stage === 'import-security' ? 'import' : 'choose')} />
+        <Header title={t("mobile.walletViews.secureWithYourDevice")} onBack={() => setStage(stage === 'import-security' ? 'import' : 'choose')} />
         <View style={{ alignItems: 'center', paddingVertical: 32, gap: 24 }}>
           <Icon name="shield" size={64} color={colors.blue} />
-          <Text style={{ fontSize: 28, lineHeight: 36, fontWeight: '600', textAlign: 'center' }}>Your wallet. Protected by your phone.</Text>
-          <Text style={[styles.muted, { textAlign: 'center', fontSize: 16, lineHeight: 24 }]}>Use your device’s biometrics or passcode to approve transactions and access private information.</Text>
+          <Text style={{ fontSize: 28, lineHeight: 36, fontWeight: '600', textAlign: 'center' }}>{t("mobile.walletViews.yourWalletProtectedByYourPhone")}</Text>
+          <Text style={[styles.muted, { textAlign: 'center', fontSize: 16, lineHeight: 24 }]}>{t("mobile.walletViews.useYourDeviceSBiometricsOrPasscodeToApproveTransactionsAndAccessPrivateInformation")}</Text>
         </View>
-        {authenticationStatus === 'unsupported' && <Notice title="Device authentication unavailable" body="This device does not support the secure authentication required for a signing wallet. You can still watch an account." tone="amber" />}
-        {authenticationStatus === 'missing' && <Notice title="Set up your device passcode" body="Enable a screen lock in your phone’s settings, then return to Pali." tone="amber" />}
-        {error && <Notice title="Wallet setup was not completed" body={error} tone="amber" />}
+        {authenticationStatus === 'unsupported' && <Notice title={t("mobile.walletViews.deviceAuthenticationUnavailable")} body={t("mobile.walletViews.thisDeviceDoesNotSupportTheSecureAuthenticationRequiredForASigningWalletYouCanStillWatchAnAccount")} tone="amber" />}
+        {authenticationStatus === 'missing' && <Notice title={t("mobile.walletViews.setUpYourDevicePasscode")} body={t("mobile.walletViews.enableAScreenLockInYourPhoneSSettingsThenReturnToPali")} tone="amber" />}
+        {error && <Notice title={t("mobile.walletViews.walletSetupWasNotCompleted")} body={error} tone="amber" />}
       </Screen>
     </SafeAreaView>;
   if (locked && protectedScreen) return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
-    <Screen footer={<><Button title={viewLocked ? t(busy ? 'mobile.viewLock.unlocking' : 'mobile.viewLock.unlock') : busy ? 'Opening wallet…' : 'Open wallet'} disabled={busy || viewLock.phase === 'opening' || viewLock.phase === 'unavailable'} onPress={() => {
+    <Screen footer={<><Button title={viewLocked ? t(busy ? 'mobile.viewLock.unlocking' : 'mobile.viewLock.unlock') : busy ? t("mobile.walletViews.openingWallet") : t("mobile.walletViews.openWallet")} disabled={busy || viewLock.phase === 'opening' || viewLock.phase === 'unavailable'} onPress={() => {
       void perform(async local => {
         const captured = epoch.current;
         const check = () => {
@@ -1440,12 +1446,12 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         }
         check(); await local.authority.unlock(); await finishUnlock(local);
       });
-    }} /><Button title="Restore access" variant="secondary" disabled={busy} onPress={openRecovery} /></>}>
-      <Header title={viewLocked ? t('mobile.viewLock.title') : 'Your wallet'} onBack={exit} />
+    }} /><Button title={t("mobile.walletViews.restoreAccess")} variant="secondary" disabled={busy} onPress={openRecovery} /></>}>
+      <Header title={viewLocked ? t('mobile.viewLock.title') : t("mobile.walletViews.yourWallet")} onBack={exit} />
       <View style={{ alignItems: 'center', paddingVertical: 40 }}>{viewLocked ? <Icon name="lock" size={64} color={colors.blue} /> : <PaliMark size={96} />}</View>
       {snapshot.error && <NativeCustodyFeedback error={snapshot.error} />}
       {viewLock.phase === 'unavailable' && <Notice title={t('mobile.viewLock.unavailableTitle')} body={t('mobile.viewLock.unavailableBody')} tone="amber" />}
-      {error ? <Notice title="Wallet could not be opened" body={error} tone="amber" /> : <Text style={styles.muted}>{viewLocked ? t('mobile.viewLock.hint') : 'Your saved wallet is preserved.'}</Text>}
+      {error ? <Notice title={t("mobile.walletViews.walletCouldNotBeOpened")} body={error} tone="amber" /> : <Text style={styles.muted}>{viewLocked ? t('mobile.viewLock.hint') : t("mobile.walletViews.yourSavedWalletIsPreserved")}</Text>}
       {recoveryNotice}{restoreNotice}<LockedWalletUpdate disabled={busy} onOpen={openWalletUpdate} />
     </Screen>
   </SafeAreaView>;
@@ -1608,7 +1614,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       }, onSelected: receipt => finishNetworkSelection(networkReturn, receipt) } : undefined} />;
   if (sentryRoute && sentry) return <NativeSentryHub key={sentryScope!.context}
     networkLabel={utxo!.name} openKeys={sentry.openKeys} openNodes={sentry.openNodes} onBack={closeStage} />;
-  if (stage === 'auto-lock' && snapshot.phase === 'ready' && saveIdle) return <AutoLockSettings mode="custody" save={saveIdle} onBack={closeStage} />;
+  if (stage === 'auto-lock' && ['ready', 'backup-required'].includes(snapshot.phase) && saveIdle) return <AutoLockSettings mode="custody" save={saveIdle} onBack={closeStage} />;
   if (stage === 'private-notes' && snapshot.phase === 'ready') return <NativeNoteFilesMenu onBack={closeStage}
     onDeposit={canDeposit ? () => {
       if (AppState.currentState === 'active' && readyContext()) { depositBackupReturn.current = null; setDepositBackupRoute(null); setDepositTask(null); setStage('note-deposit'); }
@@ -1670,7 +1676,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     const canContinue = !!returning && returning.identity === custodyContext(snapshot, catalogue)?.identity;
     return <NativeNoteExport
       step={noteRestore.exportStep} busy={noteRestore.busy} error={noteRestore.error}
-      doneLabel={canContinue ? 'Continue deposit' : undefined}
+      doneLabel={canContinue ? t("mobile.walletViews.continueDeposit") : undefined}
       onChoose={noteRestore.choose} onSave={noteRestore.saveExport} onShowVerify={noteRestore.showVerify} onVerify={noteRestore.verifyExport}
       onBack={() => {
         if (AppState.currentState !== 'active' || depositBackupReturn.current !== returning) return;
@@ -1696,7 +1702,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       onBack={closeStage} onLock={lockWallet} onViewRecovery={() => setStage('backup-intro')}
       onRemoveWallet={onWalletRemoved && canRemoveWallet ? openRemoval : undefined}
       onRestoreAccess={credentialPresent === false ? openRecovery : undefined}
-      onAutoLock={snapshot.phase === 'ready' && saveIdle ? () => setStage('auto-lock') : undefined}
+      onAutoLock={['ready', 'backup-required'].includes(snapshot.phase) && saveIdle ? () => setStage('auto-lock') : undefined}
       captureFailureHandler={() => {
         const local = controllersRef.current;
         const context = local?.authority.getSnapshot();
@@ -1719,13 +1725,13 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   let body: React.ReactNode;
   let footer: React.ReactNode;
   if (unavailable) body = restoreUnconfirmed ? <NoteRestoreUnconfirmedNotice reopen /> :
-    <Notice title="Wallet unavailable" body="Your saved wallet has been preserved. Close and reopen Pali to try again." tone="amber" />;
-  else if (!protectedScreen || snapshot.phase === 'opening') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Opening your wallet securely…</Text></View>;
-  else if (snapshot.phase === 'authenticating') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Unlocking your wallet securely…</Text></View>;
+    <Notice title={t("mobile.walletViews.walletUnavailable")} body={t("mobile.walletViews.yourSavedWalletHasBeenPreservedCloseAndReopenPaliToTryAgain")} tone="amber" />;
+  else if (!protectedScreen || snapshot.phase === 'opening') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>{t("mobile.walletViews.openingYourWalletSecurely")}</Text></View>;
+  else if (snapshot.phase === 'authenticating') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>{t("mobile.walletViews.unlockingYourWalletSecurely")}</Text></View>;
   else if (stage === 'words' && presentation) {
-    footer = <Button title="Continue" disabled={busy} onPress={() => setStage('backup-verify')} />;
+    footer = <Button title={t("buttons.continue")} disabled={busy} onPress={() => setStage('backup-verify')} />;
     body = <>
-      <Notice title="Write these words down in order" body="Anyone with these words can control your wallet. Keep them offline. Pali support will never ask for them." tone="amber" />
+      <Notice title={t("mobile.walletViews.writeTheseWordsDownInOrder")} body={t("mobile.walletViews.anyoneWithTheseWordsCanControlYourWalletKeepThemOfflinePaliSupportWillNeverAskForThem")} tone="amber" />
       <View style={s.wordGrid}>{presentation.words.map((word, index) => <View key={index} style={s.word}><Text style={s.wordNumber}>{index + 1}</Text><Text style={s.wordText}>{word}</Text></View>)}</View>
     </>;
   }
@@ -1736,12 +1742,12 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         <Icon name="check" size={40} color={colors.bg} />
       </View>
       <Text accessibilityRole="header" style={s.backupCompleteTitle}>{t('mobile.security.backupComplete')}</Text>
-      <Text style={[styles.muted, s.backupCompleteBody]}>Keep your recovery phrase private and offline.</Text>
+      <Text style={[styles.muted, s.backupCompleteBody]}>{t("mobile.walletViews.keepYourRecoveryPhrasePrivateAndOffline")}</Text>
     </View>;
   }
   else if (snapshot.phase === 'backup-required' && stage === 'choose' && publicSource) {
     const content = shell.tab === 'wallet' ? <NativePortfolioRoute overview={utxo ? null : accountPortfolio} selectNetwork={selectPortfolioNetwork} sendFrom={sendFromPortfolio} detail={visiblePortfolioDetail} closeDetail={() => setPortfolioDetail(null)} navigateDetail={openPortfolioDetail} navigateActivity={openPortfolioActivity} cancelSelection={() => { if (accountNavigation.current) revoke(); else controllersRef.current?.authority.cancelAccountOperation(); }} source={publicSource} reader={balanceReader ?? undefined} accountLabel={accountLabel}
-      onExit={exit} onLock={lockWallet} onViewRecovery={openRequiredBackup} onBackup={openRequiredBackup} navigation={shell.navigation} />
+      onReceiveIntentConsumed={consumePortfolioReceiveIntent} onExit={exit} onLock={lockWallet} onViewRecovery={openRequiredBackup} onBackup={openRequiredBackup} navigation={shell.navigation} />
       : shell.tab === 'settings' ? <RealSettings accountLabel={accountLabel} watchOnly={false} navigation={shell.navigation} notifications={notificationSettings}
         backupRequired onBackup={openRequiredBackup} onSecurity={() => setStage('security')} onLock={lockWallet} onUpdate={openWalletUpdate} onBack={() => shell.select('wallet')} />
       : shell.tab === 'activity' && accountActivity && !utxo ? <AllNetworksActivity controller={accountActivity} accountLabel={accountLabel} navigation={shell.navigation} />
@@ -1749,8 +1755,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         onBack={() => shell.select('wallet')} navigation={shell.navigation} />
       : shell.tab === 'activity' && utxoActivityView && utxo ? <UtxoActivityScreen authority={utxoActivityView} selectedNetwork={utxo} accountLabel={accountLabel}
         onBack={() => shell.select('wallet')} navigation={shell.navigation} />
-      : <Screen><Header title={shell.tab === 'tools' ? 'Tools' : 'Activity'} /><Notice title="Back up your wallet" body="Keep a recovery phrase backup before using wallet tools." />
-        <Button title="Back up now" onPress={openRequiredBackup} /></Screen>;
+      : <Screen><Header title={shell.tab === 'tools' ? t("mobile.navigation.tools") : t("buttons.activity")} /><Notice title={t("mobile.portfolioCopy.backupTitle")} body={t("mobile.walletViews.keepARecoveryPhraseBackupBeforeUsingWalletTools")} />
+        <Button title={t("mobile.walletViews.backUpNow")} onPress={openRequiredBackup} /></Screen>;
     return <RealAppShell tab={shell.tab} onTab={tab => { cancelAccountNavigation(); notificationTransition.current = null; shell.select(tab); }} immersive={shell.immersive}>{content}</RealAppShell>;
   }
   else if (snapshot.phase === 'ready' && stage === 'slh-dsa' && openSlhDsaManagement) return <NativeSlhDsaManagementScreen ledgerConnection={ledgerConnection ?? undefined} open={openSlhDsaManagement} onBack={closeStage} />;
@@ -1820,7 +1826,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     onSendToken={canSign || canSendSmart ? (token) => openStage('send', { kind: 'token', token }) : undefined}
     onSendCollectible={canSign || canSendSmart ? (collectible) => openStage('send', { kind: 'collectible', collectible }) : undefined}
     onManageNetworks={networkView ? () => openStage('networks') : undefined}
-    onChangeReceiveNetwork={networkView ? openReceiveNetwork : undefined} initialReceive={receiveContinuation}
+    onChangeReceiveNetwork={networkView ? openReceiveNetwork : undefined} initialReceive={receiveContinuation} onReceiveIntentConsumed={consumePortfolioReceiveIntent}
     onViewRecovery={() => openStage('backup-intro')} onBackup={() => openStage('backup-intro')} onSecurity={() => openStage('security')}
     onActivity={(utxo ? utxoActivityView : activityView) ? () => shell.select('activity') : undefined}
     navigation={shell.navigation}
@@ -1874,12 +1880,12 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       } : undefined}
       onLock={lockWallet} onUpdate={openWalletUpdate} onBack={() => shell.select('wallet')} />;
     return <RealAppShell tab={shell.tab} onTab={tab => { cancelAccountNavigation(); notificationTransition.current = null; shell.select(tab); }} immersive={shell.immersive}>
-      {recoveryActivity && recoveryActivity.context === guardianContext && <Button title="Return to recovery" variant="secondary" onPress={() => void returnToRecovery().catch(() => undefined)} />}
+      {recoveryActivity && recoveryActivity.context === guardianContext && <Button title={t("mobile.walletViews.returnToRecovery")} variant="secondary" onPress={() => void returnToRecovery().catch(() => undefined)} />}
       {snapshot.error && <SafeAreaView edges={['top']} style={{ paddingHorizontal: 24, paddingBottom: 8 }}><NativeCustodyFeedback error={snapshot.error} /></SafeAreaView>}
       {content}
     </RealAppShell>;
   }
-  else body = <Notice title="Wallet unavailable" body="Close and reopen Pali to try again." tone="amber" />;
+  else body = <Notice title={t("mobile.walletViews.walletUnavailable")} body={t("mobile.walletViews.closeAndReopenPaliToTryAgain")} tone="amber" />;
 
   const duplicateAuthenticationError = (snapshot.error === 'INVALID_CREDENTIAL' || snapshot.error === 'AUTH_THROTTLED' || snapshot.error === 'DEVICE_UNLOCK_UNAVAILABLE') &&
     error === message(new Error(snapshot.error));
@@ -1887,13 +1893,13 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen footer={footer} gap={16}>{locked
         ? <View style={s.unlockBrand}><PaliMark size={36} /><Text style={s.unlockBrandName}>Pali Wallet</Text></View>
-        : stage === 'backup-complete' ? null : <Header title={title} onBack={['backup-intro', 'backup-auth', 'words', 'backup-verify'].includes(stage) ? closeBackup : exit} subtitle={typeof __DEV__ !== 'undefined' && __DEV__ ? 'Development build · Use a test wallet' : undefined} />}
+        : stage === 'backup-complete' ? null : <Header title={title} onBack={['backup-intro', 'backup-auth', 'words', 'backup-verify'].includes(stage) ? closeBackup : exit} subtitle={typeof __DEV__ !== 'undefined' && __DEV__ ? t("mobile.common.development") : undefined} />}
         {recoveryNotice}
         {restoreNotice}
         {snapshot.error && !duplicateAuthenticationError && <NativeCustodyFeedback error={snapshot.error} />}
         {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
         {body}
-        {busy && <ActivityIndicator accessibilityLabel="Working" color={colors.pink} />}
+        {busy && <ActivityIndicator accessibilityLabel={t("mobile.walletViews.working")} color={colors.pink} />}
       </Screen>
     </KeyboardAvoidingView>
   </SafeAreaView>;

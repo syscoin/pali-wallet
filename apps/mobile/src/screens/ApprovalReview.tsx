@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import {
@@ -25,6 +26,7 @@ export function ApprovalReview({
   chainId?: string;
   registrationHash?: string;
 }) {
+  const { t } = useNativeTranslation();
   const [editor, setEditor] = useState<{
     transaction: object;
     value: string;
@@ -34,55 +36,55 @@ export function ApprovalReview({
   const token = summary.token;
   const knownAmount =
     summary.standardVerified && summary.tokenStandard === 'ERC-20';
-  let title = 'Approval request';
-  let authority = 'Authority';
+  let title = t('send.unverifiedApprovalRequest');
+  let authority = t('send.approvalAuthority');
   if (summary.approvalType === 'nft-all') {
-    authority = 'Operator';
-    title = 'Operator approval request';
+    authority = t('transactions.operator');
+    title = t('mobile.dappConsent.approvalReview.operatorApprovalRequest');
     if (summary.standardVerified) {
       title = summary.isRevocation
-        ? 'Revoke NFT operator'
-        : 'NFT operator access';
+        ? t('mobile.dappConsent.approvalReview.revokeNftOperator')
+        : t('mobile.dappConsent.approvalReview.nftOperatorAccess');
     }
   } else if (summary.approvalType === 'erc721-single') {
-    authority = 'Approved address';
-    title = summary.isRevocation ? 'Revoke NFT access' : 'NFT access';
+    authority = t('blacklist.approvedDescription');
+    title = summary.isRevocation ? t('mobile.dappConsent.approvalReview.revokeNftAccess') : t('mobile.dappConsent.approvalReview.nftAccess');
   } else if (knownAmount) {
-    authority = 'Spender';
-    title = summary.isRevocation ? 'Set allowance to zero' : 'Token allowance';
+    authority = t('transactions.spender');
+    title = summary.isRevocation ? t('mobile.dappConsent.approvalReview.setAllowanceToZero') : t('mobile.dappConsent.approvalReview.tokenAllowance');
     if (summary.method === 'increaseAllowance')
-      title = 'Increase token allowance';
+      title = t('mobile.dappConsent.approvalReview.increaseTokenAllowance');
     else if (summary.method === 'decreaseAllowance')
-      title = 'Decrease token allowance';
+      title = t('mobile.dappConsent.approvalReview.decreaseTokenAllowance');
   }
 
-  let amountLabel = 'Approval value (raw)';
+  let amountLabel = t('send.approvalRawValue');
   if (knownAmount) {
-    amountLabel = 'Spending limit';
-    if (summary.method === 'increaseAllowance') amountLabel = 'Increase by';
+    amountLabel = t('mobile.dappConsent.approvalReview.spendingLimit');
+    if (summary.method === 'increaseAllowance') amountLabel = t('mobile.dappConsent.approvalReview.increaseBy');
     else if (summary.method === 'decreaseAllowance')
-      amountLabel = 'Decrease by';
+      amountLabel = t('mobile.dappConsent.approvalReview.decreaseBy');
   }
   let amount = summary.amountUnits;
-  if (summary.isUnlimited) amount = 'Unlimited';
+  if (summary.isUnlimited) amount = t('transactions.unlimited');
   else if (token && amount !== undefined) {
     amount = `${formatApprovalTokenAmount(amount, token.decimals)} ${
       token.symbol
     }`;
   }
 
-  let operatorAction = 'Remove operator access';
+  let operatorAction = t('mobile.dappConsent.approvalReview.removeOperatorAccess');
   if (summary.approved) {
     operatorAction = summary.standardVerified
-      ? 'Allow access to all NFTs in this contract'
-      : 'Request operator access';
+      ? t('mobile.dappConsent.approvalReview.allowAccessToAllNftsInThis')
+      : t('mobile.dappConsent.approvalReview.requestOperatorAccess');
   }
   const apply = () => {
     if (!editing || !token) return;
     if (parseApprovalAmount(editing.value, token.decimals) === null) {
       setEditor({
         ...editing,
-        error: 'Enter an exact amount of zero or more.',
+        error: t('mobile.dappConsent.approvalReview.enterAnExactAmountOfZeroOr'),
       });
       return;
     }
@@ -91,7 +93,7 @@ export function ApprovalReview({
         if (current?.transaction !== transaction) return current;
         return {
           ...current,
-          error: 'The limit could not be updated. Try again.',
+          error: t('mobile.dappConsent.approvalReview.theLimitCouldNotBeUpdatedTry'),
         };
       });
     });
@@ -106,16 +108,16 @@ export function ApprovalReview({
       <Text selectable style={s.address}>
         {summary.authority}
       </Text>
-      <Text style={s.label}>Token contract</Text>
+      <Text style={s.label}>{t('assetTransfer.contract')}</Text>
       <Text selectable style={s.address}>
         {summary.tokenContract}
       </Text>
       {!summary.standardVerified && (
-        <Text style={s.secondary}>Contract standard is unverified.</Text>
+        <Text style={s.secondary}>{t('send.approvalStandardUnverified')}</Text>
       )}
       {summary.tokenId !== undefined && (
         <View style={s.field}>
-          <Text style={s.label}>Token ID</Text>
+          <Text style={s.label}>{t('send.tokenId')}</Text>
           <Text selectable style={s.value}>
             {summary.tokenId}
           </Text>
@@ -137,7 +139,7 @@ export function ApprovalReview({
       )}
       {summary.canEditAmount && token && !editing && (
         <Button
-          title="Edit spending limit"
+          title={t('mobile.dappConsent.approvalReview.editSpendingLimit')}
           variant="secondary"
           disabled={disabled}
           onPress={() => {
@@ -154,9 +156,9 @@ export function ApprovalReview({
       )}
       {editing && token && (
         <View style={s.field}>
-          <Text style={s.label}>New spending limit ({token.symbol})</Text>
+          <Text style={s.label}>{t('mobile.dappConsent.approvalReview.newSpendingLimitSymbol', { symbol: token.symbol })}</Text>
           <IdleTextInput
-            accessibilityLabel="New spending limit"
+            accessibilityLabel={t('mobile.dappConsent.approvalReview.newSpendingLimit')}
             keyboardType="decimal-pad"
             value={editing.value}
             onChangeText={(value) => setEditor({ transaction, value })}
@@ -172,9 +174,9 @@ export function ApprovalReview({
               {editing.error}
             </Text>
           )}
-          <Button title="Apply limit" disabled={disabled} onPress={apply} />
+          <Button title={t('mobile.dappConsent.approvalReview.applyLimit')} disabled={disabled} onPress={apply} />
           <Button
-            title="Keep current limit"
+            title={t('mobile.dappConsent.approvalReview.keepCurrentLimit')}
             variant="secondary"
             disabled={disabled}
             onPress={() => {

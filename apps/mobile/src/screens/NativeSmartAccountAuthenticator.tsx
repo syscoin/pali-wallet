@@ -1,3 +1,4 @@
+import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import React, {
   useCallback,
@@ -19,6 +20,7 @@ import { Button, colors, Header, Notice, Screen, Text } from '../ui';
 import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
+const t = nativeI18n.t.bind(nativeI18n);
 
 type Props = {
   ledgerConnection?: NativeLedgerConnectionView;
@@ -48,6 +50,7 @@ function disposeOwner(owner: Owner): Promise<void> {
 }
 
 export function NativeSmartAccountAuthenticator({ open, onBack, ledgerConnection }: Props) {
+  useNativeTranslation();
   const owner = useRef<Owner | undefined>(undefined);
   const callbacks = useRef({ onBack });
   const [opened, setOpened] = useState<{
@@ -154,24 +157,24 @@ export function NativeSmartAccountAuthenticator({ open, onBack, ledgerConnection
       <Screen
         footer={
           <Button
-            title="Close"
+            title={t("buttons.close")}
             variant="secondary" size="compact"
             disabled={current?.closing}
             onPress={back}
           />
         }
       >
-        <Header title="Use Pali wallet" onBack={back} />
+        <Header title={t("mobile.smartSendViews.usePaliWallet")} onBack={back} />
         {current?.closing ? (
-          <Text>Closing authenticator review…</Text>
+          <Text>{t("mobile.smartSendViews.closingAuthenticatorReview")}</Text>
         ) : current?.failed ? (
           <Notice
-            title="Authenticator unavailable"
-            body="Return to your account and try again."
+            title={t("mobile.smartSendViews.authenticatorUnavailable")}
+            body={t("mobile.smartSendViews.returnToYourAccountAndTryAgain")}
           />
         ) : (
           <ActivityIndicator
-            accessibilityLabel="Opening authenticator review"
+            accessibilityLabel={t("mobile.smartSendViews.openingAuthenticatorReview")}
             color={colors.pink}
           />
         )}

@@ -88,7 +88,7 @@ test('saved-note detail shows unchecked status and separate local hints at 320px
   expect(audit.unlocks).toBe(1);
   expect(audit.keyReads + audit.signs + audit.broadcasts).toBe(0);
   await button(page, 'Lock wallet').click();
-  await expect(button(page, 'Open wallet')).toBeVisible();
+  await expect(button(page, 'Unlock wallet')).toBeVisible();
   await expect(page.getByText('Status not checked', { exact: true })).toHaveCount(0);
 });
 

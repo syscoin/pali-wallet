@@ -36,7 +36,7 @@ export function WalletUpdatePanel({ allowInstall = false, onCloseWallet, service
     if (!life.active || life.request || install && !life.install || AppState.currentState !== 'active') return;
     const request = new AbortController(); life.request = request; setOperation(generation); setError('');
     try { await action(request.signal); }
-    catch { if (life.active && owner.current === life && !request.signal.aborted) setError('Could not complete the update action. Please try again.'); }
+    catch { if (life.active && owner.current === life && !request.signal.aborted) setError(t('mobile.shellViews.walletUpdatePanel.couldNotCompleteTheUpdateActionPleaseTry')); }
     finally { if (life.request === request) { life.request = null; if (life.active && owner.current === life) setOperation(null); } }
   };
   const release = update.release;
@@ -45,31 +45,31 @@ export function WalletUpdatePanel({ allowInstall = false, onCloseWallet, service
   const interrupted = store?.installStatus === 'failed' || store?.installStatus === 'cancelled';
   const installed = store?.installStatus === 'installed';
   const playAvailable = !installed && store?.storeAvailable && store.availability === 'available';
-  const progress = store?.installStatus === 'failed' ? 'The update download failed. Check for updates or open the app store to try again.'
-    : store?.installStatus === 'cancelled' ? 'The update download was cancelled. Check for updates or open the app store when you’re ready.'
-      : installed ? 'The update was installed.' : downloaded ? 'Your update is ready to install.' : store?.installStatus === 'installing' ? 'Installing update…'
-    : store?.installStatus === 'downloading' ? `Downloading update${store.totalBytesToDownload > 0 ? ` · ${Math.min(100, Math.floor(store.bytesDownloaded / store.totalBytesToDownload * 100))}%` : '…'}`
-      : store?.installStatus === 'pending' ? 'Update download pending.' : inProgress ? 'An update is in progress.' : null;
+  const progress = store?.installStatus === 'failed' ? t('mobile.shellViews.walletUpdatePanel.theUpdateDownloadFailedCheckForUpdatesOr')
+    : store?.installStatus === 'cancelled' ? t('mobile.shellViews.walletUpdatePanel.theUpdateDownloadWasCancelledCheckForUpdates')
+      : installed ? t('mobile.shellViews.walletUpdatePanel.theUpdateWasInstalled') : downloaded ? t('mobile.shellViews.walletUpdatePanel.yourUpdateIsReadyToInstall') : store?.installStatus === 'installing' ? t('mobile.shellViews.walletUpdatePanel.installingUpdate')
+    : store?.installStatus === 'downloading' ? store.totalBytesToDownload > 0 ? t('mobile.shellViews.update.downloadingProgress', { percent: Math.min(100, Math.floor(store.bytesDownloaded / store.totalBytesToDownload * 100)) }) : t('mobile.shellViews.update.downloading')
+      : store?.installStatus === 'pending' ? t('mobile.shellViews.walletUpdatePanel.updateDownloadPending') : inProgress ? t('mobile.shellViews.walletUpdatePanel.anUpdateIsInProgress') : null;
   const storeUrl = Platform.OS === 'ios' ? PALI_STORES.ios : Platform.OS === 'android' ? PALI_STORES.android : null;
   return <Card style={{ padding: 18, gap: 14 }}>
     <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
       <Icon name={release?.severity === 'critical' ? 'shield' : 'refresh'} color={colors.blue} />
-      <Text accessibilityRole="header" style={{ fontSize: 18, fontWeight: '600', flex: 1 }}>App updates</Text>
-      {(release || playAvailable || downloaded || inProgress || interrupted || installed) && <Text style={{ color: colors.blue }}>{interrupted ? store?.installStatus === 'failed' ? 'Download failed' : 'Cancelled' : installed ? 'Installed' : downloaded ? 'Ready to install' : inProgress ? 'In progress' : 'Available'}</Text>}
+      <Text accessibilityRole="header" style={{ fontSize: 18, fontWeight: '600', flex: 1 }}>{t('mobile.generalViews.appUpdates')}</Text>
+      {(release || playAvailable || downloaded || inProgress || interrupted || installed) && <Text style={{ color: colors.blue }}>{interrupted ? store?.installStatus === 'failed' ? t('mobile.shellViews.walletUpdatePanel.downloadFailed') : t('send.canceled') : installed ? t('settings.installed') : downloaded ? t('mobile.shellViews.walletUpdatePanel.readyToInstall') : inProgress ? t('mobile.shellViews.walletUpdatePanel.inProgress') : t('mobile.smartSendViews.available')}</Text>}
     </View>
     {progress && <Text accessibilityLiveRegion="polite" style={{ color: colors.muted, lineHeight: 22 }}>{progress}</Text>}
     {release ? <>
       <Text style={{ fontSize: 17, fontWeight: '600' }}>{release.title}</Text>
-      <Text style={{ color: colors.muted, lineHeight: 21 }}>Version {release.version} · {release.severity === 'critical' ? 'Security update' : release.severity === 'important' ? 'Important update' : 'Update'}</Text>
+      <Text style={{ color: colors.muted, lineHeight: 21 }}>{t('mobile.generalViews.version', { version: release.version })} · {release.severity === 'critical' ? t('mobile.shellViews.walletUpdatePanel.securityUpdate') : release.severity === 'important' ? t('updates.severity.important') : t('settings.smartAccountGuardianRecoveryUpdate')}</Text>
       <Text style={{ lineHeight: 22 }}>{release.summary}</Text>
-      <Button title="Release notes" icon="external" variant="secondary" disabled={busy} onPress={() => void act(() => Linking.openURL(release.releaseNotesUrl))} />
+      <Button title={t('updates.releaseNotes')} icon="external" variant="secondary" disabled={busy} onPress={() => void act(() => Linking.openURL(release.releaseNotesUrl))} />
     </> : !progress && <Text accessibilityLiveRegion="polite" style={{ color: colors.muted, lineHeight: 22 }}>
-      {playAvailable ? 'A new Pali version is available on Google Play.' :
-        update.status === 'checking' ? 'Checking for updates…' : update.status === 'error' ? 'Updates could not be checked. Try again later.' :
-          update.status === 'ready' ? 'No newer published release was found.' : 'Check for the latest published Pali release.'}
+      {playAvailable ? t('mobile.shellViews.walletUpdatePanel.aNewPaliVersionIsAvailableOnGoogle') :
+        update.status === 'checking' ? t('updates.checking') : update.status === 'error' ? t('mobile.shellViews.walletUpdatePanel.updatesCouldNotBeCheckedTryAgainLater') :
+          update.status === 'ready' ? t('mobile.shellViews.walletUpdatePanel.noNewerPublishedReleaseWasFound') : t('mobile.shellViews.walletUpdatePanel.checkForTheLatestPublishedPaliRelease')}
     </Text>}
     {allowInstall && Platform.OS === 'android' && (downloaded || !inProgress && playAvailable && store?.flexibleAllowed) ?
-      <Button title={downloaded ? 'Restart and install' : 'Download update'} icon="refresh" disabled={busy} onPress={() => void act(async signal => {
+      <Button title={downloaded ? t('mobile.shellViews.walletUpdatePanel.restartAndInstall') : t('mobile.shellViews.walletUpdatePanel.downloadUpdate')} icon="refresh" disabled={busy} onPress={() => void act(async signal => {
         const current = owner.current;
         if (downloaded) await completeAppUpdate(signal);
         else {
@@ -80,23 +80,24 @@ export function WalletUpdatePanel({ allowInstall = false, onCloseWallet, service
         if (!signal.aborted && current.active && owner.current === current) setStore(next);
       }, true)} /> : !allowInstall && (release || playAvailable || downloaded || inProgress || interrupted) && onCloseWallet ?
       <Button title={t('mobile.nativeUpdate.closeWallet')} icon="close" disabled={busy} onPress={onCloseWallet} /> :
-      !inProgress && storeUrl && (release || playAvailable || interrupted) && <Button title="View in app store" icon="external" disabled={busy} onPress={() => void act(() => Linking.openURL(storeUrl))} />}
-    <Button title={update.status === 'checking' ? 'Checking…' : 'Check for updates'} variant="secondary" disabled={busy || update.status === 'checking'} onPress={() => void act(async () => {
+      !inProgress && storeUrl && (release || playAvailable || interrupted) && <Button title={t('mobile.shellViews.walletUpdatePanel.viewInAppStore')} icon="external" disabled={busy} onPress={() => void act(() => Linking.openURL(storeUrl))} />}
+    <Button title={update.status === 'checking' ? t('privacy.checking') : t('updates.check')} variant="secondary" disabled={busy || update.status === 'checking'} onPress={() => void act(async () => {
       const current = owner.current;
       await service.check(true); const next = await checkAppUpdate();
       if (current.active && owner.current === current) setStore(next);
     })} />
-    <Button title={update.alertsEnabled && update.permission === 'granted' ? 'Turn off update alerts' : 'Enable update alerts'} variant="secondary" icon="shield" disabled={busy}
+    <Button title={update.alertsEnabled && update.permission === 'granted' ? t('mobile.shellViews.walletUpdatePanel.turnOffUpdateAlerts') : t('mobile.shellViews.walletUpdatePanel.enableUpdateAlerts')} variant="secondary" icon="shield" disabled={busy}
       onPress={() => void act(() => service.setAlerts(!(update.alertsEnabled && update.permission === 'granted')))} />
-    <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>Important updates can notify you when Pali checks for releases. Delivery while Pali is closed depends on your phone’s background and notification settings.</Text>
-    {update.alertsEnabled && update.permission === 'denied' && <Text style={{ color: colors.muted }}>Allow Pali notifications in your phone’s settings to receive alerts.</Text>}
-    {release && update.status === 'error' && <Text accessibilityRole="alert">The latest check failed. Showing the last known release.</Text>}
+    <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>{t('mobile.shellViews.walletUpdatePanel.importantUpdatesCanNotifyYouWhenPaliChecks')}</Text>
+    {update.alertsEnabled && update.permission === 'denied' && <Text style={{ color: colors.muted }}>{t('mobile.shellViews.walletUpdatePanel.allowPaliNotificationsInYourPhoneSSettings')}</Text>}
+    {release && update.status === 'error' && <Text accessibilityRole="alert">{t('mobile.shellViews.walletUpdatePanel.theLatestCheckFailedShowingTheLastKnown')}</Text>}
     {!!error && <Text accessibilityRole="alert" style={{ color: colors.red }}>{error}</Text>}
   </Card>;
 }
 
 /** An update entry does not itself authorize installation or close custody. */
 export function LockedWalletUpdate({ disabled = false, onOpen }: { disabled?: boolean; onOpen(): void }) {
+  const { t } = useNativeTranslation();
   const update = useSyncExternalStore(mobileUpdates.subscribe, mobileUpdates.getSnapshot, mobileUpdates.getSnapshot);
   const [store, setStore] = useState<AppUpdateState | null>(null);
   useEffect(() => {
@@ -107,7 +108,7 @@ export function LockedWalletUpdate({ disabled = false, onOpen }: { disabled?: bo
   }, []);
   const downloaded = store?.installStatus === 'downloaded', inProgress = updateInProgress(store);
   if (!update.release && !(store?.storeAvailable && store.availability === 'available') && !downloaded && !inProgress) return null;
-  return <Button title={downloaded ? 'Update ready to install' : inProgress ? 'Update in progress' : update.release ? `Update available · ${update.release.version}` : 'Update available'} variant="secondary" icon="refresh" disabled={disabled} onPress={onOpen} />;
+  return <Button title={downloaded ? t('mobile.shellViews.walletUpdatePanel.updateReadyToInstall') : inProgress ? t('mobile.shellViews.walletUpdatePanel.updateInProgress') : update.release ? t('mobile.generalViews.updateAvailable', { version: update.release.version }) : t('updates.available')} variant="secondary" icon="refresh" disabled={disabled} onPress={onOpen} />;
 }
 
 /** The owner enables installation only after the complete wallet close has settled. */
