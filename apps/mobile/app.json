@@ -22,7 +22,12 @@
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.VIBRATE",
         "android.permission.RECORD_AUDIO"
-      ]
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#07152a",
+        "monochromeImage": "./assets/monochrome-icon.png"
+      }
     },
     "web": {
       "bundler": "metro",
@@ -66,12 +71,14 @@
         "expo-notifications",
         {
           "defaultChannel": "pali-account-activity-v1",
-          "enableBackgroundRemoteNotifications": false
+          "enableBackgroundRemoteNotifications": false,
+          "icon": "./assets/notification-icon.png"
         }
       ]
     ],
     "updates": {
       "enabled": false
-    }
+    },
+    "icon": "./assets/app-icon.png"
   }
 }
