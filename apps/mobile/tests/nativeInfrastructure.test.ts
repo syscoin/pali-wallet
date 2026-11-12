@@ -145,6 +145,52 @@ test('an owned Suite return keeps its reservation and needs a new explicit confi
   } finally {controller.dispose();f.controller.dispose();}
 });
 
+test('funding retry admission ends after a review has existed, including a later typed submission failure', async () => {
+  const f = fixture(), pending = { contractId: 'factory' as const, transactionHash: null };
+  let preparations = 0, funded = false;
+  const controller = new NativeInfrastructureController({ ...f.host, origin: { kind: 'suite-resume', id: 'owned-return', async prepare(signal) {
+    preparations++;
+    if (!funded) throw new EvmTransferReadError('INSUFFICIENT_BALANCE');
+    return { status: status([], pending), contractId: 'factory', prepared: await f.host.prepare('factory', signal) };
+  } } }, f.lifetime.signal, () => 100);
+  try {
+    await controller.reviewResume(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().status, null);
+    await controller.reviewResume(controller.getSnapshot().revision);
+    assert.equal(preparations, 2); assert.equal(f.counts.submissions, 0);
+    funded = true;
+    await controller.reviewResume(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'review'); assert.equal(preparations, 3);
+    f.setSend(async () => { throw Object.assign(new EvmTransferReadError('INSUFFICIENT_BALANCE'), { transactionNotBroadcast: true }); });
+    await controller.confirm(controller.getSnapshot().feeReview!.id);
+    assert.equal(controller.getSnapshot().phase, 'failed');
+    assert.equal(controller.getSnapshot().error, 'mobile.infrastructure.insufficientFunds');
+    assert.equal(controller.getSnapshot().feeReview, null);
+    await controller.reviewResume(controller.getSnapshot().revision);
+    assert.equal(preparations, 3, 'a post-confirm failure cannot use the initial funding retry path');
+    assert.equal(f.counts.submissions, 1);
+  } finally { controller.dispose(); f.controller.dispose(); }
+});
+
+for (const changed of ['wrong-contract', 'broadcast'] as const)
+  test(`a funding retry rechecks the retained ${changed} reservation before admitting a review`, async () => {
+    const f = fixture(); let preparations = 0;
+    const controller = new NativeInfrastructureController({ ...f.host, origin: { kind: 'suite-resume', id: 'owned-return', async prepare(signal) {
+      if (++preparations === 1) throw new EvmTransferReadError('INSUFFICIENT_BALANCE');
+      return { status: status([], { contractId: changed === 'wrong-contract' ? 'entryPoint' : 'factory', transactionHash: changed === 'broadcast' ? hash : null }),
+        contractId: 'factory', prepared: await f.host.prepare('factory', signal) };
+    } } }, f.lifetime.signal, () => 100);
+    try {
+      await controller.reviewResume(controller.getSnapshot().revision);
+      await controller.reviewResume(controller.getSnapshot().revision);
+      assert.equal(preparations, 2); assert.equal(controller.getSnapshot().phase, 'failed');
+      assert.equal(controller.getSnapshot().error, 'mobile.infrastructure.unavailable');
+      assert.equal(controller.getSnapshot().feeReview, null); assert.equal(f.counts.submissions, 0);
+      await controller.reviewResume(controller.getSnapshot().revision);
+      assert.equal(preparations, 2, 'a generic failure cannot retry preparation');
+    } finally { controller.dispose(); f.controller.dispose(); }
+  });
+
 for (const response of ['wrong-contract','already-broadcast'] as const)
   test(`a Suite return cannot authorize ${response} pending state`, async () => {
     const f = fixture();
