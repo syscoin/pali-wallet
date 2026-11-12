@@ -161,7 +161,10 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks, utxoNetwor
   const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const submissionInProgress = useRef(false);
   const alive = useRef(true);
+  const errorVisible = useRef(false);
   const hardwareBack = useRef<() => boolean>(() => true);
+  useLayoutEffect(() => { errorVisible.current = error !== null; }, [error]);
+  const scrollToError = () => { if (alive.current && errorVisible.current) scroll.current?.scrollToEnd({ animated: true }); };
   useEffect(() => {
     alive.current = true;
     const listener = AppState.addEventListener('change', (state) => { if (state !== 'active') { setReview(null); setError(null); } });
@@ -187,18 +190,18 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks, utxoNetwor
       const account = createWatchAccount('review', name.trim(), source?.address ?? address.trim(), network, utxoNetworks);
       setReview({ name: account.name, address: source?.identifier ?? Object.values(account.addresses)[0]!, network });
       setError(null);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : t('mobile.onboarding.invalidPublicAddress')); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : t('mobile.onboarding.invalidPublicAddress')); scrollToError(); }
   };
   const confirm = async () => {
     if (!review || submissionInProgress.current || AppState.currentState !== 'active' || !available.includes(review.network)) return;
     submissionInProgress.current = true; setSubmitting(true); setError(null);
     try { await onAdd(review); }
-    catch (cause) { if (alive.current) setError(cause instanceof Error ? cause.message : t('mobile.onboarding.addFailed')); }
+    catch (cause) { if (alive.current) { setError(cause instanceof Error ? cause.message : t('mobile.onboarding.addFailed')); scrollToError(); } }
     finally { submissionInProgress.current = false; if (alive.current) setSubmitting(false); }
   };
   if (managingNetworks && networkSettings && onNetworksChanged)
     return <WatchNetworks controller={networkSettings} onChanged={onNetworksChanged} onBack={closeNetworks} />;
-  return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+  return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}>
     <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <View style={styles.formNavigation}>
         <IdlePressable accessibilityRole="button" accessibilityLabel={t('buttons.back')} disabled={submitting} onPress={back} hitSlop={8} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}><Icon name="arrow-left" size={22} color={colors.text} /></IdlePressable>
@@ -238,7 +241,7 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks, utxoNetwor
           <Text style={styles.fieldHint}>{info.scope}</Text>
         </View>
       </View>}
-      {error && <View accessibilityLiveRegion="polite" style={styles.errorCard}><Text accessibilityRole="alert" style={styles.errorText}>{error}</Text></View>}
+      {error && <View accessibilityLiveRegion="polite" onLayout={scrollToError} style={styles.errorCard}><Text accessibilityRole="alert" style={styles.errorText}>{error}</Text></View>}
     </ScrollView>
       <View style={styles.formFooter}><IdlePressable accessibilityRole="button" accessibilityState={{ disabled: submitting, busy: submitting }} disabled={submitting}
         onPress={() => review ? void confirm() : prepare()} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, submitting && styles.disabled]}>

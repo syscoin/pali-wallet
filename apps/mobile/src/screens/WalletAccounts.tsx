@@ -57,6 +57,7 @@ export function WalletAccounts(props: WalletAccountsProps) {
   const entries = projectAccounts(props.catalogue, props.watch.accounts);
   const selected = props.active ? accountIdentity(props.active) : null;
   const canManageWatch = props.watch.status === 'ready' && !props.watch.busy && !busy;
+  const renaming = form !== null && form !== 'add' && form.kind === 'rename';
   const accessibleIdentity = (entry: (typeof entries)[number]) => {
     if (entry.kind === 'watch') {
       const account = props.watch.accounts.find(value => value.id === entry.selection.id)!;
@@ -76,7 +77,7 @@ export function WalletAccounts(props: WalletAccountsProps) {
       : entry.kind === 'smart' ? t('smartAccountHub.menuEntry') : entry.kind === 'ledger' ? t('mobile.accounts.ledger') : t('mobile.shellViews.walletAccounts.trezorHardwareWallet');
     return t('mobile.shellViews.accounts.walletIdentity', { name: entry.name, kind, address: entry.address });
   };
-  return <SafeAreaView edges={['top', 'bottom']} style={s.safe}><KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+  return <SafeAreaView edges={['top', 'bottom']} style={s.safe}><KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' && renaming ? 'height' : undefined}>
     {form === 'add' ? <AddWatchAccount utxoNetworks={props.watch.utxoNetworks} networkSettings={props.networkSettings} onNetworksChanged={props.onNetworksChanged} availableNetworks={props.availableWatchNetworks} onAdd={props.onAdd} onCancel={() => setForm(null)} /> : <Screen footer={form ? <Button title={form.kind === 'rename' ? t('mobile.accounts.saveName') : t('mobile.shellViews.walletAccounts.removeWatchAccount')} disabled={!canManageWatch || form.kind === 'rename' && !name.trim()} onPress={() => void run(() => form.kind === 'rename' ? props.onRename(form.id, name) : props.onRemove(form.id))} /> : undefined}>
       <Header title={form ? form.kind === 'rename' ? t('mobile.shellViews.walletAccounts.renameWatchAccount') : t('mobile.shellViews.walletAccounts.removeWatchAccount') : t('mobile.accounts.title')} subtitle={t('mobile.shellViews.walletAccounts.walletAndWatchAccounts')} onBack={() => back.current()} />
       {props.watch.status === 'opening' && <View style={s.loading}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>{t('mobile.shellViews.walletAccounts.openingSavedWatchAccounts')}</Text></View>}
