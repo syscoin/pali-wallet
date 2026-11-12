@@ -13,7 +13,6 @@ import {
   BackHandler,
   FlatList,
   Linking,
-  Modal,
   ScrollView,
   StyleSheet,
   View,
@@ -276,6 +275,7 @@ function NativeActivityContent({
   const [feedback, setFeedback] = useState('');
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [copying, setCopying] = useState(false);
+  const dialogOpen = optionsOpen || copyAddress !== null;
   const lifetime = useRef({ epoch: 0 });
   useEffect(() => {
     const target = initialHash ?? (savedPendingOnly ? 'saved-pending' : null);
@@ -428,7 +428,7 @@ function NativeActivityContent({
   };
   const close = () => {
     if (optionsOpen) { setOptionsOpen(false); return; }
-    setCopyAddress(null);
+    if (copyAddress !== null) { if (!copying) setCopyAddress(null); return; }
     setDetailsFor(null);
     if (detailOnly) { onBack(); return; }
     if (selected) setSelected(null);
@@ -455,9 +455,9 @@ function NativeActivityContent({
     })
   );
   useLayoutEffect(() => {
-    navigation?.setImmersive(!!detailOnly || !!selected || !!copyAddress);
+    navigation?.setImmersive(!!detailOnly || !!selected || dialogOpen);
     return () => navigation?.setImmersive(false);
-  }, [navigation, selected, copyAddress, detailOnly]);
+  }, [navigation, selected, dialogOpen, detailOnly]);
   useEffect(() => {
     const listener = BackHandler.addEventListener('hardwareBackPress', () => {
       close();
@@ -507,10 +507,12 @@ function NativeActivityContent({
   return (
     <SafeAreaView
       edges={
-        navigation && !selected && !copyAddress ? ['top'] : ['top', 'bottom']
+        navigation && !selected && !dialogOpen ? ['top'] : ['top', 'bottom']
       }
       style={s.root}
     >
+      <View style={s.activityContent} testID="activity-underlay" pointerEvents={dialogOpen ? 'none' : 'auto'}
+        accessibilityElementsHidden={dialogOpen} aria-hidden={dialogOpen} importantForAccessibility={dialogOpen ? 'no-hide-descendants' : 'auto'}>
       <View style={s.header}>
         <Header
           title={chosen || detailOnly ? t('mobile.activityViews.nativeActivity.transactionDetails') : savedPending ? t('mobile.activityViews.nativeActivity.savedPending') : t('buttons.activity')}
@@ -806,8 +808,8 @@ function NativeActivityContent({
           )}
         </ScrollView>
       )}
-      <Modal visible={optionsOpen} transparent animationType="fade" onRequestClose={() => setOptionsOpen(false)}>
-        <SafeAreaView style={s.modal} accessibilityViewIsModal>
+      </View>
+      {optionsOpen && <SafeAreaView style={s.modal} role="dialog" accessibilityLabel={t('mobile.activityViews.nativeActivity.activityOptions')} accessibilityViewIsModal>
           <ScrollView contentContainerStyle={s.modalContent}>
             <Card style={s.confirm}>
               <Header title={t('mobile.activityViews.nativeActivity.activityOptions')} right={<IconButton label={t('mobile.activityViews.nativeActivity.closeActivityOptions')} icon="close" onPress={() => setOptionsOpen(false)} />} />
@@ -819,17 +821,8 @@ function NativeActivityContent({
               <Button title={t('privacy.deposit.done')} variant="secondary" onPress={() => setOptionsOpen(false)} />
             </Card>
           </ScrollView>
-        </SafeAreaView>
-      </Modal>
-      <Modal
-        visible={copyAddress !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          if (!copying) setCopyAddress(null);
-        }}
-      >
-        <SafeAreaView style={s.modal}>
+      </SafeAreaView>}
+      {copyAddress !== null && <SafeAreaView style={s.modal} role="dialog" accessibilityLabel={t('mobile.activityViews.nativeActivity.copyThisAddress')} accessibilityViewIsModal>
           <ScrollView contentContainerStyle={s.modalContent}>
             <Card style={s.confirm}>
               <Text style={s.detailAmount}>{t('mobile.activityViews.nativeActivity.copyThisAddress')}</Text>
@@ -850,8 +843,7 @@ function NativeActivityContent({
               {!!feedback && <Text accessibilityRole="alert">{feedback}</Text>}
             </Card>
           </ScrollView>
-        </SafeAreaView>
-      </Modal>
+      </SafeAreaView>}
     </SafeAreaView>
   );
 }
@@ -874,7 +866,8 @@ const s = StyleSheet.create({
   full: { fontSize: 14, lineHeight: 23, color: colors.text },
   label: { fontSize: 11, color: colors.muted, letterSpacing: 1 },
   build: { color: colors.muted, fontSize: 11, textAlign: 'center' },
-  modal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)' },
+  activityContent: { flex: 1 },
+  modal: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 1, backgroundColor: 'rgba(0,0,0,0.8)' },
   modalContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   confirm: { padding: 24, gap: 20 },
 });

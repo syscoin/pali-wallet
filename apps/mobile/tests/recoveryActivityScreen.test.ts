@@ -16,7 +16,8 @@ import { activityRowDirection, matchesActivityView, zeroOnlyActivity } from '../
 type Element = { type: any; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; dependencies?: unknown[]; cleanup?: () => void };
 const hash = '0x' + '11'.repeat(32);
-function fixture(initialHash?: string, held = false, props: Record<string, unknown> = {}) {
+function fixture(initialHash?: string, held = false, props: Record<string, unknown> = {}, clipboard: (address: string) => Promise<boolean> = async () => true) {
+  let hardwareBack: (() => boolean) | undefined;
   let privacyHidden = false;
   const cells = new Map<unknown, Cell[]>();
   let current: Cell[] = [],
@@ -132,12 +133,12 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
     react,
     'react-native': {
       ...native,
-      BackHandler: { addEventListener: () => ({ remove() {} }) },
+      BackHandler: { addEventListener: (_name: string, handler: () => boolean) => { hardwareBack = handler; return { remove() { if (hardwareBack === handler) hardwareBack = undefined; } }; } },
       StyleSheet: { create: (value: unknown) => value },
       Linking: {},
     },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
-    'expo-clipboard': {},
+    'expo-clipboard': { setStringAsync: clipboard },
     '../ui': { ...ui, colors: {}, styles: {} },
     './IdleActivityBoundary': { IdlePressable: 'IdlePressable' },
     '../core/amounts': { formatBaseUnits },
@@ -202,6 +203,8 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
       });
       return renderOne(parent.type, parent.props);
     },
+    back: () => { assert(hardwareBack); return hardwareBack(); },
+    snapshot: () => snapshot,
     loaded: () => loaded,
     inspected: () => inspected,
     replays: () => replays,
@@ -526,4 +529,87 @@ test('an in-flight first Activity page is loading, not a completed empty history
     list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
     assert(all(list.props.ListEmptyComponent).some(node => node.type === 'Text' && node.children.includes('No activity to show')));
   } finally { f.dispose(); }
+});
+
+
+function openOptions(f: ReturnType<typeof fixture>) {
+  const header = all(f.render()).find(node => node.type === 'Header' && node.props.title === 'Activity'); assert(header);
+  const options = all(header.props.right).find(node => node.type === 'IconButton' && node.props.label === 'Activity options'); assert(options);
+  options.props.onPress();
+}
+function dialog(f: ReturnType<typeof fixture>, label: string) {
+  const tree = f.render(), nodes = all(tree);
+  assert.equal(nodes.some(node => node.type === 'Modal'), false, 'Activity overlays must stay in the existing window');
+  const underlay = nodes.find(node => node.props.testID === 'activity-underlay'); assert(underlay);
+  assert.equal(underlay.props.pointerEvents, 'none');
+  assert.equal(underlay.props.accessibilityElementsHidden, true);
+  assert.equal(underlay.props['aria-hidden'], true);
+  assert.equal(underlay.props.importantForAccessibility, 'no-hide-descendants');
+  const overlay = nodes.find(node => node.props.role === 'dialog' && node.props.accessibilityLabel === label); assert(overlay);
+  assert.equal(overlay.props.accessibilityViewIsModal, true);
+  return overlay;
+}
+function openRecipientCopy(f: ReturnType<typeof fixture>) {
+  const detail = all(f.render()).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
+  const recipient = detail.props.rows.find((row: { label: string }) => row.label === englishI18n.t('send.to')); assert(recipient?.onPress);
+  recipient.onPress();
+}
+for (const close of ['done', 'back'] as const) test(`in-window Activity options ${close} preserves the list, filter and saved position`, () => {
+  const immersive: boolean[] = [];
+  const f = fixture(undefined, false, { navigation: { registerBack: () => () => {}, registerLeave: () => () => {}, setImmersive: (value: boolean) => immersive.push(value) } });
+  const row = pendingScopedRow(); f.rows([row]);
+  f.state({ view: { ...DEFAULT_ACTIVITY_VIEW, filter: 'sent', anchor: hash, offset: 27 } });
+  try {
+    openOptions(f); const overlay = dialog(f, 'Activity options');
+    assert.equal(immersive.at(-1), true, 'tabs must not remain interactive below options');
+    if (close === 'back') assert.equal(f.back(), true);
+    else all(overlay).find(node => node.type === 'Button' && node.props.title === 'Done')!.props.onPress();
+    const nodes = all(f.render());
+    assert.equal(nodes.some(node => node.props.role === 'dialog'), false);
+    assert.equal(nodes.find(node => node.props.testID === 'activity-underlay')?.props.pointerEvents, 'auto');
+    assert.equal(immersive.at(-1), false);
+    assert.equal(f.backs(), 0); assert.equal(f.loaded(), 0); assert.equal(f.inspected().length, 0);
+    assert.deepEqual(f.snapshot().view, { ...DEFAULT_ACTIVITY_VIEW, filter: 'sent', anchor: hash, offset: 27 });
+    assert.deepEqual(nodes.find(node => node.type === 'FlatList')?.props.data, [row]);
+  } finally { f.dispose(); }
+});
+test('in-window Activity option toggle changes only its filter preference', () => {
+  const f = fixture(); f.state({ view: { ...DEFAULT_ACTIVITY_VIEW, anchor: hash, offset: 31 } });
+  try {
+    openOptions(f); const overlay = dialog(f, 'Activity options');
+    all(overlay).find(node => node.type === 'Button' && node.props.title === 'Show zero-value token activity')!.props.onPress();
+    assert.equal(all(f.render()).some(node => node.props.role === 'dialog'), false);
+    assert.deepEqual(f.snapshot().view, { ...DEFAULT_ACTIVITY_VIEW, anchor: hash, offset: 31, showZero: true });
+    assert.equal(f.backs(), 0);
+  } finally { f.dispose(); }
+});
+for (const close of ['cancel', 'back'] as const) test(`in-window Activity copy ${close} returns to the selected transaction`, async () => {
+  const f = fixture();
+  try {
+    await openFixtureRow(f, pendingScopedRow()); openRecipientCopy(f); const overlay = dialog(f, 'Copy this address?');
+    if (close === 'back') assert.equal(f.back(), true);
+    else all(overlay).find(node => node.type === 'Button' && node.props.title === 'Cancel')!.props.onPress();
+    const nodes = all(f.render());
+    assert.equal(nodes.some(node => node.props.role === 'dialog'), false);
+    assert(nodes.some(node => node.type === 'TransactionDetailLayout'));
+    assert.equal(f.backs(), 0);
+  } finally { f.dispose(); }
+});
+test('in-window Activity copy holds Back during clipboard work and returns to the same detail after success', async () => {
+  const copied: string[] = []; let release!: () => void;
+  const waiting = new Promise<void>(resolve => { release = resolve; });
+  const f = fixture(undefined, false, {}, async address => { copied.push(address); await waiting; return true; });
+  try {
+    await openFixtureRow(f, pendingScopedRow()); openRecipientCopy(f); const overlay = dialog(f, 'Copy this address?');
+    const copying = all(overlay).find(node => node.type === 'Button' && node.props.title === 'Copy full address')!.props.onPress();
+    dialog(f, 'Copy this address?'); // Commit the busy UI before the next native Back event.
+    assert.equal(f.back(), true);
+    const pending = dialog(f, 'Copy this address?');
+    assert(all(pending).filter(node => node.type === 'Button').every(node => node.props.disabled));
+    release(); await copying;
+    const nodes = all(f.render());
+    assert.equal(nodes.some(node => node.props.role === 'dialog'), false);
+    assert(nodes.some(node => node.type === 'TransactionDetailLayout'));
+    assert.equal(copied.length, 1); assert.equal(f.backs(), 0); assert.equal(f.replays(), 0);
+  } finally { release(); f.dispose(); }
 });
