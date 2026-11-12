@@ -2083,3 +2083,12 @@ An absent wallet database with retained local setup now has a dedicated recovery
 | --- | --- | --- |
 | Setup recovery | ![Setup recovery](setup-recovery/intro-390.png) | |
 | Confirm reset | ![Confirm local setup reset](setup-recovery/confirm-390.png) | ![Confirm local setup reset at 320px](setup-recovery/confirm-320.png) |
+
+
+## Explicit account-key copy
+
+After the existing device authorization reveals an eligible account key, its card offers the same copy icon used elsewhere in Pali. The icon changes to a checkmark after copying. Hide, Back and backgrounding still clear the in-app reveal. [Exact source and capture provenance](private-key-copy/manifest.json). These browser renders use a public test key; they do not show a customer wallet or qualify native clipboard behavior.
+
+| Standard width | Narrow width |
+| --- | --- |
+| ![Account key with Copy control](private-key-copy/native-security-public-fixture-key.png) | ![Account key with Copy control at 320px](private-key-copy/native-security-public-fixture-key-320.png) |
