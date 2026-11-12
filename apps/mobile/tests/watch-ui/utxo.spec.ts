@@ -119,7 +119,7 @@ test('known zero and unavailable remain distinct while Receive stays available o
   await expect(page.getByLabel('Pending balance change unavailable', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Bitcoin confirmed balance 0.0 BTC', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Receive', exact: true }).click();
-  await expect(page.getByLabel(`Bitcoin address ${BTC}`, { exact: true })).toBeVisible(); await watchOnly(page);
+  await expect(page.getByRole('button', { name: `Copy address: Bitcoin address ${BTC}`, exact: true }).getByText(BTC, { exact: true })).toBeVisible(); await watchOnly(page);
 });
 
 test('wrong-family input is rejected before save and choosing another network clears the address', async ({ page }) => {
@@ -144,7 +144,7 @@ test('UTXO choices remain disabled when the host has not enabled them', async ({
   await expect(page.getByRole('button', { name: 'Syscoin Mainnet', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Bitcoin', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Syscoin Testnet', exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'EVM networks', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'EVM Networks', exact: true })).toBeEnabled();
 });
 
 test('public account key follows the real add, aggregate refresh, receive, rename and restart flow', async ({ page, context }, testInfo) => {

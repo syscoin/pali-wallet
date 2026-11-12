@@ -103,7 +103,7 @@ test('unsafe-address acknowledgement and account switch gate consent', async ({
   });
   await expect(authorize).toBeDisabled();
   await expect(
-    page.getByText('Known unsafe recipient', { exact: true })
+    page.getByText('0x3333333333333333333333333333333333333333\nKnown unsafe recipient', { exact: true })
   ).toBeVisible();
   await page
     .getByRole('checkbox', {

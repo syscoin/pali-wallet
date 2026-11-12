@@ -315,7 +315,7 @@ test('watch Receive copies full address and never adds native signing or preview
   await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
   await expectWatchOnly(page);
   await page.getByRole('button', { name: 'Receive', exact: true }).click();
-  await expect(page.getByLabel(`Ethereum address ${ADDRESS}`, { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: `Copy address: Ethereum address ${ADDRESS}`, exact: true }).getByText(ADDRESS, { exact: true })).toBeVisible();
   await expect(page.getByRole('img', { name: `QR code for Ethereum address ${ADDRESS}` })).toBeVisible();
   await page.evaluate(() => navigator.clipboard.writeText('before-copy'));
   await page.getByRole('button', { name: 'Copy address', exact: true }).click();

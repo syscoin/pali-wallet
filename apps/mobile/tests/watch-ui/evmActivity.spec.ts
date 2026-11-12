@@ -440,7 +440,7 @@ test('same-address network change closes old details and pending copy feedback',
 
 for (const mode of ['missing','invalid','malformed']) test(`watch ${mode} token metadata never displays raw units as a human amount`, async ({page}, testInfo) => {
   await open(page,'value',false,mode);
-  const item=row(page,OWNER,3), amount=mode==='malformed'?'? RAW':'RAW transfer';
+  const item=row(page,OWNER,3), amount=mode==='malformed'?'? RAW':'RAW Transfer';
   await expect(item).toBeVisible();
   await page.screenshot({path:testInfo.outputPath('watch-'+mode+'-list.png')});
   await expect(item).toContainText(amount);
