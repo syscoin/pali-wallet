@@ -19,6 +19,7 @@ import {
   captureEvmFeeApproval,
   EvmFeeBalanceError,
   EVM_FEE_APPROVAL_LIFETIME_MS,
+  NATIVE_EVM_FEE_FUNDING,
   getEvmCoveredFee,
   resolveEvmFeeFunding,
   type EvmFeeFunding,
@@ -29,6 +30,10 @@ import {
   readEvmRpcHash,
   readEvmRpcQuantity,
 } from './evmTransactionObservation.ts';
+import {
+  EVM_NATIVE_INTRINSIC_GAS,
+  getEvmTransferCost,
+} from './evmTransferCost.ts';
 
 export type EvmDappTransactionRequest = Readonly<{
   accessList?: EvmAccessList;
@@ -246,6 +251,22 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
     )
       throw new EvmDappReviewRequiredError();
   } else {
+    // Some nodes refuse to estimate an unfunded sender. This lower bound uses
+    // the same native fee cap as the final check; funded quotes still estimate.
+    if (
+      ports.funding === NATIVE_EVM_FEE_FUNDING &&
+      balance <
+        getEvmTransferCost(
+          BigInt(request.value),
+          EVM_NATIVE_INTRINSIC_GAS,
+          BigInt(
+            selectedFees.type === 0
+              ? selectedFees.gasPrice
+              : selectedFees.maxFeePerGas
+          )
+        ).total
+    )
+      throw new EvmFeeBalanceError();
     const estimateRequest = evmEstimateRequest(execution);
     executionGas = readEvmRpcQuantity(
       await ports.read('eth_estimateGas', [estimateRequest, sample.state])

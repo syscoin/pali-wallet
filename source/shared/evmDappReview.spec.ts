@@ -5,7 +5,11 @@ import {
   type EvmDappTransactionRequest,
 } from './evmDappPreparation';
 import { prepareEvmDappReview } from './evmDappReview';
-import { NATIVE_EVM_FEE_FUNDING } from './evmFeeApproval';
+import {
+  createOwnedEvmFeeFunding,
+  EvmFeeBalanceError,
+  NATIVE_EVM_FEE_FUNDING,
+} from './evmFeeApproval';
 
 const from = `0x${'11'.repeat(20)}`;
 const to = `0x${'22'.repeat(20)}`;
@@ -377,4 +381,107 @@ test.each([
     )
   ).rejects.toThrow();
   expect(f.requests).toEqual([]);
+});
+
+describe('native fee affordability before estimation', () => {
+  test.each([false, true])(
+    'rejects below the intrinsic lower bound without estimating (legacy=%s)',
+    async (legacy) => {
+      const f = fixture(legacy),
+        value = BigInt(5),
+        rate = BigInt(legacy ? 2 : 3);
+      f.ports.balance = async () => value + BigInt(21000) * rate - BigInt(1);
+      await expect(
+        prepareEvmDappQuote(
+          { from, to, data: '0x', value: value.toString() },
+          f.ports
+        )
+      ).rejects.toBeInstanceOf(EvmFeeBalanceError);
+      expect(
+        f.requests.some(({ method }) => method === 'eth_estimateGas')
+      ).toBe(false);
+      expect(f.sign).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each([false, true])(
+    'still estimates and accepts the exact intrinsic boundary (legacy=%s)',
+    async (legacy) => {
+      const f = fixture(legacy),
+        value = BigInt(5),
+        rate = BigInt(legacy ? 2 : 3);
+      f.ports.balance = async () => value + BigInt(21000) * rate;
+      const quote = await prepareEvmDappQuote(
+        { from, to, data: '0x', value: value.toString(), gasLimit: '21000' },
+        f.ports
+      );
+      expect(quote.maximumTotalUnits).toBe(
+        (value + BigInt(21000) * rate).toString()
+      );
+      expect(
+        f.requests.filter(({ method }) => method === 'eth_estimateGas')
+      ).toHaveLength(1);
+      expect(f.sign).not.toHaveBeenCalled();
+    }
+  );
+
+  test('a funded intrinsic minimum is not a substitute for the final full gas-budget check', async () => {
+    const f = fixture();
+    f.ports.balance = async () => BigInt(63000);
+    await expect(
+      prepareEvmDappQuote({ from, to, data: '0x1234', value: '0' }, f.ports)
+    ).rejects.toBeInstanceOf(EvmFeeBalanceError);
+    expect(
+      f.requests.filter(({ method }) => method === 'eth_estimateGas')
+    ).toHaveLength(1);
+  });
+
+  test('verified fee credit still supports an empty native balance and performs estimation', async () => {
+    const f = fixture();
+    f.ports.balance = async () => BigInt(0);
+    const verify = jest.fn(async (approval) =>
+      BigInt(approval.maximumFeeUnits)
+    );
+    f.ports.funding = createOwnedEvmFeeFunding(verify);
+    const quote = await prepareEvmDappQuote(
+      { from, to, data: '0x1234', value: '0' },
+      f.ports
+    );
+    expect(verify).toHaveBeenCalledTimes(1);
+    expect(quote.coveredFeeUnits).toBe(quote.maximumFeeUnits);
+    expect(
+      f.requests.filter(({ method }) => method === 'eth_estimateGas')
+    ).toHaveLength(1);
+  });
+
+  test('zero-price networks still estimate zero-value transactions with no native balance', async () => {
+    const f = fixture(true);
+    f.ports.balance = async () => BigInt(0);
+    f.ports.fees = async () => ({
+      gasPrice: BigInt(0),
+      maxFeePerGas: BigInt(0),
+      maxPriorityFeePerGas: BigInt(0),
+    });
+    const quote = await prepareEvmDappQuote(
+      { from, to, data: '0x', value: '0', gasLimit: '21000' },
+      f.ports
+    );
+    expect(quote.maximumTotalUnits).toBe('0');
+    expect(
+      f.requests.filter(({ method }) => method === 'eth_estimateGas')
+    ).toHaveLength(1);
+  });
+
+  test('unrelated estimation errors are not inferred to be balance errors', async () => {
+    const f = fixture(),
+      read = f.ports.read,
+      error = Error('gas required exceeds allowance');
+    f.ports.read = async (method, params) => {
+      if (method === 'eth_estimateGas') throw error;
+      return read(method, params);
+    };
+    await expect(
+      prepareEvmDappQuote({ from, to, data: '0x', value: '0' }, f.ports)
+    ).rejects.toBe(error);
+  });
 });

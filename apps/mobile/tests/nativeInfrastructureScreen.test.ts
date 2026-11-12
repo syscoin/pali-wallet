@@ -9,6 +9,7 @@ import type { NativeLedgerConnectionView, NativeLedgerSnapshot } from '../src/cu
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import type { useOwnedLedgerConnection } from '../src/screens/useDappLedgerConnection';
 import { NativeInfrastructureController } from '../src/smartAccount/infrastructure.ts';
+import { EvmTransferReadError } from '../src/custody/evmFeeContracts.ts';
 import { englishI18n, languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 
@@ -70,12 +71,13 @@ function button(elements: ReturnType<typeof screenElements>, key: string) {
   return element;
 }
 const text = (elements: ReturnType<typeof screenElements>) => elements.flatMap(node => node.children.filter(value => typeof value === 'string')).join(' ');
-function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing' | 'optional-only' | 'all-present' | 'pending-optional' = 'missing', create2Deployed = true, now = () => 0, resumeId: string | null = null) {
+function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing' | 'optional-only' | 'all-present' | 'pending-optional' = 'missing', create2Deployed = true, now = () => 0, resumeId: string | null = null, currencySymbol = 'ETH') {
   const transaction = Object.freeze({ chainId: '1', from: payer, to: '0x4e59b44847b379578588920cA78FbF26c0B4956C', nonce: '0', value: '0', data: '0xab', gasLimit: '21000', type: 2 as const, maxFeePerGas: '2', maxPriorityFeePerGas: '1', accessList: [] });
   let signatures = 0, wires = 0, submissions = 0, disposed = 0;
   let observations = 0;
   const backgrounds: boolean[] = [];
   let refuseSubmission = false, unknownSubmission = false;
+  let quoteFailure: Error | undefined;
   let quoteWait: Promise<void> = Promise.resolve(), sendWait: Promise<void> = Promise.resolve();
   let broadcastWait: Promise<void> = Promise.resolve();
   const prepared: NativePreparedConnectionTransaction = Object.freeze({
@@ -99,11 +101,11 @@ function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing'
       return { status, contractId: 'multicall3', prepared };
     } },
     background() { backgrounds.push(signal.aborted); },
-    networkLabel: 'Ethereum', currencySymbol: 'ETH', payerLabel: 'Fee wallet', payerAddress: payer,
+    networkLabel: 'Ethereum', currencySymbol, payerLabel: 'Fee wallet', payerAddress: payer,
     assertCurrent,
     dispose() { disposed++; },
     async observe() { assertCurrent(); observations++; return status; },
-    async prepare() { await quoteWait; assertCurrent(); return prepared; },
+    async prepare() { await quoteWait; assertCurrent(); if (quoteFailure) throw quoteFailure; return prepared; },
     submissionFailure(error: unknown) {
       return error && typeof error === 'object' && 'transactionNotBroadcast' in error ? { transactionNotBroadcast: true } : undefined;
     },
@@ -114,6 +116,7 @@ function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing'
     holdSigning(promise: Promise<void>) { sendWait = promise; },
     holdBroadcast(promise: Promise<void>) { broadcastWait = promise; },
     failSubmission() { refuseSubmission = true; },
+    failQuote(error: Error) { quoteFailure = error; },
     failUnknownSubmission() { unknownSubmission = true; },
     async prepareResume() { await controller.reviewResume(controller.getSnapshot().revision); },
     backgrounds,
@@ -139,6 +142,24 @@ function ledgerConnection(connected = false) {
   };
   return { source, actions, disconnect() { connected = false; }, get closes() { return closes; } };
 }
+
+test('an unfunded setup explains which account needs SYS and never offers a signing review', async () => {
+  const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;
+  const props = { mode: { kind: 'new' as const }, async open(signal: AbortSignal, check: () => void) {
+    value = runtime(signal, check, 'missing', true, () => 0, null, 'SYS');
+    value.failQuote(new EvmTransferReadError('INSUFFICIENT_BALANCE')); return value.controller;
+  }, onBack() {} };
+  try {
+    screen.render(props); await tick();
+    button(screen.render(props), 'mobile.infrastructure.reviewNext').props.onPress(); await tick();
+    const shown = screen.render(props), copy = text(shown);
+    assert(copy.includes('Not enough SYS for setup fees. Receive SYS into the fee-paying account shown above, then refresh the fee.'));
+    assert(copy.includes(payer)); assert(copy.includes('Fee wallet'));
+    assert.equal(value.controller.getSnapshot().feeReview, null);
+    assert.equal(value.counts.signatures, 0); assert.equal(value.counts.wires, 0);
+    assert.equal(copy.includes('Setup is unavailable.'), false);
+  } finally { screen.close(); }
+});
 
 test('setup purpose follows the active language without re-reading infrastructure', async () => {
   const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;

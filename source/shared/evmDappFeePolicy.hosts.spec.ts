@@ -59,6 +59,22 @@ const FROM = `0x${'11'.repeat(20)}`;
 const TO = `0x${'22'.repeat(20)}`;
 const cases = [
   {
+    name: 'unfunded native sender',
+    estimate: 21000,
+    balance: '0',
+    fields: {},
+    reject: true,
+    noEstimate: true,
+  },
+  {
+    name: 'unfunded legacy native sender',
+    estimate: 21000,
+    balance: '0',
+    fields: { type: '0x0' },
+    reject: true,
+    noEstimate: true,
+  },
+  {
     name: 'creation and ordered access list',
     estimate: 60001,
     fields: {
@@ -165,6 +181,8 @@ const cases = [
 it.each(cases)('shares initial quote policy for $name', async (fixture) => {
   const chainId = fixture.chainId ?? 1,
     blockLimit = fixture.block ?? 30000000;
+  const balance =
+    'balance' in fixture ? fixture.balance : '1000000000000000000000000000000';
   const registration = createNativeNetwork({
     id: 'fee-fixture',
     name: 'Fee fixture',
@@ -205,7 +223,7 @@ it.each(cases)('shares initial quote policy for $name', async (fixture) => {
           gasLimit: `0x${blockLimit.toString(16)}`,
           baseFeePerGas: '0x2',
         };
-      if (method === 'eth_getBalance') return '1000000000000000000000000000000';
+      if (method === 'eth_getBalance') return balance;
       if (method === 'eth_maxPriorityFeePerGas') return '2';
       if (method === 'eth_estimateGas') {
         extensionEstimates.push(params[0]);
@@ -247,7 +265,7 @@ it.each(cases)('shares initial quote policy for $name', async (fixture) => {
         };
       else if (request.method === 'eth_getTransactionCount') result = '0x9';
       else if (request.method === 'eth_getBalance')
-        result = `0x${BigInt('1000000000000000000000000000000').toString(16)}`;
+        result = `0x${BigInt(balance).toString(16)}`;
       else if (request.method === 'eth_gasPrice') result = '0x4';
       else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x2';
       else if (request.method === 'eth_estimateGas') {
@@ -313,6 +331,10 @@ it.each(cases)('shares initial quote policy for $name', async (fixture) => {
       expect(extension).rejects.toThrow(),
       expect(native).rejects.toThrow(),
     ]);
+    if ('noEstimate' in fixture) {
+      expect(extensionEstimates).toHaveLength(0);
+      expect(nativeEstimates).toHaveLength(0);
+    }
     return;
   }
   const [ext, mobile] = await Promise.all([extension, native]);

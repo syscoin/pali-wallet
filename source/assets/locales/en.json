@@ -2375,6 +2375,7 @@
       "unknown": "The transaction may have reached the network. Refresh its status before continuing.",
       "reviewExpired": "Review expired. Review the current fee again.",
       "unavailable": "Setup is unavailable. Refresh its status before trying again.",
+      "insufficientFunds": "Not enough {{symbol}} for setup fees. Receive {{symbol}} into the fee-paying account shown above, then refresh the fee.",
       "cancelled": "The wallet changed or locked. Reopen setup.",
       "reviewOptional": "Review optional deployment",
       "purposeProcessTransactions": "Process smart-account transactions",

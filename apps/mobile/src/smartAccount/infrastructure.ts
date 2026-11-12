@@ -5,6 +5,7 @@ import {
 } from '../../../../source/utils/smartAccount/deploymentMetadata.ts';
 import type { SmartAccountInfrastructureObservation } from '../../../../source/utils/smartAccount/infrastructureObservation.ts';
 import type { NativePreparedConnectionTransaction } from '../connections/transactionRuntime.ts';
+import { EvmTransferReadError } from '../custody/evmFeeContracts.ts';
 
 export type NativeInfrastructureStatus = Readonly<{
   observation: SmartAccountInfrastructureObservation;
@@ -52,6 +53,7 @@ type Host = Readonly<{
 }>;
 
 function errorKey(error: unknown): string {
+  if (error instanceof EvmTransferReadError && error.code === 'INSUFFICIENT_BALANCE') return 'mobile.infrastructure.insufficientFunds';
   const message = error instanceof Error ? error.message : '';
   if (message === 'Review expired') return 'mobile.infrastructure.reviewExpired';
   if (['CANCELLED', 'NOT_READY', 'PROFILE_CHANGED'].includes(message)) return 'mobile.infrastructure.cancelled';

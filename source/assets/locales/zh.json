@@ -2375,6 +2375,7 @@
       "unknown": "交易可能已到达网络。请刷新状态后再继续。",
       "reviewExpired": "审核已过期。请重新审核当前手续费。",
       "unavailable": "设置暂不可用。请刷新状态后重试。",
+      "insufficientFunds": "{{symbol}} 不足以支付设置费用。请先向上方显示的费用支付账户转入 {{symbol}}，然后刷新费用。",
       "cancelled": "钱包已更改或锁定。请重新打开设置。",
       "reviewOptional": "审核可选部署",
       "purposeProcessTransactions": "处理智能账户交易",

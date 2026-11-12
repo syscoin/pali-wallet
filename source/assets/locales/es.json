@@ -2375,6 +2375,7 @@
       "unknown": "La transacción puede haber llegado a la red. Actualiza su estado antes de continuar.",
       "reviewExpired": "La revisión ha caducado. Revisa de nuevo la comisión actual.",
       "unavailable": "La configuración no está disponible. Actualiza su estado antes de intentarlo de nuevo.",
+      "insufficientFunds": "No hay suficiente {{symbol}} para las comisiones de configuración. Recibe {{symbol}} en la cuenta que paga las comisiones indicada arriba y actualiza la comisión.",
       "cancelled": "La cartera ha cambiado o se ha bloqueado. Abre de nuevo la configuración.",
       "reviewOptional": "Revisar despliegue opcional",
       "purposeProcessTransactions": "Procesar transacciones de cuentas inteligentes",

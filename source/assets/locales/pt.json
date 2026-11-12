@@ -2375,6 +2375,7 @@
       "unknown": "A transação pode ter chegado à rede. Atualize o estado antes de continuar.",
       "reviewExpired": "A revisão expirou. Reveja a taxa atual.",
       "unavailable": "A configuração não está disponível. Atualize o estado antes de tentar novamente.",
+      "insufficientFunds": "Saldo de {{symbol}} insuficiente para as taxas de configuração. Receba {{symbol}} na conta que paga as taxas indicada acima e atualize a taxa.",
       "cancelled": "A carteira mudou ou foi bloqueada. Reabra a configuração.",
       "reviewOptional": "Rever implantação opcional",
       "purposeProcessTransactions": "Processar transações de contas inteligentes",
