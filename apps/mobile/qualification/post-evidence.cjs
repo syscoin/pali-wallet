@@ -5,6 +5,7 @@ const { Buffer } = require('node:buffer');
 // Bind the current native graph and its shared account, replay and HTTP code.
 const POST_REQUIRED_MAPPED_SOURCES = Object.freeze([
   "apps/mobile/qualification/index.tsx",
+  "apps/mobile/scripts/qualificationSdkIdentity.ts",
   "apps/mobile/qualification/launch-parameters.ts",
   "apps/mobile/qualification/http-contract.ts",
   "apps/mobile/qualification/physical-contract.ts",
@@ -90,7 +91,8 @@ function assertPostMappedSources(map, readExpected) {
     const source = map.sources[i];
     if (typeof source !== 'string') throw Error('POST_SOURCE_MAP_INVALID');
     if (source.startsWith('\0') || source.includes('/node_modules/')) continue;
-    const relative = source.startsWith('/qualification/') || source.startsWith('/src/') || source.startsWith('/modules/') ? `apps/mobile${source}`
+    const relative = source === '/scripts/qualificationSdkIdentity.ts' ||
+      source.startsWith('/qualification/') || source.startsWith('/src/') || source.startsWith('/modules/') ? `apps/mobile${source}`
       : source.startsWith('/source/') ? source.slice(1) : null;
     if (!relative || relative.split('/').includes('..') || seen.has(relative) || typeof map.sourcesContent[i] !== 'string') throw Error('POST_SOURCE_MAP_INVALID');
     const expected = readExpected(relative);

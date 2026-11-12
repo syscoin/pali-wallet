@@ -15,6 +15,18 @@ test('POST map qualification requires each current shared/native graph module', 
     assert.throws(() => assertPostMappedSources(map, expected), /MISSING/);
   }
 });
+test('the shared SDK identity source is required and admits only its exact path and bytes', () => {
+  const source = 'apps/mobile/scripts/qualificationSdkIdentity.ts';
+  assert(POST_REQUIRED_MAPPED_SOURCES.includes(source));
+  const index = POST_REQUIRED_MAPPED_SOURCES.indexOf(source);
+  assert.equal(assertPostMappedSources(fixture(), expected), POST_REQUIRED_MAPPED_SOURCES.length);
+  for (const replacement of ['/scripts/other.ts', '/scripts/../scripts/qualificationSdkIdentity.ts']) {
+    const map = fixture(); map.sources[index] = replacement;
+    assert.throws(() => assertPostMappedSources(map, expected), /INVALID/);
+  }
+  const changed = fixture(); changed.sourcesContent[index] += 'changed';
+  assert.throws(() => assertPostMappedSources(changed, expected), /MISMATCH/);
+});
 test('required map sources exist in this checkout and retain the shared replacements', () => {
   const root = path.resolve(__dirname, '../../..');
   for (const source of POST_REQUIRED_MAPPED_SOURCES) {
