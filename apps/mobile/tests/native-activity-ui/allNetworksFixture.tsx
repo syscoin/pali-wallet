@@ -27,7 +27,7 @@ const make = (networkId: string, incoming: boolean, timestamp: number, valueUnit
     observation: { ...row.observation!, hash: '0x' + (index + 1).toString(16).padStart(64, '0'), timestamp: timestamp - (index + 1) * 120000 } }))] : [row];
   let snapshot: NativeActivitySnapshot = { status: 'ready', rows: recentRows, view: DEFAULT_ACTIVITY_VIEW, accountAddress: owner,
     scopeKey: choice.scope.id, chainId: network.chainId, networkName: network.name, nativeSymbol: network.symbol,
-    explorerUrl: null, loadingMore: false, hasMore: false, error: null, coverage: '', truncated: false, canViewSavedPending: true };
+    explorerUrl: null, loadingMore: false, hasMore: false, error: null, coverage: 'explorer-transfers', truncated: false, canViewSavedPending: true };
   const childListeners = new Set<() => void>();
   const publish = () => { for (const listener of childListeners) listener(); update(); };
   let savedPage = 0;

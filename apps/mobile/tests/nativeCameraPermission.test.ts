@@ -82,3 +82,15 @@ test('a retired scanner cannot even read permission or open a prompt', async () 
   await assert.rejects(f.port.requestNativeCameraPermission(() => false), /interrupted/);
   assert.equal(f.reads, 0); assert.equal(f.requests, 0);
 });
+
+
+for (const granted of [true, false]) test(`a camera ${granted ? 'grant' : 'refusal'} arriving before AppState keeps its owned marker`, async () => {
+  const f = fixture(); let settled = false;
+  const pending = f.port.requestNativeCameraPermission(() => true).then(value => { settled = true; return value; });
+  await flush(); f.finish({ granted, canAskAgain: false }); await flush();
+  assert.equal(settled, false); assert.equal(f.port.isCameraPermissionPromptActive(), true);
+  await assert.rejects(f.port.requestNativeCameraPermission(() => true), /unavailable/);
+  f.move('inactive'); assert.equal(f.port.isCameraPermissionPromptActive(), true);
+  f.move('active'); assert.equal((await pending).granted, granted);
+  assert.equal(f.port.isCameraPermissionPromptActive(), false); assert.equal(f.listeners.size, 0);
+});

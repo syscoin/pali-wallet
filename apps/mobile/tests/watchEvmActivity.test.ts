@@ -93,7 +93,7 @@ for (const action of ['lock', 'account-aba', 'network-aba', 'external'] as const
 test('missing explorer is an honest no-discovery state with no invented requests or saved transfers', async () => {
   const f = fixture(), authority = await f.open(); authority.selectNetwork('base');
   const activity = createWatchEvmActivity(authority), stop = activity.connect();
-  try { await until(() => activity.getSnapshot().status === 'ready'); assert.equal(activity.getSnapshot().rows.length, 0); assert.equal(f.calls.length, 0); assert.match(activity.getSnapshot().coverage, /Activity discovery is unavailable for this network\./); assert.doesNotMatch(activity.getSnapshot().coverage, /Saved transfers only/); }
+  try { await until(() => activity.getSnapshot().status === 'ready'); assert.equal(activity.getSnapshot().rows.length, 0); assert.equal(f.calls.length, 0); assert.equal(activity.getSnapshot().coverage, 'discovery-unavailable'); }
   finally { stop(); authority.lock(); }
 });
 test('explicit detail enrichment rejects a wrong connected chain before transaction or receipt requests', async () => {
@@ -171,7 +171,7 @@ for (const mixed of [false, true]) test(`public authority actual indexed ${mixed
     stop(); f.fail = true; stop = activity.connect();
     await until(() => activity.getSnapshot().status === 'ready' && !activity.getSnapshot().loadingMore);
     assert.deepEqual(activity.getSnapshot().rows.map(row => row.hash).sort(), [first, second]);
-    assert.match(activity.getSnapshot().error ?? '', /unavailable|could not be fully loaded/);
+    assert.equal(activity.getSnapshot().error, 'feed-unavailable');
     assert(f.calls.every(call => call.method === 'txlist' || call.method === 'tokentx'));
     assert.deepEqual(f.writes, []);
   } finally { stop(); authority.lock(); }

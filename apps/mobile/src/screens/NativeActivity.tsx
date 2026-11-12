@@ -34,6 +34,17 @@ import type {
   NativeActivitySnapshot,
 } from '../activity/nativeActivity';
 const t = nativeI18n.t.bind(nativeI18n);
+const activityErrorKeys: Record<NonNullable<NativeActivitySnapshot['error']>, string> = {
+  'load-incomplete': 'mobile.activityViews.nativeActivity.loadIncomplete',
+  'feed-unavailable': 'mobile.activityViews.nativeActivity.feedUnavailable',
+  'older-unavailable': 'mobile.activityViews.nativeActivity.olderUnavailable',
+  'position-not-saved': 'mobile.activityViews.nativeActivity.positionNotSaved',
+};
+const activityCoverageKeys: Record<NativeActivitySnapshot['coverage'], string> = {
+  'network-transfers': 'mobile.activityViews.nativeActivity.networkCoverage',
+  'explorer-transfers': 'mobile.activityViews.nativeActivity.explorerCoverage',
+  'discovery-unavailable': 'mobile.activityViews.nativeActivity.discoveryUnavailable',
+};
 
 // The controller admits observations only for its current account/network generation.
 // Unknown or unavailable RPC results leave the existing indexed/local fallback intact.
@@ -574,7 +585,7 @@ function NativeActivityContent({
                     void controller.loadSavedPending();
                   })} />}
               </View>
-              {!!snapshot.error && <Notice title={t('mobile.activityViews.nativeActivity.someActivityIsUnavailable')} body={snapshot.error} tone="amber" />}
+              {!!snapshot.error && <Notice title={t('mobile.activityViews.nativeActivity.someActivityIsUnavailable')} body={t(activityErrorKeys[snapshot.error])} tone="amber" />}
               {snapshot.status === 'loading' && (
                 <ActivityIndicator
                   accessibilityLabel={t('mobile.activityViews.nativeActivity.loadingActivity')}
@@ -813,7 +824,7 @@ function NativeActivityContent({
           <ScrollView contentContainerStyle={s.modalContent}>
             <Card style={s.confirm}>
               <Header title={t('mobile.activityViews.nativeActivity.activityOptions')} right={<IconButton label={t('mobile.activityViews.nativeActivity.closeActivityOptions')} icon="close" onPress={() => setOptionsOpen(false)} />} />
-              <Text style={styles.muted}>{snapshot.coverage}</Text>
+              <Text style={styles.muted}>{t(activityCoverageKeys[snapshot.coverage])}</Text>
               {snapshot.truncated && <Notice title={t('mobile.activityViews.nativeActivity.activityHistoryIsLimited')} body={t('mobile.activityViews.nativeActivity.olderRecordsMayBeOmittedTheExplorerMayHave')} />}
               {hiddenCount > 0 && <Text style={styles.muted}>{t('mobile.activityViews.nativeActivity.hiddenZeroTransactions', { count: hiddenCount })}</Text>}
               <Button title={snapshot.view.showZero ? t('mobile.activityViews.nativeActivity.hideZerovalueTokenActivity') : t('mobile.activityViews.nativeActivity.showZerovalueTokenActivity')} variant="secondary"

@@ -7,10 +7,11 @@ import test from 'node:test';
 import ts from 'typescript';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
-import { DEFAULT_ACTIVITY_VIEW } from '../src/activity/types.ts';
+import { createActivityScope, DEFAULT_ACTIVITY_VIEW } from '../src/activity/types.ts';
+import { NativeActivity, type NativeActivityRuntime } from '../src/activity/nativeActivity.ts';
 import { activityAssetIcon } from '../src/activity/assetIcon.ts';
 import { getEvmTransactionDisplayInfo } from '../../../source/shared/evmTransactionDisplay.ts';
-import { mapEvmExplorerTokenTransfer } from '../../../source/shared/evmHistory.ts';
+import { mapEvmExplorerTokenTransfer, mapEvmExplorerTransaction } from '../../../source/shared/evmHistory.ts';
 import { activityRowDirection, matchesActivityView, zeroOnlyActivity } from '../src/activity/activityFiltering.ts';
 
 type Element = { type: any; props: Record<string, any>; children: unknown[] };
@@ -84,7 +85,7 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
     loadingMore: false,
     hasMore: false,
     error: null,
-    coverage: '',
+    coverage: 'explorer-transfers',
     truncated: false,
     canViewSavedPending: true,
   };
@@ -500,7 +501,7 @@ for (const scenario of [
 test('failed first Activity page has one error and an accurately named retry', () => {
   const f = fixture();
   try {
-    f.state({ error: 'One activity feed is unavailable.', hasMore: true });
+    f.state({ error: 'feed-unavailable', hasMore: true });
     let list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
     assert.equal(all(list.props.ListHeaderComponent).filter(node => node.type === 'Notice').length, 1);
     assert.equal(all(list.props.ListEmptyComponent).filter(node => node.type === 'Notice').length, 0);
@@ -612,4 +613,103 @@ test('in-window Activity copy holds Back during clipboard work and returns to th
     assert(nodes.some(node => node.type === 'TransactionDetailLayout'));
     assert.equal(copied.length, 1); assert.equal(f.backs(), 0); assert.equal(f.replays(), 0);
   } finally { release(); f.dispose(); }
+});
+
+function localizedController(mode: 'ready' | 'initial' | 'partial' | 'older' | 'position' | 'no-explorer') {
+  const owner = '0x' + '22'.repeat(20);
+  const scope = createActivityScope('a'.repeat(64), 'hd:60:0', owner, mode === 'no-explorer' ? 'base' : 'ethereum');
+  let failing = true, cacheCalls = 0, pageCalls = 0;
+  const candidate = (index: number) => {
+    const rowHash = '0x' + index.toString(16).padStart(64, '0');
+    return { hash: rowHash, blockNumber: String(1000 - index), timestamp: 1700000000000 - index * 1000, tokenHint: false,
+      indexed: mapEvmExplorerTransaction({ hash: rowHash, from: owner, to: '0x' + '33'.repeat(20), value: '1',
+        blockNumber: String(1000 - index), timeStamp: String(1700000000 - index), nonce: String(index), isError: '0', input: '0x' }, 1) };
+  };
+  const runtime: NativeActivityRuntime = {
+    async load(check) {
+      check();
+      if (mode === 'initial' && failing) throw Error('fixture load unavailable');
+      return { scope, saved: { archived: [], candidates: [], view: DEFAULT_ACTIVITY_VIEW, truncated: false }, locals: [] };
+    },
+    async saveCache(_scope, _rows, check) {
+      check();
+      if (++cacheCalls > 1 && mode === 'older' && failing) throw Error('fixture cache unavailable');
+    },
+    async saveView(_scope, _view, check) {
+      check();
+      if (mode === 'position' && failing) throw Error('fixture position unavailable');
+    },
+  };
+  const controller = new NativeActivity({ getSnapshot: () => ({ phase: 'ready', revision: 1 }), subscribe: () => () => {} }, () => runtime, {
+    async page(_scope, feed, page, _signal, check) {
+      check(); pageCalls++;
+      if (mode === 'partial') {
+        if (feed === 'txlist' && failing) throw Error('fixture feed unavailable');
+        return feed === 'tokentx' ? [candidate(1)] : [];
+      }
+      return feed === 'txlist' && page <= 2 ? Array.from({ length: 20 }, (_, index) => candidate((page - 1) * 20 + index + 1)) : [];
+    },
+  }, { async read() { throw Error('Localization must not start detail reads'); } });
+  return { controller, recover() { failing = false; }, pages: () => pageCalls };
+}
+
+for (const language of ['fr', 'ja']) test(`production Activity controller messages render in ${language} without changing history or retry`, async (t) => {
+  const messages = languageMessages(language).mobile.activityViews.nativeActivity;
+  const english = languageMessages('en').mobile.activityViews.nativeActivity;
+  englishI18n.addResourceBundle(language, 'translation', languageMessages(language), true, true);
+  await englishI18n.changeLanguage(language);
+  const prefix = 'mobile.activityViews.nativeActivity.';
+  const list = (f: ReturnType<typeof fixture>) => {
+    const result = all(f.render()).find(node => node.type === 'FlatList'); assert(result); return result;
+  };
+  const error = (f: ReturnType<typeof fixture>, key: string) => {
+    const notices = all(list(f).props.ListHeaderComponent).filter(node => node.type === 'Notice');
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0]!.props.title, messages.someActivityIsUnavailable);
+    assert.equal(notices[0]!.props.body, messages[key]);
+    assert.notEqual(notices[0]!.props.body, english[key]);
+    assert.equal(all(list(f).props.ListEmptyComponent).filter(node => node.type === 'Notice').length, 0);
+  };
+  try {
+    for (const mode of ['ready', 'initial', 'partial', 'older', 'position', 'no-explorer'] as const) await t.test(mode, async () => {
+      const c = localizedController(mode); await c.controller.refresh();
+      const f = fixture(undefined, false, { controller: c.controller, externallyConnected: true });
+      try {
+        const hashes = c.controller.getSnapshot().rows.map(row => row.hash);
+        if (mode === 'ready' || mode === 'no-explorer') {
+          const key = mode === 'ready' ? 'explorerCoverage' : 'discoveryUnavailable';
+          const header = all(f.render()).find(node => node.type === 'Header'); assert(header);
+          const button = all(header.props.right).find(node => node.props.label === englishI18n.t(prefix + 'activityOptions')); assert(button);
+          button.props.onPress();
+          assert(all(f.render()).some(node => node.type === 'Text' && node.children.includes(messages[key])));
+          assert.notEqual(messages[key], english[key]);
+          assert.equal(c.controller.getSnapshot().error, null);
+          if (mode === 'no-explorer') assert.equal(c.pages(), 0);
+        } else if (mode === 'initial') {
+          assert.equal(c.controller.getSnapshot().error, 'load-incomplete'); error(f, 'loadIncomplete');
+          const header = all(f.render()).find(node => node.type === 'Header'); assert(header);
+          const refresh = all(header.props.right).find(node => node.props.label === englishI18n.t(prefix + 'refreshActivity')); assert(refresh);
+          c.recover(); refresh.props.onPress(); await settle();
+          assert.equal(c.controller.getSnapshot().error, null); assert.equal(c.controller.getSnapshot().rows.length, 20);
+        } else if (mode === 'position') {
+          await c.controller.setView({ offset: 20 }); error(f, 'positionNotSaved');
+          assert.deepEqual(c.controller.getSnapshot().rows.map(row => row.hash), hashes);
+        } else {
+          if (mode === 'older') {
+            assert.equal(hashes.length, 20);
+            const more = all(list(f).props.ListFooterComponent).find(node => node.type === 'Button'); assert(more);
+            assert.equal(more.props.title, messages.loadOlderActivity); await more.props.onPress();
+          } else assert.equal(hashes.length, 1);
+          assert.equal(c.controller.getSnapshot().error, mode === 'older' ? 'older-unavailable' : 'feed-unavailable');
+          error(f, mode === 'older' ? 'olderUnavailable' : 'feedUnavailable');
+          assert(hashes.every(value => c.controller.getSnapshot().rows.some(row => row.hash === value)));
+          const retry = all(list(f).props.ListFooterComponent).find(node => node.type === 'Button'); assert(retry);
+          assert.equal(retry.props.title, englishI18n.t('mobile.activityViews.allNetworksActivity.retryActivity'));
+          c.recover(); await retry.props.onPress();
+          assert.equal(c.controller.getSnapshot().error, null);
+          assert(hashes.every(value => c.controller.getSnapshot().rows.some(row => row.hash === value)));
+        }
+      } finally { f.dispose(); c.controller.invalidate(); }
+    });
+  } finally { await englishI18n.changeLanguage('en'); }
 });

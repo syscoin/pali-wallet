@@ -251,6 +251,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const networkReturnOwner = useRef<NetworkReturn | null>(null);
   const [receiveContinuation, setReceiveContinuation] = useState<NativeReceiveContinuation | undefined>(undefined);
   const mounted = useRef(false);
+  const abandonedEmptySetup = useRef(false);
+  const finishAbandonedSetup = useRef<() => boolean>(() => false);
   const epoch = useRef(0);
   const submitting = useRef(false);
   const feedbackRequest = useRef(0);
@@ -364,7 +366,21 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     if (!pausedIdle.current && !updateSession.current && mounted.current && AppState.currentState === 'active' && securityPreferences.getSnapshot().status === 'ready') custodyIdle.begin(screenToken.current, lockWallet);
   });
   useLayoutEffect(() => { const owner = screenToken.current; if (!pausedIdle.current) custodyIdle.begin(owner, lockWallet); return () => custodyIdle.stop(owner); }, [lockWallet]);
-  const exit = useCallback(() => { cancelNoteRestore(); revoke(); onExit(); }, [cancelNoteRestore, onExit, revoke]);
+  const exit = useCallback(() => { abandonedEmptySetup.current = false; cancelNoteRestore(); revoke(); onExit(); }, [cancelNoteRestore, onExit, revoke]);
+  useLayoutEffect(() => {
+    finishAbandonedSetup.current = () => {
+      if (!abandonedEmptySetup.current) return false;
+      const local = controllersRef.current, current = local?.authority.getSnapshot();
+      if (current?.presence === 'existing') { abandonedEmptySetup.current = false; return false; }
+      if (!mounted.current || AppState.currentState !== 'active' || !local ||
+          nativeLifecycle.current(screenToken.current) !== local || current?.phase !== 'empty' || current.presence !== 'empty' ||
+          submitting.current || busy || recoveryRef.current || removalRef.current || storageResetOwner.current || orphanedStorage || updateSession.current) return false;
+      abandonedEmptySetup.current = false;
+      exit();
+      return true;
+    };
+  });
+  useLayoutEffect(() => { finishAbandonedSetup.current(); });
 
   const readyContext = useCallback(() => {
     const local = controllersRef.current;
@@ -1225,6 +1241,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       if (updateSession.current || storageResetOwner.current || publicViewLock.getSnapshot().phase !== 'unlocked' || !mounted.current || AppState.currentState !== 'active') return;
       const restoreIdle = pausedIdle.current; pausedIdle.current = null;
       if (restoreIdle && !restoreIdle()) { lockWallet(); return; }
+      if (finishAbandonedSetup.current()) return;
       custodyIdle.begin(screenToken.current, lockWallet);
       const local = controllersRef.current;
       // The removal layout effect owns retirement and fresh installation.
@@ -1254,8 +1271,11 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     const lifecycle = AppState.addEventListener('change', (state) => {
       if (((state === 'inactive' || state === 'background') && (controllersRef.current?.authentication?.isAnyPromptActive() ||
           storageResetOwner.current && isNativeCredentialPromptActive(storageResetOwner.current))) || state === 'inactive' && (isNotificationPermissionPromptActive() || isCameraPermissionPromptActive())) { clearSecrets(); Keyboard.dismiss(); }
-      else if (state !== 'active') revoke(true);
-      else resume();
+      else if (state !== 'active') {
+        if (state === 'background' && controllersRef.current?.authority.getSnapshot().presence !== 'existing')
+          abandonedEmptySetup.current = true;
+        revoke(true);
+      } else resume();
     });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
       if (controllersRef.current?.authentication?.isAnyPromptActive() || storageResetOwner.current && isNativeCredentialPromptActive(storageResetOwner.current) || isNotificationPermissionPromptActive() || isCameraPermissionPromptActive()) { clearSecrets(); Keyboard.dismiss(); } else revoke(true);

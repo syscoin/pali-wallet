@@ -1299,3 +1299,22 @@ test('real background during the actual camera port request still retires the mo
     assert.notEqual(f.render().type, 'NativeSmartAccountSend');
   } finally { f.dispose(); }
 });
+
+for (const granted of [true, false]) test(`result-first camera ${granted ? 'grant' : 'denial'} preserves Send through late lifecycle events`, async () => {
+  const f = await mounted(true, true, false);
+  try {
+    find(f.render(), node => node.type === 'NativePortfolio')!.props.onSend();
+    const route = f.render(); assert.equal(route.type, 'NativeSmartAccountSend');
+    const before = f.lifecycle().length;
+    let settled = false;
+    const pending = f.requestCameraPermission().then(value => { settled = true; return value; });
+    await settle(); f.finishCameraPermission(granted); await settle();
+    assert.equal(settled, false); assert.equal(f.render().type, route.type);
+    f.inactive(); f.blur(); assert.equal(f.render().type, route.type);
+    assert.equal(f.lifecycle().length, before, 'the queued camera events must not revoke the Send draft');
+    f.foreground(); assert.equal((await pending).granted, granted);
+    assert.equal(f.render().type, route.type);
+    f.background(); assert.notEqual(f.render().type, route.type);
+    assert(f.lifecycle().slice(before).includes('lock'));
+  } finally { f.dispose(); }
+});
