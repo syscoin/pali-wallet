@@ -8,7 +8,10 @@ import { NativePrivateWithdrawal } from '../../../apps/mobile/src/custody/privat
 import fixture from '../../utils/privacy/prover.fixture.json';
 import { encodePrivacyProof } from '../../utils/privacy/proverCore';
 
-import { readNativeExecutionCode } from './nativeExecutionDiagnostic';
+import {
+  readNativeExecutionCode,
+  readNativeExecutionTiming,
+} from './nativeExecutionDiagnostic';
 
 const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
 beforeAll(() =>
@@ -564,6 +567,50 @@ it('an SDK-entry marker on the terminal channel is never a signature result', as
   expect(error.message).toBe('privacy_proof_failed');
   expect(readNativeExecutionCode(error)).toBeUndefined();
 });
+
+it.each([null, 100, 110000])(
+  'records SDK start at %s ms without extending the original deadline',
+  async (sdkDelay) => {
+    jest.useFakeTimers();
+    let now = 5;
+    const clock = jest.spyOn(performance, 'now').mockImplementation(() => now);
+    try {
+      const host = setup();
+      const outcome = runSentryJob(
+        host.native,
+        { type: 'validateVote', request: {} },
+        options()
+      ).catch((error) => error);
+      if (sdkDelay !== null) {
+        now = 5 + sdkDelay;
+        host.context.addListener.mock.calls[0][1](
+          JSON.stringify({
+            version: 1,
+            kind: 'sentry',
+            id: host.context.runSentry.mock.calls[0][0],
+            type: 'sdk-start',
+          })
+        );
+      }
+      now = 120005;
+      jest.advanceTimersByTime(120000);
+      await flush();
+      host.disposed.resolve();
+      const error = await outcome;
+      expect(readNativeExecutionCode(error)).toBe(
+        sdkDelay === null ? 'job-timeout' : 'sdk-job-timeout'
+      );
+      expect(readNativeExecutionTiming(error)).toEqual({
+        elapsedMs: 120000,
+        sdkStartedAfterMs: sdkDelay,
+      });
+      expect(host.context.close).toHaveBeenCalled();
+    } finally {
+      clock.mockRestore();
+      jest.useRealTimers();
+    }
+  }
+);
 
 it('a retired listener cannot classify a successor SDK job', async () => {
   jest.useFakeTimers();

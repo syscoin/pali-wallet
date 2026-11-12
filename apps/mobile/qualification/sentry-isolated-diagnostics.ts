@@ -1,4 +1,4 @@
-import { readNativeExecutionCode, type NativeExecutionCode } from '../../../source/scripts/privacyProver/nativeExecutionDiagnostic.ts';
+import { readNativeExecutionCode, readNativeExecutionTiming, type NativeExecutionCode, type NativeExecutionTiming } from '../../../source/scripts/privacyProver/nativeExecutionDiagnostic.ts';
 
 export const SENTRY_ISOLATED_STEPS = Object.freeze([
   'operator-import', 'service-sign', 'service-verify', 'owner-sign', 'owner-verify',
@@ -20,6 +20,7 @@ export type SentryIsolatedDiagnostic = Readonly<{
   elapsedMs: number;
   code: Code;
   nativeExecutionCode?: NativeExecutionCode;
+  nativeExecutionTiming?: NativeExecutionTiming;
 }>;
 const invalid = () => new Error('SENTRY_ISOLATED_DIAGNOSTIC_INVALID');
 
@@ -28,7 +29,8 @@ export function readSentryIsolatedDiagnostic(value: unknown): SentryIsolatedDiag
   try {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalid();
     const keys = Reflect.ownKeys(value).sort().join(',');
-    if (keys !== 'code,elapsedMs,phase,step' && keys !== 'code,elapsedMs,nativeExecutionCode,phase,step') throw invalid();
+    if (!['code,elapsedMs,phase,step', 'code,elapsedMs,nativeExecutionCode,phase,step',
+      'code,elapsedMs,nativeExecutionTiming,phase,step', 'code,elapsedMs,nativeExecutionCode,nativeExecutionTiming,phase,step'].includes(keys)) throw invalid();
     const own = (key: string): unknown => {
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (!descriptor || !('value' in descriptor)) throw invalid();
@@ -36,12 +38,23 @@ export function readSentryIsolatedDiagnostic(value: unknown): SentryIsolatedDiag
     };
     const step = own('step'), phase = own('phase'), elapsedMs = own('elapsedMs'), code = own('code');
     const nativeExecutionCode = readNativeExecutionCode(value);
+    let nativeExecutionTiming: NativeExecutionTiming | undefined;
+    if (keys.includes('nativeExecutionTiming')) {
+      const timing = own('nativeExecutionTiming');
+      if (!timing || typeof timing !== 'object' || Reflect.ownKeys(timing).sort().join(',') !== 'elapsedMs,sdkStartedAfterMs') throw invalid();
+      const elapsed = Object.getOwnPropertyDescriptor(timing, 'elapsedMs'), sdk = Object.getOwnPropertyDescriptor(timing, 'sdkStartedAfterMs');
+      if (!elapsed || !('value' in elapsed) || !sdk || !('value' in sdk)) throw invalid();
+      const elapsedMs = elapsed.value, sdkStartedAfterMs = sdk.value;
+      if (!Number.isSafeInteger(elapsedMs) || elapsedMs < 0 || elapsedMs > 300000 ||
+          sdkStartedAfterMs !== null && (!Number.isSafeInteger(sdkStartedAfterMs) || sdkStartedAfterMs < 0 || sdkStartedAfterMs > elapsedMs)) throw invalid();
+      nativeExecutionTiming = Object.freeze({ elapsedMs, sdkStartedAfterMs });
+    }
     if (!SENTRY_ISOLATED_STEPS.includes(step as SentryIsolatedStep) ||
         (phase !== 'started' && phase !== 'completed') ||
         typeof elapsedMs !== 'number' || !Number.isSafeInteger(elapsedMs) || elapsedMs < 0 || elapsedMs > 300000 ||
         !CODES.includes(code as Code) || (keys.includes('nativeExecutionCode') && !nativeExecutionCode)) throw invalid();
     return Object.freeze({ step: step as SentryIsolatedStep, phase, elapsedMs, code: code as Code,
-      ...(nativeExecutionCode ? { nativeExecutionCode } : {}) });
+      ...(nativeExecutionCode ? { nativeExecutionCode } : {}), ...(nativeExecutionTiming ? { nativeExecutionTiming } : {}) });
   } catch { throw invalid(); }
 }
 
@@ -74,8 +87,9 @@ export function createSentryIsolatedDiagnostic(now: () => number) {
         if (Number.isFinite(elapsed)) elapsedMs = Math.min(300000, Math.max(0, Math.floor(elapsed)));
       } catch { /* The duration remains bounded even if the clock fails. */ }
       const nativeExecutionCode = readNativeExecutionCode(error);
+      const nativeExecutionTiming = readNativeExecutionTiming(error);
       failure = readSentryIsolatedDiagnostic({ step: current.step, phase: current.phase, elapsedMs, code,
-        ...(nativeExecutionCode ? { nativeExecutionCode } : {}) });
+        ...(nativeExecutionCode ? { nativeExecutionCode } : {}), ...(nativeExecutionTiming ? { nativeExecutionTiming } : {}) });
     },
     report: () => failure,
   });
