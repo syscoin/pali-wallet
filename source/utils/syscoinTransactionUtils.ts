@@ -51,17 +51,7 @@ export const formatSyscoinConfirmationETA = (transaction: {
   return `${days} day${days === 1 ? '' : 's'}`;
 };
 
-/** Require a sequence for every input before showing the non-RBF status. */
-export function hasNonReplaceableUtxoSequences(inputs: unknown): boolean {
-  return (
-    Array.isArray(inputs) &&
-    inputs.length > 0 &&
-    inputs.every(
-      (input) =>
-        input?.sequence === 0xfffffffe || input?.sequence === 0xffffffff
-    )
-  );
-}
+export { hasNonReplaceableUtxoSequences } from '../shared/utxoActivityStatus';
 
 /** Render canonical SYSX or a bounded label from the matched local asset. */
 export function getSyscoinActivityAssetLabel(

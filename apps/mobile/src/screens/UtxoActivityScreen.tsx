@@ -143,7 +143,7 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
   };
   const units = (value: string | null) => value === null || !network ? t('settings.unavailable') : `${formatBaseUnits(value, network.decimals)} ${network.symbol}`;
   const net = (value: string | null) => value === null || !network ? t('settings.unavailable') : signed(value, network.decimals, network.symbol);
-  const status = (row: UtxoActivityRow) => row.block === null
+  const status = (row: UtxoActivityRow) => row.zdag ? t('transactions.zdagConfirmed') : row.block === null
     ? t('send.pending')
     : t('mobile.activityViews.utxoActivityScreen.confirmations', { count: row.observedConfirmations, block: row.block.height });
   const detailAmount = chosen?.hasAssetData
@@ -186,7 +186,7 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
               asset={utxoActivityAssetIcon(item, network.chainId)} assetSymbol={item.assetAmount?.symbol}
               first={first} last={last} heading={first ? date.label : undefined} direction={flow}
               title={flow === 'sent' ? t('send.sent') : flow === 'received' ? t('send.received') : flow === 'self' ? t('mobile.activityViews.nativeActivity.selfTransfer') : item.hasAssetData ? t('mobile.activityViews.utxoActivityScreen.assetActivity') : t('buttons.activity')}
-              subtitle={`${network.name} · ${item.block && item.observedConfirmations > 0 ? t('send.confirmed') : t('send.pending')}`}
+              subtitle={`${network.name} · ${item.zdag ? t('transactions.zdagConfirmed') : item.block && item.observedConfirmations > 0 ? t('send.confirmed') : t('send.pending')}`}
               amount={privateAmount ? HIDDEN_BALANCE : compactActivityAmountLabel(fullAmount.replace(/^−/, '-'))} time={date.time}
               label={t('mobile.activityViews.nativeActivity.transactionLabel', { amount: privateAmount ? t('mobile.activityViews.nativeActivity.amountHidden') : fullAmount, status: status(item), date: date.label, time: date.time })}
               disabled={!!chosen || state.status === 'loading'}

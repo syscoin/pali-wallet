@@ -5,6 +5,8 @@ import { bindUtxoDetailObservation } from '../../../../source/shared/utxoDetailF
 import { createBlockbookAccountHistory, readHistoryCount } from '../../../../source/shared/blockbookAccountHistory.ts';
 import { mergeFreshBlockbookHistory } from '../../../../source/shared/blockbookHistoryMerge.ts';
 import { selectEvmHistoryRepresentatives } from '../../../../source/shared/evmHistory.ts';
+import { isPendingZdagActivity } from '../../../../source/shared/utxoActivityStatus.ts';
+import { supportsSptUtxoChain } from '../../../../source/shared/sptInventory.ts';
 import { getTransactionBlockInfo } from '../../../../source/shared/transactionBlockStatus.ts';
 import { readSentryNode, SENTRY_REGISTRATION_TX_VERSION, type SentryNodeObservation } from '../../../../source/shared/sentryNodeLookup.ts';
 import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks.ts';
@@ -27,7 +29,7 @@ export type UtxoActivityAssetAmount = Readonly<NonNullable<ReturnType<typeof get
 export type UtxoActivityRow = Readonly<{
   txid: string; block: Readonly<{ height: number; hash: string | null; timestamp: number | null }> | null;
   observedConfirmations: number; receivedUnits: string | null; spentUnits: string | null; netUnits: string | null;
-  transactionFeeUnits: string | null; hasAssetData: boolean; assetAmount: UtxoActivityAssetAmount | null;
+  transactionFeeUnits: string | null; hasAssetData: boolean; zdag: boolean; assetAmount: UtxoActivityAssetAmount | null;
   nativeTransfer: Readonly<NonNullable<ReturnType<typeof getSyscoinNativeTransferAmount>>> | null;
 }>;
 export type UtxoActivityPage = Readonly<{
@@ -127,7 +129,7 @@ function publicSentryRegistration(
       return row.txid;
   } catch { /* An unrecognized body does not grant a public lookup. */ }
 }
-function projectTransaction(value: unknown): UtxoActivityRow {
+function projectTransaction(value: unknown, chainId: number): UtxoActivityRow {
   const tx = utxoObject(value), txid = hash(tx.txid);
   const confirmations = tx.confirmations === undefined ? 0 : readHistoryCount(tx.confirmations);
   if (confirmations === null) return fail();
@@ -146,7 +148,10 @@ function projectTransaction(value: unknown): UtxoActivityRow {
   if (nativeTransfer) { try { assertBaseUnits(nativeTransfer.amount); } catch { nativeTransfer = null; } }
   return Object.freeze({ txid, block: height === null ? null : Object.freeze({ height, hash: blockHash, timestamp }),
     observedConfirmations: confirmations, receivedUnits, spentUnits, netUnits, transactionFeeUnits: units(tx.fees),
-    hasAssetData, assetAmount: hasAssetData ? projectAssetAmount(tx) : null, nativeTransfer: nativeTransfer === null ? null : Object.freeze(nativeTransfer) });
+    hasAssetData, zdag: isPendingZdagActivity({
+      asset: supportsSptUtxoChain(chainId) && hasAssetData && tx.isCanceled !== true,
+      inputs: tx.vin, inBlock: height !== null,
+    }), assetAmount: hasAssetData ? projectAssetAmount(tx) : null, nativeTransfer: nativeTransfer === null ? null : Object.freeze(nativeTransfer) });
 }
 
 /** Actual SJS account routing with the existing bounded, genesis-verified transport. */
@@ -202,7 +207,7 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
           !Array.isArray(raw.transactions) || raw.transactions.length > UTXO_ACTIVITY_LIMITS.pageSize) return fail();
       const totalPages = raw.totalPages === undefined || raw.totalPages === -1 ? null : readHistoryCount(raw.totalPages);
       if (raw.totalPages !== undefined && raw.totalPages !== -1 && totalPages === null) return fail();
-      const rows = Object.freeze(raw.transactions.map(projectTransaction));
+      const rows = Object.freeze(raw.transactions.map((tx) => projectTransaction(tx, network.chainId)));
       const result = Object.freeze({ context: owner, page, rows,
         hasMore: totalPages === null ? raw.transactions.length === UTXO_ACTIVITY_LIMITS.pageSize : page < totalPages,
         emptyAccount: rows.length === 0 && readHistoryCount(raw.txs) === 0 && readHistoryCount(raw.unconfirmedTxs) === 0 });
@@ -263,7 +268,7 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
       });
       check();
       const merged = mergeAccountSummaryWithFullTransaction(summary, full, accepted.observation);
-      const row = projectTransaction(merged);
+      const row = projectTransaction(merged, network.chainId);
       const raw = { from: getSendingAddresses(merged), to: getReceivingAddresses(merged) };
       assertJsonWorkBudget(raw, 32768, 4, 2048);
       if (isAccount && (raw.from.includes(identifier) || raw.to.includes(identifier))) return fail('INVALID');
