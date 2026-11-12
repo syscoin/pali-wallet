@@ -193,7 +193,7 @@ test('Speed Up shows the original and reviewed fee before one explicit approval'
   await page.setViewportSize({ width: 320, height: 640 });
   await page.goto('/?speed-up-transfer');
   await expect(page.getByText('Review Speed Up', { exact: true })).toBeVisible();
-  await expect(page.getByText(/same payment with updated gas and fee limits/)).toBeVisible();
+  await expect(page.getByText('Only the network fee changes. The original recipient, value and contract data stay unchanged. The original can still confirm first.', { exact: true })).toBeVisible();
   await expect(page.getByTestId('native-send-recipient')).toHaveText(recipient);
   await expect(page.getByTestId('native-send-fee')).toHaveText('0.000000000000126 ETH');
   await expect(page.getByText('0x' + '3'.repeat(64))).toBeVisible();
