@@ -102,6 +102,14 @@ project without cleaning it, and build with that number. Both platform fields
 use the same reserved value: iOS `buildNumber` and Android `versionCode`.
 The public receipt is saved in `.pali-build/build-<number>.json`.
 
+Preparation explicitly passes `--no-clean` to preserve customizations in valid
+existing native projects. The pinned Expo CLI otherwise recreates them by
+default; it can still replace malformed native projects during repair. To check
+preservation against the installed CLI and its bundled template, run
+`node scripts/check-native-prebuild-preservation.cjs` from `apps/mobile`. This
+offline check uses a temporary app and fixture build numbers, verifies repeated
+iOS/Android preparation, and neither compiles nor installs an app.
+
 The shared allocator at `scripts/build-number.cjs` uses its explicit `mobile`
 channel and the dedicated `pali-mobile-build-counter` branch of the
 canonical repository. Existing Git write access is required. Concurrent

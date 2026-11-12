@@ -3,6 +3,10 @@ import fs from 'fs';
 import path from 'path';
 
 import { E2E_CONFIG } from './config';
+import {
+  clearOwnedDebuggingPort,
+  waitForOwnedDebuggingPort,
+} from './ownedDebuggingPort';
 
 // The historical Web Store build's main UI requires a real action POPUP, not
 // an app.html tab. Chromium exposes that popup via CDP, but Playwright's first
@@ -48,6 +52,7 @@ export async function launchUpgradeBrowser(
     proxy.hash
   )
     throw new Error('Upgrade browser requires a loopback deny proxy');
+  clearOwnedDebuggingPort(profileDir);
   const context = await chromium.launchPersistentContext(profileDir, {
     chromiumSandbox: true,
     args: [
@@ -68,15 +73,9 @@ export async function launchUpgradeBrowser(
     let [worker] = context.serviceWorkers();
     worker ||= await context.waitForEvent('serviceworker', { timeout: 30000 });
     const extensionId = new URL(worker.url()).hostname;
-    const devtoolsPort = fs
-      .readFileSync(path.join(profileDir, 'DevToolsActivePort'), 'utf8')
-      .split('\n')[0];
-    if (
-      !/^\d{1,5}$/.test(devtoolsPort) ||
-      Number(devtoolsPort) < 1 ||
-      Number(devtoolsPort) > 65535
-    )
-      throw new Error('Invalid owned browser debugging port');
+    const devtoolsPort = await waitForOwnedDebuggingPort(profileDir, {
+      isOpen: () => context.browser()?.isConnected() === true,
+    });
     const adoptPopup = async () => {
       const connection = await chromium.connectOverCDP(
         `http://127.0.0.1:${devtoolsPort}`
