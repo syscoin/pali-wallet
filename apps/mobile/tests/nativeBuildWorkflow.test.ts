@@ -131,6 +131,18 @@ test('failed prebuild preserves its reserved receipt but never starts the native
   assert.equal(existsSync(join(f.root, '.pali-build', 'inflight')), false);
 });
 
+test('unconfirmed child drainage retains the owned lock and refuses another build', async t => {
+  const f = fixture(t), before = ['SIGINT', 'SIGTERM'].map(signal => process.listenerCount(signal));
+  f.ports.execute = async () => { throw Object.assign(Error('child shutdown unconfirmed'), { preserveLock: true }); };
+  await assert.rejects(runNativeBuild(['ios'], f.ports), /Lock retained/);
+  const lock = join(f.root, '.pali-build', 'inflight', 'owner.json');
+  const owner = readFileSync(lock, 'utf8');
+  assert.equal(f.persisted().buildNumber, 47);
+  await assert.rejects(runNativeBuild(['ios'], f.ports), /Another native build owns/);
+  assert.equal(f.reservations.length, 1); assert.equal(readFileSync(lock, 'utf8'), owner);
+  assert.deepEqual(['SIGINT', 'SIGTERM'].map(signal => process.listenerCount(signal)), before);
+});
+
 for (const failingCheck of [1, 2, 3]) test(`source refusal at check ${failingCheck} prevents the next child`, async t => {
   const f = fixture(t), failure = Error('source changed');
   let checks = 0;
