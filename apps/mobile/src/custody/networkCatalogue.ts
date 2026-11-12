@@ -1,6 +1,7 @@
 import {
   EVM_CHAIN_CATALOGUE_URL,
   parseEvmChainCatalogue,
+  withBundledEvmChainSuggestions,
 } from '../../../../source/shared/chainCatalogueData.ts';
 import {
   orderChainRpcs,
@@ -51,6 +52,16 @@ function nativeSuggestions(chains: readonly ChainInfo[]): readonly NativeNetwork
   return suggestions;
 }
 
+export function withBundledNativeNetworkSuggestions(chains: readonly NativeNetworkSuggestion[] = []): readonly NativeNetworkSuggestion[] {
+  const bundled = nativeSuggestions(withBundledEvmChainSuggestions());
+  const seen = new Set(bundled.map(({ chainId }) => chainId));
+  return [...bundled, ...chains.filter(({ chainId }) => {
+    if (seen.has(chainId)) return false;
+    seen.add(chainId);
+    return true;
+  })];
+}
+
 /** A network view owns one lazy lookup at a time. Only Retry replaces a failure. */
 export function createNativeChainCatalogue(fetch: WalletHttpFetch, timeoutMs = CATALOGUE_TIMEOUT_MS) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000)
@@ -84,7 +95,7 @@ export function createNativeChainCatalogue(fetch: WalletHttpFetch, timeoutMs = C
         throw new Error('Network search unavailable');
       }
       const body = await boundedCatalogueResponseText(response, signal);
-      return nativeSuggestions(parseEvmChainCatalogue(JSON.parse(body)));
+      return withBundledNativeNetworkSuggestions(nativeSuggestions(parseEvmChainCatalogue(JSON.parse(body))));
     } finally {
       clearTimeout(timer);
       controller.abort();

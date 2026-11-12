@@ -1,7 +1,39 @@
 import type { ChainInfo } from './chainCatalogue';
+import { OPTIONAL_EVM_NETWORK_DEFINITIONS } from './evmNetworks.ts';
 import type { INetworkType } from '../types/network';
 
 export const EVM_CHAIN_CATALOGUE_URL = 'https://chainlist.org/rpcs.json';
+
+/** Local suggestions carry metadata only; Save still verifies the chosen RPC. */
+export function withBundledEvmChainSuggestions(
+  chains: readonly ChainInfo[] = []
+): ChainInfo[] {
+  const bundled: ChainInfo[] = OPTIONAL_EVM_NETWORK_DEFINITIONS.map(
+    ({ name, network, testnet }) => ({
+      chain: 'ethereum' as INetworkType.Ethereum,
+      chainId: network.chainId,
+      networkId: network.chainId,
+      name,
+      isTestnet: testnet,
+      nativeCurrency: {
+        name: 'Syscoin',
+        symbol: network.currency.toUpperCase(),
+        decimals: 18,
+      },
+      rpc: [{ url: network.url }],
+      explorers: [{ name, url: network.explorer }],
+    })
+  );
+  const seen = new Set(bundled.map(({ chainId }) => chainId));
+  return [
+    ...bundled,
+    ...chains.filter(({ chainId }) => {
+      if (seen.has(chainId)) return false;
+      seen.add(chainId);
+      return true;
+    }),
+  ];
+}
 
 const MAX_ROWS = 8192;
 const MAX_RPCS = 256;

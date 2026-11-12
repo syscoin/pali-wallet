@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import ArbitrumIcon from '../assets/all_assets/arbitrum-icon.svg';
 import BaseIcon from '../assets/all_assets/base-icon.svg';
 import ZkSysIcon from '../assets/all_assets/zksys-icon.svg';
+import { CHAIN_IDS } from '../shared/evmNetworks';
 import {
   BtcChainSvg,
   ChainFallbackSvg,
@@ -53,6 +54,8 @@ const KNOWN_CHAIN_ICONS: {
     57: SysChainSvg, // Syscoin NEVM Mainnet
     5700: SysChainSvg, // Syscoin NEVM Testnet
     57057: ZkSysIcon, // zkTanenbaum Testnet
+    [CHAIN_IDS.ZKSYS_MAINNET]: ZkSysIcon,
+    [CHAIN_IDS.SYSCOIN_GATEWAY_MAINNET]: SysChainSvg,
     570: RolluxChainSvg, // Rollux Mainnet
     57000: RolluxChainSvg, // Rollux Testnet
     8453: BaseIcon, // Base Mainnet

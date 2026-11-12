@@ -7,6 +7,8 @@ export const CHAIN_IDS = {
   BASE_MAINNET: 8453,
   ARBITRUM_ONE: 42161,
   SYSCOIN_NEVM_TESTNET: 5700,
+  ZKSYS_MAINNET: 5757,
+  SYSCOIN_GATEWAY_MAINNET: 57570,
   ZKSYS_TANENBAUM_TESTNET: 57057,
   ROLLUX_MAINNET: 570,
   ROLLUX_TESTNET: 57000,
@@ -108,6 +110,24 @@ const definitions = [
     },
   },
   {
+    id: 'zksys',
+    name: 'zkSYS',
+    color: '#42B6E8',
+    testnet: false,
+    network: {
+      chainId: CHAIN_IDS.ZKSYS_MAINNET,
+      url: 'https://rpc-zk.syscoin.org',
+      label: 'zkSYS',
+      default: true,
+      currency: 'sys',
+      kind: 'ethereum',
+      slip44: 60,
+      apiUrl: 'https://explorer-zk.syscoin.org/api',
+      explorer: 'https://explorer-zk.syscoin.org',
+      coingeckoId: 'syscoin',
+    },
+  },
+  {
     id: 'syscoin-nevm-testnet',
     name: 'Syscoin NEVM Testnet',
     color: '#42B6E8',
@@ -144,7 +164,29 @@ const definitions = [
     },
   },
 ] as const;
-export type EvmNetworkId = (typeof definitions)[number]['id'];
+const optionalDefinitions = [
+  {
+    id: 'syscoin-gateway',
+    name: 'Syscoin Gateway',
+    color: '#42B6E8',
+    testnet: false,
+    network: {
+      chainId: CHAIN_IDS.SYSCOIN_GATEWAY_MAINNET,
+      url: 'https://rpc-gw.syscoin.org',
+      label: 'Syscoin Gateway',
+      default: false,
+      currency: 'sys',
+      kind: 'ethereum',
+      slip44: 60,
+      apiUrl: 'https://explorer-gw.syscoin.org/api',
+      explorer: 'https://explorer-gw.syscoin.org',
+      coingeckoId: 'syscoin',
+    },
+  },
+] as const;
+export type EvmNetworkId =
+  | (typeof definitions)[number]['id']
+  | (typeof optionalDefinitions)[number]['id'];
 export type EvmNetworkDefinition = Readonly<{
   color: string;
   id: EvmNetworkId;
@@ -174,6 +216,17 @@ export const EVM_NETWORK_DEFINITIONS: readonly EvmNetworkDefinition[] =
     )
   );
 
+/** Bundled add-network choices; hosts must not install these as defaults. */
+export const OPTIONAL_EVM_NETWORK_DEFINITIONS: readonly EvmNetworkDefinition[] =
+  Object.freeze(
+    optionalDefinitions.map((definition) =>
+      Object.freeze({
+        ...definition,
+        network: Object.freeze({ ...definition.network }),
+      })
+    )
+  );
+
 /** Public explorer data belongs to the exact registered RPC context. */
 export function findRegisteredEvmNetwork({
   id,
@@ -184,11 +237,17 @@ export function findRegisteredEvmNetwork({
   id: string;
   rpcUrl: string;
 }): EvmNetworkDefinition | undefined {
-  return EVM_NETWORK_DEFINITIONS.find(
-    (item) =>
-      item.id === id &&
-      item.network.url === rpcUrl &&
-      String(item.network.chainId) === chainId
+  const matchesEndpoint = (item: EvmNetworkDefinition) =>
+    item.network.url === rpcUrl && String(item.network.chainId) === chainId;
+  return (
+    EVM_NETWORK_DEFINITIONS.find(
+      (item) => item.id === id && matchesEndpoint(item)
+    ) ??
+    OPTIONAL_EVM_NETWORK_DEFINITIONS.find(
+      (item) =>
+        (item.id === id || id === `custom:${item.network.chainId}`) &&
+        matchesEndpoint(item)
+    )
   );
 }
 

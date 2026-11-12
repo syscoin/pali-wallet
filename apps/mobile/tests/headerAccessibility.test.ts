@@ -3,6 +3,7 @@ import test from 'node:test';
 import { createInstance } from 'i18next';
 import { languageMessages } from './localizationFixture.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
+import { CHAIN_IDS } from '../../../source/shared/evmNetworks.ts';
 
 test('the shared Back control follows the chosen language and keeps its action', async () => {
   const i18n = createInstance();
@@ -13,6 +14,7 @@ test('the shared Back control follows the chosen language and keeps its action',
     './screens/IdleActivityBoundary': { IdlePressable: 'Pressable' },
     './screens/useWelcomeBackdropMotion': {},
     '../../../source/shared/assetIconIdentity': {},
+    '../../../source/shared/evmNetworks': { CHAIN_IDS },
     './portfolio/assetIconCache': {},
     'react-native': { View: 'View', StyleSheet: { create: (value: unknown) => value } },
     'react-native-svg': {},

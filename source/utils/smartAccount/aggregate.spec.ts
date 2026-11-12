@@ -300,14 +300,30 @@ describe('smart account RPC aggregation', () => {
     );
   });
 
-  it('pins the v32 zkTanenbaum gas tank without enabling it on other chains', () => {
+  it('pins the zkSYS gas tank on both networks without enabling it on Gateway', () => {
     expect(getZkSysGasTankAddress(57057)).toBe(
       '0xb49943ea232624dd4aa63e18186076c6c99a68ef'
     );
+    expect(getZkSysGasTankAddress(5757)).toBe(
+      '0xb49943ea232624dd4aa63e18186076c6c99a68ef'
+    );
     expect(getZkSysGasTankAddress(57001)).toBeUndefined();
+    expect(getZkSysGasTankAddress(57570)).toBeUndefined();
     expect(getZkSysGasTankAddress(1)).toBeUndefined();
     expect(getZkSysGasTankAddress()).toBeUndefined();
   });
+
+  it.each([5757, 57570])(
+    'uses canonical smart account modules on mainnet %s',
+    (chainId) => {
+      expect(getPaliInfrastructureById(chainId)).toBe(
+        getPaliInfrastructureById(1)
+      );
+      expect(getPaliCanonicalFactoryAddress(chainId)).toBe(
+        getPaliCanonicalFactoryAddress(1)
+      );
+    }
+  );
 
   it('wires the SLH-DSA validator to the deterministic verifier', () => {
     const verifier = PALI_INFRASTRUCTURE_BY_ID.slhDsaVerifier;

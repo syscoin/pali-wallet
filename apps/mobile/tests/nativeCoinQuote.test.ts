@@ -2,8 +2,30 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createNativeCoinQuoteReader, nativeCoinQuoteSource } from '../src/portfolio/nativeCoinQuote.ts';
 import { createNativeNetwork, getNativeNetwork } from '../src/custody/networkContext.ts';
+import { nativeAssetMarketSource } from '../src/portfolio/nativeAssetMarket.ts';
+import { OPTIONAL_EVM_NETWORK_DEFINITIONS } from '../../../source/shared/evmNetworks.ts';
 
 const signal = () => new AbortController().signal;
+
+test('mainnet native SYS pricing is separate from token identity and optional Gateway requires an exact saved registration', () => {
+  const zkSys = getNativeNetwork('zksys');
+  assert.equal(zkSys.chainId, '5757');
+  assert.equal(zkSys.symbol, 'SYS');
+  assert.equal(zkSys.testnet, false);
+  assert.deepEqual(nativeCoinQuoteSource(zkSys.id, zkSys), { kind: 'evm', asset: 'syscoin' });
+  const profile = OPTIONAL_EVM_NETWORK_DEFINITIONS[0]!;
+  const gateway = createNativeNetwork({ id: 'custom:57570', name: profile.name, kind: 'evm', chainId: '57570',
+    rpcUrl: profile.network.url, slip44: 60, symbol: 'SYS', decimals: 18, testnet: false });
+  assert.equal(nativeCoinQuoteSource(gateway.id), null);
+  assert.equal(nativeAssetMarketSource({ kind: 'native', networkId: gateway.id }), null);
+  assert.deepEqual(nativeCoinQuoteSource(gateway.id, gateway), { kind: 'evm', asset: 'syscoin' });
+  assert.deepEqual(nativeAssetMarketSource({ kind: 'native', networkId: gateway.id, registration: gateway }), { kind: 'native', id: 'syscoin' });
+  const changed = createNativeNetwork({ ...gateway, rpcUrl: `${profile.network.url}/unverified` });
+  assert.equal(nativeCoinQuoteSource(changed.id, changed), null);
+  assert.equal(nativeAssetMarketSource({ kind: 'native', networkId: changed.id, registration: changed }), null);
+  for (const registration of [zkSys, gateway])
+    assert.equal(nativeAssetMarketSource({ kind: 'token', networkId: registration.id, registration, contractAddress: '0x' + '11'.repeat(20) }), null);
+});
 
 test('quote identity uses canonical registrations and skips unknown, edited and testnet registrations', () => {
   const { registrationHash: _hash, ...ethereum } = getNativeNetwork('ethereum');

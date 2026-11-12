@@ -3,6 +3,7 @@ import { useNativeTranslation } from './platform/localization';
 import { useWelcomeBackdropMotion } from './screens/useWelcomeBackdropMotion';
 import React, { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { knownAssetIcon, type AssetIconIdentity } from '../../../source/shared/assetIconIdentity';
+import { CHAIN_IDS } from '../../../source/shared/evmNetworks';
 import { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, subscribeNativeAssetIcon } from './portfolio/assetIconCache';
 import {
   Image,
@@ -189,7 +190,7 @@ export function NativeAssetIcon({ identity, registrationHash, size = 42, symbol 
   const key = nativeAssetIconKey(identity, registrationHash);
   const uri = useSyncExternalStore(listener => subscribeNativeAssetIcon(key, listener), () => readNativeAssetIcon(key), () => null);
   const artwork = knownAssetIcon(identity);
-  if (artwork) return <Coin id={artwork === 'zksys' ? 'zksys-testnet' : artwork} size={size} />;
+  if (artwork) return <Coin id={artwork} size={size} />;
   if (uri) return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} resizeMode="contain"
     accessible={false} onError={() => markNativeAssetIconFailed(key, uri)} />;
   return <Coin id="unknown-asset" size={size} fallbackSymbol={symbol} />;
@@ -198,7 +199,7 @@ export function NativeAssetIcon({ identity, registrationHash, size = 42, symbol 
 export function Coin({ id, size = 42, fallbackSymbol, asset, registrationHash }: { id: string; size?: number; fallbackSymbol?: string; asset?: AssetIconIdentity; registrationHash?: string }) {
   if (asset) return <NativeAssetIcon identity={asset} registrationHash={registrationHash} size={size} symbol={fallbackSymbol} />;
   const token = id.toLowerCase();
-  if (['syscoin', 'syscoin-nevm', 'syscoin-nevm-testnet', 'sys', 'tsys', 'nevm'].includes(token)) {
+  if (['syscoin', 'syscoin-nevm', 'syscoin-nevm-testnet', 'syscoin-gateway', `custom:${CHAIN_IDS.SYSCOIN_GATEWAY_MAINNET}`, 'sys', 'tsys', 'nevm'].includes(token)) {
     return (
       <Image
         source={require('../../../source/assets/all_assets/syscoin.png')}
@@ -214,7 +215,7 @@ export function Coin({ id, size = 42, fallbackSymbol, asset, registrationHash }:
     <Polygon points="10.59 10.59 11.34 10.59 29.28 27.03 29.28 29.28 10.59 29.28 10.59 10.59" fill="#dbef88" />
     <Path d="m24.74,21.44c0.51-1.01,0.81-2.16,0.81-3.38,0-4.13-3.35-7.48-7.48-7.48-1.45,0-2.8,0.41-3.95,1.12l10.62,9.73Z" fill="#dbef88" />
   </Svg>;
-  if (token === 'zksys-testnet') return <Svg width={size} height={size} viewBox="0 0 48 48" accessible={false}>
+  if (['zksys', 'zksys-testnet', `custom:${CHAIN_IDS.ZKSYS_MAINNET}`].includes(token)) return <Svg width={size} height={size} viewBox="0 0 48 48" accessible={false}>
     <Circle cx="24" cy="24" r="24" fill="#292117" />
     <G transform="translate(5 15.16) scale(0.04292)">
       <Path d="M0.580331 338.968L336.527 77.7306H0.531929V0H472.984V206.282L763.356 0H882.479L644.548 170.814L885.38 411.066H778.951L584.032 214.503L502.022 273.617H395.254V131.501L134.113 333.335H369.65H395.254H472.984V411.066H2.12219e-05L0.580331 338.968Z" fill="#F7931A" />

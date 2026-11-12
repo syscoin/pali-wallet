@@ -280,11 +280,12 @@ export const getPaliCanonicalEntryPointAddress = (chainId?: number): string =>
 export const getPaliCanonicalFactoryAddress = (chainId?: number): string =>
   getPaliInfrastructureById(chainId).factory.address;
 
-// SYSCOIN: The v32 zkTanenbaum tank is immutable in the canonical OS guest.
+// The zkSYS tank is immutable in the canonical OS guest on both networks.
 // Keep this protocol binding separate from user-editable RPC metadata; the
 // launch bootstrap attests the runtime before recording its deployed address.
 export const ZKSYS_GAS_TANK_ADDRESSES: Partial<Record<number, string>> = {
   57057: '0xb49943ea232624dd4aa63e18186076c6c99a68ef',
+  5757: '0xb49943ea232624dd4aa63e18186076c6c99a68ef',
 };
 
 export const getZkSysGasTankAddress = (chainId?: number): string | undefined =>

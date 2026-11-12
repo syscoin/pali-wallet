@@ -1,6 +1,6 @@
 import { keccak256 } from 'ethers/crypto';
 import { toUtf8Bytes } from 'ethers/utils';
-import { EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks.ts';
+import { EVM_NETWORK_DEFINITIONS, OPTIONAL_EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks.ts';
 import { isNonBlankNetworkText } from '../../../../source/shared/networkText.ts';
 import { findUtxoNetwork } from '../core/utxoNetworks.ts';
 
@@ -43,6 +43,20 @@ export const NATIVE_NETWORKS: readonly NativeNetworkRegistration[] = Object.free
   EVM_NETWORK_DEFINITIONS.map(({ id, name, network, testnet }) => createNativeNetwork({ id, name, kind: 'evm', chainId: String(network.chainId),
     slip44: 60, rpcUrl: network.url, symbol: network.currency.toUpperCase(), decimals: 18, testnet }))
 );
+const OPTIONAL_NATIVE_NETWORKS: readonly NativeNetworkRegistration[] = Object.freeze(
+  OPTIONAL_EVM_NETWORK_DEFINITIONS.map(({ id, name, network, testnet }) => createNativeNetwork({ id, name, kind: 'evm', chainId: String(network.chainId),
+    slip44: 60, rpcUrl: network.url, symbol: network.currency.toUpperCase(), decimals: 18, testnet }))
+);
+/** Optional metadata applies only after an exact registration has been added. */
+export function findKnownNativeNetwork(id: string, registration?: NativeNetworkRegistration | null): NativeNetworkRegistration | undefined {
+  const active = NATIVE_NETWORKS.find((network) => network.id === id);
+  if (active) return !registration || active.registrationHash === registration.registrationHash ? active : undefined;
+  if (!registration || registration.id !== id) return undefined;
+  const optional = OPTIONAL_NATIVE_NETWORKS.find((network) => network.id === id || id === `custom:${network.chainId}`);
+  if (!optional) return undefined;
+  const known = optional.id === id ? optional : createNativeNetwork({ ...optional, id });
+  return known.registrationHash === registration.registrationHash ? known : undefined;
+}
 export function getNativeNetwork(id: string, registrations: readonly NativeNetworkRegistration[] = NATIVE_NETWORKS): NativeNetworkRegistration {
   const network = registrations.find((value) => value.id === id);
   if (!network) throw new Error('Unknown EVM registration');

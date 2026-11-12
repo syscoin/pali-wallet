@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { rankChainSuggestions } from '../../../../source/shared/chainCatalogue';
-import type { NativeNetworkSuggestion } from '../custody/networkCatalogue';
+import { withBundledNativeNetworkSuggestions, type NativeNetworkSuggestion } from '../custody/networkCatalogue';
 import { createNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext';
 import type { NativeNetworkSnapshot, NativeNetworkView } from '../custody/networkView';
 import type { NativeNetworkSelectionReceipt } from '../custody/accounts';
@@ -69,9 +69,9 @@ function NetworkSuggestions({ query, onQuery, load, networks, busy, onChoose }: 
     return () => { current = false; };
   }, [attempt, load, searching]);
   const candidates = useMemo(() => {
-    if (result.status !== 'ready') return [];
     const saved = new Set(networks.map((network) => network.registration?.chainId));
-    return result.chains.filter((chain) => !saved.has(String(chain.chainId)));
+    return withBundledNativeNetworkSuggestions(result.status === 'ready' ? result.chains : [])
+      .filter((chain) => !saved.has(String(chain.chainId)));
   }, [networks, result]);
   const matches = useMemo(() => rankChainSuggestions(candidates, query), [candidates, query]);
   return <View style={s.field}>

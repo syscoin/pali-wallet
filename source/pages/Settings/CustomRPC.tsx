@@ -12,6 +12,7 @@ import {
   rankChainSuggestions,
   type ChainInfo,
 } from '../../shared/chainCatalogue';
+import { withBundledEvmChainSuggestions } from '../../shared/chainCatalogueData';
 import { isNonBlankNetworkText } from '../../shared/networkText';
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
@@ -877,7 +878,7 @@ const CustomRPCView = () => {
   // Preload chains based on network type for instant searching
   useEffect(() => {
     let active = true;
-    setAllChains([]);
+    setAllChains(isSyscoinRpc ? [] : withBundledEvmChainSuggestions());
     const loadChains = async () => {
       try {
         const networkType = isSyscoinRpc
@@ -888,7 +889,9 @@ const CustomRPCView = () => {
           [networkType]
         )) as ChainInfo[];
         if (!active) return;
-        setAllChains(chains);
+        setAllChains(
+          isSyscoinRpc ? chains : withBundledEvmChainSuggestions(chains)
+        );
         console.log(
           `[CustomRPC] Preloaded ${chains.length} ${
             isSyscoinRpc ? 'UTXO' : 'EVM'
@@ -897,7 +900,7 @@ const CustomRPCView = () => {
       } catch (error) {
         if (!active) return;
         console.error('[CustomRPC] Failed to preload chains:', error);
-        setAllChains([]);
+        setAllChains(isSyscoinRpc ? [] : withBundledEvmChainSuggestions());
       }
     };
 

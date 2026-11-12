@@ -129,6 +129,7 @@ export const PALI_MODULE_CANONICAL_ADDRESSES: Partial<
   'slh-dsa': '0x3b35e207243164753af0b6d2d99c7ad61f4c4034',
 };
 export const ZKSYS_GAS_TANK_ADDRESSES: Partial<Record<number, string>> = {
+  '5757': '0xb49943ea232624dd4aa63e18186076c6c99a68ef',
   '57057': '0xb49943ea232624dd4aa63e18186076c6c99a68ef',
 };
 

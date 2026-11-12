@@ -1,6 +1,7 @@
 import {
   createExtensionEvmNetworks,
   EVM_NETWORK_DEFINITIONS,
+  OPTIONAL_EVM_NETWORK_DEFINITIONS,
 } from '../shared/evmNetworks';
 
 import previous from './__fixtures__/defaultEvmNetworks.json';
@@ -14,7 +15,24 @@ import {
 
 describe('shared built-in EVM registrations', () => {
   it('preserves every pre-extraction extension field and the public alias identities', () => {
-    expect(PALI_NETWORKS_STATE.ethereum).toEqual(previous);
+    const { 5757: zksys, ...unchanged } = PALI_NETWORKS_STATE.ethereum;
+    expect(unchanged).toEqual(previous);
+    expect(zksys).toEqual({
+      chainId: 5757,
+      url: 'https://rpc-zk.syscoin.org',
+      label: 'zkSYS',
+      default: true,
+      currency: 'sys',
+      kind: 'ethereum',
+      slip44: 60,
+      apiUrl: 'https://explorer-zk.syscoin.org/api',
+      explorer: 'https://explorer-zk.syscoin.org',
+      coingeckoId: 'syscoin',
+    });
+    expect(PALI_NETWORKS_STATE.ethereum[57570]).toBeUndefined();
+    expect(
+      OPTIONAL_EVM_NETWORK_DEFINITIONS.map(({ network }) => network.chainId)
+    ).toEqual([57570]);
     expect(ROLLUX_DEFAULT_NETWORK.network).toBe(
       PALI_NETWORKS_STATE.ethereum[570]
     );

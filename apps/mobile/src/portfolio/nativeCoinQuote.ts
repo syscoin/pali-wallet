@@ -1,11 +1,11 @@
-import { EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks.ts';
+import { findRegisteredEvmNetwork } from '../../../../source/shared/evmNetworks.ts';
 import {
   BLOCKBOOK_TICKER_PATH, coinGeckoNativeQuoteUrl,
   readBlockbookNativeQuote, readCoinGeckoNativeQuote,
 } from '../../../../source/shared/nativeCoinQuotes.ts';
 import { isFiatCurrency, type FiatCurrency } from '../core/fiatPreference.ts';
 import { findUtxoNetwork } from '../core/utxoNetworks.ts';
-import { NATIVE_NETWORKS, type NativeNetworkRegistration } from '../custody/networkContext.ts';
+import { findKnownNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext.ts';
 import type { WalletHttpFetch } from '../platform/httpPolicy.ts';
 import { abortable, boundedResponseText, cancelResponseBody } from '../platformRpc.ts';
 
@@ -20,9 +20,9 @@ const REQUEST_TIMEOUT_MS = 8_000;
 export function nativeCoinQuoteSource(id: string, registration?: NativeNetworkRegistration | null): QuoteSource | null {
   const utxo = findUtxoNetwork(id);
   if (utxo) return utxo.testnet ? null : { kind: 'utxo', endpoint: utxo.endpoint };
-  const known = NATIVE_NETWORKS.find((value) => value.id === id);
-  if (!known || known.testnet || (registration && known.registrationHash !== registration.registrationHash)) return null;
-  const asset = EVM_NETWORK_DEFINITIONS.find((value) => value.id === id)?.network.coingeckoId;
+  const known = findKnownNativeNetwork(id, registration);
+  if (!known || known.testnet) return null;
+  const asset = findRegisteredEvmNetwork(known)?.network.coingeckoId;
   return asset ? { kind: 'evm', asset } : null;
 }
 

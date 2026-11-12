@@ -1,9 +1,9 @@
-import { EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks.ts';
+import { findRegisteredEvmNetwork } from '../../../../source/shared/evmNetworks.ts';
 import { assetMarketUrl, readAssetMarket, readTokenMarketId, tokenMarketIdentityUrl, type AssetMarket } from '../../../../source/shared/assetMarket.ts';
 import { getDefaultUTXONetworks } from '../../../../source/utils/defaultNetworks.ts';
 import { findUtxoNetwork } from '../core/utxoNetworks.ts';
 import { isFiatCurrency, type FiatCurrency } from '../core/fiatPreference.ts';
-import { NATIVE_NETWORKS, type NativeNetworkRegistration } from '../custody/networkContext.ts';
+import { findKnownNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext.ts';
 import type { WalletHttpFetch } from '../platform/httpPolicy.ts';
 import { abortable, boundedResponseText, cancelResponseBody } from '../platformRpc.ts';
 import { rememberNativeAssetIcon } from './assetIconCache.ts';
@@ -15,7 +15,7 @@ export type AssetMarketSource = Readonly<{ kind: 'native'; id: string } | { kind
 /** Reuse only images accompanying the existing verified, registered market read. */
 export function rememberNativeAssetMarketIcon(asset: AssetMarketReference, data: AssetMarket): void {
   if (asset.kind !== 'token' || !data.iconUri || !asset.contractAddress || !nativeAssetMarketSource(asset)) return;
-  const network = NATIVE_NETWORKS.find(value => value.id === asset.networkId);
+  const network = findKnownNativeNetwork(asset.networkId, asset.registration);
   if (!network) return;
   rememberNativeAssetIcon({ kind: 'evm', chainId: network.chainId, contractAddress: asset.contractAddress }, network.registrationHash, data.iconUri);
 }
@@ -25,9 +25,9 @@ export function nativeAssetMarketSource(asset: AssetMarketReference): AssetMarke
     const id = getDefaultUTXONetworks()[utxo.chainId]?.coingeckoId;
     return asset.kind === 'native' && !utxo.testnet && id ? { kind: 'native', id } : null;
   }
-  const known = NATIVE_NETWORKS.find(value => value.id === asset.networkId);
-  if (!known || known.testnet || (asset.registration && known.registrationHash !== asset.registration.registrationHash)) return null;
-  const metadata = EVM_NETWORK_DEFINITIONS.find(value => value.id === asset.networkId)?.network;
+  const known = findKnownNativeNetwork(asset.networkId, asset.registration);
+  if (!known || known.testnet) return null;
+  const metadata = findRegisteredEvmNetwork(known)?.network;
   if (asset.kind === 'native') return metadata?.coingeckoId ? { kind: 'native', id: metadata.coingeckoId } : null;
   const contract = asset.contractAddress?.toLowerCase();
   return metadata?.coingeckoPlatformId && contract && /^0x[0-9a-f]{40}$/.test(contract)

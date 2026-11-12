@@ -7,6 +7,7 @@ import { screenElements, screenFixture } from './screenFixture.ts';
 import { createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import * as pairingLinks from '../src/connections/pairingLinks.ts';
+import { withBundledNativeNetworkSuggestions } from '../src/custody/networkCatalogue.ts';
 
 const names = ['NativeConnections', 'NativeSecurity', 'NativeAccounts', 'NativeImport', 'NativeNetworks', 'RealTools'] as const;
 type Name = typeof names[number];
@@ -71,6 +72,7 @@ async function fixture(language = 'en') {
     './BalancePrivacySetting': { BalancePrivacySetting: 'BalancePrivacySetting' },
     '../core/utxoAddresses': { UTXO_IMPORT_TYPES: ['p2wpkh'], UTXO_IMPORT_LABELS: { p2wpkh: 'Native SegWit' } },
     '../../../../source/shared/chainCatalogue': { rankChainSuggestions: () => [] }, '../custody/networkContext': {},
+    '../custody/networkCatalogue': { withBundledNativeNetworkSuggestions },
     './TrustedSiteLookup': { TrustedSiteLookup: 'TrustedSiteLookup' }, './WatchGuardianRecovery': { WatchGuardianRecovery: 'WatchGuardianRecovery' },
     './NativeConnections': { NativeConnections: 'NativeConnections' },
     './NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' },
