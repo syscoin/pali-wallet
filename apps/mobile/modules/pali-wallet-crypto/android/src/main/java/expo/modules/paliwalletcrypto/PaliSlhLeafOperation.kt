@@ -130,7 +130,8 @@ internal class PaliSlhScheduler(
   private val executor: Executor,
   private val normalLimit: Int = 8
 ) {
-  private class Task(val kind: PaliSlhWorkKind, val cleanup: Boolean, val run: () -> Unit, val rejected: () -> Unit)
+  private class Task(val kind: PaliSlhWorkKind, val cleanup: Boolean, val run: () -> Unit, val rejected: () -> Unit,
+    val complete: () -> Unit = {})
   private val pending = java.util.ArrayDeque<Task>()
   private var active = 0
   private var exclusive = false
@@ -151,10 +152,13 @@ internal class PaliSlhScheduler(
 
   // Cleanup cannot be refused at the normal work limit. Its reservation also
   // prevents a stream of new operations from starving resource retirement.
-  fun cleanup(work: () -> Unit) {
+  fun cleanup(work: () -> Unit) = cleanup(work, {})
+
+  // Publish cleanup completion only after its admission barrier has been retired.
+  fun cleanup(work: () -> Unit, complete: () -> Unit) {
     synchronized(this) {
       cleanupCount++
-      pending.addLast(Task(PaliSlhWorkKind.EXCLUSIVE, true, work, work))
+      pending.addLast(Task(PaliSlhWorkKind.EXCLUSIVE, true, work, work, complete))
     }
     pump()
   }
@@ -177,11 +181,11 @@ internal class PaliSlhScheduler(
     ready.forEach { task ->
       val entered = AtomicBoolean(false)
       try {
-        executor.execute { entered.set(true); try { task.run() } finally { finished(task) } }
+        executor.execute { entered.set(true); try { task.run() } finally { finished(task); task.complete() } }
       } catch (_: Throwable) {
         // Dispatch failure still drains the owner's inputs/resources exactly
         // once, before another operation is allowed to acquire this slot.
-        if (!entered.get()) try { task.rejected() } finally { finished(task) }
+        if (!entered.get()) try { task.rejected() } finally { finished(task); task.complete() }
       }
     }
   }
@@ -202,6 +206,7 @@ internal object PaliSlhLeafWorker {
     Thread(task, "PaliSlhWorker").apply { isDaemon = true }
   })
   fun cleanup(work: () -> Unit) { scheduler.cleanup(work) }
+  fun cleanup(work: () -> Unit, complete: () -> Unit) { scheduler.cleanup(work, complete) }
   fun <T> enqueue(kind: PaliSlhWorkKind = PaliSlhWorkKind.EXCLUSIVE, work: () -> T, complete: (T) -> Unit, rejected: () -> Unit): Boolean =
     scheduler.enqueue(kind, { complete(work()) }, rejected)
 
