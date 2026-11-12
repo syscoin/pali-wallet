@@ -1,5 +1,6 @@
 import * as transactionFeeChoice from '../../../source/shared/transactionFeeChoice.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import * as cameraPermission from '../src/platform/cameraPermission.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { NativeSigningHandoffs, type NativeSigningHandoff } from '../src/connections/signingHandoff.ts';
 import assert from 'node:assert/strict';
@@ -171,6 +172,7 @@ function harness(
       }),
     },
     '../custody/privateAuthentication': privateAuthentication,
+    '../platform/cameraPermission': cameraPermission,
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     '../platform/localization': { nativeI18n: { t: translate }, useNativeTranslation: () => ({ t: translate }) },
     'react-native': native,
