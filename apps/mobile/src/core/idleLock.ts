@@ -31,6 +31,23 @@ export class IdleLock {
     this.generation++; if (this.timer !== null) this.cancel(this.timer); this.timer = null;
     this.owner = null; this.revoke = null; this.activity = this.previous = null;
   }
+  /** Retire input while preserving one owner-bound deadline across a hidden view. */
+  pause(owner?: object): (() => boolean) | null {
+    if (!this.owner || this.expired || owner && this.owner !== owner) return null;
+    const capturedOwner = this.owner, activity = this.activity!, previous = this.previous!, revoke = this.revoke;
+    this.stop(capturedOwner);
+    const interval = this.interval;
+    let pending = true;
+    return () => {
+      if (!pending) return false;
+      pending = false;
+      if (this.owner || this.interval !== interval) return false;
+      this.owner = capturedOwner; this.activity = activity; this.previous = previous; this.revoke = revoke; this.expired = false;
+      if (!this.check(capturedOwner)) return false;
+      this.arm();
+      return this.isOwned(capturedOwner);
+    };
+  }
   allowNewInput(): void { if (!this.owner) this.expired = false; }
   private expire(): void {
     if (!this.owner || this.expired) return;

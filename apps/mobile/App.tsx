@@ -275,7 +275,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigationGeneration = useRef(0);
   const lifecycleGeneration = useRef(0);
-  const watchResume = useRef<{ authority: WatchOnlyAuthority; selection: AccountSelection; navigation: number } | null>(null);
+  const watchResume = useRef<{ authority: WatchOnlyAuthority; selection: AccountSelection; navigation: number; resumeIdle: () => boolean } | null>(null);
   const foreground = useRef(
     Platform.OS === 'web' || AppState.currentState === 'active'
   );
@@ -447,7 +447,9 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       const local = authority.current, state = local?.getSnapshot();
       if (!preview && requestedRoute === 'home' && state?.status === 'ready' && state.selectedAccountId &&
           publicViewLock.getSnapshot().phase === 'unlocked') {
-        watchResume.current = { authority: local!, selection: { kind: 'watch', id: state.selectedAccountId }, navigation: navigationGeneration.current };
+        const resumeIdle = watchIdle.pause();
+        watchResume.current = resumeIdle ? { authority: local!, selection: { kind: 'watch', id: state.selectedAccountId }, navigation: navigationGeneration.current, resumeIdle } : null;
+        if (!resumeIdle) void publicViewLock.lock().catch(() => undefined);
       } else if (watchResume.current?.navigation !== navigationGeneration.current) watchResume.current = null;
       if (openingView.current) publicViewLock.cancelUnlock();
       lifecycleGeneration.current++; authority.current?.lock(); setSheet(null); setAmount(''); setRecipient('');
@@ -457,6 +459,10 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       watchResume.current = null;
       if (!pending || preview || !foreground.current || authority.current !== pending.authority ||
           navigationGeneration.current !== pending.navigation || publicViewLock.getSnapshot().phase !== 'unlocked') return;
+      if (!pending.resumeIdle()) {
+        if (publicViewLock.getSnapshot().phase === 'unlocked') void publicViewLock.lock().catch(() => undefined);
+        return;
+      }
       void openWatch(pending.selection);
     };
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {

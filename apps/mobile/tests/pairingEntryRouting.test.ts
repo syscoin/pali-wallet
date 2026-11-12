@@ -9,6 +9,7 @@ import * as pairingLinks from '../src/connections/pairingLinks.ts';
 import { quietActivityNotifications } from './notificationFixture.ts';
 import { createTestPublicViewLock } from './publicViewLockFixture.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
+import { IdleLock } from '../src/core/idleLock.ts';
 
 type Element = {
   type: unknown;
@@ -32,8 +33,14 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
-function harness(watch = false, locked = watch) {
+function harness(watch = false, locked = watch, idleMinutes = 0) {
   const viewPrivacy = createTestPublicViewLock(locked ? 'locked' : 'unlocked');
+  let monotonic = 0, wall = 0, nextTimer = 0;
+  const timers = new Map<number, () => void>();
+  const idle = new IdleLock(() => ({ monotonic, wall }),
+    ((callback: () => void) => { const id = ++nextTimer; timers.set(id, callback); return id; }) as unknown as typeof setTimeout,
+    ((id: number) => { timers.delete(id); }) as unknown as typeof clearTimeout);
+  idle.setPolicy(idleMinutes);
   const authorization = deferred<void>();
   let promptActive = false, authCalls = 0, publicOpens = 0;
   let authSignal: AbortSignal | undefined;
@@ -124,7 +131,6 @@ function harness(watch = false, locked = watch) {
   };
   const authorityListeners = new Set<(state: typeof blank) => void>();
   let watchIdle: { begin(): void; stop(): void } | undefined;
-  let expireIdle: (() => void) | undefined;
   const publish = () => { for (const notify of authorityListeners) notify(blank); };
   const authority = {
     getSnapshot: () => blank,
@@ -201,7 +207,7 @@ function harness(watch = false, locked = watch) {
     './src/platform/security': {
       publicViewLock: viewPrivacy.viewLock,
       securityPreferences: {},
-      watchIdle: { allowNewInput() {}, begin(_owner: unknown, expire: () => void) { expireIdle = expire; }, stop() { expireIdle = undefined; }, check: () => true },
+      watchIdle: idle,
       custodyIdle: { allowNewInput() {} },
     },
     './src/platform/credential': {
@@ -293,7 +299,9 @@ function harness(watch = false, locked = watch) {
     viewPrivacy, authorization,
     authCalls: () => authCalls,
     publicOpens: () => publicOpens,
-    expireIdle() { assert(expireIdle); expireIdle(); },
+    expireIdle() { idle.invalidate(); },
+    advanceClocks(milliseconds: number, wallMilliseconds = milliseconds) { monotonic += milliseconds; wall += wallMilliseconds; },
+    checkIdle: () => idle.check(),
     authSignal: () => authSignal,
     state(value: string, owned = true) {
       if (!owned) promptActive = false;
@@ -307,6 +315,7 @@ function harness(watch = false, locked = watch) {
     },
     dispose() {
       cells.forEach((entry) => entry.cleanup?.());
+      idle.stop();
     },
   };
 }
@@ -511,8 +520,8 @@ test('a persisted privacy lock also guards Welcome and remains unlockable withou
   } finally { f.authorization.resolve(); f.dispose(); }
 });
 
-async function openRememberedWatch() {
-  const f = harness(true, false);
+async function openRememberedWatch(idleMinutes = 0) {
+  const f = harness(true, false, idleMinutes);
   await f.viewPrivacy.ready;
   f.initial.resolve(null); f.load.resolve(); f.selection.resolve({ kind: 'watch', id: 'watch-1' });
   await settle(); f.render(); await settle();
@@ -543,6 +552,72 @@ test('Android watch blur and focus hide then resume without reading credentials'
     f.focus('focus'); await settle();
     assert(f.find(f.render(), 'WatchSession'));
     assert.equal(f.authCalls(), 0); assert.equal(f.publicOpens(), 2);
+  } finally { f.dispose(); }
+});
+
+test('watch return after its original idle deadline locks before reopening with suspended timers', async () => {
+  const f = await openRememberedWatch(5);
+  try {
+    f.advanceClocks(240_000);
+    f.state('background', false); f.render();
+    f.advanceClocks(60_000);
+    f.state('active'); await settle();
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined);
+    assert.equal(f.find(f.render(), 'Button')?.props.title, 'Unlock wallet');
+    assert.equal(f.publicOpens(), 1, 'expired watch view must not briefly reopen');
+    assert.equal(f.authCalls(), 0, 'foreground return must not launch authorization itself');
+  } finally { f.dispose(); }
+});
+
+test('brief watch background return preserves the original idle deadline', async () => {
+  const f = await openRememberedWatch(5);
+  try {
+    f.advanceClocks(240_000);
+    f.state('background', false); f.render();
+    f.advanceClocks(30_000);
+    f.state('active'); await settle();
+    assert(f.find(f.render(), 'WatchSession'));
+    assert.equal(f.publicOpens(), 2);
+    f.advanceClocks(30_000);
+    assert.equal(f.checkIdle(), false, 'resume cannot count as fresh user activity');
+    await settle();
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined);
+    assert.equal(f.authCalls(), 0);
+  } finally { f.dispose(); }
+});
+
+test('repeated short watch background returns cannot extend the idle deadline', async () => {
+  const f = await openRememberedWatch(5);
+  try {
+    for (let n = 0; n < 3; n++) {
+      f.advanceClocks(90_000);
+      f.state('background', false); f.render();
+      f.advanceClocks(9_000);
+      f.state('active'); await settle();
+      assert(f.find(f.render(), 'WatchSession'));
+    }
+    f.advanceClocks(3_000);
+    assert.equal(f.checkIdle(), false);
+    await settle();
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined);
+    assert.equal(f.authCalls(), 0);
+  } finally { f.dispose(); }
+});
+
+test('watch idle Off still permits a long foreground and background return', async () => {
+  const f = await openRememberedWatch(0);
+  try {
+    f.advanceClocks(3_600_000);
+    f.state('background', false); f.render();
+    f.advanceClocks(3_600_000);
+    f.state('active'); await settle();
+    assert(f.find(f.render(), 'WatchSession'));
+    assert.equal(f.checkIdle(), true);
+    assert.equal(f.viewPrivacy.marker(), 'unlocked');
+    assert.equal(f.publicOpens(), 2); assert.equal(f.authCalls(), 0);
   } finally { f.dispose(); }
 });
 

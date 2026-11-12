@@ -159,6 +159,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const requestedSetup = useRef(initialSetup);
   useLayoutEffect(() => { if (incomingPairing) requestedAccount.current = undefined; }, [incomingPairing]);
   const screenToken = useRef<object>({});
+  const pausedIdle = useRef<(() => boolean) | null>(null);
   const detachSubscriptions = useRef<() => void>(() => undefined);
   const recoveryRef = useRef<NativeRecoveryFlow | null>(null);
   const removalRef = useRef<RemovalScope | null>(null);
@@ -323,7 +324,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       void local?.trezor.cancel().catch(() => undefined);
       void local?.connections.cancelSigningHandoff().catch(() => undefined);
     }
-    custodyIdle.stop(screenToken.current);
+    if (background) pausedIdle.current ??= custodyIdle.pause(screenToken.current);
+    else { pausedIdle.current = null; custodyIdle.stop(screenToken.current); }
     epoch.current++;
     recoveryRef.current?.cancel();
     const removal = removalRef.current;
@@ -346,9 +348,9 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     try { void publicViewLock.lock().catch(() => undefined); } finally { revoke(); }
   }, [revoke]);
   useLayoutEffect(() => {
-    if (!updateSession.current && mounted.current && AppState.currentState === 'active' && securityPreferences.getSnapshot().status === 'ready') custodyIdle.begin(screenToken.current, lockWallet);
+    if (!pausedIdle.current && !updateSession.current && mounted.current && AppState.currentState === 'active' && securityPreferences.getSnapshot().status === 'ready') custodyIdle.begin(screenToken.current, lockWallet);
   });
-  useLayoutEffect(() => { const owner = screenToken.current; custodyIdle.begin(owner, lockWallet); return () => custodyIdle.stop(owner); }, [lockWallet]);
+  useLayoutEffect(() => { const owner = screenToken.current; if (!pausedIdle.current) custodyIdle.begin(owner, lockWallet); return () => custodyIdle.stop(owner); }, [lockWallet]);
   const exit = useCallback(() => { cancelNoteRestore(); revoke(); onExit(); }, [cancelNoteRestore, onExit, revoke]);
 
   const readyContext = useCallback(() => {
@@ -1167,6 +1169,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     void install().catch(() => undefined);
     const resume = () => {
       if (updateSession.current || publicViewLock.getSnapshot().phase !== 'unlocked' || !mounted.current || AppState.currentState !== 'active') return;
+      const restoreIdle = pausedIdle.current; pausedIdle.current = null;
+      if (restoreIdle && !restoreIdle()) { lockWallet(); return; }
       custodyIdle.begin(screenToken.current, lockWallet);
       const local = controllersRef.current;
       if (local) {
@@ -1203,7 +1207,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       removalRef.current?.local.removal.cancel(); removalRef.current = null;
       detachSubscriptions.current(); detachSubscriptions.current = () => undefined;
       bridge.current?.onNativeCatalogue(null); controllersRef.current = null;
-      lifecycle.remove(); blur?.remove(); focus.remove(); custodyIdle.stop(ownedToken);
+      lifecycle.remove(); blur?.remove(); focus.remove(); pausedIdle.current = null; custodyIdle.stop(ownedToken);
       void nativeLifecycle.release(ownedToken).catch(() => undefined);
     };
   }, [install, revoke, lockWallet, clearSecrets, controllersRef]);

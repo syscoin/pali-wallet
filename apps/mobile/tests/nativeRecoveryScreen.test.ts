@@ -10,6 +10,7 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { createIdleComponentFixture } from './idleComponentFixture.ts';
+import { createSecurityRuntime } from '../src/core/securityRuntime.ts';
 import { nativeTranslationFixture, languageMessages } from './localizationFixture.ts';
 import { createInstance } from 'i18next';
 import { findUtxoNetwork, UTXO_NETWORKS, supportsUtxoSoftwareCustody } from '../src/core/utxoNetworks.ts';
@@ -324,8 +325,17 @@ test('recovery renders controller errors in the chosen language without English 
 });
 
 async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED'; verifyCalls?: string[]; wait?: Promise<void> }, notificationPort: NotificationTestPort = quietActivityNotifications,
-  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number }, networkOverride?: networkContext.NativeNetworkRegistration, publicNavigation?: { initialAccountId: string }) {
+  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number }, networkOverride?: networkContext.NativeNetworkRegistration, publicNavigation?: { initialAccountId: string }, idleClock?: { minutes: number; time: number }) {
   const root = setup();
+  if (idleClock) {
+    await root.idle.ready;
+    const security = createSecurityRuntime({
+      async get() { return JSON.stringify({ version: 1, custodyIdleMinutes: idleClock.minutes, watchIdleMinutes: 0 }); },
+      async set() { assert.fail('The lifecycle test must not change the configured timeout'); },
+    }, () => ({ monotonic: idleClock.time, wall: idleClock.time }));
+    await security.securityPreferences.load();
+    Object.assign(root.idle.security, security);
+  }
   const networkId = networkMode === 'utxo' ? utxoResume ? 'syscoin' : 'bitcoin' : networkOverride?.id ?? 'ethereum';
   const address = `0x${'11'.repeat(20)}`;
   let catalogue = { revision: 1, active: { accountId: 'hd:60:0', networkId },
@@ -405,7 +415,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
         catch (cause) { publish({ phase: 'locked', account: null, error: 'DEVICE_UNLOCK_UNAVAILABLE' }); throw cause; }
         check(); publish({ phase: 'backup-required', backup: 'unconfirmed', account: { address, network: networkId }, error: null });
       },
-      lock() { if (deviceUnlock || pinChange || restoreFailure) { lifecycle.push('lock'); locks++; publish({ phase: 'locked', revision: state.revision + 1, account: null }); } }, async dispose() { state = { ...state, phase: 'disposed' }; },
+      lock() { if (deviceUnlock || pinChange || restoreFailure || idleClock) { lifecycle.push('lock'); locks++; publish({ phase: 'locked', revision: state.revision + 1, account: null }); } }, async dispose() { state = { ...state, phase: 'disposed' }; },
       async unlock() {
         publish({ phase: 'authenticating', error: null });
         if (nextError) { const code = nextError; publish({ phase: 'locked', error: code }); throw new Error(code); }
@@ -544,11 +554,56 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     await new Promise((resolve) => setImmediate(resolve));
     return render();
   };
-  return { render, unlock, publish, noteRestore, notificationRoutes,
+  return { render, unlock, publish, noteRestore, notificationRoutes, publicViewLock: root.idle.security.publicViewLock,
     failBackup(error: Error) { backupFailure = error; },
     loseCredential() { credentialPresent = false; publish({}); }, get recoveryInventoryReads() { return recoveryInventoryReads; },
     selectedAccounts, selectedAddress: () => state.account?.address, requestAccount(id: string) { props.initialAccountId = id; return render(); }, selectedNetwork: () => state.account?.network, authority: realAuthority, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, configurations, backupAcknowledgements, lifecycle, get locks() { return locks; } };
 }
+
+async function nativeIdleFixture(clock: { minutes: number; time: number }) {
+  return walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined,
+    quietActivityNotifications, undefined, undefined, undefined, undefined, undefined, clock);
+}
+const lifecycleTick = () => new Promise<void>(resolve => setImmediate(resolve));
+
+test('native background elapsed time cannot renew a configured privacy-lock deadline', async () => {
+  const clock = { minutes: 5, time: 0 }, f = await nativeIdleFixture(clock);
+  try {
+    assert(all(f.render()).some(node => node.type === 'NativePortfolio'));
+    clock.time = 10000; f.emit('change', 'background'); f.render();
+    clock.time = 310000; f.emit('change', 'active'); await lifecycleTick();
+    const returned = f.render();
+    assert.equal(f.publicViewLock.getSnapshot().phase, 'locked');
+    assert(!all(returned).some(node => node.type === 'NativePortfolio'));
+    assert(button(returned, 'Unlock wallet'));
+  } finally { f.dispose(); }
+});
+
+test('repeated short native returns preserve the original last-activity deadline', async () => {
+  const clock = { minutes: 5, time: 0 }, f = await nativeIdleFixture(clock);
+  try {
+    for (const [background, foreground] of [[120000, 121000], [240000, 241000]] as const) {
+      clock.time = background; f.emit('change', 'background'); f.render();
+      clock.time = foreground; f.emit('change', 'active'); await lifecycleTick();
+      assert(all(f.render()).some(node => node.type === 'NativePortfolio'));
+      assert.equal(f.publicViewLock.getSnapshot().phase, 'unlocked');
+    }
+    clock.time = 299000; f.emit('change', 'background'); f.render();
+    clock.time = 301000; f.emit('change', 'active'); await lifecycleTick();
+    assert.equal(f.publicViewLock.getSnapshot().phase, 'locked');
+    assert(button(f.render(), 'Unlock wallet'));
+  } finally { f.dispose(); }
+});
+
+test('disabled native auto-lock still resumes the public view after a long background interval', async () => {
+  const clock = { minutes: 0, time: 0 }, f = await nativeIdleFixture(clock);
+  try {
+    clock.time = 10000; f.emit('change', 'background'); f.render();
+    clock.time = 86400000; f.emit('change', 'active'); await lifecycleTick();
+    assert.equal(f.publicViewLock.getSnapshot().phase, 'unlocked');
+    assert(all(f.render()).some(node => node.type === 'NativePortfolio'));
+  } finally { f.dispose(); }
+});
 
 test('backup completion waits for verification and durable save, then clears displayed words', async () => {
   for (const action of ['done', 'back'] as const) {

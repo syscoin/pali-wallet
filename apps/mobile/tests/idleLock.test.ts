@@ -94,3 +94,40 @@ test('locked-view input reset permits a fresh press but never revives a captured
   assert.equal(runtime.custodyIdle.check(owner), false, 'input reset cannot rearm a still-owned expired timer');
   runtime.custodyIdle.stop(); runtime.watchIdle.stop();
 });
+
+test('paused idle ownership retains its original deadline across repeated returns', () => {
+  const c = clock(), idle = timedIdle(c), owner = {};
+  let locks = 0;
+  idle.begin(owner, () => { locks++; idle.stop(owner); });
+  c.add(120000);
+  let resume = idle.pause(owner); assert(resume);
+  c.add(60000); assert(resume());
+  idle.begin(owner, () => assert.fail('automatic reopen must not replace the idle owner'));
+  c.add(60000); resume = idle.pause(owner); assert(resume);
+  c.add(60000); assert.equal(resume(), false);
+  assert.equal(locks, 1); assert.equal(idle.check(owner), false);
+});
+
+test('pause rejects captured input and cannot restore over a successor or a permanent stop', () => {
+  const c = clock(), idle = timedIdle(c), owner = {};
+  idle.begin(owner, () => idle.stop(owner));
+  const input = idle.captureInteraction(), resume = idle.pause(owner); assert(resume);
+  assert.equal(input(), false);
+  // A locked-screen gesture is allowed but never resets the paused deadline.
+  assert.equal(idle.userActivity(), true);
+  c.add(300000); assert.equal(resume(), false); assert.equal(resume(), false);
+  idle.begin(owner, () => idle.stop(owner)); const stopped = idle.pause(owner); assert(stopped);
+  idle.stop(); assert.equal(stopped(), false);
+  idle.begin(owner, () => idle.stop(owner)); const superseded = idle.pause(owner); assert(superseded);
+  const next = {}; idle.begin(next, () => idle.stop(next));
+  assert.equal(superseded(), false); assert.equal(idle.check(next), true); idle.stop();
+});
+
+test('paused Off remains usable but clock rollback still expires it', () => {
+  const c = clock(), idle = new IdleLock(c.now, c.schedule, c.cancel), owner = {};
+  let locks = 0; idle.setPolicy(0); idle.begin(owner, () => { locks++; idle.stop(owner); });
+  c.add(100); let resume = idle.pause(owner); assert(resume);
+  c.add(1000000); assert(resume()); assert.equal(locks, 0);
+  resume = idle.pause(owner); assert(resume); c.add(-1);
+  assert.equal(resume(), false); assert.equal(locks, 1);
+});
