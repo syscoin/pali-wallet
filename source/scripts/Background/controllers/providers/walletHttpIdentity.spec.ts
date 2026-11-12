@@ -392,6 +392,7 @@ test.each(['MV2', 'MV3'])(
     const templates = structuredClone(
       jest.requireActual('../../../../config/consts.js')
     );
+    const packageJson = jest.requireActual('../../../../../package.json');
     let generated: any;
     runInNewContext(source, {
       process: { env: { MANIFEST_TYPE: kind, NODE_ENV: 'production' } },
@@ -408,12 +409,18 @@ test.each(['MV2', 'MV3'])(
               generated = JSON.parse(value);
             },
           };
-        if (name === '../../package.json') return { version: '4.0.121' };
+        if (name === '../../package.json') return packageJson;
         if (name === './consts.js') return templates;
+        if (name === './extensionBuildVersion.cjs')
+          return jest.requireActual(
+            '../../../../config/extensionBuildVersion.cjs'
+          );
         throw new Error('Unexpected manifest dependency');
       },
     });
     expect(generated.manifest_version).toBe(kind === 'MV2' ? 2 : 3);
+    expect(generated.version).toBe(packageJson.version);
+    expect(generated.version_name).toBeUndefined();
     expect(generated.permissions).toContain(
       'declarativeNetRequestWithHostAccess'
     );

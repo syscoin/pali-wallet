@@ -58,12 +58,13 @@ for (const platform of ['ios', 'android']) test(`${platform} reserves once and c
   assert.deepEqual(f.reservations, [{ cwd: f.root, purpose: 'qa', channel: 'mobile' }]);
   assert.deepEqual(f.events, ['reserve', 'assert', 'assets', 'assert', 'prebuild', 'assert', `run:${platform}`]);
   assert.deepEqual(f.executions.map(call => call.args), [
-    ['prebuild', '--platform', platform, '--no-install'], [`run:${platform}`, '--device', 'Fixture Device'],
+    ['prebuild', '--platform', platform, '--no-install', '--no-clean'], [`run:${platform}`, '--device', 'Fixture Device'],
   ]);
   assert.equal(f.executions[0]!.env, f.executions[1]!.env);
   assert.equal(f.executions[0]!.env.PALI_MOBILE_BUILD_NUMBER, '47');
   assert.equal(f.executions[0]!.env.EXPO_NO_TELEMETRY, '1');
   assert(f.executions.every(call => !call.args.includes('--clean')));
+  assert(f.executions[0]!.args.includes('--no-clean'));
   assert(f.assertions.every(call => call.cwd === f.root && call.receipt === result));
   assert.deepEqual(f.persisted(), { ...result, marketingVersion: '5.0.0', platform, preparedOnly: false });
   assert.equal(existsSync(join(f.root, '.pali-build', 'inflight')), false);
@@ -77,7 +78,7 @@ for (const platform of ['all', 'ios', 'android']) test(`${platform} store prepar
   assert.equal(result.purpose, 'store');
   assert.deepEqual(f.reservations, [{ cwd: f.root, purpose: 'store', channel: 'mobile' }]);
   assert.deepEqual(f.events, ['reserve', 'assert', 'assets', 'assert', 'prebuild', 'assert']);
-  assert.deepEqual(f.executions.map(call => call.args), [['prebuild', '--platform', platform, '--no-install']]);
+  assert.deepEqual(f.executions.map(call => call.args), [['prebuild', '--platform', platform, '--no-install', '--no-clean']]);
   assert.equal(f.persisted().marketingVersion, '5.0.0');
   assert.equal(f.persisted().preparedOnly, true);
   assert.equal(existsSync(join(f.root, '.pali-build', 'inflight')), false);
