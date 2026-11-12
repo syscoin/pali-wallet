@@ -1815,7 +1815,8 @@ for (const success of [true, false]) test(`Smart Activity survives reopen and di
     assert.equal(row.recipient, '0x2222222222222222222222222222222222222222');
     assert.equal(row.smartAccount?.payer?.toLowerCase(), payer.toLowerCase());
     assert.equal(row.inspectionOnly, true);
-    assert.equal(row.speedUpEligible, undefined);
+    assert.equal(row.speedUpEligible, true);
+    assert.equal(row.reviewNavigation?.speedUp, true);
     await f.change({ kind: 'select', id: 'hd:60:0' });
     const payerBefore = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     await f.change({ kind: 'select', id: 'smart:60:0' });
