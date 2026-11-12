@@ -687,6 +687,7 @@ test('NativeTransfers creates per-network RPCs with the injected native transpor
   const listeners = new Set<(state: CustodySnapshot) => void>();
   const calls: string[] = [];
   const runtime = {
+    releaseReplacement() {},
     async journal() {
       return {
         async load() {
