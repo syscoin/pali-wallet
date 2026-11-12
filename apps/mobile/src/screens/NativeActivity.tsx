@@ -609,15 +609,9 @@ function NativeActivityContent({
             />;
           }}
           ListEmptyComponent={
-            savedPending ? savedPending.status === 'ready' ? <Notice title={t('mobile.activityViews.nativeActivity.noSavedPendingTransfers')} /> : undefined : snapshot.status !== 'loading' ? (
-              snapshot.status === 'unavailable' || snapshot.error ? <Notice
-                title={
-                  snapshot.status === 'unavailable'
-                    ? t('mobile.activity.unavailableTitle')
-                    : snapshot.error
-                    ? t('mobile.activityViews.nativeActivity.activityCouldNotBeLoaded')
-                    : t('mobile.activityViews.nativeActivity.noActivityInTheLoadedHistory')
-                }
+            savedPending ? savedPending.status === 'ready' ? <Notice title={t('mobile.activityViews.nativeActivity.noSavedPendingTransfers')} /> : undefined : snapshot.status !== 'loading' && !snapshot.error ? (
+              snapshot.status === 'unavailable' ? <Notice
+                title={t('mobile.activity.unavailableTitle')}
                 body={t('mobile.activityViews.nativeActivity.refreshToTryAgain')}
               /> : <View style={s.empty}><Text style={s.emptyTitle}>{t('mobile.activityViews.nativeActivity.noActivityToShow')}</Text><Text style={s.caption}>{t('mobile.activityViews.nativeActivity.refreshOrChooseAnotherFilter')}</Text></View>
             ) : undefined
@@ -630,8 +624,8 @@ function NativeActivityContent({
               ) : snapshot.hasMore && (snapshot.loadingMore ? <View style={s.loadingMore}><ActivityIndicator color={colors.blue} /><Text style={s.caption}>{t('mobile.activityViews.nativeActivity.loadingOlderActivity')}</Text></View> : (
                 <Button
                   title={
-                    snapshot.loadingMore
-                      ? t('mobile.activityViews.nativeActivity.loadingOlderActivity')
+                    snapshot.error || snapshot.status === 'unavailable'
+                      ? t('mobile.activityViews.allNetworksActivity.retryActivity')
                       : t('mobile.activityViews.nativeActivity.loadOlderActivity')
                   }
                   variant="secondary"

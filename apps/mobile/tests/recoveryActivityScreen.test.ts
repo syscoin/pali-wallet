@@ -188,6 +188,7 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
   return {
     privacy(value: boolean) { privacyHidden = value; },
     rows(value: unknown[]) { snapshot = { ...snapshot, rows: value }; },
+    state(value: object) { snapshot = { ...snapshot, ...value }; },
     render() {
       const parent = renderOne(module.exports.NativeActivityScreen, {
         controller,
@@ -490,5 +491,23 @@ for (const scenario of [
       if (button) { button.props.onPress(); await settle(); }
     }
     assert.deepEqual(navigation, scenario.allowed ? [['speed-up', hash], ['cancel', hash]] : []);
+  } finally { f.dispose(); }
+});
+
+test('failed first Activity page has one error and an accurately named retry', () => {
+  const f = fixture();
+  try {
+    f.state({ error: 'One activity feed is unavailable.', hasMore: true });
+    let list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    assert.equal(all(list.props.ListHeaderComponent).filter(node => node.type === 'Notice').length, 1);
+    assert.equal(all(list.props.ListEmptyComponent).filter(node => node.type === 'Notice').length, 0);
+    assert(all(list.props.ListFooterComponent).some(node => node.type === 'Button' && node.props.title === 'Retry activity'));
+    f.state({ error: null, hasMore: false });
+    list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    assert.equal(all(list.props.ListFooterComponent).filter(node => node.type === 'Button').length, 0);
+    assert(all(list.props.ListEmptyComponent).some(node => node.type === 'Text' && node.children.includes('No activity to show')));
+    f.state({ hasMore: true });
+    list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    assert(all(list.props.ListFooterComponent).some(node => node.type === 'Button' && node.props.title === 'Load older activity'));
   } finally { f.dispose(); }
 });
