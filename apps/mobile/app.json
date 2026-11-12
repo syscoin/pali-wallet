@@ -34,6 +34,7 @@
       "name": "Pali Mobile Preview"
     },
     "plugins": [
+      "./plugins/withNativeBuildNumber.cjs",
       [
         "expo-secure-store",
         {

@@ -92,7 +92,44 @@ npm run ios       # macOS, full Xcode and iOS build dependencies
 npm run android   # Android SDK, Java and an emulator or device
 ```
 
-The `preios` and `preandroid` hooks download the pinned public proving key and run the shared proof-asset packager before the native build. Install the root Yarn dependencies as well as the mobile npm dependencies. The packager verifies asset hashes and removes its temporary key directory. A failed download or pin check stops the build. No proving key is downloaded during wallet operation.
+The native build wrapper downloads the pinned public proving key and runs the shared proof-asset packager before the native build. Install the root Yarn dependencies as well as the mobile npm dependencies. The packager verifies asset hashes and removes its temporary key directory. A failed download or pin check stops the build. No proving key is downloaded during wallet operation.
+
+### Native build numbers
+
+Keep the marketing version at **5.0.0** until its release. `npm run ios` and
+`npm run android` automatically reserve a new build number, prepare the native
+project without cleaning it, and build with that number. Both platform fields
+use the same reserved value: iOS `buildNumber` and Android `versionCode`.
+The public receipt is saved in `.pali-build/build-<number>.json`.
+
+The counter lives in the dedicated `pali-mobile-build-counter` branch of the
+canonical repository. Existing Git write access is required. Concurrent
+machines reserve numbers through atomic fast-forward pushes; there is no
+clock-based or local fallback. Failed builds leave gaps, and the counter branch
+must not be reset or deleted. Normal QA and store candidates share the counter
+because they use the same application ID. Isolated qualification applications
+do not reserve numbers.
+
+To prepare both native projects for a store archive without launching either:
+
+```sh
+npm run native:prepare -- --store
+```
+
+Store preparation requires a clean, committed checkout. CI release jobs use the
+same entry point with write access to the counter branch; pull-request tests do
+not. The command does not upload or publish anything. Direct Xcode/Gradle
+rebuilds and re-signing reuse the prepared number; run preparation again for a
+new candidate. Upload candidates in increasing build-number order and promote
+the tested artifact. The app version is changed separately after a release;
+the build counter continues across versions.
+
+Only one normal native build can run in a checkout at a time. A crashed wrapper
+can leave `.pali-build/inflight/owner.json`; confirm its process has stopped
+before removing that lock. Preparation alone does not verify an archive: keep
+its checkout isolated until archiving and compare the packaged version/build
+with the receipt before uploading. Prebuilt-binary, alternate-project and
+rebundle arguments are deliberately not accepted by the numbered build wrapper.
 
 Native onboarding offers wallet creation, phrase restoration and watch-only accounts directly. Custody requires the native runtime checks. The package scripts disable Expo CLI telemetry. Over-the-air application updates are disabled in app configuration.
 
