@@ -362,17 +362,19 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   const source = (name: string) => readFileSync(new NodeURL(`../${name}`, import.meta.url), 'utf8');
   const idle = createIdleComponentFixture(render.api, native);
   await idle.ready;
+  const safeArea = { SafeAreaView: 'SafeAreaView', SafeAreaProvider: 'SafeAreaProvider',
+    useSafeAreaInsets: () => ({ top: 28, right: 0, bottom: 24, left: 0 }) };
   const onboarding = evaluate(source('src/screens/Onboarding.tsx'), {
     '../platform/localization': nativeTranslationFixture,
     './IdleActivityBoundary': idle.components,
-    react: render.api, 'react-native': native, '../ui': ui,
+    react: render.api, 'react-native': native, 'react-native-safe-area-context': safeArea, '../ui': ui,
     '../core/watchOnlyAuthority': core, '../core/utxoNetworks': { UTXO_NETWORKS, getUtxoNetwork, isCustomUtxoNetworkId }, './WatchNetworks': {}, '../core/utxoIdentifier': { parseUtxoPublicIdentifier },
   });
   const AddWatch = onboarding.AddWatchAccount as Component;
   const accounts = evaluate(source('src/screens/WalletAccounts.tsx'), {
     '../platform/localization': nativeTranslationFixture,
     './IdleActivityBoundary': idle.components,
-    react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
+    react: render.api, 'react-native': native, 'react-native-safe-area-context': safeArea, '../ui': ui,
     '../core/accountDirectory': { projectAccounts: () => [], accountIdentity: () => '' }, './Onboarding': onboarding, '../core/networks': core,
   });
   // Only expose the real internal component to this VM; production exports stay unchanged.
@@ -381,7 +383,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
     './src/platform/security': idle.security, './src/screens/IdleActivityBoundary': idle.components,
     './src/platform/localization': nativeTranslationFixture,
     './src/platform/credential': { isNativeCredentialPromptActive: () => false },
-    react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', SafeAreaProvider: 'SafeAreaProvider' },
+    react: render.api, 'react-native': native, 'react-native-safe-area-context': safeArea,
     'expo-status-bar': { StatusBar: 'StatusBar' }, 'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', './src/ui': ui,
     './src/screens/Onboarding': onboarding, './src/screens/NativeWallet': {}, './src/screens/WalletAccounts': accounts,
     './src/screens/WatchSession': {}, './src/core/watchAccounts': { WatchAccounts }, './src/core/accountDirectory': {},
@@ -409,6 +411,14 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   let saves = 0;
   const childProps = { ...nested.props, onAdd: () => { saves++; return new Promise<void>((_resolve, reject) => { finish = reject; }); } };
   let childTree = render.render(child, AddWatch, childProps);
+  const keyboardView = get(childTree, element => element.type === 'KeyboardAvoidingView');
+  assert.equal(keyboardView.props.behavior, 'height');
+  assert.equal(keyboardView.props.keyboardVerticalOffset, 28, `${path} entry must account for its safe-area parent`);
+  if (path === 'accounts') {
+    const outerKeyboardView = get(parentTree, element => element.type === 'KeyboardAvoidingView');
+    assert.equal(outerKeyboardView.props.behavior, undefined, 'Only the AddWatch child handles the keyboard');
+    assert.equal(outerKeyboardView.props.keyboardVerticalOffset ?? 0, 0);
+  }
   for (const owner of order === 'parent-first' ? [parent, child] : [child, parent]) {
     registrationOwner = owner === parent ? 'parent' : 'child'; render.flush(owner);
   }

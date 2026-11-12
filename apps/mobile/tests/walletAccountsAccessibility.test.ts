@@ -68,6 +68,7 @@ for (const platform of ['android', 'ios', 'web']) test(`watch rename reserves ke
     initial.find(node => node.type === 'IconButton' && node.props.icon === 'edit')!.props.onPress();
     const form = render();
     assert.equal(behavior(form), platform === 'ios' ? 'padding' : platform === 'android' ? 'height' : undefined);
+    assert.equal(form.find(node => node.type === 'KeyboardAvoidingView')!.props.keyboardVerticalOffset ?? 0, 0, 'Rename already includes its SafeAreaView position');
     const input = form.find(node => node.type === 'Input')!;
     assert.equal(input.props.value, 'Savings');
     assert.equal(input.props.editable, true);

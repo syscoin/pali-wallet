@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, colors, Icon, PaliMark, WelcomeBackdrop } from '../ui';
 import { useNativeTranslation } from '../platform/localization';
@@ -148,6 +149,7 @@ export function Welcome({
 
 export function AddWatchAccount({ onAdd, onCancel, availableNetworks, utxoNetworks = UTXO_NETWORKS, networkSettings, onNetworksChanged }: AddWatchAccountProps) {
   const { t } = useNativeTranslation();
+  const insets = useSafeAreaInsets();
   const choices = watchChoices(utxoNetworks, t);
   const available = availableNetworks ?? choices.map(({ id }) => id);
   const [managingNetworks, setManagingNetworks] = useState(false);
@@ -201,7 +203,9 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks, utxoNetwor
   };
   if (managingNetworks && networkSettings && onNetworksChanged)
     return <WatchNetworks controller={networkSettings} onChanged={onNetworksChanged} onBack={closeNetworks} />;
-  return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}>
+  // This nested view starts at zero; Android's keyboard coordinates include its parent's safe area.
+  return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+    keyboardVerticalOffset={Platform.OS === 'android' ? insets.top : 0}>
     <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <View style={styles.formNavigation}>
         <IdlePressable accessibilityRole="button" accessibilityLabel={t('buttons.back')} disabled={submitting} onPress={back} hitSlop={8} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}><Icon name="arrow-left" size={22} color={colors.text} /></IdlePressable>

@@ -5,13 +5,14 @@ import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { getUtxoNetwork, isCustomUtxoNetworkId, UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 
-for (const platform of ['android', 'ios', 'web']) test(`add-watch keyboard space preserves separate review and save (${platform})`, async () => {
+for (const { platform, top } of [{ platform: 'android', top: 0 }, { platform: 'android', top: 28 }, { platform: 'ios', top: 28 }, { platform: 'web', top: 28 }]) test(`add-watch keyboard space preserves separate review and save (${platform}, top ${top})`, async () => {
   const saved: unknown[] = [];
   const f = screenFixture(new URL('../src/screens/Onboarding.tsx', import.meta.url), 'AddWatchAccount', {
     'react-native': { View: 'View', Text: 'Text', ScrollView: 'ScrollView', TextInput: 'TextInput',
       KeyboardAvoidingView: 'KeyboardAvoidingView', ActivityIndicator: 'ActivityIndicator', Platform: { OS: platform },
       StyleSheet: { create: (value: unknown) => value }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
       BackHandler: { addEventListener: () => ({ remove() {} }) } },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top, right: 0, bottom: 24, left: 0 }) },
     '../ui': { Button: 'Button', Icon: 'Icon', colors: {} },
     './IdleActivityBoundary': { IdlePressable: 'Pressable', IdleTextInput: 'Input' },
     '../core/watchOnlyAuthority': { createWatchAccount }, '../core/utxoIdentifier': { parseUtxoPublicIdentifier },
@@ -24,6 +25,7 @@ for (const platform of ['android', 'ios', 'web']) test(`add-watch keyboard space
     const form = render();
     assert.equal(form.find(node => node.type === 'KeyboardAvoidingView')!.props.behavior,
       platform === 'android' ? 'height' : platform === 'ios' ? 'padding' : undefined);
+    assert.equal(form.find(node => node.type === 'KeyboardAvoidingView')!.props.keyboardVerticalOffset, platform === 'android' ? top : 0);
     assert.equal(form.find(node => node.type === 'ScrollView')!.props.keyboardShouldPersistTaps, 'handled');
     const input = form.find(node => node.type === 'Input' && node.props.accessibilityLabel === 'Public EVM address')!;
     input.props.onChangeText('0x1111111111111111111111111111111111111111');
@@ -44,6 +46,7 @@ test('watch validation scrolls the rendered error and repeated failure without s
       KeyboardAvoidingView: 'KeyboardAvoidingView', ActivityIndicator: 'ActivityIndicator', Platform: { OS: 'android' },
       StyleSheet: { create: (value: unknown) => value }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
       BackHandler: { addEventListener: () => ({ remove() {} }) } },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 28, right: 0, bottom: 24, left: 0 }) },
     '../ui': { Button: 'Button', Icon: 'Icon', colors: {} },
     './IdleActivityBoundary': { IdlePressable: 'Pressable', IdleTextInput: 'Input' },
     '../core/watchOnlyAuthority': { createWatchAccount }, '../core/utxoIdentifier': { parseUtxoPublicIdentifier },
