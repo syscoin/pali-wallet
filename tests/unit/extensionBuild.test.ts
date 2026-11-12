@@ -27,12 +27,12 @@ afterEach(() => {
     .forEach((root) => rmSync(root, { recursive: true, force: true }));
 });
 
-function fixture() {
+function fixture(packageVersion = '5.0.0') {
   const root = mkdtempSync(join(tmpdir(), 'pali-extension-build-'));
   roots.push(root);
   writeFileSync(
     join(root, 'package.json'),
-    JSON.stringify({ version: '4.0.121' })
+    JSON.stringify({ version: packageVersion })
   );
   writeFileSync(
     join(root, 'manifest.json'),
@@ -40,7 +40,7 @@ function fixture() {
   );
   const receipt = {
     channel: 'canary',
-    series: '5.0.0',
+    series: packageVersion,
     buildNumber: 47,
     sourceRevision: 'a'.repeat(40),
     purpose: 'qa',
@@ -54,7 +54,7 @@ function fixture() {
     async (script: string, _args: string[], env: NodeJS.ProcessEnv) => {
       const version = extensionBuildVersion(
         env.NODE_ENV,
-        '4.0.121',
+        packageVersion,
         env.PALI_CANARY_BUILD_NUMBER
       );
       if (script.endsWith('generateManifest.js')) {
@@ -118,7 +118,7 @@ test('Canary reserves once and binds the manifest, ZIP, label and receipt to tha
 });
 
 test('production keeps its version and never allocates or inherits a Canary number', async () => {
-  const f = fixture();
+  const f = fixture('4.0.121');
   const previous = process.env.PALI_CANARY_BUILD_NUMBER;
   const previousStore = process.env.PALI_EXTENSION_STORE_BUILD;
   process.env.PALI_CANARY_BUILD_NUMBER = '600';
@@ -141,6 +141,31 @@ test('production keeps its version and never allocates or inherits a Canary numb
     else process.env.PALI_EXTENSION_STORE_BUILD = previousStore;
   }
 });
+
+test('an upgrade-test version selects its own series without publishing production', async () => {
+  const f = fixture('5.0.1');
+  const result = await buildExtension(['canary'], f.ports);
+  expect(f.reserve).toHaveBeenCalledWith({
+    cwd: f.root,
+    channel: 'canary',
+    series: '5.0.1',
+    purpose: 'qa',
+  });
+  expect(result.version).toBe('5.0.1.47');
+  expect(result.version_name).toBe('5.0.1 Canary (47)');
+  expect(result.artifact).toMatch(
+    /pali-wallet-canary-chrome-5\.0\.1\.47\.zip$/
+  );
+});
+
+test.each(['5.0.1-dev', '5.0', '5.0.1.2', '05.0.1', '65536.0.1'])(
+  'refuses a non-Store numeric base %s',
+  (version) => {
+    expect(() => extensionBuildVersion('canary', version, 1)).toThrow(
+      'INVALID_SERIES'
+    );
+  }
+);
 
 test('reservation failure stops before generating or building and releases the checkout lock', async () => {
   const f = fixture();

@@ -64,6 +64,8 @@ The extension and mobile source versions are `5.0.0`. `package.json` is canonica
 
 Canary numbers use a fast-forward-only Git counter at `refs/heads/pali-canary-builds/5.0.0`, separate from mobile build numbers. Concurrent builders reserve distinct numbers; failed builds consume their number. GitHub access to the canonical repository is required, and an unavailable/malformed counter fails the build instead of choosing a local or timestamp fallback. The suffix is capped at Chrome's 65,535 limit; change the three-part Canary base deliberately before exhaustion. Store builds and receipts identify the exact clean source commit, but still require normal release review and store submission.
 
+The Canary base is read directly from `package.json`, not configured separately. A `5.0.1` upgrade-test branch therefore uses `refs/heads/pali-canary-builds/5.0.1` and produces `5.0.1.N`; it does not update the production store item. Chrome compares all numeric version components, so an installed `5.0.1.N` will not automatically downgrade to `5.0.0.N`. Use an isolated test profile for such upgrade/downgrade tests.
+
 Use `build:canary:store` for Web Store uploads: it omits the local development `key` field, which the store rejects. Regular `build:canary` keeps that key so unpacked builds retain their local extension ID.
 
 After the reviewed PRs merge, run **Canary release candidate** in GitHub Actions from `master`. It checks out the exact selected master commit, reserves the next Canary number, verifies the archive against its receipt, and creates a draft GitHub prerelease with both files. It does not publish to the Web Store. This provides a Canary build without bumping the production package version or triggering a production release.

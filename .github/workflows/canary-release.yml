@@ -37,16 +37,16 @@ jobs:
           node <<'NODE'
           const fs = require('node:fs');
           const { createHash } = require('node:crypto');
-          const { CANARY_BASE_VERSION } = require('./source/config/extensionBuildVersion.cjs');
+          const { version: baseVersion } = require('./package.json');
           const { parseBuildNumber } = require('./scripts/build-number.cjs');
           const receipts = fs.readdirSync('.pali-build').filter(name => /^canary-[0-9.]+\.json$/.test(name));
           if (receipts.length !== 1) throw Error('Expected one Canary receipt.');
           const file = `.pali-build/${receipts[0]}`;
           const receipt = JSON.parse(fs.readFileSync(file, 'utf8'));
           if (receipt.status !== 'built' || receipt.purpose !== 'store' || receipt.sourceDirty ||
-              receipt.channel !== 'canary' || receipt.series !== CANARY_BASE_VERSION ||
+              receipt.channel !== 'canary' || receipt.series !== baseVersion ||
               receipt.sourceRevision !== process.env.GITHUB_SHA ||
-              receipt.version !== `${CANARY_BASE_VERSION}.${parseBuildNumber(receipt.buildNumber, 'canary')}`)
+              receipt.version !== `${baseVersion}.${parseBuildNumber(receipt.buildNumber, 'canary')}`)
             throw Error('Unexpected Canary build receipt.');
           const artifact = `build/pali-wallet-canary-chrome-${receipt.version}.zip`;
           const sha256 = createHash('sha256').update(fs.readFileSync(artifact)).digest('hex');

@@ -1,6 +1,5 @@
 import {
   admitExtensionReleaseTarget,
-  CANARY_BASE_VERSION,
   CANARY_EXTENSION_ID,
   CANARY_EXTENSION_FEED_URL,
   CANARY_EXTENSION_STORE_URL,
@@ -24,7 +23,6 @@ const info = {
 };
 
 it('keeps fixed build, feed and store identities distinct', () => {
-  expect(CANARY_BASE_VERSION).toBe('5.0.0');
   expect(STABLE_EXTENSION_ID).not.toBe(CANARY_EXTENSION_ID);
   expect(STABLE_EXTENSION_FEED_URL).not.toBe(CANARY_EXTENSION_FEED_URL);
   expect(getExtensionReleaseTarget(STABLE_EXTENSION_ID)).toEqual({

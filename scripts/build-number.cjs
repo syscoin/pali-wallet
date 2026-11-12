@@ -27,9 +27,14 @@ function counterPolicy(channel, series) {
     if (series !== undefined) throw failure('INVALID_SERIES');
     return { channel, ref: MOBILE_COUNTER_REF, initial: 1 };
   }
+  const base = parseCanarySeries(series);
+  return { channel, series: base, ref: `refs/heads/pali-canary-builds/${base}`, initial: 0 };
+}
+
+function parseCanarySeries(series) {
   if (typeof series !== 'string' || !/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(series) ||
       series.split('.').some(part => Number(part) > MAX_BUILD_NUMBERS.canary)) throw failure('INVALID_SERIES');
-  return { channel, series, ref: `refs/heads/pali-canary-builds/${series}`, initial: 0 };
+  return series;
 }
 
 function createGit(cwd) {
@@ -180,5 +185,5 @@ async function assertBuildSource(options) {
   await assertSource(options);
 }
 
-module.exports = { parseBuildNumber, reserveBuildNumber, assertBuildSource,
+module.exports = { parseBuildNumber, parseCanarySeries, reserveBuildNumber, assertBuildSource,
   _testing: Object.freeze({ reserve, assertSource, createGit, counterPolicy, MOBILE_COUNTER_REF, MAX_BUILD_NUMBERS, MAX_ATTEMPTS }) };
