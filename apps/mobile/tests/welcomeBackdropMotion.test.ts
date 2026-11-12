@@ -7,7 +7,7 @@ function fixture() {
   const preference = Promise.withResolvers<boolean>();
   const listeners = new Map<string, Set<(value: any) => void>>();
   const settings: Record<string, unknown>[] = [], values: number[] = [];
-  const loops: { running: boolean; starts: number; stops: number }[] = [];
+  const loops: { running: boolean; starts: number; stops: number; resetBeforeIteration?: boolean }[] = [];
   const observe = (event: string, callback: (value: any) => void) => {
     if (!listeners.has(event)) listeners.set(event, new Set());
     listeners.get(event)!.add(callback);
@@ -26,8 +26,8 @@ function fixture() {
       },
       timing(_value: unknown, options: Record<string, unknown>) { settings.push(options); return options; },
       sequence: (steps: unknown) => steps,
-      loop() {
-        const loop = { running: false, starts: 0, stops: 0 }; loops.push(loop);
+      loop(_animation: unknown, options: { resetBeforeIteration?: boolean } = {}) {
+        const loop = { running: false, starts: 0, stops: 0, resetBeforeIteration: options.resetBeforeIteration }; loops.push(loop);
         return { start() { loop.running = true; loop.starts++; }, stop() { loop.running = false; loop.stops++; } };
       },
     },
@@ -43,7 +43,9 @@ test('welcome motion is native-driven, decorative and paused for background, blu
   const f = fixture(); f.render();
   assert.equal(f.active(), 0);
   f.preference.resolve(false); await tick(); assert.equal(f.active(), 1);
-  assert(f.settings.every(value => value.useNativeDriver === true && value.isInteraction === false && value.duration === 8000));
+  assert(f.settings.every(value => value.useNativeDriver === true && value.isInteraction === false && value.duration === 6000));
+  const loop = f.loops[0]; assert(loop);
+  assert.equal(loop.resetBeforeIteration, false, 'the larger drift must not jump back to its center between cycles');
   f.emit('change', 'active'); assert.equal(f.loops.length, 1);
   f.emit('change', 'background'); assert.equal(f.active(), 0); assert.equal(f.values.at(-1), 0.5);
   f.emit('focus'); assert.equal(f.active(), 0);

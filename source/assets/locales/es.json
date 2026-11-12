@@ -4076,6 +4076,18 @@
       "unavailable": "Las comisiones de red no están disponibles. Puedes mantener Automática e intentarlo de nuevo.",
       "apply": "Aplicar comisión",
       "satPerVbyte": "Tarifa (sat/vB)"
+    },
+    "storageRecovery": {
+      "title": "No se encontraron los datos de la cartera",
+      "body": "Quedan datos de configuración local, pero faltan los de la cartera. Restablece la configuración para crear o restaurar una cartera.",
+      "confirmTitle": "¿Restablecer la configuración local?",
+      "confirmBody": "Se restablecerá la configuración local de Pali. Para restaurar la cartera necesitarás tu frase de recuperación y las copias de seguridad adicionales.",
+      "action": "Restablecer configuración local",
+      "working": "Restableciendo configuración…",
+      "failed": "No se pudo restablecer la configuración. Cierra Pali y vuelve a abrirlo.",
+      "complete": "Configuración local restablecida",
+      "restart": "Pali se volverá a abrir para finalizar. Si no lo hace, cierra la aplicación y vuelve a abrirla.",
+      "reopenRequired": "Vuelve a abrir Pali para comprobar la configuración"
     }
   }
 }

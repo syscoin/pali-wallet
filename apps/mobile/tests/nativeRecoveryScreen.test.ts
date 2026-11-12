@@ -73,6 +73,7 @@ const walletScreenPorts = {
   './BackupIntroduction': { BackupIntroduction: 'BackupIntroduction' },
   './WalletUpdatePanel': { LockedWalletUpdate: () => null },
   './NativeImportWallet': { NativeImportWallet: 'NativeImportWallet' },
+  './OrphanedStorageRecovery': { OrphanedStorageRecovery: 'OrphanedStorageRecovery' },
   './BackupVerification': { BackupVerification: 'BackupVerification' },
 };
 function evaluate(source: string, dependencies: Record<string, unknown>, flow = false) {

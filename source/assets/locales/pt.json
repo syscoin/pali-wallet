@@ -4076,6 +4076,18 @@
       "unavailable": "As taxas de rede estão indisponíveis. Pode manter Automática e tentar novamente.",
       "apply": "Aplicar taxa",
       "satPerVbyte": "Taxa (sat/vB)"
+    },
+    "storageRecovery": {
+      "title": "Dados da carteira não encontrados",
+      "body": "Ainda existem dados de configuração local, mas os dados da carteira estão ausentes. Redefina a configuração para criar ou restaurar uma carteira.",
+      "confirmTitle": "Redefinir a configuração local?",
+      "confirmBody": "Isso redefine a configuração local do Pali. Para restaurar sua carteira, você precisará da frase de recuperação e de outros backups.",
+      "action": "Redefinir configuração local",
+      "working": "Redefinindo configuração…",
+      "failed": "Não foi possível redefinir a configuração. Feche e abra o Pali novamente.",
+      "complete": "Configuração local redefinida",
+      "restart": "O Pali será reaberto para concluir. Se isso não acontecer, feche e abra o aplicativo novamente.",
+      "reopenRequired": "Reabra o Pali para verificar a configuração"
     }
   }
 }

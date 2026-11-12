@@ -220,3 +220,86 @@ export async function openWalletStorage(
       : new WalletStorageError('STORAGE_UNAVAILABLE');
   }
 }
+
+type OrphanStoragePorts = Readonly<{
+  policy: Pick<StoragePolicy, 'acquire' | 'inspect' | 'release'>;
+  keyStore: Pick<NativeStoragePorts['keyStore'], 'get'>;
+}>;
+
+/** Only a validated ready key without any database is eligible for explicit reset. */
+export async function canResetOrphanedWalletStorage(ports: OrphanStoragePorts): Promise<boolean> {
+  let lease: StorageLease | undefined;
+  let eligible = false;
+  try {
+    lease = await ports.policy.acquire();
+    const raw = await ports.keyStore.get();
+    if (raw !== null && decodeKey(raw).status === 'ready' && lease.databaseExists === false)
+      eligible = (await ports.policy.inspect(lease.token)).databaseExists === false;
+  } catch {
+    eligible = false;
+  } finally {
+    if (lease) {
+      try { await ports.policy.release(lease.token); }
+      catch { eligible = false; }
+    }
+  }
+  return eligible;
+}
+
+/** Explicit device-local recovery only; ordinary opening never deletes or replaces an orphan key. */
+export async function resetOrphanedWalletStorage(
+  ports: OrphanStoragePorts & Readonly<{ keyStore: OrphanStoragePorts['keyStore'] & { remove(): Promise<void> } }>,
+  options: Readonly<{
+    signal: AbortSignal;
+    assertCurrent(): void;
+    authorize(signal: AbortSignal, assertCurrent: () => void): Promise<void>;
+  }>
+): Promise<void> {
+  const changed = () => new WalletStorageError('STORAGE_CHANGED');
+  const signal = options?.signal, assertCurrent = options?.assertCurrent, authorize = options?.authorize;
+  if (!signal || typeof assertCurrent !== 'function' ||
+      typeof authorize !== 'function' || typeof ports.keyStore.remove !== 'function') throw changed();
+  const check = () => {
+    if (signal.aborted) throw changed();
+    const result: unknown = assertCurrent();
+    if (result !== undefined) {
+      void Promise.resolve(result).catch(() => undefined);
+      throw changed();
+    }
+    if (signal.aborted) throw changed();
+  };
+  let lease: StorageLease | undefined;
+  let deletionStarted = false;
+  try {
+    check();
+    lease = await ports.policy.acquire(); check();
+    const raw = await ports.keyStore.get(); check();
+    if (raw === null || decodeKey(raw).status !== 'ready' || lease.databaseExists !== false) throw changed();
+    if ((await ports.policy.inspect(lease.token)).databaseExists !== false) throw changed();
+    check();
+    // The host authorizer drains its cancelled native request before settling.
+    // Keep the storage lease until that work finishes, even after cancellation.
+    const authorized: unknown = await authorize(signal, check);
+    if (authorized !== undefined) throw changed();
+    check();
+    if (await ports.keyStore.get() !== raw) throw changed();
+    check();
+    if ((await ports.policy.inspect(lease.token)).databaseExists !== false) throw changed();
+    check();
+    if (await ports.keyStore.get() !== raw) throw changed();
+    check();
+    deletionStarted = true;
+    await ports.keyStore.remove();
+    if (await ports.keyStore.get() !== null) throw changed();
+    check();
+  } catch (error) {
+    // A dispatched delete cannot be rolled back or called successful on a lost acknowledgement.
+    if (deletionStarted) throw new WalletStorageError('STORAGE_REOPEN_REQUIRED');
+    throw error;
+  } finally {
+    if (lease) {
+      try { await ports.policy.release(lease.token); }
+      catch { throw new WalletStorageError('STORAGE_REOPEN_REQUIRED'); }
+    }
+  }
+}

@@ -4076,6 +4076,18 @@
       "unavailable": "暂时无法获取网络手续费。您可以保留自动设置并重试。",
       "apply": "应用手续费",
       "satPerVbyte": "费率（sat/vB）"
+    },
+    "storageRecovery": {
+      "title": "未找到钱包数据",
+      "body": "部分本地设置信息仍然存在，但钱包数据已缺失。请重置设置以创建或恢复钱包。",
+      "confirmTitle": "重置本地设置？",
+      "confirmBody": "这将重置 Pali 的本地设置。恢复钱包需要助记词和其他单独保存的备份。",
+      "action": "重置本地设置",
+      "working": "正在重置设置…",
+      "failed": "无法重置设置。请关闭 Pali 后重新打开。",
+      "complete": "本地设置已重置",
+      "restart": "Pali 将重新打开以完成操作。如果没有自动打开，请关闭应用后重新打开。",
+      "reopenRequired": "请重新打开 Pali 以检查本地设置"
     }
   }
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prefer the hosted runner's Azure mirror; retain the fixed outage fallback.
+"""Prefer the hosted runner's cloud mirror; retain the fixed outage fallback.
 
 https://status.canonical.com/rss
 https://github.com/actions/runner-images/issues/15296
@@ -9,6 +9,7 @@ its Release files with the runner's existing Ubuntu keys and source settings.
 import os
 from pathlib import Path
 import platform
+import re
 import stat
 import subprocess
 import tempfile
@@ -32,6 +33,15 @@ PREFERRED = (
 )
 
 
+# Canonical cloud-init uses <region>.ec2.archive.ubuntu.com for EC2 instances:
+# https://github.com/canonical/cloud-init/blob/main/doc/examples/cloud-config-apt.txt
+# Match only the complete first entry; the remaining entries are exact below.
+REGIONAL_FIRST = re.compile(
+    rb"http://[a-z]{2}-(?:gov-)?(?:central|east|north|northeast|northwest|south|southeast|southwest|west)-[1-9]"
+    rb"\.ec2\.archive\.ubuntu\.com/ubuntu/\tpriority:1\n"
+)
+
+
 def configure(root, architecture):
     if architecture != "amd64":
         raise ValueError("The Ubuntu archive mirror requires amd64")
@@ -47,7 +57,15 @@ def configure(root, architecture):
         contents = source.read(4096)
         if info.st_nlink != 1:
             raise ValueError(f"Unsafe apt mirror-list link count: {info.st_nlink}")
-        if contents not in (ORIGINAL, KERNEL_FIRST, PREFERRED):
+        preferred = PREFERRED
+        accepted = (ORIGINAL, KERNEL_FIRST, PREFERRED)
+        regional = REGIONAL_FIRST.match(contents)
+        if regional:
+            first = regional.group()
+            regional_original = first + ORIGINAL.split(b"\n", 1)[1]
+            preferred = first + PREFERRED.split(b"\n", 1)[1]
+            accepted = (regional_original, preferred)
+        if contents not in accepted:
             # This is public runner configuration, but emit only bounded hex:
             # unexpected bytes must never become terminal or workflow commands.
             prefix = contents[:512]
@@ -56,7 +74,7 @@ def configure(root, architecture):
                 f"size={info.st_size} read={len(contents)} "
                 f"prefix_bytes={len(prefix)} prefix_hex={prefix.hex()}"
             )
-        if contents == PREFERRED:
+        if contents == preferred:
             return False
     temporary = None
     try:
@@ -64,7 +82,7 @@ def configure(root, architecture):
             temporary = Path(output.name)
             os.fchmod(output.fileno(), stat.S_IMODE(info.st_mode))
             os.fchown(output.fileno(), info.st_uid, info.st_gid)
-            output.write(PREFERRED)
+            output.write(preferred)
             output.flush()
             os.fsync(output.fileno())
         current = target.lstat()
