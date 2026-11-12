@@ -33,6 +33,7 @@ function fixture() {
   };
   const operationAuthorization = createTestOperationAuthorizer((credential, check): Promise<void> => runtime.authenticateOperation(credential, check), unsignedTransferBytes);
   const runtime = {
+    releaseReplacement() {},
     isAuthenticationRefusal: () => false,
     authorizeOperation: operationAuthorization.authorizeOperation,
     releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
