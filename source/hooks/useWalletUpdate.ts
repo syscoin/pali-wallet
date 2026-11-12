@@ -2,8 +2,14 @@ import { useEffect, useSyncExternalStore } from 'react';
 
 import packageJson from '../../package.json';
 import {
+  admitExtensionReleaseTarget,
+  getExtensionReleaseTarget,
+  type ExtensionReleaseChannel,
+  type ExtensionReleaseTarget,
+} from '../shared/extensionReleaseChannel';
+import {
   isWalletReleaseIdentity,
-  readWalletReleaseFeed,
+  readExtensionWalletReleaseFeed,
   type WalletReleaseFeed,
 } from '../shared/walletRelease';
 import {
@@ -12,13 +18,14 @@ import {
   WALLET_RELEASE_MANUAL_INTERVAL_MS,
   type WalletReleaseSnapshot,
 } from '../shared/walletReleaseMonitor';
-import { PALI_STORES } from '../shared/walletStores';
-
-export const CHROME_WALLET_STORE_URL = PALI_STORES.chrome;
 
 type ChromeUpdateRuntime = Pick<
   typeof chrome.runtime,
-  'getManifest' | 'requestUpdateCheck' | 'onUpdateAvailable' | 'lastError'
+  | 'id'
+  | 'getManifest'
+  | 'requestUpdateCheck'
+  | 'onUpdateAvailable'
+  | 'lastError'
 >;
 type BrowserUpdateStatus =
   | 'idle'
@@ -29,8 +36,11 @@ type BrowserUpdateStatus =
   | 'unavailable';
 export type WalletUpdateSnapshot = WalletReleaseSnapshot & {
   browserStatus: BrowserUpdateStatus;
+  channel: ExtensionReleaseChannel | null;
+  installation: 'checking' | 'store' | 'unavailable' | 'unverified';
   installedVersion: string;
   pendingVersion: string | null;
+  storeUrl: string | null;
 };
 const browserVisibility = {
   isVisible: () =>
@@ -46,16 +56,20 @@ const browserVisibility = {
   },
 };
 
-async function fetchReleaseFeed(signal: AbortSignal) {
+async function fetchReleaseFeed(
+  signal: AbortSignal,
+  channel: ExtensionReleaseChannel
+) {
   const request = new AbortController();
   const abort = () => request.abort();
   signal.addEventListener('abort', abort, { once: true });
   if (signal.aborted) abort();
   const timer = setTimeout(abort, 15_000);
   try {
-    return await readWalletReleaseFeed(
+    return await readExtensionWalletReleaseFeed(
       (url, init) => fetch(url, init),
-      request.signal
+      request.signal,
+      channel
     );
   } finally {
     clearTimeout(timer);
@@ -66,26 +80,39 @@ async function fetchReleaseFeed(signal: AbortSignal) {
 /** Public release metadata and browser update status; never reloads the wallet. */
 export function createWalletUpdateStore({
   runtime,
+  management,
   fetchFeed = fetchReleaseFeed,
   now = Date.now,
   visibility = browserVisibility,
 }: {
-  fetchFeed?: (signal: AbortSignal) => Promise<WalletReleaseFeed | null>;
+  fetchFeed?: (
+    signal: AbortSignal,
+    channel: ExtensionReleaseChannel
+  ) => Promise<WalletReleaseFeed | null>;
+  management?: Pick<typeof chrome.management, 'getSelf'>;
   now?: () => number;
   runtime?: ChromeUpdateRuntime;
   visibility?: typeof browserVisibility;
 }) {
   let installedVersion = packageJson.version;
+  let manifest: chrome.runtime.Manifest | undefined;
+  const runtimeId = runtime?.id;
   try {
-    const version = runtime?.getManifest()?.version;
+    manifest = runtime?.getManifest();
+    const version = manifest?.version;
     if (isWalletReleaseIdentity({ platform: 'chrome', version }))
       installedVersion = version!;
   } catch {
     // The packaged version still identifies this build outside Chrome.
   }
+  let target: ExtensionReleaseTarget | null = null;
+  let installation: WalletUpdateSnapshot['installation'] = 'checking';
+  let identityRequest: Promise<void> | undefined;
+  let cancelIdentity: (() => void) | undefined;
   const monitor = new WalletReleaseMonitor({
     current: { platform: 'chrome', version: installedVersion },
-    fetchFeed,
+    fetchFeed: (signal) =>
+      target ? fetchFeed(signal, target.channel) : Promise.resolve(null),
     now,
   });
   const listeners = new Set<() => void>();
@@ -104,6 +131,9 @@ export function createWalletUpdateStore({
     browserStatus,
     installedVersion,
     pendingVersion,
+    installation,
+    channel: target?.channel ?? null,
+    storeUrl: target?.storeUrl ?? null,
   };
   const publish = () => {
     if (disposed) return;
@@ -112,6 +142,9 @@ export function createWalletUpdateStore({
       browserStatus,
       installedVersion,
       pendingVersion,
+      installation,
+      channel: target?.channel ?? null,
+      storeUrl: target?.storeUrl ?? null,
     };
     scheduleAutomatic();
     for (const listener of [...listeners]) {
@@ -125,7 +158,7 @@ export function createWalletUpdateStore({
   function scheduleAutomatic() {
     clearTimeout(automaticTimer);
     automaticTimer = undefined;
-    if (disposed || !owners || !visibility.isVisible()) return;
+    if (disposed || !target || !owners || !visibility.isVisible()) return;
     const checkedAt = monitor.getSnapshot().lastAttemptAt;
     const remaining =
       checkedAt === null
@@ -134,7 +167,7 @@ export function createWalletUpdateStore({
     automaticTimer = setTimeout(refresh, Math.max(1000, remaining));
   }
   function refresh() {
-    if (disposed || !owners || !visibility.isVisible()) {
+    if (disposed || !target || !owners || !visibility.isVisible()) {
       scheduleAutomatic();
       return;
     }
@@ -144,23 +177,93 @@ export function createWalletUpdateStore({
   const receiveUpdate = ({
     version,
   }: chrome.runtime.UpdateAvailableDetails) => {
-    if (!isWalletReleaseIdentity({ platform: 'chrome', version })) return;
+    if (
+      disposed ||
+      !target ||
+      !listening ||
+      !isWalletReleaseIdentity({ platform: 'chrome', version })
+    )
+      return;
     browserRevision++;
     pendingVersion = version;
     browserStatus = 'available';
     publish();
   };
   let listening = false;
+  const activate = () => {
+    if (disposed || !target || !owners || unwatchVisibility) return;
+    if (runtime?.onUpdateAvailable?.addListener) {
+      runtime.onUpdateAvailable.addListener(receiveUpdate);
+      listening = true;
+    }
+    unwatchVisibility = visibility.subscribe(refresh);
+    refresh();
+  };
+  const identify = () => {
+    if (identityRequest) return identityRequest;
+    let resolve!: () => void;
+    const pendingIdentity = new Promise<void>((done) => {
+      resolve = done;
+    });
+    identityRequest = pendingIdentity;
+    let live = true;
+    const finish = (
+      info?: chrome.management.ExtensionInfo,
+      retryable = false
+    ) => {
+      if (!live) return;
+      live = false;
+      clearTimeout(timer);
+      cancelIdentity = undefined;
+      if (!disposed) {
+        try {
+          if (
+            runtime?.id === runtimeId &&
+            runtime?.getManifest()?.version === manifest?.version &&
+            isWalletReleaseIdentity({
+              platform: 'chrome',
+              version: manifest?.version,
+            })
+          )
+            target = admitExtensionReleaseTarget(runtimeId, manifest!, info);
+        } catch {
+          target = null;
+        }
+        installation = target
+          ? 'store'
+          : retryable
+          ? 'unverified'
+          : 'unavailable';
+        if (retryable && identityRequest === pendingIdentity)
+          identityRequest = undefined;
+        publish();
+        activate();
+      }
+      resolve();
+    };
+    const timer = setTimeout(() => finish(undefined, true), 15_000);
+    cancelIdentity = () => finish();
+    installation = 'checking';
+    publish();
+    if (!live || disposed) return pendingIdentity;
+    try {
+      if (!getExtensionReleaseTarget(runtimeId) || !management?.getSelf)
+        finish();
+      else
+        management.getSelf((info) =>
+          runtime?.lastError ? finish(undefined, true) : finish(info)
+        );
+    } catch {
+      finish(undefined, true);
+    }
+    return pendingIdentity;
+  };
   const start = () => {
     if (disposed) return () => undefined;
     owners++;
     if (owners === 1) {
-      if (runtime?.onUpdateAvailable?.addListener) {
-        runtime.onUpdateAvailable.addListener(receiveUpdate);
-        listening = true;
-      }
-      unwatchVisibility = visibility.subscribe(refresh);
-      refresh();
+      identify();
+      activate();
     }
     let live = true;
     return () => {
@@ -187,7 +290,7 @@ export function createWalletUpdateStore({
       publish();
       return Promise.resolve();
     }
-    if (!runtime?.requestUpdateCheck) {
+    if (!target || !runtime?.requestUpdateCheck) {
       browserStatus = 'unavailable';
       publish();
       return Promise.resolve();
@@ -250,14 +353,22 @@ export function createWalletUpdateStore({
       };
     },
     start,
-    async check() {
-      if (disposed) return;
-      await Promise.all([monitor.check({ force: true }), checkBrowser()]);
+    check(): Promise<void> {
+      if (disposed) return Promise.resolve();
+      const identified = identify();
+      const check = () =>
+        target && !disposed
+          ? Promise.all([monitor.check({ force: true }), checkBrowser()]).then(
+              () => undefined
+            )
+          : Promise.resolve();
+      return installation === 'checking' ? identified.then(check) : check();
     },
     dispose() {
       disposed = true;
       clearTimeout(automaticTimer);
       unwatchVisibility?.();
+      cancelIdentity?.();
       cancelRequest?.();
       if (listening) runtime?.onUpdateAvailable.removeListener(receiveUpdate);
       unwatch();
@@ -272,6 +383,7 @@ const updates = () => {
   if (!walletUpdates)
     walletUpdates = createWalletUpdateStore({
       runtime: typeof chrome === 'undefined' ? undefined : chrome.runtime,
+      management: typeof chrome === 'undefined' ? undefined : chrome.management,
     });
   return walletUpdates;
 };

@@ -33,7 +33,7 @@ function fixture() {
       JSON.stringify(['SIGINT', 'SIGTERM', 'SIGTSTP', 'SIGCONT'].map(signal => process.listenerCount(signal)))));
   `);
   writeFileSync(join(root, 'scripts/owned-build-child.cjs'), readFileSync(join(scripts, 'owned-build-child.cjs')));
-  writeFileSync(join(root, 'scripts/native-build-number.cjs'), `
+  writeFileSync(join(temporary, 'scripts/build-number.cjs'), `
     const fs = require('node:fs'), path = require('node:path');
     exports.reserveBuildNumber = async ({ cwd, purpose }) => {
       const file = path.join(cwd, 'counter');

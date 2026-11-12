@@ -3,10 +3,8 @@ import '@testing-library/jest-dom';
 import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
-import {
-  CHROME_WALLET_STORE_URL,
-  type WalletUpdateSnapshot,
-} from '../hooks/useWalletUpdate';
+import { type WalletUpdateSnapshot } from '../hooks/useWalletUpdate';
+import { STABLE_EXTENSION_STORE_URL } from '../shared/extensionReleaseChannel';
 
 import { WalletUpdateBadge } from './WalletUpdateBadge';
 import { WalletUpdatePanel, WalletUpdateSummary } from './WalletUpdatePanel';
@@ -42,6 +40,9 @@ beforeEach(() => {
     browserStatus: 'idle',
     installedVersion: '1.0.0',
     pendingVersion: null,
+    installation: 'store',
+    channel: 'stable',
+    storeUrl: STABLE_EXTENSION_STORE_URL,
   };
 });
 
@@ -54,7 +55,7 @@ it('offers a keyboardable manual check and the fixed store destination', () => {
   expect(mockCheck).toHaveBeenCalledTimes(1);
   expect(
     screen.getByRole('link', { name: 'Open Chrome Web Store' })
-  ).toHaveAttribute('href', CHROME_WALLET_STORE_URL);
+  ).toHaveAttribute('href', STABLE_EXTENSION_STORE_URL);
   expect(screen.queryByText('No newer published version found.')).toBeNull();
 });
 
@@ -67,6 +68,47 @@ it('keeps About compact until its version and status entry is opened', () => {
   expect(screen.queryByText('Check for updates')).toBeNull();
   fireEvent.click(summary);
   expect(open).toHaveBeenCalledTimes(1);
+});
+
+it('does not substitute the stable store for a Canary channel without a verified store URL', () => {
+  mockUpdate.channel = 'canary';
+  mockUpdate.storeUrl = null;
+  render(<WalletUpdatePanel />);
+  expect(
+    screen.queryByRole('link', { name: 'Open Chrome Web Store' })
+  ).toBeNull();
+});
+
+it('does not advertise stale notices or a store action for an unsupported installation', () => {
+  mockUpdate.installation = 'unavailable';
+  mockUpdate.storeUrl = null;
+  mockUpdate.pendingVersion = '5.0.1';
+  render(
+    <>
+      <WalletUpdatePanel />
+      <WalletUpdateBadge />
+    </>
+  );
+  expect(screen.getByRole('status')).toHaveTextContent(
+    'Store updates are not available for this build.'
+  );
+  expect(
+    screen.getByRole('button', { name: 'Check for updates' })
+  ).toBeDisabled();
+  expect(screen.queryByText('Update available')).toBeNull();
+  expect(screen.queryByText('5.0.1')).toBeNull();
+  expect(screen.queryByRole('link')).toBeNull();
+});
+
+it('allows an explicit installation recheck after a temporary browser lookup failure', () => {
+  mockUpdate.installation = 'unverified';
+  mockUpdate.storeUrl = null;
+  render(<WalletUpdatePanel />);
+  const check = screen.getByRole('button', { name: 'Check for updates' });
+  expect(check).toBeEnabled();
+  fireEvent.click(check);
+  expect(mockCheck).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('link')).toBeNull();
 });
 
 it('does not call unavailable metadata up to date even when Chrome returns no update', () => {

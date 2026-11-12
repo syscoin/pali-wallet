@@ -18,6 +18,7 @@ const mockEmitter = jest.fn();
 let mockHasWalletUpdate = false;
 jest.mock('hooks/useWalletUpdate', () => ({
   useWalletUpdate: () => ({
+    installation: 'store',
     release: mockHasWalletUpdate ? { version: '1.1.0' } : null,
     pendingVersion: null,
   }),

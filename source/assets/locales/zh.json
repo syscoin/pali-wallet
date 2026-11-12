@@ -1,5 +1,6 @@
 {
   "updates": {
+    "unsupportedBuild": "此版本无法使用应用商店更新。",
     "title": "钱包更新",
     "available": "有可用更新",
     "current": "未发现更新的已发布版本。",

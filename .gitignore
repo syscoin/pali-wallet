@@ -12,6 +12,7 @@ chrome
 
 # production
 /build
+/.pali-build
 /dist
 DS_Store
 

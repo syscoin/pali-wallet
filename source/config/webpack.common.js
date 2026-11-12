@@ -363,7 +363,7 @@ module.exports = {
     new CopyWebpackPlugin({
       patterns: [
         {
-          from: './manifest.json',
+          from: process.env.PALI_EXTENSION_MANIFEST || './manifest.json',
           to: join(__dirname, '../../build', targetBrowser),
           force: true,
           transform: function (content) {

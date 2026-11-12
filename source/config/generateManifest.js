@@ -2,6 +2,7 @@
 
 const dotenv = require('dotenv');
 const fs = require('fs');
+const { extensionBuildVersion } = require('./extensionBuildVersion.cjs');
 
 const packageJson = require('../../package.json');
 const {
@@ -13,9 +14,12 @@ const {
 dotenv.config();
 
 function generateManifest() {
-  const manifestOptions =
-    process.env.MANIFEST_TYPE === 'MV2' ? MV2_OPTIONS : MV3_OPTIONS;
-  manifestOptions.version = packageJson.version;
+  const manifestOptions = JSON.parse(JSON.stringify(
+    process.env.MANIFEST_TYPE === 'MV2' ? MV2_OPTIONS : MV3_OPTIONS
+  ));
+  Object.assign(manifestOptions, extensionBuildVersion(
+    process.env.NODE_ENV, packageJson.version, process.env.PALI_CANARY_BUILD_NUMBER
+  ));
 
   // dev
   if (process.env.NODE_ENV === 'development') {
@@ -41,9 +45,11 @@ function generateManifest() {
   if (process.env.NODE_ENV === 'canary') {
     manifestOptions.name = manifestOptions.name.replace(
       'Pali Wallet',
-      'Pali Wallet Canary'
+      'Pali Wallet Canary BETA'
     );
-    if (manifestOptions.manifest_version === 3) {
+    manifestOptions.description = 'THIS EXTENSION IS FOR BETA TESTING. Pali Wallet for Bitcoin and supported EVM/UTXO networks.';
+    // Store uploads reject `key`; it only stabilizes unpacked Canary identity.
+    if (manifestOptions.manifest_version === 3 && process.env.PALI_EXTENSION_STORE_BUILD !== '1') {
       manifestOptions.key = CANARY_EXTENSION_KEY;
     }
     if (manifestOptions.permissions) {
@@ -54,7 +60,7 @@ function generateManifest() {
   }
 
   const manifestContent = JSON.stringify(manifestOptions, null, 2);
-  fs.writeFileSync('manifest.json', manifestContent);
+  fs.writeFileSync(process.env.PALI_EXTENSION_MANIFEST || 'manifest.json', manifestContent);
 }
 
 const filterWebRequest = (permissions) => {

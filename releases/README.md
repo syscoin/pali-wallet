@@ -1,8 +1,10 @@
 # Store update notices
 
-`wallet-updates.json` is public **data**, not an executable update channel. Both
-Pali hosts read the same bounded schema. Wallet/account identifiers are never sent.
-The file starts empty: no mobile release or store approval is implied.
+`wallet-updates.json` is public **data**, not an executable update channel. It
+contains mobile and stable-extension notices. `wallet-updates-canary.json` uses
+the same bounded schema for Canary-extension notices only. Wallet/account
+identifiers are never sent. Both files start empty; no store approval or
+published release is implied.
 
 Publish an entry only after the version is available in the named store. Update
 this file through a reviewed PR after publishing; creating a GitHub release or
@@ -46,6 +48,22 @@ the assigned iOS listing at `https://apps.apple.com/app/id6834040718`. A configu
 listing does not imply store approval or a published release; the feed remains
 empty until publication. Android's package and the Chrome listing are compiled
 into Pali. Remote metadata cannot substitute a different store/link.
+
+Extension channels and store identities are fixed in
+`source/shared/extensionReleaseChannel.ts`. Canary uses marketing base `5.0.0`
+and its own numbered manifest versions. Its local packaging key is not proof of
+a Chrome Web Store listing: the verified Canary store ID and URL remain unset
+until that listing is confirmed. Do not add Canary releases to the stable feed.
+The existing stable listing is unchanged. Create a separate Canary item with its
+first ZIP upload, then verify its assigned store ID before configuring Canary
+notices and links. A numbered local Canary ZIP alone does not enable them.
+
+The extension checks its runtime ID and Chrome's `management.getSelf()` result,
+including normal installation type and the official store update URL, before
+reading either feed or requesting a browser update check. This API needs no
+additional management permission. Unpacked, unknown and unconfigured Canary
+installations show no store notices, pending-update badges or store links. A
+Canary installation never falls back to the stable feed or store destination.
 
 Pali checks at launch/resume and at most every six hours in a running process.
 Manual checks have a one-minute cooldown. The shared Expo background worker keeps

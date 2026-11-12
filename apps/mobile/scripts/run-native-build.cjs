@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { runOwnedBuildChild, interruptedError } = require('./owned-build-child.cjs');
-const { reserveBuildNumber, assertBuildSource } = require('./native-build-number.cjs');
+const { reserveBuildNumber, assertBuildSource } = require('../../../scripts/build-number.cjs');
 
 const appRoot = path.resolve(__dirname, '..');
 
@@ -62,7 +62,7 @@ async function runNativeBuild(argv, ports = {}) {
       throw Error('Native build requires the matching Pali app version and production identity.');
 
     checkpoint();
-    const receipt = await (ports.reserve ?? reserveBuildNumber)({ cwd: root, purpose: options.purpose });
+    const receipt = await (ports.reserve ?? reserveBuildNumber)({ cwd: root, purpose: options.purpose, channel: 'mobile' });
     const assertCurrent = async () => {
       checkpoint();
       await (ports.assertSource ?? assertBuildSource)({ cwd: root, receipt });

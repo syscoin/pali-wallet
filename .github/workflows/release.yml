@@ -54,7 +54,7 @@ jobs:
 
       - name: Build project for Canary
         if: steps.release_guard.outputs.should_release == 'true'
-        run: yarn run build:canary
+        run: yarn run build:canary:store
 
       - name: List files in build directory
         if: steps.release_guard.outputs.should_release == 'true'
