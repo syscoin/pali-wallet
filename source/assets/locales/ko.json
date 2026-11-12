@@ -2647,8 +2647,6 @@
         "someActivityIsUnavailable": "일부 활동 확인 불가",
         "loadingActivity": "활동 불러오는 중",
         "noSavedPendingTransfers": "저장된 대기 전송 없음",
-        "activityCouldNotBeLoaded": "활동을 불러오지 못했습니다",
-        "noActivityInTheLoadedHistory": "불러온 내역에 활동 없음",
         "refreshToTryAgain": "새로고침하여 다시 시도하세요.",
         "noActivityToShow": "표시할 활동 없음",
         "refreshOrChooseAnotherFilter": "새로고침하거나 다른 필터를 선택하세요.",

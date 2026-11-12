@@ -935,41 +935,6 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     setTransactionActivity({ context: context.context, hash });
     shell.restoreRoot('activity', context.identity);
   };
-  const latestBack = useRef<() => boolean>(() => true);
-  useLayoutEffect(() => {
-    latestBack.current = () => {
-      if (updateSession.current) { void closeWalletUpdate(); return true; }
-      if (accountNavigation.current) { revoke(); return true; }
-      if (['backup-intro', 'backup-auth', 'words', 'backup-verify'].includes(stage) && ['ready', 'backup-required'].includes(snapshot.phase)) { closeBackup(); return true; }
-      if (stage === 'backup-complete' && snapshot.phase === 'ready') {
-        closeBackup();
-        return true;
-      }
-      // Full-screen leaf flows own their Back behavior regardless of listener order.
-      if (snapshot.phase === 'ready' && (stage === 'choose' || stage === 'connections') && (signingReview || connectionSnapshot?.preparationReview || connectionSnapshot?.controlReview || connectionSnapshot?.sentryReview || connectionSnapshot?.psbtReview)) return false;
-      if ((stage === 'private-notes' || stage === 'connections') && snapshot.phase === 'ready') {
-        if (stage === 'connections') {
-          scanFinished();
-          if (incomingPairing) onPairingHandled?.(incomingPairing.id);
-        }
-        closeStage(); return true;
-      }
-      if ((stage === 'smart-infrastructure' || stage === 'smart-authenticator' || stage === 'slh-dsa' || stage === 'smart-modules' || stage === 'smart-deploy' || stage === 'smart-resume' || stage === 'send' && canSendSmart) && snapshot.phase === 'ready') return false;
-      if (sentryRoute || stage === 'recovery' || stage === 'remove-wallet' || stage === 'auto-lock' || (stage === 'restore-notes' || stage === 'backup-notes' || stage === 'note-capacity' || stage === 'note-maintenance' || stage === 'privacy-settings' || stage === 'note-inventory' || stage === 'note-import' || stage === 'note-deposit') && snapshot.phase === 'ready' ||
-          stage === 'accounts' && accounts && snapshot.phase !== 'authenticating' ||
-          stage === 'trezor' && trezorView && ['ready', 'authenticating'].includes(snapshot.phase) ||
-          stage === 'ledger' && ledgerView && ['ready', 'authenticating'].includes(snapshot.phase) ||
-          stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase) ||
-          stage === 'networks' && networkView && (['ready', 'authenticating'].includes(snapshot.phase) ||
-            snapshot.phase === 'backup-required' && networkReturn?.kind === 'send' && !!networkReturn.origin.publicDraft) ||
-          stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView ||
-          stage === 'send' && (snapshot.phase === 'ready' || snapshot.phase === 'backup-required' && !!sendDraft?.origin.publicDraft) && (transferView && canSign || canSendUtxo || canSendSmart) ||
-          stage === 'import-key' && importScope && ['ready', 'authenticating'].includes(snapshot.phase) &&
-            (snapshot.revision === importScope.contextRevision || importActiveToken === importScope.token && snapshot.revision === importScope.contextRevision + 1)) return false;
-      if (['ready', 'backup-required'].includes(snapshot.phase) && stage === 'choose') shell.goBack(); else exit();
-      return true;
-    };
-  });
 
   const clearOwnerView = useCallback(() => {
     sendBackupReturn.current = null;
@@ -1228,6 +1193,42 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     updateSession.current = null; setUpdatePhase(null);
     if (AppState.currentState === 'active') void install().catch(() => undefined);
   }
+  const latestBack = useRef<() => boolean>(() => true);
+  useLayoutEffect(() => {
+    latestBack.current = () => {
+      if (updateSession.current) { void closeWalletUpdate(); return true; }
+      if (accountNavigation.current) { revoke(); return true; }
+      if (['backup-intro', 'backup-auth', 'words', 'backup-verify'].includes(stage) && ['ready', 'backup-required'].includes(snapshot.phase)) { closeBackup(); return true; }
+      if (stage === 'backup-complete' && snapshot.phase === 'ready') {
+        closeBackup();
+        return true;
+      }
+      // Full-screen leaf flows own their Back behavior regardless of listener order.
+      if (snapshot.phase === 'ready' && (stage === 'choose' || stage === 'connections') && (signingReview || connectionSnapshot?.preparationReview || connectionSnapshot?.controlReview || connectionSnapshot?.sentryReview || connectionSnapshot?.psbtReview)) return false;
+      if ((stage === 'private-notes' || stage === 'connections') && snapshot.phase === 'ready') {
+        if (stage === 'connections') {
+          scanFinished();
+          if (incomingPairing) onPairingHandled?.(incomingPairing.id);
+        }
+        closeStage(); return true;
+      }
+      if ((stage === 'smart-infrastructure' || stage === 'smart-authenticator' || stage === 'slh-dsa' || stage === 'smart-modules' || stage === 'smart-deploy' || stage === 'smart-resume' || stage === 'send' && canSendSmart) && snapshot.phase === 'ready') return false;
+      if (sentryRoute || stage === 'recovery' || stage === 'remove-wallet' || stage === 'auto-lock' || (stage === 'restore-notes' || stage === 'backup-notes' || stage === 'note-capacity' || stage === 'note-maintenance' || stage === 'privacy-settings' || stage === 'note-inventory' || stage === 'note-import' || stage === 'note-deposit') && snapshot.phase === 'ready' ||
+          stage === 'accounts' && accounts && snapshot.phase !== 'authenticating' ||
+          stage === 'trezor' && trezorView && ['ready', 'authenticating'].includes(snapshot.phase) ||
+          stage === 'ledger' && ledgerView && ['ready', 'authenticating'].includes(snapshot.phase) ||
+          stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase) ||
+          stage === 'networks' && networkView && (['ready', 'authenticating'].includes(snapshot.phase) ||
+            snapshot.phase === 'backup-required' && networkReturn?.kind === 'send' && !!networkReturn.origin.publicDraft) ||
+          stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView ||
+          stage === 'send' && (snapshot.phase === 'ready' || snapshot.phase === 'backup-required' && !!sendDraft?.origin.publicDraft) && (transferView && canSign || canSendUtxo || canSendSmart) ||
+          stage === 'import-key' && importScope && ['ready', 'authenticating'].includes(snapshot.phase) &&
+            (snapshot.revision === importScope.contextRevision || importActiveToken === importScope.token && snapshot.revision === importScope.contextRevision + 1)) return false;
+      if (['ready', 'backup-required'].includes(snapshot.phase) && stage === 'choose') shell.goBack(); else exit();
+      return true;
+    };
+  });
+
   useLayoutEffect(() => {
     const local = controllersRef.current;
     if (removalRef.current || (stage === 'remove-wallet' && snapshot.phase !== 'locked') || !local?.removal?.requiresControllerReopen()) return;

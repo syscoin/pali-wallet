@@ -2647,8 +2647,6 @@
         "someActivityIsUnavailable": "Some activity is unavailable",
         "loadingActivity": "Loading activity",
         "noSavedPendingTransfers": "No saved pending transfers",
-        "activityCouldNotBeLoaded": "Activity could not be loaded",
-        "noActivityInTheLoadedHistory": "No activity in the loaded history",
         "refreshToTryAgain": "Refresh to try again.",
         "noActivityToShow": "No activity to show",
         "refreshOrChooseAnotherFilter": "Refresh or choose another filter.",

@@ -2647,8 +2647,6 @@
         "someActivityIsUnavailable": "部分活动不可用",
         "loadingActivity": "正在加载活动",
         "noSavedPendingTransfers": "没有已保存的待处理转账",
-        "activityCouldNotBeLoaded": "无法加载活动",
-        "noActivityInTheLoadedHistory": "已加载的历史中没有活动",
         "refreshToTryAgain": "请刷新后重试。",
         "noActivityToShow": "没有可显示的活动",
         "refreshOrChooseAnotherFilter": "请刷新或选择其他筛选条件。",

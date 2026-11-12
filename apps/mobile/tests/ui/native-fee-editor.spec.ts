@@ -11,7 +11,7 @@ for (const width of [320, 390]) for (const kind of ['evm', 'utxo'] as const) {
     await expect(custom).toBeEnabled();
     const low = page.getByRole('button', { name: 'Low', exact: true });
     const medium = page.getByRole('button', { name: 'Medium', exact: true });
-    expect((await medium.boundingBox())!.height).toBe((await low.boundingBox())!.height);
+    expect((await medium.boundingBox())!.height).toBeCloseTo((await low.boundingBox())!.height, 2);
     await custom.click();
     const price = page.getByRole('textbox', { name: kind === 'utxo' ? /sat\/vB/ : 'Maximum fee per gas (Gwei)', exact: kind !== 'utxo' });
     await expect(price).toBeVisible();

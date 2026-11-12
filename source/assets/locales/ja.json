@@ -2647,8 +2647,6 @@
         "someActivityIsUnavailable": "一部の履歴を取得できません",
         "loadingActivity": "履歴を読み込み中",
         "noSavedPendingTransfers": "保存済みの保留中送金はありません",
-        "activityCouldNotBeLoaded": "履歴を読み込めませんでした",
-        "noActivityInTheLoadedHistory": "読み込まれた履歴に取引はありません",
         "refreshToTryAgain": "更新して再試行してください。",
         "noActivityToShow": "表示する履歴はありません",
         "refreshOrChooseAnotherFilter": "更新するか、別のフィルターを選択してください。",

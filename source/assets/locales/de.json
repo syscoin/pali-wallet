@@ -2647,8 +2647,6 @@
         "someActivityIsUnavailable": "Einige Aktivitäten sind nicht verfügbar",
         "loadingActivity": "Aktivität wird geladen",
         "noSavedPendingTransfers": "Keine gespeicherten ausstehenden Überweisungen",
-        "activityCouldNotBeLoaded": "Aktivität konnte nicht geladen werden",
-        "noActivityInTheLoadedHistory": "Keine Aktivität im geladenen Verlauf",
         "refreshToTryAgain": "Zum erneuten Versuch aktualisieren.",
         "noActivityToShow": "Keine Aktivität zum Anzeigen",
         "refreshOrChooseAnotherFilter": "Aktualisieren oder einen anderen Filter wählen.",

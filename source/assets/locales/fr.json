@@ -2647,8 +2647,6 @@
         "someActivityIsUnavailable": "Certaines activités sont indisponibles",
         "loadingActivity": "Chargement de l’activité",
         "noSavedPendingTransfers": "Aucun transfert en attente enregistré",
-        "activityCouldNotBeLoaded": "Impossible de charger l’activité",
-        "noActivityInTheLoadedHistory": "Aucune activité dans l’historique chargé",
         "refreshToTryAgain": "Actualisez pour réessayer.",
         "noActivityToShow": "Aucune activité à afficher",
         "refreshOrChooseAnotherFilter": "Actualisez ou choisissez un autre filtre.",

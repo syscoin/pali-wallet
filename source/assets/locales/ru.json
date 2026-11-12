@@ -2647,8 +2647,6 @@
         "someActivityIsUnavailable": "Часть активности недоступна",
         "loadingActivity": "Загрузка активности",
         "noSavedPendingTransfers": "Нет сохранённых ожидающих переводов",
-        "activityCouldNotBeLoaded": "Не удалось загрузить активность",
-        "noActivityInTheLoadedHistory": "В загруженной истории нет активности",
         "refreshToTryAgain": "Обновите, чтобы повторить попытку.",
         "noActivityToShow": "Нет активности для отображения",
         "refreshOrChooseAnotherFilter": "Обновите или выберите другой фильтр.",
