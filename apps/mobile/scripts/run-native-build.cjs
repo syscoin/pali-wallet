@@ -72,7 +72,7 @@ async function runNativeBuild(argv, ports = {}) {
     await assertCurrent();
     await prepareAssets();
     await assertCurrent();
-    await execute(['prebuild', '--platform', options.platform, '--no-install'], env);
+    await execute(['prebuild', '--platform', options.platform, '--no-install', '--no-clean'], env);
     await assertCurrent();
     if (!options.prepareOnly) await execute([`run:${options.platform}`, ...options.forwarded], env);
     return receipt;
