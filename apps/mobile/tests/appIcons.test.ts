@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { URL } from 'node:url';
 
 const root = new URL('../', import.meta.url);
 const { expo } = JSON.parse(readFileSync(new URL('app.json', root), 'utf8'));
