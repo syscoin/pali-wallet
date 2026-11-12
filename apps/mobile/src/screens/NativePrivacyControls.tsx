@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
+import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PRIVACY_POOLS } from '../../../../source/utils/privacy/registry';
 import { normalizePrivacyServiceOrigin } from '../../../../source/shared/privacyServiceOrigin';
@@ -12,7 +12,7 @@ import { IdleTextInput } from './IdleActivityBoundary';
 
 type Pool = ReturnType<typeof createNativePrivacyPoolSync>;
 type Props = { open(signal: AbortSignal, assertCurrent: () => void): Promise<Controls>; onBack(): void };
-type Owner = { live: boolean; lifetime: AbortController; poolLifetime?: AbortController; pool?: Pool; opening?: Promise<Pool>; action: number; busy: boolean; pausing?: boolean };
+type Owner = { live: boolean; lifetime: AbortController; poolLifetime?: AbortController; pool?: Pool; opening?: Promise<Pool>; unsubscribe?: () => void; action: number; busy: boolean; pausing?: boolean };
 
 /** Explicit foreground public-data controls. No polling, secret input or signing capability. */
 export function NativePrivacyControls({ open, onBack }: Props) {
@@ -26,7 +26,7 @@ export function NativePrivacyControls({ open, onBack }: Props) {
   const [error, setError] = useState<string | null>(null); const [saved, setSaved] = useState(false);
   const close = useCallback(() => {
     const current = owner.current; if (!current.live) return;
-    current.live = false; current.action++; current.lifetime.abort(); current.poolLifetime?.abort();
+    current.live = false; current.action++; current.unsubscribe?.(); current.lifetime.abort(); current.poolLifetime?.abort();
     void current.pool?.dispose().catch(() => undefined); Keyboard.dismiss(); onBack();
   }, [onBack]);
   useEffect(() => {
@@ -41,10 +41,11 @@ export function NativePrivacyControls({ open, onBack }: Props) {
     const change = AppState.addEventListener('change', next => { if (next !== 'active') close(); });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', close) : undefined;
     const back = BackHandler.addEventListener('hardwareBackPress', () => { close(); return true; });
-    return () => { current.live = false; current.action++; current.lifetime.abort(); current.poolLifetime?.abort(); void current.pool?.dispose().catch(() => undefined); change.remove(); blur?.remove(); back.remove(); };
+    return () => { current.live = false; current.action++; current.unsubscribe?.(); current.lifetime.abort(); current.poolLifetime?.abort(); void current.pool?.dispose().catch(() => undefined); change.remove(); blur?.remove(); back.remove(); };
   }, [close, open]);
   const active = controls?.source === open ? controls.value : undefined;
   const resetPool = async (current: Owner) => {
+    current.unsubscribe?.(); current.unsubscribe = undefined;
     current.poolLifetime?.abort(); await current.pool?.dispose();
     if (current.opening) { try { await (await current.opening).dispose(); } catch { /* A retired opening publishes no state. */ } }
     current.pool = undefined; current.opening = undefined; current.poolLifetime = undefined;
@@ -70,7 +71,11 @@ export function NativePrivacyControls({ open, onBack }: Props) {
           current.opening = active.openPool(selection, lifetime.signal, () => {
             if (!current.live || lifetime.signal.aborted || current.poolLifetime !== lifetime) throw Error('privacy_cancelled');
           });
-          current.pool = await current.opening; check(); current.opening = undefined;
+          const pool = await current.opening; check(); current.pool = pool; current.opening = undefined;
+          current.unsubscribe = pool.subscribe(next => {
+            if (current.live && current.pool === pool && current.poolLifetime === lifetime && !lifetime.signal.aborted) setStatus(next);
+          });
+          setStatus(pool.getStatus());
         }
         setRunning(true); const next = await current.pool.refresh(); check(); setStatus(next);
       }
@@ -84,6 +89,8 @@ export function NativePrivacyControls({ open, onBack }: Props) {
     catch { if (current.live) setError('privacy.error'); }
     finally { current.busy = false; if (current.live) setBusy(false); }
   };
+  const hasProgress = status.completed !== undefined && status.total !== undefined && status.total > 0;
+  const percentage = hasProgress ? Math.max(0, Math.min(100, Math.floor(status.completed! / status.total! * 100))) : undefined;
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen footer={<Button title={t('buttons.save')} disabled={!active || busy || origin === savedOrigin} onPress={() => { void action('save'); }} />}><Header title={t('privacy.serviceSettings')} onBack={close} />
@@ -95,7 +102,17 @@ export function NativePrivacyControls({ open, onBack }: Props) {
         <Text style={s.title}>{t('privacy.poolData')}</Text>
         <Card>{PRIVACY_POOLS.map(pool => <Row key={pool.id} title={`${pool.amount} ETH`} right={<Text>{pool.id === poolId ? '✓' : ''}</Text>}
           onPress={busy ? undefined : () => { void selectPool(pool.id); }} />)}</Card>
-        <Text accessibilityLiveRegion="polite" style={styles.muted}>{t(`privacy.${running ? 'syncing' : status.phase}`)}</Text>
+        <Card>
+          <Text accessibilityLiveRegion="polite" style={styles.muted}>{t(`privacy.${status.phase}`)}</Text>
+          {running && <View accessibilityRole="progressbar" accessibilityLabel={t(`privacy.${status.phase}`)} accessibilityValue={{ min: 0, max: 100, ...(percentage === undefined ? {} : { now: percentage }) }} style={s.progress}>
+            <View style={[s.progressValue, { width: `${percentage ?? 25}%` }]} />
+          </View>}
+          {hasProgress && <Text style={styles.muted}>{t('privacy.progress', { completed: status.completed, total: status.total })}</Text>}
+          {status.verifiedAt !== undefined && <>
+            {status.leafCount !== undefined && <Text style={styles.muted}>{t('privacy.savedDeposits', { count: status.leafCount })}</Text>}
+            {status.blockNumber !== undefined && <Text style={styles.muted}>{t('privacy.verifiedBlock', { block: status.blockNumber })}</Text>}
+          </>}
+        </Card>
         <Button title={t(status.phase === 'paused' ? 'privacy.resume' : 'privacy.refresh')} icon="refresh" variant="secondary" disabled={!active || busy}
           onPress={() => { void action('refresh'); }} />
         {running && <Button title={t('privacy.pause')} variant="secondary" onPress={() => { void action('pause'); }} />}
@@ -105,4 +122,4 @@ export function NativePrivacyControls({ open, onBack }: Props) {
     </KeyboardAvoidingView>
   </SafeAreaView>;
 }
-const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: colors.bg }, fill: { flex: 1 }, input: { color: colors.text, backgroundColor: colors.surface, padding: 16, borderRadius: 16, marginVertical: 12 }, title: { fontSize: 20, fontWeight: '600', marginTop: 24 }, error: { color: colors.red } });
+const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: colors.bg }, fill: { flex: 1 }, input: { color: colors.text, backgroundColor: colors.surface, padding: 16, borderRadius: 16, marginVertical: 12 }, title: { fontSize: 20, fontWeight: '600', marginTop: 24 }, error: { color: colors.red }, progress: { height: 6, overflow: 'hidden', borderRadius: 3, backgroundColor: colors.border }, progressValue: { height: 6, backgroundColor: colors.blue } });

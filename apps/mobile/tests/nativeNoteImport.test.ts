@@ -18,6 +18,7 @@ function fixture() {
   let hold: ReturnType<typeof gate> | undefined;
   let status: 'ready' | 'syncing' = 'ready';
   const pool: ReturnType<typeof createNativePrivacyPoolSync> = {
+    subscribe() { return () => undefined; },
     getStatus() {
       if (!current) throw new Error('privacy_cancelled');
       return { poolId: 'eth-1', phase: status };
