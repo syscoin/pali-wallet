@@ -19,6 +19,7 @@ import { createNativeNetworkView } from '../src/custody/networkView.ts';
 import type { NativeNetworkSelectionProof } from '../src/custody/accounts.ts';
 import { networkSelectionReceiptFixture } from './networkSelectionReceiptFixture.ts';
 import { sendDraftForNetwork, NETWORK_CHANGED_DRAFT_NOTICE } from '../src/screens/sendNetworkDraft.ts';
+import * as publicSendDraft from '../src/screens/publicSendDraft.ts';
 import { trezorResumeDraft } from '../src/screens/trezorResumeDraft.ts';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import { sameNativePortfolioAccount } from '../src/portfolio/nativePortfolio.ts';
@@ -62,6 +63,7 @@ const inventory = { status: 'needs-matching-phrase-verification', reason: null, 
   historySummaries: 7, cachedTransactions: 8, activityPreferences: 9,
 } };
 const walletScreenPorts = {
+  './publicSendDraft': publicSendDraft,
   './recoveryCopy': recoveryCopy,
   './NativeAccountOverview': { NativePortfolioRoute: 'NativePortfolio' },
   '../notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
@@ -1631,15 +1633,17 @@ test('unbacked Receive can select another network without authorizing a send', a
   } finally { f.dispose(); }
 });
 
-test('unbacked Send opens the existing backup flow before selection or signing', async () => {
+test('unbacked Send selects the public network and opens a draft before requiring backup', async () => {
   const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, quietActivityNotifications, { backup: 'unconfirmed' });
   try {
     const portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
     await (portfolio.props.sendFrom as (...args: unknown[]) => Promise<void>)(navigationChoice(), undefined, () => {});
     const tree = await settleRootNavigation(f);
-    assert(all(tree).some(node => node.type === 'BackupIntroduction'));
-    assert(!all(tree).some(node => node.type === 'NativeSend'));
-    assert.equal(f.authority!.getSnapshot().account?.network, 'ethereum');
+    assert(!all(tree).some(node => node.type === 'BackupIntroduction'));
+    const send = all(tree).find(node => node.type === 'NativeSend'); assert(send);
+    assert.equal(typeof (send.props.beforeBackup as { onRequest: unknown }).onRequest, 'function');
+    assert.equal(f.authority!.getSnapshot().account?.network, 'syscoin-nevm');
+    assert.equal(f.authority!.getSnapshot().phase, 'backup-required');
   } finally { f.dispose(); }
 });
 

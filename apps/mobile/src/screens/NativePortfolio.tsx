@@ -121,7 +121,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
   const warning = receiveWarning?.scope === scope && receiveWarning.model === model ? receiveWarning : null;
   const nativeDetail = scope !== null && nativeDetailScope === scope;
   const loading = snapshot.status === 'loading';
-  const canSend = (!!onSend || backupRequired) && (utxo !== undefined ||
+  const canSend = !!onSend && (utxo !== undefined ||
     !!registration && nativeSigningEnabled(registration.id, [registration]));
   const faucet = registration ? getTestnetFaucet(registration) : null;
 
@@ -296,7 +296,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
         {snapshot.status === 'error' && <Notice title={t('mobile.activityViews.watchAccountPortfolio.couldNotLoadYourBalance')} body={canReceive ? t('mobile.portfolioViews.addressAvailable', { network: networkName }) : t('mobile.activityViews.nativeActivity.refreshToTryAgain')} tone="amber" />}
         {!canSend && !smartAccount && <Notice title={canReceive ? network.testnet ? t('mobile.portfolioViews.receiveOnlyTest') : t('mobile.networks.balanceOnly') : t('mobile.portfolioViews.balanceOnly')} body={t('mobile.portfolioViews.sendUnavailable')} />}
         <View style={[s.actions, stackActions && s.stackedActions]}>
-          {canSend && <Button title={t('buttons.send')} icon="arrow-up-right" style={actionStyle} onPress={() => { if (account && model.isCurrent(account)) { if (requiresBackup()) (onBackup ?? onViewRecovery)(); else onSend?.(); } }} />}
+          {canSend && <Button title={t('buttons.send')} icon="arrow-up-right" style={actionStyle} onPress={() => { if (account && model.isCurrent(account)) onSend?.(); }} />}
           {canReceive && <Button title={t('buttons.receive')} variant={canSend ? 'secondary' : 'primary'} icon="arrow-down-left" style={actionStyle} testID="native-portfolio-receive" onPress={requestReceive} />}
           {!canSend && <Button title={loading ? t('mobile.activityViews.nativeSptAssets.refreshing') : t('mobile.infrastructure.refresh')} icon="refresh" variant="secondary" style={actionStyle} disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
         </View>
@@ -314,10 +314,10 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
           onModeChange={setTokenTitle} onBackHandlerChange={setTokenBack}
           onReceive={canReceive ? requestReceive : undefined}
           onRefresh={() => { if (account && model.isCurrent(account)) void model.refresh(); }}
-          onSend={account && onSendSpt ? asset => { if (model.isCurrent(account)) { if (requiresBackup()) (onBackup ?? onViewRecovery)(); else onSendSpt(asset); } } : undefined} />}
+          onSend={account && onSendSpt ? asset => { if (model.isCurrent(account)) onSendSpt(asset); } : undefined} />}
         {tokenView && !utxo && <NativeTokens initialContract={initialTokenContract} registration={registration} nativeAsset={nativeCoinCard} controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle}
-          onSend={account && onSendToken ? (token) => { if (model.isCurrent(account)) { if (requiresBackup()) (onBackup ?? onViewRecovery)(); else onSendToken(token); } } : undefined}
-          onSendCollectible={account && onSendCollectible ? (collectible) => { if (model.isCurrent(account)) { if (requiresBackup()) (onBackup ?? onViewRecovery)(); else onSendCollectible(collectible); } } : undefined}
+          onSend={account && onSendToken ? (token) => { if (model.isCurrent(account)) onSendToken(token); } : undefined}
+          onSendCollectible={account && onSendCollectible ? (collectible) => { if (model.isCurrent(account)) onSendCollectible(collectible); } : undefined}
           onReceive={requestReceive} />}
         </View>
         {!nativeDetail && !tokenTitle && onActivity && <Card style={s.tools}><Row title={t('buttons.activity')} subtitle={t('mobile.portfolioViews.activitySubtitle')} icon="clock" onPress={onActivity} last /></Card>}

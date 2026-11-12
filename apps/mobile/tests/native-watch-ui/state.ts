@@ -8,7 +8,8 @@ export const events: string[] = [];
 export const publicShares: string[] = [];
 export let watchBalanceMode: 'value' | 'zero' | 'error' = 'value';
 export function setWatchBalanceMode(value: typeof watchBalanceMode) { watchBalanceMode = value; }
-export const audit = { unlocks: 0, signs: 0, broadcasts: 0, closed: 0, keyReads: 0, keyAttempts: 0, importAttempts: 0, imports: 0, readFailures: 0, writes: 0 };
+export const audit = { unlocks: 0, signs: 0, broadcasts: 0, closed: 0, keyReads: 0, keyAttempts: 0, importAttempts: 0, imports: 0, readFailures: 0, writes: 0,
+  transferPrepares: 0, transferFeeReads: 0, utxoOpens: 0, utxoSavedReads: 0 };
 let pendingUnlock: (() => void) | null = null;
 let pendingClose: (() => void) | null = null;
 let delayClose = false;

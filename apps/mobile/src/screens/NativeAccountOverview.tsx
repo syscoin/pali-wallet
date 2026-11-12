@@ -143,8 +143,7 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
         ? hasTestnets ? 'mobile.accountPortfolio.partialExcludingTestnets' : 'mobile.accountPortfolio.partial'
         : hasTestnets ? 'mobile.accountPortfolio.estimatedExcludingTestnets' : 'mobile.accountPortfolio.estimated')}</Text></View>
     <View style={s.actions}>
-      {(portfolio.onSend || portfolio.source.getSnapshot().backup !== 'confirmed') && <Button title={t('buttons.send')} icon="arrow-up-right" style={s.flex} disabled={busy || snapshot.status !== 'ready' || !filterAvailable} onPress={() => {
-        if (portfolio.source.getSnapshot().backup !== 'confirmed') { (portfolio.onBackup ?? portfolio.onViewRecovery)(); return; }
+      {portfolio.onSend && <Button title={t('buttons.send')} icon="arrow-up-right" style={s.flex} disabled={busy || snapshot.status !== 'ready' || !filterAvailable} onPress={() => {
         if (snapshot.filter === 'all') openSheet('send');
         else if (selectedNetwork) void run(check => send(selectedNetwork, undefined, check));
       }} />}

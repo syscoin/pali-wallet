@@ -24,6 +24,9 @@ type Element = { type: unknown; props: Record<string, any>; children: unknown[] 
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (next: unknown) => void };
 function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>, recipientResolver?: NativeRecipientResolver, onChangeNetwork?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>) => void, onViewTransaction?: (hash: string) => void, onChangeAsset?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>, token?: unknown) => void, ledgerConnection?: { subscribe(listener: () => void): () => void; isConnected(): boolean }, localization = nativeTranslationFixture) {
   let initialDraft: NativeSendInitialDraft | undefined, collectible: SavedCollectible | undefined;
+  let beforeBackup: { onRequest(draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>): void } | undefined;
+  let tokenConnections = 0;
+  const tokenView = { subscribe: () => () => {}, getSnapshot: () => ({ items: [], collectibles: [] }), connect() { tokenConnections++; return () => {}; } };
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
@@ -93,8 +96,9 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     async recover() { if (recoveryFailure) throw recoveryFailure; }};
   let context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false,registrationHash:'ethereum-registration'};
   let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
-  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,collectible,initialDraft,ledgerConnection,beforeClose,recipientResolver,account,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
+  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,collectible,initialDraft,ledgerConnection,beforeClose,beforeBackup,tokenView:beforeBackup?tokenView:undefined,recipientResolver,account,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
   return {render, selectedFees, renderInput: (props: unknown) => module.exports.NativeSendInput(props) as Element,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
+    requireBackup(onRequest: NonNullable<typeof beforeBackup>['onRequest']) { beforeBackup = { onRequest }; }, tokenConnections: () => tokenConnections,
     seedDraft(draft: NativeSendInitialDraft, saved?: SavedCollectible) { initialDraft = draft; collectible = saved; },
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
     failRecovery(message: string) { recoveryFailure = new Error(message); },
@@ -115,6 +119,24 @@ function openRecipientScanner(f: ReturnType<typeof setup>) {
   field.props.trailing.props.onPress();
   return one(f.render(), 'RecipientQrScanner');
 }
+
+for (const kind of ['native', 'token', 'ERC-721', 'ERC-1155'] as const) test(`unbacked ${kind} form hands its unsigned draft to backup without preparing or opening token custody`, () => {
+  const token = kind === 'token' ? { contractAddress: '0x2222222222222222222222222222222222222222', decimals: 6, name: 'Token', symbol: 'T' } : undefined;
+  const collectible = kind === 'ERC-721' || kind === 'ERC-1155' ? { contractAddress: '0x3333333333333333333333333333333333333333', tokenStandard: kind,
+    ...(kind === 'ERC-1155' ? { tokenId: '7' } : {}) } as SavedCollectible : undefined;
+  const f = setup(token), drafts: NativeUnsignedSendDraft[] = [];
+  const draft = { recipient: '0x4444444444444444444444444444444444444444', amount: '1.25', nonce: '7', tokenId: '9', max: false, advanced: true, feeChoice: { kind: 'high' as const } };
+  f.seedDraft(draft, collectible); f.snapshot.phase = 'idle'; f.requireBackup(value => drafts.push(value));
+  const tree = f.render(), review = button(tree, 'Back up now');
+  assert.equal(review.props.disabled, false);
+  assert.equal(f.tokenConnections(), 0);
+  assert.equal(one(tree, 'Button', node => node.props.icon === 'settings').props.disabled, true);
+  if (token) assert.equal(one(tree, 'TokenMaximum').props.disabled, true);
+  review.props.onPress();
+  assert.equal(JSON.stringify(drafts), JSON.stringify([{ kind: 'evm', ...draft }]));
+  assert.deepEqual(f.prepared, []); assert.deepEqual(f.maximumPrepared, []); assert.deepEqual(f.confirmed, []);
+  assert.equal(f.tokenConnections(), 0); f.dispose();
+});
 
 test('device authorization refusal keeps the exact EVM review available for retry', async () => {
   const f = setup(); f.snapshot.phase = 'idle';

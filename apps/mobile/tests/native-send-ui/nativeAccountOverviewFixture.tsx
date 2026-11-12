@@ -45,7 +45,7 @@ export function NativeAccountOverviewFixture() {
   const shell = useRealShell('portfolio-fixture', () => 'portfolio-fixture', () => {});
   return <RealAppShell tab="wallet" onTab={() => {}} immersive={shell.immersive}>
     <NativeAccountOverview controller={model} portfolio={{ source, reader, accountLabel: accounts[selected]!.label, navigation: shell.navigation,
-    onManageAccounts: window.__accountPortfolio.nextAccount, onExit() {}, onLock() {}, onViewRecovery() { backups++; }, onBackup() { backups++; }, onSend: unbacked ? undefined : () => {} }}
+    onManageAccounts: window.__accountPortfolio.nextAccount, onExit() {}, onLock() {}, onViewRecovery() { backups++; }, onBackup() { backups++; }, onSend: () => {} }}
     selectNetwork={async (choice, check) => { check(); publish(choice.scope.network.id); check(); }}
     send={async (choice, token, check) => { check(); sends.push(`${choice.scope.network.id}:${token?.symbol ?? choice.symbol}`); }} />
   </RealAppShell>;

@@ -9,6 +9,7 @@ import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
 import * as networks from '../src/custody/networkContext.ts';
+import * as publicSendDraft from '../src/screens/publicSendDraft.ts';
 import * as utxoNetworks from '../src/core/utxoNetworks.ts';
 import type { NativePairingEntry } from '../src/connections/pairingLinks.ts';
 import type { NativeConnectionsView } from '../src/connections/types.ts';
@@ -350,6 +351,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     ])
   );
   Object.assign(dependencies, {
+    './publicSendDraft': publicSendDraft,
     './NativeAccountOverview': { NativePortfolioRoute: 'NativePortfolio' },
     '../notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
     '../activity/accountActivity': { AccountActivityController: class {} },

@@ -53,6 +53,7 @@ import { createNativeCoinQuoteReader, nativeCoinQuoteSource } from '../portfolio
 import { createNativeAssetMarketReader, nativeAssetMarketSource, rememberNativeAssetMarketIcon } from '../portfolio/nativeAssetMarket';
 import type { NotificationChoice } from '../notifications/choices';
 import { sendDraftForNetwork, NETWORK_CHANGED_DRAFT_NOTICE, type NativeUnsignedSendDraft } from './sendNetworkDraft';
+import { publicSendContext, samePublicSendDestination, type PublicSendContext } from './publicSendDraft';
 import type { NativeNetworkSelectionReceipt } from '../custody/accounts';
 import { NativeSend, type NativeRecipientPicker } from './NativeSend';
 import { NativeUtxoSendScreen } from './NativeUtxoSend';
@@ -103,11 +104,15 @@ type Controllers = ReturnType<typeof createNativeWalletControllers>;
 const nativeLifecycle = new NativeControllerLifecycle({ create: createNativeWalletControllers, protect: ensurePrivacyShield, recovery: createNativeRecoveryCoordinator });
 // Nonsecret operation outcome survives route departure while cleanup is pending.
 let savedRecoveryOutcome: RecoveryOutcome | null = null;
-type RootOrigin = Readonly<{ tab: RealTab; stage: Stage; context: string; identity: string; epoch: number }>;
+type RootOrigin = Readonly<{ tab: RealTab; stage: Stage; context: string; identity: string; epoch: number; publicDraft?: PublicSendContext }>;
 type SendTarget = Readonly<
   { kind: 'native' } | { kind: 'spt'; asset: NativeUtxoAsset; maximumAmount: string } | { kind: 'utxo'; asset?: NativeUtxoAsset } | { kind: 'token'; token: Erc20Metadata } |
   { kind: 'collectible'; collectible: SavedCollectible } | { kind: 'saved' | 'cancel' | 'cancel-saved' | 'speed-up'; hash: string }
 >;
+type PublicSendTarget = Extract<SendTarget, { kind: 'native' | 'spt' | 'utxo' | 'token' | 'collectible' }>;
+type SendBackupReturn = Readonly<{ local: Controllers; epoch: number; destination: PublicSendContext; origin: RootOrigin; target: PublicSendTarget; form: NativeUnsignedSendDraft }>;
+const isPublicSendTarget = (target: SendTarget): target is PublicSendTarget =>
+  target.kind === 'native' || target.kind === 'token' || target.kind === 'collectible' || target.kind === 'spt' || target.kind === 'utxo';
 type NetworkReturn = Readonly<{ local: Controllers; origin: RootOrigin; sourceRevision: number; sourceCatalogueRevision: number } & (
   { kind: 'send'; target: SendTarget; form: NativeUnsignedSendDraft } |
   { kind: 'receive'; continuation: NativeReceiveContinuation }
@@ -237,6 +242,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const importRequest = useRef({ token: 0, active: false });
   const [importActiveToken, setImportActiveToken] = useState<number | null>(null);
   const [sendDraft, setSendDraft] = useState<Readonly<{ origin: RootOrigin; target: SendTarget; recipientPicker?: NativeRecipientPicker; resume?: ReturnType<typeof trezorResumeDraft>; resumeId?: string; form?: NativeUnsignedSendDraft; notice?: string }> | null>(null);
+  const sendBackupReturn = useRef<SendBackupReturn | null>(null);
   const [portfolioSend, setPortfolioSend] = useState<{ choice: NotificationChoice; target: SendTarget; epoch: number; assertCurrent(): void; release(): void } | null>(null);
   const accountNavigation = useRef<AccountNavigation | null>(null);
   const [portfolioDetail, setPortfolioDetail] = useState<{ owner: Controllers; context: string; detail: NativeAccountDetail } | null>(null);
@@ -327,6 +333,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     if (background) pausedIdle.current ??= custodyIdle.pause(screenToken.current);
     else { pausedIdle.current = null; custodyIdle.stop(screenToken.current); }
     epoch.current++;
+    sendBackupReturn.current = null;
     recoveryRef.current?.cancel();
     const removal = removalRef.current;
     removal?.local.removal.cancel();
@@ -357,6 +364,14 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     const local = controllersRef.current;
     return custodyContext(local?.authority.getSnapshot(), local?.authority.getCatalogue());
   }, [controllersRef]);
+  const draftContext = () => {
+    const local = controllersRef.current;
+    if (!mounted.current || !protectedScreen || !local || AppState.currentState !== 'active' ||
+        updateSession.current || recoveryRef.current || removalRef.current ||
+        nativeLifecycle.current(screenToken.current) !== local || publicViewLock.getSnapshot().phase !== 'unlocked') return null;
+    return publicSendContext(local.authority.getSnapshot(), local.authority.getCatalogue());
+  };
+  const sendContext = (origin: RootOrigin) => origin.publicDraft ? draftContext() : readyContext();
   const openResumedSmartOperation = useCallback(async (assertView: () => void, signal: AbortSignal, authentication: NativePrivateAuthenticationScope) => {
     if (AppState.currentState !== 'active') throw new Error('CANCELLED');
     const local = controllersRef.current, origin = rootOrigin.current, id = smartResumeId;
@@ -573,17 +588,40 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     rootOrigin.current = origin;
     setStage(next);
   };
+  const installPublicSendDraft = (target: PublicSendTarget, form?: NativeUnsignedSendDraft, tab = shell.tab) => {
+    const local = controllersRef.current, current = draftContext();
+    if (!local || !current || (target.kind === 'spt' ? !canSendSpt :
+      !canSign && !(canSendUtxo && (target.kind === 'native' || target.kind === 'utxo') ||
+        canSendSmart && (target.kind === 'native' || target.kind === 'token' || target.kind === 'collectible')))) return false;
+    const origin: RootOrigin = { tab, stage: 'send', ...current, publicDraft: current, epoch: epoch.current };
+    const catalogue = local.authority.getCatalogue();
+    const recipientPicker = target.kind === 'native' && canSign && catalogue &&
+      catalogue.accounts.some(({ address }) => address.toLowerCase() !== current.address.toLowerCase()) ? {
+        current: () => rootOrigin.current === origin && controllersRef.current === local &&
+          epoch.current === origin.epoch && draftContext()?.context === origin.context &&
+          local.authority.getCatalogue()?.revision === catalogue.revision,
+        accounts: () => catalogue.accounts.flatMap(({ address, label }) =>
+          address.toLowerCase() === current.address.toLowerCase() ? [] : [{ address, label }]),
+      } : undefined;
+    rootOrigin.current = origin;
+    setSendDraft({ origin, target, form, recipientPicker });
+    setStage('send');
+    return true;
+  };
+  const openSendDraft = (target: PublicSendTarget) => {
+    if (stage === 'choose') installPublicSendDraft(target);
+  };
   const networkRouteCurrent = (route: NetworkReturn) => mounted.current && networkReturnOwner.current === route &&
     controllersRef.current === route.local && epoch.current === route.origin.epoch && rootOrigin.current === route.origin && AppState.currentState === 'active';
   const changeSendAsset = (form: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>, token?: Erc20Metadata) => {
-    const local = controllersRef.current, saved = sendDraft, before = readyContext(), captured = epoch.current;
+    const local = controllersRef.current, saved = sendDraft, before = saved ? sendContext(saved.origin) : null, captured = epoch.current;
     if (!local || !saved || !before || stage !== 'send' || rootOrigin.current !== saved.origin || before.context !== saved.origin.context ||
         AppState.currentState !== 'active' || (saved.target.kind !== 'native' && saved.target.kind !== 'token')) return;
     local.transfers.cancel();
     const closing = selectedAccountType === 'Trezor' ? local.trezor?.cancel() : Promise.resolve();
     void Promise.resolve(closing).then(() => {
       if (!mounted.current || controllersRef.current !== local || epoch.current !== captured || rootOrigin.current !== saved.origin ||
-          AppState.currentState !== 'active' || readyContext()?.context !== before.context) return;
+          AppState.currentState !== 'active' || sendContext(saved.origin)?.context !== before.context) return;
       setSendDraft({ ...saved, target: token ? { kind: 'token', token } : { kind: 'native' },
         form: { kind: 'evm', recipient: form.recipient, amount: '', nonce: '', max: false, advanced: false } });
     }).catch(() => undefined);
@@ -653,7 +691,6 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   };
   const selectPortfolioNetwork = (choice: NotificationChoice, assertView: () => void) => navigateAccount(choice, assertView, () => {});
   const sendFromPortfolio = (choice: NotificationChoice, token: Erc20Metadata | undefined, assertView: () => void) => {
-    if (controllersRef.current?.authority.getSnapshot().backup === 'unconfirmed') { assertView(); openRequiredBackup(); return Promise.resolve(); }
     return navigateAccount(choice, assertView, (_context, check, _local, release) => {
       setPortfolioSend({ choice, target: token ? { kind: 'token', token } : { kind: 'native' }, epoch: epoch.current, assertCurrent: check, release }); return 'queued';
     });
@@ -686,22 +723,24 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       const saved = controllersRef.current?.authority.getCatalogue(), state = controllersRef.current?.authority.getSnapshot();
       setPortfolioSend(pending => pending === portfolioSend ? null : pending);
       try { portfolioSend.assertCurrent(); } catch { portfolioSend.release(); return; }
-      if (epoch.current !== portfolioSend.epoch || stage !== 'choose' || state?.phase !== 'ready' ||
+      if (epoch.current !== portfolioSend.epoch || stage !== 'choose' || !state ||
+          (state.phase !== 'ready' && !(state.phase === 'backup-required' && isPublicSendTarget(portfolioSend.target))) ||
           saved?.active.accountId !== portfolioSend.choice.scope.accountId || state.account?.network !== portfolioSend.choice.scope.network.id ||
           state.account.address !== portfolioSend.choice.scope.accountAddress) { portfolioSend.release(); return; }
       portfolioSend.release();
-      openStage('send', portfolioSend.target);
+      if (isPublicSendTarget(portfolioSend.target)) openSendDraft(portfolioSend.target);
+      else openStage('send', portfolioSend.target);
     });
     return () => { current = false; };
   });
   const openSendNetwork = (form: NativeUnsignedSendDraft) => {
-    const local = controllersRef.current, before = readyContext(), saved = sendDraft, captured = epoch.current;
+    const local = controllersRef.current, saved = sendDraft, before = saved ? sendContext(saved.origin) : null, captured = epoch.current;
     if (!local || !before || !saved || rootOrigin.current !== saved.origin || before.context !== saved.origin.context ||
         stage !== 'send' || AppState.currentState !== 'active') return;
     if (form.kind === 'evm') local.transfers.cancel();
     const closeHardware = form.kind === 'evm' && selectedAccountType === 'Trezor' ? local.trezor?.cancel() : Promise.resolve();
     void Promise.resolve(closeHardware).then(() => {
-      const current = readyContext(), catalogue = local.authority.getCatalogue();
+      const current = sendContext(saved.origin), catalogue = local.authority.getCatalogue();
       if (!mounted.current || controllersRef.current !== local || epoch.current !== captured || rootOrigin.current !== saved.origin ||
           AppState.currentState !== 'active' || current?.context !== before.context || !catalogue) return;
       const origin: RootOrigin = { ...saved.origin, stage: 'networks' };
@@ -722,7 +761,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   };
   const finishNetworkSelection = (route: NetworkReturn, receipt?: NativeNetworkSelectionReceipt) => {
     if (!networkRouteCurrent(route)) return;
-    const current = readyContext();
+    const current = route.kind === 'send' ? sendContext(route.origin) : readyContext();
     if (receipt) {
       try { receipt.assertCurrent(); } catch { return; }
       if (!current || receipt.sourceContextRevision !== route.sourceRevision || receipt.sourceCatalogueRevision !== route.sourceCatalogueRevision ||
@@ -731,7 +770,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     networkReturnOwner.current = null; setNetworkReturn(null);
     if (!current || !receipt && current.context !== route.origin.context) { rootOrigin.current = null; setSendDraft(null); setReceiveContinuation(undefined); setStage('choose'); return; }
     if (route.kind === 'send') {
-      const origin: RootOrigin = { tab: route.origin.tab, stage: 'send', ...current, epoch: epoch.current };
+      const origin: RootOrigin = { tab: route.origin.tab, stage: 'send', ...current, epoch: epoch.current,
+        ...(route.origin.publicDraft && 'networkIdentity' in current ? { publicDraft: current as PublicSendContext } : {}) };
       rootOrigin.current = origin;
       setSendDraft({ origin, target: receipt ? { kind: 'native' } : route.target,
         form: receipt ? sendDraftForNetwork(route.form, receipt.target) : route.form,
@@ -831,6 +871,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   }, [incomingPairing, onPairingHandled, protectedScreen, busy, snapshot.phase, snapshot.revision, stage,
     shell.immersive, connectionView, connectionSnapshot, signingReview, scanIntentExpiresAt, readyContext, shell.tab]);
   const clearStage = () => {
+    sendBackupReturn.current = null;
     networkReturnOwner.current = null; setNetworkReturn(null); setReceiveContinuation(undefined);
     depositBackupReturn.current = null; setDepositBackupRoute(null); setDepositTask(null);
     rootOrigin.current = null;
@@ -844,24 +885,45 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     setStage('choose');
   };
   const closeStage = () => {
-    const origin = rootOrigin.current, current = readyContext();
+    const origin = rootOrigin.current, current = origin ? sendContext(origin) : readyContext();
     clearStage();
     if (origin && current && AppState.currentState === 'active' && origin.context === current.context && origin.identity === current.identity && origin.epoch === epoch.current)
       shell.restoreRoot(origin.tab, origin.identity);
   };
+  const restoreBackupDraft = () => {
+    const saved = sendBackupReturn.current;
+    sendBackupReturn.current = null;
+    const current = draftContext();
+    if (!saved || !current || saved.local !== controllersRef.current || saved.epoch !== epoch.current ||
+        !samePublicSendDestination(saved.destination, current)) return false;
+    return installPublicSendDraft(saved.target, saved.form, saved.origin.tab);
+  };
   const closeBackup = () => {
     // In-flight credential work keeps the existing lock-on-leave behavior.
     if (submitting.current) { revoke(); return; }
-    controllersRef.current?.backup.cancel(); clearSecrets(); setError(''); closeStage();
+    controllersRef.current?.backup.cancel(); clearSecrets(); setError('');
+    if (!restoreBackupDraft()) closeStage();
   };
   const openRequiredBackup = () => {
     const local = controllersRef.current;
     if (!local || submitting.current || !protectedScreen || AppState.currentState !== 'active' ||
         local.authority.getSnapshot().phase !== 'backup-required') return;
+    sendBackupReturn.current = null;
     local.backup.cancel(); clearSecrets(); setError(''); setStage('backup-intro');
   };
+  const backupForSend = (form: NativeUnsignedSendDraft) => {
+    const local = controllersRef.current, saved = sendDraft, current = draftContext();
+    if (!local || !saved?.origin.publicDraft || !current || stage !== 'send' ||
+        local.authority.getSnapshot().phase !== 'backup-required' || submitting.current ||
+        rootOrigin.current !== saved.origin || current.context !== saved.origin.context ||
+        !isPublicSendTarget(saved.target)) return;
+    sendBackupReturn.current = { local, epoch: epoch.current, destination: current, origin: saved.origin,
+      target: saved.target, form: Object.freeze({ ...form }) };
+    rootOrigin.current = null;
+    setSendDraft(null); local.backup.cancel(); clearSecrets(); setError(''); setStage('backup-intro');
+  };
   const sendTarget = stage === 'send' && sendDraft &&
-    sendDraft.origin.context === custodyContext(snapshot, catalogue)?.context
+    sendDraft.origin.context === (sendDraft.origin.publicDraft ? publicSendContext(snapshot, catalogue) : custodyContext(snapshot, catalogue))?.context
     ? sendDraft.target : undefined;
   const canReplaceSmart = selectedAccountType === 'SmartAccount' && (sendTarget?.kind === 'speed-up' || sendTarget?.kind === 'cancel' || sendTarget?.kind === 'cancel-saved');
   const completedOrigin = rootOrigin.current;
@@ -880,7 +942,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       if (accountNavigation.current) { revoke(); return true; }
       if (['backup-intro', 'backup-auth', 'words', 'backup-verify'].includes(stage) && ['ready', 'backup-required'].includes(snapshot.phase)) { closeBackup(); return true; }
       if (stage === 'backup-complete' && snapshot.phase === 'ready') {
-        closeStage();
+        closeBackup();
         return true;
       }
       // Full-screen leaf flows own their Back behavior regardless of listener order.
@@ -898,9 +960,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
           stage === 'trezor' && trezorView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'ledger' && ledgerView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase) ||
-          stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase) ||
+          stage === 'networks' && networkView && (['ready', 'authenticating'].includes(snapshot.phase) ||
+            snapshot.phase === 'backup-required' && networkReturn?.kind === 'send' && !!networkReturn.origin.publicDraft) ||
           stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView ||
-          stage === 'send' && snapshot.phase === 'ready' && (transferView && canSign || canSendUtxo || canSendSmart) ||
+          stage === 'send' && (snapshot.phase === 'ready' || snapshot.phase === 'backup-required' && !!sendDraft?.origin.publicDraft) && (transferView && canSign || canSendUtxo || canSendSmart) ||
           stage === 'import-key' && importScope && ['ready', 'authenticating'].includes(snapshot.phase) &&
             (snapshot.revision === importScope.contextRevision || importActiveToken === importScope.token && snapshot.revision === importScope.contextRevision + 1)) return false;
       if (['ready', 'backup-required'].includes(snapshot.phase) && stage === 'choose') shell.goBack(); else exit();
@@ -909,6 +972,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   });
 
   const clearOwnerView = useCallback(() => {
+    sendBackupReturn.current = null;
     networkReturnOwner.current = null; setNetworkReturn(null); setReceiveContinuation(undefined);
     depositBackupReturn.current = null; setDepositBackupRoute(null); setDepositTask(null);
     cancelNoteRestore();
@@ -1057,6 +1121,12 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         });
       } : null);
       const nextCatalogue = local.authority.getCatalogue();
+      const returning = sendBackupReturn.current;
+      if (returning) {
+        const current = publicSendContext(state, nextCatalogue);
+        if (['locked', 'unavailable', 'disposed'].includes(state.phase) ||
+            current && !samePublicSendDestination(returning.destination, current)) sendBackupReturn.current = null;
+      }
       setCatalogue(nextCatalogue); bridge.current?.onNativeCatalogue(nextCatalogue);
       const origin = rootOrigin.current;
       if ((origin?.stage === 'smart-infrastructure' || origin?.stage === 'smart-authenticator' || origin?.stage === 'slh-dsa' || origin?.stage === 'smart-modules' || origin?.stage === 'smart-resume') && origin.identity !== custodyContext(state, nextCatalogue)?.identity) {
@@ -1068,7 +1138,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         rootOrigin.current = null; setSentryScope(null);
         setStage((current) => current === 'sentry-keys' ? 'choose' : current);
       }
-      if (origin?.stage === 'send' && origin.context !== custodyContext(state, nextCatalogue)?.context) {
+      if (origin?.stage === 'send' && origin.context !== (origin.publicDraft ? publicSendContext(state, nextCatalogue) : custodyContext(state, nextCatalogue))?.context) {
         rootOrigin.current = null;
         setSendDraft(null);
         setStage((current) => current === 'send' ? 'choose' : current);
@@ -1645,13 +1715,15 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
           rootOrigin.current = null; setImportScope(null); setStage('choose');
         }
       }} />;
-  if (stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase))
+  if (stage === 'networks' && networkView && (['ready', 'authenticating'].includes(snapshot.phase) ||
+      snapshot.phase === 'backup-required' && networkReturn?.kind === 'send' && !!networkReturn.origin.publicDraft))
     return <NativeNetworks controller={networkView} onBack={networkReturn ? () => finishNetworkSelection(networkReturn) : closeStage}
       selection={networkReturn ? { purpose: networkReturn.kind,
         balance: snapshot.account ? { networkId: snapshot.account.network, available: sendAvailable, loading: sendBalance?.status === 'loading' || sendBalance?.status === 'unknown' } : undefined,
         balances: accountPortfolio?.cachedBalances(),
         assertCurrent() {
-        if (!networkRouteCurrent(networkReturn) || readyContext()?.context !== networkReturn.origin.context) throw Error('CANCELLED');
+        const current = networkReturn.kind === 'send' ? sendContext(networkReturn.origin) : readyContext();
+        if (!networkRouteCurrent(networkReturn) || current?.context !== networkReturn.origin.context) throw Error('CANCELLED');
       }, onSelected: receipt => finishNetworkSelection(networkReturn, receipt) } : undefined} />;
   if (sentryRoute && sentry) return <NativeSentryHub key={sentryScope!.context}
     networkLabel={utxo!.name} openKeys={sentry.openKeys} openNodes={sentry.openNodes} onBack={closeStage} />;
@@ -1777,7 +1849,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     </>;
   }
   else if (stage === 'backup-complete' && snapshot.phase === 'ready') {
-    footer = <Button title={t('privacy.deposit.done')} disabled={busy} onPress={closeStage} />;
+    footer = <Button title={t('privacy.deposit.done')} disabled={busy} onPress={closeBackup} />;
     body = <View style={s.backupComplete}>
       <View style={s.backupCompleteIcon} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         <Icon name="check" size={40} color={colors.bg} />
@@ -1788,6 +1860,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   }
   else if (snapshot.phase === 'backup-required' && stage === 'choose' && publicSource) {
     const content = shell.tab === 'wallet' ? <NativePortfolioRoute overview={utxo ? null : accountPortfolio} selectNetwork={selectPortfolioNetwork} sendFrom={sendFromPortfolio} detail={visiblePortfolioDetail} closeDetail={() => setPortfolioDetail(null)} navigateDetail={openPortfolioDetail} navigateActivity={openPortfolioActivity} cancelSelection={() => { if (accountNavigation.current) revoke(); else controllersRef.current?.authority.cancelAccountOperation(); }} source={publicSource} reader={balanceReader ?? undefined} accountLabel={accountLabel}
+      onSend={canSign || canSendUtxo ? () => openSendDraft({ kind: 'native' }) : undefined}
+      onSendSpt={canSendSpt ? asset => openSendDraft({ kind: 'spt', asset, maximumAmount: formatBaseUnits(sptBalanceTotalUnits(asset), asset.decimals) }) : undefined}
+      onSendToken={canSign ? token => openSendDraft({ kind: 'token', token }) : undefined}
+      onSendCollectible={canSign ? collectible => openSendDraft({ kind: 'collectible', collectible }) : undefined}
       onReceiveIntentConsumed={consumePortfolioReceiveIntent} onExit={exit} onLock={lockWallet} onViewRecovery={openRequiredBackup} onBackup={openRequiredBackup} navigation={shell.navigation} />
       : shell.tab === 'settings' ? <RealSettings accountLabel={accountLabel} watchOnly={false} navigation={shell.navigation} notifications={notificationSettings}
         backupRequired onBackup={openRequiredBackup} onSecurity={() => setStage('security')} onLock={lockWallet} onUpdate={openWalletUpdate} onBack={() => shell.select('wallet')} />
@@ -1816,7 +1892,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       initialRecipient={sendDraft?.form?.kind === 'evm' ? sendDraft.form.recipient : undefined}
       onChangeAsset={sendTarget.kind === 'native' || sendTarget.kind === 'token' ? changeSendAsset : undefined}
       ledgerConnection={ledgerConnection ?? undefined} recipientResolver={recipientResolver} account={{ ...snapshot.account, revision: snapshot.revision }} source={publicSource} reader={balanceReader} tokenView={tokenView ?? undefined} token={sendTarget.kind === 'token' ? sendTarget.token : undefined} collectible={sendTarget.kind === 'collectible' ? sendTarget.collectible : undefined} open={openSmartSend} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} accountLabel={accountLabel} onBack={closeStage} onViewTransaction={viewCompletedTransaction} />;
-  else if (snapshot.phase === 'ready' && sendTarget && sendTarget.kind !== 'spt' && sendTarget.kind !== 'utxo' && (canSign || canReplaceSmart) && transferView && snapshot.account) return <NativeSend availableAmount={sendAvailable} recipientResolver={recipientResolver} key={`${sendDraft?.resumeId ?? ''}:${sendTarget.kind === 'token' ? sendTarget.token.contractAddress : sendTarget.kind}`}
+  else if ((snapshot.phase === 'ready' || snapshot.phase === 'backup-required' && !!sendDraft?.origin.publicDraft && !!sendTarget && isPublicSendTarget(sendTarget)) && sendTarget && sendTarget.kind !== 'spt' && sendTarget.kind !== 'utxo' && (canSign || canReplaceSmart) && transferView && snapshot.account) return <NativeSend availableAmount={sendAvailable} recipientResolver={recipientResolver} key={`${sendDraft?.resumeId ?? ''}:${sendTarget.kind === 'token' ? sendTarget.token.contractAddress : sendTarget.kind}`}
+    beforeBackup={snapshot.phase === 'backup-required' ? { onRequest: backupForSend } : undefined}
     assetChoices={accountPortfolio?.cachedAssets(snapshot.account.network)?.tokens}
     onChangeAsset={sendTarget.kind === 'native' || sendTarget.kind === 'token' ? changeSendAsset : undefined}
     beforeClose={selectedAccountType === 'Trezor' || canReplaceSmart ? trezorView?.cancel : undefined}
@@ -1833,8 +1910,9 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     onChangeNetwork={networkView && !utxo && (!accountPortfolio || accountPortfolio.getSnapshot().filter === 'all') ? openSendNetwork : undefined}
     onViewTransaction={activityView ? viewCompletedTransaction : undefined}
     accountLabel={accountLabel} onBack={closeStage} />;
-  else if (snapshot.phase === 'ready' && (sendTarget?.kind === 'native' || sendTarget?.kind === 'spt' && canSendSpt || sendTarget?.kind === 'utxo') && utxo && canSendUtxo && openUtxoSend)
+  else if ((snapshot.phase === 'ready' || snapshot.phase === 'backup-required' && !!sendDraft?.origin.publicDraft) && (sendTarget?.kind === 'native' || sendTarget?.kind === 'spt' && canSendSpt || sendTarget?.kind === 'utxo') && utxo && canSendUtxo && openUtxoSend)
     return <NativeUtxoSendScreen beforeClose={selectedAccountType === 'Trezor' ? trezorView?.cancel : undefined} initialDraft={sendDraft?.form?.kind === 'utxo' ? sendDraft.form : sendDraft?.resume?.kind === 'utxo' ? sendDraft.resume.draft : undefined} draftNotice={sendDraft?.notice} key={sendDraft?.resumeId ?? snapshot.revision} network={utxo} open={openUtxoSend}
+      beforeBackup={snapshot.phase === 'backup-required' ? { onRequest: backupForSend } : undefined}
       ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined}
       availableAmount={sendTarget.kind === 'spt' ? sendTarget.maximumAmount : sendTarget.kind === 'utxo' && sendTarget.asset ? undefined : sendAvailable}
       onChangeNetwork={networkView && !utxo && (!accountPortfolio || accountPortfolio.getSnapshot().filter === 'all') ? openSendNetwork : undefined}
@@ -1857,10 +1935,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     reader={balanceReader ?? undefined}
     tokenView={tokenView ?? undefined}
     source={publicSource} accountLabel={accountLabel} onManageAccounts={accounts || accountView ? onAccounts : undefined} onExit={exit} onLock={lockWallet}
-    onSend={canSign || canSendUtxo || canSendSmart ? () => openStage('send', { kind: 'native' }) : undefined}
-    onSendSpt={canSendSpt ? asset => openStage('send', { kind: 'spt', asset, maximumAmount: formatBaseUnits(sptBalanceTotalUnits(asset), asset.decimals) }) : undefined}
-    onSendToken={canSign || canSendSmart ? (token) => openStage('send', { kind: 'token', token }) : undefined}
-    onSendCollectible={canSign || canSendSmart ? (collectible) => openStage('send', { kind: 'collectible', collectible }) : undefined}
+    onSend={canSign || canSendUtxo || canSendSmart ? () => openSendDraft({ kind: 'native' }) : undefined}
+    onSendSpt={canSendSpt ? asset => openSendDraft({ kind: 'spt', asset, maximumAmount: formatBaseUnits(sptBalanceTotalUnits(asset), asset.decimals) }) : undefined}
+    onSendToken={canSign || canSendSmart ? (token) => openSendDraft({ kind: 'token', token }) : undefined}
+    onSendCollectible={canSign || canSendSmart ? (collectible) => openSendDraft({ kind: 'collectible', collectible }) : undefined}
     onManageNetworks={networkView ? () => openStage('networks') : undefined}
     onChangeReceiveNetwork={networkView ? openReceiveNetwork : undefined} initialReceive={receiveContinuation} onReceiveIntentConsumed={consumePortfolioReceiveIntent}
     onViewRecovery={() => openStage('backup-intro')} onBackup={() => openStage('backup-intro')} onSecurity={() => openStage('security')}

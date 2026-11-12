@@ -227,8 +227,10 @@ export function NativeSend({
   availableAmount,
   assetChoices,
   onChangeAsset,
+  beforeBackup,
 }: {
   controller: NativeTransferView;
+  beforeBackup?: { onRequest(draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>): void };
   onChangeNetwork?(draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>): void;
   draftNotice?: string;
   onViewTransaction?(hash: string): void;
@@ -267,7 +269,7 @@ export function NativeSend({
   const feeChoice = feeSelection.scope === feeScope && feeSelection.controller === controller ? feeSelection.choice : AUTOMATIC_FEE;
   const [feeDialog, setFeeDialog] = useState<{ scope: string; controller: NativeTransferView } | null>(null);
   const feeOpen = feeDialog?.scope === feeScope && feeDialog.controller === controller;
-  const readTokenInventory = !!token || assetPickerOpen && !assetChoices;
+  const readTokenInventory = !beforeBackup && (!!token || assetPickerOpen && !assetChoices);
   useLayoutEffect(
     () => readTokenInventory ? tokenView?.connect() : undefined,
     [readTokenInventory, tokenView]
@@ -585,6 +587,11 @@ export function NativeSend({
     if (!authenticationCurrent(held)) { authenticationOwner.current = null; }
   };
   const prepare = () => {
+    if (beforeBackup) {
+      retirePicker(); closeScanner(); Keyboard.dismiss();
+      beforeBackup.onRequest(Object.freeze({ kind: 'evm', recipient, amount, nonce, tokenId, max: maximum, advanced, feeChoice }));
+      return;
+    }
     retirePicker();
     const chosenOwner = recipientDraft.owner;
     if (chosenOwner && (chosenOwner !== recipientPicker || !chosenOwner.current())) {
@@ -707,7 +714,7 @@ export function NativeSend({
     }} />}
     <Button title={t('privacy.deposit.done')} variant={onViewTransaction ? 'secondary' : 'primary'} onPress={close} />
   </> : hasOutcome ? <Button title={replacementHash ? t('mobile.sendAssetViews.evm.backToActivity') : t('mobile.sendAssetViews.evm.backToWallet')} variant="secondary" onPress={close} /> : !replacementHash ? (
-    <Button title={t('mobile.smartSendViews.reviewTransfer')} disabled={busy || !recipient.trim() ||
+    <Button title={t(beforeBackup ? 'mobile.walletViews.backUpNow' : 'mobile.smartSendViews.reviewTransfer')} disabled={busy || !recipient.trim() ||
       (draftCollectible?.tokenStandard === 'ERC-721' ? !tokenId.trim() : !amount && !maximum)}
       onPress={prepare} testID="native-send-review" />
   ) : undefined;
@@ -1078,7 +1085,7 @@ export function NativeSend({
                       snapshot={tokenSnapshot}
                       view={tokenView}
                       selected={maximum}
-                      disabled={busy}
+                      disabled={busy || !!beforeBackup}
                       onSelect={(value) => {
                         setMaximum(true);
                         setAmount(value);
@@ -1096,7 +1103,7 @@ export function NativeSend({
                 </>
               )}
               <Button title={`${t('send.networkFee')} · ${t(feeChoice.kind === 'custom' ? 'mobile.feeChoice.custom' : feeChoice.kind === 'automatic' ? 'mobile.sendAssetViews.evm.automatic' : `send.${feeChoice.kind}`)}`}
-                variant="secondary" icon="settings" size="compact" disabled={busy} onPress={() => { closeScanner(); setFeeDialog({ scope: feeScope, controller }); }} />
+                variant="secondary" icon="settings" size="compact" disabled={busy || !!beforeBackup} onPress={() => { closeScanner(); setFeeDialog({ scope: feeScope, controller }); }} />
               <Button title={advanced ? t('mobile.sendAssetViews.evm.hideAdvancedOptions') : t('mobile.sendAssetViews.evm.advancedOptions')} variant="secondary" icon={advanced ? 'chevron-up' : 'chevron-down'} size="compact"
                 disabled={busy} expanded={advanced} onPress={() => {
                   if (advanced) {
@@ -1117,7 +1124,7 @@ export function NativeSend({
             {t('mobile.common.development')}</Text>}
         </Screen>
       </KeyboardAvoidingView>
-      {feeOpen && <NetworkFeeSheet key={`${account.address}:${account.network}:${account.revision}:${context.registrationHash}`}
+      {feeOpen && !beforeBackup && <NetworkFeeSheet key={`${account.address}:${account.network}:${account.revision}:${context.registrationHash}`}
         mode="evm" choice={feeChoice} load={signal => controller.feeRecommendations(signal)}
         onClose={() => { if (lifetime.current.alive) setFeeDialog(null); }}
         onApply={choice => {

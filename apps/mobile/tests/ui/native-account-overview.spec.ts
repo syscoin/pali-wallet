@@ -63,13 +63,16 @@ test('255-decimal tracked amounts stay compact and preserve their full accessibl
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-for (const filter of ['all', 'ethereum']) test(`unbacked ${filter} Send opens backup before choosing a source or signing`, async ({ page }) => {
+for (const filter of ['all', 'ethereum']) test(`unbacked ${filter} Send chooses a public source without opening backup`, async ({ page }) => {
   await page.goto(`/?account-portfolio&unbacked=1&filter=${filter}`);
   await expect(page.getByTestId('account-portfolio-value')).not.toHaveText('—');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  expect(await page.evaluate(() => window.__accountPortfolio.backups())).toBe(1);
-  expect(await page.evaluate(() => window.__accountPortfolio.sends)).toEqual([]);
-  await expect(page.getByRole('heading', { name: 'Send from', exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => window.__accountPortfolio.backups())).toBe(0);
+  if (filter === 'all') {
+    await expect(page.getByRole('heading', { name: 'Send from', exact: true })).toBeVisible();
+    await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
+  }
+  expect(await page.evaluate(() => window.__accountPortfolio.sends)).toEqual([filter === 'all' ? 'base:ETH' : 'ethereum:ETH']);
 });
 
 for (const width of [390, 320]) test(`cached balances and filter errors remain clear at ${width}px`, async ({ page }, info) => {

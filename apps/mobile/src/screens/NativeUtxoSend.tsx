@@ -106,6 +106,7 @@ export function NativeUtxoSendScreen({
   onChangeNetwork,
   draftNotice,
   onViewTransaction,
+  beforeBackup,
 }: {
   accountLabel: string;
   ledgerConnection?: NativeLedgerConnectionView;
@@ -115,6 +116,7 @@ export function NativeUtxoSendScreen({
   onChangeNetwork?(draft: Extract<NativeUnsignedSendDraft, { kind: 'utxo' }>): void;
   draftNotice?: string;
   onViewTransaction?(txid: string): void;
+  beforeBackup?: { onRequest(draft: Extract<NativeUnsignedSendDraft, { kind: 'utxo' }>): void };
   beforeClose?(): Promise<void>;
   asset?: NativeUtxoAsset;
   network: UtxoNetwork;
@@ -141,7 +143,7 @@ export function NativeUtxoSendScreen({
   const feeChoice = feeSelection.open === open && feeSelection.network === network ? feeSelection.choice : AUTOMATIC_FEE;
   const [feeDialog, setFeeDialog] = useState<{ open: typeof open; network: UtxoNetwork } | null>(null);
   const feeOpen = feeDialog?.open === open && feeDialog.network === network;
-  const [working, setBusy] = useState(true);
+  const [working, setBusy] = useState(!beforeBackup);
   const [closingHardware, setClosingHardware] = useState(false);
   const busy = working || closingHardware;
   const [review, setReview] = useState<NativeUtxoReview | null>(null);
@@ -174,6 +176,7 @@ export function NativeUtxoSendScreen({
   useLayoutEffect(() => { currentNetwork.current = { network, open }; }, [network, open]);
   const closeScanner = () => { scannerOwner.current = null; setScanner(null); };
   useEffect(() => {
+    if (beforeBackup) return;
     const lifetime = owner.current;
     const revision = ++lifetime.revision;
     let local: NativeUtxoSend | undefined;
@@ -203,7 +206,7 @@ export function NativeUtxoSendScreen({
       lifetime.revision++;
       local?.cancel();
     };
-  }, [open]);
+  }, [open, beforeBackup]);
   const leave = (done: () => void) => {
     if (closing.current) return;
     closeScanner(); Keyboard.dismiss();
@@ -357,9 +360,14 @@ export function NativeUtxoSendScreen({
     </View>
   ) : review ? confirm : (
     <Button
-      title={t('mobile.smartSendViews.reviewTransfer')}
-      disabled={!send || busy || !address.trim() || !(amount || max)}
+      title={t(beforeBackup ? 'mobile.walletViews.backUpNow' : 'mobile.smartSendViews.reviewTransfer')}
+      disabled={(!send && !beforeBackup) || busy || !address.trim() || !(amount || max)}
       onPress={() => {
+        if (beforeBackup) {
+          closeScanner(); Keyboard.dismiss();
+          beforeBackup.onRequest(Object.freeze({ kind: 'utxo', recipient: address, amount, max, rbf, feeChoice }));
+          return;
+        }
         run(async (current) => {
           const next = await send!.prepare({
             recipient: address,
@@ -556,9 +564,9 @@ export function NativeUtxoSendScreen({
                   returnKeyType="done"
                   onSubmitEditing={() => Keyboard.dismiss()}
                 />
-                <IconButton label={t('mobile.smartSendViews.scanRecipientAddress')} icon="scan" disabled={busy || !send}
+                <IconButton label={t('mobile.smartSendViews.scanRecipientAddress')} icon="scan" disabled={busy || !send && !beforeBackup}
                   onPress={() => {
-                    if (!screenActive.current || currentNetwork.current.network !== network || currentNetwork.current.open !== open || busy || !send || inFlight.current || closing.current) return;
+                    if (!screenActive.current || currentNetwork.current.network !== network || currentNetwork.current.open !== open || busy || !send && !beforeBackup || inFlight.current || closing.current) return;
                     const next = { network, open, revision: owner.current.revision, draft: draftRevision.current };
                     scannerOwner.current = next; setScanner(next);
                   }} />
