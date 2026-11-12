@@ -68,6 +68,8 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   const module={exports:{} as Record<string,any>};
   runInNewContext(code,{module,exports:module.exports,Error,URL,AbortController,Keyboard:native.Keyboard,require(name:string){assert.ok(Object.hasOwn(deps,name),`Unexpected import ${name}`);return deps[name];}});
   let snapshot: any={phase:'submitting',review:null,hash:null,message:null,intent:null,collectible:undefined};
+  const replacementRequests: { hash: string; mode: 'cancel' | 'cancel-saved' | 'speed-up' }[] = [];
+  let replacement: { hash: string; mode: 'cancel' | 'cancel-saved' | 'speed-up' } | undefined;
   const prepared: unknown[] = [];
   const confirmed: string[] = [];
   const credentials: NativeOperationCredential[] = [];
@@ -80,7 +82,11 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
       id: 'review', recipient, context, amountUnits: '1', maximumFeeUnits: '1', totalUnits: '2' } };
   };
   const maximumPrepared: unknown[] = [];
-  const controller={getSnapshot:()=>snapshot,subscribe:()=>()=>{},cancel(){cancels++;snapshot={...snapshot,phase:'idle',review:null};},prepare,
+  const controller={
+    async prepareCancellation(hash: string) { replacementRequests.push({ hash, mode: 'cancel' }); },
+    async prepareSavedCancellation(hash: string) { replacementRequests.push({ hash, mode: 'cancel-saved' }); },
+    async prepareSpeedUp(hash: string) { replacementRequests.push({ hash, mode: 'speed-up' }); },
+    getSnapshot:()=>snapshot,subscribe:()=>()=>{},cancel(){cancels++;snapshot={...snapshot,phase:'idle',review:null};},prepare,
     async prepareMaximum(recipient: string, nonce?: string, feeChoice?: unknown) {
       maximumPrepared.push([recipient, nonce]); await prepare(recipient, 'maximum', nonce, feeChoice);
       snapshot = { ...snapshot, review: { ...snapshot.review, amountUnits: '1999999999999937000', maximumFeeUnits: '63000', totalUnits: '2000000000000000000' } };
@@ -96,8 +102,8 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     async recover() { if (recoveryFailure) throw recoveryFailure; }};
   let context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false,registrationHash:'ethereum-registration'};
   let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
-  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,collectible,initialDraft,ledgerConnection,beforeClose,beforeBackup,tokenView:beforeBackup?tokenView:undefined,recipientResolver,account,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
-  return {render, selectedFees, renderInput: (props: unknown) => module.exports.NativeSendInput(props) as Element,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
+  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,collectible,initialDraft,replacement,ledgerConnection,beforeClose,beforeBackup,tokenView:beforeBackup?tokenView:undefined,recipientResolver,account,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
+  return {render, selectedFees, replacementRequests, seedReplacement(value: NonNullable<typeof replacement>) { replacement = value; }, renderInput: (props: unknown) => module.exports.NativeSendInput(props) as Element,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
     requireBackup(onRequest: NonNullable<typeof beforeBackup>['onRequest']) { beforeBackup = { onRequest }; }, tokenConnections: () => tokenConnections,
     seedDraft(draft: NativeSendInitialDraft, saved?: SavedCollectible) { initialDraft = draft; collectible = saved; },
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
@@ -651,5 +657,29 @@ for (const kind of ['native', 'erc20', 'nft'] as const) test(`Trezor ${kind} ret
     reviewSend(f); await settle();
     assert.deepEqual(f.selectedFees, [{ kind: 'custom', type: 2, gasLimit: '65000', maxFeePerGas: '7000000000', maxPriorityFeePerGas: '1000000000' }]);
     assert.equal(f.prepared.length, 1); assert.equal(f.signatures(), 0);
+  } finally { f.dispose(); }
+});
+
+for (const operation of ['speed-up', 'cancel', 'cancel-saved'] as const) test(`Trezor ${operation} continuation opens only the fresh retained-hash replacement path`, async () => {
+  const originalHash = '0x' + 'ab'.repeat(32);
+  const unsignedTransaction = Transaction.from({ type: 2, chainId: 1, nonce: 7,
+    to: operation === 'speed-up' ? null : '0x' + '11'.repeat(20),
+    data: operation === 'speed-up' ? '0x6001600055' : '0x',
+    value: 0, gasLimit: 50000, maxFeePerGas: 9, maxPriorityFeePerGas: 1 }).unsignedSerialized;
+  const resumed = trezorResumeDraft({ id: 'resume', kind: 'evm', accountId: 'trezor:60:0', networkId: 'ethereum',
+    unsignedTransaction, replacement: { operation, originalHash } });
+  assert.equal(resumed.kind, 'replacement');
+  if (resumed.kind !== 'replacement') return;
+  const f = setup();
+  try {
+    f.seedDraft(resumed.draft);
+    f.seedReplacement({ hash: resumed.replacement.originalHash, mode: resumed.replacement.operation });
+    f.snapshot.phase = 'idle'; f.render(); await settle();
+    assert.deepEqual(f.replacementRequests, [{ hash: originalHash, mode: operation }]);
+    assert.deepEqual(f.prepared, []); assert.deepEqual(f.maximumPrepared, []);
+    assert.deepEqual(f.confirmed, []); assert.equal(f.signatures(), 0);
+    headerBack(f.render());
+    assert(f.counts().cancels > 0);
+    assert.equal(f.signatures(), 0);
   } finally { f.dispose(); }
 });

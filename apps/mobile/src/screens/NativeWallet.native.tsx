@@ -1676,7 +1676,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       }
       const resume = trezorResumeDraft(intent);
       const target: SendTarget = resume.kind === 'utxo' ? { kind: 'utxo', asset: resume.asset }
-        : resume.kind === 'replacement' ? { kind: resume.replacement.mode, hash: resume.replacement.originalHash }
+        : resume.kind === 'replacement' ? { kind: resume.replacement.operation, hash: resume.replacement.originalHash }
         : resume.kind === 'token' ? { kind: 'token', token: resume.token }
         : resume.kind === 'collectible' ? { kind: 'collectible', collectible: resume.collectible }
         : { kind: 'native' };

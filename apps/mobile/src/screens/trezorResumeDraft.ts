@@ -21,7 +21,7 @@ export function trezorResumeDraft(value: NativeTrezorResumeIntent) {
     };
   }
   const transaction = Transaction.from(value.unsignedTransaction);
-  if (transaction.isSigned() || !transaction.to || transaction.chainId <= 0n)
+  if (transaction.isSigned() || transaction.chainId <= 0n)
     throw Error('Invalid Trezor resume draft');
   if (transaction.type !== 0 && transaction.type !== 2)
     throw Error('Invalid Trezor resume fees');
@@ -29,7 +29,14 @@ export function trezorResumeDraft(value: NativeTrezorResumeIntent) {
     ? { kind: 'custom', type: 0, gasPrice: transaction.gasPrice!.toString(), gasLimit: transaction.gasLimit.toString() }
     : { kind: 'custom', type: 2, maxFeePerGas: transaction.maxFeePerGas!.toString(),
       maxPriorityFeePerGas: transaction.maxPriorityFeePerGas!.toString(), gasLimit: transaction.gasLimit.toString() });
-  assertTransferIntentEnvelope({
+  const replacement = value.replacement;
+  if (replacement && (!['cancel', 'cancel-saved', 'speed-up'].includes(replacement.operation) ||
+      typeof replacement.originalHash !== 'string' || !/^0x[0-9a-f]{64}$/.test(replacement.originalHash)))
+    throw Error('Invalid Trezor replacement resume');
+  if (!replacement && !transaction.to) throw Error('Invalid Trezor resume draft');
+  // Replacement execution comes from the retained original under a fresh review.
+  // An ordinary form still accepts only its explicitly declared asset envelope.
+  if (!replacement || value.intent) assertTransferIntentEnvelope({
     chainId: transaction.chainId.toString(),
     from: value.intent?.kind === 'nft-transfer' ? value.intent.from : undefined,
     to: transaction.to,
@@ -37,7 +44,7 @@ export function trezorResumeDraft(value: NativeTrezorResumeIntent) {
     data: transaction.data,
   }, value.intent);
   const draft = {
-    recipient: value.intent?.recipient ?? transaction.to,
+    recipient: value.intent?.recipient ?? transaction.to ?? '',
     amount: value.intent?.kind === 'erc20-transfer'
       ? formatTokenUnits(value.intent.amountUnits, value.intent.token.decimals)
       : value.intent?.kind === 'nft-transfer'
@@ -47,8 +54,10 @@ export function trezorResumeDraft(value: NativeTrezorResumeIntent) {
     nonce: transaction.nonce.toString(),
     feeChoice,
   };
-  if (value.replacement)
-    return { kind: 'replacement' as const, replacement: value.replacement, draft };
+  if (replacement)
+    return { kind: 'replacement' as const, replacement: Object.freeze({
+      operation: replacement.operation, originalHash: replacement.originalHash,
+    }), draft };
   if (value.intent?.kind === 'erc20-transfer')
     return { kind: 'token' as const, token: value.intent.token, draft };
   if (value.intent?.kind === 'nft-transfer') {

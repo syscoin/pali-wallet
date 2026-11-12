@@ -7893,7 +7893,10 @@ export function createKeyringRuntimeFactory(
                     id: pendingTrezor?.resume?.id ?? `trezor-${++trezorSequence}`,
                     kind: 'evm', accountId: selectedContext.id, networkId: network.id, unsignedTransaction,
                     ...(intent ? { intent } : {}),
-                    ...(replacement ? { replacement: { mode: replacement.mode, originalHash: replacement.original.hash } } : {}),
+                    ...(replacement ? { replacement: Object.freeze({
+                      operation: replacement.mode === 'cancel' && replacement.source === 'saved' ? 'cancel-saved' : replacement.mode,
+                      originalHash: replacement.original.hash,
+                    }) } : {}),
                   });
                   try {
                     const { session, ring } = await openTrezorAttempt(captured, check, 'send', selected.label, resume, () => undefined);

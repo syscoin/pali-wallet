@@ -56,7 +56,7 @@ test('Trezor resume refuses signed bytes and a mismatched asset interpretation',
 });
 
 test('Trezor replacement and UTXO drafts retain the corresponding normal review path', () => {
-  const replacement = { mode: 'speed-up' as const, originalHash: '0x' + 'ab'.repeat(32) };
+  const replacement = { operation: 'speed-up' as const, originalHash: '0x' + 'ab'.repeat(32) };
   const evm = trezorResumeDraft({ ...scope, kind: 'evm', unsignedTransaction: wire(), replacement });
   assert.equal(evm.kind, 'replacement');
   if (evm.kind === 'replacement') assert.deepEqual(evm.replacement, replacement);
@@ -97,4 +97,52 @@ test('infrastructure resume IDs require their original setup route and cannot be
   const resume: NativeTrezorResumeIntent = Object.freeze({ ...scope, kind: 'infrastructure' });
   assert.throws(() => trezorResumeDraft(resume), /original setup review/);
   assert.deepEqual(Object.keys(resume).sort(), ['accountId', 'id', 'kind', 'networkId']);
+});
+
+for (const type of [0, 2] as const) {
+  for (const creation of [false, true]) {
+    test(`Trezor type ${type} ${creation ? 'creation' : 'contract call'} replacement refills a fresh retained-hash review`, () => {
+      const unsignedTransaction = wire({ to: creation ? null : recipient, data: '0x6001600055',
+        ...(type === 0 ? { type, gasPrice: 7, maxFeePerGas: null, maxPriorityFeePerGas: null } : {}) });
+      const replacement = { operation: 'speed-up' as const, originalHash: '0x' + 'ab'.repeat(32) };
+      const input = { ...scope, kind: 'evm' as const, unsignedTransaction, replacement };
+      const result = trezorResumeDraft(input);
+      assert.equal(result.kind, 'replacement');
+      if (result.kind !== 'replacement') return;
+      assert.deepEqual(result.replacement, replacement);
+      assert.equal(result.draft.recipient, creation ? '' : recipient);
+      assert.equal(result.draft.amount, '1.000000000000000001');
+      assert.equal(result.draft.nonce, '7');
+      assert.deepEqual(result.draft.feeChoice, type === 0
+        ? { kind: 'custom', type: 0, gasPrice: '7', gasLimit: '50000' }
+        : { kind: 'custom', type: 2, maxFeePerGas: '9', maxPriorityFeePerGas: '1', gasLimit: '50000' });
+      assert.equal(input.unsignedTransaction, unsignedTransaction);
+      assert.equal(Object.isFrozen(result.replacement), true);
+      replacement.originalHash = '0x' + 'cd'.repeat(32);
+      assert.equal(result.replacement.originalHash, '0x' + 'ab'.repeat(32));
+      assert.throws(() => trezorResumeDraft({ ...scope, kind: 'evm', unsignedTransaction }));
+    });
+  }
+}
+
+test('Trezor replacement resume preserves saved cancellation and rejects invalid routing or envelope data', async () => {
+  const replacement = { operation: 'cancel-saved' as const, originalHash: '0x' + 'ab'.repeat(32) };
+  const input = { ...scope, kind: 'evm' as const, unsignedTransaction: wire({ to: sender.address, value: 0 }), replacement };
+  const resumed = trezorResumeDraft(input);
+  assert.equal(resumed.kind, 'replacement');
+  if (resumed.kind === 'replacement') assert.deepEqual(resumed.replacement, replacement);
+  for (const invalid of [
+    { ...replacement, operation: 'send' },
+    { mode: 'cancel', originalHash: replacement.originalHash },
+    { ...replacement, originalHash: '0x1234' },
+    { ...replacement, originalHash: null },
+  ]) assert.throws(() => trezorResumeDraft({ ...input, replacement: invalid } as NativeTrezorResumeIntent));
+  for (const unsignedTransaction of [wire({ chainId: 0 }), wire({ type: 1, gasPrice: 7, maxFeePerGas: null, maxPriorityFeePerGas: null }),
+    wire({ gasLimit: 0 }), wire({ maxFeePerGas: 0, maxPriorityFeePerGas: 0 })])
+    assert.throws(() => trezorResumeDraft({ ...input, unsignedTransaction }));
+  const signed = await sender.signTransaction(Transaction.from(wire()).toJSON());
+  assert.throws(() => trezorResumeDraft({ ...input, unsignedTransaction: signed }));
+  const intent = { kind: 'erc20-transfer' as const, chainId: '1', recipient, amountUnits: '1',
+    token: { contractAddress: tokenAddress, name: 'Token', symbol: 'T', decimals: 18 } };
+  assert.throws(() => trezorResumeDraft({ ...input, intent }));
 });

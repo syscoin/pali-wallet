@@ -1,3 +1,4 @@
+import { Transaction } from 'ethers/transaction';
 import { PALI_RECOVERY_ALERTS_URL } from '../../../source/shared/smartAccountLinks.ts';
 import { getNativeGuardianRecoveryChoices } from '../src/smartAccount/guardianRecovery.ts';
 import { credentialPromptActivityState } from '../src/platform/credentialPort.ts';
@@ -1657,5 +1658,29 @@ test('same-network root Send uses the current authority without an authenticatio
     assert(all(await settleRootNavigation(f)).some(node => node.type === 'NativeSend'));
     assert.deepEqual(phases, []);
     assert.equal(f.authority!.getSnapshot().account?.network, 'ethereum');
+  } finally { f.dispose(); }
+});
+
+for (const operation of ['speed-up', 'cancel', 'cancel-saved'] as const) test(`root Trezor ${operation} return retains routing and refuses stale account, network and lock state`, async () => {
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, quietActivityNotifications, undefined, { nativeUnits: '1' });
+  try {
+    const home = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(home);
+    ((home.props.hardwareRequest as Element).props.onResume as () => void)();
+    const trezor = f.render(); assert.equal(trezor.type, 'NativeTrezor');
+    const resume = { id: 'replacement-resume', accountId: 'hd:60:0', networkId: 'ethereum', kind: 'evm' as const,
+      unsignedTransaction: Transaction.from({ type: 2, chainId: 1, nonce: 7,
+        to: operation === 'speed-up' ? null : '0x' + '11'.repeat(20),
+        data: operation === 'speed-up' ? '0x6001600055' : '0x', value: 0,
+        gasLimit: 50000, maxFeePerGas: 9, maxPriorityFeePerGas: 1 }).unsignedSerialized,
+      replacement: { operation, originalHash: '0x' + 'ab'.repeat(32) } };
+    const onResume = trezor.props.onResumeSend as (intent: NativeTrezorResumeIntent) => Promise<void>;
+    await assert.rejects(onResume({ ...resume, accountId: 'other-account' }), /CANCELLED/);
+    await assert.rejects(onResume({ ...resume, networkId: 'base' }), /CANCELLED/);
+    await onResume(resume);
+    const send = f.render(); assert.equal(send.type, 'NativeSend');
+    assert.deepEqual(JSON.parse(JSON.stringify(send.props.replacement)), { hash: resume.replacement.originalHash, mode: operation });
+    assert.equal(send.props.review, undefined); assert.equal(send.props.authentication, undefined);
+    f.publish({ phase: 'locked', account: null });
+    await assert.rejects(onResume(resume), /CANCELLED/);
   } finally { f.dispose(); }
 });

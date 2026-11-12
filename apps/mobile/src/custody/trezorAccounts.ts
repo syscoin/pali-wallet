@@ -45,7 +45,7 @@ export type NativeTrezorResumeIntent = Readonly<{
       unsignedTransaction: string;
       intent?: NativeAssetTransferIntent;
       replacement?: Readonly<{
-        mode: NativeReplacementMode;
+        operation: NativeReplacementMode | 'cancel-saved';
         originalHash: string;
       }>;
     }>
