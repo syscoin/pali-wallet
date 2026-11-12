@@ -8,7 +8,7 @@ A self-custody wallet for Bitcoin, Syscoin and supported EVM and UTXO networks. 
 
 [Website](https://paliwallet.com) · [Product tour](https://www.paliwallet.com/media/pali-product-tour.mp4) · [Documentation](https://docs.paliwallet.com) · [Chrome Web Store](https://chromewebstore.google.com/detail/pali-wallet/mgffkfbidihjpoaomajlbgchddlicgpn) · [App Store](https://apps.apple.com/app/id6834040718) · [Google Play](https://play.google.com/store/apps/details?id=com.paliwallet.mobile) · [GitHub releases](https://github.com/syscoin/pali-wallet/releases)
 
-**v5 is in development.** This README describes the current source, which may differ from the published store release. Mobile store listings and build artifacts do not establish release readiness. Native-device, hardware-model and funded-network qualification are tracked separately in the [mobile implementation and qualification guide](apps/mobile/README.md).
+**v5 is in development.** Store versions may differ from this branch. See the [mobile guide](apps/mobile/README.md) for implemented features and remaining device and network testing.
 
 ## What’s in Pali
 
@@ -25,7 +25,7 @@ Both apps reuse shared account, amount, transaction, recovery and network-valida
 
 Use the network picker for built-in networks or add a supported custom registration. EVM and UTXO accounts retain their respective network and signing rules; network-specific services are available only where configured.
 
-The v5 catalogue includes **zkSYS mainnet (5757)** by default and **Gateway mainnet (57570)** as an optional network. Their inclusion prepares the wallet for those networks; it does not announce that their RPCs or services are live. A failed network refresh does not turn another network’s balance into zero or prevent its successful refresh.
+The v5 catalogue includes **zkSYS mainnet (5757)** by default and **Gateway mainnet (57570)** as an optional network. These networks are configured ahead of launch. Each network refreshes independently, so an unavailable RPC leaves other networks usable.
 
 ## Getting started
 
@@ -84,13 +84,13 @@ npm run lint
 npm test
 ```
 
-Browser flows, visual checks and native qualification have their own runners. Follow the applicable CI workflows and the [native qualification guide](apps/mobile/qualification/README.md); unit tests alone do not qualify a wallet release.
+Run the browser, visual and native checks that cover your change. The CI workflows and [native testing guide](apps/mobile/qualification/README.md) describe the required checks.
 
 The extension and mobile marketing version stays at **5.0.0** during v5 development. Mobile builds increment iOS/Android build numbers; extension Canary builds use **5.0.0.N**. Production and Canary are separate distribution channels. The [build and release guide](docs/build-and-release.md) covers artifacts, receipts, counters and store submission.
 
 ## Security and support
 
-Mobile sensitive software operations require OS-enforced authorization; normal public wallet browsing does not decrypt the signing root. Extension vault access uses a password, with optional local passkey unlock. Software signing occurs in the authorized app process; it does not turn a phone into a hardware wallet.
+Mobile sensitive software operations require OS-enforced authorization; normal public wallet browsing does not decrypt the signing root. Extension vault access uses a password, with optional local passkey unlock. Mobile signing runs in the app process. Encryption and OS-protected credentials protect its keys at rest.
 
 Read the [privacy and safety guide](https://docs.paliwallet.com/docs/users/privacy-and-safety) and [mobile security requirements](apps/mobile/SECURITY.md). Never include a recovery phrase, private key, private note or password in an issue or support message. For security concerns, contact [pali@syscoin.org](mailto:pali@syscoin.org) privately.
 

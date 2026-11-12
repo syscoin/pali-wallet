@@ -8,7 +8,7 @@ Install the Node version in [`.nvmrc`](../.nvmrc) and Yarn 1.22.22, then run `ya
 
 - `yarn run build:chrome` builds the production Chrome extension in `build/chrome/` and creates a versioned ZIP in `build/`.
 - `yarn run build:canary` builds the diagnostic Canary variant as `5.0.0.N`; each invocation reserves a new increasing number from the repository's Canary counter. `yarn run build:canary:store` also requires a clean source checkout. Use the production Chrome ZIP for a regular release.
-- `yarn run build` also runs the Firefox and Opera build scripts. These targets require their own browser validation; a successful build does not establish release readiness.
+- `yarn run build` also runs the Firefox and Opera build scripts. Test each target in its browser before distribution.
 
 The extension and mobile source versions are `5.0.0`. `package.json` is canonical for the extension version and short description; both manifest templates read those fields. Keep the committed root manifest synchronized when deliberately changing the release version. Unpacked development builds display `5.0.0 Development` while keeping numeric version `5.0.0`. Canary uses `5.0.0.N` and the label `5.0.0 Canary (N)`; production artifacts use `5.0.0`. Source changes and draft GitHub releases do not update the published store listing. The manifest and ZIP use the same version. Build manifests and receipts stay under ignored `.pali-build/`; the Chrome production/Canary wrappers do not rewrite the tracked manifest. The older Firefox/Opera scripts do rewrite it.
 
@@ -24,10 +24,10 @@ The [release workflow](../.github/workflows/release.yml) runs on pushes to `mast
 
 ## Validation before distribution
 
-Review the checks and findings for the exact candidate commit. A successful build, source review or browser preview does not substitute for native, hardware-device or funded-network qualification. The [mobile qualification contract](../apps/mobile/qualification/README.md) records those separate requirements.
+Review the checks and findings for the exact candidate commit. Complete the browser, native-device, hardware-wallet and funded-network tests that apply to the release. See the [mobile testing requirements](../apps/mobile/qualification/README.md).
 
 Promote the tested artifact and retain its source revision and build receipt. Store submission, approval and rollout are separate from creating a GitHub release. Canary and production use separate store items; do not upload a Canary build to the production item.
 
 ## Other browser targets
 
-The repository retains `dev:firefox`, `dev:opera`, `build:firefox` and `build:opera` scripts. These are development targets, not claims of supported or published v5 releases. They require separate browser validation before distribution.
+Chrome is the maintained extension target. The Firefox and Opera scripts remain available for development: `dev:firefox`, `dev:opera`, `build:firefox` and `build:opera`. Test those builds in their browsers before release.
