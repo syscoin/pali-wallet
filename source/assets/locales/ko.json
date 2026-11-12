@@ -1,5 +1,6 @@
 {
   "updates": {
+    "unsupportedBuild": "이 빌드에서는 스토어 업데이트를 사용할 수 없습니다.",
     "title": "지갑 업데이트",
     "available": "업데이트 있음",
     "current": "새로 출시된 버전을 찾지 못했습니다.",

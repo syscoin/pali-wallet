@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { reserveBuildNumber, assertBuildSource } = require('./native-build-number.cjs');
+const { reserveBuildNumber, assertBuildSource } = require('../../../scripts/build-number.cjs');
 
 const appRoot = path.resolve(__dirname, '..');
 
@@ -58,7 +58,7 @@ async function runNativeBuild(argv, ports = {}) {
         app.android?.package !== 'com.paliwallet.mobile')
       throw Error('Native build requires the matching Pali app version and production identity.');
 
-    const receipt = await (ports.reserve ?? reserveBuildNumber)({ cwd: root, purpose: options.purpose });
+    const receipt = await (ports.reserve ?? reserveBuildNumber)({ cwd: root, purpose: options.purpose, channel: 'mobile' });
     const assertCurrent = () => (ports.assertSource ?? assertBuildSource)({ cwd: root, receipt });
     const destination = path.join(stateDirectory, `build-${receipt.buildNumber}.json`);
     fs.writeFileSync(destination, `${JSON.stringify({ ...receipt, marketingVersion: app.version, platform: options.platform, preparedOnly: options.prepareOnly }, null, 2)}\n`, { flag: 'wx' });

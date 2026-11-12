@@ -7,10 +7,10 @@ import test, { type TestContext } from 'node:test';
 import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 
-type Receipt = { schemaVersion: 1; buildNumber: number; sourceRevision: string; allocationRevision: string;
+type Receipt = { schemaVersion: 1; channel: 'mobile'; buildNumber: number; sourceRevision: string; allocationRevision: string;
   requestId: string; purpose: 'qa' | 'store'; allocatedAt: string; sourceDirty: boolean };
 type Ports = { appRoot: string; prepareAssets(): Promise<void>;
-  reserve(options: { cwd: string; purpose: 'qa' | 'store' }): Promise<Receipt>;
+  reserve(options: { cwd: string; purpose: 'qa' | 'store'; channel: 'mobile' }): Promise<Receipt>;
   assertSource(options: { cwd: string; receipt: Receipt }): Promise<void>;
   execute(args: string[], env: NodeJS.ProcessEnv): Promise<void> };
 type Config = { version: string; slug?: string; ios: { bundleIdentifier: string; buildNumber?: string };
@@ -21,7 +21,7 @@ const { runNativeBuild, parseArguments } = require('../scripts/run-native-build.
   runNativeBuild(argv: string[], ports: Ports): Promise<Receipt>;
   parseArguments(argv: string[]): { platform: string; prepareOnly: boolean; purpose: 'qa' | 'store'; forwarded: string[] };
 };
-const { parseBuildNumber } = require('../scripts/native-build-number.cjs') as { parseBuildNumber(value: unknown): number };
+const { parseBuildNumber } = require('../../../scripts/build-number.cjs') as { parseBuildNumber(value: unknown, channel: 'mobile'): number };
 const source = (file: string) => readFileSync(new NodeURL(file, import.meta.url), 'utf8');
 const productionConfig = (): Config => ({ version: '5.0.0', ios: { bundleIdentifier: 'com.paliwallet.mobile' },
   android: { package: 'com.paliwallet.mobile' } });
@@ -32,10 +32,10 @@ function fixture(t: TestContext) {
   const app = productionConfig();
   writeFileSync(join(root, 'package.json'), JSON.stringify({ version: '5.0.0' }));
   writeFileSync(join(root, 'app.json'), JSON.stringify({ expo: app }));
-  const receipt: Receipt = { schemaVersion: 1, buildNumber: 47, sourceRevision: 'a'.repeat(40),
+  const receipt: Receipt = { schemaVersion: 1, channel: 'mobile', buildNumber: 47, sourceRevision: 'a'.repeat(40),
     allocationRevision: 'b'.repeat(40), requestId: '12345678-1234-4234-9234-123456789abc',
     purpose: 'qa', allocatedAt: '2026-11-12T00:00:00.000Z', sourceDirty: false };
-  const reservations: { cwd: string; purpose: 'qa' | 'store' }[] = [];
+  const reservations: { cwd: string; purpose: 'qa' | 'store'; channel: 'mobile' }[] = [];
   const assertions: { cwd: string; receipt: Receipt }[] = [];
   const executions: { args: string[]; env: NodeJS.ProcessEnv }[] = [];
   const events: string[] = [];
@@ -55,7 +55,7 @@ function fixture(t: TestContext) {
 for (const platform of ['ios', 'android']) test(`${platform} reserves once and carries one number through both native steps`, async t => {
   const f = fixture(t);
   const result = await runNativeBuild([platform, '--device', 'Fixture Device'], f.ports);
-  assert.deepEqual(f.reservations, [{ cwd: f.root, purpose: 'qa' }]);
+  assert.deepEqual(f.reservations, [{ cwd: f.root, purpose: 'qa', channel: 'mobile' }]);
   assert.deepEqual(f.events, ['reserve', 'assert', 'assets', 'assert', 'prebuild', 'assert', `run:${platform}`]);
   assert.deepEqual(f.executions.map(call => call.args), [
     ['prebuild', '--platform', platform, '--no-install'], [`run:${platform}`, '--device', 'Fixture Device'],
@@ -75,7 +75,7 @@ for (const platform of ['all', 'ios', 'android']) test(`${platform} store prepar
   const f = fixture(t);
   const result = await runNativeBuild([platform, '--prepare-only', '--store'], f.ports);
   assert.equal(result.purpose, 'store');
-  assert.deepEqual(f.reservations, [{ cwd: f.root, purpose: 'store' }]);
+  assert.deepEqual(f.reservations, [{ cwd: f.root, purpose: 'store', channel: 'mobile' }]);
   assert.deepEqual(f.events, ['reserve', 'assert', 'assets', 'assert', 'prebuild', 'assert']);
   assert.deepEqual(f.executions.map(call => call.args), [['prebuild', '--platform', platform, '--no-install']]);
   assert.equal(f.persisted().marketingVersion, '5.0.0');
@@ -209,7 +209,7 @@ test('mismatched marketing versions and non-production identities cannot reserve
 function configLoader(value?: string): (options: { config: Config }) => Config {
   const module = { exports: {} };
   runInNewContext(source('../app.config.cjs'), { module, process: { env: value === undefined ? {} : { PALI_MOBILE_BUILD_NUMBER: value } },
-    require(id: string) { assert.equal(id, './scripts/native-build-number.cjs'); return { parseBuildNumber }; } });
+    require(id: string) { assert.equal(id, '../../scripts/build-number.cjs'); return { parseBuildNumber }; } });
   return module.exports as (options: { config: Config }) => Config;
 }
 
@@ -238,7 +238,7 @@ function pluginLoader(value?: string) {
   runInNewContext(source('../plugins/withNativeBuildNumber.cjs'), { module,
     process: { env: value === undefined ? {} : { PALI_MOBILE_BUILD_NUMBER: value } },
     require(id: string) {
-      if (id === '../scripts/native-build-number.cjs') return { parseBuildNumber };
+      if (id === '../../../scripts/build-number.cjs') return { parseBuildNumber };
       assert.equal(id, 'expo/config-plugins');
       return { withInfoPlist(config: Config, mod: typeof ios) { ios = mod; return config; },
         withDangerousMod(config: Config, [platform, mod]: [string, typeof android]) {

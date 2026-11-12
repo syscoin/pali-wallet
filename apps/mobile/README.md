@@ -102,7 +102,8 @@ project without cleaning it, and build with that number. Both platform fields
 use the same reserved value: iOS `buildNumber` and Android `versionCode`.
 The public receipt is saved in `.pali-build/build-<number>.json`.
 
-The counter lives in the dedicated `pali-mobile-build-counter` branch of the
+The shared allocator at `scripts/build-number.cjs` uses its explicit `mobile`
+channel and the dedicated `pali-mobile-build-counter` branch of the
 canonical repository. Existing Git write access is required. Concurrent
 machines reserve numbers through atomic fast-forward pushes; there is no
 clock-based or local fallback. Failed builds leave gaps, and the counter branch

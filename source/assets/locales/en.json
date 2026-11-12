@@ -1,5 +1,6 @@
 {
   "updates": {
+    "unsupportedBuild": "Store updates are not available for this build.",
     "title": "Wallet updates",
     "available": "Update available",
     "current": "No newer published version found.",

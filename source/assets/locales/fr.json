@@ -1,5 +1,6 @@
 {
   "updates": {
+    "unsupportedBuild": "Les mises à jour du store ne sont pas disponibles pour cette installation.",
     "title": "Mises à jour du portefeuille",
     "available": "Mise à jour disponible",
     "current": "Aucune version publiée plus récente n’a été trouvée.",

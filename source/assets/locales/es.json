@@ -1,5 +1,6 @@
 {
   "updates": {
+    "unsupportedBuild": "Las actualizaciones de la tienda no están disponibles para esta instalación.",
     "title": "Actualizaciones de la billetera",
     "available": "Actualización disponible",
     "current": "No se ha encontrado una versión publicada más reciente.",

@@ -8,9 +8,14 @@ const { WebpackManifestPlugin } = require('webpack-manifest-plugin');
 const { merge } = require('webpack-merge');
 const ZipPlugin = require('zip-webpack-plugin');
 
+const { extensionBuildVersion } = require('./extensionBuildVersion.cjs');
 const common = require('./webpack.common');
 
-const version = require('../../package.json').version;
+const { version } = extensionBuildVersion(
+  process.env.NODE_ENV,
+  require('../../package.json').version,
+  process.env.PALI_CANARY_BUILD_NUMBER
+);
 
 const targetBrowser = process.env.TARGET_BROWSER || 'chrome';
 const environment = process.env.NODE_ENV;

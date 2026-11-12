@@ -57,10 +57,12 @@ Then run the following:
 ### Production and releases
 
 - `yarn run build:chrome` builds the production Chrome extension in `build/chrome/` and creates a versioned ZIP in `build/`.
-- `yarn run build:canary` builds the diagnostic Canary variant. Use the production Chrome ZIP for a regular release.
+- `yarn run build:canary` builds the diagnostic Canary variant as `5.0.0.N`; each invocation reserves a new increasing number from the repository's Canary counter. `yarn run build:canary:store` also requires a clean source checkout. Use the production Chrome ZIP for a regular release.
 - `yarn run build` also runs the Firefox and Opera build scripts. These targets require their own browser validation; a successful build does not establish release readiness.
 
-Keep the release version synchronized in `package.json`, the root `manifest.json`, and the Manifest V3 configuration in `source/config/consts.js`. The Chrome manifest-generation step uses the package version when regenerating `manifest.json`, which is copied into the build.
+Keep the production release version synchronized in `package.json`, the root `manifest.json`, and the Manifest V3 configuration in `source/config/consts.js`. Production builds keep that version (currently `4.0.121`) until the v5 release. Canary's base remains `5.0.0`, with its numeric build suffix and human-readable `5.0.0 Canary (N)` label generated together. The manifest and ZIP use the same version. Build manifests and receipts stay under ignored `.pali-build/`; building does not rewrite the tracked manifest.
+
+Canary numbers use a fast-forward-only Git counter at `refs/heads/pali-canary-builds/5.0.0`, separate from mobile build numbers. Concurrent builders reserve distinct numbers; failed builds consume their number. GitHub access to the canonical repository is required, and an unavailable/malformed counter fails the build instead of choosing a local or timestamp fallback. The suffix is capped at Chrome's 65,535 limit; change the three-part Canary base deliberately before exhaustion. Store builds and receipts identify the exact clean source commit, but still require normal release review and store submission.
 
 The [release workflow](.github/workflows/release.yml) runs on pushes to `master`, `develop`, and `pre-release`. It skips release builds when the package version is unchanged. A version change builds the Chrome production and Canary ZIPs, checks that exactly one of each exists and that the release tag is new, then creates a **draft prerelease** tied to the triggering commit. Review the artifacts and required checks before publishing. Creating a GitHub draft does not submit or publish the extension to the Chrome Web Store.
 

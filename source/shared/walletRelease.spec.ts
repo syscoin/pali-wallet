@@ -1,3 +1,4 @@
+import { CANARY_EXTENSION_FEED_URL } from './extensionReleaseChannel';
 import {
   MAX_WALLET_RELEASE_FEED_BYTES,
   MAX_WALLET_RELEASES,
@@ -6,6 +7,7 @@ import {
   parseWalletReleaseFeed,
   parseWalletReleaseFeedText,
   readWalletReleaseFeed,
+  readExtensionWalletReleaseFeed,
   selectWalletRelease,
 } from './walletRelease.ts';
 
@@ -394,6 +396,39 @@ describe('wallet release metadata', () => {
     );
     controller.abort();
     await expect(check).resolves.toBeNull();
+  });
+
+  it('keeps Canary traffic on its fixed feed and refuses cross-channel response URLs', async () => {
+    const fetcher = jest.fn(async () =>
+      response(JSON.stringify(feed()), { url: CANARY_EXTENSION_FEED_URL })
+    );
+    const signal = new AbortController().signal;
+    expect(
+      await readExtensionWalletReleaseFeed(fetcher, signal, 'canary')
+    ).toEqual(feed());
+    expect(fetcher).toHaveBeenCalledWith(
+      CANARY_EXTENSION_FEED_URL,
+      expect.objectContaining({ credentials: 'omit', redirect: 'error' })
+    );
+    expect(
+      await readExtensionWalletReleaseFeed(fetcher, signal, 'stable')
+    ).toBeNull();
+    expect(
+      await readExtensionWalletReleaseFeed(
+        async () => response(JSON.stringify(feed())),
+        signal,
+        'canary'
+      )
+    ).toBeNull();
+    const forbidden = jest.fn();
+    expect(
+      await readExtensionWalletReleaseFeed(
+        forbidden,
+        signal,
+        'other' as 'canary'
+      )
+    ).toBeNull();
+    expect(forbidden).not.toHaveBeenCalled();
   });
 
   it('cancels the body of a response delivered after an aborted check', async () => {

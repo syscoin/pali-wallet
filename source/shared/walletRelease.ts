@@ -4,9 +4,13 @@ import {
   cancelResponseBody,
   utf8ByteLength,
 } from './boundedHttp.ts';
+import {
+  CANARY_EXTENSION_FEED_URL,
+  STABLE_EXTENSION_FEED_URL,
+  type ExtensionReleaseChannel,
+} from './extensionReleaseChannel.ts';
 
-export const WALLET_RELEASE_FEED_URL =
-  'https://raw.githubusercontent.com/syscoin/pali-wallet/master/releases/wallet-updates.json';
+export const WALLET_RELEASE_FEED_URL = STABLE_EXTENSION_FEED_URL;
 export const MAX_WALLET_RELEASE_FEED_BYTES = 32 * 1024;
 export const MAX_WALLET_RELEASES = 24;
 export type WalletReleasePlatform = 'chrome' | 'android' | 'ios';
@@ -250,10 +254,31 @@ export async function readWalletReleaseFeed(
   fetcher: WalletReleaseFetch,
   signal: AbortSignal
 ): Promise<WalletReleaseFeed | null> {
+  return readFixedWalletReleaseFeed(fetcher, signal, WALLET_RELEASE_FEED_URL);
+}
+
+export async function readExtensionWalletReleaseFeed(
+  fetcher: WalletReleaseFetch,
+  signal: AbortSignal,
+  channel: ExtensionReleaseChannel
+): Promise<WalletReleaseFeed | null> {
+  if (channel !== 'stable' && channel !== 'canary') return null;
+  return readFixedWalletReleaseFeed(
+    fetcher,
+    signal,
+    channel === 'stable' ? STABLE_EXTENSION_FEED_URL : CANARY_EXTENSION_FEED_URL
+  );
+}
+
+async function readFixedWalletReleaseFeed(
+  fetcher: WalletReleaseFetch,
+  signal: AbortSignal,
+  url: string
+): Promise<WalletReleaseFeed | null> {
   try {
     if (signal.aborted) return null;
     const pending = Promise.resolve(
-      fetcher(WALLET_RELEASE_FEED_URL, {
+      fetcher(url, {
         method: 'GET',
         signal,
         credentials: 'omit',
@@ -275,7 +300,7 @@ export async function readWalletReleaseFeed(
       signal.aborted ||
       !response.ok ||
       response.redirected ||
-      (response.url && response.url !== WALLET_RELEASE_FEED_URL)
+      (response.url && response.url !== url)
     ) {
       cancelResponseBody(response);
       return null;

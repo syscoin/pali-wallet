@@ -1,5 +1,6 @@
 {
   "updates": {
+    "unsupportedBuild": "Für diese Installation sind keine Store-Updates verfügbar.",
     "title": "Wallet-Updates",
     "available": "Update verfügbar",
     "current": "Keine neuere veröffentlichte Version gefunden.",

@@ -1,5 +1,6 @@
 {
   "updates": {
+    "unsupportedBuild": "As atualizações da loja não estão disponíveis para esta instalação.",
     "title": "Atualizações da carteira",
     "available": "Atualização disponível",
     "current": "Nenhuma versão publicada mais recente foi encontrada.",

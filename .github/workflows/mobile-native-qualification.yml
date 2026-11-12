@@ -37,7 +37,7 @@ on:
       - 'apps/mobile/tsconfig.json'
       - 'apps/mobile/plugins/**'
       - 'apps/mobile/scripts/configure-native-qualification.cjs'
-      - 'apps/mobile/scripts/native-build-number.cjs'
+      - 'scripts/build-number.cjs'
       - 'apps/mobile/scripts/run-native-build.cjs'
       - 'apps/mobile/scripts/qualification-sdk.cjs'
       - 'apps/mobile/scripts/qualificationSdkIdentity.ts'

@@ -8,17 +8,19 @@ import test from 'node:test';
 
 type Result = { status: number; stdout: string };
 type Git = (args: string[], input?: string) => Promise<Result>;
-type Receipt = { schemaVersion: 1; buildNumber: number; sourceRevision: string; allocationRevision: string;
+type Channel = 'mobile' | 'canary';
+type Options = { cwd: string; purpose: string; channel: Channel; series?: string };
+type Receipt = { schemaVersion: 1; channel: Channel; series?: string; buildNumber: number; sourceRevision: string; allocationRevision: string;
   requestId: string; purpose: 'qa' | 'store'; allocatedAt: string; sourceDirty: boolean };
-const { parseBuildNumber, reserveBuildNumber, assertBuildSource, _testing } = createRequire(import.meta.url)('../scripts/native-build-number.cjs') as {
-  parseBuildNumber(value: unknown): number;
-  reserveBuildNumber(options: { cwd: string; purpose: string }): Promise<Receipt>;
+const { parseBuildNumber, reserveBuildNumber, assertBuildSource, _testing } = createRequire(import.meta.url)('../../../scripts/build-number.cjs') as {
+  parseBuildNumber(value: unknown, channel: Channel): number;
+  reserveBuildNumber(options: Options): Promise<Receipt>;
   assertBuildSource(options: { cwd: string; receipt: Receipt }): Promise<void>;
-  _testing: { createGit(cwd: string): Git; COUNTER_REF: string; MAX_BUILD_NUMBER: number; MAX_ATTEMPTS: number;
-    reserve(options: { cwd: string; purpose: string }, dependencies: { git: Git; requestId?: () => string; now?: () => Date }): Promise<Receipt> };
+  _testing: { createGit(cwd: string): Git; MOBILE_COUNTER_REF: string; MAX_BUILD_NUMBERS: Record<Channel, number>; MAX_ATTEMPTS: number;
+    reserve(options: Options, dependencies: { git: Git; requestId?: () => string; now?: () => Date }): Promise<Receipt> };
 };
 const CANONICAL = 'https://github.com/syscoin/pali-wallet.git';
-const REF = _testing.COUNTER_REF;
+const REF = _testing.MOBILE_COUNTER_REF;
 const run = (cwd: string, args: string[], input?: string) => execFileSync('git', args, {
   cwd, input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
   env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0' },
@@ -48,25 +50,99 @@ function fixture(t: { after(callback: () => void): void }) {
       assert(!mapped.some(arg => arg.includes('github.com') && arg !== 'origin'));
       return nativeGit(mapped, input);
     };
-    return { cwd, git, nativeGit, reserve: (purpose = 'qa', override: Git = git) => _testing.reserve({ cwd, purpose }, { git: override }) };
+    return { cwd, git, nativeGit, reserve: (purpose = 'qa', override: Git = git, channel: Channel = 'mobile', series?: string) => _testing.reserve({ cwd, purpose, channel, ...(series === undefined ? {} : { series }) }, { git: override }) };
   }
   const first = workspace('first');
-  const state = () => JSON.parse(run(root, [`--git-dir=${remote}`, 'show', `${REF}:state.json`]));
-  function replaceState(value: unknown, extraFile = false) {
-    const previous = run(root, [`--git-dir=${remote}`, 'rev-parse', REF]);
+  const state = (ref = REF) => JSON.parse(run(root, [`--git-dir=${remote}`, 'show', `${ref}:state.json`]));
+  function replaceState(value: unknown, extraFile = false, ref = REF) {
+    const previous = run(root, [`--git-dir=${remote}`, 'rev-parse', ref]);
     const blob = run(first.cwd, ['hash-object', '-w', '--stdin'], `${JSON.stringify(value)}\n`);
     const tree = run(first.cwd, ['mktree'], `100644 blob ${blob}\tstate.json\n${extraFile ? `100644 blob ${blob}\textra.json\n` : ''}`);
     const revision = run(first.cwd, ['commit-tree', tree, '-p', previous], 'Synthetic invalid state\n');
-    run(first.cwd, ['push', remote, `${revision}:${REF}`]);
+    run(first.cwd, ['push', remote, `${revision}:${ref}`]);
   }
   return { root, remote, calls, workspace, first, state, replaceState };
 }
 
 test('build numbers are canonical positive store-safe integers', () => {
   for (const [input, expected] of [[1, 1], ['2', 2], [2100000000, 2100000000], ['2100000000', 2100000000]] as const)
-    assert.equal(parseBuildNumber(input), expected);
+    assert.equal(parseBuildNumber(input, 'mobile'), expected);
   for (const input of [0, -1, 1.2, NaN, Infinity, 2100000001, null, undefined, true, {}, '', '0', '02', '+2', '2.0', '2e0', ' 2', '2\n', '2.1.0'])
-    assert.throws(() => parseBuildNumber(input), { code: 'INVALID_BUILD_NUMBER' });
+    assert.throws(() => parseBuildNumber(input, 'mobile'), { code: 'INVALID_BUILD_NUMBER' });
+});
+
+test('channel and Canary series are explicit, canonical and bounded before Git access', async t => {
+  const f = fixture(t);
+  for (const channel of [undefined, '', 'production', '__proto__', Object('mobile'), Object('canary'),
+    { toString() { throw new Error('Channel coercion must not run'); } }]) {
+    assert.throws(() => parseBuildNumber(1, channel as Channel), { code: 'INVALID_CHANNEL' });
+    await assert.rejects(_testing.reserve({ cwd: f.first.cwd, purpose: 'qa', channel } as Options, { git: f.first.git }),
+      { code: 'INVALID_CHANNEL' });
+  }
+  for (const series of [undefined, '', '5', '5.0', '05.0.0', '5.00.0', '5.0.0.1', '5.0.0-beta', '5.0.0/other', '65536.0.0', '5.0.0\n'])
+    await assert.rejects(f.first.reserve('qa', f.first.git, 'canary', series), { code: 'INVALID_SERIES' });
+  await assert.rejects(f.first.reserve('qa', f.first.git, 'mobile', '5.0.0'), { code: 'INVALID_SERIES' });
+  assert.equal(f.calls.length, 0);
+  assert.equal(parseBuildNumber('65535', 'canary'), 65535);
+  assert.throws(() => parseBuildNumber(65536, 'canary'), { code: 'INVALID_BUILD_NUMBER' });
+  assert.equal(parseBuildNumber(65536, 'mobile'), 65536);
+});
+
+test('mobile and each Canary series advance independently without changing remote state schema', async t => {
+  const f = fixture(t), a = 'refs/heads/pali-canary-builds/5.0.0', b = 'refs/heads/pali-canary-builds/5.1.0';
+  assert.equal((await f.first.reserve()).buildNumber, 2);
+  const first = await f.first.reserve('qa', f.first.git, 'canary', '5.0.0');
+  assert.equal(first.buildNumber, 1); assert.equal(first.channel, 'canary'); assert.equal(first.series, '5.0.0');
+  const next = await f.first.reserve('store', f.first.git, 'canary', '5.0.0');
+  assert.equal(next.buildNumber, 2);
+  assert.equal((await f.first.reserve('qa', f.first.git, 'canary', '5.1.0')).buildNumber, 1);
+  const mobile = await f.first.reserve();
+  assert.equal(mobile.buildNumber, 3); assert.equal(mobile.channel, 'mobile'); assert.equal(Object.hasOwn(mobile, 'series'), false);
+  assert.equal(f.state().buildNumber, 3); assert.equal(f.state(a).buildNumber, 2); assert.equal(f.state(b).buildNumber, 1);
+  assert.deepEqual(Object.keys(f.state(a)).sort(), ['schemaVersion', 'buildNumber', 'requestId', 'sourceRevision', 'purpose', 'allocatedAt'].sort());
+  assert.equal(run(f.root, [`--git-dir=${f.remote}`, 'ls-tree', '--name-only', a]), 'state.json');
+  assert.equal(run(f.first.cwd, ['status', '--porcelain']), '');
+});
+
+test('Canary reservations use the same verified concurrency boundary across machines', async t => {
+  const f = fixture(t), second = f.workspace('second');
+  let waiting = 0, release!: () => void;
+  const bothAtPush = new Promise<void>(resolve => { release = resolve; });
+  const barrier = (git: Git): Git => async (args, input) => {
+    if (args[0] === 'push' && waiting < 2) { waiting++; if (waiting === 2) release(); await bothAtPush; }
+    return git(args, input);
+  };
+  const receipts = await Promise.all([
+    f.first.reserve('qa', barrier(f.first.git), 'canary', '5.0.0'),
+    second.reserve('store', barrier(second.git), 'canary', '5.0.0'),
+  ]);
+  assert.deepEqual(receipts.map(receipt => receipt.buildNumber).sort(), [1, 2]);
+  assert.equal(new Set(receipts.map(receipt => receipt.allocationRevision)).size, 2);
+  for (const receipt of receipts)
+    assert.equal(run(f.root, [`--git-dir=${f.remote}`, 'merge-base', '--is-ancestor', receipt.allocationRevision, 'refs/heads/pali-canary-builds/5.0.0']), '');
+});
+
+test('exhausted Canary series refuses further allocation without limiting mobile or a new series', async t => {
+  const f = fixture(t), ref = 'refs/heads/pali-canary-builds/5.0.0';
+  await f.first.reserve('qa', f.first.git, 'canary', '5.0.0');
+  const original = f.state(ref);
+  f.replaceState({ ...original, buildNumber: 0 }, false, ref);
+  await assert.rejects(f.first.reserve('qa', f.first.git, 'canary', '5.0.0'), { code: 'INVALID_COUNTER_STATE' });
+  f.replaceState({ ...original, buildNumber: 65534 }, false, ref);
+  assert.equal((await f.first.reserve('qa', f.first.git, 'canary', '5.0.0')).buildNumber, 65535);
+  const pushes = f.calls.filter(args => args[0] === 'push').length;
+  await assert.rejects(f.first.reserve('qa', f.first.git, 'canary', '5.0.0'), { code: 'INVALID_BUILD_NUMBER' });
+  assert.equal(f.calls.filter(args => args[0] === 'push').length, pushes);
+  assert.equal(f.state(ref).buildNumber, 65535);
+  assert.equal((await f.first.reserve()).buildNumber, 2);
+  assert.equal((await f.first.reserve('qa', f.first.git, 'canary', '5.0.1')).buildNumber, 1);
+});
+
+test('source rechecks refuse receipts without their channel or with a malformed Canary identity', async t => {
+  const f = fixture(t), receipt = await f.first.reserve('qa', f.first.git, 'canary', '5.0.0');
+  await assertBuildSource({ cwd: f.first.cwd, receipt });
+  for (const update of [{ channel: undefined }, { series: undefined }, { series: '5.0.0/other' }, { buildNumber: 65536 }])
+    await assert.rejects(assertBuildSource({ cwd: f.first.cwd, receipt: { ...receipt, ...update } as Receipt }));
 });
 
 test('first reservation is 2, uses only state.json and binds the exact source', async t => {
@@ -225,10 +301,10 @@ test('maximum value and malformed counter state refuse allocation without reset'
     await assert.rejects(f.first.reserve(), { code: 'INVALID_COUNTER_STATE' });
     assert.equal(f.calls.filter(args => args[0] === 'push').length, before);
   }
-  f.replaceState({ ...valid, buildNumber: _testing.MAX_BUILD_NUMBER - 1 });
-  assert.equal((await f.first.reserve()).buildNumber, _testing.MAX_BUILD_NUMBER);
+  f.replaceState({ ...valid, buildNumber: _testing.MAX_BUILD_NUMBERS.mobile - 1 });
+  assert.equal((await f.first.reserve()).buildNumber, _testing.MAX_BUILD_NUMBERS.mobile);
   await assert.rejects(f.first.reserve(), { code: 'INVALID_BUILD_NUMBER' });
-  assert.equal(f.state().buildNumber, _testing.MAX_BUILD_NUMBER);
+  assert.equal(f.state().buildNumber, _testing.MAX_BUILD_NUMBERS.mobile);
 });
 
 test('counter tree cannot carry any second file', async t => {
@@ -251,7 +327,7 @@ test('repeated verified conflicts have a fixed retry limit', async t => {
 test('public API has no local-remote override or invalid-purpose fallback', async t => {
   const f = fixture(t);
   run(f.first.cwd, ['remote', 'set-url', 'origin', f.remote]);
-  await assert.rejects(reserveBuildNumber({ cwd: f.first.cwd, purpose: 'qa' }), { code: 'INVALID_ORIGIN' });
+  await assert.rejects(reserveBuildNumber({ cwd: f.first.cwd, purpose: 'qa', channel: 'mobile' }), { code: 'INVALID_ORIGIN' });
   await assert.rejects(f.first.reserve('production'), { code: 'INVALID_REQUEST' });
 });
 

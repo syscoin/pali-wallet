@@ -17,6 +17,7 @@ on:
       - 'source/shared/**'
       - 'source/scripts/privacyProver/**'
       - 'source/utils/privacy/prover*'
+      - 'scripts/build-number.cjs'
       - 'scripts/build-native-private-prover.cjs'
       - 'scripts/prepare-native-private-prover.cjs'
       - 'source/wallet/**'

@@ -1,3 +1,9 @@
+import {
+  CANARY_EXTENSION_ID,
+  CHROME_STORE_UPDATE_URL,
+  STABLE_EXTENSION_ID,
+} from '../shared/extensionReleaseChannel';
+
 import { createWalletUpdateStore } from './useWalletUpdate';
 
 type Runtime = NonNullable<
@@ -6,9 +12,28 @@ type Runtime = NonNullable<
 type Callback = Parameters<Runtime['requestUpdateCheck']>[0];
 const emptyFeed = { version: 1 as const, releases: [] };
 
-function fixture(installedVersion = '1.0.0') {
+function fixture(
+  installedVersion = '1.0.0',
+  options: {
+    delayed?: boolean;
+    id?: string;
+    info?: Partial<chrome.management.ExtensionInfo>;
+    visibility?: Parameters<typeof createWalletUpdateStore>[0]['visibility'];
+  } = {}
+) {
   let receive: ((details: { version: string }) => void) | undefined;
+  let identify: ((info: chrome.management.ExtensionInfo) => void) | undefined;
+  const info = {
+    id: options.id ?? STABLE_EXTENSION_ID,
+    version: installedVersion,
+    type: 'extension',
+    enabled: true,
+    installType: 'normal',
+    updateUrl: CHROME_STORE_UPDATE_URL,
+    ...options.info,
+  } as chrome.management.ExtensionInfo;
   const runtime = {
+    id: options.id ?? STABLE_EXTENSION_ID,
     getManifest: jest.fn(() => ({ version: installedVersion })),
     onUpdateAvailable: {
       addListener: jest.fn((listener) => {
@@ -19,15 +44,30 @@ function fixture(installedVersion = '1.0.0') {
     requestUpdateCheck: jest.fn((callback: Callback) => callback('no_update')),
     reload: jest.fn(),
   };
+  const management = {
+    getSelf: jest.fn(
+      (callback: (value: chrome.management.ExtensionInfo) => void) => {
+        identify = callback;
+        if (!options.delayed) callback(info);
+      }
+    ),
+  };
   const fetchFeed = jest.fn().mockResolvedValue(emptyFeed);
   const store = createWalletUpdateStore({
     runtime: runtime as unknown as Runtime,
+    management: management as unknown as NonNullable<
+      Parameters<typeof createWalletUpdateStore>[0]['management']
+    >,
     fetchFeed,
+    visibility: options.visibility,
   });
   return {
     store,
     runtime,
     fetchFeed,
+    management,
+    info,
+    identify: () => identify?.(info),
     receive: (version: string) => receive?.({ version }),
   };
 }
@@ -239,9 +279,7 @@ it('checks stale metadata on visibility return and removes the watcher on unmoun
   let visible = false,
     changed: (() => void) | undefined;
   const unsubscribe = jest.fn();
-  const fetchFeed = jest.fn().mockResolvedValue(emptyFeed);
-  const store = createWalletUpdateStore({
-    fetchFeed,
+  const { store, fetchFeed } = fixture('1.0.0', {
     visibility: {
       isVisible: () => visible,
       subscribe(listener) {
@@ -271,6 +309,145 @@ it('checks stale metadata on visibility return and removes the watcher on unmoun
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   } finally {
     store.dispose();
+    jest.useRealTimers();
+  }
+});
+
+it.each([
+  { info: { installType: 'development' as const } },
+  { info: { installType: 'sideload' as const } },
+  { info: { updateUrl: 'https://untrusted.example/update' } },
+  { info: { id: 'a'.repeat(32) } },
+  { id: 'a'.repeat(32) },
+  { id: CANARY_EXTENSION_ID },
+])(
+  'does not advertise or check store updates for an unadmitted installation %p',
+  async (options) => {
+    const f = fixture('5.0.0', options);
+    try {
+      f.store.start();
+      await f.store.check();
+      f.receive('5.0.9');
+      expect(f.store.getSnapshot()).toMatchObject({
+        installation: 'unavailable',
+        channel: null,
+        storeUrl: null,
+        release: null,
+        pendingVersion: null,
+      });
+      expect(f.fetchFeed).not.toHaveBeenCalled();
+      expect(f.runtime.requestUpdateCheck).not.toHaveBeenCalled();
+      expect(f.runtime.onUpdateAvailable.addListener).not.toHaveBeenCalled();
+    } finally {
+      f.store.dispose();
+    }
+  }
+);
+
+it('waits for exact installation identity before any release I/O and uses only the stable channel', async () => {
+  const f = fixture('5.0.0', { delayed: true });
+  try {
+    f.store.start();
+    const checking = f.store.check();
+    expect(f.fetchFeed).not.toHaveBeenCalled();
+    expect(f.runtime.requestUpdateCheck).not.toHaveBeenCalled();
+    f.identify();
+    await checking;
+    expect(f.management.getSelf).toHaveBeenCalledTimes(1);
+    expect(f.fetchFeed.mock.calls.every((call) => call[1] === 'stable')).toBe(
+      true
+    );
+    expect(f.store.getSnapshot()).toMatchObject({
+      installation: 'store',
+      channel: 'stable',
+    });
+  } finally {
+    f.store.dispose();
+  }
+});
+
+it('ignores delayed installation identity after disposal', async () => {
+  const f = fixture('5.0.0', { delayed: true });
+  f.store.start();
+  const pending = f.store.check();
+  f.store.dispose();
+  await pending;
+  f.identify();
+  expect(f.fetchFeed).not.toHaveBeenCalled();
+  expect(f.runtime.requestUpdateCheck).not.toHaveBeenCalled();
+  expect(f.runtime.onUpdateAvailable.addListener).not.toHaveBeenCalled();
+});
+
+it('ignores queued browser events after the last update view unmounts', () => {
+  const f = fixture();
+  try {
+    const stop = f.store.start();
+    stop();
+    f.receive('9.0.0');
+    expect(f.store.getSnapshot().pendingVersion).toBeNull();
+    f.store.start();
+    f.receive('9.0.0');
+    expect(f.store.getSnapshot().pendingVersion).toBe('9.0.0');
+  } finally {
+    f.store.dispose();
+  }
+});
+
+it('refuses an identity change while installation information is pending', async () => {
+  const f = fixture('5.0.0', { delayed: true });
+  try {
+    const pending = f.store.check();
+    f.runtime.id = CANARY_EXTENSION_ID;
+    f.identify();
+    await pending;
+    expect(f.store.getSnapshot().installation).toBe('unavailable');
+    expect(f.fetchFeed).not.toHaveBeenCalled();
+    expect(f.runtime.requestUpdateCheck).not.toHaveBeenCalled();
+  } finally {
+    f.store.dispose();
+  }
+});
+
+it('refuses a browser-reported installation lookup error without using its result', async () => {
+  const f = fixture('5.0.0', { delayed: true });
+  try {
+    const pending = f.store.check();
+    Object.assign(f.runtime, { lastError: { message: 'unavailable' } });
+    f.identify();
+    await pending;
+    expect(f.store.getSnapshot().installation).toBe('unverified');
+    expect(f.fetchFeed).not.toHaveBeenCalled();
+    expect(f.runtime.requestUpdateCheck).not.toHaveBeenCalled();
+    Object.assign(f.runtime, { lastError: undefined });
+    const retried = f.store.check();
+    f.identify();
+    await retried;
+    expect(f.store.getSnapshot().installation).toBe('store');
+    expect(f.management.getSelf).toHaveBeenCalledTimes(2);
+    expect(f.runtime.requestUpdateCheck).toHaveBeenCalledTimes(1);
+  } finally {
+    f.store.dispose();
+  }
+});
+
+it('times out an unavailable installation API without fallback store traffic', async () => {
+  jest.useFakeTimers();
+  const f = fixture('5.0.0', { delayed: true });
+  try {
+    const pending = f.store.check();
+    jest.advanceTimersByTime(15000);
+    await pending;
+    f.identify();
+    expect(f.store.getSnapshot().installation).toBe('unverified');
+    expect(f.fetchFeed).not.toHaveBeenCalled();
+    expect(f.runtime.requestUpdateCheck).not.toHaveBeenCalled();
+    f.management.getSelf.mockImplementation((callback) => callback(f.info));
+    await f.store.check();
+    expect(f.store.getSnapshot().installation).toBe('store');
+    expect(f.management.getSelf).toHaveBeenCalledTimes(2);
+    expect(f.runtime.requestUpdateCheck).toHaveBeenCalledTimes(1);
+  } finally {
+    f.store.dispose();
     jest.useRealTimers();
   }
 });
