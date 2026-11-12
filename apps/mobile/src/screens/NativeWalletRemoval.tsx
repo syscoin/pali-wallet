@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,11 +24,11 @@ type Attempt = { cancelled: boolean; confirming: boolean; lifetime: AbortControl
   ticket?: WalletRemovalTicket; timer?: ReturnType<typeof setTimeout> };
 type Owner = { live: boolean; authentication: NativePrivateAuthenticationScope; attempt?: Attempt; finishing: boolean };
 const CONFIRM_MS = 30_000;
-const failure = (cause: unknown) => {
+const failure = (cause: unknown, t: ReturnType<typeof useNativeTranslation>['t']) => {
   const code = cause instanceof WalletRemovalError ? cause.code : undefined;
-  if (code === 'INVALID_CREDENTIAL') return 'Device authentication was not completed.';
-  if (code === 'AUTH_THROTTLED') return 'Too many unsuccessful authorization attempts. Wait before trying again.';
-  return 'Could not authorize wallet removal. Try again.';
+  if (code === 'INVALID_CREDENTIAL') return t('mobile.recoveryDevices.walletRemoval.deviceAuthenticationWasNotCompleted');
+  if (code === 'AUTH_THROTTLED') return t('mobile.recoveryDevices.walletRemoval.tooManyUnsuccessfulAuthorizationAttemptsWaitBefore');
+  return t('mobile.recoveryDevices.walletRemoval.couldNotAuthorizeWalletRemovalTryAgain');
 };
 
 function discardTicket(attempt: Attempt) {
@@ -37,6 +38,7 @@ function discardTicket(attempt: Attempt) {
 }
 
 export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack, onContinue, backupConfirmed }: Props) {
+  const { t } = useNativeTranslation();
   const life = useRef<Owner | undefined>(undefined);
   const [step, setStep] = useState<Step>({ phase: 'intro' });
   const [finishing, setFinishing] = useState(false);
@@ -102,7 +104,7 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
       attempt.timer = setTimeout(() => {
         if (!current() || attempt.confirming) return;
         cancel(owner);
-        setStep({ phase: 'intro', error: 'Confirmation expired. Authorize again to continue.' });
+        setStep({ phase: 'intro', error: t('mobile.recoveryDevices.walletRemoval.confirmationExpiredAuthorizeAgainToContinue') });
       }, CONFIRM_MS);
       setStep({ phase: 'review', attempt });
     } catch (cause) {
@@ -110,7 +112,7 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
       attempt.lifetime.abort();
       attempt.authentication.retire();
       owner.attempt = undefined;
-      setStep({ phase: 'intro', ...(isOperationAuthenticationCancellation(cause) ? {} : { error: failure(cause) }) });
+      setStep({ phase: 'intro', ...(isOperationAuthenticationCancellation(cause) ? {} : { error: failure(cause, t) }) });
     }
   };
 
@@ -145,18 +147,18 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
     finally { owner.finishing = false; if (owner.live) setFinishing(false); }
   };
 
-  const title = step.phase === 'outcome' ? step.outcome === 'removed' ? 'Wallet removed' : step.outcome === 'unchanged' ? 'Wallet kept' : 'Removal could not be confirmed'
-    : step.phase === 'blocked' ? 'Wallet storage unavailable' : 'Remove wallet';
+  const title = step.phase === 'outcome' ? step.outcome === 'removed' ? t('mobile.recoveryDevices.walletRemoval.walletRemoved') : step.outcome === 'unchanged' ? t('mobile.recoveryDevices.walletRemoval.walletKept') : t('mobile.recoveryDevices.walletRemoval.removalCouldNotBeConfirmed')
+    : step.phase === 'blocked' ? t('mobile.recoveryDevices.walletRemoval.walletStorageUnavailable') : t('mobile.recoveryDevices.walletRemoval.removeWallet');
   const footer = step.phase === 'intro' ? <>
-    <Button title="Continue" onPress={() => void authorize()} />
-    <Button title="Cancel" variant="secondary" onPress={back} />
+    <Button title={t('buttons.continue')} onPress={() => void authorize()} />
+    <Button title={t('buttons.cancel')} variant="secondary" onPress={back} />
   </> : step.phase === 'review' ? <>
-    {!backupConfirmed && <Notice title="Backup not verified" body="This wallet has not been verified as backed up." tone="red" />}
-    <Button title="Remove wallet" variant="danger" onPress={() => void remove(step.attempt)} />
-    <Button title="Cancel" variant="secondary" onPress={back} />
-  </> : step.phase === 'authorizing' ? <Button title="Cancel" variant="secondary" onPress={back} />
-    : step.phase === 'working' && !step.cancelling ? <Button title="Cancel removal" variant="secondary" onPress={back} />
-    : step.phase === 'outcome' && step.outcome !== 'unconfirmed' ? <Button title={step.outcome === 'removed' ? 'Continue' : 'Return to wallet'} disabled={finishing} onPress={() => {
+    {!backupConfirmed && <Notice title={t('mobile.recoveryDevices.walletRemoval.backupNotVerified')} body={t('mobile.recoveryDevices.walletRemoval.thisWalletHasNotBeenVerifiedAs')} tone="red" />}
+    <Button title={t('mobile.recoveryDevices.walletRemoval.removeWallet')} variant="danger" onPress={() => void remove(step.attempt)} />
+    <Button title={t('buttons.cancel')} variant="secondary" onPress={back} />
+  </> : step.phase === 'authorizing' ? <Button title={t('buttons.cancel')} variant="secondary" onPress={back} />
+    : step.phase === 'working' && !step.cancelling ? <Button title={t('mobile.recoveryDevices.walletRemoval.cancelRemoval')} variant="secondary" onPress={back} />
+    : step.phase === 'outcome' && step.outcome !== 'unconfirmed' ? <Button title={step.outcome === 'removed' ? t('buttons.continue') : t('mobile.recoveryDevices.walletRemoval.returnToWallet')} disabled={finishing} onPress={() => {
       if (step.outcome !== 'unconfirmed') void finish(step.outcome);
     }} /> : undefined;
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
@@ -164,30 +166,30 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
       <Screen gap={16} footer={footer}>
         <Header title={title} onBack={step.phase === 'outcome' || step.phase === 'blocked' ? undefined : back} />
         {step.phase === 'intro' && <>
-          <Text>Removing this wallet deletes its accounts, Sentry keys, private notes, and saved transaction records from this device.</Text>
-          <Notice title="Check your backups" body="Your recovery phrase restores derived accounts. Imported accounts, Sentry keys, and private notes need their own backups." tone="amber" />
-          <Text style={styles.muted}>Transfers already sent can still complete. Watch accounts and device settings stay saved.</Text>
+          <Text>{t('mobile.recoveryDevices.walletRemoval.removingThisWalletDeletesItsAccountsSentry')}</Text>
+          <Notice title={t('mobile.recoveryDevices.walletRemoval.checkYourBackups')} body={t('mobile.recoveryDevices.walletRemoval.yourRecoveryPhraseRestoresDerivedAccountsImported')} tone="amber" />
+          <Text style={styles.muted}>{t('mobile.recoveryDevices.walletRemoval.transfersAlreadySentCanStillCompleteWatch')}</Text>
           {step.error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{step.error}</Text>}
         </>}
         {step.phase === 'authorizing' && <>
-          <Text accessibilityLiveRegion="polite">Authorizing wallet removal…</Text>
+          <Text accessibilityLiveRegion="polite">{t('mobile.recoveryDevices.walletRemoval.authorizingWalletRemoval')}</Text>
         </>}
         {step.phase === 'review' && <>
           <View style={s.reviewHero}>
             <View style={s.trash} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><Icon name="trash" size={32} color={colors.pink} /></View>
-            <Text style={s.question}>Remove wallet from this phone?</Text>
-            <Text style={s.reviewCopy}>You will need your recovery phrase and separate key or note backups to restore access. This cannot be undone.</Text>
+            <Text style={s.question}>{t('mobile.recoveryDevices.walletRemoval.removeWalletFromThisPhone')}</Text>
+            <Text style={s.reviewCopy}>{t('mobile.recoveryDevices.walletRemoval.youWillNeedYourRecoveryPhraseAnd')}</Text>
           </View>
         </>}
         {step.phase === 'working' && <>
-          <Text accessibilityLiveRegion="polite">{step.cancelling ? 'Checking whether removal completed…' : 'Removing wallet and checking storage…'}</Text>
+          <Text accessibilityLiveRegion="polite">{step.cancelling ? t('mobile.recoveryDevices.walletRemoval.checkingWhetherRemovalCompleted') : t('mobile.recoveryDevices.walletRemoval.removingWalletAndCheckingStorage')}</Text>
         </>}
         {step.phase === 'outcome' && <>
-          {step.outcome === 'removed' && <Text accessibilityLiveRegion="polite">Pali verified that the local wallet records were removed. Saved watch accounts remain available.</Text>}
-          {step.outcome === 'unchanged' && <Text accessibilityLiveRegion="polite">Removal did not complete. Your wallet records are still saved on this device.</Text>}
-          {step.outcome === 'unconfirmed' && <Text accessibilityRole="alert">Pali could not verify whether removal completed. Close and reopen Pali to check this device.</Text>}
+          {step.outcome === 'removed' && <Text accessibilityLiveRegion="polite">{t('mobile.recoveryDevices.walletRemoval.paliVerifiedThatTheLocalWalletRecords')}</Text>}
+          {step.outcome === 'unchanged' && <Text accessibilityLiveRegion="polite">{t('mobile.recoveryDevices.walletRemoval.removalDidNotCompleteYourWalletRecords')}</Text>}
+          {step.outcome === 'unconfirmed' && <Text accessibilityRole="alert">{t('mobile.recoveryDevices.walletRemoval.paliCouldNotVerifyWhetherRemovalCompleted')}</Text>}
         </>}
-        {step.phase === 'blocked' && <Text accessibilityRole="alert">Close and reopen Pali to check this device.</Text>}
+        {step.phase === 'blocked' && <Text accessibilityRole="alert">{t('mobile.recoveryDevices.walletRemoval.closeAndReopenPaliToCheckThis')}</Text>}
       </Screen>
     </View>
   </SafeAreaView>;

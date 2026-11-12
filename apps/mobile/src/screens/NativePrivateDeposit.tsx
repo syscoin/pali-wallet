@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, {
   useCallback,
   useEffect,
@@ -62,6 +63,7 @@ export function NativePrivateDeposit({
   onActivity,
   initialTask,
 }: Props) {
+  const { t } = useNativeTranslation();
   const owner = useRef<Owner | undefined>(undefined);
   const [opened, setOpened] = useState<{
     source: Props['open'];
@@ -166,24 +168,22 @@ export function NativePrivateDeposit({
       <Screen
         footer={
           <Button
-            title="Close"
+            title={t('buttons.close')}
             variant="secondary" size="compact"
             disabled={current?.closing}
             onPress={back}
           />
         }
       >
-        <Header title="Deposit to pool" onBack={back} />
+        <Header title={t('privacy.deposit.title')} onBack={back} />
         {current?.failed ? (
           <Text accessibilityRole="alert" style={s.muted}>
-            This deposit could not be opened. Return to your wallet and try
-            again.
-          </Text>
+            {t('mobile.privacyFlows.deposit.thisDepositCouldNotBeOpenedReturnToYourWallet')}</Text>
         ) : current?.closing ? (
-          <Text style={s.muted}>Closing deposit…</Text>
+          <Text style={s.muted}>{t('mobile.privacyFlows.deposit.closingDeposit')}</Text>
         ) : (
           <ActivityIndicator
-            accessibilityLabel="Opening deposit"
+            accessibilityLabel={t('mobile.privacyFlows.deposit.openingDeposit')}
             color={colors.pink}
           />
         )}
@@ -205,6 +205,7 @@ function DepositContent({
   initialTask?: NativePrivateDepositTask;
   onActivity?: Props['onActivity'];
 }) {
+  const { t } = useNativeTranslation();
   const state = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
@@ -273,15 +274,15 @@ function DepositContent({
   };
   const error =
     state.error === 'expired'
-      ? 'This review expired. Refresh to check fees again.'
+      ? t('privacy.deposit.expired')
       : state.error === 'pending'
-      ? 'This note has an unresolved deposit. Check Activity before continuing.'
+      ? t('mobile.privacyFlows.deposit.thisNoteHasAnUnresolvedDepositCheckActivityBeforeContinuing')
       : state.error === 'unavailable'
-      ? 'This deposit is unavailable. Check your account and network.'
+      ? t('mobile.privacyFlows.deposit.thisDepositIsUnavailableCheckYourAccountAndNetwork')
       : state.error === 'failed'
       ? result
-        ? 'Could not check the pool status. Try again.'
-        : 'Could not prepare this deposit. Check your network and funds, then retry.'
+        ? t('mobile.privacyFlows.deposit.couldNotCheckThePoolStatusTryAgain')
+        : t('privacy.deposit.prepareFailed')
       : null;
   const feedback = error && (
     <Text accessibilityRole="alert" style={s.error}>
@@ -289,15 +290,15 @@ function DepositContent({
     </Text>
   );
   const primary = result ? (
-    <Button title="Done" onPress={onBack} />
+    <Button title={t('privacy.deposit.done')} onPress={onBack} />
   ) : showReview && review ? (
     <Button
       title={
         busy
-          ? 'Submitting…'
+          ? t('privacy.deposit.submitting')
           : needsRefresh
-          ? 'Refresh review'
-          : 'Confirm deposit'
+          ? t('privacy.deposit.refresh')
+          : t('privacy.deposit.confirm')
       }
       disabled={busy || (!needsRefresh && acknowledged !== review.intentId)}
       onPress={
@@ -310,7 +311,7 @@ function DepositContent({
     />
   ) : (
     <Button
-      title={busy ? 'Preparing review…' : 'Review deposit'}
+      title={busy ? t('privacy.deposit.preparing') : t('privacy.deposit.continue')}
       disabled={busy}
       onPress={prepare}
     />
@@ -323,7 +324,7 @@ function DepositContent({
           <>
             {primary}
             {!result && (
-              <Button title="Close" variant="secondary" size="compact" onPress={onBack} />
+              <Button title={t('buttons.close')} variant="secondary" size="compact" onPress={onBack} />
             )}
           </>
         }
@@ -332,22 +333,22 @@ function DepositContent({
           title={
             result
               ? state.status?.phase === 'verified'
-                ? 'Deposit verified'
-                : 'Deposit status'
+                ? t('mobile.privacyFlows.deposit.depositVerified')
+                : t('mobile.privacyFlows.deposit.depositStatus')
               : showReview
-              ? 'Review deposit'
-              : 'Deposit to pool'
+              ? t('privacy.deposit.continue')
+              : t('privacy.deposit.title')
           }
           onBack={onBack}
         />
         {!showReview && !result && feedback}
         {!showReview && !result && (
           <>
-            <Text style={s.muted}>Choose an Ethereum privacy pool.</Text>
+            <Text style={s.muted}>{t('mobile.privacyFlows.deposit.chooseAnEthereumPrivacyPool')}</Text>
             <Card
               style={s.options}
               accessibilityRole="radiogroup"
-              accessibilityLabel="Deposit amount"
+              accessibilityLabel={t('mobile.privacyFlows.deposit.depositAmount')}
             >
               {PRIVACY_POOLS.map((pool, index) => (
                 <IdlePressable
@@ -389,31 +390,31 @@ function DepositContent({
           <>
             <View style={s.amountBlock}>
               <Text style={s.amount}>{review.amount} ETH</Text>
-              <Text style={s.muted}>Ethereum privacy pool</Text>
+              <Text style={s.muted}>{t('mobile.privacyFlows.deposit.ethereumPrivacyPool')}</Text>
             </View>
             <Card style={s.card}>
-              <Text style={s.label}>From account</Text>
+              <Text style={s.label}>{t('privacy.deposit.account')}</Text>
               <Text selectable style={s.address}>
                 {review.account.address}
               </Text>
-              <Text style={s.label}>Pool contract</Text>
+              <Text style={s.label}>{t('privacy.deposit.pool')}</Text>
               <Text selectable style={s.address}>
                 {review.poolAddress}
               </Text>
               <View style={s.divider} />
-              <Text style={s.label}>Maximum network fee</Text>
+              <Text style={s.label}>{t('privacy.deposit.networkFee')}</Text>
               <Text selectable style={s.value}>
                 {amount(review.maxNetworkFeeWei)}
               </Text>
-              <Text style={s.label}>Maximum total</Text>
+              <Text style={s.label}>{t('privacy.deposit.total')}</Text>
               <Text selectable style={s.total}>
                 {amount(review.maxTotalWei)}
               </Text>
               <Button
                 title={
                   details === review.intentId
-                    ? 'Hide transaction details'
-                    : 'View transaction details'
+                    ? t('mobile.privacyFlows.deposit.hideTransactionDetails')
+                    : t('mobile.privacyFlows.deposit.viewTransactionDetails')
                 }
                 variant="quiet" size="compact"
                 expanded={details === review.intentId}
@@ -425,14 +426,14 @@ function DepositContent({
               />
               {details === review.intentId && (
                 <View style={s.review}>
-                  <Text style={s.label}>Nonce</Text>
+                  <Text style={s.label}>{t('transactionDisplay.nonce')}</Text>
                   <Text selectable>{review.nonce}</Text>
-                  <Text style={s.label}>Gas limit</Text>
+                  <Text style={s.label}>{t('send.gasLimit')}</Text>
                   <Text selectable>{review.gasLimit}</Text>
                   <Text style={s.label}>
                     {review.feeMode === 'legacy'
-                      ? 'Gas price'
-                      : 'Maximum fee per gas'}
+                      ? t('mobile.privacyFlows.deposit.gasPrice')
+                      : t('mobile.privacyFlows.deposit.maximumFeePerGas')}
                   </Text>
                   <Text selectable>
                     {formatBaseUnits(
@@ -443,7 +444,7 @@ function DepositContent({
                   </Text>
                   {review.maxPriorityFeePerGas && (
                     <>
-                      <Text style={s.label}>Maximum priority fee per gas</Text>
+                      <Text style={s.label}>{t('mobile.privacyFlows.deposit.maximumPriorityFeePerGas')}</Text>
                       <Text selectable>
                         {formatBaseUnits(review.maxPriorityFeePerGas, 9)} gwei
                       </Text>
@@ -454,11 +455,9 @@ function DepositContent({
             </Card>
             <View style={s.backup}>
               <Text style={s.muted}>
-                Keep a private backup of this note. Your recovery phrase cannot
-                restore it.
-              </Text>
+                {t('mobile.privacyFlows.deposit.keepAPrivateBackupOfThisNoteYourRecoveryPhrase')}</Text>
               <Button icon="shield"
-                title="Back up private notes"
+                title={t('mobile.noteFlows.export.backUpPrivateNotes')}
                 variant="secondary" size="compact"
                 disabled={busy}
                 onPress={() => {
@@ -468,7 +467,7 @@ function DepositContent({
               />
               <IdlePressable
                 accessibilityRole="checkbox"
-                accessibilityLabel="I understand that I need the note backup to withdraw"
+                accessibilityLabel={t('mobile.privacyFlows.deposit.iUnderstandThatINeedTheNoteBackupToWithdraw')}
                 accessibilityState={{
                   checked: acknowledged === review.intentId,
                   disabled: busy || needsRefresh,
@@ -499,13 +498,12 @@ function DepositContent({
                   </Text>
                 </View>
                 <Text style={s.acknowledgementText}>
-                  I understand that I need the note backup to withdraw.
-                </Text>
+                  {t('privacy.deposit.backupAck')}</Text>
               </IdlePressable>
             </View>
             {!busy && (
               <Button icon="edit"
-                title="Change amount"
+                title={t('privacy.deposit.changeAmount')}
                 variant="secondary" size="compact"
                 onPress={() => {
                   setChoosing(true);
@@ -525,26 +523,26 @@ function DepositContent({
               </Text>
               <Text accessibilityLiveRegion="polite" style={s.muted}>
                 {state.status?.phase === 'verified'
-                  ? 'Verified in pool history'
+                  ? t('mobile.noteFlows.import.verifiedInPoolHistory')
                   : state.status?.phase === 'spent'
-                  ? 'Note already spent'
+                  ? t('mobile.privacyFlows.deposit.noteAlreadySpent')
                   : result.phase === 'submitted'
-                  ? 'Transaction submitted'
-                  : 'Submission status unknown'}
+                  ? t('privacy.deposit.submitted')
+                  : t('privacy.deposit.unknown')}
               </Text>
             </View>
             <Text style={s.muted}>
               {state.status?.phase === 'verified'
-                ? 'The deposit is present in the verified pool history.'
+                ? t('mobile.privacyFlows.deposit.theDepositIsPresentInTheVerifiedPoolHistory')
                 : state.status?.phase === 'spent'
-                ? 'This note has already been withdrawn.'
+                ? t('mobile.privacyFlows.deposit.thisNoteHasAlreadyBeenWithdrawn')
                 : result.phase === 'submitted'
-                ? 'Your note is saved. Check the pool status to verify the deposit.'
-                : 'Your note is saved. Check Activity before trying another deposit.'}
+                ? t('mobile.privacyFlows.deposit.yourNoteIsSavedCheckThePoolStatusToVerify')
+                : t('mobile.privacyFlows.deposit.yourNoteIsSavedCheckActivityBeforeTryingAnotherDeposit')}
             </Text>
             {hash && (
               <Card style={s.card}>
-                <Text style={s.label}>Transaction hash</Text>
+                <Text style={s.label}>{t('privacy.deposit.txHash')}</Text>
                 <Text selectable style={s.address}>
                   {hash}
                 </Text>
@@ -552,15 +550,13 @@ function DepositContent({
             )}
             {state.status?.phase === 'not-found' && (
               <Text style={s.muted}>
-                This deposit is not present in the current verified pool
-                history.
-              </Text>
+                {t('mobile.privacyFlows.deposit.thisDepositIsNotPresentInTheCurrentVerifiedPool')}</Text>
             )}
             {state.status?.phase === 'waiting' && (
-              <Text style={s.muted}>Pool verification is still pending.</Text>
+              <Text style={s.muted}>{t('mobile.privacyFlows.deposit.poolVerificationIsStillPending')}</Text>
             )}
             <Button
-              title={busy ? 'Checking pool…' : 'Check pool status'}
+              title={busy ? t('mobile.noteFlows.import.checkingPool') : t('mobile.noteFlows.inventory.checkPoolStatus')}
               variant="secondary" size="compact"
               disabled={busy}
               onPress={() => {
@@ -570,13 +566,13 @@ function DepositContent({
             {feedback}
             {hash && onActivity && (
               <Button icon="activity"
-                title="View in Activity"
+                title={t('mobile.privacyFlows.deposit.viewInActivity')}
                 variant="secondary" size="compact"
                 onPress={() => onActivity(hash)}
               />
             )}
             <Button icon="shield"
-              title="Back up private notes"
+              title={t('mobile.noteFlows.export.backUpPrivateNotes')}
               variant="secondary" size="compact"
               disabled={busy}
               onPress={() => onBackup()}
@@ -586,17 +582,16 @@ function DepositContent({
         {showReview && feedback}
         {expired && !error && showReview && (
           <Text accessibilityRole="alert" style={s.muted}>
-            This review expired. Refresh to check fees again.
-          </Text>
+            {t('privacy.deposit.expired')}</Text>
         )}
         {busy && (
           <ActivityIndicator
             accessibilityLabel={
               result
-                ? 'Checking pool status'
+                ? t('mobile.privacyFlows.deposit.checkingPoolStatus')
                 : state.phase === 'submitting'
-                ? 'Submitting deposit'
-                : 'Preparing deposit'
+                ? t('mobile.privacyFlows.deposit.submittingDeposit')
+                : t('mobile.privacyFlows.deposit.preparingDeposit')
             }
             color={colors.pink}
           />

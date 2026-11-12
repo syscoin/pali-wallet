@@ -1,3 +1,7 @@
+import * as nativeWalletReads from '../src/custody/dappWalletReads.ts';
+import * as dappWalletReads from '../../../source/shared/dappWalletReads.ts';
+import * as erc20 from '../../../source/shared/erc20.ts';
+import * as sptInventory from '../../../source/shared/sptInventory.ts';
 import { freshSmartOperationDeadline } from './nonSuiteSigningHandoff.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard.ts';
 import { createNativePrivacyServiceSettings } from '../src/platform/privacyServiceSettings.native.ts';
@@ -102,8 +106,8 @@ async function fixture(smart = true) {
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
     'react-native': { AppState: { currentState: 'active' }, Linking: { openURL: unexpectedFeature } },
     '../crypto/sentryCrypto.native': {
-      createNativeSentryCryptoExecutor: (isolated: unknown) => {
-        assert.equal(isolated, null, 'production isolated signing stays gated');
+      createNativeSentryCryptoExecutor: (...options: unknown[]) => {
+        assert.equal(options.length, 0, 'production chooses its fixed isolated host');
         return unexpectedFeature;
       },
     },
@@ -114,6 +118,10 @@ async function fixture(smart = true) {
     }) },
     '../custody/dappControl': { createNativeDappControlHost: () => ({ context: () => null, prepare: unexpectedFeature }) },
     '../custody/dappRpcReads': { createNativeDappRpcReadHost: () => ({ read: unexpectedFeature }) },
+    '../custody/dappWalletReads': nativeWalletReads,
+    '../../../../source/shared/dappWalletReads': dappWalletReads,
+    '../../../../source/shared/erc20': erc20,
+    '../../../../source/shared/sptInventory': sptInventory,
     '../custody/dappSentry': { createNativeDappSentryHost: () => ({ prepare: unexpectedFeature }) },
     '../custody/dappSyscoin': { createNativeDappSyscoinHost: () => ({ registration: unexpectedFeature, anchor: unexpectedFeature, read: unexpectedFeature }) },
     '../portfolio/nativeWatchAsset': {
@@ -162,7 +170,9 @@ async function fixture(smart = true) {
     '../custody/seedBackup.ts': { SeedBackupFlow: Passive },
     '../custody/hdKeyExport.ts': { HdKeyExportFlow: Passive },
     '../custody/transfers.ts': { NativeTransfers: Passive },
-    '../portfolio/nativeTokens.ts': { NativeTokens: Passive },
+    '../portfolio/nativeTokens.ts': { NativeTokens: class extends Passive {
+      view = { subscribe: () => () => undefined };
+    } },
     '../activity/nativeActivity.ts': { NativeActivity: Passive },
     '../activity/explorerReader.ts': { ActivityExplorerReader: Passive },
     '../activity/receiptReader.ts': { ActivityReceiptReader: Passive },

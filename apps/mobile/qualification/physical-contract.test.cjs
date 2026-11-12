@@ -166,6 +166,7 @@ for (const scenario of ['import', 'generate', 'full_slh'])
       for (const file of [
         'scripts/configure-native-qualification.cjs',
         'scripts/qualification-sdk.cjs',
+        'scripts/qualificationSdkIdentity.ts',
         'qualification/physical-contract.ts',
       ])
         fs.copyFileSync(

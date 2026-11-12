@@ -171,6 +171,7 @@ test('local tracking clear requires acknowledgement and never submits', async ({
   page,
 }) => {
   await page.goto('/?guardian-recovery&resume');
+  await page.getByRole('button', { name: 'Troubleshooting', exact: true }).click();
   await page
     .getByRole('button', { name: 'Clear local recovery tracking', exact: true })
     .click();
@@ -328,6 +329,7 @@ test('executed recovery with later owner changes can clear only local tracking',
   await page.screenshot({
     path: info.outputPath('executed-recovery-metadata-unadopted-320.png'),
   });
+  await page.getByRole('button', { name: 'Troubleshooting', exact: true }).click();
   await page
     .getByRole('button', { name: 'Clear local recovery tracking', exact: true })
     .click();

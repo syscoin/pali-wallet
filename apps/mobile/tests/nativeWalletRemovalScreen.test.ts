@@ -1,3 +1,4 @@
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
@@ -21,6 +22,7 @@ function fixture(backupConfirmed = true) {
     return { remove() { group.delete(listener); } };
   }
   const f = screenFixture(new URL('../src/screens/NativeWalletRemoval.tsx', import.meta.url), 'NativeWalletRemovalScreen', {
+    '../platform/localization': nativeTranslationFixture,
     'react-native': { AppState: appState,
       BackHandler: { addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'android' },
       StyleSheet: { create: (value: unknown) => value }, View: 'View' },

@@ -1,13 +1,15 @@
 // Actual leaf with a synthetic flow. This fixture does not perform recovery,
 // authenticate a phrase, access storage, or establish native qualification.
-import React, { useLayoutEffect, useState } from 'react';
+import React, { useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import { registerRootComponent } from 'expo';
 import { AppState, BackHandler } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import type { NativeRecoveryFlow } from '../../src/custody/recoveryFlow';
+import type { NativeRecoveryFlow, RecoveryOutcome } from '../../src/custody/recoveryFlow';
 import type { RecoveryInventory } from '../../src/custody/recoveryInventory';
 import { NativeRecovery } from '../../src/screens/NativeRecovery';
-import { Screen, Text } from '../../src/ui';
+import { Notice, Screen, Text } from '../../src/ui';
+import { recoveryOutcomeText } from '../../src/screens/recoveryCopy';
+import { useNativeTranslation } from '../../src/platform/localization';
 
 type Phase = ReturnType<NativeRecoveryFlow['getSnapshot']>['phase'];
 const params = new URLSearchParams(window.location.search);
@@ -33,35 +35,40 @@ const audit = { starts: 0, backs: 0, cancels: 0, submissions: 0, admissions: 0, 
 class FixtureFlow {
   private snapshot: ReturnType<NativeRecoveryFlow['getSnapshot']> = Object.freeze({ phase: 'reading', inventory: null, error: '', fieldErrors: {} });
   private listeners = new Set<() => void>();
+  private outcome: RecoveryOutcome | null = null;
+  getOutcome = () => this.outcome;
   getSnapshot = () => this.snapshot;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
-  publish(phase: Phase, error = '', fieldErrors: Record<string, string> = {}) {
+  publish(phase: Phase, error: ReturnType<NativeRecoveryFlow['getSnapshot']>['error'] = '', fieldErrors: ReturnType<NativeRecoveryFlow['getSnapshot']>['fieldErrors'] = {}) {
     this.snapshot = Object.freeze({ phase, inventory: params.has('unavailable') ? unavailable : inventory, error, fieldErrors: Object.freeze(fieldErrors) });
     this.listeners.forEach((listener) => listener());
   }
   start() { audit.starts++; if (!params.has('reading')) queueMicrotask(() => { if (this.snapshot.phase === 'reading') this.read(); }); }
-  read() { this.publish(params.has('unavailable') ? 'blocked' : 'scope', params.has('unavailable') ? 'Your saved wallet could not be verified for this recovery. Nothing has been reset.' : ''); }
+  read() { this.publish(params.has('unavailable') ? 'blocked' : 'scope', params.has('unavailable') ? 'SAVED_WALLET_UNVERIFIED' : ''); }
   enter() { if (this.snapshot.phase === 'scope') this.publish('entry'); }
   back() { audit.backs++; if (this.snapshot.phase === 'entry') this.publish('scope'); else this.cancel(); }
   submit({ phrase }: { phrase: string }) {
     if (this.snapshot.phase !== 'entry') return false;
     audit.submissions++;
     const words = phrase.trim().split(/\s+/u).length;
-    const errors: Record<string, string> = {};
-    if (![12, 24].includes(words)) errors.phrase = 'Enter 12 or 24 words in their original order.';
+    const errors: { phrase?: 'INVALID_WORD_COUNT' } = {};
+    if (![12, 24].includes(words)) errors.phrase = 'INVALID_WORD_COUNT';
     if (Object.keys(errors).length) { this.publish('entry', '', errors); return false; }
     audit.admissions++; audit.admittedWordCounts.push(words); this.publish('verifying'); return true;
   }
   verify(outcome: 'match' | 'wrong') {
     if (this.snapshot.phase !== 'verifying') return;
-    this.publish(outcome === 'match' ? 'review' : 'entry', outcome === 'wrong' ? 'This recovery phrase does not match this wallet.' : '');
+    this.publish(outcome === 'match' ? 'review' : 'entry', outcome === 'wrong' ? 'WRONG_PHRASE' : '');
   }
   isAuthenticating = () => false;
   commit() { if (this.snapshot.phase === 'review') { audit.commits++; this.publish('committing'); } }
   cancel() {
     if (this.snapshot.phase === 'closed') return;
     audit.cancels++;
-    this.publish('closed', this.snapshot.phase === 'committing' ? 'We could not confirm device authorization recovery. Close and reopen Pali before trying again.' : 'Recovery was cancelled');
+    const phase = this.snapshot.phase;
+    this.outcome = Object.freeze({ kind: phase === 'committing' ? 'uncertain' : 'cancelled',
+      operationPhase: phase === 'committing' ? 'commit' : phase === 'review' ? 'review' : phase === 'verifying' ? 'prepare' : 'inventory', code: 'cancelled' });
+    this.publish('closed');
   }
 }
 const flow = new FixtureFlow();
@@ -77,8 +84,15 @@ window.__recoveryFixture = {
   back() { [...backs].reverse().some((listener) => listener()); }, unmount() { unmount(); }, read: () => flow.read(),
 };
 function App() {
+  const { t } = useNativeTranslation();
+  const snapshot = useSyncExternalStore(flow.subscribe, flow.getSnapshot, flow.getSnapshot);
+  const outcome = flow.getOutcome();
   const [shown, setShown] = useState(true);
   useLayoutEffect(() => { unmount = () => setShown(false); return () => { unmount = () => undefined; }; }, []);
-  return <SafeAreaProvider>{shown ? <NativeRecovery flow={flow as unknown as NativeRecoveryFlow} /> : <Screen><Text>Recovery fixture closed</Text></Screen>}</SafeAreaProvider>;
+  return <SafeAreaProvider>{!shown ? <Screen><Text>Recovery fixture closed</Text></Screen>
+    : snapshot.phase === 'closed' && outcome
+      ? <Screen><Notice title={t(outcome.kind === 'uncertain' ? 'mobile.walletViews.checkYourWallet' : 'mobile.walletViews.recoveryUpdate')}
+          body={recoveryOutcomeText(outcome, t)} tone="amber" /></Screen>
+      : <NativeRecovery flow={flow as unknown as NativeRecoveryFlow} />}</SafeAreaProvider>;
 }
 registerRootComponent(App);

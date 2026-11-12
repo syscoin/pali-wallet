@@ -44,7 +44,11 @@ const nativeFiles = walk(path.join(ROOT, 'apps', 'mobile', 'src')).filter(
     !/\.(?:spec|test)\.[jt]sx?$/.test(file) &&
     !/(?:^|[/\\])__(?:tests|mocks)__(?:[/\\])/.test(file)
 );
-const files = [...walk(path.join(ROOT, 'source')), ...nativeFiles];
+const files = [
+  ...walk(path.join(ROOT, 'source')),
+  path.join(ROOT, 'apps', 'mobile', 'App.tsx'),
+  ...nativeFiles,
+];
 
 // --- Extract string literals + template literal prefixes from source ---
 const literals = new Set();
@@ -143,6 +147,12 @@ for (const key of enKeys) {
       break;
     }
   }
+}
+// i18next selects the locale's grammatical variant from a referenced base key.
+// These resources are live without a literal t('key_one') call in application code.
+for (const key of enKeys) {
+  const plural = key.match(/^(.*)_(?:zero|one|two|few|many|other)$/);
+  if (plural && used.has(plural[1])) used.add(key);
 }
 const unused = [...enKeys].filter((k) => !used.has(k)).sort();
 const missingFromEn = [...translationCalls.entries()]

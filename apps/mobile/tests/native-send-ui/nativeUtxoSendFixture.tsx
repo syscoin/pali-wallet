@@ -51,6 +51,7 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
   let saved = !expireAfterSave;
   let seen = false;
   const send: NativeUtxoSend = {
+    feeRecommendations: async () => '7',
     cancel() { revision++; owner?.abort(); },
     async list() {
       return saved ? [{ txid, accepted: false }] : [];

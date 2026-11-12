@@ -18,6 +18,7 @@ function shell() {
     'react-native-svg': {},
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../platform/localization': nativeTranslationFixture,
+    './platform/localization': nativeTranslationFixture,
     '../updates/service': { mobileUpdates: { getSnapshot: () => ({ release: null }), subscribe: () => () => undefined } },
     '../../../source/shared/assetIconIdentity': { knownAssetIcon },
     './portfolio/assetIconCache': { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, subscribeNativeAssetIcon },

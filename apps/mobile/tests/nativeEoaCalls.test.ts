@@ -7,7 +7,7 @@ import {
   type CallsBundleStore,
 } from '../../../source/wallet/dappCallsBundles.ts';
 import { snapshotPreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
-import { createNativeEoaCalls } from '../src/connections/eoaCalls.ts';
+import { createNativeEoaCalls, createNativeEoaCallsContinuation } from '../src/connections/eoaCalls.ts';
 import type { NativePreparedConnectionTransaction } from '../src/connections/transactionRuntime.ts';
 
 const wallet = new Wallet('0x' + '01'.repeat(32));
@@ -57,7 +57,18 @@ async function fixture({ lifetime = 60_000 } = {}) {
   const check = () => {
     if (!current) throw new Error('CANCELLED');
   };
+  const calls = {
+      version: '2.0.0' as const,
+      atomicRequired: false,
+      from,
+      chainId: '1',
+      calls: [
+        { to: first, value: '1', data: '0x' },
+        { to: second, value: '2', data: '0x' },
+      ],
+  };
   const operation = createNativeEoaCalls({
+    continuation: createNativeEoaCallsContinuation({ calls, origin, bundleId: id, reservationId }),
     origin,
     bundleId: id,
     reservationId,
@@ -76,16 +87,7 @@ async function fixture({ lifetime = 60_000 } = {}) {
         attempt,
         async () => retained.get(attempt.transaction.nonce)?.rawTransaction
       ),
-    calls: {
-      version: '2.0.0',
-      atomicRequired: false,
-      from,
-      chainId: '1',
-      calls: [
-        { to: first, value: '1', data: '0x' },
-        { to: second, value: '2', data: '0x' },
-      ],
-    },
+    calls,
     async prepare(input): Promise<NativePreparedConnectionTransaction> {
       const request = input as {
         nonce?: number;

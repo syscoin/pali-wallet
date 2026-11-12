@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, {
   useCallback,
   useLayoutEffect,
@@ -35,6 +36,7 @@ export function NativeTrezor({
   onImported(): void;
   onResumeSend(intent: NativeTrezorResumeIntent): void | Promise<void>;
 }) {
+  const { t } = useNativeTranslation();
   const snapshot = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
@@ -62,12 +64,12 @@ export function NativeTrezor({
       await operation();
     } catch {
       if (owner.active && !owner.closing && owner.epoch === epoch)
-        setError('The Trezor request could not be completed. Try again.');
+        setError(t('mobile.recoveryDevices.trezor.theTrezorRequestCouldNotBeCompleted'));
     } finally {
       owner.busy = false;
       if (owner.active && !owner.closing && owner.epoch === epoch) setBusy(false);
     }
-  }, []);
+  }, [t]);
   const close = useCallback(() => {
     const owner = lifetime.current;
     if (!owner.active || owner.closing) return;
@@ -83,10 +85,10 @@ export function NativeTrezor({
         owner.closing = false;
         setCloseFailed(true);
         setBusy(false);
-        setError('The Trezor request is still closing. Try again.');
+        setError(t('mobile.recoveryDevices.trezor.theTrezorRequestIsStillClosingTry'));
       }
     });
-  }, [controller]);
+  }, [controller, t]);
 
   useLayoutEffect(() => {
     const owner = { active: true, busy: false, closing: false, epoch: 0 };
@@ -133,30 +135,30 @@ export function NativeTrezor({
         <Screen
           footer={
             <Button
-              title={resume ? 'Continue' : 'Open Trezor Suite'}
+              title={resume ? t('buttons.continue') : t('mobile.recoveryDevices.trezor.openTrezorSuite')}
               disabled={busy || closeFailed || waiting || (!pending && !label.trim())}
               onPress={continueRequest}
             />
           }
         >
           <Header
-            title={pending ? 'Continue with Trezor' : 'Connect Trezor'}
-            subtitle={snapshot.networkLabel || 'Hardware wallet'}
+            title={pending ? t('mobile.recoveryDevices.trezor.continueWithTrezor') : t('mobile.accounts.connectTrezor')}
+            subtitle={snapshot.networkLabel || t('mobile.recoveryDevices.ledger.hardwareWallet')}
             onBack={close}
           />
           <Text style={styles.muted}>
             {resume && snapshot.operation !== 'import'
-              ? 'Review the request again before continuing.'
-              : 'Connect your Trezor in Trezor Suite, then return to Pali to continue.'}
+              ? t('mobile.recoveryDevices.trezor.reviewTheRequestAgainBeforeContinuing')
+              : t('mobile.recoveryDevices.trezor.connectYourTrezorInTrezorSuiteThen')}
           </Text>
           {feedback ? (
             <Text accessibilityRole="alert" style={s.error}>{feedback}</Text>
           ) : null}
           {!pending && (
             <Card style={s.card}>
-              <Text style={s.label}>Account name</Text>
+              <Text style={s.label}>{t('mobile.accounts.accountName')}</Text>
               <IdleTextInput
-                accessibilityLabel="Trezor account name"
+                accessibilityLabel={t('mobile.recoveryDevices.trezor.trezorAccountName')}
                 value={label}
                 onChangeText={setLabel}
                 editable={!busy}
@@ -169,16 +171,16 @@ export function NativeTrezor({
           )}
           {snapshot.address && (
             <Card style={s.card}>
-              <Text style={s.label}>{snapshot.accountLabel || 'Trezor account'}</Text>
+              <Text style={s.label}>{snapshot.accountLabel || t('mobile.recoveryDevices.trezor.trezorAccount')}</Text>
               <Text selectable style={s.address}>{snapshot.address}</Text>
             </Card>
           )}
           {snapshot.signer && (
             <Card style={s.card}>
-              <Text style={s.label}>Expected signer</Text>
+              <Text style={s.label}>{t('mobile.recoveryDevices.trezor.expectedSigner')}</Text>
               {snapshot.signer.total > 1 && (
                 <Text accessibilityLiveRegion="polite" style={s.label}>
-                  Signer {snapshot.signer.step} of {snapshot.signer.total}
+                  {t('mobile.recoveryDevices.trezor.signerProgress', { step: snapshot.signer.step, total: snapshot.signer.total })}
                 </Text>
               )}
               <Text style={s.label}>{snapshot.signer.label}</Text>
@@ -191,7 +193,7 @@ export function NativeTrezor({
             <View style={s.waiting}>
               <ActivityIndicator color={colors.pink} />
               <Text accessibilityLiveRegion="polite" style={styles.muted}>
-                {snapshot.phase === 'importing' ? 'Adding account…' : 'Waiting for Trezor…'}
+                {snapshot.phase === 'importing' ? t('mobile.recoveryDevices.ledger.addingAccount') : t('mobile.recoveryDevices.trezor.waitingForTrezor')}
               </Text>
             </View>
           )}
@@ -205,11 +207,12 @@ export function NativeTrezorResumeNotice({ controller, onResume }: {
   controller: NativeTrezorView;
   onResume(): void;
 }) {
+  const { t } = useNativeTranslation();
   const snapshot = useSyncExternalStore(
     controller.subscribe, controller.getSnapshot, controller.getSnapshot
   );
   if (snapshot.phase !== 'resume') return null;
-  return <Button title="Continue Trezor request" variant="secondary" size="compact" onPress={onResume} />;
+  return <Button title={t('mobile.recoveryDevices.trezor.continueTrezorRequest')} variant="secondary" size="compact" onPress={onResume} />;
 }
 
 const s = StyleSheet.create({

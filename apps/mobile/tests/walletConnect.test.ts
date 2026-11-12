@@ -410,7 +410,7 @@ test('prepared account update preserves negotiated scope and advances only its o
     const held = deferred(), entered = deferred();
     f.setBeforeUpdateAck(async () => { entered.release(); await held.promise; });
     let commits = 0;
-    const updated = transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, session => {
+    const updated = transport.updateSessionAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, session => {
       commits++; assert.deepEqual(session.namespaces.eip155!.accounts, [anotherChain, `eip155:1:${PREPARED_ADDRESS}`]);
     });
     await entered.promise;
@@ -431,7 +431,7 @@ test('prepared account update preserves negotiated scope and advances only its o
     assert.deepEqual(wire.session.namespaces, negotiated);
     assert.deepEqual(f.pending.get(wire.id), pendingBefore);
     assert.equal(f.history.find(value => (value as { id: number }).id === wire.id), historyBefore);
-    await assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => {}));
+    await assert.rejects(transport.updateSessionAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => {}));
     await assert.rejects(transport.respond(stale.session.binding, stale.id, { result: 'stale signature' }, () => {}, () => {}));
     await transport.respond(wire.session.binding, wire.id, { result: { address: PREPARED_ADDRESS, chainId: '0x1' } }, () => {}, () => {});
     assert.equal(f.updates.length, 1);
@@ -451,7 +451,7 @@ test(`prepared account update rejects ${invalid} without changing session scope`
     const wire = await preparationRequest(f, 51, invalid === 'wrong-chain' ? 'eip155:2' : 'eip155:1', invalid === 'not-method' ? 'personal_sign' : PREPARE_SMART_ACCOUNT);
     const original = structuredClone(f.sessions.get(TOPIC));
     const lifetime = new AbortController(); if (invalid === 'aborted-signal') lifetime.abort();
-    await assert.rejects(transport.updatePreparedAccount(
+    await assert.rejects(transport.updateSessionAccount(
       invalid === 'wrong-peer' ? { ...wire.session.binding, peerPublicKey: 'e5'.repeat(32) } : wire.session.binding,
       wire.id, invalid === 'address' ? '0x1234' : PREPARED_ADDRESS, invalid === 'missing-signal' ? undefined as never : lifetime.signal,
       invalid === 'missing-guard' ? undefined as never : () => {},
@@ -469,13 +469,13 @@ for (const phase of ['dispatch', 'ack'] as const) test(`unknown ${phase} cannot 
     const failure = async () => { throw Error('Private protocol failure'); };
     if (phase === 'dispatch') f.setBeforeUpdate(failure); else f.setBeforeUpdateAck(failure);
     let commits = 0;
-    await assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
+    await assert.rejects(transport.updateSessionAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
     assert.equal(commits, 0); assert.equal(f.updates.length, 1);
     // An ACK failure can leave the SDK's local namespaces changed. It never
     // grants a response correlation exception or a second update attempt.
     if (phase === 'ack') await assert.rejects(transport.respond(wire.session.binding, wire.id, { error: { code: 4001, message: 'Unknown account update' } }, () => {}, () => {}));
     f.sessions.set(TOPIC, original);
-    await assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
+    await assert.rejects(transport.updateSessionAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
     assert.equal(f.updates.length, 1);
     await transport.respond(wire.session.binding, wire.id, { error: { code: 4001, message: 'Account update failed' } }, () => {}, () => {});
     assert.equal(f.responders.length, 1); assert.equal(commits, 0);
@@ -490,11 +490,11 @@ test('an SDK session persistence failure cannot acknowledge or repeat a prepared
     f.setBeforeStorageWrite(async () => { throw Error('Private encrypted storage failure'); });
     f.setBeforeUpdate(() => f.core.storage.setItem('updated-session', true));
     let commits = 0;
-    await assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
+    await assert.rejects(transport.updateSessionAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
     assert.equal(commits, 0); assert.equal(f.calls.includes('update-ack'), false);
     assert.deepEqual(f.sessions.get(TOPIC), original);
     assert.equal(f.protocolValues.has('updated-session'), false);
-    await assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
+    await assert.rejects(transport.updateSessionAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
     assert.equal(f.updates.length, 1);
   } finally { await transport.close(); }
 });
@@ -507,7 +507,7 @@ test(`held history ${change} cannot dispatch a prepared account update`, async (
     const wire = await preparationRequest(f), get = f.core.history.get;
     f.core.history.get = async (topic, id) => { const value = await get(topic, id); entered.release(); await held.promise; return value; };
     let current = true, commits = 0;
-    const updating = assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal,
+    const updating = assert.rejects(transport.updateSessionAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal,
       () => { if (!current) throw Error('Expired approval'); }, () => { commits++; }));
     await entered.promise;
     if (change === 'session') {
@@ -532,7 +532,7 @@ test(`ACK with concurrent ${change} drift cannot adopt a prepared account sessio
     const wire = await preparationRequest(f);
     f.setBeforeUpdateAck(async () => { entered.release(); await held.promise; });
     let commits = 0;
-    const updating = assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
+    const updating = assert.rejects(transport.updateSessionAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
     await entered.promise;
     const changed = structuredClone(f.sessions.get(TOPIC)) as typeof rawSession;
     if (change === 'methods') changed.namespaces.eip155.methods.push('eth_sign');
@@ -565,12 +565,12 @@ test('verified prepared account commit is reported once before a post-ACK reques
   try {
     const wire = await preparationRequest(f); let commits = 0;
     f.setBeforeUpdateAck(async () => { entered.release(); await held.promise; });
-    const updating = assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal,
+    const updating = assert.rejects(transport.updateSessionAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal,
       () => { if (clock >= wire.expiresAt) { assert.equal(commits, 1); throw Error('Request deadline'); } },
       () => { commits++; clock = wire.expiresAt; }));
     await entered.promise; held.release(); await updating;
     assert.equal(commits, 1); assert.equal(f.updates.length, 1);
-    await assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
+    await assert.rejects(transport.updateSessionAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
     assert.equal(commits, 1); assert.equal(f.updates.length, 1);
   } finally { Date.now = now; held.release(); await transport.close(); }
 });
@@ -583,7 +583,7 @@ for (const reason of ['cancel', 'expiry'] as const) test(`a never-resolving upda
     if (reason === 'expiry') t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
     f.setBeforeUpdateAck(async () => { entered.release(); await held.promise; });
     let commits = 0;
-    const updating = assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, lifetime.signal, () => {}, () => { commits++; }));
+    const updating = assert.rejects(transport.updateSessionAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, lifetime.signal, () => {}, () => { commits++; }));
     await entered.promise;
     if (reason === 'cancel') lifetime.abort();
     else t.mock.timers.tick(wire.expiresAt - Date.now());
@@ -595,10 +595,10 @@ for (const reason of ['cancel', 'expiry'] as const) test(`a never-resolving upda
     // Even an apparent local rollback cannot release this uncertain topic to
     // another admitted owner while the original SDK ACK remains outstanding.
     f.sessions.set(TOPIC, original);
-    await assert.rejects(transport.updatePreparedAccount(next.session.binding, next.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
+    await assert.rejects(transport.updateSessionAccount(next.session.binding, next.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
     held.release(); await settle(); await settle();
     assert.equal(commits, 0); assert.equal(f.responders.length, 0); assert.equal(f.updates.length, 1);
-    await assert.rejects(transport.updatePreparedAccount(next.session.binding, next.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
+    await assert.rejects(transport.updateSessionAccount(next.session.binding, next.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => { commits++; }));
   } finally { t.mock.timers.reset(); held.release(); await transport.close(); }
 });
 
@@ -608,11 +608,11 @@ test('another admitted preparation cannot race an in-flight update for the same 
   try {
     const first = await preparationRequest(f), second = await preparationRequest(f, 52);
     f.setBeforeUpdateAck(async () => { entered.release(); await held.promise; });
-    const updating = transport.updatePreparedAccount(first.session.binding, first.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => {});
+    const updating = transport.updateSessionAccount(first.session.binding, first.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => {});
     await entered.promise;
-    await assert.rejects(transport.updatePreparedAccount(second.session.binding, second.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => {}));
+    await assert.rejects(transport.updateSessionAccount(second.session.binding, second.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => {}));
     held.release(); await updating;
-    await assert.rejects(transport.updatePreparedAccount(second.session.binding, second.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => {}));
+    await assert.rejects(transport.updateSessionAccount(second.session.binding, second.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => {}));
     assert.equal(f.updates.length, 1);
   } finally { held.release(); await transport.close(); }
 });
@@ -622,7 +622,7 @@ test('prepared account update rechecks configured storage after the final durabl
   const transport = await openWalletConnectTransport(f.options), held = deferred(), committed = deferred();
   try {
     const wire = await preparationRequest(f); let commits = 0;
-    const updating = assert.rejects(transport.updatePreparedAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => {
+    const updating = assert.rejects(transport.updateSessionAccount(wire.session.binding, wire.id, PREPARED_ADDRESS, new AbortController().signal, () => {}, () => {
       commits++; f.setBarrier(held.promise); committed.release();
     }));
     await committed.promise; await settle();
@@ -1707,4 +1707,29 @@ for (const change of ['namespace', 'expiry', 'deleted'] as const) test(`queued s
     held.release(); await settle();
     assert.equal(f.events.some(value => value.type === 'request'), false);
   } finally { held.release(); await transport.close(); }
+});
+
+
+for (const utxo of [false, true]) test(`explicit ${utxo ? 'bip122' : 'eip155'} account update preserves other scopes and permission arrays`, async () => {
+  const f = fixture();
+  const chain = utxo ? 'bip122:000000000019d6689c085ae165831e93' : 'eip155:1';
+  const family = utxo ? 'bip122' : 'eip155';
+  const address = utxo ? 'CaseSensitiveAnchorB' : '0x' + '22'.repeat(20);
+  f.options.supportedMethods.push('wallet_changeAccount');
+  const base = { ...structuredClone(rawSession), namespaces: { [family]: {
+    accounts: [`${chain}:${utxo ? 'CaseSensitiveAnchorA' : '0x' + '11'.repeat(20)}`],
+    methods: ['wallet_changeAccount'], events: ['accountsChanged'], chains: [chain],
+  }, other: { accounts: ['eip155:137:unmodified'], methods: ['unmodified'], events: [], chains: ['eip155:137'] } } };
+  f.sessions.set(TOPIC, base);
+  const transport = await openWalletConnectTransport(f.options);
+  try {
+    const id = 765, params = { chainId: chain, request: { method: 'wallet_changeAccount', params: [], expiryTimestamp: Math.floor(Date.now() / 1000) + 60 } };
+    f.setPending(id, { id, topic: TOPIC, params }); f.emit('session_request', { id, topic: TOPIC, params }); await settle();
+    const event = f.events.find(event => event.type === 'request' && event.request.id === id); assert(event?.type === 'request');
+    const updated = await transport.updateSessionAccount(event.request.session.binding, id, address, new AbortController().signal, () => {}, () => {});
+    assert.deepEqual(updated.namespaces[family], { ...base.namespaces[family], accounts: [`${chain}:${address}`] });
+    assert.deepEqual(updated.namespaces.other, base.namespaces.other);
+    assert.equal(f.updates.length, 1);
+    assert.equal(updated.expiry, base.expiry);
+  } finally { await transport.close(); }
 });

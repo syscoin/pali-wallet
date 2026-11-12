@@ -28,6 +28,7 @@ for (const networkId of ['syscoin', 'utxo:5700']) test(`watch-only ${networkId} 
     'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', '../core/amounts': { formatBalanceDelta, formatBaseUnits },
     '../custody/networkContext': { getNativeNetwork() { assert.fail('A UTXO watch account must keep its own network'); } },
     '../custody/testnetFaucet': {}, '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => ({ supported: false, quote: null }) },
+    './CopyableAddress': { CopyableAddress: 'CopyableAddress' },
     './PortfolioQuote': { PortfolioQuote: 'PortfolioQuote' }, '../portfolio/AssetMarketCard': { AssetMarketCard: 'AssetMarketCard' },
     './NativeSptAssets': { NativeSptAssets: 'NativeSptAssets' }, '../../../../source/shared/sptInventory': inventory,
     './TestnetFaucetCard': {}, '../ui': ui,

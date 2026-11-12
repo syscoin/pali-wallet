@@ -122,6 +122,7 @@ type RetainedNftContext = Readonly<{
   chainId: string;
   from: string;
   hash: string;
+  metadata?: Readonly<Record<string, unknown>>;
   nonce: number;
   operation: string;
   rawTransaction: string;
@@ -197,7 +198,11 @@ export function decodeRetainedNftTransfer(
   entry: RetainedNftContext,
   tx: Transaction
 ): NftTransferIntent | undefined {
-  if (entry.operation !== 'erc721' && entry.operation !== 'erc1155')
+  if (
+    entry.operation !== 'erc721' &&
+    entry.operation !== 'erc1155' &&
+    entry.operation !== 'speed-up'
+  )
     return undefined;
   try {
     if (
@@ -212,10 +217,26 @@ export function decodeRetainedNftTransfer(
       return undefined;
     const from = tx.from;
     if (!from || from.toLowerCase() !== entry.from) return undefined;
-    return decodeNftTransferData(tx.data, {
+    const context = {
       chainId: entry.chainId,
       from,
       contractAddress: tx.to,
+    };
+    if (entry.operation === 'speed-up') {
+      // ERC20 transferFrom shares the ERC721 selector. Only the authenticated
+      // original NFT classification carried by the journal can distinguish it.
+      const intent = snapshotNftTransferIntent(entry.metadata?.nftTransfer);
+      if (
+        intent.chainId !== context.chainId ||
+        intent.from !== context.from ||
+        intent.contractAddress !== context.contractAddress ||
+        encodeNftTransferData(intent) !== tx.data
+      )
+        return undefined;
+      return intent;
+    }
+    return decodeNftTransferData(tx.data, {
+      ...context,
       tokenStandard: entry.operation === 'erc721' ? 'ERC-721' : 'ERC-1155',
     });
   } catch {

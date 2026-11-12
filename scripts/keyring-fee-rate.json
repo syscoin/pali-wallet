@@ -1,0 +1,80 @@
+{
+  "source": "a1dccff",
+  "packages": [
+    {
+      "name": "@sidhujag/sysweb3-keyring",
+      "version": "2.1.12",
+      "files": [
+        {
+          "path": "cjs/transactions/syscoin-core.js",
+          "before": "854ebd91d1ee95c425665fc51d9762cc7706a45d71202db21f32b64cc5c291db",
+          "after": "e030fead0a1629ef8f66ec5802665e4d5bd22bb05c121679beef44993e20efa9",
+          "bytes": 48227,
+          "edits": [
+            {
+              "before": "const psbt_1 = require(\"../utils/psbt\");\nconst psbt_account_scope_1 = require(\"../utils/psbt-account-scope\");\nconst createHardwareSignerUnavailableError = (hardware) => Object.assign(new Error(`${hardware} signer is unavailable in this host`), {\n    code: 'HARDWARE_SIGNER_UNAVAILABLE',\n",
+              "after": "const psbt_1 = require(\"../utils/psbt\");\nconst psbt_account_scope_1 = require(\"../utils/psbt-account-scope\");\nconst utxo_fee_rate_1 = require(\"../utils/utxo-fee-rate\");\nconst createHardwareSignerUnavailableError = (hardware) => Object.assign(new Error(`${hardware} signer is unavailable in this host`), {\n    code: 'HARDWARE_SIGNER_UNAVAILABLE',\n"
+            },
+            {
+              "before": "                // can yield < 1 sat/vB (e.g., 0.9765625). Round up and clamp to 1 to\n                // avoid zero-fee transactions due to truncation when converting to BN.\n                const satPerByte = Math.max(1, Math.ceil(actualFeeRate * 1e8));\n                const feeRateBN = new syscoinjs.utils.BN(satPerByte);\n                // Step 2: Create unsigned PSBT\n",
+              "after": "                // can yield < 1 sat/vB (e.g., 0.9765625). Round up and clamp to 1 to\n                // avoid zero-fee transactions due to truncation when converting to BN.\n                const satPerByte = (0, utxo_fee_rate_1.utxoFeeRateUnits)(actualFeeRate);\n                const feeRateBN = new syscoinjs.utils.BN(satPerByte);\n                // Step 2: Create unsigned PSBT\n"
+            }
+          ]
+        },
+        {
+          "path": "cjs/utils/utxo-fee-rate.js",
+          "before": null,
+          "after": "d889cb9097652e2439ffc246321ffacd0652ddf144a4b9b7a10191610595a1ac",
+          "bytes": 1174,
+          "text": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.utxoFeeRateUnits = utxoFeeRateUnits;\n/**\n * The public rate is coins/vbyte. Convert its decimal representation exactly:\n * multiplying a binary Number first can make 7e-8 round up to 8 atomic units.\n */\nfunction utxoFeeRateUnits(rate) {\n    if (!Number.isFinite(rate) || rate <= 0)\n        throw new Error('Invalid UTXO fee rate');\n    const [coefficient, scientific = '0'] = rate\n        .toString()\n        .toLowerCase()\n        .split('e');\n    const [whole, fraction = ''] = coefficient.split('.');\n    const digits = BigInt(whole + fraction);\n    const scale = Number(scientific) - fraction.length + 8;\n    // ES2015 consumer transforms rewrite exponentiation to Math.pow, which\n    // cannot accept BigInt. Finite Number input keeps this decimal string bounded.\n    const power = BigInt('1' + '0'.repeat(Math.abs(scale)));\n    const units = scale < 0 ? (digits + power - 1n) / power : digits * power;\n    if (units > BigInt(Number.MAX_SAFE_INTEGER))\n        throw new Error('Invalid UTXO fee rate');\n    return Math.max(1, Number(units));\n}\n//# sourceMappingURL=utxo-fee-rate.js.map"
+        },
+        {
+          "path": "esm/utils/utxo-fee-rate.js",
+          "before": null,
+          "after": "2728ee84c5574a0d61a314a6a1d199dfc6230b018f0e103f1a852170fe57e1e7",
+          "bytes": 1018,
+          "text": "/**\n * The public rate is coins/vbyte. Convert its decimal representation exactly:\n * multiplying a binary Number first can make 7e-8 round up to 8 atomic units.\n */\nexport function utxoFeeRateUnits(rate) {\n    if (!Number.isFinite(rate) || rate <= 0)\n        throw new Error('Invalid UTXO fee rate');\n    const [coefficient, scientific = '0'] = rate\n        .toString()\n        .toLowerCase()\n        .split('e');\n    const [whole, fraction = ''] = coefficient.split('.');\n    const digits = BigInt(whole + fraction);\n    const scale = Number(scientific) - fraction.length + 8;\n    // ES2015 consumer transforms rewrite exponentiation to Math.pow, which\n    // cannot accept BigInt. Finite Number input keeps this decimal string bounded.\n    const power = BigInt('1' + '0'.repeat(Math.abs(scale)));\n    const units = scale < 0 ? (digits + power - 1n) / power : digits * power;\n    if (units > BigInt(Number.MAX_SAFE_INTEGER))\n        throw new Error('Invalid UTXO fee rate');\n    return Math.max(1, Number(units));\n}\n"
+        },
+        {
+          "path": "types/utils/utxo-fee-rate.d.ts",
+          "before": null,
+          "after": "3aa45697641644ca7462538ccc9e0982547518d46ee512d12583cbd3a70907cd",
+          "bytes": 230,
+          "text": "/**\n * The public rate is coins/vbyte. Convert its decimal representation exactly:\n * multiplying a binary Number first can make 7e-8 round up to 8 atomic units.\n */\nexport declare function utxoFeeRateUnits(rate: number): number;\n"
+        },
+        {
+          "path": "esm/transactions/syscoin-core.js",
+          "before": "c66ab391d81db3822150099de31b500e048042bff5b35777942c68fb534c1660",
+          "after": "a14860309fe44db5bd869dcf7d2e0359b4b95267d525853b4a379ec5227f6c43",
+          "bytes": 46089,
+          "edits": [
+            {
+              "before": "import { fetchOwnedBlockbookAccount } from '../utils/owned-blockbook-account';\nimport { PsbtUtils } from '../utils/psbt';\nimport { assertPsbtAccountScope, } from '../utils/psbt-account-scope';\nexport const createHardwareSignerUnavailableError = (hardware) => Object.assign(new Error(`${hardware} signer is unavailable in this host`), {\n",
+              "after": "import { fetchOwnedBlockbookAccount } from '../utils/owned-blockbook-account';\nimport { PsbtUtils } from '../utils/psbt';\nimport { utxoFeeRateUnits } from '../utils/utxo-fee-rate';\nimport { assertPsbtAccountScope, } from '../utils/psbt-account-scope';\nexport const createHardwareSignerUnavailableError = (hardware) => Object.assign(new Error(`${hardware} signer is unavailable in this host`), {\n"
+            },
+            {
+              "before": "                // can yield < 1 sat/vB (e.g., 0.9765625). Round up and clamp to 1 to\n                // avoid zero-fee transactions due to truncation when converting to BN.\n                const satPerByte = Math.max(1, Math.ceil(actualFeeRate * 1e8));\n                const feeRateBN = new syscoinjs.utils.BN(satPerByte);\n                // Step 2: Create unsigned PSBT\n",
+              "after": "                // can yield < 1 sat/vB (e.g., 0.9765625). Round up and clamp to 1 to\n                // avoid zero-fee transactions due to truncation when converting to BN.\n                const satPerByte = utxoFeeRateUnits(actualFeeRate);\n                const feeRateBN = new syscoinjs.utils.BN(satPerByte);\n                // Step 2: Create unsigned PSBT\n"
+            }
+          ]
+        },
+        {
+          "path": "package.json",
+          "before": "ae81fda68698a589b1b04c5d582af9e32e12794dd6e19051e251fed2980694d9",
+          "after": "4bd5c0aa491eea48ebdf3bb0963e5c814232884a2936f4f09fdaf3f2f2d97247",
+          "bytes": 5476,
+          "edits": [
+            {
+              "before": "      \"cjs/hardware-transaction-authority.js\": [\n        \"types/hardware-transaction-authority.d.ts\"\n      ]\n    }\n",
+              "after": "      \"cjs/hardware-transaction-authority.js\": [\n        \"types/hardware-transaction-authority.d.ts\"\n      ],\n      \"cjs/utils/utxo-fee-rate\": [\n        \"types/utils/utxo-fee-rate.d.ts\"\n      ],\n      \"cjs/utils/utxo-fee-rate.js\": [\n        \"types/utils/utxo-fee-rate.d.ts\"\n      ]\n    }\n"
+            },
+            {
+              "before": "    \"jws\": \"^4.0.1\"\n  }\n}",
+              "after": "    \"jws\": \"^4.0.1\"\n  }\n}\n"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

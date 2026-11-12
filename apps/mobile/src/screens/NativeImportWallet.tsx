@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,6 +15,7 @@ const blank = (count: number) => Array<string>(count).fill('');
 
 /** Phrase entry and public address review; derivation belongs to the private host. */
 export function NativeImportWallet({ preview, onConfirmed, onBack }: NativeImportWalletProps) {
+  const { t } = useNativeTranslation();
   const [count, setCount] = useState<12 | 24>(12);
   const [words, setWords] = useState(() => blank(12));
   const [addresses, setAddresses] = useState<readonly PreviewAddress[] | null>(null);
@@ -64,7 +66,7 @@ export function NativeImportWallet({ preview, onConfirmed, onBack }: NativeImpor
     const current = owner.current, host = latest.current.preview;
     if (!current.mounted || current.working || current.reviewing || AppState.currentState !== 'active') return;
     if (inputs.current.length !== length.current || inputs.current.some(word => !word || /\s/.test(word))) {
-      setError('Enter each recovery word in order.'); return;
+      setError(t('mobile.recoveryDevices.recovery.enterEachRecoveryWordInOrder')); return;
     }
     const generation = ++current.generation, phrase = inputs.current.join(' ');
     const check = () => {
@@ -86,7 +88,7 @@ export function NativeImportWallet({ preview, onConfirmed, onBack }: NativeImpor
       check(); checkedPhrase.current = phrase; current.reviewing = true;
       setAddresses(Object.freeze(rows));
     } catch {
-      if (current.mounted && current.generation === generation) setError('That recovery phrase could not be checked. Review the words and try again.');
+      if (current.mounted && current.generation === generation) setError(t('mobile.recoveryDevices.importWallet.thatRecoveryPhraseCouldNotBeChecked'));
     } finally {
       if (current.mounted && current.generation === generation) { current.working = false; setBusy(false); }
     }
@@ -101,35 +103,35 @@ export function NativeImportWallet({ preview, onConfirmed, onBack }: NativeImpor
   return <SafeAreaView edges={['top', 'bottom']} style={s.root}>
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen scrollResetKey={addresses ? 'confirm-wallet' : 'phrase'} footer={addresses
-        ? <Button title="Continue" onPress={confirm} />
-        : <Button title={busy ? 'Checking phrase…' : 'Check phrase'} disabled={busy || !complete} onPress={() => void checkPhrase()} />}>
-        <Header title={addresses ? 'Confirm wallet' : 'Import wallet'} onBack={back} />
+        ? <Button title={t('buttons.continue')} onPress={confirm} />
+        : <Button title={busy ? t('mobile.recoveryDevices.importWallet.checkingPhrase') : t('mobile.recoveryDevices.importWallet.checkPhrase')} disabled={busy || !complete} onPress={() => void checkPhrase()} />}>
+        <Header title={addresses ? t('mobile.recoveryDevices.importWallet.confirmWallet') : t('titles.importWallet')} onBack={back} />
         {addresses ? <>
           <View style={s.confirmIntro}>
             <View style={s.walletIcon} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><Icon name="wallet" size={38} color={colors.blue} /></View>
-            <Text accessibilityRole="header" style={[s.title, s.center]}>Is this your wallet?</Text>
-            <Text style={[s.description, s.center]}>Check these addresses against a trusted copy before continuing.</Text>
+            <Text accessibilityRole="header" style={[s.title, s.center]}>{t('mobile.recoveryDevices.importWallet.isThisYourWallet')}</Text>
+            <Text style={[s.description, s.center]}>{t('mobile.recoveryDevices.importWallet.checkTheseAddressesAgainstATrustedCopy')}</Text>
           </View>
           <Card style={s.addresses}>{addresses.map((row, index) => <View key={index} style={[s.addressRow, index < addresses.length - 1 && s.divider]}>
             <Text style={s.addressLabel}>{row.label}</Text>
-            <Text selectable style={s.address} accessibilityLabel={`${row.label} address ${row.address}`}>{row.address}</Text>
+            <Text selectable style={s.address} accessibilityLabel={t('mobile.recoveryDevices.common.labelAddress', { label: row.label, address: row.address })}>{row.address}</Text>
           </View>)}</Card>
         </> : <>
-          <Text accessibilityRole="header" style={s.title}>Enter your recovery phrase</Text>
-          <Text style={s.description}>Enter each word in order to restore your Pali wallet.</Text>
-          <SegmentedControl label="Recovery phrase length" value={count === 12 ? '12' : '24'}
-            options={[{ value: '12', label: '12 words' }, { value: '24', label: '24 words' }]}
+          <Text accessibilityRole="header" style={s.title}>{t('mobile.recoveryDevices.recovery.enterYourRecoveryPhrase')}</Text>
+          <Text style={s.description}>{t('mobile.recoveryDevices.importWallet.enterEachWordInOrderToRestore')}</Text>
+          <SegmentedControl label={t('mobile.recoveryDevices.recovery.recoveryPhraseLength')} value={count === 12 ? '12' : '24'}
+            options={[{ value: '12', label: t('mobile.recoveryDevices.common.wordCount', { count: 12 }) }, { value: '24', label: t('mobile.recoveryDevices.common.wordCount', { count: 24 }) }]}
             onChange={value => {
               if (owner.current.working || !owner.current.mounted) return;
               length.current = value === '24' ? 24 : 12; setCount(length.current); clear();
             }} />
           <View style={s.grid}>{words.map((word, index) => <View key={index} style={s.word}>
             <Text style={s.number}>{index + 1}</Text>
-            <IdleTextInput accessibilityLabel={`Recovery word ${index + 1}`} placeholder={`Word ${index + 1}`} placeholderTextColor={colors.muted}
+            <IdleTextInput accessibilityLabel={t('mobile.recoveryDevices.common.recoveryWord', { index: index + 1 })} placeholder={t('mobile.recoveryDevices.common.word', { index: index + 1 })} placeholderTextColor={colors.muted}
               value={word} editable={!busy} onChangeText={value => edit(index, value)} autoCapitalize="none" autoCorrect={false} spellCheck={false}
               autoComplete="off" textContentType="none" importantForAutofill="noExcludeDescendants" maxLength={index === 0 ? 4096 : 64} style={s.input} />
           </View>)}</View>
-          <Notice title="Keep your phrase private" body="Only enter your phrase in Pali when you intentionally restore your wallet." tone="amber" />
+          <Notice title={t('mobile.recoveryDevices.recovery.keepYourPhrasePrivate')} body={t('mobile.recoveryDevices.importWallet.onlyEnterYourPhraseInPaliWhen')} tone="amber" />
           {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
         </>}
       </Screen>

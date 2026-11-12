@@ -1,11 +1,12 @@
-import { DEFAULT_IDLE_MINUTES, idleMinutes } from '../../../../source/shared/idleLockPolicy.ts';
+import { idleMinutes } from '../../../../source/shared/idleLockPolicy.ts';
+export const DEFAULT_MOBILE_IDLE_MINUTES = 0;
 export const SECURITY_PREFERENCES_KEY = 'pali.mobile.security-preferences.v1';
 export type IdleMode = 'custody' | 'watch';
 export type SecurityPreferenceSnapshot = Readonly<{ version: 1; custodyIdleMinutes: number; watchIdleMinutes: number }>;
 export type PreferencePort = Readonly<{ get(): Promise<string | null>; set(raw: string): Promise<void> }>;
 const invalid = (): never => { throw new Error('Security settings unavailable'); };
 function parse(raw: string | null): SecurityPreferenceSnapshot {
-  if (raw === null) return Object.freeze({ version: 1, custodyIdleMinutes: DEFAULT_IDLE_MINUTES, watchIdleMinutes: DEFAULT_IDLE_MINUTES });
+  if (raw === null) return Object.freeze({ version: 1, custodyIdleMinutes: DEFAULT_MOBILE_IDLE_MINUTES, watchIdleMinutes: DEFAULT_MOBILE_IDLE_MINUTES });
   if (typeof raw !== 'string' || raw.length > 256 || new TextEncoder().encode(raw).length > 256) return invalid();
   const value: unknown = JSON.parse(raw);
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).sort().join(',') !== 'custodyIdleMinutes,version,watchIdleMinutes') return invalid();

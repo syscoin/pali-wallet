@@ -109,6 +109,7 @@ function fixture(maximumAccountType?: 'HDAccount' | 'Imported' | 'Ledger' | 'Tre
   });
   const operationAuthorization = createTestOperationAuthorizer((credential, check): Promise<void> => runtime.authenticateOperation(credential, check), unsignedTransferBytes);
   const runtime = {
+    releaseReplacement() {},
     authorizeOperation: operationAuthorization.authorizeOperation,
     releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
     isAuthenticationRefusal(error: unknown) { return !!error && typeof error === 'object' && authenticationRefusals.has(error); },

@@ -1,3 +1,4 @@
+const { QUALIFICATION_SDK_IDENTITY_STAGE } = require('../scripts/qualificationSdkIdentity.ts');
 const { Buffer } = require('node:buffer');
 const { constants } = require('node:fs');
 const path = require('node:path');
@@ -6,7 +7,7 @@ const { CHECKS, completedCryptoChecks } = require('./simulator-contract.cjs');
 
 const INPUT_LIMIT = 100000;
 const OUTPUT_LIMIT = 8192;
-const STAGES = new Set(['parameters', 'Hermes text and string capabilities', 'native crypto bridge and full vectors',
+const STAGES = new Set([QUALIFICATION_SDK_IDENTITY_STAGE, 'parameters', 'Hermes text and string capabilities', 'native crypto bridge and full vectors',
   'native factory handles reject direct construction', 'native public Merkle and HMAC vectors', 'native SLH leaf setup vector',
   'native HTTP transport', 'native WalletConnect lifecycle', 'native POST transport', 'open SQLCipher and device key', 'load software SDK',
   'initialize native custody', 'create or import real SDK wallet', 'public-fixture authorized seed confirmation',

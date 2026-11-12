@@ -24,6 +24,10 @@ import { executeSentryCryptoJob } from '../../../source/wallet/sentryCryptoExecu
 import { SENTRY_NETWORKS } from '../../../source/shared/sentryNetworks.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { metadata } from './publicWatchFixtures.ts';
+import { utils as syscoinUtils } from 'syscoinjs-lib';
+import { getNetworkConfig } from '@sidhujag/sysweb3-network';
+import { NativeLedgerAccounts } from '../src/custody/ledgerAccounts.ts';
+import type { NativeLedgerTransport } from '../src/hardware/ownedLedgerTransport.ts';
 import { resolveUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
@@ -33,18 +37,21 @@ const softwarePsbtHandoff = { id: 'software-fixture', expiresAt: Number.MAX_SAFE
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
-test('actual native runtime binds encrypted Sentry approvals to topic lifetime, selected account, chain and lock session', async (t) => {
+for (const hardware of [false, true]) test(`actual native runtime binds encrypted Sentry approvals to topic lifetime, ${hardware ? 'selected Ledger' : 'software account'}, chain and lock session`, async (t) => {
   const stages: string[] = [];
   credentialPort.beforeRead(async owner => { owner.assertCurrent(); stages.push('credential-read'); });
   const sdk = await loadNativeKeyringSdk();
   const keyrings: InstanceType<typeof sdk.HostKeyring>[] = [];
   let requirePublicReads = false;
+  let privateAccountReads = 0;
   class ObservedKeyring extends sdk.HostKeyring {
     constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) {
       super(...args);
       keyrings.push(this);
       const read = this.getSeed;
       this.getSeed = async password => { stages.push('seed-before'); const result = await read(password); stages.push('seed-after'); return result; };
+      const readAccount = this.getPrivateKeyByAccountId.bind(this);
+      this.getPrivateKeyByAccountId = (...args) => { privateAccountReads++; return readAccount(...args); };
     }
   }
   t.mock.method(globalThis, 'fetch', () => {
@@ -90,6 +97,29 @@ test('actual native runtime binds encrypted Sentry approvals to topic lifetime, 
   let signatures = 0,
     posts = 0;
   const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: null, passkeys: null, slhExecution: null,
+    ...(hardware ? { async createLedgerTransport(scope) {
+      let connected = false;
+      const unused = async () => { throw Error('Imported Sentry keys must never request a hardware signature'); };
+      const device = { id: 'fixture-ledger', transport: 'RN_BLE', name: 'Ledger' };
+      const transport: NativeLedgerTransport = {
+        host: { getStatus: () => ({ connected }), subscribeStatus: () => () => undefined, connect: async () => { scope.assertCurrent(); },
+          disconnect: async () => { connected = false; }, retire: async () => () => undefined,
+          beginDeviceSelection: () => async () => { scope.assertCurrent(); connected = true; },
+          evm: { getAddress: unused, signTransaction: unused, signPersonalMessage: unused, signTypedData: unused },
+          utxo: { async getXpub(request) {
+            scope.assertCurrent();
+            const config = getNetworkConfig(request.slip44, request.currency);
+            const hd = new syscoinUtils.HDSigner('test test test test test test test test test test test junk', null,
+              request.slip44 === 1, config.networks, request.slip44, config.types.zPubType, 84);
+            hd.createAccountAtIndex(request.accountIndex, 84);
+            return hd.getAccountXpub();
+          }, getAddress: unused, getAccount: unused, signMessage: unused, signPsbt: unused },
+        },
+        async observeDevices(receive) { receive([device as never]); return async () => undefined; },
+        async dispose() { connected = false; },
+      };
+      return transport;
+    } } : {}),
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
     readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
@@ -152,6 +182,11 @@ test('actual native runtime binds encrypted Sentry approvals to topic lifetime, 
     await runtime.backup.confirm(await runtime.backup.fingerprint());
     await authority.refreshAuthenticatedMetadata();
     await select('syscoin');
+    if (hardware) {
+      const ledger = new NativeLedgerAccounts(authority, () => runtime.ledger, 'import');
+      await ledger.start(); await ledger.select(ledger.getSnapshot().devices[0]!.id); await ledger.importAccount('Sentry public Ledger');
+      assert.equal(authority.getCatalogue()!.accounts.find(account => account.id === authority.getCatalogue()!.active.accountId)?.type, 'Ledger');
+    }
     const keys = await runtime.openSentryKeyManagement!(
       lifetime.signal,
       checkTopic
@@ -180,6 +215,7 @@ test('actual native runtime binds encrypted Sentry approvals to topic lifetime, 
       await verifySentryGovernanceVote(request, context, result.votes[0]!)
     );
     assert.equal(signatures, 1);
+    if (hardware) assert.equal(privateAccountReads, 0, 'imported Sentry signing must not derive or extract the selected hardware key');
     id = await manager.votes.prepare(request, 'https://connected.test', checkTopic, { assertCurrent: checkTopic, signal: lifetime.signal });
     topicCurrent = false;
     await assert.rejects(async () =>

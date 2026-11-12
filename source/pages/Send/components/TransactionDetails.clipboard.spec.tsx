@@ -282,3 +282,16 @@ it('does not let an earlier success replace the newest copy refusal', async () =
   expect(mockError).toHaveBeenCalledTimes(1);
   expect(mockInfo).not.toHaveBeenCalled();
 });
+
+it.each(['', null])(
+  'contract creation with recipient %s has no empty copy action',
+  async (recipient) => {
+    render(contents(FROM, recipient as any));
+    expect(screen.getByText('transactions.replay.creation')).toBeTruthy();
+    const copies = screen.getAllByRole('button', { name: 'buttons.copy' });
+    expect(copies).toHaveLength(1);
+    fireEvent.click(copies[0]);
+    await flush();
+    expect(mockWrite.mock.calls).toEqual([[FROM]]);
+  }
+);

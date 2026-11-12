@@ -1,4 +1,4 @@
-import { authenticateNativeOperation, refuseNativeOperation, waitForNativePublicSession, deviceAuthorizationPrompt } from '../ui/operationAuthentication';
+import { unlockPublicView, authenticateNativeOperation, refuseNativeOperation, waitForNativePublicSession, deviceAuthorizationPrompt } from '../ui/operationAuthentication';
 import { expect, test, type Page } from '@playwright/test';
 import { nativeAccountName } from '../accountControlNames';
 
@@ -139,6 +139,10 @@ test('late authorization after Back and a backgrounded ticket cannot reach confi
   await expect(button(page, 'Remove wallet')).toHaveCount(0);
   await authorize(page);
   await page.evaluate(() => window.__watchFixture.blur());
+  await expect(button(page, 'Remove wallet')).toHaveCount(0);
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await page.evaluate(() => window.__watchFixture.focus());
+  await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
   await waitForNativePublicSession(page);
   await expect(button(page, 'Remove wallet')).toHaveCount(0);
   expect((await audit(page)).confirmationAttempts).toBe(0);
@@ -251,4 +255,24 @@ test('verified removal preserves independent watch records and selection', async
   await button(page, 'View my accounts').click();
   await expect(page.getByText('Shared address watch · Watch-only', { exact: true })).toBeVisible();
   await expect(button(page, 'Send')).toHaveCount(0);
+});
+
+
+test('expiry after a backgrounded removal keeps a reachable OS-authorized public unlock', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('pali-fixture-security-preferences', JSON.stringify({ version: 1, custodyIdleMinutes: 5, watchIdleMinutes: 5 })));
+  await openWallet(page, { android: true });
+  await openRemoval(page);
+  await authorize(page);
+  await page.evaluate(() => window.__watchFixture.blur());
+  await expect(button(page, 'Remove wallet')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.__watchFixture.audit().closed)).toBe(1);
+  await page.evaluate(() => { window.__watchFixture.idle.elapse(300001); window.__watchFixture.focus(); });
+  await expect(title(page, 'Wallet locked')).toBeVisible();
+  await expect(button(page, 'Unlock wallet')).toBeVisible();
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await unlockPublicView(page);
+  await waitForNativePublicSession(page);
+  expect((await audit(page)).confirmationAttempts).toBe(0);
+  expect((await audit(page)).commits).toBe(0);
+  expect(await page.evaluate(() => window.__watchFixture.audit().keyReads)).toBe(0);
 });

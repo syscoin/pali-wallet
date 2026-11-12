@@ -91,6 +91,16 @@ type Run = {
 function createSessionCache(poolId: PrivacyPoolId, assertCurrent: () => void) {
   let record: PrivacyRecord | undefined;
   let candidate: PrivacySnapshot | undefined;
+  const listeners = new Set<(status: PrivacySyncStatus) => void>();
+  const notify = () => {
+    if (!record) return;
+    const status = Object.freeze({ ...record.status });
+    for (const listener of [...listeners]) {
+      if (listeners.has(listener)) {
+        try { listener(status); } catch { /* Public observers cannot interrupt sync. */ }
+      }
+    }
+  };
   const owns = (id: PrivacyPoolId, generation: number) =>
     id === poolId && record?.generation === generation && record.running;
   const cache: PrivacySyncCache = {
@@ -116,6 +126,7 @@ function createSessionCache(poolId: PrivacyPoolId, assertCurrent: () => void) {
         work: work && { ...work, frontier: [...work.frontier] },
       };
       if (!record.running) candidate = undefined;
+      notify();
       return true;
     },
     async saveCandidate(id, generation, next) {
@@ -133,6 +144,7 @@ function createSessionCache(poolId: PrivacyPoolId, assertCurrent: () => void) {
         status: { ...status },
       };
       candidate = undefined;
+      notify();
       return true;
     },
     async clear(id) {
@@ -145,6 +157,7 @@ function createSessionCache(poolId: PrivacyPoolId, assertCurrent: () => void) {
       };
       record = next;
       candidate = undefined;
+      notify();
       return next;
     },
   };
@@ -153,6 +166,11 @@ function createSessionCache(poolId: PrivacyPoolId, assertCurrent: () => void) {
     running: () => record?.running === true,
     status: (): PrivacySyncStatus =>
       record ? { ...record.status } : { poolId, phase: 'idle' },
+    subscribe(listener: (status: PrivacySyncStatus) => void) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+    clearListeners: () => listeners.clear(),
   };
 }
 
@@ -511,6 +529,7 @@ export function createNativePrivacyPoolSync(
   function dispose(): Promise<void> {
     if (teardown) return teardown;
     closed = true;
+    storage.clearListeners();
     lifetime.removeEventListener('abort', onAbort);
     // Revoke proof leases first, then join the actual native slot release.
     const clearing = controller.clear(poolId);
@@ -544,6 +563,13 @@ export function createNativePrivacyPoolSync(
     getStatus() {
       checkReadable();
       return storage.status();
+    },
+    subscribe(listener: (status: PrivacySyncStatus) => void) {
+      checkReadable();
+      return storage.subscribe((status) => {
+        checkReadable();
+        listener(status);
+      });
     },
     async pause() {
       checkOwner(); if (interrupting) throw unavailable(); interrupting = true;

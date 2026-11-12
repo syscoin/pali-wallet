@@ -152,7 +152,10 @@ export function NativeSmartBatchFixture() {
       throw new Error('Outside batch presentation fixture');
     };
     return {
-      isRequestAuthenticating: () => false,
+      selectConnectionAccount() { throw Error('Account switching is outside this fixture'); },
+    async approveAccountChange() { throw Error('Account switching is outside this fixture'); },
+    async rejectAccountChange() { throw Error('Account switching is outside this fixture'); },
+    isRequestAuthenticating: () => false,
       ...unsupportedDappViews,
       getSnapshot: () => ({
         revision: current.current.review?.revision ?? 0,

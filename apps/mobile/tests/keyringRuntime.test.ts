@@ -2129,6 +2129,29 @@ test('native token capability uses authenticated account/network, preserves rest
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
+test('connection token metadata reads the granted account without selecting, authenticating or accepting a stale result', async () => {
+  const f = await readyAccounts(), entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const token = { contractAddress: '0x1111111111111111111111111111111111111111', decimals: 6, name: 'Saved', symbol: 'SAVED' };
+  try {
+    await f.runtime.tokens!.add(0, token, () => undefined);
+    await f.execute({ kind: 'create', label: 'Other displayed account' });
+    const host = await f.runtime.openConnectionHost();
+    const before = f.authority.getSnapshot(), catalogue = f.authority.getCatalogue(), records = structuredClone([...f.disk.records]);
+    const credentials = f.disk.authorizationChecks;
+    assert.equal(host.context().activeAccountId, 'hd:60:1');
+    assert.deepEqual((await host.readWalletTokenInventory!('hd:60:0', 'ethereum', () => undefined)).items, [token]);
+    assert.deepEqual((await host.readWalletTokenInventory!('hd:60:1', 'ethereum', () => undefined)).items, []);
+    await assert.rejects(host.readWalletTokenInventory!('missing', 'ethereum', () => undefined), /CANCELLED/);
+    await assert.rejects(host.readWalletTokenInventory!('hd:60:0', 'base', () => undefined), /CANCELLED/);
+    assert.equal(f.authority.getSnapshot(), before); assert.equal(f.authority.getCatalogue(), catalogue);
+    assert.equal(f.disk.authorizationChecks, credentials); assert.deepEqual([...f.disk.records], records);
+    f.disk.onRecord(async (kind, key) => { if (kind === 'get' && key === 'native-token-registry-v1') { entered.resolve(); await release.promise; } });
+    const read = host.readWalletTokenInventory!('hd:60:0', 'ethereum', () => undefined);
+    await entered.promise; f.authority.lock(); release.resolve();
+    await assert.rejects(read, /CANCELLED|NOT_READY/);
+  } finally { release.resolve(); f.disk.onRecord(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
 test('scoped portfolio inventory reads only the selected account on an inactive saved network without selecting or signing', async () => {
   const f = await readyAccounts();
   const ethToken = { contractAddress: '0x1111111111111111111111111111111111111111', decimals: 6, name: 'Ethereum saved', symbol: 'ETHS' };
@@ -3062,7 +3085,7 @@ for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject
       async openTransport(options) {
         event = options.onEvent;
         return {
-          async updatePreparedAccount() { throw Error('Smart creation is outside this fixture'); },
+          async updateSessionAccount() { throw Error('Smart creation is outside this fixture'); },
           async pending() { return null; },
           async sessions() { return [session]; },
           async pair() { throw Error('Unexpected pair'); },
@@ -3533,7 +3556,7 @@ test('Trezor runtime replays saved UTXO bytes without Suite or a new signature',
   } finally { await owner.dispose(); await fixture.sessions.dispose(); }
 });
 
-test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review and device signature', async () => {
+for (const maximum of [false, true]) test(`Trezor runtime resumes a zero-step UTXO ${maximum ? 'MAX' : 'exact'} draft with its custom fee through a fresh review and device signature`, async () => {
   const [{ createTrezorSessions }, { getUtxoNetwork }, { getNetworkConfig }, { utils }, { metadata }] = await Promise.all([
     import('../src/hardware/trezorSessions.ts'), import('../src/core/utxoNetworks.ts'), import('@sidhujag/sysweb3-network'),
     import('syscoinjs-lib'), import('./publicWatchFixtures.ts'),
@@ -3629,7 +3652,10 @@ test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review 
     await owner.manageAccounts({ kind: 'import-trezor', label: 'Bitcoin Trezor' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
     const callCount = methods.length;
     const first = await runtime.openUtxoSend!(() => undefined);
-    const review = await first.prepare({ recipient, amount: '0.0005', rbf: false });
+    const feeChoice = { kind: 'custom' as const, satPerVbyte: '7' };
+    const preparing = first.prepare({ recipient, amount: maximum ? '' : '0.0005', max: maximum, rbf: false, feeChoice });
+    feeChoice.satPerVbyte = '8';
+    const review = await preparing;
     assert.equal(review.transactionOptions.rbf, false);
     assert.equal(methods.length, callCount);
     owner.lock(); await owner.unlock();
@@ -3638,9 +3664,13 @@ test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review 
     const intent = await runtime.trezor.resumeSend(); assert.equal(intent.kind, 'utxo');
     if (intent.kind !== 'utxo') throw new Error('Unexpected draft');
     assert.equal(intent.rbf, false, 'paused handoff retains the actual reviewed option');
+    assert.equal(intent.max === true, maximum);
+    assert.deepEqual(intent.feeChoice, { kind: 'custom', satPerVbyte: '7' });
     const fresh = await runtime.openUtxoSend!(() => undefined);
     const freshReview = await fresh.prepare(intent);
     assert.equal(freshReview.transactionOptions.rbf, false);
+    assert.equal(freshReview.feeSatoshis, review.feeSatoshis);
+    assert.deepEqual(freshReview.outputs, review.outputs, 'same custom rate preserves exact/MAX outputs');
     assert.notEqual(freshReview, review); assert.equal(methods.length, callCount); assert.equal(broadcasts, 0);
     const beforeAuthentication = methods.filter(method => method === 'signTransaction').length;
     assert.equal(methods.filter(method => method === 'signTransaction').length, beforeAuthentication);
@@ -3648,4 +3678,24 @@ test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review 
     assert.equal(methods.filter(method => method === 'signTransaction').length, 1);
     assert.equal(broadcasts, 1);
   } finally { await owner.dispose(); await sessions.dispose(); }
+});
+
+
+test('connection public accounts stay on the selected family across mixed catalogue groups', async () => {
+  const f = await readyAccounts();
+  try {
+    await f.authority.selectNetwork('syscoin', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
+    const host = await f.runtime.openConnectionHost();
+    const utxo = host.context();
+    assert(utxo.accounts.length > 0);
+    assert(utxo.accounts.every(account => account.id.includes(':57:')));
+    assert.equal(utxo.accounts[0]!.id, 'hd:57:0');
+    assert(f.runtime.catalogue.getControlSnapshot()!.accounts.some(account => account.id === 'hd:60:0'));
+    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
+    const evm = host.context();
+    assert(evm.accounts.length > 0);
+    assert(evm.accounts.every(account => account.id.includes(':60:')));
+    assert.equal(evm.accounts[0]!.id, 'hd:60:0');
+    assert.equal(JSON.stringify(evm).includes('encrypted'), false);
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });

@@ -1,3 +1,4 @@
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { screenElements, screenFixture } from './screenFixture.ts';
@@ -33,7 +34,8 @@ for (const [failure, action] of [
       new URL('../src/screens/NativeLedger.tsx', import.meta.url),
       'NativeLedger',
       {
-        'react-native': {
+        '../platform/localization': nativeTranslationFixture,
+    'react-native': {
           ActivityIndicator: 'Spinner',
           BackHandler: { addEventListener: () => ({ remove() {} }) },
           KeyboardAvoidingView: 'KeyboardAvoidingView',

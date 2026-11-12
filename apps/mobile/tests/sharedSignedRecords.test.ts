@@ -6,6 +6,7 @@ import { SoftwareKeyring } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { captureEvmSubmission, evmSubmissionFailure, submitSignedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { EvmSignedRecords, createEvmSignedRecordLifecycle, inspectEvmSignedBundle, consumeSignedEvmCapacityRefusal, type EvmSignedRecordSession, type EvmSignedRecordStorage, type EvmSignedPhase } from '../../../source/wallet/evmSignedRecords.ts';
 import { bindEoaCallsSignedLifecycle, captureEoaCallsSignedMetadata, createCallsBundleRegistry, recoverRetainedEoaCallsAttempt, settleEoaCallsSignedSubmission, type CallsBundleStore } from '../../../source/wallet/dappCallsBundles.ts';
+import { encodeErc20Transfer } from '../../../source/shared/erc20.ts';
 Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
 const signer = new Wallet(`0x${'11'.repeat(32)}`);
 function fixture(now: () => number = () => 1000) {
@@ -307,6 +308,37 @@ test('a copied binding, changed tip or intervening cancellation blocks a retaine
   await f.store.append(session, cancel, undefined, (await read('cancel'))!.binding!);
   assert.equal(await read(), null);
   assert.equal((await f.store.readExact(session, original.chainId, signer.address, original.hash))!.rawTransaction, original.rawTransaction);
+});
+
+for (const lifecycle of [false, true]) test(`ERC20 cancellation removes inherited asset intent before retained reads (${lifecycle ? 'SDK lifecycle' : 'direct append'})`, async () => {
+  const { createNativeSignedRecordView } = await import('../src/custody/sharedSignedRecords.ts');
+  const { createNativeNetwork } = await import('../src/custody/networkContext.ts');
+  const f = fixture(), session = f.session(), base = await signed();
+  const token = { contractAddress: '0x' + '22'.repeat(20), name: 'Test token', symbol: 'TOK', decimals: 6 };
+  const intent = { kind: 'erc20-transfer', chainId: base.chainId, token, recipient: '0x' + '33'.repeat(20), amountUnits: '5000000' };
+  const raw = await signer.signTransaction({ type: 2, chainId: 7654321, nonce: 0, to: token.contractAddress, value: 0,
+    gasLimit: 60_000, maxFeePerGas: 3, maxPriorityFeePerGas: 1, data: encodeErc20Transfer(intent.recipient, intent.amountUnits) });
+  const original = { ...base, rawTransaction: raw, hash: Transaction.from(raw).hash!, context: { ...base.context, operation: 'erc20' as const } };
+  const metadata = { intent, source: 'reviewed-transfer' };
+  await f.store.append(session, original, metadata);
+  const binding = (await f.store.readReplacement(session, base.chainId, signer.address, original.hash, 'cancel'))!.binding!;
+  const cancelRaw = await signer.signTransaction({ type: 2, chainId: 7654321, nonce: 0, to: signer.address, value: 0,
+    gasLimit: 21_000, maxFeePerGas: 7, maxPriorityFeePerGas: 3 });
+  const cancel = { ...base, rawTransaction: cancelRaw, hash: Transaction.from(cancelRaw).hash!,
+    context: { ...base.context, operation: 'cancel' as const, originalHash: original.hash } };
+  if (lifecycle) await createEvmSignedRecordLifecycle(f.store, session, { metadata, replacement: binding, retirementReadForChain: null }).persistSigned(cancel);
+  else await f.store.append(session, cancel, metadata, binding);
+  const network = createNativeNetwork({ id: 'custom:7654321', name: 'Custom', kind: 'evm', chainId: base.chainId, slip44: 60,
+    rpcUrl: 'https://offline.invalid', symbol: 'ANY', decimals: 18, testnet: true });
+  const reopened = new EvmSignedRecords(f.port);
+  const view = createNativeSignedRecordView(reopened, f.session(), '1'.repeat(64), { type: 'HDAccount', index: 0, address: signer.address }, network);
+  const retained = await view.load();
+  assert.equal(retained?.hash, cancel.hash, 'latest read used by MAX remains available');
+  assert.equal(retained?.intent, undefined);
+  assert.equal(retained?.rawTransaction, cancelRaw);
+  assert.equal((await view.activities()).records.find(record => record.hash === cancel.hash)?.amountUnits, '0');
+  assert.deepEqual((await reopened.readExact(session, base.chainId, signer.address, cancel.hash))?.metadata, { source: 'reviewed-transfer' });
+  assert.deepEqual((await reopened.readExact(session, base.chainId, signer.address, original.hash))?.metadata, metadata);
 });
 test('revocation after encryption prevents persistence and metadata accessors never execute',async()=>{
  const f=fixture(),session=f.session(),input=await signed();let getterCalls=0;
@@ -732,8 +764,10 @@ test('Smart activity is a bounded authenticated projection and preserves the out
   const newest = await reading;
   assert.equal(newest.total, 3);
   assert.deepEqual(newest.transfers.map(transfer => transfer.entry.hash), [inputs[2]!.hash]);
-  assert.equal(newest.transfers[0]!.recipient, recipient);
-  assert.equal(newest.transfers[0]!.amountUnits, '9');
+  const transfer = newest.transfers[0]!;
+  assert(!('cancellation' in transfer));
+  assert.equal(transfer.recipient, recipient);
+  assert.equal(transfer.amountUnits, '9');
   await f.store.updatePhase(session, '7654321', signer.address, inputs[1]!.hash, 'confirmed');
   const older = await f.store.readSmartAccountActivity(session, '7654321', address, { maximum: 1, beforeHash: newest.nextCursor! });
   assert.deepEqual(older.transfers.map(transfer => transfer.entry.hash), [inputs[1]!.hash]);

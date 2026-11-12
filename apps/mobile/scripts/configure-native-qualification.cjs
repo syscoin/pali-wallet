@@ -125,6 +125,7 @@ app.expo.extra = {
   paliQualificationSdkVersion: sdk.version,
   paliQualificationSdkIdentity: sdk.identity,
   ...(sdk.quickCryptoIdentity ? { paliQuickCryptoSentryIdentity: sdk.quickCryptoIdentity } : {}),
+  ...(sdk.feeRateIdentity ? { paliKeyringFeeRateIdentity: sdk.feeRateIdentity } : {}),
   ...(walletConnectIdentity ? { paliWalletConnectIdentity: walletConnectIdentity } : {}),
 };
 delete app.expo.extra.paliQualificationSdkDigest;

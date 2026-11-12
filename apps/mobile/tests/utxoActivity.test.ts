@@ -520,3 +520,49 @@ test('only an owned exact confirmed v80 Syscoin detail can request public node i
     } finally { c.dispose(); }
   }
 });
+
+
+test('SPT Z-DAG display uses existing activity inputs without changing block status or adding reads', async () => {
+  for (const mode of ['zdag', 'rbf', 'missing-input', 'cancelled', 'native', 'included', 'other-chain'] as const) {
+    const network = mode === 'other-chain' ? 'bitcoin' : 'syscoin';
+    const address = network === 'syscoin' ? SYS : BTC;
+    const f = fixture({ count: 1, network, replace(path, body) {
+      if (path.includes('/address/')) Object.assign(body.transactions[0], {
+        blockHeight: mode === 'included' ? 190 : -1, blockHash: mode === 'included' ? BLOCK : undefined,
+        blockTime: undefined, confirmations: 0,
+        tokenType: mode === 'native' ? undefined : 'SPTAssetAllocationSend',
+        vin: mode === 'missing-input' ? [] : [{ value: '1100000000', isOwn: true,
+          sequence: mode === 'rbf' ? 0xfffffffd : 0xffffffff }],
+        ...(mode === 'cancelled' ? { isCanceled: true } : {}),
+      });
+      return body;
+    } });
+    const page = await read(f, 1, { context: { ...owner, networkId: network, address }, identifier: address, isAccount: false });
+    const row = page.rows[0]!;
+    assert.equal(row.zdag, mode === 'zdag', mode);
+    assert.equal(row.observedConfirmations, 0, mode);
+    assert.equal(row.block?.height ?? null, mode === 'included' ? 190 : null, mode);
+    assert.equal(f.calls.length, 3, 'status uses the existing summary, with no extra RPC');
+  }
+});
+
+test('SPT Z-DAG presentation follows fresh pending, inclusion and reorg observations', async () => {
+  let included = false;
+  const f = fixture({ count: 1, network: 'syscoin', replace(path, body) {
+    if (path.includes('/address/')) Object.assign(body.transactions[0], {
+      tokenType: 'SPTAssetAllocationSend', vin: [{ sequence: 0xfffffffe }],
+      blockHeight: included ? 190 : -1, blockHash: included ? BLOCK : undefined,
+      confirmations: included ? 1 : 0,
+    });
+    return body;
+  } });
+  const input = { context: { ...owner, networkId: 'syscoin' as const, address: SYS }, identifier: SYS, isAccount: false };
+  const reader = createUtxoActivityReader(f);
+  for (const next of [false, true, false]) {
+    included = next;
+    const { rows: [row] } = await reader.readPage(input, { page: 1 }, signal());
+    assert.equal(row!.zdag, !included);
+    assert.equal(row!.block?.height ?? null, included ? 190 : null);
+  }
+  assert.equal(f.calls.length, 9, 'refresh performs only the existing three reads');
+});

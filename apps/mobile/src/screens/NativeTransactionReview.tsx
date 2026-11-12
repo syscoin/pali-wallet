@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import { resolveAssetTransferDisplay } from '../../../../source/shared/assetTransferDisplay';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
@@ -12,32 +13,21 @@ import { DappSiteStatus } from './DappSiteStatus';
 import { IdlePressable } from './IdleActivityBoundary';
 import { ApprovalReview } from './ApprovalReview';
 
-const reviewErrors = {
-  INVALID_MESSAGE: 'The app sent an invalid request.',
-  SIGNER_MISMATCH: 'The app is requesting a different account.',
-  SUSPICIOUS_SIGN_IN: 'The request does not match the connected website.',
-  INVALID_TYPED_DATA: 'The app sent invalid request data.',
-  BLOCKED_SITE: 'This website is on a known phishing list.',
-  SITE_MISMATCH: 'The requesting website does not match the app’s claimed address.',
-  INVALID_TRANSACTION: 'The app sent an invalid transaction.',
-  TRANSACTION_UNAVAILABLE: 'This transaction could not be prepared. Request it again from the app.',
-  DELIVERY_UNCERTAIN: 'The result could not be confirmed. Check Activity before trying again.',
-} as const;
-
 export function TransactionDetails({ transaction }: { transaction: object }) {
+  const { t } = useNativeTranslation();
   const [page, setPage] = useState(0);
   const payload = useMemo(() => JSON.stringify(transaction, null, 2), [transaction]);
   const pageSize = 2048;
   const pages = Math.ceil(payload.length / pageSize);
   return <Card style={s.card}>
-    <Text accessibilityRole="header" style={s.sectionTitle}>Transaction details</Text>
+    <Text accessibilityRole="header" style={s.sectionTitle}>{t('mobile.activityViews.nativeActivity.transactionDetails')}</Text>
     <Text selectable style={s.payload}>{payload.slice(page * pageSize, (page + 1) * pageSize)}</Text>
     {pages > 1 && <>
-      <Text style={s.muted}>Page {page + 1} of {pages}</Text>
+      <Text style={s.muted}>{t('mobile.dappConsent.transactionReview.pageOf', { page: page + 1, pages })}</Text>
       <View style={s.pagination}>
-        <Button title="Previous page" icon="arrow-left" variant="secondary" size="compact" disabled={page === 0}
+        <Button title={t('mobile.dappConsent.transactionReview.previousPage')} icon="arrow-left" variant="secondary" size="compact" disabled={page === 0}
           onPress={() => setPage(page - 1)} style={s.pageButton} />
-        <Button title="Next page" icon="arrow-right" variant="secondary" size="compact" disabled={page + 1 === pages}
+        <Button title={t('mobile.dappConsent.transactionReview.nextPage')} icon="arrow-right" variant="secondary" size="compact" disabled={page + 1 === pages}
           onPress={() => setPage(page + 1)} style={s.pageButton} />
       </View>
     </>}
@@ -50,6 +40,19 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
   controller: NativeConnectionsView;
   ledgerConnection?: NativeLedgerConnectionView;
 }) {
+  const { t } = useNativeTranslation();
+  const reviewErrors = {
+    INVALID_MESSAGE: t('mobile.dappConsent.messageReview.theAppSentAnInvalidRequest'),
+    SIGNER_MISMATCH: t('mobile.dappConsent.transactionReview.theAppIsRequestingADifferentAccount'),
+    SUSPICIOUS_SIGN_IN: t('mobile.dappConsent.transactionReview.theRequestDoesNotMatchTheConnected'),
+    INVALID_TYPED_DATA: t('mobile.dappConsent.transactionReview.theAppSentInvalidRequestData'),
+    BLOCKED_SITE: t('mobile.dappConsent.messageReview.thisWebsiteIsOnAKnownPhishing'),
+    SITE_MISMATCH: t('mobile.dappConsent.messageReview.theRequestingWebsiteDoesNotMatchThe'),
+    INVALID_TRANSACTION: t('mobile.dappConsent.transactionReview.theAppSentAnInvalidTransaction'),
+    TRANSACTION_UNAVAILABLE: t('mobile.dappConsent.transactionReview.thisTransactionCouldNotBePreparedRequest'),
+    DELIVERY_UNCERTAIN: t('mobile.dappConsent.transactionReview.theResultCouldNotBeConfirmedCheck'),
+  } as const;
+
   const ledger = useDappLedgerConnection({ review, controller, ledgerConnection });
   const expiryKey = `${review.id}:${review.expiresAt}`;
   const [expiredKey, setExpiredKey] = useState<string | null>(null);
@@ -142,15 +145,15 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
   const amount = (units: string) => `${formatBaseUnits(units, review.decimals)} ${review.symbol}`;
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.container}><KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen scrollResetKey={`${review.id}:${submitted ? 'result' : editingApproval ? 'edit' : 'review'}`} footer={<>
-    {ledger.showConnect && !submitted && <Button title="Connect Ledger" variant="secondary" size="compact" onPress={ledger.connect} />}
+    {ledger.showConnect && !submitted && <Button title={t('mobile.accounts.connectLedger')} variant="secondary" size="compact" onPress={ledger.connect} />}
     <View style={s.actions}>
-    <Button title={submitted || review.broadcastHash ? 'Close' : 'Reject'} variant="secondary" onPress={close} style={s.action} />
-    {!submitted && <Button title={review.needsAccountSwitch ? 'Switch account' : retry ? `Retry call ${batch!.index + 1}/${batch!.calls.length}` : batch ? `Confirm call ${batch.index + 1}/${batch.calls.length}` : 'Confirm'}
+    <Button title={submitted || review.broadcastHash ? t('buttons.close') : t('buttons.reject')} variant="secondary" onPress={close} style={s.action} />
+    {!submitted && <Button title={review.needsAccountSwitch ? t('mobile.dappConsent.messageReview.switchAccount') : retry ? t('mobile.dappConsent.transactionReview.retryCall', { index: batch!.index + 1, count: batch!.calls.length }) : batch ? t('mobile.dappConsent.transactionReview.confirmCall', { index: batch.index + 1, count: batch.calls.length }) : t('buttons.confirm')}
       disabled={expired || editingApproval || review.error !== null || review.busy || !review.needsAccountSwitch &&
         (ledger.blocked || !retry && (!prepared || review.requiresWarningAcknowledgement && !acknowledged))} onPress={approve} style={s.action} />}
     </View>
   </>} gap={12}>
-    <Header title={batch ? 'Review calls' : 'Transaction request'} onBack={close} />
+    <Header title={batch ? t('mobile.dappConsent.transactionReview.reviewCalls') : t('mobile.dappConsent.transactionReview.transactionRequest')} onBack={close} />
     <Card style={s.appCard}>
       <View style={s.appMark} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><Text style={s.appInitial}>{Array.from(review.appName.trim())[0]?.toUpperCase() || '•'}</Text></View>
       <View style={s.appCopy}><Text style={s.appName}>{review.appName}</Text>
@@ -160,54 +163,54 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
     {siteWarning && <DappSiteStatus verification={review.verification} />}
     {transaction && <View style={s.hero}>
       {transfer && <View style={{ alignItems: 'center' }}><Coin id="token" asset={{ kind: 'evm', chainId: review.chainId, contractAddress: transfer.contract, decimals: transfer.decimals }} registrationHash={review.registrationHash} fallbackSymbol={transfer.items[0]?.symbol ?? undefined} size={44} /></View>}
-      {batch && <Text accessibilityRole="header" style={s.sectionTitle}>Call {batch.index + 1} of {batch.calls.length}</Text>}
-      <Text style={[s.label, { textAlign: 'center' }]}>{transfer ? transfer.standardVerified ? `${transfer.standard} transfer` : 'Transfer call' : transaction.to === null ? 'Contract deployment' : transaction.data === '0x' ? `${review.symbol} transfer` : 'Contract interaction'}</Text>
-      {!transfer && transaction.data !== '0x' && <Text style={[s.muted, { textAlign: 'center' }]}>Native currency sent</Text>}
+      {batch && <Text accessibilityRole="header" style={s.sectionTitle}>{t('mobile.dappConsent.transactionReview.callOf', { index: batch.index + 1, count: batch.calls.length })}</Text>}
+      <Text style={[s.label, { textAlign: 'center' }]}>{transfer ? transfer.standardVerified ? t('mobile.dappConsent.transactionReview.standardTransfer', { standard: transfer.standard }) : t('assetTransfer.transfer-call') : transaction.to === null ? t('mobile.dappConsent.transactionReview.contractDeployment') : transaction.data === '0x' ? t('mobile.dappConsent.transactionReview.coinTransfer', { symbol: review.symbol }) : t('mobile.dappConsent.transactionReview.contractInteraction')}</Text>
+      {!transfer && transaction.data !== '0x' && <Text style={[s.muted, { textAlign: 'center' }]}>{t('assetTransfer.nativeValue')}</Text>}
       {transfer ? transfer.items.map((item, index) => <View key={index} style={s.asset}>
         <Text selectable style={[s.amount, s.longAmount]}>{item.value}</Text>
-        <Text style={s.amountSymbol}>{item.symbol ?? (item.tokenId !== null ? `${item.units} NFT${item.units === '1' ? '' : 's'}` : 'Base units / token ID')}</Text>
+        <Text style={s.amountSymbol}>{item.symbol ?? (item.tokenId !== null ? item.units === '1' ? t('mobile.dappConsent.transactionReview.nftQuantityOne', { quantity: item.units }) : t('mobile.dappConsent.transactionReview.nftQuantity', { quantity: item.units }) : t('assetTransfer.rawUnits'))}</Text>
       </View>) : <>
         <Text selectable style={[s.amount, amount(transaction.value).length > 22 && s.longAmount]} accessibilityLabel={amount(transaction.value)}>{formatBaseUnits(transaction.value, review.decimals)}</Text>
         <Text style={s.amountSymbol}>{review.symbol}</Text>
       </>}
-      {!transfer && transaction.data !== '0x' && <Text style={[s.muted, { textAlign: 'center' }]}>This amount excludes any tokens or NFTs the contract may move.</Text>}
+      {!transfer && transaction.data !== '0x' && <Text style={[s.muted, { textAlign: 'center' }]}>{t('mobile.dappConsent.transactionReview.thisAmountExcludesAnyTokensOrNfts')}</Text>}
     </View>}
     {review.approval && transaction && <ApprovalReview summary={review.approval} transaction={transaction} chainId={review.chainId} registrationHash={review.registrationHash}
       onEditingChange={setApprovalEditing}
       disabled={!!batch || review.busy || submitted || review.needsAccountSwitch || review.error !== null}
       edit={(value) => controller.editApprovalAmount(review.id, review.revision, value)} />}
       <Card style={s.facts}>
-        {transaction && <View style={s.fact}><Text style={s.factLabel}>{transfer ? 'Recipient' : transaction.to === null ? 'Destination' : 'To'}</Text><Text selectable style={[s.factValue, s.factAddress]}>{transfer?.recipient ?? transaction.to ?? 'New contract'}</Text></View>}
-        <View style={s.fact}><Text style={s.factLabel}>From</Text><View style={s.factValue}><Text style={s.factAccount}>{review.accountLabel}</Text><Text selectable style={s.factAddress}>{review.address}</Text></View></View>
-        {transfer && <View style={s.fact}><Text style={s.factLabel}>Token contract</Text><Text selectable style={[s.factValue, s.factAddress]}>{transfer.contract}</Text></View>}
-        {transfer?.from && <View style={s.fact}><Text style={s.factLabel}>Asset owner</Text><Text selectable style={[s.factValue, s.factAddress]}>{transfer.from}</Text></View>}
-        {transfer && transaction?.value !== '0' && <View style={s.fact}><Text style={s.factLabel}>Also sending</Text><Text style={[s.factValue, s.factText]}>{amount(transaction!.value)}</Text></View>}
-        <View style={s.fact}><Text style={s.factLabel}>Network</Text><Text style={[s.factValue, s.factText]}>{review.networkLabel} · Chain {review.chainId}</Text></View>
-        <View style={s.fact}><Text style={s.factLabel}>Maximum network fee</Text><Text selectable style={[s.factValue, s.factText]}>{review.maximumFeeUnits === null ? 'Calculating…' : amount(review.maximumFeeUnits)}</Text></View>
-        <View style={[s.fact, s.lastFact]}><Text style={s.factLabel}>{transfer || transaction?.data !== '0x' ? `Maximum ${review.symbol} debit` : 'Maximum total'}</Text><Text selectable style={[s.factValue, s.factText]}>{review.maximumTotalUnits === null ? 'Calculating…' : amount(review.maximumTotalUnits)}</Text></View>
+        {transaction && <View style={s.fact}><Text style={s.factLabel}>{transfer ? t('assetTransfer.recipient') : transaction.to === null ? t('mobile.dappConsent.transactionReview.destination') : t('send.to')}</Text><Text selectable style={[s.factValue, s.factAddress]}>{transfer?.recipient ?? transaction.to ?? t('mobile.dappConsent.transactionReview.newContract')}</Text></View>}
+        <View style={s.fact}><Text style={s.factLabel}>{t('send.from')}</Text><View style={s.factValue}><Text style={s.factAccount}>{review.accountLabel}</Text><Text selectable style={s.factAddress}>{review.address}</Text></View></View>
+        {transfer && <View style={s.fact}><Text style={s.factLabel}>{t('assetTransfer.contract')}</Text><Text selectable style={[s.factValue, s.factAddress]}>{transfer.contract}</Text></View>}
+        {transfer?.from && <View style={s.fact}><Text style={s.factLabel}>{t('assetTransfer.owner')}</Text><Text selectable style={[s.factValue, s.factAddress]}>{transfer.from}</Text></View>}
+        {transfer && transaction?.value !== '0' && <View style={s.fact}><Text style={s.factLabel}>{t('mobile.dappConsent.transactionReview.alsoSending')}</Text><Text style={[s.factValue, s.factText]}>{amount(transaction!.value)}</Text></View>}
+        <View style={s.fact}><Text style={s.factLabel}>{t('transactions.replay.network')}</Text><Text style={[s.factValue, s.factText]}>{t('mobile.dappConsent.transactionReview.networkChain', { network: review.networkLabel, chainId: review.chainId })}</Text></View>
+        <View style={s.fact}><Text style={s.factLabel}>{t('transactions.replay.maximumFee')}</Text><Text selectable style={[s.factValue, s.factText]}>{review.maximumFeeUnits === null ? t('mobile.dappConsent.transactionReview.calculating') : amount(review.maximumFeeUnits)}</Text></View>
+        <View style={[s.fact, s.lastFact]}><Text style={s.factLabel}>{transfer || transaction?.data !== '0x' ? t('mobile.dappConsent.transactionReview.maximumDebit', { symbol: review.symbol }) : t('privacy.deposit.total')}</Text><Text selectable style={[s.factValue, s.factText]}>{review.maximumTotalUnits === null ? t('mobile.dappConsent.transactionReview.calculating') : amount(review.maximumTotalUnits)}</Text></View>
       </Card>
     {transaction && <>
       {showFeeChoices && comparison && (
         <View style={s.feeNotice}>
           <Text accessibilityRole="header" style={s.feeTitle}>
             {comparison.recommendationOnly
-              ? 'Below estimate'
-              : 'Fee adjusted'}
+              ? t('send.feeBelowEstimateTitle')
+              : t('send.dappFeeRaisedTitle')}
           </Text>
           <Text style={s.feeDescription}>
             {comparison.recommendationOnly
-              ? 'This fee is below the current estimate. The transaction may stay pending or fail.'
-              : 'The dapp requested a fee below the current estimate. Pali raised it to reduce the chance of a stuck transaction.'}
+              ? t('send.customFeeBelowEstimateWarning')
+              : t('send.dappFeeRaisedDescription')}
           </Text>
           <Button
-            title="Use dapp fee anyway"
+            title={t('send.useDappFeeRequest')}
             variant="secondary" size="compact"
             disabled={feeChoicesDisabled}
             onPress={() => chooseFee('dapp')}
           />
           {comparison.recommendationOnly && (
             <Button
-              title="Use network suggestion"
+              title={t('send.useNetworkFeeSuggestion')}
               variant="secondary" size="compact"
               disabled={feeChoicesDisabled}
               onPress={() => chooseFee('network')}
@@ -215,46 +218,46 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
           )}
         </View>
       )}
-      <Button title={detailsVisible ? 'Hide transaction details' : 'View transaction details'} variant="quiet" size="compact"
+      <Button title={detailsVisible ? t('mobile.dappConsent.transactionReview.hideTransactionDetails') : t('mobile.dappConsent.transactionReview.viewTransactionDetails')} variant="quiet" size="compact"
         icon={detailsVisible ? 'chevron-down' : 'chevron-right'} expanded={detailsVisible} onPress={() => setDetailsRevision(detailsVisible ? null : review.revision)} />
     </>}
     {transaction && detailsVisible && <TransactionDetails key={`${review.id}:${review.revision}`} transaction={transaction} />}
     {batch && <Card style={s.card}>
-      <Button title={callsVisible ? 'Hide calls' : `View all ${batch.calls.length} calls`} variant="quiet" size="compact"
+      <Button title={callsVisible ? t('mobile.dappConsent.transactionReview.hideCalls') : t('mobile.dappConsent.transactionReview.viewCalls', { count: batch.calls.length })} variant="quiet" size="compact"
         expanded={callsVisible} onPress={() => setExpandedCalls(callsVisible ? null : callsKey)} />
       {callsVisible && batch.calls.map((call, index) => <View key={index} style={s.advisory}>
         <Text style={s.account}>{index + 1}. {call.status}</Text>
-        <Text selectable style={s.address}>{call.to ?? 'New contract'}</Text>
+        <Text selectable style={s.address}>{call.to ?? t('mobile.dappConsent.transactionReview.newContract')}</Text>
         <Text>{amount(BigInt(call.value).toString())}</Text>
         {call.hash && <Text selectable style={s.address}>{call.hash}</Text>}
       </View>)}
     </Card>}
     {review.advisories.length > 0 && <Card style={s.card}>
-      <Text accessibilityRole="header" style={s.sectionTitle}>Check these addresses</Text>
+      <Text accessibilityRole="header" style={s.sectionTitle}>{t('mobile.dappConsent.messageReview.checkTheseAddresses')}</Text>
       {review.advisories.map((advisory, index) => <View key={`${advisory.field}-${index}`} style={s.advisory}>
         <Text style={s.account}>{advisory.field}</Text>
         <Text selectable style={s.address}>{advisory.address}</Text>
-        <Text style={s.warning}>{advisory.reason ?? 'This address appears on a known unsafe-address list.'}</Text>
+        <Text style={s.warning}>{advisory.reason ?? t('mobile.dappConsent.messageReview.thisAddressAppearsOnAKnownUnsafe')}</Text>
       </View>)}
       {review.requiresWarningAcknowledgement && !review.needsAccountSwitch && !submitted &&
-        <IdlePressable accessibilityRole="checkbox" accessibilityLabel="I understand the address warning"
+        <IdlePressable accessibilityRole="checkbox" accessibilityLabel={t('mobile.dappConsent.messageReview.iUnderstandTheAddressWarning')}
           accessibilityState={{ checked: acknowledged, disabled: review.busy }} disabled={review.busy}
           onPress={() => setAcceptedRevision(acknowledged ? null : review.revision)} style={s.acknowledgement}>
           <View style={[s.checkbox, acknowledged && s.checked]}><Text style={s.checkmark}>{acknowledged ? '✓' : ''}</Text></View>
-          <Text style={s.acknowledgementText}>I understand the address warning.</Text>
+          <Text style={s.acknowledgementText}>{t('mobile.dappConsent.messageReview.iUnderstandTheAddressWarning1')}</Text>
         </IdlePressable>}
     </Card>}
     {review.broadcastHash && !batch && <Card style={s.card}>
-      <Text style={s.label}>Transaction ID</Text>
+      <Text style={s.label}>{t('send.transactionId')}</Text>
       <Text selectable style={s.address}>{review.broadcastHash}</Text>
     </Card>}
-    {showError && review.error && batch?.phase !== 'unknown' && <Notice title={submitted ? 'Check transaction status' : 'Transaction unavailable'} body={reviewErrors[review.error]} />}
-    {retry && <Notice title="Call not sent" body="Retry prepares a fresh review for the remaining calls. Completed calls stay saved." />}
-    {batch?.phase === 'unknown' && <Notice title="Check call status" body="Delivery is uncertain. Check Activity before sending another request." />}
+    {showError && review.error && batch?.phase !== 'unknown' && <Notice title={submitted ? t('mobile.dappConsent.transactionReview.checkTransactionStatus') : t('mobile.dappConsent.transactionReview.transactionUnavailable')} body={reviewErrors[review.error]} />}
+    {retry && <Notice title={t('mobile.dappConsent.transactionReview.callNotSent')} body={t('mobile.dappConsent.transactionReview.retryPreparesAFreshReviewForThe')} />}
+    {batch?.phase === 'unknown' && <Notice title={t('mobile.dappConsent.transactionReview.checkCallStatus')} body={t('mobile.dappConsent.transactionReview.deliveryIsUncertainCheckActivityBeforeSending')} />}
     {review.needsAccountSwitch && !review.error && !submitted &&
-      <Text style={s.muted}>Switch to {review.accountLabel} to review this transaction.</Text>}
+      <Text style={s.muted}>{t('mobile.dappConsent.transactionReview.switchToReviewTransaction', { account: review.accountLabel })}</Text>}
     {review.busy && <View style={s.progress}><ActivityIndicator color={colors.blue} />
-      <Text>{submitted ? 'Sending transaction…' : transaction ? 'Please wait…' : 'Preparing transaction…'}</Text></View>}
+      <Text>{submitted ? t('mobile.dappConsent.transactionReview.sendingTransaction') : transaction ? t('mobile.dappConsent.messageReview.pleaseWait') : t('mobile.dappConsent.transactionReview.preparingTransaction')}</Text></View>}
   </Screen></KeyboardAvoidingView>{ledger.modal}</SafeAreaView>;
 }
 

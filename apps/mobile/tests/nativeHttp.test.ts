@@ -1,3 +1,7 @@
+import * as nativeWalletReads from '../src/custody/dappWalletReads.ts';
+import * as dappWalletReads from '../../../source/shared/dappWalletReads.ts';
+import * as erc20 from '../../../source/shared/erc20.ts';
+import * as sptInventory from '../../../source/shared/sptInventory.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard.ts';
 import * as credentialPlatform from '../src/platform/credentialPort.ts';
 import { createTestCredentialPort } from './fixtures/credential.ts';
@@ -350,8 +354,8 @@ test('native factory explicitly wires one owned transport to all network consume
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
     'react-native': { AppState: { currentState: 'active' }, Linking: { openURL: unexpectedFeature } },
     '../crypto/sentryCrypto.native': {
-      createNativeSentryCryptoExecutor: (isolated: unknown) => {
-        assert.equal(isolated, null, 'production isolated signing stays gated');
+      createNativeSentryCryptoExecutor: (...options: unknown[]) => {
+        assert.equal(options.length, 0, 'production chooses its fixed isolated host');
         return unexpectedFeature;
       },
     },
@@ -365,6 +369,10 @@ test('native factory explicitly wires one owned transport to all network consume
     }); } },
     '../custody/dappControl': { createNativeDappControlHost: (ports: unknown) => { captures.controls = [ports]; return { context: () => null, prepare: unexpectedFeature }; } },
     '../custody/dappRpcReads': { createNativeDappRpcReadHost: () => ({ read: unexpectedFeature }) },
+    '../custody/dappWalletReads': nativeWalletReads,
+    '../../../../source/shared/dappWalletReads': dappWalletReads,
+    '../../../../source/shared/erc20': erc20,
+    '../../../../source/shared/sptInventory': sptInventory,
     '../custody/dappSentry': { createNativeDappSentryHost: () => ({ prepare: unexpectedFeature }) },
     '../custody/dappSyscoin': { createNativeDappSyscoinHost: () => ({ registration: unexpectedFeature, anchor: unexpectedFeature, read: unexpectedFeature }) },
     '../portfolio/nativeWatchAsset': {
@@ -432,7 +440,9 @@ test('native factory explicitly wires one owned transport to all network consume
     '../custody/seedBackup.ts': { SeedBackupFlow: capture('backup') },
     '../custody/hdKeyExport.ts': { HdKeyExportFlow: capture('key') },
     '../custody/transfers.ts': { NativeTransfers: capture('transfers') },
-    '../portfolio/nativeTokens.ts': { NativeTokens: capture('tokens') },
+    '../portfolio/nativeTokens.ts': { NativeTokens: class extends capture('tokens') {
+      view = { subscribe: () => () => { retired.push('token-observer'); } };
+    } },
     '../activity/nativeActivity.ts': { NativeActivity: capture('activity') },
     '../activity/explorerReader.ts': {
       ActivityExplorerReader: capture('explorer'),
@@ -570,7 +580,7 @@ test('native factory explicitly wires one owned transport to all network consume
   await recovery.retireControllers();
   assert.deepEqual(retired, [
     ...(bundle.authentication ? ['authentication'] : []),
-    'tokens', 'transfers', 'key', 'backup', 'connections',
+    'token-observer', 'tokens', 'transfers', 'key', 'backup', 'connections',
     ...Array.from({ length: ledgerCount }, () => 'ledger'),
   ]);
 });
@@ -687,6 +697,7 @@ test('NativeTransfers creates per-network RPCs with the injected native transpor
   const listeners = new Set<(state: CustodySnapshot) => void>();
   const calls: string[] = [];
   const runtime = {
+    releaseReplacement() {},
     async journal() {
       return {
         async load() {

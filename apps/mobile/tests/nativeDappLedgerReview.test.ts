@@ -1,3 +1,4 @@
+import { englishI18n, languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
 import { Interface } from 'ethers/abi';
 import { resolveAssetTransferDisplay } from '../../../source/shared/assetTransferDisplay.ts';
 import { decodeAssetTransfer } from '../../../source/shared/assetTransfer.ts';
@@ -36,6 +37,7 @@ function fixture(kind: 'message' | 'transaction' | 'psbt' | 'smart-transaction' 
   const state = () => hook.render({ review, controller, ledgerConnection }) as unknown as LedgerState;
   const screen = screenFixture(new URL(`../src/screens/${kind === 'smart-transaction' ? 'NativeSmartTransactionReview' : kind === 'message' ? 'NativeMessageReview' : 'NativeTransactionReview'}.tsx`, import.meta.url),
     kind === 'smart-transaction' ? 'NativeSmartTransactionReviewScreen' : kind === 'message' ? 'NativeMessageReviewScreen' : 'NativeTransactionReviewScreen', {
+      '../platform/localization': nativeTranslationFixture,
       './useDappLedgerConnection': { useDappLedgerConnection: state },
       './NativeSmartAccountOperation': {NativeSmartAccountOperationContent:'SmartOperationContent'},
       'react-native': { ActivityIndicator: 'ActivityIndicator', View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView',
@@ -218,4 +220,31 @@ test('transaction review keeps the canonical asset recipient before account deta
     assert(strings.indexOf('Recipient') < strings.indexOf('From'));
     assert(nodes.some(node => node.type === 'DappSiteStatus'));
   } finally { f.close(); }
+});
+
+
+test('localized consent preserves request binding and unknown-delivery restrictions', async () => {
+  const message = fixture('message'), transaction = fixture('transaction');
+  try {
+    englishI18n.addResourceBundle('es', 'translation', languageMessages('es'));
+    await englishI18n.changeLanguage('es');
+    const original = message.render().find(node => node.type === 'Button' && node.props.title === 'Firmar mensaje');
+    assert(original?.props.disabled);
+    message.state().connect();
+    const picker = modal(message.state()); message.connect(); picker.props.onFinished();
+    const approved = message.render().find(node => node.type === 'Button' && node.props.title === 'Firmar mensaje');
+    assert(approved && !approved.props.disabled);
+    approved.props.onPress(); await Promise.resolve();
+    assert.deepEqual(message.approvals, [['exact-request', 7, false]]);
+
+    transaction.review.batch = { phase: 'unknown', index: 0, calls: [{
+      to: transaction.review.transaction.to, value: '0', status: 'pending', hash: null,
+    }] };
+    const nodes = transaction.render();
+    assert(nodes.some(node => node.type === 'Notice' && node.props.title === 'Comprobar estado de llamada'));
+    assert(!nodes.some(node => node.type === 'Button' && node.props.title.startsWith('Confirmar llamada')));
+    assert.deepEqual(transaction.approvals, []);
+  } finally {
+    message.close(); transaction.close(); await englishI18n.changeLanguage('en');
+  }
 });

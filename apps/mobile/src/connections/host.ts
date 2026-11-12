@@ -21,6 +21,8 @@ import type { NativeConnectionReadHost } from '../custody/dappRpcReads.ts';
 import type { NativeConnectionSentryHost } from './sentryRequests.ts';
 import type { NativeConnectionUtxoHost } from '../custody/dappSyscoin.ts';
 import type { NativeConnectionPsbtHost } from './psbtRequests.ts';
+import type { NativeTokenInventory } from '../portfolio/tokenRegistry.ts';
+import type { NativeWalletReadHost } from '../custody/dappWalletReads.ts';
 
 export type NativeRequestAuthenticationBinder = (scope: NativePrivateAuthenticationScope, assertCurrent: () => void) => NativePrivateAuthentication;
 
@@ -71,6 +73,7 @@ export type NativeConnectionSigningHost = Readonly<{
   verifyPersonalMessage(message: string, signature: string): string;
   supportsAtomicCalls(accountId: string): boolean;
   readSmartAccountModules(accountId: string, networkId: string, assertCurrent: () => void): SmartAccountModulesProjection;
+  readWalletTokenInventory?(accountId: string, networkId: string, assertCurrent: () => void): Promise<NativeTokenInventory>;
   supportsSmartAccountMessages(accountId: string): boolean;
   allocateSmartAccount(
     input: NativeSmartCreationRequest,
@@ -147,6 +150,7 @@ export type NativeConnectionSigningHost = Readonly<{
 
 /** The platform composes wallet controls with the runtime's crypto/session host. */
 export type NativeConnectionHost = NativeConnectionSigningHost & Readonly<{
+  walletReads?: NativeWalletReadHost;
   syscoin: NativeConnectionUtxoHost;
   psbt: NativeConnectionPsbtHost;
   sentry: NativeConnectionSentryHost;

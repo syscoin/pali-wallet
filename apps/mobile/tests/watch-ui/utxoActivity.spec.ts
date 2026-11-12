@@ -1,11 +1,19 @@
 import { waitForNativePublicSession } from '../ui/operationAuthentication';
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { SENTRY_COLLATERAL_TXID, SENTRY_TXID } from '../sentryNodeFixtures';
 const ID = (n: number) => n.toString(16).padStart(64, '0');
 const activityRows = (page: Page, amount: string) => page.getByRole('button', {
   name: new RegExp(`^${amount.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}, `),
 });
 const copyTransaction = (page: Page) => page.getByRole('button', { name: /^Copy transaction ID: [a-f0-9]{64}$/ });
+const BTC_SENDER = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
+async function expectHydratedParticipants(detail: Locator) {
+  // The compact summary has a From label before hydration. The expanded
+  // participant card must contain the actual sender returned by the detail RPC.
+  const card = detail.getByText('From', { exact: true }).last().locator('..');
+  await expect(card.getByText(BTC_SENDER, { exact: true }).first()).toBeVisible();
+  return card;
+}
 async function expandDetails(page: Page) {
   const details = page.getByRole('button', { name: 'Details', exact: true });
   if (await details.getAttribute('aria-expanded') !== 'true') await details.click();
@@ -211,7 +219,8 @@ test('leaving and reopening the same watch Activity cannot publish a late confir
   await page.evaluate(() => window.__watchFixture.blur());
   await expect(page.getByRole('button', { name: 'View my accounts', exact: true })).toBeVisible();
   await expect(feedback).toHaveCount(0);
-  await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
+  await page.evaluate(() => window.__watchFixture.focus());
+  await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Activity', exact: true }).click();
   await expect(row).toHaveAccessibleName(/^−10\.0 BTC, 11 confirmations · Block 190\./);
   await expect(feedback).toHaveCount(0);
@@ -233,8 +242,9 @@ test('leaving a slow request and Android focus loss revoke the active account hi
   await expect(activityRows(page, '−10.0 BTC')).toHaveCount(0);
   const blurred = await page.evaluate(() => window.__watchFixture.activity.calls().length);
   await page.evaluate(() => window.__watchFixture.lifecycle('active'));
+  await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'View my accounts', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__watchFixture.activity.calls().length)).toBe(blurred);
-  await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
   await page.getByRole('tab', { name: 'Activity', exact: true }).click();
   await load(page);
   const audit = await page.evaluate(() => window.__watchFixture.audit());
@@ -416,7 +426,15 @@ test('SPT one-atom direction and full bridge operation come from shared interpre
   await expandDetails(page);
   await expect(page.getByTestId('watch-activity-detail').getByText('Asset operation amount', { exact: true })).toBeVisible();
   await expect(page.getByTestId('watch-activity-detail').getByText('9007199254740994 BIG', { exact: true })).toBeVisible();
-  await expect(page.getByTestId('watch-activity-detail').getByText('TO', { exact: true })).toHaveCount(0);
+  const detail = page.getByTestId('watch-activity-detail');
+  // The summary always names the field. This burn has no valid address output:
+  // OP_RETURN is not a recipient and must not leak into the hydrated card.
+  await expect(detail.getByText('To', { exact: true }).locator('..')).toContainText('Not available');
+  const participants = detail.getByText('Whole transaction fee: 1.0 SYS', { exact: true }).locator('..');
+  await expect(participants.getByText('From', { exact: true })).toHaveCount(0);
+  await expect(participants.getByText('To', { exact: true })).toHaveCount(0);
+  await expect(participants.getByText('Native account change: −10.0 SYS', { exact: true })).toBeVisible();
+  await expect(detail.getByText('OP_RETURN synthetic', { exact: true })).toHaveCount(0);
 });
 
 test('SPT unavailable quantity and unsafe optional metadata never substitute or echo funding', async ({ page }) => {
@@ -508,14 +526,15 @@ test('selected details hydrate participants once and reuse the shared warm cache
   await first.click();
   const detail = page.getByTestId('watch-activity-detail');
   await expandDetails(page);
-  await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
-  await expect(detail.getByText('TO', { exact: true })).toBeVisible();
+  await expectHydratedParticipants(detail);
+  await expect((await expectHydratedParticipants(detail)).getByText('To', { exact: true })).toBeVisible();
   await expect(detail.getByText('Native account change: −10.0 BTC', { exact: true })).toBeVisible();
+  await expect(detail.getByText('11 confirmations · Block 190', { exact: true }).last()).toBeVisible();
   expect(await rawCalls()).toBe(1);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await first.click();
   await expandDetails(page);
-  await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
+  await expectHydratedParticipants(detail);
   expect(await rawCalls()).toBe(1);
 });
 
@@ -533,7 +552,8 @@ test('failed detail preserves compact facts and explicit retry succeeds', async 
   await page.screenshot({ path: testInfo.outputPath('utxo-detail-unavailable-320.png'), fullPage: true });
   await page.evaluate(() => window.__watchFixture.activity.detail('value'));
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
-  await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
+  await expectHydratedParticipants(detail);
+  await expect(detail.getByText('11 confirmations · Block 190', { exact: true }).last()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Try again', exact: true })).toHaveCount(0);
   expect((await page.evaluate(() => window.__watchFixture.activity.calls())).filter(url => /\/api\/v2\/tx\//.test(url))).toHaveLength(2);
 });
@@ -571,12 +591,12 @@ for (const initiallyPending of [false, true]) test(`reopening keeps the detail o
   const status = initiallyPending ? '11 confirmations · Block 190' : 'Pending';
   await details.click();
   await expandDetails(page);
-  await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
+  await expectHydratedParticipants(detail);
   await expect(detail.getByText(status, { exact: true }).last()).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await details.click();
   await expandDetails(page);
-  await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
+  await expectHydratedParticipants(detail);
   await expect(detail.getByText(status, { exact: true }).last()).toBeVisible();
   expect(await rawCalls()).toBe(1);
 
@@ -586,7 +606,7 @@ for (const initiallyPending of [false, true]) test(`reopening keeps the detail o
   await load(page);
   await details.click();
   await expandDetails(page);
-  await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
+  await expectHydratedParticipants(detail);
   await expect(detail.getByText(initiallyPending ? 'Pending' : '11 confirmations · Block 190', { exact: true }).last()).toBeVisible();
   expect(await rawCalls()).toBe(1);
 });

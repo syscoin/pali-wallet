@@ -1,3 +1,4 @@
+import { Transaction } from 'ethers/transaction';
 import { PALI_RECOVERY_ALERTS_URL } from '../../../source/shared/smartAccountLinks.ts';
 import { getNativeGuardianRecoveryChoices } from '../src/smartAccount/guardianRecovery.ts';
 import { credentialPromptActivityState } from '../src/platform/credentialPort.ts';
@@ -10,13 +11,16 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { createIdleComponentFixture } from './idleComponentFixture.ts';
-import { nativeTranslationFixture } from './localizationFixture.ts';
+import { createSecurityRuntime } from '../src/core/securityRuntime.ts';
+import { nativeTranslationFixture, languageMessages } from './localizationFixture.ts';
+import { createInstance } from 'i18next';
 import { findUtxoNetwork, UTXO_NETWORKS, supportsUtxoSoftwareCustody } from '../src/core/utxoNetworks.ts';
 import { supportsSptUtxoChain, sptBalanceTotalUnits } from '../../../source/shared/sptInventory.ts';
 import { createNativeNetworkView } from '../src/custody/networkView.ts';
 import type { NativeNetworkSelectionProof } from '../src/custody/accounts.ts';
 import { networkSelectionReceiptFixture } from './networkSelectionReceiptFixture.ts';
 import { sendDraftForNetwork, NETWORK_CHANGED_DRAFT_NOTICE } from '../src/screens/sendNetworkDraft.ts';
+import * as publicSendDraft from '../src/screens/publicSendDraft.ts';
 import { trezorResumeDraft } from '../src/screens/trezorResumeDraft.ts';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import { sameNativePortfolioAccount } from '../src/portfolio/nativePortfolio.ts';
@@ -24,6 +28,7 @@ import { UTXO_ADDRESSES } from './publicWatchFixtures.ts';
 import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecycle.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { NativeRecoveryFlow } from '../src/custody/recoveryFlow.ts';
+import * as recoveryCopy from '../src/screens/recoveryCopy.ts';
 import { createNativeNoteRestore } from '../src/custody/nativeNoteRestore.ts';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
@@ -33,7 +38,7 @@ import { isAllowedSentryKeyRoleScheme, type SentryKeySummary } from '../../../so
 import { containsSentryPrivateKey, parseSentryKeyBatch } from '../../../source/utils/sentry/importBatch.ts';
 import { createNativeSentryKeyManagement, type NativeSentryKeyManagement } from '../src/custody/sentryKeyManagement.ts';
 import type { NativeConnectionsView } from '../src/connections/types.ts';
-import type { NativeTrezorView } from '../src/custody/trezorAccounts.ts';
+import type { NativeTrezorResumeIntent, NativeTrezorView } from '../src/custody/trezorAccounts.ts';
 import { quietActivityNotifications, type NotificationTestPort } from './notificationFixture.ts';
 
 function trezorLifecycle() {
@@ -59,6 +64,8 @@ const inventory = { status: 'needs-matching-phrase-verification', reason: null, 
   historySummaries: 7, cachedTransactions: 8, activityPreferences: 9,
 } };
 const walletScreenPorts = {
+  './publicSendDraft': publicSendDraft,
+  './recoveryCopy': recoveryCopy,
   './NativeAccountOverview': { NativePortfolioRoute: 'NativePortfolio' },
   '../notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
   '../activity/accountActivity': { AccountActivityController: class {} },
@@ -68,6 +75,7 @@ const walletScreenPorts = {
   './BackupVerification': { BackupVerification: 'BackupVerification' },
 };
 function evaluate(source: string, dependencies: Record<string, unknown>, flow = false) {
+  dependencies = { '../platform/localization': nativeTranslationFixture, ...dependencies };
   const require = createRequire(import.meta.url);
   const babelRequire = createRequire(require.resolve('babel-preset-expo'));
   const babel = babelRequire('@babel/core') as { transformSync(code: string, options: object): { code: string } };
@@ -80,7 +88,7 @@ function evaluate(source: string, dependencies: Record<string, unknown>, flow = 
   } });
   return module.exports;
 }
-function setup(phase = 'entry') {
+function setup(phase = 'entry', translation = nativeTranslationFixture) {
   const cells: Cell[] = []; let cursor = 0, dirty = false;
   const layouts: (() => void)[] = [];
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
@@ -116,7 +124,9 @@ function setup(phase = 'entry') {
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Icon', 'Notice', 'Row', 'Screen', 'Text', 'SegmentedControl'].map((name) => [name, name])), colors: {}, styles: {} };
   const idle = createIdleComponentFixture(hook, native);
   const loaded = evaluate(readFileSync(new NodeURL('../src/screens/NativeRecovery.tsx', import.meta.url), 'utf8'), {
+    '../platform/localization': translation,
     './IdleActivityBoundary': idle.components,
+    './recoveryCopy': recoveryCopy,
     react: hook, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
   });
@@ -304,9 +314,31 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   installed.forEach((s) => s.remove()); leaf.dispose(); root.dispose();
 });
 
+test('recovery renders controller errors in the chosen language without English fallback', async () => {
+  const i18n = createInstance();
+  await i18n.init({ initImmediate: false, lng: 'de', fallbackLng: false,
+    resources: { de: { translation: languageMessages('de') } } });
+  const f = setup('entry', { nativeI18n: i18n, useNativeTranslation: () => ({ t: i18n.t.bind(i18n), i18n }) });
+  try {
+    f.snapshot.error = 'WRONG_PHRASE';
+    const tree = f.render();
+    assert.match(text(tree), /Diese Wiederherstellungsphrase gehört nicht zu dieser Wallet/);
+    assert.doesNotMatch(text(tree), /WRONG_PHRASE|does not match/);
+  } finally { f.dispose(); }
+});
+
 async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED'; verifyCalls?: string[]; wait?: Promise<void> }, notificationPort: NotificationTestPort = quietActivityNotifications,
-  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number }, networkOverride?: networkContext.NativeNetworkRegistration, publicNavigation?: { initialAccountId: string }) {
+  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }, utxoResume?: { nativeUnits: string }, restoreFailure?: { commits: number }, networkOverride?: networkContext.NativeNetworkRegistration, publicNavigation?: { initialAccountId: string }, idleClock?: { minutes: number; time: number }) {
   const root = setup();
+  if (idleClock) {
+    await root.idle.ready;
+    const security = createSecurityRuntime({
+      async get() { return JSON.stringify({ version: 1, custodyIdleMinutes: idleClock.minutes, watchIdleMinutes: 0 }); },
+      async set() { assert.fail('The lifecycle test must not change the configured timeout'); },
+    }, () => ({ monotonic: idleClock.time, wall: idleClock.time }));
+    await security.securityPreferences.load();
+    Object.assign(root.idle.security, security);
+  }
   const networkId = networkMode === 'utxo' ? utxoResume ? 'syscoin' : 'bitcoin' : networkOverride?.id ?? 'ethereum';
   const address = `0x${'11'.repeat(20)}`;
   let catalogue = { revision: 1, active: { accountId: 'hd:60:0', networkId },
@@ -321,6 +353,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   let credentialPresent = !empty, recoveryInventoryReads = 0;
   let releasePrompt!: () => void;
   let locks = 0;
+  let backupFailure: Error | undefined;
   const lifecycle: string[] = [];
   const notificationRoutes: { tab: string; identity: string }[] = [];
   const enrollments: { enabled: boolean; password?: string }[] = [];
@@ -385,7 +418,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
         catch (cause) { publish({ phase: 'locked', account: null, error: 'DEVICE_UNLOCK_UNAVAILABLE' }); throw cause; }
         check(); publish({ phase: 'backup-required', backup: 'unconfirmed', account: { address, network: networkId }, error: null });
       },
-      lock() { if (deviceUnlock || pinChange || restoreFailure) { lifecycle.push('lock'); locks++; publish({ phase: 'locked', revision: state.revision + 1, account: null }); } }, async dispose() { state = { ...state, phase: 'disposed' }; },
+      lock() { if (deviceUnlock || pinChange || restoreFailure || idleClock) { lifecycle.push('lock'); locks++; publish({ phase: 'locked', revision: state.revision + 1, account: null }); } }, async dispose() { state = { ...state, phase: 'disposed' }; },
       async unlock() {
         publish({ phase: 'authenticating', error: null });
         if (nextError) { const code = nextError; publish({ phase: 'locked', error: code }); throw new Error(code); }
@@ -404,6 +437,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     keyExport: { cancel() {}, dispose() {} }, backup: {
       cancel() {}, dispose() {}, onClear: () => () => {},
       async begin(password: string) {
+        if (backupFailure) throw backupFailure;
         assert(backupCompletion, 'Backup is outside this fixture');
         assert.equal((password as unknown as { method: string }).method, 'device');
         return { id: 'public-backup-review', words: [...Array(11).fill('abandon'), 'about'] };
@@ -523,10 +557,56 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     await new Promise((resolve) => setImmediate(resolve));
     return render();
   };
-  return { render, unlock, publish, noteRestore, notificationRoutes,
+  return { render, unlock, publish, noteRestore, notificationRoutes, publicViewLock: root.idle.security.publicViewLock,
+    failBackup(error: Error) { backupFailure = error; },
     loseCredential() { credentialPresent = false; publish({}); }, get recoveryInventoryReads() { return recoveryInventoryReads; },
     selectedAccounts, selectedAddress: () => state.account?.address, requestAccount(id: string) { props.initialAccountId = id; return render(); }, selectedNetwork: () => state.account?.network, authority: realAuthority, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, configurations, backupAcknowledgements, lifecycle, get locks() { return locks; } };
 }
+
+async function nativeIdleFixture(clock: { minutes: number; time: number }) {
+  return walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined,
+    quietActivityNotifications, undefined, undefined, undefined, undefined, undefined, clock);
+}
+const lifecycleTick = () => new Promise<void>(resolve => setImmediate(resolve));
+
+test('native background elapsed time cannot renew a configured privacy-lock deadline', async () => {
+  const clock = { minutes: 5, time: 0 }, f = await nativeIdleFixture(clock);
+  try {
+    assert(all(f.render()).some(node => node.type === 'NativePortfolio'));
+    clock.time = 10000; f.emit('change', 'background'); f.render();
+    clock.time = 310000; f.emit('change', 'active'); await lifecycleTick();
+    const returned = f.render();
+    assert.equal(f.publicViewLock.getSnapshot().phase, 'locked');
+    assert(!all(returned).some(node => node.type === 'NativePortfolio'));
+    assert(button(returned, 'Unlock wallet'));
+  } finally { f.dispose(); }
+});
+
+test('repeated short native returns preserve the original last-activity deadline', async () => {
+  const clock = { minutes: 5, time: 0 }, f = await nativeIdleFixture(clock);
+  try {
+    for (const [background, foreground] of [[120000, 121000], [240000, 241000]] as const) {
+      clock.time = background; f.emit('change', 'background'); f.render();
+      clock.time = foreground; f.emit('change', 'active'); await lifecycleTick();
+      assert(all(f.render()).some(node => node.type === 'NativePortfolio'));
+      assert.equal(f.publicViewLock.getSnapshot().phase, 'unlocked');
+    }
+    clock.time = 299000; f.emit('change', 'background'); f.render();
+    clock.time = 301000; f.emit('change', 'active'); await lifecycleTick();
+    assert.equal(f.publicViewLock.getSnapshot().phase, 'locked');
+    assert(button(f.render(), 'Unlock wallet'));
+  } finally { f.dispose(); }
+});
+
+test('disabled native auto-lock still resumes the public view after a long background interval', async () => {
+  const clock = { minutes: 0, time: 0 }, f = await nativeIdleFixture(clock);
+  try {
+    clock.time = 10000; f.emit('change', 'background'); f.render();
+    clock.time = 86400000; f.emit('change', 'active'); await lifecycleTick();
+    assert.equal(f.publicViewLock.getSnapshot().phase, 'unlocked');
+    assert(all(f.render()).some(node => node.type === 'NativePortfolio'));
+  } finally { f.dispose(); }
+});
 
 test('backup completion waits for verification and durable save, then clears displayed words', async () => {
   for (const action of ['done', 'back'] as const) {
@@ -556,6 +636,25 @@ test('backup completion waits for verification and durable save, then clears dis
       assert.equal(f.backupAcknowledgements.length, 1);
     } finally { f.dispose(); }
   }
+});
+
+test('cancelled backup authorization returns to its introduction without locking the public wallet', async () => {
+  const f = await walletFeedbackFixture(false, false, undefined, Promise.resolve());
+  try {
+    f.failBackup(new Error('CANCELLED'));
+    let tree = await f.unlock(null);
+    const home = all(tree).find(node => node.type === 'NativePortfolio'); assert(home);
+    (home.props.onBackup as () => void)(); tree = f.render();
+    const intro = all(tree).find(node => node.type === 'BackupIntroduction'); assert(intro);
+    (intro.props.onStart as () => void)();
+    await new Promise(resolve => setImmediate(resolve));
+    tree = f.render();
+    assert(all(tree).some(node => node.type === 'BackupIntroduction'));
+    const returned = all(tree).find(node => node.type === 'BackupIntroduction'); assert(returned);
+    assert.equal(returned.props.error, 'Request cancelled. You can try again.');
+    assert.doesNotMatch(text(tree), /session was locked|abandon/);
+    assert.equal(f.locks, 0);
+  } finally { f.dispose(); }
 });
 
 test('automatic public entry selects the requested native account once without device authentication', async () => {
@@ -1297,11 +1396,14 @@ test('resumed Trezor SPT drafts never label native funds as tokens while native 
       const home = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(home);
       ((home.props.hardwareRequest as Element).props.onResume as () => void)();
       const trezor = f.render(); assert.equal(trezor.type, 'NativeTrezor');
-      await (trezor.props.onResumeSend as (intent: object) => Promise<void>)({
+      const resume = {
         id: 'utxo-resume', accountId: 'hd:60:0', networkId: 'syscoin', kind: 'utxo',
-        recipient: UTXO_ADDRESSES.syscoin, amount: '2', ...(resumedAsset ? { asset: resumedAsset } : {}),
-      });
+        recipient: UTXO_ADDRESSES.syscoin, amount: '2', feeChoice: { kind: 'custom', satPerVbyte: '7' },
+        ...(resumedAsset ? { asset: resumedAsset } : {}),
+      } satisfies NativeTrezorResumeIntent;
+      await (trezor.props.onResumeSend as (intent: NativeTrezorResumeIntent) => Promise<void>)(resume);
       const send = f.render(); assert.equal(send.type, 'NativeUtxoSendScreen');
+      assert.deepEqual((send.props.initialDraft as { feeChoice: unknown }).feeChoice, resume.feeChoice);
       assert.equal(send.props.asset, resumedAsset);
       assert.equal(send.props.maximumAmount, undefined);
       assert.equal(send.props.availableAmount, resumedAsset ? undefined : '1.25000001');
@@ -1343,6 +1445,10 @@ test('Receive network selection returns to the canonical address and does not re
     (picker.props.onBack as () => void)();
     portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
     assert.deepEqual(JSON.parse(JSON.stringify(portfolio.props.initialReceive)), continuation);
+    const consumePrevious = portfolio.props.onReceiveIntentConsumed as () => void;
+    consumePrevious();
+    portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
+    assert.equal(portfolio.props.initialReceive, undefined);
     (portfolio.props.onChangeReceiveNetwork as (value: object) => void)(continuation);
     picker = f.render();
     const view = picker.props.controller as ReturnType<typeof createNativeNetworkView>;
@@ -1352,6 +1458,11 @@ test('Receive network selection returns to the canonical address and does not re
     assert.deepEqual(JSON.parse(JSON.stringify(portfolio.props.initialReceive)), {
       account: { address: UTXO_ADDRESSES.bitcoin, network: 'bitcoin', revision: 2 }, backupAcknowledged: false,
     });
+    consumePrevious();
+    portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
+    assert.equal((portfolio.props.initialReceive as typeof continuation).account.network, 'bitcoin', 'a stale consumer cannot clear a newer network continuation');
+    (portfolio.props.onReceiveIntentConsumed as () => void)();
+    assert.equal(all(f.render()).find(node => node.type === 'NativePortfolio')!.props.initialReceive, undefined);
   } finally { f.dispose(); }
 });
 
@@ -1498,29 +1609,42 @@ const currentNavigationChoice = () => {
     scope: { ...choice.scope, id: 'native:hd:60:0:ethereum', network } };
 };
 
-test('unbacked same-network Receive keeps its public continuation and foreign selection stays unavailable', async () => {
+test('unbacked Receive can select another network without authorizing a send', async () => {
   const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, quietActivityNotifications, { backup: 'unconfirmed' });
   try {
     let portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
     await (portfolio.props.navigateDetail as (...args: unknown[]) => Promise<void>)(currentNavigationChoice(), true, undefined, () => {});
     portfolio = all(await settleRootNavigation(f)).find(node => node.type === 'NativePortfolio'); assert(portfolio);
     assert.deepEqual(JSON.parse(JSON.stringify(portfolio.props.detail)), { accountId: 'hd:60:0', networkId: 'ethereum', receive: true });
+    const consumePrevious = portfolio.props.onReceiveIntentConsumed as () => void;
+    consumePrevious();
+    portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
+    assert.deepEqual(JSON.parse(JSON.stringify(portfolio.props.detail)), { accountId: 'hd:60:0', networkId: 'ethereum', receive: false });
+    await (portfolio.props.navigateDetail as (...args: unknown[]) => Promise<void>)(currentNavigationChoice(), true, undefined, () => {});
+    portfolio = all(await settleRootNavigation(f)).find(node => node.type === 'NativePortfolio'); assert(portfolio);
+    consumePrevious();
+    assert.equal((all(f.render()).find(node => node.type === 'NativePortfolio')!.props.detail as { receive: boolean }).receive, true,
+      'consuming the old request cannot swallow a newly requested Receive route');
+    (portfolio.props.onReceiveIntentConsumed as () => void)();
     assert.equal(f.authority!.getSnapshot().phase, 'backup-required');
-    await assert.rejects((portfolio.props.navigateDetail as (...args: unknown[]) => Promise<void>)(navigationChoice(), true, undefined, () => {}), /NOT_READY/);
+    await (portfolio.props.navigateDetail as (...args: unknown[]) => Promise<void>)(navigationChoice(), true, undefined, () => {});
     assert.equal(f.authority!.getSnapshot().phase, 'backup-required');
-    assert.equal(f.authority!.getSnapshot().account?.network, 'ethereum');
+    assert.equal(f.authority!.getSnapshot().account?.network, 'syscoin-nevm');
+    assert(!all(await settleRootNavigation(f)).some(node => node.type === 'NativeSend'));
   } finally { f.dispose(); }
 });
 
-test('unbacked Send opens the existing backup flow before selection or signing', async () => {
+test('unbacked Send selects the public network and opens a draft before requiring backup', async () => {
   const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, quietActivityNotifications, { backup: 'unconfirmed' });
   try {
     const portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
     await (portfolio.props.sendFrom as (...args: unknown[]) => Promise<void>)(navigationChoice(), undefined, () => {});
     const tree = await settleRootNavigation(f);
-    assert(all(tree).some(node => node.type === 'BackupIntroduction'));
-    assert(!all(tree).some(node => node.type === 'NativeSend'));
-    assert.equal(f.authority!.getSnapshot().account?.network, 'ethereum');
+    assert(!all(tree).some(node => node.type === 'BackupIntroduction'));
+    const send = all(tree).find(node => node.type === 'NativeSend'); assert(send);
+    assert.equal(typeof (send.props.beforeBackup as { onRequest: unknown }).onRequest, 'function');
+    assert.equal(f.authority!.getSnapshot().account?.network, 'syscoin-nevm');
+    assert.equal(f.authority!.getSnapshot().phase, 'backup-required');
   } finally { f.dispose(); }
 });
 
@@ -1534,5 +1658,29 @@ test('same-network root Send uses the current authority without an authenticatio
     assert(all(await settleRootNavigation(f)).some(node => node.type === 'NativeSend'));
     assert.deepEqual(phases, []);
     assert.equal(f.authority!.getSnapshot().account?.network, 'ethereum');
+  } finally { f.dispose(); }
+});
+
+for (const operation of ['speed-up', 'cancel', 'cancel-saved'] as const) test(`root Trezor ${operation} return retains routing and refuses stale account, network and lock state`, async () => {
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, quietActivityNotifications, undefined, { nativeUnits: '1' });
+  try {
+    const home = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(home);
+    ((home.props.hardwareRequest as Element).props.onResume as () => void)();
+    const trezor = f.render(); assert.equal(trezor.type, 'NativeTrezor');
+    const resume = { id: 'replacement-resume', accountId: 'hd:60:0', networkId: 'ethereum', kind: 'evm' as const,
+      unsignedTransaction: Transaction.from({ type: 2, chainId: 1, nonce: 7,
+        to: operation === 'speed-up' ? null : '0x' + '11'.repeat(20),
+        data: operation === 'speed-up' ? '0x6001600055' : '0x', value: 0,
+        gasLimit: 50000, maxFeePerGas: 9, maxPriorityFeePerGas: 1 }).unsignedSerialized,
+      replacement: { operation, originalHash: '0x' + 'ab'.repeat(32) } };
+    const onResume = trezor.props.onResumeSend as (intent: NativeTrezorResumeIntent) => Promise<void>;
+    await assert.rejects(onResume({ ...resume, accountId: 'other-account' }), /CANCELLED/);
+    await assert.rejects(onResume({ ...resume, networkId: 'base' }), /CANCELLED/);
+    await onResume(resume);
+    const send = f.render(); assert.equal(send.type, 'NativeSend');
+    assert.deepEqual(JSON.parse(JSON.stringify(send.props.replacement)), { hash: resume.replacement.originalHash, mode: operation });
+    assert.equal(send.props.review, undefined); assert.equal(send.props.authentication, undefined);
+    f.publish({ phase: 'locked', account: null });
+    await assert.rejects(onResume(resume), /CANCELLED/);
   } finally { f.dispose(); }
 });

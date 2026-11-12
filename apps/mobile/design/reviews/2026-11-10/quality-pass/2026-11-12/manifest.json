@@ -1,0 +1,55 @@
+{
+  "sourceHead": "79061519fea1f20e9487db414ce661c9ed9a15a5",
+  "workingDiffSha256": "36e4645f7e17a92151b6fc176305d2db24659a134aa8797e41c82f1262218a8b",
+  "platform": "React Native browser fixtures",
+  "data": "Synthetic public accounts and market data",
+  "limitations": [
+    "Browser component/controller fixtures with synthetic public data, no native/device/hardware qualification.",
+    "Market data intercepted with a valid fixed synthetic CoinGecko response; no live service availability claim.",
+    "Selected chart state invoked the existing native touch callback in browser; no physical touch gesture qualification.",
+    "New locale grammar exact assertion and separate activity UNKNOWN label assertion left to hosted CI; embedded build predates that later copy edit.",
+    "Screenshots are viewport captures; vertically scrollable content continues below the fold."
+  ],
+  "screenshots": [
+    {
+      "file": "home-all-320.png",
+      "sha256": "7e05571b5d24a8a1a758af6a770b1e9f133f7463206847754b2c4dab082c6930"
+    },
+    {
+      "file": "home-all-390.png",
+      "sha256": "39ae8531d53064df2a05b3030d796e28d8a5bfe72b7daeda5c6ba7c8d3a1663c"
+    },
+    {
+      "file": "send-from-320.png",
+      "sha256": "f65c7099f566ec117c0d6009fa5c5674a43d0aea2e2e88ee946a17bad1856e55"
+    },
+    {
+      "file": "receive-320.png",
+      "sha256": "45cfc0056648924ce259d8dc24e927f80963c4c6ca063f718cc220cd444f5bb2"
+    },
+    {
+      "file": "chart-selected-320.png",
+      "sha256": "55eded12959df8bf15bc57c83a123bf906b32f7dfffac88a3c5a6a437e0847ee"
+    },
+    {
+      "file": "settings-390.png",
+      "sha256": "2c719eb3793c7d8938487537cf1eae7ba4a7e3895a5791e7a825f8e276c7aa21"
+    },
+    {
+      "file": "auto-lock-320.png",
+      "sha256": "dce417ce9f69f69a136d4f3b7cc8701cfc9c977f6b741187190b2b73dc46d5b2"
+    },
+    {
+      "file": "activity-320.png",
+      "sha256": "814440ac28a74a48611351342436e20013fac833be1e887582bc03bcd160987e"
+    },
+    {
+      "file": "activity-detail-320.png",
+      "sha256": "49caafcbc55b7d50b794956b32b8c9ca554993e61800595df0f2a578c94fc639"
+    },
+    {
+      "file": "add-watch-320.png",
+      "sha256": "8375a6d6e2847907887ef50c01215b97ad3cdecb5b83bfecd93c78092a3ec90a"
+    }
+  ]
+}

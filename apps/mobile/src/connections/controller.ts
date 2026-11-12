@@ -1,10 +1,13 @@
+import { abortable } from '../../../../source/shared/boundedHttp.ts';
+import { isAccountCompatibleWithNetwork } from '../../../../source/utils/accountCompatibility.ts';
+import { NativeAccountChangeRequests } from './accountChangeRequests.ts';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope, type NativePrivateAuthentication } from '../custody/privateAuthentication.ts';
 import { NativeSmartPreparationRequests } from './smartPreparationRequests.ts';
 import { getRequestedSmartAccountAuthenticator, type SmartAccountPreparationRequest } from '../../../../source/shared/smartAccountPreparation.ts';
 import type { NativeSmartCreationAllocation } from '../smartAccount/preparation.ts';
 import { SmartAccountModulesProjectionError } from '../../../../source/shared/smartAccountModules.ts';
 import { SMART_ACCOUNT_MODULE_REQUEST_METHODS, isSmartAccountModuleRequestMethod, normalizeSmartAccountModuleRequest, SmartAccountModuleRequestError, type SmartAccountModuleRequest } from '../../../../source/shared/smartAccountModuleRequest.ts';
-import { NativeSigningHandoffs, retireNativeSigningHandoff, sameSigningResumeOwner, type NativeSigningHandoff, type SigningResumeScope, type SigningHandoffDescriptor } from './signingHandoff.ts';
+import { NativeSigningHandoffs, captureNativeSigningContinuation, completeNativeSigningOwnerStep, retireNativeSigningHandoff, sameSigningResumeOwner, type NativeSigningHandoff, type SigningResumeScope, type SigningHandoffDescriptor } from './signingHandoff.ts';
 import { isDappEncryptionMethod, readDappEncryptionRequest, supportsDappEncryptionAccount, type DappEncryptionRequest } from '../../../../source/shared/dappEncryptionRequest.ts';
 import { prepareDappEncryptionApproval } from '../../../../source/wallet/dappEncryptionApproval.ts';
 import { dappCaipChain, dappNamespace, DAPP_MODE_METHODS, normalizeDappModeRequest, type DappChainScope } from '../../../../source/shared/dappChainScope.ts';
@@ -21,6 +24,7 @@ import { NativeOperationDrain } from '../custody/operationDrain.ts';
 import { NativeDappControlRequests } from './controlRequests.ts';
 import { isDappPermissionMethod, readDappPermissionRequest, projectDappPermissions } from '../../../../source/shared/dappPermissions.ts';
 import { DAPP_PUBLIC_RPC_METHODS, isDappPublicRpcMethod, normalizeDappRpcRequest } from '../../../../source/shared/dappRpcReads.ts';
+import { DAPP_WALLET_READ_METHODS, isDappWalletRead, normalizeDappWalletRead } from '../../../../source/shared/dappWalletReads.ts';
 import { createDappReturnTarget } from './pairingReturn.ts';
 import { isDappWalletControlMethod, normalizeDappWalletControl } from '../../../../source/shared/dappWalletControl.ts';
 import {
@@ -32,7 +36,7 @@ import {
 import type { CallsBundleStatus } from '../../../../source/wallet/dappCallsBundles.ts';
 import type { NativeSmartAccountOperation } from '../smartAccount/operation.ts';
 import type { NativePreparedConnectionTransaction } from './transactionRuntime.ts';
-import { createNativeEoaCalls, type NativeEoaCalls } from './eoaCalls.ts';
+import { createNativeEoaCalls, createNativeEoaCallsContinuation, isNativeEoaCallsContinuation, type NativeEoaCalls } from './eoaCalls.ts';
 import { createDappSigningApproval } from '../../../../source/wallet/dappSigningApproval.ts';
 import {
   normalizeDappCapabilitiesRequest,
@@ -97,6 +101,7 @@ const METHODS = Object.freeze([
   'wallet_requestPermissions',
   'wallet_revokePermissions',
   ...DAPP_PUBLIC_RPC_METHODS,
+  ...DAPP_WALLET_READ_METHODS,
   ...DAPP_SYSCOIN_READ_METHODS,
   ...DAPP_MODE_METHODS,
   ...SENTRY_DAPP_METHODS,
@@ -104,6 +109,7 @@ const METHODS = Object.freeze([
   'wallet_getCapabilities',
   'wallet_getSmartAccountModules',
   'wallet_prepareSmartAccount',
+  'wallet_changeAccount',
   ...SMART_ACCOUNT_MODULE_REQUEST_METHODS,
   'eth_sendTransaction',
   'wallet_sendCalls',
@@ -275,6 +281,7 @@ export class NativeConnectionsController {
   private readonly disposal = new NativeOperationDrain();
   private requestRetirement: Promise<void> = Promise.resolve();
   private disposed = false;
+  private accountRetirementFailed = false;
   private readonly lifetime = new AbortController();
   private revision = 0;
   private actionEpoch = 0;
@@ -293,6 +300,9 @@ export class NativeConnectionsController {
   private readonly proposals = new Map<number, WalletConnectProposal>();
   private readonly requests = new Map<string, PendingSigning>();
   private readonly controls: NativeDappControlRequests;
+  private readonly accountChanges: NativeAccountChangeRequests;
+  private readonly accountTransitions = new Map<string, { wire: WalletConnectRequest; done: Promise<void>; finish(): void }>();
+  private readonly accountChangeOwners = new WeakMap<WalletConnectRequest, { connection: Connected; session: WalletConnectSession; grant: NonNullable<ReturnType<Engine['get']>>; staged?: NonNullable<ReturnType<Engine['get']>>; updating: boolean; check(): void }>();
   private readonly preparations: NativeSmartPreparationRequests;
   private readonly preparationOwners = new WeakMap<WalletConnectRequest, { connection: Connected; session: WalletConnectSession; updating: boolean; check(): void }>();
   private readonly sentry: NativeSentryRequests;
@@ -311,9 +321,16 @@ export class NativeConnectionsController {
     this.options = options;
     this.handoffs = new NativeSigningHandoffs({ cancel: job => this.host!.cancelSigningHandoff(job),
       changed: () => { this.publish(); void this.controls?.prepare(); void this.sentry?.prepare(); void this.psbt?.prepare(); void this.prepareForegroundRequest(); } });
+    this.accountChanges = new NativeAccountChangeRequests({
+      foreground: order => order < Math.min(this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.controls?.firstOrder ?? Infinity, this.sentry?.firstOrder ?? Infinity, this.psbt?.firstOrder ?? Infinity, this.preparations?.firstOrder ?? Infinity),
+      changed: () => { this.publish(); void this.controls?.prepare(); void this.sentry?.prepare(); void this.psbt?.prepare(); void this.prepareForegroundRequest(); },
+      checkSite: options.checkSite,
+      commit: (wire, account, signal, check) => this.commitAccountChange(wire, account, signal, check),
+      reject: wire => this.transport!.respond(wire.session.binding, wire.id, { error: { code: 4001, message: 'User rejected account selection' } }, () => this.check(), () => {}),
+    });
     this.controls = new NativeDappControlRequests({
       host: () => this.host!.controls,
-      foreground: order => order < Math.min(this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.sentry?.firstOrder ?? Infinity, this.psbt?.firstOrder ?? Infinity, this.preparations?.firstOrder ?? Infinity),
+      foreground: order => order < Math.min(this.accountChanges?.firstOrder ?? Infinity, this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.sentry?.firstOrder ?? Infinity, this.psbt?.firstOrder ?? Infinity, this.preparations?.firstOrder ?? Infinity),
       changed: () => { this.publish(); void this.prepareForegroundRequest(); },
       checkSite: options.checkSite,
       respond: (wire, response, check) => this.transport!.respond(wire.session.binding, wire.id, response, check, () => {
@@ -323,7 +340,7 @@ export class NativeConnectionsController {
     });
     this.sentry = new NativeSentryRequests({
       host: () => this.host!.sentry,
-      foreground: order => order < Math.min(this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.controls.firstOrder, this.psbt?.firstOrder ?? Infinity, this.preparations?.firstOrder ?? Infinity),
+      foreground: order => order < Math.min(this.accountChanges?.firstOrder ?? Infinity, this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.controls.firstOrder, this.psbt?.firstOrder ?? Infinity, this.preparations?.firstOrder ?? Infinity),
       changed: () => { this.publish(); void this.prepareForegroundRequest(); },
       checkSite: options.checkSite,
       respond: (wire, response, check, handedOff) => this.transport!.respond(wire.session.binding, wire.id, response, check, handedOff),
@@ -331,7 +348,7 @@ export class NativeConnectionsController {
     this.psbt = new NativePsbtRequests({
       bindAuthentication: options.bindAuthentication,
       host: () => this.host!.psbt,
-      foreground: order => order < Math.min(this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.controls.firstOrder, this.sentry.firstOrder, this.preparations?.firstOrder ?? Infinity),
+      foreground: order => order < Math.min(this.accountChanges?.firstOrder ?? Infinity, this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.controls.firstOrder, this.sentry.firstOrder, this.preparations?.firstOrder ?? Infinity),
       changed: () => { this.publish(); void this.prepareForegroundRequest(); },
       checkSite: options.checkSite,
       respond: (wire, response, check, handedOff) => this.transport!.respond(wire.session.binding, wire.id, response, check, handedOff),
@@ -339,7 +356,7 @@ export class NativeConnectionsController {
     this.preparations = new NativeSmartPreparationRequests({
       bindAuthentication: options.bindAuthentication,
       host: () => this.host!,
-      foreground: order => order < Math.min(this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder),
+      foreground: order => order < Math.min(this.accountChanges?.firstOrder ?? Infinity, this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder),
       changed: () => { this.publish(); void this.controls.prepare(); void this.sentry.prepare(); void this.psbt.prepare(); void this.prepareForegroundRequest(); },
       checkSite: options.checkSite,
       connect: (wire, allocation, signal, check) => this.connectPreparedAccount(wire, allocation, signal, check),
@@ -348,6 +365,15 @@ export class NativeConnectionsController {
     this.snapshot = this.project();
     this.view = Object.freeze({
       isRequestAuthenticating: id => this.isRequestAuthenticating(id),
+      selectConnectionAccount: (id, accountId, revision) => {
+        if (revision !== this.revision) return failure('REQUEST_EXPIRED');
+        this.accountChanges.select(id, accountId);
+      },
+      approveAccountChange: async (id, revision) => {
+        if (revision !== this.revision) return failure('REQUEST_EXPIRED');
+        await this.perform(() => this.accountChanges.approve(id));
+      },
+      rejectAccountChange: id => this.accountChanges.reject(id),
       approveSmartPreparation: async (id, revision, acknowledged) => {
         if (revision !== this.revision) return failure('REQUEST_EXPIRED');
         await this.preparations.approve(id, acknowledged);
@@ -367,7 +393,7 @@ export class NativeConnectionsController {
       },
       rejectPsbt: async id => { this.psbt.reject(id); },
       backgroundSigning: () => {
-        this.preparations.clear();
+        this.accountChanges.clear(); this.preparations.clear();
         this.psbt.background();
         const message = this.requests.values().next().value;
         if (message && !this.handoffs.background(message.handoff)) void this.retireRequest(message);
@@ -494,7 +520,7 @@ export class NativeConnectionsController {
             if (
               !message ||
               revision !== this.revision ||
-              (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder) ||
+              (this.requests.values().next().value !== message || Math.min(this.accountChanges.firstOrder, this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder) ||
               message.review.kind !== 'smart-transaction' ||
               message.review.error ||
               message.dispatched ||
@@ -536,13 +562,17 @@ export class NativeConnectionsController {
       if (phase !== 'ready') this.dismissStatus();
       if (phase !== 'ready' && (this.action || this.pairing)) this.cancel();
       this.revalidateSigningRequests();
-      this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.preparations.revalidate(); this.revalidatePsbtHandoff();
+      this.accountChanges.revalidate(); this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.preparations.revalidate(); this.revalidatePsbtHandoff();
       this.revalidateReads();
       const previous = this.publishedScope;
       const current = this.publicScope();
       this.publishedScope = current;
       if (current && previous)
         for (const connection of this.connections.values()) {
+          if (!this.accountTransitions.has(sessionKey(connection.session)) && !this.grantMatchesSession(connection)) {
+            void this.retireConnection(connection).then(() => this.notifyRetiredConnection(connection)).catch(() => this.unavailable());
+            continue;
+          }
           if (current.accounts !== previous.accounts)
             void connection.engine.handleStateChange('pali_accountsChanged', {
               method: 'pali_accountsChanged',
@@ -568,14 +598,14 @@ export class NativeConnectionsController {
   }
 
   private check() {
-    if (this.disposed) return failure('CONNECTION_UNAVAILABLE');
+    if (this.disposed || this.accountRetirementFailed) return failure('CONNECTION_UNAVAILABLE');
     this.host?.assertOwner();
     this.repository?.assertHealthy();
   }
   private unavailable() {
     if (!this.disposed) {
       for (const read of this.reads.values()) read.lifetime.abort();
-      this.controls.clear(); this.sentry.clear(); this.psbt.clear(); this.preparations.clear(); this.handoffs.cancelDapp();
+      this.accountChanges.clear(); this.controls.clear(); this.sentry.clear(); this.psbt.clear(); this.preparations.clear(); this.handoffs.cancelDapp();
       this.restored = false;
       this.actionEpoch++;
       this.action?.abort();
@@ -628,11 +658,13 @@ export class NativeConnectionsController {
   ): readonly string[] {
     const scope = this.host && this.options.source.getSnapshot().phase === 'ready' ? this.chainScope() : undefined;
     return METHODS.filter((method) => {
+      if (method === 'wallet_changeAccount') return true;
+      if (isDappWalletRead(method)) return !!this.host?.walletReads;
       const hardware = accountType === 'Ledger' || accountType === 'Trezor';
       if (isDappEncryptionMethod(method) && !supportsDappEncryptionAccount({ type: accountType })) return false;
       if (hardware && (method === 'eth_signTypedData' || method === 'wallet_getSmartAccountModules' || isSmartAccountModuleRequestMethod(method))) return false;
       if (scope?.kind === 'syscoin') {
-        if ((SENTRY_DAPP_METHODS as readonly string[]).includes(method)) return !hardware && Object.values(SENTRY_NETWORKS).some(network => network.chainId === scope.chainId && network.genesisHash === scope.genesisHash);
+        if ((SENTRY_DAPP_METHODS as readonly string[]).includes(method)) return Object.values(SENTRY_NETWORKS).some(network => network.chainId === scope.chainId && network.genesisHash === scope.genesisHash);
         return isDappSyscoinRead(method) || (DAPP_MODE_METHODS as readonly string[]).includes(method) || isDappPermissionMethod(method) || (PSBT_DAPP_METHODS as readonly string[]).includes(method);
       }
       if (isDappSyscoinRead(method) || (SENTRY_DAPP_METHODS as readonly string[]).includes(method) || (PSBT_DAPP_METHODS as readonly string[]).includes(method)) return false;
@@ -645,7 +677,7 @@ export class NativeConnectionsController {
       if (method === 'wallet_sendCalls')
         return (
           !accountType ||
-          accountType === 'HDAccount' || accountType === 'Imported' ||
+          accountType === 'HDAccount' || accountType === 'Imported' || accountType === 'Ledger' || accountType === 'Trezor' ||
           (accountType === 'SmartAccount' &&
             !!accountId &&
             this.host?.supportsAtomicCalls(accountId) === true)
@@ -654,7 +686,7 @@ export class NativeConnectionsController {
         method === 'wallet_getCallsStatus' ||
         method === 'wallet_showCallsStatus'
       )
-        return !accountType || accountType === 'SmartAccount' || accountType === 'HDAccount' || accountType === 'Imported';
+        return !accountType || accountType === 'SmartAccount' || accountType === 'HDAccount' || accountType === 'Imported' || accountType === 'Ledger' || accountType === 'Trezor';
       return true;
     });
   }
@@ -726,6 +758,7 @@ export class NativeConnectionsController {
     }
     const evm = context?.network.kind === 'ethereum' || context?.network.kind === 'syscoin';
     return Object.freeze({
+      accountChangeReview: ready ? this.accountChanges.review(this.revision) : null,
       preparationReview: ready ? this.preparations?.review(this.revision) ?? null : null,
       controlReview: ready ? this.controls.review(this.revision) : null,
       psbtReview: ready ? this.psbt?.review(this.revision) ?? null : null,
@@ -941,6 +974,24 @@ export class NativeConnectionsController {
     });
     return this.openingTransport;
   }
+  private compatibleConnectionAccounts(context = this.host!.context()) {
+    const catalogue = this.host!.controls.context();
+    if (!catalogue || catalogue.networkId !== context.networkId) return [];
+    const metadata = new Map(catalogue.accounts.map(account => [account.id, account]));
+    return context.accounts.filter(account => {
+      const full = metadata.get(account.id);
+      return full && full.index === account.index && full.type === account.type && full.address === account.address &&
+        isAccountCompatibleWithNetwork(full, account.type, context.network);
+    });
+  }
+  private grantMatchesSession(connection: Connected): boolean {
+    const context = this.host!.context(), grant = connection.engine.get(connection.session.binding.origin);
+    if (this.options.source.getSnapshot().phase !== 'ready' || !context.unlocked || !grant || grant.chain !== context.network.kind || grant.chainId !== context.network.chainId) return true;
+    const account = context.accounts.find(value => value.index === grant.accountId && value.type === grant.accountType);
+    if (!account) return false;
+    const scope = this.chainScope(context), expected = `${dappCaipChain(scope)}:${this.accountAnchor(account, scope)}`;
+    return Object.values(connection.session.namespaces).some(namespace => namespace.accounts.some(value => scope.kind === 'ethereum' ? value.toLowerCase() === expected.toLowerCase() : value === expected));
+  }
   private connection(session: WalletConnectSession): Connected {
     const key = sessionKey(session),
       previous = this.connections.get(key);
@@ -964,9 +1015,7 @@ export class NativeConnectionsController {
         };
       },
       account: (id, type) =>
-        host
-          .context()
-          .accounts.find(
+        host.context().accounts.find(
             (account) => account.index === id && account.type === type
           ),
       canPublishAccount: (account) => !!account,
@@ -974,6 +1023,9 @@ export class NativeConnectionsController {
         !!account && (network.kind === 'ethereum' || network.kind === 'syscoin'),
       permissions: repository.permissions(session.binding),
       resolveDelivery: async (origin, id) => {
+        // Shared accountsChanged delivery follows the committed namespace/grant pair.
+        const transition = this.accountTransitions.get(key);
+        if (transition) await transition.done;
         if (
           origin !== session.binding.origin ||
           !['pali_accountsChanged', 'pali_chainChanged'].includes(id)
@@ -1020,6 +1072,7 @@ export class NativeConnectionsController {
     engine.setup(session.binding.origin);
     const connection = { id: `connection-${++this.serial}`, session, engine };
     this.connections.set(key, connection);
+    if (!this.grantMatchesSession(connection)) void this.retireConnection(connection).then(() => this.notifyRetiredConnection(connection)).catch(() => this.unavailable());
     return connection;
   }
   private onEvent(event: WalletConnectTransportEvent) {
@@ -1058,7 +1111,7 @@ export class NativeConnectionsController {
         }
     } else if (event.type === 'request-expired') {
       for (const read of this.reads.values()) if (read.wire.id === event.id) read.lifetime.abort();
-      this.controls.expire(event.id); this.preparations.expire(event.id); this.sentry.expire(event.id); this.psbt.expire(event.id); this.handoffs.expire(event.id);
+      this.accountChanges.expire(event.id); this.controls.expire(event.id); this.preparations.expire(event.id); this.sentry.expire(event.id); this.psbt.expire(event.id); this.handoffs.expire(event.id);
       for (const message of this.requests.values())
         if (message.wire.id === event.id) this.retireRequest(message, false);
     } else if (event.type === 'request')
@@ -1071,7 +1124,7 @@ export class NativeConnectionsController {
       });
     else if (event.type === 'unavailable') this.unavailable();
     this.revalidateSigningRequests();
-    this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.preparations.revalidate(); this.revalidatePsbtHandoff();
+    this.accountChanges.revalidate(); this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.preparations.revalidate(); this.revalidatePsbtHandoff();
     this.revalidateReads();
     this.publish();
   }
@@ -1399,16 +1452,16 @@ export class NativeConnectionsController {
     if (await this.retireConnection(connected)) this.notifyRetiredConnection(connected);
   }
   private async retireConnection(connected: Connected): Promise<boolean> {
-    const session = connected.session, key = sessionKey(session);
+    const session = connected.session, key = sessionKey(session), transition = this.accountTransitions.get(sessionKey(session));
     if (this.connections.get(key) !== connected) return false;
     for (const message of [...this.requests.values()])
       if (message.connection === connected) void this.retireRequest(message);
     const revoking = connected.engine.revoke(session.binding.origin, {
       allowAlreadyDisconnected: true,
     });
-    this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.preparations.revalidate(); this.revalidatePsbtHandoff(); this.revalidateReads();
+    this.accountChanges.revalidate(); this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.preparations.revalidate(); this.revalidatePsbtHandoff(); this.revalidateReads();
     await revoking;
-    if (this.connections.get(key) !== connected || connected.session !== session || connected.engine.get(session.binding.origin)) return false;
+    if (this.connections.get(key) !== connected || (connected.session !== session && (!transition || this.accountTransitions.get(key) !== transition)) || connected.engine.get(session.binding.origin)) return false;
     this.connections.delete(key);
     this.publish();
     return true;
@@ -1441,15 +1494,107 @@ export class NativeConnectionsController {
     });
   }
   private pendingCount(connection?: Connected): number {
-    return [...this.permissionRequests.values()].filter(value => !connection || value === connection).length +
+    return this.accountChanges.count(connection?.session.binding.topic ?? '') + (connection ? 0 : this.accountChanges.size) + [...this.permissionRequests.values()].filter(value => !connection || value === connection).length +
       [...this.reads.values()].filter(value => !connection || value.connection === connection).length +
       [...this.requests.values()].filter(value => !connection || value.connection === connection).length +
       (connection ? this.preparations.count(connection.session.binding.topic) + this.controls.count(connection.session.binding.topic) + this.sentry.count(connection.session.binding.topic) + this.psbt.count(connection.session.binding.topic) + this.handoffs.count(connection.session.binding.topic) : this.preparations.size + this.controls.size + this.sentry.size + this.psbt.size + this.handoffs.size);
   }
   private hasPendingWire(wire: WalletConnectRequest): boolean {
     const key = `${sessionKey(wire.session)}:${wire.id}`;
-    return this.permissionRequests.has(key) || this.reads.has(key) || this.preparations.has(wire) || this.controls.has(wire) || this.sentry.has(wire) || this.psbt.has(wire) || this.handoffs.has(wire) ||
+    return this.accountChanges.has(wire) || this.permissionRequests.has(key) || this.reads.has(key) || this.preparations.has(wire) || this.controls.has(wire) || this.sentry.has(wire) || this.psbt.has(wire) || this.handoffs.has(wire) ||
       [...this.requests.values()].some(value => value.wire.id === wire.id && value.session.binding.topic === wire.session.binding.topic);
+  }
+  private async queueAccountChange(wire: WalletConnectRequest) {
+    const host = this.host!, transport = this.transport!, context = host.context();
+    const connection = this.connections.get(sessionKey(wire.session)), origin = wire.session.binding.origin;
+    const session = connection?.session, grant = connection?.engine.get(origin);
+    const current = this.compatibleConnectionAccounts(context).find(account => account.index === grant?.accountId && account.type === grant?.accountType);
+    const reject = (code: number, message: string) => transport.respond(wire.session.binding, wire.id, { error: { code, message } }, () => this.check(), () => {});
+    if (!connection || !session || !grant || !current || !context.unlocked || this.options.source.getSnapshot().phase !== 'ready' || !connection.engine.isConnected(origin)) return reject(4100, 'Account is unavailable');
+    const scope = this.chainScope(context);
+    if (grant.chain !== scope.kind || grant.chainId !== scope.chainId || !this.permits(connection, wire, current, scope)) return reject(4100, 'Method or account is not authorized');
+    assertProviderRequestBudget({ method: wire.method, params: wire.params });
+    const params = wire.params;
+    if (params !== undefined && (!Array.isArray(params) || params.length > 1 || params.length === 1 && (!params[0] || typeof params[0] !== 'object' || Array.isArray(params[0]) || Object.keys(params[0]).some(key => !['currentAccountId', 'currentAccountType'].includes(key))))) return reject(-32602, 'Invalid account selection');
+    const requested = Array.isArray(params) ? params[0] : undefined;
+    if (requested && (requested.currentAccountId !== undefined && !Number.isSafeInteger(requested.currentAccountId) || requested.currentAccountType !== undefined && !['HDAccount', 'Imported', 'SmartAccount', 'Ledger', 'Trezor'].includes(requested.currentAccountType))) return reject(-32602, 'Invalid account selection');
+    const revision = this.options.source.getSnapshot().revision, network = JSON.stringify(context.network), adapter = this.transportGeneration;
+    const registration = scope.kind === 'syscoin' ? JSON.stringify(host.syscoin.registration()) : null;
+    const sessionIdentity = (value: WalletConnectSession) => { const { namespaces: _namespaces, ...identity } = value; return JSON.stringify(identity); };
+    const owner: NonNullable<ReturnType<typeof this.accountChangeOwners.get>> = { connection, session, grant, updating: false, check: () => {
+      this.check(); const next = host.context(), transition = this.accountTransitions.get(sessionKey(wire.session));
+      if (host !== this.host || transport !== this.transport || adapter !== this.transportGeneration ||
+          this.options.source.getSnapshot().phase !== 'ready' || this.options.source.getSnapshot().revision !== revision ||
+          !next.unlocked || next.networkId !== context.networkId || JSON.stringify(next.network) !== network ||
+          this.connections.get(sessionKey(wire.session)) !== connection || (owner.updating ? sessionIdentity(connection.session) !== sessionIdentity(owner.session) : connection.session !== owner.session) ||
+          (connection.engine.get(origin) !== owner.grant && !(transition?.wire === wire && owner.staged !== undefined && connection.engine.get(origin) === owner.staged)) ||
+          (registration !== null && JSON.stringify(host.syscoin.registration()) !== registration) ||
+          transition && transition.wire !== wire || wire.expiresAt <= Date.now() || session.expiry * 1000 <= Date.now()) failure('CONTEXT_CHANGED');
+    } };
+    owner.check();
+    if (requested?.currentAccountId === current.index && requested?.currentAccountType === current.type)
+      return transport.respond(wire.session.binding, wire.id, { result: { address: current.address, xpub: current.xpub } }, owner.check, () => {});
+    if (wire.freshness !== 'fresh') return reject(4001, 'Reissue a fresh account selection request');
+    if (this.hasPendingWire(wire)) return;
+    if (this.pendingCount() >= DAPP_REQUEST_LIMITS.pendingRequests || this.pendingCount(connection) >= DAPP_REQUEST_LIMITS.requestsPerOrigin) return reject(-32005, 'Too many requests');
+    const chain = dappCaipChain(scope), family = dappNamespace(scope);
+    const methods = [...new Set(Object.entries(session.namespaces).filter(([name, value]) => (name === family || name === chain) && value.accounts.some(account => account.startsWith(`${chain}:`))).flatMap(([, value]) => value.methods))];
+    const accounts = this.compatibleConnectionAccounts(context).filter(account => methods.every(method => this.supportedMethods(account.type, account.id).includes(method)))
+      .map(account => Object.freeze({ ...account }));
+    if (!accounts.length) return reject(4100, 'No compatible accounts');
+    const publicIdentity = (account: typeof current) => JSON.stringify([account.id, account.index, account.type, account.address, account.xpub]);
+    const assertCurrent = () => {
+      owner.check();
+      const liveAccounts = new Map(this.compatibleConnectionAccounts(host.context()).map(account => [account.id, publicIdentity(account)]));
+      if (!accounts.every(account => liveAccounts.get(account.id) === publicIdentity(account))) failure('CONTEXT_CHANGED');
+    };
+    this.accountChangeOwners.set(wire, owner);
+    this.accountChanges.enqueue(wire, { order: ++this.serial, accounts: Object.freeze(accounts), currentAccountId: current.id,
+      networkLabel: context.networkLabel, chainId: chain, assertCurrent });
+  }
+  private async commitAccountChange(wire: WalletConnectRequest, account: import('./host.ts').NativeConnectionAccount, signal: AbortSignal, assertCurrent: () => void) {
+    const owner = this.accountChangeOwners.get(wire), transport = this.transport!, host = this.host!;
+    if (!owner) return failure('REQUEST_EXPIRED');
+    const { connection } = owner, origin = wire.session.binding.origin, key = sessionKey(wire.session);
+    const check = () => { if (signal.aborted) return failure('REQUEST_EXPIRED'); assertCurrent(); owner.check(); };
+    check();
+    if (account.index === owner.grant.accountId && account.type === owner.grant.accountType) {
+      await abortable(transport.respond(wire.session.binding, wire.id, { result: null }, check, () => {}), signal); return;
+    }
+    if (this.accountTransitions.has(key)) return failure('BUSY');
+    let finish!: () => void;
+    const transition = { wire, done: new Promise<void>(resolve => { finish = resolve; }), finish: () => finish() };
+    this.accountTransitions.set(key, transition);
+    this.revalidateSigningRequests(); this.revalidateReads(); this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.preparations.revalidate();
+    let cleanup: Promise<unknown> | undefined;
+    const revoke = () => {
+      cleanup ??= Promise.resolve().then(() => this.retireConnection(connection)).then(() => this.notifyRetiredConnection(connection));
+      void cleanup.catch(() => { this.accountRetirementFailed = true; this.unavailable(); });
+    };
+    signal.addEventListener('abort', revoke, { once: true });
+    try {
+      const scope = this.chainScope(), anchor = this.accountAnchor(account, scope);
+      owner.updating = true;
+      await transport.updateSessionAccount(wire.session.binding, wire.id, anchor, signal, check, session => {
+        owner.session = session; connection.session = session;
+      });
+      owner.updating = false; check();
+      await connection.engine.changeAccount(origin, account.index, account.type as KeyringAccountType,
+        { address: account.address, xpub: account.xpub, network: host.context().network }, staged => { owner.staged = staged; });
+      const changed = connection.engine.get(origin);
+      if (!changed || changed.accountId !== account.index || changed.accountType !== account.type) return failure('CONTEXT_CHANGED');
+      owner.grant = changed; delete owner.staged; check();
+      await abortable(transport.respond(wire.session.binding, wire.id, { result: null }, check, () => {}), signal);
+      check();
+    } catch (cause) {
+      const cancelled = signal.aborted;
+      revoke(); await cleanup; if (cancelled) return failure('REQUEST_EXPIRED'); throw cause;
+    } finally {
+      signal.removeEventListener('abort', revoke);
+      owner.updating = false;
+      if (this.accountTransitions.get(key) === transition) this.accountTransitions.delete(key);
+      transition.finish();
+    }
   }
   private async queueSmartPreparation(wire: WalletConnectRequest) {
     const connection = this.connections.get(sessionKey(wire.session)), host = this.host!, transport = this.transport!;
@@ -1477,7 +1622,7 @@ export class NativeConnectionsController {
       const next = host.context(), live = connection.session;
       if (this.host !== host || this.transport !== transport || this.transportGeneration !== generation || host.walletBindingId !== wallet ||
           this.options.source.getSnapshot().phase !== 'ready' || !next.unlocked || next.networkId !== context.networkId || JSON.stringify(next.network) !== network ||
-          this.connections.get(sessionKey(wire.session)) !== connection || wire.expiresAt <= Date.now() || live.expiry * 1000 <= Date.now() ||
+          this.connections.get(sessionKey(wire.session)) !== connection || this.accountTransitions.has(sessionKey(wire.session)) || wire.expiresAt <= Date.now() || live.expiry * 1000 <= Date.now() ||
           (owner.updating ? identity(live) !== identity(owner.session) : JSON.stringify(live) !== JSON.stringify(owner.session)))
         failure('CONTEXT_CHANGED');
     } };
@@ -1511,7 +1656,7 @@ export class NativeConnectionsController {
       // never leave the original account grant active or authorize the new one.
       await connection.engine.revoke(origin, { allowAlreadyDisconnected: true });
       check();
-      const session = await transport.updatePreparedAccount(wire.session.binding, wire.id, allocation.account.address, signal, check, current => {
+      const session = await transport.updateSessionAccount(wire.session.binding, wire.id, allocation.account.address, signal, check, current => {
         owner.session = current;
         if (this.connections.get(sessionKey(wire.session)) === connection) connection.session = current;
       });
@@ -1570,7 +1715,7 @@ export class NativeConnectionsController {
     const assertSessionCurrent = () => {
       this.check();
       const phase = this.options.source.getSnapshot().phase;
-      if (!['ready', 'authenticating'].includes(phase) || this.connections.get(sessionKey(session)) !== connection || connection.session !== session || connection.engine.get(origin) !== grant || wire.expiresAt <= Date.now() || session.expiry * 1000 <= Date.now()) failure('CONTEXT_CHANGED');
+      if (!['ready', 'authenticating'].includes(phase) || this.connections.get(sessionKey(session)) !== connection || this.accountTransitions.has(sessionKey(session)) || connection.session !== session || connection.engine.get(origin) !== grant || wire.expiresAt <= Date.now() || session.expiry * 1000 <= Date.now()) failure('CONTEXT_CHANGED');
     };
     const assertCurrent = () => {
       assertSessionCurrent();
@@ -1626,13 +1771,13 @@ export class NativeConnectionsController {
     const revision = this.options.source.getSnapshot().revision, session = connection.session;
     const check = () => {
       this.check(); const next = this.host!.context();
-      if (this.options.source.getSnapshot().phase !== 'ready' || this.options.source.getSnapshot().revision !== revision || this.connections.get(sessionKey(session)) !== connection || connection.session !== session || connection.engine.get(origin) !== grant || !next.unlocked || next.activeAccountId !== account.id || next.networkId !== context.networkId || JSON.stringify(this.host!.syscoin.registration()) !== network || !next.accounts.some(value => value.id === account.id && value.xpub === account.xpub) || wire.expiresAt <= Date.now() || session.expiry * 1000 <= Date.now()) failure('CONTEXT_CHANGED');
+      if (this.options.source.getSnapshot().phase !== 'ready' || this.options.source.getSnapshot().revision !== revision || this.connections.get(sessionKey(session)) !== connection || this.accountTransitions.has(sessionKey(session)) || connection.session !== session || connection.engine.get(origin) !== grant || !next.unlocked || next.activeAccountId !== account.id || next.networkId !== context.networkId || JSON.stringify(this.host!.syscoin.registration()) !== network || !next.accounts.some(value => value.id === account.id && value.xpub === account.xpub) || wire.expiresAt <= Date.now() || session.expiry * 1000 <= Date.now()) failure('CONTEXT_CHANGED');
     };
     const resumeScope = this.signingResumeScope(wire.session.binding, 'selected');
     if (!resumeScope) return reject(4100, 'Account is unavailable');
     const assertSessionCurrent = () => {
       this.check();
-      if (this.connections.get(sessionKey(session)) !== connection || connection.session !== session || connection.engine.get(origin) !== grant ||
+      if (this.connections.get(sessionKey(session)) !== connection || this.accountTransitions.has(sessionKey(session)) || connection.session !== session || connection.engine.get(origin) !== grant ||
           resumeScope.adapter !== this.transportGeneration || wire.expiresAt <= Date.now() || session.expiry * 1000 <= Date.now()) failure('CONTEXT_CHANGED');
     };
     try {
@@ -1656,7 +1801,7 @@ export class NativeConnectionsController {
     const revision = this.options.source.getSnapshot().revision, session = connection.session, network = JSON.stringify(this.host!.syscoin.registration());
     const assertGrantCurrent = () => {
       this.check(); const next = this.host!.context();
-      if (this.options.source.getSnapshot().phase !== 'ready' || this.options.source.getSnapshot().revision !== revision || this.connections.get(sessionKey(session)) !== connection || connection.session !== session || connection.engine.get(origin) !== grant || !next.unlocked || next.activeAccountId !== account.id || next.networkId !== context.networkId || JSON.stringify(this.host!.syscoin.registration()) !== network || !next.accounts.some(value => value.id === account.id && value.xpub === account.xpub) || session.expiry * 1000 <= Date.now()) failure('CONTEXT_CHANGED');
+      if (this.options.source.getSnapshot().phase !== 'ready' || this.options.source.getSnapshot().revision !== revision || this.connections.get(sessionKey(session)) !== connection || this.accountTransitions.has(sessionKey(session)) || connection.session !== session || connection.engine.get(origin) !== grant || !next.unlocked || next.activeAccountId !== account.id || next.networkId !== context.networkId || JSON.stringify(this.host!.syscoin.registration()) !== network || !next.accounts.some(value => value.id === account.id && value.xpub === account.xpub) || session.expiry * 1000 <= Date.now()) failure('CONTEXT_CHANGED');
     };
     const check = () => { assertGrantCurrent(); if (wire.expiresAt <= Date.now()) failure('CONTEXT_CHANGED'); };
     this.sentry.enqueue(wire, { order: ++this.serial, accountLabel: account.label, address: account.address, networkLabel: context.networkLabel, chainId: dappCaipChain(scope), assertCurrent: check, assertGrantCurrent });
@@ -1672,7 +1817,7 @@ export class NativeConnectionsController {
     const session = connection?.session;
     const sessionCheck = () => {
       this.check();
-      if (!connection || connection.session !== session || session?.binding.origin !== origin || this.connections.get(sessionKey(session)) !== connection || wire.expiresAt <= Date.now() || session.expiry * 1000 <= Date.now()) failure('CONTEXT_CHANGED');
+      if (!connection || connection.session !== session || session?.binding.origin !== origin || this.connections.get(sessionKey(session)) !== connection || this.accountTransitions.has(sessionKey(session)) || wire.expiresAt <= Date.now() || session.expiry * 1000 <= Date.now()) failure('CONTEXT_CHANGED');
     };
     const respond = (response: { result: unknown } | { error: { code: number; message: string } }, check = sessionCheck) => this.transport!.respond(wire.session.binding, wire.id, response, check, () => undefined);
     if (!connection || session?.binding.origin !== origin || !Object.values(session.namespaces).some(namespace => namespace.methods.includes(wire.method) && namespace.accounts.some(value => value.startsWith(`${wire.chainId}:`)))) return respond({ error: { code: 4100, message: 'Method or chain is not authorized' } });
@@ -1691,7 +1836,7 @@ export class NativeConnectionsController {
         const revoking = connection.engine.revoke(origin, { allowAlreadyDisconnected: true });
         for (const message of [...this.requests.values()]) if (message.connection === connection) void this.retireRequest(message, false);
         for (const read of this.reads.values()) if (read.connection === connection) read.lifetime.abort();
-        this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.preparations.revalidate(); this.revalidatePsbtHandoff();
+        this.accountChanges.revalidate(); this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.preparations.revalidate(); this.revalidatePsbtHandoff();
         if (this.statusSession === session) this.dismissStatus();
         this.publish();
         try { await revoking; }
@@ -1741,27 +1886,31 @@ export class NativeConnectionsController {
     const account = grant && context.accounts.find(value => value.index === grant.accountId && value.type === grant.accountType);
     const respond = (response: { result: unknown } | { error: { code: number; message: string; data?: string } }, check: () => void = () => this.check()) => this.transport!.respond(wire.session.binding, wire.id, response, check, () => undefined);
     if (!connection || connection.session.binding.origin !== origin || !grant || !account || !context.unlocked || this.options.source.getSnapshot().phase !== 'ready' || !connection.engine.isConnected(origin)) return respond({ error: { code: 4100, message: 'Account is unavailable' } });
-    const scope = this.chainScope(context), syscoin = isDappSyscoinRead(wire.method);
-    if (grant.chain !== scope.kind || grant.chainId !== scope.chainId || syscoin !== (scope.kind === 'syscoin')) return respond({ error: { code: 4901, message: 'Requested chain is not selected' } });
+    const scope = this.chainScope(context), syscoin = isDappSyscoinRead(wire.method), walletRead = isDappWalletRead(wire.method);
+    if (grant.chain !== scope.kind || grant.chainId !== scope.chainId || !walletRead && syscoin !== (scope.kind === 'syscoin')) return respond({ error: { code: 4901, message: 'Requested chain is not selected' } });
     if (scope.kind === 'syscoin' && (grant.utxoAccount?.slip44 !== scope.slip44 || grant.utxoAccount.xpub !== account.xpub)) return respond({ error: { code: 4100, message: 'Account is unavailable' } });
     if (!this.permits(connection, wire, account, scope)) return respond({ error: { code: wire.chainId === dappCaipChain(scope) ? 4100 : 4901, message: 'Method or account is not authorized' } });
     const key = `${sessionKey(wire.session)}:${wire.id}`;
     if (this.hasPendingWire(wire)) return;
     if (this.pendingCount() >= DAPP_REQUEST_LIMITS.pendingRequests || this.pendingCount(connection) >= DAPP_REQUEST_LIMITS.requestsPerOrigin) return respond({ error: { code: -32005, message: 'Too many requests' } });
     let request;
-    try { request = syscoin ? normalizeDappSyscoinRead(wire.method, wire.params) : normalizeDappRpcRequest(wire.method, wire.params); }
+    try { request = walletRead ? normalizeDappWalletRead(wire.method, wire.params) : syscoin ? normalizeDappSyscoinRead(wire.method, wire.params) : normalizeDappRpcRequest(wire.method, wire.params); }
     catch (cause) { return respond({ error: { code: cause instanceof EthereumRpcErrorHandler ? cause.code : -32602, message: cause instanceof Error ? cause.message : 'Invalid RPC read' } }); }
-    const session = connection.session, revision = this.options.source.getSnapshot().revision, network = JSON.stringify(context.network), utxoNetwork = syscoin ? JSON.stringify(this.host!.syscoin.registration()) : null;
+    const session = connection.session, revision = this.options.source.getSnapshot().revision, network = JSON.stringify(context.network), utxoNetwork = scope.kind === 'syscoin' ? JSON.stringify(this.host!.syscoin.registration()) : null;
     const lifetime = new AbortController(), finish = this.disposal.begin();
     const check = () => {
       this.check(); const next = this.host!.context();
-      if (lifetime.signal.aborted || wire.expiresAt <= Date.now() || session.expiry * 1000 <= Date.now() || revision !== this.options.source.getSnapshot().revision || this.options.source.getSnapshot().phase !== 'ready' || !next.unlocked || next.networkId !== context.networkId || JSON.stringify(next.network) !== network || this.connections.get(sessionKey(session)) !== connection || connection.session !== session || connection.engine.get(origin) !== grant || (utxoNetwork !== null && JSON.stringify(this.host!.syscoin.registration()) !== utxoNetwork) || !next.accounts.some(value => value.id === account.id && (syscoin || value.address === account.address) && value.xpub === account.xpub)) failure('CONTEXT_CHANGED');
+      if (lifetime.signal.aborted || wire.expiresAt <= Date.now() || session.expiry * 1000 <= Date.now() || revision !== this.options.source.getSnapshot().revision || this.options.source.getSnapshot().phase !== 'ready' || !next.unlocked || next.networkId !== context.networkId || JSON.stringify(next.network) !== network || this.connections.get(sessionKey(session)) !== connection || this.accountTransitions.has(sessionKey(session)) || connection.session !== session || connection.engine.get(origin) !== grant || (utxoNetwork !== null && JSON.stringify(this.host!.syscoin.registration()) !== utxoNetwork) || !next.accounts.some(value => value.id === account.id && (syscoin || value.address === account.address) && value.xpub === account.xpub)) failure('CONTEXT_CHANGED');
     };
     const entry = { wire, connection, lifetime, check };
     const timer = setTimeout(() => lifetime.abort(), Math.max(0, Math.min(wire.expiresAt, session.expiry * 1000) - Date.now()));
     this.reads.set(key, entry);
     try {
-      check(); const result = isDappSyscoinRead(request.method) ? await this.host!.syscoin.read(request as ReturnType<typeof normalizeDappSyscoinRead>, account, lifetime.signal, check) : await this.host!.reads.read(request as ReturnType<typeof normalizeDappRpcRequest>, lifetime.signal, check); check();
+      check();
+      if (typeof request === 'string' && !this.host!.walletReads) throw new EthereumRpcErrorHandler(4200, 'Unsupported wallet read');
+      const result = typeof request === 'string' ? await this.host!.walletReads!.read(request, account, lifetime.signal, check)
+        : isDappSyscoinRead(request.method) ? await this.host!.syscoin.read(request as ReturnType<typeof normalizeDappSyscoinRead>, account, lifetime.signal, check)
+        : await this.host!.reads.read(request as ReturnType<typeof normalizeDappRpcRequest>, lifetime.signal, check); check();
       await respond({ result }, check);
     } catch (cause) {
       check();
@@ -1770,6 +1919,17 @@ export class NativeConnectionsController {
   }
   private async respond(request: WalletConnectRequest) {
     this.check();
+    if (this.accountTransitions.has(sessionKey(request.session))) {
+      await this.transport!.respond(request.session.binding, request.id, { error: { code: -32002, message: 'Account selection is in progress' } }, () => this.check(), () => {}).catch(() => undefined);
+      return;
+    }
+    const grantedConnection = this.connections.get(sessionKey(request.session));
+    if (grantedConnection && !this.grantMatchesSession(grantedConnection)) {
+      try { await this.transport!.respond(request.session.binding, request.id, { error: { code: 4100, message: 'A new connection approval is required' } }, () => this.check(), () => {}); }
+      finally { await this.retireConnection(grantedConnection); this.notifyRetiredConnection(grantedConnection); }
+      return;
+    }
+    if (request.method === 'wallet_changeAccount') { await this.queueAccountChange(request); return; }
     if (request.method === 'wallet_prepareSmartAccount') { await this.queueSmartPreparation(request); return; }
     if ((PSBT_DAPP_METHODS as readonly string[]).includes(request.method)) { await this.queuePsbtRequest(request); return; }
     if (isDappPermissionMethod(request.method)) {
@@ -1777,7 +1937,7 @@ export class NativeConnectionsController {
       return;
     }
     if ((SENTRY_DAPP_METHODS as readonly string[]).includes(request.method)) { await this.queueSentryRequest(request); return; }
-    if (isDappPublicRpcMethod(request.method) || isDappSyscoinRead(request.method)) {
+    if (isDappPublicRpcMethod(request.method) || isDappSyscoinRead(request.method) || isDappWalletRead(request.method)) {
       await this.respondRead(request);
       return;
     }
@@ -1796,7 +1956,7 @@ export class NativeConnectionsController {
       if (
         revision !== this.options.source.getSnapshot().revision ||
         context.networkId !== this.host!.context().networkId ||
-        this.connections.get(key) !== connected ||
+        this.connections.get(key) !== connected || this.accountTransitions.has(key) ||
         connected?.session !== session ||
         connected?.engine.get(request.session.binding.origin) !== grant
       )
@@ -1862,7 +2022,7 @@ export class NativeConnectionsController {
                 ? {
                     chainId: context.network.chainId,
                     batchSupported:
-                      nativeAccount!.type === 'HDAccount' || nativeAccount!.type === 'Imported' ||
+                      nativeAccount!.type === 'HDAccount' || nativeAccount!.type === 'Imported' || nativeAccount!.type === 'Ledger' || nativeAccount!.type === 'Trezor' ||
                       nativeAccount!.type === 'SmartAccount' && this.host!.supportsAtomicCalls(nativeAccount!.id),
                     atomicSupported:
                       nativeAccount!.type === 'SmartAccount' &&
@@ -1896,6 +2056,8 @@ export class NativeConnectionsController {
           account &&
           (grant?.accountType === 'HDAccount' ||
             grant?.accountType === 'Imported' ||
+            grant?.accountType === 'Ledger' ||
+            grant?.accountType === 'Trezor' ||
             grant?.accountType === 'SmartAccount') &&
           grant.chain === 'ethereum' &&
           session &&
@@ -2036,7 +2198,7 @@ export class NativeConnectionsController {
     const message = this.requests.values().next().value as
       | PendingSigning
       | undefined;
-    if (!message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder) return null;
+    if (!message || Math.min(this.accountChanges.firstOrder, this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder) return null;
     try {
       return Object.freeze({
         ...message.review,
@@ -2054,7 +2216,7 @@ export class NativeConnectionsController {
     const message = this.requests.get(id);
     if (!message) return this.psbt.isRequestAuthenticating(id) || this.preparations.isRequestAuthenticating(id);
     if (this.requests.values().next().value !== message ||
-        Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder) return false;
+        Math.min(this.accountChanges.firstOrder, this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder) return false;
     try {
       if (!this.requestConnectionCurrent(message)) return false;
       message.approval?.assertCurrent();
@@ -2077,6 +2239,7 @@ export class NativeConnectionsController {
     this.publish();
   }
   private requestConnectionCurrent(message: PendingSigning): boolean {
+    if (this.accountTransitions.has(sessionKey(message.session))) return false;
     const snapshot = this.options.source.getSnapshot();
     const currentPhase =
       snapshot.phase === 'ready' ||
@@ -2158,8 +2321,9 @@ export class NativeConnectionsController {
     if (message.handoff) retireNativeSigningHandoff(message.handoff);
     const entry = { id: message.resumeId, wire: message.wire, scope, expiresAt: message.review.expiresAt, order: message.queueOrder,
       assertCurrent: () => { const approval = message.approval; if (!approval) return failure('REQUEST_EXPIRED'); approval.assertCurrent(); if (this.requests.get(message.id) !== message || !this.requestConnectionCurrent(message)) failure('CONTEXT_CHANGED'); },
-      eligible: () => message.busy && !message.dispatched && !message.resultReady && !message.broadcastHash && !message.eoa,
-      drain: () => message.work ?? Promise.resolve(), retire: () => { void this.retireRequest(message, false); },
+      eligible: () => message.busy && !message.dispatched && !message.resultReady &&
+        (message.eoa ? message.eoa.isAwaitingSignature() : !message.broadcastHash),
+      drain: async () => { await message.work; await message.eoa?.drain(); }, retire: () => { void this.retireRequest(message, false); },
     };
     return resume ? this.handoffs.resume(entry, resume) : this.handoffs.capture(entry);
   }
@@ -2183,7 +2347,7 @@ export class NativeConnectionsController {
     this.requests.delete(message.id);
     message.authenticationScope.retire();
     retireNativeSigningHandoff(message.handoff);
-    const reservation = message.request.method === 'wallet_sendCalls'
+    const reservation = message.request.method === 'wallet_sendCalls' && !message.handoff.isSuspended()
       ? this.host?.calls
         .releaseSendCallsBundleReservation(
           message.session.binding.origin,
@@ -2283,6 +2447,10 @@ export class NativeConnectionsController {
     if (!saved && this.hasPendingWire(wire)) return;
     if (!saved && (this.pendingCount() >= DAPP_REQUEST_LIMITS.pendingRequests || this.pendingCount(connection) >= DAPP_REQUEST_LIMITS.requestsPerOrigin))
       return reject(-32005, 'Too many requests');
+    const resumingEoaCalls = saved && wire.method === 'wallet_sendCalls' && account.type !== 'SmartAccount';
+    const retainedContinuation = resumingEoaCalls ? this.handoffs.continuation(saved) : undefined;
+    const retainedCalls = isNativeEoaCallsContinuation(retainedContinuation) ? retainedContinuation : undefined;
+    if (resumingEoaCalls && !retainedCalls) return failure('REQUEST_EXPIRED');
     let request: SigningRequest | undefined;
     try {
       if (wire.method === 'eth_sendTransaction') {
@@ -2314,7 +2482,7 @@ export class NativeConnectionsController {
           account.type === 'SmartAccount' &&
           this.host!.supportsAtomicCalls(account.id);
         assertDappCallsAtomicSupport(calls, supported);
-        if (!supported && account.type !== 'HDAccount' && account.type !== 'Imported')
+        if (!supported && account.type !== 'HDAccount' && account.type !== 'Imported' && account.type !== 'Ledger' && account.type !== 'Trezor')
           throw new EthereumRpcErrorHandler(
             4200,
             'Smart atomic calls are unavailable for this account'
@@ -2337,8 +2505,8 @@ export class NativeConnectionsController {
             from: account.address,
             chainId: String(context.network.chainId),
           }),
-          bundleId: calls.id ?? this.host!.calls.generateWalletBundleId(),
-          reservationId: this.host!.calls.generateWalletBundleId(),
+          bundleId: retainedCalls?.identity.bundleId ?? calls.id ?? this.host!.calls.generateWalletBundleId(),
+          reservationId: retainedCalls?.identity.reservationId ?? this.host!.calls.generateWalletBundleId(),
         };
       } else if (isSmartAccountModuleRequestMethod(wire.method)) {
         if (account.type !== 'SmartAccount') throw new EthereumRpcErrorHandler(-32600, 'The connected account is not a smart account');
@@ -2390,7 +2558,7 @@ export class NativeConnectionsController {
     );
     if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now())
       return reject(4001, 'Request expired');
-    if (request.method === 'wallet_sendCalls') {
+    if (request.method === 'wallet_sendCalls' && retainedCalls === undefined) {
       const registry = this.host!.calls;
       const revision = this.options.source.getSnapshot().revision;
       const reserved = await registry.reserveSendCallsBundle(
@@ -2409,7 +2577,7 @@ export class NativeConnectionsController {
         this.disposed ||
         this.options.source.getSnapshot().phase !== 'ready' ||
         this.options.source.getSnapshot().revision !== revision ||
-        this.connections.get(sessionKey(wire.session)) !== connection ||
+        this.connections.get(sessionKey(wire.session)) !== connection || this.accountTransitions.has(sessionKey(wire.session)) ||
         connection.engine.get(origin) !== grant ||
         expiresAt <= Date.now()
       ) {
@@ -2535,7 +2703,7 @@ export class NativeConnectionsController {
         message.approval.assertCurrent();
         if (
           this.requests.values().next().value === message &&
-          Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) > message.queueOrder &&
+          Math.min(this.accountChanges.firstOrder, this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) > message.queueOrder &&
           context.activeAccountId === account.id &&
           !message.review.error
         )
@@ -2618,7 +2786,7 @@ export class NativeConnectionsController {
     const message = this.requests.values().next().value;
     if (
       !message ||
-      Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder ||
+      Math.min(this.accountChanges.firstOrder, this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder ||
       message.busy ||
       message.prepared ||
       message.smart ||
@@ -2654,6 +2822,9 @@ export class NativeConnectionsController {
     let advisories: NativeTransactionReview['advisories'] = [];
     let warning = false;
     const operation = createNativeEoaCalls({
+      continuation: captureNativeSigningContinuation(message.handoff, () => createNativeEoaCallsContinuation({
+        calls: request.calls, origin: message.session.binding.origin, bundleId: request.bundleId, reservationId: request.reservationId,
+      })),
       calls: request.calls, origin: message.session.binding.origin,
       bundleId: request.bundleId, reservationId: request.reservationId,
       expiresAt: message.requestExpiresAt, registry: this.host!.calls,
@@ -2671,8 +2842,10 @@ export class NativeConnectionsController {
         approval.assertCurrent();
         advisories = [];
         warning = false;
+        const handoff: NativeSigningHandoff = Object.freeze({ ...message.handoff,
+          beforeSignature: () => { completeNativeSigningOwnerStep(message.handoff, false); operation.completeSignature(); } });
         const prepared = await this.host!.prepareTransaction({ accountId: message.accountId,
-          networkId: message.networkId, transaction, approval, handoff: message.handoff }, approval.assertCurrent, this.requestAuthentication(message));
+          networkId: message.networkId, transaction, approval, handoff }, approval.assertCurrent, this.requestAuthentication(message));
         approval.assertCurrent();
         if ('operation' in prepared) { await prepared.operation.dispose(); throw new Error('Expected an EOA review'); }
         const result = await reviewDappAddressAdvisories({
@@ -2935,7 +3108,7 @@ export class NativeConnectionsController {
     if (
       !message ||
       revision !== this.revision ||
-      (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder) ||
+      (this.requests.values().next().value !== message || Math.min(this.accountChanges.firstOrder, this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder) ||
       message.review.kind !== 'transaction' ||
       message.dispatched ||
       (message.broadcastHash && !message.eoa)
@@ -3016,7 +3189,7 @@ export class NativeConnectionsController {
     if (
       !message ||
       revision !== this.revision ||
-      (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder) ||
+      (this.requests.values().next().value !== message || Math.min(this.accountChanges.firstOrder, this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder) ||
       message.request.method !== 'eth_sendTransaction' ||
       message.review.kind === 'message' ||
       message.dispatched ||
@@ -3100,7 +3273,7 @@ export class NativeConnectionsController {
   private async previewEncryption(id: string, revision: number): Promise<string> {
     const message = this.requests.get(id);
     if (!message || revision !== this.revision || this.requests.values().next().value !== message ||
-      Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder ||
+      Math.min(this.accountChanges.firstOrder, this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder ||
       message.review.error || message.dispatched || this.host!.context().activeAccountId !== message.accountId) return failure('REQUEST_EXPIRED');
     if (message.busy || this.action) return failure('BUSY');
     message.busy = true;
@@ -3142,7 +3315,7 @@ export class NativeConnectionsController {
   private async performRetrySmartMetadata(id: string, revision: number): Promise<void> {
     const message = this.requests.get(id);
     if (!message || revision !== this.revision || this.requests.values().next().value !== message ||
-        Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder ||
+        Math.min(this.accountChanges.firstOrder, this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder ||
         !isModuleRequest(message.request) || message.dispatched || message.resultReady || message.review.error ||
         this.host!.context().activeAccountId !== message.accountId || !message.smart || message.smart.getSnapshot().phase !== 'complete')
       return failure('REQUEST_EXPIRED');
@@ -3177,7 +3350,7 @@ export class NativeConnectionsController {
     if (
       !message ||
       revision !== this.revision ||
-      (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder)
+      (this.requests.values().next().value !== message || Math.min(this.accountChanges.firstOrder, this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder)
     )
       return failure('REQUEST_EXPIRED');
     if (message.dispatched) return failure('REQUEST_EXPIRED');
@@ -3301,7 +3474,7 @@ export class NativeConnectionsController {
     if (
       !message ||
       revision !== this.revision ||
-      (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder)
+      (this.requests.values().next().value !== message || Math.min(this.accountChanges.firstOrder, this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder)
     )
       return failure('REQUEST_EXPIRED');
     if (message.dispatched) return failure('REQUEST_EXPIRED');
@@ -3383,7 +3556,7 @@ export class NativeConnectionsController {
       this.disposed = true;
       this.clearDeadlines(); this.canceledPairings.clear();
       for (const read of this.reads.values()) read.lifetime.abort();
-      this.controls.clear(); this.sentry.clear(); this.psbt.clear(); this.preparations.clear(); this.handoffs.cancelDapp();
+      this.accountChanges.clear(); this.controls.clear(); this.sentry.clear(); this.psbt.clear(); this.preparations.clear(); this.handoffs.cancelDapp();
       for (const message of [...this.requests.values()])
         void this.retireRequest(message, false);
       this.transportOwner = undefined;
@@ -3392,7 +3565,7 @@ export class NativeConnectionsController {
       this.unsubscribe();
       this.publish();
     }, [async () => {
-      await Promise.all([this.controls.dispose(), this.sentry.dispose(), this.psbt.dispose(), this.preparations.dispose(), this.handoffs.retired()]);
+      await Promise.all([this.accountChanges.dispose(), this.controls.dispose(), this.sentry.dispose(), this.psbt.dispose(), this.preparations.dispose(), this.handoffs.retired()]);
       await this.requestRetirement;
       await this.opening?.catch(() => undefined);
       await this.openingTransport?.catch(() => undefined);

@@ -345,7 +345,7 @@ test('generic contract creation keeps activity readable without inventing a reci
 for (const mode of ['missing','invalid','malformed']) test(`custody ${mode} token metadata never displays raw units as a human amount`, async ({page}, testInfo) => {
   await page.goto('/?token-metadata='+mode);
   const row=page.getByRole('button',{name:/UNKNOWN.*View transaction details/});
-  const amount=mode==='malformed'?'? UNKNOWN':'UNKNOWN transfer';
+  const amount=mode==='malformed'?'? UNKNOWN':'UNKNOWN Transfer';
   await expect(row).toBeVisible();
   await page.screenshot({path:testInfo.outputPath('custody-'+mode+'-list.png')});
   await expect(row).toContainText(amount);

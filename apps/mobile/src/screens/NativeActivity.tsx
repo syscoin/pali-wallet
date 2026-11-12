@@ -1,3 +1,4 @@
+import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import React, {
   useCallback,
@@ -12,7 +13,6 @@ import {
   BackHandler,
   FlatList,
   Linking,
-  Modal,
   ScrollView,
   StyleSheet,
   View,
@@ -33,6 +33,7 @@ import type {
   NativeActivity,
   NativeActivitySnapshot,
 } from '../activity/nativeActivity';
+const t = nativeI18n.t.bind(nativeI18n);
 
 // The controller admits observations only for its current account/network generation.
 // Unknown or unavailable RPC results leave the existing indexed/local fallback intact.
@@ -43,66 +44,84 @@ const currentObservation = (row: ActivityRow) =>
     row.observation?.status === 'pending')
     ? row.observation
     : undefined;
-const status = (row: ActivityRow) => {
+const statusTag = (row: ActivityRow) => {
   const observation = currentObservation(row);
   if (observation)
     return observation.status === 'confirmed'
-      ? 'Confirmed'
+      ? 'confirmed'
       : observation.status === 'reverted'
-      ? 'Reverted'
-      : 'Pending';
+      ? 'reverted'
+      : 'pending';
   return row.indexedStatus === 'confirmed'
-    ? 'Confirmed'
+    ? 'confirmed'
     : row.indexedStatus === 'failed'
-    ? 'Reverted'
+    ? 'reverted'
     : row.indexedStatus === 'replaced'
-    ? 'Replaced'
+    ? 'replaced'
     : row.indexedStatus === 'replacementPending'
-    ? 'Replacement pending'
+    ? 'replacementPending'
     : row.indexedStatus === 'pending'
-    ? 'Pending'
+    ? 'pending'
     : !row.indexed && row.retainedObservation?.status === 'mined'
     ? row.retainedObservation.outcome === 'confirmed'
-      ? 'Confirmed'
-      : 'Reverted'
+      ? 'confirmed'
+      : 'reverted'
     : !row.indexed && row.retainedObservation?.status === 'missing'
-    ? 'Submission unconfirmed'
+    ? 'unconfirmed'
     : row.local?.phase === 'nonce-consumed'
-    ? 'Nonce consumed · outcome unavailable'
+    ? 'nonceConsumed'
     : row.local?.phase === 'confirmed'
-    ? 'Previously confirmed by Pali'
+    ? 'previouslyConfirmed'
     : row.local?.phase === 'reverted'
-    ? 'Previously reverted'
+    ? 'previouslyReverted'
     : row.local
-    ? 'Submission unconfirmed'
+    ? 'unconfirmed'
     : row.checking
-    ? 'Checking transaction…'
-    : 'Indexed · not verified';
+    ? 'checking'
+    : 'indexed';
 };
-function savedPendingStatus(row: ActivityRow) {
+function savedPendingStatusTag(row: ActivityRow) {
   const retained = row.retainedObservation;
-  if (currentObservation(row) || !row.local) return status(row);
+  if (currentObservation(row) || !row.local) return statusTag(row);
   if (retained?.status === 'mined')
-    return retained.outcome === 'confirmed' ? 'Confirmed' : 'Reverted';
+    return retained.outcome === 'confirmed' ? 'confirmed' : 'reverted';
   if (retained?.status === 'missing' && BigInt(retained.latestNonce) > BigInt(row.local.nonce))
-    return 'Nonce consumed · outcome unavailable';
-  if (row.checking) return 'Checking transaction…';
-  if (row.unavailable) return 'Current status unavailable';
-  if (row.local.phase === 'signed') return 'Signed · submission not confirmed';
-  if (row.local.phase === 'submitted') return 'Submitted · waiting for confirmation';
-  return 'Submission unconfirmed';
+    return 'nonceConsumed';
+  if (row.checking) return 'checking';
+  if (row.unavailable) return 'unavailable';
+  if (row.local.phase === 'signed') return 'signed';
+  if (row.local.phase === 'submitted') return 'submitted';
+  return 'unconfirmed';
 }
+const statusLabels = {
+  confirmed: () => t('send.confirmed'),
+  reverted: () => t('send.reverted'),
+  pending: () => t('send.pending'),
+  replaced: () => t('transactions.replaced'),
+  replacementPending: () => t('transactions.replacementPending'),
+  unconfirmed: () => t('mobile.activityViews.nativeActivity.submissionUnconfirmed'),
+  nonceConsumed: () => t('mobile.activityViews.nativeActivity.nonceConsumedOutcomeUnavailable'),
+  previouslyConfirmed: () => t('mobile.activityViews.nativeActivity.previouslyConfirmedByPali'),
+  previouslyReverted: () => t('mobile.activityViews.nativeActivity.previouslyReverted'),
+  checking: () => t('mobile.connections.psbt.checking'),
+  indexed: () => t('mobile.activityViews.nativeActivity.indexedNotVerified'),
+  unavailable: () => t('mobile.activityViews.nativeActivity.currentStatusUnavailable'),
+  signed: () => t('mobile.activityViews.nativeActivity.signedSubmissionNotConfirmed'),
+  submitted: () => t('mobile.activityViews.nativeActivity.submittedWaitingForConfirmation'),
+};
+const status = (row: ActivityRow) => statusLabels[statusTag(row)]();
+const savedPendingStatus = (row: ActivityRow) => statusLabels[savedPendingStatusTag(row)]();
 function amount(row: ActivityRow, symbol: string): string {
-  if (row.local?.collectibleTransfer) return 'Collectible transfer';
-  if (row.local?.contractInteraction && row.local.amountUnits === '0') return 'Contract interaction';
+  if (row.local?.collectibleTransfer) return t('mobile.activityViews.nativeActivity.collectibleTransfer');
+  if (row.local?.contractInteraction && row.local.amountUnits === '0') return t('transactionDisplay.contractInteraction');
   if (row.display) {
     if (row.display.amountUnavailable) return `? ${row.display.displaySymbol}`;
-    if (row.display.hasUnknownDecimals) return `${row.display.displaySymbol} transfer`;
+    if (row.display.hasUnknownDecimals) return t('transactions.symbolTransfer', { symbol: row.display.displaySymbol });
     if (row.display.isNft && row.display.tokenId !== undefined)
       return `${row.display.nftQuantity ?? row.display.formattedValue} ${row.display.displaySymbol} #${row.display.tokenId}`;
     return `${row.display.formattedValue} ${row.display.displaySymbol}`;
   }
-  if (row.indexed) return 'Amount unavailable';
+  if (row.indexed) return t('mobile.activityViews.nativeActivity.amountUnavailable');
   if (row.local)
     return row.local.token
       ? `${formatTokenUnits(row.local.amountUnits, row.local.token.decimals)} ${
@@ -110,11 +129,9 @@ function amount(row: ActivityRow, symbol: string): string {
         }`
       : `${formatBaseUnits(row.local.amountUnits, 18)} ${symbol}`;
   if (!row.observation)
-    return row.candidate?.tokenHint ? 'ERC20 activity' : 'Network activity';
+    return row.candidate?.tokenHint ? t('mobile.activityViews.nativeActivity.erc20Activity') : t('mobile.activityViews.nativeActivity.networkActivity');
   if (row.observation.events.length)
-    return `${row.observation.events.length} token transfer event${
-      row.observation.events.length === 1 ? '' : 's'
-    }`;
+    return t('mobile.activityViews.nativeActivity.tokenTransferEvents', { count: row.observation.events.length });
   return `${formatBaseUnits(row.observation.valueUnits, 18)} ${symbol}`;
 }
 const rowMonetaryAmount = (row: ActivityRow) => {
@@ -132,10 +149,10 @@ export function nativeActivityRowPresentation(row: ActivityRow, context: {
   const date = rowDate(row);
   return {
     date, direction: flow, status: state, fullAmount, numeric,
-    title: !numeric ? fullAmount : flow === 'sent' ? 'Sent' : flow === 'received' ? 'Received' : flow === 'self' ? 'Self transfer' : 'Activity',
-    subtitle: `${context.networkName} · ${state}${row.unavailable ? ' · Details unavailable' : ''}`,
+    title: !numeric ? fullAmount : flow === 'sent' ? t('send.sent') : flow === 'received' ? t('send.received') : flow === 'self' ? t('mobile.activityViews.nativeActivity.selfTransfer') : t('buttons.activity'),
+    subtitle: `${context.networkName} · ${state}${row.unavailable ? ` · ${t('mobile.activityViews.nativeActivity.detailsUnavailable')}` : ''}`,
     amount: numeric && context.hideBalances ? HIDDEN_BALANCE : numeric ? compactActivityAmountLabel(`${/^[+−-]/.test(fullAmount) ? '' : flow === 'received' ? '+' : flow === 'sent' ? '-' : ''}${fullAmount}`.replace(/^−/, '-')) : '',
-    label: `${context.hideBalances && numeric ? 'Amount hidden' : fullAmount}, ${state}. ${date.label} ${date.time}. View transaction details`,
+    label: t('mobile.activityViews.nativeActivity.transactionLabel', { amount: context.hideBalances && numeric ? t('mobile.activityViews.nativeActivity.amountHidden') : fullAmount, status: state, date: date.label, time: date.time }),
   };
 }
 function fee(row: ActivityRow, symbol: string): string {
@@ -148,7 +165,7 @@ function fee(row: ActivityRow, symbol: string): string {
   } catch {
     // A malformed observation must not prevent navigation or hide other details.
   }
-  return 'Actual fee not verified';
+  return t('mobile.activityViews.nativeActivity.actualFeeNotVerified');
 }
 
 function sender(row: ActivityRow, owner: string): string | null {
@@ -194,6 +211,7 @@ export function NativeActivityScreen({
   detailOnly?: boolean;
   savedPendingOnly?: boolean;
 }) {
+  useNativeTranslation();
   const snapshot = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
@@ -248,6 +266,7 @@ function NativeActivityContent({
   detailOnly?: boolean;
   savedPendingOnly?: boolean;
 }) {
+  useNativeTranslation();
   const { hidden: hideBalances } = useBalancePrivacy();
   const [selected, setSelected] = useState<string | null>(null);
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
@@ -256,6 +275,7 @@ function NativeActivityContent({
   const [feedback, setFeedback] = useState('');
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [copying, setCopying] = useState(false);
+  const dialogOpen = optionsOpen || copyAddress !== null;
   const lifetime = useRef({ epoch: 0 });
   useEffect(() => {
     const target = initialHash ?? (savedPendingOnly ? 'saved-pending' : null);
@@ -308,14 +328,18 @@ function NativeActivityContent({
   const replacement = findRow((row) => row.local?.originalHash === chosen?.hash &&
     (row.local?.operation === 'cancel' || row.local?.operation === 'speed-up'));
   const original = chosen?.local?.originalHash && findRow((row) => row.hash === chosen.local!.originalHash);
+  // A Smart account can use different outer fee payers. Only their own nonce
+  // group conflicts; a cancellation of any speed-up descendant still blocks it.
   const replacementBlocksReview = chosen?.local && !!findRow(({ local }) =>
-    local?.nonce === chosen.local!.nonce &&
+    local?.chainId === chosen.local!.chainId && local.nonce === chosen.local!.nonce &&
+    (local.smartAccount?.payer ?? local.address).toLowerCase() ===
+      (chosen.local!.smartAccount?.payer ?? chosen.local!.address).toLowerCase() &&
     (local.operation === 'cancel' || (local.originalHash === chosen.hash &&
       local.operation === 'speed-up' && local.phase !== 'signed' && local.phase !== 'attempted'))
   );
   const canReplace = chosen?.local && chosen.local.operation !== 'cancel' && !replacementBlocksReview &&
     (chosen.local.transactionType === 0 || chosen.local.transactionType === 2) &&
-    chosenObservation?.status === 'pending' && chosenObservation.from.toLowerCase() === owner.toLowerCase() &&
+    chosenObservation?.status === 'pending' && chosenObservation.from.toLowerCase() === (chosen.local.smartAccount?.payer ?? owner).toLowerCase() &&
     chosenObservation.nonce === String(chosen.local.nonce);
   const canCancelSaved = chosen?.local && !chosen.checking && !chosenObservation &&
     chosen.local.operation !== 'cancel' && !replacementBlocksReview &&
@@ -325,6 +349,8 @@ function NativeActivityContent({
     chosen.retainedObservation.latestNonce === String(chosen.local.nonce);
   const reviewAction = (action: NativeActivityReviewAction, direct: ((hash: string) => void) | undefined) => {
     if (!chosen?.local) return undefined;
+    if (chosen.local.smartAccount && ['speed-up', 'cancel', 'cancel-saved'].includes(action))
+      return direct ?? (onNavigateToReview ? (hash: string) => onNavigateToReview(action, hash) : undefined);
     if (!chosen.local.inspectionOnly) return direct;
     if (!chosen.local.reviewNavigation || !onNavigateToReview) return undefined;
     return (hash: string) => onNavigateToReview(action, hash);
@@ -402,7 +428,7 @@ function NativeActivityContent({
   };
   const close = () => {
     if (optionsOpen) { setOptionsOpen(false); return; }
-    setCopyAddress(null);
+    if (copyAddress !== null) { if (!copying) setCopyAddress(null); return; }
     setDetailsFor(null);
     if (detailOnly) { onBack(); return; }
     if (selected) setSelected(null);
@@ -429,9 +455,9 @@ function NativeActivityContent({
     })
   );
   useLayoutEffect(() => {
-    navigation?.setImmersive(!!detailOnly || !!selected || !!copyAddress);
+    navigation?.setImmersive(!!detailOnly || !!selected || dialogOpen);
     return () => navigation?.setImmersive(false);
-  }, [navigation, selected, copyAddress, detailOnly]);
+  }, [navigation, selected, dialogOpen, detailOnly]);
   useEffect(() => {
     const listener = BackHandler.addEventListener('hardwareBackPress', () => {
       close();
@@ -446,7 +472,7 @@ function NativeActivityContent({
     if (index < 0) {
       restored.current = true;
       setFeedback(
-        'Your saved position is outside the cached history. Showing recent activity.'
+        t('mobile.activityViews.nativeActivity.yourSavedPositionIsOutsideTheCachedHistoryShowing')
       );
       return;
     }
@@ -469,11 +495,11 @@ function NativeActivityContent({
         throw new Error('COPY_FAILED');
       if (captured === lifetime.current.epoch) {
         setCopyAddress(null);
-        setFeedback('Address copied. Verify it again before sending funds.');
+        setFeedback(t('mobile.activityViews.nativeActivity.addressCopiedVerifyItAgainBeforeSendingFunds'));
       }
     } catch {
       if (captured === lifetime.current.epoch)
-        setFeedback('Could not copy the address. Try again.');
+        setFeedback(t('mobile.activityViews.nativeActivity.couldNotCopyTheAddressTryAgain'));
     } finally {
       if (captured === lifetime.current.epoch) setCopying(false);
     }
@@ -481,25 +507,27 @@ function NativeActivityContent({
   return (
     <SafeAreaView
       edges={
-        navigation && !selected && !copyAddress ? ['top'] : ['top', 'bottom']
+        navigation && !selected && !dialogOpen ? ['top'] : ['top', 'bottom']
       }
       style={s.root}
     >
+      <View style={s.activityContent} testID="activity-underlay" pointerEvents={dialogOpen ? 'none' : 'auto'}
+        accessibilityElementsHidden={dialogOpen} aria-hidden={dialogOpen} importantForAccessibility={dialogOpen ? 'no-hide-descendants' : 'auto'}>
       <View style={s.header}>
         <Header
-          title={chosen || detailOnly ? 'Transaction details' : savedPending ? 'Saved pending' : 'Activity'}
+          title={chosen || detailOnly ? t('mobile.activityViews.nativeActivity.transactionDetails') : savedPending ? t('mobile.activityViews.nativeActivity.savedPending') : t('buttons.activity')}
           subtitle={`${accountLabel}${
             snapshot.networkName ? ` · ${snapshot.networkName}` : ''
           }`}
           onBack={detailOnly || !navigation || chosen || savedPending || copyAddress ? close : undefined}
           right={!chosen && !detailOnly ? <View style={s.toolbar}>
-            <IconButton label="Refresh activity" icon="refresh"
+            <IconButton label={t('mobile.activityViews.nativeActivity.refreshActivity')} icon="refresh"
               disabled={snapshot.status === 'loading' || snapshot.loadingMore || savedPending?.status === 'loading'}
               onPress={() => {
                 if (savedPending) void controller.loadSavedPending();
                 else { restored.current = false; void controller.refresh(); }
               }} />
-            {!savedPending && <IconButton label="Activity options" icon="settings"
+            {!savedPending && <IconButton label={t('mobile.activityViews.nativeActivity.activityOptions')} icon="settings"
               selected={optionsOpen} onPress={() => setOptionsOpen(true)} />}
           </View> : undefined}
         />
@@ -527,29 +555,29 @@ function NativeActivityContent({
           }}
           ListHeaderComponent={
             savedPending ? <View style={s.section}>
-              <Text style={styles.muted}>Unresolved transfers saved on this device.</Text>
-              {savedPending.status === 'loading' && <ActivityIndicator accessibilityLabel="Loading saved transfers" color={colors.pink} />}
-              {savedPending.status === 'unavailable' && <Notice title="Could not load saved transfers" body="Your saved transfers are unchanged. Try again." tone="amber" />}
+              <Text style={styles.muted}>{t('mobile.activityViews.nativeActivity.unresolvedTransfersSavedOnThisDevice')}</Text>
+              {savedPending.status === 'loading' && <ActivityIndicator accessibilityLabel={t('mobile.activityViews.nativeActivity.loadingSavedTransfers')} color={colors.pink} />}
+              {savedPending.status === 'unavailable' && <Notice title={t('mobile.activityViews.nativeActivity.couldNotLoadSavedTransfers')} body={t('mobile.activityViews.nativeActivity.yourSavedTransfersAreUnchangedTryAgain')} tone="amber" />}
             </View> : <View style={s.section}>
-              <SegmentedControl label="Activity filter" value={snapshot.view.filter}
-                options={[{ value: 'all', label: 'All' }, { value: 'sent', label: 'Sent' }, { value: 'received', label: 'Received' }]}
+              <SegmentedControl label={t('mobile.activityViews.nativeActivity.activityFilter')} value={snapshot.view.filter}
+                options={[{ value: 'all', label: t('mobile.activityViews.nativeActivity.all') }, { value: 'sent', label: t('send.sent') }, { value: 'received', label: t('send.received') }]}
                 onChange={(filter) => {
                   controller.setView({ filter, anchor: null, offset: 0 });
                   list.current?.scrollToOffset({ offset: 0 });
                 }} />
               <View style={s.listHeading}>
-                <Text style={s.caption}>Recent activity</Text>
-                {snapshot.canViewSavedPending && <Button icon="clock" title="Saved pending" variant="secondary" size="compact"
+                <Text style={s.caption}>{t('mobile.activityViews.nativeActivity.recentActivity')}</Text>
+                {snapshot.canViewSavedPending && <Button icon="clock" title={t('mobile.activityViews.nativeActivity.savedPending')} variant="secondary" size="compact"
                   onPress={() => void afterPositionSaved(() => {
                     setFeedback('');
                     list.current?.scrollToOffset({ offset: 0, animated: false });
                     void controller.loadSavedPending();
                   })} />}
               </View>
-              {!!snapshot.error && <Notice title="Some activity is unavailable" body={snapshot.error} tone="amber" />}
+              {!!snapshot.error && <Notice title={t('mobile.activityViews.nativeActivity.someActivityIsUnavailable')} body={snapshot.error} tone="amber" />}
               {snapshot.status === 'loading' && (
                 <ActivityIndicator
-                  accessibilityLabel="Loading activity"
+                  accessibilityLabel={t('mobile.activityViews.nativeActivity.loadingActivity')}
                   color={colors.pink}
                 />
               )}
@@ -559,7 +587,7 @@ function NativeActivityContent({
             const date = rowDate(item), first = index === 0 || rowDate(rows[index - 1]!).key !== date.key;
             const last = index === rows.length - 1 || rowDate(rows[index + 1]!).key !== date.key;
             const display = nativeActivityRowPresentation(item, { accountAddress: owner, nativeSymbol: snapshot.nativeSymbol ?? 'ETH',
-              networkName: snapshot.networkName ?? snapshot.nativeSymbol ?? 'Network', hideBalances, savedPending: !!savedPending });
+              networkName: snapshot.networkName ?? snapshot.nativeSymbol ?? t('transactions.replay.network'), hideBalances, savedPending: !!savedPending });
             return <ActivityListRow
               rowRef={(node) => {
                 if (node) rowViews.current.set(item.hash, node);
@@ -583,30 +611,24 @@ function NativeActivityContent({
             />;
           }}
           ListEmptyComponent={
-            savedPending ? savedPending.status === 'ready' ? <Notice title="No saved pending transfers" /> : undefined : snapshot.status !== 'loading' ? (
-              snapshot.status === 'unavailable' || snapshot.error ? <Notice
-                title={
-                  snapshot.status === 'unavailable'
-                    ? 'Activity unavailable'
-                    : snapshot.error
-                    ? 'Activity could not be loaded'
-                    : 'No activity in the loaded history'
-                }
-                body="Refresh to try again."
-              /> : <View style={s.empty}><Text style={s.emptyTitle}>No activity to show</Text><Text style={s.caption}>Refresh or choose another filter.</Text></View>
+            savedPending ? savedPending.status === 'ready' ? <Notice title={t('mobile.activityViews.nativeActivity.noSavedPendingTransfers')} /> : undefined : snapshot.status !== 'loading' && !snapshot.error && !snapshot.loadingMore ? (
+              snapshot.status === 'unavailable' ? <Notice
+                title={t('mobile.activity.unavailableTitle')}
+                body={t('mobile.activityViews.nativeActivity.refreshToTryAgain')}
+              /> : <View style={s.empty}><Text style={s.emptyTitle}>{t('mobile.activityViews.nativeActivity.noActivityToShow')}</Text><Text style={s.caption}>{t('mobile.activityViews.nativeActivity.refreshOrChooseAnotherFilter')}</Text></View>
             ) : undefined
           }
           ListFooterComponent={
             <View style={s.section}>
               {savedPending ? savedPending.hasMore && savedPending.status !== 'loading' && (
-                <Button title={savedPending.status === 'unavailable' ? 'Try again' : 'Load more saved transfers'}
+                <Button title={savedPending.status === 'unavailable' ? t('mobile.connections.tryAgain') : t('mobile.activityViews.nativeActivity.loadMoreSavedTransfers')}
                   variant="secondary" onPress={() => void controller.loadSavedPending()} />
-              ) : snapshot.hasMore && (snapshot.loadingMore ? <View style={s.loadingMore}><ActivityIndicator color={colors.blue} /><Text style={s.caption}>Loading older activity…</Text></View> : (
+              ) : snapshot.hasMore && (snapshot.loadingMore ? <View style={s.loadingMore}><ActivityIndicator color={colors.blue} /><Text style={s.caption}>{t(rows.length ? 'mobile.activityViews.nativeActivity.loadingOlderActivity' : 'mobile.activityViews.nativeActivity.loadingActivity')}</Text></View> : (
                 <Button
                   title={
-                    snapshot.loadingMore
-                      ? 'Loading older activity…'
-                      : 'Load older activity'
+                    snapshot.error || snapshot.status === 'unavailable'
+                      ? t('mobile.activityViews.allNetworksActivity.retryActivity')
+                      : t('mobile.activityViews.nativeActivity.loadOlderActivity')
                   }
                   variant="secondary"
                   size="compact"
@@ -614,63 +636,63 @@ function NativeActivityContent({
                   onPress={() => controller.loadMore()}
                 />
               ))}
-              {typeof __DEV__ !== 'undefined' && __DEV__ && <Text style={s.build}>Development build · Use a test wallet</Text>}
+              {typeof __DEV__ !== 'undefined' && __DEV__ && <Text style={s.build}>{t('mobile.common.development')}</Text>}
             </View>
           }
         />
       </View>
       {detailOnly && !chosen && <View style={[s.section, s.content]}>
-        <ActivityIndicator accessibilityLabel="Loading transaction details" color={colors.pink} />
-        <Text style={styles.muted}>Loading transaction details…</Text>
+        <ActivityIndicator accessibilityLabel={t('mobile.activityViews.nativeActivity.loadingTransactionDetails')} color={colors.pink} />
+        <Text style={styles.muted}>{t('mobile.activityViews.nativeActivity.loadingTransactionDetails2')}</Text>
       </View>}
       {chosen && (
         <ScrollView key={chosen.hash} contentContainerStyle={[s.content, s.detailContent]}>
           <TransactionDetailLayout
             asset={activityAssetIcon(chosen, snapshot.chainId, snapshot.registrationHash)} registrationHash={snapshot.registrationHash ?? undefined} assetSymbol={chosen.display?.displaySymbol ?? chosen.local?.token?.symbol}
             amount={`${rowMonetaryAmount(chosen) ? direction(chosen, owner) === 'sent' ? '-' : direction(chosen, owner) === 'received' ? '+' : '' : ''}${amount(chosen, snapshot.nativeSymbol ?? 'ETH')}`}
-            direction={direction(chosen, owner) === 'sent' ? 'Sent' : direction(chosen, owner) === 'received' ? 'Received' : direction(chosen, owner) === 'self' ? 'Self transfer' : 'Activity'}
+            direction={direction(chosen, owner) === 'sent' ? t('send.sent') : direction(chosen, owner) === 'received' ? t('send.received') : direction(chosen, owner) === 'self' ? t('mobile.activityViews.nativeActivity.selfTransfer') : t('buttons.activity')}
             status={displayStatus(chosen)}
-            tone={displayStatus(chosen) === 'Confirmed' ? 'confirmed' : displayStatus(chosen) === 'Reverted' ? 'failed' : /pending/i.test(displayStatus(chosen)) ? 'pending' : 'unknown'}
+            tone={(() => { const tag = (savedPending ? savedPendingStatusTag : statusTag)(chosen); return tag === 'confirmed' ? 'confirmed' : tag === 'reverted' ? 'failed' : tag === 'pending' || tag === 'replacementPending' ? 'pending' : 'unknown'; })()}
             rows={[
-              { label: 'Network', value: snapshot.networkName ?? snapshot.nativeSymbol ?? 'Network' },
-              { label: 'Date', value: `${rowDate(chosen).label}${rowDate(chosen).time ? `, ${rowDate(chosen).time}` : ''}` },
+              { label: t('transactions.replay.network'), value: snapshot.networkName ?? snapshot.nativeSymbol ?? t('transactions.replay.network') },
+              { label: t('mobile.activityViews.nativeActivity.date'), value: `${rowDate(chosen).label}${rowDate(chosen).time ? `, ${rowDate(chosen).time}` : ''}` },
               ...(indexedCollectible ? [
-                ...(indexedCollectible.tokenId !== undefined ? [{ label: 'Token ID', value: indexedCollectible.tokenId }] : []),
-                { label: 'Quantity', value: indexedCollectible.nftQuantity ?? indexedCollectible.formattedValue },
+                ...(indexedCollectible.tokenId !== undefined ? [{ label: t('send.tokenId'), value: indexedCollectible.tokenId }] : []),
+                { label: t('mobile.activityViews.nativeActivity.quantity'), value: indexedCollectible.nftQuantity ?? indexedCollectible.formattedValue },
               ] : []),
-              { label: 'From', value: sender(chosen, owner) ?? 'Not available', actionLabel: 'Copy sender address',
+              { label: t('send.from'), value: sender(chosen, owner) ?? t('mobile.activityViews.nativeActivity.notAvailable'), actionLabel: t('mobile.activityViews.nativeActivity.copySenderAddress'),
                 ...(sender(chosen, owner) ? { onPress: () => setCopyAddress(sender(chosen, owner)) } : {}) },
-              { label: 'To', value: recipient(chosen) ?? (chosen.indexed?.to === null || chosen.indexed?.to === '' || chosen.local?.recipient === null ? 'Contract creation' : 'Not available'),
-                actionLabel: 'Copy recipient address', ...(recipient(chosen) ? { onPress: () => setCopyAddress(recipient(chosen)) } : {}) },
-              { label: 'Network fee', value: fee(chosen, snapshot.nativeSymbol ?? 'ETH') },
-              { label: 'Transaction ID', value: chosen.hash },
+              { label: t('send.to'), value: recipient(chosen) ?? (chosen.indexed?.to === null || chosen.indexed?.to === '' || chosen.local?.recipient === null ? t('transactions.replay.creation') : t('mobile.activityViews.nativeActivity.notAvailable')),
+                actionLabel: t('mobile.activityViews.nativeActivity.copyRecipientAddress'), ...(recipient(chosen) ? { onPress: () => setCopyAddress(recipient(chosen)) } : {}) },
+              { label: t('send.networkFee'), value: fee(chosen, snapshot.nativeSymbol ?? 'ETH') },
+              { label: t('send.transactionId'), value: chosen.hash },
             ]}
-            {...(snapshot.explorerUrl ? { onExplorer: () => { void Linking.openURL(`${snapshot.explorerUrl!.replace(/\/$/, '')}/tx/${chosen.hash}`).catch(() => setFeedback('Could not open the explorer.')); } } : {})}
+            {...(snapshot.explorerUrl ? { onExplorer: () => { void Linking.openURL(`${snapshot.explorerUrl!.replace(/\/$/, '')}/tx/${chosen.hash}`).catch(() => setFeedback(t('mobile.activityViews.nativeActivity.couldNotOpenTheExplorer'))); } } : {})}
           />
-          <Button title="Details" icon={detailsFor === chosen.hash ? 'chevron-up' : 'chevron-down'} variant="quiet" size="compact" expanded={detailsFor === chosen.hash}
+          <Button title={t('send.details')} icon={detailsFor === chosen.hash ? 'chevron-up' : 'chevron-down'} variant="quiet" size="compact" expanded={detailsFor === chosen.hash}
             onPress={() => setDetailsFor(detailsFor === chosen.hash ? null : chosen.hash)} />
           {detailsFor === chosen.hash && <>
           <Text selectable style={s.full}>{amount(chosen, snapshot.nativeSymbol ?? 'ETH')}</Text>
           {chosen.local?.token && !chosen.indexed && (
             <Notice
-              title="Amount approved in Pali"
-              body="This is the saved transfer intent. Token fees and other contract behavior can change the amount received. Receipt events are shown separately below."
+              title={t('mobile.activityViews.nativeActivity.amountApprovedInPali')}
+              body={t('mobile.activityViews.nativeActivity.thisIsTheSavedTransferIntentTokenFeesAnd')}
             />
           )}
           <Card style={s.detail}>
-            <Text style={s.label}>TRANSACTION HASH</Text>
+            <Text style={s.label}>{t('transactions.replay.hash')}</Text>
             <Text selectable style={s.full}>
               {chosen.hash}
             </Text>
-            <Text style={s.label}>FROM</Text>
+            <Text style={s.label}>{t('send.from')}</Text>
             <Text style={s.full}>
-              {sender(chosen, owner) ?? 'Not available'}
+              {sender(chosen, owner) ?? t('mobile.activityViews.nativeActivity.notAvailable')}
             </Text>
             <Text style={s.label}>
               {collectible
-                ? 'SIGNED RECIPIENT'
+                ? t('mobile.activityViews.nativeActivity.signedRecipient')
                 : chosen.local?.token && !chosen.indexed
-                ? 'APPROVED TOKEN RECIPIENT'
+                ? t('mobile.activityViews.nativeActivity.approvedTokenRecipient')
                 : 'TO'}
             </Text>
             <Text style={s.full}>
@@ -678,37 +700,37 @@ function NativeActivityContent({
                 (chosen.indexed?.to === null ||
                 chosen.indexed?.to === '' ||
                 chosen.local?.recipient === null
-                  ? 'Contract creation'
-                  : 'Not available')}
+                  ? t('transactions.replay.creation')
+                  : t('mobile.activityViews.nativeActivity.notAvailable'))}
             </Text>
             {chosen.local?.token && (
               <>
-                <Text style={s.label}>TOKEN CONTRACT</Text>
+                <Text style={s.label}>{t('assetTransfer.contract')}</Text>
                 <Text style={s.full}>{chosen.local.token.contractAddress}</Text>
               </>
             )}
-            <Text style={s.label}>NETWORK FEE</Text>
+            <Text style={s.label}>{t('send.networkFee')}</Text>
             <Text>{fee(chosen, snapshot.nativeSymbol ?? 'ETH')}</Text>
             {chosenBlock !== undefined && (
               <>
-                <Text style={s.label}>BLOCK</Text>
+                <Text style={s.label}>{t('send.block')}</Text>
                 <Text>{chosenBlock}</Text>
               </>
             )}
           </Card>
           {collectible && (
             <Card style={s.detail}>
-              <Text style={s.label}>SIGNED COLLECTIBLE TRANSFER</Text>
+              <Text style={s.label}>{t('mobile.activityViews.nativeActivity.signedCollectibleTransfer')}</Text>
               <Text>{collectible.tokenStandard}</Text>
-              <Text style={s.label}>TOKEN ID</Text>
+              <Text style={s.label}>{t('send.tokenId')}</Text>
               <Text selectable style={s.full}>
                 {collectible.tokenId}
               </Text>
-              <Text style={s.label}>QUANTITY</Text>
+              <Text style={s.label}>{t('mobile.activityViews.nativeActivity.quantity')}</Text>
               <Text selectable style={s.full}>
                 {collectible.amountUnits}
               </Text>
-              <Text style={s.label}>TOKEN CONTRACT</Text>
+              <Text style={s.label}>{t('assetTransfer.contract')}</Text>
               <Text selectable style={s.full}>
                 {collectible.contractAddress}
               </Text>
@@ -716,72 +738,66 @@ function NativeActivityContent({
           )}
           {chosen.indexed?.tokenTransfer && (
             <Card style={s.detail}>
-              <Text style={s.label}>INDEXED TOKEN TRANSFER</Text>
+              <Text style={s.label}>{t('mobile.activityViews.nativeActivity.indexedTokenTransfer')}</Text>
               <Text style={s.full}>
                 {typeof chosen.indexed.tokenTransfer.contractAddress ===
                 'string'
                   ? chosen.indexed.tokenTransfer.contractAddress
-                  : 'Unavailable'}
+                  : t('settings.unavailable')}
               </Text>
               <Text>
-                Raw token units:{' '}
-                {chosen.display?.amountUnavailable ||
-                !['string', 'number', 'bigint'].includes(
-                  typeof chosen.indexed.tokenTransfer.value
-                )
-                  ? 'Unavailable'
-                  : String(chosen.indexed.tokenTransfer.value)}
+                {t('mobile.activityViews.nativeActivity.rawTokenUnits', { amount: chosen.display?.amountUnavailable || !['string', 'number', 'bigint'].includes(typeof chosen.indexed.tokenTransfer.value) ? t('settings.unavailable') : String(chosen.indexed.tokenTransfer.value) })}
               </Text>
             </Card>
           )}
           {(chosen.observation?.events ?? []).map((event) => (
             <Card key={event.id} style={s.detail}>
               <Text style={s.label}>
-                ERC20 TRANSFER EVENT · LOG {event.logIndex}
+                {t('mobile.activityViews.nativeActivity.erc20TransferLog', { index: event.logIndex })}
               </Text>
               <Text style={s.full}>{event.contractAddress}</Text>
-              <Text>Raw token units: {event.amountUnits}</Text>
-              <Text style={s.label}>FROM</Text>
+              <Text>{t('mobile.activityViews.nativeActivity.rawTokenUnits', { amount: event.amountUnits })}</Text>
+              <Text style={s.label}>{t('send.from')}</Text>
               <Text style={s.full}>{event.from}</Text>
               <Button icon="copy"
-                title="Copy event sender"
+                title={t('mobile.activityViews.nativeActivity.copyEventSender')}
                 variant="secondary"
                 onPress={() => setCopyAddress(event.from)}
               />
-              <Text style={s.label}>TO</Text>
+              <Text style={s.label}>{t('send.to')}</Text>
               <Text style={s.full}>{event.to}</Text>
               <Button icon="copy"
-                title="Copy event recipient"
+                title={t('mobile.activityViews.nativeActivity.copyEventRecipient')}
                 variant="secondary"
                 onPress={() => setCopyAddress(event.to)}
               />
             </Card>
           ))}
           <Notice
-            title="Check addresses independently"
-            body="Incoming activity and token metadata can be created by anyone. A transfer event does not prove a token is trustworthy or that its balance changed by the same amount."
+            title={t('mobile.activityViews.nativeActivity.checkAddressesIndependently')}
+            body={t('mobile.activityViews.nativeActivity.incomingActivityAndTokenMetadataCanBeCreatedBy')}
             tone="amber"
           />
           </>}
           <Button
-            title="Check transaction again"
+            title={t('mobile.activityViews.nativeActivity.checkTransactionAgain')}
             variant="secondary"
             onPress={() => controller.inspect(chosen.hash)}
           />
-          {original && <Button icon="arrow-left" title="View original transaction" variant="secondary" onPress={() => { setSelected(original.hash); controller.inspect(original.hash); }} />}
-          {replacement && <Button title={replacement.local?.operation === 'cancel' ? 'View cancellation attempt' : 'View Speed Up attempt'} variant="secondary" onPress={() => { setSelected(replacement.hash); controller.inspect(replacement.hash); }} />}
+          {original && <Button icon="arrow-left" title={t('mobile.activityViews.nativeActivity.viewOriginalTransaction')} variant="secondary" onPress={() => { setSelected(original.hash); controller.inspect(original.hash); }} />}
+          {replacement && <Button title={replacement.local?.operation === 'cancel' ? t('mobile.activityViews.nativeActivity.viewCancellationAttempt') : t('mobile.activityViews.nativeActivity.viewSpeedUpAttempt')} variant="secondary" onPress={() => { setSelected(replacement.hash); controller.inspect(replacement.hash); }} />}
           {canReplace && speedUp && (
-            <Button title="Speed Up" variant="secondary" onPress={() => void afterPositionSaved(() => speedUp(chosen.hash))} />
+            <Button title={t('header.speedUp')} variant="secondary" onPress={() => void afterPositionSaved(() => speedUp(chosen.hash))} />
           )}
           {canReplace && cancelPending && (
-            <Button title="Cancel pending transaction" variant="secondary" onPress={() => void afterPositionSaved(() => cancelPending(chosen.hash))} />
+            <Button title={t('mobile.activityViews.nativeActivity.cancelPendingTransaction')} variant="secondary" onPress={() => void afterPositionSaved(() => cancelPending(chosen.hash))} />
           )}
           {canCancelSaved && cancelSaved && (
-            <Button title="Cancel saved transaction" variant="secondary" onPress={() => void afterPositionSaved(() => cancelSaved(chosen.hash))} />
+            <Button title={t('mobile.activityViews.nativeActivity.cancelSavedTransaction')} variant="secondary" onPress={() => void afterPositionSaved(() => cancelSaved(chosen.hash))} />
           )}
           {replay && (
             <Button
-              title="Review resend"
+              title={t('transactions.replay.review')}
               onPress={() => replay(chosen.hash)}
             />
           )}
@@ -792,45 +808,34 @@ function NativeActivityContent({
           )}
         </ScrollView>
       )}
-      <Modal visible={optionsOpen} transparent animationType="fade" onRequestClose={() => setOptionsOpen(false)}>
-        <SafeAreaView style={s.modal} accessibilityViewIsModal>
+      </View>
+      {optionsOpen && <SafeAreaView style={s.modal} role="dialog" accessibilityLabel={t('mobile.activityViews.nativeActivity.activityOptions')} accessibilityViewIsModal>
           <ScrollView contentContainerStyle={s.modalContent}>
             <Card style={s.confirm}>
-              <Header title="Activity options" right={<IconButton label="Close activity options" icon="close" onPress={() => setOptionsOpen(false)} />} />
+              <Header title={t('mobile.activityViews.nativeActivity.activityOptions')} right={<IconButton label={t('mobile.activityViews.nativeActivity.closeActivityOptions')} icon="close" onPress={() => setOptionsOpen(false)} />} />
               <Text style={styles.muted}>{snapshot.coverage}</Text>
-              {snapshot.truncated && <Notice title="Activity history is limited" body="Older records may be omitted. The explorer may have additional activity." />}
-              {hiddenCount > 0 && <Text style={styles.muted}>{hiddenCount} zero-value token transaction{hiddenCount === 1 ? '' : 's'} hidden.</Text>}
-              <Button title={snapshot.view.showZero ? 'Hide zero-value token activity' : 'Show zero-value token activity'} variant="secondary"
+              {snapshot.truncated && <Notice title={t('mobile.activityViews.nativeActivity.activityHistoryIsLimited')} body={t('mobile.activityViews.nativeActivity.olderRecordsMayBeOmittedTheExplorerMayHave')} />}
+              {hiddenCount > 0 && <Text style={styles.muted}>{t('mobile.activityViews.nativeActivity.hiddenZeroTransactions', { count: hiddenCount })}</Text>}
+              <Button title={snapshot.view.showZero ? t('mobile.activityViews.nativeActivity.hideZerovalueTokenActivity') : t('mobile.activityViews.nativeActivity.showZerovalueTokenActivity')} variant="secondary"
                 onPress={() => { controller.setView({ showZero: !snapshot.view.showZero }); setOptionsOpen(false); }} />
-              <Button title="Done" variant="secondary" onPress={() => setOptionsOpen(false)} />
+              <Button title={t('privacy.deposit.done')} variant="secondary" onPress={() => setOptionsOpen(false)} />
             </Card>
           </ScrollView>
-        </SafeAreaView>
-      </Modal>
-      <Modal
-        visible={copyAddress !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          if (!copying) setCopyAddress(null);
-        }}
-      >
-        <SafeAreaView style={s.modal}>
+      </SafeAreaView>}
+      {copyAddress !== null && <SafeAreaView style={s.modal} role="dialog" accessibilityLabel={t('mobile.activityViews.nativeActivity.copyThisAddress')} accessibilityViewIsModal>
           <ScrollView contentContainerStyle={s.modalContent}>
             <Card style={s.confirm}>
-              <Text style={s.detailAmount}>Copy this address?</Text>
+              <Text style={s.detailAmount}>{t('mobile.activityViews.nativeActivity.copyThisAddress')}</Text>
               <Text style={styles.muted}>
-                History can contain misleading or lookalike addresses. Compare
-                the complete address with a trusted source before using it.
-              </Text>
+                {t('mobile.activityViews.nativeActivity.historyCanContainMisleadingOrLookalikeAddressesCompareThe')}</Text>
               <Text style={s.full}>{copyAddress}</Text>
               <Button
-                title={copying ? 'Copying…' : 'Copy full address'}
+                title={copying ? t('mobile.activityViews.nativeActivity.copying') : t('mobile.activityViews.nativeActivity.copyFullAddress')}
                 disabled={copying}
                 onPress={copy}
               />
               <Button
-                title="Cancel"
+                title={t('buttons.cancel')}
                 variant="secondary"
                 disabled={copying}
                 onPress={() => setCopyAddress(null)}
@@ -838,8 +843,7 @@ function NativeActivityContent({
               {!!feedback && <Text accessibilityRole="alert">{feedback}</Text>}
             </Card>
           </ScrollView>
-        </SafeAreaView>
-      </Modal>
+      </SafeAreaView>}
     </SafeAreaView>
   );
 }
@@ -862,7 +866,8 @@ const s = StyleSheet.create({
   full: { fontSize: 14, lineHeight: 23, color: colors.text },
   label: { fontSize: 11, color: colors.muted, letterSpacing: 1 },
   build: { color: colors.muted, fontSize: 11, textAlign: 'center' },
-  modal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)' },
+  activityContent: { flex: 1 },
+  modal: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 1, backgroundColor: 'rgba(0,0,0,0.8)' },
   modalContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   confirm: { padding: 24, gap: 20 },
 });

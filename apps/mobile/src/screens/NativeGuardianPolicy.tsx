@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { getAddress } from 'ethers/address';
 import React, {
@@ -90,6 +91,7 @@ export function NativeGuardianPolicy({
   onBack(): void;
   registerBack?(handler: () => void): () => void;
 }) {
+  const { t } = useNativeTranslation();
   const [port] = useState(manage);
   const [inspection, setInspection] =
     useState<GuardianRemovalInspection | null>(null);
@@ -227,7 +229,7 @@ export function NativeGuardianPolicy({
           acknowledgedPendingOperationId: pendingId,
         };
       } catch {
-        setError('Enter a valid guardian address.');
+        setError(t('mobile.recoveryDevices.guardianPolicy.enterAValidGuardianAddress'));
         return;
       }
     }
@@ -259,7 +261,7 @@ export function NativeGuardianPolicy({
     } catch {
       if (current.live)
         setError(
-          'The policy could not be prepared. Return to check its current status and try again.'
+          t('mobile.recoveryDevices.guardianPolicy.thePolicyCouldNotBePreparedReturn')
         );
     } finally {
       current.busy = false;
@@ -270,7 +272,7 @@ export function NativeGuardianPolicy({
     return (
       <SafeAreaView style={s.safe}>
         <Screen>
-          <Text>Closing guardian review…</Text>
+          <Text>{t('mobile.recoveryDevices.guardianPolicy.closingGuardianReview')}</Text>
         </Screen>
       </SafeAreaView>
     );
@@ -289,10 +291,10 @@ export function NativeGuardianPolicy({
             <Button
               title={
                 busy
-                  ? 'Preparing policy…'
+                  ? t('mobile.recoveryDevices.guardianPolicy.preparingPolicy')
                   : action === 'remove'
-                  ? 'Review removal'
-                  : 'Review policy'
+                  ? t('mobile.recoveryDevices.guardianPolicy.reviewRemoval')
+                  : t('mobile.recoveryDevices.guardianPolicy.reviewPolicy')
               }
               disabled={
                 busy ||
@@ -304,27 +306,27 @@ export function NativeGuardianPolicy({
               }}
             />
           )}
-          <Button title="Cancel" variant="secondary" size="compact" onPress={back} />
+          <Button title={t('buttons.cancel')} variant="secondary" size="compact" onPress={back} />
         </>}>
           <Header
             title={
               action === 'remove'
-                ? 'Remove guardian'
+                ? t('mobile.recoveryDevices.guardianPolicy.removeGuardian')
                 : observation.exists
-                ? 'Update guardian'
-                : 'Set guardian'
+                ? t('mobile.recoveryDevices.guardianPolicy.updateGuardian')
+                : t('mobile.recoveryDevices.guardianPolicy.setGuardian')
             }
             subtitle={networkLabel}
             onBack={back}
           />
           <Card style={s.card}>
-            <Text style={s.label}>Smart account · Chain ID {port.chainId}</Text>
+            <Text style={s.label}>{t('mobile.recoveryDevices.guardianPolicy.chain', { chainId: port.chainId })}</Text>
             <Text selectable style={s.address}>
               {address}
             </Text>
             {action === 'remove' && (
               <>
-                <Text style={s.label}>Current recovery module</Text>
+                <Text style={s.label}>{t('mobile.recoveryDevices.guardianPolicy.currentRecoveryModule')}</Text>
                 <Text selectable style={s.address}>
                   {observation.moduleAddress}
                 </Text>
@@ -332,16 +334,14 @@ export function NativeGuardianPolicy({
             )}
             {observation.exists && (
               <Text style={s.label}>
-                Current policy · {observation.guardians.length}{' '}
-                {observation.guardians.length === 1 ? 'guardian' : 'guardians'}{' '}
-                · Threshold {observation.threshold}
+                {t('mobile.recoveryDevices.guardianPolicy.currentPolicy', { count: observation.guardians.length, threshold: observation.threshold })}
               </Text>
             )}
           </Card>
           {action === 'set' ? (
             <>
               <NativeSendInput
-                label="Guardian address"
+                label={t('mobile.recoveryDevices.guardianPolicy.guardianAddress')}
                 value={guardian}
                 onChange={(value) => {
                   setGuardian(value);
@@ -351,14 +351,14 @@ export function NativeGuardianPolicy({
                 max={42}
                 placeholder="0x…"
               />
-              <Text style={s.label}>Recovery delay</Text>
+              <Text style={s.label}>{t('mobile.recoveryDevices.guardianPolicy.recoveryDelay')}</Text>
               <View style={s.choices}>
                 {choices.map((seconds) => (
                   <IdlePressable
                     key={seconds}
                     accessibilityRole="radio"
                     aria-checked={delay === seconds}
-                    accessibilityLabel={guardianDelayLabel(seconds)}
+                    accessibilityLabel={guardianDelayLabel(seconds, t)}
                     accessibilityState={{
                       checked: delay === seconds,
                       disabled: busy,
@@ -370,48 +370,46 @@ export function NativeGuardianPolicy({
                     }}
                     style={[s.choice, delay === seconds && s.selected]}
                   >
-                    <Text>{guardianDelayLabel(seconds)}</Text>
+                    <Text>{guardianDelayLabel(seconds, t)}</Text>
                   </IdlePressable>
                 ))}
               </View>
               <Text style={s.body}>
-                This policy uses one guardian. A recovery request becomes ready
-                after {guardianDelayLabel(delay)} and can be finalized for{' '}
-                {guardianDelayLabel(delay * 2)} once ready.
+                {t('mobile.recoveryDevices.guardianPolicy.timing', { delay: guardianDelayLabel(delay, t), window: guardianDelayLabel(delay * 2, t) })}
               </Text>
             </>
           ) : (
             <>
               <Notice
-                title="Guardian recovery will be removed"
-                body="Removing the guardian disables this account’s guardian recovery."
+                title={t('mobile.recoveryDevices.guardianPolicy.guardianRecoveryWillBeRemoved')}
+                body={t('mobile.recoveryDevices.guardianPolicy.removingTheGuardianDisablesThisAccountS')}
                 tone="amber"
               />
               {!inspection && (
-                <Text style={s.body}>Checking previous removal attempts…</Text>
+                <Text style={s.body}>{t('mobile.recoveryDevices.guardianPolicy.checkingPreviousRemovalAttempts')}</Text>
               )}
               {inspection?.status === 'pending' && (
                 <Notice
-                  title="Removal awaiting a network result"
-                  body="Check the saved attempt before preparing another removal."
+                  title={t('mobile.recoveryDevices.guardianPolicy.removalAwaitingANetworkResult')}
+                  body={t('mobile.recoveryDevices.guardianPolicy.checkTheSavedAttemptBeforePreparingAnother')}
                 />
               )}
               {inspection?.status === 'unknown' && (
                 <Notice
-                  title="Removal status unavailable"
-                  body="Check again before preparing a removal."
+                  title={t('mobile.recoveryDevices.guardianPolicy.removalStatusUnavailable')}
+                  body={t('mobile.recoveryDevices.guardianPolicy.checkAgainBeforePreparingARemoval')}
                   tone="amber"
                 />
               )}
               {inspection?.status === 'removed' && (
                 <Notice
-                  title="Guardian recovery is already removed"
-                  body="The current on-chain policy has no guardian recovery module."
+                  title={t('mobile.recoveryDevices.guardianPolicy.guardianRecoveryIsAlreadyRemoved')}
+                  body={t('mobile.recoveryDevices.guardianPolicy.theCurrentOnChainPolicyHasNo')}
                 />
               )}
               {!!inspection?.transactions.length && (
                 <Card style={s.card}>
-                  <Text style={s.label}>Saved removal transactions</Text>
+                  <Text style={s.label}>{t('mobile.recoveryDevices.guardianPolicy.savedRemovalTransactions')}</Text>
                   {inspection.transactions.map((transaction, index) => (
                     <Text
                       key={`${transaction.hash}:${index}`}
@@ -424,7 +422,7 @@ export function NativeGuardianPolicy({
                 </Card>
               )}
               <Button
-                title={busy ? 'Checking status…' : 'Check removal status'}
+                title={busy ? t('mobile.recoveryDevices.guardianPolicy.checkingStatus') : t('settings.smartAccountGuardianRecoveryCheckRemoval')}
                 variant="secondary" size="compact" icon="refresh"
                 disabled={busy}
                 onPress={() => {
@@ -435,7 +433,7 @@ export function NativeGuardianPolicy({
                 <IdlePressable
                   accessibilityRole="checkbox"
                   aria-checked={recoveryLossAcknowledged}
-                  accessibilityLabel="I understand guardian recovery will be removed"
+                  accessibilityLabel={t('mobile.recoveryDevices.guardianPolicy.iUnderstandGuardianRecoveryWillBeRemoved')}
                   accessibilityState={{
                     checked: recoveryLossAcknowledged,
                     disabled: busy,
@@ -446,8 +444,7 @@ export function NativeGuardianPolicy({
                 >
                   <Text>{recoveryLossAcknowledged ? '✓' : '□'}</Text>
                   <Text style={s.acknowledgementText}>
-                    I understand guardian recovery will be removed.
-                  </Text>
+                    {t('mobile.recoveryDevices.guardianPolicy.iUnderstandGuardianRecoveryWillBeRemoved1')}</Text>
                 </IdlePressable>
               )}
             </>
@@ -455,22 +452,22 @@ export function NativeGuardianPolicy({
           {pendingId && (
             <Card style={s.card}>
               <Notice
-                title="Recovery already scheduled"
+                title={t('mobile.recoveryDevices.guardianPolicy.recoveryAlreadyScheduled')}
                 body={
                   action === 'remove'
-                    ? 'Removing guardian recovery invalidates this pending recovery request.'
-                    : 'Updating the guardian policy replaces the policy used by this pending recovery request.'
+                    ? t('mobile.recoveryDevices.guardianPolicy.removingGuardianRecoveryInvalidatesThisPendingRecovery')
+                    : t('mobile.recoveryDevices.guardianPolicy.updatingTheGuardianPolicyReplacesThePolicy')
                 }
                 tone="amber"
               />
-              <Text style={s.label}>Recovery operation</Text>
+              <Text style={s.label}>{t('mobile.recoveryDevices.guardianPolicy.recoveryOperation')}</Text>
               <Text selectable style={s.address}>
                 {pendingId}
               </Text>
               <IdlePressable
                 accessibilityRole="checkbox"
                 aria-checked={acknowledged}
-                accessibilityLabel="I understand this changes the pending recovery policy"
+                accessibilityLabel={t('mobile.recoveryDevices.guardianPolicy.iUnderstandThisChangesThePendingRecovery')}
                 accessibilityState={{ checked: acknowledged, disabled: busy }}
                 disabled={busy}
                 onPress={() =>
@@ -480,13 +477,12 @@ export function NativeGuardianPolicy({
               >
                 <Text>{acknowledged ? '✓' : '□'}</Text>
                 <Text style={s.acknowledgementText}>
-                  I understand this changes the pending recovery policy.
-                </Text>
+                  {t('mobile.recoveryDevices.guardianPolicy.iUnderstandThisChangesThePendingRecovery2')}</Text>
               </IdlePressable>
             </Card>
           )}
           {!!error && (
-            <Notice title="Check guardian policy" body={error} tone="amber" />
+            <Notice title={t('mobile.recoveryDevices.guardianPolicy.checkGuardianPolicy')} body={error} tone="amber" />
           )}
 
         </Screen>

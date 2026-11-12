@@ -1,3 +1,4 @@
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { assetIconIdentityKey, knownAssetIcon, trustedAssetIconUri, type AssetIconIdentity } from '../../../source/shared/assetIconIdentity.ts';
@@ -81,6 +82,7 @@ test('only an existing verified market result populates the captured registratio
 
 test('NativeAssetIcon shows a found image, falls back after decode failure, and never brands symbol spoofing', () => {
   const f = screenFixture(new URL('../src/ui.tsx', import.meta.url), 'NativeAssetIcon', {
+    './platform/localization': nativeTranslationFixture,
     './screens/IdleActivityBoundary': { IdlePressable: 'Pressable' }, './screens/useWelcomeBackdropMotion': { useWelcomeBackdropMotion() {} },
     '../../../source/shared/assetIconIdentity': { knownAssetIcon }, './portfolio/assetIconCache': { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, subscribeNativeAssetIcon },
     'react-native': { Image: 'Image', StyleSheet: { create: (value: unknown) => value } }, 'react-native-svg': {},
@@ -154,6 +156,7 @@ test('approval artwork retains the exact spender, allowance and edit callback', 
   const summary = summarizeApproval(data, tokenContract, { standard: 'ERC-20', token: { contractAddress: tokenContract, name: 'USD Coin', symbol: 'USDC', decimals: 6 } });
   assert(summary);
   const f = screenFixture(new URL('../src/screens/ApprovalReview.tsx', import.meta.url), 'ApprovalReview', {
+    '../platform/localization': nativeTranslationFixture,
     'react-native': { StyleSheet: { create: (value: unknown) => value }, View: 'View' },
     '../../../../source/shared/approval': { formatApprovalTokenAmount, parseApprovalAmount },
     '../ui': { colors: {}, ...Object.fromEntries(['Button', 'Card', 'Coin', 'Text'].map(name => [name, name])) },

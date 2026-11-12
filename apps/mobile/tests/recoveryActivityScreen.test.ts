@@ -1,3 +1,4 @@
+import { englishI18n, languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
@@ -15,7 +16,8 @@ import { activityRowDirection, matchesActivityView, zeroOnlyActivity } from '../
 type Element = { type: any; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; dependencies?: unknown[]; cleanup?: () => void };
 const hash = '0x' + '11'.repeat(32);
-function fixture(initialHash?: string, held = false, props: Record<string, unknown> = {}) {
+function fixture(initialHash?: string, held = false, props: Record<string, unknown> = {}, clipboard: (address: string) => Promise<boolean> = async () => true) {
+  let hardwareBack: (() => boolean) | undefined;
   let privacyHidden = false;
   const cells = new Map<unknown, Cell[]>();
   let current: Cell[] = [],
@@ -126,16 +128,17 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
     )
   );
   const dependencies: Record<string, unknown> = {
+    '../platform/localization': nativeTranslationFixture,
     '../platform/balancePrivacy': { HIDDEN_BALANCE: '••••', useBalancePrivacy: () => ({ hidden: privacyHidden, status: 'ready' }) },
     react,
     'react-native': {
       ...native,
-      BackHandler: { addEventListener: () => ({ remove() {} }) },
+      BackHandler: { addEventListener: (_name: string, handler: () => boolean) => { hardwareBack = handler; return { remove() { if (hardwareBack === handler) hardwareBack = undefined; } }; } },
       StyleSheet: { create: (value: unknown) => value },
       Linking: {},
     },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
-    'expo-clipboard': {},
+    'expo-clipboard': { setStringAsync: clipboard },
     '../ui': { ...ui, colors: {}, styles: {} },
     './IdleActivityBoundary': { IdlePressable: 'IdlePressable' },
     '../core/amounts': { formatBaseUnits },
@@ -186,6 +189,7 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
   return {
     privacy(value: boolean) { privacyHidden = value; },
     rows(value: unknown[]) { snapshot = { ...snapshot, rows: value }; },
+    state(value: object) { snapshot = { ...snapshot, ...value }; },
     render() {
       const parent = renderOne(module.exports.NativeActivityScreen, {
         controller,
@@ -199,6 +203,8 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
       });
       return renderOne(parent.type, parent.props);
     },
+    back: () => { assert(hardwareBack); return hardwareBack(); },
+    snapshot: () => snapshot,
     loaded: () => loaded,
     inspected: () => inspected,
     replays: () => replays,
@@ -409,4 +415,201 @@ test('a network saved-pending entry never falls back to ordinary history and Bac
     all(tree).find(node => node.type === 'Header')!.props.onBack();
     assert.equal(f.backs(), 1); assert.equal(f.closedPending(), 1);
   } finally { f.dispose(); }
+});
+
+
+test('localized transaction status preserves semantic tones and exact amounts', async () => {
+  englishI18n.addResourceBundle('fr', 'translation', languageMessages('fr'), true, true);
+  await englishI18n.changeLanguage('fr');
+  try {
+    for (const [status, tone] of [['pending', 'pending'], ['confirmed', 'confirmed'], ['reverted', 'failed']] as const) {
+      const f = fixture();
+      try {
+        const row = { ...pendingScopedRow(), observation: { ...pendingScopedRow().observation, status } };
+        const detail = all(await openFixtureRow(f, row)).find(node => node.type === 'TransactionDetailLayout');
+        assert(detail);
+        assert.equal(detail.props.status, englishI18n.t(`send.${status}`));
+        assert.equal(detail.props.tone, tone);
+        assert.equal(detail.props.amount, '-0.000000000000000001 ETH');
+      } finally { f.dispose(); }
+    }
+  } finally { await englishI18n.changeLanguage('en'); }
+});
+
+test('scoped Smart Activity exposes replacement navigation without direct signer callbacks', async () => {
+  const navigation: [string, string][] = [];
+  const f = fixture(undefined, false, { onNavigateToReview: (action: string, value: string) => navigation.push([action, value]) });
+  try {
+    const row = pendingScopedRow({ speedUp: true });
+    Object.assign(row.local, { accountId: 'smart:60:0', smartAccount: { payer: row.local.address,
+      operationHash: '0x' + 'ab'.repeat(32), operationNonce: '0' } });
+    const tree = await openFixtureRow(f, row);
+    for (const title of ['Speed Up', 'Cancel pending transaction']) {
+      const button = all(tree).find(node => node.type === 'Button' && node.props.title === title); assert(button, title);
+      button.props.onPress(); await settle();
+    }
+    assert.deepEqual(navigation, [['speed-up', hash], ['cancel', hash]]);
+  } finally { f.dispose(); }
+});
+
+for (const scenario of [
+  { name: 'a historical cancellation paid by a different EOA', samePayer: false, descendant: false, sameChain: true, allowed: true },
+  { name: 'a cancellation paid by the same EOA', samePayer: true, descendant: false, sameChain: true, allowed: false },
+  { name: 'a cancellation of a same-payer speed-up descendant', samePayer: true, descendant: true, sameChain: true, allowed: false },
+  { name: 'a cancellation on another chain', samePayer: true, descendant: false, sameChain: false, allowed: true },
+]) test(`Smart replacement actions account for ${scenario.name}`, async () => {
+  const payer = '0x' + 'ab'.repeat(20);
+  const otherPayer = '0x' + 'cd'.repeat(20);
+  const speedUpHash = '0x' + '44'.repeat(32);
+  const cancelledOriginalHash = scenario.samePayer ? hash : '0x' + '55'.repeat(32);
+  const row = pendingScopedRow({ speedUp: true });
+  Object.assign(row.local, { accountId: 'smart:60:0', smartAccount: {
+    payer, operationHash: '0x' + 'ab'.repeat(32), operationNonce: '0',
+  } });
+  row.observation.from = payer;
+  const cancellation = {
+    ...row, hash: '0x' + '66'.repeat(32),
+    local: { ...row.local, hash: '0x' + '66'.repeat(32), operation: 'cancel', phase: 'confirmed',
+      originalHash: scenario.descendant ? speedUpHash : cancelledOriginalHash,
+      chainId: scenario.sameChain ? '1' : '2', smartAccount: {
+        payer: scenario.samePayer ? payer.toUpperCase().replace('0X', '0x') : otherPayer,
+        operationHash: '0x' + (scenario.samePayer && scenario.sameChain ? 'ab' : 'ef').repeat(32),
+        operationNonce: '0', cancellation: true,
+      } },
+    observation: { ...row.observation, from: scenario.samePayer ? payer : otherPayer, status: 'confirmed' },
+  };
+  const speedUp = { ...row, hash: speedUpHash,
+    local: { ...row.local, hash: speedUpHash, originalHash: hash, operation: 'speed-up' } };
+  const navigation: [string, string][] = [];
+  const f = fixture(undefined, false, {
+    onNavigateToReview: (action: string, value: string) => navigation.push([action, value]),
+  });
+  try {
+    await openFixtureRow(f, row);
+    f.rows([row, ...(scenario.descendant ? [speedUp] : []), cancellation]);
+    const tree = all(f.render());
+    for (const title of ['Speed Up', 'Cancel pending transaction']) {
+      const button = tree.find(node => node.type === 'Button' && node.props.title === title);
+      assert.equal(!!button, scenario.allowed, title);
+      if (button) { button.props.onPress(); await settle(); }
+    }
+    assert.deepEqual(navigation, scenario.allowed ? [['speed-up', hash], ['cancel', hash]] : []);
+  } finally { f.dispose(); }
+});
+
+test('failed first Activity page has one error and an accurately named retry', () => {
+  const f = fixture();
+  try {
+    f.state({ error: 'One activity feed is unavailable.', hasMore: true });
+    let list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    assert.equal(all(list.props.ListHeaderComponent).filter(node => node.type === 'Notice').length, 1);
+    assert.equal(all(list.props.ListEmptyComponent).filter(node => node.type === 'Notice').length, 0);
+    assert(all(list.props.ListFooterComponent).some(node => node.type === 'Button' && node.props.title === 'Retry activity'));
+    f.state({ error: null, hasMore: false });
+    list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    assert.equal(all(list.props.ListFooterComponent).filter(node => node.type === 'Button').length, 0);
+    assert(all(list.props.ListEmptyComponent).some(node => node.type === 'Text' && node.children.includes('No activity to show')));
+    f.state({ hasMore: true });
+    list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    assert(all(list.props.ListFooterComponent).some(node => node.type === 'Button' && node.props.title === 'Load older activity'));
+  } finally { f.dispose(); }
+});
+
+test('an in-flight first Activity page is loading, not a completed empty history', () => {
+  const f = fixture();
+  try {
+    f.state({ loadingMore: true, hasMore: true });
+    let list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    assert(!all(list.props.ListEmptyComponent).some(node => node.type === 'Text' && node.children.includes('No activity to show')));
+    assert(all(list.props.ListFooterComponent).some(node => node.type === 'Text' && node.children.includes(englishI18n.t('mobile.activityViews.nativeActivity.loadingActivity'))));
+    f.rows([{ hash, checking: false, unavailable: false }]);
+    list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    assert(all(list.props.ListFooterComponent).some(node => node.type === 'Text' && node.children.includes(englishI18n.t('mobile.activityViews.nativeActivity.loadingOlderActivity'))));
+    f.state({ rows: [], loadingMore: false, hasMore: false });
+    list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    assert(all(list.props.ListEmptyComponent).some(node => node.type === 'Text' && node.children.includes('No activity to show')));
+  } finally { f.dispose(); }
+});
+
+
+function openOptions(f: ReturnType<typeof fixture>) {
+  const header = all(f.render()).find(node => node.type === 'Header' && node.props.title === 'Activity'); assert(header);
+  const options = all(header.props.right).find(node => node.type === 'IconButton' && node.props.label === 'Activity options'); assert(options);
+  options.props.onPress();
+}
+function dialog(f: ReturnType<typeof fixture>, label: string) {
+  const tree = f.render(), nodes = all(tree);
+  assert.equal(nodes.some(node => node.type === 'Modal'), false, 'Activity overlays must stay in the existing window');
+  const underlay = nodes.find(node => node.props.testID === 'activity-underlay'); assert(underlay);
+  assert.equal(underlay.props.pointerEvents, 'none');
+  assert.equal(underlay.props.accessibilityElementsHidden, true);
+  assert.equal(underlay.props['aria-hidden'], true);
+  assert.equal(underlay.props.importantForAccessibility, 'no-hide-descendants');
+  const overlay = nodes.find(node => node.props.role === 'dialog' && node.props.accessibilityLabel === label); assert(overlay);
+  assert.equal(overlay.props.accessibilityViewIsModal, true);
+  return overlay;
+}
+function openRecipientCopy(f: ReturnType<typeof fixture>) {
+  const detail = all(f.render()).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
+  const recipient = detail.props.rows.find((row: { label: string }) => row.label === englishI18n.t('send.to')); assert(recipient?.onPress);
+  recipient.onPress();
+}
+for (const close of ['done', 'back'] as const) test(`in-window Activity options ${close} preserves the list, filter and saved position`, () => {
+  const immersive: boolean[] = [];
+  const f = fixture(undefined, false, { navigation: { registerBack: () => () => {}, registerLeave: () => () => {}, setImmersive: (value: boolean) => immersive.push(value) } });
+  const row = pendingScopedRow(); f.rows([row]);
+  f.state({ view: { ...DEFAULT_ACTIVITY_VIEW, filter: 'sent', anchor: hash, offset: 27 } });
+  try {
+    openOptions(f); const overlay = dialog(f, 'Activity options');
+    assert.equal(immersive.at(-1), true, 'tabs must not remain interactive below options');
+    if (close === 'back') assert.equal(f.back(), true);
+    else all(overlay).find(node => node.type === 'Button' && node.props.title === 'Done')!.props.onPress();
+    const nodes = all(f.render());
+    assert.equal(nodes.some(node => node.props.role === 'dialog'), false);
+    assert.equal(nodes.find(node => node.props.testID === 'activity-underlay')?.props.pointerEvents, 'auto');
+    assert.equal(immersive.at(-1), false);
+    assert.equal(f.backs(), 0); assert.equal(f.loaded(), 0); assert.equal(f.inspected().length, 0);
+    assert.deepEqual(f.snapshot().view, { ...DEFAULT_ACTIVITY_VIEW, filter: 'sent', anchor: hash, offset: 27 });
+    assert.deepEqual(nodes.find(node => node.type === 'FlatList')?.props.data, [row]);
+  } finally { f.dispose(); }
+});
+test('in-window Activity option toggle changes only its filter preference', () => {
+  const f = fixture(); f.state({ view: { ...DEFAULT_ACTIVITY_VIEW, anchor: hash, offset: 31 } });
+  try {
+    openOptions(f); const overlay = dialog(f, 'Activity options');
+    all(overlay).find(node => node.type === 'Button' && node.props.title === 'Show zero-value token activity')!.props.onPress();
+    assert.equal(all(f.render()).some(node => node.props.role === 'dialog'), false);
+    assert.deepEqual(f.snapshot().view, { ...DEFAULT_ACTIVITY_VIEW, anchor: hash, offset: 31, showZero: true });
+    assert.equal(f.backs(), 0);
+  } finally { f.dispose(); }
+});
+for (const close of ['cancel', 'back'] as const) test(`in-window Activity copy ${close} returns to the selected transaction`, async () => {
+  const f = fixture();
+  try {
+    await openFixtureRow(f, pendingScopedRow()); openRecipientCopy(f); const overlay = dialog(f, 'Copy this address?');
+    if (close === 'back') assert.equal(f.back(), true);
+    else all(overlay).find(node => node.type === 'Button' && node.props.title === 'Cancel')!.props.onPress();
+    const nodes = all(f.render());
+    assert.equal(nodes.some(node => node.props.role === 'dialog'), false);
+    assert(nodes.some(node => node.type === 'TransactionDetailLayout'));
+    assert.equal(f.backs(), 0);
+  } finally { f.dispose(); }
+});
+test('in-window Activity copy holds Back during clipboard work and returns to the same detail after success', async () => {
+  const copied: string[] = []; let release!: () => void;
+  const waiting = new Promise<void>(resolve => { release = resolve; });
+  const f = fixture(undefined, false, {}, async address => { copied.push(address); await waiting; return true; });
+  try {
+    await openFixtureRow(f, pendingScopedRow()); openRecipientCopy(f); const overlay = dialog(f, 'Copy this address?');
+    const copying = all(overlay).find(node => node.type === 'Button' && node.props.title === 'Copy full address')!.props.onPress();
+    dialog(f, 'Copy this address?'); // Commit the busy UI before the next native Back event.
+    assert.equal(f.back(), true);
+    const pending = dialog(f, 'Copy this address?');
+    assert(all(pending).filter(node => node.type === 'Button').every(node => node.props.disabled));
+    release(); await copying;
+    const nodes = all(f.render());
+    assert.equal(nodes.some(node => node.props.role === 'dialog'), false);
+    assert(nodes.some(node => node.type === 'TransactionDetailLayout'));
+    assert.equal(copied.length, 1); assert.equal(f.backs(), 0); assert.equal(f.replays(), 0);
+  } finally { release(); f.dispose(); }
 });

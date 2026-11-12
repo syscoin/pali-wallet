@@ -4,6 +4,7 @@ import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
 import { Button, Card, Coin, colors, Icon, Text } from '../ui';
 import { IdlePressable } from './IdleActivityBoundary';
 import type { AssetIconIdentity } from '../../../../source/shared/assetIconIdentity';
+import { useNativeTranslation } from '../platform/localization';
 
 export type TransactionDetailRow = Readonly<{
   label: string;
@@ -28,6 +29,7 @@ export function TransactionDetailLayout({ amount, direction, status, tone, rows,
   registrationHash?: string;
   assetSymbol?: string;
 }) {
+  const { t } = useNativeTranslation();
   const accent = tone === 'failed' ? colors.pink : tone === 'unknown' ? colors.muted : colors.blue;
   return <View style={s.content}>
     <View style={s.hero}>
@@ -51,7 +53,7 @@ export function TransactionDetailLayout({ amount, direction, status, tone, rows,
           : <View key={row.label} style={style}>{content}</View>;
       })}
     </Card>
-    {onExplorer && <Button title="View on explorer" icon="external" variant="secondary" size="compact" disabled={explorerDisabled} onPress={onExplorer} />}
+    {onExplorer && <Button title={t('mobile.portfolioCopy.viewExplorer')} icon="external" variant="secondary" size="compact" disabled={explorerDisabled} onPress={onExplorer} />}
   </View>;
 }
 

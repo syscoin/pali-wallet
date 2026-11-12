@@ -1,9 +1,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { composeQualificationSdkIdentity } = require('./qualificationSdkIdentity.ts');
 
 const name = '@sidhujag/sysweb3-keyring';
-const exactVersion =
-  /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?$/;
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -12,12 +11,12 @@ function readJson(file) {
 function readQualificationSdkPin(root) {
   const pkg = readJson(path.join(root, 'package.json'));
   const version = pkg.dependencies[name];
-  if (typeof version !== 'string' || !exactVersion.test(version))
-    throw Error('Expected an exact shared keyring pin');
   const quickCryptoIdentity = readQuickCryptoSentryIdentity(root);
+  const feeRateIdentity = readKeyringFeeRateIdentity(root);
   return {
     version,
-    identity: quickCryptoIdentity ? `${version}.${quickCryptoIdentity}` : version,
+    identity: composeQualificationSdkIdentity(version, quickCryptoIdentity, feeRateIdentity),
+    ...(feeRateIdentity ? { feeRateIdentity } : {}),
     ...(quickCryptoIdentity ? { quickCryptoIdentity } : {}),
   };
 }
@@ -29,6 +28,19 @@ function verifyInstalledQualificationSdk(root, pin) {
   if (readQualificationSdkPin(root).identity !== pin.identity)
     throw Error('Native qualification SDK identity mismatch');
   readWalletConnectSdkIdentity(root);
+}
+
+function readKeyringFeeRateIdentity(root) {
+  const pkg = readJson(path.join(root, 'package.json'));
+  if (pkg.paliKeyringFeeRatePatch === undefined) {
+    if (pkg.scripts?.postinstall?.includes('apply-keyring-fee-rate'))
+      throw Error('Keyring fee candidate requires qualification provenance');
+    return undefined;
+  }
+  const { identity, verifyKeyringFeeRatePatch } = require(path.resolve(__dirname, '../../../scripts/apply-keyring-fee-rate.cjs'));
+  if (pkg.paliKeyringFeeRatePatch !== identity) throw Error('Keyring fee candidate provenance mismatch');
+  verifyKeyringFeeRatePatch(root);
+  return identity;
 }
 
 function readQuickCryptoSentryIdentity(root) {

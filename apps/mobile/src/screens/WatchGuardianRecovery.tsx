@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useRef, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeGuardianRecoveryStatus } from '../custody/evmTransferReadRpc';
-import { useNativeTranslation } from '../platform/localization';
+import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { Button, Card, colors, Header, Screen, Text } from '../ui';
 import { NativeGuardianPolicy, type NativeGuardianPolicyTool } from './NativeGuardianPolicy';
 import { NativeGuardianRecovery, type NativeGuardianRecoveryTool } from './NativeGuardianRecovery';
@@ -18,13 +18,13 @@ export type WatchGuardianRecoveryTool = {
 type State = NativeGuardianRecoveryStatus | { status: 'idle' | 'loading' | 'unavailable' };
 
 const OPERATION_LABELS = {
-  pending: 'Recovery scheduled',
-  ready: 'Recovery ready to finalize',
-  expired: 'Recovery expired',
-  executed: 'Recovery completed',
-  canceled: 'Recovery canceled',
-  inactive: 'Recovery inactive',
-  unknown: 'Recovery status unavailable',
+  pending: 'mobile.recoveryStatusViews.watch.recoveryScheduled',
+  ready: 'mobile.recoveryStatusViews.watch.recoveryReadyToFinalize',
+  expired: 'mobile.recoveryStatusViews.watch.recoveryExpired',
+  executed: 'mobile.recoveryStatusViews.watch.recoveryCompleted',
+  canceled: 'mobile.recoveryStatusViews.watch.recoveryCanceled',
+  inactive: 'mobile.recoveryStatusViews.watch.recoveryInactive',
+  unknown: 'mobile.recoveryStatusViews.watch.recoveryStatusUnavailable',
 } as const;
 
 export function WatchGuardianRecovery({ address, networkLabel, read, manage, recovery, initialRecovery, lifetime, onBack, registerBack }:
@@ -61,12 +61,12 @@ export function WatchGuardianRecovery({ address, networkLabel, read, manage, rec
   };
   const observation = state.status === 'observed' ? state.observation : undefined;
   const operation = observation?.active;
-  const message = state.status === 'unsupported' ? 'Guardian module unsupported'
-    : state.status === 'no-compatible-policy' ? 'No compatible guardian policy'
-    : state.status === 'unavailable' ? 'Status unavailable'
-    : state.status === 'loading' ? 'Checking recovery status…'
-    : observation ? !observation.exists ? 'No guardian policy found'
-      : operation ? OPERATION_LABELS[operation.status] : 'No recovery scheduled'
+  const message = state.status === 'unsupported' ? t('mobile.recoveryStatusViews.watch.guardianModuleUnsupported')
+    : state.status === 'no-compatible-policy' ? t('mobile.recoveryStatusViews.watch.noCompatibleGuardianPolicy')
+    : state.status === 'unavailable' ? t('mobile.sendAssetViews.evm.statusUnavailable')
+    : state.status === 'loading' ? t('mobile.recoveryStatusViews.watch.checkingRecoveryStatus')
+    : observation ? !observation.exists ? t('mobile.recoveryStatusViews.watch.noGuardianPolicyFound')
+      : operation ? t(OPERATION_LABELS[operation.status]) : t('mobile.recoveryStatusViews.watch.noRecoveryScheduled')
     : null;
 
   if (editing === 'recover' && recovery) {
@@ -79,27 +79,27 @@ export function WatchGuardianRecovery({ address, networkLabel, read, manage, rec
   }
 
   return <SafeAreaView edges={['top']} style={styles.container}><Screen>
-    <Header title="Guardian recovery" subtitle={networkLabel} onBack={onBack} />
-    <Text style={styles.body}>Check the on-chain recovery status for this account.</Text>
+    <Header title={t('mobile.tools.guardian')} subtitle={networkLabel} onBack={onBack} />
+    <Text style={styles.body}>{t('mobile.recoveryStatusViews.watch.checkTheOnchainRecoveryStatusForThisAccount')}</Text>
     <Card style={styles.card}><Text selectable style={styles.address}>{address}</Text></Card>
     {message && <Card style={styles.card}>
       <Text accessibilityLiveRegion="polite" style={styles.status}>{message}</Text>
-      {state.status === 'unsupported' && <Text style={styles.body}>Pali’s guardian module could not be verified on this network.</Text>}
-      {state.status === 'no-compatible-policy' && <Text style={styles.body}>This address has no smart account code on this network.</Text>}
-      {state.status === 'unavailable' && <Text style={styles.body}>This network did not return a verified status. Try again.</Text>}
+      {state.status === 'unsupported' && <Text style={styles.body}>{t('mobile.recoveryStatusViews.watch.palisGuardianModuleCouldNotBeVerifiedOnThisNetwork')}</Text>}
+      {state.status === 'no-compatible-policy' && <Text style={styles.body}>{t('mobile.recoveryStatusViews.watch.thisAddressHasNoSmartAccountCodeOnThisNetwork')}</Text>}
+      {state.status === 'unavailable' && <Text style={styles.body}>{t('mobile.recoveryStatusViews.watch.thisNetworkDidNotReturnAVerifiedStatusTryAgain')}</Text>}
       {operation?.status === 'pending' && <Text style={styles.body}>
-        Ready {new Date(operation.executableAt * 1000).toLocaleString()}
+        {t('mobile.recoveryStatusViews.watch.readyAt', { date: new Date(operation.executableAt * 1000).toLocaleString(nativeI18n.resolvedLanguage) })}
       </Text>}
       {(operation?.status === 'ready' || operation?.status === 'pending') && <Text style={styles.body}>
-        Expires {new Date(operation.expiresAt * 1000).toLocaleString()}
+        {t('mobile.recoveryStatusViews.watch.expiresAt', { date: new Date(operation.expiresAt * 1000).toLocaleString(nativeI18n.resolvedLanguage) })}
       </Text>}
       {observation && <Text style={styles.body}>
-        Checked at block {observation.observedBlock.number.toLocaleString()}
+        {t('mobile.recoveryStatusViews.watch.observedBlock', { block: observation.observedBlock.number.toLocaleString(nativeI18n.resolvedLanguage) })}
       </Text>}
     </Card>}
-    {manage && observation && <Button title={observation.exists ? 'Update guardian' : 'Set guardian'} onPress={() => setEditing('set')} />}
-    {manage && observation?.exists && <Button title="Remove guardian" variant="danger" size="compact" icon="trash" onPress={() => setEditing('remove')} />}
-    {recovery && (recovery.hasIntent || observation?.exists) && <Button title={recovery.hasIntent ? 'Resume recovery' : 'Recover account'} onPress={() => setEditing('recover')} />}
+    {manage && observation && <Button title={observation.exists ? t('mobile.recoveryDevices.guardianPolicy.updateGuardian') : t('mobile.recoveryDevices.guardianPolicy.setGuardian')} onPress={() => setEditing('set')} />}
+    {manage && observation?.exists && <Button title={t('mobile.recoveryDevices.guardianPolicy.removeGuardian')} variant="danger" size="compact" icon="trash" onPress={() => setEditing('remove')} />}
+    {recovery && (recovery.hasIntent || observation?.exists) && <Button title={recovery.hasIntent ? t('mobile.recoveryStatusViews.watch.resumeRecovery') : t('mobile.recoveryStatusViews.watch.recoverAccount')} onPress={() => setEditing('recover')} />}
     {recovery && observation?.exists && <>
       <Button title={t('settings.smartAccountRecoveryEmailAlerts')} variant="secondary" size="compact" icon="external" onPress={() => {
         if (!live.current || lifetime.aborted) return;
@@ -109,9 +109,9 @@ export function WatchGuardianRecovery({ address, networkLabel, read, manage, rec
         });
       }} />
       <Text style={styles.body}>{t('settings.smartAccountRecoveryEmailAlertsDescription')}</Text>
-      {alertError && <Text accessibilityRole="alert" style={styles.body}>Recovery alerts could not be opened. Try again.</Text>}
+      {alertError && <Text accessibilityRole="alert" style={styles.body}>{t('mobile.recoveryStatusViews.guardian.recoveryAlertsCouldNotBeOpenedTryAgain')}</Text>}
     </>}
-    <Button title={state.status === 'idle' ? 'Check status' : 'Check again'} variant={state.status === 'idle' ? 'primary' : 'secondary'} size={state.status === 'idle' ? 'regular' : 'compact'} icon="refresh" onPress={() => { void check(); }} disabled={state.status === 'loading'} />
+    <Button title={state.status === 'idle' ? t('settings.smartAccountInfrastructureCheckStatus') : t('mobile.sendAssetViews.evm.checkAgain')} variant={state.status === 'idle' ? 'primary' : 'secondary'} size={state.status === 'idle' ? 'regular' : 'compact'} icon="refresh" onPress={() => { void check(); }} disabled={state.status === 'loading'} />
   </Screen></SafeAreaView>;
 }
 

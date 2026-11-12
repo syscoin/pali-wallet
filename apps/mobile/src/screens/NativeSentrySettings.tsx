@@ -1,3 +1,4 @@
+import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import {
@@ -12,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeSentryKeyManagement } from '../custody/sentryKeyManagement';
 import { Button, colors, Header, Screen, styles, Text } from '../ui';
 import { IdleTextInput } from './IdleActivityBoundary';
+const t = nativeI18n.t.bind(nativeI18n);
 
 type Props = {
   manager: Pick<NativeSentryKeyManagement, 'getSettings' | 'saveSettings' | 'cancel' | 'isAuthenticating'>;
@@ -34,6 +36,7 @@ export function NativeSentrySettings({
   networkLabel,
   onBack,
 }: Props) {
+  useNativeTranslation();
   const owner = useRef<Owner>({ manager, live: false, busy: true, request: 0 });
   const [serviceUrl, setServiceUrl] = useState('');
   const [maxFeeSatoshis, setMaxFeeSatoshis] = useState('');
@@ -69,7 +72,7 @@ export function NativeSentrySettings({
         setLoaded(true);
       })
       .catch(() => {
-        if (current.live) setNotice('Could not load service settings.');
+        if (current.live) setNotice(t("mobile.sentryViews.couldNotLoadServiceSettings"));
       })
       .finally(() => {
         current.busy = false;
@@ -133,11 +136,11 @@ export function NativeSentrySettings({
       check();
       setServiceUrl(saved.serviceUrl);
       setMaxFeeSatoshis(saved.maxFeeSatoshis);
-      setNotice('Service settings saved.');
+      setNotice(t("mobile.sentryViews.serviceSettingsSaved"));
     } catch {
       if (current.live && current.request === request)
         setNotice(
-          'Could not save settings. Check the service origin, fee limit and authorization.'
+          t("mobile.sentryViews.couldNotSaveSettingsCheckTheServiceOriginFeeLimitAndAuthorization")
         );
     } finally {
       current.busy = false;
@@ -149,8 +152,8 @@ export function NativeSentrySettings({
     return (
       <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
         <Screen>
-          <Header title="Service settings" subtitle={networkLabel} />
-          <Text>Closing service settings…</Text>
+          <Header title={t("mobile.sentryViews.serviceSettings")} subtitle={networkLabel} />
+          <Text>{t("mobile.sentryViews.closingServiceSettings")}</Text>
         </Screen>
       </SafeAreaView>
     );
@@ -166,7 +169,7 @@ export function NativeSentrySettings({
             <>
               <Button
                 title={
-                  busy ? (loaded ? 'Saving…' : 'Loading…') : 'Save settings'
+                  busy ? (loaded ? t("mobile.language.saving") : t("localPasskey.loading")) : t("mobile.sentryViews.saveSettings")
                 }
                 disabled={
                   busy || !loaded || !serviceUrl || !maxFeeSatoshis
@@ -175,22 +178,20 @@ export function NativeSentrySettings({
                   void save();
                 }}
               />
-              <Button title="Cancel" variant="secondary" size="compact" onPress={back} />
+              <Button title={t("buttons.cancel")} variant="secondary" size="compact" onPress={back} />
             </>
           }
         >
           <Header
-            title="Service settings"
+            title={t("mobile.sentryViews.serviceSettings")}
             subtitle={networkLabel}
             onBack={back}
           />
           <Text style={styles.muted}>
-            Choose the Sentry data service and maximum transaction fee for this
-            network.
-          </Text>
-          <Text>Service origin</Text>
+            {t("mobile.sentryViews.chooseTheSentryDataServiceAndMaximumTransactionFeeForThisNetwork")}</Text>
+          <Text>{t("privacy.serviceOrigin")}</Text>
           <IdleTextInput
-            accessibilityLabel="Sentry service origin"
+            accessibilityLabel={t("mobile.sentryViews.sentryServiceOrigin")}
             value={serviceUrl}
             onChangeText={setServiceUrl}
             editable={loaded && !busy}
@@ -202,12 +203,11 @@ export function NativeSentrySettings({
           />
           {loaded && !serviceUrl && (
             <Text style={styles.muted}>
-              No service origin is configured for this network.
-            </Text>
+              {t("mobile.sentryViews.noServiceOriginIsConfiguredForThisNetwork")}</Text>
           )}
-          <Text>Maximum fee in satoshis</Text>
+          <Text>{t("mobile.sentryViews.maximumFeeInSatoshis")}</Text>
           <IdleTextInput
-            accessibilityLabel="Maximum Sentry fee in satoshis"
+            accessibilityLabel={t("mobile.sentryViews.maximumSentryFeeInSatoshis")}
             value={maxFeeSatoshis}
             onChangeText={setMaxFeeSatoshis}
             editable={loaded && !busy}

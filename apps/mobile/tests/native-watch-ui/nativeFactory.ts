@@ -7,7 +7,7 @@ import { createNativeUtxoActivity } from '../../src/custody/utxoActivity';
 import { createUtxoActivityReader } from '../../src/core/utxoActivity';
 import { createUtxoBalanceReader } from '../../src/core/utxoBalanceReader.ts';
 import { getUtxoNetwork, UTXO_NETWORKS } from '../../src/core/utxoNetworks.ts';
-import { custodyIdle, securityPreferences } from './security';
+import { custodyIdle, publicViewLock, securityPreferences } from './security';
 // Actual custody/transfer controllers, with deterministic in-memory runtime ports.
 import { NativeCustodyAuthority } from '../../src/custody/authority';
 import { NativeConnectionsController } from '../../src/connections/controller';
@@ -15,7 +15,8 @@ import { SeedBackupFlow } from '../../src/custody/seedBackup';
 import { HdKeyExportFlow, type NativeHdKeyExportRuntime } from '../../src/custody/hdKeyExport';
 import { bindNativePrivateAuthentication, bindNativePrivateAuthenticationChild, withNativePrivateAuthentication, type NativePrivateAuthentication, type NativePrivateAuthenticationScope } from '../../src/custody/privateAuthentication';
 import { KeyringRuntimeError, type KeyringRuntime } from '../../src/custody/keyringRuntime';
-import { NativeTransfers, type NativeTransferRuntime } from '../../src/custody/transfers';
+import { NativeTransfers, type NativeTransferRuntime, type NativeTransferView } from '../../src/custody/transfers';
+import type { PortfolioAssets } from '../../src/portfolio/accountPortfolio';
 import { NativeTransferRpc } from '../../src/custody/transferRpc';
 import { createBalanceReader } from '../../src/platformRpc';
 import { importedKeyIdentity, normalizeImportedKey, type NativeImportView, type NativeUtxoImportDraft } from '../../src/custody/importedAccounts';
@@ -30,7 +31,7 @@ import type { NativeAccountView } from '../../src/custody/accounts';
 import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCatalogue';
 import type { CustodyRuntime, NativeOperationCredential } from '../../src/custody/types';
 import { getNativeNetwork, NATIVE_NETWORKS } from '../../src/custody/networkContext';
-import { ADDRESS, SECOND, audit, events, unlockGate, signGate, keyReadGate, activityResetGate, PUBLIC_TEST_KEY, keyFailure, importGate, importFailure } from './state';
+import { ADDRESS, SECOND, audit, events, unlockGate, closeGate, signGate, keyReadGate, activityResetGate, PUBLIC_TEST_KEY, keyFailure, importGate, importFailure } from './state';
 import { recoveryAudit, recoveryGate } from './recoveryState';
 import type { RecoveryInventory } from '../../src/custody/recoveryInventory';
 import type { NativeNoteInventory, NativeSavedNote } from '../../src/custody/noteBackupRuntime';
@@ -115,6 +116,7 @@ const wifFixtureEnabled = new URLSearchParams(window.location.search).has('wif-f
 const visualReviewEnabled = new URLSearchParams(window.location.search).get('visual-review') === '1';
 let visualWalletPresent = !(visualReviewEnabled && new URLSearchParams(window.location.search).get('native-empty') === '1');
 const needsInitialBackup = new URLSearchParams(window.location.search).has('backup-required');
+const publicSendFixture = new URLSearchParams(window.location.search).has('public-send-fixture');
 let backupConfirmed = visualWalletPresent && !needsInitialBackup;
 const publicBackupWords = Object.freeze([...Array<string>(11).fill('abandon'), 'about']);
 const fingerprint = '1'.repeat(64);
@@ -160,7 +162,7 @@ let catalogue: NativeWalletCatalogueSnapshot = Object.freeze<NativeWalletCatalog
     { id: 'hd:0:0', type: 'HDAccount', index: 0, slip44: 0, label: 'Account 1', address: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4' },
   ] : [
     { id: 'hd:60:0', type: 'HDAccount', index: 0, slip44: 60, label: 'Account 1', address: ADDRESS },
-    ...(needsInitialBackup ? [] : [{ id: 'hd:60:1', type: 'HDAccount' as const, index: 1, slip44: 60 as const, label: 'Account 2', address: SECOND }]),
+    ...(needsInitialBackup && !publicSendFixture ? [] : [{ id: 'hd:60:1', type: 'HDAccount' as const, index: 1, slip44: 60 as const, label: 'Account 2', address: SECOND }]),
     ...(new URLSearchParams(window.location.search).has('account-limit') ? Array.from({ length: 18 }, (_, index) => ({
       id: `hd:60:${index + 2}`, type: 'HDAccount' as const, index: index + 2, slip44: 60 as const, label: `Account ${index + 3}`, address: `0x${(index + 100).toString(16).padStart(40, '0')}`,
     })) : []),
@@ -384,10 +386,10 @@ export function createNativeWalletControllers() {
         return { presence: 'existing', backup: backupConfirmed ? 'confirmed' : 'unconfirmed' };
       },
       ...(removalFixtureEnabled ? { async retireForRemoval(operation: () => Promise<void>) { await operation(); } } : {}),
-      async close() { audit.closed++; events.push('close'); },
+      async close() { audit.closed++; events.push('close'); await closeGate(); },
     },
   };
-  const authority = new NativeCustodyAuthority({ open: async () => runtime }, { preferences: securityPreferences, assertActive: custodyIdle.captureGuard() });
+  const authority = new NativeCustodyAuthority({ open: async () => runtime }, { preferences: securityPreferences, viewLock: publicViewLock, assertActive: custodyIdle.captureGuard() });
   const unavailableConnection = async (): Promise<never> => {
     throw Error('Synthetic watch fixture has no WalletConnect transport');
   };
@@ -408,6 +410,7 @@ export function createNativeWalletControllers() {
   const operationAuthorization = createTestOperationAuthorizer(authenticateOperation, unsignedTransferBytes);
   const transferRuntime: NativeTransferRuntime = {
     isAuthenticationRefusal: error => !!error && typeof error === 'object' && credentialRefusals.has(error),
+    releaseReplacement() {},
     authorizeOperation: operationAuthorization.authorizeOperation,
     releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
     authenticateOperation,
@@ -423,6 +426,17 @@ export function createNativeWalletControllers() {
   };
   const transfers = new NativeTransfers(authority, () => transferRuntime, { rpc: new NativeTransferRpc({ networkId: 'ethereum', fetch: fixtureFetch }) });
   latestTransfers = transfers;
+  const transferView: NativeTransferView = Object.freeze({
+    ...transfers.view,
+    prepare: (...args: Parameters<NativeTransferView['prepare']>) => { audit.transferPrepares++; return transfers.view.prepare(...args); },
+    prepareMaximum: (...args: Parameters<NativeTransferView['prepareMaximum']>) => { audit.transferPrepares++; return transfers.view.prepareMaximum(...args); },
+    prepareToken: (...args: Parameters<NativeTransferView['prepareToken']>) => { audit.transferPrepares++; return transfers.view.prepareToken(...args); },
+    prepareCollectible: (...args: Parameters<NativeTransferView['prepareCollectible']>) => { audit.transferPrepares++; return transfers.view.prepareCollectible(...args); },
+    prepareCancellation: (...args: Parameters<NativeTransferView['prepareCancellation']>) => { audit.transferPrepares++; return transfers.view.prepareCancellation(...args); },
+    prepareSavedCancellation: (...args: Parameters<NativeTransferView['prepareSavedCancellation']>) => { audit.transferPrepares++; return transfers.view.prepareSavedCancellation(...args); },
+    prepareSpeedUp: (...args: Parameters<NativeTransferView['prepareSpeedUp']>) => { audit.transferPrepares++; return transfers.view.prepareSpeedUp(...args); },
+    feeRecommendations: (...args: Parameters<NativeTransferView['feeRecommendations']>) => { audit.transferFeeReads++; return transfers.view.feeRecommendations(...args); },
+  });
   const visualTokenRegistry = new NativeTokenRegistry(visualTokenStorage);
   const tokenScope = () => {
     const state = authority.getSnapshot(), selected = catalogue.accounts.find(account => account.id === catalogue.active.accountId);
@@ -446,6 +460,11 @@ export function createNativeWalletControllers() {
       scope: { id: `native:${account.id}:${network.id}`, accountId: account.id, accountType: account.type,
         accountAddress: account.address, network, guardian: false },
     })));
+  };
+  const readPortfolioAssets = async (scope: NativeNotificationScope, signal: AbortSignal, check: () => void): Promise<PortfolioAssets> => {
+    check();
+    if (signal.aborted || !getNotificationChoices().some(choice => JSON.stringify(choice.scope) === JSON.stringify(scope))) throw Error('CANCELLED');
+    return { tokens: [], collectibles: [] };
   };
   const getScopedActivityRuntime = (scope: NativeNotificationScope, assertOwner: () => void): NativeActivityRuntime => {
     const before = authority.getSnapshot();
@@ -569,7 +588,8 @@ export function createNativeWalletControllers() {
     balanceReader: {
       ...createBalanceReader({ fetch: fixtureFetch }),
       ...(sysxSendFixture.enabled ? { readUtxoBalance: createUtxoBalanceReader({ fetch: sysxSendFixture.fetch }).readBalance } : {}),
-    }, transfers: transfers.view, tokens: tokens.view, activity, utxoActivity, accounts, backup,
+    }, transfers: transferView, tokens: tokens.view, activity, utxoActivity, accounts, backup,
+    ...(publicSendFixture ? { readPortfolioAssets } : {}),
     ...(removalFixtureEnabled ? { removal: createWalletRemovalFixture(authority, { getSnapshot: () => sessionUnlocked ? catalogue : null }) } : {}),
     ...(noteFixtureEnabled ? {
       readNoteInventory: (check: () => void, scope: NativePrivateAuthenticationScope) => {
@@ -589,11 +609,12 @@ export function createNativeWalletControllers() {
       return { status: 'needs-matching-phrase-verification', reason: null, backup: backupConfirmed ? 'confirmed' : 'unconfirmed', privateNotes: 'not-supported',
         counts: { hdAccounts: catalogue.accounts.filter((a) => a.type === 'HDAccount').length, importedKeys: importedKeys.size, retainedSignedTransactions: 0, tokenEntries: 0, historySummaries: 0, cachedTransactions: 0, activityPreferences: 0 } };
     },
-    ...(sysxSendFixture.enabled ? { async openUtxoSend(check: () => void) { return sysxSendFixture.open(check); } } : {}),
+    ...(sysxSendFixture.enabled ? { async openUtxoSend(check: () => void) { audit.utxoOpens++; return sysxSendFixture.open(check); } } : {}),
     ...(hdUtxoFixture ? { async openUtxoSend(check: () => void) {
+      audit.utxoOpens++;
       check();
       const unused = async () => { throw Error('Synthetic route fixture does not sign'); };
-      return { cancel() {}, async list() { return []; }, async refreshSaved() { return []; }, prepare: unused, prepareRetry: unused, confirm: unused, check: unused };
+      return { cancel() {}, async list() { return []; }, async refreshSaved() { audit.utxoSavedReads++; return []; }, prepare: unused, prepareRetry: unused, confirm: unused, check: unused };
     } } : {}),
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose(),
     async disposeConnections() { await connections.dispose(); events.push('connections:dispose'); } };

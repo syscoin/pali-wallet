@@ -1,3 +1,4 @@
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { NativeImportWalletProps } from '../src/screens/NativeImportWallet.tsx';
@@ -10,6 +11,7 @@ function fixture(preview: NativeImportWalletProps['preview'] = async () => rows)
   const calls: string[] = [], confirmed: string[] = [], events = new Map<string, (...args: any[]) => void>();
   let backs = 0;
   const f = screenFixture(new URL('../src/screens/NativeImportWallet.tsx', import.meta.url), 'NativeImportWallet', {
+    '../platform/localization': nativeTranslationFixture,
     'react-native': { StyleSheet: { create: (value: unknown) => value }, Platform: { OS: 'android' }, Keyboard: { dismiss() {} },
       AppState: { currentState: 'active', addEventListener(event: string, callback: (...args: any[]) => void) { events.set(event, callback); return { remove() { events.delete(event); } }; } },
       BackHandler: { addEventListener(_event: string, callback: () => boolean) { events.set('back', callback); return { remove() { events.delete('back'); } }; } },

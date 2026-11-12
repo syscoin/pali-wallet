@@ -727,6 +727,7 @@ test('native note capacity quarantines a lost save acknowledgement and only reop
 
 function verifiedPool(assertCurrent = () => undefined): ReturnType<typeof createNativePrivacyPoolSync> {
   return {
+    subscribe() { return () => undefined; },
     getStatus: () => { assertCurrent(); return { poolId: 'eth-1', phase: 'ready' }; },
     refresh: async () => ({ poolId: 'eth-1', phase: 'ready' }),
     pause: async () => ({ poolId: 'eth-1', phase: 'paused' }),

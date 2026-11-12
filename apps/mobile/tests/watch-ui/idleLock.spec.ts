@@ -1,10 +1,19 @@
-import { authenticateNativeOperation, refuseNativeOperation, waitForNativePublicSession } from '../ui/operationAuthentication';
+import { unlockPublicView, waitForWatchPublicSession, authenticateNativeOperation, refuseNativeOperation, waitForNativePublicSession } from '../ui/operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
-async function watch(page: Page) { await page.goto('/'); await page.getByRole('button',{name:'View my accounts',exact:true}).click(); }
-async function native(page: Page, query = '') { await page.goto(`/${query}`); await page.getByRole('button',{name:'Accounts',exact:true}).click(); await page.getByRole('button',{name:'Open wallet',exact:true}).click(); await waitForNativePublicSession(page); await expect(page.getByRole('tab',{name:'Settings',exact:true})).toBeVisible(); }
+
+test('new installs leave automatic locking off by default', async ({ page }) => {
+  await page.goto('/?idle-defaults=1');
+  const open = page.getByRole('button', { name: 'View my accounts', exact: true });
+  if (await open.count()) await open.click();
+  await settings(page);
+  await expect(page.getByText(/Current: Off while open/)).toBeVisible();
+  expect(await page.evaluate(() => window.__watchFixture.idle.value())).toBeNull();
+});
+async function watch(page: Page) { await page.goto('/'); await waitForWatchPublicSession(page); }
+async function native(page: Page, query = '') { await page.goto(`/${query}`); const open=page.getByRole('button',{name:'View my accounts',exact:true}); if(await open.count())await open.click(); await page.getByRole('button',{name:'Accounts',exact:true}).click(); await page.getByRole('button',{name:'Open wallet',exact:true}).click(); await waitForNativePublicSession(page); await expect(page.getByRole('tab',{name:'Settings',exact:true})).toBeVisible(); }
 async function settings(page: Page) { await page.getByRole('tab',{name:'Settings',exact:true}).click(); const security=page.getByRole('button',{name:/^Security & backups/}); if(await security.count())await security.click(); await page.getByRole('button',{name:'Auto-lock',exact:false}).click(); await expect(page.getByRole('heading',{name:'Auto-lock',exact:true})).toBeVisible(); }
-test.beforeEach(async({page})=>{await page.route('**/*',async route=>{if(new URL(route.request().url()).origin!=='http://127.0.0.1:4182'){await route.abort();throw Error('Unexpected network');}await route.continue();});});
-test('watch settings persist only their mode; native default remains five and Off preserves lifecycle hiding',async({page})=>{await watch(page);await settings(page);await page.getByRole('radio',{name:'Off while open',exact:true}).click();await page.getByRole('button',{name:'I understand the Off setting',exact:true}).click();await page.getByRole('button',{name:'Save auto-lock',exact:true}).click();await expect(page.getByText('Auto-lock setting saved.',{exact:true})).toBeVisible();expect(JSON.parse((await page.evaluate(()=>window.__watchFixture.idle.value()))!)).toEqual({version:1,custodyIdleMinutes:5,watchIdleMinutes:0});await page.evaluate(()=>window.__watchFixture.lifecycle('background'));await page.evaluate(()=>window.__watchFixture.lifecycle('active'));await expect(page.getByRole('button',{name:'View my accounts',exact:true})).toBeVisible();await page.reload();await page.getByRole('button',{name:'View my accounts',exact:true}).click();await settings(page);await expect(page.getByText(/Current: Off while open/)).toBeVisible();});
+test.beforeEach(async({page})=>{await page.addInitScript(()=>{if(!location.search.includes('security-read-failure')&&!location.search.includes('idle-defaults')&&!localStorage.getItem('pali-fixture-security-preferences'))localStorage.setItem('pali-fixture-security-preferences',JSON.stringify({version:1,custodyIdleMinutes:5,watchIdleMinutes:5}));});await page.route('**/*',async route=>{if(new URL(route.request().url()).origin!=='http://127.0.0.1:4182'){await route.abort();throw Error('Unexpected network');}await route.continue();});});
+test('watch settings preserve the explicit native timeout and Off preserves lifecycle hiding',async({page})=>{await watch(page);await settings(page);await page.getByRole('radio',{name:'Off while open',exact:true}).click();await page.getByRole('button',{name:'I understand the Off setting',exact:true}).click();await page.getByRole('button',{name:'Save auto-lock',exact:true}).click();await expect(page.getByText('Auto-lock setting saved.',{exact:true})).toBeVisible();expect(JSON.parse((await page.evaluate(()=>window.__watchFixture.idle.value()))!)).toEqual({version:1,custodyIdleMinutes:5,watchIdleMinutes:0});await page.evaluate(()=>window.__watchFixture.lifecycle('background'));await expect(page.getByRole('button',{name:'View my accounts',exact:true})).toBeVisible();await expect(page.getByRole('tab')).toHaveCount(0);await page.evaluate(()=>window.__watchFixture.lifecycle('active'));await expect(page.getByRole('tab',{name:'Wallet',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Unlock wallet',exact:true})).toHaveCount(0);await page.reload();await waitForWatchPublicSession(page);await settings(page);await expect(page.getByText(/Current: Off while open/)).toBeVisible();});
 test('native weakening uses fresh device authorization and retry while shortening needs none', async ({ page }) => {
   await native(page); await settings(page);
   await page.getByRole('radio', { name: '15 minutes', exact: true }).click();
@@ -14,7 +23,7 @@ test('native weakening uses fresh device authorization and retry while shortenin
   await refuseNativeOperation(page);
   await expect(page.getByText('Auto-lock was not changed.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Save auto-lock', exact: true }).click();
-  expect(await page.evaluate(() => window.__watchFixture.idle.value())).toBeNull();
+  expect(JSON.parse((await page.evaluate(() => window.__watchFixture.idle.value()))!)).toEqual({ version: 1, custodyIdleMinutes: 5, watchIdleMinutes: 5 });
   expect(await page.evaluate(() => window.__watchFixture.nativePhase())).toBe('ready');
   await authenticateNativeOperation(page);
   await expect(page.getByText('Auto-lock setting saved.', { exact: true })).toBeVisible();
@@ -25,9 +34,9 @@ test('native weakening uses fresh device authorization and retry while shortenin
   await expect(page.getByText('Test device authorization', { exact: true })).toHaveCount(0);
   expect((await page.evaluate(() => window.__watchFixture.events())).filter(x => x === 'idle:auth')).toHaveLength(2);
 });
-test('expired watch input cannot renew the deadline and native idle lock clears secret presentation',async({page})=>{await watch(page);await page.evaluate(()=>window.__watchFixture.idle.elapse(300001));await page.getByRole('tab',{name:'Settings',exact:true}).click();await expect(page.getByRole('button',{name:'View my accounts',exact:true})).toBeVisible();await native(page);await page.evaluate(()=>{window.__watchFixture.idle.elapse(300001);window.__watchFixture.idle.fire();});await expect(page.getByRole('heading', { name: 'Your wallet', exact: true })).toBeVisible();await expect(page.getByRole('tab')).toHaveCount(0);});
+test('expired watch input cannot renew the deadline and native idle lock clears secret presentation',async({page})=>{await watch(page);await page.evaluate(()=>window.__watchFixture.idle.elapse(300001));await page.getByRole('tab',{name:'Settings',exact:true}).click();await expect(page.getByRole('button',{name:'Unlock wallet',exact:true})).toBeVisible();await unlockPublicView(page);await native(page);await page.evaluate(()=>{window.__watchFixture.idle.elapse(300001);window.__watchFixture.idle.fire();});await expect(page.getByRole('heading', { name: 'Wallet locked', exact: true })).toBeVisible();await expect(page.getByRole('tab')).toHaveCount(0);});
 test('security read failure gates opening without overwriting; retry recovers explicitly',async({page},testInfo)=>{await page.goto('/?security-read-failure=1');await expect(page.getByText('Security settings unavailable',{exact:true})).toBeVisible();await page.screenshot({path:testInfo.outputPath('security-preferences-unavailable.png'),fullPage:true});await expect(page.getByRole('button',{name:'View my accounts',exact:true})).toHaveCount(0);expect(await page.evaluate(()=>window.__watchFixture.idle.value())).toBeNull();await page.evaluate(()=>window.__watchFixture.idle.readFailure(false));await page.getByRole('button',{name:'Retry security settings',exact:true}).click();await expect(page.getByRole('button',{name:'View my accounts',exact:true})).toBeVisible();});
-test('custom validation and cancelled drafts do not change durable preferences',async({page})=>{await watch(page);await settings(page);await page.getByRole('textbox',{name:'Auto-lock minutes',exact:true}).fill('4');await expect(page.getByRole('button',{name:'Save auto-lock',exact:true})).toBeDisabled();await page.getByRole('textbox',{name:'Auto-lock minutes',exact:true}).fill('55');await page.getByRole('button',{name:'Cancel',exact:true}).click();expect(await page.evaluate(()=>window.__watchFixture.idle.value())).toBeNull();await settings(page);await expect(page.getByRole('textbox',{name:'Auto-lock minutes',exact:true})).toHaveValue('5');});
+test('custom validation and cancelled drafts do not change durable preferences',async({page})=>{await watch(page);await settings(page);await page.getByRole('textbox',{name:'Auto-lock minutes',exact:true}).fill('4');await expect(page.getByRole('button',{name:'Save auto-lock',exact:true})).toBeDisabled();await page.getByRole('textbox',{name:'Auto-lock minutes',exact:true}).fill('55');await page.getByRole('button',{name:'Cancel',exact:true}).click();expect(JSON.parse((await page.evaluate(()=>window.__watchFixture.idle.value()))!)).toEqual({ version: 1, custodyIdleMinutes: 5, watchIdleMinutes: 5 });await settings(page);await expect(page.getByRole('textbox',{name:'Auto-lock minutes',exact:true})).toHaveValue('5');});
 test('Android custom auto-lock remains editable in a compact large-text viewport', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 640 });
   await native(page, '?android=1');
@@ -49,7 +58,7 @@ test('Android custom auto-lock remains editable in a compact large-text viewport
   await expect(page.getByText('Auto-lock setting saved.', { exact: true })).toBeVisible();
   expect((await page.evaluate(() => window.__watchFixture.events())).filter(event => event === 'idle:auth')).toHaveLength(1);
 });
-test('lost write acknowledgement hides the session and retry reads the saved setting',async({page})=>{await watch(page);await settings(page);await page.evaluate(()=>window.__watchFixture.idle.loseAck(true));await page.getByRole('radio',{name:'15 minutes',exact:true}).click();await page.getByRole('button',{name:'Save auto-lock',exact:true}).click();await expect(page.getByText('Security settings unavailable',{exact:true})).toBeVisible();await page.evaluate(()=>window.__watchFixture.idle.loseAck(false));await page.getByRole('button',{name:'Retry security settings',exact:true}).click();await page.getByRole('button',{name:'View my accounts',exact:true}).click();await settings(page);await expect(page.getByText(/Current: 15 minutes/)).toBeVisible();});
+test('lost write acknowledgement hides the session and retry reads the saved setting',async({page})=>{await watch(page);await settings(page);await page.evaluate(()=>window.__watchFixture.idle.loseAck(true));await page.getByRole('radio',{name:'15 minutes',exact:true}).click();await page.getByRole('button',{name:'Save auto-lock',exact:true}).click();await expect(page.getByText('Security settings unavailable',{exact:true})).toBeVisible();await page.evaluate(()=>window.__watchFixture.idle.loseAck(false));await page.getByRole('button',{name:'Retry security settings',exact:true}).click();await unlockPublicView(page);await waitForWatchPublicSession(page);await settings(page);await expect(page.getByText(/Current: 15 minutes/)).toBeVisible();});
 test('idle cancels pending native weakening without clearing the old policy or reopening the session', async ({ page }) => {
   await native(page); await settings(page);
   await page.getByRole('radio', { name: '15 minutes', exact: true }).click();
@@ -59,12 +68,12 @@ test('idle cancels pending native weakening without clearing the old policy or r
   await authenticateNativeOperation(page);
   await expect(page.getByRole('button', { name: 'Saving auto-lock…', exact: true })).toBeVisible();
   await page.evaluate(() => { window.__watchFixture.idle.elapse(300001); window.__watchFixture.idle.fire(); window.__watchFixture.releaseUnlock(); });
-  await expect(page.getByRole('heading', { name: 'Your wallet', exact: true })).toBeVisible();
-  expect(await page.evaluate(() => window.__watchFixture.idle.value())).toBeNull();
+  await expect(page.getByRole('heading', { name: 'Wallet locked', exact: true })).toBeVisible();
+  expect(JSON.parse((await page.evaluate(() => window.__watchFixture.idle.value()))!)).toEqual({ version: 1, custodyIdleMinutes: 5, watchIdleMinutes: 5 });
 });
-test('public reentry requires no Pali credential and idle still closes private screens', async({page}) => {
+test('OS-authorized public reentry reads no Pali credential and idle still closes private screens', async({page}) => {
  await native(page); await page.evaluate(()=>{window.__watchFixture.idle.elapse(300001);window.__watchFixture.idle.fire();});
- await waitForNativePublicSession(page);
+ await unlockPublicView(page); await waitForNativePublicSession(page);
  await page.evaluate(()=>window.__watchFixture.idle.elapse(240000));
  await page.getByRole('tab',{name:'Settings',exact:true}).click();
  await page.evaluate(()=>{window.__watchFixture.idle.elapse(240000);window.__watchFixture.idle.fire();});
@@ -89,8 +98,9 @@ test('narrow large-type settings, validation and saving states stay usable', asy
 test('a fresh virtual activation reopens watch accounts after an expired pointer action',async({page})=>{
  await watch(page);await page.evaluate(()=>window.__watchFixture.idle.elapse(300001));
  await page.getByRole('tab',{name:'Settings',exact:true}).click();
- const reopen=page.getByRole('button',{name:'View my accounts',exact:true});await expect(reopen).toBeVisible();
+ const reopen=page.getByRole('button',{name:'Unlock wallet',exact:true});await expect(reopen).toBeVisible();
  await reopen.dispatchEvent('click',{bubbles:true,detail:0});
+ await authenticateNativeOperation(page);
  await expect(page.getByRole('tab',{name:'Settings',exact:true})).toBeVisible();
 });
 test('cancelled shared authorization preserves the draft and a changed timeout needs a fresh device approval',async({page},testInfo)=>{
@@ -101,7 +111,7 @@ test('cancelled shared authorization preserves the draft and a changed timeout n
  await expect(page.getByRole('heading',{name:'Auto-lock',exact:true})).toBeVisible();
  await expect(page.getByRole('textbox',{name:'Auto-lock minutes',exact:true})).toHaveValue('15');
  await expect(page.getByText('Auto-lock was not changed.',{exact:true})).toBeVisible();
- expect(await page.evaluate(()=>window.__watchFixture.idle.value())).toBeNull();
+ expect(JSON.parse((await page.evaluate(()=>window.__watchFixture.idle.value()))!)).toEqual({ version: 1, custodyIdleMinutes: 5, watchIdleMinutes: 5 });
  expect(await page.evaluate(()=>window.__watchFixture.nativePhase())).toBe('ready');
  await page.getByRole('radio',{name:'30 minutes',exact:true}).click();await save.click();
  await expect(page.getByText('Test device authorization',{exact:true})).toBeVisible();
@@ -157,3 +167,20 @@ for (const viewport of [{ width: 320, height: 640 }, { width: 393, height: 852 }
     expect(await page.evaluate(() => window.__watchFixture.idle.value())).toBe(stored);
   });
 }
+
+test('deliberate watch lock requires OS-only view consent and cancellation keeps accounts hidden', async ({ page }) => {
+  await watch(page);
+  await page.getByRole('tab', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Hide accounts', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Wallet locked', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Unlock wallet', exact: true }).click();
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await refuseNativeOperation(page);
+  await expect(page.getByRole('heading', { name: 'Wallet locked', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await unlockPublicView(page);
+  await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
+  const audit = await page.evaluate(() => window.__watchFixture.audit());
+  expect(audit.keyReads + audit.signs + audit.broadcasts).toBe(0);
+  expect((await page.evaluate(() => window.__watchFixture.events())).filter(event => event === 'view:auth')).toHaveLength(2);
+});

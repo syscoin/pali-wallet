@@ -1,3 +1,5 @@
+import { useNativeTranslation } from '../platform/localization';
+import { recoveryErrorText } from './recoveryCopy';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -9,14 +11,16 @@ import { Button, Card, colors, Icon, Notice, Screen, SegmentedControl, styles, T
 
 type Snapshot = ReturnType<NativeRecoveryFlow['getSnapshot']>;
 const blankWords = (count: number) => Array<string>(count).fill('');
-const titles: Record<Snapshot['phase'], string> = {
-  reading: 'Recover access', scope: 'Recover access', entry: 'Recovery phrase',
-  verifying: 'Verifying your wallet', review: 'Wallet verified', committing: 'Restoring access',
-  reopening: 'Reopening your wallet', closed: 'Recovery closed', blocked: 'Recovery unavailable',
-};
+
 
 /** Transient recovery phrase inputs only. The supplied flow owns all recovery authority. */
 export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
+  const { t } = useNativeTranslation();
+  const titles: Record<Snapshot['phase'], string> = {
+    reading: t('mobile.recoveryDevices.recovery.recoverAccess'), scope: t('mobile.recoveryDevices.recovery.recoverAccess'), entry: t('mobile.recoveryDevices.recovery.recoveryPhrase'),
+    verifying: t('mobile.recoveryDevices.recovery.verifyingYourWallet'), review: t('mobile.recoveryDevices.recovery.walletVerified'), committing: t('mobile.recoveryDevices.recovery.restoringAccess'),
+    reopening: t('mobile.recoveryDevices.recovery.reopeningYourWallet'), closed: t('mobile.recoveryDevices.recovery.recoveryClosed'), blocked: t('mobile.recoveryDevices.recovery.recoveryUnavailable'),
+  };
   const snapshot = useSyncExternalStore(useCallback(listener => flow.subscribe(listener), [flow]),
     useCallback(() => flow.getSnapshot(), [flow]), useCallback(() => flow.getSnapshot(), [flow]));
   const [count, setCount] = useState<12 | 24>(12);
@@ -81,90 +85,91 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
   const verifyPhrase = () => {
     if (!current() || sequence.current !== entrySequence || flow.getSnapshot().phase !== 'entry') return;
     if (entered.current.length !== wordCount.current || entered.current.some(word => !word || /\s/u.test(word))) {
-      setEntryError('Enter each recovery word in order.'); return;
+      setEntryError(t('mobile.recoveryDevices.recovery.enterEachRecoveryWordInOrder')); return;
     }
     const phrase = entered.current.join(' ');
     if (flow.submit({ phrase })) clear();
   };
-  const progress = snapshot.phase === 'reading' ? ['Checking saved wallet data…', 'Checking saved data']
-    : snapshot.phase === 'verifying' ? ['Verifying your wallet…', 'Verifying wallet']
-      : snapshot.phase === 'committing' ? ['Restoring secure access…', 'Restoring access']
-        : snapshot.phase === 'reopening' ? ['Reopening your wallet securely…', 'Reopening wallet'] : null;
+  const progress = snapshot.phase === 'reading' ? [t('mobile.recoveryDevices.recovery.checkingSavedWalletData'), t('mobile.recoveryDevices.recovery.checkingSavedData')]
+    : snapshot.phase === 'verifying' ? [t('mobile.recoveryDevices.recovery.verifyingYourWallet3'), t('mobile.recoveryDevices.recovery.verifyingWallet')]
+      : snapshot.phase === 'committing' ? [t('mobile.recoveryDevices.recovery.restoringSecureAccess'), t('mobile.recoveryDevices.recovery.restoringAccess')]
+        : snapshot.phase === 'reopening' ? [t('mobile.recoveryDevices.recovery.reopeningYourWalletSecurely'), t('mobile.recoveryDevices.recovery.reopeningWallet')] : null;
   const inventory = snapshot.inventory?.status === 'needs-matching-phrase-verification' && snapshot.inventory.counts ? snapshot.inventory : null;
   const showInventory = snapshot.phase === 'scope' || snapshot.phase === 'review';
   const complete = words.length === count && words.every(word => !!word && !/\s/u.test(word));
   const footer = snapshot.phase === 'scope' ? <>
-    <Button title="Restore Wallet" disabled={!inventory} onPress={() => { if (current() && flow.getSnapshot().phase === 'scope') { clear(); flow.enter(); } }} />
-    <Button title="Cancel" variant="secondary" onPress={back} />
+    <Button title={t('mobile.recoveryDevices.recovery.restoreWallet')} disabled={!inventory} onPress={() => { if (current() && flow.getSnapshot().phase === 'scope') { clear(); flow.enter(); } }} />
+    <Button title={t('buttons.cancel')} variant="secondary" onPress={back} />
   </> : snapshot.phase === 'entry' ? <>
-    <Button title="Continue" disabled={!complete} onPress={verifyPhrase} />
-    <Button title="Cancel" variant="secondary" onPress={back} />
+    <Button title={t('buttons.continue')} disabled={!complete} onPress={verifyPhrase} />
+    <Button title={t('buttons.cancel')} variant="secondary" onPress={back} />
   </> : snapshot.phase === 'review' ? <>
-    <Button title="Restore secure access" onPress={() => { if (current() && flow.getSnapshot().phase === 'review') { clear(); flow.commit(); } }} />
-    <Button title="Cancel recovery" variant="secondary" onPress={back} />
-  </> : <Button title={snapshot.phase === 'committing' || snapshot.phase === 'reopening' ? 'Leave recovery'
-    : snapshot.phase === 'blocked' || snapshot.phase === 'closed' ? 'Back to unlock' : 'Cancel recovery'} variant="secondary" onPress={back} />;
+    <Button title={t('mobile.recoveryDevices.recovery.restoreSecureAccess')} onPress={() => { if (current() && flow.getSnapshot().phase === 'review') { clear(); flow.commit(); } }} />
+    <Button title={t('mobile.recoveryDevices.recovery.cancelRecovery')} variant="secondary" onPress={back} />
+  </> : <Button title={snapshot.phase === 'committing' || snapshot.phase === 'reopening' ? t('mobile.recoveryDevices.recovery.leaveRecovery')
+    : snapshot.phase === 'blocked' || snapshot.phase === 'closed' ? t('mobile.recoveryDevices.recovery.backToUnlock') : t('mobile.recoveryDevices.recovery.cancelRecovery')} variant="secondary" onPress={back} />;
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen key={snapshot.phase} footer={<View style={s.actions}>{footer}</View>} gap={18}>
         <View style={s.header}>
-          <IdlePressable accessibilityRole="button" accessibilityLabel="Back" onPress={back}
+          <IdlePressable accessibilityRole="button" accessibilityLabel={t('buttons.back')} onPress={back}
             style={({ pressed }) => [s.back, pressed && { opacity: 0.65 }]}><Icon name="arrow-left" /></IdlePressable>
           <NativeText ref={heading} accessibilityRole="header" allowFontScaling style={[styles.text, s.title]}>{titles[snapshot.phase]}</NativeText>
         </View>
         {progress && <View style={s.progress}><ActivityIndicator color={colors.pink} accessibilityLabel={progress[1]} /><Text accessibilityLiveRegion="polite" style={s.body}>{progress[0]}</Text></View>}
         {snapshot.phase === 'scope' && <>
           <View style={s.intro}><View style={s.keyIcon}><Icon name="key" size={40} color={colors.blue} /></View>
-            <Text accessibilityRole="header" style={s.heroTitle}>Restore wallet access</Text>
-            <Text style={s.introBody}>Verify your recovery phrase, then protect your wallet with your device.</Text></View>
-          <Notice title="Your phrase restores the wallet" body="Your recovery phrase verifies this wallet before access is restored." tone="amber" />
-          <Text style={s.caption}>This checks the wallet saved on this phone. Nothing is erased automatically.</Text>
+            <Text accessibilityRole="header" style={s.heroTitle}>{t('mobile.recoveryDevices.recovery.restoreWalletAccess')}</Text>
+            <Text style={s.introBody}>{t('mobile.recoveryDevices.recovery.verifyYourRecoveryPhraseThenProtectYour')}</Text></View>
+          <Notice title={t('mobile.recoveryDevices.recovery.yourPhraseRestoresTheWallet')} body={t('mobile.recoveryDevices.recovery.yourRecoveryPhraseVerifiesThisWalletBefore')} tone="amber" />
+          <Text style={s.caption}>{t('mobile.recoveryDevices.recovery.thisChecksTheWalletSavedOnThis')}</Text>
         </>}
-        {snapshot.phase === 'review' && <Notice title="Your phrase matches this saved wallet." body="Device-protected access will be restored. Saved accounts, imported-key records, tokens and transaction records will be kept." />}
+        {snapshot.phase === 'review' && <Notice title={t('mobile.recoveryDevices.recovery.yourPhraseMatchesThisSavedWallet')} body={t('mobile.recoveryDevices.recovery.deviceProtectedAccessWillBeRestoredSaved')} />}
         {showInventory && inventory && <>
-          <Button title={details ? 'Hide saved-data details' : 'Saved-data details'} variant="secondary" size="compact" icon={details ? 'chevron-up' : 'chevron-down'} expanded={details} onPress={() => setDetails(!details)} />
+          <Button title={details ? t('mobile.recoveryDevices.recovery.hideSavedDataDetails') : t('mobile.recoveryDevices.recovery.savedDataDetails')} variant="secondary" size="compact" icon={details ? 'chevron-up' : 'chevron-down'} expanded={details} onPress={() => setDetails(!details)} />
           {details && <Inventory inventory={inventory} />}
         </>}
-        {showInventory && !inventory && <Notice title="Saved data unavailable" body="Your saved wallet could not be verified for this recovery. Nothing has been reset." tone="amber" />}
+        {showInventory && !inventory && <Notice title={t('mobile.recoveryDevices.recovery.savedDataUnavailable')} body={t('mobile.recoveryDevices.recovery.yourSavedWalletCouldNotBeVerified')} tone="amber" />}
         {snapshot.phase === 'entry' && <>
-          <Text accessibilityRole="header" style={s.heroTitle}>Enter your recovery phrase</Text>
-          <Text style={s.body}>Enter each word in its original order. Pali will check that the phrase matches this wallet.</Text>
-          <SegmentedControl label="Recovery phrase length" value={String(count)} options={[{ value: '12', label: '12 words' }, { value: '24', label: '24 words' }]}
+          <Text accessibilityRole="header" style={s.heroTitle}>{t('mobile.recoveryDevices.recovery.enterYourRecoveryPhrase')}</Text>
+          <Text style={s.body}>{t('mobile.recoveryDevices.recovery.enterEachWordInItsOriginalOrder')}</Text>
+          <SegmentedControl label={t('mobile.recoveryDevices.recovery.recoveryPhraseLength')} value={String(count)} options={[{ value: '12', label: t('mobile.recoveryDevices.common.wordCount', { count: 12 }) }, { value: '24', label: t('mobile.recoveryDevices.common.wordCount', { count: 24 }) }]}
             onChange={value => {
               if (!current() || sequence.current !== entrySequence || flow.getSnapshot().phase !== 'entry') return;
               wordCount.current = value === '24' ? 24 : 12; setCount(wordCount.current); clear();
             }} />
           <View style={s.grid}>{words.map((word, index) => <View key={index} style={s.word}>
             <Text style={s.number}>{index + 1}</Text>
-            <IdleTextInput accessibilityLabel={`Recovery word ${index + 1}`} placeholder={`Word ${index + 1}`} placeholderTextColor={colors.muted}
+            <IdleTextInput accessibilityLabel={t('mobile.recoveryDevices.common.recoveryWord', { index: index + 1 })} placeholder={t('mobile.recoveryDevices.common.word', { index: index + 1 })} placeholderTextColor={colors.muted}
               value={word} onChangeText={value => editWord(index, value)} autoCapitalize="none" autoCorrect={false} spellCheck={false}
               autoComplete="off" textContentType="none" importantForAutofill="noExcludeDescendants" maxLength={index === 0 ? 4096 : 64} style={s.input} />
           </View>)}</View>
-          <Notice title="Keep your phrase private" body="Pali support will never ask for these words." tone="amber" />
-          {!!(entryError || snapshot.fieldErrors.phrase) && <Text accessibilityRole="alert" style={s.error}>{entryError || snapshot.fieldErrors.phrase}</Text>}
+          <Notice title={t('mobile.recoveryDevices.recovery.keepYourPhrasePrivate')} body={t('mobile.recoveryDevices.recovery.paliSupportWillNeverAskForThese')} tone="amber" />
+          {!!(entryError || snapshot.fieldErrors.phrase) && <Text accessibilityRole="alert" style={s.error}>{entryError || (snapshot.fieldErrors.phrase && recoveryErrorText(snapshot.fieldErrors.phrase, t))}</Text>}
         </>}
-        {snapshot.phase === 'committing' && <Text style={s.body}>Leaving now stops this screen. The access change may already have completed.</Text>}
-        {snapshot.phase === 'closed' && !snapshot.error && <Text style={s.body}>Returning to unlock…</Text>}
-        {snapshot.phase === 'blocked' && !snapshot.error && <Text style={s.body}>Your saved wallet could not be verified for this recovery. Nothing has been reset.</Text>}
-        {!!snapshot.error && <NativeText ref={error} allowFontScaling accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.text, s.error]}>{snapshot.error}</NativeText>}
+        {snapshot.phase === 'committing' && <Text style={s.body}>{t('mobile.recoveryDevices.recovery.leavingNowStopsThisScreenTheAccess')}</Text>}
+        {snapshot.phase === 'closed' && !snapshot.error && <Text style={s.body}>{t('mobile.recoveryDevices.recovery.returningToUnlock')}</Text>}
+        {snapshot.phase === 'blocked' && !snapshot.error && <Text style={s.body}>{t('mobile.recoveryDevices.recovery.yourSavedWalletCouldNotBeVerified')}</Text>}
+        {!!snapshot.error && <NativeText ref={error} allowFontScaling accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.text, s.error]}>{recoveryErrorText(snapshot.error, t)}</NativeText>}
       </Screen>
     </KeyboardAvoidingView>
   </SafeAreaView>;
 }
 
 function Inventory({ inventory }: { inventory: RecoveryInventory }) {
+  const { t } = useNativeTranslation();
   const counts = inventory.counts!;
   const rows = [
-    ['Seed-derived accounts', counts.hdAccounts], ['Imported keys saved on this device', counts.importedKeys],
-    ['Saved transactions', counts.retainedSignedTransactions], ['Tokens and saved activity', `${counts.tokenEntries} tokens · ${counts.historySummaries} summaries`],
-    ['Cached transactions', counts.cachedTransactions], ['Activity preferences', counts.activityPreferences],
+    [t('mobile.recoveryDevices.recovery.seedDerivedAccounts'), counts.hdAccounts], [t('mobile.recoveryDevices.recovery.importedKeysSavedOnThisDevice'), counts.importedKeys],
+    [t('mobile.recoveryDevices.recovery.savedTransactions'), counts.retainedSignedTransactions], [t('mobile.recoveryDevices.recovery.tokensAndSavedActivity'), t('mobile.recoveryDevices.recovery.tokenSummary', { tokens: counts.tokenEntries, summaries: counts.historySummaries })],
+    [t('mobile.recoveryDevices.recovery.cachedTransactions'), counts.cachedTransactions], [t('mobile.recoveryDevices.recovery.activityPreferences'), counts.activityPreferences],
   ] as const;
   return <>
     <Card style={s.inventory}>{rows.map(([label, value]) => <View key={label} style={s.inventoryRow}><Text style={s.inventoryLabel}>{label}</Text><Text style={s.count}>{value}</Text></View>)}</Card>
-    <Text style={s.caption}>Observed local records, not a complete transaction history. Recovery does not change your saved backup status ({inventory.backup === 'confirmed' ? 'confirmed' : inventory.backup === 'unconfirmed' ? 'not confirmed' : 'unknown'}).</Text>
-    <Notice title="Imported keys still need separate backups" body="Imported keys saved on this phone will be kept. Your recovery phrase cannot recreate them on a new or lost phone; keep their original keys backed up separately." tone="amber" />
-    <Text style={s.caption}>{inventory.privateNotes === 'requires-matching-phrase-verification' ? 'Saved private notes will be verified and kept. Keep a separate backup for a new or lost phone.' : 'No private notes are saved on this phone.'}</Text>
+    <Text style={s.caption}>{t('mobile.recoveryDevices.recovery.backupStatus', { status: t(inventory.backup === 'confirmed' ? 'mobile.recoveryDevices.common.confirmed' : inventory.backup === 'unconfirmed' ? 'mobile.recoveryDevices.recovery.notConfirmed' : 'mobile.recoveryDevices.common.unknown') })}</Text>
+    <Notice title={t('mobile.recoveryDevices.recovery.importedKeysStillNeedSeparateBackups')} body={t('mobile.recoveryDevices.recovery.importedKeysSavedOnThisPhoneWill')} tone="amber" />
+    <Text style={s.caption}>{inventory.privateNotes === 'requires-matching-phrase-verification' ? t('mobile.recoveryDevices.recovery.savedPrivateNotesWillBeVerifiedAnd') : t('mobile.recoveryDevices.recovery.noPrivateNotesAreSavedOnThis')}</Text>
   </>;
 }
 

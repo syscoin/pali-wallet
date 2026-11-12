@@ -8,16 +8,18 @@ import { decodeErc20Transfer } from '../shared/erc20.ts';
 import { snapshotEvmTransferAsset } from '../shared/evmAssetState.ts';
 import { EvmAutoNonceAcceptance } from '../shared/evmAutoNonce.ts';
 import { isEvmProtectedEmptySelfCall } from '../shared/evmCancellationPayer.ts';
+import { EVM_SIGNED_RECORD_LIMITS } from '../shared/evmSignedRecordLimits.ts';
 import { observeEvmTransaction } from '../shared/evmTransactionObservation.ts';
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
 import { decodeRetainedNftTransfer } from '../shared/nftTransfer.ts';
 
 import {
   decodeRetainedSmartAccountTransfer,
+  decodeRetainedSmartAccountCancellation,
   decodeRetainedSmartAccountOperations,
   type RetainedSmartAccountOperation,
   isSmartAccountActivityCandidate,
-  type RetainedSmartAccountTransfer,
+  type RetainedSmartAccountActivity,
 } from './smartAccountActivity.ts';
 import type { EvmAutoNonceSnapshot } from '../shared/evmAutoNonce.ts';
 import type { EvmTransactionObservation } from '../shared/evmTransactionObservation.ts';
@@ -26,11 +28,7 @@ import type {
   EvmSignedSubmission,
 } from '@sidhujag/sysweb3-keyring';
 
-export const EVM_SIGNED_RECORD_LIMITS = Object.freeze({
-  bytes: 16 * 1024 * 1024,
-  transactions: 4096,
-  chunkBytes: 48 * 1024,
-});
+export { EVM_SIGNED_RECORD_LIMITS } from '../shared/evmSignedRecordLimits.ts';
 export const EVM_SIGNED_RECORD_PREFIX = 'pali-evm-signed-v1:';
 const encoder = new TextEncoder();
 const ROOT_DOMAIN = 'org.syscoin.pali.evm.signed.root.v1';
@@ -247,6 +245,26 @@ function retainedReplacementLineage(
     known.add(entry.hash);
   }
   return lineage;
+}
+
+function replacementMetadata(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+  original: EvmRetainedSignedRecord | null | undefined,
+  operation: 'cancel' | 'speed-up'
+) {
+  const fields = { ...metadata };
+  delete fields.nftTransfer;
+  // Cancellation is an empty self-call; the original asset intent is not its consent.
+  if (operation === 'cancel') delete fields.intent;
+  const nftTransfer =
+    operation === 'speed-up' &&
+    original &&
+    decodeRetainedNftTransfer(
+      original,
+      Transaction.from(original.rawTransaction)
+    );
+  if (nftTransfer) fields.nftTransfer = nftTransfer;
+  return Object.keys(fields).length ? snapshotMetadata(fields) : undefined;
 }
 
 export type EvmSignedRetirementReadMethod =
@@ -1179,6 +1197,7 @@ export class EvmSignedRecords {
       const id = await profile(session);
       for (let attempt = 0; attempt < 3; attempt++) {
         const previous = await this.load(session, id);
+        let retainedMetadata = metadataSnapshot;
         assertNonceFloor(previous.bundle, signedNonce);
         if (replacement) {
           if (
@@ -1195,6 +1214,25 @@ export class EvmSignedRecords {
             )) !== replacement.expectedTipHash
           )
             throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+          if (context.operation === 'speed-up') {
+            const originalEntry = previous.bundle?.entries.find(
+              (entry) => entry.hash === replacement.originalHash
+            );
+            const original = originalEntry
+              ? await this.materialize(session, originalEntry)
+              : undefined;
+            retainedMetadata = replacementMetadata(
+              metadataSnapshot,
+              original,
+              'speed-up'
+            );
+          } else {
+            retainedMetadata = replacementMetadata(
+              metadataSnapshot,
+              undefined,
+              'cancel'
+            );
+          }
         } else {
           await this.assertOrdinaryNonceAvailable(
             session,
@@ -1270,7 +1308,7 @@ export class EvmSignedRecords {
           ...(context.originalHash
             ? { originalHash: context.originalHash }
             : {}),
-          ...(metadataSnapshot ? { metadata: metadataSnapshot } : {}),
+          ...(retainedMetadata ? { metadata: retainedMetadata } : {}),
           chunks: Object.freeze(chunks),
         });
         const entries = [...(previous.bundle?.entries ?? []), entry];
@@ -1347,8 +1385,8 @@ export class EvmSignedRecords {
           variant.to !== base.to ||
           variant.value !== base.value ||
           variant.data !== base.data ||
-          variant.accessList?.length ||
-          base.accessList?.length
+          JSON.stringify(variant.accessList ?? []) !==
+            JSON.stringify(base.accessList ?? [])
         )
           return null;
         const variantCap =
@@ -2045,7 +2083,7 @@ export class EvmSignedRecords {
     Readonly<{
       nextCursor: string | null;
       total: number;
-      transfers: readonly RetainedSmartAccountTransfer[];
+      transfers: readonly RetainedSmartAccountActivity[];
     }>
   > {
     const owner = getAddress(address);
@@ -2073,12 +2111,20 @@ export class EvmSignedRecords {
       if (end < 0) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
       const visible = candidates.slice(0, end);
       const start = Math.max(0, visible.length - maximum),
-        transfers: RetainedSmartAccountTransfer[] = [];
+        transfers: RetainedSmartAccountActivity[] = [];
       for (const entry of visible.slice(start).reverse()) {
-        const decoded = decodeRetainedSmartAccountTransfer(
-          await this.materialize(session, entry),
-          owner
-        );
+        const materialized = await this.materialize(session, entry);
+        const original =
+          entry.operation === 'cancel' && entry.originalHash
+            ? bundle?.entries.find((value) => value.hash === entry.originalHash)
+            : undefined;
+        const decoded = original
+          ? decodeRetainedSmartAccountCancellation(
+              materialized,
+              await this.materialize(session, original),
+              owner
+            )
+          : decodeRetainedSmartAccountTransfer(materialized, owner);
         if (decoded) transfers.push(decoded);
       }
       guard(session);
@@ -2095,7 +2141,7 @@ export class EvmSignedRecords {
     chainId: string,
     address: string,
     hash: string
-  ): Promise<RetainedSmartAccountTransfer | null> {
+  ): Promise<RetainedSmartAccountActivity | null> {
     const owner = getAddress(address);
     if (!HASH.test(hash)) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
     session = this.captureSession(session);
@@ -2108,12 +2154,19 @@ export class EvmSignedRecords {
           item.hash === hash &&
           isSmartAccountActivityCandidate(item, owner)
       );
-      return entry
-        ? decodeRetainedSmartAccountTransfer(
-            await this.materialize(session, entry),
+      if (!entry) return null;
+      const materialized = await this.materialize(session, entry);
+      const original =
+        entry.operation === 'cancel' && entry.originalHash
+          ? bundle?.entries.find((value) => value.hash === entry.originalHash)
+          : undefined;
+      return original
+        ? decodeRetainedSmartAccountCancellation(
+            materialized,
+            await this.materialize(session, original),
             owner
           )
-        : null;
+        : decodeRetainedSmartAccountTransfer(materialized, owner);
     });
   }
 
@@ -2500,7 +2553,7 @@ export function createEvmSignedRecordLifecycle(
   )
     throw new Error('EVM_SIGNED_RECORD_RETIREMENT_CONTEXT_REQUIRED');
   const retirementReadForChain = options.retirementReadForChain;
-  const metadata =
+  let metadata =
     options.metadata === undefined
       ? undefined
       : snapshotMetadata(options.metadata);
@@ -2523,6 +2576,17 @@ export function createEvmSignedRecordLifecycle(
         }),
       });
       const replacement = options.replacement && (await options.replacement);
+      if (signed.context.operation === 'cancel') {
+        metadata = replacementMetadata(metadata, undefined, 'cancel');
+      } else if (signed.context.operation === 'speed-up' && replacement) {
+        const original = await records.readExact(
+          session,
+          signed.chainId,
+          signed.from,
+          replacement.originalHash
+        );
+        metadata = replacementMetadata(metadata, original, 'speed-up');
+      }
       try {
         await records.append(session, signed, metadata, replacement);
       } catch (error) {

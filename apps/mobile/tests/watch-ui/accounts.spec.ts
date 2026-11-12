@@ -1,4 +1,4 @@
-import { authenticateNativeOperation, deviceAuthorizationPrompt, revealBackupPhrase, confirmFixtureBackup } from '../ui/operationAuthentication';
+import { unlockPublicView, authenticateNativeOperation, deviceAuthorizationPrompt, revealBackupPhrase, confirmFixtureBackup } from '../ui/operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 import { nativeAccountName, watchAccountName } from '../accountControlNames';
 const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
@@ -13,8 +13,8 @@ async function waitForPublicWallet(page: Page) {
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
   await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
 }
-async function reopenPublicWallet(page: Page) {
-  await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
+async function unlockPublicWallet(page: Page) {
+  await unlockPublicView(page);
   await waitForPublicWallet(page);
 }
 async function lockWallet(page: Page) {
@@ -41,6 +41,29 @@ test.beforeEach(async ({ page }) => {
     if (new URL(route.request().url()).origin !== 'http://127.0.0.1:4182') throw Error(`Unexpected external request: ${route.request().url()}`);
     await route.continue();
   });
+});
+
+test('Receive keeps the full address and its copy icon inside a narrow screen', async ({ page, context }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/');
+  await openNative(page);
+  await page.getByRole('button', { name: 'Receive', exact: true }).click();
+  const address = page.getByTestId('native-receive-address');
+  const copy = page.getByTestId('native-receive-address-copy');
+  await expect(address).toHaveText(ADDRESS);
+  expect(await address.evaluate(element => {
+    const row = element.parentElement!.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    return Array.from(range.getClientRects()).every(rect => rect.left >= row.left && rect.right <= row.right && rect.right <= innerWidth);
+  })).toBe(true);
+  expect(await copy.locator('svg').evaluate(element => {
+    const rect = element.getBoundingClientRect();
+    return rect.left >= 0 && rect.right <= innerWidth;
+  })).toBe(true);
+  await copy.click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(ADDRESS);
 });
 
 test('actual App switches HD to watch to HD; shared address never inherits authority', async ({ page }) => {
@@ -120,7 +143,7 @@ for (const change of ['select', 'create', 'shared-select', 'stale-create'] as co
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await expect(page.getByText(`${name} · Ethereum`, { exact: true })).toBeVisible();
     await lockWallet(page);
-    await reopenPublicWallet(page);
+    await unlockPublicWallet(page);
     await expect(page.getByText(`${name} · Ethereum`, { exact: true })).toBeVisible();
     expect(await page.evaluate(() => window.__watchFixture.selection())).toEqual({ kind: 'hd', id });
     await page.getByRole('button', { name: 'Receive', exact: true }).click();
@@ -155,7 +178,7 @@ test('backup-required public entry consumes the hint before backup completion an
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByText('Savings · Ethereum', { exact: true })).toBeVisible();
   await lockWallet(page);
-  await reopenPublicWallet(page);
+  await unlockPublicWallet(page);
   await expect(page.getByText('Savings · Ethereum', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.selection())).toEqual({ kind: 'hd', id: 'hd:60:1' });
   await page.getByRole('button', { name: 'Receive', exact: true }).click();
@@ -168,8 +191,8 @@ test('interrupted native public reopen retains the selected account without a si
   await page.goto('/'); await waitForPublicWallet(page);
   await page.evaluate(() => window.__watchFixture.delayUnlock(true));
   await lockWallet(page);
-  await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
-  await expect(page.getByText('Unlocking your wallet securely…', { exact: true })).toBeVisible();
+  await unlockPublicView(page);
+  await expect(page.getByText('Opening your wallet securely…', { exact: true })).toBeVisible();
   await page.evaluate(() => { window.__watchFixture.lifecycle('background'); window.__watchFixture.releaseUnlock(); });
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
   await page.evaluate(() => window.__watchFixture.lifecycle('active'));
@@ -182,8 +205,8 @@ test('pending native public reopen cannot revive signing after exit and watch se
   await page.goto('/'); await openNative(page);
   await page.evaluate(() => window.__watchFixture.delayUnlock(true));
   await lockWallet(page);
-  await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
-  await expect(page.getByText('Unlocking your wallet securely…', { exact: true })).toBeVisible();
+  await unlockPublicView(page);
+  await expect(page.getByText('Opening your wallet securely…', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
   await expectWatchOnly(page);
@@ -232,7 +255,9 @@ test('review and pending signing are revoked before a watch account becomes acti
   await page.evaluate(() => window.__watchFixture.releaseSign());
   expect((await fixture(page)).broadcasts).toBe(0);
   expect(await page.evaluate(() => window.__watchFixture.events().includes('sign:finish'))).toBe(false);
-  await reopenPublicWallet(page);
+  // Cancelled signing closes its runtime; it does not set the deliberate view-lock marker.
+  await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
+  await waitForPublicWallet(page);
   await selectWatchFromNative(page);
   await expect.poll(() => page.evaluate(() => window.__watchFixture.oldPhases()[0])).toBe('disposed');
   await expectWatchOnly(page);
@@ -290,7 +315,7 @@ test('watch Receive copies full address and never adds native signing or preview
   await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
   await expectWatchOnly(page);
   await page.getByRole('button', { name: 'Receive', exact: true }).click();
-  await expect(page.getByLabel(`Ethereum address ${ADDRESS}`, { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: `Copy address: Ethereum address ${ADDRESS}`, exact: true }).getByText(ADDRESS, { exact: true })).toBeVisible();
   await expect(page.getByRole('img', { name: `QR code for Ethereum address ${ADDRESS}` })).toBeVisible();
   await page.evaluate(() => navigator.clipboard.writeText('before-copy'));
   await page.getByRole('button', { name: 'Copy address', exact: true }).click();
@@ -324,4 +349,24 @@ test('background closes the native public view; watch-only chooser and large typ
   const screenshot = testInfo.outputPath('watch-large-type-receive.png');
   await page.screenshot({ path: screenshot, fullPage: true });
   await testInfo.attach('Watch Receive at large type', { path: screenshot, contentType: 'image/png' });
+});
+
+
+test('focus during disposal of interrupted initial opening reacquires a fresh public owner', async ({ page }) => {
+  await page.goto('/?android=1');
+  await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
+  await page.evaluate(() => { window.__watchFixture.delayUnlock(true); window.__watchFixture.delayClose(true); });
+  await page.getByRole('button', { name: 'Accounts', exact: true }).click();
+  await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__watchFixture.audit().unlocks)).toBe(1);
+  await page.evaluate(() => { window.__watchFixture.blur(); window.__watchFixture.releaseUnlock(); });
+  await expect.poll(() => page.evaluate(() => window.__watchFixture.audit().closed)).toBe(1);
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await page.evaluate(() => window.__watchFixture.focus());
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await page.evaluate(() => window.__watchFixture.releaseClose());
+  await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
+  expect((await fixture(page)).closed).toBe(1);
+  expect((await fixture(page)).keyReads + (await fixture(page)).signs + (await fixture(page)).broadcasts).toBe(0);
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
 });

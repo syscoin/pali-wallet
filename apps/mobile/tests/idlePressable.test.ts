@@ -16,8 +16,11 @@ const compiled = ts.transpileModule(source, { compilerOptions: {
 } }).outputText;
 type Event = { nativeEvent: Record<string, unknown> };
 const touch: Event = { nativeEvent: { identifier: 0, touches: [{}], changedTouches: [{}] } };
-const cases: { name: string; payload: Event; transition?: 'rearm' | 'expiry'; expected: number; startExpired?: boolean }[] = [
+const cases: { name: string; payload: Event; transition?: 'rearm' | 'expiry'; expected: number; startExpired?: boolean; longPress?: boolean }[] = [
   { name: 'ordinary native release', payload: touch, expected: 1 },
+  { name: 'long press uses the original idle owner', payload: touch, longPress: true, expected: 1 },
+  { name: 'old long press cannot cross a rearm', payload: touch, longPress: true, transition: 'rearm', expected: 0 },
+  { name: 'long press cannot extend an expired owner', payload: touch, longPress: true, transition: 'expiry', expected: 0 },
   { name: 'old native release after rearm', payload: touch, transition: 'rearm', expected: 0 },
   { name: 'old native release after expiry', payload: touch, transition: 'expiry', expected: 0 },
   { name: 'fresh native accessibility after canceled press', payload: { nativeEvent: {} }, transition: 'rearm', expected: 1 },
@@ -31,9 +34,10 @@ const cases: { name: string; payload: Event; transition?: 'rearm' | 'expiry'; ex
 for (const scenario of cases) test(scenario.name, () => {
   let time = 0, calls = 0;
   const runtime = createSecurityRuntime({ get: async () => null, set: async () => undefined }, () => ({ monotonic: time, wall: time }));
+  runtime.watchIdle.setPolicy(5);
   const owner = {}, begin = () => runtime.watchIdle.begin(owner, () => runtime.watchIdle.stop(owner));
   const slot = { current: null }, React = { forwardRef: (fn: unknown) => fn, createElement: (type: unknown, props: unknown) => ({ type, props }) };
-  const module = { exports: {} as { IdlePressable: (props: { onPress(): void }, ref: null) => { props: { onPressIn(event: Event): void; onPress(event: Event): void } } } };
+  const module = { exports: {} as { IdlePressable: (props: { onPress(): void; onLongPress(): void }, ref: null) => { props: { onPressIn(event: Event): void; onPress(event: Event): void; onLongPress(event: Event): void } } } };
   vm.runInNewContext(compiled, { module, exports: module.exports, require: (name: string) => {
     if (name === 'react') return { ...React, default: React, useRef: () => slot };
     if (name === 'react-native') return { View: 'View', TextInput: 'Input', Pressable: 'Pressable' };
@@ -42,12 +46,13 @@ for (const scenario of cases) test(scenario.name, () => {
   } });
   begin();
   try {
-    const element = module.exports.IdlePressable({ onPress: () => calls++ }, null);
+    const element = module.exports.IdlePressable({ onPress: () => calls++, onLongPress: () => calls++ }, null);
     if (scenario.startExpired) time = 300001;
     element.props.onPressIn(touch);
     if (scenario.transition === 'rearm') { runtime.watchIdle.stop(owner); begin(); }
     if (scenario.transition === 'expiry') time += 300001;
-    element.props.onPress(scenario.payload);
+    if (scenario.longPress) element.props.onLongPress(scenario.payload);
+    else element.props.onPress(scenario.payload);
     assert.equal(calls, scenario.expected);
   } finally { runtime.watchIdle.stop(); runtime.custodyIdle.stop(); }
 });

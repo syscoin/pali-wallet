@@ -12,6 +12,7 @@ import type {
   NativeTokenView,
 } from '../portfolio/nativeTokens';
 import { Button } from '../ui';
+import { useNativeTranslation } from '../platform/localization';
 
 export function nativeTokenAvailableAmount(token: Erc20Metadata, owner: NativePortfolioAccount, snapshot: NativeTokenSnapshot | null): string | null {
   const item = snapshot?.items.find(candidate => candidate.metadata.contractAddress === token.contractAddress && candidate.metadata.decimals === token.decimals);
@@ -37,6 +38,7 @@ export function NativeTokenMaximum({
   disabled: boolean;
   onSelect(amount: string): void;
 }) {
+  const { t } = useNativeTranslation();
   const lifetime = useRef<object | null>(null);
   const rendering = {};
   useLayoutEffect(() => {
@@ -49,7 +51,7 @@ export function NativeTokenMaximum({
   const amount = available !== null && /[1-9]/.test(available) ? available : null;
   return (
     <Button
-      title={selected ? 'MAX selected' : 'MAX'}
+      title={t(selected ? 'mobile.portfolioCopy.maxSelected' : 'send.max')}
       variant="secondary"
       size="compact"
       disabled={disabled || amount === null}

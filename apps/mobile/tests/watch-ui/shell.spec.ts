@@ -41,6 +41,13 @@ async function unlock(page: Page) {
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
   await tabs(page);
 }
+async function openActivityReset(page: Page) {
+  await expect(page.getByRole('button', { name: /^Reset activity Clear local/ })).toHaveCount(0);
+  await page.getByRole('button', { name: /^Help & about / }).click();
+  await expect(page.getByRole('heading', { name: 'Help & about', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Troubleshooting', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /^Reset activity Clear local/ }).click();
+}
 async function openWatch(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
@@ -51,7 +58,7 @@ async function openWatch(page: Page) {
 test('Receive footer hides retained public account data when the mounted watch authority locks', async ({ page }) => {
   await page.goto('/?watch-receive-fixture');
   await page.getByRole('button', { name: 'Receive', exact: true }).click();
-  const address = page.getByLabel('Ethereum address 0x52908400098527886E0F7030069857D2E4169EE7', { exact: true });
+  const address = page.getByRole('button', { name: 'Copy address: Ethereum address 0x52908400098527886E0F7030069857D2E4169EE7', exact: true }).getByText('0x52908400098527886E0F7030069857D2E4169EE7', { exact: true });
   await expect(address).toBeVisible();
   await page.evaluate(() => window.__watchReceiveFixture.lock());
   await expect.poll(() => page.evaluate(() => window.__watchReceiveFixture.status())).toBe('locked');
@@ -69,7 +76,7 @@ for (const viewport of receiveViewports) {
       await openWatch(page);
       await page.getByRole('button', { name: 'Receive', exact: true }).click();
       if (scale !== 1) await scaleReceiveText(page, scale);
-      const address = page.getByLabel('Ethereum address 0x52908400098527886E0F7030069857D2E4169EE7', { exact: true });
+      const address = page.getByRole('button', { name: 'Copy address: Ethereum address 0x52908400098527886E0F7030069857D2E4169EE7', exact: true }).getByText('0x52908400098527886E0F7030069857D2E4169EE7', { exact: true });
       const qr = page.getByRole('img', { name: 'QR code for Ethereum address 0x52908400098527886E0F7030069857D2E4169EE7', exact: true });
       if (scale === 1 && viewport.height >= 568) {
         await expect(address).toBeInViewport({ ratio: 1 });
@@ -258,7 +265,7 @@ test('watch shell is operational without borrowing native permissions or demo ac
   await expect(page.getByRole('button', { name: /Reveal|recovery phrase|private key|Send/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Hide accounts', exact: true }).click();
   await expect(page.getByRole('tab')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'View my accounts', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Unlock wallet', exact: true })).toBeVisible();
   const audit = await page.evaluate(() => window.__watchFixture.audit());
   expect(audit.unlocks).toBe(0); expect(audit.signs).toBe(0); expect(audit.broadcasts).toBe(0);
 });
@@ -319,7 +326,7 @@ test('native network without an explorer shows saved-transfer coverage and retai
   await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Activity network: Base', exact: true })).toBeVisible();
   await expect(page.getByText('Some activity is unavailable', { exact: true })).toBeVisible();
-  await expect(page.getByText('Some network activity is unavailable.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Some history could not load on Base.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Activity options', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Show zero-value token activity', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
@@ -360,9 +367,9 @@ test('clearing Security returns to its originating Settings tab', async ({ page 
   await expect(page.getByRole('button', { name: 'PIN digit 1', exact: true })).toHaveCount(0);
 });
 
-test('activity reset admits one same-turn double click and returns to Settings', async ({ page }, testInfo) => {
+test('activity reset admits one same-turn double click and returns through About to Settings', async ({ page }, testInfo) => {
   await openNative(page); await unlock(page); await chooseTab(page, 'Settings');
-  await page.getByRole('button', { name: /^Reset activity Clear local/ }).click();
+  await openActivityReset(page);
   await expect(page.getByRole('heading', { name: 'Reset activity', exact: true })).toBeVisible();
   await expect(page.getByText('Transactions already held by the network remain pending and may still confirm.', { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('activity-reset.png'), fullPage: true });
@@ -373,13 +380,15 @@ test('activity reset admits one same-turn double click and returns to Settings',
   await expect.poll(() => page.evaluate(() => window.__watchFixture.events().filter(event => event === 'activity:reset:start').length)).toBe(1);
   await expect(page.getByRole('button', { name: 'Resetting activity…', exact: true })).toBeDisabled();
   await page.evaluate(() => window.__watchFixture.finishActivityReset());
-  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Help & about', exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.events().filter(event => event === 'activity:reset:done').length)).toBe(1);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
 });
 
 test('locking during activity reset prevents stale completion', async ({ page }) => {
   await openNative(page); await unlock(page); await chooseTab(page, 'Settings');
-  await page.getByRole('button', { name: /^Reset activity Clear local/ }).click();
+  await openActivityReset(page);
   await page.evaluate(() => window.__watchFixture.delayActivityReset(true));
   await page.getByRole('button', { name: 'Reset activity', exact: true }).click();
   await page.evaluate(() => {
@@ -399,7 +408,7 @@ test('activity reset remains readable with narrow large-text confirmation and er
     [dir="auto"] { font-size: 24px !important; line-height: 1.4 !important; }
     [data-testid^="main-tab-caption-"] { font-size: 15px !important; line-height: 21.25px !important; }
   ` });
-  await page.getByRole('button', { name: /^Reset activity Clear local/ }).click();
+  await openActivityReset(page);
   await expect(page.getByRole('button', { name: 'Reset activity', exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('confirmation-narrow.png'), fullPage: true });
   await page.evaluate(() => window.__watchFixture.failActivityReset());
@@ -408,7 +417,7 @@ test('activity reset remains readable with narrow large-text confirmation and er
   await page.getByRole('button', { name: 'Reset activity', exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath('error-narrow.png'), fullPage: true });
   await page.getByRole('button', { name: 'Reset activity', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Help & about', exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('success-narrow.png'), fullPage: true });
 });
 

@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, BackHandler, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,29 +9,30 @@ import { DappSiteStatus } from './DappSiteStatus';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { useDappLedgerConnection } from './useDappLedgerConnection';
 
-const reviewErrors = {
-  INVALID_MESSAGE: 'The app sent an invalid signing message.',
-  SIGNER_MISMATCH: 'The app is asking for a signature from a different account.',
-  SUSPICIOUS_SIGN_IN: 'The requesting app and the sign-in message name different websites.',
-  INVALID_TYPED_DATA: 'The app sent invalid typed data.',
-  BLOCKED_SITE: 'This website is on a known phishing list.',
-  SITE_MISMATCH: 'The requesting website does not match the app’s claimed address.',
-  DELIVERY_UNCERTAIN: 'The signature was handed to WalletConnect. Delivery could not be confirmed. Check the requesting app before trying again.',
-  INVALID_TRANSACTION: 'The app sent an invalid request.',
-  TRANSACTION_UNAVAILABLE: 'This request could not be prepared.',
-} as const;
-
-const orderWarnings = {
-  'send.nftOrderZeroPayment': 'This order lists no token payment to its creator for the NFT. Only proceed if those terms are intended.',
-  'send.nftOrderNoReturn': 'This order lists no assets payable to its creator in return. Only proceed if those terms are intended.',
-} as const;
-
 /** Public review data and identifier-only commands keep the signer inside custody. */
 export function NativeMessageReviewScreen({ review, controller, ledgerConnection }: {
   review: NativeMessageReview;
   controller: NativeConnectionsView;
   ledgerConnection?: NativeLedgerConnectionView;
 }) {
+  const { t } = useNativeTranslation();
+  const reviewErrors = {
+    INVALID_MESSAGE: t('mobile.dappConsent.messageReview.theAppSentAnInvalidSigningMessage'),
+    SIGNER_MISMATCH: t('mobile.dappConsent.messageReview.theAppIsAskingForASignature'),
+    SUSPICIOUS_SIGN_IN: t('mobile.dappConsent.messageReview.theRequestingAppAndTheSignIn'),
+    INVALID_TYPED_DATA: t('mobile.dappConsent.messageReview.theAppSentInvalidTypedData'),
+    BLOCKED_SITE: t('mobile.dappConsent.messageReview.thisWebsiteIsOnAKnownPhishing'),
+    SITE_MISMATCH: t('mobile.dappConsent.messageReview.theRequestingWebsiteDoesNotMatchThe'),
+    DELIVERY_UNCERTAIN: t('mobile.dappConsent.messageReview.theSignatureWasHandedToWalletconnectDelivery'),
+    INVALID_TRANSACTION: t('mobile.dappConsent.messageReview.theAppSentAnInvalidRequest'),
+    TRANSACTION_UNAVAILABLE: t('mobile.dappConsent.messageReview.thisRequestCouldNotBePrepared'),
+  } as const;
+
+  const orderWarnings = {
+    'send.nftOrderZeroPayment': t('mobile.dappConsent.messageReview.thisOrderListsNoTokenPaymentTo'),
+    'send.nftOrderNoReturn': t('mobile.dappConsent.messageReview.thisOrderListsNoAssetsPayableTo'),
+  } as const;
+
   const ledger = useDappLedgerConnection({ review, controller, ledgerConnection });
   const [acceptance, setAcceptance] = useState<{ revision: number; checked: boolean } | null>(null);
   const acknowledged = acceptance?.revision === review.revision && acceptance.checked;
@@ -56,53 +58,53 @@ export function NativeMessageReviewScreen({ review, controller, ledgerConnection
   };
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.container}><Screen footer={<>
-    {ledger.showConnect && <Button title="Connect Ledger" variant="secondary" onPress={ledger.connect} />}
+    {ledger.showConnect && <Button title={t('mobile.accounts.connectLedger')} variant="secondary" onPress={ledger.connect} />}
     <View style={s.actions}>
-      <Button title={review.dispatched ? 'Close' : 'Reject'} variant="secondary" style={s.action} onPress={reject} />
-      {!review.dispatched && <Button title={review.busy ? 'Please wait…' : review.needsAccountSwitch ? 'Switch account' : personal ? 'Sign message' : 'Sign typed data'}
+      <Button title={review.dispatched ? t('buttons.close') : t('buttons.reject')} variant="secondary" style={s.action} onPress={reject} />
+      {!review.dispatched && <Button title={review.busy ? t('mobile.dappConsent.messageReview.pleaseWait') : review.needsAccountSwitch ? t('mobile.dappConsent.messageReview.switchAccount') : personal ? t('mobile.dappConsent.messageReview.signMessage') : t('mobile.dappConsent.messageReview.signTypedData')}
         disabled={blocked || review.busy || !review.needsAccountSwitch && (ledger.blocked || review.requiresWarningAcknowledgement && !acknowledged)} onPress={perform} style={s.action} />}
     </View>
   </>}>
-    <Header title={personal ? 'Sign message' : 'Sign typed data'} onBack={reject} />
+    <Header title={personal ? t('mobile.dappConsent.messageReview.signMessage') : t('mobile.dappConsent.messageReview.signTypedData')} onBack={reject} />
     <Card style={s.card}>
       <Text style={s.appName}>{review.appName}</Text>
-      <Text style={s.label}>Reported website</Text>
+      <Text style={s.label}>{t('mobile.connections.reportedWebsite')}</Text>
       <Text selectable style={s.origin}>{review.origin}</Text>
       <DappSiteStatus verification={review.verification} />
       <View style={s.divider} />
       <Text style={s.account}>{review.accountLabel}</Text>
       <Text selectable style={s.address}>{review.address}</Text>
-      <Text style={s.network}>{review.networkLabel} · Chain ID {review.chainId}</Text>
-      {review.smartAccount && <Text style={s.body}>Smart account signature · Your smart account will authorize this request with its configured signing method.</Text>}
+      <Text style={s.network}>{t('mobile.connections.network', { network: review.networkLabel, chainId: review.chainId })}</Text>
+      {review.smartAccount && <Text style={s.body}>{t('mobile.dappConsent.messageReview.smartAccountSignatureYourSmartAccountWill')}</Text>}
     </Card>
     {review.order && <Card style={s.card}>
-      <Text accessibilityRole="header" style={s.sectionTitle}>{review.order.protocol} order</Text>
-      <Text style={s.body}>Signing this order can authorize asset transfers when it is filled.</Text>
-      {review.order.status === 'unrecognized' && <Text style={s.body}>Pali cannot reliably summarize this order format. Review the full signed data below.</Text>}
-      {review.order.warnings.map((warning) => <Notice key={warning} title="Check the order terms"
+      <Text accessibilityRole="header" style={s.sectionTitle}>{t('mobile.dappConsent.messageReview.protocolOrder', { protocol: review.order.protocol })}</Text>
+      <Text style={s.body}>{t('mobile.dappConsent.messageReview.signingThisOrderCanAuthorizeAssetTransfers')}</Text>
+      {review.order.status === 'unrecognized' && <Text style={s.body}>{t('mobile.dappConsent.messageReview.paliCannotReliablySummarizeThisOrderFormat')}</Text>}
+      {review.order.warnings.map((warning) => <Notice key={warning} title={t('send.nftOrderWarningTitle')}
         body={orderWarnings[warning]} />)}
     </Card>}
     {review.advisories.length > 0 && <Card style={s.card}>
-      <Text accessibilityRole="header" style={s.sectionTitle}>Check these addresses</Text>
+      <Text accessibilityRole="header" style={s.sectionTitle}>{t('mobile.dappConsent.messageReview.checkTheseAddresses')}</Text>
       {review.advisories.map((advisory, index) => <View key={`${advisory.field}-${index}`} style={s.advisory}>
         <Text style={s.account}>{advisory.field}</Text>
         <Text selectable style={s.address}>{advisory.address}</Text>
-        <Text style={s.warning}>{advisory.reason ?? 'This address appears on a known unsafe-address list.'}</Text>
+        <Text style={s.warning}>{advisory.reason ?? t('mobile.dappConsent.messageReview.thisAddressAppearsOnAKnownUnsafe')}</Text>
       </View>)}
       {review.requiresWarningAcknowledgement && !review.needsAccountSwitch && <IdlePressable accessibilityRole="checkbox"
-        accessibilityLabel="I understand the address warning" accessibilityState={{ checked: acknowledged, disabled: review.busy || review.dispatched }}
+        accessibilityLabel={t('mobile.dappConsent.messageReview.iUnderstandTheAddressWarning')} accessibilityState={{ checked: acknowledged, disabled: review.busy || review.dispatched }}
         disabled={review.busy || review.dispatched} onPress={() => setAcceptance({ revision: review.revision, checked: !acknowledged })} style={s.acknowledgement}>
         <View style={[s.checkbox, acknowledged && s.checked]}><Text style={s.checkmark}>{acknowledged ? '✓' : ''}</Text></View>
-        <Text style={s.acknowledgementText}>I understand the address warning.</Text>
+        <Text style={s.acknowledgementText}>{t('mobile.dappConsent.messageReview.iUnderstandTheAddressWarning1')}</Text>
       </IdlePressable>}
     </Card>}
     <Card style={s.card}>
-      <Text accessibilityRole="header" style={s.sectionTitle}>{personal ? 'Message' : 'Signed data'}</Text>
+      <Text accessibilityRole="header" style={s.sectionTitle}>{personal ? t('send.message') : t('mobile.dappConsent.messageReview.signedData')}</Text>
       <Text selectable style={[s.payload, !personal && s.structured]}>{review.message ?? review.typedData ?? ''}</Text>
     </Card>
-    {showError && review.error && <Notice title="Signing unavailable" body={reviewErrors[review.error]} />}
-    {review.needsAccountSwitch && !blocked && <Text style={s.body}>Switch to {review.accountLabel} to review and sign this request.</Text>}
-    {review.dispatched && review.busy && <View style={s.sending}><ActivityIndicator color={colors.blue} /><Text>Sending signature…</Text></View>}
+    {showError && review.error && <Notice title={t('mobile.dappConsent.messageReview.signingUnavailable')} body={reviewErrors[review.error]} />}
+    {review.needsAccountSwitch && !blocked && <Text style={s.body}>{t('mobile.dappConsent.messageReview.switchToReviewSign', { account: review.accountLabel })}</Text>}
+    {review.dispatched && review.busy && <View style={s.sending}><ActivityIndicator color={colors.blue} /><Text>{t('mobile.dappConsent.messageReview.sendingSignature')}</Text></View>}
   </Screen>{ledger.modal}</SafeAreaView>;
 }
 

@@ -18,7 +18,10 @@ export const IdlePressable = React.forwardRef<React.ComponentRef<typeof Pressabl
   return <Pressable {...props} ref={ref} onPressIn={(event) => {
     const current = captureIdleInteraction(); pending.current = current;
     if (current()) props.onPressIn?.(event);
-  }} onPress={(event) => {
+  }} onLongPress={props.onLongPress ? (event) => {
+    const current = pending.current ?? captureIdleInteraction();
+    if (current()) props.onLongPress?.(event);
+  } : undefined} onPress={(event) => {
     // RN Pressability and RN Web deliver virtual clicks without press-in.
     // They are fresh activations, independent of any canceled pointer gesture.
     const native = event.nativeEvent as unknown as Record<string, unknown>;

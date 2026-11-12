@@ -1,3 +1,12 @@
+import { AUTOMATIC_FEE, snapshotEvmFeeChoice } from '../../../source/shared/transactionFeeChoice.ts';
+import { parseErc20Units, encodeErc20Transfer } from '../../../source/shared/erc20.ts';
+import { trezorResumeDraft } from '../src/screens/trezorResumeDraft.ts';
+import type { NativeSendInitialDraft } from '../src/screens/NativeSend.tsx';
+import type { SavedCollectible } from '../src/portfolio/tokenRegistry.ts';
+import { Transaction } from 'ethers';
+import { encodeNftTransferData } from '../../../source/shared/nftTransfer.ts';
+import { languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
+import { createInstance } from 'i18next';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -7,11 +16,17 @@ import ts from 'typescript';
 import type { NativeRecipientResolver, NativeRecipientResolution } from '../src/portfolio/nativeRecipientResolver.ts';
 import type { NativeUnsignedSendDraft } from '../src/screens/sendNetworkDraft.ts';
 import type { NativeOperationCredential } from '../src/custody/types.ts';
-import { formatBaseUnits } from '../src/core/amounts.ts';
+import { formatBaseUnits, parseDecimalAmount } from '../src/core/amounts.ts';
+import { normalizeDecimalInput } from '../../../source/shared/decimalInput.ts';
+import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE } from '../src/custody/transfers.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (next: unknown) => void };
-function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>, recipientResolver?: NativeRecipientResolver, onChangeNetwork?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>) => void, onViewTransaction?: (hash: string) => void, onChangeAsset?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>, token?: unknown) => void) {
+function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>, recipientResolver?: NativeRecipientResolver, onChangeNetwork?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>) => void, onViewTransaction?: (hash: string) => void, onChangeAsset?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>, token?: unknown) => void, ledgerConnection?: { subscribe(listener: () => void): () => void; isConnected(): boolean }, localization = nativeTranslationFixture) {
+  let initialDraft: NativeSendInitialDraft | undefined, collectible: SavedCollectible | undefined;
+  let beforeBackup: { onRequest(draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>): void } | undefined;
+  let tokenConnections = 0;
+  const tokenView = { subscribe: () => () => {}, getSnapshot: () => ({ items: [], collectibles: [] }), connect() { tokenConnections++; return () => {}; } };
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
@@ -30,6 +45,9 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     ...Object.fromEntries(['ActivityIndicator','KeyboardAvoidingView','Modal','ScrollView','View'].map(name=>[name,name]))};
   const ui={...Object.fromEntries(['Button','Card','Coin','Header','Icon','IconButton','Notice','Screen','Text'].map(name=>[name,name])),colors:{},styles:{}};
   const deps: Record<string,unknown> = {
+    '../platform/localization': localization,
+    '../../../../source/shared/transactionFeeChoice': { AUTOMATIC_FEE, snapshotEvmFeeChoice },
+    './NetworkFeeSheet': { NetworkFeeSheet: 'NetworkFeeSheet' },
     './RecipientQrScanner': { RecipientQrScanner: 'RecipientQrScanner' },
     './SendNetworkCard': { SendNetworkCard: 'SendNetworkCard' },
     './SendAssetSelector': { SendAssetSelector: 'SendAssetSelector' },
@@ -39,29 +57,38 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     react,'react-native':native,'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},'../ui':ui,
     './IdleActivityBoundary':{IdlePressable:'IdlePressable',IdleTextInput:'IdleTextInput'},
     '../core/amounts':{formatBaseUnits},
-    '../../../../source/shared/erc20':{formatTokenUnits:()=>'',parseErc20Units:()=>''},
+    '../../../../source/shared/decimalInput': { normalizeDecimalInput },
+    '../../../../source/shared/erc20':{formatTokenUnits:()=>'',parseErc20Units},
     '../../../../source/shared/evmRecipientChoices':{findLocalEvmRecipientChoices:()=>[]},
     '../../../../source/utils/nftTokenId':{normalizeNftTokenId:()=>''},
-    '../custody/transfers':{ASSET_STATE_SAVED_MESSAGE:'saved',ASSET_STATE_WAIT_MESSAGE:'wait'},
+    '../custody/transfers':{ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE},
   };
   const source=readFileSync(new NodeURL('../src/screens/NativeSend.tsx',import.meta.url),'utf8');
   const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText;
   const module={exports:{} as Record<string,any>};
   runInNewContext(code,{module,exports:module.exports,Error,URL,AbortController,Keyboard:native.Keyboard,require(name:string){assert.ok(Object.hasOwn(deps,name),`Unexpected import ${name}`);return deps[name];}});
   let snapshot: any={phase:'submitting',review:null,hash:null,message:null,intent:null,collectible:undefined};
+  const replacementRequests: { hash: string; mode: 'cancel' | 'cancel-saved' | 'speed-up' }[] = [];
+  let replacement: { hash: string; mode: 'cancel' | 'cancel-saved' | 'speed-up' } | undefined;
   const prepared: unknown[] = [];
   const confirmed: string[] = [];
   const credentials: NativeOperationCredential[] = [];
   let confirmationFailure: Error | undefined;
+  let recoveryFailure: Error | undefined;
   let confirmationGate: Promise<void> | undefined, signatures = 0;
-  const prepare = async (recipient: string, amount: string, nonce?: string) => {
-    prepared.push([recipient, amount, nonce]); snapshot = { ...snapshot, phase: 'review', review: {
+  const selectedFees: unknown[] = [];
+  const prepare = async (recipient: string, amount: string, nonce?: string, feeChoice?: unknown) => {
+    selectedFees.push(feeChoice); prepared.push([recipient, amount, nonce]); snapshot = { ...snapshot, phase: 'review', review: {
       id: 'review', recipient, context, amountUnits: '1', maximumFeeUnits: '1', totalUnits: '2' } };
   };
   const maximumPrepared: unknown[] = [];
-  const controller={getSnapshot:()=>snapshot,subscribe:()=>()=>{},cancel(){cancels++;snapshot={...snapshot,phase:'idle',review:null};},prepare,
-    async prepareMaximum(recipient: string, nonce?: string) {
-      maximumPrepared.push([recipient, nonce]); await prepare(recipient, 'maximum', nonce);
+  const controller={
+    async prepareCancellation(hash: string) { replacementRequests.push({ hash, mode: 'cancel' }); },
+    async prepareSavedCancellation(hash: string) { replacementRequests.push({ hash, mode: 'cancel-saved' }); },
+    async prepareSpeedUp(hash: string) { replacementRequests.push({ hash, mode: 'speed-up' }); },
+    getSnapshot:()=>snapshot,subscribe:()=>()=>{},cancel(){cancels++;snapshot={...snapshot,phase:'idle',review:null};},prepare,
+    async prepareMaximum(recipient: string, nonce?: string, feeChoice?: unknown) {
+      maximumPrepared.push([recipient, nonce]); await prepare(recipient, 'maximum', nonce, feeChoice);
       snapshot = { ...snapshot, review: { ...snapshot.review, amountUnits: '1999999999999937000', maximumFeeUnits: '63000', totalUnits: '2000000000000000000' } };
     },
     async confirm(id: string, credential: NativeOperationCredential) {
@@ -70,12 +97,17 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
       if (confirmationGate) await confirmationGate;
       if (snapshot.review !== approved) throw Error('CANCELLED');
       signatures++;
-    }, async prepareToken(...args: unknown[]) { prepared.push(args); }};
+    }, async prepareToken(...args: unknown[]) { prepared.push(args); selectedFees.push(args[4]); },
+    async prepareCollectible(...args: unknown[]) { prepared.push(args); selectedFees.push(args[5]); },
+    async recover() { if (recoveryFailure) throw recoveryFailure; }};
   let context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false,registrationHash:'ethereum-registration'};
   let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
-  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,beforeClose,recipientResolver,account,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
-  return {render,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
+  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,collectible,initialDraft,replacement,ledgerConnection,beforeClose,beforeBackup,tokenView:beforeBackup?tokenView:undefined,recipientResolver,account,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
+  return {render, selectedFees, replacementRequests, seedReplacement(value: NonNullable<typeof replacement>) { replacement = value; }, renderInput: (props: unknown) => module.exports.NativeSendInput(props) as Element,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
+    requireBackup(onRequest: NonNullable<typeof beforeBackup>['onRequest']) { beforeBackup = { onRequest }; }, tokenConnections: () => tokenConnections,
+    seedDraft(draft: NativeSendInitialDraft, saved?: SavedCollectible) { initialDraft = draft; collectible = saved; },
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
+    failRecovery(message: string) { recoveryFailure = new Error(message); },
     holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
     refreshProps(){account={...account};context={...context};},
     changeNetwork(){account={...account,network:'sepolia'};context={...context,networkId:'sepolia'};},
@@ -93,6 +125,24 @@ function openRecipientScanner(f: ReturnType<typeof setup>) {
   field.props.trailing.props.onPress();
   return one(f.render(), 'RecipientQrScanner');
 }
+
+for (const kind of ['native', 'token', 'ERC-721', 'ERC-1155'] as const) test(`unbacked ${kind} form hands its unsigned draft to backup without preparing or opening token custody`, () => {
+  const token = kind === 'token' ? { contractAddress: '0x2222222222222222222222222222222222222222', decimals: 6, name: 'Token', symbol: 'T' } : undefined;
+  const collectible = kind === 'ERC-721' || kind === 'ERC-1155' ? { contractAddress: '0x3333333333333333333333333333333333333333', tokenStandard: kind,
+    ...(kind === 'ERC-1155' ? { tokenId: '7' } : {}) } as SavedCollectible : undefined;
+  const f = setup(token), drafts: NativeUnsignedSendDraft[] = [];
+  const draft = { recipient: '0x4444444444444444444444444444444444444444', amount: '1.25', nonce: '7', tokenId: '9', max: false, advanced: true, feeChoice: { kind: 'high' as const } };
+  f.seedDraft(draft, collectible); f.snapshot.phase = 'idle'; f.requireBackup(value => drafts.push(value));
+  const tree = f.render(), review = button(tree, 'Back up now');
+  assert.equal(review.props.disabled, false);
+  assert.equal(f.tokenConnections(), 0);
+  assert.equal(one(tree, 'Button', node => node.props.icon === 'settings').props.disabled, true);
+  if (token) assert.equal(one(tree, 'TokenMaximum').props.disabled, true);
+  review.props.onPress();
+  assert.equal(JSON.stringify(drafts), JSON.stringify([{ kind: 'evm', ...draft }]));
+  assert.deepEqual(f.prepared, []); assert.deepEqual(f.maximumPrepared, []); assert.deepEqual(f.confirmed, []);
+  assert.equal(f.tokenConnections(), 0); f.dispose();
+});
 
 test('device authorization refusal keeps the exact EVM review available for retry', async () => {
   const f = setup(); f.snapshot.phase = 'idle';
@@ -125,6 +175,36 @@ test('uncertain submission retains explicit status and retry recovery controls',
   const f = setup(); f.setSnapshot({ ...f.snapshot, phase: 'unknown', review: null, hash: '0xunknown' });
   const tree = f.render(); assert(button(tree, 'Check status')); assert(button(tree, 'Review retry'));
   assert.equal(all(tree).some(node => node.props.title === 'Done'), false); f.dispose();
+});
+
+test('French saved-state and capacity notices keep raw controller identity and suppress duplicate errors', async () => {
+  const i18n = createInstance();
+  await i18n.init({ initImmediate: false, lng: 'fr', fallbackLng: 'en',
+    resources: { fr: { translation: languageMessages('fr') }, en: { translation: languageMessages('en') } },
+    interpolation: { escapeValue: false } });
+  const localization = { nativeI18n: i18n, useNativeTranslation: () => ({ t: i18n.t.bind(i18n), i18n }) };
+  for (const [message, failure, titleKey, bodyKey] of [
+    [ASSET_STATE_SAVED_MESSAGE, 'EXPIRED', 'savedNotSubmitted', 'asset_state_saved_message'],
+    [SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE, 'SIGNED_STORAGE_FULL', 'checkEarlierTransaction', 'signed_storage_full_previous_message'],
+  ] as const) {
+    const f = setup(undefined, undefined, undefined, undefined, undefined, undefined, undefined, localization);
+    try {
+      f.setSnapshot({ ...f.snapshot, phase: 'unknown', hash: '0xsaved', message });
+      const translated = i18n.t(`mobile.sendAssetViews.evm.${bodyKey}`);
+      assert.notEqual(translated, message);
+      let tree = f.render();
+      assert(all(tree).some(node => node.children.includes(i18n.t(`mobile.sendAssetViews.evm.${titleKey}`))));
+      assert(one(tree, 'View', node => node.props.accessibilityRole === 'alert'));
+      assert.equal(one(tree, 'Notice').props.body, translated);
+      f.failRecovery(failure);
+      button(tree, i18n.t('settings.smartAccountInfrastructureCheckStatus')).props.onPress(); await settle();
+      tree = f.render();
+      assert.equal(f.snapshot.message, message, 'translation must not change model identity');
+      assert.equal(one(tree, 'Notice').props.body, translated);
+      assert.equal(all(tree).filter(node => node.type === 'Text' && node.props.accessibilityRole === 'alert').length, 0,
+        'the saved-state notice supplies the single error explanation');
+    } finally { f.dispose(); }
+  }
 });
 
 for (const phase of ['confirmed', 'reverted']) test(`${phase} transfer keeps its actions in the footer`, () => {
@@ -480,5 +560,126 @@ test('ERC20 review hero retains the reviewed token identity and symbol fallback'
     });
     assert.equal(hero.props.registrationHash, 'reviewed-registration');
     assert.equal(hero.props.fallbackSymbol, 'TOK');
+  } finally { f.dispose(); }
+});
+
+
+test('Smart replacement confirmation follows the retained payer connection requirement', async () => {
+  let payerConnected = false;
+  const f = setup(undefined, undefined, undefined, undefined, undefined, undefined, {
+    subscribe: () => () => undefined, isConnected: () => payerConnected,
+  });
+  try {
+    await f.controller.prepare('0x2222222222222222222222222222222222222222', '1');
+    f.setSnapshot({ ...f.snapshot, review: { ...f.snapshot.review,
+      replacement: { mode: 'speed-up', originalHash: '0xoriginal', originalMaximumFeeUnits: '1' },
+      execution: { kind: 'contract-call', dataBytes: 4, accessListEntries: 0, smartAccount: '0x3333333333333333333333333333333333333333' },
+    } });
+    assert(button(f.render(), 'Submit Speed Up').props.disabled, 'an actual Ledger payer must connect before confirmation');
+    button(f.render(), 'Submit Speed Up').props.onPress(); await settle();
+    assert.equal(f.confirmed.length, 0);
+    // The runtime reports connected with empty targets for a retained software/Trezor payer.
+    payerConnected = true;
+    assert(!button(f.render(), 'Submit Speed Up').props.disabled);
+    assert.equal(all(f.render()).some(node => node.props.title === 'Connect Ledger'), false);
+    button(f.render(), 'Submit Speed Up').props.onPress(); await settle();
+    assert.deepEqual(f.confirmed, ['review']);
+  } finally { f.dispose(); }
+});
+
+test('shared decimal input normalizes locale commas only for decimal fields', async () => {
+  const i18n = createInstance();
+  await i18n.init({ initImmediate: false, lng: 'fr', fallbackLng: false,
+    resources: { fr: { translation: languageMessages('fr') } }, interpolation: { escapeValue: false } });
+  const localization = { nativeI18n: i18n, useNativeTranslation: () => ({ t: i18n.t.bind(i18n), i18n }) };
+  const f = setup(undefined, undefined, undefined, undefined, undefined, undefined, undefined, localization);
+  const values: string[] = [];
+  try {
+    const input = (keyboardType: string) => one(f.renderInput({ label: 'Amount', value: '', busy: false,
+      onChange: (value: string) => values.push(value), keyboardType }), 'IdleTextInput');
+    input('decimal-pad').props.onChangeText('0,25');
+    assert.equal(values.at(-1), '0.25');
+    assert.equal(parseDecimalAmount(values.at(-1)!, 18), 250000000000000000n);
+    input('decimal-pad').props.onChangeText('1.234,56');
+    assert.equal(values.at(-1), '1.234,56');
+    assert.throws(() => parseDecimalAmount(values.at(-1)!, 18));
+    input('decimal-pad').props.onChangeText('0,');
+    assert.equal(values.at(-1), '0.');
+    input('number-pad').props.onChangeText('1,2');
+    assert.equal(values.at(-1), '1,2');
+    input('default').props.onChangeText('name,example');
+    assert.equal(values.at(-1), 'name,example');
+  } finally { f.dispose(); }
+});
+
+test('EVM available balance accessibility retains the exact value and unit', () => {
+  const f = setup();
+  try {
+    f.snapshot.phase = 'idle';
+    assert(one(f.render(), 'Text', node => node.props.accessibilityLabel === 'Available 2 ETH'));
+  } finally { f.dispose(); }
+});
+
+
+test('fee choice retires prior consent and preserves MAX for a fresh quote', async () => {
+  const f = setup(); f.snapshot.phase = 'idle'; f.render();
+  editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+  button(f.render(), 'MAX').props.onPress();
+  button(f.render(), 'Network Fee · Automatic').props.onPress();
+  const sheet = one(f.render(), 'NetworkFeeSheet');
+  sheet.props.onApply({ kind: 'custom', type: 2, maxFeePerGas: '7000000000', maxPriorityFeePerGas: '1000000000' });
+  assert(f.counts().cancels > 0); assert.equal(f.snapshot.review, null);
+  reviewSend(f); await settle();
+  assert.equal(f.maximumPrepared.length, 1);
+  assert.equal((f.selectedFees[0] as any).maxFeePerGas, '7000000000');
+  f.dispose();
+});
+
+for (const kind of ['native', 'erc20', 'nft'] as const) test(`Trezor ${kind} return preserves custom gas and fees in the actual send form`, async () => {
+  const recipient = '0x2222222222222222222222222222222222222222';
+  const from = '0x1111111111111111111111111111111111111111';
+  const token = { contractAddress: '0x3333333333333333333333333333333333333333', name: 'Token', symbol: 'TOK', decimals: 18 };
+  const intent = kind === 'erc20' ? { kind: 'erc20-transfer' as const, chainId: '1', recipient, amountUnits: '1000000000000000000', token }
+    : kind === 'nft' ? { kind: 'nft-transfer' as const, chainId: '1', from, recipient, contractAddress: token.contractAddress,
+      tokenStandard: 'ERC-1155' as const, tokenId: '7', amountUnits: '1' } : undefined;
+  const unsignedTransaction = Transaction.from({ type: 2, chainId: 1, nonce: 7, gasLimit: 65000,
+    maxFeePerGas: 7_000_000_000, maxPriorityFeePerGas: 1_000_000_000,
+    to: intent ? token.contractAddress : recipient, value: intent ? 0 : 1_000_000_000_000_000_000n,
+    data: intent?.kind === 'erc20-transfer' ? encodeErc20Transfer(recipient, intent.amountUnits)
+      : intent ? encodeNftTransferData(intent) : '0x' }).unsignedSerialized;
+  const resumed = trezorResumeDraft({ id: 'resume', kind: 'evm', accountId: 'trezor:60:0', networkId: 'ethereum', unsignedTransaction, ...(intent ? { intent } : {}) });
+  if (resumed.kind === 'utxo') throw Error('Unexpected UTXO draft');
+  const f = setup(kind === 'erc20' ? token : undefined);
+  try {
+    f.seedDraft(resumed.draft, resumed.kind === 'collectible' ? resumed.collectible : undefined);
+    f.snapshot.phase = 'idle'; f.render();
+    assert(button(f.render(), 'Network Fee · Custom'));
+    reviewSend(f); await settle();
+    assert.deepEqual(f.selectedFees, [{ kind: 'custom', type: 2, gasLimit: '65000', maxFeePerGas: '7000000000', maxPriorityFeePerGas: '1000000000' }]);
+    assert.equal(f.prepared.length, 1); assert.equal(f.signatures(), 0);
+  } finally { f.dispose(); }
+});
+
+for (const operation of ['speed-up', 'cancel', 'cancel-saved'] as const) test(`Trezor ${operation} continuation opens only the fresh retained-hash replacement path`, async () => {
+  const originalHash = '0x' + 'ab'.repeat(32);
+  const unsignedTransaction = Transaction.from({ type: 2, chainId: 1, nonce: 7,
+    to: operation === 'speed-up' ? null : '0x' + '11'.repeat(20),
+    data: operation === 'speed-up' ? '0x6001600055' : '0x',
+    value: 0, gasLimit: 50000, maxFeePerGas: 9, maxPriorityFeePerGas: 1 }).unsignedSerialized;
+  const resumed = trezorResumeDraft({ id: 'resume', kind: 'evm', accountId: 'trezor:60:0', networkId: 'ethereum',
+    unsignedTransaction, replacement: { operation, originalHash } });
+  assert.equal(resumed.kind, 'replacement');
+  if (resumed.kind !== 'replacement') return;
+  const f = setup();
+  try {
+    f.seedDraft(resumed.draft);
+    f.seedReplacement({ hash: resumed.replacement.originalHash, mode: resumed.replacement.operation });
+    f.snapshot.phase = 'idle'; f.render(); await settle();
+    assert.deepEqual(f.replacementRequests, [{ hash: originalHash, mode: operation }]);
+    assert.deepEqual(f.prepared, []); assert.deepEqual(f.maximumPrepared, []);
+    assert.deepEqual(f.confirmed, []); assert.equal(f.signatures(), 0);
+    headerBack(f.render());
+    assert(f.counts().cancels > 0);
+    assert.equal(f.signatures(), 0);
   } finally { f.dispose(); }
 });

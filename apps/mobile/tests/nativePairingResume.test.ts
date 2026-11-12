@@ -9,11 +9,14 @@ import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
 import * as networks from '../src/custody/networkContext.ts';
+import * as publicSendDraft from '../src/screens/publicSendDraft.ts';
 import * as utxoNetworks from '../src/core/utxoNetworks.ts';
 import type { NativePairingEntry } from '../src/connections/pairingLinks.ts';
 import type { NativeConnectionsView } from '../src/connections/types.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import { quietActivityNotifications } from './notificationFixture.ts';
+import { createTestPublicViewLock } from './publicViewLockFixture.ts';
+import { IdleLock } from '../src/core/idleLock.ts';
 
 type Element = {
   type: unknown;
@@ -51,6 +54,12 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   let hardwareBack: (() => boolean) | undefined;
   let exits = 0;
   let shellTab = 'wallet';
+  let acquisitions = 0, releases = 0, lifecycleActive = true;
+  let releaseGate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
+  const viewPrivacy = createTestPublicViewLock();
+  const custodyIdle = new IdleLock(() => ({ monotonic: now, wall: now }));
+  let viewAuthorizations = 0, rejectViewAuthorization = false;
+  let duringLock: (() => void) | undefined;
   let guardianReads = 0;
   let guardianOpens = 0;
   let recoveryOpens = 0;
@@ -195,6 +204,11 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     for (const listener of authorityListeners) listener(snapshot);
   };
   const controllers = {
+    getNotificationChoices: () => [{ label: 'Account 1', networkName: 'Ethereum', symbol: 'ETH', scope: {
+      id: `native:${catalogue.active.accountId}:ethereum`, accountId: catalogue.active.accountId,
+      accountType: smartAccount ? 'SmartAccount' : 'HDAccount', accountAddress: snapshot.account.address,
+      network: networks.getNativeNetwork('ethereum'), guardian: false,
+    } }],
     authentication: { isAnyPromptActive: () => promptActive, isActive: () => promptActive, cancel() { promptActive = false; } },
     authority: {
       getSnapshot: () => snapshot,
@@ -209,6 +223,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       lock() {
         lifecycleEvents.push('lock');
         change('locked');
+        duringLock?.();
       },
       async getAuthenticationStatus() { return { deviceAuth: 'ready', credentialPresent: true }; },
       async unlock() {
@@ -259,7 +274,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     },
     canManageGuardianPolicy: () => smartAccount && canManage,
     canSignSmartAccount: () => smartAccount && (canManage || slh), canManageSlhDsa: () => smartAccount && slh,
-    canManageSmartAccountModules: () => false,
+    canManageSmartAccountModules: () => smartAccount && canManage && catalogue.accounts[0]?.smartAccount?.isDeployed === true,
     async openSmartAccountModules() { throw Error('Modules are outside this fixture'); },
     async openSlhDsaManagement(_signal: AbortSignal, check: () => void) { check(); authenticatorGuards.push(check); return { installedKeys: [] }; },
     canUseWalletAuthenticator: () => smartAccount && canManage && catalogue.accounts[0]?.smartAccount?.isDeployed === true,
@@ -308,15 +323,16 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   };
   const lifecycle = class {
     async acquire() {
+      acquisitions++; lifecycleActive = true;
       return controllers;
     }
     current() {
-      return controllers;
+      return lifecycleActive ? controllers : null;
     }
     hasRecovery() {
       return false;
     }
-    async release() {}
+    async release() { releases++; lifecycleActive = false; await releaseGate?.promise; }
   };
   const noteRestore = {
     cancel() {},
@@ -335,6 +351,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     ])
   );
   Object.assign(dependencies, {
+    './publicSendDraft': publicSendDraft,
     './NativeAccountOverview': { NativePortfolioRoute: 'NativePortfolio' },
     '../notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
     '../activity/accountActivity': { AccountActivityController: class {} },
@@ -364,8 +381,16 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     '../custody/networkContext': networks,
     '../../../../source/shared/evmNetworks': { EVM_NETWORK_DEFINITIONS: networks.NATIVE_NETWORKS.map(network => ({ id: network.id, name: network.name })) },
     '../platform/security': {
-      custodyIdle: { begin() {}, stop() {} },
+      publicViewLock: viewPrivacy.viewLock,
+      custodyIdle,
       securityPreferences: { getSnapshot: () => ({ status: 'ready' }) },
+    },
+    '../platform/credential': {
+      async authorizePublicView(_signal: AbortSignal, check: () => void) {
+        check(); viewAuthorizations++;
+        if (rejectViewAuthorization) throw Error('CANCELLED');
+      },
+      isNativeCredentialPromptActive: () => promptActive,
     },
     '../platform/privacyShield.native': { async ensurePrivacyShield() {} },
     '../platform/nativeFactory': {
@@ -391,7 +416,8 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     './NativeSmartAccountSend': { NativeSmartAccountSend: 'NativeSmartAccountSend' },
     './NativePortfolio': { NativePortfolio: 'NativePortfolio' },
     './RealAppShell': { RealAppShell: 'RealAppShell' },
-    './WalletUpdatePanel': { LockedWalletUpdate: () => null },
+    './WalletUpdatePanel': { LockedWalletUpdate: 'LockedWalletUpdate', WalletUpdateScreen: 'WalletUpdateScreen' },
+    './RealSettings': { RealSettings: 'RealSettings' },
     './NativeSmartAccountOperation': {
       NativeSmartAccountOperationRoute: 'NativeSmartAccountOperationRoute',
     },
@@ -456,6 +482,16 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     resumedInfrastructure: () => resumedInfrastructure,
     showTools() { shellTab = 'tools'; },
     showWallet() { shellTab = 'wallet'; },
+    showSettings() { shellTab = 'settings'; },
+    showActivity() { shellTab = 'activity'; },
+    activityChoice() { return controllers.getNotificationChoices()[0]!; },
+    holdRelease() { return releaseGate = Promise.withResolvers<void>(); },
+    acquisitions: () => acquisitions,
+    releases: () => releases,
+    viewPrivacy,
+    viewAuthorizations: () => viewAuthorizations,
+    rejectViewAuthorization() { rejectViewAuthorization = true; },
+    duringLock(action: () => void) { duringLock = action; },
     guardianReads: () => guardianReads,
     guardianOpens: () => guardianOpens,
     recoveryOpens: () => recoveryOpens,
@@ -669,6 +705,42 @@ for (const back of ['Android', 'screen'] as const)
     }
   });
 
+
+test('viewing a completed deployment refreshes Wallet metadata and capabilities before returning', async () => {
+  const f = await mounted(true, true, false);
+  try {
+    const portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    assert.equal(portfolio.props.smartAccount.isDeployed, false);
+    portfolio.props.onDeploySmartAccount();
+    const result = f.render();
+    assert.equal(result.type, 'NativeSmartAccountOperationRoute');
+    // Persistence changed without a new authority event, as in real deployment.
+    f.completeDeployment();
+    const hash = '0x' + 'cd'.repeat(32);
+    result.props.onViewTransaction(hash);
+    const activity = find(f.render(), node => node.type === 'AllNetworksActivity')!;
+    assert.equal(activity.props.initialTarget.hash, hash);
+    assert.equal(activity.props.initialTarget.networkId, 'ethereum');
+    f.showWallet();
+    const refreshed = find(f.render(), node => node.type === 'NativePortfolio')!;
+    assert.equal(refreshed.props.smartAccount.isDeployed, true);
+    assert.equal(refreshed.props.onDeploySmartAccount, undefined);
+    assert.equal(typeof refreshed.props.onManageSmartAccountModules, 'function');
+    assert.equal(typeof refreshed.props.onUseWalletAuthenticator, 'function');
+    assert.equal(f.exits(), 0);
+  } finally { f.dispose(); }
+});
+
+test('a stale deployment result cannot refresh or navigate a successor public context', async () => {
+  const f = await mounted(true, true, false);
+  try {
+    find(f.render(), node => node.type === 'NativePortfolio')!.props.onDeploySmartAccount();
+    const result = f.render();
+    f.readyAtRevision(2); f.render();
+    result.props.onViewTransaction('0x' + 'cd'.repeat(32));
+    assert.equal(find(f.render(), node => node.type === 'AllNetworksActivity'), undefined);
+  } finally { f.dispose(); }
+});
 
 test('Smart native, ERC20 and NFT sends use the owned operation route', async () => {
   const f = await mounted(true, true);
@@ -1025,6 +1097,101 @@ test('wallet background captures the infrastructure Suite departure before lock 
   } finally { f.dispose(); }
 });
 
+test('deliberate wallet lock survives foreground resume and opens only after OS authorization', async () => {
+  const f = await mounted(true, false, false);
+  try {
+    find(f.render(), node => node.type === 'NativePortfolio')!.props.onLock();
+    await settle();
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+    f.foreground(); await settle();
+    assert.equal(f.viewAuthorizations(), 0);
+    const open = find(f.render(), node => node.props.title === 'Unlock wallet'); assert(open);
+    open.props.onPress(); await settle();
+    assert.equal(f.viewAuthorizations(), 1);
+    assert.equal(f.viewPrivacy.marker(), 'unlocked');
+    assert(find(f.render(), node => node.type === 'NativePortfolio'));
+  } finally { f.dispose(); }
+});
+
+test('a persisted lock hides the public wallet after mounting and cancelled OS authorization keeps it hidden', async () => {
+  const f = harness(true, false, false);
+  await f.viewPrivacy.viewLock.lock();
+  f.rejectViewAuthorization();
+  try {
+    f.render(); await settle(); f.render();
+    assert.equal(find(f.render(), node => node.type === 'NativePortfolio'), undefined);
+    find(f.render(), node => node.props.title === 'Unlock wallet')!.props.onPress(); await settle();
+    assert.equal(f.viewAuthorizations(), 1);
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+    assert.equal(find(f.render(), node => node.type === 'NativePortfolio'), undefined);
+  } finally { f.dispose(); }
+});
+
+test('update installation waits for full controller release and suppresses foreground reopening', async () => {
+  const f = await mounted(true, false, false);
+  const held = f.holdRelease();
+  try {
+    f.showSettings();
+    find(f.render(), node => node.type === 'RealSettings')!.props.onUpdate();
+    assert.equal(f.render().type, 'WalletUpdateScreen');
+    assert.equal(f.render().props.phase, 'closing');
+    assert.equal(f.releases(), 1);
+    const acquired = f.acquisitions();
+    f.background(); f.foreground(); await settle();
+    assert.equal(f.acquisitions(), acquired);
+    assert.equal(f.render().props.phase, 'closing');
+    held.resolve(); await settle();
+    assert.equal(f.render().props.phase, 'ready');
+    f.render().props.onBack(); await settle();
+    assert.equal(f.acquisitions(), acquired + 1);
+    assert.notEqual(f.render().type, 'WalletUpdateScreen');
+  } finally { held.resolve(); f.dispose(); }
+});
+
+test('update Back waits for controller release before reacquiring the public wallet', async () => {
+  const f = await mounted(true, false, false);
+  const held = f.holdRelease();
+  try {
+    f.showSettings(); find(f.render(), node => node.type === 'RealSettings')!.props.onUpdate();
+    const acquired = f.acquisitions();
+    assert.equal(f.hardwareBack(), true); await settle();
+    assert.equal(f.render().props.phase, 'closing');
+    assert.equal(f.acquisitions(), acquired);
+    held.resolve(); await settle();
+    assert.equal(f.acquisitions(), acquired + 1);
+    assert.notEqual(f.render().type, 'WalletUpdateScreen');
+  } finally { held.resolve(); f.dispose(); }
+});
+
+test('reentrant Back during update lock publication waits for the actual release', async () => {
+  const f = await mounted(true, false, false);
+  const held = f.holdRelease();
+  try {
+    const acquired = f.acquisitions();
+    f.duringLock(() => { assert.equal(f.hardwareBack(), true); });
+    f.showSettings(); find(f.render(), node => node.type === 'RealSettings')!.props.onUpdate();
+    await settle();
+    assert.equal(f.render().props.phase, 'closing');
+    assert.equal(f.acquisitions(), acquired);
+    held.resolve(); await settle();
+    assert.equal(f.acquisitions(), acquired + 1);
+    assert.notEqual(f.render().type, 'WalletUpdateScreen');
+  } finally { held.resolve(); f.dispose(); }
+});
+
+test('failed controller release never grants update installation', async () => {
+  const f = await mounted(true, false, false);
+  const held = f.holdRelease();
+  try {
+    f.showSettings(); find(f.render(), node => node.type === 'RealSettings')!.props.onUpdate();
+    held.reject(Error('cleanup failed')); await settle();
+    assert.equal(f.render().type, 'WalletUpdateScreen');
+    assert.equal(f.render().props.phase, 'failed');
+    f.foreground(); await settle();
+    assert.equal(f.render().props.phase, 'failed');
+  } finally { f.dispose(); }
+});
+
 test('an infrastructure resume discriminator cannot route a selected software account into its hardware continuation', async () => {
   const f = await mounted(true, false, false);
   try {
@@ -1032,5 +1199,25 @@ test('an infrastructure resume discriminator cannot route a selected software ac
     await assert.rejects(f.render().props.onResumeSend({ kind: 'infrastructure', id: 'forged-suite-job', accountId: 'hd:60:0', networkId: 'ethereum' }), /CANCELLED/);
     assert.deepEqual(f.resumedInfrastructure(), []);
     assert.equal(f.render().type, 'NativeTrezor');
+  } finally { f.dispose(); }
+});
+
+for (const action of ['speed-up', 'cancel', 'cancel-saved'] as const) test(`Smart Activity ${action} reaches the retained-payer review and bound result without an owner connection`, async () => {
+  const f = await mounted(true, true, false, false);
+  try {
+    f.showActivity();
+    const activity = find(f.render(), node => node.type === 'AllNetworksActivity'); assert(activity);
+    assert.equal(typeof activity.props.onAction, 'function');
+    const hash = '0x' + 'ab'.repeat(32), result = '0x' + 'cd'.repeat(32);
+    await activity.props.onAction({ choice: f.activityChoice(), row: { hash } }, action, hash, () => undefined);
+    await settle(); f.render(); await settle();
+    const review = f.render();
+    assert.equal(review.type, 'NativeSend');
+    assert.equal(review.props.replacement.mode, action); assert.equal(review.props.replacement.hash, hash);
+    review.props.onViewTransaction(result);
+    const completed = find(f.render(), node => node.type === 'AllNetworksActivity'); assert(completed);
+    assert.equal(completed.props.initialTarget.networkId, 'ethereum'); assert.equal(completed.props.initialTarget.hash, result);
+    review.props.onViewTransaction(hash);
+    assert.equal(find(f.render(), node => node.type === 'AllNetworksActivity')!.props.initialTarget.hash, result);
   } finally { f.dispose(); }
 });

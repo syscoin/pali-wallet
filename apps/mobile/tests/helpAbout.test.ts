@@ -6,6 +6,8 @@ import test from 'node:test';
 import ts from 'typescript';
 import { PALI_INFORMATION } from '../../../source/shared/paliInformation.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
+import { PALI_LANGUAGE_OPTIONS } from '../../../source/shared/languagePolicy.ts';
+import { currencyFlag } from '../../../source/shared/currencyFlags.ts';
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
 const source = (path: string) => readFileSync(new NodeURL(path, import.meta.url), 'utf8');
@@ -22,6 +24,7 @@ function setup(component = 'HelpAbout', watchOnly = true, options: { backupRequi
     useSyncExternalStore(_subscribe: unknown, getSnapshot: () => unknown) { return getSnapshot(); },
     useState(initial: unknown) { const c = cell(); if (!Object.hasOwn(c, 'value')) c.value = initial;
       return [c.value, (value: unknown) => { c.value = typeof value === 'function' ? value(c.value) : value; }]; },
+    useEffect(run: () => void | (() => void), deps?: readonly unknown[]) { react.useLayoutEffect(run, deps); },
     useLayoutEffect(run: () => void | (() => void), deps?: readonly unknown[]) { const c = cell();
       if (c.deps && deps && deps.length === c.deps.length && deps.every((d, i) => Object.is(d, c.deps![i]))) return;
       c.deps = deps; effects.push(() => { c.cleanup?.(); c.cleanup = run() || undefined; }); },
@@ -40,7 +43,12 @@ function setup(component = 'HelpAbout', watchOnly = true, options: { backupRequi
     '../../../../source/shared/paliInformation': { PALI_INFORMATION }, '../../app.json': JSON.parse(source('../app.json')), '../ui': ui, './HelpAbout': { HelpAbout: 'HelpAbout' }, './DisplayCurrency': { DisplayCurrency: 'DisplayCurrency' },
     './NativePreferences': { NativePreferences: 'NativePreferences' }, './WalletBackupBadge': { WalletBackupBadge: 'WalletBackupBadge' },
     './BalancePrivacySetting': { BalancePrivacySetting: 'BalancePrivacySetting' },
-    './ActivityNotifications': { ActivityNotifications: 'ActivityNotifications' }, '../platform/localization': nativeTranslationFixture };
+    './ActivityNotifications': { ActivityNotifications: 'ActivityNotifications' }, '../platform/localization': nativeTranslationFixture,
+    '../platform/fiatPreferences': { useFiatCurrency: () => ({ status: 'ready', currency: 'usd' }) },
+    '../notifications/service': { nativeActivityNotifications: { subscribe: () => () => undefined,
+      getSnapshot: () => ({ status: 'ready', enabledScopeIds: [], permission: 'denied' }), load: async () => undefined } },
+    '../../../../source/shared/languagePolicy': { PALI_LANGUAGE_OPTIONS },
+    '../../../../source/shared/currencyFlags': { currencyFlag }, };
   deps['./WalletUpdatePanel'] = { WalletUpdatePanel: 'WalletUpdatePanel' };
   deps['../updates/service'] = { mobileUpdates: { subscribe: () => () => undefined,
     getSnapshot: () => ({ release: options.updateVersion ? { version: options.updateVersion } : null }) } };

@@ -16,7 +16,7 @@ function fixture(initialFilter: string | Promise<string> = 'all', direction: 're
   let currentId = 'hd:60:0', revision = 1;
   const listeners = new Set<(snapshot: any) => void>();
   const calls: { id: string; account: string; signal: AbortSignal }[] = [], loads: string[] = [], savedLoads: string[] = [];
-  let held: Promise<void> | undefined, saveHeld: Promise<void> | undefined;
+  let held: Promise<void> | undefined, saveHeld: Promise<void> | undefined, failedNetwork: string | undefined;
   const choices: NotificationChoice[] = Array.from({ length: 15 }, (_, index) => networks.map(network => ({
     label: `Account ${index + 1}`, networkName: network.name, symbol: network.symbol,
     scope: { id: `native:hd:60:${index}:${network.id}`, accountId: `hd:60:${index}`, accountType: 'HDAccount',
@@ -52,6 +52,7 @@ function fixture(initialFilter: string | Promise<string> = 'all', direction: 're
       calls.push({ id: scope.network.id, account: scope.address, signal });
       if (held) await held;
       guard();
+      if (scope.network.id === failedNetwork) throw Error('Explorer unavailable');
       if (feed === 'tokentx') return [];
       return decodeActivityPage({ status: '1', result: [{ hash, from: direction === 'self' ? scope.address : outsider, to: scope.address, value: '1',
         timeStamp: '1700000000', blockNumber: '10', confirmations: '1', nonce: '0', txreceipt_status: '1' }] }, feed, scope.address, Number(scope.network.chainId));
@@ -61,6 +62,7 @@ function fixture(initialFilter: string | Promise<string> = 'all', direction: 're
   return { model, calls, loads, savedLoads, selected: () => selected,
     hold(value: Promise<void> | undefined) { held = value; },
     holdSave(value: Promise<void> | undefined) { saveHeld = value; },
+    failNetwork(value: string | undefined) { failedNetwork = value; },
     refreshSource() { revision++; for (const listener of listeners) listener(source.getSnapshot()); },
     changeAccount(id: string, beforeListeners?: () => void) {
       currentId = id; revision++; beforeListeners?.();
@@ -82,6 +84,42 @@ test('restores the concrete filter before reading, and fifteen saved accounts ca
   assert.equal(f.selected(), 'rollux');
   assert.equal(f.model.getSnapshot().rows[0]!.choice.scope.network.id, 'rollux');
   stop();
+});
+
+test('healthy all-network loading and refresh never publish an unavailable-history warning', async () => {
+  const f = fixture();
+  const unavailable: boolean[] = [];
+  const unsubscribe = f.model.subscribe(() => unavailable.push(f.model.getSnapshot().partial));
+  const stop = f.model.connect();
+  try {
+    await tick();
+    assert.equal(unavailable.includes(true), false);
+    assert.equal(f.model.getSnapshot().hasMore, false);
+    unavailable.length = 0;
+    await f.model.refresh();
+    await tick();
+    assert.equal(unavailable.includes(true), false);
+    assert.equal(f.model.getSnapshot().hasMore, false);
+  } finally { stop(); unsubscribe(); }
+});
+
+test('an actual failed network remains partial only when that network is visible', async () => {
+  const f = fixture();
+  f.failNetwork('rollux');
+  const stop = f.model.connect();
+  try {
+    await tick();
+    assert.equal(f.model.getSnapshot().partial, true);
+    await f.model.selectFilter('ethereum');
+    await tick();
+    assert.equal(f.model.getSnapshot().partial, false);
+    await f.model.selectFilter('all');
+    await tick();
+    assert.equal(f.model.getSnapshot().partial, true);
+    f.failNetwork(undefined);
+    await f.model.refresh();
+    assert.equal(f.model.getSnapshot().partial, false);
+  } finally { stop(); }
 });
 
 test('all-network rows retain distinct identities for an identical hash and share direction/privacy filters', async () => {

@@ -6,6 +6,7 @@ import test from 'node:test';
 import ts from 'typescript';
 import { createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 
 type Element = {
   type: unknown;
@@ -67,6 +68,7 @@ function fixture() {
     },
   };
   const importsByName: Record<string, unknown> = {
+    '../platform/localization': nativeTranslationFixture,
     react,
     'react-native': {
       AppState: {

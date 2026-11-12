@@ -19,7 +19,7 @@
     "test:faucet-ui": "playwright test --config playwright.faucet.config.ts",
     "test:recovery-ui": "node scripts/build-native-recovery-ui.cjs && playwright test --config playwright.recovery.config.ts",
     "lint": "eslint . --max-warnings 0",
-    "postinstall": "node ../../scripts/apply-walletconnect-terminal.cjs && node ../../scripts/apply-quickcrypto-sentry.cjs"
+    "postinstall": "node ../../scripts/apply-walletconnect-terminal.cjs && node ../../scripts/apply-quickcrypto-sentry.cjs && node ../../scripts/apply-keyring-fee-rate.cjs"
   },
   "dependencies": {
     "@craftzdog/react-native-buffer": "6.1.2",
@@ -39,6 +39,7 @@
     "axios": "1.21.0",
     "base-64": "1.0.0",
     "bech32": "2.0.0",
+    "bignumber.js": "9.3.1",
     "bitcoinjs-lib": "7.0.5",
     "ethers": "6.17.0",
     "expo": "58.0.22",
@@ -122,5 +123,6 @@
     }
   },
   "paliWalletConnectPatch": "core.9a6890ed312e22696246d1c971674816158bc289.utils.7e48b0453db3f3c7f2d417ef3823fc5c218f21bf.sha256.03ce9132174333bdb653e3b0d8da3e87fad27532fdc0c2f6ab1b0c528f1b0180",
-  "paliQuickCryptoSentryPatch": "quickcrypto.1.1.9.source.a470f8220db63b9d7c6deef72c403e69f8a89408.sha256.fa283f075dbac769c8d2e73051eda615ed94e017187bb162f940766ce07b23a3"
+  "paliQuickCryptoSentryPatch": "quickcrypto.1.1.9.source.273ae4f76166b0954737fa1f0cf4e486f7956d83.sha256.59cadd6464baae28e9c8ea6bff3cc49d1b72d0c5cf3c131f2a5eba0c46917b56",
+  "paliKeyringFeeRatePatch": "keyring.a1dccff.sha256.21ec131b6a86c5d23ad2d992bc92b6b5f39f0034d4d411bb799f5d0662fa22af"
 }

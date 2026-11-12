@@ -1,3 +1,4 @@
+import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useState } from 'react';
 import { BackHandler } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,6 +8,7 @@ import type { NativePrivateAuthenticationScope } from '../custody/privateAuthent
 import { Card, colors, Header, Row, Screen } from '../ui';
 import { NativeSentryKeys } from './NativeSentryKeys';
 import { NativeSentryNodes } from './NativeSentryNodes';
+const t = nativeI18n.t.bind(nativeI18n);
 
 type Props = {
   networkLabel: string;
@@ -28,6 +30,7 @@ export function NativeSentryHub({
   openNodes,
   onBack,
 }: Props) {
+  useNativeTranslation();
   const [pane, setPane] = useState<'keys' | 'nodes' | null>(null);
   const closePane = useCallback(() => setPane(null), []);
   useLayoutEffect(() => {
@@ -60,17 +63,17 @@ export function NativeSentryHub({
       style={{ flex: 1, backgroundColor: colors.bg }}
     >
       <Screen>
-        <Header title="Sentry" subtitle={networkLabel} onBack={onBack} />
+        <Header title={t("mobile.tools.sentry")} subtitle={networkLabel} onBack={onBack} />
         <Card>
           <Row
-            title="Linked nodes"
-            subtitle="Manage nodes and protect their collateral"
+            title={t("mobile.sentryViews.linkedNodes")}
+            subtitle={t("mobile.sentryViews.manageNodesAndProtectTheirCollateral")}
             icon="shield"
             onPress={() => setPane('nodes')}
           />
           <Row
-            title="Authority keys"
-            subtitle="Manage keys and service settings"
+            title={t("mobile.sentryViews.authorityKeys")}
+            subtitle={t("mobile.sentryViews.manageKeysAndServiceSettings")}
             icon="lock"
             onPress={() => setPane('keys')}
             last

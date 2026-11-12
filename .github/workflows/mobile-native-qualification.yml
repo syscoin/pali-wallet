@@ -18,6 +18,8 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
+      - 'scripts/apply-keyring-fee-rate.cjs'
+      - 'scripts/keyring-fee-rate.json'
       - 'scripts/apply-walletconnect-terminal.cjs'
       - 'scripts/walletconnect-terminal.json'
       - 'scripts/apply-quickcrypto-sentry.cjs'
@@ -35,6 +37,7 @@ on:
       - 'apps/mobile/plugins/**'
       - 'apps/mobile/scripts/configure-native-qualification.cjs'
       - 'apps/mobile/scripts/qualification-sdk.cjs'
+      - 'apps/mobile/scripts/qualificationSdkIdentity.ts'
       - 'apps/mobile/scripts/register-shared-test-dependencies.mjs'
       - 'apps/mobile/vendor/*.tgz'
       - 'package.json'
@@ -146,6 +149,7 @@ jobs:
         working-directory: .
         run: |
           yarn install --frozen-lockfile --ignore-scripts
+          node scripts/apply-keyring-fee-rate.cjs
           node apps/mobile/scripts/qualification-sdk.cjs
           node scripts/prepare-native-private-prover.cjs # pinned public artifacts
           mkdir -p "$RUNNER_TEMP/pali-native-ios"
@@ -196,20 +200,24 @@ jobs:
           SOURCEMAP_FILE: ${{ runner.temp }}/pali-native-ios/ios-main.jsbundle.map
         run: |
           mkdir -p "$RUNNER_TEMP/pali-native-ios"
+          node qualification/ios-resource-sampler.cjs "$RUNNER_TEMP/pali-native-ios/resources-before-build.jsonl" --once || true
           xcodebuild -workspace ios/PaliQualification.xcworkspace \
             -scheme PaliQualification -configuration Release -sdk iphonesimulator \
             -derivedDataPath "$RUNNER_TEMP/pali-native-ios-build" \
-            CODE_SIGNING_ALLOWED=NO build
+            -jobs 2 CODE_SIGNING_ALLOWED=NO build
           node qualification/source-map-evidence.cjs preserve ios \
             "$RUNNER_TEMP/pali-native-ios-build/Build/Products/Release-iphonesimulator/PaliQualification.app/main.jsbundle" \
             "$SOURCEMAP_FILE" "$RUNNER_TEMP/pali-native-ios"
       - name: ${{ inputs.private_proof && 'Verify native proof, cancellation and fresh replay' || inputs.public_pool && 'Verify offline public pool Release fixture' || 'Verify native HTTP, crypto and expected protected-storage refusal' }}
         env:
           QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-ios
-        run: >-
-          node --import ./scripts/register-shared-test-dependencies.mjs qualification/run-native.cjs ios
-          "$RUNNER_TEMP/pali-native-ios-build/Build/Products/Release-iphonesimulator/PaliQualification.app"
-          --ios-simulator-contract
+        run: |
+          node qualification/ios-resource-sampler.cjs "$QUALIFICATION_ARTIFACTS/ios-resources.jsonl" &
+          resource_sampler=$!
+          trap 'kill "$resource_sampler" 2>/dev/null || true; wait "$resource_sampler" 2>/dev/null || true' EXIT
+          node --import ./scripts/register-shared-test-dependencies.mjs qualification/run-native.cjs ios \
+            "$RUNNER_TEMP/pali-native-ios-build/Build/Products/Release-iphonesimulator/PaliQualification.app" \
+            --ios-simulator-contract
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
@@ -267,6 +275,7 @@ jobs:
         working-directory: .
         run: |
           yarn install --frozen-lockfile --ignore-scripts
+          node scripts/apply-keyring-fee-rate.cjs
           node apps/mobile/scripts/qualification-sdk.cjs
           node scripts/prepare-native-private-prover.cjs # pinned public artifacts
           mkdir -p "$RUNNER_TEMP/pali-native-android"

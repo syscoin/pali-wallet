@@ -52,6 +52,8 @@ import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime, type KeyringRuntimeDependencies } from '../src/custody/keyringRuntime.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
+import { NativeTransfers } from '../src/custody/transfers.ts';
+import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { inspectRecoveryCatalogue, NativeWalletCatalogue, WALLET_CATALOGUE_KEY, type NativeInfrastructurePending } from '../src/custody/walletCatalogue.ts';
 import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
@@ -184,6 +186,12 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             }
           }
           result = '0x186a0';
+        }
+        else if (request.method === 'eth_getTransactionByHash') {
+          const raw = submitted.find(raw => Transaction.from(raw).hash === request.params[0]);
+          const transaction = raw ? Transaction.from(raw) : undefined;
+          result = transaction ? { hash: transaction.hash, from: transaction.from, to: transaction.to, value: `0x${transaction.value.toString(16)}`,
+            nonce: `0x${transaction.nonce.toString(16)}`, blockNumber: null, blockHash: null, transactionIndex: null } : null;
         }
         else if (request.method === 'eth_getTransactionReceipt') {
           const raw = submitted.find(raw => Transaction.from(raw).hash === request.params[0]);
@@ -383,6 +391,11 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     checkSmartAccountAddress: async () => ({ isBlacklisted: blockedRecipient, severity: 'high' }),
     ensureCryptoReady: async () => undefined, readEvmRetirement: null, openStorage,
     connectionFetch: (_url, init) => backend(getNativeNetwork(runtime.catalogue.getSnapshot()?.active.networkId ?? 'ethereum'), init),
+    async observeActivity(network, expected, signal, guard) {
+      guard();
+      const result = await new NativeTransferRpc({ registration: network, fetch: (_url, init) => backend(network, init) }).observation(expected, signal);
+      guard(); return result;
+    },
     prepareSmartAccount(network, index, owner, signal, guard) {
       return new EvmTransferReadRpc(network, { fetch: (_url, init) => backend(network, init) }).prepareSmartAccount(index, owner, signal, guard);
     },
@@ -409,6 +422,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     mutateSelectedSmart(mutate: (account: IKeyringAccountState) => void) { assert(mutateSelectedSmart); mutateSelectedSmart(mutate); },
     installSlh() { assert(installSlh); installSlh(); },
     get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; },
+    transferRpc: new NativeTransferRpc({ registration: getNativeNetwork('ethereum'), fetch: (_url, init) => backend(getNativeNetwork(runtime.catalogue.getSnapshot()?.active.networkId ?? 'ethereum'), init) }),
     get sdkHost() { assert(sdkHost); return sdkHost; }, get sdkHostStorage() { assert(sdkHostStorage); return sdkHostStorage; },
     get physicalStorageCloses() { return physicalStorageCloses; }, calls, submitted, signatures, payerSignatures, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
     infrastructureCode(id: PaliInfrastructureContractId, present: boolean) {
@@ -1019,21 +1033,26 @@ test('creation allocation retries the same saved address after a later read fail
   } finally { await deployment?.dispose(); await configuration?.dispose(); await noOp?.dispose(); await f.close(); }
 });
 
-test('SLH creation allocation reuses its prepared key through deployment and canonical installation', async () => {
+test('SLH creation allocation reuses its prepared key through deployment and canonical installation', { timeout: 180_000 }, async ({ signal }) => {
   const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability), lifetime = new AbortController();
   const authentication = createTestPrivateAuthentication(() => { assert(!lifetime.signal.aborted); });
   let operation: NativeSmartAccountOperation | undefined;
   const finish = async (current: NativeSmartAccountOperation) => {
-    await current.prepare();
-    const reviewed = new Set<number>();
-    const confirm = () => {
-      const payer = current.getSnapshot().payerReview;
-      if (payer && !reviewed.has(payer.id)) { reviewed.add(payer.id); current.confirmPayer(payer.id); }
-    };
-    const unsubscribe = current.subscribe(() => queueMicrotask(confirm));
-    const timer = setTimeout(() => current.cancel(), 30_000);
-    try { await current.authorize(current.getSnapshot().revision); }
-    finally { clearTimeout(timer); unsubscribe(); }
+    const cancel = () => current.cancel();
+    signal.addEventListener('abort', cancel, { once: true });
+    try {
+      signal.throwIfAborted();
+      await current.prepare();
+      const reviewed = new Set<number>();
+      const confirm = () => {
+        const payer = current.getSnapshot().payerReview;
+        if (payer && !reviewed.has(payer.id)) { reviewed.add(payer.id); current.confirmPayer(payer.id); }
+      };
+      const unsubscribe = current.subscribe(() => queueMicrotask(confirm));
+      // Keep the real operation deadline; only the enclosing test may abort it.
+      try { await current.authorize(current.getSnapshot().revision); }
+      finally { unsubscribe(); }
+    } finally { signal.removeEventListener('abort', cancel); }
   };
   try {
     const host = await f.runtime.openConnectionHost();
@@ -1506,6 +1525,53 @@ test('restart after the deployment receipt refreshes metadata without another tr
 });
 
 
+test('Smart Activity speeds up the exact outer transaction using its original local fee payer', async () => {
+  const f = await fixture({}, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  let transfers: NativeTransfers | undefined;
+  try {
+    const payer = f.owner.getSnapshot().account!.address;
+    await f.change({ kind: 'create-smart', label: 'Smart sender' });
+    const smart = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
+    f.fundedSmart(); f.holdReceipts(); f.deployed();
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    await operation.prepare();
+    const authorized = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id);
+    await authorized;
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    operation.dispose(); operation = undefined;
+    const original = Transaction.from(f.submitted[0]!);
+    const ownerProofs = f.signatures.length;
+    transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+    await transfers.prepareSpeedUp(original.hash!);
+    const review = transfers.getSnapshot().review;
+    assert(review, JSON.stringify(transfers.getSnapshot()));
+    assert.equal(review.from, payer);
+    assert.equal(review.execution?.smartAccount, smart.address);
+    assert.equal(f.owner.getSnapshot().account!.address, smart.address);
+    await transfers.confirm(review.id, { method: 'device' });
+    assert.equal(transfers.getSnapshot().phase, 'pending', JSON.stringify(transfers.getSnapshot()));
+    assert.equal(f.submitted.length, 2);
+    const replacement = Transaction.from(f.submitted[1]!);
+    for (const field of ['to', 'from', 'value', 'data', 'nonce', 'type'] as const)
+      assert.deepEqual(replacement[field], original[field], field);
+    assert.equal(f.signatures.length, ownerProofs, 'outer fee replacement must not request a new Smart owner proof');
+    assert.equal(f.owner.getSnapshot().account!.address, smart.address);
+    f.assertNoSigningKeys();
+    await transfers.prepareSpeedUp(replacement.hash!);
+    const staleReview = transfers.getSnapshot().review!;
+    f.owner.lock();
+    await assert.rejects(transfers.confirm(staleReview.id, { method: 'device' }));
+    assert.equal(f.submitted.length, 2, 'locking retires the payer replacement before another signature or broadcast');
+    assert.equal(f.signatures.length, ownerProofs);
+    f.assertNoSigningKeys();
+  } finally { operation?.dispose(); transfers?.dispose(); await f.close(); }
+});
+
 for (const alreadyDeployed of [false, true]) test(`real SDK smart native send authorizes exact value and submits without waiting (${alreadyDeployed ? 'deployed' : 'counterfactual'})`, async () => {
   const f = await fixture();
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
@@ -1754,7 +1820,8 @@ for (const success of [true, false]) test(`Smart Activity survives reopen and di
     assert.equal(row.recipient, '0x2222222222222222222222222222222222222222');
     assert.equal(row.smartAccount?.payer?.toLowerCase(), payer.toLowerCase());
     assert.equal(row.inspectionOnly, true);
-    assert.equal(row.speedUpEligible, undefined);
+    assert.equal(row.speedUpEligible, true);
+    assert.equal(row.reviewNavigation?.speedUp, true);
     await f.change({ kind: 'select', id: 'hd:60:0' });
     const payerBefore = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     await f.change({ kind: 'select', id: 'smart:60:0' });
@@ -4098,6 +4165,63 @@ async function connectLedgerSmart(f: Awaited<ReturnType<typeof readyLedgerSmartO
   await f.connection.start(); await f.connection.select(f.connection.getSnapshot().devices[0]!.id); await f.connection.finishConnection();
 }
 
+test('Smart fee replacement uses only the retained software payer despite a disconnected Ledger owner', async () => {
+  const owned = await readyLedgerSmartOwner(), { f, device } = owned;
+  let operation: NativeSmartAccountOperation | undefined, transfers: NativeTransfers | undefined;
+  let connection: NativeLedgerAccounts<'connect'> | undefined;
+  try {
+    await connectLedgerSmart(owned); f.holdReceipts(); f.deployed();
+    operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), { kind: 'exact', amount: '0.000001' }, () => undefined, null);
+    await operation.prepare();
+    const stop = operation.subscribe(() => { const review = operation!.getSnapshot().payerReview; if (review) operation!.confirmPayer(review.id); });
+    try { await operation.authorize(operation.getSnapshot().revision); } finally { stop(); }
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    const original = Transaction.from(f.submitted[0]!);
+    await operation.dispose(); operation = undefined;
+    await f.reopen(); await f.owner.unlock();
+    connection = new NativeLedgerAccounts(f.owner, () => f.runtime.ledger, 'connect');
+    assert.equal(connection.isConnected(), false, 'normal Smart owner signing still needs the disconnected Ledger');
+    assert.deepEqual(f.runtime.ledger.getConnectionTargets(), ['ledger:60:0']);
+    const signatures = device.signatures.length;
+    transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+    await transfers.prepareSpeedUp(original.hash!);
+    const review = transfers.getSnapshot().review; assert(review, JSON.stringify(transfers.getSnapshot()));
+    assert.equal(review.execution?.smartAccount, f.owner.getSnapshot().account!.address);
+    assert.deepEqual(f.runtime.ledger.getConnectionTargets(), []);
+    assert.equal(connection.isConnected(), true, 'the UI connection gate needs no Ledger for this software payer');
+    await transfers.confirm(review.id, { method: 'device' });
+    assert.equal(transfers.getSnapshot().phase, 'pending', JSON.stringify(transfers.getSnapshot()));
+    assert.equal(device.signatures.length, signatures, 'the retained payer signs, not the Smart owner');
+    assert.equal(f.submitted.length, 2);
+    const speedUp = Transaction.from(f.submitted[1]!);
+    const spedUp = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.equal(spedUp.locals.find(row => row.hash === speedUp.hash)?.originalHash, original.hash);
+    transfers.cancel();
+    await transfers.prepareCancellation(speedUp.hash!);
+    const cancelReview = transfers.getSnapshot().review; assert(cancelReview);
+    await transfers.confirm(cancelReview.id, { method: 'device' });
+    assert.equal(transfers.getSnapshot().phase, 'pending', JSON.stringify(transfers.getSnapshot()));
+    const cancelHash = Transaction.from(f.submitted[2]!).hash!;
+    const cancelled = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    const cancellation = cancelled.locals.find(row => row.hash === cancelHash); assert(cancellation);
+    assert.equal(cancellation.operation, 'cancel'); assert.equal(cancellation.originalHash, speedUp.hash);
+    assert.equal(cancellation.smartAccount?.cancellation, true);
+    assert.equal(cancellation.smartAccount?.payer.toLowerCase(), original.from!.toLowerCase());
+    const saved = await f.runtime.activity!.loadSavedPending!(cancelled.scope, undefined, () => undefined);
+    assert(saved.records.some(row => row.hash === cancelHash));
+    f.showReceipts();
+    const observation = await f.runtime.activity!.observeLocal!(cancellation, () => undefined, new AbortController().signal);
+    assert.equal(observation.status === 'mined' && observation.outcome, 'confirmed');
+    const observed = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.equal(observed.locals.find(row => row.hash === cancelHash)?.phase, 'confirmed');
+    assert.equal(observed.locals.find(row => row.hash === cancelHash)?.smartAccount?.cancellation, true);
+    f.assertNoSigningKeys();
+    transfers.cancel();
+    assert.deepEqual(f.runtime.ledger.getConnectionTargets(), ['ledger:60:0']);
+    assert.equal(connection.isConnected(), false, 'leaving replacement restores normal Smart owner requirements');
+  } finally { await operation?.dispose(); transfers?.dispose(); await connection?.dispose(); await owned.close(); }
+});
+
 test('Ledger Smart owner connection verifies every planned key while preserving selected Smart account and consent', async () => {
   const owned = await readyLedgerSmartOwner(2), {f, device} = owned;
   try {
@@ -5640,4 +5764,63 @@ test('Smart guardian aggregate proof shares one OS read but replacement and paye
     assert.equal(f.completedSecretLeases, f.secretLeases); f.assertNoSigningKeys();
     assert.equal(f.submitted.length, 1);
   } finally { await controller?.dispose(); await f.close(); }
+});
+
+for (const kind of ['exact', 'maximum'] as const) test(`Smart ${kind} preserves custom UserOperation fees through MAX/review/signing`, async () => {
+  const f = await fixture(); let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Custom fees' }); f.fundedSmart(); f.deployed(); f.holdReceipts();
+    const fees = { kind: 'custom' as const, type: 2 as const, maxFeePerGas: '7', maxPriorityFeePerGas: '2' };
+    const opening = f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', kind === 'exact'
+      ? { kind, amount: '0.000001', feeChoice: fees } : { kind, feeChoice: fees }, () => undefined, null);
+    fees.maxFeePerGas = '99';
+    operation = await opening; await operation.prepare();
+    const review = operation.getSnapshot(); assert.equal(review.phase, 'authorize', JSON.stringify(review));
+    assert.equal(review.intent.feeChoice?.kind, 'custom');
+    assert.equal((review.intent.feeChoice as typeof fees).maxFeePerGas, '7');
+    if (kind === 'maximum') {
+      assert.equal(review.intent.kind, 'native-transfer');
+      assert.equal(review.intent.kind === 'native-transfer' && review.intent.amountUnits,
+        (BigInt('0x1000000000000000') - BigInt(review.maximumPrefundUnits!) - 1000000000000n).toString());
+    }
+    const stop = operation.subscribe(() => { const payer = operation!.getSnapshot().payerReview; if (payer) operation!.confirmPayer(payer.id); });
+    try { await operation.authorize(review.revision); } finally { stop(); }
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    const tx = Transaction.from(f.submitted[0]!);
+    const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', tx.data);
+    const packed = BigInt(operations[0].gasFees);
+    assert.equal(packed & ((1n << 128n) - 1n), 7n); assert.equal(packed >> 128n, 2n);
+    assert.equal(tx.maxFeePerGas, 7n); assert.equal(tx.maxPriorityFeePerGas, 2n);
+    f.assertNoSigningKeys();
+  } finally { await operation?.dispose(); await f.close(); }
+});
+
+test('Smart send refuses an EOA gas-limit override before any signing or fee read', async () => {
+  const f = await fixture();
+  try {
+    await f.change({ kind: 'create-smart', label: 'Invalid custom gas' });
+    const calls = f.calls.length, reads = f.credentialReads;
+    await assert.rejects(f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222',
+      { kind: 'exact', amount: '1', feeChoice: { kind: 'custom', type: 2, maxFeePerGas: '7', maxPriorityFeePerGas: '2', gasLimit: '30000' } },
+      () => undefined, null), /INVALID_INPUT/);
+    assert.equal(f.calls.length, calls); assert.equal(f.credentialReads, reads);
+  } finally { await f.close(); }
+});
+
+test('Smart fee recommendations use the existing public read and resolve urgency before authorization', async () => {
+  const f = await fixture(); let operation: NativeSmartAccountOperation | undefined;
+  const transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+  try {
+    await f.change({ kind: 'create-smart', label: 'Urgency fees' }); f.fundedSmart(); f.deployed();
+    const reads = f.credentialReads;
+    const rates = await transfers.feeRecommendations(new AbortController().signal);
+    assert.equal(rates.type, 2); assert.equal(f.credentialReads, reads);
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222',
+      { kind: 'exact', amount: '0.000001', feeChoice: { kind: 'high' } }, () => undefined, null);
+    await operation.prepare();
+    const choice = operation.getSnapshot().intent.feeChoice;
+    assert(choice?.kind === 'custom' && choice.type === 2 && rates.type === 2);
+    assert(BigInt(choice.maxFeePerGas) >= BigInt(rates.maxFeePerGas));
+    assert.equal(f.credentialReads, reads); assert.equal(f.submitted.length, 0);
+  } finally { transfers.dispose(); await operation?.dispose(); await f.close(); }
 });

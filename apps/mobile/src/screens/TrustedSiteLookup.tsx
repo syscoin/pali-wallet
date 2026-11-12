@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, { useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +14,7 @@ import { Button, Card, colors, Header, Screen, Text } from '../ui';
 import { IdleTextInput } from './IdleActivityBoundary';
 
 export function TrustedSiteLookup({ onBack }: { onBack(): void }) {
+  const { t } = useNativeTranslation();
   const [site, setSite] = useState('');
   const [origin, setOrigin] = useState<string | null>();
   const canCheck = site.trim().length > 0;
@@ -24,23 +26,23 @@ export function TrustedSiteLookup({ onBack }: { onBack(): void }) {
   const listed = origin && isTrustedDappOrigin(origin, trustedSites);
 
   return <SafeAreaView edges={['top']} style={s.container}><Screen>
-    <Header title="Check a site" onBack={onBack} />
-    <Text style={s.body}>See whether a site is on Pali’s list.</Text>
-    <IdleTextInput accessibilityLabel="Site address" value={site} onChangeText={(value) => {
+    <Header title={t('mobile.generalViews.checkSite')} onBack={onBack} />
+    <Text style={s.body}>{t('mobile.generalViews.siteListHelp')}</Text>
+    <IdleTextInput accessibilityLabel={t('mobile.generalViews.siteAddress')} value={site} onChangeText={(value) => {
       setSite(boundDappSiteLookupText(value));
       setOrigin(undefined);
     }} onSubmitEditing={check} returnKeyType="search"
       autoCapitalize="none" autoCorrect={false} spellCheck={false} keyboardType="url"
       placeholder="example.com" placeholderTextColor={colors.muted} style={s.input} />
-    <Button title="Check site" onPress={check} disabled={!canCheck} />
+    <Button title={t('mobile.generalViews.checkSiteButton')} onPress={check} disabled={!canCheck} />
     {origin !== undefined && <Card style={s.result}>
       <Text accessibilityLiveRegion="polite" style={s.status}>
-        {site.length > MAX_DAPP_SITE_LOOKUP_LENGTH ? 'Site address is too long'
-          : origin === null ? 'Enter a valid site address' : listed ? 'Listed by Pali' : 'Unlisted site'}
+        {site.length > MAX_DAPP_SITE_LOOKUP_LENGTH ? t('mobile.generalViews.siteTooLong')
+          : origin === null ? t('mobile.generalViews.invalidSite') : listed ? t('mobile.generalViews.listedSite') : t('mobile.generalViews.unlistedSite')}
       </Text>
       {origin && <>
         <Text selectable style={s.origin}>{origin}</Text>
-        <Text style={s.body}>A list match does not verify a connection.</Text>
+        <Text style={s.body}>{t('mobile.generalViews.listMatchHelp')}</Text>
       </>}
     </Card>}
   </Screen></SafeAreaView>;

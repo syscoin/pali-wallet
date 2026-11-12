@@ -1,5 +1,5 @@
-export function guardianDelayLabel(seconds: number): string {
+export function guardianDelayLabel(seconds: number, t: (key: string, options?: { count: number }) => string): string {
   if (seconds % 86400 === 0)
-    return `${seconds / 86400} ${seconds === 86400 ? 'day' : 'days'}`;
-  return `${seconds / 60} minutes`;
+    return t(seconds === 86400 ? 'mobile.recoveryDevices.common.day' : 'mobile.recoveryDevices.common.days', { count: seconds / 86400 });
+  return t('mobile.recoveryDevices.common.minutes', { count: seconds / 60 });
 }

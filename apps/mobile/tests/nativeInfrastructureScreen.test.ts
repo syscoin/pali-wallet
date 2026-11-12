@@ -9,7 +9,7 @@ import type { NativeLedgerConnectionView, NativeLedgerSnapshot } from '../src/cu
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import type { useOwnedLedgerConnection } from '../src/screens/useDappLedgerConnection';
 import { NativeInfrastructureController } from '../src/smartAccount/infrastructure.ts';
-import { englishI18n, nativeTranslationFixture } from './localizationFixture.ts';
+import { englishI18n, languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 
 const payer = '0x1111111111111111111111111111111111111111';
@@ -139,6 +139,25 @@ function ledgerConnection(connected = false) {
   };
   return { source, actions, disconnect() { connected = false; }, get closes() { return closes; } };
 }
+
+test('setup purpose follows the active language without re-reading infrastructure', async () => {
+  const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;
+  const props = { mode: { kind: 'new' as const }, async open(signal: AbortSignal, check: () => void) {
+    value = runtime(signal, check); return value.controller;
+  }, onBack() {} };
+  try {
+    screen.render(props); await tick();
+    assert.match(text(screen.render(props)), /Process smart-account transactions/);
+    const observations = value.counts.observations;
+    englishI18n.addResourceBundle('ja', 'translation', languageMessages('ja'), true, true);
+    await englishI18n.changeLanguage('ja');
+    const translated = screen.render(props);
+    assert.match(text(translated), /スマートアカウントのトランザクションを処理/);
+    assert.match(text(translated), /次のステップ/);
+    assert.equal(value.counts.observations, observations);
+    assert.equal(value.counts.signatures, 0);
+  } finally { await englishI18n.changeLanguage('en'); screen.close(); }
+});
 const footer = (tree: ReturnType<typeof screenElements>) => screenElements(tree.find(node => node.type === 'Screen')!.props.footer);
 function connectLedger(tree: ReturnType<typeof screenElements>) {
   const action = footer(tree).find(node => node.type === 'Button' && node.props.title === 'Connect Ledger');

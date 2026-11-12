@@ -126,10 +126,12 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
       const hooks = evaluate(load('src/screens/useRealShell.ts'), { react: render.api, 'react-native': native, '../navigation/tabDeparture': { TabDeparture } });
       const idle = createIdleComponentFixture(render.api, native);
       const activityListRow = evaluate(load('src/screens/ActivityListRow.tsx'), {
+        '../platform/localization': nativeTranslationFixture,
         react: render.api, 'react-native': native, '../ui': ui, './IdleActivityBoundary': idle.components,
       });
       let privacyHidden = false;
       const dependencies = { '../platform/localization': nativeTranslationFixture, '../activity/activityFiltering': activityFiltering, './IdleActivityBoundary': idle.components, react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+        './CopyableAddress': { CopyableAddress: 'CopyableAddress' },
         'expo-clipboard': { async setStringAsync(value: string) { copied.push(value); return true; } }, 'react-native-qrcode-svg': 'QRCode', '../ui': ui, '../core/amounts': core, '../core/networks': core,
         '../core/utxoAddresses': { canUseUtxoCustodyAddress },
         '../core/utxoNetworks': { findUtxoNetwork, getUtxoNetwork }, '../core/watchOnlyAuthority': core,
@@ -200,22 +202,23 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         tokens.props.onSend({symbol:'PUBLIC'}); tokens.props.onSendCollectible({contractAddress:'public'});
         assert.equal(tokenSent, 1); assert.equal(collectibleSent, 1);
         assert(!JSON.stringify(tree).includes('signing is not yet available'));
-        // Stale Home actions keep Send gated; Receive first needs its own warning.
+        // Home and asset callbacks open public drafts; backup still gates preparation in nativeSendBack.test.ts.
+        // Receive keeps its own explicit warning rather than starting backup automatically.
         backupRequired = true;
         press(get(tree, element => element.props.title === 'Send'));
         press(get(tree, element => element.props.title === 'Receive'));
         tokens.props.onSend({symbol:'PUBLIC'}); tokens.props.onSendCollectible({contractAddress:'public'});
-        assert.equal(backupRequests, 3);
-        assert.equal(sent, 1); assert.equal(tokenSent, 1); assert.equal(collectibleSent, 1);
+        assert.equal(backupRequests, 0);
+        assert.equal(sent, 2); assert.equal(tokenSent, 2); assert.equal(collectibleSent, 2);
         tree = render.render(child, leaf, props()); render.flush(child);
         assert.equal(find(tree, element => element.type === 'QRCode'), undefined);
         assert.equal(get(tree, element => element.type === 'Modal').props.transparent, true);
         press(get(tree, element => element.props.title === 'Back Up Now'));
-        assert.equal(backupRequests, 4);
+        assert.equal(backupRequests, 1);
         tree = render.render(child, leaf, props()); render.flush(child);
         assert.equal(find(tree, element => element.type === 'Modal'), undefined);
         press(named(tree, 'Back up your wallet'));
-        assert.equal(backupRequests, 5);
+        assert.equal(backupRequests, 2);
 
         press(get(tree, element => element.props.title === 'Receive'));
         tree = render.render(child, leaf, props()); render.flush(child);
@@ -231,6 +234,9 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         press(staleAllowance);
         tree = render.render(child, leaf, props()); render.flush(child);
         assert.equal(find(tree, element => element.type === 'QRCode'), undefined);
+        // A retained asset callback from the prior account scope cannot open a draft.
+        tokens.props.onSend({symbol:'PUBLIC'}); tokens.props.onSendCollectible({contractAddress:'public'});
+        assert.equal(tokenSent, 2); assert.equal(collectibleSent, 2);
         const guardedSend = get(tree, element => element.props.title === 'Send');
         press(get(tree, element => element.props.title === 'Receive'));
         tree = render.render(child, leaf, props()); render.flush(child);
@@ -243,11 +249,14 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         await press(copy); await press(get(footer, element => element.props.title === 'Share address'));
         assert.deepEqual(copied, [account.addresses.ethereum]);
         assert.equal(shared.length, 1); assert(shared[0]!.includes(account.addresses.ethereum!));
-        press(guardedSend); assert.equal(sent, 1); assert.equal(backupRequests, 6);
+        press(guardedSend); assert.equal(sent, 3); assert.equal(backupRequests, 2);
         (get(tree, element => element.type === 'Header').props.onBack as () => void)();
-        await press(copy);
-        assert.equal(copied.length, 1);
+        tree = render.render(child, leaf, props()); render.flush(child);
+        assert.equal(find(tree, element => element.type === 'QRCode'), undefined);
+        assert.equal(find(tree, element => element.type === 'Modal'), undefined);
         accountRevision++;
+        await press(copy); assert.equal(copied.length, 1, 'a prior-scope Receive action cannot copy');
+        press(guardedSend); assert.equal(sent, 3, 'a prior-scope Home action cannot open a draft');
         tree = render.render(child, leaf, props()); render.flush(child);
         assert.equal(find(tree, element => element.type === 'QRCode'), undefined);
         backupRequired = false;
@@ -353,23 +362,28 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   const source = (name: string) => readFileSync(new NodeURL(`../${name}`, import.meta.url), 'utf8');
   const idle = createIdleComponentFixture(render.api, native);
   await idle.ready;
+  const safeArea = { SafeAreaView: 'SafeAreaView', SafeAreaProvider: 'SafeAreaProvider',
+    useSafeAreaInsets: () => ({ top: 28, right: 0, bottom: 24, left: 0 }) };
   const onboarding = evaluate(source('src/screens/Onboarding.tsx'), {
     '../platform/localization': nativeTranslationFixture,
     './IdleActivityBoundary': idle.components,
-    react: render.api, 'react-native': native, '../ui': ui,
+    react: render.api, 'react-native': native, 'react-native-safe-area-context': safeArea, '../ui': ui,
     '../core/watchOnlyAuthority': core, '../core/utxoNetworks': { UTXO_NETWORKS, getUtxoNetwork, isCustomUtxoNetworkId }, './WatchNetworks': {}, '../core/utxoIdentifier': { parseUtxoPublicIdentifier },
   });
   const AddWatch = onboarding.AddWatchAccount as Component;
   const accounts = evaluate(source('src/screens/WalletAccounts.tsx'), {
+    '../platform/localization': nativeTranslationFixture,
     './IdleActivityBoundary': idle.components,
-    react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
+    react: render.api, 'react-native': native, 'react-native-safe-area-context': safeArea, '../ui': ui,
     '../core/accountDirectory': { projectAccounts: () => [], accountIdentity: () => '' }, './Onboarding': onboarding, '../core/networks': core,
   });
   // Only expose the real internal component to this VM; production exports stay unchanged.
   const app = evaluate(`${source('App.tsx')}\nexport { AppContent };`, {
     './src/connections/pairingLinks': pairingLinks,
     './src/platform/security': idle.security, './src/screens/IdleActivityBoundary': idle.components,
-    react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', SafeAreaProvider: 'SafeAreaProvider' },
+    './src/platform/localization': nativeTranslationFixture,
+    './src/platform/credential': { isNativeCredentialPromptActive: () => false },
+    react: render.api, 'react-native': native, 'react-native-safe-area-context': safeArea,
     'expo-status-bar': { StatusBar: 'StatusBar' }, 'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', './src/ui': ui,
     './src/screens/Onboarding': onboarding, './src/screens/NativeWallet': {}, './src/screens/WalletAccounts': accounts,
     './src/screens/WatchSession': {}, './src/core/watchAccounts': { WatchAccounts }, './src/core/accountDirectory': {},
@@ -397,6 +411,14 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   let saves = 0;
   const childProps = { ...nested.props, onAdd: () => { saves++; return new Promise<void>((_resolve, reject) => { finish = reject; }); } };
   let childTree = render.render(child, AddWatch, childProps);
+  const keyboardView = get(childTree, element => element.type === 'KeyboardAvoidingView');
+  assert.equal(keyboardView.props.behavior, 'height');
+  assert.equal(keyboardView.props.keyboardVerticalOffset, 28, `${path} entry must account for its safe-area parent`);
+  if (path === 'accounts') {
+    const outerKeyboardView = get(parentTree, element => element.type === 'KeyboardAvoidingView');
+    assert.equal(outerKeyboardView.props.behavior, undefined, 'Only the AddWatch child handles the keyboard');
+    assert.equal(outerKeyboardView.props.keyboardVerticalOffset ?? 0, 0);
+  }
   for (const owner of order === 'parent-first' ? [parent, child] : [child, parent]) {
     registrationOwner = owner === parent ? 'parent' : 'child'; render.flush(owner);
   }

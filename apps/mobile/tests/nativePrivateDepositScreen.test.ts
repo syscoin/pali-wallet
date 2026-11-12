@@ -1,3 +1,4 @@
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL } from 'node:url';
@@ -52,6 +53,7 @@ function mount(file: string, name: string) {
     ActivityIndicator: 'ActivityIndicator', View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView', Keyboard: { dismiss() {} },
   };
   const imports: Record<string, unknown> = {
+    '../platform/localization': nativeTranslationFixture,
     react, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../../../../source/utils/privacy/registry': { PRIVACY_POOLS: pools },
     '../core/amounts': { formatBaseUnits }, '../platform/security': { recordIdleActivity: () => true },

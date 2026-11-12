@@ -17,6 +17,8 @@ import { getBytes } from 'ethers/utils';
 import { signTypedData, SignTypedDataVersion } from '@metamask/eth-sig-util';
 import { readDappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
 import { approveHardwareDappRequest, hardwareDappRpc } from './hardwareDappTestSupport.ts';
+import { createNativeEoaCalls, createNativeEoaCallsContinuation } from '../src/connections/eoaCalls.ts';
+import { normalizeDappCallsRequest } from '../../../source/shared/dappCalls.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
@@ -625,6 +627,40 @@ test('Ledger dapp host signs messages and journals the reviewed transaction befo
       assert.equal(rpc.rawTransactions.length, 1);
     } finally { input.approval.dispose(); }
   } finally { await f.close(); }
+});
+
+test('Ledger EOA batch uses the shared nonce and durable submission paths with separate device consent', async () => {
+  const f = await fixture(), rpc = hardwareDappRpc();
+  f.setConnectionFetch(rpc.fetch);
+  let operation: ReturnType<typeof createNativeEoaCalls> | undefined;
+  try {
+    await importAndConnect(f);
+    const host = await f.runtime.openConnectionHost();
+    const request = readDappMessageRequest('personal_sign', ['batch owner', deviceWallet.address], deviceWallet.address)!;
+    const input = approveHardwareDappRequest(f.owner, host, request);
+    try {
+      const calls = normalizeDappCallsRequest({ version: '2.0.0', chainId: '0x1', from: deviceWallet.address, atomicRequired: false,
+        calls: [{ to: '0x' + '22'.repeat(20), value: '0x1' }, { to: '0x' + '33'.repeat(20), value: '0x2' }] });
+      const origin = 'https://hardware-dapp.example', bundleId = '0x1234', reservationId = '0x4567';
+      assert(await host.calls.reserveSendCallsBundle(origin, bundleId, { atomic: false, smartAccount: false, chainId: 1 }, reservationId, deviceWallet.address));
+      operation = createNativeEoaCalls({ calls, origin, bundleId, reservationId, expiresAt: Date.now() + 60_000,
+        continuation: createNativeEoaCallsContinuation({ calls, origin, bundleId, reservationId }), registry: host.calls,
+        assertCurrent: input.approval.assertCurrent, onBroadcast: hash => rpc.reports.push(hash),
+        async prepare(transaction) {
+          const result = await host.prepareTransaction({ ...input, transaction, handoff: nonSuiteSigningHandoff }, input.approval.assertCurrent, null);
+          assert(!('operation' in result)); return result;
+        },
+        persistStopped: (submissionId, attempt) => host.recordStoppedEoaCalls({ origin, bundleId, reservationId, submissionId, attempt }),
+      });
+      await operation.start(); assert.equal(f.signedCount, 0);
+      await operation.approve(operation.getSnapshot().revision);
+      assert.equal(operation.getSnapshot().phase, 'review'); assert.equal(f.signedCount, 1);
+      await operation.approve(operation.getSnapshot().revision);
+      assert.equal(operation.getSnapshot().phase, 'complete'); assert.equal(f.signedCount, 2);
+      assert.deepEqual(rpc.rawTransactions.map(raw => Transaction.from(raw).nonce), [0, 1]);
+      assert.equal((await host.calls.getStoredSendCallsBundle(origin, bundleId))?.txHashes.length, 2);
+    } finally { input.approval.dispose(); }
+  } finally { operation?.dispose(); await f.close(); }
 });
 
 test('Ledger dapp request retirement drains its device and withholds a held signature', async () => {

@@ -1,3 +1,4 @@
+import { NativeAccountChangeFixture } from './nativeAccountChangeFixture';
 import { NativeGuardianRecoveryFixture } from './nativeGuardianRecoveryFixture';
 import { NativeGuardianPolicyFixture } from './nativeGuardianPolicyFixture';
 import { NativeEoaBatchFixture } from './nativeEoaBatchFixture';
@@ -98,6 +99,7 @@ const publish = (next: NativeTransferSnapshot) => {
   for (const listener of listeners) listener(snapshot);
 };
 const controller: NativeTransferView = {
+  feeRecommendations: async () => ({ type: 2, maxFeePerGas: '2000000000', maxPriorityFeePerGas: '1000000000' }),
   getSnapshot: () => snapshot,
   subscribe(listener) {
     listeners.add(listener);
@@ -460,6 +462,8 @@ function Fixture() {
         <NativeEoaBatchFixture />
       ) : new URLSearchParams(window.location.search).has('smart-batch') ? (
         <NativeSmartBatchFixture />
+      ) : route.has('change-account') ? (
+        <NativeAccountChangeFixture />
       ) : new URLSearchParams(window.location.search).has('sentry-consent') || new URLSearchParams(window.location.search).has('control-consent') ? (
         <NativeDappConsentFixture />
       ) : new URLSearchParams(window.location.search).has('sentry-nodes') ? (

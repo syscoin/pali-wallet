@@ -15,6 +15,7 @@ import {
   boundUtxoActivityParticipants,
   type UtxoActivityParticipants,
 } from '../../../../../../shared/utxoActivityParticipants';
+import { isPendingZdagActivity } from '../../../../../../shared/utxoActivityStatus';
 import {
   bindUtxoDetailObservation,
   isSerializedUtxoObservation,
@@ -51,7 +52,6 @@ import {
   getSyscoinNativeTransferAmount,
   getSyscoinAccountChange,
   formatSyscoinConfirmationETA,
-  hasNonReplaceableUtxoSequences,
 } from 'utils/syscoinTransactionUtils';
 import { getTokenLogo } from 'utils/tokens';
 import {
@@ -510,11 +510,11 @@ export const SyscoinTransactionDetails = ({
           const normalizedType = getSyscoinTransactionTypeLabel(tokenType);
           const isSptTx = hasTokenInfo || normalizedType !== 'Transaction';
 
-          const showZdagConfirmed =
-            isSptTx &&
-            hasNonReplaceableUtxoSequences(rawTransaction?.vin) &&
-            !isTxCanceled &&
-            !isConfirmed;
+          const showZdagConfirmed = isPendingZdagActivity({
+            asset: isSptTx && !isTxCanceled,
+            inputs: rawTransaction?.vin,
+            inBlock: isConfirmed,
+          });
 
           if (showZdagConfirmed) {
             return (

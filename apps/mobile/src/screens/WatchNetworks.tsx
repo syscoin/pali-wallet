@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 
@@ -29,6 +30,7 @@ export function WatchNetworks({ controller, onChanged, onBack }: {
   onChanged(): Promise<void>;
   onBack(): void;
 }) {
+  const { t } = useNativeTranslation();
   const [saved, setSaved] = useState<WatchUtxoNetworkSettings | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
@@ -43,7 +45,7 @@ export function WatchNetworks({ controller, onChanged, onBack }: {
     let savedMutation = false;
     const requireReload = () => {
       setSaved(null);
-      setError('Reload to check which networks are saved.');
+      setError(t('mobile.shellViews.watchNetworks.reloadToCheckWhichNetworksAreSaved'));
     };
     const checkCurrent = () => {
       if (pending.current !== owner || !alive.current) return false;
@@ -68,7 +70,7 @@ export function WatchNetworks({ controller, onChanged, onBack }: {
       if (mode === 'mutate' && (savedMutation || cause instanceof WatchUtxoNetworkReloadRequiredError)) requireReload();
       else
         setError(cause instanceof Error && cause.message === 'Remove the watch account using this network first.'
-          ? cause.message : mode === 'mutate' ? 'Check the Blockbook URL and try again.' : 'Saved networks are unavailable.');
+          ? t('mobile.shellViews.watchNetworks.removeAccountsFirst') : mode === 'mutate' ? t('mobile.shellViews.watchNetworks.checkTheBlockbookUrlAndTryAgain') : t('mobile.shellViews.watchNetworks.savedNetworksAreUnavailable'));
     }).finally(() => {
       if (pending.current !== owner) return;
       pending.current = null;
@@ -119,30 +121,30 @@ export function WatchNetworks({ controller, onChanged, onBack }: {
   const custom = saved?.networks.filter(({ id }) => isCustomUtxoNetworkId(id)) ?? [];
   return <KeyboardAvoidingView style={layout.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <Screen>
-      <Header title={draft ? draft.original ? 'Edit network' : 'Add network' : 'Watch networks'} onBack={() => back.current()} />
+      <Header title={draft ? draft.original ? t('mobile.networks.edit') : t('mobile.networks.add') : t('mobile.shellViews.watchNetworks.watchNetworks')} onBack={() => back.current()} />
       {draft ? <>
         <Card style={layout.card}>
-          <Text style={styles.muted}>Blockbook URL</Text>
-          <IdleTextInput accessibilityLabel="Blockbook URL" style={layout.input}
+          <Text style={styles.muted}>{t('mobile.networks.blockbook')}</Text>
+          <IdleTextInput accessibilityLabel={t('mobile.networks.blockbook')} style={layout.input}
             autoCapitalize="none" autoCorrect={false} autoComplete="off" keyboardType="url"
             editable={!busy && !!saved} maxLength={2048} placeholder="https://" placeholderTextColor={colors.muted}
             value={draft.endpoint} onChangeText={(endpoint) => { setDraft({ ...draft, endpoint }); setError(''); }} />
-          <Text style={styles.muted}>Network name (optional)</Text>
-          <IdleTextInput accessibilityLabel="Network name" style={layout.input} editable={!busy && !!saved}
+          <Text style={styles.muted}>{t('mobile.networks.optionalName')}</Text>
+          <IdleTextInput accessibilityLabel={t('mobile.networks.name')} style={layout.input} editable={!busy && !!saved}
             maxLength={64} value={draft.name} onChangeText={(name) => { setDraft({ ...draft, name }); setError(''); }} />
         </Card>
-        <Button title={busy ? 'Checking network…' : 'Save network'} disabled={busy || !saved || !draft.endpoint.trim()} onPress={save} />
-        {draft.original && <Button title="Remove network" icon="trash" variant="danger" disabled={busy || !saved} onPress={remove} />}
+        <Button title={busy ? t('mobile.networks.checking') : t('mobile.networks.save')} disabled={busy || !saved || !draft.endpoint.trim()} onPress={save} />
+        {draft.original && <Button title={t('mobile.networks.remove')} icon="trash" variant="danger" disabled={busy || !saved} onPress={remove} />}
       </> : <>
-        {saved && custom.length === 0 && <Notice title="No custom networks" body="Add a Blockbook endpoint to watch accounts on another UTXO network." />}
+        {saved && custom.length === 0 && <Notice title={t('mobile.shellViews.watchNetworks.noCustomNetworks')} body={t('mobile.shellViews.watchNetworks.addABlockbookEndpointToWatchAccountsOn')} />}
         {custom.length > 0 && <Card>{custom.map((network, index) => <Row key={network.id}
           title={network.name} subtitle={`${network.symbol} · ${new URL(network.endpoint).hostname}`} icon="globe"
           onPress={() => { if (!busy) edit(network); }} last={index === custom.length - 1} />)}</Card>}
-        {saved && <Button title="Add UTXO network" variant="secondary" disabled={busy} onPress={() => edit()} />}
+        {saved && <Button title={t('mobile.networks.addUtxo')} variant="secondary" disabled={busy} onPress={() => edit()} />}
       </>}
-      {busy && <ActivityIndicator color={colors.pink} accessibilityLabel="Checking network" />}
+      {busy && <ActivityIndicator color={colors.pink} accessibilityLabel={t('mobile.shellViews.watchNetworks.checkingNetwork')} />}
       {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</Text>}
-      {!saved && !busy && <Button title="Reload saved networks" variant="secondary" onPress={() => run(() => controller.load(), 'reload')} />}
+      {!saved && !busy && <Button title={t('mobile.shellViews.watchNetworks.reloadSavedNetworks')} variant="secondary" onPress={() => run(() => controller.load(), 'reload')} />}
     </Screen>
   </KeyboardAvoidingView>;
 }

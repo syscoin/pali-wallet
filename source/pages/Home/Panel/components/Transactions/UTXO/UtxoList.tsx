@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { parseSyscoinAssetGuid } from '../../../../../../shared/syscoinAssetIds';
+import { isPendingZdagActivity } from '../../../../../../shared/utxoActivityStatus';
 import { getHomeBrowsingScope } from '../../../../useHomeBrowsingState';
 import { useHistoryBrowsingState } from '../useHistoryBrowsingState';
 import { useTransactionConfirmationToast } from '../useTransactionConfirmationToast';
@@ -40,7 +41,6 @@ import {
   isSyscoinTokenOperation,
   getSyscoinAccountChange,
   formatSyscoinConfirmationETA,
-  hasNonReplaceableUtxoSequences,
   normalizeSyscoinTransactionType,
 } from 'utils/syscoinTransactionUtils';
 import {
@@ -108,8 +108,11 @@ const UtxoTransactionsListComponentBase = ({
   const isConfirmed = isTransactionInBlock(tx);
 
   const isSptTx = Boolean(displayTransaction.tokenType);
-  const isZdagConfirmed =
-    isSptTx && hasNonReplaceableUtxoSequences(tx?.vin) && !isConfirmed;
+  const isZdagConfirmed = isPendingZdagActivity({
+    asset: isSptTx,
+    inputs: tx?.vin,
+    inBlock: isConfirmed,
+  });
   const confirmationETA = !isConfirmed
     ? formatSyscoinConfirmationETA(tx)
     : null;

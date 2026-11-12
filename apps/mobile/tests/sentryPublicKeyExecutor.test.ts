@@ -5,6 +5,7 @@ import test from 'node:test';
 import { createSentryPublicKeyDeriver } from '../src/crypto/sentryPublicKeyExecutor.ts';
 import { createSentryClassicalExecutor } from '../src/crypto/sentryClassicalExecutor.ts';
 import type { DeriveSentryPublicKey } from '../src/custody/sentryKeyManagement.ts';
+import { sentryKeyValidationBusy } from '../src/core/sentryKeyValidation.ts';
 
 const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve));
 
@@ -153,6 +154,23 @@ test('private executor errors are redacted and owned input is erased', async () 
     { message: 'SENTRY_PUBLIC_KEY_VALIDATION_FAILED' }
   );
   assert(captured?.every((value) => value === 0));
+});
+
+test('only an owned busy error survives lazy derivation and cancellation still takes precedence', async () => {
+  for (const kind of ['owned', 'forged', 'cancelled'] as const) {
+    const owner = new AbortController(), busy = sentryKeyValidationBusy();
+    let captured: Uint8Array | undefined;
+    const forged = Object.defineProperty(new Error('BUSY'), 'code', { get() { assert.fail('error getter must not run'); } });
+    const derive = createSentryPublicKeyDeriver(async () => async (_role, _scheme, input) => {
+      captured = input;
+      if (kind === 'cancelled') owner.abort();
+      throw kind === 'forged' ? forged : busy;
+    });
+    const work = derive('operator', 'slh-dsa-shake-128s', new Uint8Array(64).fill(9), owner.signal);
+    if (kind === 'owned') await assert.rejects(work, error => error === busy);
+    else await assert.rejects(work, { message: kind === 'cancelled' ? 'CANCELLED' : 'SENTRY_PUBLIC_KEY_VALIDATION_FAILED' });
+    assert(captured?.every(value => value === 0));
+  }
 });
 
 test('normal native factory and qualification use the same production deriver', async () => {

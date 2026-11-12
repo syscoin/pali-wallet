@@ -7,6 +7,9 @@ import ts from 'typescript';
 import * as core from '../src/core/index.ts';
 import * as pairingLinks from '../src/connections/pairingLinks.ts';
 import { quietActivityNotifications } from './notificationFixture.ts';
+import { createTestPublicViewLock } from './publicViewLockFixture.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
+import { IdleLock } from '../src/core/idleLock.ts';
 
 type Element = {
   type: unknown;
@@ -30,9 +33,20 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
-function harness() {
+function harness(watch = false, locked = watch, idleMinutes = 0) {
+  const viewPrivacy = createTestPublicViewLock(locked ? 'locked' : 'unlocked');
+  let monotonic = 0, wall = 0, nextTimer = 0;
+  const timers = new Map<number, () => void>();
+  const idle = new IdleLock(() => ({ monotonic, wall }),
+    ((callback: () => void) => { const id = ++nextTimer; timers.set(id, callback); return id; }) as unknown as typeof setTimeout,
+    ((id: number) => { timers.delete(id); }) as unknown as typeof clearTimeout);
+  idle.setPolicy(idleMinutes);
+  const authorization = deferred<void>();
+  let promptActive = false, authCalls = 0, publicOpens = 0;
+  let authSignal: AbortSignal | undefined;
+  const appListeners = new Map<string, Set<(state: string) => void>>();
   const initial = deferred<string | null>(),
-    selection = deferred<null | { kind: 'hd'; id: string }>();
+    selection = deferred<null | { kind: 'hd' | 'watch'; id: string }>();
   const load = deferred<void>();
   const cells: Cell[] = [],
     effects: (() => void)[] = [];
@@ -105,26 +119,33 @@ function harness() {
     }
     return entry.value;
   };
-  const blank = {
+  const watchRecords = watch ? [{ id: 'watch-1', name: 'Watch', addresses: { ethereum: '0x' + '11'.repeat(20) } }] : [];
+  let blank = {
     status: 'locked',
-    accounts: [],
-    selectedAccountId: null,
+    accounts: watchRecords,
+    selectedAccountId: null as string | null,
     selectedNetworkId: 'ethereum',
     generation: 0,
     balance: { status: 'unknown' },
     capabilities: {},
   };
+  const authorityListeners = new Set<(state: typeof blank) => void>();
+  let watchIdle: { begin(): void; stop(): void } | undefined;
+  const publish = () => { for (const notify of authorityListeners) notify(blank); };
   const authority = {
     getSnapshot: () => blank,
-    lock() {},
+    lock() { watchIdle?.stop(); blank = { ...blank, status: 'locked' }; publish(); },
+    unlock() { watchIdle?.begin(); publicOpens++; blank = { ...blank, status: 'ready' }; publish(); },
+    selectAccount(id: string) { blank = { ...blank, selectedAccountId: id }; publish(); },
+    async refresh() {},
     restoreSelection() {},
-    subscribe: () => () => {},
+    subscribe: (notify: (state: typeof blank) => void) => { authorityListeners.add(notify); return () => authorityListeners.delete(notify); },
     getNetwork: core.getNetwork,
     getAccountNetworks: () => [],
   };
   class Accounts {
     subscribe = () => () => {};
-    getSnapshot = () => ({ status: 'ready', accounts: [], utxoNetworks: [] });
+    getSnapshot = () => ({ status: 'ready', accounts: watchRecords, utxoNetworks: [] });
     async load() {
       await load.promise;
     }
@@ -134,7 +155,10 @@ function harness() {
     StyleSheet: { create: (value: unknown) => value },
     AppState: {
       currentState: 'active',
-      addEventListener: () => ({ remove() {} }),
+      addEventListener: (name: string, notify: (state: string) => void) => {
+        const listeners = appListeners.get(name) ?? new Set(); listeners.add(notify); appListeners.set(name, listeners);
+        return { remove() { listeners.delete(notify); } };
+      },
     },
     AccessibilityInfo: {
       isReduceMotionEnabled: async () => false,
@@ -170,6 +194,7 @@ function harness() {
   );
   const dependencies: Record<string, unknown> = {
     react,
+    './src/platform/localization': nativeTranslationFixture,
     'react-native': native,
     'react-native-safe-area-context': {
       SafeAreaProvider: 'Provider',
@@ -180,9 +205,17 @@ function harness() {
     'react-native-qrcode-svg': {},
     './src/connections/pairingLinks': pairingLinks,
     './src/platform/security': {
+      publicViewLock: viewPrivacy.viewLock,
       securityPreferences: {},
-      watchIdle: { allowNewInput() {} },
-      custodyIdle: {},
+      watchIdle: idle,
+      custodyIdle: { allowNewInput() {} },
+    },
+    './src/platform/credential': {
+      isNativeCredentialPromptActive: () => promptActive,
+      async authorizePublicView(signal: AbortSignal, check: () => void) {
+        authCalls++; authSignal = signal; promptActive = true;
+        try { await authorization.promise; check(); } finally { promptActive = false; }
+      },
     },
     './src/screens/IdleActivityBoundary': {},
     './src/ui': { ...ui, colors: {}, styles: {} },
@@ -194,7 +227,7 @@ function harness() {
     './src/screens/NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' },
     './src/notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
     './src/screens/WalletAccounts': {},
-    './src/screens/WatchSession': {},
+    './src/screens/WatchSession': { WatchSession: 'WatchSession' },
     './src/core/watchAccounts': { WatchAccounts: Accounts },
     './src/core/accountDirectory': {
       nativeAccountSelection: (id: string) => ({ kind: 'hd', id }),
@@ -203,7 +236,7 @@ function harness() {
     './src/screens/Settings': {},
     './src/core/index': {
       ...core,
-      WatchOnlyAuthority: { openRecords: async () => authority },
+      WatchOnlyAuthority: { openRecords: async (options: { idle: typeof watchIdle }) => { watchIdle = options.idle; return authority; } },
     },
     './src/platform': {
       publicAccountRecords: {},
@@ -253,7 +286,7 @@ function harness() {
     const node = element as Element;
     return node.type === type
       ? node
-      : node.children.flatMap((child) => find(child, type) ?? []).at(0);
+      : [...node.children, node.props.footer].flatMap((child) => find(child, type) ?? []).at(0);
   };
   render();
   return {
@@ -263,12 +296,26 @@ function harness() {
     saved,
     render,
     find,
+    viewPrivacy, authorization,
+    authCalls: () => authCalls,
+    publicOpens: () => publicOpens,
+    expireIdle() { idle.invalidate(); },
+    advanceClocks(milliseconds: number, wallMilliseconds = milliseconds) { monotonic += milliseconds; wall += wallMilliseconds; },
+    checkIdle: () => idle.check(),
+    authSignal: () => authSignal,
+    state(value: string, owned = true) {
+      if (!owned) promptActive = false;
+      native.AppState.currentState = value;
+      for (const notify of appListeners.get('change') ?? []) notify(value);
+    },
+    focus(value: 'blur' | 'focus') { for (const notify of appListeners.get(value) ?? []) notify(value); },
     warm(url: string) {
       assert.ok(listener);
       listener({ url });
     },
     dispose() {
       cells.forEach((entry) => entry.cleanup?.());
+      idle.stop();
     },
   };
 }
@@ -276,6 +323,7 @@ function harness() {
 test('a warm pairing link wins a racing saved-account restore without persisting an account selection', async () => {
   const f = harness();
   try {
+    await f.viewPrivacy.ready;
     f.warm(LINK);
     let wallet = f.find(f.render(), 'NativeWalletScreen');
     assert.ok(wallet);
@@ -376,3 +424,237 @@ for (const kind of ['create', 'import'] as const) {
     }
   });
 }
+
+for (const owned of [true, false]) test(`watch OS unlock ${owned ? 'survives its owned passcode background' : 'rejects unrelated background'}`, async () => {
+  const f = harness(true);
+  try {
+    await f.viewPrivacy.ready;
+    f.initial.resolve(null); f.load.resolve(); f.selection.resolve(null); await settle();
+    const button = f.find(f.render(), 'Button'); assert(button);
+    assert.equal(button.props.title, 'Unlock wallet');
+    button.props.onPress(); await settle();
+    assert.equal(f.authCalls(), 1);
+    assert.equal(f.publicOpens(), 0);
+    f.state('background', owned);
+    assert.equal(f.authSignal()?.aborted, !owned);
+    f.state('active'); f.authorization.resolve(); await settle();
+    assert.equal(f.publicOpens(), owned ? 1 : 0);
+    assert.equal(f.viewPrivacy.marker(), owned ? 'unlocked' : 'locked');
+    if (owned) assert(f.find(f.render(), 'WatchSession'));
+  } finally { f.authorization.resolve(); f.dispose(); }
+});
+
+for (const watch of [true, false]) test(`locked ${watch ? 'watch-only' : 'native-only'} entry cannot expose native setup or account routes through a pairing link`, async () => {
+  const f = harness(watch);
+  try {
+    await f.viewPrivacy.ready;
+    if (!watch) await f.viewPrivacy.viewLock.lock();
+    f.warm(LINK);
+    assert.equal(f.find(f.render(), 'NativeWalletScreen'), undefined, 'do not mount empty-vault setup or its Watch-account chooser before authorization');
+    f.initial.resolve(null); f.load.resolve(); f.selection.resolve(null); await settle();
+    assert.equal(f.find(f.render(), 'NativeWalletScreen'), undefined);
+    assert.equal(f.find(f.render(), 'AddWatchAccount'), undefined);
+    const unlock = f.find(f.render(), 'Button'); assert(unlock);
+    assert.equal(unlock.props.title, 'Unlock wallet'); unlock.props.onPress(); await settle();
+    assert.equal(f.authCalls(), 1); assert.equal(f.publicOpens(), 0);
+    assert.equal(f.find(f.render(), 'NativeWalletScreen'), undefined);
+    f.authorization.resolve(); await settle();
+    const wallet = f.find(f.render(), 'NativeWalletScreen'); assert(wallet);
+    assert.equal(wallet.props.incomingPairing.uri, URI);
+    assert.equal(f.publicOpens(), 0, 'native entry must not unlock or select a watch account');
+    assert.equal(f.viewPrivacy.marker(), 'unlocked');
+  } finally { f.authorization.resolve(); f.dispose(); }
+});
+
+test('cancelled OS authorization preserves a locked saved-native route without exposing watch accounts', async () => {
+  const f = harness(true);
+  try {
+    await f.viewPrivacy.ready;
+    f.initial.resolve(null); f.load.resolve(); f.selection.resolve({ kind: 'hd', id: 'hd:60:7' }); await settle();
+    assert.equal(f.find(f.render(), 'NativeWalletScreen'), undefined);
+    f.find(f.render(), 'Button')!.props.onPress(); await settle();
+    assert.equal(f.authCalls(), 1);
+    f.state('background', false); f.state('active');
+    f.authorization.resolve(); await settle();
+    assert.equal(f.authSignal()?.aborted, true);
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+    assert.equal(f.publicOpens(), 0);
+    assert.equal(f.find(f.render(), 'NativeWalletScreen'), undefined);
+    assert.equal(f.find(f.render(), 'AddWatchAccount'), undefined);
+    assert.equal(f.find(f.render(), 'WalletAccounts'), undefined);
+  } finally { f.authorization.resolve(); f.dispose(); }
+});
+
+test('locking an open native wallet replaces setup and public views with the lock screen even without watch accounts', async () => {
+  const f = harness();
+  try {
+    await f.viewPrivacy.ready;
+    f.initial.resolve(null); f.load.resolve(); f.selection.resolve({ kind: 'hd', id: 'hd:60:7' }); await settle();
+    assert(f.find(f.render(), 'NativeWalletScreen'));
+    await f.viewPrivacy.viewLock.lock();
+    const locked = f.render();
+    assert.equal(f.find(locked, 'NativeWalletScreen'), undefined);
+    assert.equal(f.find(locked, 'Welcome'), undefined);
+    assert.equal(f.find(locked, 'AddWatchAccount'), undefined);
+    assert.equal(f.find(locked, 'Button')!.props.title, 'Unlock wallet');
+    assert.equal(f.authCalls(), 0, 'locking must not start an authorization prompt');
+    f.find(locked, 'Button')!.props.onPress(); await settle();
+    f.authorization.resolve(); await settle();
+    assert(f.find(f.render(), 'NativeWalletScreen'));
+    assert.equal(f.authCalls(), 1);
+    assert.equal(f.publicOpens(), 0);
+  } finally { f.authorization.resolve(); f.dispose(); }
+});
+
+test('a persisted privacy lock also guards Welcome and remains unlockable without saved accounts', async () => {
+  const f = harness();
+  try {
+    await f.viewPrivacy.ready; await f.viewPrivacy.viewLock.lock();
+    f.initial.resolve(null); f.load.resolve(); f.selection.resolve(null); await settle();
+    assert.equal(f.find(f.render(), 'Welcome'), undefined);
+    const unlock = f.find(f.render(), 'Button'); assert(unlock);
+    assert.equal(unlock.props.title, 'Unlock wallet'); unlock.props.onPress(); await settle();
+    f.authorization.resolve(); await settle();
+    assert(f.find(f.render(), 'Welcome'));
+    assert.equal(f.authCalls(), 1); assert.equal(f.publicOpens(), 0);
+  } finally { f.authorization.resolve(); f.dispose(); }
+});
+
+async function openRememberedWatch(idleMinutes = 0) {
+  const f = harness(true, false, idleMinutes);
+  await f.viewPrivacy.ready;
+  f.initial.resolve(null); f.load.resolve(); f.selection.resolve({ kind: 'watch', id: 'watch-1' });
+  await settle(); f.render(); await settle();
+  assert(f.find(f.render(), 'WatchSession'));
+  assert.equal(f.authCalls(), 0);
+  return f;
+}
+
+test('remembered public watch resumes on cold and warm entry when no privacy or idle lock is set', async () => {
+  const f = await openRememberedWatch();
+  try {
+    assert.equal(f.publicOpens(), 1);
+    f.state('inactive', false); f.render();
+    f.state('background', false); f.render();
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined, 'background still hides the public view');
+    f.state('active'); await settle();
+    assert(f.find(f.render(), 'WatchSession'));
+    assert.equal(f.publicOpens(), 2); assert.equal(f.authCalls(), 0);
+    assert.equal(f.viewPrivacy.marker(), 'unlocked');
+  } finally { f.dispose(); }
+});
+
+test('Android watch blur and focus hide then resume without reading credentials', async () => {
+  const f = await openRememberedWatch();
+  try {
+    f.focus('blur'); f.render();
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined);
+    f.focus('focus'); await settle();
+    assert(f.find(f.render(), 'WatchSession'));
+    assert.equal(f.authCalls(), 0); assert.equal(f.publicOpens(), 2);
+  } finally { f.dispose(); }
+});
+
+test('watch return after its original idle deadline locks before reopening with suspended timers', async () => {
+  const f = await openRememberedWatch(5);
+  try {
+    f.advanceClocks(240_000);
+    f.state('background', false); f.render();
+    f.advanceClocks(60_000);
+    f.state('active'); await settle();
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined);
+    assert.equal(f.find(f.render(), 'Button')?.props.title, 'Unlock wallet');
+    assert.equal(f.publicOpens(), 1, 'expired watch view must not briefly reopen');
+    assert.equal(f.authCalls(), 0, 'foreground return must not launch authorization itself');
+  } finally { f.dispose(); }
+});
+
+test('brief watch background return preserves the original idle deadline', async () => {
+  const f = await openRememberedWatch(5);
+  try {
+    f.advanceClocks(240_000);
+    f.state('background', false); f.render();
+    f.advanceClocks(30_000);
+    f.state('active'); await settle();
+    assert(f.find(f.render(), 'WatchSession'));
+    assert.equal(f.publicOpens(), 2);
+    f.advanceClocks(30_000);
+    assert.equal(f.checkIdle(), false, 'resume cannot count as fresh user activity');
+    await settle();
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined);
+    assert.equal(f.authCalls(), 0);
+  } finally { f.dispose(); }
+});
+
+test('repeated short watch background returns cannot extend the idle deadline', async () => {
+  const f = await openRememberedWatch(5);
+  try {
+    for (let n = 0; n < 3; n++) {
+      f.advanceClocks(90_000);
+      f.state('background', false); f.render();
+      f.advanceClocks(9_000);
+      f.state('active'); await settle();
+      assert(f.find(f.render(), 'WatchSession'));
+    }
+    f.advanceClocks(3_000);
+    assert.equal(f.checkIdle(), false);
+    await settle();
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined);
+    assert.equal(f.authCalls(), 0);
+  } finally { f.dispose(); }
+});
+
+test('watch idle Off still permits a long foreground and background return', async () => {
+  const f = await openRememberedWatch(0);
+  try {
+    f.advanceClocks(3_600_000);
+    f.state('background', false); f.render();
+    f.advanceClocks(3_600_000);
+    f.state('active'); await settle();
+    assert(f.find(f.render(), 'WatchSession'));
+    assert.equal(f.checkIdle(), true);
+    assert.equal(f.viewPrivacy.marker(), 'unlocked');
+    assert.equal(f.publicOpens(), 2); assert.equal(f.authCalls(), 0);
+  } finally { f.dispose(); }
+});
+
+for (const kind of ['explicit', 'idle'] as const) test(`${kind} public lock prevents automatic watch resume`, async () => {
+  const f = await openRememberedWatch();
+  try {
+    if (kind === 'idle') f.expireIdle(); else await f.viewPrivacy.viewLock.lock();
+    await settle(); f.render();
+    f.state('background', false); f.render(); f.state('active'); await settle();
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined);
+    assert.equal(f.find(f.render(), 'Button')?.props.title, 'Unlock wallet');
+    assert.equal(f.publicOpens(), 1); assert.equal(f.authCalls(), 0);
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+  } finally { f.dispose(); }
+});
+
+test('a pairing navigation supersedes the suspended watch return', async () => {
+  const f = await openRememberedWatch();
+  try {
+    f.state('background', false); f.render();
+    f.warm(LINK); f.render(); f.state('active'); await settle();
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined);
+    assert.equal(f.find(f.render(), 'NativeWalletScreen')?.props.incomingPairing.uri, URI);
+    assert.equal(f.authCalls(), 0); assert.equal(f.publicOpens(), 1);
+  } finally { f.dispose(); }
+});
+
+test('a remembered watch account stays locked on cold entry when the persistent marker requires authorization', async () => {
+  const f = harness(true);
+  try {
+    await f.viewPrivacy.ready;
+    f.initial.resolve(null); f.load.resolve(); f.selection.resolve({ kind: 'watch', id: 'watch-1' });
+    await settle(); f.render(); await settle();
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined);
+    assert.equal(f.find(f.render(), 'Button')?.props.title, 'Unlock wallet');
+    f.state('background', false); f.render(); f.state('active'); await settle();
+    assert.equal(f.publicOpens(), 0); assert.equal(f.authCalls(), 0);
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+  } finally { f.dispose(); }
+});

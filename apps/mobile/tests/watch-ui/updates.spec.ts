@@ -15,7 +15,7 @@ for (const width of [320, 390]) test(`update notes and action remain usable at $
   await page.setViewportSize({ width, height: 740 });
   await page.goto('/?update-fixture=1');
   await expect(page.getByText('Improved transaction recovery')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Lock Pali to update' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Close wallet to update' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Restart and install' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Turn off update alerts' }).scrollIntoViewIfNeeded();
   await expect(page.getByRole('button', { name: 'Turn off update alerts' })).toBeVisible();

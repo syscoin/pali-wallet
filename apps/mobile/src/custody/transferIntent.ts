@@ -93,7 +93,7 @@ export function assertTransferIntentEnvelope(
   transaction: Readonly<{
     chainId: string;
     from?: string;
-    to: string;
+    to: string | null;
     value: string;
     data: string;
   }>,

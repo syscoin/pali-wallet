@@ -4,6 +4,8 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
+      - 'scripts/apply-keyring-fee-rate.cjs'
+      - 'scripts/keyring-fee-rate.json'
       - 'scripts/apply-walletconnect-terminal.cjs'
       - 'scripts/walletconnect-terminal.json'
       - 'scripts/apply-quickcrypto-sentry.cjs'

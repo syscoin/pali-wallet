@@ -1,3 +1,4 @@
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getAddress } from 'ethers/address';
@@ -50,7 +51,7 @@ function fixture(kind: Kind, owned = true) {
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     './NativeNoteReveal': { NativeNoteReveal: 'NativeNoteReveal' }, './NativePrivateWithdrawal': { NativePrivateWithdrawal: 'NativePrivateWithdrawal' },
     './IdleActivityBoundary': { IdleTextInput: 'Input', IdlePressable: 'Pressable' }, './PinEntry': { PinField: 'PinField' },
-    '../platform/localization': { useNativeTranslation: () => ({ t: (value: string) => value }) },
+    '../platform/localization': nativeTranslationFixture,
     '../platform/security': { recordIdleActivity: () => true }, '../core/amounts': { formatBaseUnits: (value: string) => value },
     '../../../../source/wallet/privateVaultEnvelope': { PRIVATE_VAULT_CAPACITIES: [8], capacityBudget: () => ({}) },
     '../../../../source/utils/privacy/registry': { PRIVACY_POOLS: [{ id: 'eth-1', amount: '1' }] },

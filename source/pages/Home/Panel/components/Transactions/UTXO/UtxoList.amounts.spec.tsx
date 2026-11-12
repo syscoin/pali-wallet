@@ -671,3 +671,24 @@ it('does not reuse cached details for a different transaction hash', async () =>
   expectNoUnknownAmountLabel();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
+
+it.each([
+  [0, 0xffffffff, true],
+  [0, 0xfffffffe, true],
+  [0, 0xfffffffd, false],
+  [123, 0xffffffff, false],
+])(
+  'renders only pending non-RBF asset activity as Z-DAG (height %s, sequence %s)',
+  (blockHeight, sequence, expected) => {
+    const tx = {
+      ...compactBridgeNativeOffset,
+      confirmations: 0,
+      blockHeight,
+      vin: [{ sequence }],
+      tokenType: 'SPTAssetAllocationSend',
+    };
+    render(<UtxoTransactionsListComponent tx={tx as any} />);
+    expect(screen.queryByText('Z-DAG') !== null).toBe(expected);
+    expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);

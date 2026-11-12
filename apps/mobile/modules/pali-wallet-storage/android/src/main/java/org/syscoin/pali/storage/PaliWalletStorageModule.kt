@@ -77,9 +77,10 @@ class PaliWalletStorageModule : Module() {
     Name("PaliWalletStorage")
     Function("isCredentialPromptActive") { protectedCredentials?.isAuthenticating() == true }
     Function("credentialCapabilities") { binding: String? -> credentials().capabilities(binding) }
-    Function("prepareCredentialAuthorization") { binding: String -> PaliCredentialRequest(credentials(), binding, authorizationOnly = true) }
-    Function("prepareCredentialRead") { binding: String -> PaliCredentialRequest(credentials(), binding) }
-    Function("prepareCredentialStage") { binding: String, secret: String -> PaliCredentialRequest(credentials(), binding, secret) }
+    Function("prepareViewAuthorization") { language: String -> PaliCredentialRequest(credentials(), language) }
+    Function("prepareCredentialAuthorization") { binding: String, language: String -> PaliCredentialRequest(credentials(), language, binding, authorizationOnly = true) }
+    Function("prepareCredentialRead") { binding: String, language: String -> PaliCredentialRequest(credentials(), language, binding) }
+    Function("prepareCredentialStage") { binding: String, secret: String, language: String -> PaliCredentialRequest(credentials(), language, binding, secret) }
     AsyncFunction("removeCredential") { binding: String -> credentials().remove(binding) }
     Class("CredentialRequest", PaliCredentialRequest::class) {
       Constructor { throw PaliCredentialFailure("CREDENTIAL_UNAVAILABLE") }

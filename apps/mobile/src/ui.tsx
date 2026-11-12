@@ -1,4 +1,5 @@
 import { IdlePressable } from './screens/IdleActivityBoundary';
+import { useNativeTranslation } from './platform/localization';
 import { useWelcomeBackdropMotion } from './screens/useWelcomeBackdropMotion';
 import React, { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { knownAssetIcon, type AssetIconIdentity } from '../../../source/shared/assetIconIdentity';
@@ -88,6 +89,7 @@ const iconPaths: Record<string, string[]> = {
   clock: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0', 'M12 7v5l3 2'],
   filter: ['M4 6h16', 'M7 12h10', 'M10 18h4'],
   more: ['M5 12h.01', 'M12 12h.01', 'M19 12h.01'],
+  link: ['M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71', 'M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'],
   close: ['m6 6 12 12', 'M18 6 6 18'],
   plus: ['M12 5v14', 'M5 12h14'],
   wallet: [
@@ -483,6 +485,7 @@ export function Header({
   subtitle?: string;
   brand?: boolean;
 }) {
+  const { t } = useNativeTranslation();
   return (
     <View style={styles.header}>
       {brand && <PaliMark size={32} />}
@@ -490,7 +493,7 @@ export function Header({
         <IdlePressable
           onPress={onBack}
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={t('buttons.back')}
           hitSlop={6}
           style={({ pressed }) => [
             styles.iconButton,

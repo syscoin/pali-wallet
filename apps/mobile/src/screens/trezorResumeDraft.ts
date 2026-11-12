@@ -2,6 +2,7 @@ import { Transaction } from 'ethers/transaction';
 
 import { formatTokenUnits } from '../../../../source/shared/erc20.ts';
 import { snapshotUtxoRbf } from '../../../../source/shared/utxoTransactionOptions.ts';
+import { snapshotEvmFeeChoice, snapshotUtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
 import { formatBaseUnits } from '../core/amounts.ts';
 import { assertTransferIntentEnvelope } from '../custody/transferIntent.ts';
 import type { NativeTrezorResumeIntent } from '../custody/trezorAccounts.ts';
@@ -11,16 +12,31 @@ export function trezorResumeDraft(value: NativeTrezorResumeIntent) {
   if (value.kind === 'infrastructure') throw Error('Infrastructure resume requires its original setup review');
   if (value.kind === 'smart-operation') throw Error('Smart account resume requires a fresh operation review');
   if (value.kind === 'external-psbt' || value.kind === 'external-signing') throw Error('External signing resume requires its original pending request');
-  if (value.kind === 'utxo')
+  if (value.kind === 'utxo') {
+    if (value.feeChoice === undefined) throw Error('Invalid Trezor resume fees');
     return {
       kind: 'utxo' as const,
       asset: value.asset,
-      draft: { recipient: value.recipient, amount: value.amount, max: value.max, rbf: snapshotUtxoRbf(value.rbf) },
+      draft: { recipient: value.recipient, amount: value.amount, max: value.max, rbf: snapshotUtxoRbf(value.rbf), feeChoice: snapshotUtxoFeeChoice(value.feeChoice) },
     };
+  }
   const transaction = Transaction.from(value.unsignedTransaction);
-  if (transaction.isSigned() || !transaction.to || transaction.chainId <= 0n)
+  if (transaction.isSigned() || transaction.chainId <= 0n)
     throw Error('Invalid Trezor resume draft');
-  assertTransferIntentEnvelope({
+  if (transaction.type !== 0 && transaction.type !== 2)
+    throw Error('Invalid Trezor resume fees');
+  const feeChoice = snapshotEvmFeeChoice(transaction.type === 0
+    ? { kind: 'custom', type: 0, gasPrice: transaction.gasPrice!.toString(), gasLimit: transaction.gasLimit.toString() }
+    : { kind: 'custom', type: 2, maxFeePerGas: transaction.maxFeePerGas!.toString(),
+      maxPriorityFeePerGas: transaction.maxPriorityFeePerGas!.toString(), gasLimit: transaction.gasLimit.toString() });
+  const replacement = value.replacement;
+  if (replacement && (!['cancel', 'cancel-saved', 'speed-up'].includes(replacement.operation) ||
+      typeof replacement.originalHash !== 'string' || !/^0x[0-9a-f]{64}$/.test(replacement.originalHash)))
+    throw Error('Invalid Trezor replacement resume');
+  if (!replacement && !transaction.to) throw Error('Invalid Trezor resume draft');
+  // Replacement execution comes from the retained original under a fresh review.
+  // An ordinary form still accepts only its explicitly declared asset envelope.
+  if (!replacement || value.intent) assertTransferIntentEnvelope({
     chainId: transaction.chainId.toString(),
     from: value.intent?.kind === 'nft-transfer' ? value.intent.from : undefined,
     to: transaction.to,
@@ -28,7 +44,7 @@ export function trezorResumeDraft(value: NativeTrezorResumeIntent) {
     data: transaction.data,
   }, value.intent);
   const draft = {
-    recipient: value.intent?.recipient ?? transaction.to,
+    recipient: value.intent?.recipient ?? transaction.to ?? '',
     amount: value.intent?.kind === 'erc20-transfer'
       ? formatTokenUnits(value.intent.amountUnits, value.intent.token.decimals)
       : value.intent?.kind === 'nft-transfer'
@@ -36,9 +52,12 @@ export function trezorResumeDraft(value: NativeTrezorResumeIntent) {
       : formatBaseUnits(transaction.value.toString(), 18),
     tokenId: value.intent?.kind === 'nft-transfer' ? value.intent.tokenId : undefined,
     nonce: transaction.nonce.toString(),
+    feeChoice,
   };
-  if (value.replacement)
-    return { kind: 'replacement' as const, replacement: value.replacement, draft };
+  if (replacement)
+    return { kind: 'replacement' as const, replacement: Object.freeze({
+      operation: replacement.operation, originalHash: replacement.originalHash,
+    }), draft };
   if (value.intent?.kind === 'erc20-transfer')
     return { kind: 'token' as const, token: value.intent.token, draft };
   if (value.intent?.kind === 'nft-transfer') {

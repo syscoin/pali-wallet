@@ -49,6 +49,7 @@ import { getController, notificationManager } from '..';
 import { normalizeDappTransaction } from '../../../shared/dappTransaction';
 import { assertSupportedEvmFees } from '../../../shared/dappTransaction.ts';
 import { readStoredDappPermissions } from '../../../shared/dappTypes';
+import { readWalletFee } from '../../../shared/dappWalletReads';
 import {
   ENS_RESOLUTION_CHAIN_ID,
   isEnsRecipientName,
@@ -7525,24 +7526,23 @@ class MainController {
 
   public async getRecommendedFee(): Promise<number | string> {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
-
-    try {
+    const generation = this.walletSessionGeneration;
+    const { chainId, kind, slip44, url } = activeNetwork;
+    const assertCurrent = () => {
+      const { vault } = store.getState();
+      if (
+        this.walletSessionGeneration !== generation ||
+        vault.isBitcoinBased !== isBitcoinBased ||
+        vault.activeNetwork.kind !== kind ||
+        vault.activeNetwork.chainId !== chainId ||
+        vault.activeNetwork.slip44 !== slip44 ||
+        vault.activeNetwork.url !== url ||
+        (isBitcoinBased && this.getWalletSetupStatus())
+      )
+        throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+    };
+    return readWalletFee(async () => {
       if (isBitcoinBased) {
-        const generation = this.walletSessionGeneration;
-        const { chainId, kind, slip44, url } = activeNetwork;
-        const assertCurrent = () => {
-          const { vault } = store.getState();
-          if (
-            this.getWalletSetupStatus() ||
-            this.walletSessionGeneration !== generation ||
-            !vault.isBitcoinBased ||
-            vault.activeNetwork.kind !== kind ||
-            vault.activeNetwork.chainId !== chainId ||
-            vault.activeNetwork.slip44 !== slip44 ||
-            vault.activeNetwork.url !== url
-          )
-            throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
-        };
         assertCurrent();
         const cached = this.utxoFeeCache;
         if (cached?.url === url && Date.now() - cached.observedAt < 60_000)
@@ -7563,12 +7563,7 @@ class MainController {
           false
         )) as string;
       }
-    } catch (error) {
-      if (error?.message === UTXO_SIGNING_CONTEXT_CHANGED) throw error;
-      console.error('[MainController] Error getting recommended fee:', error);
-      // Return fallback values
-      return isBitcoinBased ? 0.0000001 : '20000000000'; // 20 gwei
-    }
+    }, assertCurrent);
   }
 
   private storeCreatedAccount(

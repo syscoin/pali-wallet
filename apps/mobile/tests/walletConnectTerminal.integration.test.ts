@@ -258,7 +258,7 @@ test('actual SDK account update requires its encrypted peer ACK and retains the 
     assert(event?.type === 'request'); const wire = event.request;
     let committed = 0;
     const address = '0x' + '22'.repeat(20);
-    const session = await transport.updatePreparedAccount(wire.session.binding, id, address, new AbortController().signal, () => {}, () => { committed++; assert.equal(peerAcks, 1); });
+    const session = await transport.updateSessionAccount(wire.session.binding, id, address, new AbortController().signal, () => {}, () => { committed++; assert.equal(peerAcks, 1); });
     assert.deepEqual(session.namespaces, { eip155: { ...negotiated.eip155, accounts: [`eip155:1:${address}`, 'eip155:137:0x' + '33'.repeat(20)] } });
     assert.equal(committed, 1);
     assert.equal(ackFailure, undefined);

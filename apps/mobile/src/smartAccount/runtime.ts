@@ -60,6 +60,7 @@ import type {
 import type { NativePreparedConnectionTransaction } from '../connections/transactionRuntime.ts';
 import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 import { EvmTransferReadRpc } from '../custody/evmTransferReadRpc.ts';
+import { snapshotEvmFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
 import {
   NativeSmartAccountOperation,
   type NativeSmartAccountIntent,
@@ -129,6 +130,9 @@ export function createNativeSmartOperation(
     throw new TypeError('Explicit native SLH signing capability is required');
   const account = ports.account;
   let metadata = account.smartAccount;
+  const selectedFees = ports.intent.feeChoice === undefined ? undefined : snapshotEvmFeeChoice(ports.intent.feeChoice);
+  if (selectedFees && (selectedFees.kind !== 'custom' || selectedFees.gasLimit !== undefined))
+    throw new Error('Invalid Smart account fee choice');
   const intent =
     ports.intent.kind === 'dapp-batch'
       ? Object.freeze({
@@ -138,7 +142,7 @@ export function createNativeSmartOperation(
             calls: ports.intent.calls,
           }).calls,
         })
-      : Object.freeze({ ...ports.intent });
+      : Object.freeze({ ...ports.intent, ...(selectedFees ? { feeChoice: selectedFees } : {}) });
   if (intent.kind === 'dapp-batch' && typeof ports.submitBatch !== 'function')
     throw new Error('Smart batch submission boundary is required');
   if (
@@ -154,6 +158,14 @@ export function createNativeSmartOperation(
       { address: draft.address, name: draft.name, initData: draft.initData, moduleType: 1, compositeCompatible: false }] };
   }
   const chainId = Number(ports.network.chainId);
+  const nftIntent = intent.kind === 'nft-transfer' ? (() => {
+    const { feeChoice: _choice, ...transfer } = intent;
+    return transfer;
+  })() : undefined;
+  const feeOverrides = selectedFees?.kind === 'custom'
+    ? selectedFees.type === 0 ? Object.freeze({ gasPrice: selectedFees.gasPrice })
+      : Object.freeze({ maxFeePerGas: selectedFees.maxFeePerGas, maxPriorityFeePerGas: selectedFees.maxPriorityFeePerGas })
+    : undefined;
   let issued: PreparedSmartAccountOperation | undefined;
   let pending: SmartAccountPendingState;
   const contextId = 'native-smart-account-operation';
@@ -219,7 +231,7 @@ export function createNativeSmartOperation(
             intent.kind === 'nft-transfer'
               ? {
                   to: intent.contractAddress,
-                  data: buildSmartAccountNftTransfer(intent).data,
+                  data: buildSmartAccountNftTransfer(nftIntent!).data,
                 }
               : intent.kind === 'erc20-transfer'
               ? {
@@ -299,7 +311,7 @@ export function createNativeSmartOperation(
             metadata.isDeployed &&
             hasUsableSmartAccountAuthMetadata(metadata),
           executions,
-          ...(intent.kind === 'dapp-call'
+          ...(feeOverrides ? { feeOverrides } : intent.kind === 'dapp-call'
             ? {
                 // Match extension Smart submissions. EOA gas/gasLimit fields
                 // do not replace the shared UserOperation gas estimate.
@@ -369,6 +381,7 @@ export function createNativeSmartOperation(
             kind: 'native-transfer',
             recipient: intent.recipient,
             amountUnits: BigInt(maximum.execution.value).toString(),
+            ...(intent.feeChoice ? { feeChoice: intent.feeChoice } : {}),
           },
         };
       }
@@ -382,7 +395,7 @@ export function createNativeSmartOperation(
           : intent.kind === 'deploy'
           ? [{ target: account.address, data: '0x', value: '0x0' }]
           : intent.kind === 'nft-transfer'
-          ? [{ ...buildSmartAccountNftTransfer(intent) }]
+          ? [{ ...buildSmartAccountNftTransfer(nftIntent!) }]
           : intent.kind === 'erc20-transfer'
           ? [
               {

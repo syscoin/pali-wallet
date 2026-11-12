@@ -168,7 +168,7 @@ export type WalletConnectTransport = Readonly<{
     assertRequestCurrent: () => void,
     onDispatch: () => void
   ): Promise<void>;
-  updatePreparedAccount(
+  updateSessionAccount(
     binding: NativeConnectionBinding,
     id: number,
     address: string,
@@ -1080,7 +1080,7 @@ export async function openWalletConnectTransport(options: {
           }
         }, assertBeforeHandoff);
       },
-      updatePreparedAccount: (
+      updateSessionAccount: (
         binding: NativeConnectionBinding,
         id: number,
         address: string,
@@ -1122,10 +1122,11 @@ export async function openWalletConnectTransport(options: {
           const key = `${binding.topic}:${checkedId(id)}`;
           const admitted = requests.get(key);
           if (!admitted || !matchesPending(binding, id, admitted) ||
-            admitted.wire.method !== 'wallet_prepareSmartAccount' ||
+            !['wallet_prepareSmartAccount', 'wallet_changeAccount'].includes(admitted.wire.method) ||
             !options.supportedMethods.includes(admitted.wire.method) ||
-            !/^eip155:\d+$/.test(admitted.wire.chainId) ||
-            typeof address !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(address) ||
+            !(/^(?:eip155:\d+|bip122:[0-9a-f]{32})$/.test(admitted.wire.chainId)) ||
+            admitted.wire.method === 'wallet_prepareSmartAccount' && !admitted.wire.chainId.startsWith('eip155:') ||
+            typeof address !== 'string' || (admitted.wire.chainId.startsWith('eip155:') ? !/^0x[0-9a-fA-F]{40}$/.test(address) : !/^[A-Za-z0-9_-]{1,256}$/.test(address)) ||
             preparedAccountAttempts.has(admitted.wire) || updatingTopics.has(binding.topic)) return fail();
           expiresAt = admitted.wire.expiresAt;
           assertLifetime();
@@ -1142,7 +1143,7 @@ export async function openWalletConnectTransport(options: {
             let negotiated = false;
             for (const [name, entry] of Object.entries(next)) {
               const hasChainAccount = entry.accounts.some(value => value.startsWith(`${chainId}:`));
-              if ((name === 'eip155' || name === chainId) && hasChainAccount && entry.methods.includes(admitted.wire.method))
+              if ((name === chainId.split(':')[0] || name === chainId) && hasChainAccount && entry.methods.includes(admitted.wire.method))
                 negotiated = true;
               let replaced = false;
               entry.accounts = entry.accounts.flatMap(value => {

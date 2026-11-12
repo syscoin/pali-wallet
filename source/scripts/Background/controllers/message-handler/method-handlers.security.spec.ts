@@ -76,8 +76,32 @@ const connectedAccount = {
   xpub: 'connected-xpub',
 };
 
-const activeTokens = [{ balance: '100', token: 'active-token' }];
-const connectedTokens = [{ balance: '200', token: 'connected-token' }];
+const activeTokens = {
+  ethereum: [
+    {
+      balance: 100,
+      chainId: 1,
+      contractAddress: ACTIVE_ADDRESS,
+      decimals: 18,
+      isNft: false,
+      tokenSymbol: 'ACTIVE',
+    },
+  ],
+  syscoin: [],
+};
+const connectedTokens = {
+  ethereum: [
+    {
+      balance: 200,
+      chainId: 1,
+      contractAddress: CONNECTED_ADDRESS,
+      decimals: 18,
+      isNft: false,
+      tokenSymbol: 'CONNECTED',
+    },
+  ],
+  syscoin: [],
+};
 
 const makeContext = (
   method: string,
@@ -751,6 +775,25 @@ describe('origin-scoped provider data', () => {
 
     expect(result).toEqual(connectedTokens);
   });
+
+  it.each([0, '1.000000000000000001'])(
+    'preserves the connected account public balance response %p',
+    async (balance) => {
+      getAccount.mockReturnValue({
+        ...connectedAccount,
+        balances: { ethereum: balance, syscoin: balance },
+      });
+      await expect(
+        new WalletMethodHandler().handle(
+          makeContext(
+            'wallet_getBalance',
+            'connected.example',
+            MethodHandlerType.Wallet
+          )
+        )
+      ).resolves.toBe(balance);
+    }
+  );
 
   it('returns no assets to an unconnected origin', async () => {
     getAccount.mockReturnValue(null);

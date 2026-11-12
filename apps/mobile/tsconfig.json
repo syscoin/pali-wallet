@@ -48,6 +48,7 @@
         "./node_modules/@sidhujag/sysweb3-network/types/ownedUtxoRpc.d.ts"
       ],
       "axios": ["./node_modules/axios/index.d.ts"],
+      "bignumber.js": ["./node_modules/bignumber.js"],
       "fast-safe-stringify": ["./node_modules/fast-safe-stringify/index.d.ts"],
       "bitcoinjs-lib": ["./node_modules/bitcoinjs-lib"],
       "bs58check": ["./node_modules/bs58check/index.d.ts"],

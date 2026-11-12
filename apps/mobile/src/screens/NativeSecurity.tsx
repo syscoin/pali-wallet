@@ -98,15 +98,15 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
   const shown = presentation && presentation.accountId === accountId && presentation.address === address &&
     keyExport.isCurrent(presentation.id) ? presentation : null;
   const utxo = keyFormat !== 'evm' ? keyFormat : null;
-  const backupStatus = backupConfirmed ? 'Backed up' : 'Back up needed';
+  const backupStatus = backupConfirmed ? t('mobile.onboarding.backedUp') : t('mobile.onboarding.backupNeeded');
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen gap={16} footer={mode === 'key' ? <Button title={shown ? t('mobile.security.hide') : t('mobile.security.reveal')} disabled={!shown && busy} onPress={shown ? hide : reveal} /> : mode === 'hub' ? <Button title={t('mobile.settings.lock')} variant="secondary" size="compact" icon="lock" onPress={() => { hide(); onLock(); }} /> : undefined}><Header title={mode === 'key' ? t('mobile.security.accountKey') : mode === 'recovery' ? t('mobile.security.recoveryGuide') : t('mobile.security.title')} onBack={back} />
         {mode === 'hub' ? <>
-          <Card>{onRestoreAccess && <Row title="Restore secure access" subtitle="Verify your recovery phrase to restore access on this phone" icon="key" onPress={() => { hide(); onRestoreAccess(); }} />}<Row title={accountType === 'Ledger' || accountType === 'Trezor' ? t('mobile.security.viewPaliPhrase') : t('mobile.security.viewPhrase')} subtitle={backupStatus} icon="shield" onPress={() => { hide(); onViewRecovery(); }} />
+          <Card>{onRestoreAccess && <Row title={t('mobile.recoveryDevices.recovery.restoreSecureAccess')} subtitle={t('mobile.onboarding.restoreSecureDescription')} icon="key" onPress={() => { hide(); onRestoreAccess(); }} />}<Row title={accountType === 'Ledger' || accountType === 'Trezor' ? t('mobile.security.viewPaliPhrase') : t('mobile.security.viewPhrase')} subtitle={backupStatus} icon="shield" onPress={() => { hide(); onViewRecovery(); }} />
             {keyFormat && (accountType === 'HDAccount' || accountType === 'Imported') && <Row title={t('mobile.security.revealAccountKey')} subtitle={accountLabel} icon="eye" onPress={() => { hide(); setMode('key'); }} />}
-            {onAutoLock && <Row title="Auto-lock" subtitle="Choose when private screens close" icon="lock" onPress={() => { hide(); onAutoLock(); }} />}
+            {onAutoLock && <Row title={t('mobile.viewLock.autoTitle')} subtitle={t('mobile.onboarding.autoWalletHint')} icon="lock" onPress={() => { hide(); onAutoLock(); }} />}
             <BalancePrivacySetting />
             <Row title={t('mobile.security.recoveryGuide')} subtitle={t('mobile.security.backupsRestore')} icon="help" onPress={() => { hide(); setMode('recovery'); }} last /></Card>
           {onRemoveWallet && <Button title={t('mobile.security.removeWallet')} variant="danger" size="compact" onPress={() => { hide(); onRemoveWallet(); }} />}

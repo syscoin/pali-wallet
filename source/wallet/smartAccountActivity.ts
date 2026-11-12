@@ -6,6 +6,7 @@ import {
   decodeErc20Transfer,
   type Erc20Metadata,
 } from '../shared/erc20.ts';
+import { isEvmProtectedEmptySelfCall } from '../shared/evmCancellationPayer.ts';
 import {
   observeEvmTransaction,
   type EvmObservationMethod,
@@ -39,6 +40,8 @@ const uninstallSelector =
   paliSmartAccountInterface.getFunction('uninstallModule')!.selector;
 
 export type SmartAccountActivityIdentity = Readonly<{
+  /** An authenticated replacement of this operation, not another UserOperation. */
+  cancellation?: true;
   operationHash: string;
   operationNonce: string;
   payer: string;
@@ -64,6 +67,58 @@ export type RetainedSmartAccountTransfer = Readonly<{
   recipient: string;
   token?: Erc20Metadata;
 }>;
+
+export type RetainedSmartAccountCancellation = Readonly<{
+  account: string;
+  cancellation: true;
+  entry: EvmRetainedSignedRecord;
+  original: SmartAccountActivityIdentity;
+}>;
+export type RetainedSmartAccountActivity =
+  | RetainedSmartAccountTransfer
+  | RetainedSmartAccountCancellation;
+
+/** A cancellation belongs to a Smart account only through its authenticated original. */
+export function decodeRetainedSmartAccountCancellation(
+  entry: EvmRetainedSignedRecord,
+  original: EvmRetainedSignedRecord,
+  address: string
+): RetainedSmartAccountCancellation | null {
+  if (
+    entry.operation !== 'cancel' ||
+    entry.originalHash !== original.hash ||
+    entry.chainId !== original.chainId ||
+    entry.from !== original.from ||
+    entry.nonce !== original.nonce
+  )
+    return null;
+  const transfer = decodeRetainedSmartAccountTransfer(original, address);
+  if (!transfer) return null;
+  try {
+    const tx = Transaction.from(entry.rawTransaction);
+    if (
+      !tx.isSigned() ||
+      tx.hash !== entry.hash ||
+      tx.from?.toLowerCase() !== entry.from.toLowerCase() ||
+      tx.chainId.toString() !== entry.chainId ||
+      tx.nonce !== entry.nonce ||
+      !isEvmProtectedEmptySelfCall(tx, 'cancel')
+    )
+      return null;
+    return Object.freeze({
+      cancellation: true,
+      account: transfer.account,
+      entry,
+      original: Object.freeze({
+        payer: getAddress(original.from),
+        operationHash: transfer.operationHash,
+        operationNonce: transfer.operationNonce,
+      }),
+    });
+  } catch {
+    return null;
+  }
+}
 
 export function isSmartAccountActivityCandidate(
   entry: Pick<EvmRetainedSignedRecord, 'metadata'>,
@@ -316,6 +371,18 @@ export async function observeSmartAccountActivity(
     Number(transfer.chainId) <= 0
   )
     throw new Error('Invalid Smart account chain');
+  if (transfer.cancellation)
+    return observeEvmTransaction(
+      {
+        chainId: transfer.chainId,
+        hash: transfer.hash,
+        from: transfer.payer,
+        to: transfer.payer,
+        nonce: String(transfer.nonce),
+      },
+      read,
+      assertCurrent
+    );
   let receipt: unknown;
   const entryPoint = getPaliEntryPointAddress(Number(transfer.chainId));
   const observation = await observeEvmTransaction(

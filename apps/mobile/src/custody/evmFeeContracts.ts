@@ -5,6 +5,7 @@ import { assertBaseUnits } from '../core/amounts.ts';
 import { snapshotNativeNetwork, type NativeNetworkRegistration } from './networkContext.ts';
 import { captureEvmFeeApproval, snapshotEvmFeeEnvelope, assertEvmFeeRefreshApproved, type EvmFeeApproval } from '../../../../source/shared/evmFeeApproval.ts';
 import { encodeNftTransferData, snapshotNftTransferIntent, type NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
+import { EVM_SIGNED_RECORD_LIMITS } from '../../../../source/shared/evmSignedRecordLimits.ts';
 export class EvmTransferReadError extends Error {
   readonly code: 'INVALID_INPUT' | 'INVALID_RESPONSE' | 'CANCELLED' | 'UNAVAILABLE' | 'PROFILE_CHANGED' | 'REVIEW_REQUIRED' |
     'TOKEN_CHANGED' | 'INSUFFICIENT_BALANCE' | 'INSUFFICIENT_NFT_BALANCE' | 'NFT_TRANSFER_REJECTED' | 'NONCE_UNAVAILABLE' | 'CANCELLATION_QUEUED' | 'MAX_PENDING';
@@ -26,7 +27,7 @@ export function matchesSendNonce(observed: bigint, nonce: bigint, manual: boolea
   return manual ? nonce >= observed : nonce === observed;
 }
 
-export type EvmUnsignedTransfer = PreparedEvmTransaction & Readonly<{ to: string }>;
+export type EvmUnsignedTransfer = PreparedEvmTransaction;
 export type EvmSampledBlock = Readonly<{ number: string; hash: string }>;
 export type EvmFeeQuote = Readonly<{ registrationHash: string; from: string; unsignedEnvelopeHash: string; sampledBlock: EvmSampledBlock;
   envelopeFeeCapUnits: string; estimatedEnvelopeFeeUnits: string; estimatedFeeUnits: string; fundingEstimateUnits: string;
@@ -76,6 +77,16 @@ export function snapshotUnsignedTransfer(value: EvmUnsignedTransfer, network: Na
   if (transaction.data === '0x' && transaction.value === '0') return rejectRead('INVALID_INPUT');
   return transaction;
 }
+/** Fee replacement may repeat any supported, already-signed execution envelope. */
+export function snapshotReplacementTransfer(value: EvmUnsignedTransfer, network: NativeNetworkRegistration): EvmUnsignedTransfer {
+  try {
+    const transaction = snapshotEvmFeeEnvelope(value);
+    if (transaction.chainId !== network.chainId || transaction.nonce === undefined ||
+        transaction.data.length > EVM_SIGNED_RECORD_LIMITS.bytes * 2 + 2 ||
+        BigInt(transaction.gasLimit) > BigInt(Number.MAX_SAFE_INTEGER)) return rejectRead('INVALID_INPUT');
+    return transaction as EvmUnsignedTransfer;
+  } catch { return rejectRead('INVALID_INPUT'); }
+}
 export function snapshotNftQuoteEnvelope(value: EvmUnsignedTransfer, network: NativeNetworkRegistration, input: NftTransferIntent): EvmUnsignedTransfer {
   try {
     const intent = snapshotNftTransferIntent(input);
@@ -95,7 +106,7 @@ export function snapshotCancellationTransfer(value: EvmUnsignedTransfer, network
 }
 export function unsignedTransferBytes(transaction: EvmUnsignedTransfer): string {
   const raw = serializePreparedEvmTransaction(transaction);
-  if (raw.length > 4096) return rejectRead('INVALID_INPUT');
+  if (raw.length > EVM_SIGNED_RECORD_LIMITS.bytes * 2 + 2) return rejectRead('INVALID_INPUT');
   return raw;
 }
 const issuedQuotes = new WeakMap<object, EvmFeeApproval>();

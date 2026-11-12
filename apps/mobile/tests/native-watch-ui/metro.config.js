@@ -10,6 +10,7 @@ config.resolver.nodeModulesPaths = [dependencies];
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   const origin = context.originModulePath;
   if (['./src/platform/security', '../platform/security', './platform/security', './security'].includes(moduleName)) return { type: 'sourceFile', filePath: path.join(__dirname, 'security.ts') };
+  if (['./src/platform/credential', '../platform/credential'].includes(moduleName)) return { type: 'sourceFile', filePath: path.join(__dirname, 'credential.ts') };
   const local = (name) => ({ type: 'sourceFile', filePath: path.join(__dirname, name) });
   if (origin.endsWith('/src/screens/WalletUpdatePanel.tsx') && moduleName === '../platform/appUpdates') return local('appUpdates.ts');
   if (origin === path.join(mobileRoot, 'App.tsx') && moduleName === './src/platform') return local('platform.ts');

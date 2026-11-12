@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import {
   AppState,
@@ -29,6 +30,7 @@ type Props = {
 };
 
 export function NativeNoteCapacity({ openCapacity, onBack }: Props) {
+  const { t } = useNativeTranslation();
   const life = useRef({ open: false, revision: 0, pending: false, authentication: createNativePrivateAuthenticationScope() });
   const latestBack = useRef(onBack);
   const options = useRef(
@@ -149,13 +151,13 @@ export function NativeNoteCapacity({ openCapacity, onBack }: Props) {
 
   const message =
     feedback === 'load'
-      ? 'Could not load the note limit.'
+      ? t('mobile.noteFlows.capacity.couldNotLoadTheNoteLimit')
       : feedback === 'limit'
-      ? 'The saved notes do not fit this limit.'
+      ? t('mobile.noteFlows.capacity.theSavedNotesDoNotFitThisLimit')
       : feedback === 'save'
-      ? 'Could not confirm the new limit.'
+      ? t('mobile.noteFlows.capacity.couldNotConfirmTheNewLimit')
       : feedback === 'saved'
-      ? 'Note limit saved.'
+      ? t('mobile.noteFlows.capacity.noteLimitSaved')
       : null;
   const canSave = !!data && pending === null && choice !== undefined && choice !== data.capacity;
   return (
@@ -164,7 +166,7 @@ export function NativeNoteCapacity({ openCapacity, onBack }: Props) {
         footer={
           data && (
             <Button
-              title={pending === 'saving' ? 'Saving limit…' : 'Save limit'}
+              title={pending === 'saving' ? t('mobile.noteFlows.capacity.savingLimit') : t('privacy.capacity.save')}
               variant={canSave ? 'primary' : 'secondary'}
               disabled={!canSave}
               onPress={() => {
@@ -175,24 +177,23 @@ export function NativeNoteCapacity({ openCapacity, onBack }: Props) {
           )
         }
       >
-        <Header title="Note capacity" onBack={back} />
+        <Header title={t('privacy.capacity.settings')} onBack={back} />
         {pending === 'loading' && (
           <Text accessibilityLiveRegion="polite" style={styles.muted}>
-            Checking note capacity…
-          </Text>
+            {t('mobile.noteFlows.capacity.checkingNoteCapacity')}</Text>
         )}
         {data && (
           <>
             <Card>
               <Row
-                title={`${data.noteCount} of ${data.capacity} notes saved`}
-                subtitle={`${data.storedBytes.toLocaleString()} bytes used`}
+                title={t('mobile.noteFlows.capacity.savedCount', { count: data.noteCount, capacity: data.capacity })}
+                subtitle={t('mobile.noteFlows.capacity.bytesUsed', { bytes: data.storedBytes.toLocaleString() })}
                 last
               />
             </Card>
             <Card
               accessibilityRole="radiogroup"
-              accessibilityLabel="Note limit"
+              accessibilityLabel={t('mobile.noteFlows.capacity.noteLimit')}
             >
               {PRIVATE_VAULT_CAPACITIES.map((limit, index) => {
                 const checked = choice === limit;
@@ -216,7 +217,7 @@ export function NativeNoteCapacity({ openCapacity, onBack }: Props) {
                     }}
                     {...keyboard}
                     accessibilityRole="radio"
-                    accessibilityLabel={`${limit} notes, up to ${size} MiB`}
+                    accessibilityLabel={t('privacy.capacity.option', { count: limit, size })}
                     accessibilityState={{ checked, disabled: pending !== null }}
                     aria-checked={checked}
                     disabled={pending !== null}
@@ -229,8 +230,8 @@ export function NativeNoteCapacity({ openCapacity, onBack }: Props) {
                     ]}
                   >
                     <View style={s.option}>
-                      <Text>{limit} notes</Text>
-                      <Text style={styles.muted}>Up to {size} MiB</Text>
+                      <Text>{t('mobile.noteFlows.capacity.noteCount', { count: limit })}</Text>
+                      <Text style={styles.muted}>{t('mobile.noteFlows.capacity.upTo', { size })}</Text>
                     </View>
                     {checked && <Text style={s.check}>✓</Text>}
                   </IdlePressable>
@@ -238,9 +239,7 @@ export function NativeNoteCapacity({ openCapacity, onBack }: Props) {
               })}
             </Card>
             <Text style={styles.muted}>
-              Higher limits can use more local storage. Space grows as you save
-              notes.
-            </Text>
+              {t('mobile.noteFlows.capacity.higherLimitsCanUseMoreLocalStorageSpace')}</Text>
           </>
         )}
         {message && (
@@ -254,7 +253,7 @@ export function NativeNoteCapacity({ openCapacity, onBack }: Props) {
         )}
         {(feedback === 'load' || feedback === 'save') && (
           <Button
-            title={feedback === 'save' ? 'Reload' : 'Retry'}
+            title={feedback === 'save' ? t('mobile.language.reload') : t('receive.retry')}
             variant="secondary"
             onPress={() => readOrSave()}
           />

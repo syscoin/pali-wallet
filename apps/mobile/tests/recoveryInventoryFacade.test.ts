@@ -1,3 +1,7 @@
+import * as nativeWalletReads from '../src/custody/dappWalletReads.ts';
+import * as dappWalletReads from '../../../source/shared/dappWalletReads.ts';
+import * as erc20 from '../../../source/shared/erc20.ts';
+import * as sptInventory from '../../../source/shared/sptInventory.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import * as credentialPlatform from '../src/platform/credentialPort.ts';
@@ -97,8 +101,8 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
     'react-native': { AppState: { currentState: 'active' }, Linking: { openURL: unexpectedFeature } },
     '../crypto/sentryCrypto.native': {
-      createNativeSentryCryptoExecutor: (isolated: unknown) => {
-        assert.equal(isolated, null, 'production isolated signing stays gated');
+      createNativeSentryCryptoExecutor: (...options: unknown[]) => {
+        assert.equal(options.length, 0, 'production chooses its fixed isolated host');
         return unexpectedFeature;
       },
     },
@@ -109,6 +113,10 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
     }) },
     '../custody/dappControl': { createNativeDappControlHost: () => ({ context: () => null, prepare: unexpectedFeature }) },
     '../custody/dappRpcReads': { createNativeDappRpcReadHost: () => ({ read: unexpectedFeature }) },
+    '../custody/dappWalletReads': nativeWalletReads,
+    '../../../../source/shared/dappWalletReads': dappWalletReads,
+    '../../../../source/shared/erc20': erc20,
+    '../../../../source/shared/sptInventory': sptInventory,
     '../custody/dappSentry': { createNativeDappSentryHost: () => ({ prepare: unexpectedFeature }) },
     '../custody/dappSyscoin': { createNativeDappSyscoinHost: () => ({ registration: unexpectedFeature, anchor: unexpectedFeature, read: unexpectedFeature }) },
     '../portfolio/nativeWatchAsset': {
@@ -161,7 +169,9 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
     '../custody/hdKeyExport.ts': { HdKeyExportFlow: PassiveController },
     '../custody/transfers.ts': { NativeTransfers: PassiveController },
     '../custody/evmTransferReadRpc.ts': { EvmTransferReadRpc: class { constructor() { assert.fail('inventory must not observe transactions'); } } },
-    '../portfolio/nativeTokens.ts': { NativeTokens: PassiveController },
+    '../portfolio/nativeTokens.ts': { NativeTokens: class extends PassiveController {
+      readonly view = { subscribe: () => () => undefined };
+    } },
     '../activity/nativeActivity.ts': { NativeActivity: PassiveController },
     '../activity/explorerReader.ts': { ActivityExplorerReader: PassiveController },
     '../activity/receiptReader.ts': { ActivityReceiptReader: PassiveController },

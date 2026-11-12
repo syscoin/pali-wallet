@@ -11,7 +11,7 @@ for (const width of [390, 320]) test(`selected EVM account overview and source s
   await expect(page.getByRole('button', { name: 'Choose account, Account 1', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Choose network filter, All networks', exact: true })).toBeVisible();
   await expect(page.getByTestId('account-portfolio-value')).toContainText('3,024.00');
-  await expect(page.getByText('Test network funds excluded', { exact: true })).toBeVisible();
+  await expect(page.getByText('Estimated total · excludes test networks', { exact: true })).toBeVisible();
   for (const tab of ['wallet', 'activity', 'tools', 'settings']) await expect(page.getByTestId(`main-tab-caption-${tab}`)).toBeInViewport();
   await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toHaveAttribute('aria-selected', 'true');
   expect(await page.evaluate(() => window.__accountPortfolio.reads.every(read => read.endsWith('0x' + '1'.padStart(40, '0'))))).toBe(true);
@@ -63,13 +63,16 @@ test('255-decimal tracked amounts stay compact and preserve their full accessibl
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-for (const filter of ['all', 'ethereum']) test(`unbacked ${filter} Send opens backup before choosing a source or signing`, async ({ page }) => {
+for (const filter of ['all', 'ethereum']) test(`unbacked ${filter} Send chooses a public source without opening backup`, async ({ page }) => {
   await page.goto(`/?account-portfolio&unbacked=1&filter=${filter}`);
   await expect(page.getByTestId('account-portfolio-value')).not.toHaveText('—');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  expect(await page.evaluate(() => window.__accountPortfolio.backups())).toBe(1);
-  expect(await page.evaluate(() => window.__accountPortfolio.sends)).toEqual([]);
-  await expect(page.getByRole('heading', { name: 'Send from', exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => window.__accountPortfolio.backups())).toBe(0);
+  if (filter === 'all') {
+    await expect(page.getByRole('heading', { name: 'Send from', exact: true })).toBeVisible();
+    await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
+  }
+  expect(await page.evaluate(() => window.__accountPortfolio.sends)).toEqual([filter === 'all' ? 'base:ETH' : 'ethereum:ETH']);
 });
 
 for (const width of [390, 320]) test(`cached balances and filter errors remain clear at ${width}px`, async ({ page }, info) => {

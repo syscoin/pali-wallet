@@ -1,3 +1,4 @@
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -23,6 +24,7 @@ test('real StrictMode auto-enumeration retires its replayed owner before making 
   const { createRoot }: { createRoot(container: Element): { render(children: import('react').ReactNode): void; unmount(): void } } = require('react-dom/client');
   const children = ({ children }: any) => React.createElement('div', null, children);
   const imports: Record<string, unknown> = {
+    '../platform/localization': nativeTranslationFixture,
     react: React,
     '../platform/balancePrivacy': { useBalancePrivacy: () => ({ hidden: false }), HIDDEN_BALANCE: 'Hidden' },
     './IdleActivityBoundary': { IdleTextInput: () => React.createElement('input'), IdlePressable: children },

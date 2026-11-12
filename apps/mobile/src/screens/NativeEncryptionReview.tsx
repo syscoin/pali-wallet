@@ -83,7 +83,7 @@ export function NativeEncryptionReviewScreen({ review, controller }: {
       <DappSiteStatus verification={review.verification} />
       <Text>{review.accountLabel}</Text>
       <Text selectable style={s.address}>{review.address}</Text>
-      <Text style={s.context}>{review.networkLabel} · Chain ID {review.chainId}</Text>
+      <Text style={s.context}>{t('mobile.connections.network', { network: review.networkLabel, chainId: review.chainId })}</Text>
       <Text>{review.appName} {t(decrypt ? 'transactions.wouldLikeTo' : 'transactions.wouldLikeYourPubEncryption')}</Text>
     </Card>
     {decrypt && <Card style={s.card}>

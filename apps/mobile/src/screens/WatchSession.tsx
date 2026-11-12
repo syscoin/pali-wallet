@@ -1,7 +1,7 @@
 import { AutoLockSettings } from './AutoLockSettings';
-import { securityPreferences, watchIdle } from '../platform/security';
+import { publicViewLock, securityPreferences, watchIdle } from '../platform/security';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, BackHandler } from 'react-native';
+import { Alert, AppState, BackHandler } from 'react-native';
 import type { WatchOnlyAuthority } from '../core/watchOnlyAuthority';
 import { RealAppShell } from './RealAppShell';
 import { RealTools } from './RealTools';
@@ -14,6 +14,8 @@ import { NativeActivityScreen } from './NativeActivity';
 import { walletFetch } from '../platform/http';
 import { watchNotificationChoices } from '../notifications/choices';
 import { nativeActivityNotifications } from '../notifications/service';
+import { getPublicViewAuthorizationStatus } from '../platform/credential';
+import { useNativeTranslation } from '../platform/localization';
 
 const readGuardianStatus: import('../core/watchOnlyAuthority').GuardianRecoveryReader = async (network, address, signal, check) => {
   const { EvmTransferReadRpc } = await import('../custody/evmTransferReadRpc');
@@ -25,15 +27,26 @@ const readGuardianStatus: import('../core/watchOnlyAuthority').GuardianRecoveryR
 export function WatchSession({ authority, onAccounts, onExit }: {
   authority: WatchOnlyAuthority; onAccounts(): void; onExit(): void;
 }) {
+  const { t } = useNativeTranslation();
   const subscribe = useCallback((listener: () => void) => authority.subscribe(listener), [authority]);
   const getSnapshot = useCallback(() => authority.getSnapshot(), [authority]);
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const viewLock = useSyncExternalStore(publicViewLock.subscribe, publicViewLock.getSnapshot, publicViewLock.getSnapshot);
+  const [lockStatus, setLockStatus] = useState<'ready' | 'missing' | 'unsupported' | null>(null);
+  useEffect(() => {
+    let current = true;
+    void getPublicViewAuthorizationStatus().then(status => { if (current) setLockStatus(status); }, () => { if (current) setLockStatus('unsupported'); });
+    return () => { current = false; };
+  }, []);
+  const lockUnavailable = lockStatus === 'ready' ? undefined : t(lockStatus === null ? 'buttons.loading' : lockStatus === 'missing' ? 'mobile.viewLock.missing' : 'mobile.viewLock.unsupported');
   const notifications = useSyncExternalStore(nativeActivityNotifications.subscribe, nativeActivityNotifications.getSnapshot, nativeActivityNotifications.getSnapshot);
   const evmActivity = useMemo(() => createWatchEvmActivity(authority), [authority]);
   const currentScope = useCallback(() => {
+    if (publicViewLock.getSnapshot().phase !== 'unlocked') return null;
     const state = authority.getSnapshot();
     return state.status === 'ready' ? `${state.generation}:${state.selectedAccountId}:${state.selectedNetworkId}` : null;
   }, [authority]);
+
   const identity = snapshot.status === 'ready' ? `${snapshot.selectedAccountId}:${snapshot.selectedNetworkId}` : null;
   const shell = useRealShell(identity, currentScope, onExit);
   const restoreRoot = shell.restoreRoot;
@@ -53,6 +66,18 @@ export function WatchSession({ authority, onAccounts, onExit }: {
   const lifetime = useRef({ alive: true, authority, immersive: shell.immersive, autoLockScope });
   useLayoutEffect(() => { lifetime.current.authority = authority; lifetime.current.immersive = shell.immersive; lifetime.current.autoLockScope = autoLockScope; });
   useLayoutEffect(() => { const owner = lifetime.current; owner.alive = true; return () => { owner.alive = false; notificationTransition.current = null; }; }, []);
+  const lockView = async () => {
+    const scope = currentScope();
+    const status = await getPublicViewAuthorizationStatus().catch(() => 'unsupported' as const);
+    if (!lifetime.current.alive || currentScope() !== scope || AppState.currentState !== 'active') return;
+    setLockStatus(status);
+    if (status !== 'ready') {
+      Alert.alert(t('mobile.viewLock.protectionTitle'), t(status === 'missing' ? 'mobile.viewLock.missing' : 'mobile.viewLock.unsupported'));
+      return;
+    }
+    try { void publicViewLock.lock().catch(() => undefined); }
+    finally { authority.lock(); onExit(); }
+  };
   const notificationSettings = liveScope ? {
     scope: liveScope,
     assertCurrent() {
@@ -62,7 +87,7 @@ export function WatchSession({ authority, onAccounts, onExit }: {
     readChoices: () => watchNotificationChoices(authority),
   } : undefined;
   useEffect(() => {
-    if (snapshot.status !== 'ready') return;
+    if (viewLock.phase !== 'unlocked' || snapshot.status !== 'ready') return;
     try {
       const choices = watchNotificationChoices(authority), catalogueKey = JSON.stringify(choices);
       const check = () => {
@@ -73,7 +98,7 @@ export function WatchSession({ authority, onAccounts, onExit }: {
       check();
       void nativeActivityNotifications.replaceAccountTypes(['watch'], choices.map(choice => choice.scope), check).catch(() => undefined);
     } catch { /* Keep enrollment while a full, current public catalogue is unavailable. */ }
-  }, [authority, snapshot.status, snapshot.generation, snapshot.accounts]);
+  }, [authority, snapshot.status, snapshot.generation, snapshot.accounts, viewLock.phase]);
   useEffect(() => {
     const eventId = notifications.pendingEventId, attemptKey = `${eventId}:${liveScope}`;
     if (!eventId || !liveScope || autoLockScope || shell.immersive || notificationTransition.current ||
@@ -124,8 +149,13 @@ export function WatchSession({ authority, onAccounts, onExit }: {
       if (lifetime.current.alive && pending && pending !== eventId) setNotificationWake(value => value + 1);
     });
   }, [notifications.pendingEventId, notificationWake, liveScope, autoLockScope, shell.immersive, authority, currentScope, restoreRoot]);
-  if (autoLockScope !== null && autoLockScope === liveScope) return <AutoLockSettings mode="watch" onBack={() => { if (currentScope() === autoLockScope) setAutoLockScope(null); }} save={(expected, minutes, _signal, _authentication, check) => {
+  if (viewLock.phase !== 'unlocked') return null;
+  if (autoLockScope !== null && autoLockScope === liveScope) return <AutoLockSettings mode="watch" lockUnavailable={lockUnavailable} onBack={() => { if (currentScope() === autoLockScope) setAutoLockScope(null); }} save={async (expected, minutes, _signal, _authentication, check) => {
     const captured = liveScope;
+    if (minutes > 0) {
+      const status = await getPublicViewAuthorizationStatus(); check(); setLockStatus(status);
+      if (status !== 'ready') throw Error('VIEW_AUTHENTICATION_UNAVAILABLE');
+    }
     return securityPreferences.save(expected, 'watch', minutes, () => { check(); watchIdle.assertCurrent(); if (captured !== currentScope()) throw Error('CANCELLED'); });
   }} />;
   const account = snapshot.accounts.find((row) => row.id === snapshot.selectedAccountId);
@@ -133,7 +163,7 @@ export function WatchSession({ authority, onAccounts, onExit }: {
   const label = account?.name ?? 'Watch account';
   const openAccounts = () => { if (AppState.currentState === 'active' && currentScope()) onAccounts(); };
   let content: React.ReactNode;
-  if (shell.tab === 'wallet') content = <WatchAccountPortfolio authority={authority} onAccounts={openAccounts} onExit={onExit} onLock={onExit} navigation={shell.navigation} />;
+  if (shell.tab === 'wallet') content = <WatchAccountPortfolio authority={authority} onAccounts={openAccounts} onExit={onExit} onLock={lockView} navigation={shell.navigation} />;
   else if (shell.tab === 'activity') content = network.kind === 'utxo'
     ? <UtxoActivityScreen authority={authority} selectedNetwork={network} accountLabel={label} initialHash={notificationActivity?.scope === liveScope ? notificationActivity.hash : undefined} navigation={shell.navigation} onBack={() => shell.select('wallet')} />
     : <NativeActivityScreen controller={evmActivity} accountLabel={label} initialHash={notificationActivity?.scope === liveScope ? notificationActivity.hash : undefined} onBack={() => shell.select('wallet')} navigation={shell.navigation} />;
@@ -151,6 +181,6 @@ export function WatchSession({ authority, onAccounts, onExit }: {
   }
   else content = <RealSettings navigation={shell.navigation} notifications={notificationSettings} accountLabel={label} watchOnly onAutoLock={() => {
     if (liveScope && AppState.currentState === 'active' && currentScope() === liveScope) setAutoLockScope(liveScope);
-  }} onLock={onExit} onBack={() => shell.select('wallet')} />;
+  }} onLock={lockView} onBack={() => shell.select('wallet')} />;
   return <RealAppShell tab={shell.tab} onTab={tab => { notificationTransition.current = null; shell.select(tab); }} immersive={shell.immersive || snapshot.status !== 'ready'}>{content}</RealAppShell>;
 }

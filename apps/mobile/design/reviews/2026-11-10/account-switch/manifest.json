@@ -1,0 +1,20 @@
+{
+  "baseCommit": "5c905e8426d516a17333a84a96ad1a95e4cb1e2a",
+  "productionSourceDiffSha256": "18f470f4297387241b9167f86164f1f0586e6de03bbc65e7ea738f405b3a3c41",
+  "browser": "Chromium via Playwright",
+  "viewportWidths": [
+    320,
+    390
+  ],
+  "viewportHeight": 700,
+  "data": "synthetic public accounts and dapp; no keyring, storage, transport or signing",
+  "nativeQualification": false,
+  "exportEntrySha256": "a2c41d4616732afebba58315fe086fce8b6df52aac87d4d56406e36b18fa9f97",
+  "renderEnvironment": "Existing native-send-ui Expo export. The local render-only Metro loader canonicalized its async-require dependency path because this checkout uses symlinked dependencies. No production Metro configuration changed.",
+  "captures": {
+    "account-change-320.png": "7862b77d08506aae7dd8cf405fd461de655c3892f7e456847e800719e5589de4",
+    "account-change-390.png": "e02d413408e4585181cc7f4bbeb7f9a3685cd4dd1302bcea28ab764f1fda945f",
+    "account-change-selected-320.png": "69f521bd228334fb5a92df813b20883d8f0ff518cd23ddc0682f283f1ab1af77",
+    "account-change-selected-390.png": "09c260d0a6157ab0c69b412a88522636b37ce4cb2772960c2a662412dfadcd0d"
+  }
+}

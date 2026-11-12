@@ -3,12 +3,13 @@ import { normalizeUtxoAddress } from '../core/utxoAddresses.ts';
 import type { UtxoNetwork } from '../core/utxoNetworks.ts';
 import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 import { snapshotUtxoRbf } from '../../../../source/shared/utxoTransactionOptions.ts';
+import type { EvmFeeChoice, UtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
 
 /** Form text only. Reviews, credentials, resolutions and signed bytes never travel with it. */
 export type NativeUnsignedSendDraft = Readonly<{
-  kind: 'evm'; recipient: string; amount: string; nonce: string; tokenId?: string; max: boolean; advanced: boolean;
+  kind: 'evm'; recipient: string; amount: string; nonce: string; tokenId?: string; max: boolean; advanced: boolean; feeChoice?: EvmFeeChoice;
 }> | Readonly<{
-  kind: 'utxo'; recipient: string; amount: string; max: boolean; rbf: boolean;
+  kind: 'utxo'; recipient: string; amount: string; max: boolean; rbf: boolean; feeChoice?: UtxoFeeChoice;
 }>;
 
 export const NETWORK_CHANGED_DRAFT_NOTICE = 'Network changed. Check the recipient and enter the amount again. Asset selection, MAX and advanced transaction settings were reset.';

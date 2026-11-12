@@ -140,6 +140,7 @@ export function validateArchivedActivity(
       'payer',
       'operationHash',
       'operationNonce',
+      ...(data.smartAccount && typeof data.smartAccount === 'object' && Object.hasOwn(data.smartAccount, 'cancellation') ? ['cancellation'] : []),
     ]);
     if (
       !data.accountId.startsWith('smart:') ||
@@ -149,7 +150,8 @@ export function validateArchivedActivity(
       !/^0x[0-9a-f]{64}$/.test(identity.operationHash) ||
       typeof identity.operationNonce !== 'string' ||
       !/^(0|[1-9][0-9]{0,77})$/.test(identity.operationNonce) ||
-      BigInt(identity.operationNonce) >= BigInt(1) << BigInt(256)
+      BigInt(identity.operationNonce) >= BigInt(1) << BigInt(256) ||
+      (identity.cancellation !== undefined && identity.cancellation !== true)
     )
       return invalid();
     data.smartAccount = Object.freeze(identity);

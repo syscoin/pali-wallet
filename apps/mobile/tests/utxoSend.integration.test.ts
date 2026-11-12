@@ -314,6 +314,18 @@ test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbo
       () => performance.now() + clockOffset,
     );
     const send = openSend(assertCurrent);
+    if (network.id === 'bitcoin') {
+      const core = ring.syscoinTransaction as unknown as { createUnsignedPSBT(input: { feeRateBN: { toString(): string } }): Promise<unknown> };
+      const builder = t.mock.method(core, 'createUnsignedPSBT');
+      await send.prepare({ amount: '0.0004', recipient, feeChoice: { kind: 'custom', satPerVbyte: '7' } });
+      assert.equal(builder.mock.calls[0]!.arguments[0].feeRateBN.toString(), '7');
+      builder.mock.restore();
+      const low = await send.prepare({ amount: '0.0004', recipient, max: true, feeChoice: { kind: 'custom', satPerVbyte: '7' } });
+      const high = await send.prepare({ amount: '0.0004', recipient, max: true, feeChoice: { kind: 'custom', satPerVbyte: '14' } });
+      assert(BigInt(high.outputs[0]!.amountSatoshis) < BigInt(low.outputs[0]!.amountSatoshis));
+      send.cancel(); calls.length = 0;
+    }
+
     const protectFunding=async()=>{
       const admission=await collateralRegistry.captureSentryCollateralAdmission(collateralScope);
       await collateralRegistry.reserveSentryCollateral({...collateralScope,admission,assertCurrent:currentPostAuthority,

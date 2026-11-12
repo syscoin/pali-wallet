@@ -22,7 +22,7 @@ import type {
   IPrivacyProofOptions,
   IPrivacyProofResult,
 } from '../../../../source/utils/privacy/proverTypes';
-import { nativeBridgeExecutionError, nativeExecutionError } from '../../../../source/scripts/privacyProver/nativeExecutionDiagnostic.ts';
+import { nativeBridgeExecutionError, nativeExecutionError, recordNativeExecutionTiming } from '../../../../source/scripts/privacyProver/nativeExecutionDiagnostic.ts';
 
 interface NativeResourceContext {
   close(): void;
@@ -82,6 +82,7 @@ async function runOwnedJob<Context extends NativeResourceContext, Result>(
   let poll: ReturnType<typeof setInterval> | undefined;
   let revoked = false;
   let sdkStarted = false;
+  let nativeStartedAt: number | undefined, sdkStartedAt: number | undefined;
   let revocationError = privacyProofAbortError(undefined);
   let result: Result;
   let rejectRevoked: (error: Error) => void = () => undefined;
@@ -109,6 +110,7 @@ async function runOwnedJob<Context extends NativeResourceContext, Result>(
     assertCurrent();
     if (options.signal?.aborted)
       throw privacyProofAbortError(options.signal.reason);
+    try { nativeStartedAt = performance.now(); } catch { /* Diagnostic only. */ }
     context = native.createHost();
     options.signal?.addEventListener('abort', externalAbort, { once: true });
     if (options.signal?.aborted) externalAbort();
@@ -123,6 +125,7 @@ async function runOwnedJob<Context extends NativeResourceContext, Result>(
         if (message.type === 'sdk-start') {
           if (sdkStarted) throw new Error('privacy_proof_failed');
           sdkStarted = true;
+          try { sdkStartedAt = performance.now(); } catch { /* Diagnostic only. */ }
           return;
         }
         if (message.type !== 'progress')
@@ -162,9 +165,9 @@ async function runOwnedJob<Context extends NativeResourceContext, Result>(
       throw new Error('privacy_proof_failed');
     result = message.result;
   } catch (error) {
-    if (revoked) throw revocationError;
+    if (revoked) throw recordNativeExecutionTiming(revocationError, nativeStartedAt, sdkStartedAt);
     const guarded = privacyProofGuardError(error);
-    throw nativeExecutionError(guarded.message === 'privacy_verification_pending' ? 'privacy_verification_pending' : 'privacy_proof_failed', error);
+    throw recordNativeExecutionTiming(nativeExecutionError(guarded.message === 'privacy_verification_pending' ? 'privacy_verification_pending' : 'privacy_proof_failed', error), nativeStartedAt, sdkStartedAt);
   } finally {
     clearTimeout(timer);
     clearInterval(poll);

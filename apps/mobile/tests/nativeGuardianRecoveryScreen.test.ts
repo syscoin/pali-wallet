@@ -9,6 +9,7 @@ import test from 'node:test';
 import type { GuardianRecoveryObservation } from '../../../source/utils/smartAccount/guardianStatus.ts';
 import type { NativeGuardianRecoveryIntent } from '../src/custody/walletCatalogue.ts';
 import { formatBaseUnits } from '../src/core/amounts.ts';
+import { guardianDelayLabel } from '../src/screens/guardianPolicyLabels.ts';
 import {
   NativeGuardianRecoveryController,
   type NativeGuardianRecoveryChoice,
@@ -19,6 +20,7 @@ import { screenElements, screenFixture } from './screenFixture.ts';
 import {
   nativeTranslationFixture,
   englishI18n,
+  languageMessages,
 } from './localizationFixture.ts';
 
 const address = '0x1111111111111111111111111111111111111111';
@@ -80,6 +82,7 @@ const intent: NativeGuardianRecoveryIntent = {
 };
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 const imports = {
+  './guardianPolicyLabels': { guardianDelayLabel },
   '../../../../source/utils/smartAccount/guardianRecoveryLifecycle': {
     guardianRecoveryTerminalNotice,
   },
@@ -89,6 +92,7 @@ const imports = {
   'react-native': {
     AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
     ActivityIndicator: 'ActivityIndicator',
+    View: 'View',
     BackHandler: { addEventListener: () => ({ remove() {} }) },
     FlatList: 'FlatList',
     KeyboardAvoidingView: 'KeyboardAvoidingView',
@@ -113,11 +117,12 @@ const imports = {
   },
   './NativeTransactionReview': { TransactionDetails: 'TransactionDetails' },
 };
-function screen(exported: string) {
+function screen(exported: string, globals: Record<string, unknown> = {}) {
   return screenFixture(
     new URL('../src/screens/NativeGuardianRecovery.tsx', import.meta.url),
     exported,
-    imports
+    imports,
+    globals
   );
 }
 function button(elements: ReturnType<typeof screenElements>, title: string) {
@@ -451,6 +456,12 @@ test('saved review and Activity use the captured payer while proofs and submissi
     await tick();
     assert(text(render()).includes(guardian.address));
     assert(text(render()).includes(payer.address));
+    const initial = render();
+    const intentIndex = initial.findIndex(element => element.type === 'Notice' && element.props.title === 'Authorize the recovery');
+    const identityIndex = initial.findIndex(element => element.children.includes(address));
+    assert(intentIndex >= 0 && intentIndex < identityIndex, 'Recovery intent precedes exact account identities');
+    assert.match(text(initial), /ready after 3 days/);
+    assert(!initial.some(element => element.type === 'Button' && element.props.title === 'Clear local recovery tracking'));
     assert.equal(preparations, 0);
     assert.equal(submissions, 0);
     button(render(), 'Authorize recovery').props.onPress();
@@ -477,6 +488,61 @@ test('saved review and Activity use the captured payer while proofs and submissi
     assert.equal(controller.getSnapshot().intent?.payer.id, payer.id);
   } finally {
     fixture.close();
+    controller.dispose();
+  }
+});
+
+test('saved recovery dates follow Pali language without changing deadlines or refreshing status', async () => {
+  const knownOperation = {
+    operationId: hash,
+    status: 'pending' as const,
+    executableAt: Date.UTC(2030, 3, 5, 16, 7, 8) / 1000,
+    expiresAt: Date.UTC(2030, 3, 8, 16, 7, 8) / 1000,
+    scheduledAt: Date.UTC(2030, 3, 2, 16, 7, 8) / 1000,
+  };
+  let reads = 0;
+  const controller = new NativeGuardianRecoveryController({
+    assertCurrent() {},
+    dispose() {},
+    submissionFailure() { return undefined; },
+    async observe() {
+      reads++;
+      return { intent, observation: { ...observation, knownOperation }, action: null,
+        transactionHash: null, terminal: null, canAbandon: true };
+    },
+    async prepare() { throw new Error('displaying a date must not prepare a transaction'); },
+    async reconcile() {},
+    async abandon() {},
+  }, new AbortController().signal);
+  const f = screen('NativeGuardianRecoveryView', {
+    Date: class extends Date {
+      toLocaleString(locales?: Intl.LocalesArgument, options?: Intl.DateTimeFormatOptions) {
+        return super.toLocaleString(locales ?? 'en-US', options);
+      }
+    },
+  });
+  const props = { controller, address, chainId: 1, currency: 'ETH', networkLabel: 'Ethereum',
+    async onActivity() {}, async openRecoveryAlerts() {}, onBack() {} };
+  try {
+    englishI18n.addResourceBundle('de', 'translation', languageMessages('de'), true, true);
+    await englishI18n.changeLanguage('de');
+    f.render(props);
+    await tick();
+    const copy = text(screenElements(f.render(props)));
+    for (const timestamp of [knownOperation.executableAt, knownOperation.expiresAt]) {
+      assert(copy.includes(new Date(timestamp * 1000).toLocaleString('de')));
+      assert(!copy.includes(new Date(timestamp * 1000).toLocaleString('en-US')));
+    }
+    await englishI18n.changeLanguage('en');
+    const updated = text(screenElements(f.render(props)));
+    for (const timestamp of [knownOperation.executableAt, knownOperation.expiresAt]) {
+      assert(updated.includes(new Date(timestamp * 1000).toLocaleString('en')));
+    }
+    assert.equal(reads, 1);
+    assert.deepEqual(controller.getSnapshot().observation?.knownOperation, knownOperation);
+  } finally {
+    await englishI18n.changeLanguage('en');
+    f.close();
     controller.dispose();
   }
 });
@@ -589,6 +655,9 @@ for (const [status, reason, title] of [
       assert(refreshed >= 2);
       await controller.review();
       assert.equal(prepared, 0);
+      assert(!tree.some(element => element.type === 'Button' && element.props.title === 'Clear local recovery tracking'));
+      button(tree, 'Troubleshooting').props.onPress();
+      tree = screenElements(f.render(props));
       button(tree, 'Clear local recovery tracking').props.onPress();
       const confirm = screenElements(f.render(props));
       assert(
@@ -637,4 +706,33 @@ for (const boundary of ['back', 'background', 'unmount', 'foreign-prompt'] as co
     assert.throws(guard, /CANCELLED/); assert.equal(authentication.isAuthenticating(), false);
     assert.equal(returned, boundary === 'unmount' ? 0 : 1);
   } finally { held.resolve(); await proof.catch(() => undefined); promptScope.retire(); f.close(); }
+});
+
+test('watch recovery changes status and date language without repeating the network read', async () => {
+  const f = screenFixture(new URL('../src/screens/WatchGuardianRecovery.tsx', import.meta.url), 'WatchGuardianRecovery', {
+    'react-native': imports['react-native'], 'react-native-safe-area-context': imports['react-native-safe-area-context'],
+    '../ui': imports['../ui'], '../platform/localization': nativeTranslationFixture,
+    './NativeGuardianPolicy': { NativeGuardianPolicy: 'GuardianPolicy' },
+    './NativeGuardianRecovery': { NativeGuardianRecovery: 'GuardianRecovery' },
+  }, { AbortController });
+  let reads = 0;
+  const executableAt = 1_790_000_000, expiresAt = executableAt + 86_400;
+  const props = { address, networkLabel: 'Ethereum', lifetime: new AbortController().signal, onBack() {},
+    async read() { reads++; return { status: 'observed', observation: { exists: true,
+      active: { status: 'pending', executableAt, expiresAt }, observedBlock: { number: 1_234_567 } } }; } };
+  try {
+    const initial = screenElements(f.render(props));
+    button(initial, englishI18n.t('settings.smartAccountInfrastructureCheckStatus')).props.onPress(); await tick();
+    assert.equal(reads, 1);
+    assert(screenElements(f.render(props)).some(node => node.children.includes('Recovery scheduled')));
+    englishI18n.addResourceBundle('ko', 'translation', languageMessages('ko'), true, true);
+    await englishI18n.changeLanguage('ko');
+    const localized = screenElements(f.render(props));
+    assert(localized.some(node => node.children.includes('복구 예약됨')));
+    const dateLabel = englishI18n.t('mobile.recoveryStatusViews.watch.readyAt', {
+      date: new Date(executableAt * 1000).toLocaleString('ko'),
+    });
+    assert(localized.some(node => node.children.includes(dateLabel)));
+    assert.equal(reads, 1);
+  } finally { await englishI18n.changeLanguage('en'); f.close(); }
 });

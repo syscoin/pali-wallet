@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import {
   AppState,
@@ -32,22 +33,23 @@ type Owner = {
   authentication: NativePrivateAuthenticationScope;
 };
 
-function importError(error: unknown) {
+function importError(error: unknown, t: ReturnType<typeof useNativeTranslation>['t']) {
   const code = error instanceof Error ? error.message : '';
   if (code === 'privacy_note_invalid')
-    return 'Check the private note and try again.';
+    return t('mobile.noteFlows.import.checkThePrivateNoteAndTryAgain');
   if (code === 'privacy_note_not_found')
-    return 'This note was not found in the verified pool history.';
+    return t('mobile.noteFlows.import.thisNoteWasNotFoundInTheVerified');
   if (code === 'privacy_note_limit')
-    return 'Your saved note limit has been reached.';
+    return t('mobile.noteFlows.import.yourSavedNoteLimitHasBeenReached');
   if (code === 'privacy_wrong_chain')
-    return 'Select Ethereum to import this note.';
+    return t('mobile.noteFlows.import.selectEthereumToImportThisNote');
   if (code === 'privacy_verification_pending')
-    return 'Pool verification is not ready. Try again later.';
-  return 'Could not confirm the import. Check Saved notes before trying again.';
+    return t('mobile.noteFlows.import.poolVerificationIsNotReadyTryAgainLater');
+  return t('mobile.noteFlows.import.couldNotConfirmTheImportCheckSavedNotes');
 }
 
 export function NativeNoteImport({ openImport, onBack }: Props) {
+  const { t } = useNativeTranslation();
   const owner = useRef<Owner>({ live: false, authentication: createNativePrivateAuthenticationScope() });
   const close = useRef(onBack);
   useLayoutEffect(() => {
@@ -128,7 +130,7 @@ export function NativeNoteImport({ openImport, onBack }: Props) {
       setState({ phase: 'saved', note: imported });
     } catch (error) {
       if (current.live && current.request === request && AppState.currentState === 'active')
-        setState({ phase: 'entry', error: importError(error) });
+        setState({ phase: 'entry', error: importError(error, t) });
     } finally {
       await importer?.dispose().catch(() => undefined);
       if (current.request === request) {
@@ -143,40 +145,37 @@ export function NativeNoteImport({ openImport, onBack }: Props) {
         style={s.fill}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Screen footer={state.phase === 'saved' ? <Button title="Done" onPress={back} /> : <> <Button
+        <Screen footer={state.phase === 'saved' ? <Button title={t('privacy.deposit.done')} onPress={back} /> : <> <Button
                 title={
-                  state.phase === 'working' ? 'Checking pool…' : 'Import note'
+                  state.phase === 'working' ? t('mobile.noteFlows.import.checkingPool') : t('privacy.importNote')
                 }
                 disabled={state.phase !== 'entry' || !note.trim()}
                 onPress={() => void submit()}
-              /> <Button title="Cancel" variant="secondary" onPress={back} /> </>}>
-          <Header title="Import private note" onBack={back} />
+              /> <Button title={t('buttons.cancel')} variant="secondary" onPress={back} /> </>}>
+          <Header title={t('mobile.noteFlows.import.importPrivateNote')} onBack={back} />
           {state.phase === 'saved' ? (
             <>
               <Notice
-                title="Note saved"
-                body={`${state.note.amount} ETH pool · ${
+                title={t('mobile.noteFlows.import.noteSaved')}
+                body={t('mobile.noteFlows.import.savedStatus', { amount: state.note.amount, status:
                   state.note.phase === 'spent'
-                    ? 'Already spent'
+                    ? t('mobile.noteFlows.import.alreadySpent')
                     : state.note.phase === 'verified'
-                    ? 'Verified in pool history'
-                    : 'Status needs another check'
-                }`}
+                    ? t('mobile.noteFlows.import.verifiedInPoolHistory')
+                    : t('mobile.noteFlows.import.statusNeedsAnotherCheck')
+                })}
               />
 
             </>
           ) : (
             <>
               <Text style={styles.muted}>
-                Enter one private note. Pali checks its public pool history
-                before saving it.
-              </Text>
+                {t('mobile.noteFlows.import.enterOnePrivateNotePaliChecksItsPublic')}</Text>
               <Text style={styles.muted}>
-                Anyone with this note can withdraw. Keep it private.
-              </Text>
-              <Text style={s.label}>Private note</Text>
+                {t('mobile.noteFlows.import.anyoneWithThisNoteCanWithdrawKeepIt')}</Text>
+              <Text style={s.label}>{t('privacy.privateNote')}</Text>
               <IdleTextInput
-                accessibilityLabel="Private note"
+                accessibilityLabel={t('privacy.privateNote')}
                 value={note}
                 onChangeText={(value) => {
                   if (owner.current.live && !owner.current.request)

@@ -17,6 +17,7 @@ import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { UTXO_ADDRESSES, XPUB } from './publicWatchFixtures.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { DAPP_PUBLIC_RPC_METHODS } from '../../../source/shared/dappRpcReads.ts';
+import { DAPP_WALLET_READ_METHODS } from '../../../source/shared/dappWalletReads.ts';
 import { EthereumRpcErrorHandler } from '../../../source/helpers/errors/errorClassesHandlers.ts';
 import type { EvmDappFeeComparison } from '../../../source/shared/evmDappFeePolicy.ts';
 import { createSmartAccountCallsExecutions } from '../../../source/shared/dappCalls.ts';
@@ -68,12 +69,14 @@ const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fixture(
   options: {
     requestAuthentication?: boolean;
+    walletReads?: boolean;
     utxo?: boolean;
     hardware?: 'Ledger' | 'Trezor';
     capabilities?: boolean;
     moduleInventory?: boolean;
     moduleChanges?: boolean;
     smartCreation?: boolean;
+    accountSwitch?: boolean;
     unavailablePasskeys?: boolean;
     feeComparison?: EvmDappFeeComparison;
     minimumGasLimit?: string;
@@ -83,6 +86,8 @@ function fixture(
     smartMessages?: boolean;
     smartTrezor?: boolean;
     secondAccount?: boolean;
+    mixedAccounts?: boolean;
+    secondAccountType?: 'HDAccount' | 'Ledger';
     restoring?: boolean;
     openFailures?: number;
     inventoryFailures?: number;
@@ -125,12 +130,15 @@ function fixture(
   let readWait: Promise<void> = Promise.resolve();
   let readError: Error | undefined;
   const readRequests: unknown[] = [];
+  const walletReadRequests: { method: string; accountId: string; address: string }[] = [];
   const moduleInventoryReads: { accountId: string; networkId: string }[] = [];
   const moduleChangeRequests: SmartAccountModuleRequest[] = [];
   let creationAllocation: NativeSmartCreationAllocation | undefined;
   const creationRequests: unknown[] = [], preparedAccountUpdates: string[] = [];
   const creationGrantPublications: number[] = [];
   let creationUpdateFailure = false;
+  let accountUpdateWait: Promise<void> = Promise.resolve();
+  let latestSession: WalletConnectSession;
   let beforeCreationGrant = () => {};
   let moduleMetadataUnavailable = false, moduleMetadataReads = 0;
   let moduleMetadataWait = Promise.resolve();
@@ -242,6 +250,11 @@ function fixture(
     });
   };
   const host: Omit<NativeConnectionHost, 'repository' | 'calls'> = {
+    ...(options.walletReads ? { walletReads: { async read(method: string, account: { id: string; address: string }, signal: AbortSignal, check: () => void) {
+      check(); walletReadRequests.push({ method, accountId: account.id, address: account.address });
+      await readWait; check(); if (signal.aborted) throw Error('CANCELLED');
+      return method === 'wallet_getTokens' ? { ethereum: [], syscoin: [] } : method === 'wallet_getBalance' ? 0 : '123';
+    } } } : {}),
     async allocateSmartAccount(input, signal, check, onCommitted) {
       assert(options.smartCreation, 'Creation is outside this fixture'); check();
       assert.equal(creationAllocation, undefined, 'An allocated account cannot be replaced');
@@ -266,7 +279,7 @@ function fixture(
     async cancelSigningHandoff(job) { canceledPsbtJobs.push(job); },
     syscoin: {
       registration: () => { if (!selectedUtxo || snapshot.phase !== 'ready') throw new Error('CONTEXT_CHANGED'); return getUtxoNetwork('syscoin'); },
-      anchor: () => UTXO_ADDRESSES.syscoin,
+      anchor: (xpub) => xpub === 'second-utxo-public' ? 'CaseSensitiveAccountB' : UTXO_ADDRESSES.syscoin,
       async read(request, owner, signal, check) { readRequests.push(request); await readWait; check(); if (signal.aborted) throw new Error('CANCELLED'); return request.method === 'sys_getPublicKey' ? owner.xpub : request.method === 'sys_requestAccounts' ? [owner.address] : 'syscoin-read'; },
     },
     sentry: { revalidate() {}, async prepare(request, signal, check, assertGrant) {
@@ -292,8 +305,10 @@ function fixture(
     controls: {
       context: () => snapshot.phase === 'ready' ? ({ revision: snapshot.revision, catalogueRevision: snapshot.revision, activeAccountId: selectedAccountId, networkId: selectedUtxo ? 'syscoin' : 'ethereum', networkLabel: selectedUtxo ? 'Syscoin' : 'Ethereum', accounts: [
         { id: firstAccountId, index: 0, type: firstAccountType, address: ADDRESS, slip44: 60, label: 'Account 1' },
+        ...(options.mixedAccounts ? [{ id: 'smart:60:9', index: 9, type: 'SmartAccount' as const, address: '0x' + '99'.repeat(20), slip44: 60, label: 'Other-chain Smart', smartAccount: { chainId: 10, isDeployed: true, localEcdsa: true, managementAddress: ADDRESS } }] : []),
         ...(secondAccount ? [{ id: 'hd:60:1', index: 1, type: 'HDAccount' as const, address: '0x' + '22'.repeat(20), slip44: 60, label: 'Account 2' }] : []),
         { id: utxoAccountId, index: 0, type: utxoAccountType, address: receivingAddress, slip44: 57, label: 'Syscoin account' },
+        ...(secondAccount ? [{ id: 'hd:57:1', index: 1, type: 'HDAccount' as const, address: 'CaseSensitiveAccountB', slip44: 57, label: 'Second Syscoin account' }] : []),
       ] }) : null,
       async prepare(request, _owner, signal, check) {
         const chain = selectedChainId;
@@ -471,7 +486,7 @@ function fixture(
       const legacy = value.type === '0x0' || value.type === 0 || value.gasPrice !== undefined;
       const transaction = snapshotPreparedEvmTransaction({
         from: ADDRESS, to: value.to ?? null, chainId: '1', value: BigInt(value.value as string ?? '0').toString(),
-        data: String(value.data ?? '0x'), nonce: BigInt(value.nonce as string ?? '0').toString(), gasLimit: (BigInt(value.gasLimit as string ?? '50000') < BigInt(options.minimumGasLimit ?? '0') ? BigInt(options.minimumGasLimit!) : BigInt(value.gasLimit as string ?? '50000')).toString(),
+        data: String(value.data ?? '0x'), nonce: BigInt(value.nonce as string ?? (options.batch ? transactions.length : 0)).toString(), gasLimit: (BigInt(value.gasLimit as string ?? '50000') < BigInt(options.minimumGasLimit ?? '0') ? BigInt(options.minimumGasLimit!) : BigInt(value.gasLimit as string ?? '50000')).toString(),
         ...(legacy ? { type: 0, gasPrice: BigInt(value.gasPrice as string ?? '10').toString() }
           : { type: 2, accessList: value.accessList ?? [], maxFeePerGas: BigInt(value.maxFeePerGas as string ?? '10').toString(), maxPriorityFeePerGas: BigInt(value.maxPriorityFeePerGas as string ?? '1').toString() }),
       });
@@ -506,7 +521,7 @@ function fixture(
       unlocked: ['ready', 'authenticating'].includes(snapshot.phase),
       accounts:
         ['ready', 'authenticating'].includes(snapshot.phase)
-          ? selectedUtxo ? [{ id: utxoAccountId, index: 0, type: utxoAccountType, address: receivingAddress, xpub: 'stable-utxo-public-account', label: 'Syscoin account' }] : [
+          ? selectedUtxo ? [{ id: utxoAccountId, index: 0, type: utxoAccountType, address: receivingAddress, xpub: 'stable-utxo-public-account', label: 'Syscoin account' }, ...(secondAccount ? [{ id: 'hd:57:1', index: 1, type: 'HDAccount' as const, address: 'CaseSensitiveAccountB', xpub: 'second-utxo-public', label: 'Second Syscoin account' }] : [])] : [
               {
                 id: firstAccountId,
                 index: 0,
@@ -516,12 +531,13 @@ function fixture(
                 label: 'Account 1',
               },
               ...(creationAllocation ? [creationAllocation.account] : []),
+              ...(options.mixedAccounts ? [{ id: 'hd:57:9', index: 9, type: 'HDAccount' as const, address: 'sys1other', xpub: 'unrelated-utxo', label: 'Other family' }, { id: 'smart:60:9', index: 9, type: 'SmartAccount' as const, address: '0x' + '99'.repeat(20), xpub: 'other-smart', label: 'Other-chain Smart' }] : []),
               ...(secondAccount
                 ? [
                     {
                       id: 'hd:60:1',
                       index: 1,
-                      type: 'HDAccount' as const,
+                      type: options.secondAccountType ?? 'HDAccount' as const,
                       address: '0x' + '22'.repeat(20),
                       xpub: 'second-xpub',
                       label: 'Account 2',
@@ -550,12 +566,13 @@ function fixture(
           ...(options.moduleInventory ? ['wallet_getSmartAccountModules'] : []),
           ...(options.moduleChanges ? SMART_ACCOUNT_MODULE_REQUEST_METHODS : []),
           ...(options.smartCreation ? ['wallet_prepareSmartAccount'] : []),
+          ...(options.accountSwitch ? ['wallet_changeAccount'] : []),
           ...(options.batch ? ['wallet_sendCalls', 'wallet_getCallsStatus', 'wallet_showCallsStatus'] : []),
           'wallet_switchEthereumChain',
           'wallet_addEthereumChain',
           'wallet_watchAsset',
           'wallet_getPermissions', 'wallet_requestPermissions', 'wallet_revokePermissions',
-          ...DAPP_PUBLIC_RPC_METHODS, ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS, ...PSBT_DAPP_METHODS,
+          ...DAPP_PUBLIC_RPC_METHODS, ...(options.walletReads ? DAPP_WALLET_READ_METHODS : []), ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS, ...PSBT_DAPP_METHODS,
           'eth_accounts',
           'eth_chainId',
           'eth_sendTransaction',
@@ -586,12 +603,13 @@ function fixture(
           ...(options.moduleInventory ? ['wallet_getSmartAccountModules'] : []),
           ...(options.moduleChanges ? SMART_ACCOUNT_MODULE_REQUEST_METHODS : []),
           ...(options.smartCreation ? ['wallet_prepareSmartAccount'] : []),
+          ...(options.accountSwitch ? ['wallet_changeAccount'] : []),
           ...(options.batch ? ['wallet_sendCalls', 'wallet_getCallsStatus', 'wallet_showCallsStatus'] : []),
           'wallet_switchEthereumChain',
           'wallet_addEthereumChain',
           'wallet_watchAsset',
           'wallet_getPermissions', 'wallet_requestPermissions', 'wallet_revokePermissions',
-          ...DAPP_PUBLIC_RPC_METHODS, ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS, ...PSBT_DAPP_METHODS,
+          ...DAPP_PUBLIC_RPC_METHODS, ...(options.walletReads ? DAPP_WALLET_READ_METHODS : []), ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS, ...PSBT_DAPP_METHODS,
           'eth_accounts',
           'eth_chainId',
           'eth_sendTransaction',
@@ -606,6 +624,7 @@ function fixture(
       },
     },
   };
+  latestSession = session;
   let inventory = options.restoring ? [session] : [];
   const restoredRepository = repository.then(async (value) => {
     if (options.restoring) {
@@ -754,17 +773,21 @@ function fixture(
         emit: async (_binding, chain, value, guard) => {
           await emissionWait;
           guard();
-          assert(session.namespaces.eip155!.chains!.includes(chain));
+          assert(Object.values(latestSession.namespaces).some(value => value.chains?.includes(chain)));
           emissionScopes.push(chain);
           emissions.push(value);
         },
-        updatePreparedAccount: async (binding, id, address, signal, guard, onCommitted) => {
-          assert(options.smartCreation); assert(!signal.aborted); guard();
+        updateSessionAccount: async (binding, id, address, signal, guard, onCommitted) => {
+          assert(options.smartCreation || options.accountSwitch); assert(!signal.aborted); guard();
           assert.equal(binding.topic, session.binding.topic);
-          assert.equal(wireAdmissions.get(id)?.method, 'wallet_prepareSmartAccount');
+          const request = wireAdmissions.get(id)!;
+          assert(['wallet_prepareSmartAccount', 'wallet_changeAccount'].includes(request.method));
           preparedAccountUpdates.push(address);
-          const current = { ...session, namespaces: { ...session.namespaces, eip155: {
-            ...session.namespaces.eip155!, accounts: [`eip155:1:${address}`] } } };
+          const nextNamespaces = Object.fromEntries(Object.entries(latestSession.namespaces).map(([name, value]) => [name, { ...value,
+            accounts: value.accounts.map(account => account.startsWith(`${request.chainId}:`) ? `${request.chainId}:${address}` : account) }]));
+          const current = { ...latestSession, namespaces: nextNamespaces };
+          latestSession = current;
+          await accountUpdateWait;
           if (creationUpdateFailure) { event({ type: 'session', session: current }); throw Error('Update acknowledgement lost'); }
           onCommitted(current); guard(); beforeCreationGrant(); return current;
         },
@@ -790,9 +813,11 @@ function fixture(
   return {
     setCredentialWait(wait: Promise<void>) { credentialWait = wait; },
     controller, creationRequests, preparedAccountUpdates, creationGrantPublications,
+    currentSession: () => latestSession,
+    holdAccountUpdate: (wait: Promise<void>) => { accountUpdateWait = wait; },
     failCreationUpdate() { creationUpdateFailure = true; },
     beforeCreationGrantWrite(callback: () => void) { beforeCreationGrant = callback; },
-    controlCommits, externalUrls, readRequests, moduleInventoryReads, moduleChangeRequests, sentryRequests, sentryAssents, psbtRequests, psbtApprovals,
+    controlCommits, externalUrls, readRequests, walletReadRequests, moduleInventoryReads, moduleChangeRequests, sentryRequests, sentryAssents, psbtRequests, psbtApprovals,
     setModuleMetadataUnavailable(value: boolean) { moduleMetadataUnavailable = value; },
     setModuleMetadataWait(value: Promise<void>) { moduleMetadataWait = value; },
     moduleMetadataReads: () => moduleMetadataReads,
@@ -1225,14 +1250,11 @@ test('required calls expose connection eligibility for each account', async () =
     const proposal = f.view.getSnapshot().proposals[0]!;
     const ledger = proposal.methodsByAccount.find(account => account.accountId === 'ledger:60:0')!;
     const software = proposal.methodsByAccount.find(account => account.accountId === 'hd:60:1')!;
-    assert.equal(ledger.canApprove, false);
-    assert.equal(ledger.methods.includes('wallet_sendCalls'), false);
+    assert.equal(ledger.canApprove, true);
+    assert.equal(ledger.methods.includes('wallet_sendCalls'), true);
     assert.equal(software.canApprove, true);
     assert.equal(software.methods.includes('wallet_sendCalls'), true);
-    await assert.rejects(f.view.approve(proposal.id, ledger.accountId, 'ethereum', f.view.getSnapshot().revision),
-      { message: 'UNSUPPORTED_REQUEST' });
-    assert.equal(f.approved(), 0);
-    await f.view.approve(proposal.id, software.accountId, 'ethereum', f.view.getSnapshot().revision);
+    await f.view.approve(proposal.id, ledger.accountId, 'ethereum', f.view.getSnapshot().revision);
     assert.equal(f.approved(), 1);
     assert.equal(f.view.getSnapshot().proposals.length, 0);
   } finally { await f.controller.dispose(); }
@@ -1891,12 +1913,14 @@ for (const retirement of [
 async function connectedFixture(
   options: {
     requestAuthentication?: boolean;
+    walletReads?: boolean;
     utxo?: boolean;
     hardware?: 'Ledger' | 'Trezor';
     capabilities?: boolean;
     moduleInventory?: boolean;
     moduleChanges?: boolean;
     smartCreation?: boolean;
+    accountSwitch?: boolean;
     unavailablePasskeys?: boolean;
     feeComparison?: EvmDappFeeComparison;
     minimumGasLimit?: string;
@@ -1906,6 +1930,8 @@ async function connectedFixture(
     smartMessages?: boolean;
     smartTrezor?: boolean;
     secondAccount?: boolean;
+    mixedAccounts?: boolean;
+    secondAccountType?: 'HDAccount' | 'Ledger';
     accountId?: string;
     verification?: WalletConnectVerification;
   } = {}
@@ -2095,12 +2121,12 @@ test('a retired PSBT signing request cannot deliver its late structured result',
     assert(!f.responses.some(value => 'result' in (value as { result: object }).result)); assert.equal(f.view.getSnapshot().psbtReview, null);
   } finally { held.resolve(); await f.controller.dispose(); }
 });
-for (const hardware of ['Ledger', 'Trezor'] as const) test(`${hardware} proposal exposes only its wired EVM message methods and retains the existing calls exclusion`, async () => {
+for (const hardware of ['Ledger', 'Trezor'] as const) test(`${hardware} proposal exposes its wired EVM message and calls methods`, async () => {
   const f = await connectedFixture({ hardware, batch: true, accountId: `${hardware.toLowerCase()}:60:0` });
   try {
     const methods = f.session.namespaces.eip155!.methods;
     assert(methods.includes('personal_sign')); assert(methods.includes('eth_signTypedData_v3')); assert(methods.includes('eth_signTypedData_v4'));
-    assert.equal(methods.includes('eth_signTypedData'), false); assert.equal(methods.includes('wallet_sendCalls'), false);
+    assert.equal(methods.includes('eth_signTypedData'), false); assert.equal(methods.includes('wallet_sendCalls'), true);
     assert.equal(methods.some(method => method.startsWith('sys_') && !(DAPP_MODE_METHODS as readonly string[]).includes(method)), false);
     assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN]?.accountType, hardware);
   } finally { await f.controller.dispose(); }
@@ -2525,6 +2551,52 @@ test('revocation waits for its existing durable grant engine and leaves a differ
     assert.equal(f.view.getSnapshot().sessions.length, 1);
     assert(peer.read().dapps[ORIGIN]);
   } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+for (const utxo of [false, true]) for (const method of DAPP_WALLET_READ_METHODS) test(`custom ${method} uses only its negotiated ${utxo ? 'UTXO' : 'EVM'} grant`, async () => {
+  const f = await connectedFixture({ walletReads: true, utxo, secondAccount: true });
+  try {
+    if (!utxo) f.selectDisplayAccount('hd:60:1');
+    if (utxo) await syscoinRequest(f, method); else await messageRequest(f, method, []);
+    assert.equal(f.walletReadRequests.length, 1);
+    assert.equal(f.walletReadRequests[0]!.accountId, utxo ? 'hd:57:0' : 'hd:60:0');
+    assert.equal(f.readRequests.length, 0);
+    assert.equal(f.signatures.length, 0); assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.deepEqual((f.responses.at(-1) as { result: { result: unknown } }).result.result,
+      method === 'wallet_getTokens' ? { ethereum: [], syscoin: [] } : method === 'wallet_getBalance' ? 0 : '123');
+  } finally { await f.controller.dispose(); }
+});
+
+for (const reason of ['unnegotiated', 'chain', 'account', 'params'] as const) test(`custom wallet read refuses ${reason} before any wallet read`, async () => {
+  const f = await connectedFixture({ walletReads: true });
+  try {
+    if (reason === 'unnegotiated') Object.assign(f.session.namespaces.eip155!, { methods: f.session.namespaces.eip155!.methods.filter(method => method !== 'wallet_getTokens') });
+    if (reason === 'chain') f.selectChain(10);
+    if (reason === 'account') Object.assign(f.session.namespaces.eip155!, { accounts: [`eip155:1:0x${'22'.repeat(20)}`] });
+    await messageRequest(f, 'wallet_getTokens', reason === 'params' ? ['sibling-account'] : []);
+    assert.deepEqual(f.walletReadRequests, []);
+    assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code,
+      reason === 'chain' ? 4901 : reason === 'params' ? -32602 : 4100);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const change of ['lock', 'network', 'session', 'expiry', 'dispose'] as const) test(`held custom wallet read cannot publish after ${change}`, async () => {
+  const f = await connectedFixture({ walletReads: true });
+  const held = Promise.withResolvers<void>(), readNow = Date.now;
+  let now = readNow(), disposing: Promise<void> | undefined;
+  Date.now = () => now;
+  try {
+    f.setReadWait(held.promise);
+    await messageRequest(f, 'wallet_getTokens', []);
+    assert.equal(f.walletReadRequests.length, 1);
+    if (change === 'lock') f.lock();
+    else if (change === 'network') f.selectChain(10);
+    else if (change === 'session') f.event({ type: 'session-ended', topic: TOPIC });
+    else if (change === 'expiry') now += 300001;
+    else disposing = f.controller.dispose();
+    held.resolve(); await settle(); await disposing;
+    assert.deepEqual(f.responses, []);
+  } finally { Date.now = readNow; held.resolve(); await f.controller.dispose(); }
 });
 
 test('authorized stateless reads normalize parameters and preserve EVM revert data', async () => {
@@ -4197,9 +4269,11 @@ for (const change of ['get-expired', 'show-expired', 'show-dismissed'])
     } finally { Date.now = readNow; release?.(); await f.controller.dispose(); }
   });
 
-for (const imported of [false, true])
-test(`${imported ? 'Imported' : 'HD'} EOA calls keep each fee consent and expose their durable status after switching networks`, async () => {
-  const f = await connectedFixture({ batch: true, imported, accountId: imported ? 'imported:60:0' : 'hd:60:0' });
+for (const account of ['HD', 'Imported', 'Ledger', 'Trezor'] as const)
+test(`${account} EOA calls keep each fee consent and expose their durable status after switching networks`, async () => {
+  const hardware = account === 'Ledger' || account === 'Trezor' ? account : undefined;
+  const f = await connectedFixture({ batch: true, imported: account === 'Imported', ...(hardware ? { hardware } : {}),
+    accountId: hardware ? `${hardware.toLowerCase()}:60:0` : account === 'Imported' ? 'imported:60:0' : 'hd:60:0' });
   try {
     const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0x1234', atomicRequired: false,
       calls: [{ to: '0x' + '22'.repeat(20), value: '0x1' }, { to: '0x' + '33'.repeat(20), value: '0x2' }] }]);
@@ -4712,7 +4786,7 @@ for (const method of PSBT_DAPP_METHODS) test(`Ledger ${method} negotiates bip122
   const f = await connectedFixture({ utxo: true, hardware: 'Ledger' });
   try {
     const methods = f.session.namespaces.bip122!.methods;
-    assert(methods.includes(method)); assert(!methods.some(value => (SENTRY_DAPP_METHODS as readonly string[]).includes(value)));
+    assert(methods.includes(method)); assert(methods.some(value => (SENTRY_DAPP_METHODS as readonly string[]).includes(value)), 'imported Sentry authorities are available with a hardware account selected');
     await syscoinRequest(f, method, [EXTERNAL_PSBT]);
     const review = f.view.getSnapshot().psbtReview; assert(review?.details);
     assert.equal(f.psbtApprovals.length, 0);
@@ -4806,6 +4880,69 @@ for (const freshness of ['unproven', undefined, 'caller-claimed'] as const) test
   } finally { await f.controller.dispose(); }
 });
 
+
+for (const prefix of [0, 1]) test(`Trezor EOA batch Suite return preserves ${prefix} acknowledged calls and requires fresh per-call consent`, async () => {
+  const f = await connectedFixture({ hardware: 'Trezor', batch: true, accountId: 'trezor:60:0' });
+  const held = Promise.withResolvers<void>();
+  try {
+    let review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0x1234', atomicRequired: false,
+      calls: [{ to: ADDRESS, value: '0x1' }, { to: ADDRESS, value: '0x2' }] }]);
+    assert(review?.kind === 'transaction' && review.batch);
+    if (prefix) {
+      await f.view.approveRequest(review.id, review.revision, false);
+      review = f.view.getSnapshot().signingReview;
+      assert(review?.kind === 'transaction' && review.batch);
+    }
+    assert.equal(review.batch.index, prefix);
+    f.setSignWait(held.promise);
+    const old = f.view.approveRequest(review.id, review.revision, false), rejected = old.catch(() => undefined);
+    await settle();
+    const handoff = f.signingHandoff(), id = handoff.id;
+    const deadline = Date.now() + 60_000;
+    handoff.beforeSuiteOpen(deadline, {})(true);
+    f.view.backgroundSigning(); f.lock(); held.resolve(); await rejected; await settle();
+    assert.equal(f.transactions.length, prefix);
+    f.unlock(); await settle(); await f.view.resumeSigning(id); await settle();
+    let fresh = f.view.getSnapshot().signingReview;
+    assert(fresh?.kind === 'transaction' && fresh.batch);
+    assert.equal(fresh.batch.index, prefix);
+    assert(fresh.expiresAt <= deadline);
+    assert.equal(f.transactions.length, prefix, 'Suite return itself must never sign');
+    await f.view.approveRequest(fresh.id, fresh.revision, false);
+    if (!prefix) {
+      fresh = f.view.getSnapshot().signingReview;
+      assert(fresh?.kind === 'transaction' && fresh.batch);
+      await f.view.approveRequest(fresh.id, fresh.revision, false);
+    }
+    assert.equal(f.transactions.length, 2);
+    assert.deepEqual(f.transactions.map(transaction => (transaction as { nonce: string }).nonce), ['0', '1']);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { id: '0x1234', capabilities: {} } } });
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+for (const change of ['changed-wire', 'session', 'cancel', 'expiry'] as const) test(`Trezor batch ${change} cannot resume or re-sign its acknowledged prefix`, async () => {
+  const f = await connectedFixture({ hardware: 'Trezor', batch: true, accountId: 'trezor:60:0' });
+  const held = Promise.withResolvers<void>(), now = Date.now;
+  try {
+    let review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0x1234', atomicRequired: false,
+      calls: [{ to: ADDRESS, value: '0x1' }, { to: ADDRESS, value: '0x2' }] }]);
+    assert(review?.kind === 'transaction' && review.batch);
+    await f.view.approveRequest(review.id, review.revision, false);
+    review = f.view.getSnapshot().signingReview; assert(review?.kind === 'transaction' && review.batch);
+    f.setSignWait(held.promise);
+    const old = f.view.approveRequest(review.id, review.revision, false).catch(() => undefined);
+    await settle(); const handoff = f.signingHandoff(), deadline = now() + 60_000;
+    handoff.beforeSuiteOpen(deadline, {})(true);
+    f.view.backgroundSigning(); f.lock(); held.resolve(); await old; await settle();
+    if (change === 'changed-wire') f.setPendingOverride('method');
+    else if (change === 'session') f.event({ type: 'session-ended', topic: TOPIC });
+    else if (change === 'cancel') await f.view.cancelSigningHandoff();
+    else Date.now = () => deadline + 1;
+    f.unlock(); await settle(); await assert.rejects(f.view.resumeSigning(handoff.id));
+    assert.equal(f.transactions.length, 1);
+    assert.equal((await (await f.repository).calls.getStoredSendCallsBundle(ORIGIN, '0x1234'))?.txHashes.length, 1);
+  } finally { Date.now = now; held.resolve(); await f.controller.dispose(); }
+});
 
 for (const kind of ['personal_sign', 'eth_signTypedData_v4', 'eth_sendTransaction'] as const) test(`Trezor ${kind} Suite return rebuilds the original request under a new unlock and requires a separate Confirm`, async () => {
   const f = await connectedFixture({ hardware: 'Trezor', accountId: 'trezor:60:0' }), held = Promise.withResolvers<void>(), now = Date.now;
@@ -5608,5 +5745,192 @@ test('manual calls status refresh preserves an active per-call consent sequence'
     assert.equal(f.transactions.length, 1);
     f.view.dismissCallsStatus(shown.id);
     await f.view.rejectRequest(suffix.id);
+  } finally { await f.controller.dispose(); }
+});
+
+
+async function accountChangeRequest(f: ReturnType<typeof fixture>, params: unknown = [], expiresAt = Date.now() + 60000) {
+  const session = f.currentSession();
+  const chainId = Object.values(session.namespaces)[0]!.chains![0]!;
+  f.event({ type: 'request', request: { freshness: 'fresh', id: 917, session, method: 'wallet_changeAccount', chainId, params, expiresAt, verification: UNKNOWN } });
+  await settle();
+  return f.view.getSnapshot().accountChangeReview;
+}
+for (const utxo of [false, true]) test(`${utxo ? 'UTXO' : 'EVM'} account choice updates only the granted account with one shared event`, async () => {
+  const f = await connectedFixture({ accountSwitch: true, secondAccount: true, utxo });
+  try {
+    const review = await accountChangeRequest(f); assert(review);
+    const selected = utxo ? 'hd:57:1' : 'hd:60:1';
+    assert.equal(review.accounts.length, 2); assert.equal(f.preparedAccountUpdates.length, 0);
+    f.view.selectConnectionAccount(review.id, selected, review.revision);
+    const chosen = f.view.getSnapshot().accountChangeReview!;
+    const before = f.emissions.length;
+    await f.view.approveAccountChange(chosen.id, chosen.revision); await settle();
+    assert.equal(f.view.getSnapshot().accountChangeReview, null);
+    assert.equal(f.view.getSnapshot().sessions[0]?.accountLabel, utxo ? 'Second Syscoin account' : 'Account 2');
+    assert.equal(f.preparedAccountUpdates.length, 1);
+    assert.deepEqual((f.responses.at(-1) as any).result, { result: null });
+    const emitted = f.emissions.slice(before) as any[];
+    assert.equal(emitted.filter(value => value.name === 'accountsChanged').length, 1);
+    assert.deepEqual(emitted.find(value => value.name === 'accountsChanged').data, [utxo ? 'CaseSensitiveAccountB' : '0x' + '22'.repeat(20)]);
+    assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('same-account request is a read-only public projection and another account still needs consent', async () => {
+  const f = await connectedFixture({ accountSwitch: true, secondAccount: true });
+  try {
+    assert.equal(await accountChangeRequest(f, [{ currentAccountId: 0, currentAccountType: 'HDAccount' }]), null);
+    assert.deepEqual((f.responses.at(-1) as any).result, { result: { address: ADDRESS, xpub: 'private-host-public-xpub' } });
+    assert.equal(f.preparedAccountUpdates.length, 0);
+    const review = await accountChangeRequest(f, [{ currentAccountId: 1, currentAccountType: 'HDAccount' }]); assert(review);
+    assert.equal(review.selectedAccountId, 'hd:60:0'); assert.equal(f.preparedAccountUpdates.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+for (const boundary of ['reject', 'lock', 'expiry', 'network'] as const) test(`account selection ${boundary} cannot perform a later switch`, async () => {
+  const f = await connectedFixture({ accountSwitch: true, secondAccount: true });
+  try {
+    const review = await accountChangeRequest(f, [], boundary === 'expiry' ? Date.now() + 30 : undefined); assert(review);
+    f.view.selectConnectionAccount(review.id, 'hd:60:1', review.revision);
+    if (boundary === 'reject') await f.view.rejectAccountChange(review.id);
+    if (boundary === 'lock') f.lock();
+    if (boundary === 'expiry') await new Promise(resolve => setTimeout(resolve, 40));
+    if (boundary === 'network') f.selectChain(10);
+    await settle();
+    await assert.rejects(f.view.approveAccountChange(review.id, f.view.getSnapshot().revision));
+    assert.equal(f.preparedAccountUpdates.length, 0); assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+for (const failure of ['ack', 'response', 'write-cancel'] as const) test(`account switch ${failure} retires the grant and remote session`, async () => {
+  const f = await connectedFixture({ accountSwitch: true, secondAccount: true }), held = Promise.withResolvers<void>();
+  try {
+    const review = await accountChangeRequest(f); assert(review);
+    f.view.selectConnectionAccount(review.id, 'hd:60:1', review.revision);
+    const chosen = f.view.getSnapshot().accountChangeReview!;
+    if (failure === 'ack') f.failCreationUpdate();
+    if (failure === 'response') f.failBeforeDispatch();
+    if (failure === 'write-cancel') f.beforeCreationGrantWrite(() => f.setStorageWait(held.promise));
+    const approving = f.view.approveAccountChange(chosen.id, chosen.revision), rejected = assert.rejects(approving);
+    if (failure === 'write-cancel') { await settle(); await f.view.rejectAccountChange(chosen.id); held.resolve(); }
+    await rejected; await settle();
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+    assert.equal(f.remoteDisconnects.length, 1);
+    if (failure !== 'write-cancel') assert.equal(f.view.getSnapshot().error, 'CONNECTION_UNAVAILABLE');
+    const permissions = (await f.repository).permissions(f.session.binding).read();
+    assert.equal(permissions.dapps[ORIGIN], undefined);
+    assert.equal(f.signatures.length, 0);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+
+test('account selection preserves negotiated method ceilings for a hardware candidate', async () => {
+  const f = await connectedFixture({ accountSwitch: true, secondAccount: true, secondAccountType: 'Ledger' });
+  try {
+    const review = await accountChangeRequest(f); assert(review);
+    // This EOA connection negotiated eth_decrypt, unsupported by Ledger.
+    assert.deepEqual(review.accounts.map(account => account.id), ['hd:60:0']);
+    assert.throws(() => f.view.selectConnectionAccount(review.id, 'hd:60:1', review.revision));
+    assert.equal(f.preparedAccountUpdates.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('an old connection without the new method never gains account-switch authority', async () => {
+  const f = await connectedFixture({ secondAccount: true });
+  try {
+    assert.equal(await accountChangeRequest(f), null);
+    assert.equal((f.responses.at(-1) as any).result.error.code, 4100);
+    assert.equal(f.preparedAccountUpdates.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const stage of ['ack-cancel', 'write-expiry', 'response-expiry'] as const) test(`account switch ${stage} cannot retain either account grant`, async () => {
+  const f = await connectedFixture({ accountSwitch: true, secondAccount: true, walletReads: true }), held = Promise.withResolvers<void>();
+  try {
+    const review = await accountChangeRequest(f, [], Date.now() + 80); assert(review);
+    f.view.selectConnectionAccount(review.id, 'hd:60:1', review.revision);
+    const chosen = f.view.getSnapshot().accountChangeReview!;
+    if (stage === 'ack-cancel') f.holdAccountUpdate(held.promise);
+    if (stage === 'write-expiry') f.beforeCreationGrantWrite(() => f.setStorageWait(held.promise));
+    if (stage === 'response-expiry') f.setResponseWait(held.promise);
+    const approving = f.view.approveAccountChange(chosen.id, chosen.revision), rejected = assert.rejects(approving);
+    await settle();
+    if (stage === 'ack-cancel') {
+      const session = f.currentSession();
+      f.event({ type: 'request', request: { freshness: 'fresh', id: 918, session, method: 'wallet_getBalance', chainId: 'eip155:1', params: [], expiresAt: Date.now() + 60000, verification: UNKNOWN } });
+      await settle(); assert.equal(f.walletReadRequests.length, 0, 'The changing topic cannot perform wallet reads');
+      f.lock();
+    } else await new Promise(resolve => setTimeout(resolve, 95));
+    held.resolve(); await rejected; await settle();
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+    assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN], undefined);
+    assert.equal(f.remoteDisconnects.length, 1);
+    assert.equal(f.signatures.length, 0);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+test('restored namespace/account disagreement retires its old grant before disclosure', async () => {
+  const f = fixture({ restoring: true, accountSwitch: true, secondAccount: true });
+  f.setInventory([{ ...f.session, namespaces: { eip155: { ...f.session.namespaces.eip155!, accounts: ['eip155:1:0x' + '22'.repeat(20)] } } }]);
+  try {
+    await settle(); await settle();
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+    assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN], undefined);
+    assert.equal(f.remoteDisconnects.length, 1);
+    assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+
+test('chooser excludes opposite-family and wrong-chain Smart catalogue accounts', async () => {
+  const f = await connectedFixture({ accountSwitch: true, secondAccount: true, mixedAccounts: true });
+  try {
+    const review = await accountChangeRequest(f); assert(review);
+    assert.deepEqual(review.accounts.map(account => account.id), ['hd:60:0', 'hd:60:1']);
+    assert.throws(() => f.view.selectConnectionAccount(review.id, 'smart:60:9', review.revision));
+    assert.throws(() => f.view.selectConnectionAccount(review.id, 'hd:57:9', review.revision));
+  } finally { await f.controller.dispose(); }
+});
+
+test('failed account-switch cleanup quarantines retry until the controller is reopened', async () => {
+  const f = await connectedFixture({ accountSwitch: true, secondAccount: true });
+  try {
+    const review = await accountChangeRequest(f); assert(review);
+    f.view.selectConnectionAccount(review.id, 'hd:60:1', review.revision);
+    const chosen = f.view.getSnapshot().accountChangeReview!;
+    f.setPermissionSettlement(async () => { throw Error('Permission cleanup failed'); });
+    await assert.rejects(f.view.approveAccountChange(chosen.id, chosen.revision)); await settle();
+    assert.equal(f.view.getSnapshot().status, 'unavailable');
+    const opened = f.opened();
+    await assert.rejects(f.view.retry()); assert.equal(f.opened(), opened);
+    assert.equal(f.signatures.length, 0);
+  } finally { f.setPermissionSettlement(undefined); await f.controller.dispose().catch(() => undefined); }
+});
+
+
+test('an unresponsive account-change response cannot keep the request drain alive after expiry', { timeout: 2000 }, async () => {
+  const f = await connectedFixture({ accountSwitch: true, secondAccount: true });
+  try {
+    const review = await accountChangeRequest(f, [], Date.now() + 60); assert(review);
+    f.view.selectConnectionAccount(review.id, 'hd:60:1', review.revision);
+    const chosen = f.view.getSnapshot().accountChangeReview!;
+    f.setResponseWait(new Promise<void>(() => {}));
+    await assert.rejects(f.view.approveAccountChange(chosen.id, chosen.revision));
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+    assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN], undefined);
+    await f.controller.dispose();
+  } finally { await f.controller.dispose().catch(() => undefined); }
+});
+
+
+test('unlock rejects a namespace mismatch received while locked before publishing old accounts', async () => {
+  const f = await connectedFixture({ accountSwitch: true, secondAccount: true });
+  try {
+    f.lock();
+    f.event({ type: 'session', session: { ...f.session, namespaces: { eip155: { ...f.session.namespaces.eip155!, accounts: ['eip155:1:0x' + '22'.repeat(20)] } } } });
+    await settle(); const before = f.emissions.length;
+    f.unlock(); await settle(); await settle();
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+    assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN], undefined);
+    assert.equal((f.emissions.slice(before) as any[]).some(event => event.name === 'accountsChanged' && event.data.includes(ADDRESS)), false);
   } finally { await f.controller.dispose(); }
 });

@@ -170,6 +170,7 @@ const operationAuthorization = createTestOperationAuthorizer((credential, check)
 const authenticationRefusals = new WeakSet<object>();
 const runtime: NativeTransferRuntime = {
   isAuthenticationRefusal: error => !!error && typeof error === 'object' && authenticationRefusals.has(error),
+    releaseReplacement() {},
     authorizeOperation: operationAuthorization.authorizeOperation,
     releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
   async authenticateOperation(credential, check, signal) {

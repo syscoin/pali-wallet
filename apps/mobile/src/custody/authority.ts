@@ -1,6 +1,7 @@
 import { idleMinutes, weakensIdlePolicy } from '../../../../source/shared/idleLockPolicy.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import type { SecurityPreferences, SecurityPreferenceSnapshot } from '../core/securityPreferences.ts';
+import type { PublicViewLock } from '../core/publicViewLock.ts';
 import type { NativeAccountRequest, NativeNetworkSelectionProof, NativeNetworkSelectionReceipt } from './accounts.ts';
 import type { NativeImportRequest, NativeUtxoImportDraft } from './importedAccounts.ts';
 import type { NativePrivateAuthentication } from './privateAuthentication.ts';
@@ -36,7 +37,7 @@ export class CustodyOperationError extends Error {
  */
 export class NativeCustodyAuthority {
   private readonly factory: CustodyRuntimeFactory;
-  private readonly policy?: { preferences: SecurityPreferences; assertActive(): void };
+  private readonly policy?: { preferences: SecurityPreferences; assertActive(): void; viewLock: PublicViewLock };
   private checkingIdle = false;
   private runtime: CustodyRuntime | null = null;
   private listeners = new Set<(snapshot: CustodySnapshot) => void>();
@@ -60,14 +61,14 @@ export class NativeCustodyAuthority {
     error: null,
   });
 
-  constructor(factory: CustodyRuntimeFactory, policy?: { preferences: SecurityPreferences; assertActive(): void }) {
+  constructor(factory: CustodyRuntimeFactory, policy?: { preferences: SecurityPreferences; assertActive(): void; viewLock: PublicViewLock }) {
     this.factory = factory; this.policy = policy;
   }
 
   private checkIdle(): void {
     if (!this.policy || this.checkingIdle) return;
     this.checkingIdle = true;
-    try { const result: unknown = this.policy.assertActive(); if (result !== undefined) { if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined); throw new Error('CANCELLED'); } }
+    try { this.policy.viewLock.assertUnlocked(); const result: unknown = this.policy.assertActive(); if (result !== undefined) { if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined); throw new Error('CANCELLED'); } }
     catch { if (!['locked', 'disposed', 'unavailable'].includes(this.snapshot.phase)) this.lock(); throw new CustodyOperationError('CANCELLED'); }
     finally { this.checkingIdle = false; }
   }
@@ -244,11 +245,11 @@ export class NativeCustodyAuthority {
         const assertReceipt = () => {
           proof.assertCurrent();
           const current = runtime.accounts?.getSnapshot();
-          if (this.runtime !== runtime || this.snapshot.phase !== 'ready' || this.revision !== expectedRevision + 1 || this.snapshot.account?.network !== id || this.snapshot.account.address !== proof.selection.address || current?.revision !== expectedCatalogueRevision + 1 || current.active.accountId !== proof.selection.accountId || current.active.networkId !== id || !current.accounts.some(account => account.id === proof.selection.accountId && account.address === proof.selection.address)) throw new CustodyOperationError('CANCELLED');
+          if (this.runtime !== runtime || !['ready', 'backup-required'].includes(this.snapshot.phase) || this.revision !== expectedRevision + 1 || this.snapshot.account?.network !== id || this.snapshot.account.address !== proof.selection.address || current?.revision !== expectedCatalogueRevision + 1 || current.active.accountId !== proof.selection.accountId || current.active.networkId !== id || !current.accounts.some(account => account.id === proof.selection.accountId && account.address === proof.selection.address)) throw new CustodyOperationError('CANCELLED');
         };
         return Object.freeze({ ...proof, sourceContextRevision: expectedRevision, contextRevision: expectedRevision + 1, catalogueRevision: expectedCatalogueRevision + 1, assertCurrent: assertReceipt });
       } };
-    }, expectedRevision).then(receipt => { receipt.assertCurrent(); return receipt; });
+    }, expectedRevision, false, true).then(receipt => { receipt.assertCurrent(); return receipt; });
   }
 
   async addUtxoNetwork(draft: import('./accounts.ts').NativeUtxoNetworkDraft, expectedRevision: number,
@@ -323,9 +324,10 @@ export class NativeCustodyAuthority {
     return id;
   }
 
-  private manageContext<T>(reserve: (runtime: CustodyRuntime) => { execute(assertCurrent: () => void): Promise<T>; cancel(): void }, expectedRevision: number, accountAuthentication = false): Promise<T> {
+  private manageContext<T>(reserve: (runtime: CustodyRuntime) => { execute(assertCurrent: () => void): Promise<T>; cancel(): void }, expectedRevision: number, accountAuthentication = false, publicNetworkSelection = false): Promise<T> {
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
-    if (!this.runtime || this.snapshot.phase !== 'ready') return Promise.reject(new CustodyOperationError('NOT_READY'));
+    if (!this.runtime || (this.snapshot.phase !== 'ready' && !(publicNetworkSelection && this.snapshot.phase === 'backup-required')))
+      return Promise.reject(new CustodyOperationError('NOT_READY'));
     if (this.revision !== expectedRevision) return Promise.reject(new CustodyOperationError('CANCELLED'));
     const runtime = this.runtime;
     const previous = this.snapshot;
@@ -490,6 +492,7 @@ export class NativeCustodyAuthority {
     const openingRevision = this.revision;
     void (async () => {
       try {
+        await this.policy?.viewLock.load();
         this.runtime = await this.factory.open();
         this.requestLock();
         await this.drainLocks();
@@ -502,7 +505,17 @@ export class NativeCustodyAuthority {
           this.publish({
             phase: this.snapshot.presence === 'empty' ? 'empty' : 'locked',
           });
-          if (this.snapshot.presence === 'existing' && this.revision === openingRevision) await this.unlock();
+          if (this.snapshot.presence === 'existing' && this.revision === openingRevision &&
+              (!this.policy?.viewLock || this.policy.viewLock.getSnapshot().phase === 'unlocked')) {
+            try { await this.unlock(); }
+            catch (cause) {
+              // Backgrounding may revoke public hydration. Its cleanup has to
+              // finish, but a safely locked wallet is still initialized.
+              await this.drainLocks();
+              if (!(cause instanceof CustodyOperationError) || cause.code !== 'CANCELLED' ||
+                  !['locked', 'disposed'].includes(this.snapshot.phase)) throw cause;
+            }
+          }
         }
       } catch {
         this.failUnavailable();
@@ -616,12 +629,13 @@ export class NativeCustodyAuthority {
 
   saveIdlePreference(expected: SecurityPreferenceSnapshot, proposed: number, signal: AbortSignal, authentication: NativePrivateAuthentication, assertScreen: () => void): Promise<SecurityPreferenceSnapshot> {
     const minutes = idleMinutes(proposed);
-    if (!this.policy || !this.runtime || this.snapshot.phase !== 'ready') return Promise.reject(new CustodyOperationError('NOT_READY'));
+    const phase = this.snapshot.phase;
+    if (!this.policy || !this.runtime || (phase !== 'ready' && phase !== 'backup-required')) return Promise.reject(new CustodyOperationError('NOT_READY'));
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
     const runtime = this.runtime, policy = this.policy, revision = this.revision;
     const check = () => {
       this.checkIdle();
-      if (signal.aborted || runtime !== this.runtime || revision !== this.revision || this.snapshot.phase !== 'ready') throw new CustodyOperationError('CANCELLED');
+      if (signal.aborted || runtime !== this.runtime || revision !== this.revision || this.snapshot.phase !== phase) throw new CustodyOperationError('CANCELLED');
       const result: unknown = assertScreen();
       if (result !== undefined) { if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined); throw new CustodyOperationError('CANCELLED'); }
     };

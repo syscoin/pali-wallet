@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { URL as NodeURL } from 'node:url';
 import ts from 'typescript';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 
 export type ScreenElement = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (next: unknown) => void };
@@ -47,7 +48,9 @@ export function screenFixture(file: URL, exported: string, imports: Record<strin
   const module = { exports: {} as Record<string, (props: any, ...args: any[]) => ScreenElement> };
   const code = ts.transpileModule(readFileSync(new NodeURL(file.href), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true, ...compilerOptions } }).outputText;
   runInNewContext(code, { module, exports: module.exports, Error, Date, setTimeout, clearTimeout, ...globals,
-    require(name: string) { if (name === 'react') return react; assert(Object.hasOwn(imports, name), `Missing screen port: ${name}`); return imports[name]; } });
+    require(name: string) { if (name === 'react') return react;
+      if (name === '../platform/localization' && !Object.hasOwn(imports, name)) return nativeTranslationFixture;
+      assert(Object.hasOwn(imports, name), `Missing screen port: ${name}`); return imports[name]; } });
   return {
     render(props: any, ...args: any[]) { cursor = 0; const tree = module.exports[exported]!(props, ...args); effects.splice(0).forEach(run => run()); return tree; },
     close() { cells.forEach(c => c.cleanup?.()); },

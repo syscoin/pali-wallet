@@ -1,3 +1,4 @@
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NativeRecoveryFlow, type RecoveryOutcome } from '../src/custody/recoveryFlow.ts';
@@ -7,6 +8,7 @@ import { DeviceUnlockPrompt } from '../src/platform/deviceUnlockPrompt.ts';
 import type { RecoveryProof } from '../src/custody/recovery.ts';
 import type { RecoveryInventory } from '../src/custody/recoveryInventory.ts';
 import { screenElements, screenFixture, type ScreenElement } from './screenFixture.ts';
+import { recoveryErrorText } from '../src/screens/recoveryCopy.ts';
 
 const phrase = Array(12).fill('publicfixture').join(' ');
 const inventory: RecoveryInventory = { status: 'needs-matching-phrase-verification', reason: null, backup: 'unconfirmed',
@@ -51,6 +53,7 @@ function fixture(platform = 'android') {
   const current = owner({ state: () => normalized(state), subscribe: listener => listen('prompt', listener) }, () => normalized(state) !== 'background');
   let flow = current.flow;
   const host = screenFixture(new URL('../src/screens/NativeRecovery.tsx', import.meta.url), 'NativeRecovery', {
+    '../platform/localization': nativeTranslationFixture,
     'react-native': {
       View: 'View', Text: 'NativeText', ActivityIndicator: 'ActivityIndicator', KeyboardAvoidingView: 'KeyboardAvoidingView',
       Platform: { OS: platform }, StyleSheet: { create: (value: unknown) => value }, Keyboard: { dismiss() {} },
@@ -61,6 +64,7 @@ function fixture(platform = 'android') {
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Icon', 'Notice', 'Screen', 'SegmentedControl', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+    './recoveryCopy': { recoveryErrorText },
     './IdleActivityBoundary': { IdleTextInput: 'Input', IdlePressable: 'Pressable' },
   });
   const render = () => { host.render({ flow }); return screenElements(host.render({ flow })); };

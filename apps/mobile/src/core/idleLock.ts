@@ -1,4 +1,5 @@
-import { DEFAULT_IDLE_MINUTES, idleMinutes, idleRemaining, idleSample, type IdleClockSample } from '../../../../source/shared/idleLockPolicy.ts';
+import { idleMinutes, idleRemaining, idleSample, type IdleClockSample } from '../../../../source/shared/idleLockPolicy.ts';
+import { DEFAULT_MOBILE_IDLE_MINUTES } from './securityPreferences.ts';
 export type IdleClock = () => IdleClockSample;
 export class IdleLock {
   private owner: object | null = null;
@@ -6,7 +7,7 @@ export class IdleLock {
   private generation = 0;
   private interval = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private minutes = DEFAULT_IDLE_MINUTES;
+  private minutes = DEFAULT_MOBILE_IDLE_MINUTES;
   private activity: IdleClockSample | null = null;
   private previous: IdleClockSample | null = null;
   private revoke: (() => void) | null = null;
@@ -29,6 +30,23 @@ export class IdleLock {
     this.interval++;
     this.generation++; if (this.timer !== null) this.cancel(this.timer); this.timer = null;
     this.owner = null; this.revoke = null; this.activity = this.previous = null;
+  }
+  /** Retire input while preserving one owner-bound deadline across a hidden view. */
+  pause(owner?: object): (() => boolean) | null {
+    if (!this.owner || this.expired || owner && this.owner !== owner) return null;
+    const capturedOwner = this.owner, activity = this.activity!, previous = this.previous!, revoke = this.revoke;
+    this.stop(capturedOwner);
+    const interval = this.interval;
+    let pending = true;
+    return () => {
+      if (!pending) return false;
+      pending = false;
+      if (this.owner || this.interval !== interval) return false;
+      this.owner = capturedOwner; this.activity = activity; this.previous = previous; this.revoke = revoke; this.expired = false;
+      if (!this.check(capturedOwner)) return false;
+      this.arm();
+      return this.isOwned(capturedOwner);
+    };
   }
   allowNewInput(): void { if (!this.owner) this.expired = false; }
   private expire(): void {

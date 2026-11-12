@@ -111,7 +111,8 @@ for (const width of [390, 320]) {
           })
         ).toHaveCount(0);
       }
-      const close = page.getByRole('button', { name: 'Close', exact: true });
+      const hasSubmittedTransaction = ['waiting', 'complete', 'failed'].includes(scenario.phase);
+      const close = page.getByRole('button', { name: hasSubmittedTransaction ? 'Done' : 'Close', exact: true });
       await close.scrollIntoViewIfNeeded();
       await expectFullyInViewport(close);
       if ('action' in scenario) {
@@ -120,6 +121,7 @@ for (const width of [390, 320]) {
         );
       }
       expect((await close.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      if (hasSubmittedTransaction) await expectFullyInViewport(page.getByRole('button', { name: 'View transaction', exact: true }));
       await expectContained(page);
       await page.screenshot({
         path: test
@@ -176,6 +178,20 @@ test('each meaningful authorization invokes the exact current action once', asyn
     { method: 'confirmPayer', value: 8 },
     { method: 'confirmPayer', value: 9 },
   ]);
+});
+
+test('Smart completion opens local details for its captured account, network and transaction', async ({ page }) => {
+  await page.goto('/?smart-deployment=1&deployment-phase=complete');
+  await page.getByRole('button', { name: 'View transaction', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Transaction details', exact: true })).toBeVisible();
+  const viewed = await page.evaluate(() => window.__nativeSmartAccountDeploymentFixture.viewed());
+  expect(viewed?.account).toBe('0x1111111111111111111111111111111111111111');
+  expect(viewed?.chainId).toBe('1'); expect(viewed?.hash).toBe('0x' + 'ab'.repeat(32));
+  expect(viewed?.registrationHash).toMatch(/^0x[0-9a-f]{64}$/);
+  await expect(page.getByLabel(viewed!.hash, { exact: true })).toBeVisible();
+  await expect(page.getByText('Ethereum · Chain ID 1', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page.getByText('Deployment screen closed', { exact: true })).toBeVisible();
 });
 
 test('long authorization details remain complete and actions stay reachable on a narrow screen', async ({

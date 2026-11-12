@@ -12,7 +12,7 @@ import {
 } from '../../../source/utils/privacy/merkle.ts';
 import { PRIVACY_POOL_ABI } from '../../../source/utils/privacy/publicSyncProtocol.ts';
 import { getPrivacyPool } from '../../../source/utils/privacy/registry.ts';
-import type { PrivacySnapshot } from '../../../source/utils/privacy/types.ts';
+import type { PrivacySnapshot, PrivacySyncStatus } from '../../../source/utils/privacy/types.ts';
 import { createNativeNetwork } from '../src/custody/networkContext.ts';
 import {
   createNativePrivacyPoolSync,
@@ -206,17 +206,42 @@ test('a retired native batch drains without publishing its checkpoint, paths or 
       return bytes;
     }
   );
+  const statuses: PrivacySyncStatus[] = [];
+  sync.subscribe(status => { statuses.push(status); });
   const pending = sync.refresh();
   await started;
   owner.abort();
+  const observedAtRetirement = statuses.length;
   release();
   await assert.rejects(pending, { message: 'privacy_cancelled' });
+  assert.equal(statuses.length, observedAtRetirement, 'retired observers receive no later progress');
   assert.equal(
     provider.requests.filter((kind) => kind === 'chainId').length,
     1
   );
   await assert.rejects(sync.readSnapshot(poolId));
   await sync.dispose();
+});
+
+test('public sync progress reports the shared verified result without extra requests and stops after unsubscribe', async () => {
+  const data = snapshot(257), provider = fixture(data);
+  const { sync } = create(provider.transport);
+  const statuses: PrivacySyncStatus[] = [];
+  const unsubscribe = sync.subscribe(status => { assert(Object.isFrozen(status)); statuses.push(status); });
+  sync.subscribe(() => { throw Error('observer failure'); });
+  const result = await sync.refresh();
+  assert.equal(result.phase, 'ready');
+  assert(statuses.some(status => status.phase === 'verifying' && status.completed !== undefined && status.total !== undefined));
+  assert.deepEqual(statuses.at(-1), result);
+  assert.equal(result.leafCount, data.leafCount);
+  assert.equal(result.blockNumber, data.asOfBlockNumber);
+  assert.equal(provider.requests.length, 17, 'progress observes memory without new network reads');
+  unsubscribe();
+  const observed = statuses.length;
+  await sync.clear();
+  assert.equal(statuses.length, observed);
+  await sync.dispose();
+  assert.throws(() => sync.subscribe(() => undefined), /privacy_cancelled/);
 });
 
 test('a dense malformed native snapshot drains before contacting the anchor or executing Merkle work', async () => {
