@@ -609,7 +609,7 @@ function NativeActivityContent({
             />;
           }}
           ListEmptyComponent={
-            savedPending ? savedPending.status === 'ready' ? <Notice title={t('mobile.activityViews.nativeActivity.noSavedPendingTransfers')} /> : undefined : snapshot.status !== 'loading' && !snapshot.error ? (
+            savedPending ? savedPending.status === 'ready' ? <Notice title={t('mobile.activityViews.nativeActivity.noSavedPendingTransfers')} /> : undefined : snapshot.status !== 'loading' && !snapshot.error && !snapshot.loadingMore ? (
               snapshot.status === 'unavailable' ? <Notice
                 title={t('mobile.activity.unavailableTitle')}
                 body={t('mobile.activityViews.nativeActivity.refreshToTryAgain')}
@@ -621,7 +621,7 @@ function NativeActivityContent({
               {savedPending ? savedPending.hasMore && savedPending.status !== 'loading' && (
                 <Button title={savedPending.status === 'unavailable' ? t('mobile.connections.tryAgain') : t('mobile.activityViews.nativeActivity.loadMoreSavedTransfers')}
                   variant="secondary" onPress={() => void controller.loadSavedPending()} />
-              ) : snapshot.hasMore && (snapshot.loadingMore ? <View style={s.loadingMore}><ActivityIndicator color={colors.blue} /><Text style={s.caption}>{t('mobile.activityViews.nativeActivity.loadingOlderActivity')}</Text></View> : (
+              ) : snapshot.hasMore && (snapshot.loadingMore ? <View style={s.loadingMore}><ActivityIndicator color={colors.blue} /><Text style={s.caption}>{t(rows.length ? 'mobile.activityViews.nativeActivity.loadingOlderActivity' : 'mobile.activityViews.nativeActivity.loadingActivity')}</Text></View> : (
                 <Button
                   title={
                     snapshot.error || snapshot.status === 'unavailable'

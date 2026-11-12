@@ -511,3 +511,19 @@ test('failed first Activity page has one error and an accurately named retry', (
     assert(all(list.props.ListFooterComponent).some(node => node.type === 'Button' && node.props.title === 'Load older activity'));
   } finally { f.dispose(); }
 });
+
+test('an in-flight first Activity page is loading, not a completed empty history', () => {
+  const f = fixture();
+  try {
+    f.state({ loadingMore: true, hasMore: true });
+    let list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    assert(!all(list.props.ListEmptyComponent).some(node => node.type === 'Text' && node.children.includes('No activity to show')));
+    assert(all(list.props.ListFooterComponent).some(node => node.type === 'Text' && node.children.includes(englishI18n.t('mobile.activityViews.nativeActivity.loadingActivity'))));
+    f.rows([{ hash, checking: false, unavailable: false }]);
+    list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    assert(all(list.props.ListFooterComponent).some(node => node.type === 'Text' && node.children.includes(englishI18n.t('mobile.activityViews.nativeActivity.loadingOlderActivity'))));
+    f.state({ rows: [], loadingMore: false, hasMore: false });
+    list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+    assert(all(list.props.ListEmptyComponent).some(node => node.type === 'Text' && node.children.includes('No activity to show')));
+  } finally { f.dispose(); }
+});
