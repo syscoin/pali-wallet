@@ -267,11 +267,15 @@ test.each([false, true])(
       }
     );
     expect(JSON.parse(readFileSync(output, 'utf8'))).toMatchObject({
-      name: 'Pali Wallet Canary',
+      name: 'Pali Wallet Canary BETA',
       version: '5.0.0.65535',
       version_name: '5.0.0 Canary (65535)',
     });
     const manifest = JSON.parse(readFileSync(output, 'utf8'));
+    expect(manifest.description).toMatch(
+      /^THIS EXTENSION IS FOR BETA TESTING\./
+    );
+    expect(manifest.description.length).toBeLessThanOrEqual(132);
     if (store) expect(manifest).not.toHaveProperty('key');
     else expect(manifest.key).toMatch(/^MIIB/);
     expect(readFileSync(resolve('manifest.json')).equals(tracked)).toBe(true);
