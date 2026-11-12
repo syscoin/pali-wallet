@@ -16,9 +16,9 @@ export function useWelcomeBackdropMotion() {
       if (!live || reduced || !focused || state !== 'active') { stop(); return; }
       if (animation) return;
       const timing = (toValue: number) => Animated.timing(progress, {
-        toValue, duration: 8000, easing: Easing.inOut(Easing.sin), useNativeDriver: true, isInteraction: false,
+        toValue, duration: 6000, easing: Easing.inOut(Easing.sin), useNativeDriver: true, isInteraction: false,
       });
-      animation = Animated.loop(Animated.sequence([timing(1), timing(0)]));
+      animation = Animated.loop(Animated.sequence([timing(1), timing(0)]), { iterations: -1, resetBeforeIteration: false });
       animation.start();
     };
     const preference = AccessibilityInfo.addEventListener('reduceMotionChanged', value => {
@@ -35,7 +35,7 @@ export function useWelcomeBackdropMotion() {
     return () => { live = false; stop(); preference.remove(); app.remove(); blur?.remove(); focus?.remove(); };
   }, [progress]);
   return useMemo(() => ({
-    opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }),
-    transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [-2, 2] }) }],
+    opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }),
+    transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [-5, 5] }) }],
   }), [progress]);
 }
