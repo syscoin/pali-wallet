@@ -1,75 +1,97 @@
-# Pali Wallet Browser extension
+<p align="center">
+  <img src="apps/mobile/assets/app-icon.png" alt="Pali Wallet" width="96" height="96" />
+</p>
 
-Started with
-[web-extension-starter](https://github.com/abhijithvijayan/web-extension-starter)
+# Pali Wallet
 
-To learn how to develop Pali Wallet-compatible applications, visit our [documentation](https://docs.paliwallet.com/).
+A self-custody wallet for Bitcoin, Syscoin and supported EVM and UTXO networks. Pali brings accounts, assets, dApps and hardware wallets together in a Chrome extension and native iOS and Android apps, with a shared wallet and transaction core.
 
-## Getting Started
+[Website](https://paliwallet.com) · [Product tour](https://www.paliwallet.com/media/pali-product-tour.mp4) · [Documentation](https://docs.paliwallet.com) · [Chrome Web Store](https://chromewebstore.google.com/detail/pali-wallet/mgffkfbidihjpoaomajlbgchddlicgpn) · [App Store](https://apps.apple.com/app/id6834040718) · [Google Play](https://play.google.com/store/apps/details?id=com.paliwallet.mobile) · [GitHub releases](https://github.com/syscoin/pali-wallet/releases)
 
-Ensure you have
+**v5 is in development.** Store versions may differ from this branch. See the [mobile guide](apps/mobile/README.md) for implemented features and remaining device and network testing.
 
-- [Node.js](https://nodejs.org) 26.12.1 (security-patched release; see `.nvmrc`) installed
-- [Yarn](https://yarnpkg.com) 1.22.22 installed
+## What’s in Pali
 
-Then run the following:
+- **Accounts you control:** create or restore a wallet, import supported keys, connect a hardware wallet, or watch an account without importing its secrets.
+- **Assets and activity:** native coins, ERC-20 tokens, ERC-721/ERC-1155 collectibles and Syscoin assets, with network-aware balances, transaction details and explorer links. The EVM portfolio can span the selected account’s added networks.
+- **Transfers and recovery:** exact amounts, fee review, advanced nonce selection, eligible Speed Up/Cancel actions and retained signed transactions for reviewed retry after an interrupted submission.
+- **Connected apps:** the extension’s injected provider and mobile WalletConnect, with origin/account/network permissions and explicit transaction and signature reviews.
+- **Hardware and smart accounts:** Ledger and Trezor integrations, supported validator combinations, passkeys and guardian recovery. Availability depends on the device, transport, account policy and network.
+- **Private notes and Sentry:** note backup/restore and supported privacy-pool operations, plus Sentry keys and linked-node controls on configured networks.
 
-- `yarn install` to install dependencies.
-- `yarn run dev:chrome` to start the development server for chrome extension
-- `yarn run dev:firefox` to start the development server for firefox addon
-- `yarn run dev:opera` to start the development server for opera extension
-- `yarn run build:chrome` to build chrome extension
-- `yarn run build:firefox` to build firefox addon
-- `yarn run build:opera` to build opera extension
-- `yarn run build` builds and packs extensions all at once to build/ directory
+Both apps reuse shared account, amount, transaction, recovery and network-validation logic. Platform adapters handle browser permissions, native storage, device authentication and hardware transport.
 
-### Development
+## Networks
 
-- `yarn install` to install dependencies.
-- To watch file changes in development
+Use the network picker for built-in networks or add a supported custom registration. EVM and UTXO accounts retain their respective network and signing rules; network-specific services are available only where configured.
 
-  - Chrome
-    - `yarn run dev:chrome`
-  - Firefox
-    - `yarn run dev:firefox`
-  - Opera
-    - `yarn run dev:opera`
+The v5 catalogue includes **zkSYS mainnet (5757)** by default and **Gateway mainnet (57570)** as an optional network. These networks are configured ahead of launch. Each network refreshes independently, so an unavailable RPC leaves other networks usable.
 
-- **Load extension in browser**
+## Getting started
 
-- ### Chrome
+Use the Node version pinned in [`.nvmrc`](.nvmrc) and **Yarn 1.22.22**. The extension uses the root Yarn lockfile; mobile has its own npm lockfile. Install each dependency graph without regenerating its lockfile.
 
-  - Go to the browser address bar and type `chrome://extensions`
-  - Check the `Developer Mode` button to enable it.
-  - Click on the `Load Unpacked Extension…` button.
-  - Select your extension’s extracted directory.
+### Chrome extension
 
-- ### Firefox
+```sh
+yarn install --frozen-lockfile
+yarn dev:chrome
+```
 
-  - Load the Add-on via `about:debugging` as temporary Add-on.
-  - Choose the `manifest.json` file in the extracted directory
+Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `build/chrome/`. Keep the command running to rebuild after edits. Use a separate browser profile and disposable wallets for development.
 
-- ### Opera
+### Mobile
 
-  - Load the extension via `opera:extensions`
-  - Check the `Developer Mode` and load as unpacked from extension’s extracted directory.
+Install the root dependencies above first, then:
 
-### Production and releases
+```sh
+cd apps/mobile
+npm ci
+npm run ios
+# or: npm run android
+```
 
-- `yarn run build:chrome` builds the production Chrome extension in `build/chrome/` and creates a versioned ZIP in `build/`.
-- `yarn run build:canary` builds the diagnostic Canary variant as `5.0.0.N`; each invocation reserves a new increasing number from the repository's Canary counter. `yarn run build:canary:store` also requires a clean source checkout. Use the production Chrome ZIP for a regular release.
-- `yarn run build` also runs the Firefox and Opera build scripts. These targets require their own browser validation; a successful build does not establish release readiness.
+Native builds require the matching Xcode or Android toolchain and signing setup. The build wrapper prepares pinned native/proving assets and reserves a build number; it requires write access to the repository’s build-counter branch. See the [mobile setup and build guide](apps/mobile/README.md#run) for details.
 
-The extension and mobile source versions are `5.0.0`. `package.json` is canonical for the extension version and short description; both manifest templates read those fields. Keep the committed root manifest synchronized when deliberately changing the release version. Unpacked development builds display `5.0.0 Development` while keeping numeric version `5.0.0`. Canary uses `5.0.0.N` and the label `5.0.0 Canary (N)`; production artifacts use `5.0.0`. Source changes and draft GitHub releases do not update the published store listing. The manifest and ZIP use the same version. Build manifests and receipts stay under ignored `.pali-build/`; ordinary builds do not rewrite the tracked manifest.
+`npm run web` opens the design-validation surface. It is useful for layout review; native custody and OS authentication must be tested in the native app.
 
-Canary numbers use a fast-forward-only Git counter at `refs/heads/pali-canary-builds/5.0.0`, separate from mobile build numbers. Concurrent builders reserve distinct numbers; failed builds consume their number. GitHub access to the canonical repository is required, and an unavailable/malformed counter fails the build instead of choosing a local or timestamp fallback. The suffix is capped at Chrome's 65,535 limit; change the three-part Canary base deliberately before exhaustion. Store builds and receipts identify the exact clean source commit, but still require normal release review and store submission.
+## Repository map
 
-The Canary base is read directly from `package.json`, not configured separately. A `5.0.1` upgrade-test branch therefore uses `refs/heads/pali-canary-builds/5.0.1` and produces `5.0.1.N`; it does not update the production store item. Chrome compares all numeric version components, so an installed `5.0.1.N` will not automatically downgrade to `5.0.0.N`. Use an isolated test profile for such upgrade/downgrade tests.
+| Path                                  | Purpose                                                               |
+| ------------------------------------- | --------------------------------------------------------------------- |
+| [`source/`](source/)                  | Chrome extension UI, background controllers and provider integration  |
+| [`source/shared/`](source/shared/)    | Platform-independent logic used by extension and mobile               |
+| [`apps/mobile/`](apps/mobile/)        | React Native app, native modules, platform adapters and qualification |
+| [`e2e/`](e2e/) and [`tests/`](tests/) | Extension browser, integration and unit checks                        |
+| [`docs/`](docs/)                      | User/developer documentation and implementation notes                 |
 
-Use `build:canary:store` for Web Store uploads: it omits the local development `key` field, which the store rejects. Regular `build:canary` keeps that key so unpacked builds retain their local extension ID.
+The shared SDK lives in [Sysweb3](https://github.com/sidhujag/sysweb3), with UTXO transaction support from [SyscoinJS](https://github.com/syscoin/syscoinjs-lib) and [syscointx-js](https://github.com/syscoin/syscointx-js). Dependency versions are pinned in the package manifests and lockfiles.
 
-After the reviewed PRs merge, run **Canary release candidate** in GitHub Actions from `master`. It checks out the exact selected master commit, reserves the next Canary number, verifies the archive against its receipt, and creates a draft GitHub prerelease with both files. It does not publish to the Web Store. This provides a Canary build without bumping the production package version or triggering a production release.
+## Development and release checks
 
-The [release workflow](.github/workflows/release.yml) runs on pushes to `master`, `develop`, and `pre-release`. It skips release builds when the package version is unchanged. A version change builds the Chrome production and Canary ZIPs, checks that exactly one of each exists and that the release tag is new, then creates a **draft prerelease** tied to the triggering commit. Review the artifacts and required checks before publishing. Creating a GitHub draft does not submit or publish the extension to the Chrome Web Store.
+Run the checks relevant to your change:
 
-See the [documentation index](docs/README.md) for user guides, API documentation, and implementation notes.
+```sh
+# From the repository root
+yarn type-check
+yarn lint
+yarn test:unit
+
+# Mobile checks
+cd apps/mobile
+npm run typecheck
+npm run lint
+npm test
+```
+
+Run the browser, visual and native checks that cover your change. The CI workflows and [native testing guide](apps/mobile/qualification/README.md) describe the required checks.
+
+The extension and mobile marketing version stays at **5.0.0** during v5 development. Mobile builds increment iOS/Android build numbers; extension Canary builds use **5.0.0.N**. Production and Canary are separate distribution channels. The [build and release guide](docs/build-and-release.md) covers artifacts, receipts, counters and store submission.
+
+## Security and support
+
+Mobile sensitive software operations require OS-enforced authorization; normal public wallet browsing does not decrypt the signing root. Extension vault access uses a password, with optional local passkey unlock. Mobile signing runs in the app process. Encryption and OS-protected credentials protect its keys at rest.
+
+Read the [privacy and safety guide](https://docs.paliwallet.com/docs/users/privacy-and-safety) and [mobile security requirements](apps/mobile/SECURITY.md). Never include a recovery phrase, private key, private note or password in an issue or support message. For security concerns, contact [pali@syscoin.org](mailto:pali@syscoin.org) privately.
+
+Pali Wallet is available under the [MIT license](LICENSE). The browser extension originally used [web-extension-starter](https://github.com/abhijithvijayan/web-extension-starter).
