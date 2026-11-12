@@ -27,6 +27,7 @@ function analyze(
       write(`source/assets/locales/${language}.json`, JSON.stringify(resource));
     write('source/Screen.tsx', "t('general.title');");
     write('apps/mobile/src/screens/Screen.tsx', native);
+    write('apps/mobile/App.tsx', '');
     for (const [file, contents] of Object.entries(extra)) write(file, contents);
     return spawnSync(
       process.execPath,
@@ -81,4 +82,14 @@ it('native test fixtures and comments cannot keep a dead native resource key ali
   expect(result.status).toBe(1);
   expect(result.stdout).toContain('Unused keys in en.json: 1 of 3');
   expect(result.stdout).toContain('  mobile.unused');
+});
+
+it('counts translations in the actual native app entry point', () => {
+  const result = analyze(
+    { general: { title: 'Extension' }, mobile: { entry: 'Wallet locked' } },
+    '',
+    { 'apps/mobile/App.tsx': "t('mobile.entry');" }
+  );
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain('Unused keys in en.json: 0 of 2');
 });

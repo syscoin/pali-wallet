@@ -258,7 +258,7 @@ test('watch shell is operational without borrowing native permissions or demo ac
   await expect(page.getByRole('button', { name: /Reveal|recovery phrase|private key|Send/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Hide accounts', exact: true }).click();
   await expect(page.getByRole('tab')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'View my accounts', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Unlock wallet', exact: true })).toBeVisible();
   const audit = await page.evaluate(() => window.__watchFixture.audit());
   expect(audit.unlocks).toBe(0); expect(audit.signs).toBe(0); expect(audit.broadcasts).toBe(0);
 });

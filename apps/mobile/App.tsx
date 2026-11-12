@@ -243,12 +243,17 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   }, []);
   const [filter, setFilter] = useState<NetworkId | 'all'>('all');
   const [snapshot, setSnapshot] = useState(blankSnapshot);
-  useEffect(() => { if (snapshot.status !== 'ready') watchIdle.allowNewInput(); }, [snapshot.status]);
+  useEffect(() => {
+    // The locked surface admits a new gesture after its previous owner retires.
+    // Existing captured gestures remain invalid because stop() advances the interval.
+    if (viewLock.phase === 'locked') custodyIdle.allowNewInput();
+    if (snapshot.status !== 'ready' || viewLock.phase === 'locked') watchIdle.allowNewInput();
+  }, [snapshot.status, viewLock.phase]);
   const [watchAuthority, setWatchAuthority] = useState<WatchOnlyAuthority | null>(null);
   const notificationSnapshot = useSyncExternalStore(nativeActivityNotifications.subscribe, nativeActivityNotifications.getSnapshot, nativeActivityNotifications.getSnapshot);
   const routedNotification = useRef<string | null>(null);
   const route: Route =
-    !preview && requestedRoute !== 'native' && snapshot.accounts.length > 0 && viewLock.phase !== 'unlocked' ? 'locked' : !preview &&
+    !preview && viewLock.phase !== 'unlocked' ? 'locked' : !preview &&
     !['welcome', 'add', 'locked', 'design', 'native', 'accounts'].includes(requestedRoute) &&
     snapshot.status !== 'ready'
       ? snapshot.accounts.length
@@ -339,6 +344,21 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     } catch { setViewError(true); }
     finally { openingView.current = false; setViewBusy(false); }
   }, [watchAccounts, rememberSelection, go, setSheet]);
+  const unlockRequestedView = async () => {
+    if (openingView.current || !foreground.current) return;
+    const navigation = navigationGeneration.current, lifecycle = lifecycleGeneration.current;
+    openingView.current = true; setViewBusy(true); setViewError(false);
+    const check = () => {
+      if (navigationGeneration.current !== navigation || lifecycleGeneration.current !== lifecycle ||
+          (!foreground.current && !isNativeCredentialPromptActive())) throw Error('CANCELLED');
+    };
+    try {
+      check();
+      if (publicViewLock.getSnapshot().phase === 'locked') await publicViewLock.unlock(authorizePublicView, check);
+      publicViewLock.assertUnlocked(); check();
+    } catch { setViewError(true); }
+    finally { openingView.current = false; setViewBusy(false); }
+  };
   useEffect(() => {
     const eventId = notificationSnapshot.pendingEventId;
     if (!eventId || Platform.OS === 'web' || !foreground.current || routedNotification.current === eventId || loading) return;
@@ -704,7 +724,8 @@ function AppContent({ availableWatchNetworks }: AppProps) {
               disabled={viewBusy || viewLock.phase === 'opening' || viewLock.phase === 'unavailable'}
               onPress={() => {
                 const id = snapshot.selectedAccountId ?? snapshot.accounts[0]?.id;
-                if (id) void openWatch({ kind: 'watch', id });
+                if (requestedRoute !== 'native' && id) void openWatch({ kind: 'watch', id });
+                else void unlockRequestedView();
               }}
             />
             {viewLock.phase === 'unlocked' && <>
@@ -716,7 +737,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       >
         <View style={[s.center, { flex: 1 }]}>
           {viewLock.phase === 'locked' ? <Icon name="lock" size={64} color={colors.blue} /> : <PaliMark size={64} />}
-          <Text style={[styles.h1, { textAlign: 'center' }]}>
+          <Text accessibilityRole="header" style={[styles.h1, { textAlign: 'center' }]}>
             {viewLock.phase === 'locked' ? t('mobile.viewLock.title') : 'Welcome back.'}
           </Text>
           <Text style={[styles.muted, { textAlign: 'center', maxWidth: 280 }]}>

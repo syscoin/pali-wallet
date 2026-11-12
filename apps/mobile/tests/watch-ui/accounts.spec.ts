@@ -1,4 +1,4 @@
-import { authenticateNativeOperation, deviceAuthorizationPrompt, revealBackupPhrase, confirmFixtureBackup } from '../ui/operationAuthentication';
+import { unlockPublicView, authenticateNativeOperation, deviceAuthorizationPrompt, revealBackupPhrase, confirmFixtureBackup } from '../ui/operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 import { nativeAccountName, watchAccountName } from '../accountControlNames';
 const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
@@ -13,8 +13,8 @@ async function waitForPublicWallet(page: Page) {
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
   await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
 }
-async function reopenPublicWallet(page: Page) {
-  await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
+async function unlockPublicWallet(page: Page) {
+  await unlockPublicView(page);
   await waitForPublicWallet(page);
 }
 async function lockWallet(page: Page) {
@@ -120,7 +120,7 @@ for (const change of ['select', 'create', 'shared-select', 'stale-create'] as co
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await expect(page.getByText(`${name} · Ethereum`, { exact: true })).toBeVisible();
     await lockWallet(page);
-    await reopenPublicWallet(page);
+    await unlockPublicWallet(page);
     await expect(page.getByText(`${name} · Ethereum`, { exact: true })).toBeVisible();
     expect(await page.evaluate(() => window.__watchFixture.selection())).toEqual({ kind: 'hd', id });
     await page.getByRole('button', { name: 'Receive', exact: true }).click();
@@ -155,7 +155,7 @@ test('backup-required public entry consumes the hint before backup completion an
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByText('Savings · Ethereum', { exact: true })).toBeVisible();
   await lockWallet(page);
-  await reopenPublicWallet(page);
+  await unlockPublicWallet(page);
   await expect(page.getByText('Savings · Ethereum', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.selection())).toEqual({ kind: 'hd', id: 'hd:60:1' });
   await page.getByRole('button', { name: 'Receive', exact: true }).click();
@@ -168,8 +168,8 @@ test('interrupted native public reopen retains the selected account without a si
   await page.goto('/'); await waitForPublicWallet(page);
   await page.evaluate(() => window.__watchFixture.delayUnlock(true));
   await lockWallet(page);
-  await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
-  await expect(page.getByText('Unlocking your wallet securely…', { exact: true })).toBeVisible();
+  await unlockPublicView(page);
+  await expect(page.getByText('Opening your wallet securely…', { exact: true })).toBeVisible();
   await page.evaluate(() => { window.__watchFixture.lifecycle('background'); window.__watchFixture.releaseUnlock(); });
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
   await page.evaluate(() => window.__watchFixture.lifecycle('active'));
@@ -182,8 +182,8 @@ test('pending native public reopen cannot revive signing after exit and watch se
   await page.goto('/'); await openNative(page);
   await page.evaluate(() => window.__watchFixture.delayUnlock(true));
   await lockWallet(page);
-  await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
-  await expect(page.getByText('Unlocking your wallet securely…', { exact: true })).toBeVisible();
+  await unlockPublicView(page);
+  await expect(page.getByText('Opening your wallet securely…', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
   await expectWatchOnly(page);
@@ -232,7 +232,9 @@ test('review and pending signing are revoked before a watch account becomes acti
   await page.evaluate(() => window.__watchFixture.releaseSign());
   expect((await fixture(page)).broadcasts).toBe(0);
   expect(await page.evaluate(() => window.__watchFixture.events().includes('sign:finish'))).toBe(false);
-  await reopenPublicWallet(page);
+  // Cancelled signing closes its runtime; it does not set the deliberate view-lock marker.
+  await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
+  await waitForPublicWallet(page);
   await selectWatchFromNative(page);
   await expect.poll(() => page.evaluate(() => window.__watchFixture.oldPhases()[0])).toBe('disposed');
   await expectWatchOnly(page);

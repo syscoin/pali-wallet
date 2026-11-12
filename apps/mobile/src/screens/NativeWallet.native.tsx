@@ -1608,7 +1608,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       }, onSelected: receipt => finishNetworkSelection(networkReturn, receipt) } : undefined} />;
   if (sentryRoute && sentry) return <NativeSentryHub key={sentryScope!.context}
     networkLabel={utxo!.name} openKeys={sentry.openKeys} openNodes={sentry.openNodes} onBack={closeStage} />;
-  if (stage === 'auto-lock' && snapshot.phase === 'ready' && saveIdle) return <AutoLockSettings mode="custody" save={saveIdle} onBack={closeStage} />;
+  if (stage === 'auto-lock' && ['ready', 'backup-required'].includes(snapshot.phase) && saveIdle) return <AutoLockSettings mode="custody" save={saveIdle} onBack={closeStage} />;
   if (stage === 'private-notes' && snapshot.phase === 'ready') return <NativeNoteFilesMenu onBack={closeStage}
     onDeposit={canDeposit ? () => {
       if (AppState.currentState === 'active' && readyContext()) { depositBackupReturn.current = null; setDepositBackupRoute(null); setDepositTask(null); setStage('note-deposit'); }
@@ -1696,7 +1696,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       onBack={closeStage} onLock={lockWallet} onViewRecovery={() => setStage('backup-intro')}
       onRemoveWallet={onWalletRemoved && canRemoveWallet ? openRemoval : undefined}
       onRestoreAccess={credentialPresent === false ? openRecovery : undefined}
-      onAutoLock={snapshot.phase === 'ready' && saveIdle ? () => setStage('auto-lock') : undefined}
+      onAutoLock={['ready', 'backup-required'].includes(snapshot.phase) && saveIdle ? () => setStage('auto-lock') : undefined}
       captureFailureHandler={() => {
         const local = controllersRef.current;
         const context = local?.authority.getSnapshot();
