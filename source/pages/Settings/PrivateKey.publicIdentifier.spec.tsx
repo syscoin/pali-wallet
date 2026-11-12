@@ -22,6 +22,18 @@ jest.mock('react-redux', () => ({
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
+jest.mock('state/store', () => ({
+  __esModule: true,
+  default: { subscribe: () => () => undefined },
+}));
+jest.mock('hooks/controllerStatus', () => ({
+  getControllerStatus: () => ({
+    isUnlocked: true,
+    isLoading: false,
+    connectionUnavailable: false,
+  }),
+  subscribeControllerStatus: () => () => undefined,
+}));
 jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: mockEmitter }),
 }));
@@ -42,6 +54,12 @@ jest.mock('components/index', () => ({
   ValidatedPasswordInput: jest.requireActual(
     'components/Input/ValidatedPasswordInput'
   ).ValidatedPasswordInput,
+}));
+jest.mock('utils/navigationState', () => ({
+  getWalletNavigationScope: () => ({
+    account: 'test-account',
+    network: 'test-network',
+  }),
 }));
 jest.mock('utils/index', () => ({
   ellipsis: jest.requireActual('utils/format').ellipsis,

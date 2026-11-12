@@ -41,7 +41,7 @@ async function fixture(failSave = false, restoreAccessAvailable = false) {
     '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'biometrics', icon: 'fingerprint' }) },
     '../platform/localization': nativeTranslationFixture,
     './privateAuthenticationLifecycle': privateAuthenticationLifecycle,
-    'expo-clipboard': { setStringAsync() { assert.fail('Privacy settings must not copy a key'); } },
+    '../platform/secretClipboard': { copyNativeSecret() { assert.fail('Privacy settings must not copy a key'); } },
     'react-native': { ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'Switch', 'View'].map(name => [name, name])),
       AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
       BackHandler: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} }, Platform: { OS: 'ios' }, StyleSheet: { create: (value: unknown) => value } },

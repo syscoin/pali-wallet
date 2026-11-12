@@ -1,5 +1,5 @@
 import { Form } from 'antd';
-import React, { useState, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 
@@ -12,46 +12,40 @@ import {
 } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { useSecretDisclosure } from 'hooks/useSecretDisclosure';
 import { navigateBack } from 'utils/navigationState';
 
 const PhraseView = () => {
-  const [phrase, setPhrase] = useState<string>();
-
-  // Password validation state like ForgetWallet
-  const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
-
   const { t } = useTranslation();
   const { navigate } = useUtils();
   const location = useLocation();
   const { controllerEmitter } = useController();
 
   const [form] = Form.useForm();
+  const disclosure = useSecretDisclosure(
+    JSON.stringify([
+      location.key,
+      location.pathname,
+      location.search,
+      location.hash,
+    ]),
+    () => form.resetFields()
+  );
 
   // Password validation function for the ValidatedPasswordInput
-  const validatePassword = useCallback(async (password: string) => {
-    const seed = await controllerEmitter(['wallet', 'getSeed'], [password]);
-    if (!seed) {
-      throw new Error('Invalid password');
-    }
-    return seed;
-  }, []);
-
-  // Handle successful password validation
-  const handleValidationSuccess = useCallback((seed: string) => {
-    setPhrase(String(seed));
-    setIsPasswordValid(true);
-  }, []);
-
-  // Handle failed password validation
-  const handleValidationError = useCallback(() => {
-    setPhrase(undefined);
-    setIsPasswordValid(false);
-  }, []);
+  const validatePassword = (password: string) =>
+    disclosure.read(async () => {
+      const seed = await controllerEmitter(['wallet', 'getSeed'], [password]);
+      if (!seed) throw new Error('Invalid password');
+      return String(seed);
+    });
 
   // Navigation callback
   const handleClose = useCallback(() => {
+    disclosure.reset();
+    form.resetFields();
     navigateBack(navigate, location);
-  }, [navigate, location]);
+  }, [navigate, location, disclosure.reset, form]);
 
   return (
     <>
@@ -68,9 +62,9 @@ const PhraseView = () => {
         >
           <ValidatedPasswordInput
             onValidate={validatePassword}
-            onValidationSuccess={handleValidationSuccess}
-            onValidationError={handleValidationError}
-            onValidationReset={handleValidationError}
+            onValidationSuccess={disclosure.accept}
+            onValidationError={disclosure.reset}
+            onValidationReset={disclosure.reset}
             placeholder={t('settings.enterYourPassword')}
             id="phraseview_password"
             form={form}
@@ -80,8 +74,9 @@ const PhraseView = () => {
 
           <Form.Item name="seed" className="w-full md:max-w-md">
             <SeedPhraseDisplay
-              seedPhrase={phrase}
-              isEnabled={isPasswordValid}
+              seedPhrase={disclosure.secret}
+              isEnabled={!!disclosure.secret}
+              copyAuthorization={disclosure.isCurrent}
               showEyeToggle={true}
               displayMode="textarea"
             />

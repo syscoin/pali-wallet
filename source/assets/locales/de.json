@@ -1,4 +1,9 @@
 {
+  "secretClipboard": {
+    "copyKey": "Privaten Schlüssel kopieren",
+    "warning": "Andere Apps können Ihre Zwischenablage lesen. Fügen Sie dieses Geheimnis nur in eine App ein, der Sie vertrauen.",
+    "copyPhrase": "Wiederherstellungsphrase kopieren"
+  },
   "updates": {
     "unsupportedBuild": "Für diese Installation sind keine Store-Updates verfügbar.",
     "title": "Wallet-Updates",
@@ -2200,7 +2205,6 @@
       "evmBody": "Jeder mit diesem Schlüssel kann Guthaben dieses Kontos in EVM-Netzwerken ausgeben. Er sichert nicht den Rest deiner Wallet. Zeige ihn nur an einem geschützten Ort an.",
       "hide": "Privaten Schlüssel ausblenden",
       "sessionOnly": "Blende den Schlüssel aus, wenn du fertig bist. Zum erneuten Anzeigen ist eine neue Autorisierung nötig.",
-      "copyPrivateKey": "Privaten Schlüssel kopieren",
       "reveal": "Privaten Schlüssel anzeigen",
       "confirming": "Autorisierung…",
       "hardwareGuide": "Dein {{device}}-Konto verwendet eine eigene Wiederherstellungssicherung. Die in Pali angezeigte Phrase gehört zu dieser Pali-Wallet."

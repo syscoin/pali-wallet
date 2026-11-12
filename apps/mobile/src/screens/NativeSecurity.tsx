@@ -4,7 +4,7 @@ import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { setStringAsync, StringFormat } from 'expo-clipboard';
+import { copyNativeSecret } from '../platform/secretClipboard';
 import type { HdKeyExportFlow, HdKeyExportPresentation } from '../custody/hdKeyExport';
 import { Button, Card, colors, Header, IconButton, Notice, Row, Screen, styles, Text } from '../ui';
 
@@ -111,13 +111,8 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
     if (state.copying || state.busy || !current()) return;
     state.copying = true; setCopying(true); setCopied(false); setError('');
     try {
-      const success = await setStringAsync(value.privateKey, {
-        inputFormat: StringFormat.PLAIN_TEXT,
-        android: { isSensitive: true },
-        ios: { localOnly: true, expiresAt: new Date(Date.now() + 120000) },
-      });
+      await copyNativeSecret(() => value.privateKey, current);
       if (!current()) return;
-      if (!success) throw new Error('COPY_FAILED');
       setCopied(true);
     } catch {
       if (current()) setError(t('transactions.copyFailed'));
@@ -153,8 +148,9 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
             ? <Notice title={t('mobile.security.wifTitle')} body={t('mobile.security.wifBody')} tone="amber" />
             : <Notice title={t('mobile.security.evmTitle')} body={t('mobile.security.evmBody')} tone="amber" />}
           {shown ? <>
+            <Text style={styles.muted}>{t('secretClipboard.warning')}</Text>
             <View style={s.secret}><Text selectable={false} style={s.key}>{shown.privateKey}</Text>
-              <IconButton icon={copied ? 'check' : 'copy'} label={t(copied ? 'components.copied' : 'mobile.security.copyPrivateKey')}
+              <IconButton icon={copied ? 'check' : 'copy'} label={t(copied ? 'components.copied' : 'secretClipboard.copyKey')}
                 disabled={copying} onPress={() => copyKey(shown)} />
             </View>
             {copied && <Text accessibilityLiveRegion="polite" style={s.copied}>{t('components.copied')}</Text>}

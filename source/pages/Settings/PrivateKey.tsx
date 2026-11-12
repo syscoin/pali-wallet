@@ -5,8 +5,10 @@ import { useSelector } from 'react-redux';
 
 import { FiExternalLink as ExternalLinkIcon } from 'components/Icon/Icon';
 import { Card, CopyCard, ValidatedPasswordInput } from 'components/index';
+import { SecretCopyButton } from 'components/SecretCopyButton';
 import { useAdjustedExplorer, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { useSecretDisclosure } from 'hooks/useSecretDisclosure';
 import { RootState } from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import { ellipsis } from 'utils/index';
@@ -44,8 +46,6 @@ const PrivateKeyView = () => {
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copyText] = useCopyClipboard();
-  const [valid, setValid] = useState<boolean>(false);
-  const [currentXprv, setCurrentXprv] = useState<string>('');
   const [isPrivateKeyVisible, setIsPrivateKeyVisible] =
     useState<boolean>(false);
   const [form] = Form.useForm();
@@ -54,16 +54,15 @@ const PrivateKeyView = () => {
     activeNetwork.url,
     activeAccountMeta.type,
     activeAccountMeta.id,
+    activeAccount?.address,
+    activeAccount?.xpub,
   ]);
-  const [validatedContext, setValidatedContext] = useState('');
-  const isCurrentKeyValid = valid && validatedContext === keyContext;
-
-  useEffect(() => {
-    setValid(false);
-    setCurrentXprv('');
+  const disclosure = useSecretDisclosure(keyContext, () => {
     setIsPrivateKeyVisible(false);
     form.resetFields();
-  }, [keyContext, form]);
+  });
+  const currentXprv = disclosure.secret;
+  const isCurrentKeyValid = !!currentXprv;
 
   const getDecryptedPrivateKey = async (key: string) => {
     const privateKey = (await controllerEmitter(
@@ -81,25 +80,16 @@ const PrivateKeyView = () => {
   }, [copied, alert, t]);
 
   // Password validation function for ValidatedPasswordInput
-  const validatePassword = async (password: string) => {
+  const validatePassword = async (password: string) =>
     // Secret export already validates the password and enforces the persisted
     // attempt limit. A separate unlock would bypass that limit on failures.
-    const privateKey = await getDecryptedPrivateKey(password);
-    return { privateKey, context: keyContext };
-  };
-
+    disclosure.read(() => getDecryptedPrivateKey(password));
   // Handle successful password validation
-  const handleValidationSuccess = (result: any) => {
-    if (result.context !== keyContext) return;
-    setValidatedContext(result.context);
-    setValid(true);
-    setCurrentXprv(result.privateKey);
-  };
+  const handleValidationSuccess = disclosure.accept;
 
   // Handle failed password validation
   const handleValidationError = () => {
-    setValid(false);
-    setCurrentXprv('');
+    disclosure.reset();
     setIsPrivateKeyVisible(false);
   };
 
@@ -186,7 +176,7 @@ const PrivateKeyView = () => {
 
       {!isHardwareAccount && !isWatchOnlyAccount && (
         <>
-          {/* Private key display - view-only, no copy to prevent clipboard attacks */}
+          {/* Copy exports only the current authenticated, visibly revealed key. */}
           <div className="w-full md:max-w-md bg-bkg-4 border border-bkg-4 p-4 text-xs rounded-lg">
             <div className="flex items-center justify-between w-full">
               <p>{t('settings.yourPrivateKey')}</p>
@@ -234,6 +224,13 @@ const PrivateKeyView = () => {
                   : '********...************'}
               </p>
             </div>
+            {isCurrentKeyValid && currentXprv && isPrivateKeyVisible && (
+              <SecretCopyButton
+                secret={currentXprv}
+                isCurrent={disclosure.isCurrent}
+                label={t('secretClipboard.copyKey')}
+              />
+            )}
           </div>
         </>
       )}

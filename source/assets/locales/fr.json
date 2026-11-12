@@ -1,4 +1,9 @@
 {
+  "secretClipboard": {
+    "copyKey": "Copier la clé privée",
+    "warning": "D’autres applications peuvent lire votre presse-papiers. Collez ce secret uniquement dans une application de confiance.",
+    "copyPhrase": "Copier la phrase de récupération"
+  },
   "updates": {
     "unsupportedBuild": "Les mises à jour du store ne sont pas disponibles pour cette installation.",
     "title": "Mises à jour du portefeuille",
@@ -2200,7 +2205,6 @@
       "evmBody": "Toute personne possédant cette clé peut dépenser les fonds de ce compte sur les réseaux EVM. Elle ne sauvegarde pas le reste de votre portefeuille. Affichez-la uniquement à l’abri des regards.",
       "hide": "Masquer la clé privée",
       "sessionOnly": "Masquez la clé lorsque vous avez terminé. Une nouvelle autorisation est nécessaire pour l’afficher à nouveau.",
-      "copyPrivateKey": "Copier la clé privée",
       "reveal": "Afficher la clé privée",
       "confirming": "Autorisation…",
       "hardwareGuide": "Votre compte {{device}} utilise sa propre sauvegarde de récupération. La phrase affichée dans Pali appartient à ce portefeuille Pali."

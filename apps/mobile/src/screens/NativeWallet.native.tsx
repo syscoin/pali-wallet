@@ -46,6 +46,7 @@ import { useNativeNoteBackup } from './useNativeNoteBackup';
 import { ensurePrivacyShield } from '../platform/privacyShield.native';
 import type { CustodySnapshot } from '../custody/types';
 import type { SeedBackupPresentation } from '../custody/seedBackup';
+import { NativeSeedPhraseCopy } from './NativeSeedPhraseCopy';
 import { Button, Card, colors, Header, Icon, Notice, PaliMark, Row, Screen, styles, Text } from '../ui';
 import { type NativeReceiveContinuation } from './NativePortfolio';
 import { NativePortfolioRoute, type NativeAccountDetail } from './NativeAccountOverview';
@@ -308,6 +309,17 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const [credentialPresent, setCredentialPresent] = useState<boolean | null>(null);
   const [phrase, setPhrase] = useState('');
   const [presentation, setPresentation] = useState<SeedBackupPresentation | null>(null);
+  const backupCopyOwner = useRef<{ local: Controllers; epoch: number; presentation: SeedBackupPresentation } | null>(null);
+  useLayoutEffect(() => {
+    const local = controllersRef.current;
+    backupCopyOwner.current = stage === 'words' && presentation && local ? { local, epoch: epoch.current, presentation } : null;
+  }, [stage, presentation, controllerOwner, controllersRef]);
+  const isBackupCopyCurrent = useCallback((shown: SeedBackupPresentation) => {
+    const owned = backupCopyOwner.current;
+    return !!owned && owned.presentation === shown && mounted.current && AppState.currentState === 'active' &&
+      controllersRef.current === owned.local && nativeLifecycle.current(screenToken.current) === owned.local &&
+      epoch.current === owned.epoch && owned.local.backup.isCurrent(shown.id);
+  }, [controllersRef]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [orphanedStorage, setOrphanedStorage] = useState(false);
@@ -325,6 +337,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const { cancel: cancelNoteRestore, lock: lockNoteRestore } = noteRestore;
 
   const clearSecrets = useCallback(() => {
+    backupCopyOwner.current = null;
     setPhrase(''); setPresentation(null);
   }, []);
   const revoke = useCallback((background = false) => {
@@ -1153,7 +1166,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     };
     const unsubscribeMessages = local.connections.subscribe(updateMessage);
     updateMessage();
-    const clear = local.backup.onClear(() => { setPresentation(null); });
+    const clear = local.backup.onClear(() => { backupCopyOwner.current = null; setPresentation(null); });
     detachSubscriptions.current = () => { unsubscribe(); unsubscribeMessages(); clear(); };
     setProtectedScreen(true);
   }, [clearSecrets, readyContext, controllersRef]);
@@ -1858,10 +1871,11 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   else if (!protectedScreen || snapshot.phase === 'opening') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>{t("mobile.walletViews.openingYourWalletSecurely")}</Text></View>;
   else if (snapshot.phase === 'authenticating') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>{t("mobile.walletViews.unlockingYourWalletSecurely")}</Text></View>;
   else if (stage === 'words' && presentation) {
-    footer = <Button title={t("buttons.continue")} disabled={busy} onPress={() => setStage('backup-verify')} />;
+    footer = <Button title={t("buttons.continue")} disabled={busy} onPress={() => { backupCopyOwner.current = null; setStage('backup-verify'); }} />;
     body = <>
       <Notice title={t("mobile.walletViews.writeTheseWordsDownInOrder")} body={t("mobile.walletViews.anyoneWithTheseWordsCanControlYourWalletKeepThemOfflinePaliSupportWillNeverAskForThem")} tone="amber" />
       <View style={s.wordGrid}>{presentation.words.map((word, index) => <View key={index} style={s.word}><Text style={s.wordNumber}>{index + 1}</Text><Text style={s.wordText}>{word}</Text></View>)}</View>
+      <NativeSeedPhraseCopy key={presentation.id} presentation={presentation} isCurrent={isBackupCopyCurrent} />
     </>;
   }
   else if (stage === 'backup-complete' && snapshot.phase === 'ready') {

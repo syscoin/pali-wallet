@@ -94,8 +94,45 @@ private fun checkSlhScheduler() {
       release.countDown(); check(done.await(20, TimeUnit.SECONDS)); check(failures.get() == 0 && active.get() == 0)
     } finally { release.countDown(); executor.shutdown(); check(executor.awaitTermination(20, TimeUnit.SECONDS)) }
   }
+  run {
+    val executor = SlhManualExecutor(); val scheduler = PaliSlhScheduler(1, executor)
+    val order = mutableListOf<String>()
+    scheduler.cleanup(work = {
+      order.add("cleanup")
+      check(!scheduler.enqueue(independent, {}, rejected))
+    }, complete = {
+      order.add("complete")
+      check(scheduler.enqueue(independent, { order.add("successor") }, rejected)) { "Cleanup completion retained its admission barrier" }
+    })
+    executor.drain(); check(order == listOf("cleanup", "complete", "successor"))
+  }
+  run {
+    val executor = SlhManualExecutor(); val scheduler = PaliSlhScheduler(1, executor)
+    val order = mutableListOf<String>()
+    scheduler.cleanup(work = { order.add("first") }, complete = {
+      check(!scheduler.enqueue(independent, {}, rejected)) // The next cleanup still owns its barrier.
+      order.add("first-complete")
+    })
+    scheduler.cleanup(work = { order.add("second") }, complete = {
+      check(scheduler.enqueue(independent, { order.add("successor") }, rejected))
+      order.add("second-complete")
+    })
+    executor.drain(); check(order == listOf("first", "first-complete", "second", "second-complete", "successor"))
+  }
+  run {
+    val scheduler = PaliSlhScheduler(1, Executor { throw RejectedExecutionException() })
+    var cleanups = 0; var completions = 0; var refusals = 0
+    scheduler.cleanup(work = {
+      cleanups++
+      check(!scheduler.enqueue(independent, {}, rejected))
+    }, complete = {
+      completions++
+      check(scheduler.enqueue(independent, { error("Rejected work ran") }, { refusals++ }))
+    })
+    check(cleanups == 1 && completions == 1 && refusals == 1)
+  }
   check(PaliSlhLeafWorker.parallelism == minOf(6, maxOf(1, Runtime.getRuntime().availableProcessors() - 1)))
-  println("6 bounded FIFO scheduler controls passed")
+  println("9 bounded FIFO scheduler controls passed, including cleanup completion admission")
 }
 
 /** Exact production Kotlin + JNI file code, with only Android/Expo shell types stubbed.

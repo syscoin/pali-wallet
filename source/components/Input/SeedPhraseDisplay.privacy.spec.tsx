@@ -14,6 +14,43 @@ const replacement = 'synthetic replacement two';
 const mask =
   '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****';
 const displayModes = ['words', 'textarea'] as const;
+it.each(displayModes)(
+  'offers optional %s copy only while the authorized phrase is visible',
+  (displayMode) => {
+    const view = render(
+      <SeedPhraseDisplay
+        displayMode={displayMode}
+        seedPhrase={seed}
+        copyAuthorization={() => true}
+      />
+    );
+    expect(
+      screen.queryByRole('button', { name: 'secretClipboard.copyPhrase' })
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'import.showSeedPhrase' })
+    );
+    expect(
+      screen.getByRole('button', { name: 'secretClipboard.copyPhrase' })
+    ).toBeVisible();
+    expect(screen.getByText('secretClipboard.warning')).toBeVisible();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'import.hideSeedPhrase' })
+    );
+    expect(
+      screen.queryByRole('button', { name: 'secretClipboard.copyPhrase' })
+    ).toBeNull();
+    view.rerender(
+      <SeedPhraseDisplay displayMode={displayMode} seedPhrase={seed} />
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'import.showSeedPhrase' })
+    );
+    expect(
+      screen.queryByRole('button', { name: 'secretClipboard.copyPhrase' })
+    ).toBeNull();
+  }
+);
 const renderedPhrase = (container: HTMLElement, displayMode: string) =>
   displayMode === 'textarea'
     ? container.querySelector('textarea')!.value
