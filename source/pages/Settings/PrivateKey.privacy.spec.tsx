@@ -1,6 +1,12 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import React from 'react';
 
 import { KeyringAccountType } from 'types/network';
@@ -17,6 +23,18 @@ jest.mock('react-redux', () => ({
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: mockTranslate }),
 }));
+jest.mock('state/store', () => ({
+  __esModule: true,
+  default: { subscribe: () => () => undefined },
+}));
+jest.mock('hooks/controllerStatus', () => ({
+  getControllerStatus: () => ({
+    isUnlocked: true,
+    isLoading: false,
+    connectionUnavailable: false,
+  }),
+  subscribeControllerStatus: () => () => undefined,
+}));
 jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: mockEmitter }),
 }));
@@ -29,6 +47,7 @@ jest.mock('hooks/index', () => ({
 }));
 jest.mock('components/Icon/Icon', () => ({
   FiExternalLink: () => <svg aria-hidden="true" />,
+  FiCopy: () => <svg aria-hidden="true" />,
 }));
 jest.mock('components/index', () => ({
   Card: ({ children }: any) => <div>{children}</div>,
@@ -41,6 +60,12 @@ jest.mock('components/index', () => ({
   ValidatedPasswordInput: jest.requireActual(
     'components/Input/ValidatedPasswordInput'
   ).ValidatedPasswordInput,
+}));
+jest.mock('utils/navigationState', () => ({
+  getWalletNavigationScope: () => ({
+    account: 'test-account',
+    network: 'test-network',
+  }),
 }));
 jest.mock('utils/index', () => ({
   ellipsis: jest.requireActual('utils/format').ellipsis,
@@ -67,6 +92,10 @@ afterAll(() => {
 });
 beforeEach(() => {
   mockCopy.mockReset().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: mockCopy },
+  });
   mockEmitter
     .mockReset()
     .mockImplementation(async (_method, [, , password]) => {
@@ -92,6 +121,55 @@ beforeEach(() => {
       },
     },
   };
+});
+
+it('copies a private key only after authentication and explicit Show, then removes Copy on Hide', async () => {
+  render(<PrivateKey />);
+  expect(
+    screen.queryByRole('button', { name: 'secretClipboard.copyKey' })
+  ).toBeNull();
+  fireEvent.change(screen.getByPlaceholderText('settings.enterYourPassword'), {
+    target: { value: 'correct' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  const show = await screen.findByRole('button', { name: 'buttons.show' });
+  expect(
+    screen.queryByRole('button', { name: 'secretClipboard.copyKey' })
+  ).toBeNull();
+  fireEvent.click(show);
+  expect(screen.getByText('secretClipboard.warning')).toBeVisible();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'secretClipboard.copyKey' })
+  );
+  await screen.findByText('components.copied');
+  expect(mockCopy).toHaveBeenCalledWith('synthetic-private-key');
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.hide' }));
+  expect(
+    screen.queryByRole('button', { name: 'secretClipboard.copyKey' })
+  ).toBeNull();
+  expect(screen.queryByText('components.copied')).toBeNull();
+});
+
+it('rejects a late authenticated private key after the account context changes', async () => {
+  let release!: (value: string) => void;
+  mockEmitter.mockReturnValueOnce(
+    new Promise<string>((resolve) => {
+      release = resolve;
+    })
+  );
+  const view = render(<PrivateKey />);
+  fireEvent.change(screen.getByPlaceholderText('settings.enterYourPassword'), {
+    target: { value: 'correct' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  mockVault.activeNetwork = { ...mockVault.activeNetwork, chainId: 1 };
+  view.rerender(<PrivateKey />);
+  await act(async () => release('synthetic-private-key'));
+  expect(screen.queryByRole('button', { name: 'buttons.show' })).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'secretClipboard.copyKey' })
+  ).toBeNull();
+  expect(mockCopy).not.toHaveBeenCalled();
 });
 
 it('resets private-key reveal on password change and requires a fresh reveal after reauthentication', async () => {

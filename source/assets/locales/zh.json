@@ -1,4 +1,9 @@
 {
+  "secretClipboard": {
+    "copyKey": "复制私钥",
+    "warning": "其他应用可能读取剪贴板。请仅将此机密信息粘贴到您信任的应用中。",
+    "copyPhrase": "复制恢复短语"
+  },
   "updates": {
     "unsupportedBuild": "此版本无法使用应用商店更新。",
     "title": "钱包更新",
@@ -2200,7 +2205,6 @@
       "evmBody": "任何持有此密钥的人都可花费此账户在 EVM 网络上的资金。它不会备份钱包的其他部分。请仅在私密环境中显示。",
       "hide": "隐藏私钥",
       "sessionOnly": "完成后请隐藏密钥。再次显示需要重新授权。",
-      "copyPrivateKey": "复制私钥",
       "reveal": "显示私钥",
       "confirming": "正在授权…",
       "hardwareGuide": "您的 {{device}} 账户使用其自身的恢复备份。Pali 中显示的短语属于此 Pali 钱包。"

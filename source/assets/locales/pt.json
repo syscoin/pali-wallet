@@ -1,4 +1,9 @@
 {
+  "secretClipboard": {
+    "copyKey": "Copiar chave privada",
+    "warning": "Outros aplicativos podem ler a área de transferência. Cole este segredo apenas em um aplicativo confiável.",
+    "copyPhrase": "Copiar frase de recuperação"
+  },
   "updates": {
     "unsupportedBuild": "As atualizações da loja não estão disponíveis para esta instalação.",
     "title": "Atualizações da carteira",
@@ -2200,7 +2205,6 @@
       "evmBody": "Qualquer pessoa com esta chave pode gastar os fundos desta conta nas redes EVM. Esta chave não faz uma cópia de segurança do resto da carteira. Mostre-a apenas num local privado.",
       "hide": "Ocultar chave privada",
       "sessionOnly": "Oculte a chave quando terminar. É necessária uma nova autorização para a voltar a mostrar.",
-      "copyPrivateKey": "Copiar chave privada",
       "reveal": "Mostrar chave privada",
       "confirming": "Autorizando…",
       "hardwareGuide": "A conta {{device}} utiliza a sua própria cópia de recuperação. A frase apresentada no Pali pertence a esta carteira Pali."

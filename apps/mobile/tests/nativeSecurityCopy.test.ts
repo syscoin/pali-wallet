@@ -5,9 +5,11 @@ import type { HdKeyExportPresentation } from '../src/custody/hdKeyExport.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
+import { nativeSecretClipboardFixture } from './fixtures/secretClipboard.ts';
+import { SECRET_CLIPBOARD_LIFETIME_MS } from '../../../source/shared/secretClipboard.ts';
 
 const copiedLabel = () => nativeTranslationFixture.nativeI18n.t('components.copied');
-const copyLabel = () => nativeTranslationFixture.nativeI18n.t('mobile.security.copyPrivateKey');
+const copyLabel = () => nativeTranslationFixture.nativeI18n.t('secretClipboard.copyKey');
 const failureLabel = () => nativeTranslationFixture.nativeI18n.t('transactions.copyFailed');
 const settle = () => new Promise(resolve => setImmediate(resolve));
 const keys = {
@@ -36,9 +38,9 @@ function fixture(kind: keyof typeof keys = 'evm', platform = 'ios') {
     'react-native': { View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView', ActivityIndicator: 'ActivityIndicator', AppState: app,
       BackHandler: { addEventListener: app.addEventListener }, Keyboard: { dismiss() {} }, Platform: { OS: platform }, StyleSheet: { create: (value: unknown) => value } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
-    'expo-clipboard': { StringFormat: { PLAIN_TEXT: 'plainText' },
-      async setStringAsync(value: string, options: SetStringOptions) { copied++; writes.push({ value, options, time: Date.now() }); return copyResult(); },
-      getStringAsync() { assert.fail('Copy must not read the clipboard'); } },
+    '../platform/secretClipboard': nativeSecretClipboardFixture(async (value, options) => {
+      copied++; writes.push({ value, options, time: Date.now() }); return copyResult();
+    }),
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'IconButton', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
   });
   let props = { keyExport, keyFormat: kind === 'evm' ? 'evm' : { kind, networkLabel: 'Bitcoin', addressType: 'Native SegWit' },
@@ -70,6 +72,7 @@ for (const platform of ['ios', 'android']) for (const kind of ['evm', 'wif', 'ex
     const secret = f.render().find(node => node.type === 'Text' && node.children.includes(keys[kind])); assert(secret);
     assert.equal(secret.props.selectable, false);
     assert.equal(f.copy().props.label, copyLabel());
+    assert(f.render().some(node => node.type === 'Text' && node.children.includes(nativeTranslationFixture.nativeI18n.t('secretClipboard.warning'))));
     assert.equal(JSON.stringify(f.copy().props).includes(keys[kind]), false);
     const requestedAt = Date.now();
     await f.copy().props.onPress();
@@ -80,7 +83,7 @@ for (const platform of ['ios', 'android']) for (const kind of ['evm', 'wif', 'ex
     assert.deepEqual(Object.keys(options.android!), ['isSensitive']);
     assert.equal(options.ios?.localOnly, true);
     const expiry = options.ios?.expiresAt?.getTime(); assert(expiry);
-    assert(expiry >= requestedAt + 120000 && expiry <= time + 120000);
+    assert(expiry >= requestedAt + SECRET_CLIPBOARD_LIFETIME_MS && expiry <= time + SECRET_CLIPBOARD_LIFETIME_MS);
     assert.equal(f.copy().props.icon, 'check'); assert.equal(f.copy().props.label, copiedLabel());
     assert(f.render().some(node => node.type === 'Text' && node.children.includes(copiedLabel())), 'Copy success is visible as text, not only an accessibility label');
     f.hide(); assert.equal(f.render().some(node => node.type === 'IconButton'), false);

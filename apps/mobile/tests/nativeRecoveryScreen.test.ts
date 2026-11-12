@@ -77,6 +77,7 @@ const walletScreenPorts = {
   './NativeImportWallet': { NativeImportWallet: 'NativeImportWallet' },
   './OrphanedStorageRecovery': { OrphanedStorageRecovery: 'OrphanedStorageRecovery' },
   './BackupVerification': { BackupVerification: 'BackupVerification' },
+  './NativeSeedPhraseCopy': { NativeSeedPhraseCopy: 'NativeSeedPhraseCopy' },
 };
 function evaluate(source: string, dependencies: Record<string, unknown>, flow = false) {
   dependencies = { '../platform/localization': nativeTranslationFixture, ...dependencies };
@@ -361,7 +362,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   let locks = 0;
   let backupFailure: Error | undefined;
   let backupStart: Promise<void> | undefined;
-  let backupCancels = 0;
+  let backupCancels = 0, backupShown = false;
   let shellTab: string = networkLifecycle?.tab ?? (depositMode ? 'tools' : 'wallet');
   const lifecycle: string[] = [];
   const notificationRoutes: { tab: string; identity: string }[] = [];
@@ -452,18 +453,21 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     removal: { requiresControllerReopen: () => false, cancel() {}, async dispose() {}, hasVerifiedRemoval: () => false },
     async saveIdlePreference() { assert.fail('Navigation must not change auto-lock preferences'); },
     keyExport: { cancel() {}, dispose() {} }, backup: {
-      cancel() { backupCancels++; }, dispose() {}, onClear: () => () => {},
+      cancel() { backupCancels++; backupShown = false; }, dispose() { backupShown = false; }, onClear: () => () => {},
+      isCurrent(id: string) { return backupShown && id === 'public-backup-review' && state.phase === 'ready'; },
       async begin(password: string) {
         if (backupFailure) throw backupFailure;
         assert(backupCompletion, 'Backup is outside this fixture');
         assert.equal((password as unknown as { method: string }).method, 'device');
         await backupStart;
+        backupShown = true;
         return { id: 'public-backup-review', words: [...Array(11).fill('abandon'), 'about'] };
       },
       async confirm(id: string, words: readonly string[]) {
         assert(backupCompletion, 'Backup is outside this fixture');
         assert.equal(words.join(' '), [...Array(11).fill('abandon'), 'about'].join(' '));
         backupAcknowledgements.push(id);
+        backupShown = false;
         await backupCompletion;
         publish({ phase: 'ready', backup: 'confirmed', account: { address, network: 'ethereum' } });
       },
@@ -742,6 +746,31 @@ test('backup completion waits for verification and durable save, then clears dis
     } finally { f.dispose(); }
   }
 });
+
+for (const boundary of ['verification', 'close', 'background'] as const)
+  test(`phrase copy remains bound to the actual words view before ${boundary}`, async () => {
+    const f = await walletFeedbackFixture(false, false, undefined, Promise.resolve());
+    try {
+      let tree = await f.unlock(null);
+      (all(tree).find(node => node.type === 'NativePortfolio')!.props.onBackup as () => void)();
+      tree = f.render(); (all(tree).find(node => node.type === 'BackupIntroduction')!.props.onStart as () => void)();
+      await new Promise(resolve => setImmediate(resolve)); tree = f.render();
+      const copy = all(tree).find(node => node.type === 'NativeSeedPhraseCopy'); assert(copy);
+      const current = copy.props.isCurrent as (presentation: unknown) => boolean;
+      assert.equal(current(copy.props.presentation), true);
+      if (boundary === 'verification') {
+        press(button(tree, 'Continue'));
+        assert.equal(current(copy.props.presentation), false, 'Continue must retire copying synchronously');
+        const verification = f.render(); assert.equal(verification.type, 'BackupVerification');
+        (verification.props.onBack as () => void)(); tree = f.render();
+        const returned = all(tree).find(node => node.type === 'NativeSeedPhraseCopy'); assert(returned);
+        assert.equal((returned.props.isCurrent as (presentation: unknown) => boolean)(returned.props.presentation), true, 'returning to the still-authenticated words permits a new copy control');
+      } else if (boundary === 'close') (all(tree).find(node => node.type === 'Header')!.props.onBack as () => void)();
+      else f.emit('change', 'background');
+      if (boundary !== 'verification') assert.equal(current(copy.props.presentation), false);
+      assert.deepEqual(f.backupAcknowledgements, [], 'copy visibility never confirms backup');
+    } finally { f.dispose(); }
+  });
 
 test('cancelled backup authorization returns to its introduction without locking the public wallet', async () => {
   const f = await walletFeedbackFixture(false, false, undefined, Promise.resolve());

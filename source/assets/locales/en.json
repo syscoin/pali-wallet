@@ -1,4 +1,9 @@
 {
+  "secretClipboard": {
+    "copyKey": "Copy private key",
+    "warning": "Other apps may read your clipboard. Paste this secret only into an app you trust.",
+    "copyPhrase": "Copy recovery phrase"
+  },
   "updates": {
     "unsupportedBuild": "Store updates are not available for this build.",
     "title": "Wallet updates",
@@ -2200,7 +2205,6 @@
       "evmBody": "Anyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place.",
       "hide": "Hide private key",
       "sessionOnly": "Hide the key when you are finished. Revealing it again requires fresh authorization.",
-      "copyPrivateKey": "Copy private key",
       "reveal": "Reveal private key",
       "confirming": "Authorizing…",
       "hardwareGuide": "Your {{device}} account uses its own recovery backup. The phrase shown in Pali belongs to this Pali wallet."

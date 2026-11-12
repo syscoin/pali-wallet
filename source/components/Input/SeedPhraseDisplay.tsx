@@ -2,11 +2,16 @@ import isEmpty from 'lodash/isEmpty';
 import React, { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { SecretCopyButton } from '../SecretCopyButton';
+
 interface ISeedPhraseDisplayProps {
   /**
    * Additional CSS classes
    */
   className?: string;
+
+  /** Opt-in only for an authorized Settings disclosure; omitted during setup/reset. */
+  copyAuthorization?: () => boolean;
 
   /**
    * Whether to use the TextArea style (ForgetWallet) or word-by-word style (Phrase)
@@ -27,7 +32,6 @@ interface ISeedPhraseDisplayProps {
    * The actual seed phrase to display
    */
   seedPhrase?: string;
-
   /**
    * Whether to show the eye toggle for hiding/showing the phrase
    */
@@ -41,6 +45,7 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
   placeholder,
   className = '',
   displayMode = 'words',
+  copyAuthorization,
 }) => {
   const { t } = useTranslation();
   const fieldId = useId();
@@ -64,9 +69,20 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
   const toggleVisible = () => {
     setRevealedPhrase(visible ? undefined : seedPhrase);
   };
+  const copy =
+    copyAuthorization &&
+    isEnabled &&
+    seedPhrase &&
+    (visible || !showEyeToggle) ? (
+      <SecretCopyButton
+        secret={seedPhrase}
+        isCurrent={copyAuthorization}
+        label={t('secretClipboard.copyPhrase')}
+      />
+    ) : null;
 
   if (displayMode === 'textarea') {
-    // ForgetWallet style - TextArea (view-only, no copy to prevent clipboard attacks)
+    // Copy is absent unless this is an explicitly authorized Settings disclosure.
     return (
       <div className={`w-full md:max-w-md ${className}`}>
         <label htmlFor={fieldId} className="mb-2 block text-left text-sm">
@@ -87,7 +103,7 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
             readOnly={true}
           />
 
-          {/* Controls container - eye toggle only (copy removed for security) */}
+          {/* Visibility is separate from the optional explicit Copy action. */}
           <div className="absolute top-2 right-2 flex items-center">
             {/* Eye toggle - only show when showEyeToggle is true and seed is available */}
             {showEyeToggle && seedPhrase && (
@@ -117,11 +133,12 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
             )}
           </div>
         </div>
+        {copy}
       </div>
     );
   }
 
-  // Phrase style - Word-by-word (view-only, no copy to prevent clipboard attacks)
+  // Onboarding/reset callers retain the original view-only behavior.
   return (
     <div className={`flex flex-col ${className}`}>
       {/* Seed phrase display box */}
@@ -138,7 +155,7 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
           ))}
         </div>
 
-        {/* Controls container - eye toggle only (copy removed for security) */}
+        {/* Visibility is separate from the optional explicit Copy action. */}
         <div className="flex items-center bg-brand-blue800">
           {/* Eye toggle - only show when enabled and showEyeToggle is true */}
           {showEyeToggle && seedPhrase && (
@@ -168,6 +185,7 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
           )}
         </div>
       </div>
+      {copy}
     </div>
   );
 };

@@ -105,6 +105,8 @@ test('fresh phrase presentation waits for an explicit one-use confirmation of th
   const f = await fixture();
   try {
     const shown = await f.flow.begin(DEVICE_AUTHORIZATION);
+    assert.equal(f.flow.isCurrent(shown.id), true);
+    assert.equal(f.flow.isCurrent('wrong-presentation'), false);
     assert.equal(shown.words.join(' '), PHRASE);
     assert.deepEqual(Object.keys(shown).sort(), ['id', 'words']);
     assert.equal(JSON.stringify(f.authority.getSnapshot()).includes(PHRASE), false);
@@ -113,12 +115,30 @@ test('fresh phrase presentation waits for an explicit one-use confirmation of th
     await assert.rejects(f.flow.confirm('wrong-presentation', PHRASE.split(' ')), /BACKUP_EXPIRED/);
     assert.equal(f.confirms, 0);
     await f.flow.confirm(shown.id, PHRASE.split(' '));
+    assert.equal(f.flow.isCurrent(shown.id), false);
     assert.equal(f.confirms, 1);
     assert.equal(f.authority.getSnapshot().phase, 'ready');
     assert.equal(f.authority.getSnapshot().backup, 'confirmed');
     await assert.rejects(f.flow.confirm(shown.id, PHRASE.split(' ')), /BACKUP_EXPIRED/);
   } finally { await f.close(); }
 });
+
+for (const boundary of ['cancel', 'lock', 'expiry', 'dispose', 'runtime'] as const)
+  test(`phrase currentness uses the existing presentation and refuses ${boundary} without another secret read`, async () => {
+    const f = await fixture();
+    try {
+      const shown = await f.flow.begin(DEVICE_AUTHORIZATION);
+      f.runtime.backup.readPhrase = async () => { throw Error('Currentness must not read a phrase'); };
+      f.runtime.backup.fingerprint = async () => { throw Error('Currentness must not reread a fingerprint'); };
+      assert.equal(f.flow.isCurrent(shown.id), true);
+      if (boundary === 'cancel') f.flow.cancel();
+      else if (boundary === 'lock') f.authority.lock();
+      else if (boundary === 'expiry') f.expire();
+      else if (boundary === 'dispose') f.flow.dispose();
+      else Object.assign(f.runtime, { backup: { ...f.runtime.backup } });
+      assert.equal(f.flow.isCurrent(shown.id), false);
+    } finally { await f.close(); }
+  });
 
 test('wrong order, missing slots and getter-backed words cannot verify a backup', async () => {
   const f = await fixture();

@@ -38,6 +38,14 @@ export class SeedBackupFlow {
     return () => this.clearListeners.delete(listener);
   }
 
+  isCurrent(id: string): boolean {
+    const presentation = this.presentation;
+    if (this.disposed || !presentation || presentation.id !== id) return false;
+    const state = this.authority.getSnapshot();
+    return this.presentation === presentation &&
+      this.runtime() === presentation.runtime && state.phase === 'ready' && state.revision === presentation.revision;
+  }
+
   cancel(): void {
     if (this.cancelling) return;
     this.cancelling = true;
