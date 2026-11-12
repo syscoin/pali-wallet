@@ -14,7 +14,9 @@ import { NativeActivityScreen } from './NativeActivity';
 import { walletFetch } from '../platform/http';
 import { watchNotificationChoices } from '../notifications/choices';
 import { nativeActivityNotifications } from '../notifications/service';
-import { getPublicViewAuthorizationStatus } from '../platform/credential';
+import { authorizePublicView, getPublicViewAuthorizationStatus, isNativeCredentialPromptActive } from '../platform/credential';
+import { weakensIdlePolicy } from '../../../../source/shared/idleLockPolicy';
+import { bindNativePrivateAuthentication, withNativePrivateAuthentication } from '../custody/privateAuthentication';
 import { useNativeTranslation } from '../platform/localization';
 
 const readGuardianStatus: import('../core/watchOnlyAuthority').GuardianRecoveryReader = async (network, address, signal, check) => {
@@ -150,13 +152,24 @@ export function WatchSession({ authority, onAccounts, onExit }: {
     });
   }, [notifications.pendingEventId, notificationWake, liveScope, autoLockScope, shell.immersive, authority, currentScope, restoreRoot]);
   if (viewLock.phase !== 'unlocked') return null;
-  if (autoLockScope !== null && autoLockScope === liveScope) return <AutoLockSettings mode="watch" lockUnavailable={lockUnavailable} onBack={() => { if (currentScope() === autoLockScope) setAutoLockScope(null); }} save={async (expected, minutes, _signal, _authentication, check) => {
+  if (autoLockScope !== null && autoLockScope === liveScope) return <AutoLockSettings mode="watch" lockUnavailable={lockUnavailable} onBack={() => { if (currentScope() === autoLockScope) setAutoLockScope(null); }} save={async (expected, minutes, signal, authentication, check) => {
     const captured = liveScope;
+    const current = () => {
+      if (!lifetime.current.alive || lifetime.current.authority !== authority || signal.aborted || captured !== currentScope()) throw Error('CANCELLED');
+      watchIdle.assertCurrent();
+    };
+    const guarded = () => { current(); check(); };
+    guarded(); securityPreferences.validate(expected);
     if (minutes > 0) {
-      const status = await getPublicViewAuthorizationStatus(); check(); setLockStatus(status);
+      const status = await getPublicViewAuthorizationStatus(); guarded(); setLockStatus(status);
       if (status !== 'ready') throw Error('VIEW_AUTHENTICATION_UNAVAILABLE');
     }
-    return securityPreferences.save(expected, 'watch', minutes, () => { check(); watchIdle.assertCurrent(); if (captured !== currentScope()) throw Error('CANCELLED'); });
+    if (weakensIdlePolicy(expected.watchIdleMinutes, minutes)) {
+      const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: current, isPromptActive: isNativeCredentialPromptActive });
+      await withNativePrivateAuthentication(binding, signal, current, owner => authorizePublicView(owner, guarded));
+      guarded();
+    }
+    return securityPreferences.save(expected, 'watch', minutes, guarded);
   }} />;
   const account = snapshot.accounts.find((row) => row.id === snapshot.selectedAccountId);
   const network = authority.getNetwork(snapshot.selectedNetworkId);
@@ -179,7 +192,7 @@ export function WatchSession({ authority, onAccounts, onExit }: {
         }),
       } : undefined} />;
   }
-  else content = <RealSettings navigation={shell.navigation} notifications={notificationSettings} accountLabel={label} watchOnly onAutoLock={() => {
+  else content = <RealSettings key={liveScope} navigation={shell.navigation} notifications={notificationSettings} accountLabel={label} watchOnly onAutoLock={() => {
     if (liveScope && AppState.currentState === 'active' && currentScope() === liveScope) setAutoLockScope(liveScope);
   }} onLock={lockView} onBack={() => shell.select('wallet')} />;
   return <RealAppShell tab={shell.tab} onTab={tab => { notificationTransition.current = null; shell.select(tab); }} immersive={shell.immersive || snapshot.status !== 'ready'}>{content}</RealAppShell>;

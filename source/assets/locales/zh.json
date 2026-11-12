@@ -2380,7 +2380,7 @@
       "purposeProcessTransactions": "处理智能账户交易",
       "purposeCreateAccounts": "创建智能账户",
       "purposeWalletOwners": "由钱包所有者批准",
-      "purposePasskeys": "使用通行密钥批准",
+      "purposePasskeys": "通行密钥支持",
       "purposeVerifyPostQuantum": "验证抗量子批准",
       "purposePostQuantumKeys": "使用抗量子批准密钥",
       "purposeCombineMethods": "组合批准方式",

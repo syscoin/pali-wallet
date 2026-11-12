@@ -74,7 +74,7 @@ const controller = { getSnapshot: () => state, subscribe: (listener: () => void)
   setView: async (view: Partial<typeof DEFAULT_ACTIVITY_VIEW>) => { state = { ...state, view: { ...state.view, ...view } }; update(); },
 } as unknown as AccountActivityController;
 declare global { interface Window { __allActivityFixture: { inspections(): string[]; savedLoads(): string[]; actions(): string[]; hideBalances(value: boolean): Promise<void> } } }
-window.__allActivityFixture = { inspections: () => [...inspections], savedLoads: () => [...savedLoads], actions: () => [...actions], async hideBalances(value) { await saveBalancePrivacy(value); } };
+window.__allActivityFixture = { inspections: () => [...inspections], savedLoads: () => [...savedLoads], actions: () => [...actions], async hideBalances(value) { await saveBalancePrivacy(value, new AbortController().signal, () => undefined); } };
 export function AllNetworksActivityFixture() {
   const shell = useRealShell('activity-fixture', () => 'activity-fixture', () => {});
   return <SafeAreaProvider><RealAppShell tab="activity" onTab={() => {}} immersive={shell.immersive}>

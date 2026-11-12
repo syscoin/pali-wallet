@@ -905,17 +905,39 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     setSentryScope(null);
     setStage('choose');
   };
+  const securityOrigin = rootOrigin.current;
+  const securityOwner = controllersRef.current;
+  const ownsSecurityRoute = () =>
+    securityOrigin?.stage === 'security' && !!securityOwner && mounted.current && AppState.currentState === 'active' &&
+      controllersRef.current === securityOwner && nativeLifecycle.current(screenToken.current) === securityOwner &&
+      rootOrigin.current === securityOrigin && epoch.current === securityOrigin.epoch && notificationView.current.stage === stage;
+  const securityRouteCurrent = () => {
+    const current = readyContext();
+    return !!securityOrigin && ownsSecurityRoute() &&
+      current?.context === securityOrigin.context && current.identity === securityOrigin.identity;
+  };
+  const openSecurityChild = (next: 'auto-lock' | 'backup-intro') => {
+    if (stage !== 'security' || !securityRouteCurrent()) return;
+    // Each visit owns a distinct return token without changing its account/session binding.
+    rootOrigin.current = { ...securityOrigin! };
+    setStage(next);
+  };
   const closeStage = () => {
+    if (stage === 'auto-lock' && securityOrigin?.stage === 'security') {
+      if (!ownsSecurityRoute()) return;
+      if (securityRouteCurrent()) { setStage('security'); return; }
+    }
     const origin = rootOrigin.current, current = origin ? sendContext(origin) : readyContext();
     clearStage();
     if (origin && current && AppState.currentState === 'active' && origin.context === current.context && origin.identity === current.identity && origin.epoch === epoch.current)
       shell.restoreRoot(origin.tab, origin.identity);
   };
   const closeBackup = () => {
+    if (securityOrigin?.stage === 'security' && !ownsSecurityRoute()) return;
     // In-flight credential work keeps the existing lock-on-leave behavior.
     if (submitting.current) { revoke(); return; }
     controllersRef.current?.backup.cancel(); clearSecrets(); setError('');
-    closeStage();
+    if (securityOrigin && securityRouteCurrent()) setStage('security'); else closeStage();
   };
   const sendTarget = stage === 'send' && sendDraft &&
     sendDraft.origin.context === (sendDraft.origin.publicDraft ? publicSendContext(snapshot, catalogue) : custodyContext(snapshot, catalogue))?.context
@@ -1806,10 +1828,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       : utxo && script ? { kind: 'wif' as const, networkLabel: utxo.name, addressType: UTXO_IMPORT_LABELS[script] } : null;
     return <NativeSecurity key={`${snapshot.revision}:${catalogue.active.accountId}:${snapshot.account.network}`}
       keyExport={keyExportView} keyFormat={keyFormat} accountId={selected.id} accountType={selected.type} accountLabel={accountLabel} address={snapshot.account.address} backupConfirmed={snapshot.backup === 'confirmed'}
-      onBack={closeStage} onLock={lockWallet} onViewRecovery={() => setStage('backup-intro')}
+      onBack={closeStage} onLock={lockWallet} onViewRecovery={() => openSecurityChild('backup-intro')}
       onRemoveWallet={onWalletRemoved && canRemoveWallet ? openRemoval : undefined}
       onRestoreAccess={credentialPresent === false ? openRecovery : undefined}
-      onAutoLock={snapshot.phase === 'ready' && saveIdle ? () => setStage('auto-lock') : undefined}
+      onAutoLock={snapshot.phase === 'ready' && saveIdle ? () => openSecurityChild('auto-lock') : undefined}
       captureFailureHandler={() => {
         const local = controllersRef.current;
         const context = local?.authority.getSnapshot();

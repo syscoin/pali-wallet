@@ -40,6 +40,8 @@ import { createNativeSentryKeyManagement, type NativeSentryKeyManagement } from 
 import type { NativeConnectionsView } from '../src/connections/types.ts';
 import type { NativeTrezorResumeIntent, NativeTrezorView } from '../src/custody/trezorAccounts.ts';
 import { quietActivityNotifications, type NotificationTestPort } from './notificationFixture.ts';
+import { screenFixture, screenElements } from './screenFixture.ts';
+import { idleMinutes } from '../../../source/shared/idleLockPolicy.ts';
 
 function trezorLifecycle() {
   return {background() {}, async cancel() {}, subscribe: () => () => undefined,
@@ -358,6 +360,9 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   let releasePrompt!: () => void;
   let locks = 0;
   let backupFailure: Error | undefined;
+  let backupStart: Promise<void> | undefined;
+  let backupCancels = 0;
+  let shellTab: string = networkLifecycle?.tab ?? (depositMode ? 'tools' : 'wallet');
   const lifecycle: string[] = [];
   const notificationRoutes: { tab: string; identity: string }[] = [];
   const enrollments: { enabled: boolean; password?: string }[] = [];
@@ -445,12 +450,14 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     } }, balanceReader: {}, transfers: { cancel() {} }, tokens: {}, activity: {},
     trezor: trezorLifecycle(), connections: { ...psbtLifecycle(lifecycle), getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
     removal: { requiresControllerReopen: () => false, cancel() {}, async dispose() {}, hasVerifiedRemoval: () => false },
+    async saveIdlePreference() { assert.fail('Navigation must not change auto-lock preferences'); },
     keyExport: { cancel() {}, dispose() {} }, backup: {
-      cancel() {}, dispose() {}, onClear: () => () => {},
+      cancel() { backupCancels++; }, dispose() {}, onClear: () => () => {},
       async begin(password: string) {
         if (backupFailure) throw backupFailure;
         assert(backupCompletion, 'Backup is outside this fixture');
         assert.equal((password as unknown as { method: string }).method, 'device');
+        await backupStart;
         return { id: 'public-backup-review', words: [...Array(11).fill('abandon'), 'about'] };
       },
       async confirm(id: string, words: readonly string[]) {
@@ -523,6 +530,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     './sendNetworkDraft': { sendDraftForNetwork, NETWORK_CHANGED_DRAFT_NOTICE },
     '../platform/http': { walletFetch: async () => { throw Error('Network picker fixture performs no HTTP requests'); } },
     './NativePortfolio': { NativePortfolio: 'NativePortfolio' }, './NativeSecurity': { NativeSecurity: 'NativeSecurity' },
+    './AutoLockSettings': { AutoLockSettings: 'AutoLockSettings' }, './RealSettings': { RealSettings: 'RealSettings' },
     './RealTools': { RealTools: 'RealTools' }, './RealAppShell': { RealAppShell: 'RealAppShell' },
     './NativePrivateDeposit': { NativePrivateDeposit: 'NativePrivateDeposit' },
     './NativeNoteExport': { NativeNoteExport: 'NativeNoteExport', NativeNoteFilesMenu: 'NativeNoteFilesMenu' },
@@ -531,7 +539,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     './NativeRecovery': { NativeRecovery: 'NativeRecovery' }, './NativeNoteRestore': { NoteRestoreUnconfirmedNotice: 'NoteRestoreUnconfirmedNotice' },
     '../custody/networkView': { createNativeNetworkView: networkMode ? createNativeNetworkView : () => ({}) },
     './useNativeNoteBackup': { useNativeNoteBackup: () => noteRestore },
-    './useRealShell': { useRealShell: () => ({ tab: networkLifecycle?.tab ?? (depositMode ? 'tools' : 'wallet'), navigation: {}, goBack() {}, select(tab: string) { notificationRoutes.push({ tab, identity: 'tab-switch' }); }, restoreRoot(tab: string, identity: string) { notificationRoutes.push({ tab, identity }); } }) },
+    './useRealShell': { useRealShell: () => ({ tab: shellTab, navigation: {}, goBack() {}, select(tab: string) { shellTab = tab; notificationRoutes.push({ tab, identity: 'tab-switch' }); }, restoreRoot(tab: string, identity: string) { shellTab = tab; notificationRoutes.push({ tab, identity }); } }) },
     './AllNetworksActivity': { AllNetworksActivity: 'AllNetworksActivity' },
   });
   if (restoreFailure) {
@@ -574,6 +582,8 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     holdSetup(operation: () => Promise<void>) { setupOperation = operation; },
     prompt(operation: () => Promise<void>) { return authentication.run(null, operation); },
     failBackup(error: Error) { backupFailure = error; },
+    holdBackupStart(wait: Promise<void>) { backupStart = wait; }, backupCancels: () => backupCancels,
+    native: root.native, security: root.idle.security,
     loseCredential() { credentialPresent = false; publish({}); }, get recoveryInventoryReads() { return recoveryInventoryReads; },
     selectedAccounts, selectedAddress: () => state.account?.address, requestAccount(id: string) { props.initialAccountId = id; return render(); }, selectedNetwork: () => state.account?.network, authority: realAuthority, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, configurations, backupAcknowledgements, lifecycle, get locks() { return locks; } };
 }
@@ -1799,5 +1809,156 @@ for (const operation of ['speed-up', 'cancel', 'cancel-saved'] as const) test(`r
     assert.equal(send.props.review, undefined); assert.equal(send.props.authentication, undefined);
     f.publish({ phase: 'locked', account: null });
     await assert.rejects(onResume(resume), /CANCELLED/);
+  } finally { f.dispose(); }
+});
+
+async function securityNavigationFixture() {
+  const f = await walletFeedbackFixture(true, false, undefined, Promise.resolve(), false, 'evm');
+  const shell = all(f.render()).find(node => node.type === 'RealAppShell'); assert(shell);
+  (shell.props.onTab as (tab: string) => void)('settings');
+  const settings = all(f.render()).find(node => node.type === 'RealSettings'); assert(settings);
+  (settings.props.onSecurity as () => void)();
+  assert.equal(f.render().type, 'NativeSecurity');
+  return f;
+}
+function openSecurityBackup(f: Awaited<ReturnType<typeof securityNavigationFixture>>) {
+  const security = f.render(); assert.equal(security.type, 'NativeSecurity');
+  (security.props.onViewRecovery as () => void)();
+  const intro = all(f.render()).find(node => node.type === 'BackupIntroduction'); assert(intro);
+  return intro;
+}
+
+for (const leave of ['header', 'cancel', 'android'] as const) test(`Security auto-lock ${leave} returns to Security & Backup`, async () => {
+  const f = await securityNavigationFixture();
+  let child: ReturnType<typeof screenFixture> | undefined;
+  try {
+    (f.render().props.onAutoLock as () => void)();
+    const route = f.render(); assert.equal(route.type, 'AutoLockSettings');
+    child = screenFixture(new URL('../src/screens/AutoLockSettings.tsx', import.meta.url), 'AutoLockSettings', {
+      'react-native': f.native,
+      'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+      '../platform/security': f.security,
+      '../../../../source/shared/idleLockPolicy': { idleMinutes },
+      '../custody/privateAuthentication': { createNativePrivateAuthenticationScope },
+      './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+      './IdleActivityBoundary': { IdlePressable: 'Pressable', IdleTextInput: 'Input' },
+      '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
+    }, { AbortController });
+    const nodes = screenElements(child.render(route.props));
+    if (leave === 'header') nodes.find(node => node.type === 'Header')!.props.onBack();
+    else if (leave === 'cancel') nodes.find(node => node.type === 'Button' && node.props.title === 'Cancel')!.props.onPress();
+    else f.hardware();
+    assert.equal(f.render().type, 'NativeSecurity');
+    assert.equal(f.locks, 0);
+    child.close(); child = undefined;
+    (f.render().props.onBack as () => void)();
+    assert(all(f.render()).some(node => node.type === 'RealSettings'));
+  } finally { child?.close(); f.dispose(); }
+});
+
+for (const leave of ['back', 'later', 'android'] as const) test(`Security phrase introduction ${leave} preserves its Security origin`, async () => {
+  const f = await securityNavigationFixture();
+  try {
+    const intro = openSecurityBackup(f);
+    if (leave === 'android') f.hardware(); else (intro.props[leave === 'back' ? 'onBack' : 'onLater'] as () => void)();
+    assert.equal(f.render().type, 'NativeSecurity'); assert.equal(f.locks, 0);
+    assert(!JSON.stringify(f.render()).includes('abandon'));
+  } finally { f.dispose(); }
+});
+
+for (const leave of ['header', 'android', 'done', 'complete-android'] as const) test(`Security phrase ${leave} clears words and returns to Security & Backup`, async () => {
+  const f = await securityNavigationFixture();
+  try {
+    (openSecurityBackup(f).props.onStart as () => void)(); await lifecycleTick();
+    let tree = f.render(); assert.match(text(tree), /abandon/);
+    if (leave === 'header') (all(tree).find(node => node.type === 'Header')!.props.onBack as () => void)();
+    else if (leave === 'android') f.hardware();
+    else {
+      press(button(tree, 'Continue')); tree = f.render(); assert.equal(tree.type, 'BackupVerification');
+      // The internal verification Back step still returns to the displayed phrase.
+      (tree.props.onBack as () => void)(); assert.match(text(f.render()), /abandon/);
+      press(button(f.render(), 'Continue')); tree = f.render();
+      (tree.props.onConfirm as (answers: readonly string[]) => void)([...Array(11).fill('abandon'), 'about']);
+      await lifecycleTick(); tree = f.render(); assert.match(text(tree), /Backup complete/);
+      assert(!JSON.stringify(tree).includes('abandon'));
+      if (leave === 'done') press(button(tree, 'Done')); else f.hardware();
+    }
+    assert.equal(f.render().type, 'NativeSecurity'); assert(!JSON.stringify(f.render()).includes('abandon'));
+    assert.equal(f.locks, 0);
+  } finally { f.dispose(); }
+});
+
+test('Security backup Back during credential work retains lock-on-leave and rejects late words', async () => {
+  const f = await securityNavigationFixture(), held = Promise.withResolvers<void>();
+  try {
+    f.holdBackupStart(held.promise);
+    (openSecurityBackup(f).props.onStart as () => void)(); f.render();
+    const pending = all(f.render()).find(node => node.type === 'BackupIntroduction'); assert(pending);
+    (pending.props.onBack as () => void)();
+    assert(f.locks > 0); assert.notEqual(f.render().type, 'NativeSecurity');
+    held.resolve(); await lifecycleTick();
+    assert(!JSON.stringify(f.render()).includes('abandon')); assert.notEqual(f.render().type, 'NativeSecurity');
+  } finally { held.resolve(); f.dispose(); }
+});
+
+for (const boundary of ['new-child', 'background', 'context'] as const) test(`retained Security child callbacks cannot restore Security after ${boundary}`, async () => {
+  const f = await securityNavigationFixture();
+  try {
+    const oldSecurity = f.render(); (oldSecurity.props.onAutoLock as () => void)();
+    const oldChild = f.render(); assert.equal(oldChild.type, 'AutoLockSettings');
+    if (boundary === 'new-child') {
+      (oldChild.props.onBack as () => void)(); assert.equal(f.render().type, 'NativeSecurity');
+      openSecurityBackup(f);
+      (oldChild.props.onBack as () => void)(); (oldSecurity.props.onViewRecovery as () => void)();
+      assert(all(f.render()).some(node => node.type === 'BackupIntroduction'));
+    } else if (boundary === 'background') {
+      f.emit('change', 'background'); f.render();
+      (oldChild.props.onBack as () => void)();
+      f.emit('change', 'active'); await lifecycleTick();
+      (oldChild.props.onBack as () => void)(); assert.notEqual(f.render().type, 'NativeSecurity');
+    } else {
+      f.publish({ revision: f.state().revision + 1, account: { address: '0x' + '22'.repeat(20), network: 'ethereum' } }); f.render();
+      (oldChild.props.onBack as () => void)(); assert.notEqual(f.render().type, 'NativeSecurity');
+      assert(all(f.render()).some(node => node.type === 'RealSettings'));
+    }
+    assert(!JSON.stringify(f.render()).includes('abandon'));
+  } finally { f.dispose(); }
+});
+
+test('home phrase introduction still returns to the wallet rather than Security', async () => {
+  const f = await walletFeedbackFixture(true, false, undefined, Promise.resolve(), false, 'evm');
+  try {
+    const home = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(home);
+    (home.props.onBackup as () => void)();
+    const intro = all(f.render()).find(node => node.type === 'BackupIntroduction'); assert(intro);
+    (intro.props.onLater as () => void)();
+    assert(all(f.render()).some(node => node.type === 'NativePortfolio'));
+    assert.notEqual(f.render().type, 'NativeSecurity');
+  } finally { f.dispose(); }
+});
+
+for (const boundary of ['new-child', 'background', 'context'] as const) test(`retained Security phrase Back cannot revive its route after ${boundary}`, async () => {
+  const f = await securityNavigationFixture();
+  try {
+    const intro = openSecurityBackup(f);
+    if (boundary === 'new-child') {
+      (intro.props.onBack as () => void)();
+      (f.render().props.onAutoLock as () => void)();
+      (intro.props.onLater as () => void)();
+      assert.equal(f.render().type, 'AutoLockSettings');
+    } else {
+      (intro.props.onStart as () => void)(); await lifecycleTick();
+      const words = f.render(); assert.match(text(words), /abandon/);
+      const back = all(words).find(node => node.type === 'Header')!.props.onBack as () => void;
+      if (boundary === 'background') {
+        f.emit('change', 'background'); f.render();
+        f.emit('change', 'active'); await lifecycleTick();
+      } else {
+        f.publish({ revision: f.state().revision + 1, account: { address: '0x' + '22'.repeat(20), network: 'ethereum' } }); f.render();
+      }
+      back();
+      assert.notEqual(f.render().type, 'NativeSecurity');
+      assert(!JSON.stringify(f.render()).includes('abandon'));
+    }
   } finally { f.dispose(); }
 });

@@ -5,6 +5,8 @@ import { screenElements, screenFixture } from './screenFixture.ts';
 import { quietActivityNotifications } from './notificationFixture.ts';
 import { createTestPublicViewLock } from './publicViewLockFixture.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import * as idlePolicy from '../../../source/shared/idleLockPolicy.ts';
 
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 async function fixture(kind: 'transaction-confirmed' | 'recovery-started', locked = false) {
@@ -34,6 +36,8 @@ async function fixture(kind: 'transaction-confirmed' | 'recovery-started', locke
     async refresh() {},
   };
   const screen = screenFixture(new URL('../src/screens/WatchSession.tsx', import.meta.url), 'WatchSession', {
+    '../../../../source/shared/idleLockPolicy': idlePolicy,
+    '../custody/privateAuthentication': privateAuthentication,
     '../platform/localization': nativeTranslationFixture,
     'react-native': { AppState: { currentState: 'active' }, BackHandler: { addEventListener: () => ({ remove() {} }) } },
     '../platform/security': { publicViewLock: privacy.viewLock }, './AutoLockSettings': { AutoLockSettings: 'AutoLockSettings' },
