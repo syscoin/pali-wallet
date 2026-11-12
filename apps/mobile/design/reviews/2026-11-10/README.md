@@ -2073,3 +2073,13 @@ Actual `NativeInfrastructure` screen and controller after returning from Trezor 
 At 320px the content scrolls while **Confirm** and **Close** remain in the fixed footer. [Scrolled fee detail](infrastructure-resume/suite-resume-320-fee.png) shows the complete maximum fee and total.
 
 Once the original deployment is reconciled, **Continue** retires that return review and opens a fresh controller and fee review for the next required setup contract. Pending or unknown submissions remain tracked until reconciliation; continuing never signs automatically. [Capture evidence](infrastructure-resume/capture.json).
+
+
+## Setup recovery after reinstall
+
+An absent wallet database with retained local setup now has a dedicated recovery screen, followed by explicit confirmation and the existing device authorization. It uses the shared setup layout, with bottom actions and no duplicate generic wallet error. [Source and capture provenance](setup-recovery/manifest.json). These are implemented React Native Web screens with mocked native ports; physical authorization and first-camera results are recorded separately.
+
+| State | Standard width | Narrow width |
+| --- | --- | --- |
+| Setup recovery | ![Setup recovery](setup-recovery/intro-390.png) | |
+| Confirm reset | ![Confirm local setup reset](setup-recovery/confirm-390.png) | ![Confirm local setup reset at 320px](setup-recovery/confirm-320.png) |

@@ -1,0 +1,33 @@
+{
+  "sourceRevision": "4bc4e89561e4304101f42508b34ebb62ff55b706",
+  "sourceFiles": {
+    "apps/mobile/src/screens/OrphanedStorageRecovery.tsx": "8b2a61240969264eebd81284a9be0797b02d41d3d031411b4a84d6e2f224b213",
+    "apps/mobile/src/ui.tsx": "d0766e908e125c3fc9a34689024b369cb05373b97418e3e1cf030bb2928a5938",
+    "source/assets/locales/en.json": "5342527fcf357fe05cc5eb03e8f7316c773aefe5fe6672532570b838b8af5953"
+  },
+  "rendering": "React Native Web using the implemented recovery component and shared UI. Mocked storage, OS authorization, reload, idle tracking and icon cache; fixed safe-area insets top 44 / bottom 34.",
+  "qualification": "Presentation only; not physical iPhone screenshots or proof of OS authorization. Functional fresh-install reset and camera outcomes were separately user-confirmed on 92fd62f3a.",
+  "frames": [
+    {
+      "file": "intro-390.png",
+      "width": 390,
+      "height": 844,
+      "state": "intro",
+      "sha256": "11b2ee4070dbe27a372aa8627b07b8afb0421c7287864734d7ea696725af85f5"
+    },
+    {
+      "file": "confirm-390.png",
+      "width": 390,
+      "height": 844,
+      "state": "confirm",
+      "sha256": "783aafeb6bda7d51d948b78f0b58b6c903b9f7069e913319689478dc795f90cf"
+    },
+    {
+      "file": "confirm-320.png",
+      "width": 320,
+      "height": 640,
+      "state": "confirm",
+      "sha256": "66ae75131074ac06f05a9afe43ab00f4171532ff2eb6e95c8b8def8a72fe637a"
+    }
+  ]
+}
