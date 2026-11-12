@@ -152,7 +152,7 @@ export class NativeRecoveryCoordinator {
     let ownerRevision: number;
     try {
       const owner = this.dependencies.owner.getSnapshot(); ownerRevision = owner.revision;
-      if (this.disposed || this.completed || this.unavailable || (this.retired && this.ownedPair === null) || (!this.retired && !['locked', 'ready', 'backup-required'].includes(owner.phase))) return reject('NOT_READY');
+      if (this.disposed || this.completed || this.unavailable || (this.retired && this.ownedPair === null) || (!this.retired && !['locked', 'ready'].includes(owner.phase))) return reject('NOT_READY');
     } catch { return reject('UNAVAILABLE'); }
     if (typeof phrase !== 'string' || !phrase.isWellFormed() || phrase.length > 4096 ||
         typeof assertCurrent !== 'function')
@@ -171,7 +171,7 @@ export class NativeRecoveryCoordinator {
         check();
         if (!this.retired) {
           const owner = this.dependencies.owner.getSnapshot();
-          if (!['locked', 'ready', 'backup-required'].includes(owner.phase) || owner.revision !== ownerRevision) return fail('CANCELLED');
+          if (!['locked', 'ready'].includes(owner.phase) || owner.revision !== ownerRevision) return fail('CANCELLED');
           await this.dependencies.retireControllers();
           const fingerprint = await this.dependencies.owner.retireForRecovery();
           this.retired = true;

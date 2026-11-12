@@ -28,7 +28,7 @@ export class SeedBackupFlow {
     this.authority = authority;
     this.runtime = runtime;
     this.unsubscribe = authority.subscribe((snapshot) => {
-      if (!['ready', 'backup-required'].includes(snapshot.phase) ||
+      if (snapshot.phase !== 'ready' ||
         (this.presentation && this.presentation.revision !== snapshot.revision)) this.cancel();
     });
   }
@@ -54,7 +54,7 @@ export class SeedBackupFlow {
     if (this.busy) throw new Error('BUSY');
     const state = this.authority.getSnapshot();
     const runtime = this.runtime();
-    if (!runtime || !['ready', 'backup-required'].includes(state.phase)) throw new Error('NOT_READY');
+    if (!runtime || state.phase !== 'ready') throw new Error('NOT_READY');
     // Admit before notifying observers: a clear callback may synchronously reenter.
     this.busy = true;
     this.cancel();
@@ -62,7 +62,7 @@ export class SeedBackupFlow {
     const current = () => {
       const now = this.authority.getSnapshot();
       if (this.disposed || operation !== this.operation || this.runtime() !== runtime || now.revision !== state.revision ||
-        !['ready', 'backup-required'].includes(now.phase)) throw new Error('CANCELLED');
+        now.phase !== 'ready') throw new Error('CANCELLED');
     };
     try {
       current();
@@ -82,7 +82,7 @@ export class SeedBackupFlow {
       let sameOwner = false, refusal = false;
       try {
         sameOwner = wasCurrent && !this.disposed && this.runtime() === runtime && now.revision === state.revision &&
-          ['ready', 'backup-required'].includes(now.phase) && now.account?.address === state.account?.address &&
+          now.phase === 'ready' && now.account?.address === state.account?.address &&
           now.account?.network === state.account?.network;
         refusal = sameOwner && error instanceof KeyringRuntimeError && runtime.isAuthenticationRefusal(error) === true;
       } catch { /* An unavailable or replaced runtime cannot preserve authority. */ }
@@ -102,7 +102,7 @@ export class SeedBackupFlow {
     const state = this.authority.getSnapshot();
     const runtime = this.runtime();
     if (!presentation || !runtime || presentation.runtime !== runtime || presentation.id !== id || presentation.revision !== state.revision ||
-      !['ready', 'backup-required'].includes(state.phase)) throw new Error('BACKUP_EXPIRED');
+      state.phase !== 'ready') throw new Error('BACKUP_EXPIRED');
     const matches = Array.isArray(answers) && answers.length === presentation.words.length &&
       presentation.words.every((word, index) => {
         const slot = Object.getOwnPropertyDescriptor(answers, String(index));
@@ -117,7 +117,7 @@ export class SeedBackupFlow {
     const current = () => {
       const now = this.authority.getSnapshot();
       if (this.disposed || operation !== this.operation || this.runtime() !== runtime ||
-        now.revision !== presentation.revision || !['ready', 'backup-required'].includes(now.phase))
+        now.revision !== presentation.revision || now.phase !== 'ready')
         throw new Error('BACKUP_EXPIRED');
     };
     // One shot. Failed or ambiguous persistence requires a new authenticated presentation.

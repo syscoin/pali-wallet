@@ -106,7 +106,7 @@ export class NativeControllerLifecycle<T extends ManagedNativeControllers, R ext
         await value.authority.initialize();
         if (!admitted()) { await this.retire(entry); return null; }
         const state = value.authority.getSnapshot();
-        if (this.knownExisting && (state.presence !== 'existing' || !['locked', 'ready', 'backup-required'].includes(state.phase))) throw new Error('REOPEN_REQUIRED');
+        if (this.knownExisting && (state.presence !== 'existing' || !['locked', 'ready'].includes(state.phase))) throw new Error('REOPEN_REQUIRED');
         if (state.presence === 'existing') this.knownExisting = true;
         return value;
       } catch {
@@ -126,7 +126,7 @@ export class NativeControllerLifecycle<T extends ManagedNativeControllers, R ext
       throw new Error('NOT_READY');
     if (entry.recovery) return entry.recovery as R;
     const state = value.authority.getSnapshot();
-    if (!['locked', 'ready', 'backup-required'].includes(state.phase) || state.presence !== 'existing') throw new Error('NOT_READY');
+    if (!['locked', 'ready'].includes(state.phase) || state.presence !== 'existing') throw new Error('NOT_READY');
     this.creatingRecovery = true; this.knownExisting = true;
     let resolve!: (recovery: R | null) => void;
     let produced: R | null = null, cancelled = false;

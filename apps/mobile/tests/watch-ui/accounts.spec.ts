@@ -158,7 +158,7 @@ test('backup-required public entry consumes the hint before backup completion an
   await page.goto('/?backup-required=1');
   await page.getByRole('button', { name: 'Back up your wallet. Protect access if this phone is lost.', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Back Up Now', exact: true })).toBeVisible();
-  expect(await page.evaluate(() => window.__watchFixture.nativePhase())).toBe('backup-required');
+  expect(await page.evaluate(() => window.__watchFixture.nativePhase())).toBe('ready');
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
   await revealBackupPhrase(page);
   await confirmFixtureBackup(page);

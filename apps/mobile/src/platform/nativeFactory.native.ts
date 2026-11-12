@@ -511,7 +511,7 @@ export function createNativeWalletControllers() {
     const revision = authority.getSnapshot().revision;
     const assertCurrent = () => {
       const snapshot = authority.getSnapshot();
-      if (ownedStorage !== storage || !['locked', 'ready', 'backup-required'].includes(snapshot.phase) || snapshot.revision !== revision)
+      if (ownedStorage !== storage || !['locked', 'ready'].includes(snapshot.phase) || snapshot.revision !== revision)
         throw new CustodyOperationError('CANCELLED');
     };
     assertCurrent();
@@ -872,7 +872,7 @@ export function createNativeWalletControllers() {
   const getNotificationChoices = () => {
     const snapshot = authority.getSnapshot(), catalogue = authority.getCatalogue();
     const monitoring = runtime?.catalogue.getMonitoringSnapshot();
-    if (!['ready', 'backup-required'].includes(snapshot.phase) || !catalogue || !monitoring || monitoring.revision !== catalogue.revision)
+    if (snapshot.phase !== 'ready' || !catalogue || !monitoring || monitoring.revision !== catalogue.revision)
       throw new CustodyOperationError('NOT_READY');
     return nativeNotificationChoices(monitoring);
   };

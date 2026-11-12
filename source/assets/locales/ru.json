@@ -3414,8 +3414,6 @@
       "writeTheseWordsDownInOrder": "Запишите эти слова по порядку",
       "anyoneWithTheseWordsCanControlYourWalletKeepThemOfflinePaliSupportWillNeverAskForThem": "Любой, у кого есть эти слова, может управлять кошельком. Храните их офлайн. Поддержка Pali никогда их не запрашивает.",
       "keepYourRecoveryPhrasePrivateAndOffline": "Храните фразу восстановления в тайне и офлайн.",
-      "keepARecoveryPhraseBackupBeforeUsingWalletTools": "Сохраните резервную копию фразы восстановления перед использованием инструментов кошелька.",
-      "backUpNow": "Создать копию сейчас",
       "returnToRecovery": "Вернуться к восстановлению",
       "closeAndReopenPaliToTryAgain": "Закройте и снова откройте Pali.",
       "working": "Выполнение"

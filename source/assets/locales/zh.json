@@ -3414,8 +3414,6 @@
       "writeTheseWordsDownInOrder": "按顺序写下这些助记词",
       "anyoneWithTheseWordsCanControlYourWalletKeepThemOfflinePaliSupportWillNeverAskForThem": "任何拥有这些助记词的人都可以控制您的钱包。请离线保存。Pali 支持人员永远不会索要这些助记词。",
       "keepYourRecoveryPhrasePrivateAndOffline": "请将恢复短语保密并离线保存。",
-      "keepARecoveryPhraseBackupBeforeUsingWalletTools": "使用钱包工具前，请备份恢复短语。",
-      "backUpNow": "立即备份",
       "returnToRecovery": "返回恢复流程",
       "closeAndReopenPaliToTryAgain": "请关闭并重新打开 Pali 后重试。",
       "working": "正在处理"

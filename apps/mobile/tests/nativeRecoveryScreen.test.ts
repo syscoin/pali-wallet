@@ -389,7 +389,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     },
     ...(depositMode ? { async openPrivateDeposit() { throw Error('Deposit child owns opening in the dedicated screen test'); } } : {}),
     ...(networkMode ? { async openUtxoSend() { throw Error('UTXO child owns opening'); } } : {}),
-    authority: { getSnapshot: () => state, getCatalogue: () => ['ready', 'backup-required'].includes(state.phase) ? catalogue : null, supportsAccountManagement: () => false,
+    authority: { getSnapshot: () => state, getCatalogue: () => ['ready'].includes(state.phase) ? catalogue : null, supportsAccountManagement: () => false,
       async selectNetwork(id: string, contextRevision: number, catalogueRevision: number, onCommitted: (proof: NativeNetworkSelectionProof) => void) {
         assert(networkMode); assert.equal(contextRevision, state.revision); assert.equal(catalogueRevision, catalogue.revision);
         const target = [...networkContext.NATIVE_NETWORKS, ...UTXO_NETWORKS].find(network => network.id === id)!;
@@ -406,7 +406,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
       async initialize() {}, subscribe(fn: typeof observer) { observer = fn; return () => { observer = () => {}; }; },
       async getAuthenticationStatus() { return { deviceAuth: 'ready', credentialPresent }; },
       async getDeviceUnlockStatus() { return { available: deviceUnlock, enabled: biometricsEnabled }; },
-      async create() { publish({ phase: 'backup-required', presence: 'existing', backup: 'unconfirmed' }); },
+      async create() { publish({ phase: 'ready', presence: 'existing', backup: 'unconfirmed' }); },
       async setDeviceUnlock(enabled: boolean, password: string, check: () => void) {
         check();
         if (setting) { publish({ phase: 'authenticating', account: null }); await setting.wait; }
@@ -417,13 +417,13 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
         check(); publish({ phase: 'authenticating', error: null });
         try { await authentication.run(null, () => new Promise<void>(resolve => { releasePrompt = resolve; })); }
         catch (cause) { publish({ phase: 'locked', account: null, error: 'DEVICE_UNLOCK_UNAVAILABLE' }); throw cause; }
-        check(); publish({ phase: 'backup-required', backup: 'unconfirmed', account: { address, network: networkId }, error: null });
+        check(); publish({ phase: 'ready', backup: 'unconfirmed', account: { address, network: networkId }, error: null });
       },
       lock() { if (deviceUnlock || pinChange || restoreFailure || idleClock) { lifecycle.push('lock'); locks++; publish({ phase: 'locked', revision: state.revision + 1, account: null }); } }, async dispose() { state = { ...state, phase: 'disposed' }; },
       async unlock() {
         publish({ phase: 'authenticating', error: null });
         if (nextError) { const code = nextError; publish({ phase: 'locked', error: code }); throw new Error(code); }
-        publish({ phase: 'backup-required', backup: 'unconfirmed', account: { address, network: networkId }, error: null });
+        publish({ phase: 'ready', backup: 'unconfirmed', account: { address, network: networkId }, error: null });
       } },
     accounts: { async execute(request: { kind: string; id: string }, contextRevision: number, catalogueRevision: number) {
       assert(publicNavigation); assert.equal(request.kind, 'select');
@@ -686,13 +686,13 @@ test('a changed requested native account is selected on the mounted public walle
   } finally { f.dispose(); }
 });
 
-for (const phase of ['ready', 'backup-required'] as const) test(`missing device credential opens phrase recovery from ${phase} security`, async () => {
+for (const backup of ['confirmed', 'unconfirmed'] as const) test(`missing device credential opens phrase recovery with ${backup} backup`, async () => {
   const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm');
   try {
     const home = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(home);
     (home.props.onSecurity as () => void)(); f.render();
     f.loseCredential();
-    f.publish({ phase, backup: phase === 'backup-required' ? 'unconfirmed' : 'confirmed' });
+    f.publish({ phase: 'ready', backup });
     await new Promise(resolve => setImmediate(resolve));
     const security = all(f.render()).find(node => node.type === 'NativeSecurity'); assert(security);
     assert.equal(typeof security.props.onRestoreAccess, 'function');
@@ -1381,9 +1381,10 @@ test('Tools uses the selected saved network label for custom EVM, renamed preset
   }
 });
 
-test('UTXO Send opens its known network directly without a source selector', async () => {
+test('unconfirmed backup UTXO Send opens its known network directly without a source selector', async () => {
   const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'utxo');
   try {
+    f.publish({ backup: 'unconfirmed' });
     const portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
     (portfolio.props.onSend as () => void)();
     const send = f.render(); assert.equal(send.type, 'NativeUtxoSendScreen'); assert.equal(send.props.onChangeNetwork, undefined);
@@ -1536,7 +1537,7 @@ test(`root-owned ${action} navigation survives the real authority's transient au
   const phases: string[] = [], transientAccounts: unknown[] = [];
   let f: Awaited<ReturnType<typeof walletFeedbackFixture>> | undefined;
   f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, quietActivityNotifications, {
-    tab: action === 'speed-up' ? 'activity' : 'wallet', phases,
+    tab: action === 'speed-up' ? 'activity' : 'wallet', phases, backup: 'unconfirmed',
     onAuthenticating() { viewAlive = false; if (f) transientAccounts.push(f.authority!.getSnapshot().account); },
   });
   phases.length = 0; viewAlive = true;
@@ -1628,15 +1629,15 @@ test('unbacked Receive can select another network without authorizing a send', a
     assert.equal((all(f.render()).find(node => node.type === 'NativePortfolio')!.props.detail as { receive: boolean }).receive, true,
       'consuming the old request cannot swallow a newly requested Receive route');
     (portfolio.props.onReceiveIntentConsumed as () => void)();
-    assert.equal(f.authority!.getSnapshot().phase, 'backup-required');
+    assert.equal(f.authority!.getSnapshot().phase, 'ready');
     await (portfolio.props.navigateDetail as (...args: unknown[]) => Promise<void>)(navigationChoice(), true, undefined, () => {});
-    assert.equal(f.authority!.getSnapshot().phase, 'backup-required');
+    assert.equal(f.authority!.getSnapshot().phase, 'ready');
     assert.equal(f.authority!.getSnapshot().account?.network, 'syscoin-nevm');
     assert(!all(await settleRootNavigation(f)).some(node => node.type === 'NativeSend'));
   } finally { f.dispose(); }
 });
 
-test('unbacked Send selects the public network and opens a draft before requiring backup', async () => {
+test('unconfirmed backup allows the normal Send route on the selected public network', async () => {
   const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, quietActivityNotifications, { backup: 'unconfirmed' });
   try {
     const portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
@@ -1644,11 +1645,32 @@ test('unbacked Send selects the public network and opens a draft before requirin
     const tree = await settleRootNavigation(f);
     assert(!all(tree).some(node => node.type === 'BackupIntroduction'));
     const send = all(tree).find(node => node.type === 'NativeSend'); assert(send);
-    assert.equal(typeof (send.props.beforeBackup as { onRequest: unknown }).onRequest, 'function');
+    assert.equal('beforeBackup' in send.props, false);
     assert.equal(f.authority!.getSnapshot().account?.network, 'syscoin-nevm');
-    assert.equal(f.authority!.getSnapshot().phase, 'backup-required');
+    assert.equal(f.authority!.getSnapshot().phase, 'ready');
   } finally { f.dispose(); }
 });
+
+for (const kind of ['native', 'token', 'ERC-721', 'ERC-1155'] as const)
+  test(`unconfirmed wallet ${kind} uses the ordinary reviewed send route`, async () => {
+    const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined,
+      quietActivityNotifications, { backup: 'unconfirmed' });
+    try {
+      const home = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(home);
+      const asset = kind === 'token' ? navigationToken : { contractAddress: '0x' + '33'.repeat(20), tokenStandard: kind,
+        ...(kind === 'ERC-1155' ? { tokenId: '7' } : {}) };
+      if (kind === 'native') (home.props.onSend as () => void)();
+      else if (kind === 'token') (home.props.onSendToken as (value: unknown) => void)(asset);
+      else (home.props.onSendCollectible as (value: unknown) => void)(asset);
+      const send = all(f.render()).find(node => node.type === 'NativeSend'); assert(send);
+      assert.equal('beforeBackup' in send.props, false);
+      if (kind === 'token') assert.equal(send.props.token, asset);
+      if (kind === 'ERC-721' || kind === 'ERC-1155') assert.equal(send.props.collectible, asset);
+      assert.equal(f.authority!.getSnapshot().backup, 'unconfirmed');
+      assert.equal(f.authority!.getSnapshot().phase, 'ready');
+      assert(!all(f.render()).some(node => node.type === 'BackupIntroduction'));
+    } finally { f.dispose(); }
+  });
 
 test('same-network root Send uses the current authority without an authentication transition', async () => {
   const phases: string[] = [];

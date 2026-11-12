@@ -82,7 +82,7 @@ test('construction and detached reads have no source or network side effects; ze
 
 test('unauthenticated or invalid public custody states stay unavailable without requests', async () => {
   const values: CustodySnapshot[] = [
-    ...(['opening', 'empty', 'locked', 'authenticating', 'backup-required', 'unavailable', 'disposed'] as const).map(phase => ({ ...ready(), phase })),
+    ...(['opening', 'empty', 'locked', 'authenticating', 'unavailable', 'disposed'] as const).map(phase => ({ ...ready(), phase })),
     { ...ready(), account: null },
     ready('not-an-address'), ready('0x' + '0'.repeat(40)), ready(` ${A}`),
     ready('0x52908400098527886e0F7030069857D2E4169EE7'),
@@ -102,9 +102,9 @@ test('unauthenticated or invalid public custody states stay unavailable without 
 });
 
 test('unconfirmed authenticated Home reads the real public account and still revokes on lock', async () => {
-  const source = new Source({ ...ready(), phase: 'backup-required', backup: 'unconfirmed' });
+  const source = new Source({ ...ready(), phase: 'ready', backup: 'unconfirmed' });
   const f = fixture(source), disconnect = f.controller.connect();
-  assert.equal(source.getSnapshot().phase, 'backup-required');
+  assert.equal(source.getSnapshot().phase, 'ready');
   assert.equal(source.getSnapshot().backup, 'unconfirmed');
   assert.equal(f.calls.length, 1);
   f.calls[0]!.resolve({ chainId: 1, units: '123' }); await tick();

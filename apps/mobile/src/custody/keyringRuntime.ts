@@ -6853,7 +6853,7 @@ export function createKeyringRuntimeFactory(
                   checkedUtxoImport(state.accounts.Imported[scope.index]!, utxo, extended ? 'account' : 'address');
                 }
                 const stored = await storage.readState(); check();
-                if (stored.presence !== 'existing' || stored.backup !== 'confirmed') throw new KeyringRuntimeError('NOT_READY');
+                if (stored.presence !== 'existing') throw new KeyringRuntimeError('NOT_READY');
                 // The SDK selector is fixed here; no account type or alternate index comes from a screen.
                 const privateKey = await withSoftwareSecret('secret-read', signal, check, secret => { readEntered = true; return ring.getPrivateKeyByAccountId(scope.index, type === 'HDAccount' ? sdk.KeyringAccountType.HDAccount : sdk.KeyringAccountType.Imported, secret); }, null, null,
                   { authentication, assertCurrent: checkOwnership });

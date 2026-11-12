@@ -105,7 +105,7 @@ export class AccountPortfolioController {
   }
   private context() {
     const state = this.ports.source.getSnapshot(), catalogue = this.ports.source.getCatalogue?.();
-    if (!['ready', 'backup-required'].includes(state.phase) || !state.account || !catalogue) return null;
+    if (state.phase !== 'ready' || !state.account || !catalogue) return null;
     const id = catalogue.active.accountId;
     // A numeric index in another coin family is not proof of the same account.
     const choices = this.ports.choices().filter(choice => 'kind' in choice.scope.network && choice.scope.network.kind === 'evm' &&

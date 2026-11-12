@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { sendDraftForNetwork, type NativeUnsignedSendDraft } from '../src/screens/sendNetworkDraft.ts';
-import { publicSendContext, samePublicSendDestination } from '../src/screens/publicSendDraft.ts';
+import { publicSendContext } from '../src/screens/publicSendDraft.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import type { NativeWalletCatalogueSnapshot } from '../src/custody/walletCatalogue.ts';
@@ -15,25 +15,25 @@ import { UTXO_ADDRESSES } from './publicWatchFixtures.ts';
 const EVM_ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
 const evmDraft: NativeUnsignedSendDraft = { kind: 'evm', recipient: EVM_ADDRESS, amount: '1.2', nonce: '7', tokenId: '9', max: true, advanced: true, feeChoice: { kind: 'high' } };
 
-test('public draft identity survives backup completion but rejects locked or inconsistent public selections', () => {
+test('public draft identity does not depend on backup and rejects locked or inconsistent public selections', () => {
   const network = getNativeNetwork('ethereum');
   const catalogue: NativeWalletCatalogueSnapshot = { revision: 3, networks: [network], utxoNetworks: [],
     active: { accountId: 'hd:60:0', networkId: network.id },
     accounts: [{ id: 'hd:60:0', type: 'HDAccount', slip44: 60, index: 0, label: 'Wallet', address: EVM_ADDRESS }] };
-  const state: CustodySnapshot = { phase: 'backup-required', revision: 2, presence: 'existing', backup: 'unconfirmed',
+  const state: CustodySnapshot = { phase: 'ready', revision: 2, presence: 'existing', backup: 'unconfirmed',
     account: { network: network.id, address: EVM_ADDRESS }, error: null };
   const before = publicSendContext(state, catalogue); assert(before);
   const after = publicSendContext({ ...state, phase: 'ready', backup: 'confirmed', revision: 3 }, catalogue); assert(after);
   assert.notEqual(before.context, after.context);
-  assert(samePublicSendDestination(before, after));
+  assert.equal(before.identity, after.identity);
   for (const phase of ['opening', 'empty', 'locked', 'authenticating', 'unavailable', 'disposed'] as const)
     assert.equal(publicSendContext({ ...state, phase }, catalogue), null);
-  assert.equal(publicSendContext({ ...state, backup: 'confirmed' }, catalogue), null);
+  assert.deepEqual(publicSendContext({ ...state, backup: 'confirmed' }, catalogue), before);
   assert.equal(publicSendContext(state, { ...catalogue, active: { ...catalogue.active, accountId: 'hd:60:1' } }), null);
   assert.equal(publicSendContext(state, { ...catalogue, active: { ...catalogue.active, networkId: 'syscoin-nevm' } }), null);
   assert.equal(publicSendContext(state, { ...catalogue, accounts: [{ ...catalogue.accounts[0]!, address: '0x1111111111111111111111111111111111111111' }] }), null);
   const changedNetwork = publicSendContext(state, { ...catalogue, networks: [{ ...network, rpcUrl: 'https://changed.example' }] }); assert(changedNetwork);
-  assert.equal(samePublicSendDestination(before, changedNetwork), false);
+  assert.notEqual(before.networkIdentity, changedNetwork.networkIdentity);
 });
 
 test('actual network changes preserve only a validated compatible recipient and reset network-scoped form values', () => {

@@ -16,7 +16,6 @@ import { snapshotUtxoRbf } from '../../../source/shared/utxoTransactionOptions.t
 import { SYSX_ASSET_GUID, SYSX_ASSET_DECIMALS } from '../../../source/shared/syscoinAssetIds.ts';
 import type { NativeUtxoAsset, NativeUtxoReview } from '../src/custody/utxoSend.ts';
 import type { NativeOperationCredential } from '../src/custody/types.ts';
-import type { NativeUnsignedSendDraft } from '../src/screens/sendNetworkDraft.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (value: any) => void };
@@ -29,7 +28,6 @@ const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativeTranslationFixture) {
   let initialDraft: Extract<ReturnType<typeof trezorResumeDraft>, { kind: 'utxo' }>['draft'] | undefined;
-  let beforeBackup: { onRequest(draft: Extract<NativeUnsignedSendDraft, { kind: 'utxo' }>): void } | undefined;
   let network = getUtxoNetwork(asset ? 'syscoin' : 'bitcoin');
   let availableAmount: string | undefined = '1.25000001';
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
@@ -107,14 +105,14 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
   let opens = 0;
   const open = async () => { opens++; return service; };
   const render = () => { cursor = 0; const tree = module.exports.NativeUtxoSendScreen({ accountLabel: 'Account', asset,
-    initialDraft, beforeBackup, maximumAmount: maximum, availableAmount, network, open, onChangeNetwork(draft: unknown) { networkDrafts.push(draft); networkChanges++; }, onViewTransaction(txid: string) { openedTransactions.push(txid); }, onBack() { backs++; } }) as Element;
+    initialDraft, maximumAmount: maximum, availableAmount, network, open, onChangeNetwork(draft: unknown) { networkDrafts.push(draft); networkChanges++; }, onViewTransaction(txid: string) { openedTransactions.push(txid); }, onBack() { backs++; } }) as Element;
     effects.splice(0).forEach((run) => run()); return tree; };
   const press = (title: string) => { const button = all(render()).find((node) => node.type === 'Button' && node.props.title === title); assert(button, title); button.props.onPress(); };
   const edit = (label: string, value: string) => { const input = all(render()).find((node) => node.type === 'Input' && node.props.accessibilityLabel === label); assert(input, label); input.props.onChangeText(value); };
   const review = () => { const screen = all(render()).find((node) => node.type === 'Screen')!; screen.props.footer.props.onPress(); };
   return { render, press, edit, review, requests, reviews, authorized, openedTransactions, networkDrafts, counts: () => ({ cancels, confirmations, networkChanges }),
     hardware() { assert(hardware); return hardware(); }, backs: () => backs,
-    requireBackup(onRequest: NonNullable<typeof beforeBackup>['onRequest']) { beforeBackup = { onRequest }; }, opens: () => opens,
+    opens: () => opens,
     seedDraft(draft: NonNullable<typeof initialDraft>) { initialDraft = draft; },
     seedSaved(records: typeof saved) { saved = records; }, listReads: () => listReads, refreshReads: () => refreshReads,
     holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
@@ -128,19 +126,6 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     release() { release?.(); gate = undefined; },
     close() { cells.forEach((value) => value.cleanup?.()); } };
 }
-
-for (const spt of [false, true]) test(`unbacked ${spt ? 'SPT' : 'UTXO'} form never opens a transaction controller or reads saved transactions`, async () => {
-  const asset = spt ? { assetGuid: SYSX_ASSET_GUID, symbol: 'SYSX', decimals: SYSX_ASSET_DECIMALS } : undefined;
-  const f = fixture(asset, spt ? '3' : undefined), drafts: NativeUnsignedSendDraft[] = [];
-  const draft = { recipient: 'public-recipient', amount: '1', max: false, rbf: false, feeChoice: { kind: 'high' as const } };
-  f.seedDraft(draft); f.requireBackup(value => drafts.push(value));
-  const tree = f.render(); await tick();
-  const review = all(tree).find(node => node.type === 'Button' && node.props.title === 'Back up now'); assert(review);
-  assert.equal(review.props.disabled, false); review.props.onPress();
-  assert.equal(JSON.stringify(drafts), JSON.stringify([{ kind: 'utxo', ...draft }]));
-  assert.equal(f.opens(), 0); assert.equal(f.listReads(), 0); assert.equal(f.refreshReads(), 0);
-  assert.deepEqual(f.requests, []); assert.deepEqual(f.authorized, []); f.close();
-});
 
 test('explicit saved status check reloads the filtered recovery list', async () => {
   const f = fixture();

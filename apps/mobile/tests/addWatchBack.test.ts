@@ -129,14 +129,15 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         '../platform/localization': nativeTranslationFixture,
         react: render.api, 'react-native': native, '../ui': ui, './IdleActivityBoundary': idle.components,
       });
-      let privacyHidden = false;
+      let privacyHidden = false, faucetEnabled = false;
+      let faucetRequests = 0;
       const dependencies = { '../platform/localization': nativeTranslationFixture, '../activity/activityFiltering': activityFiltering, './IdleActivityBoundary': idle.components, react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
         './CopyableAddress': { CopyableAddress: 'CopyableAddress' },
         'expo-clipboard': { async setStringAsync(value: string) { copied.push(value); return true; } }, 'react-native-qrcode-svg': 'QRCode', '../ui': ui, '../core/amounts': core, '../core/networks': core,
         '../core/utxoAddresses': { canUseUtxoCustodyAddress },
         '../core/utxoNetworks': { findUtxoNetwork, getUtxoNetwork }, '../core/watchOnlyAuthority': core,
         '../custody/networkContext': { getNativeNetwork: () => ({ id: 'ethereum' }), getNativeSendContext: () => ({ networkId: 'ethereum', name: 'Ethereum', symbol: 'ETH', decimals: 18 }), nativeSigningEnabled: () => kind === 'smart-signable' },
-        '../custody/testnetFaucet': { getTestnetFaucet: () => null }, './TestnetFaucetCard': {},
+        '../custody/testnetFaucet': { getTestnetFaucet: () => faucetEnabled ? { url: 'https://faucet-zk.tanenbaum.io/' } : null, async openTestnetFaucet(_registration: unknown, _open: unknown, check: () => void) { check(); faucetRequests++; } }, './TestnetFaucetCard': { TestnetFaucetCard: 'TestnetFaucetCard' },
         './PortfolioQuote': evaluate(load('src/screens/PortfolioQuote.tsx'), { react: render.api, 'react-native': native, '../ui': ui }),
         './NativeTokens': { NativeTokens: 'NativeTokens' }, '../platformRpc': {}, '../platform/http': {}, '../portfolio/nativePortfolio': {},
         '../portfolio/AssetMarketCard': { AssetMarketCard: 'AssetMarketCard' },
@@ -202,7 +203,7 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         tokens.props.onSend({symbol:'PUBLIC'}); tokens.props.onSendCollectible({contractAddress:'public'});
         assert.equal(tokenSent, 1); assert.equal(collectibleSent, 1);
         assert(!JSON.stringify(tree).includes('signing is not yet available'));
-        // Home and asset callbacks open public drafts; backup still gates preparation in nativeSendBack.test.ts.
+        // Home and asset callbacks open public drafts; backup is advisory and fresh OS authorization still gates signing.
         // Receive keeps its own explicit warning rather than starting backup automatically.
         backupRequired = true;
         press(get(tree, element => element.props.title === 'Send'));
@@ -278,6 +279,16 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
       if (kind === 'native') {
         const originalBackup = backupRequired;
         backupRequired = true;
+        faucetEnabled = true;
+        const faucetView = render.instance();
+        let faucetTree = render.render(faucetView, leaf, props()); render.flush(faucetView);
+        const publicFaucet = get(faucetTree, element => element.type === 'TestnetFaucetCard');
+        const backupsBeforeFaucet = backupRequests;
+        (publicFaucet.props.onOpen as () => void)(); await new Promise(resolve => setImmediate(resolve));
+        assert.equal(faucetRequests, 1); assert.equal(backupRequests, backupsBeforeFaucet);
+        render.dispose(faucetView); (publicFaucet.props.onOpen as () => void)();
+        await new Promise(resolve => setImmediate(resolve)); assert.equal(faucetRequests, 1, 'retired faucet cannot open');
+        faucetEnabled = false;
         const unbackedReceive = render.instance();
         let unbackedTree = render.render(unbackedReceive, leaf, { ...props(), openReceive: true }); render.flush(unbackedReceive);
         unbackedTree = render.render(unbackedReceive, leaf, { ...props(), openReceive: true }); render.flush(unbackedReceive);

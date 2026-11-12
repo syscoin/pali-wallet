@@ -41,14 +41,14 @@ export async function qualifyNativeHdKeyReveal(options: Readonly<{
   const captured = authority.getSnapshot();
   const catalogue = authority.getCatalogue();
   const selected = catalogue?.accounts.find((account) => account.id === catalogue.active.accountId);
-  requireEvidence(captured.phase === 'ready' && captured.backup === 'confirmed' &&
+  requireEvidence(captured.phase === 'ready' && captured.presence === 'existing' &&
     selected?.id === 'hd:60:1' && selected.index === 1 && selected.type === 'HDAccount' &&
     captured.account?.address === expectedAddress && selected.address === expectedAddress &&
     /^0x[0-9a-fA-F]{40}$/.test(expectedAddress));
   const catalogueBefore = JSON.stringify(catalogue);
   const current = () => {
     const now = authority.getSnapshot();
-    requireEvidence(now.phase === 'ready' && now.backup === 'confirmed' && now.revision === captured.revision &&
+    requireEvidence(now.phase === 'ready' && now.presence === 'existing' && now.revision === captured.revision &&
       now.account?.address === expectedAddress && now.account.network === captured.account?.network &&
       JSON.stringify(authority.getCatalogue()) === catalogueBefore);
   };

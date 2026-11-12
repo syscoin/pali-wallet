@@ -877,8 +877,9 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   try {
     await owner.initialize();
     await owner.importPhrase(phrase);
-    await runtime.backup.confirm(await runtime.backup.fingerprint());
-    await owner.refreshAuthenticatedMetadata();
+    assert.equal(owner.getSnapshot().phase, 'ready');
+    assert.equal(owner.getSnapshot().backup, 'unconfirmed');
+    assert.deepEqual(await runtime.storage.readState(), { presence: 'existing', backup: 'unconfirmed' });
     assert.equal(owner.getCatalogue()!.active.accountId, 'hd:60:0');
 
     const beforeUnsupported = owner.getCatalogue()!;

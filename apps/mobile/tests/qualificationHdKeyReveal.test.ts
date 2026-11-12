@@ -22,11 +22,11 @@ test('HD key reveal evidence is strict, required and bound to the same selected 
   assert.equal(isHdKeyRevealQualificationReport({ status: 'failed', nativeHdKeyRevealVerified: true }), false);
 });
 
-test('HD key qualification cannot read a secret before backup confirmation or for a different selected account', async () => {
+test('HD key qualification cannot read a secret from a missing wallet or a different selected account', async () => {
   let reads = 0;
-  for (const backup of ['unconfirmed', 'confirmed']) {
-    const index = backup === 'unconfirmed' ? 1 : 0;
-    const authority = { getSnapshot: () => ({ phase: 'ready', backup, revision: 1, account: { address: evidence('create').address, network: 'ethereum' } }),
+  for (const presence of ['empty', 'existing']) {
+    const index = presence === 'empty' ? 1 : 0;
+    const authority = { getSnapshot: () => ({ phase: 'ready', presence, backup: 'unconfirmed', revision: 1, account: { address: evidence('create').address, network: 'ethereum' } }),
       getCatalogue: () => ({ revision: 1, active: { accountId: `hd:60:${index}`, networkId: 'ethereum' }, accounts: [{ id: `hd:60:${index}`, index, type: 'HDAccount', address: evidence('create').address }] }) } as unknown as NativeCustodyAuthority;
     const runtime = { keyExport: { async readSelected() { reads++; return ''; } } } as unknown as KeyringRuntime;
     await assert.rejects(qualifyNativeHdKeyReveal({ authority, runtime, storage: {} as OpenWalletStorage,

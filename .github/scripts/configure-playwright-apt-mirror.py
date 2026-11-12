@@ -45,8 +45,17 @@ def configure(root, architecture):
     with os.fdopen(os.open(target, os.O_RDONLY | os.O_NOFOLLOW), "rb") as source:
         info = os.fstat(source.fileno())
         contents = source.read(4096)
-        if info.st_nlink != 1 or contents not in (ORIGINAL, KERNEL_FIRST, PREFERRED):
-            raise ValueError("Unexpected hosted-runner apt mirror list")
+        if info.st_nlink != 1:
+            raise ValueError(f"Unsafe apt mirror-list link count: {info.st_nlink}")
+        if contents not in (ORIGINAL, KERNEL_FIRST, PREFERRED):
+            # This is public runner configuration, but emit only bounded hex:
+            # unexpected bytes must never become terminal or workflow commands.
+            prefix = contents[:512]
+            raise ValueError(
+                "Unexpected hosted-runner apt mirror list: "
+                f"size={info.st_size} read={len(contents)} "
+                f"prefix_bytes={len(prefix)} prefix_hex={prefix.hex()}"
+            )
         if contents == PREFERRED:
             return False
     temporary = None

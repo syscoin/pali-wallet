@@ -74,12 +74,12 @@ export class NativeCustodyAuthority {
   }
 
   getSnapshot(): CustodySnapshot {
-    if (['ready', 'backup-required', 'authenticating'].includes(this.snapshot.phase)) { try { this.checkIdle(); } catch { /* Return the revoked snapshot. */ } }
+    if (['ready', 'authenticating'].includes(this.snapshot.phase)) { try { this.checkIdle(); } catch { /* Return the revoked snapshot. */ } }
     return this.snapshot;
   }
 
   getCatalogue(): NativeWalletCatalogueSnapshot | null {
-    if (!['ready', 'backup-required'].includes(this.snapshot.phase)) return null;
+    if (this.snapshot.phase !== 'ready') return null;
     return this.runtime?.accounts?.getSnapshot() ?? null;
   }
 
@@ -153,7 +153,7 @@ export class NativeCustodyAuthority {
         assertSelection();
         if (address !== allocation.account.address) throw new CustodyOperationError('UNAVAILABLE');
         revision = ++this.revision;
-        this.publish({ phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required',
+        this.publish({ phase: 'ready',
           account: Object.freeze({ network: allocation.networkId, address }), error: null });
         current(); allocation.assertCurrent();
         return allocation;
@@ -245,11 +245,11 @@ export class NativeCustodyAuthority {
         const assertReceipt = () => {
           proof.assertCurrent();
           const current = runtime.accounts?.getSnapshot();
-          if (this.runtime !== runtime || !['ready', 'backup-required'].includes(this.snapshot.phase) || this.revision !== expectedRevision + 1 || this.snapshot.account?.network !== id || this.snapshot.account.address !== proof.selection.address || current?.revision !== expectedCatalogueRevision + 1 || current.active.accountId !== proof.selection.accountId || current.active.networkId !== id || !current.accounts.some(account => account.id === proof.selection.accountId && account.address === proof.selection.address)) throw new CustodyOperationError('CANCELLED');
+          if (this.runtime !== runtime || this.snapshot.phase !== 'ready' || this.revision !== expectedRevision + 1 || this.snapshot.account?.network !== id || this.snapshot.account.address !== proof.selection.address || current?.revision !== expectedCatalogueRevision + 1 || current.active.accountId !== proof.selection.accountId || current.active.networkId !== id || !current.accounts.some(account => account.id === proof.selection.accountId && account.address === proof.selection.address)) throw new CustodyOperationError('CANCELLED');
         };
         return Object.freeze({ ...proof, sourceContextRevision: expectedRevision, contextRevision: expectedRevision + 1, catalogueRevision: expectedCatalogueRevision + 1, assertCurrent: assertReceipt });
       } };
-    }, expectedRevision, false, true).then(receipt => { receipt.assertCurrent(); return receipt; });
+    }, expectedRevision).then(receipt => { receipt.assertCurrent(); return receipt; });
   }
 
   async addUtxoNetwork(draft: import('./accounts.ts').NativeUtxoNetworkDraft, expectedRevision: number,
@@ -324,9 +324,9 @@ export class NativeCustodyAuthority {
     return id;
   }
 
-  private manageContext<T>(reserve: (runtime: CustodyRuntime) => { execute(assertCurrent: () => void): Promise<T>; cancel(): void }, expectedRevision: number, accountAuthentication = false, publicNetworkSelection = false): Promise<T> {
+  private manageContext<T>(reserve: (runtime: CustodyRuntime) => { execute(assertCurrent: () => void): Promise<T>; cancel(): void }, expectedRevision: number, accountAuthentication = false): Promise<T> {
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
-    if (!this.runtime || (this.snapshot.phase !== 'ready' && !(publicNetworkSelection && this.snapshot.phase === 'backup-required')))
+    if (!this.runtime || this.snapshot.phase !== 'ready')
       return Promise.reject(new CustodyOperationError('NOT_READY'));
     if (this.revision !== expectedRevision) return Promise.reject(new CustodyOperationError('CANCELLED'));
     const runtime = this.runtime;
@@ -360,7 +360,7 @@ export class NativeCustodyAuthority {
         const network = this.selectedNetwork(runtime);
         const address = normalizePublicAddress(await runtime.session.readSelectedAddress(), network, runtime.accounts?.getSnapshot()?.utxoNetworks);
         current();
-        this.publish({ phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required', account: Object.freeze({ network, address }), error: null });
+        this.publish({ phase: 'ready', account: Object.freeze({ network, address }), error: null });
         current();
         return result;
       } catch (cause) {
@@ -570,7 +570,7 @@ export class NativeCustodyAuthority {
   }
 
   unlock(): Promise<void> {
-    if (['ready', 'backup-required'].includes(this.getSnapshot().phase)) return Promise.resolve();
+    if (this.getSnapshot().phase === 'ready') return Promise.resolve();
     return this.authenticate('unlock');
   }
 
@@ -590,7 +590,7 @@ export class NativeCustodyAuthority {
   refreshAuthenticatedMetadata(): Promise<void> {
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
     if (!this.runtime || !this.snapshot.account ||
-      !['backup-required', 'ready'].includes(this.snapshot.phase))
+      this.snapshot.phase !== 'ready')
       return Promise.reject(new CustodyOperationError('NOT_READY'));
     const runtime = this.runtime;
     const revision = this.revision;
@@ -611,7 +611,7 @@ export class NativeCustodyAuthority {
         const address = normalizePublicAddress(await runtime.session.readSelectedAddress(), account.network, runtime.accounts?.getSnapshot()?.utxoNetworks);
         current();
         if (address !== account.address || this.selectedNetwork(runtime) !== account.network) throw new CustodyOperationError('UNAVAILABLE');
-        this.publish({ phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required' });
+        this.publish({ phase: 'ready' });
         current();
       } catch {
         this.requestLock();
@@ -630,7 +630,7 @@ export class NativeCustodyAuthority {
   saveIdlePreference(expected: SecurityPreferenceSnapshot, proposed: number, signal: AbortSignal, authentication: NativePrivateAuthentication, assertScreen: () => void): Promise<SecurityPreferenceSnapshot> {
     const minutes = idleMinutes(proposed);
     const phase = this.snapshot.phase;
-    if (!this.policy || !this.runtime || (phase !== 'ready' && phase !== 'backup-required')) return Promise.reject(new CustodyOperationError('NOT_READY'));
+    if (!this.policy || !this.runtime || phase !== 'ready') return Promise.reject(new CustodyOperationError('NOT_READY'));
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
     const runtime = this.runtime, policy = this.policy, revision = this.revision;
     const check = () => {
@@ -689,7 +689,7 @@ export class NativeCustodyAuthority {
         }
         const network = this.selectedNetwork(runtime);
         const address = normalizePublicAddress(await runtime.session.readSelectedAddress(), network, runtime.accounts?.getSnapshot()?.utxoNetworks);
-        check(); this.publish({ phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required', account: Object.freeze({ network, address }), error: null }); check();
+        check(); this.publish({ phase: 'ready', account: Object.freeze({ network, address }), error: null }); check();
       } catch (cause) {
         this.requestLock(); try { await this.drainLocks(); } catch { /* cleanup quarantines */ }
         if (attempted && creating && this.snapshot.phase !== 'disposed') {
@@ -717,7 +717,7 @@ export class NativeCustodyAuthority {
   /** Only this owner's original runtime may supply recovery's freshness identity. */
   retireForRecovery(): Promise<string> {
     if (this.recoveryRetirement) return this.recoveryRetirement;
-    if (this.disposal || !['locked', 'ready', 'backup-required'].includes(this.snapshot.phase) || !this.runtime)
+    if (this.disposal || !['locked', 'ready'].includes(this.snapshot.phase) || !this.runtime)
       return Promise.reject(new CustodyOperationError('NOT_READY'));
     this.startDisposal(true);
     return this.recoveryRetirement!;
@@ -726,7 +726,7 @@ export class NativeCustodyAuthority {
   retireForRemoval<T>(expected: CustodySnapshot, operation: () => Promise<T>): Promise<T> {
     const retire = this.runtime?.storage.retireForRemoval;
     if (this.disposal || this.pending || this.getSnapshot() !== expected ||
-        !['ready', 'backup-required'].includes(expected.phase) || !retire)
+        expected.phase !== 'ready' || !retire)
       return Promise.reject(new CustodyOperationError('CANCELLED'));
     let result: Promise<T> | undefined;
     const disposal = this.startDisposal(false, () => retire(async () => {

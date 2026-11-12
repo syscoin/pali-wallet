@@ -46,12 +46,12 @@ test('an unbacked wallet can configure public-view auto-lock while weakening sti
     preferences: f.p, viewLock: new PublicViewLock({ get: async () => null, set: async () => undefined }), assertActive: guard,
   });
   await authority.initialize(); await authority.unlock();
-  assert.equal(authority.getSnapshot().phase, 'backup-required');
+  assert.equal(authority.getSnapshot().phase, 'ready');
   expected = await authority.saveIdlePreference(expected, 5, controller.signal, authentication, guard);
   assert.equal(expected.custodyIdleMinutes, 5); assert.equal(authorizations, 0);
   expected = await authority.saveIdlePreference(expected, 0, controller.signal, authentication, guard);
   assert.equal(expected.custodyIdleMinutes, 0); assert.equal(authorizations, 1);
-  assert.equal(authority.getSnapshot().phase, 'backup-required');
+  assert.equal(authority.getSnapshot().phase, 'ready');
   await authority.dispose();
 });
 test('host timer functions retain their required global receiver',()=>{const c=clock();let calls=0;const schedule=function(this:unknown){assert.equal(this,globalThis);calls++;return 1;} as unknown as typeof setTimeout;const cancel=function(this:unknown){assert.equal(this,globalThis);} as typeof clearTimeout;const idle=new IdleLock(c.now,schedule,cancel);idle.setPolicy(5);idle.begin({},()=>assert.fail('valid clock must not expire'));assert.equal(calls,1);assert.ok(idle.check());});

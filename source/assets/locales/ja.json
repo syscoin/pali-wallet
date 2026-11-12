@@ -3414,8 +3414,6 @@
       "writeTheseWordsDownInOrder": "これらの単語を順番に書き留めてください",
       "anyoneWithTheseWordsCanControlYourWalletKeepThemOfflinePaliSupportWillNeverAskForThem": "これらの単語を持つ人は誰でもウォレットを操作できます。オフラインで保管してください。Pali サポートが尋ねることはありません。",
       "keepYourRecoveryPhrasePrivateAndOffline": "リカバリーフレーズは他人に見せず、オフラインで保管してください。",
-      "keepARecoveryPhraseBackupBeforeUsingWalletTools": "ウォレットツールを使う前にリカバリーフレーズをバックアップしてください。",
-      "backUpNow": "今すぐバックアップ",
       "returnToRecovery": "復元に戻る",
       "closeAndReopenPaliToTryAgain": "Pali を閉じて再度開いてください。",
       "working": "処理中"

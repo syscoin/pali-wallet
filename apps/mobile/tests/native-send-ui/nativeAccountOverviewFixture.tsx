@@ -13,7 +13,7 @@ const accounts = Array.from({ length: 15 }, (_, index) => ({ id: `hd:60:${index}
   address: `0x${(index + 1).toString(16).padStart(40, '0')}`, label: `Account ${index + 1}` }));
 let selected = 0, backups = 0;
 const unbacked = new URLSearchParams(window.location.search).has('unbacked');
-let state: CustodySnapshot = { phase: unbacked ? 'backup-required' : 'ready', revision: 1, presence: 'existing', backup: unbacked ? 'unconfirmed' : 'confirmed', account: { address: accounts[0]!.address, network: 'ethereum' }, error: null };
+let state: CustodySnapshot = { phase: 'ready', revision: 1, presence: 'existing', backup: unbacked ? 'unconfirmed' : 'confirmed', account: { address: accounts[0]!.address, network: 'ethereum' }, error: null };
 let catalogue: NativeWalletCatalogueSnapshot = { revision: 1, active: { accountId: accounts[0]!.id, networkId: 'ethereum' }, networks, utxoNetworks: [], accounts };
 const listeners = new Set<(state: CustodySnapshot) => void>();
 const source = { getSnapshot: () => state, getCatalogue: () => catalogue, subscribe: (listener: (state: CustodySnapshot) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; } };

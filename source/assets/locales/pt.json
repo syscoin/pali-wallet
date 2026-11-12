@@ -3414,8 +3414,6 @@
       "writeTheseWordsDownInOrder": "Anote estas palavras na ordem",
       "anyoneWithTheseWordsCanControlYourWalletKeepThemOfflinePaliSupportWillNeverAskForThem": "Qualquer pessoa com estas palavras pode controlar sua carteira. Guarde-as offline. O suporte do Pali nunca solicitará essas palavras.",
       "keepYourRecoveryPhrasePrivateAndOffline": "Mantenha sua frase de recuperação privada e offline.",
-      "keepARecoveryPhraseBackupBeforeUsingWalletTools": "Guarde um backup da frase de recuperação antes de usar as ferramentas da carteira.",
-      "backUpNow": "Fazer backup agora",
       "returnToRecovery": "Voltar à recuperação",
       "closeAndReopenPaliToTryAgain": "Feche e abra o Pali novamente para tentar outra vez.",
       "working": "Processando"

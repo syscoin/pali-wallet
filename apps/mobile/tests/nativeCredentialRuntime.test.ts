@@ -52,7 +52,7 @@ test('cold public entry uses only the checkpoint key and leaves every SDK signin
     assert(f.rings.every(ring => !ring.isUnlocked()));
     await f.reopen();
     assert.equal(f.credentials.secretReads, reads);
-    assert.equal(f.authority.getSnapshot().phase, 'backup-required');
+    assert.equal(f.authority.getSnapshot().phase, 'ready');
     assert(f.authority.getCatalogue()?.accounts.length);
     assert(f.rings.every(ring => !ring.isUnlocked()));
     assert.equal((await f.runtime.backup.readPhrase({ method: 'device' })).join(' '), PHRASE);

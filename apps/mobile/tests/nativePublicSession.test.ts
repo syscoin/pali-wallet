@@ -78,12 +78,12 @@ test('actual native creation and cold public reopen never enter the live SDK roo
   const f = await fixture();
   try {
     await f.create();
-    assert.equal(f.authority.getSnapshot().phase, 'backup-required');
+    assert.equal(f.authority.getSnapshot().phase, 'ready');
     assert.equal(f.rootEntries, 0); assert.equal(f.restoreEntries, 1);
     assert.equal(f.secretReads, 0);
     assert(await f.storage.keyringStorage.get(NATIVE_PUBLIC_SESSION_KEY));
     const address = f.authority.getSnapshot().account!.address;
-    await f.reopen(); assert.equal(f.authority.getSnapshot().phase, 'backup-required');
+    await f.reopen(); assert.equal(f.authority.getSnapshot().phase, 'ready');
     await f.authority.unlock();
     assert.equal(f.authority.getSnapshot().account!.address, address);
     assert.equal(f.rootEntries, 0); assert.equal(f.restoreEntries, 2);
@@ -225,7 +225,7 @@ test('a refused protected read leaves public reopen usable without exposing the 
     assert.equal(f.secretConsumptions, 0); assert.equal(f.secretReads, 1);
     assert.equal(f.instances.at(-1)!.isUnlocked(), false);
     f.blockSecrets(); await f.reopen();
-    assert.equal(f.authority.getSnapshot().phase, 'backup-required');
+    assert.equal(f.authority.getSnapshot().phase, 'ready');
     assert.equal(f.secretReads, 0); assert.equal(f.rootEntries, 0);
     assert.equal(f.instances.at(-1)!.isUnlocked(), false);
   } finally { await f.close(); }
@@ -313,13 +313,10 @@ for (const backedUp of [false, true]) test(`public-only EVM network selection pr
   try {
     await f.create(); if (backedUp) await f.ready(); f.blockSecrets();
     const address = f.authority.getSnapshot().account!.address;
-    if (!backedUp) await assert.rejects(f.authority.manageAccounts(
-      { kind: 'create', label: 'Not admitted' }, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision
-    ), /NOT_READY/);
     for (const networkId of ['base', 'arbitrum', 'rollux', 'syscoin-nevm-testnet', 'zksys-testnet', 'syscoin-nevm', 'ethereum']) {
       const state = f.authority.getSnapshot(), catalogue = f.authority.getCatalogue()!;
       await f.authority.selectNetwork(networkId, state.revision, catalogue.revision, () => undefined);
-      assert.equal(f.authority.getSnapshot().phase, backedUp ? 'ready' : 'backup-required');
+      assert.equal(f.authority.getSnapshot().phase, 'ready');
       assert.equal(f.authority.getSnapshot().account!.network, networkId);
       assert.equal(f.authority.getSnapshot().account!.address, address);
       assert.equal(f.rootEntries, 0); assert.equal(f.secretReads, 0);

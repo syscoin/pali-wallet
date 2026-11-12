@@ -28,7 +28,7 @@ test('retirement cancels native authentication before locking and closing its ow
   assert.deepEqual(events, ['cancel-authentication', 'lock', 'close']);
 });
 
-function fixture(existingPhase: 'locked' | 'ready' | 'backup-required' = 'locked') {
+function fixture(existingPhase: 'locked' | 'ready' = 'locked') {
   const events: string[] = []; let count = 0;
   let close: Promise<void> = Promise.resolve(), recoveryClose: Promise<void> = Promise.resolve();
   let removalClose: Promise<void> = Promise.resolve(), removed = false;
@@ -183,7 +183,7 @@ test('same mounted token joins one admission and asynchronous guards never grant
   assert.equal(await f.gate.acquire({}, invalid as unknown as () => boolean), null); assert.equal(f.count(), 1);
 });
 
-for (const phase of ['ready', 'backup-required'] as const) test(`auto-open ${phase} public view survives reacquire and permits explicit recovery`, async () => {
+for (const phase of ['ready'] as const) test(`auto-open ${phase} public view survives reacquire and permits explicit recovery`, async () => {
   const f = fixture(phase), first = {}, next = {};
   const opened = await f.gate.acquire(first, () => true); assert(opened);
   assert.equal(opened.authority.getSnapshot().phase, phase);
