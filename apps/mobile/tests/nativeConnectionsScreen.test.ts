@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { NativeConnectionsSnapshot } from '../src/connections/types.ts';
 import { extractPairingUri } from '../src/connections/pairingLinks.ts';
-import { nativeTranslationFixture } from './localizationFixture.ts';
+import { englishI18n, languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
 import { screenElements, screenFixture, type ScreenElement } from './screenFixture.ts';
 
 const address = `0x${'12'.repeat(20)}`;
 const account = { id: 'hd:60:0', label: 'Daily wallet', address };
-function fixture() {
+function fixture(dateLocale?: Intl.LocalesArgument) {
   let now = 100_000, reads = 0, back = 0;
   let clipboard: () => Promise<string> = async () => 'wc:clipboard-link';
   let sessionAction: () => Promise<void> = async () => {};
@@ -44,7 +44,12 @@ function fixture() {
     './DappSiteStatus': { DappSiteStatus: 'DappSiteStatus' },
     './ConnectionQrScanner': { ConnectionQrScanner: 'Scanner' },
   }, {
-    Date: class extends Date { static now() { return now; } },
+    Date: class extends Date {
+      static now() { return now; }
+      toLocaleString(locales?: Intl.LocalesArgument, options?: Intl.DateTimeFormatOptions) {
+        return super.toLocaleString(locales ?? dateLocale, options);
+      }
+    },
     setTimeout: (callback: () => void) => { timers.set(++timerId, callback); return timerId; },
     clearTimeout: (id: number) => timers.delete(id), queueMicrotask,
   });
@@ -208,6 +213,27 @@ test('connected app details are isolated, show the actual scope, and Back return
   assert.match(f.text(), /Active connections/);
   assert.equal(f.back, 0);
   f.close();
+});
+
+test('connection expiry follows the selected Pali language instead of the device locale', async () => {
+  const f = fixture('en-US');
+  const expiresAt = Date.UTC(2030, 3, 5, 16, 7, 8);
+  try {
+    englishI18n.addResourceBundle('de', 'translation', languageMessages('de'), true, true);
+    await englishI18n.changeLanguage('de');
+    f.update({ sessions: [{ ...f.session(), expiresAt }] });
+    const copy = f.text(openSession(f));
+    assert(copy.includes(new Date(expiresAt).toLocaleString('de')));
+    assert(!copy.includes(new Date(expiresAt).toLocaleString('en-US')));
+    await englishI18n.changeLanguage('en');
+    assert(f.text().includes(new Date(expiresAt).toLocaleString('en')));
+    assert.equal(f.controller.getSnapshot().sessions[0]!.expiresAt, expiresAt);
+    assert.equal(f.reads, 0);
+    assert.deepEqual(f.calls, []);
+  } finally {
+    await englishI18n.changeLanguage('en');
+    f.close();
+  }
 });
 
 test('retired session actions cannot disconnect a successor and disappearance returns to empty list', async () => {

@@ -147,7 +147,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
   onScanStarted?(): void;
   onScanFinished?(): void;
 }) {
-  const { t } = useNativeTranslation();
+  const { t, i18n } = useNativeTranslation();
   const subscribe = useCallback((listener: () => void) => controller.subscribe(listener), [controller]);
   const snapshot = useSyncExternalStore(subscribe, controller.getSnapshot, controller.getSnapshot);
   const [selection, setSelection] = useState<{ controller: NativeConnectionsView; accountId: string } | null>(null);
@@ -300,7 +300,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
         <View style={s.fact}><Text style={s.factLabel}>{t('mobile.connections.connectionNetwork')}</Text><Text style={s.factValue}>{selectedSession.networkLabel}</Text></View>
         <View style={[s.fact, s.factBorder]}><Text style={s.factLabel}>{t('mobile.connections.connectionAccount')}</Text><View style={s.factContent}><Text style={s.factValue}>{selectedSession.accountLabel}</Text>{selectedSession.address !== null && <Text selectable accessibilityLabel={selectedSession.address} numberOfLines={1} ellipsizeMode="middle" style={s.address}>{selectedSession.address}</Text>}</View></View>
         <View style={[s.fact, s.factBorder]}><Text style={s.factLabel}>{t('settings.permissions')}</Text><View style={s.factContent}>{permissionRows(selectedSession.methods).map(({ key }) => <Text key={key} style={s.factValue}>{t(`mobile.connections.${key}`)}</Text>)}</View></View>
-        <View style={[s.fact, s.factBorder]}><Text style={s.factLabel}>{t('mobile.connections.expires')}</Text><Text style={s.factValue}>{new Date(selectedSession.expiresAt).toLocaleString()}</Text></View>
+        <View style={[s.fact, s.factBorder]}><Text style={s.factLabel}>{t('mobile.connections.expires')}</Text><Text style={s.factValue}>{new Date(selectedSession.expiresAt).toLocaleString(i18n.resolvedLanguage ?? i18n.language)}</Text></View>
       </Card>
       {selectedSession.returnTarget && <Button title={t('mobile.connections.openWebsite')} icon="external" variant="secondary" size="compact"
         disabled={sessionBusy} onPress={() => void runSessionAction('open')} />}

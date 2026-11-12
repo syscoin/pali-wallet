@@ -544,7 +544,8 @@ export function NativeGuardianRecoveryView({
   openRecoveryAlerts(): Promise<void>;
   onBack(): void;
 }) {
-  const { t } = useNativeTranslation();
+  const { t, i18n } = useNativeTranslation();
+  const locale = i18n.resolvedLanguage ?? i18n.language;
   const state = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
@@ -778,13 +779,13 @@ export function NativeGuardianRecoveryView({
                 {t('settings.smartAccountInfrastructureReadyStatus')}{' '}{' '}
                 {new Date(
                   state.observation.knownOperation.executableAt * 1000
-                ).toLocaleString()}
+                ).toLocaleString(locale)}
               </Text>
               <Text style={s.label}>
                 {t('mobile.connections.expires')}{' '}{' '}
                 {new Date(
                   state.observation.knownOperation.expiresAt * 1000
-                ).toLocaleString()}
+                ).toLocaleString(locale)}
               </Text>
             </Card>
           )}

@@ -117,11 +117,12 @@ const imports = {
   },
   './NativeTransactionReview': { TransactionDetails: 'TransactionDetails' },
 };
-function screen(exported: string) {
+function screen(exported: string, globals: Record<string, unknown> = {}) {
   return screenFixture(
     new URL('../src/screens/NativeGuardianRecovery.tsx', import.meta.url),
     exported,
-    imports
+    imports,
+    globals
   );
 }
 function button(elements: ReturnType<typeof screenElements>, title: string) {
@@ -487,6 +488,61 @@ test('saved review and Activity use the captured payer while proofs and submissi
     assert.equal(controller.getSnapshot().intent?.payer.id, payer.id);
   } finally {
     fixture.close();
+    controller.dispose();
+  }
+});
+
+test('saved recovery dates follow Pali language without changing deadlines or refreshing status', async () => {
+  const knownOperation = {
+    operationId: hash,
+    status: 'pending' as const,
+    executableAt: Date.UTC(2030, 3, 5, 16, 7, 8) / 1000,
+    expiresAt: Date.UTC(2030, 3, 8, 16, 7, 8) / 1000,
+    scheduledAt: Date.UTC(2030, 3, 2, 16, 7, 8) / 1000,
+  };
+  let reads = 0;
+  const controller = new NativeGuardianRecoveryController({
+    assertCurrent() {},
+    dispose() {},
+    submissionFailure() { return undefined; },
+    async observe() {
+      reads++;
+      return { intent, observation: { ...observation, knownOperation }, action: null,
+        transactionHash: null, terminal: null, canAbandon: true };
+    },
+    async prepare() { throw new Error('displaying a date must not prepare a transaction'); },
+    async reconcile() {},
+    async abandon() {},
+  }, new AbortController().signal);
+  const f = screen('NativeGuardianRecoveryView', {
+    Date: class extends Date {
+      toLocaleString(locales?: Intl.LocalesArgument, options?: Intl.DateTimeFormatOptions) {
+        return super.toLocaleString(locales ?? 'en-US', options);
+      }
+    },
+  });
+  const props = { controller, address, chainId: 1, currency: 'ETH', networkLabel: 'Ethereum',
+    async onActivity() {}, async openRecoveryAlerts() {}, onBack() {} };
+  try {
+    englishI18n.addResourceBundle('de', 'translation', languageMessages('de'), true, true);
+    await englishI18n.changeLanguage('de');
+    f.render(props);
+    await tick();
+    const copy = text(screenElements(f.render(props)));
+    for (const timestamp of [knownOperation.executableAt, knownOperation.expiresAt]) {
+      assert(copy.includes(new Date(timestamp * 1000).toLocaleString('de')));
+      assert(!copy.includes(new Date(timestamp * 1000).toLocaleString('en-US')));
+    }
+    await englishI18n.changeLanguage('en');
+    const updated = text(screenElements(f.render(props)));
+    for (const timestamp of [knownOperation.executableAt, knownOperation.expiresAt]) {
+      assert(updated.includes(new Date(timestamp * 1000).toLocaleString('en')));
+    }
+    assert.equal(reads, 1);
+    assert.deepEqual(controller.getSnapshot().observation?.knownOperation, knownOperation);
+  } finally {
+    await englishI18n.changeLanguage('en');
+    f.close();
     controller.dispose();
   }
 });
