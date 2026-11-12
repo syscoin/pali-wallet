@@ -6609,6 +6609,24 @@ export function createKeyringRuntimeFactory(
               async cancelSigningHandoff(job) {
                 if ((pendingTrezor?.operation === 'external-psbt' || pendingTrezor?.operation === 'external-signing') && pendingTrezor.job === job) await cancelTrezor();
               },
+              async readWalletTokenInventory(accountId, networkId, assertCurrent) {
+                const before = catalogueSnapshot, captured = generation;
+                const account = before?.accounts.find(value => value.id === accountId);
+                const network = before && getNativeNetwork(networkId, before.networks);
+                const check = () => {
+                  current(captured); assertOwner(); checkGuard(assertCurrent);
+                  if (active || reserved || !keyring.hasPublicSession() || catalogueSnapshot !== before ||
+                      !account || account.slip44 !== 60 || before?.active.networkId !== networkId ||
+                      connectionNetworkId !== networkId || !network ||
+                      account.type === 'SmartAccount' && account.smartAccount?.chainId !== Number(network.chainId))
+                    throw new KeyringRuntimeError('CANCELLED');
+                };
+                check();
+                const walletFingerprint = await dataBinding(captured, check); check();
+                const result = await tokens.load({ walletFingerprint, accountId: account!.id, address: account!.address,
+                  network: network!.id, chainId: network!.chainId, registrationHash: network!.registrationHash }, check);
+                check(); return result;
+              },
               context() {
                 assertOwner();
                 if (connectionNetworkId === null || connectionNetwork === null)

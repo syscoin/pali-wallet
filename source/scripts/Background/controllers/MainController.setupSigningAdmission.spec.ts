@@ -253,6 +253,41 @@ describe('wallet setup signing capability admission', () => {
     );
   });
 
+  it('reports unavailable fee reads without guessing a rate on either family', async () => {
+    const readFee = jest.requireMock(
+      '@sidhujag/sysweb3-keyring'
+    ).readPublicSyscoinFee;
+    readFee.mockRejectedValueOnce(Error('offline'));
+    await expect(wallet.getRecommendedFee()).rejects.toMatchObject({
+      code: -32603,
+      message: 'Fee estimate unavailable',
+    });
+    mockState.vault.isBitcoinBased = false;
+    mockState.vault.activeNetwork = {
+      kind: 'ethereum',
+      chainId: 1,
+      slip44: 60,
+      url: 'https://evm.example',
+    };
+    keyring.ethereumTransaction.getRecommendedGasPrice = jest
+      .fn()
+      .mockRejectedValueOnce(Error('offline'));
+    await expect(wallet.getRecommendedFee()).rejects.toMatchObject({
+      code: -32603,
+      message: 'Fee estimate unavailable',
+    });
+  });
+
+  it('preserves a changed-context error through the shared fee error policy', async () => {
+    jest
+      .requireMock('@sidhujag/sysweb3-keyring')
+      .readPublicSyscoinFee.mockImplementationOnce(async () => {
+        mockState.vault.activeNetwork.url = 'https://replacement.example';
+        throw Error('offline');
+      });
+    await expect(wallet.getRecommendedFee()).rejects.toThrow(/context/i);
+  });
+
   it('retains an acknowledged EVM hash when setup starts during submission and skips stale local persistence', async () => {
     const acknowledged = { hash: `0x${'1'.repeat(64)}` };
     (getController as jest.Mock).mockReturnValue({ wallet });

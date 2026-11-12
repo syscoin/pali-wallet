@@ -18,6 +18,12 @@ import { AppState, Linking } from 'react-native';
 import { createNativeNetworkView } from '../custody/networkView';
 import { createNativeDappControlHost } from '../custody/dappControl';
 import { createNativeDappRpcReadHost } from '../custody/dappRpcReads';
+import { createNativeWalletReadHost, walletTokenScope } from '../custody/dappWalletReads';
+import { projectWalletTokenBalanceUnits, projectWalletTokens, type DappWalletTokens } from '../../../../source/shared/dappWalletReads';
+import { formatTokenUnits } from '../../../../source/shared/erc20';
+import { sptBalanceTotalUnits } from '../../../../source/shared/sptInventory';
+import type { NativeConnectionAccount } from '../connections/host';
+import type { UtxoBalance } from '../core/utxoBalanceReader';
 import { createNativeDappSentryHost } from '../custody/dappSentry';
 import { createNativeDappSyscoinHost } from '../custody/dappSyscoin';
 import { createNativeWatchAssetObserver, prepareNativeWatchAsset } from '../portfolio/nativeWatchAsset';
@@ -204,6 +210,23 @@ export function createNativeCustodyAuthority(): NativeCustodyAuthority {
 
 export function createNativeWalletControllers() {
   let runtime: KeyringRuntime | undefined;
+  const tokenObservations = new WeakMap<KeyringRuntime, Map<string, DappWalletTokens>>();
+  const observations = (owner: KeyringRuntime) => {
+    let values = tokenObservations.get(owner);
+    if (!values) { values = new Map(); tokenObservations.set(owner, values); }
+    return values;
+  };
+  const rememberTokens = (owner: KeyringRuntime, key: string, value: DappWalletTokens) => {
+    const values = observations(owner);
+    values.delete(key); values.set(key, projectWalletTokens(value, { kind: 'all' }) as DappWalletTokens);
+    if (values.size > 128) values.delete(values.keys().next().value!);
+  };
+  const rememberUtxo = (owner: KeyringRuntime, account: Pick<NativeConnectionAccount, 'id' | 'address'>, network: UtxoNetwork, value: UtxoBalance) => {
+    rememberTokens(owner, walletTokenScope(account.id, account.address, network), { ethereum: [], syscoin: (value.assets ?? []).map(asset => ({
+      assetGuid: asset.assetGuid, chainId: network.chainId, decimals: asset.decimals, symbol: asset.symbol,
+      balance: formatTokenUnits(sptBalanceTotalUnits(asset), asset.decimals),
+    })) });
+  };
   let ownedStorage: OpenWalletStorage | undefined;
   const assertActive = custodyGuard();
   const credentialPort = createNativeCredentialPort();
@@ -303,7 +326,19 @@ export function createNativeWalletControllers() {
           if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
           return connection.verifyPersonalMessage(message, signature);
         } });
-      return Object.freeze({ ...connection, controls, reads, syscoin, sentry: sentryRequests,
+      const walletReads = createNativeWalletReadHost({ fetch: walletFetch,
+        network: () => {
+          if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
+          return connection.context().network.kind === 'syscoin' ? syscoin.registration() : readRegistration();
+        },
+        loadTokens: (accountId, networkId, check) => {
+          if (runtime !== captured || !connection.readWalletTokenInventory) throw new CustodyOperationError('CANCELLED');
+          return connection.readWalletTokenInventory(accountId, networkId, check);
+        },
+        cachedTokens: key => observations(captured).get(key),
+        observeUtxo: (account, network, value) => { if (runtime === captured) rememberUtxo(captured, account, network, value); },
+      });
+      return Object.freeze({ ...connection, controls, reads, walletReads, syscoin, sentry: sentryRequests,
         allocateSmartAccount: (...args: Parameters<typeof connection.allocateSmartAccount>) => {
           if (runtime !== captured) return Promise.reject(new CustodyOperationError('CANCELLED'));
           const [input, signal, check, committed, authentication] = args;
@@ -412,12 +447,17 @@ export function createNativeWalletControllers() {
   const evmBalances = createBalanceReader(readRpc);
   const balanceReader: BalanceReader = {
     readBalance: evmBalances.readBalance,
-    readUtxoBalance(id, address, signal) {
+    async readUtxoBalance(id, address, signal) {
       const snapshot = authority.getSnapshot();
+      const captured = runtime, catalogue = authority.getCatalogue();
       if (snapshot.phase !== 'ready' || snapshot.account?.network !== id ||
           snapshot.account.address !== address || !runtime?.readUtxoBalance)
         return Promise.reject(new CustodyOperationError('NOT_READY'));
-      return runtime.readUtxoBalance(id, address, signal);
+      const value = await runtime.readUtxoBalance(id, address, signal);
+      const network = catalogue && findUtxoNetwork(id, catalogue.utxoNetworks);
+      if (captured && captured === runtime && authority.getSnapshot() === snapshot && network)
+        rememberUtxo(captured, { id: catalogue!.active.accountId, address }, network, value);
+      return value;
     },
   };
   const transfers = new NativeTransfers(authority, () => runtime?.transfers, { fetch: walletFetch });
@@ -425,6 +465,17 @@ export function createNativeWalletControllers() {
     authority, () => runtime?.tokens, createErc20Reader(readRpc), Date.now,
     () => authority.lock(), createOwnedTokenReader(walletFetch), createNftOwnershipReader(readRpc), createNftEnumerationReader(readRpc)
   );
+  const stopTokenObservation = tokens.view.subscribe(() => {
+    const value = tokens.view.getSnapshot(), catalogue = authority.getCatalogue(), state = authority.getSnapshot(), owner = runtime;
+    const network = catalogue?.networks.find(item => item.id === value.account?.network);
+    if (!owner || !catalogue || !value.account || !network || state.revision !== value.account.revision ||
+        state.account?.address !== value.account.address || catalogue.active.networkId !== value.account.network) return;
+    if (!Number.isSafeInteger(Number(network.chainId))) return;
+    rememberTokens(owner, walletTokenScope(catalogue.active.accountId, value.account.address, network), { syscoin: [],
+      ethereum: value.items.map(item => ({ chainId: Number(network.chainId), contractAddress: item.metadata.contractAddress,
+        decimals: item.metadata.decimals, isNft: false, name: item.metadata.name, tokenSymbol: item.metadata.symbol,
+        ...(item.status === 'available' && item.units !== null ? { rawBalance: item.units, balance: projectWalletTokenBalanceUnits(item.units, item.metadata.decimals) } : {}) })) });
+  });
   const activity = new NativeActivity(authority, () => runtime?.activity,
     new ActivityExplorerReader(walletFetch), new ActivityReceiptReader({ fetch: walletFetch }));
   const utxoActivity = createNativeUtxoActivity(authority, () => runtime,
@@ -837,7 +888,19 @@ export function createNativeWalletControllers() {
     check();
     return createScopedPortfolioAssetReader({ fetch: walletFetch,
       load: (target, guard) => { check(); return selected!.tokens!.loadScoped!(target, guard); },
-    })(scope, signal, check);
+    })(scope, signal, check).then(value => {
+      check();
+      if ('kind' in scope.network && scope.network.kind === 'evm' && Number.isSafeInteger(Number(scope.network.chainId))) rememberTokens(selected!, walletTokenScope(scope.accountId, scope.accountAddress, scope.network), {
+        syscoin: [], ethereum: [
+          ...value.tokens.map(item => ({ chainId: Number(scope.network.chainId), contractAddress: item.metadata.contractAddress,
+            decimals: item.metadata.decimals, isNft: false, name: item.metadata.name, tokenSymbol: item.metadata.symbol,
+            ...(item.units !== null ? { rawBalance: item.units, balance: projectWalletTokenBalanceUnits(item.units, item.metadata.decimals) } : {}) })),
+          ...value.collectibles.map(item => ({ chainId: Number(scope.network.chainId), ...item.collectible, decimals: 0, isNft: true, tokenSymbol: '',
+            ...(item.units !== null ? { rawBalance: item.units, balance: projectWalletTokenBalanceUnits(item.units, 0) } : {}) })),
+        ],
+      });
+      return value;
+    });
   };
   const getScopedActivityRuntime = (scope: NativeNotificationScope, assertCurrent: () => void) => {
     const selected = runtime, before = authority.getSnapshot(), catalogue = authority.getCatalogue();
@@ -854,5 +917,5 @@ export function createNativeWalletControllers() {
   };
   const activityReaders = Object.freeze({ explorer: new ActivityExplorerReader(walletFetch), receipts: new ActivityReceiptReader({ fetch: walletFetch }) });
   return { getNotificationChoices, readPortfolioAssets, getScopedActivityRuntime, activityReaders, authority, saveIdlePreference, sentry, recipientResolver, openSmartInfrastructure, openResumedSmartInfrastructure, openSmartAccountModules, canManageSmartAccountModules: () => runtime?.canUseWalletAuthenticator() === true, openSlhDsaManagement, canManageSlhDsa: () => runtime?.canManageSlhDsa() === true, canSignSmartAccount: () => runtime?.canSignSmartAccount() === true, guardianRecovery, authentication: { isActive: (owner: AbortSignal) => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner), isAnyPromptActive: () => isNativeCredentialPromptActive() || isBoundNativePasskeyPromptActive(), cancel: () => nativeCredentialAuthentication.cancel(), run: nativeCredentialAuthentication.run }, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openResumedSmartAccountOperation, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, openNoteMaintenance, openPrivacyControls, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
-    disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
+    disposeTokens: () => { stopTokenObservation(); tokens.dispose(); }, disposeTransfers: () => transfers.dispose() };
 }

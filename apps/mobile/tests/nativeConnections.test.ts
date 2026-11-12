@@ -17,6 +17,7 @@ import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { UTXO_ADDRESSES, XPUB } from './publicWatchFixtures.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { DAPP_PUBLIC_RPC_METHODS } from '../../../source/shared/dappRpcReads.ts';
+import { DAPP_WALLET_READ_METHODS } from '../../../source/shared/dappWalletReads.ts';
 import { EthereumRpcErrorHandler } from '../../../source/helpers/errors/errorClassesHandlers.ts';
 import type { EvmDappFeeComparison } from '../../../source/shared/evmDappFeePolicy.ts';
 import { createSmartAccountCallsExecutions } from '../../../source/shared/dappCalls.ts';
@@ -68,6 +69,7 @@ const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fixture(
   options: {
     requestAuthentication?: boolean;
+    walletReads?: boolean;
     utxo?: boolean;
     hardware?: 'Ledger' | 'Trezor';
     capabilities?: boolean;
@@ -125,6 +127,7 @@ function fixture(
   let readWait: Promise<void> = Promise.resolve();
   let readError: Error | undefined;
   const readRequests: unknown[] = [];
+  const walletReadRequests: { method: string; accountId: string; address: string }[] = [];
   const moduleInventoryReads: { accountId: string; networkId: string }[] = [];
   const moduleChangeRequests: SmartAccountModuleRequest[] = [];
   let creationAllocation: NativeSmartCreationAllocation | undefined;
@@ -242,6 +245,11 @@ function fixture(
     });
   };
   const host: Omit<NativeConnectionHost, 'repository' | 'calls'> = {
+    ...(options.walletReads ? { walletReads: { async read(method: string, account: { id: string; address: string }, signal: AbortSignal, check: () => void) {
+      check(); walletReadRequests.push({ method, accountId: account.id, address: account.address });
+      await readWait; check(); if (signal.aborted) throw Error('CANCELLED');
+      return method === 'wallet_getTokens' ? { ethereum: [], syscoin: [] } : method === 'wallet_getBalance' ? 0 : '123';
+    } } } : {}),
     async allocateSmartAccount(input, signal, check, onCommitted) {
       assert(options.smartCreation, 'Creation is outside this fixture'); check();
       assert.equal(creationAllocation, undefined, 'An allocated account cannot be replaced');
@@ -555,7 +563,7 @@ function fixture(
           'wallet_addEthereumChain',
           'wallet_watchAsset',
           'wallet_getPermissions', 'wallet_requestPermissions', 'wallet_revokePermissions',
-          ...DAPP_PUBLIC_RPC_METHODS, ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS, ...PSBT_DAPP_METHODS,
+          ...DAPP_PUBLIC_RPC_METHODS, ...(options.walletReads ? DAPP_WALLET_READ_METHODS : []), ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS, ...PSBT_DAPP_METHODS,
           'eth_accounts',
           'eth_chainId',
           'eth_sendTransaction',
@@ -591,7 +599,7 @@ function fixture(
           'wallet_addEthereumChain',
           'wallet_watchAsset',
           'wallet_getPermissions', 'wallet_requestPermissions', 'wallet_revokePermissions',
-          ...DAPP_PUBLIC_RPC_METHODS, ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS, ...PSBT_DAPP_METHODS,
+          ...DAPP_PUBLIC_RPC_METHODS, ...(options.walletReads ? DAPP_WALLET_READ_METHODS : []), ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS, ...PSBT_DAPP_METHODS,
           'eth_accounts',
           'eth_chainId',
           'eth_sendTransaction',
@@ -792,7 +800,7 @@ function fixture(
     controller, creationRequests, preparedAccountUpdates, creationGrantPublications,
     failCreationUpdate() { creationUpdateFailure = true; },
     beforeCreationGrantWrite(callback: () => void) { beforeCreationGrant = callback; },
-    controlCommits, externalUrls, readRequests, moduleInventoryReads, moduleChangeRequests, sentryRequests, sentryAssents, psbtRequests, psbtApprovals,
+    controlCommits, externalUrls, readRequests, walletReadRequests, moduleInventoryReads, moduleChangeRequests, sentryRequests, sentryAssents, psbtRequests, psbtApprovals,
     setModuleMetadataUnavailable(value: boolean) { moduleMetadataUnavailable = value; },
     setModuleMetadataWait(value: Promise<void>) { moduleMetadataWait = value; },
     moduleMetadataReads: () => moduleMetadataReads,
@@ -1888,6 +1896,7 @@ for (const retirement of [
 async function connectedFixture(
   options: {
     requestAuthentication?: boolean;
+    walletReads?: boolean;
     utxo?: boolean;
     hardware?: 'Ledger' | 'Trezor';
     capabilities?: boolean;
@@ -2522,6 +2531,52 @@ test('revocation waits for its existing durable grant engine and leaves a differ
     assert.equal(f.view.getSnapshot().sessions.length, 1);
     assert(peer.read().dapps[ORIGIN]);
   } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+for (const utxo of [false, true]) for (const method of DAPP_WALLET_READ_METHODS) test(`custom ${method} uses only its negotiated ${utxo ? 'UTXO' : 'EVM'} grant`, async () => {
+  const f = await connectedFixture({ walletReads: true, utxo, secondAccount: true });
+  try {
+    if (!utxo) f.selectDisplayAccount('hd:60:1');
+    if (utxo) await syscoinRequest(f, method); else await messageRequest(f, method, []);
+    assert.equal(f.walletReadRequests.length, 1);
+    assert.equal(f.walletReadRequests[0]!.accountId, utxo ? 'hd:57:0' : 'hd:60:0');
+    assert.equal(f.readRequests.length, 0);
+    assert.equal(f.signatures.length, 0); assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.deepEqual((f.responses.at(-1) as { result: { result: unknown } }).result.result,
+      method === 'wallet_getTokens' ? { ethereum: [], syscoin: [] } : method === 'wallet_getBalance' ? 0 : '123');
+  } finally { await f.controller.dispose(); }
+});
+
+for (const reason of ['unnegotiated', 'chain', 'account', 'params'] as const) test(`custom wallet read refuses ${reason} before any wallet read`, async () => {
+  const f = await connectedFixture({ walletReads: true });
+  try {
+    if (reason === 'unnegotiated') Object.assign(f.session.namespaces.eip155!, { methods: f.session.namespaces.eip155!.methods.filter(method => method !== 'wallet_getTokens') });
+    if (reason === 'chain') f.selectChain(10);
+    if (reason === 'account') Object.assign(f.session.namespaces.eip155!, { accounts: [`eip155:1:0x${'22'.repeat(20)}`] });
+    await messageRequest(f, 'wallet_getTokens', reason === 'params' ? ['sibling-account'] : []);
+    assert.deepEqual(f.walletReadRequests, []);
+    assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code,
+      reason === 'chain' ? 4901 : reason === 'params' ? -32602 : 4100);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const change of ['lock', 'network', 'session', 'expiry', 'dispose'] as const) test(`held custom wallet read cannot publish after ${change}`, async () => {
+  const f = await connectedFixture({ walletReads: true });
+  const held = Promise.withResolvers<void>(), readNow = Date.now;
+  let now = readNow(), disposing: Promise<void> | undefined;
+  Date.now = () => now;
+  try {
+    f.setReadWait(held.promise);
+    await messageRequest(f, 'wallet_getTokens', []);
+    assert.equal(f.walletReadRequests.length, 1);
+    if (change === 'lock') f.lock();
+    else if (change === 'network') f.selectChain(10);
+    else if (change === 'session') f.event({ type: 'session-ended', topic: TOPIC });
+    else if (change === 'expiry') now += 300001;
+    else disposing = f.controller.dispose();
+    held.resolve(); await settle(); await disposing;
+    assert.deepEqual(f.responses, []);
+  } finally { Date.now = readNow; held.resolve(); await f.controller.dispose(); }
 });
 
 test('authorized stateless reads normalize parameters and preserve EVM revert data', async () => {

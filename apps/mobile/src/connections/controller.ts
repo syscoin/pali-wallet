@@ -21,6 +21,7 @@ import { NativeOperationDrain } from '../custody/operationDrain.ts';
 import { NativeDappControlRequests } from './controlRequests.ts';
 import { isDappPermissionMethod, readDappPermissionRequest, projectDappPermissions } from '../../../../source/shared/dappPermissions.ts';
 import { DAPP_PUBLIC_RPC_METHODS, isDappPublicRpcMethod, normalizeDappRpcRequest } from '../../../../source/shared/dappRpcReads.ts';
+import { DAPP_WALLET_READ_METHODS, isDappWalletRead, normalizeDappWalletRead } from '../../../../source/shared/dappWalletReads.ts';
 import { createDappReturnTarget } from './pairingReturn.ts';
 import { isDappWalletControlMethod, normalizeDappWalletControl } from '../../../../source/shared/dappWalletControl.ts';
 import {
@@ -97,6 +98,7 @@ const METHODS = Object.freeze([
   'wallet_requestPermissions',
   'wallet_revokePermissions',
   ...DAPP_PUBLIC_RPC_METHODS,
+  ...DAPP_WALLET_READ_METHODS,
   ...DAPP_SYSCOIN_READ_METHODS,
   ...DAPP_MODE_METHODS,
   ...SENTRY_DAPP_METHODS,
@@ -628,6 +630,7 @@ export class NativeConnectionsController {
   ): readonly string[] {
     const scope = this.host && this.options.source.getSnapshot().phase === 'ready' ? this.chainScope() : undefined;
     return METHODS.filter((method) => {
+      if (isDappWalletRead(method)) return !!this.host?.walletReads;
       const hardware = accountType === 'Ledger' || accountType === 'Trezor';
       if (isDappEncryptionMethod(method) && !supportsDappEncryptionAccount({ type: accountType })) return false;
       if (hardware && (method === 'eth_signTypedData' || method === 'wallet_getSmartAccountModules' || isSmartAccountModuleRequestMethod(method))) return false;
@@ -1741,17 +1744,17 @@ export class NativeConnectionsController {
     const account = grant && context.accounts.find(value => value.index === grant.accountId && value.type === grant.accountType);
     const respond = (response: { result: unknown } | { error: { code: number; message: string; data?: string } }, check: () => void = () => this.check()) => this.transport!.respond(wire.session.binding, wire.id, response, check, () => undefined);
     if (!connection || connection.session.binding.origin !== origin || !grant || !account || !context.unlocked || this.options.source.getSnapshot().phase !== 'ready' || !connection.engine.isConnected(origin)) return respond({ error: { code: 4100, message: 'Account is unavailable' } });
-    const scope = this.chainScope(context), syscoin = isDappSyscoinRead(wire.method);
-    if (grant.chain !== scope.kind || grant.chainId !== scope.chainId || syscoin !== (scope.kind === 'syscoin')) return respond({ error: { code: 4901, message: 'Requested chain is not selected' } });
+    const scope = this.chainScope(context), syscoin = isDappSyscoinRead(wire.method), walletRead = isDappWalletRead(wire.method);
+    if (grant.chain !== scope.kind || grant.chainId !== scope.chainId || !walletRead && syscoin !== (scope.kind === 'syscoin')) return respond({ error: { code: 4901, message: 'Requested chain is not selected' } });
     if (scope.kind === 'syscoin' && (grant.utxoAccount?.slip44 !== scope.slip44 || grant.utxoAccount.xpub !== account.xpub)) return respond({ error: { code: 4100, message: 'Account is unavailable' } });
     if (!this.permits(connection, wire, account, scope)) return respond({ error: { code: wire.chainId === dappCaipChain(scope) ? 4100 : 4901, message: 'Method or account is not authorized' } });
     const key = `${sessionKey(wire.session)}:${wire.id}`;
     if (this.hasPendingWire(wire)) return;
     if (this.pendingCount() >= DAPP_REQUEST_LIMITS.pendingRequests || this.pendingCount(connection) >= DAPP_REQUEST_LIMITS.requestsPerOrigin) return respond({ error: { code: -32005, message: 'Too many requests' } });
     let request;
-    try { request = syscoin ? normalizeDappSyscoinRead(wire.method, wire.params) : normalizeDappRpcRequest(wire.method, wire.params); }
+    try { request = walletRead ? normalizeDappWalletRead(wire.method, wire.params) : syscoin ? normalizeDappSyscoinRead(wire.method, wire.params) : normalizeDappRpcRequest(wire.method, wire.params); }
     catch (cause) { return respond({ error: { code: cause instanceof EthereumRpcErrorHandler ? cause.code : -32602, message: cause instanceof Error ? cause.message : 'Invalid RPC read' } }); }
-    const session = connection.session, revision = this.options.source.getSnapshot().revision, network = JSON.stringify(context.network), utxoNetwork = syscoin ? JSON.stringify(this.host!.syscoin.registration()) : null;
+    const session = connection.session, revision = this.options.source.getSnapshot().revision, network = JSON.stringify(context.network), utxoNetwork = scope.kind === 'syscoin' ? JSON.stringify(this.host!.syscoin.registration()) : null;
     const lifetime = new AbortController(), finish = this.disposal.begin();
     const check = () => {
       this.check(); const next = this.host!.context();
@@ -1761,7 +1764,11 @@ export class NativeConnectionsController {
     const timer = setTimeout(() => lifetime.abort(), Math.max(0, Math.min(wire.expiresAt, session.expiry * 1000) - Date.now()));
     this.reads.set(key, entry);
     try {
-      check(); const result = isDappSyscoinRead(request.method) ? await this.host!.syscoin.read(request as ReturnType<typeof normalizeDappSyscoinRead>, account, lifetime.signal, check) : await this.host!.reads.read(request as ReturnType<typeof normalizeDappRpcRequest>, lifetime.signal, check); check();
+      check();
+      if (typeof request === 'string' && !this.host!.walletReads) throw new EthereumRpcErrorHandler(4200, 'Unsupported wallet read');
+      const result = typeof request === 'string' ? await this.host!.walletReads!.read(request, account, lifetime.signal, check)
+        : isDappSyscoinRead(request.method) ? await this.host!.syscoin.read(request as ReturnType<typeof normalizeDappSyscoinRead>, account, lifetime.signal, check)
+        : await this.host!.reads.read(request as ReturnType<typeof normalizeDappRpcRequest>, lifetime.signal, check); check();
       await respond({ result }, check);
     } catch (cause) {
       check();
@@ -1777,7 +1784,7 @@ export class NativeConnectionsController {
       return;
     }
     if ((SENTRY_DAPP_METHODS as readonly string[]).includes(request.method)) { await this.queueSentryRequest(request); return; }
-    if (isDappPublicRpcMethod(request.method) || isDappSyscoinRead(request.method)) {
+    if (isDappPublicRpcMethod(request.method) || isDappSyscoinRead(request.method) || isDappWalletRead(request.method)) {
       await this.respondRead(request);
       return;
     }

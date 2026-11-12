@@ -2129,6 +2129,29 @@ test('native token capability uses authenticated account/network, preserves rest
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
+test('connection token metadata reads the granted account without selecting, authenticating or accepting a stale result', async () => {
+  const f = await readyAccounts(), entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const token = { contractAddress: '0x1111111111111111111111111111111111111111', decimals: 6, name: 'Saved', symbol: 'SAVED' };
+  try {
+    await f.runtime.tokens!.add(0, token, () => undefined);
+    await f.execute({ kind: 'create', label: 'Other displayed account' });
+    const host = await f.runtime.openConnectionHost();
+    const before = f.authority.getSnapshot(), catalogue = f.authority.getCatalogue(), records = structuredClone([...f.disk.records]);
+    const credentials = f.disk.authorizationChecks;
+    assert.equal(host.context().activeAccountId, 'hd:60:1');
+    assert.deepEqual((await host.readWalletTokenInventory!('hd:60:0', 'ethereum', () => undefined)).items, [token]);
+    assert.deepEqual((await host.readWalletTokenInventory!('hd:60:1', 'ethereum', () => undefined)).items, []);
+    await assert.rejects(host.readWalletTokenInventory!('missing', 'ethereum', () => undefined), /CANCELLED/);
+    await assert.rejects(host.readWalletTokenInventory!('hd:60:0', 'base', () => undefined), /CANCELLED/);
+    assert.equal(f.authority.getSnapshot(), before); assert.equal(f.authority.getCatalogue(), catalogue);
+    assert.equal(f.disk.authorizationChecks, credentials); assert.deepEqual([...f.disk.records], records);
+    f.disk.onRecord(async (kind, key) => { if (kind === 'get' && key === 'native-token-registry-v1') { entered.resolve(); await release.promise; } });
+    const read = host.readWalletTokenInventory!('hd:60:0', 'ethereum', () => undefined);
+    await entered.promise; f.authority.lock(); release.resolve();
+    await assert.rejects(read, /CANCELLED|NOT_READY/);
+  } finally { release.resolve(); f.disk.onRecord(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
 test('scoped portfolio inventory reads only the selected account on an inactive saved network without selecting or signing', async () => {
   const f = await readyAccounts();
   const ethToken = { contractAddress: '0x1111111111111111111111111111111111111111', decimals: 6, name: 'Ethereum saved', symbol: 'ETHS' };

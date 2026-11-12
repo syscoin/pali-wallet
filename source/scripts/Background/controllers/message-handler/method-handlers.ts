@@ -10,6 +10,12 @@ import {
 } from '../../../../shared/dappCapabilities.ts';
 import { projectDappPermissions } from '../../../../shared/dappPermissions.ts';
 import {
+  isDappWalletRead,
+  normalizeDappWalletRead,
+  projectWalletBalance,
+  projectWalletTokens,
+} from '../../../../shared/dappWalletReads';
+import {
   getSmartAccountModulesProjection,
   SmartAccountModulesProjectionError,
 } from '../../../../shared/smartAccountModules.ts';
@@ -67,6 +73,7 @@ export class WalletMethodHandler implements IMethodHandler {
     const { originalRequest, methodConfig } = context;
     const { host, method, params } = originalRequest;
     const methodName = method.split('_')[1] || method;
+    if (isDappWalletRead(method)) normalizeDappWalletRead(method, params);
 
     const { dapp, wallet } = getController();
     const state = store.getState();
@@ -323,7 +330,9 @@ export class WalletMethodHandler implements IMethodHandler {
           return wallet.isUnlocked() ? account || null : null;
 
         case 'getBalance':
-          return wallet.isUnlocked() ? account.balances[networkChain()] : null;
+          return projectWalletBalance(
+            wallet.isUnlocked() ? account.balances[networkChain()] : null
+          );
 
         case 'getNetwork':
           return dapp.getNetwork();
@@ -344,10 +353,11 @@ export class WalletMethodHandler implements IMethodHandler {
           ) {
             return [];
           }
-          return (
+          return projectWalletTokens(
             accountAssets[connectedDapp.accountType]?.[
               connectedDapp.accountId
-            ] || []
+            ] || [],
+            { kind: 'all' }
           );
         }
 
