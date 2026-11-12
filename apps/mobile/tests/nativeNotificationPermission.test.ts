@@ -132,3 +132,14 @@ test('an OS permission refusal releases the marker and allows a later explicit r
   assert.equal(f.permission.isNotificationPermissionPromptActive(), true);
   f.complete(); await second; assert.equal(f.requests, 2); assert.equal(f.permission.isNotificationPermissionPromptActive(), false);
 });
+
+
+for (const category of ['activity', 'updates']) test(`${category} permission result waits for its queued AppState roundtrip`, async () => {
+  const f = fixture(); let settled = false;
+  const pending = (category === 'activity' ? f.delivery.permission(true) : f.updates.setAlerts(true)).then(value => { settled = true; return value; });
+  await flush(); f.complete(); await flush();
+  assert.equal(settled, false); assert.equal(f.permission.isNotificationPermissionPromptActive(), true);
+  f.move('inactive'); assert.equal(f.permission.isNotificationPermissionPromptActive(), true);
+  f.move('active'); await pending;
+  assert.equal(f.permission.isNotificationPermissionPromptActive(), false); assert.equal(f.listenerCount, 0);
+});

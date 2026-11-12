@@ -35,3 +35,56 @@ test('a failed lifecycle subscription cannot retain the exemption', async () => 
   await assert.rejects(presentation.run(async () => 'granted'), /subscription failed/);
   assert.equal(presentation.isActive(), false);
 });
+
+test('a permission result cannot retire its marker before the queued inactive and active events', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture(); let resolved = false;
+  const pending = f.presentation.run(async () => 'granted').then(value => { resolved = true; return value; });
+  await Promise.resolve();
+  assert.equal(f.presentation.isActive(), true);
+  f.move('inactive'); await Promise.resolve();
+  assert.equal(f.presentation.isActive(), true); assert.equal(resolved, false);
+  f.move('active');
+  assert.equal(await pending, 'granted');
+  assert.equal(f.presentation.isActive(), false); assert.equal(f.listeners.size, 0);
+});
+
+
+test('an observed inactive/active cycle adds no return delay', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture();
+  const pending = f.presentation.run(async () => { f.move('inactive'); f.move('active'); return 'granted'; });
+  assert.equal(await pending, 'granted');
+  assert.equal(f.presentation.isActive(), false); assert.equal(f.listeners.size, 0);
+});
+
+test('no lifecycle event completes after one bounded wait that repeated active events cannot extend', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture(); let resolved = false;
+  const pending = f.presentation.run(async () => 'granted').then(value => { resolved = true; return value; });
+  await Promise.resolve();
+  t.mock.timers.tick(750); f.move('active'); await Promise.resolve();
+  assert.equal(resolved, false); assert.equal(f.presentation.isActive(), true);
+  t.mock.timers.tick(749); f.move('active'); await Promise.resolve();
+  assert.equal(resolved, false);
+  t.mock.timers.tick(1); assert.equal(await pending, 'granted');
+  assert.equal(f.presentation.isActive(), false); assert.equal(f.listeners.size, 0);
+});
+
+test('late background retires the marker and rejects before the return deadline', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture();
+  const pending = f.presentation.run(async () => 'granted');
+  const refused = assert.rejects(pending, /interrupted/); await Promise.resolve();
+  f.move('background'); assert.equal(f.presentation.isActive(), false);
+  await refused; assert.equal(f.listeners.size, 0);
+});
+
+test('a late inactive event without a foreground return rejects at the original deadline', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture();
+  const pending = f.presentation.run(async () => 'granted');
+  const refused = assert.rejects(pending, /interrupted/); await Promise.resolve();
+  t.mock.timers.tick(1000); f.move('inactive'); t.mock.timers.tick(500);
+  await refused; assert.equal(f.presentation.isActive(), false); assert.equal(f.listeners.size, 0);
+});

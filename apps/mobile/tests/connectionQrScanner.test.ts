@@ -50,7 +50,8 @@ function fixture(
   permission: () => Promise<{ granted: boolean }>,
   platform = 'android',
   kind: 'connection' | 'recipient' = 'connection',
-  readPermission = permission
+  readPermission = permission,
+  permissionLifecycle = true
 ) {
   const cells: Cell[] = [];
   const effects: (() => void)[] = [];
@@ -113,6 +114,10 @@ function fixture(
     return { remove: () => group.delete(listener) };
   };
   const appState = { currentState: 'active', addEventListener: listen };
+  const emit = (name: string, value?: string) => {
+    if (name === 'change') appState.currentState = value!;
+    for (const listener of listeners.get(name) ?? []) listener(value);
+  };
   const dependencies: Record<string, unknown> = {
     react,
     'react-native': {
@@ -128,9 +133,11 @@ function fixture(
     'expo-camera': {
       CameraView: 'CameraView',
       Camera: {
-        requestCameraPermissionsAsync() {
+        async requestCameraPermissionsAsync() {
           permissionRequests++;
-          return permission();
+          if (permissionLifecycle) emit('change', 'inactive');
+          try { return await permission(); }
+          finally { if (permissionLifecycle) emit('change', 'active'); }
         },
         getCameraPermissionsAsync() {
           permissionReads++;
@@ -213,10 +220,7 @@ function fixture(
     get stateWrites() {
       return stateWrites;
     },
-    emit(name: string, value?: string) {
-      if (name === 'change') appState.currentState = value!;
-      for (const listener of listeners.get(name) ?? []) listener(value);
-    },
+    emit,
     settingsFail() {
       settings = async () => {
         throw new Error('Settings unavailable');
@@ -331,6 +335,20 @@ test('returning from the initial permission prompt waits for its result', async 
     permission.resolve({ granted: true }); await settle();
     assert(find(f.render(), 'CameraView'));
     assert.equal(f.permissionReads, 1);
+  } finally { f.unmount(); }
+});
+
+test('a camera result before queued lifecycle events cannot mount or accept scans early', async () => {
+  const permission = deferred<{ granted: boolean }>();
+  const f = fixture(() => permission.promise, 'ios', 'connection', undefined, false);
+  try {
+    await settle(); permission.resolve({ granted: true }); await settle();
+    assert.equal(find(f.render(), 'CameraView'), undefined);
+    f.emit('change', 'inactive'); await settle();
+    assert.equal(find(f.render(), 'CameraView'), undefined);
+    assert.equal(f.closes, 0); assert.deepEqual(f.scans, []);
+    f.emit('change', 'active'); await settle();
+    assert(find(f.render(), 'CameraView')); assert.equal(f.permissionRequests, 1);
   } finally { f.unmount(); }
 });
 
@@ -511,8 +529,9 @@ test('a camera mount failure disables a queued scan before the error rerenders',
 
 test('a delayed permission response after Close cannot publish camera state or a scan', async () => {
   const permission = deferred<{ granted: boolean }>();
-  const f = fixture(() => permission.promise);
+  const f = fixture(() => permission.promise, 'android', 'connection', undefined, false);
   await settle();
+  f.emit('change', 'inactive'); f.emit('change', 'active');
   find(f.render(), 'Header')!.props.right.props.onPress();
   const writes = f.stateWrites;
   permission.resolve({ granted: true });

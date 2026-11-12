@@ -240,8 +240,8 @@ test('a healthy feed remains visible when the other feed fails, with explicit pa
   await f.controller.refresh();
   assert.equal(f.controller.getSnapshot().status, 'ready');
   assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash), [hash(1)]);
-  assert.match(f.controller.getSnapshot().error ?? '', /feed.*unavailable/i);
-  assert.match(f.controller.getSnapshot().coverage, /Internal transfers are not included/);
+  assert.equal(f.controller.getSnapshot().error, 'feed-unavailable');
+  assert.equal(f.controller.getSnapshot().coverage, 'explorer-transfers');
 });
 
 test('both failed feeds preserve cached and locally submitted history instead of saving an empty list', async () => {
@@ -250,7 +250,7 @@ test('both failed feeds preserve cached and locally submitted history instead of
   const f = fixture({ explorer, cached: [candidate(9)], archived: [base.local(1) as TerminalActivityRecord] });
   await f.controller.refresh();
   assert.deepEqual(new Set(f.controller.getSnapshot().rows.map((row) => row.hash)), new Set([hash(1), hash(9)]));
-  assert.match(f.controller.getSnapshot().error ?? '', /unavailable/i);
+  assert.equal(f.controller.getSnapshot().error, 'feed-unavailable');
   assert(f.cacheWrites.every((write) => write.rows.some((row) => row.hash === hash(9))));
 });
 
@@ -282,7 +282,7 @@ test('refresh persists recent discoveries ahead of old cached hints for an offli
   assert.deepEqual(f.cacheWrites.at(-1)?.rows.map((row) => row.hash).sort(), Array.from({ length: 20 }, (_, index) => hash(index + 1)));
   offline = true; await f.controller.refresh();
   assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash).sort(), Array.from({ length: 20 }, (_, index) => hash(index + 1)));
-  assert.match(f.controller.getSnapshot().error ?? '', /unavailable/);
+  assert.equal(f.controller.getSnapshot().error, 'feed-unavailable');
   assert(f.controller.getSnapshot().rows.every(row => row.indexed === undefined && row.display === undefined));
   assert.equal(f.receipts.calls.length, 0);
 });
@@ -305,7 +305,7 @@ test('cached fallback survives a timed-out page without implicit RPC hydration',
   for (let turn = 0; turn < 20; turn++) await Promise.resolve();
   assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash), [hash(9)]);
   assert.equal(f.cacheWrites.length, 0);
-  assert.match(f.controller.getSnapshot().error ?? '', /could not be fully loaded/);
+  assert.equal(f.controller.getSnapshot().error, 'load-incomplete');
   timedOut = true;
   await f.controller.loadMore();
   assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash).sort(), [hash(9), hash(10)].sort());
@@ -346,7 +346,7 @@ test('Saved pending still pages and inspects after explorer timeout, then retire
     assert.equal(explorer.pages.length, 1);
     t.mock.timers.tick(30000);
     for (let turn = 0; turn < 20 && !f.controller.getSnapshot().error; turn++) await Promise.resolve();
-    assert.match(f.controller.getSnapshot().error ?? '', /could not be fully loaded/);
+    assert.equal(f.controller.getSnapshot().error, 'load-incomplete');
     assert.equal(explorer.pages[0]?.signal.aborted, true);
     t.mock.timers.reset();
 

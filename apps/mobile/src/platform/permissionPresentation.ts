@@ -8,7 +8,7 @@ export function createPermissionPresentation(activity: {
     isActive: () => active !== null && !active.backgrounded,
     async run<T>(request: () => Promise<T>): Promise<T> {
       if (active || activity.current() !== 'active') throw Error('Permission request unavailable');
-      const current = { backgrounded: false };
+      const current = { backgrounded: false, sawInactive: false, returnedActive: false };
       active = current;
       let returned: (() => void) | undefined;
       let remove: (() => void) | undefined;
@@ -16,10 +16,14 @@ export function createPermissionPresentation(activity: {
       try {
         remove = activity.subscribe(state => {
           if (state === 'background') current.backgrounded = true;
-          if (state === 'active' || current.backgrounded) returned?.();
+          if (state === 'inactive') { current.sawInactive = true; current.returnedActive = false; }
+          if (state === 'active' && current.sawInactive) current.returnedActive = true;
+          if (current.returnedActive || current.backgrounded) returned?.();
         });
         const value = await request();
-        if (!current.backgrounded && activity.current() !== 'active') {
+        // Native permission results and AppState events travel independently. A
+        // stale-active snapshot is not proof that the dialog's return was seen.
+        if (!current.backgrounded && (!current.returnedActive || activity.current() !== 'active')) {
           await new Promise<void>(resolve => { returned = resolve; timer = setTimeout(resolve, 1500); });
         }
         if (current.backgrounded || activity.current() !== 'active') throw Error('Permission request interrupted');

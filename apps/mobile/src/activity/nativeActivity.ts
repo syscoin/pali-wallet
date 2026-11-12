@@ -98,8 +98,8 @@ export type NativeActivitySnapshot = Readonly<{
   explorerUrl: string | null;
   loadingMore: boolean;
   hasMore: boolean;
-  error: string | null;
-  coverage: string;
+  error: 'load-incomplete' | 'feed-unavailable' | 'older-unavailable' | 'position-not-saved' | null;
+  coverage: 'network-transfers' | 'explorer-transfers' | 'discovery-unavailable';
   truncated: boolean;
   discoveryAvailable?: boolean;
   canViewSavedPending?: boolean;
@@ -152,8 +152,7 @@ const initial = (): NativeActivitySnapshot =>
     loadingMore: false,
     hasMore: false,
     error: null,
-    coverage:
-      'Direct transactions and ERC20 transfer events from the selected network are included.',
+    coverage: 'network-transfers',
     truncated: false,
     canViewSavedPending: false,
     savedPending: undefined,
@@ -320,7 +319,7 @@ export class NativeActivity {
         this.feeds.txlist.done = true;
         this.feeds.tokentx.done = true;
         this.publish({
-          coverage: 'Activity discovery is unavailable for this network.',
+          coverage: 'discovery-unavailable',
         });
         this.renderRows(true);
         return;
@@ -347,8 +346,7 @@ export class NativeActivity {
       this.cachedFallback = true;
       this.publish({
         status: this.scope ? 'ready' : 'unavailable',
-        error:
-          'Activity could not be fully loaded. Previously loaded transactions remain visible.',
+        error: 'load-incomplete',
         loadingMore: false,
       });
       this.renderRows(true);
@@ -467,8 +465,7 @@ export class NativeActivity {
         guard();
         feed.error = true;
         this.publish({
-          error:
-            'One activity feed is unavailable. Retry to load a complete page.',
+          error: 'feed-unavailable',
         });
       }
     }
@@ -513,8 +510,7 @@ export class NativeActivity {
       if (generation === this.generation)
         this.publish({
           loadingMore: false,
-          error:
-            'Older activity is unavailable. Retry without losing the current list.',
+          error: 'older-unavailable',
         });
     }
   }
@@ -655,8 +651,8 @@ export class NativeActivity {
         this.snapshot.truncated ||
         (atDisplayLimit && (candidates.length > this.visible || moreToLoad)),
       coverage: this.scope?.apiUrl
-        ? 'Direct transactions and token transfer events from the selected explorer. Internal transfers are not included; older activity may require loading.'
-        : 'Activity discovery is unavailable for this network.',
+        ? 'explorer-transfers'
+        : 'discovery-unavailable',
     });
   }
   private hydrate(hash?: string, page?: SavedPendingPage) {
@@ -782,8 +778,7 @@ export class NativeActivity {
         .catch(() => {
           if (generation === this.generation)
             this.publish({
-              error:
-                'Activity position could not be saved. Your transactions are unaffected.',
+              error: 'position-not-saved',
             });
         });
   }

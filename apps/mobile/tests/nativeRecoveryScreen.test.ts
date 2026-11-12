@@ -352,6 +352,8 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   const selectedAccounts: string[] = [];
   let observer: (snapshot: typeof state) => void = () => {};
   let nextError: string | null = null;
+  let setupOperation: (() => Promise<void>) | undefined;
+  let exits = 0;
   let credentialPresent = !empty, recoveryInventoryReads = 0;
   let releasePrompt!: () => void;
   let locks = 0;
@@ -407,7 +409,14 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
       async initialize() {}, subscribe(fn: typeof observer) { observer = fn; return () => { observer = () => {}; }; },
       async getAuthenticationStatus() { return { deviceAuth: 'ready', credentialPresent }; },
       async getDeviceUnlockStatus() { return { available: deviceUnlock, enabled: biometricsEnabled }; },
-      async create() { publish({ phase: 'ready', presence: 'existing', backup: 'unconfirmed' }); },
+      async create() {
+        if (setupOperation) await setupOperation();
+        else publish({ phase: 'ready', presence: 'existing', backup: 'unconfirmed' });
+      },
+      async importPhrase() {
+        if (setupOperation) await setupOperation();
+        else publish({ phase: 'ready', presence: 'existing', backup: 'unconfirmed' });
+      },
       async setDeviceUnlock(enabled: boolean, password: string, check: () => void) {
         check();
         if (setting) { publish({ phase: 'authenticating', account: null }); await setting.wait; }
@@ -420,7 +429,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
         catch (cause) { publish({ phase: 'locked', account: null, error: 'DEVICE_UNLOCK_UNAVAILABLE' }); throw cause; }
         check(); publish({ phase: 'ready', backup: 'unconfirmed', account: { address, network: networkId }, error: null });
       },
-      lock() { if (deviceUnlock || pinChange || restoreFailure || idleClock) { lifecycle.push('lock'); locks++; publish({ phase: 'locked', revision: state.revision + 1, account: null }); } }, async dispose() { state = { ...state, phase: 'disposed' }; },
+      lock() { if (deviceUnlock || pinChange || restoreFailure || idleClock || setupOperation) { lifecycle.push('lock'); locks++; publish({ phase: state.presence === 'empty' ? 'empty' : state.presence === 'existing' ? 'locked' : 'opening', revision: state.revision + 1, account: null }); } }, async dispose() { state = { ...state, phase: 'disposed' }; },
       async unlock() {
         publish({ phase: 'authenticating', error: null });
         if (nextError) { const code = nextError; publish({ phase: 'locked', error: code }); throw new Error(code); }
@@ -549,7 +558,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     });
   }
   const Root = evaluate(source, dependencies).NativeWalletContent as (props: object) => Element;
-  const props = { controllerRef: { current: null }, initialAccountId: publicNavigation?.initialAccountId, onExit() {} };
+  const props = { controllerRef: { current: null }, initialAccountId: publicNavigation?.initialAccountId, onExit() { exits++; } };
   const render = () => root.renderOwner(Root, props);
   render(); await new Promise((resolve) => setImmediate(resolve));
   if (realAuthority) { await realAuthority.unlock(); render(); renderTransition = render; }
@@ -561,10 +570,93 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     return render();
   };
   return { render, unlock, publish, noteRestore, notificationRoutes, publicViewLock: root.idle.security.publicViewLock,
+    exits: () => exits, state: () => state, setExit(action: () => void) { props.onExit = action; }, listeners: root.listeners,
+    holdSetup(operation: () => Promise<void>) { setupOperation = operation; },
+    prompt(operation: () => Promise<void>) { return authentication.run(null, operation); },
     failBackup(error: Error) { backupFailure = error; },
     loseCredential() { credentialPresent = false; publish({}); }, get recoveryInventoryReads() { return recoveryInventoryReads; },
     selectedAccounts, selectedAddress: () => state.account?.address, requestAccount(id: string) { props.initialAccountId = id; return render(); }, selectedNetwork: () => state.account?.network, authority: realAuthority, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, configurations, backupAcknowledgements, lifecycle, get locks() { return locks; } };
 }
+
+for (const route of ['create', 'import'] as const) test(`abandoned empty ${route} setup returns through Welcome once after background`, async () => {
+  const f = await walletFeedbackFixture(false, true);
+  try {
+    const initial = f.render(); press(row(initial, route === 'create' ? 'Create a wallet' : 'Import existing wallet'));
+    let tree = f.render();
+    if (route === 'import') {
+      assert.equal(tree.type, 'NativeImportWallet');
+      (tree.props.onConfirmed as (value: string) => void)('abandon '.repeat(11) + 'about'); tree = f.render();
+    }
+    assert.equal(all(tree).find(node => node.type === 'Header')?.props.title, 'Secure with your device');
+    f.emit('change', 'inactive'); f.render();
+    assert.equal(f.exits(), 0);
+    f.emit('change', 'background'); f.render(); assert.equal(f.exits(), 0);
+    f.emit('change', 'active'); f.render(); assert.equal(f.exits(), 1);
+    f.emit('focus'); f.render(); f.emit('change', 'active'); f.render(); assert.equal(f.exits(), 1);
+    assert.equal(f.state().presence, 'empty'); assert(!JSON.stringify(f.render()).includes('abandon'));
+  } finally { f.dispose(); }
+});
+
+for (const resolved of ['existing', 'empty'] as const) test(`unknown storage waits for ${resolved} evidence before any abandoned-setup exit`, async () => {
+  const f = await walletFeedbackFixture(false, true);
+  try {
+    f.publish({ phase: 'opening', presence: 'unknown' }); f.render();
+    f.emit('change', 'background'); f.render(); f.emit('change', 'active'); f.render();
+    assert.equal(f.exits(), 0);
+    f.publish({ phase: resolved === 'existing' ? 'locked' : 'empty', presence: resolved }); f.render();
+    assert.equal(f.exits(), resolved === 'empty' ? 1 : 0);
+  } finally { f.dispose(); }
+});
+
+for (const route of ['create', 'import'] as const) for (const committed of [false, true])
+  test(`pending ${route} drains before leaving an abandoned setup (committed: ${committed})`, async () => {
+    const f = await walletFeedbackFixture(false, true), started = Promise.withResolvers<void>(), finished = Promise.withResolvers<void>();
+    try {
+      f.holdSetup(async () => {
+        f.publish({ phase: 'authenticating' }); started.resolve(); await finished.promise;
+        f.publish({ phase: committed ? 'locked' : 'empty', presence: committed ? 'existing' : 'empty', account: null });
+        throw Error('CANCELLED');
+      });
+      press(row(f.render(), route === 'create' ? 'Create a wallet' : 'Import existing wallet'));
+      if (route === 'import') (f.render().props.onConfirmed as (value: string) => void)('abandon '.repeat(11) + 'about');
+      press(button(f.render(), route === 'create' ? 'Create wallet' : 'Import wallet')); await started.promise;
+      f.emit('change', 'background'); f.render(); f.emit('change', 'active'); f.render();
+      assert.equal(f.exits(), 0); assert(!JSON.stringify(f.render()).includes('abandon'));
+      finished.resolve(); await lifecycleTick(); f.render();
+      assert.equal(f.exits(), committed ? 0 : 1); assert.equal(f.state().presence, committed ? 'existing' : 'empty');
+    } finally { finished.resolve(); f.dispose(); }
+  });
+
+test('empty setup ignores Android blur and owned OS authorization interruption', async () => {
+  const f = await walletFeedbackFixture(true, true), finished = Promise.withResolvers<void>();
+  try {
+    press(row(f.render(), 'Create a wallet')); f.render();
+    const prompt = f.prompt(() => finished.promise); await lifecycleTick();
+    f.emit('change', 'inactive'); f.render(); f.emit('change', 'active'); f.render();
+    assert.equal(f.exits(), 0);
+    finished.resolve(); await prompt;
+    f.emit('blur'); f.render(); f.emit('focus'); f.render(); assert.equal(f.exits(), 0);
+  } finally { finished.resolve(); f.dispose(); }
+});
+
+test('an existing wallet never leaves its normal background/lock route', async () => {
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm');
+  try {
+    f.emit('change', 'background'); f.render(); f.emit('change', 'active'); f.render();
+    assert.equal(f.exits(), 0); assert.equal(f.state().presence, 'existing');
+  } finally { f.dispose(); }
+});
+
+test('abandoned setup uses the latest exit callback without remounting listeners', async () => {
+  const f = await walletFeedbackFixture(false, true);
+  let latest = 0;
+  try {
+    const before = f.listeners();
+    f.setExit(() => { latest++; }); f.render(); assert.equal(f.listeners(), before);
+    f.emit('change', 'background'); f.render(); f.emit('change', 'active'); f.render();
+    assert.equal(latest, 1); assert.equal(f.exits(), 0); assert.equal(f.listeners(), before);
+  } finally { f.dispose(); }
+});
 
 async function nativeIdleFixture(clock: { minutes: number; time: number }) {
   return walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined,

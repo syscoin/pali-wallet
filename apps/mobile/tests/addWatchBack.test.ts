@@ -182,7 +182,7 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
       } : kind === 'activity' ? { controller: { async setView() {} },
         snapshot: { status: 'ready', rows: [], accountAddress: account.addresses.ethereum!, view: { filter: 'all', showZero: false, anchor: null, offset: 0 },
           scopeKey: 'public-back-fixture', chainId: '1', networkName: 'Ethereum', nativeSymbol: 'ETH', explorerUrl: null,
-          loadingMore: false, hasMore: false, error: null, coverage: 'Direct transactions and ERC20 transfer events from the selected network are included.',
+          loadingMore: false, hasMore: false, error: null, coverage: 'network-transfers',
           truncated: false, canViewSavedPending: false, savedPending: undefined } satisfies NativeActivitySnapshot,
         accountLabel: 'Public account', onBack: () => shell.finishLeave('wallet'), navigation: shell.navigation,
       } : { authority, onAccounts() {}, onExit() { exits++; }, onLock() {}, navigation: shell.navigation };
