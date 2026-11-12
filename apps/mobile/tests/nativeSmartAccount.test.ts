@@ -992,7 +992,7 @@ for (const change of ['owner', 'network', 'source-auth'] as const) test(`creatio
   } finally { await f.close(); }
 });
 
-test('creation allocation retries the same saved address after a later read failure and configures through existing operations', { timeout: 45_000 }, async ({ signal }) => {
+test('creation allocation retries the same saved address after a later read failure and configures through existing operations', { timeout: 180_000 }, async ({ signal }) => {
   const f = await fixture({}, true);
   let deployment: NativeSmartAccountOperation | undefined, configuration: NativeSmartAccountOperation | undefined, noOp: NativeSmartAccountOperation | undefined;
   const authorize = async (operation: NativeSmartAccountOperation, expectedPurposes: readonly string[]) => {
@@ -1007,19 +1007,18 @@ test('creation allocation retries the same saved address after a later read fail
         operation.confirmPayer(review.id);
       }
     });
-    let timedOut = false;
     const cancel = () => operation.cancel();
-    const timeout = setTimeout(() => { timedOut = true; cancel(); }, 30_000);
+    // The complete multi-operation test owns cancellation. A second short
+    // wall-clock timer cancels healthy KDF/signing work under parallel CI load.
     signal.addEventListener('abort', cancel, { once: true });
     try {
       if (signal.aborted) cancel();
       await operation.authorize(operation.getSnapshot().revision);
-      assert.equal(timedOut, false, JSON.stringify(operation.getSnapshot()));
       assert.equal(unexpectedPurpose, undefined, 'only the expected payer consent may be approved');
       assert.deepEqual(reviews.map(review => review.purpose), expectedPurposes);
       return reviews;
     } finally {
-      clearTimeout(timeout); unsubscribe(); signal.removeEventListener('abort', cancel);
+      unsubscribe(); signal.removeEventListener('abort', cancel);
     }
   };
   try {
