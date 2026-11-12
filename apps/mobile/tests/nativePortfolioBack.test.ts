@@ -215,8 +215,8 @@ for (const entry of ['detail', 'continuation'] as const) test(`Receive ${entry} 
     f.back();
     assert(!elements(f.render()).some(value => value.props.testID === 'native-receive-address'));
     button('Send').props.onPress();
-    assert.equal(f.backups, 1);
-    assert.equal(f.sends, 0, 'the receive acknowledgement must not authorize spending');
+    assert.equal(f.backups, 0);
+    assert.equal(f.sends, 1, 'Send must open a fresh public draft rather than restore the consumed Receive intent');
     f.remountPortfolio();
     const returned = elements(f.render());
     assert(!returned.some(value => value.props.testID === 'native-receive-address'), 'the prior receive route must not reopen');
@@ -260,7 +260,7 @@ test('unbacked asset address copies without entering Receive or acknowledging ba
     assert(elements(f.render()).some(value => value.props.title === 'Receive Anyway'), 'copy must not acknowledge the Receive warning');
     f.back();
     const send = elements(f.render()).find(value => value.type === 'Button' && value.props.title === 'Send');
-    assert(send); send.props.onPress(); assert.equal(f.backups, 1); assert.equal(f.sends, 0);
+    assert(send); send.props.onPress(); assert.equal(f.backups, 0); assert.equal(f.sends, 1);
     f.retireAccount(); copy.props.onCopy(); await Promise.resolve();
     assert.equal(f.copied.length, 1, 'a stale public address must not be copied');
   } finally { f.close(); }
