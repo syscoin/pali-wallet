@@ -112,3 +112,41 @@ test('refuses arm64 rather than selecting an amd64 archive', (t) => {
   assert.notEqual(f.run('arm64').status, 0);
   assert.equal(fs.readFileSync(f.file, 'utf8'), original);
 });
+
+test('content refusal records bounded exact public bytes without terminal or workflow injection', (t) => {
+  const f = fixture(t);
+  const injected = Buffer.from('\x1b[31m::error::injected\r\n');
+  const bytes = Buffer.concat([
+    Buffer.from(original),
+    injected,
+    Buffer.alloc(5000, 0xff),
+  ]);
+  fs.writeFileSync(f.file, bytes);
+  const result = f.run();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Unexpected hosted-runner apt mirror list:/);
+  assert(
+    result.stderr.includes(
+      `size=${bytes.length} read=4096 prefix_bytes=512 prefix_hex=${bytes
+        .subarray(0, 512)
+        .toString('hex')}`
+    )
+  );
+  assert.equal(result.stderr.includes(injected.toString()), false);
+  assert.equal(result.stderr.includes('f'.repeat(1025)), false);
+  assert.deepEqual(fs.readFileSync(f.file), bytes);
+});
+
+test('link refusal is distinguished from content drift without printing file bytes', (t) => {
+  const f = fixture(t);
+  fs.linkSync(f.file, path.join(f.root, 'second-link'));
+  const result = f.run();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Unsafe apt mirror-list link count: 2/);
+  assert.equal(
+    result.stderr.includes('Unexpected hosted-runner apt mirror list:'),
+    false
+  );
+  assert.equal(result.stderr.includes('prefix_hex='), false);
+  assert.equal(fs.readFileSync(f.file, 'utf8'), original);
+});
