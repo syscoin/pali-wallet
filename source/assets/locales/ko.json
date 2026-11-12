@@ -2380,7 +2380,7 @@
       "purposeProcessTransactions": "스마트 계정 트랜잭션 처리",
       "purposeCreateAccounts": "스마트 계정 생성",
       "purposeWalletOwners": "지갑 소유자로 승인",
-      "purposePasskeys": "패스키로 승인",
+      "purposePasskeys": "패스키 지원",
       "purposeVerifyPostQuantum": "양자 내성 승인 검증",
       "purposePostQuantumKeys": "양자 내성 승인 키 사용",
       "purposeCombineMethods": "승인 방법 조합",

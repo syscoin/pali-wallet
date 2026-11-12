@@ -2380,7 +2380,7 @@
       "purposeProcessTransactions": "Traiter les transactions de comptes intelligents",
       "purposeCreateAccounts": "Créer des comptes intelligents",
       "purposeWalletOwners": "Approuver avec les propriétaires du portefeuille",
-      "purposePasskeys": "Approuver avec des clés d’accès",
+      "purposePasskeys": "Prise en charge des clés d’accès",
       "purposeVerifyPostQuantum": "Vérifier les approbations post-quantiques",
       "purposePostQuantumKeys": "Utiliser des clés d’approbation post-quantiques",
       "purposeCombineMethods": "Combiner des méthodes d’approbation",

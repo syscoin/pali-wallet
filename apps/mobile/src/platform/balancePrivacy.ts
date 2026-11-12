@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { createBalancePrivacy } from '../core/balancePrivacy.ts';
+import { authorizePublicView } from './credential';
 export { HIDDEN_BALANCE } from '../core/balancePrivacy.ts';
 
 const key = 'pali.mobile.hide-balances';
@@ -11,7 +12,7 @@ let memory: string | null = null;
 const preference = createBalancePrivacy({
   get: () => native ? SecureStore.getItemAsync(key, options) : Promise.resolve(memory),
   set: async value => { if (native) await SecureStore.setItemAsync(key, value, options); else memory = value; },
-});
+}, authorizePublicView);
 export const reloadBalancePrivacy = preference.reload;
 export const saveBalancePrivacy = preference.save;
 export function useBalancePrivacy() {

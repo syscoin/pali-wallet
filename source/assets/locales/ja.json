@@ -2380,7 +2380,7 @@
       "purposeProcessTransactions": "スマートアカウントのトランザクションを処理",
       "purposeCreateAccounts": "スマートアカウントを作成",
       "purposeWalletOwners": "ウォレット所有者で承認",
-      "purposePasskeys": "パスキーで承認",
+      "purposePasskeys": "パスキー対応",
       "purposeVerifyPostQuantum": "耐量子承認を検証",
       "purposePostQuantumKeys": "耐量子承認鍵を使用",
       "purposeCombineMethods": "承認方法を組み合わせ",

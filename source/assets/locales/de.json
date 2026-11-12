@@ -2380,7 +2380,7 @@
       "purposeProcessTransactions": "Transaktionen von Smart-Konten verarbeiten",
       "purposeCreateAccounts": "Smart-Konten erstellen",
       "purposeWalletOwners": "Mit Wallet-Eigentümern bestätigen",
-      "purposePasskeys": "Mit Passkeys bestätigen",
+      "purposePasskeys": "Passkey-Unterstützung",
       "purposeVerifyPostQuantum": "Postquanten-Bestätigungen prüfen",
       "purposePostQuantumKeys": "Postquanten-Schlüssel zur Bestätigung verwenden",
       "purposeCombineMethods": "Bestätigungsmethoden kombinieren",

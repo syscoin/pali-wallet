@@ -2380,7 +2380,7 @@
       "purposeProcessTransactions": "Обрабатывать транзакции смарт-аккаунтов",
       "purposeCreateAccounts": "Создавать смарт-аккаунты",
       "purposeWalletOwners": "Подтверждать владельцами кошелька",
-      "purposePasskeys": "Подтверждать ключами доступа",
+      "purposePasskeys": "Поддержка ключей доступа",
       "purposeVerifyPostQuantum": "Проверять постквантовые подтверждения",
       "purposePostQuantumKeys": "Использовать постквантовые ключи подтверждения",
       "purposeCombineMethods": "Комбинировать способы подтверждения",

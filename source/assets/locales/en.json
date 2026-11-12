@@ -2380,7 +2380,7 @@
       "purposeProcessTransactions": "Process smart-account transactions",
       "purposeCreateAccounts": "Create smart accounts",
       "purposeWalletOwners": "Approve with wallet owners",
-      "purposePasskeys": "Approve with passkeys",
+      "purposePasskeys": "Passkey support",
       "purposeVerifyPostQuantum": "Verify post-quantum approvals",
       "purposePostQuantumKeys": "Use post-quantum approval keys",
       "purposeCombineMethods": "Combine approval methods",

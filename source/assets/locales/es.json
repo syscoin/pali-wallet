@@ -2380,7 +2380,7 @@
       "purposeProcessTransactions": "Procesar transacciones de cuentas inteligentes",
       "purposeCreateAccounts": "Crear cuentas inteligentes",
       "purposeWalletOwners": "Aprobar con los propietarios de la cartera",
-      "purposePasskeys": "Aprobar con claves de acceso",
+      "purposePasskeys": "Compatibilidad con claves de acceso",
       "purposeVerifyPostQuantum": "Verificar aprobaciones poscuánticas",
       "purposePostQuantumKeys": "Usar claves de aprobación poscuánticas",
       "purposeCombineMethods": "Combinar métodos de aprobación",
