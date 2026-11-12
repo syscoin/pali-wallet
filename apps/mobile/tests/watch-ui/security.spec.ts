@@ -79,23 +79,38 @@ test('selected-account reveal stays hidden until fresh auth and clears on Hide a
   await expect(page.getByRole('button', { name: 'Reveal private key', exact: true })).toBeEnabled();
 });
 
-test('Security uses the actual seed backup flow and offers no reset or clipboard action', async ({ page }) => {
+test('Security uses the actual seed backup flow with guarded explicit phrase Copy', async ({ page }) => {
   await openSecurity(page);
+  await page.evaluate(() => {
+    const writes: string[] = [];
+    (window as unknown as { secretClipboardWrites: string[] }).secretClipboardWrites = writes;
+    Object.defineProperty(navigator.clipboard, 'writeText', { configurable: true, value: async (value: string) => { writes.push(value); } });
+  });
+  const copiedValues = () => page.evaluate(() => (window as unknown as { secretClipboardWrites: string[] }).secretClipboardWrites);
   await expect(page.getByText('Backed up', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Recovery guide', exact: false }).click();
   await expect(page.getByText(/Your recovery phrase restores this wallet/)).toBeVisible();
   await expect(page.getByRole('button', { name: /Reset|Restore|Import|Copy|Share/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'View recovery phrase', exact: false }).click();
+  await expect(page.getByText('abandon', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Copy|Share/ })).toHaveCount(0);
+  expect(await copiedValues()).toEqual([]);
   await revealBackupPhrase(page);
   await expect(page.getByText('abandon', { exact: true })).toHaveCount(11);
-  await expect(page.getByRole('button', { name: /Copy|Share/ })).toHaveCount(0);
+  await expect(page.getByText('Other apps may read your clipboard. Paste this secret only into an app you trust.', { exact: true })).toBeVisible();
+  expect(await copiedValues()).toEqual([]);
+  await page.getByRole('button', { name: 'Copy recovery phrase', exact: true }).click();
+  await expect(page.getByText('Copied!', { exact: true })).toBeVisible();
+  expect(await copiedValues()).toEqual([[...Array<string>(11).fill('abandon'), 'about'].join(' ')]);
+  await expect(page.getByRole('button', { name: /Reset|Restore|Import|Share/ })).toHaveCount(0);
   await confirmFixtureBackup(page);
   await expect(page.getByText('Backup complete', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Security & backups', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'View recovery phrase', exact: false })).toBeVisible();
   await expect(page.getByText('abandon', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Copy recovery phrase', exact: true })).toHaveCount(0);
   await expect(page.getByText('Backed up', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Security & backups', exact: false })).toBeVisible();
