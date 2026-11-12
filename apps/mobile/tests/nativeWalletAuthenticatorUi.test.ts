@@ -1,3 +1,4 @@
+import * as transactionFeeChoice from '../../../source/shared/transactionFeeChoice.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { NativeSigningHandoffs, type NativeSigningHandoff } from '../src/connections/signingHandoff.ts';
@@ -159,6 +160,8 @@ function harness(
     };
   const dependencies: Record<string, unknown> = {
     react,
+    '../../../../source/shared/transactionFeeChoice': transactionFeeChoice,
+    './NetworkFeeSheet': { NetworkFeeSheet: 'NetworkFeeSheet' },
     './useDappLedgerConnection': {
       // These policy UI cases have no Ledger owner; real ownership/picker
       // behavior is exercised by nativeSmartLedgerReview.test.ts.
@@ -589,6 +592,7 @@ for (const route of [
       };
       const props: Record<string, any> = {
         open,
+        feeRecommendations: async () => ({ type: 2, maxFeePerGas: '2000000000', maxPriorityFeePerGas: '1000000000' }),
         onBack() {
           calls.push('back');
         },
@@ -860,7 +864,7 @@ async function authenticationRoute(route: AuthenticationRoute) {
     guard();
     return route === 'slh' ? slhManager().manager : operation;
   };
-  const props = { open, onBack() { returned++; }, context: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
+  const props = { open, feeRecommendations: async () => ({ type: 2, maxFeePerGas: '2000000000', maxPriorityFeePerGas: '1000000000' }), onBack() { returned++; }, context: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
     accountLabel: 'Smart account', source: {}, reader: {}, account: { address: account, network: 'ethereum', revision: 1 },
     action: 'set', address: account, networkLabel: 'Ethereum', observation: { exists: true, guardians: [owner], threshold: 1, delaySeconds: 259200, pending: null },
     manage: { chainId: 1, open }, lifetime: new AbortController().signal };
