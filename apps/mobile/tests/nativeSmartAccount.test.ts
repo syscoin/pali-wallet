@@ -992,9 +992,35 @@ for (const change of ['owner', 'network', 'source-auth'] as const) test(`creatio
   } finally { await f.close(); }
 });
 
-test('creation allocation retries the same saved address after a later read failure and configures through existing operations', async () => {
+test('creation allocation retries the same saved address after a later read failure and configures through existing operations', { timeout: 180_000 }, async ({ signal }) => {
   const f = await fixture({}, true);
   let deployment: NativeSmartAccountOperation | undefined, configuration: NativeSmartAccountOperation | undefined, noOp: NativeSmartAccountOperation | undefined;
+  const authorize = async (operation: NativeSmartAccountOperation, expectedPurposes: readonly string[]) => {
+    const started = performance.now(), reviews: { purpose: string; elapsed: number }[] = [];
+    let unexpectedPurpose: string | undefined;
+    const unsubscribe = operation.subscribe(() => {
+      const review = operation.getSnapshot().payerReview;
+      if (review) {
+        const expected = expectedPurposes[reviews.length];
+        reviews.push({ purpose: review.purpose, elapsed: performance.now() - started });
+        if (review.purpose !== expected) { unexpectedPurpose = review.purpose; operation.cancel(); return; }
+        operation.confirmPayer(review.id);
+      }
+    });
+    const cancel = () => operation.cancel();
+    // The complete multi-operation test owns cancellation. A second short
+    // wall-clock timer cancels healthy KDF/signing work under parallel CI load.
+    signal.addEventListener('abort', cancel, { once: true });
+    try {
+      if (signal.aborted) cancel();
+      await operation.authorize(operation.getSnapshot().revision);
+      assert.equal(unexpectedPurpose, undefined, 'only the expected payer consent may be approved');
+      assert.deepEqual(reviews.map(review => review.purpose), expectedPurposes);
+      return reviews;
+    } finally {
+      unsubscribe(); signal.removeEventListener('abort', cancel);
+    }
+  };
   try {
     const host = await f.runtime.openConnectionHost(), requestedOwner = '0x' + '66'.repeat(20);
     const allocation = await host.allocateSmartAccount({ networkId: 'ethereum', label: 'Configured creation', target: { id: 'ecdsa', config: { owners: [requestedOwner], threshold: 1 } }, externalOwnersAcknowledged: true }, new AbortController().signal, () => undefined, () => undefined, null);
@@ -1004,12 +1030,12 @@ test('creation allocation retries the same saved address after a later read fail
     f.deployed(); f.undeployed();
     deployment = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined, null);
     assert.equal(deployment.getSnapshot().intent.kind, 'deploy'); await deployment.prepare();
-    const deploying = deployment.authorize(deployment.getSnapshot().revision);
-    for (let i = 0; i < 300 && !['complete', 'failed'].includes(deployment.getSnapshot().phase); i++) {
-      const review = deployment.getSnapshot().payerReview; if (review) deployment.confirmPayer(review.id);
-      await new Promise(resolve => setTimeout(resolve, 5));
-    }
-    await deploying; assert.equal(deployment.getSnapshot().phase, 'complete', JSON.stringify(deployment.getSnapshot()));
+    f.onBroadcast(async () => {
+      if (f.submitted.length === 1) await new Promise(resolve => setTimeout(resolve, 1750));
+    });
+    const deploymentReviews = await authorize(deployment, ['fund-account', 'submit-operation']);
+    assert(deploymentReviews[1]!.elapsed > 1500, 'the second consent must arrive after the former polling window');
+    assert.equal(deployment.getSnapshot().phase, 'complete', JSON.stringify(deployment.getSnapshot()));
     await deployment.dispose(); deployment = undefined;
     f.guardianStatus('no-policy'); f.fundedSmart();
     configuration = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined, null);
@@ -1018,10 +1044,7 @@ test('creation allocation retries the same saved address after a later read fail
     const rotate = paliSmartAccountInterface.decodeFunctionData('rotateValidator', intent.command.executions[0]!.data);
     assert.equal(rotate[2], encodeEcdsaValidatorInitData([requestedOwner], 1));
     f.onBroadcast(() => f.observedEcdsaOwners([requestedOwner], 1));
-    const configuring = configuration.authorize(configuration.getSnapshot().revision);
-    for (let i = 0; i < 300 && !configuration.getSnapshot().payerReview && configuration.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
-    assert(configuration.getSnapshot().payerReview, JSON.stringify(configuration.getSnapshot()));
-    configuration.confirmPayer(configuration.getSnapshot().payerReview!.id); await configuring;
+    await authorize(configuration, ['submit-operation']);
     assert.equal(configuration.getSnapshot().phase, 'complete'); assert.equal(configuration.getSnapshot().metadataRefresh, 'complete');
     await configuration.dispose(); configuration = undefined;
     const signed = f.signatures.length, submitted = f.submitted.length;

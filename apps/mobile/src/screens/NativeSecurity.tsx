@@ -4,8 +4,9 @@ import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { setStringAsync, StringFormat } from 'expo-clipboard';
 import type { HdKeyExportFlow, HdKeyExportPresentation } from '../custody/hdKeyExport';
-import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
+import { Button, Card, colors, Header, IconButton, Notice, Row, Screen, styles, Text } from '../ui';
 
 type Props = {
   keyExport: HdKeyExportFlow;
@@ -30,12 +31,16 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
   const [mode, setMode] = useState<'hub' | 'key' | 'recovery'>('hub');
   const [presentation, setPresentation] = useState<HdKeyExportPresentation | null>(null);
   const [busy, setBusy] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
-  const lifecycle = useRef({ mounted: false, operation: 0, request: 0, busy: false });
+  const lifecycle = useRef({ mounted: false, operation: 0, request: 0, busy: false, copying: false });
+  const visiblePresentation = useRef<HdKeyExportPresentation | null>(null);
   const latestBack = useRef<() => void>(() => undefined);
   const clear = useCallback(() => {
     lifecycle.current.operation++;
-    setPresentation(null); setError('');
+    lifecycle.current.copying = false; visiblePresentation.current = null;
+    setPresentation(null); setCopying(false); setCopied(false); setError('');
     Keyboard.dismiss();
   }, []);
   useLayoutEffect(() => {
@@ -50,6 +55,7 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => interrupted('blur')) : null;
     return () => {
       state.mounted = false; state.operation++; state.request++;
+      state.copying = false; visiblePresentation.current = null;
       unsubscribe(); app.remove(); blur?.remove(); keyExport.cancel();
     };
   }, [keyExport, clear, accountId, address]);
@@ -97,6 +103,28 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
   };
   const shown = presentation && presentation.accountId === accountId && presentation.address === address &&
     keyExport.isCurrent(presentation.id) ? presentation : null;
+  useLayoutEffect(() => { visiblePresentation.current = shown; }, [shown]);
+  const copyKey = async (value: HdKeyExportPresentation) => {
+    const state = lifecycle.current, operation = state.operation;
+    const current = () => state.mounted && state.operation === operation && AppState.currentState === 'active' &&
+      visiblePresentation.current === value && value.accountId === accountId && value.address === address && keyExport.isCurrent(value.id);
+    if (state.copying || state.busy || !current()) return;
+    state.copying = true; setCopying(true); setCopied(false); setError('');
+    try {
+      const success = await setStringAsync(value.privateKey, {
+        inputFormat: StringFormat.PLAIN_TEXT,
+        android: { isSensitive: true },
+        ios: { localOnly: true, expiresAt: new Date(Date.now() + 120000) },
+      });
+      if (!current()) return;
+      if (!success) throw new Error('COPY_FAILED');
+      setCopied(true);
+    } catch {
+      if (current()) setError(t('transactions.copyFailed'));
+    } finally {
+      if (state.mounted && state.operation === operation) { state.copying = false; setCopying(false); }
+    }
+  };
   const utxo = keyFormat !== 'evm' ? keyFormat : null;
   const backupStatus = backupConfirmed ? t('mobile.onboarding.backedUp') : t('mobile.onboarding.backupNeeded');
 
@@ -125,7 +153,11 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
             ? <Notice title={t('mobile.security.wifTitle')} body={t('mobile.security.wifBody')} tone="amber" />
             : <Notice title={t('mobile.security.evmTitle')} body={t('mobile.security.evmBody')} tone="amber" />}
           {shown ? <>
-            <View style={s.secret}><Text style={s.key}>{shown.privateKey}</Text></View>
+            <View style={s.secret}><Text selectable={false} style={s.key}>{shown.privateKey}</Text>
+              <IconButton icon={copied ? 'check' : 'copy'} label={t(copied ? 'components.copied' : 'mobile.security.copyPrivateKey')}
+                disabled={copying} onPress={() => copyKey(shown)} />
+            </View>
+            {copied && <Text accessibilityLiveRegion="polite" style={s.copied}>{t('components.copied')}</Text>}
             <Text style={styles.muted}>{t('mobile.security.sessionOnly')}</Text>
           </> : <>
             {busy && <ActivityIndicator accessibilityLabel={t('mobile.security.confirming')} color={colors.pink} />}
@@ -143,7 +175,8 @@ const s = StyleSheet.create({
   identity: { padding: 18, gap: 10 }, label: { color: colors.muted, fontSize: 13, lineHeight: 20, fontWeight: '600' },
   address: { fontSize: 14, lineHeight: 23 }, field: { gap: 10 },
   input: { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 17, minHeight: 56, fontSize: 16 },
-  secret: { padding: 20, borderRadius: 16, backgroundColor: colors.surface, borderColor: colors.amber, borderWidth: 1 },
-  key: { fontSize: 16, lineHeight: 26, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  secret: { padding: 20, borderRadius: 16, backgroundColor: colors.surface, borderColor: colors.amber, borderWidth: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  key: { flex: 1, minWidth: 0, fontSize: 16, lineHeight: 26, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  copied: { color: colors.blue, fontSize: 14, lineHeight: 20 },
   error: { color: colors.red, fontSize: 14, lineHeight: 21 },
 });

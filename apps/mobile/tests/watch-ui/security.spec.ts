@@ -23,6 +23,7 @@ async function openKey(page: Page) {
   await page.getByRole('button', { name: 'Reveal account private key', exact: false }).click();
   await expect(page.getByRole('heading', { name: 'Unlock private information', exact: true })).toHaveCount(0);
   await expect(page.getByText(PUBLIC_TEST_KEY, { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Copy private key', exact: true })).toHaveCount(0);
 }
 async function reveal(page: Page, accepted = true) {
   await page.getByRole('button', { name: 'Reveal private key', exact: true }).click();
@@ -54,11 +55,19 @@ test('selected-account reveal stays hidden until fresh auth and clears on Hide a
   const screenshot = testInfo.outputPath('native-security-public-fixture-key.png');
   await page.screenshot({ path: screenshot, fullPage: true });
   await testInfo.attach('Security reveal with a public synthetic key', { path: screenshot, contentType: 'image/png' });
+  await page.setViewportSize({ width: 320, height: 640 });
+  await expect(page.getByRole('button', { name: 'Copy private key', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+  const narrowScreenshot = testInfo.outputPath('native-security-public-fixture-key-320.png');
+  await page.screenshot({ path: narrowScreenshot, fullPage: true });
+  await testInfo.attach('Narrow security reveal with a public synthetic key', { path: narrowScreenshot, contentType: 'image/png' });
   await expect(page.locator(`[aria-label*="${PUBLIC_TEST_KEY}"], [data-testid*="${PUBLIC_TEST_KEY}"], input`)).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Copy|Share/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Copy private key', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Share/ })).toHaveCount(0);
   expect((await page.evaluate(() => window.__watchFixture.audit())).keyReads).toBe(1);
   await page.getByRole('button', { name: 'Hide private key', exact: true }).click();
   await expect(page.getByText(PUBLIC_TEST_KEY, { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Copy private key', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Unlock private information', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Reveal private key', exact: true })).toBeEnabled();
   await reveal(page);

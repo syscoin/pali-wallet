@@ -41,11 +41,12 @@ async function fixture(failSave = false, restoreAccessAvailable = false) {
     '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'biometrics', icon: 'fingerprint' }) },
     '../platform/localization': nativeTranslationFixture,
     './privateAuthenticationLifecycle': privateAuthenticationLifecycle,
+    'expo-clipboard': { setStringAsync() { assert.fail('Privacy settings must not copy a key'); } },
     'react-native': { ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'Switch', 'View'].map(name => [name, name])),
       AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
       BackHandler: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} }, Platform: { OS: 'ios' }, StyleSheet: { create: (value: unknown) => value } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
-    '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
+    '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'IconButton', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
   });
   const props = { keyExport: { onClear: () => () => {}, cancel() { cancelled++; }, isCurrent: () => false, isAuthenticating: () => false }, keyFormat: null,
     accountId: 'hd:60:0', accountType: 'HDAccount', accountLabel: 'Account 1', address: '0x1111111111111111111111111111111111111111',

@@ -2082,7 +2082,7 @@ const baseScreens: ScreenSpec[] = [
   }),
   make('settings', 'settings.key-reveal', 'Account key', 'phrase', {
     purpose:
-      'Key exposure is scoped, short-lived, protected from app snapshots and explicit clipboard use; design never contains a usable key.',
+      'Key exposure is scoped, short-lived and protected from app snapshots. Copy is explicit after authenticated reveal; design uses only public test material.',
     headline: 'Private key',
     notice: {
       title: 'Keep this key private',

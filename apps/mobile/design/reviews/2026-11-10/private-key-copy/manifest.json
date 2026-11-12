@@ -1,0 +1,26 @@
+{
+  "sourceBase": "e0f65bc94c045f03bdbfb24dcaf5c2bc51c4e9ed",
+  "productionFile": "apps/mobile/src/screens/NativeSecurity.tsx",
+  "productionSha256": "c71de27f8a3df6f4ec5337b7c0e4b11268c67cec6e87e0ec4e2364530a192b28",
+  "screenshots": {
+    "native-security-public-fixture-key.png": "68e881c182bef110727c4c442ac34aa420a821915247ed2300e152bc9a5d6bdf",
+    "native-security-public-fixture-key-320.png": "6eb421c8571344cd7a4dcdad1ded263fb7edeb65233b2b732163fa18eb8075a6"
+  },
+  "qualification": "JavaScript browser fixture; synthetic public key only; no native/device or actual clipboard-write claim",
+  "tests": {
+    "selected-account reveal stays hidden until fresh auth and clears on Hide and Back": "passed"
+  },
+  "viewports": [
+    {
+      "width": 390,
+      "height": 844
+    },
+    {
+      "width": 320,
+      "height": 640
+    }
+  ],
+  "overflow": false,
+  "copyButtonVisible": true,
+  "sourceRevision": "556f84d5b9285e7f45e38befb795bdd31de62c35"
+}
