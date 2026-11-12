@@ -118,19 +118,13 @@ function captureNativeSmartAccountSigningContext(inputMetadata: ISmartAccountMet
   return { metadata, owners };
 }
 
-function supportsNativeTrezorPlan(plan: ReturnType<typeof getSmartAccountSigningPlan>) {
-  if (!plan?.authenticators.some(entry => entry.owners.some(owner => owner.type === 'Trezor'))) return true;
-  // The private Suite continuation retains ECDSA and admitted native P256 proofs.
-  // SLH consumption/state recovery remains a separate signing contract.
-  return plan.authenticators.every(entry => entry.validator.id === 'ecdsa' || entry.validator.id === 'p256-webauthn');
-}
 export function getNativeSmartAccountSigningPlan(metadata: ISmartAccountMetadata, localOwners: readonly NativeSmartAccountSigningOwner[], available: Readonly<{ p256WebAuthn: boolean; slhDsa: boolean }>) {
   if (typeof available?.slhDsa !== 'boolean' || typeof available?.p256WebAuthn !== 'boolean') throw new Error('Explicit native signing availability is required');
   const captured = captureNativeSmartAccountSigningContext(metadata, localOwners);
   const plan = getSmartAccountSigningPlan(captured.metadata, {ecdsa: captured.owners, p256WebAuthn: available.p256WebAuthn, slhDsa: available.slhDsa});
   // One terminal signature per Suite job; ordered owner jobs share only the
   // process-owned, exact-intent proof continuation implemented by the host.
-  return supportsNativeTrezorPlan(plan) ? plan : null;
+  return plan;
 }
 export function canSignNativeSmartAccountActionHash(metadata: ISmartAccountMetadata, localOwners: readonly NativeSmartAccountSigningOwner[], available: Readonly<{ p256WebAuthn: boolean; slhDsa: boolean }>): boolean {
   try { return getNativeSmartAccountSigningPlan(metadata, localOwners, available) !== null; } catch { return false; }
@@ -173,8 +167,6 @@ export async function signNativeSmartAccountActionHash(
   )
     throw new Error('Native smart account signing ports are required');
   const { metadata, owners } = captureNativeSmartAccountSigningContext(params.metadata, params.localOwners);
-  const plan = getSmartAccountSigningPlan(metadata, {ecdsa:owners,p256WebAuthn:params.p256WebAuthn !== null,slhDsa:params.slhDsa !== null});
-  if (!supportsNativeTrezorPlan(plan)) throw new Error('Multiple Trezor Smart account approvals are unavailable');
   const slhDsa = params.slhDsa === null ? null : Object.freeze({ signActionHash: params.slhDsa.signActionHash!.bind(params.slhDsa), signMessageActionHash: null });
   const result = await signSmartAccountActionHash({
     accountId: params.accountId,

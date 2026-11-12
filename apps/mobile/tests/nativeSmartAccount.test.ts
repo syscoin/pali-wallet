@@ -4276,8 +4276,8 @@ for (const mutation of ['Ledger public key', 'Smart policy'] as const) test(`Led
 });
 
 
-async function readyTrezorSmartOwner(slhFactory: NativeSlhExecutionCapability | null = null, count: 1 | 2 = 1, passkeys: KeyringRuntimeDependencies['passkeys'] = null) {
-  const device = nativeSmartTrezorDevice(), f = await fixture({}, true, slhFactory, undefined, device.sessions, passkeys);
+async function readyTrezorSmartOwner(slhFactory: NativeSlhExecutionCapability | null = null, count: 1 | 2 = 1, passkeys: KeyringRuntimeDependencies['passkeys'] = null, hooks: { before?: SqlHook; after?: SqlHook } = {}) {
+  const device = nativeSmartTrezorDevice(), f = await fixture(hooks, true, slhFactory, undefined, device.sessions, passkeys);
   try {
     for(let index=0;index<count;index++){
       await f.runtime.trezor.startImport(`Trezor owner ${index+1}`);
@@ -4412,6 +4412,161 @@ for(const ecdsaFirst of [false,true]) test(`mixed P256 Trezor UserOperation reac
     assert.equal(calls(),1);assert.equal(device.signatures.length,2);assert.equal(f.submitted.length,0);
     operation.cancel();await signing;f.assertNoSigningKeys();
   }finally{scope.retire();await operation?.dispose();await close();}
+});
+
+async function mixedTrezorSlhFixture(ecdsaFirst: boolean, hooks: { before?: SqlHook; after?: SqlHook } = {}) {
+  const backend = slhSmartBackend(), owned = await readyTrezorSmartOwner(backend.capability, 2, null, hooks);
+  const { f } = owned;
+  try {
+    const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal, null);
+    const key = await facade.prepareFresh(() => undefined);
+    f.observedSlh(key);
+    const ecdsa = getConfiguredAuthenticatorAddress(1, 'ecdsa'), slh = getConfiguredAuthenticatorAddress(1, 'slh-dsa');
+    f.observedCompositeChildren(ecdsaFirst ? [ecdsa, slh] : [slh, ecdsa], 2);
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    return { ...owned, backend, key, async usage() {
+      const current = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal, null);
+      return (await current.hydrateInstalled(key.keyId)).signatureCount;
+    } };
+  } catch (error) { await owned.close(); throw error; }
+}
+for (const ecdsaFirst of [false, true]) test(`mixed SLH Trezor message preserves shared child order and one committed usage (ECDSA first ${ecdsaFirst})`, async () => {
+  const { f, device, close, backend, usage } = await mixedTrezorSlhFixture(ecdsaFirst);
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined, continuation: ReturnType<typeof ownedSmartSdkHandoff> | undefined;
+  try {
+    connection = await smartMessageApproval(f);
+    continuation = ownedSmartSdkHandoff(connection, 'mixed-slh-message', Date.now() + 120000, 'personal_sign');
+    const request: DappMessageRequest = { method: 'personal_sign', address: connection.selected.address, message: 'SLH and Trezor exact shared intent' };
+    const prepared = prepareSmartAccountMessage({ accountAddress: connection.selected.address, chainId: 1, request });
+    const reads = f.credentialReads;
+    const result = await connection.host.signMessage({ handoff: continuation.handoff, accountId: connection.selected.id, networkId: 'ethereum', request, approval: connection.approval }, null);
+    const ecdsa = coder.encode(['bytes[]'], [device.signatures.map(entry => entry.signature)]), slh = hexlify(new Uint8Array(3856).fill(9));
+    assert.equal(result, encodeSmartAccountMessageSignature(prepared, { validator: getConfiguredAuthenticatorAddress(1, 'composite'), signature: coder.encode(['bytes[]'], [ecdsaFirst ? [ecdsa, slh] : [slh, ecdsa]]) }));
+    assert.deepEqual(backend.actions, [prepared.actionHash]); assert.equal(await usage(), 1);
+    assert.equal(f.credentialReads, reads + 1); assert.equal(backend.active, 0); f.assertNoSigningKeys();
+    assert.equal(device.signatures.length, 2); continuation.terminal();
+  } finally { await continuation?.dispose(); connection?.approval.dispose(); await close(); }
+});
+for (const ecdsaFirst of [false, true]) test(`mixed SLH Trezor message resumes without repeating committed SLH proof (ECDSA first ${ecdsaFirst})`, async () => {
+  const { f, device, close, backend, usage } = await mixedTrezorSlhFixture(ecdsaFirst);
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined, continuation: ReturnType<typeof ownedSmartSdkHandoff> | undefined;
+  try {
+    connection = await smartMessageApproval(f);
+    continuation = ownedSmartSdkHandoff(connection, 'mixed-slh-resume', Date.now() + 120000, 'personal_sign');
+    device.onBeforeCallback(async request => { if (request.method === 'ethereumSignTypedData' && device.signatures.length === 2) { entered.resolve(); await release.promise; } });
+    const request: DappMessageRequest = { method: 'personal_sign', address: connection.selected.address, message: 'Resume the same SLH proof' };
+    const signing = connection.host.signMessage({ handoff: continuation.handoff, accountId: connection.selected.id, networkId: 'ethereum', request, approval: connection.approval }, null);
+    const rejected = assert.rejects(signing);
+    await Promise.race([entered.promise, signing.then(() => { throw Error('Expected Suite departure'); })]);
+    assert.equal(backend.actions.length, ecdsaFirst ? 0 : 1);
+    assert.equal(backend.active, 0); f.assertNoSigningKeys();
+    continuation.suspend(); f.owner.lock(); await rejected; release.resolve(); await new Promise(resolve => setImmediate(resolve));
+    connection.approval.dispose(); await f.owner.unlock(); connection = await smartMessageApproval(f);
+    await f.runtime.trezor.resumeSend(); const handoff = continuation.resume(connection), reads = f.credentialReads;
+    await connection.host.signMessage({ handoff, accountId: connection.selected.id, networkId: 'ethereum', request, approval: connection.approval }, null);
+    assert.equal(backend.actions.length, 1); assert.equal(await usage(), 1);
+    assert.equal(f.credentialReads, reads + (ecdsaFirst ? 1 : 0), 'an already committed SLH proof requires no second protected read');
+    assert.equal(device.signatures.length, 2); assert.equal(backend.active, 0); f.assertNoSigningKeys(); continuation.terminal();
+  } finally { release.resolve(); await continuation?.dispose(); connection?.approval.dispose(); await close(); }
+});
+for (const ecdsaFirst of [false, true]) test(`mixed SLH Trezor UserOperation keeps separate payer approval (ECDSA first ${ecdsaFirst})`, async () => {
+  const { f, device, close, backend, usage } = await mixedTrezorSlhFixture(ecdsaFirst);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), { kind: 'exact', amount: '0.000001' }, () => undefined, null);
+    await operation.prepare(); const reads = f.credentialReads;
+    const signing = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 3000 && !operation.getSnapshot().payerReview && !['failed', 'complete'].includes(operation.getSnapshot().phase); i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    assert.equal(backend.actions.length, 1); assert.equal(await usage(), 1); assert.equal(device.signatures.length, 2);
+    assert.equal(f.credentialReads, reads + 1); assert.equal(f.submitted.length, 0); assert.equal(backend.active, 0);
+    operation.cancel(); await signing; f.assertNoSigningKeys();
+  } finally { await operation?.dispose(); await close(); }
+});
+
+for (const ecdsaFirst of [false, true]) test(`mixed SLH Trezor UserOperation resumes without repeating committed proof (ECDSA first ${ecdsaFirst})`, async () => {
+  const { f, device, close, backend, usage } = await mixedTrezorSlhFixture(ecdsaFirst);
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let original: NativeSmartAccountOperation | undefined, resumed: NativeSmartAccountOperation | undefined;
+  try {
+    device.onBeforeCallback(async request => { if (request.method === 'ethereumSignTypedData' && device.signatures.length === 2) { entered.resolve(); await release.promise; } });
+    original = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), { kind: 'exact', amount: '0.000001' }, () => undefined, null);
+    await original.prepare(); const signing = original.authorize(original.getSnapshot().revision);
+    await Promise.race([entered.promise, signing.then(() => { throw Error('Expected Suite departure'); })]);
+    const expiresAt = device.sessions.getSnapshot()!.expiresAt;
+    assert.equal(backend.actions.length, ecdsaFirst ? 0 : 1);
+    assert.equal(backend.active, 0); f.assertNoSigningKeys();
+    original.background(); f.runtime.trezor.background(); f.owner.lock(); await signing;
+    release.resolve(); await new Promise(resolve => setImmediate(resolve)); f.assertNoSigningKeys();
+    await f.owner.unlock(); const draft = await f.runtime.trezor.resumeSend();
+    assert.equal(draft.kind, 'smart-operation'); const reads = f.credentialReads;
+    resumed = await f.runtime.resumeSmartAccountOperation(draft.id, new AbortController().signal, () => undefined, null);
+    await resumed.prepare(); assert.equal(resumed.getSnapshot().phase, 'authorize'); assert(resumed.authorizationExpiresAt <= expiresAt);
+    const confirmed = resumed.authorize(resumed.getSnapshot().revision);
+    for (let i = 0; i < 3000 && !resumed.getSnapshot().payerReview && !['failed', 'complete'].includes(resumed.getSnapshot().phase); i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(resumed.getSnapshot().payerReview, JSON.stringify(resumed.getSnapshot()));
+    assert.equal(backend.actions.length, 1); assert.equal(await usage(), 1); assert.equal(device.signatures.length, 2);
+    assert.equal(f.credentialReads, reads + (ecdsaFirst ? 1 : 0), 'cached SLH proof does not reopen protected signing material');
+    assert.equal(backend.active, 0); assert.equal(f.submitted.length, 0); f.assertNoSigningKeys();
+    resumed.cancel(); await confirmed;
+  } finally { release.resolve(); await original?.dispose(); await resumed?.dispose(); await close(); }
+});
+
+test('changed mixed SLH Trezor message cannot replay an earlier committed proof', async () => {
+  const { f, device, close, backend } = await mixedTrezorSlhFixture(false);
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined, continuation: ReturnType<typeof ownedSmartSdkHandoff> | undefined;
+  try {
+    connection = await smartMessageApproval(f); continuation = ownedSmartSdkHandoff(connection, 'mixed-slh-changed', Date.now() + 120000, 'personal_sign');
+    device.onBeforeCallback(async request => { if (request.method === 'ethereumSignTypedData' && device.signatures.length === 2) { entered.resolve(); await release.promise; } });
+    const request: DappMessageRequest = { method: 'personal_sign', address: connection.selected.address, message: 'Original mixed approval' };
+    const signing = connection.host.signMessage({ handoff: continuation.handoff, accountId: connection.selected.id, networkId: 'ethereum', request, approval: connection.approval }, null);
+    const rejected = assert.rejects(signing); await Promise.race([entered.promise, signing.then(() => { throw Error('Expected Suite departure'); })]);
+    continuation.suspend(); f.owner.lock(); await rejected; release.resolve(); await new Promise(resolve => setImmediate(resolve));
+    connection.approval.dispose(); await f.owner.unlock(); connection = await smartMessageApproval(f);
+    await f.runtime.trezor.resumeSend(); const handoff = continuation.resume(connection), reads = f.credentialReads;
+    await assert.rejects(connection.host.signMessage({ handoff, accountId: connection.selected.id, networkId: 'ethereum', request: { ...request, message: 'Changed mixed approval' }, approval: connection.approval }, null));
+    assert.equal(backend.actions.length, 1); assert.equal(f.credentialReads, reads); assert.equal(f.submitted.length, 0); f.assertNoSigningKeys();
+  } finally { release.resolve(); await continuation?.dispose(); connection?.approval.dispose(); await close(); }
+});
+
+test('mixed SLH proof cannot reach the first Trezor before encrypted usage commits', async () => {
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let armed = false, signerWrite = false;
+  const { f, device, close, backend, usage } = await mixedTrezorSlhFixture(false, { before: async (kind, sql) => {
+    if (armed && kind === 'run' && /^(?:INSERT INTO|UPDATE) keyring_records /.test(sql)) signerWrite = true;
+    if (armed && signerWrite && kind === 'exec' && sql === 'COMMIT') { armed = false; entered.resolve(); await release.promise; }
+  } });
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined, continuation: ReturnType<typeof ownedSmartSdkHandoff> | undefined;
+  try {
+    connection = await smartMessageApproval(f); continuation = ownedSmartSdkHandoff(connection, 'mixed-slh-commit', Date.now() + 120000, 'personal_sign');
+    const request: DappMessageRequest = { method: 'personal_sign', address: connection.selected.address, message: 'Commit SLH before external owner' };
+    armed = true;
+    const signing = connection.host.signMessage({ handoff: continuation.handoff, accountId: connection.selected.id, networkId: 'ethereum', request, approval: connection.approval }, null);
+    await Promise.race([entered.promise, signing.then(() => { throw Error('Expected held usage commit'); })]);
+    assert.equal(backend.actions.length, 1); assert.equal(device.signatures.length, 0);
+    assert.equal(device.sessions.getSnapshot(), null, 'no Suite job exists before the SLH commit');
+    release.resolve(); await signing;
+    assert.equal(device.signatures.length, 2); assert.equal(await usage(), 1); continuation.terminal();
+  } finally { release.resolve(); await continuation?.dispose(); connection?.approval.dispose(); await close(); }
+});
+
+test('cancelled mixed SLH continuation cannot reuse its committed proof', async () => {
+  const { f, device, close, backend } = await mixedTrezorSlhFixture(false);
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined, continuation: ReturnType<typeof ownedSmartSdkHandoff> | undefined;
+  try {
+    connection = await smartMessageApproval(f); continuation = ownedSmartSdkHandoff(connection, 'mixed-slh-cancel', Date.now() + 120000, 'personal_sign');
+    device.onBeforeCallback(async request => { if (request.method === 'ethereumSignTypedData' && device.signatures.length === 2) { entered.resolve(); await release.promise; } });
+    const request: DappMessageRequest = { method: 'personal_sign', address: connection.selected.address, message: 'Cancelled mixed proof' };
+    const signing = connection.host.signMessage({ handoff: continuation.handoff, accountId: connection.selected.id, networkId: 'ethereum', request, approval: connection.approval }, null);
+    const rejected = assert.rejects(signing); await Promise.race([entered.promise, signing.then(() => { throw Error('Expected Suite departure'); })]);
+    continuation.suspend(); f.owner.lock(); await rejected; release.resolve(); await new Promise(resolve => setImmediate(resolve));
+    await continuation.dispose(); continuation = undefined; connection.approval.dispose(); await f.owner.unlock();
+    await assert.rejects(f.runtime.trezor.resumeSend());
+    assert.equal(backend.actions.length, 1); assert.equal(f.submitted.length, 0); f.assertNoSigningKeys();
+  } finally { release.resolve(); await continuation?.dispose(); connection?.approval.dispose(); await close(); }
 });
 
 test('multiple native Trezor owners sign in the exact shared threshold order through separate terminal jobs',async()=>{

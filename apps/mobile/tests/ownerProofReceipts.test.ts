@@ -9,6 +9,7 @@ import {
 } from '../../../source/utils/smartAccount/authenticatorDispatch.ts';
 import { createSmartAccountTypedSigningIntent } from '../../../source/utils/smartAccount/ownerSigningIntent.ts';
 import { encodePasskeyWebAuthnProof } from '../../../source/utils/passkey/validation.ts';
+import { getSLHDSAKeyId, SLH_DSA_PARAMETER_SET, SLH_DSA_SIGNATURE_LENGTH, SLH_DSA_SIGNATURE_LIMIT } from '../../../source/utils/slhDsa/constants.ts';
 import type {
   ISmartAccountMetadata,
   SmartAccountValidatorModule,
@@ -16,6 +17,7 @@ import type {
 import {
   NativeOwnerProofReceipts,
   type NativeOwnerProofIdentity,
+  type NativeSlhProofRequest,
 } from '../src/smartAccount/ownerProofReceipts.ts';
 
 const wallets = [1, 2, 3, 4].map(
@@ -646,4 +648,162 @@ test('UserOperation proof receipts retain the existing request budget for derive
     receipts.read(captured.handle, request, guard),
     wallets[0]!.signingKey.sign(largeIntent.actionHash).serialized
   );
+});
+
+const slh: Extract<SmartAccountValidatorModule, { id: 'slh-dsa' }> = {
+  id: 'slh-dsa', type: 'validator', address: '0x6666666666666666666666666666666666666666',
+  config: {
+    parameterSet: SLH_DSA_PARAMETER_SET,
+    pkRoot: '0x' + '51'.repeat(16) + '00'.repeat(16),
+    pkSeed: '0x' + '62'.repeat(16) + '00'.repeat(16),
+    signatureLimit: SLH_DSA_SIGNATURE_LIMIT,
+    keyId: '',
+  },
+};
+slh.config.keyId = getSLHDSAKeyId(slh.config);
+// Public byte fixture only: the private host must validate and commit real signatures before recording.
+const slhSignature = '0x' + 'ab'.repeat(SLH_DSA_SIGNATURE_LENGTH);
+
+function slhReceiptFixture(order: 'first' | 'last' = 'first') {
+  const eoa = ecdsa(validator, owners.slice(0, 1));
+  const children = order === 'first' ? [slh, eoa] : [eoa, slh];
+  const outer: SmartAccountValidatorModule = { id: 'composite', type: 'validator', address: composite,
+    config: { childValidators: children.map(child => child.address), threshold: children.length } };
+  const account = metadata([...children, outer], outer);
+  const plan = getSmartAccountSigningPlan(account, { ecdsa: owners, p256WebAuthn: false, slhDsa: true });
+  assert(plan);
+  let now = 100, live = true;
+  const check = () => { if (!live) throw Error('Cancelled'); };
+  const receipts = new NativeOwnerProofReceipts({ now: () => now });
+  const captured = receipts.capture({ binding: 'bound SLH and Trezor request', intent, plan, owners, expiresAt: 1000 }, check);
+  const request: NativeSlhProofRequest = { binding: 'bound SLH and Trezor request', intent, step: captured.slh[0]! };
+  return { receipts, captured, request, check, account, setClock(value: number) { now = value; }, cancel() { live = false; } };
+}
+
+for (const order of ['first', 'middle', 'last'] as const) test(`shared mixed collector retains each SLH proof once in child order (${order})`, async () => {
+  const eoa = ecdsa(validator, owners.slice(0, 1));
+  const children = order === 'first' ? [slh, eoa, p256] : order === 'middle' ? [eoa, slh, p256] : [eoa, p256, slh];
+  const outer: SmartAccountValidatorModule = { id: 'composite', type: 'validator', address: composite,
+    config: { childValidators: children.map(child => child.address), threshold: 3 } };
+  const account = metadata([...children, outer], outer);
+  const plan = getSmartAccountSigningPlan(account, { ecdsa: owners, p256WebAuthn: true, slhDsa: true });
+  assert(plan);
+  const receipts = new NativeOwnerProofReceipts({ now: () => 100 });
+  const binding = 'same approved action and complete policy';
+  const captured = receipts.capture({ binding, intent, plan, owners, expiresAt: 1000 }, guard);
+  assert.equal(captured.slh.length, 1);
+  let ownerCalls = 0, passkeyCalls = 0, slhCalls = 0;
+  const run = () => signSmartAccountActionHash({ smartAccount: account, actionHash: intent.actionHash, async assertBeforeAuthentication() {},
+    ports: {
+      ecdsa: { localOwners: owners, async signActionHash(request) {
+        const current = { binding, intent, step: captured.steps[0]! };
+        const previous = receipts.read(captured.handle, current, guard); if (previous) return previous;
+        ownerCalls++;
+        const signature = wallets[request.owner.id]!.signingKey.sign(request.actionHash).serialized;
+        receipts.record(captured.handle, current, signature, guard); return signature;
+      } },
+      p256WebAuthn: { async signActionHash() {
+        const current = { binding, intent, step: captured.passkeys[0]! };
+        const previous = receipts.readPasskey(captured.handle, current, guard); if (previous) return { signature: previous };
+        passkeyCalls++; receipts.recordPasskey(captured.handle, current, passkeyProof, guard); return { signature: passkeyProof };
+      } },
+      slhDsa: { signMessageActionHash: null, async signActionHash(request) {
+        assert.equal(request.keyId, slh.config.keyId); assert.equal(request.actionHash, intent.actionHash);
+        const current = { binding, intent, step: captured.slh[0]! };
+        const previous = receipts.readSlh(captured.handle, current, guard); if (previous) return previous;
+        slhCalls++; receipts.recordSlh(captured.handle, current, slhSignature, guard); return slhSignature;
+      } },
+    },
+  });
+  const first = await run(); assert.deepEqual(await run(), first);
+  assert.equal(slhCalls, 1, 'resuming the same action does not consume another SLH signature');
+  assert.equal(ownerCalls, 1); assert.equal(passkeyCalls, 1);
+  const slots = defaultAbiCoder.decode(['bytes[]'], first.signature)[0];
+  assert.equal(slots[children.indexOf(slh)], slhSignature);
+  assert(Object.isFrozen(captured.slh)); assert(Object.isFrozen(captured.slh[0]!.config));
+  assert(!JSON.stringify(captured).includes(slhSignature));
+  receipts.retire(captured.handle);
+  assert.throws(() => receipts.readSlh(captured.handle, { binding, intent, step: captured.slh[0]! }, guard), /retired/);
+});
+
+test('SLH receipt cannot skip an earlier Trezor proof, overwrite a proof or release one after retirement', () => {
+  const pending = slhReceiptFixture('last');
+  assert.throws(() => pending.receipts.readSlh(pending.captured.handle, pending.request, pending.check), /order changed/);
+  assert.throws(() => pending.receipts.readSlh(pending.captured.handle, pending.request, guard), /retired/);
+  const outOfOrderRecord = slhReceiptFixture('last');
+  assert.throws(() => outOfOrderRecord.receipts.recordSlh(outOfOrderRecord.captured.handle, outOfOrderRecord.request, slhSignature, outOfOrderRecord.check), /order changed/);
+  const repeated = slhReceiptFixture();
+  repeated.receipts.recordSlh(repeated.captured.handle, repeated.request, slhSignature.toUpperCase().replace('0X', '0x'), repeated.check);
+  assert.equal(repeated.receipts.readSlh(repeated.captured.handle, repeated.request, repeated.check), slhSignature);
+  assert.throws(() => repeated.receipts.recordSlh(repeated.captured.handle, repeated.request, slhSignature, repeated.check), /order changed/);
+  assert.throws(() => repeated.receipts.readSlh(repeated.captured.handle, repeated.request, guard), /retired/);
+});
+
+for (const failure of ['expiry', 'cancel', 'binding', 'purpose', 'child', 'ordinal', 'validator', 'key', 'root', 'seed', 'parameter', 'limit', 'valid-key-change'] as const)
+  test(`SLH receipt invalidates its complete prefix on changed ${failure}`, () => {
+    const f = slhReceiptFixture(); f.receipts.recordSlh(f.captured.handle, f.request, slhSignature, f.check);
+    let request = f.request;
+    if (failure === 'expiry') f.setClock(1000);
+    if (failure === 'cancel') f.cancel();
+    if (failure === 'binding') request = { ...request, binding: 'different action' };
+    if (failure === 'purpose') request = { ...request, intent: { ...intent, purpose: 'erc7739-typed-data' } };
+    if (failure === 'child') request = { ...request, step: { ...request.step, childIndex: 9 } };
+    if (failure === 'ordinal') request = { ...request, step: { ...request.step, ordinal: 1 } };
+    if (failure === 'validator') request = { ...request, step: { ...request.step, validator: external } };
+    if (['key', 'root', 'seed', 'parameter', 'limit', 'valid-key-change'].includes(failure)) {
+      const config = { ...request.step.config };
+      if (failure === 'key') config.keyId += '-changed';
+      if (failure === 'root') config.pkRoot = '0x' + '71'.repeat(32);
+      if (failure === 'seed') config.pkSeed = '0x' + '72'.repeat(32);
+      if (failure === 'parameter') config.parameterSet = 'different' as typeof config.parameterSet;
+      if (failure === 'limit') config.signatureLimit--;
+      if (failure === 'valid-key-change') { config.pkSeed = '0x' + '73'.repeat(16) + '00'.repeat(16); config.keyId = getSLHDSAKeyId(config); }
+      request = { ...request, step: { ...request.step, config } };
+    }
+    assert.throws(() => f.receipts.readSlh(f.captured.handle, request, f.check));
+    assert.throws(() => f.receipts.readSlh(f.captured.handle, f.request, guard), /retired/);
+  });
+
+for (const access of ['read', 'record'] as const) test(`SLH ${access} rechecks the final authority before exposing or retaining a proof`, () => {
+  const measured = slhReceiptFixture(); let checkpoints = 0;
+  if (access === 'read') measured.receipts.recordSlh(measured.captured.handle, measured.request, slhSignature, measured.check);
+  const count = () => { measured.check(); checkpoints++; };
+  if (access === 'read') measured.receipts.readSlh(measured.captured.handle, measured.request, count);
+  else measured.receipts.recordSlh(measured.captured.handle, measured.request, slhSignature, count);
+  const f = slhReceiptFixture(); let reached = 0;
+  if (access === 'read') f.receipts.recordSlh(f.captured.handle, f.request, slhSignature, f.check);
+  const retire = () => { f.check(); if (++reached === checkpoints) f.receipts.retire(f.captured.handle); };
+  assert.throws(() => access === 'read'
+    ? f.receipts.readSlh(f.captured.handle, f.request, retire)
+    : f.receipts.recordSlh(f.captured.handle, f.request, slhSignature, retire), /retired|expired/);
+  assert.throws(() => f.receipts.readSlh(f.captured.handle, f.request, guard), /retired/);
+});
+
+for (const [label, signature] of [
+  ['empty', '0x'], ['short', slhSignature.slice(0, -2)], ['oversized', slhSignature + '00'],
+  ['non-hex', slhSignature.slice(0, -1) + 'z'],
+] as const) test(`SLH receipt refuses ${label} proof bytes and destroys the handle`, () => {
+  const f = slhReceiptFixture();
+  assert.throws(() => f.receipts.recordSlh(f.captured.handle, f.request, signature, f.check), /Invalid retained SLH proof/);
+  assert.throws(() => f.receipts.readSlh(f.captured.handle, f.request, guard), /retired/);
+});
+
+test('SLH receipt rejects private configuration fields and accessors without reading them', () => {
+  for (const accessor of [false, true]) {
+    const f = slhReceiptFixture(); let reads = 0;
+    const config = accessor
+      ? Object.defineProperty({ ...f.request.step.config }, 'pkRoot', { enumerable: true, get() { reads++; return slh.config.pkRoot; } })
+      : { ...f.request.step.config, secretKey: 'never retain this' };
+    assert.throws(() => f.receipts.readSlh(f.captured.handle, { ...f.request, step: { ...f.request.step, config } }, f.check), /Invalid owner proof receipt data/);
+    assert.equal(reads, 0);
+    assert.throws(() => f.receipts.readSlh(f.captured.handle, f.request, guard), /retired/);
+  }
+});
+
+test('SLH public-key fields are bounded before decoding', () => {
+  const f = slhReceiptFixture();
+  assert.throws(() => f.receipts.readSlh(f.captured.handle, {
+    ...f.request, step: { ...f.request.step, config: { ...f.request.step.config, pkRoot: '0x' + 'aa'.repeat(16_384) } },
+  }, f.check), /Invalid SLH proof occurrence/);
+  assert.throws(() => f.receipts.readSlh(f.captured.handle, f.request, guard), /retired/);
 });
