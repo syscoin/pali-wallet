@@ -193,7 +193,7 @@ export function NativeInfrastructure({ mode, open, onBack, ledgerConnection }: P
     {(create2Missing || state.phase === 'complete') && <Text accessibilityLiveRegion="polite">
       {t(create2Missing ? 'settings.smartAccountCreate2Missing' : 'settings.smartAccountInfrastructureReady')}
     </Text>}
-    {(openingError === scope || state.error) && <Text accessibilityRole="alert" style={s.error}>{t(openingError === scope ? 'mobile.infrastructure.unavailable' : state.error!)}</Text>}
+    {(openingError === scope || state.error) && <Text accessibilityRole="alert" style={s.error}>{t(openingError === scope ? 'mobile.infrastructure.unavailable' : state.error!, { symbol: controller?.currencySymbol })}</Text>}
     {state.status && state.phase !== 'review' && <Button title={setupDetails ? t('mobile.infrastructure.hideSetupDetails') : t('mobile.infrastructure.viewSetupDetails')} variant="quiet" size="compact" expanded={setupDetails} onPress={() => setSetupDetails(!setupDetails)} />}
     {state.status && state.phase !== 'review' && setupDetails && <Card style={s.card}>
       <Text style={s.label}>{t('mobile.infrastructure.create2Deployer')}</Text>

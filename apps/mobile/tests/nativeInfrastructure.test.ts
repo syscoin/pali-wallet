@@ -4,6 +4,7 @@ import { PALI_INFRASTRUCTURE_METADATA, type PaliInfrastructureContractId } from 
 import { projectSmartAccountInfrastructureObservation } from '../../../source/utils/smartAccount/infrastructureObservation.ts';
 import type { NativePreparedConnectionTransaction } from '../src/connections/transactionRuntime.ts';
 import { NativeInfrastructureController, type NativeInfrastructureStatus } from '../src/smartAccount/infrastructure.ts';
+import { EvmTransferReadError } from '../src/custody/evmFeeContracts.ts';
 
 const payer = '0x1111111111111111111111111111111111111111';
 const hash = `0x${'ab'.repeat(32)}`;
@@ -95,6 +96,24 @@ test('each infrastructure deployment refreshes the catalogue order and requires 
     assert.deepEqual(f.contracts, ['accountImplementation']);
   } finally { held.resolve(); f.controller.dispose(); }
 });
+
+test('typed insufficient balance explains setup fees without approving or submitting a deployment', async () => {
+  const f = fixture();
+  f.setQuote(async () => { throw new EvmTransferReadError('INSUFFICIENT_BALANCE'); });
+  try {
+    await f.review();
+    assert.equal(f.controller.getSnapshot().error, 'mobile.infrastructure.insufficientFunds');
+    assert.equal(f.controller.getSnapshot().feeReview, null);
+    assert.equal(f.controller.getSnapshot().phase, 'failed'); assert.equal(f.counts.submissions, 0);
+  } finally { f.controller.dispose(); }
+});
+
+for (const error of [new EvmTransferReadError('INVALID_RESPONSE'), Object.assign(Error('INSUFFICIENT_BALANCE'), { code: 'INSUFFICIENT_BALANCE' }), Error('gas required exceeds allowance')])
+  test(`unverified setup error stays generic: ${error.name} ${error.message}`, async () => {
+    const f = fixture(); f.setQuote(async () => { throw error; });
+    try { await f.review(); assert.equal(f.controller.getSnapshot().error, 'mobile.infrastructure.unavailable'); assert.equal(f.counts.submissions, 0); }
+    finally { f.controller.dispose(); }
+  });
 
 test('an owned Suite return keeps its reservation and needs a new explicit confirmation', async () => {
   const f = fixture();

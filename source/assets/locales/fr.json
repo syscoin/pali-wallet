@@ -2375,6 +2375,7 @@
       "unknown": "La transaction a peut-être atteint le réseau. Actualisez son état avant de continuer.",
       "reviewExpired": "La vérification a expiré. Vérifiez à nouveau les frais actuels.",
       "unavailable": "La configuration est indisponible. Actualisez son état avant de réessayer.",
+      "insufficientFunds": "Solde en {{symbol}} insuffisant pour les frais de configuration. Recevez des {{symbol}} sur le compte payeur des frais indiqué ci-dessus, puis actualisez les frais.",
       "cancelled": "Le portefeuille a changé ou a été verrouillé. Rouvrez la configuration.",
       "reviewOptional": "Examiner le déploiement facultatif",
       "purposeProcessTransactions": "Traiter les transactions de comptes intelligents",
