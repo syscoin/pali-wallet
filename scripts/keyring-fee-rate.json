@@ -1,5 +1,5 @@
 {
-  "source": "e75b239",
+  "source": "a1dccff",
   "packages": [
     {
       "name": "@sidhujag/sysweb3-keyring",
@@ -24,16 +24,16 @@
         {
           "path": "cjs/utils/utxo-fee-rate.js",
           "before": null,
-          "after": "d25689e22fa1c9f6a78a8b243619348c29e9f04de3965812872243cabe3da0da",
-          "bytes": 1048,
-          "text": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.utxoFeeRateUnits = utxoFeeRateUnits;\n/**\n * The public rate is coins/vbyte. Convert its decimal representation exactly:\n * multiplying a binary Number first can make 7e-8 round up to 8 atomic units.\n */\nfunction utxoFeeRateUnits(rate) {\n    if (!Number.isFinite(rate) || rate <= 0)\n        throw new Error('Invalid UTXO fee rate');\n    const [coefficient, scientific = '0'] = rate\n        .toString()\n        .toLowerCase()\n        .split('e');\n    const [whole, fraction = ''] = coefficient.split('.');\n    const digits = BigInt(whole + fraction);\n    const scale = Number(scientific) - fraction.length + 8;\n    const divisor = scale < 0 ? 10n ** BigInt(-scale) : 1n;\n    const units = scale < 0\n        ? (digits + divisor - 1n) / divisor\n        : digits * 10n ** BigInt(scale);\n    if (units > BigInt(Number.MAX_SAFE_INTEGER))\n        throw new Error('Invalid UTXO fee rate');\n    return Math.max(1, Number(units));\n}\n//# sourceMappingURL=utxo-fee-rate.js.map"
+          "after": "d889cb9097652e2439ffc246321ffacd0652ddf144a4b9b7a10191610595a1ac",
+          "bytes": 1174,
+          "text": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.utxoFeeRateUnits = utxoFeeRateUnits;\n/**\n * The public rate is coins/vbyte. Convert its decimal representation exactly:\n * multiplying a binary Number first can make 7e-8 round up to 8 atomic units.\n */\nfunction utxoFeeRateUnits(rate) {\n    if (!Number.isFinite(rate) || rate <= 0)\n        throw new Error('Invalid UTXO fee rate');\n    const [coefficient, scientific = '0'] = rate\n        .toString()\n        .toLowerCase()\n        .split('e');\n    const [whole, fraction = ''] = coefficient.split('.');\n    const digits = BigInt(whole + fraction);\n    const scale = Number(scientific) - fraction.length + 8;\n    // ES2015 consumer transforms rewrite exponentiation to Math.pow, which\n    // cannot accept BigInt. Finite Number input keeps this decimal string bounded.\n    const power = BigInt('1' + '0'.repeat(Math.abs(scale)));\n    const units = scale < 0 ? (digits + power - 1n) / power : digits * power;\n    if (units > BigInt(Number.MAX_SAFE_INTEGER))\n        throw new Error('Invalid UTXO fee rate');\n    return Math.max(1, Number(units));\n}\n//# sourceMappingURL=utxo-fee-rate.js.map"
         },
         {
           "path": "esm/utils/utxo-fee-rate.js",
           "before": null,
-          "after": "86182e6b9c934eb344ddb67f059b08bb1967b791af36fde63f1c608cd9da0155",
-          "bytes": 892,
-          "text": "/**\n * The public rate is coins/vbyte. Convert its decimal representation exactly:\n * multiplying a binary Number first can make 7e-8 round up to 8 atomic units.\n */\nexport function utxoFeeRateUnits(rate) {\n    if (!Number.isFinite(rate) || rate <= 0)\n        throw new Error('Invalid UTXO fee rate');\n    const [coefficient, scientific = '0'] = rate\n        .toString()\n        .toLowerCase()\n        .split('e');\n    const [whole, fraction = ''] = coefficient.split('.');\n    const digits = BigInt(whole + fraction);\n    const scale = Number(scientific) - fraction.length + 8;\n    const divisor = scale < 0 ? 10n ** BigInt(-scale) : 1n;\n    const units = scale < 0\n        ? (digits + divisor - 1n) / divisor\n        : digits * 10n ** BigInt(scale);\n    if (units > BigInt(Number.MAX_SAFE_INTEGER))\n        throw new Error('Invalid UTXO fee rate');\n    return Math.max(1, Number(units));\n}\n"
+          "after": "2728ee84c5574a0d61a314a6a1d199dfc6230b018f0e103f1a852170fe57e1e7",
+          "bytes": 1018,
+          "text": "/**\n * The public rate is coins/vbyte. Convert its decimal representation exactly:\n * multiplying a binary Number first can make 7e-8 round up to 8 atomic units.\n */\nexport function utxoFeeRateUnits(rate) {\n    if (!Number.isFinite(rate) || rate <= 0)\n        throw new Error('Invalid UTXO fee rate');\n    const [coefficient, scientific = '0'] = rate\n        .toString()\n        .toLowerCase()\n        .split('e');\n    const [whole, fraction = ''] = coefficient.split('.');\n    const digits = BigInt(whole + fraction);\n    const scale = Number(scientific) - fraction.length + 8;\n    // ES2015 consumer transforms rewrite exponentiation to Math.pow, which\n    // cannot accept BigInt. Finite Number input keeps this decimal string bounded.\n    const power = BigInt('1' + '0'.repeat(Math.abs(scale)));\n    const units = scale < 0 ? (digits + power - 1n) / power : digits * power;\n    if (units > BigInt(Number.MAX_SAFE_INTEGER))\n        throw new Error('Invalid UTXO fee rate');\n    return Math.max(1, Number(units));\n}\n"
         },
         {
           "path": "types/utils/utxo-fee-rate.d.ts",

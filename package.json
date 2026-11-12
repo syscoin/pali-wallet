@@ -205,5 +205,5 @@
     "test": "tests"
   },
   "keywords": [],
-  "paliKeyringFeeRatePatch": "keyring.e75b239.sha256.51213e7d9eb73f07e79bc563fe913b0798bae625b82159c1fb4415001744096d"
+  "paliKeyringFeeRatePatch": "keyring.a1dccff.sha256.21ec131b6a86c5d23ad2d992bc92b6b5f39f0034d4d411bb799f5d0662fa22af"
 }
