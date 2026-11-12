@@ -131,6 +131,16 @@ its checkout isolated until archiving and compare the packaged version/build
 with the receipt before uploading. Prebuilt-binary, alternate-project and
 rebundle arguments are deliberately not accepted by the numbered build wrapper.
 
+On SIGINT or SIGTERM, the wrapper starts no further build phases. On Unix it
+signals only the launched process group, allows a graceful stop, then forces
+shutdown if necessary, and releases the lock only after confirming that group
+has exited. A child that exits while descendants remain also triggers bounded
+shutdown and fails the build, even if it exited successfully. Terminal suspend
+and resume stop and continue the same owned group. Windows interruption retains
+the lock because descendant shutdown
+cannot currently be verified; confirm the owned build has stopped before
+removing it. This is not automatic Windows lock recovery.
+
 Native onboarding offers wallet creation, phrase restoration and watch-only accounts directly. Custody requires the native runtime checks. The package scripts disable Expo CLI telemetry. Over-the-air application updates are disabled in app configuration.
 
 ### Connected apps configuration
