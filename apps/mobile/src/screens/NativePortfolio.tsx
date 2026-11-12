@@ -164,7 +164,8 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
   const publicAction = async (kind: 'copy' | 'share' | 'faucet') => {
     const current = account;
     if (!canReceive || !current || !lifecycle.current.alive || AppState.currentState !== 'active' || !model.isCurrent(current) || lifecycle.current.busy) return;
-    if (requiresBackup() && (kind === 'faucet' || receiveAcknowledgement.current?.scope !== scopeOf(current) || receiveAcknowledgement.current.model !== model)) {
+    // Copying the visible public address does not acknowledge backup or enter Receive.
+    if (kind !== 'copy' && requiresBackup() && (kind === 'faucet' || receiveAcknowledgement.current?.scope !== scopeOf(current) || receiveAcknowledgement.current.model !== model)) {
       if (kind === 'faucet') (onBackup ?? onViewRecovery)();
       else requestReceive();
       return;

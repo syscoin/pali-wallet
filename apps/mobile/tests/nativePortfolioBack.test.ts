@@ -19,10 +19,11 @@ function elements(value: unknown): Element[] {
 }
 
 /** Actual overview, portfolio and shell handlers with public data and native event ports. */
-function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation') {
+function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', unbacked = false) {
   const cells = new Map<unknown, Cell[]>(), nativeBacks = new Set<() => boolean>();
   let current: Cell[] = [], cursor = 0, pendingEffects: (() => void)[] = [], dirty = false;
-  let exits = 0, sends = 0, backups = 0, consumed = 0, shell: any;
+  let exits = 0, sends = 0, backups = 0, consumed = 0, shell: any, currentAccount = true;
+  const copied: string[] = [];
   const cell = () => current[cursor++] ?? (current[cursor - 1] = {});
   const react = {
     createElement: (type: unknown, props: object | null, ...children: unknown[]): Element => ({ type, props: props ?? {}, children }),
@@ -53,7 +54,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation') {
   };
   const network = getNativeNetwork('ethereum'), address = '0x' + '11'.repeat(20);
   const account = { address, network: network.id, revision: 1 };
-  const source = { getSnapshot: () => ({ phase: 'ready', backup: receiveEntry ? 'unconfirmed' : 'confirmed', revision: 1, account }),
+  const source = { getSnapshot: () => ({ phase: 'ready', backup: receiveEntry || unbacked ? 'unconfirmed' : 'confirmed', revision: 1, account }),
     getCatalogue: () => ({ active: { accountId: 'hd:60:0', networkId: network.id }, networks: [network] }), subscribe: () => () => {} };
   const choice = { networkName: network.name, symbol: network.symbol,
     scope: { id: 'native:hd:60:0:ethereum', accountId: 'hd:60:0', accountAddress: address, network } };
@@ -99,12 +100,12 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation') {
       react.createElement('Button', { title: 'Open token', onPress: () => setSelected(true) }));
   }
   const { NativePortfolio } = load('NativePortfolio', { ...common,
-    'expo-clipboard': {}, 'react-native-qrcode-svg': { default: 'QRCode' }, './CopyableAddress': { CopyableAddress: 'CopyableAddress' },
+    'expo-clipboard': { async setStringAsync(value: string) { copied.push(value); return true; } }, 'react-native-qrcode-svg': { default: 'QRCode' }, './CopyableAddress': { CopyableAddress: 'CopyableAddress' },
     '../custody/testnetFaucet': { getTestnetFaucet: () => null }, '../core/utxoAddresses': {},
     '../platformRpc': {}, '../platform/http': {}, '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => ({ supported: false }) },
     '../portfolio/nativePortfolio': { NativePortfolioController: class {
       subscribe = () => () => {}; getSnapshot = () => ({ status: 'available', account, units: '1000000000000000000', updatedAt: 1 });
-      connect = () => () => {}; getUtxoNetwork = () => undefined; getNetworkRegistration = () => network; isCurrent = () => true;
+      connect = () => () => {}; getUtxoNetwork = () => undefined; getNetworkRegistration = () => network; isCurrent = () => currentAccount;
     } }, './NativeTokens': { NativeTokens: TokenFixture }, './PortfolioQuote': { PortfolioQuote: 'PortfolioQuote' },
     '../portfolio/AssetMarketCard': { AssetMarketCard: 'AssetMarketCard' }, './TestnetFaucetCard': {},
     '../../../../source/shared/sptInventory': {}, './NativeSptAssets': {},
@@ -146,7 +147,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation') {
     for (let pass = 0; pass < 20; pass++) { dirty = false; const tree = renderOne(Root, {}); if (!dirty) return tree; }
     throw Error('Portfolio layout did not settle');
   };
-  return { render,
+  return { render, copied, retireAccount() { currentAccount = false; },
     back(nativeFirst = false) { if (!nativeFirst || ![...nativeBacks].reverse().some(handler => handler())) shell.goBack(); },
     get exits() { return exits; }, get sends() { return sends; },
     get backups() { return backups; }, get consumed() { return consumed; },
@@ -240,5 +241,27 @@ test('cancelled Receive warning stays cancelled across remount and stale acknowl
     const freshContinue = elements(f.render()).find(value => value.type === 'Button' && value.props.title === 'Receive Anyway');
     assert(freshContinue); freshContinue.props.onPress();
     assert(elements(f.render()).some(value => value.props.testID === 'native-receive-address'));
+  } finally { f.close(); }
+});
+
+
+test('unbacked asset address copies without entering Receive or acknowledging backup', async () => {
+  const f = fixture(false, undefined, true);
+  try {
+    const asset = elements(f.render()).find(value => value.type === 'Row' && value.props.title === 'ETH');
+    assert(asset); asset.props.onPress();
+    const copy = elements(f.render()).find(value => value.type === 'CopyableAddress');
+    assert(copy); copy.props.onCopy(); await Promise.resolve(); await Promise.resolve();
+    assert.deepEqual(f.copied, ['0x' + '11'.repeat(20)]);
+    assert.equal(f.backups, 0);
+    assert(!elements(f.render()).some(value => value.props.testID === 'native-receive-address' || value.props.title === 'Receive Anyway'));
+    const receive = elements(f.render()).find(value => value.type === 'Button' && value.props.title === 'Receive');
+    assert(receive); receive.props.onPress();
+    assert(elements(f.render()).some(value => value.props.title === 'Receive Anyway'), 'copy must not acknowledge the Receive warning');
+    f.back();
+    const send = elements(f.render()).find(value => value.type === 'Button' && value.props.title === 'Send');
+    assert(send); send.props.onPress(); assert.equal(f.backups, 1); assert.equal(f.sends, 0);
+    f.retireAccount(); copy.props.onCopy(); await Promise.resolve();
+    assert.equal(f.copied.length, 1, 'a stale public address must not be copied');
   } finally { f.close(); }
 });
