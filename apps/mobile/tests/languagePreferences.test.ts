@@ -33,7 +33,11 @@ test('actual engine restores every supported packaged locale and its English fal
     assert.equal(value.language, option.value); assert.equal(f.engine.language, option.value);
     assert.deepEqual(Object.keys(languageMessages(option.value).mobile), englishKeys);
     assert.equal(f.engine.t('generalMenu.languages'), languageMessages(option.value).generalMenu.languages);
-    assert.equal(f.engine.t('mobile.setup.nativeOnlyDescription'), languageMessages('en').mobile.setup.nativeOnlyDescription);
+    assert.equal(f.engine.t('mobile.setup.nativeOnlyDescription'), languageMessages(option.value).mobile.setup.nativeOnlyDescription);
+    // This production key is translated now. Check real packaged copy above,
+    // then test fallback explicitly rather than depending on a missing translation.
+    f.engine.addResource('en', 'translation', '__preferenceFallbackProbe', 'English fallback');
+    assert.equal(f.engine.t('__preferenceFallbackProbe'), 'English fallback');
     assert.equal(f.writes(), 0);
   }
 });

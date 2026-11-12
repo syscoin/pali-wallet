@@ -8,6 +8,7 @@ import { DeviceUnlockPrompt } from '../src/platform/deviceUnlockPrompt.ts';
 import type { RecoveryProof } from '../src/custody/recovery.ts';
 import type { RecoveryInventory } from '../src/custody/recoveryInventory.ts';
 import { screenElements, screenFixture, type ScreenElement } from './screenFixture.ts';
+import { recoveryErrorText } from '../src/screens/recoveryCopy.ts';
 
 const phrase = Array(12).fill('publicfixture').join(' ');
 const inventory: RecoveryInventory = { status: 'needs-matching-phrase-verification', reason: null, backup: 'unconfirmed',
@@ -63,6 +64,7 @@ function fixture(platform = 'android') {
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Icon', 'Notice', 'Screen', 'SegmentedControl', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+    './recoveryCopy': { recoveryErrorText },
     './IdleActivityBoundary': { IdleTextInput: 'Input', IdlePressable: 'Pressable' },
   });
   const render = () => { host.render({ flow }); return screenElements(host.render({ flow })); };
