@@ -21,6 +21,7 @@ function elements(value: unknown): Element[] {
 /** Actual overview, portfolio and shell handlers with public data and native event ports. */
 function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', unbacked = false, receiveAcknowledged = true) {
   const cells = new Map<unknown, Cell[]>(), nativeBacks = new Set<() => boolean>();
+  const renderedComponents = new Set<unknown>();
   let current: Cell[] = [], cursor = 0, pendingEffects: (() => void)[] = [], dirty = false;
   let exits = 0, sends = 0, backups = 0, consumed = 0, shell: any, currentAccount = true;
   const copied: string[] = [];
@@ -124,7 +125,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
     const portfolio = { source, reader, tokenView, accountLabel: 'Account 1', onExit: exit, onLock() {}, onViewRecovery() { backups++; },
       onReceiveIntentConsumed() { consumed++; if (detail) detail = { ...detail, receive: false }; continuation = undefined; dirty = true; },
       initialReceive: continuation, onSend, navigation: shell.navigation };
-    if (receiveEntry) return react.createElement(NativePortfolioRoute, { ...portfolio, overview: receiveEntry === 'detail' ? controller : undefined,
+    if (receiveEntry) return react.createElement(NativePortfolioRoute, { ...portfolio, overview: overview || receiveEntry === 'detail' ? controller : undefined,
       detail, selectNetwork: async () => {}, sendFrom: async () => {} });
     return overview ? react.createElement(NativeAccountOverview, { controller, portfolio, selectNetwork: async () => {}, send: async () => {} })
       : react.createElement(NativePortfolio, portfolio);
@@ -137,6 +138,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
       ...(value.props.footer ? { footer: expand(value.props.footer) } : {}), ...(value.props.right ? { right: expand(value.props.right) } : {}) } };
   }
   function renderOne(component: (props: any) => Element, props: any): Element {
+    renderedComponents.add(component);
     current = cells.get(component) ?? []; cells.set(component, current); cursor = 0; pendingEffects = [];
     const result = component(props), ownEffects = pendingEffects;
     const expanded = expand(result);
@@ -148,6 +150,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
     throw Error('Portfolio layout did not settle');
   };
   return { render, copied, retireAccount() { currentAccount = false; },
+    get renderedOverview() { return renderedComponents.has(NativeAccountOverview); },
     back(nativeFirst = false) { if (!nativeFirst || ![...nativeBacks].reverse().some(handler => handler())) shell.goBack(); },
     get exits() { return exits; }, get sends() { return sends; },
     get backups() { return backups; }, get consumed() { return consumed; },
@@ -271,6 +274,7 @@ for (const overview of [false, true]) test(`unacknowledged Receive continuation 
   const f = fixture(overview, 'continuation', true, false);
   try {
     const tree = f.render();
+    assert.equal(f.renderedOverview, overview, 'exercise the requested direct or overview route');
     const warning = elements(tree).find(value => value.type === 'Button' && value.props.title === 'Receive Anyway');
     assert(warning, 'changing network must not silently land on the balance screen');
     assert(!elements(tree).some(value => value.props.testID === 'native-receive-address'), 'the previous network acknowledgement is not reused');
