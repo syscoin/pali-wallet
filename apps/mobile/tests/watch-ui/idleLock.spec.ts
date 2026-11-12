@@ -13,7 +13,27 @@ async function watch(page: Page) { await page.goto('/'); await waitForWatchPubli
 async function native(page: Page, query = '') { await page.goto(`/${query}`); const open=page.getByRole('button',{name:'View my accounts',exact:true}); if(await open.count())await open.click(); await page.getByRole('button',{name:'Accounts',exact:true}).click(); await page.getByRole('button',{name:'Open wallet',exact:true}).click(); await waitForNativePublicSession(page); await expect(page.getByRole('tab',{name:'Settings',exact:true})).toBeVisible(); }
 async function settings(page: Page) { await page.getByRole('tab',{name:'Settings',exact:true}).click(); const security=page.getByRole('button',{name:/^Security & backups/}); if(await security.count())await security.click(); await page.getByRole('button',{name:'Auto-lock',exact:false}).click(); await expect(page.getByRole('heading',{name:'Auto-lock',exact:true})).toBeVisible(); }
 test.beforeEach(async({page})=>{await page.addInitScript(()=>{if(!location.search.includes('security-read-failure')&&!location.search.includes('idle-defaults')&&!localStorage.getItem('pali-fixture-security-preferences'))localStorage.setItem('pali-fixture-security-preferences',JSON.stringify({version:1,custodyIdleMinutes:5,watchIdleMinutes:5}));});await page.route('**/*',async route=>{if(new URL(route.request().url()).origin!=='http://127.0.0.1:4182'){await route.abort();throw Error('Unexpected network');}await route.continue();});});
-test('watch settings preserve the explicit native timeout and Off preserves lifecycle hiding',async({page})=>{await watch(page);await settings(page);await page.getByRole('radio',{name:'Off while open',exact:true}).click();await page.getByRole('button',{name:'I understand the Off setting',exact:true}).click();await page.getByRole('button',{name:'Save auto-lock',exact:true}).click();await expect(page.getByText('Auto-lock setting saved.',{exact:true})).toBeVisible();expect(JSON.parse((await page.evaluate(()=>window.__watchFixture.idle.value()))!)).toEqual({version:1,custodyIdleMinutes:5,watchIdleMinutes:0});await page.evaluate(()=>window.__watchFixture.lifecycle('background'));await expect(page.getByRole('button',{name:'View my accounts',exact:true})).toBeVisible();await expect(page.getByRole('tab')).toHaveCount(0);await page.evaluate(()=>window.__watchFixture.lifecycle('active'));await expect(page.getByRole('tab',{name:'Wallet',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Unlock wallet',exact:true})).toHaveCount(0);await page.reload();await waitForWatchPublicSession(page);await settings(page);await expect(page.getByText(/Current: Off while open/)).toBeVisible();});
+test('watch settings preserve the explicit native timeout and Off preserves lifecycle hiding', async ({ page }) => {
+  await watch(page); await settings(page);
+  await page.getByRole('radio', { name: 'Off while open', exact: true }).click();
+  await page.getByRole('button', { name: 'I understand the Off setting', exact: true }).click();
+  await page.getByRole('button', { name: 'Save auto-lock', exact: true }).click();
+  await expect(page.getByText('Test device authorization', { exact: true })).toBeVisible();
+  expect(JSON.parse((await page.evaluate(() => window.__watchFixture.idle.value()))!))
+    .toEqual({ version: 1, custodyIdleMinutes: 5, watchIdleMinutes: 5 });
+  await authenticateNativeOperation(page);
+  await expect(page.getByText('Auto-lock setting saved.', { exact: true })).toBeVisible();
+  expect(JSON.parse((await page.evaluate(() => window.__watchFixture.idle.value()))!))
+    .toEqual({ version: 1, custodyIdleMinutes: 5, watchIdleMinutes: 0 });
+  await page.evaluate(() => window.__watchFixture.lifecycle('background'));
+  await expect(page.getByRole('button', { name: 'View my accounts', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await page.evaluate(() => window.__watchFixture.lifecycle('active'));
+  await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Unlock wallet', exact: true })).toHaveCount(0);
+  await page.reload(); await waitForWatchPublicSession(page); await settings(page);
+  await expect(page.getByText(/Current: Off while open/)).toBeVisible();
+});
 test('native weakening uses fresh device authorization and retry while shortening needs none', async ({ page }) => {
   await native(page); await settings(page);
   await page.getByRole('radio', { name: '15 minutes', exact: true }).click();
@@ -58,7 +78,21 @@ test('Android custom auto-lock remains editable in a compact large-text viewport
   await expect(page.getByText('Auto-lock setting saved.', { exact: true })).toBeVisible();
   expect((await page.evaluate(() => window.__watchFixture.events())).filter(event => event === 'idle:auth')).toHaveLength(1);
 });
-test('lost write acknowledgement hides the session and retry reads the saved setting',async({page})=>{await watch(page);await settings(page);await page.evaluate(()=>window.__watchFixture.idle.loseAck(true));await page.getByRole('radio',{name:'15 minutes',exact:true}).click();await page.getByRole('button',{name:'Save auto-lock',exact:true}).click();await expect(page.getByText('Security settings unavailable',{exact:true})).toBeVisible();await page.evaluate(()=>window.__watchFixture.idle.loseAck(false));await page.getByRole('button',{name:'Retry security settings',exact:true}).click();await unlockPublicView(page);await waitForWatchPublicSession(page);await settings(page);await expect(page.getByText(/Current: 15 minutes/)).toBeVisible();});
+test('lost write acknowledgement hides the session and retry reads the saved setting', async ({ page }) => {
+  await watch(page); await settings(page);
+  await page.evaluate(() => window.__watchFixture.idle.loseAck(true));
+  await page.getByRole('radio', { name: '15 minutes', exact: true }).click();
+  await page.getByRole('button', { name: 'Save auto-lock', exact: true }).click();
+  await expect(page.getByText('Test device authorization', { exact: true })).toBeVisible();
+  expect(JSON.parse((await page.evaluate(() => window.__watchFixture.idle.value()))!))
+    .toEqual({ version: 1, custodyIdleMinutes: 5, watchIdleMinutes: 5 });
+  await authenticateNativeOperation(page);
+  await expect(page.getByText('Security settings unavailable', { exact: true })).toBeVisible();
+  await page.evaluate(() => window.__watchFixture.idle.loseAck(false));
+  await page.getByRole('button', { name: 'Retry security settings', exact: true }).click();
+  await unlockPublicView(page); await waitForWatchPublicSession(page); await settings(page);
+  await expect(page.getByText(/Current: 15 minutes/)).toBeVisible();
+});
 test('idle cancels pending native weakening without clearing the old policy or reopening the session', async ({ page }) => {
   await native(page); await settings(page);
   await page.getByRole('radio', { name: '15 minutes', exact: true }).click();

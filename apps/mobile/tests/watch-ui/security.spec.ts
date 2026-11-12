@@ -84,6 +84,11 @@ test('Security uses the actual seed backup flow and offers no reset or clipboard
   await confirmFixtureBackup(page);
   await expect(page.getByText('Backup complete', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Security & backups', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'View recovery phrase', exact: false })).toBeVisible();
+  await expect(page.getByText('abandon', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Backed up', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Security & backups', exact: false })).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.events().filter((event) => event === 'backup:confirmed').length)).toBe(1);
   expect((await page.evaluate(() => window.__watchFixture.audit())).keyReads).toBe(0);
