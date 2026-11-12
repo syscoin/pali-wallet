@@ -32,6 +32,8 @@ The native host selects the shared SDK operation-lifetime policy. Opening the wa
 
 Operation identity includes account, network, endpoint and a session/generation value. Returning from A to B to A is not the same authority context. Locking, backgrounding, account changes and network changes must invalidate pending work. A late network result cannot overwrite a newer context. Failed reads and unavailable balances must remain distinct from a valid zero or an absent account.
 
+Account private-key copying is an explicit action available only during a current authenticated reveal. It uses the pinned Expo Clipboard native options: iOS local-only content with a two-minute system expiry; Android sensitive-content marking to suppress supported previews. Android expiry is not promised. Copying does not read the clipboard, and navigating away clears the in-app reveal without erasing a clipboard the user needs to paste into another wallet. Clipboard controls do not encrypt the copied key or make it safe to paste into an untrusted destination.
+
 ## Required before accepting wallet secrets
 
 1. **One authoritative wallet.** Adapt the extension's tested operations behind explicit native interfaces. UI state is a projection, not authorization. Do not expose keyring records or generic method traversal across a bridge. Untrusted dapp content must not share a privileged wallet context.

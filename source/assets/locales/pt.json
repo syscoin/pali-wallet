@@ -2199,6 +2199,7 @@
       "evmBody": "Qualquer pessoa com esta chave pode gastar os fundos desta conta nas redes EVM. Esta chave não faz uma cópia de segurança do resto da carteira. Mostre-a apenas num local privado.",
       "hide": "Ocultar chave privada",
       "sessionOnly": "Oculte a chave quando terminar. É necessária uma nova autorização para a voltar a mostrar.",
+      "copyPrivateKey": "Copiar chave privada",
       "reveal": "Mostrar chave privada",
       "confirming": "Autorizando…",
       "hardwareGuide": "A conta {{device}} utiliza a sua própria cópia de recuperação. A frase apresentada no Pali pertence a esta carteira Pali."
