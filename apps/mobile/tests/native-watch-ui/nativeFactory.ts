@@ -7,7 +7,7 @@ import { createNativeUtxoActivity } from '../../src/custody/utxoActivity';
 import { createUtxoActivityReader } from '../../src/core/utxoActivity';
 import { createUtxoBalanceReader } from '../../src/core/utxoBalanceReader.ts';
 import { getUtxoNetwork, UTXO_NETWORKS } from '../../src/core/utxoNetworks.ts';
-import { custodyIdle, securityPreferences } from './security';
+import { custodyIdle, publicViewLock, securityPreferences } from './security';
 // Actual custody/transfer controllers, with deterministic in-memory runtime ports.
 import { NativeCustodyAuthority } from '../../src/custody/authority';
 import { NativeConnectionsController } from '../../src/connections/controller';
@@ -387,7 +387,7 @@ export function createNativeWalletControllers() {
       async close() { audit.closed++; events.push('close'); },
     },
   };
-  const authority = new NativeCustodyAuthority({ open: async () => runtime }, { preferences: securityPreferences, assertActive: custodyIdle.captureGuard() });
+  const authority = new NativeCustodyAuthority({ open: async () => runtime }, { preferences: securityPreferences, viewLock: publicViewLock, assertActive: custodyIdle.captureGuard() });
   const unavailableConnection = async (): Promise<never> => {
     throw Error('Synthetic watch fixture has no WalletConnect transport');
   };

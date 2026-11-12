@@ -176,8 +176,8 @@ internal class PaliCredentialStore(private val app: Context) {
   }
 }
 
-class PaliCredentialRequest internal constructor(private val owner: PaliCredentialOwner, raw: String, secret: String? = null, private val authorizationOnly: Boolean = false) : SharedObject() {
-  internal val binding = PaliCredentialBinding(raw)
+class PaliCredentialRequest internal constructor(private val owner: PaliCredentialOwner, raw: String? = null, secret: String? = null, private val authorizationOnly: Boolean = false) : SharedObject() {
+  internal val binding = raw?.let { PaliCredentialBinding(it) }
   private val started = AtomicBoolean(false)
   private val cancelled = AtomicBoolean(false)
   private val completed = AtomicBoolean(false)
@@ -187,7 +187,7 @@ class PaliCredentialRequest internal constructor(private val owner: PaliCredenti
   private var staged = secret?.toByteArray(Charsets.US_ASCII)
   private var host: Activity? = null
   @Volatile private var createdAlias = false
-  init { require(staged == null || secretValid(staged!!)) }
+  init { require((binding != null || staged == null) && (staged == null || secretValid(staged!!))) }
   @Synchronized internal fun claimCompletion(): Boolean? {
     if (completed.get()) return null
     completed.set(true); authenticating = false
@@ -224,6 +224,34 @@ class PaliCredentialRequest internal constructor(private val owner: PaliCredenti
     }
     credentialMain.post(resume)
   }
+  /** Public-view authorization never opens the credential store or Keystore. */
+  private fun authorizeView(promise: Promise) {
+    credentialMain.post {
+      try {
+        check()
+        if (Build.VERSION.SDK_INT < 30) credentialFailure()
+        val prompt = BiometricPrompt.Builder(host ?: credentialFailure("CREDENTIAL_CANCELLED")).setTitle("Unlock Pali Wallet")
+          .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL).build()
+        authenticating = true
+        prompt.authenticate(cancellation, credentialExecutor, object : BiometricPrompt.AuthenticationCallback() {
+          override fun onAuthenticationError(code: Int, text: CharSequence?) {
+            if (!authenticationHandled.compareAndSet(false, true)) return
+            authenticating = false
+            val reason = if (cancelled.get()) "CREDENTIAL_CANCELLED" else if (code == BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED) "CREDENTIAL_USER_CANCELLED" else "CREDENTIAL_UNAVAILABLE"
+            finish(promise, null, PaliCredentialFailure(reason), false, null)
+          }
+          override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+            if (!authenticationHandled.compareAndSet(false, true)) return
+            if (result.cryptoObject != null) { finish(promise, null, PaliCredentialFailure("CREDENTIAL_UNAVAILABLE"), false, null); return }
+            whenForeground(promise, false, null) {
+              try { check(); finish(promise, null, null, false, null) }
+              catch (error: Exception) { finish(promise, null, error, false, null) }
+            }
+          }
+        })
+      } catch (error: Exception) { authenticating = false; finish(promise, null, error, false, null) }
+    }
+  }
   internal fun run(promise: Promise) {
     val first = started.compareAndSet(false, true)
     if (!first || cancelled.get() || owner.capabilities(null)["deviceAuth"] != "ready" || !owner.foreground() || !owner.admit(this)) {
@@ -235,6 +263,8 @@ class PaliCredentialRequest internal constructor(private val owner: PaliCredenti
       var created = false
       var ciphertext: ByteArray? = null
       try {
+        val binding = this.binding
+        if (binding == null) { authorizeView(promise); return@execute }
         check(); val store = owner.store(); val writing = staged != null; val encrypting = writing || authorizationOnly
         val key = if (writing) store.createKey(binding).also { created = true; createdAlias = true } else store.existingKey(binding)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -306,7 +336,7 @@ class PaliCredentialRequest internal constructor(private val owner: PaliCredenti
       val permitted = owner.finish(this) ?: return@post
       var failure = error
       if (failure == null && (!permitted || !owner.foreground(host))) failure = PaliCredentialFailure("CREDENTIAL_CANCELLED")
-      if (cleanup || (failure != null && createdAlias)) try { owner.store().remove(binding) } catch (error: Exception) { failure = error }
+      if (cleanup || (failure != null && createdAlias)) try { binding?.let { owner.store().remove(it) } } catch (error: Exception) { failure = error }
       host = null
       if (failure != null) reject(promise, failure) else promise.resolve(result)
     }

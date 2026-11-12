@@ -369,6 +369,8 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   const app = evaluate(`${source('App.tsx')}\nexport { AppContent };`, {
     './src/connections/pairingLinks': pairingLinks,
     './src/platform/security': idle.security, './src/screens/IdleActivityBoundary': idle.components,
+    './src/platform/localization': nativeTranslationFixture,
+    './src/platform/credential': { isNativeCredentialPromptActive: () => false },
     react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', SafeAreaProvider: 'SafeAreaProvider' },
     'expo-status-bar': { StatusBar: 'StatusBar' }, 'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', './src/ui': ui,
     './src/screens/Onboarding': onboarding, './src/screens/NativeWallet': {}, './src/screens/WalletAccounts': accounts,

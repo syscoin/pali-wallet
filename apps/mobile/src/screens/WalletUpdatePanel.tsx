@@ -1,10 +1,11 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, Linking, Modal, Platform, View } from 'react-native';
+import { AppState, Linking, Platform, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PALI_STORES } from '../../../../source/shared/walletStores';
 import { checkAppUpdate, completeAppUpdate, startAppUpdate, subscribeAppUpdates, type AppUpdateState } from '../platform/appUpdates';
 import { mobileUpdates } from '../updates/service';
 import type { MobileUpdateService } from '../updates/types';
+import { useNativeTranslation } from '../platform/localization';
 import { Button, Card, colors, Header, Icon, Notice, Screen, Text } from '../ui';
 
 function updateInProgress(store: AppUpdateState | null): boolean {
@@ -12,9 +13,10 @@ function updateInProgress(store: AppUpdateState | null): boolean {
     (store.availability === 'in-progress' || ['pending', 'downloading', 'installing'].includes(store.installStatus));
 }
 
-export function WalletUpdatePanel({ allowInstall = false, onLock, service = mobileUpdates }: {
-  allowInstall?: boolean; onLock?(): void; service?: MobileUpdateService;
+export function WalletUpdatePanel({ allowInstall = false, onCloseWallet, service = mobileUpdates }: {
+  allowInstall?: boolean; onCloseWallet?(): void; service?: MobileUpdateService;
 }) {
+  const { t } = useNativeTranslation();
   const update = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   const [store, setStore] = useState<AppUpdateState | null>(null);
   const [error, setError] = useState('');
@@ -76,8 +78,8 @@ export function WalletUpdatePanel({ allowInstall = false, onLock, service = mobi
         }
         const next = await checkAppUpdate();
         if (!signal.aborted && current.active && owner.current === current) setStore(next);
-      }, true)} /> : !allowInstall && (release || playAvailable || downloaded || inProgress || interrupted) && onLock ?
-      <Button title="Lock Pali to update" icon="lock" disabled={busy} onPress={onLock} /> :
+      }, true)} /> : !allowInstall && (release || playAvailable || downloaded || inProgress || interrupted) && onCloseWallet ?
+      <Button title={t('mobile.nativeUpdate.closeWallet')} icon="close" disabled={busy} onPress={onCloseWallet} /> :
       !inProgress && storeUrl && (release || playAvailable || interrupted) && <Button title="View in app store" icon="external" disabled={busy} onPress={() => void act(() => Linking.openURL(storeUrl))} />}
     <Button title={update.status === 'checking' ? 'Checking…' : 'Check for updates'} variant="secondary" disabled={busy || update.status === 'checking'} onPress={() => void act(async () => {
       const current = owner.current;
@@ -93,11 +95,10 @@ export function WalletUpdatePanel({ allowInstall = false, onLock, service = mobi
   </Card>;
 }
 
-/** The installation surface exists only while no wallet operation is open. */
-export function LockedWalletUpdate({ disabled = false }: { disabled?: boolean }) {
+/** An update entry does not itself authorize installation or close custody. */
+export function LockedWalletUpdate({ disabled = false, onOpen }: { disabled?: boolean; onOpen(): void }) {
   const update = useSyncExternalStore(mobileUpdates.subscribe, mobileUpdates.getSnapshot, mobileUpdates.getSnapshot);
   const [store, setStore] = useState<AppUpdateState | null>(null);
-  const [open, setOpen] = useState(false);
   useEffect(() => {
     let active = true;
     const stop = subscribeAppUpdates(next => { if (active) setStore(next); });
@@ -105,15 +106,17 @@ export function LockedWalletUpdate({ disabled = false }: { disabled?: boolean })
     return () => { active = false; stop(); };
   }, []);
   const downloaded = store?.installStatus === 'downloaded', inProgress = updateInProgress(store);
-  if (!open && !update.release && !(store?.storeAvailable && store.availability === 'available') && !downloaded && !inProgress) return null;
-  return <>
-    <Button title={downloaded ? 'Update ready to install' : inProgress ? 'Update in progress' : update.release ? `Update available · ${update.release.version}` : 'Update available'} variant="secondary" icon="refresh" disabled={disabled} onPress={() => setOpen(true)} />
-    <Modal visible={open} animationType="slide" onRequestClose={() => setOpen(false)}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}><Screen footer={<Button title="Done" variant="secondary" onPress={() => setOpen(false)} />}>
-        <Header title="Update Pali" />
-        <Notice title="Install when you’re ready" body="Pali stays locked during the update. Your wallet and saved recovery data remain on this phone." />
-        {open && <WalletUpdatePanel allowInstall />}
-      </Screen></SafeAreaView>
-    </Modal>
-  </>;
+  if (!update.release && !(store?.storeAvailable && store.availability === 'available') && !downloaded && !inProgress) return null;
+  return <Button title={downloaded ? 'Update ready to install' : inProgress ? 'Update in progress' : update.release ? `Update available · ${update.release.version}` : 'Update available'} variant="secondary" icon="refresh" disabled={disabled} onPress={onOpen} />;
+}
+
+/** The owner enables installation only after the complete wallet close has settled. */
+export function WalletUpdateScreen({ phase, onBack }: { phase: 'closing' | 'ready' | 'failed'; onBack(): void }) {
+  const { t } = useNativeTranslation();
+  return <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}><Screen footer={<Button title={t('privacy.deposit.done')} variant="secondary" disabled={phase === 'closing'} onPress={onBack} />}>
+    <Header title={t('mobile.nativeUpdate.title')} />
+    {phase === 'closing' ? <Notice title={t('mobile.nativeUpdate.closingTitle')} body={t('mobile.nativeUpdate.closingBody')} /> :
+      phase === 'failed' ? <Notice title={t('mobile.nativeUpdate.failedTitle')} body={t('mobile.nativeUpdate.failedBody')} tone="amber" /> :
+      <><Notice title={t('mobile.nativeUpdate.readyTitle')} body={t('mobile.nativeUpdate.readyBody')} /><WalletUpdatePanel allowInstall /></>}
+  </Screen></SafeAreaView>;
 }

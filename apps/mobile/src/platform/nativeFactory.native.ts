@@ -31,7 +31,7 @@ import { createNativeCredentialPort, isNativeCredentialPromptActive, nativeCrede
 import { NativeConnectionsController } from '../connections/controller.ts';
 import { blacklistService } from '../../../../source/utils/security/blacklistService';
 import { EvmTransferReadRpc } from '../custody/evmTransferReadRpc.ts';
-import { custodyIdle, securityPreferences } from './security';
+import { custodyIdle, securityPreferences, publicViewLock } from './security';
 import { CustodyOperationError, NativeCustodyAuthority } from '../custody/authority.ts';
 import { createKeyringRuntimeFactory } from '../custody/keyringRuntime.ts';
 import type { KeyringRuntime } from '../custody/keyringRuntime.ts';
@@ -199,7 +199,7 @@ export function createNativeRecoveryCoordinator(controllers: ReturnType<typeof c
 }
 
 export function createNativeCustodyAuthority(): NativeCustodyAuthority {
-  return new NativeCustodyAuthority(factory());
+  return new NativeCustodyAuthority(factory(), { preferences: securityPreferences, assertActive: custodyGuard(), viewLock: publicViewLock });
 }
 
 export function createNativeWalletControllers() {
@@ -224,7 +224,7 @@ export function createNativeWalletControllers() {
       });
       return runtime;
     },
-  }, { preferences: securityPreferences, assertActive });
+  }, { preferences: securityPreferences, assertActive, viewLock: publicViewLock });
   const connectionNetworks = createNativeNetworkView(authority, { utxoSendAvailable: true, fetch: walletFetch });
   const recipientResolver = createNativeRecipientResolver({ source: authority, fetch: walletFetch });
   const observeWatchAsset = createNativeWatchAssetObserver({ fetch: walletFetch,

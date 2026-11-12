@@ -53,8 +53,8 @@ function ResetActivity({ accountLabel, target, onBack }: {
   </Screen></SafeAreaView>;
 }
 
-export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, onConnections, onInfrastructure, activityReset, notifications, onLock, onBack, navigation, backupRequired = false, onBackup }: {
-  accountLabel: string; watchOnly: boolean; navigation?: ShellLeafNavigation; onSecurity?: () => void; onAutoLock?: () => void; onConnections?: () => void; onInfrastructure?: () => void; onLock(): void; onBack(): void;
+export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, onConnections, onInfrastructure, activityReset, notifications, onLock, onUpdate, onBack, navigation, backupRequired = false, onBackup }: {
+  accountLabel: string; watchOnly: boolean; navigation?: ShellLeafNavigation; onSecurity?: () => void; onAutoLock?: () => void; onConnections?: () => void; onInfrastructure?: () => void; onLock(): void; onUpdate?(): void; onBack(): void;
   backupRequired?: boolean; onBackup?(): void;
   activityReset?: ActivityResetTarget;
   notifications?: NotificationSettingsTarget;
@@ -71,7 +71,7 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
   if (leaf === 'about') return <HelpAbout onBack={back} onUpdates={() => setOpened({ leaf: 'updates' })} />;
   if (leaf === 'updates') return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
     <Screen footer={<Button title="Done" variant="secondary" onPress={back} />}>
-      <Header title="App updates" onBack={back} /><WalletUpdatePanel allowInstall={watchOnly} onLock={onLock} />
+      <Header title="App updates" onBack={back} /><WalletUpdatePanel allowInstall={watchOnly} onCloseWallet={onUpdate} />
     </Screen></SafeAreaView>;
   if (leaf === 'currency') return <DisplayCurrency onBack={back} />;
   if (leaf === 'language') return <NativePreferences onBack={back} assertCurrent={() => {

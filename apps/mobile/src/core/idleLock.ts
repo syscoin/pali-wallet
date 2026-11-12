@@ -1,4 +1,5 @@
-import { DEFAULT_IDLE_MINUTES, idleMinutes, idleRemaining, idleSample, type IdleClockSample } from '../../../../source/shared/idleLockPolicy.ts';
+import { idleMinutes, idleRemaining, idleSample, type IdleClockSample } from '../../../../source/shared/idleLockPolicy.ts';
+import { DEFAULT_MOBILE_IDLE_MINUTES } from './securityPreferences.ts';
 export type IdleClock = () => IdleClockSample;
 export class IdleLock {
   private owner: object | null = null;
@@ -6,7 +7,7 @@ export class IdleLock {
   private generation = 0;
   private interval = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private minutes = DEFAULT_IDLE_MINUTES;
+  private minutes = DEFAULT_MOBILE_IDLE_MINUTES;
   private activity: IdleClockSample | null = null;
   private previous: IdleClockSample | null = null;
   private revoke: (() => void) | null = null;

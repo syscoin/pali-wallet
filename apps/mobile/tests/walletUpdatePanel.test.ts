@@ -4,10 +4,11 @@ import { screenElements, screenFixture } from './screenFixture.ts';
 import { unavailableAppUpdateState } from '../modules/pali-app-updates/index.ts';
 import type { MobileUpdateSnapshot } from '../src/updates/types.ts';
 import type { AppUpdateState } from '../modules/pali-app-updates/index.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
-function fixture({ allowed = false, empty = false, exported = 'WalletUpdatePanel', initialStore = {} }: {
-  allowed?: boolean; empty?: boolean; exported?: string; initialStore?: Partial<AppUpdateState>;
+function fixture({ allowed = false, empty = false, exported = 'WalletUpdatePanel', initialStore = {}, phase = 'ready' }: {
+  allowed?: boolean; empty?: boolean; exported?: string; initialStore?: Partial<AppUpdateState>; phase?: 'closing' | 'ready' | 'failed';
 } = {}) {
   let snapshot: MobileUpdateSnapshot = { status: 'ready', lastCheckedAt: Date.now(), lastAttemptAt: Date.now(), error: null,
     alertsEnabled: true, permission: 'granted', release: empty ? null : {
@@ -24,6 +25,7 @@ function fixture({ allowed = false, empty = false, exported = 'WalletUpdatePanel
   let starts = 0, completes = 0, checks = 0, locks = 0;
   const service = { getSnapshot: () => snapshot, subscribe: () => () => {}, async check() { checks++; }, async setAlerts() {} };
   const imports = {
+    '../platform/localization': nativeTranslationFixture,
     'react-native': { AppState: { currentState: 'active' }, Linking: { openURL: async (url: string) => { openedUrls.push(url); } }, Modal: 'Modal', Platform: { OS: 'android' }, View: 'View' },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../../../../source/shared/walletStores': { PALI_STORES: { android: 'https://play.google.com/store/apps/details?id=com.paliwallet.mobile', ios: null } },
@@ -38,11 +40,13 @@ function fixture({ allowed = false, empty = false, exported = 'WalletUpdatePanel
   };
   const createScreen = (name: string) => screenFixture(new URL('../src/screens/WalletUpdatePanel.tsx', import.meta.url), name, imports, { AbortController });
   const screen = createScreen(exported);
+  const updateScreen = createScreen('WalletUpdateScreen');
   let child: ReturnType<typeof createScreen> | undefined;
-  let props = { allowInstall: allowed, service, onLock: () => { locks++; } };
+  let opened = false;
+  let props = { allowInstall: allowed, service, phase, onCloseWallet: () => { locks++; }, onOpen: () => { opened = true; }, onBack: () => { opened = false; } };
   const render = () => {
-    const elements = screenElements(screen.render(props));
-    if (exported !== 'LockedWalletUpdate') return elements;
+    const elements = screenElements(exported === 'LockedWalletUpdate' && opened ? updateScreen.render(props) : screen.render(props));
+    if (exported === 'WalletUpdatePanel') return elements;
     const panel = elements.find(item => typeof item.type === 'function' && item.type.name === 'WalletUpdatePanel');
     if (panel) {
       if (!child) { child = createScreen('WalletUpdatePanel'); panelMounts++; }
@@ -54,7 +58,7 @@ function fixture({ allowed = false, empty = false, exported = 'WalletUpdatePanel
   const find = (title: string) => render().find(item => item.type === 'Button' && item.props.title === title);
   const press = (title: string) => { const item = find(title); assert(item, title); assert.notEqual(item.props.disabled, true); item.props.onPress(); };
   render();
-  return { render, find, press, screen: { ...screen, close() { child?.close(); child = undefined; screen.close(); } }, signals, openedUrls,
+  return { render, find, press, screen: { ...screen, close() { child?.close(); child = undefined; screen.close(); updateScreen.close(); } }, signals, openedUrls,
     publish(next: Partial<AppUpdateState>) { store = { ...store, ...next }; for (const listener of [...listeners]) listener(store); },
     allow(value: boolean) { props = { ...props, allowInstall: value }; render(); },
     fail() { snapshot = { ...snapshot, status: 'error', error: 'unavailable' }; },
@@ -68,7 +72,7 @@ function fixture({ allowed = false, empty = false, exported = 'WalletUpdatePanel
 
 test('unlocked About cannot launch an in-app install', async () => {
   const f = fixture(); await settle();
-  assert.equal(f.find('Download update'), undefined); f.press('Lock Pali to update');
+  assert.equal(f.find('Download update'), undefined); f.press('Close wallet to update');
   assert.equal(f.locks, 1); assert.equal(f.starts, 0); f.screen.close();
 });
 test('locked update uses flexible Play flow only after explicit action', async () => {
@@ -85,7 +89,7 @@ test('loss of safe surface aborts a pending install preflight and clears its bus
   const f = fixture({ allowed: true }); await settle(); const held = f.holdStart();
   f.press('Download update'); assert.equal(f.signals[0]?.aborted, false);
   f.allow(false); assert.equal(f.signals[0]?.aborted, true);
-  assert.notEqual(f.find('Lock Pali to update')?.props.disabled, true);
+  assert.notEqual(f.find('Close wallet to update')?.props.disabled, true);
   held.resolve('accepted'); await settle(); assert.equal(f.starts, 1); f.screen.close();
 });
 test('captured buttons cannot start an update after unmount', async () => {
@@ -114,7 +118,7 @@ for (const empty of [true, false]) test(`locked ${empty ? 'Play-only' : 'feed-ba
     ] as const) {
       f.publish({ availability: 'in-progress', installStatus: state, bytesDownloaded: 42, totalBytesToDownload: 100 });
       const elements = f.render();
-      assert(elements.some(item => item.type === 'Modal' && item.props.visible === true));
+      assert(elements.some(item => item.type === 'Header' && item.props.title === 'Update Pali'));
       assert(elements.some(item => item.children.includes(expected)), expected);
       assert.equal(elements.some(item => item.children.includes('No newer published release was found.')), false);
       assert.equal(f.find('Download update'), undefined);
@@ -144,7 +148,7 @@ test('native progress takes precedence over a stale available flag without grant
     f.publish({ availability: 'available', installStatus: 'downloading', bytesDownloaded: 5, totalBytesToDownload: 10 });
     assert(f.render().some(item => item.children.includes('Downloading update · 50%')));
     assert.equal(f.find('Download update'), undefined); assert.equal(f.find('Restart and install'), undefined);
-    f.press('Lock Pali to update'); assert.equal(f.locks, 1); assert.equal(f.starts, 0); assert.equal(f.completes, 0);
+    f.press('Close wallet to update'); assert.equal(f.locks, 1); assert.equal(f.starts, 0); assert.equal(f.completes, 0);
   } finally { f.screen.close(); }
 });
 
@@ -157,7 +161,7 @@ for (const installStatus of ['failed', 'cancelled'] as const) test(`a native ${i
     f.publish({ installStatus: 'downloading', bytesDownloaded: 42, totalBytesToDownload: 100 }); f.render();
     f.publish({ installStatus });
     const elements = f.render();
-    assert(elements.some(item => item.type === 'Modal' && item.props.visible === true));
+    assert(elements.some(item => item.type === 'Header' && item.props.title === 'Update Pali'));
     assert(elements.some(item => item.children.some(value => typeof value === 'string' && value.includes(`update download ${installStatus === 'cancelled' ? 'was cancelled' : 'failed'}`))));
     assert.equal(elements.some(item => item.children.some(value => typeof value === 'string' && /[Ii]n progress|Downloading update|No newer published/.test(value))), false);
     assert(f.find('View in app store')); assert(f.find('Check for updates'));
@@ -166,6 +170,18 @@ for (const installStatus of ['failed', 'cancelled'] as const) test(`a native ${i
     assert.equal(f.panelMounts, 1); assert.equal(f.panelUnmounts, 0);
     f.press('View in app store'); await settle();
     assert.deepEqual(f.openedUrls, ['https://play.google.com/store/apps/details?id=com.paliwallet.mobile']);
+  } finally { f.screen.close(); }
+});
+
+for (const phase of ['closing', 'failed'] as const) test(`update surface cannot install while wallet shutdown is ${phase}`, async () => {
+  const f = fixture({ exported: 'WalletUpdateScreen', phase }); await settle();
+  try {
+    assert.equal(f.find('Download update'), undefined);
+    assert.equal(f.find('Restart and install'), undefined);
+    assert.equal(f.find('View in app store'), undefined);
+    assert.equal(f.panelMounts, 0);
+    assert.equal(f.find('Done')?.props.disabled, phase === 'closing');
+    assert.equal(f.starts, 0); assert.equal(f.completes, 0);
   } finally { f.screen.close(); }
 });
 

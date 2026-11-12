@@ -22,6 +22,6 @@ export function UpdateFixture() {
   if (new URLSearchParams(window.location.search).has('about-updates-fixture') && !opened)
     return <SafeAreaProvider><HelpAbout onBack={() => {}} onUpdates={() => setOpened(true)} /></SafeAreaProvider>;
   return <SafeAreaProvider><SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}><Screen footer={<Button title="Done" variant="secondary" onPress={() => setOpened(false)} />}>
-    <Header title="Update Pali" /><WalletUpdatePanel service={service} onLock={() => {}} />
+    <Header title="Update Pali" /><WalletUpdatePanel service={service} onCloseWallet={() => {}} />
   </Screen></SafeAreaView></SafeAreaProvider>;
 }

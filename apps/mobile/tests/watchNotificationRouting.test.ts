@@ -3,9 +3,12 @@ import test from 'node:test';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 import { quietActivityNotifications } from './notificationFixture.ts';
+import { createTestPublicViewLock } from './publicViewLockFixture.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
-function fixture(kind: 'transaction-confirmed' | 'recovery-started', locked = false) {
+async function fixture(kind: 'transaction-confirmed' | 'recovery-started', locked = false) {
+  const privacy = createTestPublicViewLock(); await privacy.ready;
   const address = '0x' + '22'.repeat(20), network = getNativeNetwork('base');
   let state = { status: locked ? 'locked' : 'ready', generation: 1, selectedAccountId: 'watch-1', selectedNetworkId: 'ethereum',
     accounts: [{ id: 'watch-1', name: 'First', addresses: { ethereum: '0x' + '11'.repeat(20) } },
@@ -31,8 +34,10 @@ function fixture(kind: 'transaction-confirmed' | 'recovery-started', locked = fa
     async refresh() {},
   };
   const screen = screenFixture(new URL('../src/screens/WatchSession.tsx', import.meta.url), 'WatchSession', {
+    '../platform/localization': nativeTranslationFixture,
     'react-native': { AppState: { currentState: 'active' }, BackHandler: { addEventListener: () => ({ remove() {} }) } },
-    '../platform/security': {}, './AutoLockSettings': { AutoLockSettings: 'AutoLockSettings' },
+    '../platform/security': { publicViewLock: privacy.viewLock }, './AutoLockSettings': { AutoLockSettings: 'AutoLockSettings' },
+    '../platform/credential': { getPublicViewAuthorizationStatus: async () => 'ready' },
     './RealAppShell': { RealAppShell: 'RealAppShell' }, './RealTools': { RealTools: 'RealTools' }, './RealSettings': { RealSettings: 'RealSettings' },
     './WatchAccountPortfolio': { WatchAccountPortfolio: 'WatchAccountPortfolio' }, './UtxoActivityScreen': { UtxoActivityScreen: 'UtxoActivityScreen' },
     './NativeActivity': { NativeActivityScreen: 'NativeActivityScreen' }, '../activity/watchActivity': { createWatchEvmActivity: () => ({}) },
@@ -47,7 +52,7 @@ function fixture(kind: 'transaction-confirmed' | 'recovery-started', locked = fa
 }
 
 test('watch transaction tap selects its saved account/network before showing Activity', async () => {
-  const f = fixture('transaction-confirmed');
+  const f = await fixture('transaction-confirmed');
   try {
     f.render(); await settle();
     assert.deepEqual(f.selections, ['account:watch-2']); assert.equal(f.tab(), 'activity');
@@ -56,7 +61,7 @@ test('watch transaction tap selects its saved account/network before showing Act
 });
 
 test('watch guardian tap resumes the existing recovery tool for that exact scope', async () => {
-  const f = fixture('recovery-started');
+  const f = await fixture('recovery-started');
   try {
     f.render(); await settle(); assert.equal(f.tab(), 'tools');
     const tools = f.render().find(node => node.type === 'RealTools');
@@ -65,7 +70,7 @@ test('watch guardian tap resumes the existing recovery tool for that exact scope
 });
 
 test('watch catalogue changes retire pending tap resolution', async () => {
-  const f = fixture('transaction-confirmed'), held = Promise.withResolvers<void>(); f.hold(held.promise);
+  const f = await fixture('transaction-confirmed'), held = Promise.withResolvers<void>(); f.hold(held.promise);
   try {
     f.render(); await settle(); f.replace(); held.resolve(); await settle();
     assert.deepEqual(f.selections, []); assert.equal(f.tab(), 'wallet');
@@ -73,7 +78,7 @@ test('watch catalogue changes retire pending tap resolution', async () => {
 });
 
 test('privacy-locked watch sessions leave a pending tap unresolved', async () => {
-  const f = fixture('transaction-confirmed', true);
+  const f = await fixture('transaction-confirmed', true);
   try { f.render(); await settle(); assert.equal(f.resolutions(), 0); assert.deepEqual(f.selections, []); }
   finally { f.close(); }
 });

@@ -53,3 +53,12 @@ test('missing credential class constructor is rejected before another startup re
   assert.notEqual(regressed, moduleSource);
   assert.throws(() => assertFactoryOnlyCredentialRegistration(regressed));
 });
+
+test('public-view mode has no CryptoObject, Keystore or credential-file operation', () => {
+  const view = source.slice(source.indexOf('  private fun authorizeView('), source.indexOf('  internal fun run('));
+  assert.match(view, /prompt\.authenticate\(cancellation, credentialExecutor/);
+  assert.match(view, /whenForeground\(promise, false, null\)/);
+  assert.match(view, /check\(\); finish\(promise, null, null, false, null\)/);
+  assert.doesNotMatch(view, /owner\.store|KeyStore|Cipher\.|CryptoObject\(|doFinal|updateAAD/);
+  assert.match(moduleSource, /Function\("prepareViewAuthorization"\) \{ PaliCredentialRequest\(credentials\(\)\) \}/);
+});

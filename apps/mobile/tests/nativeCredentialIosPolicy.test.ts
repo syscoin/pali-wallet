@@ -17,7 +17,8 @@ function assertKnownPolicyBeforeKeychainRead(candidate: string) {
   assert.match(run, /accessControl = access; nativeWork = false/,
     'The expected ACL must stay retained through asynchronous authentication');
   assert.match(run, /authentication\.evaluateAccessControl\(access, operation: \.useItem/);
-  assert.match(run, /if succeeded \{ awaitForeground\(authentication\) \}/);
+  assert.match(run, /authenticated\(succeeded, error, authentication\)/);
+  assert.match(candidate, /if succeeded \{ awaitForeground\(authentication\) \}/);
 }
 
 function assertAuthenticatedMetadataBeforeSecret(candidate: string) {
@@ -76,4 +77,14 @@ test('wrong-policy metadata and opaque ACL comparisons remain rejected', () => {
   assert.throws(() => assertAuthenticatedMetadataBeforeSecret(noProtection), /Missing authenticated metadata guard/);
   const opaqueComparison = source.replace('        if !authorizationOnly {', '        CFEqual(access, access)\n        if !authorizationOnly {');
   assert.throws(() => assertAuthenticatedMetadataBeforeSecret(opaqueComparison), /private binding state/);
+});
+
+test('public-view mode uses OS policy and returns before any Keychain read', () => {
+  assert.match(source, /init\(viewOwner owner: PaliCredentialOwner\)/);
+  const run = source.slice(source.indexOf('  func run(_ promise: Promise)'));
+  const view = run.slice(run.indexOf('guard let binding else {'), run.indexOf('var error: Unmanaged<CFError>?'));
+  assert.match(view, /evaluatePolicy\(\.deviceOwnerAuthentication/);
+  assert.doesNotMatch(view, /SecItem|SecAccessControl/);
+  const read = source.slice(source.indexOf('  private func startRead('));
+  assert(read.indexOf('guard let binding else { finish(nil, nil); return }') < read.indexOf('credentialQueue.async'));
 });

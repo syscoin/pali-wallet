@@ -1,4 +1,6 @@
 import { createSecurityRuntime } from '../../src/core/securityRuntime';
+import { PublicViewLock } from '../../src/core/publicViewLock';
+export const publicViewLock = new PublicViewLock({ get: async () => localStorage.getItem('pali-fixture-public-view-lock'), set: async value => localStorage.setItem('pali-fixture-public-view-lock', value) });
 let offset = 0, fail = new URLSearchParams(window.location.search).has('security-read-failure'), loseAck = false;
 let held = false, release: (() => void) | null = null;
 const key = 'pali-fixture-security-preferences';

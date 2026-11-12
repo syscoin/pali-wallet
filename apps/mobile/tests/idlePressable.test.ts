@@ -31,6 +31,7 @@ const cases: { name: string; payload: Event; transition?: 'rearm' | 'expiry'; ex
 for (const scenario of cases) test(scenario.name, () => {
   let time = 0, calls = 0;
   const runtime = createSecurityRuntime({ get: async () => null, set: async () => undefined }, () => ({ monotonic: time, wall: time }));
+  runtime.watchIdle.setPolicy(5);
   const owner = {}, begin = () => runtime.watchIdle.begin(owner, () => runtime.watchIdle.stop(owner));
   const slot = { current: null }, React = { forwardRef: (fn: unknown) => fn, createElement: (type: unknown, props: unknown) => ({ type, props }) };
   const module = { exports: {} as { IdlePressable: (props: { onPress(): void }, ref: null) => { props: { onPressIn(event: Event): void; onPress(event: Event): void } } } };

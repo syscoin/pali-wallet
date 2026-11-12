@@ -7,6 +7,7 @@ import ts from 'typescript';
 import * as idlePolicy from '../../../source/shared/idleLockPolicy.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import * as privateAuthenticationLifecycle from '../src/screens/privateAuthenticationLifecycle.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 
 type Element = {
   type: string;
@@ -41,6 +42,7 @@ test('custody and watch auto-lock resize Android for the keyboard and preserve i
       '../custody/privateAuthentication': privateAuthentication,
       './privateAuthenticationLifecycle': privateAuthenticationLifecycle,
       '../platform/security': { securityPreferences: { getSnapshot: () => ({ value: { custodyIdleMinutes: 5, watchIdleMinutes: 5 } }) } },
+      '../platform/localization': nativeTranslationFixture,
       './IdleActivityBoundary': { IdleTextInput: 'IdleTextInput', IdlePressable: 'IdlePressable' },
       '../ui': { Button: 'Button', Card: 'Card', Header: 'Header', Icon: 'Icon', Notice: 'Notice', Screen: 'Screen', Text: 'Text', colors: {}, styles: { screen: screenStyle } },
     };
@@ -65,7 +67,7 @@ test('custody and watch auto-lock resize Android for the keyboard and preserve i
       assert.equal(screen.type, 'Screen');
       const header = screen.children[0];
       assert.ok(header);
-      assert.equal(header.props.subtitle, mode === 'custody' ? 'Native wallet' : 'Watch accounts');
+      assert.equal(header.props.subtitle, mode === 'custody' ? 'Wallet' : 'Watch accounts');
     }
   }
 });

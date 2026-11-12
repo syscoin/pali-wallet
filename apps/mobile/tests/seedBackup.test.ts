@@ -5,6 +5,7 @@ import { KeyringRuntimeError, type KeyringRuntime } from '../src/custody/keyring
 import { SeedBackupFlow } from '../src/custody/seedBackup.ts';
 import { IdleLock } from '../src/core/idleLock.ts';
 import { SecurityPreferences } from '../src/core/securityPreferences.ts';
+import { PublicViewLock } from '../src/core/publicViewLock.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
@@ -85,9 +86,10 @@ async function fixture() {
   };
   let now = 0;
   const idle = new IdleLock(() => ({ monotonic: now, wall: now }), (() => 0) as unknown as typeof setTimeout, (() => undefined) as typeof clearTimeout);
+  idle.setPolicy(5);
   const preferences = new SecurityPreferences({ async get() { return null; }, async set() {} });
   const authority = new NativeCustodyAuthority({ async open() { return runtime; } }, {
-    preferences, assertActive() { if (!idle.check()) throw Error('EXPIRED'); },
+    preferences, viewLock: new PublicViewLock({ get: async () => null, set: async () => undefined }), assertActive() { if (!idle.check()) throw Error('EXPIRED'); },
   });
   idle.begin(authority, () => authority.lock());
   const flow = new SeedBackupFlow(authority, () => runtime.backup);

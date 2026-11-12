@@ -1,6 +1,7 @@
 import { idleMinutes, weakensIdlePolicy } from '../../../../source/shared/idleLockPolicy.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import type { SecurityPreferences, SecurityPreferenceSnapshot } from '../core/securityPreferences.ts';
+import type { PublicViewLock } from '../core/publicViewLock.ts';
 import type { NativeAccountRequest, NativeNetworkSelectionProof, NativeNetworkSelectionReceipt } from './accounts.ts';
 import type { NativeImportRequest, NativeUtxoImportDraft } from './importedAccounts.ts';
 import type { NativePrivateAuthentication } from './privateAuthentication.ts';
@@ -36,7 +37,7 @@ export class CustodyOperationError extends Error {
  */
 export class NativeCustodyAuthority {
   private readonly factory: CustodyRuntimeFactory;
-  private readonly policy?: { preferences: SecurityPreferences; assertActive(): void };
+  private readonly policy?: { preferences: SecurityPreferences; assertActive(): void; viewLock: PublicViewLock };
   private checkingIdle = false;
   private runtime: CustodyRuntime | null = null;
   private listeners = new Set<(snapshot: CustodySnapshot) => void>();
@@ -60,14 +61,14 @@ export class NativeCustodyAuthority {
     error: null,
   });
 
-  constructor(factory: CustodyRuntimeFactory, policy?: { preferences: SecurityPreferences; assertActive(): void }) {
+  constructor(factory: CustodyRuntimeFactory, policy?: { preferences: SecurityPreferences; assertActive(): void; viewLock: PublicViewLock }) {
     this.factory = factory; this.policy = policy;
   }
 
   private checkIdle(): void {
     if (!this.policy || this.checkingIdle) return;
     this.checkingIdle = true;
-    try { const result: unknown = this.policy.assertActive(); if (result !== undefined) { if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined); throw new Error('CANCELLED'); } }
+    try { this.policy.viewLock.assertUnlocked(); const result: unknown = this.policy.assertActive(); if (result !== undefined) { if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined); throw new Error('CANCELLED'); } }
     catch { if (!['locked', 'disposed', 'unavailable'].includes(this.snapshot.phase)) this.lock(); throw new CustodyOperationError('CANCELLED'); }
     finally { this.checkingIdle = false; }
   }
@@ -490,6 +491,7 @@ export class NativeCustodyAuthority {
     const openingRevision = this.revision;
     void (async () => {
       try {
+        await this.policy?.viewLock.load();
         this.runtime = await this.factory.open();
         this.requestLock();
         await this.drainLocks();
@@ -502,7 +504,8 @@ export class NativeCustodyAuthority {
           this.publish({
             phase: this.snapshot.presence === 'empty' ? 'empty' : 'locked',
           });
-          if (this.snapshot.presence === 'existing' && this.revision === openingRevision) await this.unlock();
+          if (this.snapshot.presence === 'existing' && this.revision === openingRevision &&
+              (!this.policy?.viewLock || this.policy.viewLock.getSnapshot().phase === 'unlocked')) await this.unlock();
         }
       } catch {
         this.failUnavailable();

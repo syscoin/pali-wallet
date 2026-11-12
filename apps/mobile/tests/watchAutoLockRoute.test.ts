@@ -4,19 +4,25 @@ import { SecurityPreferences } from '../src/core/securityPreferences.ts';
 import { createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 import { quietActivityNotifications } from './notificationFixture.ts';
+import { createTestPublicViewLock } from './publicViewLockFixture.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 
-async function fixture() {
+async function fixture(status: 'ready' | 'missing' | 'unsupported' = 'ready') {
+  const privacy = createTestPublicViewLock(); await privacy.ready;
   let raw: string | null = null, writes = 0, idleChecks = 0, exits = 0;
   const preferences = new SecurityPreferences({ get: async () => raw, set: async value => { raw = value; writes++; } });
   await preferences.load();
   let state = { status: 'ready', generation: 1, selectedAccountId: 'watch-1', selectedNetworkId: 'ethereum',
     accounts: [{ id: 'watch-1', name: 'Watch account', addresses: { ethereum: '0x1111111111111111111111111111111111111111' } }] };
-  const native = { AppState: { currentState: 'active' }, BackHandler: { addEventListener: () => ({ remove() {} }) } };
-  const authority = { getSnapshot: () => state, subscribe: () => () => {}, getNetwork: (id: string) => ({ kind: 'evm', id, name: 'Ethereum' }) };
+  const alerts: string[] = [];
+  const native = { Alert: { alert: (_title: string, message: string) => alerts.push(message) }, AppState: { currentState: 'active' }, BackHandler: { addEventListener: () => ({ remove() {} }) } };
+  const authority = { getSnapshot: () => state, subscribe: () => () => {}, getNetwork: (id: string) => ({ kind: 'evm', id, name: 'Ethereum' }), lock() { state = { ...state, status: 'locked' }; } };
   const navigation = { registerBack: () => () => {}, setImmersive() {} };
   const screen = screenFixture(new URL('../src/screens/WatchSession.tsx', import.meta.url), 'WatchSession', {
     'react-native': native,
-    '../platform/security': { securityPreferences: preferences, watchIdle: { assertCurrent() { idleChecks++; } } },
+    '../platform/localization': nativeTranslationFixture,
+    '../platform/security': { publicViewLock: privacy.viewLock, securityPreferences: preferences, watchIdle: { assertCurrent() { idleChecks++; } } },
+    '../platform/credential': { getPublicViewAuthorizationStatus: async () => status },
     './AutoLockSettings': { AutoLockSettings: 'AutoLockSettings' },
     './RealAppShell': { RealAppShell: 'RealAppShell' }, './RealTools': { RealTools: 'RealTools' }, './RealSettings': { RealSettings: 'RealSettings' },
     './WatchAccountPortfolio': { WatchAccountPortfolio: 'WatchAccountPortfolio' }, './UtxoActivityScreen': { UtxoActivityScreen: 'UtxoActivityScreen' },
@@ -28,7 +34,7 @@ async function fixture() {
   });
   const render = () => screen.render({ authority, onAccounts() {}, onExit() { exits++; } });
   const settings = () => screenElements(render()).find(node => node.type === 'RealSettings')!;
-  return { render, settings, preferences, close: screen.close,
+  return { render, settings, preferences, privacy, alerts, close: screen.close,
     changeScope() { state = { ...state, generation: state.generation + 1 }; },
     background() { native.AppState.currentState = 'background'; },
     counts: () => ({ writes, idleChecks, exits }) };
@@ -41,9 +47,32 @@ test('watch Settings opens Auto-lock, saves only watch timeout and returns to Se
     settings.props.onAutoLock(); const route = f.render();
     assert.equal(route.type, 'AutoLockSettings'); assert.equal(route.props.mode, 'watch');
     await route.props.save(f.preferences.getSnapshot().value, 30, new AbortController().signal, createNativePrivateAuthenticationScope(), () => undefined);
-    assert.deepEqual(f.preferences.getSnapshot().value, { version: 1, custodyIdleMinutes: 5, watchIdleMinutes: 30 });
+    assert.deepEqual(f.preferences.getSnapshot().value, { version: 1, custodyIdleMinutes: 0, watchIdleMinutes: 30 });
     assert(f.counts().idleChecks > 0); assert.equal(f.counts().writes, 1);
     route.props.onBack(); assert(f.settings()); assert.equal(f.counts().exits, 0);
+  } finally { f.close(); }
+});
+
+test('watch lock and enabling auto-lock refuse a device without OS authentication', async () => {
+  const f = await fixture('missing');
+  try {
+    await f.settings().props.onLock();
+    assert.equal(f.privacy.marker(), 'unlocked');
+    assert.equal(f.alerts.length, 1);
+    assert.match(f.alerts[0]!, /device passcode/);
+    f.settings().props.onAutoLock(); const route = f.render();
+    await assert.rejects(route.props.save(f.preferences.getSnapshot().value, 15, new AbortController().signal, createNativePrivateAuthenticationScope(), () => undefined), /VIEW_AUTHENTICATION_UNAVAILABLE/);
+    assert.equal(f.counts().writes, 0);
+  } finally { f.close(); }
+});
+
+test('watch manual lock persists before closing the visible account', async () => {
+  const f = await fixture();
+  try {
+    await f.settings().props.onLock();
+    assert.equal(f.privacy.viewLock.getSnapshot().phase, 'locked');
+    assert.equal(f.counts().exits, 1);
+    assert.equal(f.render(), null);
   } finally { f.close(); }
 });
 

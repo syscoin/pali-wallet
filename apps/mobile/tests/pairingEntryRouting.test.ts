@@ -7,6 +7,8 @@ import ts from 'typescript';
 import * as core from '../src/core/index.ts';
 import * as pairingLinks from '../src/connections/pairingLinks.ts';
 import { quietActivityNotifications } from './notificationFixture.ts';
+import { createTestPublicViewLock } from './publicViewLockFixture.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 
 type Element = {
   type: unknown;
@@ -30,7 +32,12 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
-function harness() {
+function harness(watch = false) {
+  const viewPrivacy = createTestPublicViewLock(watch ? 'locked' : 'unlocked');
+  const authorization = deferred<void>();
+  let promptActive = false, authCalls = 0, publicOpens = 0;
+  let authSignal: AbortSignal | undefined;
+  const appListeners = new Map<string, Set<(state: string) => void>>();
   const initial = deferred<string | null>(),
     selection = deferred<null | { kind: 'hd'; id: string }>();
   const load = deferred<void>();
@@ -105,26 +112,32 @@ function harness() {
     }
     return entry.value;
   };
-  const blank = {
+  const watchRecords = watch ? [{ id: 'watch-1', name: 'Watch', addresses: { ethereum: '0x' + '11'.repeat(20) } }] : [];
+  let blank = {
     status: 'locked',
-    accounts: [],
-    selectedAccountId: null,
+    accounts: watchRecords,
+    selectedAccountId: null as string | null,
     selectedNetworkId: 'ethereum',
     generation: 0,
     balance: { status: 'unknown' },
     capabilities: {},
   };
+  const authorityListeners = new Set<(state: typeof blank) => void>();
+  const publish = () => { for (const notify of authorityListeners) notify(blank); };
   const authority = {
     getSnapshot: () => blank,
-    lock() {},
+    lock() { blank = { ...blank, status: 'locked' }; publish(); },
+    unlock() { publicOpens++; blank = { ...blank, status: 'ready' }; publish(); },
+    selectAccount(id: string) { blank = { ...blank, selectedAccountId: id }; publish(); },
+    async refresh() {},
     restoreSelection() {},
-    subscribe: () => () => {},
+    subscribe: (notify: (state: typeof blank) => void) => { authorityListeners.add(notify); return () => authorityListeners.delete(notify); },
     getNetwork: core.getNetwork,
     getAccountNetworks: () => [],
   };
   class Accounts {
     subscribe = () => () => {};
-    getSnapshot = () => ({ status: 'ready', accounts: [], utxoNetworks: [] });
+    getSnapshot = () => ({ status: 'ready', accounts: watchRecords, utxoNetworks: [] });
     async load() {
       await load.promise;
     }
@@ -134,7 +147,10 @@ function harness() {
     StyleSheet: { create: (value: unknown) => value },
     AppState: {
       currentState: 'active',
-      addEventListener: () => ({ remove() {} }),
+      addEventListener: (name: string, notify: (state: string) => void) => {
+        const listeners = appListeners.get(name) ?? new Set(); listeners.add(notify); appListeners.set(name, listeners);
+        return { remove() { listeners.delete(notify); } };
+      },
     },
     AccessibilityInfo: {
       isReduceMotionEnabled: async () => false,
@@ -170,6 +186,7 @@ function harness() {
   );
   const dependencies: Record<string, unknown> = {
     react,
+    './src/platform/localization': nativeTranslationFixture,
     'react-native': native,
     'react-native-safe-area-context': {
       SafeAreaProvider: 'Provider',
@@ -180,9 +197,17 @@ function harness() {
     'react-native-qrcode-svg': {},
     './src/connections/pairingLinks': pairingLinks,
     './src/platform/security': {
+      publicViewLock: viewPrivacy.viewLock,
       securityPreferences: {},
       watchIdle: { allowNewInput() {} },
       custodyIdle: {},
+    },
+    './src/platform/credential': {
+      isNativeCredentialPromptActive: () => promptActive,
+      async authorizePublicView(signal: AbortSignal, check: () => void) {
+        authCalls++; authSignal = signal; promptActive = true;
+        try { await authorization.promise; check(); } finally { promptActive = false; }
+      },
     },
     './src/screens/IdleActivityBoundary': {},
     './src/ui': { ...ui, colors: {}, styles: {} },
@@ -194,7 +219,7 @@ function harness() {
     './src/screens/NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' },
     './src/notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
     './src/screens/WalletAccounts': {},
-    './src/screens/WatchSession': {},
+    './src/screens/WatchSession': { WatchSession: 'WatchSession' },
     './src/core/watchAccounts': { WatchAccounts: Accounts },
     './src/core/accountDirectory': {
       nativeAccountSelection: (id: string) => ({ kind: 'hd', id }),
@@ -253,7 +278,7 @@ function harness() {
     const node = element as Element;
     return node.type === type
       ? node
-      : node.children.flatMap((child) => find(child, type) ?? []).at(0);
+      : [...node.children, node.props.footer].flatMap((child) => find(child, type) ?? []).at(0);
   };
   render();
   return {
@@ -263,6 +288,15 @@ function harness() {
     saved,
     render,
     find,
+    viewPrivacy, authorization,
+    authCalls: () => authCalls,
+    publicOpens: () => publicOpens,
+    authSignal: () => authSignal,
+    state(value: string, owned = true) {
+      if (!owned) promptActive = false;
+      native.AppState.currentState = value;
+      for (const notify of appListeners.get('change') ?? []) notify(value);
+    },
     warm(url: string) {
       assert.ok(listener);
       listener({ url });
@@ -376,3 +410,22 @@ for (const kind of ['create', 'import'] as const) {
     }
   });
 }
+
+for (const owned of [true, false]) test(`watch OS unlock ${owned ? 'survives its owned passcode background' : 'rejects unrelated background'}`, async () => {
+  const f = harness(true);
+  try {
+    await f.viewPrivacy.ready;
+    f.initial.resolve(null); f.load.resolve(); f.selection.resolve(null); await settle();
+    const button = f.find(f.render(), 'Button'); assert(button);
+    assert.equal(button.props.title, 'Unlock wallet');
+    button.props.onPress(); await settle();
+    assert.equal(f.authCalls(), 1);
+    assert.equal(f.publicOpens(), 0);
+    f.state('background', owned);
+    assert.equal(f.authSignal()?.aborted, !owned);
+    f.state('active'); f.authorization.resolve(); await settle();
+    assert.equal(f.publicOpens(), owned ? 1 : 0);
+    assert.equal(f.viewPrivacy.marker(), owned ? 'unlocked' : 'locked');
+    if (owned) assert(f.find(f.render(), 'WatchSession'));
+  } finally { f.authorization.resolve(); f.dispose(); }
+});

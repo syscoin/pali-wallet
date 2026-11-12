@@ -4,6 +4,7 @@ import { runInNewContext } from 'node:vm';
 import { URL as NodeURL } from 'node:url';
 import ts from 'typescript';
 import { createSecurityRuntime } from '../src/core/securityRuntime.ts';
+import { createTestPublicViewLock } from './publicViewLockFixture.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 const components = new WeakSet<object>();
@@ -15,7 +16,7 @@ export function createSecurityTestFixture() {
     async get() { return JSON.stringify({ version: 1, custodyIdleMinutes: 0, watchIdleMinutes: 0 }); },
     async set() { assert.fail('This rendering fixture must not change security preferences'); },
   });
-  return security;
+  return { ...security, publicViewLock: createTestPublicViewLock().viewLock };
 }
 
 /** Real runtime and real wrappers; only native rendering/storage are injected. */

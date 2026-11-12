@@ -77,6 +77,7 @@ class PaliWalletStorageModule : Module() {
     Name("PaliWalletStorage")
     Function("isCredentialPromptActive") { protectedCredentials?.isAuthenticating() == true }
     Function("credentialCapabilities") { binding: String? -> credentials().capabilities(binding) }
+    Function("prepareViewAuthorization") { PaliCredentialRequest(credentials()) }
     Function("prepareCredentialAuthorization") { binding: String -> PaliCredentialRequest(credentials(), binding, authorizationOnly = true) }
     Function("prepareCredentialRead") { binding: String -> PaliCredentialRequest(credentials(), binding) }
     Function("prepareCredentialStage") { binding: String, secret: String -> PaliCredentialRequest(credentials(), binding, secret) }

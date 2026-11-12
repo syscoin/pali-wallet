@@ -65,7 +65,7 @@ final class PaliCredentialOwner: @unchecked Sendable {
   }
   func cancel(binding: String? = nil) {
     lock.lock(); let request = active; lock.unlock()
-    if binding == nil || request?.binding.value == binding { request?.cancel() }
+    if binding == nil || request?.binding?.value == binding { request?.cancel() }
   }
   func close() { lock.lock(); closed = true; let request = active; lock.unlock(); request?.cancel() }
   func capabilities(_ raw: String?) throws -> [String: Any] {
@@ -96,7 +96,7 @@ final class PaliCredentialOwner: @unchecked Sendable {
 
 /** One immutable reference and one fresh OS access-control context per read/write. */
 final class PaliCredentialRequest: SharedObject, @unchecked Sendable {
-  let binding: PaliCredentialBinding
+  let binding: PaliCredentialBinding?
   private let owner: PaliCredentialOwner
   private let authorizationOnly: Bool
   private let lock = NSLock()
@@ -111,6 +111,11 @@ final class PaliCredentialRequest: SharedObject, @unchecked Sendable {
   init(owner: PaliCredentialOwner, binding: String, secret: String? = nil, authorizationOnly: Bool = false) throws {
     self.owner = owner; self.binding = try PaliCredentialBinding(binding); self.authorizationOnly = authorizationOnly
     if let secret { let bytes = Data(secret.utf8); guard validCredentialSecret(bytes) else { throw PaliCredentialError.unavailable }; staged = bytes }
+    super.init()
+  }
+  /** Public-view authorization never creates or queries a Keychain item. */
+  init(viewOwner owner: PaliCredentialOwner) {
+    self.owner = owner; self.binding = nil; self.authorizationOnly = true
     super.init()
   }
   fileprivate func claimCompletion() -> Bool? {
@@ -147,13 +152,14 @@ final class PaliCredentialRequest: SharedObject, @unchecked Sendable {
       authentication?.invalidate()
       guard let allowed = owner.finish(self) else { return }
       let failure = error ?? ((!allowed || !credentialForeground()) ? PaliCredentialError.cancelled : nil)
-      if shouldRemove && failure != nil { SecItemDelete(binding.query as CFDictionary) }
+      if shouldRemove && failure != nil, let binding { SecItemDelete(binding.query as CFDictionary) }
       guard let target else { return }
       if let failure { rejectCredential(target, failure) } else { target.resolve(secret) }
     }
   }
   private func startRead(_ authentication: LAContext) {
     do { try check() } catch { finish(nil, error); return }
+    guard let binding else { finish(nil, nil); return }
     lock.lock()
     guard !cancelled && !completed && !nativeWork else { lock.unlock(); finish(nil, PaliCredentialError.cancelled); return }
     nativeWork = true; lock.unlock()
@@ -197,6 +203,14 @@ final class PaliCredentialRequest: SharedObject, @unchecked Sendable {
       finish(output, failure)
     }
   }
+  private func authenticated(_ succeeded: Bool, _ error: Error?, _ authentication: LAContext) {
+    if succeeded { awaitForeground(authentication) }
+    else {
+      lock.lock(); let revoked = cancelled; lock.unlock()
+      let userCancelled = (error as? LAError)?.code == .userCancel
+      finish(nil, revoked ? PaliCredentialError.cancelled : userCancelled ? PaliCredentialError.userCancelled : PaliCredentialError.unavailable)
+    }
+  }
   private func awaitForeground(_ authentication: LAContext) {
     main { [self] in
       do { try check(requireForeground: false) } catch { finish(nil, error); return }
@@ -221,11 +235,18 @@ final class PaliCredentialRequest: SharedObject, @unchecked Sendable {
     }
     let authentication = LAContext()
     authentication.touchIDAuthenticationAllowableReuseDuration = 0
-    authentication.localizedReason = "Authorize access to Pali Wallet"
+    authentication.localizedReason = binding == nil ? "Unlock Pali Wallet" : "Authorize access to Pali Wallet"
     lock.lock(); context = authentication; lock.unlock()
     credentialQueue.async { [self] in
       do {
         try check()
+        guard let binding else {
+          lock.lock(); nativeWork = false; lock.unlock()
+          authentication.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: authentication.localizedReason) { [self] succeeded, error in
+            authenticated(succeeded, error, authentication)
+          }
+          return
+        }
         var error: Unmanaged<CFError>?
         guard let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, .userPresence, &error) else { throw PaliCredentialError.unavailable }
         if let staged {
@@ -236,12 +257,7 @@ final class PaliCredentialRequest: SharedObject, @unchecked Sendable {
         try check()
         lock.lock(); accessControl = access; nativeWork = false; lock.unlock()
         authentication.evaluateAccessControl(access, operation: .useItem, localizedReason: authentication.localizedReason) { [self] succeeded, error in
-          if succeeded { awaitForeground(authentication) }
-          else {
-            lock.lock(); let revoked = cancelled; lock.unlock()
-            let userCancelled = (error as? LAError)?.code == .userCancel
-            finish(nil, revoked ? PaliCredentialError.cancelled : userCancelled ? PaliCredentialError.userCancelled : PaliCredentialError.unavailable)
-          }
+          authenticated(succeeded, error, authentication)
         }
       } catch { lock.lock(); nativeWork = false; lock.unlock(); finish(nil, error) }
     }

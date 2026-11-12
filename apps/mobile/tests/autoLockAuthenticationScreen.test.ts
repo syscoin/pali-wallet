@@ -4,6 +4,7 @@ import * as idlePolicy from '../../../source/shared/idleLockPolicy.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import * as privateAuthenticationLifecycle from '../src/screens/privateAuthenticationLifecycle.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 
 function fixture(mode: 'custody' | 'watch' = 'custody') {
   let resolve!: () => void;
@@ -18,6 +19,7 @@ function fixture(mode: 'custody' | 'watch' = 'custody') {
     '../custody/privateAuthentication': privateAuthentication,
     './privateAuthenticationLifecycle': privateAuthenticationLifecycle,
     '../platform/security': { securityPreferences: { subscribe: () => () => {}, getSnapshot: () => ({ value: saved }) } },
+    '../platform/localization': nativeTranslationFixture,
     './IdleActivityBoundary': { IdlePressable: 'IdlePressable', IdleTextInput: 'IdleTextInput' },
     '../ui': Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'Notice', 'Screen', 'Text'].map(name => [name, name]).concat([['colors', {}], ['styles', { screen: {} }]] as any)),
   }, { AbortController });

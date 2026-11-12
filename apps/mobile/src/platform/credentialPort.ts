@@ -11,6 +11,9 @@ export type NativeCredentialModule = Readonly<{
   prepareCredentialStage(binding: string, secret: string): NativeCredentialRequest;
   removeCredential(binding: string): Promise<void>;
 }>;
+export type NativeViewAuthorizationModule = Readonly<{
+  prepareViewAuthorization(): NativeCredentialRequest;
+}>;
 /** Only native-owned Android system credential UI may pause the host Activity. */
 export function credentialPromptActivityState(platform: string, state: string, native: Pick<NativeCredentialModule, 'isCredentialPromptActive'>): string {
   return platform === 'android' && state === 'background' && native.isCredentialPromptActive() ? 'inactive' : state;
@@ -28,7 +31,8 @@ const binding = (reference: NativeCredentialReference) => {
   return JSON.stringify([1, value.installationId, value.walletBindingId, value.pairFingerprint, value.enrollmentId]);
 };
 const publicName = (reference: NativeCredentialReference) => `public-${reference.installationId}-${reference.enrollmentId}`;
-const check = (owner: NativeCredentialOwner) => {
+type RequestAuthority = Pick<NativeCredentialOwner, 'signal' | 'assertCurrent'>;
+const check = (owner: RequestAuthority) => {
   if (owner.signal.aborted) throw failure('CREDENTIAL_CANCELLED');
   assertSynchronousEvmFeeGuard(owner.assertCurrent);
   if (owner.signal.aborted) throw failure('CREDENTIAL_CANCELLED');
@@ -42,9 +46,7 @@ const captureOwner = (owner: NativeCredentialOwner): NativeCredentialOwner => {
   check(captured); return captured;
 };
 
-/** The sole platform port supplying a secret to the shared operation-only SDK. */
-export function createCredentialPort(ports: Ports): NativeCredentialPort {
-  const run = async (owner: NativeCredentialOwner, prepare: () => NativeCredentialRequest) => {
+async function runRequest(ports: Pick<Ports, 'prompt' | 'setActive'>, owner: RequestAuthority, prepare: () => NativeCredentialRequest) {
     check(owner);
     const operation = prepare();
     const cancel = () => operation.cancel();
@@ -65,7 +67,22 @@ export function createCredentialPort(ports: Ports): NativeCredentialPort {
       owner.signal.removeEventListener('abort', cancel);
       operation.cancel(); if (admitted) ports.setActive(null);
     }
+}
+
+/** A public-view authorization has no credential reference or storage capability. */
+export function createPublicViewAuthorizer(ports: Pick<Ports, 'prompt' | 'setActive'> & { native: NativeViewAuthorizationModule }) {
+  return async (signal: AbortSignal, assertCurrent: () => void): Promise<void> => {
+    const owner = Object.freeze({ signal, assertCurrent });
+    check(owner);
+    const result = await runRequest(ports, owner, () => ports.native.prepareViewAuthorization());
+    if (result !== null && result !== undefined) throw failure();
+    check(owner);
   };
+}
+
+/** The sole platform port supplying a secret to the shared operation-only SDK. */
+export function createCredentialPort(ports: Ports): NativeCredentialPort {
+  const run = (owner: NativeCredentialOwner, prepare: () => NativeCredentialRequest) => runRequest(ports, owner, prepare);
   return Object.freeze({
     async capabilities(reference) {
       const result = await ports.native.credentialCapabilities(reference === null ? null : binding(reference));

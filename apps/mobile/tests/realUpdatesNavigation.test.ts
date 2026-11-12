@@ -22,7 +22,7 @@ function fixture(watchOnly: boolean) {
     '../updates/service': { mobileUpdates: { getSnapshot: () => ({ release: null }), subscribe: () => () => {}, check() { checks++; } } },
   });
   let help: ReturnType<typeof createHelp> | undefined;
-  const props = { accountLabel: 'Current account', watchOnly, onLock() { locks++; }, onBack() { exits++; },
+  const props = { accountLabel: 'Current account', watchOnly, onLock() { locks++; }, onUpdate() { locks++; }, onBack() { exits++; },
     navigation: { registerBack(listener: () => boolean) { back = listener; return () => { if (back === listener) back = undefined; }; },
       setImmersive(value: boolean) { immersive = value; } } };
   const render = () => {
@@ -50,7 +50,7 @@ for (const watchOnly of [false, true]) for (const mode of ['button', 'hardware']
       const updates = f.render(), panel = screenElements(updates).find(node => node.type === 'WalletUpdatePanel'); assert(panel);
       assert.equal(panel.props.allowInstall, watchOnly);
       assert.equal(f.locks, 0); assert.equal(f.exits, 0);
-      if (!watchOnly) { panel.props.onLock(); assert.equal(f.locks, 1); }
+      if (!watchOnly) { panel.props.onCloseWallet(); assert.equal(f.locks, 1); }
       if (mode === 'hardware') assert.equal(f.hardwareBack(), true);
       else control(updates, 'Done').props.onPress();
       const returned = f.render(); assert(control(returned, 'Help & about'));

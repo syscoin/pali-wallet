@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DeviceUnlockPrompt } from '../src/platform/deviceUnlockPrompt.ts';
-import { createCredentialPort, credentialPromptActivityState, isNonBackgroundNativePromptActive, type NativeCredentialModule, type NativeCredentialRequest } from '../src/platform/credentialPort.ts';
+import { createCredentialPort, createPublicViewAuthorizer, credentialPromptActivityState, isNonBackgroundNativePromptActive, type NativeCredentialModule, type NativeCredentialRequest } from '../src/platform/credentialPort.ts';
 import { isOperationAuthenticationCancellation } from '../src/core/operationAuthentication.ts';
 const reference = Object.freeze({ version: 1 as const, installationId: '11'.repeat(16), walletBindingId: '22'.repeat(32), pairFingerprint: '33'.repeat(32), enrollmentId: '44'.repeat(16) });
 const secret = `Pali#1:${'ab'.repeat(32)}`;
@@ -101,4 +101,35 @@ test('a passkey prompt cannot borrow the native credential background window or 
   assert.equal(isNonBackgroundNativePromptActive('inactive', () => passkeyActive(owner.signal)), true);
   assert.equal(isNonBackgroundNativePromptActive('inactive', () => passkeyActive(other.signal)), false);
   assert.equal(isNonBackgroundNativePromptActive('background', () => passkeyActive(owner.signal)), false);
+});
+
+test('public-view authentication has no credential or storage capability and refuses a secret result', async () => {
+  let active: NativeCredentialRequest | null = null, prompts = 0, requests = 0, result: unknown = null;
+  const authorize = createPublicViewAuthorizer({
+    native: { prepareViewAuthorization() { requests++; return { run: async () => result, cancel() {} }; } },
+    prompt: async (_signal, work) => { prompts++; return work(); },
+    setActive: value => { active = value; },
+  });
+  const owner = new AbortController();
+  await authorize(owner.signal, () => undefined);
+  await authorize(owner.signal, () => undefined);
+  assert.equal(requests, 2); assert.equal(prompts, 2); assert.equal(active, null);
+  result = secret;
+  await assert.rejects(authorize(owner.signal, () => undefined), /CREDENTIAL_UNAVAILABLE/);
+});
+
+test('public-view authentication discards late success after cancellation or changed ownership', async () => {
+  for (const reason of ['abort', 'owner']) {
+    const held = Promise.withResolvers<unknown>(), owner = new AbortController();
+    let current = true, cancelled = 0, active: NativeCredentialRequest | null = null;
+    const authorize = createPublicViewAuthorizer({
+      native: { prepareViewAuthorization: () => ({ run: () => held.promise, cancel() { cancelled++; } }) },
+      prompt: async (_signal, work) => work(), setActive: value => { active = value; },
+    });
+    const work = authorize(owner.signal, () => { if (!current) throw Error('CANCELLED'); });
+    const rejected = assert.rejects(work);
+    if (reason === 'abort') owner.abort(); else current = false;
+    held.resolve(null); await rejected;
+    assert.equal(active, null); assert(cancelled > 0);
+  }
 });

@@ -14,6 +14,7 @@ import type { NativePairingEntry } from '../src/connections/pairingLinks.ts';
 import type { NativeConnectionsView } from '../src/connections/types.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import { quietActivityNotifications } from './notificationFixture.ts';
+import { createTestPublicViewLock } from './publicViewLockFixture.ts';
 
 type Element = {
   type: unknown;
@@ -51,6 +52,11 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   let hardwareBack: (() => boolean) | undefined;
   let exits = 0;
   let shellTab = 'wallet';
+  let acquisitions = 0, releases = 0, lifecycleActive = true;
+  let releaseGate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
+  const viewPrivacy = createTestPublicViewLock();
+  let viewAuthorizations = 0, rejectViewAuthorization = false;
+  let duringLock: (() => void) | undefined;
   let guardianReads = 0;
   let guardianOpens = 0;
   let recoveryOpens = 0;
@@ -209,6 +215,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       lock() {
         lifecycleEvents.push('lock');
         change('locked');
+        duringLock?.();
       },
       async getAuthenticationStatus() { return { deviceAuth: 'ready', credentialPresent: true }; },
       async unlock() {
@@ -308,15 +315,16 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   };
   const lifecycle = class {
     async acquire() {
+      acquisitions++; lifecycleActive = true;
       return controllers;
     }
     current() {
-      return controllers;
+      return lifecycleActive ? controllers : null;
     }
     hasRecovery() {
       return false;
     }
-    async release() {}
+    async release() { releases++; lifecycleActive = false; await releaseGate?.promise; }
   };
   const noteRestore = {
     cancel() {},
@@ -364,8 +372,16 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     '../custody/networkContext': networks,
     '../../../../source/shared/evmNetworks': { EVM_NETWORK_DEFINITIONS: networks.NATIVE_NETWORKS.map(network => ({ id: network.id, name: network.name })) },
     '../platform/security': {
+      publicViewLock: viewPrivacy.viewLock,
       custodyIdle: { begin() {}, stop() {} },
       securityPreferences: { getSnapshot: () => ({ status: 'ready' }) },
+    },
+    '../platform/credential': {
+      async authorizePublicView(_signal: AbortSignal, check: () => void) {
+        check(); viewAuthorizations++;
+        if (rejectViewAuthorization) throw Error('CANCELLED');
+      },
+      isNativeCredentialPromptActive: () => promptActive,
     },
     '../platform/privacyShield.native': { async ensurePrivacyShield() {} },
     '../platform/nativeFactory': {
@@ -391,7 +407,8 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     './NativeSmartAccountSend': { NativeSmartAccountSend: 'NativeSmartAccountSend' },
     './NativePortfolio': { NativePortfolio: 'NativePortfolio' },
     './RealAppShell': { RealAppShell: 'RealAppShell' },
-    './WalletUpdatePanel': { LockedWalletUpdate: () => null },
+    './WalletUpdatePanel': { LockedWalletUpdate: 'LockedWalletUpdate', WalletUpdateScreen: 'WalletUpdateScreen' },
+    './RealSettings': { RealSettings: 'RealSettings' },
     './NativeSmartAccountOperation': {
       NativeSmartAccountOperationRoute: 'NativeSmartAccountOperationRoute',
     },
@@ -456,6 +473,14 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     resumedInfrastructure: () => resumedInfrastructure,
     showTools() { shellTab = 'tools'; },
     showWallet() { shellTab = 'wallet'; },
+    showSettings() { shellTab = 'settings'; },
+    holdRelease() { return releaseGate = Promise.withResolvers<void>(); },
+    acquisitions: () => acquisitions,
+    releases: () => releases,
+    viewPrivacy,
+    viewAuthorizations: () => viewAuthorizations,
+    rejectViewAuthorization() { rejectViewAuthorization = true; },
+    duringLock(action: () => void) { duringLock = action; },
     guardianReads: () => guardianReads,
     guardianOpens: () => guardianOpens,
     recoveryOpens: () => recoveryOpens,
@@ -1022,6 +1047,101 @@ test('wallet background captures the infrastructure Suite departure before lock 
     assert.notEqual(f.render().type, 'NativeInfrastructure');
     f.foreground(); f.ready(); f.render();
     assert.equal(f.resumedInfrastructure().length, 1, 'unlock must not resume or approve the operation');
+  } finally { f.dispose(); }
+});
+
+test('deliberate wallet lock survives foreground resume and opens only after OS authorization', async () => {
+  const f = await mounted(true, false, false);
+  try {
+    find(f.render(), node => node.type === 'NativePortfolio')!.props.onLock();
+    await settle();
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+    f.foreground(); await settle();
+    assert.equal(f.viewAuthorizations(), 0);
+    const open = find(f.render(), node => node.props.title === 'Unlock wallet'); assert(open);
+    open.props.onPress(); await settle();
+    assert.equal(f.viewAuthorizations(), 1);
+    assert.equal(f.viewPrivacy.marker(), 'unlocked');
+    assert(find(f.render(), node => node.type === 'NativePortfolio'));
+  } finally { f.dispose(); }
+});
+
+test('a persisted lock hides the public wallet after mounting and cancelled OS authorization keeps it hidden', async () => {
+  const f = harness(true, false, false);
+  await f.viewPrivacy.viewLock.lock();
+  f.rejectViewAuthorization();
+  try {
+    f.render(); await settle(); f.render();
+    assert.equal(find(f.render(), node => node.type === 'NativePortfolio'), undefined);
+    find(f.render(), node => node.props.title === 'Unlock wallet')!.props.onPress(); await settle();
+    assert.equal(f.viewAuthorizations(), 1);
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+    assert.equal(find(f.render(), node => node.type === 'NativePortfolio'), undefined);
+  } finally { f.dispose(); }
+});
+
+test('update installation waits for full controller release and suppresses foreground reopening', async () => {
+  const f = await mounted(true, false, false);
+  const held = f.holdRelease();
+  try {
+    f.showSettings();
+    find(f.render(), node => node.type === 'RealSettings')!.props.onUpdate();
+    assert.equal(f.render().type, 'WalletUpdateScreen');
+    assert.equal(f.render().props.phase, 'closing');
+    assert.equal(f.releases(), 1);
+    const acquired = f.acquisitions();
+    f.background(); f.foreground(); await settle();
+    assert.equal(f.acquisitions(), acquired);
+    assert.equal(f.render().props.phase, 'closing');
+    held.resolve(); await settle();
+    assert.equal(f.render().props.phase, 'ready');
+    f.render().props.onBack(); await settle();
+    assert.equal(f.acquisitions(), acquired + 1);
+    assert.notEqual(f.render().type, 'WalletUpdateScreen');
+  } finally { held.resolve(); f.dispose(); }
+});
+
+test('update Back waits for controller release before reacquiring the public wallet', async () => {
+  const f = await mounted(true, false, false);
+  const held = f.holdRelease();
+  try {
+    f.showSettings(); find(f.render(), node => node.type === 'RealSettings')!.props.onUpdate();
+    const acquired = f.acquisitions();
+    assert.equal(f.hardwareBack(), true); await settle();
+    assert.equal(f.render().props.phase, 'closing');
+    assert.equal(f.acquisitions(), acquired);
+    held.resolve(); await settle();
+    assert.equal(f.acquisitions(), acquired + 1);
+    assert.notEqual(f.render().type, 'WalletUpdateScreen');
+  } finally { held.resolve(); f.dispose(); }
+});
+
+test('reentrant Back during update lock publication waits for the actual release', async () => {
+  const f = await mounted(true, false, false);
+  const held = f.holdRelease();
+  try {
+    const acquired = f.acquisitions();
+    f.duringLock(() => { assert.equal(f.hardwareBack(), true); });
+    f.showSettings(); find(f.render(), node => node.type === 'RealSettings')!.props.onUpdate();
+    await settle();
+    assert.equal(f.render().props.phase, 'closing');
+    assert.equal(f.acquisitions(), acquired);
+    held.resolve(); await settle();
+    assert.equal(f.acquisitions(), acquired + 1);
+    assert.notEqual(f.render().type, 'WalletUpdateScreen');
+  } finally { held.resolve(); f.dispose(); }
+});
+
+test('failed controller release never grants update installation', async () => {
+  const f = await mounted(true, false, false);
+  const held = f.holdRelease();
+  try {
+    f.showSettings(); find(f.render(), node => node.type === 'RealSettings')!.props.onUpdate();
+    held.reject(Error('cleanup failed')); await settle();
+    assert.equal(f.render().type, 'WalletUpdateScreen');
+    assert.equal(f.render().props.phase, 'failed');
+    f.foreground(); await settle();
+    assert.equal(f.render().props.phase, 'failed');
   } finally { f.dispose(); }
 });
 
