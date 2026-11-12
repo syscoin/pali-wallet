@@ -15,7 +15,7 @@
   "scripts": {
     "generate-manifest": "node ./source/config/generateManifest.js",
     "set-env": "node ./source/config/setEnvAndRun.js",
-    "dev:chrome": "yarn set-env development chrome 'yarn generate-manifest && webpack --config source/config/webpack.dev.js --watch'",
+    "dev:chrome": "cross-env NODE_ENV=development TARGET_BROWSER=chrome node source/config/generateManifest.js && cross-env NODE_ENV=development TARGET_BROWSER=chrome webpack --config source/config/webpack.dev.js --watch",
     "build:chrome": "node scripts/build-extension.cjs production",
     "build:canary": "node scripts/build-extension.cjs canary",
     "build:canary:store": "node scripts/build-extension.cjs canary --store",

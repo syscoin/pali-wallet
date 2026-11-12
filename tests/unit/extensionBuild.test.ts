@@ -1,6 +1,6 @@
 /** @jest-environment node */
 /* eslint-disable @typescript-eslint/no-var-requires, camelcase */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -342,5 +342,85 @@ test.each(['development', 'production'])(
     expect(manifest.permissions.includes('webRequest')).toBe(
       mode === 'development'
     );
+  }
+);
+
+test.each([false, true])(
+  'the development package command uses the platform shell without nested quotes (generation fails: %s)',
+  (failGeneration) => {
+    const f = fixture();
+    const bin = join(f.root, 'node_modules/.bin');
+    const scripts = join(f.root, 'scripts with spaces');
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(scripts);
+    mkdirSync(join(f.root, 'source/config'), { recursive: true });
+    const eventScript = `
+      require('node:fs').appendFileSync('events.jsonl', JSON.stringify({
+        step: process.env.PALI_COMMAND_STEP || 'generate',
+        mode: process.env.NODE_ENV, browser: process.env.TARGET_BROWSER,
+        args: process.argv.slice(2)
+      }) + '\\n');
+    `;
+    writeFileSync(
+      join(f.root, 'source/config/generateManifest.js'),
+      eventScript + (failGeneration ? 'process.exit(7);' : '')
+    );
+    const webpack = join(scripts, 'webpack.cjs');
+    writeFileSync(
+      webpack,
+      `process.env.PALI_COMMAND_STEP = 'webpack';\n${eventScript}`
+    );
+    for (const [name, target] of [
+      ['cross-env', require.resolve('cross-env/src/bin/cross-env.js')],
+      ['webpack', webpack],
+    ]) {
+      writeFileSync(
+        join(bin, name),
+        `#!/usr/bin/env node\nrequire(${JSON.stringify(target)});\n`,
+        { mode: 0o755 }
+      );
+      writeFileSync(
+        join(bin, `${name}.cmd`),
+        `@"${process.execPath}" "${target}" %*\r\n`
+      );
+    }
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      NODE_ENV: 'canary',
+      TARGET_BROWSER: 'firefox',
+    };
+    const pathKey =
+      Object.keys(env).find((key) => key.toLowerCase() === 'path') || 'PATH';
+    env[pathKey] = `${bin}${process.platform === 'win32' ? ';' : ':'}${
+      env[pathKey] || ''
+    }`;
+    const command = JSON.parse(readFileSync(resolve('package.json'), 'utf8'))
+      .scripts['dev:chrome'];
+    const result = spawnSync(command, {
+      shell: true,
+      cwd: f.root,
+      env,
+      encoding: 'utf8',
+      timeout: 10000,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(failGeneration ? 7 : 0);
+    const events = readFileSync(join(f.root, 'events.jsonl'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    expect(events).toEqual([
+      { step: 'generate', mode: 'development', browser: 'chrome', args: [] },
+      ...(failGeneration
+        ? []
+        : [
+            {
+              step: 'webpack',
+              mode: 'development',
+              browser: 'chrome',
+              args: ['--config', 'source/config/webpack.dev.js', '--watch'],
+            },
+          ]),
+    ]);
   }
 );
