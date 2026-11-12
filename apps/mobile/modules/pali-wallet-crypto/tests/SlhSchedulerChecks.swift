@@ -40,11 +40,37 @@ private func wait(_ semaphore: DispatchSemaphore) {
     release.signal(); wait(cleanup)
     precondition(cleanLog.snapshot() == ["erased", "context.end", "cleanup"])
 
+    let callbackWorker = PaliSlhLeafWorker(parallelism: 1), callbackLog = Events()
+    let callbackDone = DispatchSemaphore(value: 0), successorDone = DispatchSemaphore(value: 0)
+    callbackWorker.cleanup({
+      callbackLog.append("cleanup")
+      precondition(!callbackWorker.enqueue({ 0 }, complete: { _ in }))
+    }, complete: {
+      callbackLog.append("complete")
+      precondition(callbackWorker.enqueue({ callbackLog.append("successor"); return 0 }, complete: { _ in successorDone.signal() }), "Cleanup completion retained its admission barrier")
+      callbackDone.signal()
+    })
+    wait(callbackDone); wait(successorDone)
+    precondition(callbackLog.snapshot() == ["cleanup", "complete", "successor"])
+
+    let pendingWorker = PaliSlhLeafWorker(parallelism: 1)
+    let firstStarted = DispatchSemaphore(value: 0), firstRelease = DispatchSemaphore(value: 0)
+    let firstComplete = DispatchSemaphore(value: 0), secondRelease = DispatchSemaphore(value: 0), pendingDone = DispatchSemaphore(value: 0)
+    pendingWorker.cleanup({ firstStarted.signal(); wait(firstRelease) }, complete: {
+      precondition(!pendingWorker.enqueue({ 0 }, complete: { _ in }))
+      firstComplete.signal()
+    })
+    wait(firstStarted)
+    pendingWorker.cleanup({ wait(secondRelease) }, complete: {
+      precondition(pendingWorker.enqueue({ 0 }, complete: { _ in pendingDone.signal() }))
+    })
+    firstRelease.signal(); wait(firstComplete); secondRelease.signal(); wait(pendingDone)
+
     let bounded = PaliSlhLeafWorker(parallelism: 2), finish = DispatchSemaphore(value: 0), drain = DispatchSemaphore(value: 0)
     for _ in 0..<8 { precondition(bounded.enqueue(kind: .independent, { wait(finish); return 0 }, complete: { _ in drain.signal() })) }
     precondition(!bounded.enqueue(kind: .independent, { 0 }, complete: { _ in }))
     for _ in 0..<8 { finish.signal() }
     for _ in 0..<8 { wait(drain) }
-    print("iOS scheduler FIFO overlap/write barrier, cleanup/context drain and total capacity passed")
+    print("iOS scheduler FIFO overlap/write barrier, cleanup/context drain, completion admission and total capacity passed")
   }
 }

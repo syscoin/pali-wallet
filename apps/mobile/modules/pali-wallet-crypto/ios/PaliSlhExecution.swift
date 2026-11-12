@@ -232,16 +232,19 @@ final class PaliSlhTree: SharedObject, @unchecked Sendable {
     releaseWaiters.append(complete)
     if releaseStarted { lock.unlock(); return }
     releaseStarted = true; lock.unlock()
-    PaliSlhLeafWorker.shared.cleanup { [self] in
+    PaliSlhLeafWorker.shared.cleanup({ [self] in
       mappingLock.lock()
       lock.lock()
       do { try files.abort(self) } catch { cleanupGood = false }
-      if Darwin.close(descriptor) != 0 { cleanupGood = false }; released = true
-      let good = cleanupGood, callbacks = releaseWaiters; releaseWaiters.removeAll()
+      if Darwin.close(descriptor) != 0 { cleanupGood = false }
+      let good = cleanupGood
       lock.unlock(); mappingLock.unlock()
       context.releaseTreeOwnership(self, clean: good)
+    }, complete: { [self] in
+      lock.lock(); released = true
+      let good = cleanupGood, callbacks = releaseWaiters; releaseWaiters.removeAll(); lock.unlock()
       callbacks.forEach { $0(good) }
-    }
+    })
   }
   override func sharedObjectDidRelease() { release { _ in } }
 }
@@ -339,11 +342,13 @@ final class PaliSlhContext: SharedObject, @unchecked Sendable {
     let group = DispatchGroup()
     for tree in live { group.enter(); tree.release { [self] good in lock.lock(); disposalGood = disposalGood && good; lock.unlock(); group.leave() } }
     group.notify(queue: .global(qos: .userInitiated)) { [self] in
-      PaliSlhLeafWorker.shared.cleanup { [self] in
-        lock.lock(); do { try files.close() } catch { disposalGood = false }; disposed = true; let callbacks = waiters; waiters.removeAll(); let clean = disposalGood; lock.unlock()
+      PaliSlhLeafWorker.shared.cleanup({ [self] in
+        lock.lock(); do { try files.close() } catch { disposalGood = false }; let clean = disposalGood; lock.unlock()
         owner.closeNamespace(namespace, clean: clean)
+      }, complete: { [self] in
+        lock.lock(); disposed = true; let callbacks = waiters; waiters.removeAll(); lock.unlock()
         callbacks.forEach { finishPromise($0) }
-      }
+      })
     }
   }
   private func tree(_ value: PaliSlhTree) throws { try check(); guard value.context === self else { throw PaliSlhFailure.unavailable } }
