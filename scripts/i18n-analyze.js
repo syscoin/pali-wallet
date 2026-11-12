@@ -44,7 +44,11 @@ const nativeFiles = walk(path.join(ROOT, 'apps', 'mobile', 'src')).filter(
     !/\.(?:spec|test)\.[jt]sx?$/.test(file) &&
     !/(?:^|[/\\])__(?:tests|mocks)__(?:[/\\])/.test(file)
 );
-const files = [...walk(path.join(ROOT, 'source')), ...nativeFiles];
+const files = [
+  ...walk(path.join(ROOT, 'source')),
+  path.join(ROOT, 'apps', 'mobile', 'App.tsx'),
+  ...nativeFiles,
+];
 
 // --- Extract string literals + template literal prefixes from source ---
 const literals = new Set();
