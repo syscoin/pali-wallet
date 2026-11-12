@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EVM_NETWORK_DEFINITIONS, createExtensionEvmNetworks } from '../../../source/shared/evmNetworks.ts';
-import { NATIVE_NETWORKS, nativeSigningEnabled } from '../src/custody/networkContext.ts';
+import { EVM_NETWORK_DEFINITIONS, OPTIONAL_EVM_NETWORK_DEFINITIONS, createExtensionEvmNetworks, findRegisteredEvmNetwork } from '../../../source/shared/evmNetworks.ts';
+import { NATIVE_NETWORKS, createNativeNetwork, findKnownNativeNetwork, nativeSigningEnabled } from '../src/custody/networkContext.ts';
 import { NETWORKS } from '../src/core/networks.ts';
 import { RPC_ENDPOINTS, createBalanceReader } from '../src/platformRpc.ts';
+import { notificationCapabilities } from '../src/notifications/capabilities.ts';
 
-test('extension defaults and all seven mobile read identities share one pure registry', () => {
+test('extension defaults and all eight mobile read identities share one pure registry', () => {
   const extension = createExtensionEvmNetworks();
-  assert.deepEqual(NATIVE_NETWORKS.map((network) => Number(network.chainId)).sort((a, b) => a - b), [1, 57, 570, 5700, 8453, 42161, 57057]);
+  assert.deepEqual(NATIVE_NETWORKS.map((network) => Number(network.chainId)).sort((a, b) => a - b), [1, 57, 570, 5700, 5757, 8453, 42161, 57057]);
   for (const definition of EVM_NETWORK_DEFINITIONS) {
     const native = NATIVE_NETWORKS.find((network) => network.id === definition.id)!;
     const publicNetwork = NETWORKS.find((network) => network.id === definition.id)!;
@@ -21,7 +22,29 @@ test('extension defaults and all seven mobile read identities share one pure reg
     if (definition.testnet) assert.match(publicNetwork.name, /testnet/i);
     assert.equal(nativeSigningEnabled(native.id), true);
   }
-  assert.equal(new Set(NATIVE_NETWORKS.map((network) => network.registrationHash)).size, 7);
+  assert.equal(new Set(NATIVE_NETWORKS.map((network) => network.registrationHash)).size, 8);
+  assert.equal(NATIVE_NETWORKS.some(({ chainId }) => chainId === '57570'), false);
+  assert.equal(NETWORKS.some(({ chainId }) => chainId === 57570), false);
+  assert.equal(extension[57570], undefined);
+});
+
+test('optional Gateway metadata requires its exact saved RPC and supported registration identity', () => {
+  const gateway = OPTIONAL_EVM_NETWORK_DEFINITIONS[0]!;
+  const registration = createNativeNetwork({ id: 'custom:57570', name: gateway.name, kind: 'evm', chainId: '57570',
+    slip44: 60, rpcUrl: gateway.network.url, symbol: 'SYS', decimals: 18, testnet: false });
+  assert.equal(findKnownNativeNetwork(registration.id), undefined);
+  assert.equal(findKnownNativeNetwork(registration.id, registration)?.registrationHash, registration.registrationHash);
+  assert.equal(findRegisteredEvmNetwork(registration), gateway);
+  assert.equal(notificationCapabilities({ network: registration } as never).transactions, true);
+  assert.equal(findRegisteredEvmNetwork({ ...registration, id: gateway.id }), gateway);
+  for (const changed of [
+    { ...registration, rpcUrl: 'https://wrong.invalid' },
+    { ...registration, rpcUrl: `${gateway.network.url}/` },
+    { ...registration, chainId: '5757' },
+    { ...registration, id: 'custom:1' },
+  ]) assert.equal(findRegisteredEvmNetwork(changed), undefined);
+  const edited = createNativeNetwork({ ...registration, rpcUrl: 'https://wrong.invalid' });
+  assert.equal(findKnownNativeNetwork(edited.id, edited), undefined);
 });
 
 

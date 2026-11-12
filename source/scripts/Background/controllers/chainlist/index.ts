@@ -4,6 +4,7 @@ import { coins as utxoCoins, retryableFetch } from '@sidhujag/sysweb3-network';
 import {
   EVM_CHAIN_CATALOGUE_URL,
   parseEvmChainCatalogue,
+  withBundledEvmChainSuggestions,
 } from '../../../../shared/chainCatalogueData';
 import { projectUtxoChainCatalogue } from '../../../../shared/utxoChainCatalogue';
 import { chromeStorage } from 'utils/storageAPI';
@@ -178,10 +179,14 @@ class ChainListService {
         await this.initialize(INetworkType.Ethereum);
         // If still no data after init, fetch it
         if (!this.chainData) {
-          return await this.fetchData();
+          try {
+            return withBundledEvmChainSuggestions(await this.fetchData());
+          } catch {
+            return withBundledEvmChainSuggestions();
+          }
         }
       }
-      return this.chainData || [];
+      return withBundledEvmChainSuggestions(this.chainData || []);
     }
     return [];
   }

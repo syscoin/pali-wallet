@@ -3,6 +3,7 @@ import test from 'node:test';
 import { sendDraftForNetwork, type NativeUnsignedSendDraft } from '../src/screens/sendNetworkDraft.ts';
 import { publicSendContext } from '../src/screens/publicSendDraft.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
+import { withBundledNativeNetworkSuggestions } from '../src/custody/networkCatalogue.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import type { NativeWalletCatalogueSnapshot } from '../src/custody/walletCatalogue.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
@@ -77,6 +78,7 @@ function picker() {
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../../../../source/shared/chainCatalogue': { rankChainSuggestions: () => [] },
     '../custody/networkContext': { createNativeNetwork: () => { throw Error('No network editing'); } },
+    '../custody/networkCatalogue': { withBundledNativeNetworkSuggestions },
     './NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' },
     '../ui': { ...Object.fromEntries(['Button', 'Header', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
   });

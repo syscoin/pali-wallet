@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createNativeChainCatalogue } from '../src/custody/networkCatalogue.ts';
+import { createNativeChainCatalogue, withBundledNativeNetworkSuggestions } from '../src/custody/networkCatalogue.ts';
 import { EVM_CHAIN_CATALOGUE_URL } from '../../../source/shared/chainCatalogueData.ts';
 import { rankChainSuggestions } from '../../../source/shared/chainCatalogue.ts';
 
@@ -39,7 +39,7 @@ test('lazy native catalogue uses one identifier-free request and shares local ra
     redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer', signal: undefined,
   });
   assert.deepEqual(rankChainSuggestions(result, 'Example').map((row) => row.chainId), [42]);
-  assert.deepEqual(result[0], {
+  assert.deepEqual(result.find(({ chainId }) => chainId === 42), {
     chainId: 42, name: 'Example Testnet', isTestnet: false,
     nativeCurrency: { symbol: 'EX' }, rpc: [{ url: 'https://preferred.example' }],
   });
@@ -58,9 +58,17 @@ test('only explicit retry replaces a failed lookup and concurrent retry reuses i
   const retry = load(true);
   assert.equal(load(true), retry);
   assert.equal(load(), retry);
-  assert.equal((await retry)[0]?.chainId, 42);
+  assert((await retry).some(({ chainId }) => chainId === 42));
   assert.equal(load(true), retry);
   assert.equal(calls, 2);
+});
+
+test('local Gateway remains selectable without remote results and overrides conflicting metadata', () => {
+  const local = withBundledNativeNetworkSuggestions();
+  assert.deepEqual(local, [{ chainId: 57570, name: 'Syscoin Gateway', isTestnet: false,
+    nativeCurrency: { symbol: 'SYS' }, rpc: [{ url: 'https://rpc-gw.syscoin.org' }] }]);
+  assert.deepEqual(withBundledNativeNetworkSuggestions([{ ...local[0]!, name: 'Wrong', rpc: [{ url: 'https://wrong.invalid' }] }]), local);
+  assert.deepEqual(rankChainSuggestions(local, '57570').map(({ chainId }) => chainId), [57570]);
 });
 
 test('catalogue rejects forbidden, malformed, redirected and oversized responses without a retry', async () => {

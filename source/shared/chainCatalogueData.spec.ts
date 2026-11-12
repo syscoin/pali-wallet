@@ -1,4 +1,7 @@
-import { parseEvmChainCatalogue } from './chainCatalogueData';
+import {
+  parseEvmChainCatalogue,
+  withBundledEvmChainSuggestions,
+} from './chainCatalogueData';
 
 const base = {
   name: 'Example Testnet',
@@ -6,6 +9,28 @@ const base = {
   networkId: 987,
   nativeCurrency: { name: 'Example', symbol: 'EX', decimals: 18 },
 };
+
+it('bundles Gateway for explicit addition and pins its identity over conflicting remote rows', () => {
+  const local = withBundledEvmChainSuggestions();
+  expect(local).toEqual([
+    expect.objectContaining({
+      chainId: 57570,
+      name: 'Syscoin Gateway',
+      isTestnet: false,
+      nativeCurrency: { name: 'Syscoin', symbol: 'SYS', decimals: 18 },
+      rpc: [{ url: 'https://rpc-gw.syscoin.org' }],
+      explorers: [
+        { name: 'Syscoin Gateway', url: 'https://explorer-gw.syscoin.org' },
+      ],
+    }),
+  ]);
+  const remote = parseEvmChainCatalogue([
+    { ...base, chainId: 57570, rpc: [{ url: 'https://wrong.invalid' }] },
+    { ...base, rpc: [{ url: 'https://example.invalid' }] },
+  ]);
+  expect(withBundledEvmChainSuggestions(remote)).toEqual([local[0], remote[1]]);
+  expect(withBundledEvmChainSuggestions()[0]).not.toBe(local[0]);
+});
 
 it('projects shared ChainList metadata without carrying unknown fields into wallet UI', () => {
   const rows = parseEvmChainCatalogue([

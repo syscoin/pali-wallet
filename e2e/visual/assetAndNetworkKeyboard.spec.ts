@@ -64,6 +64,51 @@ test('asset toolbar and network autocomplete support keyboard use in narrow wind
       ],
     ]);
     const deniedWrites: string[] = [];
+    const catalogueNetworks = [
+      {
+        name: 'Ethereum QA Alpha',
+        chainId: 313371,
+        rpcUrl: 'https://qa121-alpha.invalid/rpc',
+      },
+      {
+        name: 'Ethereum QA Beta',
+        chainId: 5700,
+        rpcUrl: 'https://rpc.tanenbaum.io/',
+      },
+    ];
+    // Distinct networks must survive the catalogue's chain-ID deduplication.
+    const alphaNetwork = catalogueNetworks[0];
+    await wallet.context.route(alphaNetwork.rpcUrl, async (route) => {
+      if (route.request().method() !== 'POST')
+        return route.abort('blockedbyclient');
+      const rpc = route.request().postDataJSON();
+      const calls = Array.isArray(rpc) ? rpc : [rpc];
+      if (
+        calls.some((call: any) =>
+          /^(eth_send|wallet_send|sys_sign)/i.test(call?.method || '')
+        )
+      ) {
+        deniedWrites.push('attempted-write');
+        return route.abort('blockedbyclient');
+      }
+      const responses = new Map([
+        ['eth_chainId', `0x${alphaNetwork.chainId.toString(16)}`],
+        ['net_version', String(alphaNetwork.chainId)],
+        ['eth_blockNumber', '0x1'],
+      ]);
+      if (calls.some((call: any) => !responses.has(call?.method)))
+        return route.abort('blockedbyclient');
+      const rpcReplies = calls.map((call: any) => ({
+        jsonrpc: '2.0',
+        id: call.id,
+        result: responses.get(call.method),
+      }));
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(Array.isArray(rpc) ? rpcReplies : rpcReplies[0]),
+      });
+    });
     await wallet.context.route('https://rpc.tanenbaum.io/', async (route) => {
       if (route.request().method() !== 'POST') return route.fallback();
       const rpc = route.request().postDataJSON();
@@ -114,27 +159,25 @@ test('asset toolbar and network autocomplete support keyboard use in narrow wind
     });
     await wallet.context.route(
       'https://chainlist.org/rpcs.json',
-      async (route) => {
-        const names = ['Ethereum QA Alpha', 'Ethereum QA Beta'];
-        return route.fulfill({
+      async (route) =>
+        route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify(
-            names.map((name) => ({
+            catalogueNetworks.map(({ name, chainId, rpcUrl }) => ({
               name,
-              chainId: 5700,
-              networkId: 5700,
+              chainId,
+              networkId: chainId,
               nativeCurrency: {
                 name: 'Test Syscoin',
                 symbol: 'TSYS',
                 decimals: 18,
               },
-              rpc: [{ url: 'https://rpc.tanenbaum.io/' }],
+              rpc: [{ url: rpcUrl }],
               explorers: [],
             }))
           ),
-        });
-      }
+        })
     );
     const page = wallet.page;
     await wallet.step(

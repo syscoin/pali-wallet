@@ -6,6 +6,7 @@ import { readAssetMarket } from '../../../source/shared/assetMarket.ts';
 import { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, rememberNativeAssetIcon, subscribeNativeAssetIcon } from '../src/portfolio/assetIconCache.ts';
 import { nativeAssetMarketSource, rememberNativeAssetMarketIcon } from '../src/portfolio/nativeAssetMarket.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
+import { CHAIN_IDS } from '../../../source/shared/evmNetworks.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 import { Interface } from 'ethers/abi';
 import { formatApprovalTokenAmount, parseApprovalAmount, summarizeApproval } from '../../../source/shared/approval.ts';
@@ -85,6 +86,7 @@ test('NativeAssetIcon shows a found image, falls back after decode failure, and 
     './platform/localization': nativeTranslationFixture,
     './screens/IdleActivityBoundary': { IdlePressable: 'Pressable' }, './screens/useWelcomeBackdropMotion': { useWelcomeBackdropMotion() {} },
     '../../../source/shared/assetIconIdentity': { knownAssetIcon }, './portfolio/assetIconCache': { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, subscribeNativeAssetIcon },
+    '../../../source/shared/evmNetworks': { CHAIN_IDS },
     'react-native': { Image: 'Image', StyleSheet: { create: (value: unknown) => value } }, 'react-native-svg': {},
   });
   try {
@@ -94,6 +96,31 @@ test('NativeAssetIcon shows a found image, falls back after decode failure, and 
     const fallback = f.render(props); assert.equal((fallback.type as Function).name, 'Coin'); assert.equal(fallback.props.id, 'unknown-asset'); assert.equal(fallback.props.fallbackSymbol, 'BTC');
     const wrong = f.render({ ...props, identity: { ...identity, chainId: '10' } }); assert.equal(wrong.props.id, 'unknown-asset');
     const known = f.render({ identity: { kind: 'spt', chainId: 57, assetGuid: '123456' }, symbol: 'Untrusted name' }); assert.equal(known.props.id, 'syscoin');
+  } finally { f.close(); }
+});
+
+test('mainnet chain artwork uses local assets for zkSYS and Gateway', () => {
+  const syscoinImage = { uri: 'bundled-syscoin' };
+  const f = screenFixture(new URL('../src/ui.tsx', import.meta.url), 'Coin', {
+    './platform/localization': nativeTranslationFixture,
+    './screens/IdleActivityBoundary': { IdlePressable: 'Pressable' },
+    './screens/useWelcomeBackdropMotion': {},
+    '../../../source/shared/assetIconIdentity': { knownAssetIcon },
+    '../../../source/shared/evmNetworks': { CHAIN_IDS },
+    './portfolio/assetIconCache': { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, subscribeNativeAssetIcon },
+    '../../../source/assets/all_assets/syscoin.png': syscoinImage,
+    'react-native': { Image: 'Image', StyleSheet: { create: (value: unknown) => value } },
+    'react-native-svg': { __esModule: true, default: 'Svg', Circle: 'Circle', G: 'G', Path: 'Path' },
+  });
+  try {
+    for (const id of ['zksys', 'zksys-testnet', `custom:${CHAIN_IDS.ZKSYS_MAINNET}`]) {
+      assert.equal(f.render({ id }).type, 'Svg');
+    }
+    for (const id of ['syscoin-gateway', `custom:${CHAIN_IDS.SYSCOIN_GATEWAY_MAINNET}`]) {
+      const icon = f.render({ id });
+      assert.equal(icon.type, 'Image');
+      assert.equal(icon.props.source, syscoinImage);
+    }
   } finally { f.close(); }
 });
 

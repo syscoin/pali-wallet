@@ -169,7 +169,7 @@ test('catalogue is lazy and verified Save rejects unexpected endpoints before re
   } });
   assert.deepEqual(requests, []);
   const chains = await view.loadCatalogue!();
-  assert.equal(chains[0]!.chainId, 31337);
+  assert(chains.some(({ chainId }) => chainId === 31337));
   assert.equal(await view.loadCatalogue!(), chains);
   assert.deepEqual(requests, [EVM_CHAIN_CATALOGUE_URL]);
   assert.deepEqual(saved, []);

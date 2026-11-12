@@ -36,20 +36,27 @@ it('projects every public field from the unchanged full deployment descriptors',
     expect(metadata[name]).toEqual(deployment[name]);
 });
 
-it.each([undefined, 0, 1, 11155111, 57057, 8453, Number.MAX_SAFE_INTEGER])(
-  'preserves public address resolution for chain %s',
-  (chainId) => {
-    expect(metadata.getPaliCanonicalEntryPointAddress(chainId)).toBe(
-      deployment.getPaliCanonicalEntryPointAddress(chainId)
-    );
-    expect(metadata.getPaliCanonicalFactoryAddress(chainId)).toBe(
-      deployment.getPaliCanonicalFactoryAddress(chainId)
-    );
-    expect(metadata.getZkSysGasTankAddress(chainId)).toBe(
-      deployment.getZkSysGasTankAddress(chainId)
-    );
-  }
-);
+it.each([
+  undefined,
+  0,
+  1,
+  11155111,
+  57057,
+  5757,
+  57570,
+  8453,
+  Number.MAX_SAFE_INTEGER,
+])('preserves public address resolution for chain %s', (chainId) => {
+  expect(metadata.getPaliCanonicalEntryPointAddress(chainId)).toBe(
+    deployment.getPaliCanonicalEntryPointAddress(chainId)
+  );
+  expect(metadata.getPaliCanonicalFactoryAddress(chainId)).toBe(
+    deployment.getPaliCanonicalFactoryAddress(chainId)
+  );
+  expect(metadata.getZkSysGasTankAddress(chainId)).toBe(
+    deployment.getZkSysGasTankAddress(chainId)
+  );
+});
 
 it('keeps the generated metadata free of runtime module imports', () => {
   const file = resolve(__dirname, 'deploymentMetadata.ts');

@@ -21,6 +21,7 @@ function fixture(initialFilter: string | null = 'ethereum', networks = ['ethereu
   let quoteHeld: Promise<void> | undefined;
   let tokenQuoteHeld: Promise<void> | undefined;
   let rejectPrices = false, includeCollectible = false, activeQuotes = 0, maximumQuotes = 0;
+  const unavailableNetworks = new Set<string>();
   const quoteSignals: AbortSignal[] = [];
   const price = async (kind: 'native' | 'token', choice: NotificationChoice, currency: string, signal: AbortSignal) => {
     prices.push(`${kind}:${choice.scope.network.id}`); quoteSignals.push(signal);
@@ -34,7 +35,7 @@ function fixture(initialFilter: string | null = 'ethereum', networks = ['ethereu
   const preference = createPortfolioFilter({ get: async () => saved, set: async value => { saved = value; } });
   const make = (filter = preference) => {
     const model = new AccountPortfolioController({ source, choices: () => choices, filter,
-      reader: { async readBalance(network, address) { reads.push(`${network}:${address}`); await held; return { chainId: Number(getNativeNetwork(network).chainId), units: '1000000000000000000' }; } },
+      reader: { async readBalance(network, address) { reads.push(`${network}:${address}`); await held; if (unavailableNetworks.has(network)) throw Error('Network offline'); return { chainId: Number(getNativeNetwork(network).chainId), units: '1000000000000000000' }; } },
       async assets(scope, _signal, check) { check(); tokens.push(`${scope.network.id}:${scope.accountId}`); return {
         tokens: Array.from({ length: tokenCount }, (_, index) => ({ metadata: { contractAddress: `0x${(index + 1).toString(16).padStart(40, '0')}`, name: 'Saved token', symbol: 'TOK', decimals: tokenDecimals }, status: 'available' as const, units: tokenDecimals === 255 ? '1' : '250' })),
         collectibles: includeCollectible ? [{ collectible: { contractAddress: '0x' + 'ab'.repeat(20), tokenStandard: 'ERC-721' as const }, status: 'available' as const, units: '1' }] : [] }; },
@@ -48,10 +49,27 @@ function fixture(initialFilter: string | null = 'ethereum', networks = ['ethereu
     holdQuote(value: Promise<void>) { quoteHeld = value; },
     holdTokenQuote(value: Promise<void>) { tokenQuoteHeld = value; },
     rejectPrices() { rejectPrices = true; },
+    offline(id: string) { unavailableNetworks.add(id); },
     includeCollectible() { includeCollectible = true; },
     select(index: number) { selected = index; revision++; for (const listener of listeners) listener(); },
     lock() { phase = 'locked'; revision++; for (const listener of listeners) listener(); } };
 }
+
+for (const offlineNetwork of ['zksys', 'base']) test(`an offline ${offlineNetwork} row leaves the other account networks available`, async () => {
+  const f = fixture(null, [offlineNetwork, 'ethereum']);
+  f.offline(offlineNetwork);
+  const model = f.make(), stop = model.connect();
+  try {
+    await settle();
+    assert.equal(model.getSnapshot().filter, 'all');
+    assert.deepEqual(model.getSnapshot().rows.map(row => [row.choice.scope.network.id, row.status]), [
+      [offlineNetwork, 'error'], ['ethereum', 'available'],
+    ]);
+    assert.equal(model.getSnapshot().knownValue, 15);
+    assert.equal(model.getSnapshot().partial, true);
+    assert.deepEqual(f.prices, ['native:ethereum', 'token:ethereum']);
+  } finally { stop(); }
+});
 
 test('restored concrete filter reads only the selected account, despite 15 saved accounts', async () => {
   const f = fixture(), model = f.make(), stop = model.connect();
