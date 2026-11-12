@@ -20,7 +20,7 @@ async function fixture(status: 'ready' | 'missing' | 'unsupported' = 'ready', mi
   const alerts: string[] = [];
   const native = { Alert: { alert: (_title: string, message: string) => alerts.push(message) }, AppState: { currentState: 'active' }, BackHandler: { addEventListener: () => ({ remove() {} }) } };
   const authority = { getSnapshot: () => state, subscribe: () => () => {}, getNetwork: (id: string) => ({ kind: 'evm', id, name: 'Ethereum' }), lock() { state = { ...state, status: 'locked' }; } };
-  const navigation = { registerBack: () => () => {}, setImmersive() {} };
+  const navigation = { registerBack: () => () => {}, beginNavigation() {}, setImmersive() {} };
   const screen = screenFixture(new URL('../src/screens/WatchSession.tsx', import.meta.url), 'WatchSession', {
     'react-native': native,
     '../platform/localization': nativeTranslationFixture,

@@ -11,6 +11,7 @@ export type ShellLeafNavigation = Readonly<{
   registerBack(handler: () => boolean): () => void;
   registerLeave(handler: (navigate: () => void) => void): () => void;
   setImmersive(value: boolean): void;
+  beginNavigation(): void;
 }>;
 const TABS = [
   { id: 'wallet', icon: 'wallet' },

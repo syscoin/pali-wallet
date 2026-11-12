@@ -557,7 +557,7 @@ function openRecipientCopy(f: ReturnType<typeof fixture>) {
 }
 for (const close of ['done', 'back'] as const) test(`in-window Activity options ${close} preserves the list, filter and saved position`, () => {
   const immersive: boolean[] = [];
-  const f = fixture(undefined, false, { navigation: { registerBack: () => () => {}, registerLeave: () => () => {}, setImmersive: (value: boolean) => immersive.push(value) } });
+  const f = fixture(undefined, false, { navigation: { registerBack: () => () => {}, registerLeave: () => () => {}, beginNavigation() {}, setImmersive: (value: boolean) => immersive.push(value) } });
   const row = pendingScopedRow(); f.rows([row]);
   f.state({ view: { ...DEFAULT_ACTIVITY_VIEW, filter: 'sent', anchor: hash, offset: 27 } });
   try {

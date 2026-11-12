@@ -42,6 +42,9 @@ import { Welcome, AddWatchAccount } from './src/screens/Onboarding';
 import { NativeWalletScreen } from './src/screens/NativeWallet';
 import { NetworkSourceSheet } from './src/screens/NetworkSourceSheet';
 import { isNotificationPermissionPromptActive, nativeActivityNotifications } from './src/notifications/service';
+import { watchNotificationChoices } from './src/notifications/choices';
+import { NotificationPermissionReturn, type NotificationReturn } from './src/notifications/permissionReturn';
+import type { NativeNotificationScope, NotificationPermissionResult } from './src/notifications/types';
 import { WalletAccounts } from './src/screens/WalletAccounts';
 import { WatchSession } from './src/screens/WatchSession';
 import { WatchAccounts } from './src/core/watchAccounts';
@@ -277,10 +280,22 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const navigationGeneration = useRef(0);
   const lifecycleGeneration = useRef(0);
   const watchResume = useRef<{ authority: WatchOnlyAuthority; selection: AccountSelection; navigation: number; resumeIdle: () => boolean } | null>(null);
+  const [watchNotificationReturn, setWatchNotificationReturn] = useState<NotificationReturn | null>(null);
+  const [notificationWake, wakeNotificationReturn] = useState(0);
+  const [notificationReturn] = useState(() => new NotificationPermissionReturn(() => wakeNotificationReturn(value => value + 1)));
+  const watchNotificationContext = useCallback(() => {
+    try {
+      const owner = authority.current, state = owner?.getSnapshot();
+      if (!owner || state?.status !== 'ready' || publicViewLock.getSnapshot().phase !== 'unlocked') return null;
+      return { owner, identity: `${state.selectedAccountId}:${state.selectedNetworkId}`, scopes: watchNotificationChoices(owner).map(choice => choice.scope) };
+    } catch { return null; }
+  }, []);
+  const cancelNotificationReturn = useCallback(() => { notificationReturn.discard(); setWatchNotificationReturn(null); }, [notificationReturn]);
   const foreground = useRef(
     Platform.OS === 'web' || AppState.currentState === 'active'
   );
-  const go = useCallback((next: Route) => {
+  const go = useCallback((next: Route, resumingPermission = false) => {
+    if (!resumingPermission) cancelNotificationReturn();
     navigationGeneration.current++;
     if (next !== 'native') {
       setInitialSetup(undefined);
@@ -288,7 +303,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       if (pending) pairingInbox.consume(pending.id);
     }
     setRoute(next);
-  }, [pairingInbox]);
+  }, [pairingInbox, cancelNotificationReturn]);
   useEffect(() => {
     if (Platform.OS === 'web') return;
     const navigation = navigationGeneration.current;
@@ -328,7 +343,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     setRequestedHdId(undefined); setInitialSetup(kind);
     authority.current?.lock(); setSheet(null); setPreview(false); go('native');
   };
-  const openWatch = useCallback(async (selection: AccountSelection) => {
+  const openWatch = useCallback(async (selection: AccountSelection, resumingPermission = false) => {
     const local = authority.current, navigation = navigationGeneration.current, lifecycle = lifecycleGeneration.current;
     if (openingView.current || !foreground.current || selection.kind !== 'watch' || watchAccounts.getSnapshot().status !== 'ready' || !local?.getSnapshot().accounts.some((account) => account.id === selection.id)) return;
     openingView.current = true; setViewBusy(true); setViewError(false);
@@ -341,11 +356,22 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       if (publicViewLock.getSnapshot().phase === 'locked') await publicViewLock.unlock(authorizePublicView, check);
       publicViewLock.assertUnlocked(); check();
       local.unlock(); local.selectAccount(selection.id);
-      rememberSelection(selection); setPreview(false); setSheet(null); go('home');
+      rememberSelection(selection); setPreview(false); setSheet(null); go('home', resumingPermission);
       void local.refresh();
+      return true;
     } catch { setViewError(true); }
     finally { openingView.current = false; setViewBusy(false); }
   }, [watchAccounts, rememberSelection, go, setSheet]);
+  useEffect(() => {
+    let current = true;
+    void Promise.resolve().then(() => {
+      if (!current || route !== 'home' || preview || !foreground.current || AppState.currentState !== 'active') return;
+      const returned = notificationReturn.take(watchNotificationContext());
+      if (returned) setWatchNotificationReturn(returned);
+    });
+    return () => { current = false; };
+  }, [notificationWake, notificationReturn, route, preview, snapshot, watchNotificationContext]);
+  useEffect(() => () => notificationReturn.discard(), [notificationReturn]);
   const unlockRequestedView = async () => {
     if (openingView.current || !foreground.current) return;
     const navigation = navigationGeneration.current, lifecycle = lifecycleGeneration.current;
@@ -445,12 +471,13 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   useEffect(() => {
     const hide = () => {
       if (isNativeCredentialPromptActive()) return;
+      notificationReturn.pause(watchNotificationContext()); setWatchNotificationReturn(null);
       const local = authority.current, state = local?.getSnapshot();
       if (!preview && requestedRoute === 'home' && state?.status === 'ready' && state.selectedAccountId &&
           publicViewLock.getSnapshot().phase === 'unlocked') {
         const resumeIdle = watchIdle.pause();
         watchResume.current = resumeIdle ? { authority: local!, selection: { kind: 'watch', id: state.selectedAccountId }, navigation: navigationGeneration.current, resumeIdle } : null;
-        if (!resumeIdle) void publicViewLock.lock().catch(() => undefined);
+        if (!resumeIdle) { notificationReturn.discard(); void publicViewLock.lock().catch(() => undefined); }
       } else if (watchResume.current?.navigation !== navigationGeneration.current) watchResume.current = null;
       if (openingView.current) publicViewLock.cancelUnlock();
       lifecycleGeneration.current++; authority.current?.lock(); setSheet(null); setAmount(''); setRecipient('');
@@ -461,10 +488,13 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       if (!pending || preview || !foreground.current || authority.current !== pending.authority ||
           navigationGeneration.current !== pending.navigation || publicViewLock.getSnapshot().phase !== 'unlocked') return;
       if (!pending.resumeIdle()) {
+        notificationReturn.discard();
         if (publicViewLock.getSnapshot().phase === 'unlocked') void publicViewLock.lock().catch(() => undefined);
         return;
       }
-      void openWatch(pending.selection);
+      void openWatch(pending.selection, true).then(opened => {
+        if (opened) notificationReturn.resume(watchNotificationContext()); else notificationReturn.discard();
+      });
     };
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
       if (isNotificationPermissionPromptActive() || isNativeCredentialPromptActive() || isCameraPermissionPromptActive()) return;
@@ -480,11 +510,11 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       if (state === 'active') { resume(); return; }
       hide();
       if (requestedRoute !== 'native' && !preview && authority.current?.getSnapshot().accounts.length)
-        go('locked');
+        go('locked', true);
       if (watchResume.current) watchResume.current.navigation = navigationGeneration.current;
     });
     return () => { sub.remove(); blur?.remove(); focus?.remove(); };
-  }, [preview, requestedRoute, setSheet, go, openWatch]);
+  }, [preview, requestedRoute, setSheet, go, openWatch, notificationReturn, watchNotificationContext]);
   useEffect(() => {
     if (route === 'design' || route === 'native' || route === 'accounts' || route === 'add' || Platform.OS === 'web') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -666,7 +696,12 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     onSelect={(selection) => { if (selection.kind !== 'watch') openWallet(selection.id); else openWatch(selection); }}
     onBack={() => go(snapshot.status === 'ready' ? 'home' : snapshot.accounts.length ? 'locked' : 'welcome')}
     onOpenWallet={Platform.OS !== 'web' ? () => openWallet() : undefined} />{selectionNotice}</>;
-  if (!preview && route === 'home' && watchAuthority && !startupError) return <><WatchSession key={snapshot.selectedAccountId} authority={watchAuthority} onAccounts={() => go('accounts')} onExit={exit} />{selectionNotice}</>;
+  if (!preview && route === 'home' && watchAuthority && !startupError) return <><WatchSession key={snapshot.selectedAccountId} authority={watchAuthority} onAccounts={() => go('accounts')} onExit={exit}
+    notificationReturn={watchNotificationReturn} cancelNotificationReturn={cancelNotificationReturn} discardPendingNotificationReturn={notificationReturn.discard}
+    onNotificationPermissionPresentation={(scope: NativeNotificationScope, result: Promise<NotificationPermissionResult>) => {
+      if (AppState.currentState !== 'active' || preview) return;
+      setWatchNotificationReturn(null); notificationReturn.capture(watchNotificationContext(), scope, result);
+    }} />{selectionNotice}</>;
   let content: React.ReactNode;
   if (loading)
     content = (

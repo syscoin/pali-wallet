@@ -1,3 +1,5 @@
+import { NotificationPermissionReturn } from '../src/notifications/permissionReturn.ts';
+import { watchNotificationChoices } from '../src/notifications/choices.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -10,6 +12,8 @@ import { quietActivityNotifications } from './notificationFixture.ts';
 import { createTestPublicViewLock } from './publicViewLockFixture.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import { IdleLock } from '../src/core/idleLock.ts';
+import { getNativeNetwork } from '../src/custody/networkContext.ts';
+import type { NotificationPermissionResult } from '../src/notifications/types.ts';
 
 type Element = {
   type: unknown;
@@ -142,6 +146,11 @@ function harness(watch = false, locked = watch, idleMinutes = 0) {
     subscribe: (notify: (state: typeof blank) => void) => { authorityListeners.add(notify); return () => authorityListeners.delete(notify); },
     getNetwork: core.getNetwork,
     getAccountNetworks: () => [],
+    getMonitoringEntries() {
+      if (blank.status !== 'ready') throw Error('Watch accounts are locked');
+      return watchRecords.map(account => ({ accountId: account.id, label: account.name, address: account.addresses.ethereum,
+        network: getNativeNetwork('ethereum'), identifier: account.addresses.ethereum, isAccount: false }));
+    },
   };
   class Accounts {
     subscribe = () => () => {};
@@ -225,6 +234,8 @@ function harness(watch = false, locked = watch, idleMinutes = 0) {
     },
     './src/screens/NativeWallet': { NativeWalletScreen: 'NativeWalletScreen' },
     './src/screens/NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' },
+    './src/notifications/choices': { watchNotificationChoices },
+    './src/notifications/permissionReturn': { NotificationPermissionReturn },
     './src/notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
     './src/platform/cameraPermission': { isCameraPermissionPromptActive: () => false },
     './src/screens/WalletAccounts': {},
@@ -300,6 +311,7 @@ function harness(watch = false, locked = watch, idleMinutes = 0) {
     viewPrivacy, authorization,
     authCalls: () => authCalls,
     publicOpens: () => publicOpens,
+    notificationScope: () => watchNotificationChoices(authority as unknown as core.WatchOnlyAuthority)[0]!.scope,
     expireIdle() { idle.invalidate(); },
     advanceClocks(milliseconds: number, wallMilliseconds = milliseconds) { monotonic += milliseconds; wall += wallMilliseconds; },
     checkIdle: () => idle.check(),
@@ -530,6 +542,63 @@ async function openRememberedWatch(idleMinutes = 0) {
   assert.equal(f.authCalls(), 0);
   return f;
 }
+
+test('App watch permission return survives lock and fresh reopening for either OS decision', async () => {
+  for (const permission of ['granted', 'denied'] as const) {
+    const f = await openRememberedWatch(), result = deferred<NotificationPermissionResult>();
+    try {
+      const original = f.find(f.render(), 'WatchSession')!, scope = f.notificationScope();
+      original.props.onNotificationPermissionPresentation(scope, result.promise);
+      f.state('background', false); f.render();
+      assert.equal(f.find(f.render(), 'WatchSession'), undefined, 'permission continuation never keeps the background view alive');
+      if (permission === 'denied') { result.resolve(permission); await settle(); }
+      f.state('active'); await settle(); f.render();
+      f.focus('focus'); await settle();
+      if (permission === 'granted') { result.resolve(permission); await settle(); }
+      f.render(); await settle();
+      const reopened = f.find(f.render(), 'WatchSession')!;
+      assert(reopened);
+      assert.deepEqual(JSON.parse(JSON.stringify(reopened.props.notificationReturn)), { scopeKey: JSON.stringify(scope), permission });
+      assert.equal(f.publicOpens(), 2); assert.equal(f.authCalls(), 0);
+      reopened.props.cancelNotificationReturn();
+      assert.equal(f.find(f.render(), 'WatchSession')!.props.notificationReturn, null);
+      f.state('background', false); f.render(); f.state('active'); await settle();
+      assert.equal(f.find(f.render(), 'WatchSession')!.props.notificationReturn, null,
+        'manual cancellation removes the delivered result before a later WatchSession remount');
+    } finally { f.dispose(); }
+  }
+});
+
+test('explicit watch navigation or a pairing link discards a pending permission return', async () => {
+  for (const destination of ['accounts', 'pairing'] as const) {
+    const f = await openRememberedWatch(), result = deferred<NotificationPermissionResult>();
+    try {
+      const original = f.find(f.render(), 'WatchSession')!;
+      original.props.onNotificationPermissionPresentation(f.notificationScope(), result.promise);
+      if (destination === 'accounts') original.props.onAccounts();
+      else f.warm(LINK);
+      f.render(); f.state('background', false); f.render();
+      result.resolve('granted'); await settle(); f.state('active'); await settle();
+      assert.equal(f.find(f.render(), 'WatchSession'), undefined);
+      assert.equal(f.publicOpens(), 1, 'later permission results cannot reopen a departed public session');
+    } finally { f.dispose(); }
+  }
+});
+
+test('a pending watch permission return cannot bypass the original idle deadline', async () => {
+  const f = await openRememberedWatch(5), result = deferred<NotificationPermissionResult>();
+  try {
+    const original = f.find(f.render(), 'WatchSession')!;
+    f.advanceClocks(240000);
+    original.props.onNotificationPermissionPresentation(f.notificationScope(), result.promise);
+    f.state('background', false); f.render(); f.advanceClocks(60000);
+    result.resolve('granted'); await settle(); f.state('active'); await settle();
+    assert.equal(f.viewPrivacy.marker(), 'locked');
+    assert.equal(f.find(f.render(), 'WatchSession'), undefined);
+    assert.equal(f.publicOpens(), 1); assert.equal(f.authCalls(), 0);
+    assert.equal(f.find(f.render(), 'Button')?.props.title, 'Unlock wallet');
+  } finally { f.dispose(); }
+});
 
 test('remembered public watch resumes on cold and warm entry when no privacy or idle lock is set', async () => {
   const f = await openRememberedWatch();

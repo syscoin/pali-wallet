@@ -8,6 +8,8 @@ import { formatBaseUnits } from '../src/core/amounts.ts';
 import { getNativeNetwork, getNativeSendContext, nativeSigningEnabled } from '../src/custody/networkContext.ts';
 import { TabDeparture } from '../src/navigation/tabDeparture.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
+import { NotificationPermissionReturn } from '../src/notifications/permissionReturn.ts';
+import type { NotificationPermissionResult } from '../src/notifications/types.ts';
 
 type Element = { type: any; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
@@ -19,7 +21,7 @@ function elements(value: unknown): Element[] {
 }
 
 /** Actual overview, portfolio and shell handlers with public data and native event ports. */
-function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', unbacked = false, receiveAcknowledged = true) {
+function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', unbacked = false, receiveAcknowledged = true, onNavigation?: () => void) {
   const cells = new Map<unknown, Cell[]>(), nativeBacks = new Set<() => boolean>();
   const renderedComponents = new Set<unknown>();
   let current: Cell[] = [], cursor = 0, pendingEffects: (() => void)[] = [], dirty = false;
@@ -98,7 +100,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
       return () => props.onBackHandlerChange(null);
     }, [selected, props.onBackHandlerChange, props.onModeChange]);
     return react.createElement('TokenFixture', null, selected ? 'Token details' : props.nativeAsset,
-      react.createElement('Button', { title: 'Open token', onPress: () => setSelected(true) }));
+      react.createElement('Button', { title: 'Open token', onPress: () => { props.onNavigation?.(); setSelected(true); } }));
   }
   const { NativePortfolio } = load('NativePortfolio', { ...common,
     'expo-clipboard': { async setStringAsync(value: string) { copied.push(value); return true; } }, 'react-native-qrcode-svg': { default: 'QRCode' }, './CopyableAddress': { CopyableAddress: 'CopyableAddress' },
@@ -121,7 +123,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
   let detail = receiveEntry === 'detail' ? { accountId: 'hd:60:0', networkId: network.id, receive: true } : undefined;
   let continuation = receiveEntry === 'continuation' ? { account, backupAcknowledged: receiveAcknowledged } : undefined;
   function Root() {
-    shell = useRealShell(scope(), scope, exit);
+    shell = useRealShell(scope(), scope, exit, onNavigation);
     const portfolio = { source, reader, tokenView, accountLabel: 'Account 1', onExit: exit, onLock() {}, onViewRecovery() { backups++; },
       onReceiveIntentConsumed() { consumed++; if (detail) detail = { ...detail, receive: false }; continuation = undefined; dirty = true; },
       initialReceive: continuation, onSend, navigation: shell.navigation };
@@ -285,5 +287,30 @@ for (const overview of [false, true]) test(`unacknowledged Receive continuation 
     f.back();
     f.remountPortfolio();
     assert(!elements(f.render()).some(value => value.props.testID === 'native-receive-address' || value.props.title === 'Receive Anyway'), 'the completed continuation is not replayed');
+  } finally { f.close(); }
+});
+
+for (const target of ['receive', 'filter', 'asset', 'token'] as const) test(`late permission grant cannot replace a newly opened ${target} view`, async () => {
+  const network = getNativeNetwork('ethereum');
+  const scope = { id: 'native:hd:60:0:ethereum', accountId: 'hd:60:0', accountType: 'HDAccount', accountAddress: '0x' + '11'.repeat(20), network };
+  const context = { owner: {}, identity: 'hd:60:0:ethereum', scopes: [scope] };
+  const pending = Promise.withResolvers<NotificationPermissionResult>();
+  const returns = new NotificationPermissionReturn(() => {});
+  const f = fixture(target === 'filter', undefined, false, true, returns.discard);
+  try {
+    const before = elements(f.render());
+    returns.capture(context, scope, pending.promise); returns.pause(context); returns.resume(context);
+    const action = target === 'receive' ? before.find(value => value.type === 'Button' && value.props.title === 'Receive')
+      : target === 'filter' ? before.find(value => value.type === 'IdlePressable' && value.props.accessibilityRole === 'button')
+      : target === 'asset' ? before.find(value => value.type === 'Row' && value.props.title === 'ETH')
+      : before.find(value => value.type === 'Button' && value.props.title === 'Open token');
+    assert(action, target); action.props.onPress();
+    pending.resolve('granted'); await Promise.resolve();
+    assert.equal(returns.take(context), null, 'the child action synchronously retires the old permission intent');
+    const after = elements(f.render());
+    if (target === 'receive') assert(after.some(value => value.props.testID === 'native-receive-address'));
+    if (target === 'filter') assert(after.some(value => value.type === 'NetworkSourceSheet'));
+    if (target === 'asset') assert(after.some(value => value.type === 'AssetMarketCard'));
+    if (target === 'token') assert(after.some(value => value.props.title === 'Token details'));
   } finally { f.close(); }
 });

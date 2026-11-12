@@ -135,7 +135,7 @@ const action = (tree: Element, name: string) => {
   assert.ok(node, name);
   node.props.onPress();
 };
-const navigation = { registerBack: () => () => {}, setImmersive() {} };
+const navigation = { registerBack: () => () => {}, beginNavigation() {}, setImmersive() {} };
 
 test('guardian status exposes recovery alerts after policy observation and retires old actions', async () => {
   const lifetime = new AbortController();
@@ -265,7 +265,7 @@ test('Tools Back delegates to the active guardian child before closing its lifet
   const tools = screen('RealTools', {
     accountLabel: 'Smart account', networkLabel: 'Ethereum', watchOnly: false,
     onAccounts() {}, onBack() {}, onGuardianClose() { closed++; },
-    navigation: { registerBack(handler: () => boolean) { hardware = handler; return () => {}; }, setImmersive() {} },
+    navigation: { registerBack(handler: () => boolean) { hardware = handler; return () => {}; }, beginNavigation() {}, setImmersive() {} },
     guardianRecovery: { scope: 'guardian-owner', address: '0x' + '11'.repeat(20), async read() { return { status: 'no-compatible-policy' }; } },
   });
   action(tools.render(), 'Guardian recovery');

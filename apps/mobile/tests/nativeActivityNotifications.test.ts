@@ -50,21 +50,21 @@ const transfer = (hash = 'a', changes = {}) => ({ hash: '0x' + hash.repeat(64), 
 
 test('load does not prompt; enrollment baselines history and first external incoming movement into an empty account alerts', async () => {
   const h = harness(); await h.coordinator.load(); assert.equal(h.prompts, 0);
-  await h.coordinator.enable([scope()], () => undefined); assert.equal(h.prompts, 1); assert.equal(h.registered, true); assert.deepEqual(h.posted, []);
+  await h.coordinator.enable([scope()], () => undefined, { requestPermission: true }); assert.equal(h.prompts, 1); assert.equal(h.registered, true); assert.deepEqual(h.posted, []);
   h.rows([transfer()]); await h.coordinator.runForeground(); assert.equal(h.posted.length, 1);
   await h.coordinator.runForeground(); assert.equal(h.posted.length, 1);
   assert.equal(h.document.events[0]?.fact.direction, 'incoming');
 });
 
 test('existing history is silent, and pending-to-confirmed produces one distinct notice', async () => {
-  const h = harness(); h.rows([transfer('b')]); await h.coordinator.enable([scope()], () => undefined); assert.equal(h.posted.length, 0);
+  const h = harness(); h.rows([transfer('b')]); await h.coordinator.enable([scope()], () => undefined, { requestPermission: true }); assert.equal(h.posted.length, 0);
   h.rows([transfer('b', { blockNumber: 5, timestamp: 101, txreceipt_status: '1' })]);
   await h.coordinator.runForeground(); await h.coordinator.runForeground(); assert.equal(h.posted.length, 1);
   assert.equal(h.document.events[0]?.fact.kind, 'transaction-confirmed');
 });
 
 test('revocation during an outstanding public read prevents posting and old taps cannot route', async () => {
-  const h = harness(); await h.coordinator.enable([scope()], () => undefined); h.rows([transfer()]);
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: true }); h.rows([transfer()]);
   let release!: () => void, started!: () => void;
   const waiting = new Promise<void>((resolve) => { started = resolve; });
   h.hook(async () => { started(); await new Promise<void>((resolve) => { release = resolve; }); });
@@ -76,7 +76,7 @@ test('revocation during an outstanding public read prevents posting and old taps
 
 test('a revoked later account in an already captured batch is never read', async () => {
   const h = harness(), a = scope('watch:a'), b = scope('watch:b');
-  await h.coordinator.enable([a, b], () => undefined); h.reads.length = 0;
+  await h.coordinator.enable([a, b], () => undefined, { requestPermission: true }); h.reads.length = 0;
   const started = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   h.hook(async value => { if (value.id === a.id) { started.resolve(); await release.promise; } });
   const poll = h.coordinator.runForeground(); await started.promise;
@@ -85,7 +85,7 @@ test('a revoked later account in an already captured batch is never read', async
 });
 
 test('revocation aborts the admitted scope before its later RPC steps', async () => {
-  const h = harness(); await h.coordinator.enable([scope()], () => undefined);
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: true });
   const started = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   let signal: AbortSignal | undefined, laterSteps = 0;
   h.hook(async (_value, admittedSignal, guard) => { signal = admittedSignal; started.resolve(); await release.promise; guard(); laterSteps++; });
@@ -95,7 +95,7 @@ test('revocation aborts the admitted scope before its later RPC steps', async ()
 });
 
 test('taps use local enrolled metadata and are rejected after account removal or by current-catalog validation', async () => {
-  const h = harness(); await h.coordinator.enable([scope()], () => undefined); h.rows([transfer()]); await h.coordinator.runForeground();
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: true }); h.rows([transfer()]); await h.coordinator.runForeground();
   const id = h.posted[0]!; h.coordinator.recordTap(id);
   assert.equal(h.coordinator.getSnapshot().pendingEventId, id);
   assert.equal(await h.coordinator.resolveTapAfterUnlock(id, () => false), null);
@@ -107,7 +107,7 @@ test('taps use local enrolled metadata and are rejected after account removal or
 });
 
 test('resolving one notification does not consume a newer tap', async () => {
-  const h = harness(); await h.coordinator.enable([scope()], () => undefined);
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: true });
   h.rows([transfer('a')]); await h.coordinator.runForeground();
   h.rows([transfer('a'), transfer('b')]); await h.coordinator.runForeground();
   const [first, second] = h.posted; assert.ok(first && second);
@@ -118,13 +118,13 @@ test('resolving one notification does not consume a newer tap', async () => {
 });
 
 test('scope replacement revokes changed endpoints and never enrolls unselected accounts', async () => {
-  const h = harness(); await h.coordinator.enable([scope()], () => undefined);
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: true });
   await h.coordinator.replaceScopes([{ ...scope(), network: { ...scope().network, id: 'changed' } } as NativeNotificationScope, scope('watch:two')]);
   assert.deepEqual(h.coordinator.getSnapshot().enabledScopeIds, []);
 });
 
 test('OS permission revocation cancels old notices and unregisters monitoring without prompting', async () => {
-  const h = harness(); await h.coordinator.enable([scope()], () => undefined); h.rows([transfer()]); await h.coordinator.runForeground();
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: true }); h.rows([transfer()]); await h.coordinator.runForeground();
   h.permission('denied'); await h.coordinator.runForeground();
   assert.equal(h.prompts, 1); assert.equal(h.registered, false); assert.deepEqual(h.coordinator.getSnapshot().enabledScopeIds, []);
   assert.ok(h.removed.includes(h.posted[0]!));
@@ -132,13 +132,13 @@ test('OS permission revocation cancels old notices and unregisters monitoring wi
 
 test('concurrent foreground triggers coalesce and bounded runs advance through all enabled scopes', async () => {
   const h = harness(); const scopes = Array.from({ length: 12 }, (_, i) => scope(`watch:${String(i).padStart(2, '0')}`));
-  await h.coordinator.enable(scopes, () => undefined); h.reads.length = 0;
+  await h.coordinator.enable(scopes, () => undefined, { requestPermission: true }); h.reads.length = 0;
   await Promise.all([h.coordinator.runForeground(), h.coordinator.runForeground()]); assert.equal(h.reads.length, 8);
   await h.coordinator.runForeground(); assert.equal(new Set(h.reads).size, 12);
 });
 
 test('independent foreground and background coordinators atomically claim one notification attempt', async () => {
-  const h = harness(); await h.coordinator.enable([scope()], () => undefined); h.rows([transfer()]);
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: true }); h.rows([transfer()]);
   const other = h.secondCoordinator();
   await Promise.all([h.coordinator.runForeground(), other.runForeground()]);
   assert.equal(h.posted.length, 1);
@@ -149,19 +149,19 @@ test('independent foreground and background coordinators atomically claim one no
 test('stale enrollment after an OS permission prompt never persists the old account', async () => {
   const h = harness(); let current = true;
   h.promptHook(async () => { current = false; });
-  await assert.rejects(h.coordinator.enable([scope()], () => { if (!current) throw new Error('stale owner'); }));
+  await assert.rejects(h.coordinator.enable([scope()], () => { if (!current) throw new Error('stale owner'); }, { requestPermission: true }));
   assert.equal(h.document.scopes.length, 0); assert.equal(h.posted.length, 0);
 });
 
 test('owner loss while the first observation is in flight rolls back only the new enrollment', async () => {
   const h = harness(); let current = true;
   h.hook(async () => { current = false; });
-  await assert.rejects(h.coordinator.enable([scope()], () => { if (!current) throw new Error('stale owner'); }));
+  await assert.rejects(h.coordinator.enable([scope()], () => { if (!current) throw new Error('stale owner'); }, { requestPermission: true }));
   assert.equal(h.document.scopes.length, 0); assert.equal(h.posted.length, 0); assert.equal(h.registered, false);
 });
 
 test('OS presentation can reenter storage, and revocation during posting removes the late notice', { timeout: 1000 }, async () => {
-  const h = harness(); await h.coordinator.enable([scope()], () => undefined); h.rows([transfer()]);
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: true }); h.rows([transfer()]);
   let release!: () => void, started!: () => void;
   const waiting = new Promise<void>((resolve) => { started = resolve; });
   h.postHook(async (id) => {
@@ -174,7 +174,7 @@ test('OS presentation can reenter storage, and revocation during posting removes
 });
 
 for (const fault of ['post', 'prune'] as const) test(`a transient ${fault} failure retries through load on foreground resume`, async () => {
-  const h = harness(); await h.coordinator.enable([scope()], () => undefined);
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: true });
   let timer: (() => void) | undefined, changed: ((state: string) => void) | undefined;
   const order: string[] = [], tick = () => new Promise<void>(resolve => setImmediate(resolve));
   h.hook(async () => { order.push('read'); });
@@ -197,7 +197,7 @@ for (const fault of ['post', 'prune'] as const) test(`a transient ${fault} failu
 });
 
 test('unavailable retries never read public endpoints through corrupt storage or denied permission', async () => {
-  const h = harness(); await h.coordinator.enable([scope()], () => undefined); h.reads.length = 0;
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: true }); h.reads.length = 0;
   h.storageUnavailable(true); await assert.rejects(h.coordinator.runForeground());
   await h.coordinator.runForeground(); assert.equal(h.coordinator.getSnapshot().status, 'unavailable'); assert.deepEqual(h.reads, []);
   h.storageUnavailable(false); h.permission('denied'); await h.coordinator.runForeground();
@@ -206,7 +206,7 @@ test('unavailable retries never read public endpoints through corrupt storage or
 
 
 test('stale catalogue reconciliation rolls back instead of pruning a current enrollment', async () => {
-  const h = harness(); await h.coordinator.enable([scope()], () => undefined);
+  const h = harness(); await h.coordinator.enable([scope()], () => undefined, { requestPermission: true });
   let active = true, release!: () => void, started!: () => void;
   const blocked = new Promise<void>(resolve => { started = resolve; });
   h.commitHook(async () => { h.commitHook(undefined); started(); await new Promise<void>(resolve => { release = resolve; }); });
@@ -221,7 +221,7 @@ const customNetwork = createNativeNetwork({ ...getNativeNetwork('ethereum'), id:
 for (const network of [getNativeNetwork('base'), customNetwork]) test(`unsupported ${network.id} transaction-only enrollment is refused before permission or storage`, async () => {
   const h = harness(), unsupported = { ...scope(), network };
   assert.deepEqual(notificationCapabilities(unsupported), { transactions: false, guardian: false });
-  await assert.rejects(h.coordinator.enable([unsupported], () => undefined), /Alerts are unavailable/);
+  await assert.rejects(h.coordinator.enable([unsupported], () => undefined, { requestPermission: true }), /Alerts are unavailable/);
   assert.equal(h.prompts, 0); assert.equal(h.initialized, 0); assert.equal(h.registered, false);
   assert.equal(h.document.scopes.length, 0); assert.deepEqual(h.reads, []);
 });
@@ -229,7 +229,7 @@ for (const network of [getNativeNetwork('base'), customNetwork]) test(`unsupport
 test('guardian-only coverage can be explicitly enrolled without claiming transaction coverage', async () => {
   const h = harness(), guardianOnly = { ...scope(), network: customNetwork, guardian: true };
   assert.deepEqual(notificationCapabilities(guardianOnly), { transactions: false, guardian: true });
-  await h.coordinator.enable([guardianOnly], () => undefined);
+  await h.coordinator.enable([guardianOnly], () => undefined, { requestPermission: true });
   assert.equal(h.prompts, 1); assert.deepEqual(h.coordinator.getSnapshot().enabledScopeIds, [guardianOnly.id]);
 });
 

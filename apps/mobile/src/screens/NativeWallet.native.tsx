@@ -25,6 +25,7 @@ import { authorizePublicView, isNativeCredentialPromptActive } from '../platform
 import { isCameraPermissionPromptActive } from '../platform/cameraPermission';
 import { OrphanedStorageRecovery } from './OrphanedStorageRecovery';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
+import { NotificationPermissionReturn, type NotificationReturnContext, type NotificationReturn } from '../notifications/permissionReturn';
 import { AutoLockSettings, type IdlePreferenceSave } from './AutoLockSettings';
 import { BackupVerification } from './BackupVerification';
 import { nativeAccountSelection } from '../core/accountDirectory';
@@ -340,10 +341,17 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     backupCopyOwner.current = null;
     setPhrase(''); setPresentation(null);
   }, []);
+  const [notificationReturnWake, wakeNotificationReturn] = useState(0);
+  const [permissionReturn] = useState(() => new NotificationPermissionReturn(() => wakeNotificationReturn(value => value + 1)));
+  const [notificationReturn, setNotificationReturn] = useState<NotificationReturn | null>(null);
+  const permissionReturnContext = useRef<() => NotificationReturnContext | null>(() => null);
+  const cancelNotificationReturn = useCallback(() => { permissionReturn.discard(); setNotificationReturn(null); }, [permissionReturn]);
   const revoke = useCallback((background = false) => {
     // The AppState owner records exact Suite suspension before authority.lock
     // synchronously revalidates and removes the old request consent.
     const local = controllersRef.current;
+    if (background) permissionReturn.pause(permissionReturnContext.current()); else permissionReturn.discard();
+    setNotificationReturn(null);
     if (viewUnlocking.current) publicViewLock.cancelUnlock();
     if (background === true) {
       local?.trezor.background();
@@ -370,7 +378,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     setRecoveryActivity(null); setResumeGuardianScope(null); setTransactionActivity(null);
     controllersRef.current?.keyExport.cancel(); controllersRef.current?.backup.cancel(); controllersRef.current?.authority.lock();
     Keyboard.dismiss(); clearSecrets(); setSendDraft(null); setSmartResumeId(null); setInfrastructureResumeId(null); setInfrastructureReviewNext(false); if (!recoveryRef.current && !retainRemoval) setStage('choose'); setError('');
-  }, [clearSecrets, lockNoteRestore, controllersRef]);
+  }, [clearSecrets, lockNoteRestore, controllersRef, permissionReturn]);
   const lockWallet = useCallback(() => {
     // Deliberate and idle locks survive reopening; background retirement does not.
     try { void publicViewLock.lock().catch(() => undefined); } finally { revoke(); }
@@ -514,8 +522,23 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     Number(getNativeNetwork(snapshot.account.network, catalogue?.networks).chainId) === PRIVACY_CHAIN_ID;
   const shellIdentity = stage === 'choose' && snapshot.phase === 'ready' && snapshot.account && catalogue
     ? `${catalogue.active.accountId}:${snapshot.account.network}` : null;
-  const shell = useRealShell(shellIdentity, currentShellScope, exit);
+  const shell = useRealShell(shellIdentity, currentShellScope, exit, permissionReturn.discard);
   const restoreRoot = shell.restoreRoot;
+  useLayoutEffect(() => {
+    permissionReturnContext.current = () => {
+      try {
+        const local = controllersRef.current, state = local?.authority.getSnapshot(), saved = local?.authority.getCatalogue();
+        const current = custodyContext(state, saved);
+        if (!mounted.current || !local || !current || publicViewLock.getSnapshot().phase !== 'unlocked' ||
+            nativeLifecycle.current(screenToken.current) !== local || recoveryRef.current || removalRef.current) return null;
+        return { owner: local, identity: current.identity, scopes: local.getNotificationChoices().map(choice => choice.scope) };
+      } catch { return null; }
+    };
+    if (AppState.currentState !== 'active' || !shellIdentity) return;
+    const returned = permissionReturn.take(permissionReturnContext.current());
+    if (returned) { setNotificationReturn(returned); restoreRoot('settings', shellIdentity); }
+  }, [notificationReturnWake, shellIdentity, snapshot.revision, permissionReturn, restoreRoot, controllersRef]);
+  useLayoutEffect(() => () => permissionReturn.discard(), [permissionReturn]);
   useLayoutEffect(() => { notificationView.current = { stage, busy, immersive: shell.immersive }; });
   const notificationOwner = controllerOwner;
   const notificationSettings = notificationOwner && snapshot.account && catalogue && snapshot.phase === 'ready' ? {
@@ -528,6 +551,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         throw Error('CANCELLED');
     },
     readChoices: () => notificationOwner.getNotificationChoices(),
+    onPermissionPresentation: (scope: import('../notifications/types').NativeNotificationScope, result: Promise<import('../notifications/types').NotificationPermissionResult>) => {
+      setNotificationReturn(null); permissionReturn.capture(permissionReturnContext.current(), scope, result);
+    },
+    cancelPermissionReturn: cancelNotificationReturn,
   } : undefined;
   const notificationCatalogueRevision = catalogue?.revision;
   useEffect(() => {
@@ -587,6 +614,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         readyContext()?.context !== recoveryActivity.context)) setRecoveryActivity(null);
   }, [recoveryActivity, snapshot.revision, readyContext, controllersRef]);
   const openStage = (next: Stage, sendTarget?: SendTarget) => {
+    cancelNotificationReturn();
     const local = controllersRef.current;
     const owner = local?.authority.getSnapshot();
     const capturedCatalogue = local?.authority.getCatalogue();
@@ -1461,6 +1489,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     if (authority.getSnapshot().phase === 'ready' && noteRestore.resume()) return;
     if (authority.getSnapshot().phase === 'ready')
       setStage('choose');
+    if (authority.getSnapshot().phase === 'ready' && AppState.currentState === 'active') permissionReturn.resume(permissionReturnContext.current());
   };
 
   useLayoutEffect(() => { finishPublicOpen.current = finishUnlock; });
@@ -1988,7 +2017,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       onPrivateNotes={() => openStage('private-notes')}
       onSentryKeys={sentryAvailable ? () => openStage('sentry-keys') : undefined}
       onBack={() => shell.select('wallet')} navigation={shell.navigation} />;
-    else content = <RealSettings navigation={shell.navigation} notifications={notificationSettings} accountLabel={accountLabel} watchOnly={false} onSecurity={() => openStage('security')} backupRequired={snapshot.backup !== 'confirmed'} onBackup={() => openStage('backup-intro')} onConnections={connectionView ? () => openStage('connections') : undefined}
+    else content = <RealSettings navigation={shell.navigation} notifications={notificationSettings} notificationReturn={notificationReturn} accountLabel={accountLabel} watchOnly={false} onSecurity={() => openStage('security')} backupRequired={snapshot.backup !== 'confirmed'} onBackup={() => openStage('backup-intro')} onConnections={connectionView ? () => openStage('connections') : undefined}
       onInfrastructure={canSign && openSmartInfrastructure && !utxo && (selectedAccountType === 'HDAccount' || selectedAccountType === 'Imported' || selectedAccountType === 'Ledger' && !!ledgerConnection || selectedAccountType === 'Trezor' && !!trezorView) ? () => { setInfrastructureResumeId(null); setInfrastructureReviewNext(false); openStage('smart-infrastructure'); } : undefined}
       activityReset={canSign && catalogue && snapshot.account ? {
         scope: custodyContext(snapshot, catalogue)!.context,
@@ -2007,7 +2036,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         },
       } : undefined}
       onLock={lockWallet} onUpdate={openWalletUpdate} onBack={() => shell.select('wallet')} />;
-    return <RealAppShell tab={shell.tab} onTab={tab => { cancelAccountNavigation(); notificationTransition.current = null; shell.select(tab); }} immersive={shell.immersive}>
+    return <RealAppShell tab={shell.tab} onTab={tab => { cancelNotificationReturn(); cancelAccountNavigation(); notificationTransition.current = null; shell.select(tab); }} immersive={shell.immersive}>
       {recoveryActivity && recoveryActivity.context === guardianContext && <Button title={t("mobile.walletViews.returnToRecovery")} variant="secondary" onPress={() => void returnToRecovery().catch(() => undefined)} />}
       {snapshot.error && <SafeAreaView edges={['top']} style={{ paddingHorizontal: 24, paddingBottom: 8 }}><NativeCustodyFeedback error={snapshot.error} /></SafeAreaView>}
       {content}

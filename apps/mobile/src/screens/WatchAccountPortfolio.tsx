@@ -90,7 +90,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
   const pendingAmount = pending === null ? null : formatBalanceDelta(pending, network.decimals);
   const loading = snapshot.balance.status === 'loading';
   const back = () => { invalidateActions(); if (!handleBack()) onExit(); };
-  const receive = () => { if (!current(snapshot.generation) || !snapshot.capabilities.receive || !address) return; receiveReturn.current = mode === 'asset' ? 'asset' : 'home'; invalidateActions(); setMode('receive'); };
+  const receive = () => { if (!current(snapshot.generation) || !snapshot.capabilities.receive || !address) return; navigation?.beginNavigation(); receiveReturn.current = mode === 'asset' ? 'asset' : 'home'; invalidateActions(); setMode('receive'); };
   const faucetCard = address && network.kind === 'evm' && <TestnetFaucetCard registration={getNativeNetwork(network.id)} busy={busy} opening={openingFaucet} onCopy={mode === 'receive' ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
   const feedbackView = !!feedback && <Text accessibilityRole={feedbackError ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[s.feedback, feedbackError && { color: colors.red }]}>{feedback}</Text>;
   return <SafeAreaView style={s.safe} edges={navigation && mode === 'home' && !tokenTitle ? ['top'] : ['top', 'bottom']}>
@@ -136,17 +136,17 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
             <Text accessibilityRole="header" style={s.assetHeading}>{t('buttons.assets')}</Text>
             <Card><Row title={network.symbol} subtitle={network.name} icon={<Coin id={utxo ? network.symbol : network.id} fallbackSymbol={utxo ? network.symbol : undefined} size={32} />}
               right={<Text style={s.assetBalance} accessibilityLabel={hideBalances ? t('mobile.activityViews.watchAccountPortfolio.balanceHidden') : `${amount ?? t('settings.unavailable')} ${network.symbol}`}>{hideBalances ? HIDDEN_BALANCE : amount === null ? '—' : compactActivityAmountLabel(amount)} {network.symbol}</Text>}
-              onPress={() => { if (current(snapshot.generation)) { assetGeneration.current = snapshot.generation; setMode('asset'); } }} last /></Card>
+              onPress={() => { if (current(snapshot.generation)) { navigation?.beginNavigation(); assetGeneration.current = snapshot.generation; setMode('asset'); } }} last /></Card>
           </View>}
         </>}
         <View style={mode === 'asset' ? { display: 'none' } : s.assetList} accessibilityElementsHidden={mode === 'asset'} aria-hidden={mode === 'asset'}>
           {network.kind === 'utxo' && supportsSptUtxoChain(network.chainId) && <NativeSptAssets
             key={`${account.id}:${network.id}`} chainId={network.chainId} holdings={snapshot.balance.status === 'available' && 'kind' in snapshot.balance && snapshot.balance.kind === 'utxo' ? snapshot.balance.assets ?? null : null}
-            loading={loading} onRefresh={() => void authority.refresh()} onModeChange={setTokenTitle} onBackHandlerChange={setTokenBack} onReceive={receive} />}
+            loading={loading} onRefresh={() => void authority.refresh()} onModeChange={setTokenTitle} onNavigation={navigation?.beginNavigation} onBackHandlerChange={setTokenBack} onReceive={receive} />}
         </View>
         {mode === 'home' && !tokenTitle && <>
           {faucetCard}
-          <Card><Row title={t('transactions.replay.network')} subtitle={network.name} icon="globe" onPress={utxo ? undefined : () => { invalidateActions(); setMode('networks'); }} /><Row title={t('mobile.activityViews.watchAccountPortfolio.hidePublicAccount')} icon="lock" onPress={onLock} last /></Card>
+          <Card><Row title={t('transactions.replay.network')} subtitle={network.name} icon="globe" onPress={utxo ? undefined : () => { navigation?.beginNavigation(); invalidateActions(); setMode('networks'); }} /><Row title={t('mobile.activityViews.watchAccountPortfolio.hidePublicAccount')} icon="lock" onPress={onLock} last /></Card>
         </>}
       </>}
       {mode !== 'receive' && feedbackView}

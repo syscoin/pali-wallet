@@ -1,3 +1,5 @@
+import { NotificationPermissionReturn } from '../src/notifications/permissionReturn.ts';
+import { watchNotificationChoices } from '../src/notifications/choices.ts';
 import * as pairingLinks from '../src/connections/pairingLinks.ts';
 import * as activityFiltering from '../src/activity/activityFiltering.ts';
 import * as syscoinAssetIds from '../../../source/shared/syscoinAssetIds.ts';
@@ -399,6 +401,8 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
     './src/screens/Onboarding': onboarding, './src/screens/NativeWallet': {}, './src/screens/WalletAccounts': accounts,
     './src/screens/WatchSession': {}, './src/core/watchAccounts': { WatchAccounts }, './src/core/accountDirectory': {},
     './src/screens/NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' },
+    './src/notifications/choices': { watchNotificationChoices },
+    './src/notifications/permissionReturn': { NotificationPermissionReturn },
     './src/notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
     './src/platform/cameraPermission': { isCameraPermissionPromptActive: () => false },
     './src/design/Studio': {}, './src/screens/Settings': {}, './src/core/index': core,

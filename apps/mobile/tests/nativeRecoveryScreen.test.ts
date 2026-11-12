@@ -1,3 +1,5 @@
+import { NotificationPermissionReturn } from '../src/notifications/permissionReturn.ts';
+import type { NotificationPermissionResult } from '../src/notifications/types.ts';
 import { Transaction } from 'ethers/transaction';
 import { PALI_RECOVERY_ALERTS_URL } from '../../../source/shared/smartAccountLinks.ts';
 import { getNativeGuardianRecoveryChoices } from '../src/smartAccount/guardianRecovery.ts';
@@ -69,7 +71,8 @@ const walletScreenPorts = {
   './publicSendDraft': publicSendDraft,
   './recoveryCopy': recoveryCopy,
   './NativeAccountOverview': { NativePortfolioRoute: 'NativePortfolio' },
-  '../notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
+  '../notifications/permissionReturn': { NotificationPermissionReturn },
+    '../notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
     '../platform/cameraPermission': { isCameraPermissionPromptActive: () => false },
   '../activity/accountActivity': { AccountActivityController: class {} },
   './BackupIntroduction': { BackupIntroduction: 'BackupIntroduction' },
@@ -506,6 +509,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     begin(mode: string) { assert(depositMode && mode === 'export'); return true; } };
   Object.assign(dependencies, {
     ...walletScreenPorts,
+    '../notifications/permissionReturn': { NotificationPermissionReturn },
     '../notifications/service': { nativeActivityNotifications: notificationPort, isNotificationPermissionPromptActive: () => false },
     '../platform/cameraPermission': { isCameraPermissionPromptActive: () => false },
     '../portfolio/nativePortfolio': { NativePortfolioController: class {
@@ -2009,5 +2013,46 @@ for (const boundary of ['new-child', 'background', 'context'] as const) test(`re
       assert.notEqual(f.render().type, 'NativeSecurity');
       assert(!JSON.stringify(f.render()).includes('abandon'));
     }
+  } finally { f.dispose(); }
+});
+
+async function notificationReturnFixture() {
+  const f = await walletFeedbackFixture(true, false, undefined, undefined, false, 'evm');
+  const shell = all(f.render()).find(node => node.type === 'RealAppShell'); assert(shell);
+  (shell.props.onTab as (tab: string) => void)('settings');
+  const settings = all(f.render()).find(node => node.type === 'RealSettings'); assert(settings);
+  const target = settings.props.notifications as import('../src/screens/ActivityNotifications').NotificationSettingsTarget;
+  const scope = target.readChoices().find(choice => choice.scope.network.id === 'ethereum')!.scope;
+  const result = Promise.withResolvers<NotificationPermissionResult>();
+  target.onPermissionPresentation!(scope, result.promise);
+  return { f, settings, target, scope, result,
+    returned() { f.render(); f.render(); return all(f.render()).find(node => node.type === 'RealSettings')?.props.notificationReturn; } };
+}
+
+for (const permission of ['granted', 'denied'] as const) test(`native ${permission} permission return restores Alerts after real lock and fresh unlock`, async () => {
+  const { f, target, scope, result, returned } = await notificationReturnFixture();
+  try {
+    f.emit('change', 'background'); f.render();
+    assert.equal(f.state().phase, 'locked'); assert.throws(target.assertCurrent, /CANCELLED/);
+    result.resolve(permission); await lifecycleTick();
+    f.emit('change', 'active'); await lifecycleTick();
+    assert.deepEqual(returned(), { scopeKey: JSON.stringify(scope), permission });
+    assert.equal(f.state().phase, 'ready'); assert.throws(target.assertCurrent, /CANCELLED/);
+    f.emit('focus'); await lifecycleTick(); returned();
+    assert.equal(f.notificationRoutes.filter(route => route.tab === 'settings' && route.identity !== 'tab-switch').length, 1);
+  } finally { f.dispose(); }
+});
+
+for (const change of ['network', 'back', 'lock'] as const) test(`native ${change} retires a pending Alerts permission return`, async () => {
+  const { f, settings, target, result, returned } = await notificationReturnFixture();
+  try {
+    if (change === 'back') target.cancelPermissionReturn!();
+    if (change === 'lock') (settings.props.onLock as () => void)();
+    f.emit('change', 'background'); f.render();
+    f.emit('change', 'active'); await lifecycleTick(); f.render();
+    if (change === 'network') f.publish({ account: { address: '0x' + '11'.repeat(20), network: 'base' } });
+    result.resolve('granted'); await lifecycleTick();
+    assert.equal(returned() ?? null, null);
+    assert.equal(f.notificationRoutes.filter(route => route.tab === 'settings' && route.identity !== 'tab-switch').length, 0);
   } finally { f.dispose(); }
 });

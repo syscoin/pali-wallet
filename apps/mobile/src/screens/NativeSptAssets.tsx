@@ -16,12 +16,13 @@ type Props = {
   onReceive?(): void;
   onRefresh(): void;
   onModeChange(title: string | null): void;
+  onNavigation?(): void;
   onBackHandlerChange(handler: (() => boolean) | null): void;
 };
 const PAGE_SIZE = 20;
 
 /** Public asset inventory from the shared Blockbook account parser; no extra lookup. */
-export function NativeSptAssets({ holdings, chainId, loading, onSend, onReceive, onRefresh, onModeChange, onBackHandlerChange }: Props) {
+export function NativeSptAssets({ holdings, chainId, loading, onSend, onReceive, onRefresh, onModeChange, onNavigation, onBackHandlerChange }: Props) {
   useNativeTranslation();
   const { hidden: hideBalances } = useBalancePrivacy();
   const [query, setQuery] = useState('');
@@ -64,7 +65,7 @@ export function NativeSptAssets({ holdings, chainId, loading, onSend, onReceive,
       <IdleTextInput accessibilityLabel={t('mobile.activityViews.nativeSptAssets.searchTokens')} placeholder={t('mobile.activityViews.nativeSptAssets.searchNameOrAssetID')} placeholderTextColor={colors.muted} value={query} onChangeText={value => { setQuery(value); setPage(0); }} maxLength={128} autoCorrect={false} autoCapitalize="none" style={s.search} />
       <Card>{rows.map((item, index) => <Row dense key={item.assetGuid} title={item.symbol} icon={<Coin id="spt" asset={chainId === undefined ? undefined : { kind: 'spt', chainId, assetGuid: item.assetGuid, decimals: item.decimals }} fallbackSymbol={item.symbol} size={32} />}
         subtitle={`${hideBalances ? HIDDEN_BALANCE : formatBaseUnits(item.confirmedUnits, item.decimals)} · ${t('mobile.activityViews.nativeSptAssets.assetId', { id: item.assetGuid })}${item.pendingDeltaUnits !== '0' ? ` · ${t('mobile.activityViews.nativeSptAssets.pendingActivity')}` : ''}`}
-        onPress={() => setSelected({ assetGuid: item.assetGuid, symbol: item.symbol })} last={index === rows.length - 1} />)}</Card>
+        onPress={() => { onNavigation?.(); setSelected({ assetGuid: item.assetGuid, symbol: item.symbol }); }} last={index === rows.length - 1} />)}</Card>
       {!rows.length && <Text style={s.muted}>{t('mobile.activityViews.nativeSptAssets.noMatchingTokens')}</Text>}
       {lastPage > 0 && <View style={s.pages}>
         <Button title={t('mobile.noteFlows.inventory.previous')} variant="secondary" size="compact" disabled={currentPage === 0} onPress={() => setPage(currentPage - 1)} />

@@ -49,7 +49,7 @@ async function fixture(language = 'en') {
     NativeNetworks: { controller: { getSnapshot: () => ({ revision: 3, selectedId: 'ethereum', networks: [] }),
       subscribe: () => () => {}, cancel() {} }, onBack() {} },
     RealTools: { accountLabel: account.label, networkLabel: 'Ethereum', watchOnly: false, onAccounts() {}, onBack() {},
-      navigation: { registerBack: () => () => {}, setImmersive() {} } },
+      navigation: { registerBack: () => () => {}, beginNavigation() {}, setImmersive() {} } },
   };
   const imported = {
     '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'biometrics', icon: 'fingerprint' }) },
