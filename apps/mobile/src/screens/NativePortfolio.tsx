@@ -216,7 +216,9 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
     if (!openReceive && !initialReceiveScope) { requestedReceive.current = false; return; }
     if (requestedReceive.current || !account || !canReceive || !lifecycle.current.alive || AppState.currentState !== 'active' || !model.isCurrent(account)) return;
     requestedReceive.current = true;
-    if (!initialReceiveScope) requestReceive();
+    // A new network continuation has no reusable backup acknowledgement.
+    // Open its warning before consuming the one-shot Receive intent.
+    if (!initialReceiveScope || !receiving) requestReceive();
     // Receive is a one-shot navigation intent, not a persistent mode to replay on remount.
     onReceiveIntentConsumed?.();
   });
