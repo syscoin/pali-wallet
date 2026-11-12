@@ -1,6 +1,7 @@
 import { AUTOMATIC_FEE, type EvmFeeChoice, type EvmFeeRates } from '../../../../source/shared/transactionFeeChoice';
 import { NetworkFeeSheet } from './NetworkFeeSheet';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
+import { isCameraPermissionPromptActive } from '../platform/cameraPermission';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
@@ -33,7 +34,6 @@ import {
   BackHandler,
   Keyboard,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   StyleSheet,
   View,
@@ -252,6 +252,10 @@ export function NativeSmartAccountSend({
         if (owner.current === current && current.returning) close();
       });
   }, [retireRecipient, closeScanner]);
+  const userBack = useCallback(() => {
+    if (scannerOwner.current) { closeScanner(); return; }
+    back();
+  }, [back, closeScanner]);
   useEffect(() => {
     const current: SendOwner = {
       active: true,
@@ -262,11 +266,17 @@ export function NativeSmartAccountSend({
     };
     owner.current = current;
     const hardware = BackHandler.addEventListener('hardwareBackPress', () => {
-      back();
+      userBack();
       return true;
     });
-    const background = AppState.addEventListener('change', state => { if (state !== 'active' && !(current.authentication && allowsPrivateAuthenticationInterruption(current.authentication, state))) back(); });
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { if (!(current.authentication && allowsPrivateAuthenticationInterruption(current.authentication, 'blur'))) back(); }) : undefined;
+    const background = AppState.addEventListener('change', state => {
+      if (state !== 'active' && !(state === 'inactive' && isCameraPermissionPromptActive()) &&
+          !(current.authentication && allowsPrivateAuthenticationInterruption(current.authentication, state))) back();
+    });
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
+      if (!isCameraPermissionPromptActive() &&
+          !(current.authentication && allowsPrivateAuthenticationInterruption(current.authentication, 'blur'))) back();
+    }) : undefined;
     return () => {
       current.active = false;
       current.authentication?.retire();
@@ -277,7 +287,7 @@ export function NativeSmartAccountSend({
       hardware.remove();
       background.remove(); blur?.remove();
     };
-  }, [back, retireRecipient, closeScanner, open, account.address, account.network, account.revision, context.registrationHash, token, collectible]);
+  }, [back, userBack, retireRecipient, closeScanner, open, account.address, account.network, account.revision, context.registrationHash, token, collectible]);
   const review = async () => {
     const current = owner.current;
     if (!current.active || current.busy || !current.authentication || AppState.currentState !== 'active') return;
@@ -451,6 +461,14 @@ export function NativeSmartAccountSend({
         <NativeSmartAccountOperationScreen authentication={operationAuthentication} ledgerConnection={ledgerConnection} controller={controller} onBack={back} onViewTransaction={onViewTransaction} />
       </>
     );
+  if (scanner && scanner.account.address === account.address && scanner.account.network === account.network &&
+      scanner.account.revision === account.revision && scanner.registrationHash === context.registrationHash &&
+      sameScanDraft(scanner.scope, { open, account, context, recipientResolver, recipient, amount, tokenId, maximum, token, collectible }))
+    return <RecipientQrScanner onClose={closeScanner} onScan={address => {
+      if (!owner.current.active || owner.current !== scanner.owner || owner.current.busy || controller ||
+          scannerOwner.current !== scanner || !sameScanDraft(latestOwner.current, scanner.scope) || AppState.currentState !== 'active') return;
+      editRecipient(address);
+    }} />;
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <KeyboardAvoidingView
@@ -467,7 +485,7 @@ export function NativeSmartAccountSend({
           />
         } gap={16}>
           <Header title={collectible ? t("mobile.smartSendViews.sendCollectible") : t('mobile.smartSendViews.sendSymbol', { symbol })}
-            subtitle={`${accountLabel} · ${context.name}${context.testnet ? " " + t("mobile.smartSendViews.testNetwork") : ''}`} onBack={back} />
+            subtitle={`${accountLabel} · ${context.name}${context.testnet ? " " + t("mobile.smartSendViews.testNetwork") : ''}`} onBack={userBack} />
           {onChangeAsset && !collectible ? <SendAssetSelector context={context} token={token} nativeAvailable={availableNative}
             items={inventory?.status === 'ready' && sameNativePortfolioAccount(inventory.account, account) ? inventory.items : assetChoices ?? []}
             loading={assetPickerOpen && !assetChoices && inventory?.status === 'loading'} unavailable={!assetChoices && inventory?.status === 'error'}
@@ -557,16 +575,6 @@ export function NativeSmartAccountSend({
               latestOwner.current.context.registrationHash !== context.registrationHash) return;
           retireRecipient(); setFeeSelection({ open, scope: feeScope, choice }); setFeeDialog(null); setError('');
         }} />}
-      {scanner && scanner.account.address === account.address && scanner.account.network === account.network &&
-        scanner.account.revision === account.revision && scanner.registrationHash === context.registrationHash &&
-        sameScanDraft(scanner.scope, { open, account, context, recipientResolver, recipient, amount, tokenId, maximum, token, collectible }) &&
-        <Modal visible animationType="slide" onRequestClose={closeScanner}>
-          <RecipientQrScanner onClose={closeScanner} onScan={address => {
-            if (!owner.current.active || owner.current !== scanner.owner || owner.current.busy || controller ||
-                scannerOwner.current !== scanner || !sameScanDraft(latestOwner.current, scanner.scope) || AppState.currentState !== 'active') return;
-            editRecipient(address);
-          }} />
-        </Modal>}
     </SafeAreaView>
   );
 }

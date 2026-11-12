@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createNotificationPermissionPresentation } from '../src/notifications/permissionPresentation.ts';
+import { createPermissionPresentation } from '../src/platform/permissionPresentation.ts';
 
 function fixture() {
   let state = 'active';
   const listeners = new Set<(state: string) => void>();
-  const presentation = createNotificationPermissionPresentation({ current: () => state,
+  const presentation = createPermissionPresentation({ current: () => state,
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; } });
   return { presentation, move(next: string) { state = next; for (const listener of listeners) listener(state); }, listeners };
 }
@@ -30,7 +30,7 @@ test('failed or concurrent requests cannot retain the exemption', async () => {
   assert.equal(f.presentation.isActive(), false);
 });
 test('a failed lifecycle subscription cannot retain the exemption', async () => {
-  const presentation = createNotificationPermissionPresentation({ current: () => 'active',
+  const presentation = createPermissionPresentation({ current: () => 'active',
     subscribe() { throw Error('subscription failed'); } });
   await assert.rejects(presentation.run(async () => 'granted'), /subscription failed/);
   assert.equal(presentation.isActive(), false);

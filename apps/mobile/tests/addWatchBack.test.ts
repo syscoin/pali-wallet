@@ -389,6 +389,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
     './src/screens/WatchSession': {}, './src/core/watchAccounts': { WatchAccounts }, './src/core/accountDirectory': {},
     './src/screens/NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' },
     './src/notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
+    './src/platform/cameraPermission': { isCameraPermissionPromptActive: () => false },
     './src/design/Studio': {}, './src/screens/Settings': {}, './src/core/index': core,
     './src/platform': { publicAccountRecords: { assertNetworkCurrent() {}, load: async () => ({ version: 1, records: [], accounts: [], utxoNetworks: UTXO_NETWORKS }), compareAndSet: async () => ({ version: 1, records: [], accounts: [], utxoNetworks: UTXO_NETWORKS }) },
       loadAccountSelection: async () => null, saveAccountSelection: async () => {}, balanceReader: {}, isNativePersistence: false },

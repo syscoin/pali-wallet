@@ -1,8 +1,8 @@
 import { AppState } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { createNotificationPermissionPresentation } from './permissionPresentation.ts';
+import { createPermissionPresentation } from '../platform/permissionPresentation.ts';
 
-const presentation = createNotificationPermissionPresentation({
+const presentation = createPermissionPresentation({
   current: () => AppState.currentState ?? 'unknown',
   subscribe(listener) {
     const subscription = AppState.addEventListener('change', listener);

@@ -460,6 +460,11 @@ export function NativeSend({
   }, [beforeClose, controller, retirePicker, retireResolution, setError, setScanner]);
   const close = useCallback(() => {
     if (!lifetime.current.alive || leaving.current) return;
+    if (scannerOwner.current) {
+      scannerOwner.current = null;
+      setScanner(null);
+      return;
+    }
     const current = controller.getSnapshot();
     if (current.phase === 'submitting') {
       Keyboard.dismiss();
@@ -718,6 +723,19 @@ export function NativeSend({
       (draftCollectible?.tokenStandard === 'ERC-721' ? !tokenId.trim() : !amount && !maximum)}
       onPress={prepare} testID="native-send-review" />
   ) : undefined;
+  if (scanner && scanner.account.address === account.address && scanner.account.network === account.network &&
+      scanner.account.revision === account.revision && scanner.registrationHash === context.registrationHash)
+    return <RecipientQrScanner onClose={closeScanner} onScan={address => {
+      const current = latestRecipientOwner.current, captured = scanner.scope;
+      if (!lifetime.current.alive || scannerOwner.current !== scanner || lifetime.current.epoch !== scanner.epoch ||
+          current.controller !== captured.controller || !sameNativePortfolioAccount(current.account, captured.account) ||
+          current.context.registrationHash !== captured.context.registrationHash || current.recipientResolver !== captured.recipientResolver ||
+          current.recipient !== captured.recipient || current.amount !== captured.amount || current.tokenId !== captured.tokenId ||
+          current.nonce !== captured.nonce || current.advanced !== captured.advanced || current.token !== captured.token || current.collectible !== captured.collectible ||
+          controller.getSnapshot().review ||
+          ['preparing', 'signing', 'submitting'].includes(controller.getSnapshot().phase)) return;
+      closeScanner(); setRecipient(address);
+    }} />;
   return (
     <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
       <KeyboardAvoidingView
@@ -1137,20 +1155,6 @@ export function NativeSend({
         onClose={() => setLedgerPicker(null)}
         onFinished={() => setLedgerPicker(null)}
       />}
-      {scanner && scanner.account.address === account.address && scanner.account.network === account.network &&
-        scanner.account.revision === account.revision && scanner.registrationHash === context.registrationHash && <Modal visible animationType="slide" onRequestClose={closeScanner}>
-        <RecipientQrScanner onClose={closeScanner} onScan={address => {
-          const current = latestRecipientOwner.current, captured = scanner.scope;
-          if (!lifetime.current.alive || scannerOwner.current !== scanner || lifetime.current.epoch !== scanner.epoch ||
-              current.controller !== captured.controller || !sameNativePortfolioAccount(current.account, captured.account) ||
-              current.context.registrationHash !== captured.context.registrationHash || current.recipientResolver !== captured.recipientResolver ||
-              current.recipient !== captured.recipient || current.amount !== captured.amount || current.tokenId !== captured.tokenId ||
-              current.nonce !== captured.nonce || current.advanced !== captured.advanced || current.token !== captured.token || current.collectible !== captured.collectible ||
-              controller.getSnapshot().review ||
-              ['preparing', 'signing', 'submitting'].includes(controller.getSnapshot().phase)) return;
-          closeScanner(); setRecipient(address);
-        }} />
-      </Modal>}
       <Modal
         visible={promptMatches(snapshot)}
         transparent

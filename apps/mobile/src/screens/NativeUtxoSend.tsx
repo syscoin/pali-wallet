@@ -8,7 +8,6 @@ import {
   BackHandler,
   Keyboard,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   StyleSheet,
   View,
@@ -228,6 +227,7 @@ export function NativeUtxoSendScreen({
     });
   };
   const close = () => {
+    if (scannerOwner.current) { closeScanner(); return; }
     if (review && !busy) {
       closeScanner(); send?.cancel(); setReview(null); setError(''); return;
     }
@@ -383,6 +383,12 @@ export function NativeUtxoSendScreen({
       testID="native-utxo-review"
     />
   );
+  if (scanner && scanner.network === network && scanner.open === open && !review && !outcome)
+    return <UtxoRecipientQrScanner network={scanner.network} onClose={closeScanner} onScan={value => {
+      if (!screenActive.current || scannerOwner.current !== scanner || currentNetwork.current.network !== scanner.network || currentNetwork.current.open !== scanner.open ||
+          owner.current.revision !== scanner.revision || draftRevision.current !== scanner.draft || inFlight.current || closing.current) return;
+      invalidateDraft(); setAddress(value);
+    }} />;
   return (
     <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
       <KeyboardAvoidingView
@@ -651,14 +657,6 @@ export function NativeUtxoSendScreen({
           if (!screenActive.current || currentNetwork.current.network !== network || currentNetwork.current.open !== open) return;
           invalidateDraft(); setFeeSelection({ open, network, choice }); setFeeDialog(null);
         }} />}
-      {scanner && scanner.network === network && scanner.open === open && !review && !outcome && <Modal
-        visible animationType="slide" onRequestClose={closeScanner}>
-        <UtxoRecipientQrScanner network={scanner.network} onClose={closeScanner} onScan={value => {
-          if (!screenActive.current || scannerOwner.current !== scanner || currentNetwork.current.network !== scanner.network || currentNetwork.current.open !== scanner.open ||
-              owner.current.revision !== scanner.revision || draftRevision.current !== scanner.draft || inFlight.current || closing.current) return;
-          invalidateDraft(); setAddress(value);
-        }} />
-      </Modal>}
       {ledgerPicker && ledgerPicker === ledgerConnection && <NativeLedgerConnectionModal
         controller={ledgerPicker}
         onClose={() => setLedgerPicker(null)}

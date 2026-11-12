@@ -6,6 +6,7 @@ import { Camera, CameraView } from 'expo-camera';
 import type { PermissionResponse } from 'expo';
 import { Button, colors, Header, IconButton, Notice, Screen, Text } from '../ui';
 import type { QrScannerProps } from './QrScanner.types';
+import { requestNativeCameraPermission } from '../platform/cameraPermission';
 
 /** Camera ownership and permission are scoped to this explicitly opened scanner. */
 export function QrScanner<T>({ parse, copy, onScan, onClose }: QrScannerProps<T>) {
@@ -53,7 +54,7 @@ export function QrScanner<T>({ parse, copy, onScan, onClose }: QrScannerProps<T>
     }) : null;
     void Promise.resolve().then(() => {
       if (!current.active || current.completed) return undefined;
-      return Camera.requestCameraPermissionsAsync();
+      return requestNativeCameraPermission(() => current.active && !current.completed);
     }).then((result) => {
       if (result && current.active && !current.completed) { current.enabled = result.granted; setPermission(result); }
     }).catch(() => {

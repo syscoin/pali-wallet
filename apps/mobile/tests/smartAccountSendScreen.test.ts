@@ -46,6 +46,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
   const balance = { account, status: 'available', units: '5000000000000000000' };
   const inventory = { status: 'ready', account, items: token ? [{ metadata: token, status: 'available', units: '100' }] : [] };
   const events = new Map<string, (...args: any[]) => void>();
+  let cameraPrompt = false, hardware: (() => boolean) | undefined, backs = 0;
   const cells: any[] = [],
     cleanups: (() => void)[] = [];
   let index = 0;
@@ -98,13 +99,14 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
     react,
     '../custody/privateAuthentication': privateAuthentication,
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+    '../platform/cameraPermission': { isCameraPermissionPromptActive: () => cameraPrompt },
     'react-native': {
       ActivityIndicator: 'ActivityIndicator',
       AppState: { currentState: 'active', addEventListener(event: string, callback: (...args: any[]) => void) { events.set(event, callback); return { remove() { events.delete(event); } }; } },
-      BackHandler: { addEventListener: () => ({ remove() {} }) },
+      BackHandler: { addEventListener(_name: string, callback: () => boolean) { hardware = callback; return { remove() { hardware = undefined; } }; } },
       Keyboard: { dismiss() {} },
       KeyboardAvoidingView: 'KeyboardAvoidingView',
-      Modal: 'Modal', View: 'View', StyleSheet: { create: (value: unknown) => value },
+      View: 'View', StyleSheet: { create: (value: unknown) => value },
       Platform: { OS: 'android' },
     },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
@@ -172,7 +174,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
       reader: {},
       token, collectible, tokenView: token ? { subscribe: () => () => {}, connect: () => () => {},
         getSnapshot: () => inventory } : undefined,
-      onBack() {},
+      onBack() { backs++; },
     }) as Element;
   };
   const edit = (label: string, value: string) => {
@@ -193,6 +195,10 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
     render,
     edit,
     press,
+    hardware() { assert(hardware); return hardware(); }, backs: () => backs,
+    cameraPrompt(active: boolean) { cameraPrompt = active; },
+    appState(state: 'active' | 'inactive' | 'background') { imports['react-native'].AppState.currentState = state; events.get('change')?.(state); },
+    blur() { events.get('blur')?.(); },
     setBalanceStatus(status: string) { balance.status = status; },
     changeAccount(){account={...account,revision:account.revision+1};balance.account=account;inventory.account=account;},
     changeNetwork(){account={...account,network:'sepolia'};},
@@ -212,7 +218,9 @@ test('Smart recipient scan fills only the address and preserves amount without o
   const f = fixture(async () => { opened++; return { dispose() {} }; });
   try {
     f.edit('Amount in ETH', '0.25');
-    scanner(f).props.onScan('0x2222222222222222222222222222222222222222');
+    const scanned = scanner(f);
+    assert.equal(f.render().type, 'RecipientQrScanner');
+    scanned.props.onScan('0x2222222222222222222222222222222222222222');
     const fields = all(f.render()).filter(node => node.type === 'Input');
     assert.equal(fields.find(node => node.props.label === 'Recipient address')!.props.value, '0x2222222222222222222222222222222222222222');
     assert.equal(fields.find(node => node.props.label === 'Amount in ETH')!.props.value, '0.25');
@@ -221,15 +229,69 @@ test('Smart recipient scan fills only the address and preserves amount without o
   } finally { f.close(); }
 });
 
+for (const action of ['hardware', 'header', 'scanner'] as const) test(`${action} Back closes the Smart scanner before retiring its unchanged draft`, async () => {
+  let opened = 0;
+  const f = fixture(async () => { opened++; return { dispose() {} }; });
+  try {
+    f.edit('Recipient address', '0x3333333333333333333333333333333333333333');
+    f.edit('Amount in ETH', '0.25');
+    const header = all(f.render()).find(node => node.type === 'Header')!;
+    const scanned = scanner(f);
+    assert.equal(f.render().type, 'RecipientQrScanner');
+    if (action === 'hardware') assert.equal(f.hardware(), true);
+    else if (action === 'header') header.props.onBack();
+    else scanned.props.onClose();
+    scanned.props.onScan('0x2222222222222222222222222222222222222222');
+    const fields = all(f.render());
+    assert.equal(fields.find(node => node.props.label === 'Recipient address')!.props.value, '0x3333333333333333333333333333333333333333');
+    assert.equal(fields.find(node => node.props.label === 'Amount in ETH')!.props.value, '0.25');
+    await tick(); assert.equal(f.backs(), 0); assert.equal(opened, 0);
+    f.hardware(); await tick(); assert.equal(f.backs(), 1);
+  } finally { f.close(); }
+});
+
+for (const interruption of ['inactive', 'blur'] as const) test(`Smart scanner permits ${interruption} only during its owned camera permission prompt`, async () => {
+  let opened = 0;
+  const f = fixture(async () => { opened++; return { dispose() {} }; });
+  try {
+    const scanned = scanner(f); f.cameraPrompt(true);
+    if (interruption === 'inactive') f.appState('inactive'); else f.blur();
+    assert.equal(f.render().type, 'RecipientQrScanner');
+    assert.equal(f.backs(), 0);
+    if (interruption === 'inactive') {
+      scanned.props.onScan('0x2222222222222222222222222222222222222222');
+      f.appState('active');
+    }
+    f.cameraPrompt(false);
+    scanned.props.onScan('0x3333333333333333333333333333333333333333');
+    assert.equal(all(f.render()).find(node => node.props.label === 'Recipient address')!.props.value, '0x3333333333333333333333333333333333333333');
+    assert.equal(opened, 0);
+    if (interruption === 'inactive') f.appState('inactive'); else f.blur();
+    await tick(); assert.equal(f.backs(), 1);
+  } finally { f.close(); }
+});
+
+test('real background retires the entire Smart flow even while the camera permission marker is active', async () => {
+  let opened = 0;
+  const f = fixture(async () => { opened++; return { dispose() {} }; });
+  try {
+    const scanned = scanner(f); f.cameraPrompt(true); f.background();
+    scanned.props.onScan('0x2222222222222222222222222222222222222222');
+    assert(all(f.render()).some(node => node.children.includes('Closing transfer review…')));
+    await tick(); assert.equal(f.backs(), 1); assert.equal(opened, 0);
+  } finally { f.close(); }
+});
+
 for (const boundary of ['close', 'account', 'network', 'draft', 'background', 'unmount'] as const)
   test(`Smart recipient scan refuses a late result after ${boundary}`, () => {
     let opened = 0;
     const f = fixture(async () => { opened++; return { dispose() {} }; });
+    const amount = all(f.render()).find(node => node.props.label === 'Amount in ETH')!;
     const previous = scanner(f);
     if (boundary === 'close') previous.props.onClose();
     if (boundary === 'account') { f.changeAccount(); f.render(); }
     if (boundary === 'network') { f.changeNetwork(); f.render(); }
-    if (boundary === 'draft') f.edit('Amount in ETH', '0.5');
+    if (boundary === 'draft') amount.props.onChange('0.5');
     if (boundary === 'background') f.background();
     if (boundary === 'unmount') f.close();
     previous.props.onScan('0x2222222222222222222222222222222222222222');

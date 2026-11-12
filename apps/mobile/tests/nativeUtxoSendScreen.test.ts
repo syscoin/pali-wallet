@@ -51,9 +51,10 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     useLayoutEffect(run: () => void | (() => void), deps?: readonly unknown[]): void { react.useEffect(run, deps); },
     useSyncExternalStore(_subscribe: unknown, read: () => unknown) { cell(); return read(); },
   };
-  const native = { ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'Modal', 'View'].map((name) => [name, name])),
+  let hardware: (() => boolean) | undefined, backs = 0;
+  const native = { ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'View'].map((name) => [name, name])),
     Platform: { OS: 'android' }, Keyboard: { dismiss() {} }, StyleSheet: { create: (value: unknown) => value },
-    BackHandler: { addEventListener: () => ({ remove() {} }) } };
+    BackHandler: { addEventListener(_name: string, callback: () => boolean) { hardware = callback; return { remove() { hardware = undefined; } }; } } };
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'IconButton', 'Notice', 'Screen', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
   const imports: Record<string, unknown> = {
     '../platform/localization': localization,
@@ -106,12 +107,13 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
   let opens = 0;
   const open = async () => { opens++; return service; };
   const render = () => { cursor = 0; const tree = module.exports.NativeUtxoSendScreen({ accountLabel: 'Account', asset,
-    initialDraft, beforeBackup, maximumAmount: maximum, availableAmount, network, open, onChangeNetwork(draft: unknown) { networkDrafts.push(draft); networkChanges++; }, onViewTransaction(txid: string) { openedTransactions.push(txid); }, onBack() {} }) as Element;
+    initialDraft, beforeBackup, maximumAmount: maximum, availableAmount, network, open, onChangeNetwork(draft: unknown) { networkDrafts.push(draft); networkChanges++; }, onViewTransaction(txid: string) { openedTransactions.push(txid); }, onBack() { backs++; } }) as Element;
     effects.splice(0).forEach((run) => run()); return tree; };
   const press = (title: string) => { const button = all(render()).find((node) => node.type === 'Button' && node.props.title === title); assert(button, title); button.props.onPress(); };
   const edit = (label: string, value: string) => { const input = all(render()).find((node) => node.type === 'Input' && node.props.accessibilityLabel === label); assert(input, label); input.props.onChangeText(value); };
   const review = () => { const screen = all(render()).find((node) => node.type === 'Screen')!; screen.props.footer.props.onPress(); };
   return { render, press, edit, review, requests, reviews, authorized, openedTransactions, networkDrafts, counts: () => ({ cancels, confirmations, networkChanges }),
+    hardware() { assert(hardware); return hardware(); }, backs: () => backs,
     requireBackup(onRequest: NonNullable<typeof beforeBackup>['onRequest']) { beforeBackup = { onRequest }; }, opens: () => opens,
     seedDraft(draft: NonNullable<typeof initialDraft>) { initialDraft = draft; },
     seedSaved(records: typeof saved) { saved = records; }, listReads: () => listReads, refreshReads: () => refreshReads,
@@ -291,6 +293,7 @@ test('UTXO scan fills only the live draft and never prepares or confirms it', as
   assert(scan); scan.props.onPress();
   const scanner = all(f.render()).find(node => node.type === 'UtxoRecipientQrScanner');
   assert(scanner); assert.equal(scanner.props.network.id, 'bitcoin');
+  assert.equal(f.render().type, 'UtxoRecipientQrScanner');
   scanner.props.onScan('bc1qpublicrecipient');
   assert.equal(all(f.render()).find(node => node.props.accessibilityLabel === 'Recipient address')?.props.value, 'bc1qpublicrecipient');
   assert.equal(all(f.render()).find(node => node.props.accessibilityLabel === 'Amount in BTC')?.props.value, '0.25');
@@ -298,6 +301,28 @@ test('UTXO scan fills only the live draft and never prepares or confirms it', as
   scanner.props.onScan('bc1qstale');
   assert.equal(all(f.render()).find(node => node.props.accessibilityLabel === 'Recipient address')?.props.value, 'bc1qpublicrecipient');
   f.close();
+});
+
+for (const action of ['hardware', 'header', 'scanner'] as const) test(`${action} Back closes the UTXO scanner before leaving its unchanged draft`, async () => {
+  const f = fixture(); f.render(); await tick();
+  try {
+    f.edit('Recipient address', 'bc1qoriginal'); f.edit('Amount in BTC', '0.25');
+    const form = all(f.render());
+    const header = form.find(node => node.type === 'Header')!;
+    form.find(node => node.type === 'IconButton' && node.props.label === 'Scan recipient address')!.props.onPress();
+    const scanner = f.render(), before = f.counts();
+    assert.equal(scanner.type, 'UtxoRecipientQrScanner');
+    if (action === 'hardware') assert.equal(f.hardware(), true);
+    else if (action === 'header') header.props.onBack();
+    else scanner.props.onClose();
+    scanner.props.onScan('bc1qstale');
+    const returned = all(f.render());
+    assert.equal(returned.find(node => node.props.accessibilityLabel === 'Recipient address')!.props.value, 'bc1qoriginal');
+    assert.equal(returned.find(node => node.props.accessibilityLabel === 'Amount in BTC')!.props.value, '0.25');
+    assert.deepEqual(f.counts(), before); assert.equal(f.backs(), 0); assert.deepEqual(f.requests, []);
+    f.hardware();
+    assert.equal(f.backs(), 1); assert.equal(f.counts().cancels, before.cancels + 1);
+  } finally { f.close(); }
 });
 
 test('closed or old-network UTXO scanner callbacks cannot fill a new draft', async () => {
