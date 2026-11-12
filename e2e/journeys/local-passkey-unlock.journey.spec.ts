@@ -83,6 +83,43 @@ test('local passkey enrolls, unlocks the same wallet and can be removed with pas
             exact: true,
           })
         ).toBeVisible();
+        const disableButton = page.getByRole('button', {
+          name: en.localPasskey.turnOff,
+          exact: true,
+        });
+        const expectReadableButton = async () => {
+          const contrast = await disableButton.evaluate((button) => {
+            const luminance = (color: string) => {
+              const values = color
+                .match(/[\d.]+/g)!
+                .slice(0, 3)
+                .map(Number);
+              const linear = values.map((value) => {
+                const scaled = value / 255;
+                return scaled <= 0.04045
+                  ? scaled / 12.92
+                  : Math.pow((scaled + 0.055) / 1.055, 2.4);
+              });
+              return (
+                linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722
+              );
+            };
+            const style = getComputedStyle(button);
+            const foreground = luminance(style.color);
+            const background = luminance(style.backgroundColor);
+            return (
+              (Math.max(foreground, background) + 0.05) /
+              (Math.min(foreground, background) + 0.05)
+            );
+          });
+          expect(contrast).toBeGreaterThanOrEqual(4.5);
+        };
+        await expect(disableButton).toBeDisabled();
+        await expectReadableButton();
+        await page.locator('#local-passkey-password').fill(password);
+        await expect(disableButton).toBeEnabled();
+        await expectReadableButton();
+        await page.locator('#local-passkey-password').fill('');
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth <= innerWidth + 1

@@ -108,7 +108,7 @@ const variantClasses: Record<
     disabled: disabledMotion,
   },
   neutral: {
-    statics: 'border-button-neutral bg-button-neutral',
+    statics: 'border-button-neutral bg-button-neutral text-bkg-1',
     enabled: `${enabledMotion} hover:shadow-md`,
     disabled: disabledMotion,
   },
