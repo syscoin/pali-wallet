@@ -33,6 +33,12 @@ export type NativeInfrastructureSnapshot = Readonly<{
   error: string | null;
 }>;
 
+/** Only an initial funding refusal may retry the still-owned Suite continuation. */
+export function isInitialInfrastructureFundingFailure(snapshot: NativeInfrastructureSnapshot): boolean {
+  return snapshot.phase === 'failed' && snapshot.status === null && snapshot.feeReview === null &&
+    snapshot.error === 'mobile.infrastructure.insufficientFunds';
+}
+
 type Host = Readonly<{
   origin: Readonly<{kind:'new'} | {kind:'suite-resume';id:string;prepare(signal:AbortSignal):Promise<{
     status:NativeInfrastructureStatus;contractId:PaliInfrastructureContractId;prepared:NativePreparedConnectionTransaction;
@@ -195,7 +201,9 @@ export class NativeInfrastructureController {
     finally { if (this.operation === operation) this.operation = null; }
   }
   async reviewResume(revision: number): Promise<void> {
-    if (this.host.origin.kind !== 'suite-resume' || this.snapshot.phase !== 'loading') return;
+    // A funding refusal before any review was installed may retry the same
+    // retained continuation. Submission failures never acquire this path.
+    if (this.host.origin.kind !== 'suite-resume' || this.snapshot.phase !== 'loading' && !isInitialInfrastructureFundingFailure(this.snapshot)) return;
     const operation = this.admit(revision);
     if (!operation) return;
     this.publish({phase:'preparing',feeReview:null,error:null});

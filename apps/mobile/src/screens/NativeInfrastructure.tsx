@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatBaseUnits } from '../core/amounts';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { useNativeTranslation } from '../platform/localization';
-import type { NativeInfrastructureController, NativeInfrastructureSnapshot } from '../smartAccount/infrastructure';
+import { isInitialInfrastructureFundingFailure, type NativeInfrastructureController, type NativeInfrastructureSnapshot } from '../smartAccount/infrastructure';
 import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
 import { TransactionDetails } from './NativeTransactionReview';
 import { useOwnedLedgerConnection } from './useDappLedgerConnection';
@@ -66,8 +66,10 @@ export function NativeInfrastructure({ mode, open, onBack, ledgerConnection }: P
         check();
         controller = await open(current.abort.signal, check, current.authentication);
         check();
+        const initial = controller.getSnapshot();
+        const fundingRefusal = isInitialInfrastructureFundingFailure(initial);
         if (controller.origin.kind !== scope.mode || controller.origin.kind === 'suite-resume' &&
-            (controller.origin.id !== scope.id || controller.getSnapshot().phase !== 'review' || controller.getSnapshot().feeReview?.kind !== 'suite-resume'))
+            (controller.origin.id !== scope.id || !fundingRefusal && (initial.phase !== 'review' || initial.feeReview?.kind !== 'suite-resume')))
           throw new Error('CANCELLED');
         current.controller = controller;
         setSession({ owner: current, controller });
@@ -102,6 +104,7 @@ export function NativeInfrastructure({ mode, open, onBack, ledgerConnection }: P
     void action().catch(() => undefined);
   };
   const busy = ['loading', 'preparing', 'submitting'].includes(state.phase);
+  const retryResumeFunding = controller?.origin.kind === 'suite-resume' && isInitialInfrastructureFundingFailure(state);
   const review = state.feeReview;
   const [setupDetails, setSetupDetails] = useState(false);
   const required = state.status?.observation.contracts.filter(contract => !contract.optional) ?? [];
@@ -149,7 +152,8 @@ export function NativeInfrastructure({ mode, open, onBack, ledgerConnection }: P
           mode.onContinue();
         }} />
         : <Button title={t(reviewLabel)} onPress={() => act(() => controller!.reviewNext(state.revision))} />
-      : <Button title={t('mobile.infrastructure.refresh')} variant="secondary" size="compact" disabled={!controller || busy} onPress={() => act(() => controller!.refresh(state.revision))} />}
+      : <Button title={t('mobile.infrastructure.refresh')} variant="secondary" size="compact" disabled={!controller || busy} onPress={() => act(() => retryResumeFunding
+        ? controller!.reviewResume(state.revision) : controller!.refresh(state.revision))} />}
     <Button title={t('buttons.close')} variant="secondary" size="compact" onPress={close} />
   </>}>
     <Header title={t('settings.smartAccountInfrastructure')} onBack={close} />

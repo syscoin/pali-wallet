@@ -8,7 +8,7 @@ import type { NativePreparedConnectionTransaction } from '../src/connections/tra
 import type { NativeLedgerConnectionView, NativeLedgerSnapshot } from '../src/custody/ledgerAccounts.ts';
 import { formatBaseUnits } from '../src/core/amounts.ts';
 import type { useOwnedLedgerConnection } from '../src/screens/useDappLedgerConnection';
-import { NativeInfrastructureController } from '../src/smartAccount/infrastructure.ts';
+import { isInitialInfrastructureFundingFailure, NativeInfrastructureController } from '../src/smartAccount/infrastructure.ts';
 import { EvmTransferReadError } from '../src/custody/evmFeeContracts.ts';
 import { englishI18n, languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
@@ -46,6 +46,7 @@ function nativeScreen(clock = { wall: 100_000, monotonic: 0 }) {
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     '../platform/localization': nativeTranslationFixture,
     '../core/amounts': { formatBaseUnits },
+    '../smartAccount/infrastructure': { isInitialInfrastructureFundingFailure },
     'react-native': { ActivityIndicator: 'ActivityIndicator', AppState: appState, BackHandler: { addEventListener: add }, Platform: { OS: 'android' }, StyleSheet: { create: (value: unknown) => value } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
@@ -74,7 +75,7 @@ const text = (elements: ReturnType<typeof screenElements>) => elements.flatMap(n
 function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing' | 'optional-only' | 'all-present' | 'pending-optional' = 'missing', create2Deployed = true, now = () => 0, resumeId: string | null = null, currencySymbol = 'ETH') {
   const transaction = Object.freeze({ chainId: '1', from: payer, to: '0x4e59b44847b379578588920cA78FbF26c0B4956C', nonce: '0', value: '0', data: '0xab', gasLimit: '21000', type: 2 as const, maxFeePerGas: '2', maxPriorityFeePerGas: '1', accessList: [] });
   let signatures = 0, wires = 0, submissions = 0, disposed = 0;
-  let observations = 0;
+  let observations = 0, resumePreparations = 0;
   const backgrounds: boolean[] = [];
   let refuseSubmission = false, unknownSubmission = false;
   let quoteFailure: Error | undefined;
@@ -97,7 +98,9 @@ function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing'
   const status = { observation, pending: mode === 'pending-optional' ? { contractId: 'multicall3' as const, transactionHash: resumeId === null ? hash : null } : null };
   const controller = new NativeInfrastructureController({
     origin: resumeId === null ? { kind: 'new' } : { kind: 'suite-resume', id: resumeId, async prepare(requestSignal) {
-      assertCurrent(); if (requestSignal.aborted) throw Error('CANCELLED');
+      resumePreparations++;
+      await quoteWait; assertCurrent(); if (requestSignal.aborted) throw Error('CANCELLED');
+      if (quoteFailure) throw quoteFailure;
       return { status, contractId: 'multicall3', prepared };
     } },
     background() { backgrounds.push(signal.aborted); },
@@ -116,15 +119,16 @@ function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing'
     holdSigning(promise: Promise<void>) { sendWait = promise; },
     holdBroadcast(promise: Promise<void>) { broadcastWait = promise; },
     failSubmission() { refuseSubmission = true; },
-    failQuote(error: Error) { quoteFailure = error; },
+    failQuote(error?: Error) { quoteFailure = error; },
     failUnknownSubmission() { unknownSubmission = true; },
     async prepareResume() { await controller.reviewResume(controller.getSnapshot().revision); },
+    get retainedReservation() { return status.pending; },
     backgrounds,
     reconcileOriginal() {
       status.pending = null;
       status.observation = projectSmartAccountInfrastructureObservation(1, ['0x01', ...PALI_INFRASTRUCTURE_METADATA.map(entry => entry.id === 'factory' ? '0x' : '0x01')])!;
     },
-    get counts() { return { disposed, signatures, wires, submissions, observations }; },
+    get counts() { return { disposed, signatures, wires, submissions, observations, resumePreparations }; },
   };
 }
 
@@ -160,6 +164,132 @@ test('an unfunded setup explains which account needs SYS and never offers a sign
     assert.equal(copy.includes('Setup is unavailable.'), false);
   } finally { screen.close(); }
 });
+
+test('an underfunded Suite resume retains its payer and retries the same operation before explicit confirmation', async () => {
+  const screen = nativeScreen(); let value!: ReturnType<typeof runtime>, opens = 0;
+  const props = { mode: { kind: 'suite-resume' as const, id: 'retained-infrastructure-job' },
+    async open(signal: AbortSignal, check: () => void) {
+      opens++; value = runtime(signal, check, 'pending-optional', true, () => 0, 'retained-infrastructure-job', 'SYS');
+      value.failQuote(new EvmTransferReadError('INSUFFICIENT_BALANCE'));
+      await value.prepareResume(); return value.controller;
+    }, onBack() {} };
+  const held = deferred<void>();
+  try {
+    screen.render(props); await tick();
+    const reservation = value.retainedReservation;
+    let tree = screen.render(props), copy = text(tree);
+    assert(copy.includes('Not enough SYS for setup fees. Receive SYS into the fee-paying account shown above, then refresh the fee.'));
+    assert(copy.includes('Fee wallet')); assert(copy.includes(payer));
+    assert.equal(value.counts.disposed, 0); assert.equal(value.controller.getSnapshot().feeReview, null);
+    assert.equal(tree.some(node => node.props.title === title('buttons.confirm')), false);
+    let refresh = button(footer(tree), 'mobile.infrastructure.refresh');
+    assert.equal(refresh.props.disabled, false);
+    refresh.props.onPress(); await tick();
+    assert.equal(value.counts.resumePreparations, 2); assert.equal(value.retainedReservation, reservation);
+    assert.equal(value.counts.submissions, 0); assert.equal(value.counts.disposed, 0);
+    refresh.props.onPress(); await tick();
+    assert.equal(value.counts.resumePreparations, 2, 'a stale failed-review revision cannot retry');
+    refresh = button(footer(screen.render(props)), 'mobile.infrastructure.refresh');
+    value.failQuote(); value.holdQuote(held.promise);
+    refresh.props.onPress(); refresh.props.onPress(); await tick();
+    assert.equal(value.counts.resumePreparations, 3); assert.equal(opens, 1);
+    assert.equal(value.retainedReservation, reservation); assert.equal(value.counts.submissions, 0);
+    assert.equal(button(footer(screen.render(props)), 'mobile.infrastructure.refresh').props.disabled, true);
+    held.resolve(); await tick(); tree = screen.render(props);
+    assert.equal(value.controller.getSnapshot().phase, 'review');
+    assert.equal(value.controller.getSnapshot().feeReview?.transaction, value.transaction);
+    assert.equal(value.controller.getSnapshot().feeReview?.expiresAtMonotonicMilliseconds, 60000);
+    assert.equal(value.retainedReservation, reservation); assert.equal(value.counts.signatures, 0); assert.equal(value.counts.wires, 0);
+    button(footer(tree), 'buttons.confirm').props.onPress(); await tick();
+    assert.equal(value.counts.submissions, 1); assert.equal(value.counts.signatures, 1); assert.equal(value.counts.wires, 1);
+  } finally { held.resolve(); screen.close(); }
+});
+
+for (const outcome of ['expired', 'generic', 'network-change'] as const)
+  test(`a funding retry handles ${outcome} without signing or retaining a no-op retry`, async () => {
+    const clock = { wall: 100000, monotonic: 0 }, screen = nativeScreen(clock);
+    const held = deferred<void>(); let value!: ReturnType<typeof runtime>, next!: ReturnType<typeof runtime>;
+    const props = { mode: { kind: 'suite-resume' as const, id: 'retained-job' },
+      async open(signal: AbortSignal, check: () => void) {
+        value = runtime(signal, check, 'pending-optional', true, () => clock.monotonic, 'retained-job', 'SYS');
+        value.failQuote(new EvmTransferReadError('INSUFFICIENT_BALANCE'));
+        await value.prepareResume(); return value.controller;
+      }, onBack() {} };
+    try {
+      screen.render(props); await tick(); const old = value;
+      value.failQuote(); value.holdQuote(held.promise);
+      const retry = button(footer(screen.render(props)), 'mobile.infrastructure.refresh').props.onPress;
+      retry(); await tick();
+      let activeProps = props;
+      if (outcome === 'expired') clock.monotonic = 60001;
+      else if (outcome === 'generic') value.failQuote(new EvmTransferReadError('INVALID_RESPONSE'));
+      else {
+        activeProps = { ...props, async open(signal: AbortSignal, check: () => void) {
+          next = runtime(signal, check, 'pending-optional', true, () => clock.monotonic, 'retained-job', 'ETH');
+          next.failQuote(new EvmTransferReadError('INSUFFICIENT_BALANCE'));
+          await next.prepareResume(); return next.controller;
+        } };
+        screen.render(activeProps); await tick();
+      }
+      held.resolve(); await tick();
+      const tree = screen.render(activeProps);
+      assert.equal(tree.some(node => node.props.title === title('buttons.confirm')), false);
+      assert.equal(old.counts.submissions, 0); assert.equal(old.counts.signatures, 0); assert.equal(old.counts.wires, 0);
+      if (outcome === 'network-change') {
+        retry(); await tick();
+        assert.equal(old.counts.disposed, 1); assert.equal(old.counts.resumePreparations, 2);
+        assert.equal(next.counts.resumePreparations, 1); assert.equal(next.counts.submissions, 0);
+        assert(text(tree).includes('Not enough ETH')); assert.equal(text(tree).includes('Not enough SYS'), false);
+      } else {
+        assert.equal(old.controller.getSnapshot().error, outcome === 'expired' ? 'mobile.infrastructure.reviewExpired' : 'mobile.infrastructure.unavailable');
+        const observations = old.counts.observations;
+        button(footer(tree), 'mobile.infrastructure.refresh').props.onPress(); await tick();
+        assert.equal(old.counts.observations, observations + 1, 'other failures use an actual status refresh');
+        assert.equal(old.counts.resumePreparations, 2, 'other failures do not retry preparation');
+      }
+    } finally { held.resolve(); screen.close(); }
+  });
+
+for (const kind of ['generic', 'wrong-id'] as const) test(`a ${kind} failed Suite resume cannot acquire the funding retry presentation`, async () => {
+  const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;
+  const props = { mode: { kind: 'suite-resume' as const, id: 'expected-job' },
+    async open(signal: AbortSignal, check: () => void) {
+      value = runtime(signal, check, 'pending-optional', true, () => 0, kind === 'wrong-id' ? 'another-job' : 'expected-job', 'SYS');
+      value.failQuote(kind === 'generic' ? Object.assign(Error('INSUFFICIENT_BALANCE'), { code: 'INSUFFICIENT_BALANCE' }) : new EvmTransferReadError('INSUFFICIENT_BALANCE'));
+      await value.prepareResume(); return value.controller;
+    }, onBack() {} };
+  try {
+    screen.render(props); await tick(); const tree = screen.render(props);
+    assert.equal(value.counts.disposed, 1); assert.equal(value.counts.submissions, 0);
+    assert.equal(button(footer(tree), 'mobile.infrastructure.refresh').props.disabled, true);
+    assert.equal(text(tree).includes(payer), false);
+    assert.equal(tree.some(node => node.props.title === title('buttons.confirm')), false);
+  } finally { screen.close(); }
+});
+
+for (const boundary of ['background', 'blur', 'close', 'back', 'unmount', 'scope'] as const)
+  test(`an underfunded Suite retry callback cannot survive ${boundary}`, async () => {
+    const screen = nativeScreen(); const values: ReturnType<typeof runtime>[] = [];
+    const open = async (signal: AbortSignal, check: () => void) => {
+      const value = runtime(signal, check, 'pending-optional', true, () => 0, values.length ? 'next-job' : 'old-job', 'SYS');
+      values.push(value); value.failQuote(new EvmTransferReadError('INSUFFICIENT_BALANCE'));
+      await value.prepareResume(); return value.controller;
+    };
+    const props = { mode: { kind: 'suite-resume' as const, id: 'old-job' }, open, onBack() {} };
+    try {
+      screen.render(props); await tick(); const tree = screen.render(props);
+      const retry = button(footer(tree), 'mobile.infrastructure.refresh').props.onPress;
+      if (boundary === 'background') screen.emit('change', 'background');
+      else if (boundary === 'blur') screen.emit('blur');
+      else if (boundary === 'close') button(footer(tree), 'buttons.close').props.onPress();
+      else if (boundary === 'back') screen.emit('hardwareBackPress');
+      else if (boundary === 'unmount') screen.close();
+      else { screen.render({ ...props, mode: { kind: 'suite-resume', id: 'next-job' } }); await tick(); }
+      values[0]!.failQuote(); retry(); await tick();
+      assert.equal(values[0]!.counts.resumePreparations, 1); assert.equal(values[0]!.counts.disposed, 1);
+      assert(values.every(value => value.counts.submissions === 0 && value.counts.signatures === 0 && value.counts.wires === 0));
+    } finally { screen.close(); }
+  });
 
 test('setup purpose follows the active language without re-reading infrastructure', async () => {
   const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;
