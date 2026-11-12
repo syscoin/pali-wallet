@@ -847,6 +847,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const sendTarget = stage === 'send' && sendDraft &&
     sendDraft.origin.context === custodyContext(snapshot, catalogue)?.context
     ? sendDraft.target : undefined;
+  const canReplaceSmart = selectedAccountType === 'SmartAccount' && (sendTarget?.kind === 'speed-up' || sendTarget?.kind === 'cancel' || sendTarget?.kind === 'cancel-saved');
   const latestBack = useRef<() => boolean>(() => true);
   useLayoutEffect(() => {
     latestBack.current = () => {
@@ -1767,13 +1768,13 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       initialRecipient={sendDraft?.form?.kind === 'evm' ? sendDraft.form.recipient : undefined}
       onChangeAsset={sendTarget.kind === 'native' || sendTarget.kind === 'token' ? changeSendAsset : undefined}
       ledgerConnection={ledgerConnection ?? undefined} recipientResolver={recipientResolver} account={{ ...snapshot.account, revision: snapshot.revision }} source={publicSource} reader={balanceReader} tokenView={tokenView ?? undefined} token={sendTarget.kind === 'token' ? sendTarget.token : undefined} collectible={sendTarget.kind === 'collectible' ? sendTarget.collectible : undefined} open={openSmartSend} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} accountLabel={accountLabel} onBack={closeStage} />;
-  else if (snapshot.phase === 'ready' && sendTarget && sendTarget.kind !== 'spt' && sendTarget.kind !== 'utxo' && canSign && transferView && snapshot.account) return <NativeSend availableAmount={sendAvailable} recipientResolver={recipientResolver} key={`${sendDraft?.resumeId ?? ''}:${sendTarget.kind === 'token' ? sendTarget.token.contractAddress : sendTarget.kind}`}
+  else if (snapshot.phase === 'ready' && sendTarget && sendTarget.kind !== 'spt' && sendTarget.kind !== 'utxo' && (canSign || canReplaceSmart) && transferView && snapshot.account) return <NativeSend availableAmount={sendAvailable} recipientResolver={recipientResolver} key={`${sendDraft?.resumeId ?? ''}:${sendTarget.kind === 'token' ? sendTarget.token.contractAddress : sendTarget.kind}`}
     assetChoices={accountPortfolio?.cachedAssets(snapshot.account.network)?.tokens}
     onChangeAsset={sendTarget.kind === 'native' || sendTarget.kind === 'token' ? changeSendAsset : undefined}
-    beforeClose={selectedAccountType === 'Trezor' ? trezorView?.cancel : undefined}
+    beforeClose={selectedAccountType === 'Trezor' || canReplaceSmart ? trezorView?.cancel : undefined}
     initialDraft={sendDraft?.form?.kind === 'evm' ? sendDraft.form : sendDraft?.resume && sendDraft.resume.kind !== 'utxo' ? sendDraft.resume.draft : undefined} draftNotice={sendDraft?.notice}
     account={{ ...snapshot.account, revision: snapshot.revision }}
-    ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined}
+    ledgerConnection={selectedAccountType === 'Ledger' || canReplaceSmart ? ledgerConnection ?? undefined : undefined}
     tokenView={tokenView ?? undefined}
     controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)}
     recipientPicker={sendDraft?.recipientPicker}
@@ -1837,9 +1838,9 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       ? <NativeActivityScreen controller={activityView} accountLabel={accountLabel}
           initialHash={transactionActivity && transactionActivity.context === guardianContext ? transactionActivity.hash : recoveryActivity && recoveryActivity.context === guardianContext ? recoveryActivity.hash : undefined}
           onReplay={canSign ? (hash) => openStage('send', { kind: 'saved', hash }) : undefined}
-          onCancelPending={canSign ? (hash) => openStage('send', { kind: 'cancel', hash }) : undefined}
-          onCancelSaved={canSign ? (hash) => openStage('send', { kind: 'cancel-saved', hash }) : undefined}
-          onSpeedUpPending={canSign ? (hash) => openStage('send', { kind: 'speed-up', hash }) : undefined}
+          onCancelPending={canSign || selectedAccountType === 'SmartAccount' ? (hash) => openStage('send', { kind: 'cancel', hash }) : undefined}
+          onCancelSaved={canSign || selectedAccountType === 'SmartAccount' ? (hash) => openStage('send', { kind: 'cancel-saved', hash }) : undefined}
+          onSpeedUpPending={canSign || selectedAccountType === 'SmartAccount' ? (hash) => openStage('send', { kind: 'speed-up', hash }) : undefined}
           onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
       : <UnavailableActivity accountLabel={accountLabel} watchOnly={false} onBack={() => shell.select('wallet')} />;
     else if (shell.tab === 'tools') content = <RealTools accountLabel={accountLabel} guardianRecovery={guardianRecovery}

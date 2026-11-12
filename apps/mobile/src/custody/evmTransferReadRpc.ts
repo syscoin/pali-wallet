@@ -11,7 +11,7 @@ import { snapshotNftTransferSelection, type NftTransferRequest, type NftTransfer
 import { boundedResponseText, cancelResponseBody, parseRpcQuantity } from '../platformRpc.ts';
 import { getNativeNetwork, snapshotNativeNetwork, type EvmNetworkId, type NativeNetworkRegistration } from './networkContext.ts';
 import { assembleFeeQuote, checkedReadHash, EvmTransferReadError, guardedRead, readOwnData,
-  EvmAutomaticNonceUnresolved, matchesSendNonce, rejectRead, snapshotCancellationTransfer, snapshotNftQuoteEnvelope, snapshotUnsignedTransfer, units } from './evmFeeContracts.ts';
+  EvmAutomaticNonceUnresolved, matchesSendNonce, rejectRead, snapshotCancellationTransfer, snapshotNftQuoteEnvelope, snapshotReplacementTransfer, snapshotUnsignedTransfer, units } from './evmFeeContracts.ts';
 import { availableEvmNativeBalance, type EvmAutoNonceAcceptance, type EvmAutoNoncePlan, type EvmNativeReservations } from '../../../../source/shared/evmAutoNonce.ts';
 import { EvmAssetStateError, readEvmAssetState, assertEvmAssetStateCanonical, simulateEvmAssetTransfer,
   type EvmAssetState, type EvmTransferAsset } from '../../../../source/shared/evmAssetState.ts';
@@ -404,7 +404,7 @@ export class EvmTransferReadRpc {
 
   prepareSpeedUp(original: Transaction, rates: EvmReplacementRates, signal: AbortSignal, guard: () => void): Promise<EvmPreparedQuote> {
     const { from, to, nonce, value, data, gasLimit, chainId } = original;
-    if (!from || !to || original.accessList?.length || rates.type !== original.type || chainId.toString() !== this.network.chainId)
+    if (!from || rates.type !== original.type || chainId.toString() !== this.network.chainId)
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     return this.operation(signal, guard, async (read) => {
       await this.checkChain(read);
@@ -429,11 +429,11 @@ export class EvmTransferReadRpc {
       } catch { return rejectRead('REVIEW_REQUIRED'); }
       const rate = plan.type === 0 ? plan.gasPrice : plan.maxFeePerGas;
       if (rate === 0n || (sampled.baseFee !== null && rate < sampled.baseFee)) return rejectRead('REVIEW_REQUIRED');
-      const transaction = snapshotUnsignedTransfer({
+      const transaction = snapshotReplacementTransfer({
         from, to, chainId: this.network.chainId, nonce: String(nonce),
         value: value.toString(), data, gasLimit: plan.gasLimit.toString(),
         ...(plan.type === 0 ? { type: 0, gasPrice: plan.gasPrice.toString() } : {
-          type: 2, accessList: [], maxFeePerGas: plan.maxFeePerGas.toString(), maxPriorityFeePerGas: plan.maxPriorityFeePerGas.toString(),
+          type: 2, accessList: original.accessList ?? [], maxFeePerGas: plan.maxFeePerGas.toString(), maxPriorityFeePerGas: plan.maxPriorityFeePerGas.toString(),
         }),
       }, this.network);
       const balance = quantity(rawBalance);

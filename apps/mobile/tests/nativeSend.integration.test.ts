@@ -9,6 +9,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { keccak256 } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
+import { Wallet } from 'ethers/wallet';
+import { Interface } from 'ethers/abi';
+import { createTestCredentialRecordKeyring } from './fixtures/credentialOperation.ts';
 import {
   createKeyringRuntimeFactory,
   type KeyringRuntime,
@@ -17,7 +20,7 @@ import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import type { TransferJournalEntry } from '../src/custody/transferJournal.ts';
-import { inspectEvmSignedBundle } from '../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedRecords, inspectEvmSignedBundle } from '../../../source/wallet/evmSignedRecords.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
@@ -378,7 +381,8 @@ async function cancellationFixture(type: 0 | 2 = 2) {
       if (request.method === 'eth_chainId') result = '0x1';
       else if (request.method === 'eth_getTransactionByHash') {
         if (signatures > 1) await pause('cancellation-original');
-        const tx = broadcasts[0] && Transaction.from(broadcasts[0]);
+        const matched = broadcasts.find(raw => Transaction.from(raw).hash === request.params[0]);
+        const tx = matched && Transaction.from(matched);
         result = replacement.pending && tx && tx.hash === request.params[0]
           ? { hash: replacement.substituteHash ?? tx.hash, from: tx.from, to: tx.to, value: `0x${tx.value.toString(16)}`,
               nonce: `0x${tx.nonce.toString(16)}`, blockNumber: null, blockHash: null, transactionIndex: null }
@@ -494,6 +498,24 @@ async function cancellationFixture(type: 0 | 2 = 2) {
       return runtime;
     },
     broadcasts,
+    async seedOriginal(input: { to: string | null; data: string; operation?: 'send' | 'erc721' | 'erc1155'; accessList?: { address: string; storageKeys: string[] }[]; metadata?: Readonly<Record<string, unknown>> }) {
+      const wallet = Wallet.fromPhrase(PHRASE);
+      const selected = runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === runtime.catalogue.getSnapshot()!.active.accountId)!;
+      assert.equal(wallet.address, selected.address);
+      const rawTransaction = await wallet.signTransaction({ type, chainId: 1, nonce: 0, to: input.to, value: 0,
+        data: input.data, gasLimit: 100_000, ...(type === 2 ? { maxFeePerGas: 2, maxPriorityFeePerGas: 1, accessList: input.accessList ?? [] } : { gasPrice: 2 }) });
+      const tx = Transaction.from(rawTransaction);
+      const ring = sdkInstances.find(instance => instance.hasPublicSession())!;
+      assert(ring);
+      const session = { keyring: createTestCredentialRecordKeyring(storage.credential, credentialPort, ring, () => assert(ring.hasPublicSession())), assertCurrent: () => assert(ring.hasPublicSession()) };
+      const records = new EvmSignedRecords(storage.signedRecords);
+      await records.append(session, { rawTransaction, hash: tx.hash!, from: tx.from!, chainId: '1', nonce: 0, type,
+        context: { account: { id: selected.index, type: selected.type, address: selected.address }, network: { kind: 'ethereum', chainId: 1, slip44: 60, url: 'https://ethereum-rpc.publicnode.com' }, operation: input.operation ?? 'send' } }, input.metadata);
+      await records.updatePhase(session, '1', tx.from!, tx.hash!, 'submitted');
+      broadcasts.push(rawTransaction);
+      replacement.pending = true;
+      return tx;
+    },
     setBalance(value: bigint) { nativeBalance = `0x${value.toString(16)}`; },
     recovery: largeReceipt,
     requests,
@@ -690,6 +712,62 @@ test('an acknowledged ordinary send can be followed by the next nonce while pend
     await f.close();
   }
 });
+
+test('private-note records do not offer an unsupported ordinary fee replacement', async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.seedOriginal({ to: RECIPIENT, data: '0x12345678', metadata: { privateDeposit: { id: 'fixture' } } });
+    const local = (await f.runtime.activity!.load(() => undefined)).locals[0]!;
+    assert.equal(local.speedUpEligible, undefined);
+    await assert.rejects(f.transfers.prepareSpeedUp(local.hash));
+    assert.equal(f.signatures, 0);
+  } finally { await f.close(); }
+});
+
+for (const scenario of ['contract-call', 'contract-creation', 'access-list', 'erc721', 'erc1155', 'erc20-transferFrom'] as const) {
+  test(`Speed Up preserves the complete ${scenario} envelope through the real SDK`, async () => {
+    const f = await cancellationFixture();
+    try {
+      const sender = Wallet.fromPhrase(PHRASE).address;
+      const data = scenario === 'erc721' || scenario === 'erc20-transferFrom'
+        ? new Interface(['function transferFrom(address,address,uint256)']).encodeFunctionData('transferFrom', [sender, RECIPIENT, 7])
+        : scenario === 'erc1155'
+        ? new Interface(['function safeTransferFrom(address,address,uint256,uint256,bytes)']).encodeFunctionData('safeTransferFrom', [sender, RECIPIENT, 7, 2, '0x'])
+        : `0x${'ab'.repeat(scenario === 'contract-creation' ? 5000 : 32)}`;
+      const original = await f.seedOriginal({ to: scenario === 'contract-creation' ? null : RECIPIENT, data,
+        ...(scenario === 'erc721' || scenario === 'erc1155' ? { operation: scenario } : {}),
+        ...(scenario === 'erc20-transferFrom' ? { metadata: { nftTransfer: { kind: 'nft-transfer', chainId: '1', from: sender,
+          contractAddress: RECIPIENT, recipient: RECIPIENT, tokenStandard: 'ERC-721', tokenId: '7', amountUnits: '1' } } } : {}),
+        ...(scenario === 'access-list' ? { accessList: [{ address: RECIPIENT, storageKeys: [`0x${'01'.repeat(32)}`] }] } : {}) });
+      await f.transfers.prepareSpeedUp(original.hash!);
+      const review = f.transfers.getSnapshot().review;
+      assert(review, JSON.stringify(f.transfers.getSnapshot()));
+      assert.equal(review.execution?.kind, scenario === 'contract-creation' ? 'contract-creation' : 'contract-call');
+      if (scenario === 'erc721' || scenario === 'erc1155') {
+        assert.equal(review.collectible?.tokenId, '7');
+        assert.equal(review.collectible?.recipient, RECIPIENT);
+      }
+      await f.transfers.confirm(review.id, { method: 'device' });
+      assert.equal(f.transfers.getSnapshot().phase, 'pending', JSON.stringify(f.transfers.getSnapshot()));
+      assert.equal(f.broadcasts.length, 2);
+      const replacement = Transaction.from(f.broadcasts[1]!);
+      for (const field of ['to', 'from', 'value', 'data', 'nonce', 'type'] as const)
+        assert.deepEqual(replacement[field], original[field], field);
+      assert(replacement.gasLimit >= original.gasLimit);
+      assert.deepEqual(replacement.accessList, original.accessList);
+      assert(replacement.maxFeePerGas! > original.maxFeePerGas!);
+      const bundle = JSON.parse((await f.readDurableJournal())!);
+      assert.equal(bundle.entries[1].originalHash, original.hash);
+      assert.equal(bundle.entries[1].operation, 'speed-up');
+      await f.transfers.prepareSpeedUp(replacement.hash!);
+      const next = f.transfers.getSnapshot().review!;
+      if (scenario === 'erc721' || scenario === 'erc1155') {
+        assert.equal(next.collectible?.tokenId, '7');
+        assert.equal(next.collectible?.recipient, RECIPIENT);
+      } else assert.equal(next.collectible, undefined, 'opaque and ERC20 transferFrom call bytes must not be classified as NFTs');
+    } finally { await f.close(); }
+  });
+}
 
 for (const type of [0, 2] as const) {
   test(`Speed Up type ${type} retains execution and saves linked exact bytes before POST`, async () => {

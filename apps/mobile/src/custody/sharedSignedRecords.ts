@@ -11,6 +11,20 @@ import { TransferJournalError, type TransferJournalEntry, type TransferJournalPh
 import type { NativeNetworkRegistration } from './networkContext.ts';
 import { LOCAL_ACTIVITY_LIMIT, type LocalActivityRecord } from '../activity/types.ts';
 
+const maySpeedUp = (entry: EvmRetainedSignedRecord, type: number | null | undefined) =>
+  entry.operation !== 'cancel' && (type === 0 || type === 2) &&
+  !Object.hasOwn(entry.metadata ?? {}, 'privateDeposit') && !Object.hasOwn(entry.metadata ?? {}, 'privateWithdrawal');
+
+/** Address aliases never substitute for the signer that owns retained bytes. */
+export function findRetainedSignerAccount<T extends { type: NativeAccountType; index: number; slip44: number; address: string }>(
+  accounts: readonly T[], entry: Pick<EvmRetainedSignedRecord, 'signer' | 'from'>
+): T | undefined {
+  return accounts.find(account => account.slip44 === 60 &&
+    ['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(account.type) &&
+    account.type === entry.signer.type && account.index === entry.signer.id &&
+    account.address.toLowerCase() === entry.from.toLowerCase());
+}
+
 export function createNativeAutomaticNoncePlanner(
   records: EvmSignedRecords, session: EvmSignedRecordSession, chainId: string, from: string, endpoint: string,
   heldSnapshot?: EvmAutoNonceSnapshot
@@ -53,10 +67,7 @@ export function createNativeSignedRecordView(
     const saved=projectSavedEvmTransaction(entry), token=saved.tokenTransfer?.token;
     const inspectionOnly = (entry.operation === 'erc721' || entry.operation === 'erc1155') &&
       (!saved.collectibleTransfer || !isRetainedNftReplayEnvelope(Transaction.from(entry.rawTransaction)));
-    const speedUpEligible = (saved.operation === 'send' || saved.operation === 'erc20' || saved.operation === 'speed-up') &&
-      saved.to !== null && (saved.type === 0 || saved.type === 2) &&
-      (saved.dataBytes === 0 ? saved.value !== '0' : !!token) &&
-      !Transaction.from(entry.rawTransaction).accessList?.length;
+    const speedUpEligible = maySpeedUp(entry, saved.type);
     return Object.freeze({walletFingerprint:walletBindingId,accountId:nativeAccountId(account.type,account.index),address:account.address,networkId:network.id,registrationHash:network.registrationHash,chainId:network.chainId,hash:entry.hash,phase:entry.phase,nonce:entry.nonce,createdAt:entry.createdAt,
       recipient:saved.collectibleTransfer?.recipient??saved.tokenTransfer?.recipient??saved.to,amountUnits:token?saved.tokenTransfer!.amountUnits:saved.value,maximumFeeUnits:saved.maximumFee,...(token?{token}:{}),
       operation: saved.operation, transactionType: saved.type, ...(saved.originalHash ? { originalHash: saved.originalHash } : {}),
@@ -75,6 +86,8 @@ export function createNativeSignedRecordView(
     ...(transfer.contractInteraction ? { contractInteraction: true as const } : {}),
     // The outer transaction's terminal status does not establish the UserOperation outcome.
     phase: 'submitted', inspectionOnly: true,
+    operation: transfer.entry.operation, transactionType: Transaction.from(transfer.entry.rawTransaction).type ?? undefined,
+    ...(maySpeedUp(transfer.entry, Transaction.from(transfer.entry.rawTransaction).type) ? { speedUpEligible: true as const, reviewNavigation: Object.freeze({ speedUp: true }) } : {}),
     smartAccount: Object.freeze({ payer: transfer.entry.from, operationHash: transfer.operationHash, operationNonce: transfer.operationNonce }),
   });
   return Object.freeze({

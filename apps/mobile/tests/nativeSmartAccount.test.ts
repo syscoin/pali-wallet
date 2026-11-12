@@ -52,6 +52,8 @@ import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime, type KeyringRuntimeDependencies } from '../src/custody/keyringRuntime.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
+import { NativeTransfers } from '../src/custody/transfers.ts';
+import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { inspectRecoveryCatalogue, NativeWalletCatalogue, WALLET_CATALOGUE_KEY, type NativeInfrastructurePending } from '../src/custody/walletCatalogue.ts';
 import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
@@ -184,6 +186,12 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             }
           }
           result = '0x186a0';
+        }
+        else if (request.method === 'eth_getTransactionByHash') {
+          const raw = submitted.find(raw => Transaction.from(raw).hash === request.params[0]);
+          const transaction = raw ? Transaction.from(raw) : undefined;
+          result = transaction ? { hash: transaction.hash, from: transaction.from, to: transaction.to, value: `0x${transaction.value.toString(16)}`,
+            nonce: `0x${transaction.nonce.toString(16)}`, blockNumber: null, blockHash: null, transactionIndex: null } : null;
         }
         else if (request.method === 'eth_getTransactionReceipt') {
           const raw = submitted.find(raw => Transaction.from(raw).hash === request.params[0]);
@@ -383,6 +391,11 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     checkSmartAccountAddress: async () => ({ isBlacklisted: blockedRecipient, severity: 'high' }),
     ensureCryptoReady: async () => undefined, readEvmRetirement: null, openStorage,
     connectionFetch: (_url, init) => backend(getNativeNetwork(runtime.catalogue.getSnapshot()?.active.networkId ?? 'ethereum'), init),
+    async observeActivity(network, expected, signal, guard) {
+      guard();
+      const result = await new NativeTransferRpc({ registration: network, fetch: (_url, init) => backend(network, init) }).observation(expected, signal);
+      guard(); return result;
+    },
     prepareSmartAccount(network, index, owner, signal, guard) {
       return new EvmTransferReadRpc(network, { fetch: (_url, init) => backend(network, init) }).prepareSmartAccount(index, owner, signal, guard);
     },
@@ -409,6 +422,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     mutateSelectedSmart(mutate: (account: IKeyringAccountState) => void) { assert(mutateSelectedSmart); mutateSelectedSmart(mutate); },
     installSlh() { assert(installSlh); installSlh(); },
     get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; },
+    transferRpc: new NativeTransferRpc({ registration: getNativeNetwork('ethereum'), fetch: (_url, init) => backend(getNativeNetwork(runtime.catalogue.getSnapshot()?.active.networkId ?? 'ethereum'), init) }),
     get sdkHost() { assert(sdkHost); return sdkHost; }, get sdkHostStorage() { assert(sdkHostStorage); return sdkHostStorage; },
     get physicalStorageCloses() { return physicalStorageCloses; }, calls, submitted, signatures, payerSignatures, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
     infrastructureCode(id: PaliInfrastructureContractId, present: boolean) {
@@ -1505,6 +1519,53 @@ test('restart after the deployment receipt refreshes metadata without another tr
   } finally { deployment?.dispose(); await f.close(); }
 });
 
+
+test('Smart Activity speeds up the exact outer transaction using its original local fee payer', async () => {
+  const f = await fixture({}, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  let transfers: NativeTransfers | undefined;
+  try {
+    const payer = f.owner.getSnapshot().account!.address;
+    await f.change({ kind: 'create-smart', label: 'Smart sender' });
+    const smart = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
+    f.fundedSmart(); f.holdReceipts(); f.deployed();
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    await operation.prepare();
+    const authorized = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id);
+    await authorized;
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    operation.dispose(); operation = undefined;
+    const original = Transaction.from(f.submitted[0]!);
+    const ownerProofs = f.signatures.length;
+    transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+    await transfers.prepareSpeedUp(original.hash!);
+    const review = transfers.getSnapshot().review;
+    assert(review, JSON.stringify(transfers.getSnapshot()));
+    assert.equal(review.from, payer);
+    assert.equal(review.execution?.smartAccount, smart.address);
+    assert.equal(f.owner.getSnapshot().account!.address, smart.address);
+    await transfers.confirm(review.id, { method: 'device' });
+    assert.equal(transfers.getSnapshot().phase, 'pending', JSON.stringify(transfers.getSnapshot()));
+    assert.equal(f.submitted.length, 2);
+    const replacement = Transaction.from(f.submitted[1]!);
+    for (const field of ['to', 'from', 'value', 'data', 'nonce', 'type'] as const)
+      assert.deepEqual(replacement[field], original[field], field);
+    assert.equal(f.signatures.length, ownerProofs, 'outer fee replacement must not request a new Smart owner proof');
+    assert.equal(f.owner.getSnapshot().account!.address, smart.address);
+    f.assertNoSigningKeys();
+    await transfers.prepareSpeedUp(replacement.hash!);
+    const staleReview = transfers.getSnapshot().review!;
+    f.owner.lock();
+    await assert.rejects(transfers.confirm(staleReview.id, { method: 'device' }));
+    assert.equal(f.submitted.length, 2, 'locking retires the payer replacement before another signature or broadcast');
+    assert.equal(f.signatures.length, ownerProofs);
+    f.assertNoSigningKeys();
+  } finally { operation?.dispose(); transfers?.dispose(); await f.close(); }
+});
 
 for (const alreadyDeployed of [false, true]) test(`real SDK smart native send authorizes exact value and submits without waiting (${alreadyDeployed ? 'deployed' : 'counterfactual'})`, async () => {
   const f = await fixture();

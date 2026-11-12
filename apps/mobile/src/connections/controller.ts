@@ -4,7 +4,7 @@ import { getRequestedSmartAccountAuthenticator, type SmartAccountPreparationRequ
 import type { NativeSmartCreationAllocation } from '../smartAccount/preparation.ts';
 import { SmartAccountModulesProjectionError } from '../../../../source/shared/smartAccountModules.ts';
 import { SMART_ACCOUNT_MODULE_REQUEST_METHODS, isSmartAccountModuleRequestMethod, normalizeSmartAccountModuleRequest, SmartAccountModuleRequestError, type SmartAccountModuleRequest } from '../../../../source/shared/smartAccountModuleRequest.ts';
-import { NativeSigningHandoffs, retireNativeSigningHandoff, sameSigningResumeOwner, type NativeSigningHandoff, type SigningResumeScope, type SigningHandoffDescriptor } from './signingHandoff.ts';
+import { NativeSigningHandoffs, captureNativeSigningContinuation, completeNativeSigningOwnerStep, retireNativeSigningHandoff, sameSigningResumeOwner, type NativeSigningHandoff, type SigningResumeScope, type SigningHandoffDescriptor } from './signingHandoff.ts';
 import { isDappEncryptionMethod, readDappEncryptionRequest, supportsDappEncryptionAccount, type DappEncryptionRequest } from '../../../../source/shared/dappEncryptionRequest.ts';
 import { prepareDappEncryptionApproval } from '../../../../source/wallet/dappEncryptionApproval.ts';
 import { dappCaipChain, dappNamespace, DAPP_MODE_METHODS, normalizeDappModeRequest, type DappChainScope } from '../../../../source/shared/dappChainScope.ts';
@@ -32,7 +32,7 @@ import {
 import type { CallsBundleStatus } from '../../../../source/wallet/dappCallsBundles.ts';
 import type { NativeSmartAccountOperation } from '../smartAccount/operation.ts';
 import type { NativePreparedConnectionTransaction } from './transactionRuntime.ts';
-import { createNativeEoaCalls, type NativeEoaCalls } from './eoaCalls.ts';
+import { createNativeEoaCalls, createNativeEoaCallsContinuation, isNativeEoaCallsContinuation, type NativeEoaCalls } from './eoaCalls.ts';
 import { createDappSigningApproval } from '../../../../source/wallet/dappSigningApproval.ts';
 import {
   normalizeDappCapabilitiesRequest,
@@ -632,7 +632,7 @@ export class NativeConnectionsController {
       if (isDappEncryptionMethod(method) && !supportsDappEncryptionAccount({ type: accountType })) return false;
       if (hardware && (method === 'eth_signTypedData' || method === 'wallet_getSmartAccountModules' || isSmartAccountModuleRequestMethod(method))) return false;
       if (scope?.kind === 'syscoin') {
-        if ((SENTRY_DAPP_METHODS as readonly string[]).includes(method)) return !hardware && Object.values(SENTRY_NETWORKS).some(network => network.chainId === scope.chainId && network.genesisHash === scope.genesisHash);
+        if ((SENTRY_DAPP_METHODS as readonly string[]).includes(method)) return Object.values(SENTRY_NETWORKS).some(network => network.chainId === scope.chainId && network.genesisHash === scope.genesisHash);
         return isDappSyscoinRead(method) || (DAPP_MODE_METHODS as readonly string[]).includes(method) || isDappPermissionMethod(method) || (PSBT_DAPP_METHODS as readonly string[]).includes(method);
       }
       if (isDappSyscoinRead(method) || (SENTRY_DAPP_METHODS as readonly string[]).includes(method) || (PSBT_DAPP_METHODS as readonly string[]).includes(method)) return false;
@@ -645,7 +645,7 @@ export class NativeConnectionsController {
       if (method === 'wallet_sendCalls')
         return (
           !accountType ||
-          accountType === 'HDAccount' || accountType === 'Imported' ||
+          accountType === 'HDAccount' || accountType === 'Imported' || accountType === 'Ledger' || accountType === 'Trezor' ||
           (accountType === 'SmartAccount' &&
             !!accountId &&
             this.host?.supportsAtomicCalls(accountId) === true)
@@ -654,7 +654,7 @@ export class NativeConnectionsController {
         method === 'wallet_getCallsStatus' ||
         method === 'wallet_showCallsStatus'
       )
-        return !accountType || accountType === 'SmartAccount' || accountType === 'HDAccount' || accountType === 'Imported';
+        return !accountType || accountType === 'SmartAccount' || accountType === 'HDAccount' || accountType === 'Imported' || accountType === 'Ledger' || accountType === 'Trezor';
       return true;
     });
   }
@@ -1862,7 +1862,7 @@ export class NativeConnectionsController {
                 ? {
                     chainId: context.network.chainId,
                     batchSupported:
-                      nativeAccount!.type === 'HDAccount' || nativeAccount!.type === 'Imported' ||
+                      nativeAccount!.type === 'HDAccount' || nativeAccount!.type === 'Imported' || nativeAccount!.type === 'Ledger' || nativeAccount!.type === 'Trezor' ||
                       nativeAccount!.type === 'SmartAccount' && this.host!.supportsAtomicCalls(nativeAccount!.id),
                     atomicSupported:
                       nativeAccount!.type === 'SmartAccount' &&
@@ -1896,6 +1896,8 @@ export class NativeConnectionsController {
           account &&
           (grant?.accountType === 'HDAccount' ||
             grant?.accountType === 'Imported' ||
+            grant?.accountType === 'Ledger' ||
+            grant?.accountType === 'Trezor' ||
             grant?.accountType === 'SmartAccount') &&
           grant.chain === 'ethereum' &&
           session &&
@@ -2158,8 +2160,9 @@ export class NativeConnectionsController {
     if (message.handoff) retireNativeSigningHandoff(message.handoff);
     const entry = { id: message.resumeId, wire: message.wire, scope, expiresAt: message.review.expiresAt, order: message.queueOrder,
       assertCurrent: () => { const approval = message.approval; if (!approval) return failure('REQUEST_EXPIRED'); approval.assertCurrent(); if (this.requests.get(message.id) !== message || !this.requestConnectionCurrent(message)) failure('CONTEXT_CHANGED'); },
-      eligible: () => message.busy && !message.dispatched && !message.resultReady && !message.broadcastHash && !message.eoa,
-      drain: () => message.work ?? Promise.resolve(), retire: () => { void this.retireRequest(message, false); },
+      eligible: () => message.busy && !message.dispatched && !message.resultReady &&
+        (message.eoa ? message.eoa.isAwaitingSignature() : !message.broadcastHash),
+      drain: async () => { await message.work; await message.eoa?.drain(); }, retire: () => { void this.retireRequest(message, false); },
     };
     return resume ? this.handoffs.resume(entry, resume) : this.handoffs.capture(entry);
   }
@@ -2183,7 +2186,7 @@ export class NativeConnectionsController {
     this.requests.delete(message.id);
     message.authenticationScope.retire();
     retireNativeSigningHandoff(message.handoff);
-    const reservation = message.request.method === 'wallet_sendCalls'
+    const reservation = message.request.method === 'wallet_sendCalls' && !message.handoff.isSuspended()
       ? this.host?.calls
         .releaseSendCallsBundleReservation(
           message.session.binding.origin,
@@ -2283,6 +2286,10 @@ export class NativeConnectionsController {
     if (!saved && this.hasPendingWire(wire)) return;
     if (!saved && (this.pendingCount() >= DAPP_REQUEST_LIMITS.pendingRequests || this.pendingCount(connection) >= DAPP_REQUEST_LIMITS.requestsPerOrigin))
       return reject(-32005, 'Too many requests');
+    const resumingEoaCalls = saved && wire.method === 'wallet_sendCalls' && account.type !== 'SmartAccount';
+    const retainedContinuation = resumingEoaCalls ? this.handoffs.continuation(saved) : undefined;
+    const retainedCalls = isNativeEoaCallsContinuation(retainedContinuation) ? retainedContinuation : undefined;
+    if (resumingEoaCalls && !retainedCalls) return failure('REQUEST_EXPIRED');
     let request: SigningRequest | undefined;
     try {
       if (wire.method === 'eth_sendTransaction') {
@@ -2314,7 +2321,7 @@ export class NativeConnectionsController {
           account.type === 'SmartAccount' &&
           this.host!.supportsAtomicCalls(account.id);
         assertDappCallsAtomicSupport(calls, supported);
-        if (!supported && account.type !== 'HDAccount' && account.type !== 'Imported')
+        if (!supported && account.type !== 'HDAccount' && account.type !== 'Imported' && account.type !== 'Ledger' && account.type !== 'Trezor')
           throw new EthereumRpcErrorHandler(
             4200,
             'Smart atomic calls are unavailable for this account'
@@ -2337,8 +2344,8 @@ export class NativeConnectionsController {
             from: account.address,
             chainId: String(context.network.chainId),
           }),
-          bundleId: calls.id ?? this.host!.calls.generateWalletBundleId(),
-          reservationId: this.host!.calls.generateWalletBundleId(),
+          bundleId: retainedCalls?.identity.bundleId ?? calls.id ?? this.host!.calls.generateWalletBundleId(),
+          reservationId: retainedCalls?.identity.reservationId ?? this.host!.calls.generateWalletBundleId(),
         };
       } else if (isSmartAccountModuleRequestMethod(wire.method)) {
         if (account.type !== 'SmartAccount') throw new EthereumRpcErrorHandler(-32600, 'The connected account is not a smart account');
@@ -2390,7 +2397,7 @@ export class NativeConnectionsController {
     );
     if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now())
       return reject(4001, 'Request expired');
-    if (request.method === 'wallet_sendCalls') {
+    if (request.method === 'wallet_sendCalls' && retainedCalls === undefined) {
       const registry = this.host!.calls;
       const revision = this.options.source.getSnapshot().revision;
       const reserved = await registry.reserveSendCallsBundle(
@@ -2654,6 +2661,9 @@ export class NativeConnectionsController {
     let advisories: NativeTransactionReview['advisories'] = [];
     let warning = false;
     const operation = createNativeEoaCalls({
+      continuation: captureNativeSigningContinuation(message.handoff, () => createNativeEoaCallsContinuation({
+        calls: request.calls, origin: message.session.binding.origin, bundleId: request.bundleId, reservationId: request.reservationId,
+      })),
       calls: request.calls, origin: message.session.binding.origin,
       bundleId: request.bundleId, reservationId: request.reservationId,
       expiresAt: message.requestExpiresAt, registry: this.host!.calls,
@@ -2671,8 +2681,10 @@ export class NativeConnectionsController {
         approval.assertCurrent();
         advisories = [];
         warning = false;
+        const handoff: NativeSigningHandoff = Object.freeze({ ...message.handoff,
+          beforeSignature: () => { completeNativeSigningOwnerStep(message.handoff, false); operation.completeSignature(); } });
         const prepared = await this.host!.prepareTransaction({ accountId: message.accountId,
-          networkId: message.networkId, transaction, approval, handoff: message.handoff }, approval.assertCurrent, this.requestAuthentication(message));
+          networkId: message.networkId, transaction, approval, handoff }, approval.assertCurrent, this.requestAuthentication(message));
         approval.assertCurrent();
         if ('operation' in prepared) { await prepared.operation.dispose(); throw new Error('Expected an EOA review'); }
         const result = await reviewDappAddressAdvisories({

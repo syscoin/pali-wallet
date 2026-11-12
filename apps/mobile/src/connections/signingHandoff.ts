@@ -137,6 +137,11 @@ export class NativeSigningHandoffs {
     return saved?.descriptor.id === id ? saved.descriptor : null;
   }
   descriptor(id: string) { const value=this.currentDescriptor(id); return value?.kind === 'dapp' ? value : null; }
+  continuation(descriptor: SigningHandoffDescriptor): unknown {
+    const saved = this.suspended;
+    if (!saved || this.currentDescriptor(descriptor.id) !== descriptor || saved.claimed) throw Error('REQUEST_EXPIRED');
+    return saved.continuation;
+  }
   localDescriptor(id: string) { const value=this.currentDescriptor(id); return value?.kind === 'local-smart' ? value : null; }
   infrastructureDescriptor(id: string) { const value=this.currentDescriptor(id); return value?.kind === 'local-infrastructure' ? value : null; }
   cancelDapp() { const value=this.suspended?.descriptor; if(value?.kind !== 'dapp')return;this.discard(value);return value; }

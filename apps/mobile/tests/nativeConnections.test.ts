@@ -471,7 +471,7 @@ function fixture(
       const legacy = value.type === '0x0' || value.type === 0 || value.gasPrice !== undefined;
       const transaction = snapshotPreparedEvmTransaction({
         from: ADDRESS, to: value.to ?? null, chainId: '1', value: BigInt(value.value as string ?? '0').toString(),
-        data: String(value.data ?? '0x'), nonce: BigInt(value.nonce as string ?? '0').toString(), gasLimit: (BigInt(value.gasLimit as string ?? '50000') < BigInt(options.minimumGasLimit ?? '0') ? BigInt(options.minimumGasLimit!) : BigInt(value.gasLimit as string ?? '50000')).toString(),
+        data: String(value.data ?? '0x'), nonce: BigInt(value.nonce as string ?? (options.batch ? transactions.length : 0)).toString(), gasLimit: (BigInt(value.gasLimit as string ?? '50000') < BigInt(options.minimumGasLimit ?? '0') ? BigInt(options.minimumGasLimit!) : BigInt(value.gasLimit as string ?? '50000')).toString(),
         ...(legacy ? { type: 0, gasPrice: BigInt(value.gasPrice as string ?? '10').toString() }
           : { type: 2, accessList: value.accessList ?? [], maxFeePerGas: BigInt(value.maxFeePerGas as string ?? '10').toString(), maxPriorityFeePerGas: BigInt(value.maxPriorityFeePerGas as string ?? '1').toString() }),
       });
@@ -1225,14 +1225,11 @@ test('required calls expose connection eligibility for each account', async () =
     const proposal = f.view.getSnapshot().proposals[0]!;
     const ledger = proposal.methodsByAccount.find(account => account.accountId === 'ledger:60:0')!;
     const software = proposal.methodsByAccount.find(account => account.accountId === 'hd:60:1')!;
-    assert.equal(ledger.canApprove, false);
-    assert.equal(ledger.methods.includes('wallet_sendCalls'), false);
+    assert.equal(ledger.canApprove, true);
+    assert.equal(ledger.methods.includes('wallet_sendCalls'), true);
     assert.equal(software.canApprove, true);
     assert.equal(software.methods.includes('wallet_sendCalls'), true);
-    await assert.rejects(f.view.approve(proposal.id, ledger.accountId, 'ethereum', f.view.getSnapshot().revision),
-      { message: 'UNSUPPORTED_REQUEST' });
-    assert.equal(f.approved(), 0);
-    await f.view.approve(proposal.id, software.accountId, 'ethereum', f.view.getSnapshot().revision);
+    await f.view.approve(proposal.id, ledger.accountId, 'ethereum', f.view.getSnapshot().revision);
     assert.equal(f.approved(), 1);
     assert.equal(f.view.getSnapshot().proposals.length, 0);
   } finally { await f.controller.dispose(); }
@@ -2095,12 +2092,12 @@ test('a retired PSBT signing request cannot deliver its late structured result',
     assert(!f.responses.some(value => 'result' in (value as { result: object }).result)); assert.equal(f.view.getSnapshot().psbtReview, null);
   } finally { held.resolve(); await f.controller.dispose(); }
 });
-for (const hardware of ['Ledger', 'Trezor'] as const) test(`${hardware} proposal exposes only its wired EVM message methods and retains the existing calls exclusion`, async () => {
+for (const hardware of ['Ledger', 'Trezor'] as const) test(`${hardware} proposal exposes its wired EVM message and calls methods`, async () => {
   const f = await connectedFixture({ hardware, batch: true, accountId: `${hardware.toLowerCase()}:60:0` });
   try {
     const methods = f.session.namespaces.eip155!.methods;
     assert(methods.includes('personal_sign')); assert(methods.includes('eth_signTypedData_v3')); assert(methods.includes('eth_signTypedData_v4'));
-    assert.equal(methods.includes('eth_signTypedData'), false); assert.equal(methods.includes('wallet_sendCalls'), false);
+    assert.equal(methods.includes('eth_signTypedData'), false); assert.equal(methods.includes('wallet_sendCalls'), true);
     assert.equal(methods.some(method => method.startsWith('sys_') && !(DAPP_MODE_METHODS as readonly string[]).includes(method)), false);
     assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN]?.accountType, hardware);
   } finally { await f.controller.dispose(); }
@@ -4197,9 +4194,11 @@ for (const change of ['get-expired', 'show-expired', 'show-dismissed'])
     } finally { Date.now = readNow; release?.(); await f.controller.dispose(); }
   });
 
-for (const imported of [false, true])
-test(`${imported ? 'Imported' : 'HD'} EOA calls keep each fee consent and expose their durable status after switching networks`, async () => {
-  const f = await connectedFixture({ batch: true, imported, accountId: imported ? 'imported:60:0' : 'hd:60:0' });
+for (const account of ['HD', 'Imported', 'Ledger', 'Trezor'] as const)
+test(`${account} EOA calls keep each fee consent and expose their durable status after switching networks`, async () => {
+  const hardware = account === 'Ledger' || account === 'Trezor' ? account : undefined;
+  const f = await connectedFixture({ batch: true, imported: account === 'Imported', ...(hardware ? { hardware } : {}),
+    accountId: hardware ? `${hardware.toLowerCase()}:60:0` : account === 'Imported' ? 'imported:60:0' : 'hd:60:0' });
   try {
     const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0x1234', atomicRequired: false,
       calls: [{ to: '0x' + '22'.repeat(20), value: '0x1' }, { to: '0x' + '33'.repeat(20), value: '0x2' }] }]);
@@ -4712,7 +4711,7 @@ for (const method of PSBT_DAPP_METHODS) test(`Ledger ${method} negotiates bip122
   const f = await connectedFixture({ utxo: true, hardware: 'Ledger' });
   try {
     const methods = f.session.namespaces.bip122!.methods;
-    assert(methods.includes(method)); assert(!methods.some(value => (SENTRY_DAPP_METHODS as readonly string[]).includes(value)));
+    assert(methods.includes(method)); assert(methods.some(value => (SENTRY_DAPP_METHODS as readonly string[]).includes(value)), 'imported Sentry authorities are available with a hardware account selected');
     await syscoinRequest(f, method, [EXTERNAL_PSBT]);
     const review = f.view.getSnapshot().psbtReview; assert(review?.details);
     assert.equal(f.psbtApprovals.length, 0);
@@ -4806,6 +4805,69 @@ for (const freshness of ['unproven', undefined, 'caller-claimed'] as const) test
   } finally { await f.controller.dispose(); }
 });
 
+
+for (const prefix of [0, 1]) test(`Trezor EOA batch Suite return preserves ${prefix} acknowledged calls and requires fresh per-call consent`, async () => {
+  const f = await connectedFixture({ hardware: 'Trezor', batch: true, accountId: 'trezor:60:0' });
+  const held = Promise.withResolvers<void>();
+  try {
+    let review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0x1234', atomicRequired: false,
+      calls: [{ to: ADDRESS, value: '0x1' }, { to: ADDRESS, value: '0x2' }] }]);
+    assert(review?.kind === 'transaction' && review.batch);
+    if (prefix) {
+      await f.view.approveRequest(review.id, review.revision, false);
+      review = f.view.getSnapshot().signingReview;
+      assert(review?.kind === 'transaction' && review.batch);
+    }
+    assert.equal(review.batch.index, prefix);
+    f.setSignWait(held.promise);
+    const old = f.view.approveRequest(review.id, review.revision, false), rejected = old.catch(() => undefined);
+    await settle();
+    const handoff = f.signingHandoff(), id = handoff.id;
+    const deadline = Date.now() + 60_000;
+    handoff.beforeSuiteOpen(deadline, {})(true);
+    f.view.backgroundSigning(); f.lock(); held.resolve(); await rejected; await settle();
+    assert.equal(f.transactions.length, prefix);
+    f.unlock(); await settle(); await f.view.resumeSigning(id); await settle();
+    let fresh = f.view.getSnapshot().signingReview;
+    assert(fresh?.kind === 'transaction' && fresh.batch);
+    assert.equal(fresh.batch.index, prefix);
+    assert(fresh.expiresAt <= deadline);
+    assert.equal(f.transactions.length, prefix, 'Suite return itself must never sign');
+    await f.view.approveRequest(fresh.id, fresh.revision, false);
+    if (!prefix) {
+      fresh = f.view.getSnapshot().signingReview;
+      assert(fresh?.kind === 'transaction' && fresh.batch);
+      await f.view.approveRequest(fresh.id, fresh.revision, false);
+    }
+    assert.equal(f.transactions.length, 2);
+    assert.deepEqual(f.transactions.map(transaction => (transaction as { nonce: string }).nonce), ['0', '1']);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { id: '0x1234', capabilities: {} } } });
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+for (const change of ['changed-wire', 'session', 'cancel', 'expiry'] as const) test(`Trezor batch ${change} cannot resume or re-sign its acknowledged prefix`, async () => {
+  const f = await connectedFixture({ hardware: 'Trezor', batch: true, accountId: 'trezor:60:0' });
+  const held = Promise.withResolvers<void>(), now = Date.now;
+  try {
+    let review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0x1234', atomicRequired: false,
+      calls: [{ to: ADDRESS, value: '0x1' }, { to: ADDRESS, value: '0x2' }] }]);
+    assert(review?.kind === 'transaction' && review.batch);
+    await f.view.approveRequest(review.id, review.revision, false);
+    review = f.view.getSnapshot().signingReview; assert(review?.kind === 'transaction' && review.batch);
+    f.setSignWait(held.promise);
+    const old = f.view.approveRequest(review.id, review.revision, false).catch(() => undefined);
+    await settle(); const handoff = f.signingHandoff(), deadline = now() + 60_000;
+    handoff.beforeSuiteOpen(deadline, {})(true);
+    f.view.backgroundSigning(); f.lock(); held.resolve(); await old; await settle();
+    if (change === 'changed-wire') f.setPendingOverride('method');
+    else if (change === 'session') f.event({ type: 'session-ended', topic: TOPIC });
+    else if (change === 'cancel') await f.view.cancelSigningHandoff();
+    else Date.now = () => deadline + 1;
+    f.unlock(); await settle(); await assert.rejects(f.view.resumeSigning(handoff.id));
+    assert.equal(f.transactions.length, 1);
+    assert.equal((await (await f.repository).calls.getStoredSendCallsBundle(ORIGIN, '0x1234'))?.txHashes.length, 1);
+  } finally { Date.now = now; held.resolve(); await f.controller.dispose(); }
+});
 
 for (const kind of ['personal_sign', 'eth_signTypedData_v4', 'eth_sendTransaction'] as const) test(`Trezor ${kind} Suite return rebuilds the original request under a new unlock and requires a separate Confirm`, async () => {
   const f = await connectedFixture({ hardware: 'Trezor', accountId: 'trezor:60:0' }), held = Promise.withResolvers<void>(), now = Date.now;

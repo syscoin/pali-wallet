@@ -254,6 +254,7 @@ export async function qualifyNativeZksysTransfer(
   let expectedRaw: string | undefined, expectedHash: string | undefined;
   const wrapped: NativeTransferRuntime = {
     isAuthenticationRefusal: (error) => transfer.isAuthenticationRefusal(error),
+    releaseReplacement: () => transfer.releaseReplacement(),
     authenticateOperation: (...args) => transfer.authenticateOperation(...args),
     authorizeOperation: (...args) => transfer.authorizeOperation(...args),
     releaseOperationAuthorization: (...args) => transfer.releaseOperationAuthorization(...args),

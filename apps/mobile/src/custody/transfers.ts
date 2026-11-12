@@ -1,4 +1,5 @@
 import { Transaction } from 'ethers/transaction';
+import { EVM_SIGNED_RECORD_LIMITS } from '../../../../source/shared/evmSignedRecordLimits.ts';
 import { assertSignedEvmTransactionMatches, type EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { EvmReplayError, type EvmReplayPreparation, type EvmReplayReview, type EvmReplaySession, type EvmSignedReplay, type EvmSavedTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { EvmSignedRecordCancellationFence, EvmSignedRecordNonceConflict, consumeSignedEvmCapacityRefusal, type EvmReplacementRates, type EvmVerifiedReplacementBinding } from '../../../../source/wallet/evmSignedRecords.ts';
@@ -14,7 +15,7 @@ import {
   TransferJournalError,
 } from './transferJournal.ts';
 import type { TransferJournalEntry } from './transferJournal.ts';
-import { NativeTransferRpc, NativeTransferRpcError, type NativeReplacementMode, type NativeReplacementOriginal, type NativeTransferQuote } from './transferRpc.ts';
+import { assertSpeedUpEnvelope, NativeTransferRpc, NativeTransferRpcError, type NativeReplacementMode, type NativeReplacementOriginal, type NativeTransferQuote } from './transferRpc.ts';
 import type { WalletHttpFetch } from '../platform/httpPolicy.ts';
 import { getNativeNetwork, getNativeSendContext, erc20SigningEnabled, type NativeSendContext } from './networkContext.ts';
 import {
@@ -51,6 +52,7 @@ export type NativeTransferReview = Readonly<{
   collectible?: NftTransferIntent;
   replay?: EvmReplayReview;
   replacement?: Readonly<{ mode: NativeReplacementMode; originalHash: string; originalMaximumFeeUnits: string }>;
+  execution?: Readonly<{ kind: 'transfer' | 'contract-call' | 'contract-creation'; dataBytes: number; accessListEntries: number; smartAccount?: string }>;
 }>;
 export type NativeTransferSnapshot = Readonly<{
   context?: NativeSendContext | null;
@@ -102,7 +104,8 @@ export interface NativeTransferRuntime {
     signal: AbortSignal;
   }>>;
   replacementOriginal?(hash: string, mode: NativeReplacementMode, assertCurrent: () => void, signal: AbortSignal):
-    Promise<Readonly<{ rawTransaction: string; binding: EvmVerifiedReplacementBinding; rates: EvmReplacementRates; intent?: Erc20TransferIntent }> | null>;
+    Promise<Readonly<{ rawTransaction: string; binding: EvmVerifiedReplacementBinding; rates: EvmReplacementRates; intent?: Erc20TransferIntent; collectible?: NftTransferIntent; smartAccount?: string }> | null>;
+  releaseReplacement(): void;
   journal(assertCurrent: () => void): Promise<NativeTransferJournalHandle>;
   submit(
     rawTransaction: string,
@@ -325,6 +328,7 @@ export class NativeTransfers {
   }
   cancel(): void {
     if (this.disposed) return;
+    this.runtime()?.releaseReplacement();
     this.generation++;
     this.replay?.cancel(); this.replay = null; this.replayAbort?.abort(); this.replayAbort = null;
     this.revokeSecretOperation();
@@ -341,6 +345,7 @@ export class NativeTransfers {
   }
   dispose(): void {
     if (this.disposed) return;
+    this.runtime()?.releaseReplacement();
     this.disposed = true;
     this.generation++;
     this.replay?.cancel(); this.replay = null; this.replayAbort?.abort(); this.replayAbort = null;
@@ -622,6 +627,7 @@ export class NativeTransfers {
         if (this.activeWork === pending) {
           this.active = false;
           this.activeWork = null;
+          if (!this.review) runtime.releaseReplacement();
         }
         if (this.controller === controller) this.controller = null;
         controller.abort();
@@ -633,17 +639,20 @@ export class NativeTransfers {
     transaction: EvmUnsignedTransfer,
     inputIntent?: Erc20TransferIntent,
     context = getNativeSendContext(this.source.getSnapshot().account!.network, this.source.getCatalogue?.()?.networks),
-    { replacement, collectible, nonceOverride }: {
+    { replacement, collectible, replacementCollectible, smartAccount, nonceOverride }: {
       replacement?: NativeReplacementApproval;
       collectible?: CollectibleReview;
+      replacementCollectible?: NftTransferIntent;
+      smartAccount?: string;
       nonceOverride?: number;
     } = {}
   ) {
     if (nonceOverride !== undefined && transaction.nonce !== String(nonceOverride))
       throw new NativeTransferError('EXPIRED');
     const intent = inputIntent;
-    const asset = collectible?.quote.intent;
-    assertTransferIntentEnvelope(transaction, asset ?? intent);
+    const asset = collectible?.quote.intent ?? replacementCollectible;
+    if (replacement?.mode !== 'speed-up') assertTransferIntentEnvelope(transaction, asset ?? intent);
+    else assertSpeedUpEnvelope(replacement.original, transaction);
     if (transaction.chainId !== context.chainId ||
         intent && !erc20SigningEnabled(context.networkId, this.source.getCatalogue?.()?.networks)) throw new NativeTransferError('FAILED');
     const entropy = this.randomBytes(16);
@@ -662,7 +671,7 @@ export class NativeTransfers {
       id,
       context,
       from: transaction.from,
-      recipient: asset?.recipient ?? intent?.recipient ?? transaction.to,
+      recipient: asset?.recipient ?? intent?.recipient ?? transaction.to ?? 'Contract creation',
       amountUnits: asset?.amountUnits ?? intent?.amountUnits ?? transaction.value,
       maximumFeeUnits: feeApproval.maximumFeeUnits,
       totalUnits: feeApproval.maximumTotalUnits,
@@ -677,6 +686,8 @@ export class NativeTransfers {
       ...(asset ? { collectible: asset } : {}),
       ...(replacement ? { replacement: Object.freeze({ mode: replacement.mode, originalHash: replacement.original.hash,
         originalMaximumFeeUnits: replacement.original.maximumFeeUnits }) } : {}),
+      ...(replacement?.mode === 'speed-up' ? { execution: Object.freeze({ kind: transaction.to === null ? 'contract-creation' as const : transaction.data === '0x' ? 'transfer' as const : 'contract-call' as const,
+        dataBytes: (transaction.data.length - 2) / 2, accessListEntries: transaction.type === 2 ? transaction.accessList.length : 0, ...(smartAccount ? { smartAccount } : {}) }) } : {}),
     });
     this.review = {
       public: publicReview,
@@ -723,14 +734,15 @@ export class NativeTransfers {
       if (mode === 'cancel') {
         const source = action === 'cancel-saved' ? 'saved' : 'pending';
         const prepare = source === 'saved' ? 'prepareSavedCancellation' : 'prepareCancellation';
-        const quote = await rpc[prepare](hash, original.rawTransaction, address, signal, assertCurrent, original.rates);
+        const quote = await rpc[prepare](hash, original.rawTransaction, Transaction.from(original.rawTransaction).from!, signal, assertCurrent, original.rates);
         assertCurrent();
         this.showReview(quote.transaction, undefined, context,
           { replacement: Object.freeze({ mode, source, original: quote.original, feePlan: quote.feePlan, binding: original.binding }) });
       } else {
-        const quote = await rpc.prepareSpeedUp(hash, original.rawTransaction, address, signal, assertCurrent, original.rates, original.intent);
+        const quote = await rpc.prepareSpeedUp(hash, original.rawTransaction, Transaction.from(original.rawTransaction).from!, signal, assertCurrent, original.rates, original.intent);
         assertCurrent();
-        this.showReview(quote.transaction, original.intent, context, { replacement: Object.freeze({ mode, original: quote.original, binding: original.binding }) });
+        this.showReview(quote.transaction, original.intent, context, { replacement: Object.freeze({ mode, original: quote.original, binding: original.binding }),
+          replacementCollectible: original.collectible, smartAccount: original.smartAccount });
       }
     });
   }
@@ -1038,8 +1050,8 @@ export class NativeTransfers {
             throw new NativeTransferError('EXPIRED');
           latest = mode === 'cancel'
             ? await rpc[replacement.source === 'saved' ? 'prepareSavedCancellation' : 'prepareCancellation'](
-              original.hash, retained.rawTransaction, address, signal, guard, retained.rates)
-            : await rpc.prepareSpeedUp(original.hash, retained.rawTransaction, address, signal, guard, retained.rates, retained.intent);
+              original.hash, retained.rawTransaction, original.from, signal, guard, retained.rates)
+            : await rpc.prepareSpeedUp(original.hash, retained.rawTransaction, original.from, signal, guard, retained.rates, retained.intent);
         } else if (collectible) {
           freshCollectible = await withNftInventorySignal(signal, collectible.inventorySignal, (owned) =>
             rpc.requoteNft(collectible.selection, collectible.quote, owned, guard, planner))
@@ -1244,7 +1256,7 @@ export class NativeTransfers {
   ) {
     if (
       typeof signed.rawTransaction !== 'string' ||
-      signed.rawTransaction.length > 4096
+      signed.rawTransaction.length > EVM_SIGNED_RECORD_LIMITS.bytes * 2 + 2
     )
       throw new Error('Invalid signed transfer');
     let tx: Transaction;

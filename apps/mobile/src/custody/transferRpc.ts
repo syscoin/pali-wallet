@@ -1,4 +1,4 @@
-import { serializePreparedEvmTransaction, type PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
+import { serializePreparedEvmTransaction, snapshotEvmAccessList, type EvmAccessList, type PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { keccak256 } from 'ethers/crypto';
 import { assertEvmGasLimit, EVM_CANCELLATION_GAS_LIMIT } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import type { AdmitEvmSignedDispatch } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
@@ -47,6 +47,7 @@ export type NativeReplacementOriginal = Readonly<{
   nonce: number;
   type: 0 | 2;
   registrationHash: string;
+  accessList: EvmAccessList;
 }>;
 type NativeReplacementQuote = NativeTransferQuote & Readonly<{ original: NativeReplacementOriginal }>;
 type NativeCancellationQuote = EvmCancellationQuote & Readonly<{ original: NativeReplacementOriginal }>;
@@ -54,11 +55,12 @@ type NativeCancellationQuote = EvmCancellationQuote & Readonly<{ original: Nativ
 /** A fee replacement must retain the authenticated original execution. */
 export function assertSpeedUpEnvelope(
   original: NativeReplacementOriginal,
-  transaction: Readonly<{ from: string; to: string; value: string; data: string; nonce: string; type: number }>
+  transaction: Readonly<{ from: string; to: string | null; value: string; data: string; nonce: string; type: number; accessList?: EvmAccessList | null }>
 ): void {
   if (transaction.from !== original.from || transaction.to !== original.to ||
       transaction.value !== original.valueUnits || transaction.data !== original.data ||
-      transaction.nonce !== String(original.nonce) || transaction.type !== original.type)
+      transaction.nonce !== String(original.nonce) || transaction.type !== original.type ||
+      JSON.stringify(transaction.accessList ?? []) !== JSON.stringify(original.accessList))
     throw new NativeTransferRpcError('REVIEW_REQUIRED');
 }
 export type NativeTransferReceipt = Readonly<
@@ -321,6 +323,7 @@ export class NativeTransferRpc {
       hash: transaction.hash, from, to, valueUnits: value.toString(), data, nonce, type,
       maximumFeeUnits: (transaction.gasLimit * (transaction.maxFeePerGas ?? transaction.gasPrice ?? 0n)).toString(),
       registrationHash: this.context.registrationHash,
+      accessList: snapshotEvmAccessList(transaction.accessList ?? []),
     });
     return { transaction, original };
   }
@@ -343,13 +346,11 @@ export class NativeTransferRpc {
   }
   async prepareSpeedUp(hash: string, rawTransaction: string, payer: string, signal: AbortSignal, guard: () => void,
     rates: EvmReplacementRates, intent?: Erc20TransferIntent): Promise<NativeReplacementQuote> {
-    if (typeof rawTransaction !== 'string' || rawTransaction.length > 4096)
+    if (typeof rawTransaction !== 'string' || rawTransaction.length > EVM_SIGNED_RECORD_LIMITS.bytes * 2 + 2)
       throw new NativeTransferRpcError('REVIEW_REQUIRED');
     const { transaction, original } = this.authenticatedOriginal(hash, rawTransaction, payer);
-    if (!original.to || transaction.accessList?.length || (!intent && original.valueUnits === '0'))
-      throw new NativeTransferRpcError('REVIEW_REQUIRED');
-    try {
-      assertTransferIntentEnvelope({ chainId: this.context.chainId, to: original.to, value: original.valueUnits, data: original.data }, intent);
+    if (intent) try {
+      assertTransferIntentEnvelope({ chainId: this.context.chainId, to: original.to!, value: original.valueUnits, data: original.data }, intent);
     } catch { throw new NativeTransferRpcError('REVIEW_REQUIRED'); }
     await this.assertPendingOriginal(original, signal, guard);
     const read = (local: AbortSignal) => this.receiptRpc.prepareSpeedUp(transaction, rates, local, guard);
@@ -394,6 +395,7 @@ export class NativeTransferRpc {
   requote(transaction: NativeTransferQuote['transaction'], signal: AbortSignal, intent: Erc20TransferIntent | undefined,
     nonceOverride: number | undefined, automaticNonce: NativeAutomaticNoncePlanner): Promise<NativeTransferQuote> {
     if (intent) return this.prepareToken(transaction.from, intent, signal, transaction, nonceOverride, automaticNonce);
+    if (transaction.to === null) return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
     try { assertTransferIntentEnvelope(transaction); } catch { return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE')); }
     return this.receiptRpc.prepare({ from: transaction.from, to: transaction.to, value: transaction.value, data: transaction.data }, signal, () => undefined, transaction, nonceOverride, automaticNonce)
       .then((quote) => this.checkedQuote(quote)).catch((error) => this.mapReadError(error));
@@ -559,10 +561,8 @@ export class NativeTransferRpc {
           if (tx.gasLimit !== EVM_CANCELLATION_GAS_LIMIT) return invalid();
           cancellation = { from: tx.from, nonce: tx.nonce, operation: 'cancel' };
         } else {
-          if (!tx.to || tx.accessList?.length || (!intent && tx.value === 0n)) return invalid();
           assertSpeedUpEnvelope(original, { from: tx.from, to: tx.to, value: tx.value.toString(), data: tx.data,
-            nonce: String(tx.nonce), type: tx.type! });
-          if (!intent) assertTransferIntentEnvelope({ chainId: tx.chainId.toString(), to: tx.to, value: tx.value.toString(), data: tx.data });
+            nonce: String(tx.nonce), type: tx.type!, accessList: tx.accessList });
           const feeRate = tx.maxFeePerGas ?? tx.gasPrice;
           if (!feeRate || (tx.type !== 0 && tx.type !== 2)) return invalid();
         }

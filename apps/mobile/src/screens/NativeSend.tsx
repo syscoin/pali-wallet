@@ -829,12 +829,21 @@ export function NativeSend({
               {review.replacement && <Card style={s.summary}>
                 <Text style={s.label}>ORIGINAL TRANSACTION · NONCE {review.nonce}</Text>
                 <Text selectable style={s.address}>{review.replacement.originalHash}</Text>
+                {review.execution && <>
+                  <Text>{review.execution.kind === 'contract-creation' ? 'Contract deployment' : review.execution.kind === 'contract-call' ? 'Contract interaction' : 'Transfer'}</Text>
+                  {review.execution.dataBytes > 0 && <Text style={s.hint}>{review.execution.dataBytes} bytes of unchanged contract data</Text>}
+                  {review.execution.accessListEntries > 0 && <Text style={s.hint}>{review.execution.accessListEntries} unchanged access-list entries</Text>}
+                  {review.execution.smartAccount && <>
+                    <Text style={s.label}>SMART ACCOUNT</Text><Text selectable style={s.address}>{review.execution.smartAccount}</Text>
+                    <Text style={s.label}>ORIGINAL FEE PAYER</Text><Text selectable style={s.address}>{review.from}</Text>
+                  </>}
+                </>}
                 {!reviewCancellation && <Text style={s.hint}>
                   Original execution fee limit: {formatBaseUnits(review.replacement.originalMaximumFeeUnits, 18)} {capturedContext.symbol}
                 </Text>}
                 <Text style={s.hint}>{reviewCancellation
                   ? 'This sends zero to your own address with a higher fee. The original can still confirm first.'
-                  : 'This sends the same payment with updated gas and fee limits. The original can still confirm first.'}</Text>
+                  : 'Only the network fee changes. The original recipient, value and contract data stay unchanged. The original can still confirm first.'}</Text>
               </Card>}
               {review.replay && <Card style={s.summary}>
                 <Text style={s.label}>SAVED TRANSACTION · NONCE {review.nonce}</Text>

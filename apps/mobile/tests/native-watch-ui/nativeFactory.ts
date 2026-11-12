@@ -408,6 +408,7 @@ export function createNativeWalletControllers() {
   const operationAuthorization = createTestOperationAuthorizer(authenticateOperation, unsignedTransferBytes);
   const transferRuntime: NativeTransferRuntime = {
     isAuthenticationRefusal: error => !!error && typeof error === 'object' && credentialRefusals.has(error),
+    releaseReplacement() {},
     authorizeOperation: operationAuthorization.authorizeOperation,
     releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
     authenticateOperation,
