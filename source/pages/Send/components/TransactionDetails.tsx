@@ -184,22 +184,26 @@ export const TransactionDetailsComponent = (
       <div className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-normal">
         {t('send.to')}
         <div className="text-white text-xs">
-          <Tooltip content={tx.to} childrenClassName="flex">
-            {(() => {
-              const toLower = (tx.to || '').toLowerCase();
-              const cachedName = (ensCache as any)?.[toLower]?.name;
-              const label = cachedName || tx.to;
-              return ellipsis(label, 7, 15);
-            })()}
-            {
-              <IconButton
-                aria-label={t('buttons.copy')}
-                onClick={() => copy(tx.to ?? '')}
-              >
-                <CopyIcon />
-              </IconButton>
-            }
-          </Tooltip>
+          {tx.to ? (
+            <Tooltip content={tx.to} childrenClassName="flex">
+              {(() => {
+                const toLower = (tx.to || '').toLowerCase();
+                const cachedName = (ensCache as any)?.[toLower]?.name;
+                const label = cachedName || tx.to;
+                return ellipsis(label, 7, 15);
+              })()}
+              {
+                <IconButton
+                  aria-label={t('buttons.copy')}
+                  onClick={() => copy(tx.to ?? '')}
+                >
+                  <CopyIcon />
+                </IconButton>
+              }
+            </Tooltip>
+          ) : (
+            <span>{t('transactions.replay.creation')}</span>
+          )}
         </div>
         {blacklistWarning.isBlacklisted && (
           <div
