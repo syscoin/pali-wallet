@@ -56,7 +56,10 @@ test('wallet verification precedes device authorization and a single commit', as
   expect((await page.evaluate(() => window.__recoveryFixture.audit())).commits).toBe(1);
   await expect(page.getByText('Leaving now stops this screen. The access change may already have completed.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Leave recovery', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Close and reopen Pali before trying again.');
+  await expect(page.getByText('We could not confirm device authorization recovery. Close and reopen Pali before trying again.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Recovery was cancelled.', { exact: true })).toHaveCount(0);
+  await expect(page.locator('input, textarea')).toHaveCount(0);
+  expect((await page.evaluate(() => window.__recoveryFixture.audit())).commits).toBe(1);
 });
 
 test('wrong-phrase retry starts empty and accepts a 24-word input without retaining either phrase', async ({ page }) => {
@@ -74,7 +77,9 @@ for (const stage of ['entry', 'verifying', 'review'] as const) test(`background 
   if (stage !== 'entry') await page.getByRole('button', { name: 'Continue', exact: true }).click();
   if (stage === 'review') await page.evaluate(() => window.__recoveryFixture.verify('match'));
   await page.evaluate(() => { window.__recoveryFixture.lifecycle('background'); window.__recoveryFixture.verify('match'); });
-  await expect(page.getByText('Recovery was cancelled', { exact: true })).toBeVisible();
+  await expect(page.getByText('Recovery was cancelled.', { exact: true })).toBeVisible();
+  await expect(page.getByText('We could not confirm device authorization recovery. Close and reopen Pali before trying again.', { exact: true })).toHaveCount(0);
+  expect((await page.evaluate(() => window.__recoveryFixture.audit())).commits).toBe(0);
   await expect(page.locator('input, textarea')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Restore secure access', exact: true })).toHaveCount(0);
 });

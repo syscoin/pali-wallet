@@ -1,13 +1,15 @@
 // Actual leaf with a synthetic flow. This fixture does not perform recovery,
 // authenticate a phrase, access storage, or establish native qualification.
-import React, { useLayoutEffect, useState } from 'react';
+import React, { useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import { registerRootComponent } from 'expo';
 import { AppState, BackHandler } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import type { NativeRecoveryFlow } from '../../src/custody/recoveryFlow';
+import type { NativeRecoveryFlow, RecoveryOutcome } from '../../src/custody/recoveryFlow';
 import type { RecoveryInventory } from '../../src/custody/recoveryInventory';
 import { NativeRecovery } from '../../src/screens/NativeRecovery';
-import { Screen, Text } from '../../src/ui';
+import { Notice, Screen, Text } from '../../src/ui';
+import { recoveryOutcomeText } from '../../src/screens/recoveryCopy';
+import { useNativeTranslation } from '../../src/platform/localization';
 
 type Phase = ReturnType<NativeRecoveryFlow['getSnapshot']>['phase'];
 const params = new URLSearchParams(window.location.search);
@@ -33,6 +35,8 @@ const audit = { starts: 0, backs: 0, cancels: 0, submissions: 0, admissions: 0, 
 class FixtureFlow {
   private snapshot: ReturnType<NativeRecoveryFlow['getSnapshot']> = Object.freeze({ phase: 'reading', inventory: null, error: '', fieldErrors: {} });
   private listeners = new Set<() => void>();
+  private outcome: RecoveryOutcome | null = null;
+  getOutcome = () => this.outcome;
   getSnapshot = () => this.snapshot;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   publish(phase: Phase, error: ReturnType<NativeRecoveryFlow['getSnapshot']>['error'] = '', fieldErrors: ReturnType<NativeRecoveryFlow['getSnapshot']>['fieldErrors'] = {}) {
@@ -61,6 +65,9 @@ class FixtureFlow {
   cancel() {
     if (this.snapshot.phase === 'closed') return;
     audit.cancels++;
+    const phase = this.snapshot.phase;
+    this.outcome = Object.freeze({ kind: phase === 'committing' ? 'uncertain' : 'cancelled',
+      operationPhase: phase === 'committing' ? 'commit' : phase === 'review' ? 'review' : phase === 'verifying' ? 'prepare' : 'inventory', code: 'cancelled' });
     this.publish('closed');
   }
 }
@@ -77,8 +84,15 @@ window.__recoveryFixture = {
   back() { [...backs].reverse().some((listener) => listener()); }, unmount() { unmount(); }, read: () => flow.read(),
 };
 function App() {
+  const { t } = useNativeTranslation();
+  const snapshot = useSyncExternalStore(flow.subscribe, flow.getSnapshot, flow.getSnapshot);
+  const outcome = flow.getOutcome();
   const [shown, setShown] = useState(true);
   useLayoutEffect(() => { unmount = () => setShown(false); return () => { unmount = () => undefined; }; }, []);
-  return <SafeAreaProvider>{shown ? <NativeRecovery flow={flow as unknown as NativeRecoveryFlow} /> : <Screen><Text>Recovery fixture closed</Text></Screen>}</SafeAreaProvider>;
+  return <SafeAreaProvider>{!shown ? <Screen><Text>Recovery fixture closed</Text></Screen>
+    : snapshot.phase === 'closed' && outcome
+      ? <Screen><Notice title={t(outcome.kind === 'uncertain' ? 'mobile.walletViews.checkYourWallet' : 'mobile.walletViews.recoveryUpdate')}
+          body={recoveryOutcomeText(outcome, t)} tone="amber" /></Screen>
+      : <NativeRecovery flow={flow as unknown as NativeRecoveryFlow} />}</SafeAreaProvider>;
 }
 registerRootComponent(App);

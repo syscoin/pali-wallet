@@ -18,8 +18,7 @@ function fixture() {
   for (const file of manifest.packages[0].files) {
     if (file.before === null) continue;
     const installed = path.join(
-      __dirname,
-      '../node_modules/@sidhujag/sysweb3-keyring',
+      path.dirname(require.resolve('@sidhujag/sysweb3-keyring/package.json')),
       file.path
     );
     let text = fs.readFileSync(installed, 'utf8');
