@@ -28,7 +28,8 @@ function fixture() {
   }
   const appState = { currentState: 'active', addEventListener };
   const f = screenFixture(new URL('../src/screens/OrphanedStorageRecovery.tsx', import.meta.url), 'OrphanedStorageRecovery', {
-    'react-native': { AppState: appState, BackHandler: { addEventListener }, Platform: { OS: 'android' }, View: 'View' },
+    'react-native': { AppState: appState, BackHandler: { addEventListener }, Platform: { OS: 'android' }, View: 'View', StyleSheet: { create: (value: unknown) => value } },
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     expo: { async reloadAppAsync(reason: string) {
       assert.equal(reason, 'Pali orphaned setup reset');
       assert(mutations === 1 || commitError instanceof WalletStorageError, 'only completed or uncertain reset may reopen the same application');
@@ -62,9 +63,10 @@ function fixture() {
     '../core/operationAuthentication': { isOperationAuthenticationCancellation },
     '../storage/types': { WalletStorageError },
     '../platform/localization': nativeTranslationFixture,
-    '../ui': { styles: {}, colors: {}, ...Object.fromEntries(['Button', 'Card', 'Icon', 'Notice', 'Text'].map(name => [name, name])) },
+    '../ui': { styles: {}, colors: {}, ...Object.fromEntries(['Button', 'Header', 'Screen', 'Icon', 'Notice', 'Text'].map(name => [name, name])) },
   }, { AbortController });
   const props = {
+    onBack() { events.push('back'); },
     captureOwner() { const captured = current; return () => { if (captured !== current) throw Error('CANCELLED'); }; },
     onAvailability(value: boolean) { availability.push(value); },
     onResetOwner(signal: AbortSignal, active: boolean) { promptOwners.push({ signal, active }); },
@@ -282,5 +284,25 @@ for (const boundary of ['changed owner', 'unmount'] as const) test(`retained res
     if (boundary === 'changed owner') f.invalidate(); else f.close();
     staleRestart.props.onPress(); await settle();
     assert.deepEqual(f.counts(), { authCalls: 1, mutations: 1, reloads: 1 });
+  } finally { f.close(); }
+});
+
+
+test('recovery header returns from confirmation without authorizing and ignores stale navigation during reset', async () => {
+  const f = fixture();
+  try {
+    let tree = await intro(f);
+    const header = () => screenElements(tree).find(node => node.type === 'Header')!;
+    header().props.onBack();
+    assert.equal(f.events.filter(event => event === 'back').length, 1);
+    button(tree, action()).props.onPress(); tree = f.render();
+    header().props.onBack(); tree = f.render();
+    assert(hasCopy(tree, 'mobile.storageRecovery.body'));
+    button(tree, action()).props.onPress(); tree = f.render();
+    const staleBack = header().props.onBack;
+    button(tree, action()).props.onPress(); staleBack(); tree = f.render();
+    assert.equal(button(tree, copy('mobile.storageRecovery.working')).props.disabled, true);
+    assert.deepEqual(f.counts(), { authCalls: 1, mutations: 0, reloads: 0 });
+    f.cancelAuth(); await settle();
   } finally { f.close(); }
 });

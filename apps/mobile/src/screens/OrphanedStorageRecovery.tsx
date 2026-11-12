@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Platform, View } from 'react-native';
+import { AppState, BackHandler, Platform, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { reloadAppAsync } from 'expo';
 import { canResetNativeWalletStorage, resetNativeWalletStorage } from '../storage/native';
 import { authorizePublicView, isNativeCredentialPromptActive } from '../platform/credential';
 import { isOperationAuthenticationCancellation } from '../core/operationAuthentication';
 import { WalletStorageError } from '../storage/types';
 import { useNativeTranslation } from '../platform/localization';
-import { Button, Card, colors, Icon, Notice, styles, Text } from '../ui';
+import { Button, colors, Header, Icon, Notice, Screen, Text } from '../ui';
 
 type Props = {
+  onBack(): void;
   captureOwner(): () => void;
   onAvailability(available: boolean): void;
   onResetOwner(signal: AbortSignal, active: boolean): void;
@@ -99,25 +101,48 @@ export function OrphanedStorageRecovery(props: Props) {
   };
 
   if (!available) return null;
-  if (step === 'reset' || step === 'reopen') return <Card>
-    <View style={{ alignItems: 'center', paddingVertical: 12 }}><Icon name={step === 'reset' ? 'check' : 'shield-warning'} size={36} color={step === 'reset' ? colors.blue : colors.amber} /></View>
-    <Text style={styles.sectionHeading}>{t(step === 'reset' ? 'mobile.storageRecovery.complete' : 'mobile.storageRecovery.reopenRequired')}</Text>
-    <Text style={styles.muted}>{t('mobile.storageRecovery.restart')}</Text>
-    <Button title={t('buttons.continue')} icon="arrow-right" onPress={() => { void restart(); }} />
-  </Card>;
-  return <Card>
-    <View style={{ alignItems: 'center', paddingVertical: 12 }}><Icon name="shield-warning" size={36} color={colors.amber} /></View>
-    <Text style={styles.sectionHeading}>{t(step === 'intro' ? 'mobile.storageRecovery.title' : 'mobile.storageRecovery.confirmTitle')}</Text>
-    <Text style={styles.muted}>{t(step === 'intro' ? 'mobile.storageRecovery.body' : 'mobile.storageRecovery.confirmBody')}</Text>
-    {error && <Notice title={t('mobile.storageRecovery.failed')} tone="amber" />}
-    <Button title={t(step === 'working' ? 'mobile.storageRecovery.working' : 'mobile.storageRecovery.action')}
-      variant={step === 'intro' ? 'primary' : 'danger'} disabled={step === 'working'}
-      onPress={() => {
-        if (phase.current !== step) return;
-        if (step === 'intro') setPhase('confirm'); else void reset();
-      }} />
-    {step === 'confirm' && <Button title={t('buttons.cancel')} variant="secondary" onPress={() => {
-      if (phase.current === 'confirm') setPhase('intro');
-    }} />}
-  </Card>;
+  const finished = step === 'reset' || step === 'reopen';
+  const confirmed = step === 'confirm' || step === 'working';
+  const heading = step === 'reset' ? 'mobile.storageRecovery.complete'
+    : step === 'reopen' ? 'mobile.storageRecovery.reopenRequired'
+    : confirmed ? 'mobile.storageRecovery.confirmTitle' : 'mobile.storageRecovery.title';
+  const body = finished ? 'mobile.storageRecovery.restart'
+    : confirmed ? 'mobile.storageRecovery.confirmBody' : 'mobile.storageRecovery.body';
+  const back = step === 'intro' ? () => { if (phase.current === 'intro') latest.current.onBack(); }
+    : step === 'confirm' ? () => { if (phase.current === 'confirm') setPhase('intro'); } : undefined;
+  const footer = finished
+    ? <Button title={t('buttons.continue')} icon="arrow-right" onPress={() => { void restart(); }} />
+    : <>
+      <Button title={t(step === 'working' ? 'mobile.storageRecovery.working' : 'mobile.storageRecovery.action')}
+        variant={step === 'intro' ? 'primary' : 'danger'} disabled={step === 'working'}
+        onPress={() => {
+          if (phase.current !== step) return;
+          if (step === 'intro') setPhase('confirm'); else void reset();
+        }} />
+      {step === 'confirm' && <Button title={t('buttons.cancel')} variant="secondary" onPress={() => {
+        if (phase.current === 'confirm') setPhase('intro');
+      }} />}
+    </>;
+  return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
+    <Screen footer={footer} gap={20} scrollResetKey={step}>
+      <Header title={t('mobile.walletViews.setUpYourWallet')} onBack={back} />
+      <View style={s.intro}>
+        <View style={s.symbol} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <Icon name={step === 'reset' ? 'check' : 'shield-warning'} size={36}
+            color={confirmed || step === 'reopen' ? colors.amber : colors.blue} />
+        </View>
+        <Text accessibilityRole="header" style={s.title}>{t(heading)}</Text>
+        <Text style={s.body}>{t(body)}</Text>
+        {error && <Notice title={t('mobile.storageRecovery.failed')} tone="amber" />}
+      </View>
+    </Screen>
+  </SafeAreaView>;
 }
+
+const s = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: colors.bg },
+  intro: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 40, gap: 20 },
+  symbol: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  title: { color: colors.text, fontSize: 28, lineHeight: 36, fontWeight: '600', letterSpacing: -0.5, textAlign: 'center', maxWidth: 340 },
+  body: { color: colors.muted, fontSize: 16, lineHeight: 25, textAlign: 'center', maxWidth: 340 },
+});

@@ -1831,16 +1831,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const restoreUnconfirmed = stage === 'restore-notes' && noteRestore.step.phase === 'unconfirmed';
   let body: React.ReactNode;
   let footer: React.ReactNode;
-  if (unavailable) body = restoreUnconfirmed ? <NoteRestoreUnconfirmedNotice reopen /> : <>
-    {!orphanedStorage && <Notice title={t("mobile.walletViews.walletUnavailable")} body={t("mobile.walletViews.yourSavedWalletHasBeenPreservedCloseAndReopenPaliToTryAgain")} tone="amber" />}
-    <OrphanedStorageRecovery onAvailability={setOrphanedStorage} onResetOwner={setStorageResetOwner} captureOwner={() => {
-      const captured = epoch.current, token = screenToken.current;
-      return () => {
-        if (!mounted.current || epoch.current !== captured || screenToken.current !== token || controllersRef.current ||
-            nativeLifecycle.current(token) || updateSession.current || recoveryRef.current || removalRef.current) throw Error('CANCELLED');
-      };
-    }} />
-  </>;
+  if (unavailable) body = restoreUnconfirmed ? <NoteRestoreUnconfirmedNotice reopen /> :
+    <Notice title={t("mobile.walletViews.walletUnavailable")} body={t("mobile.walletViews.yourSavedWalletHasBeenPreservedCloseAndReopenPaliToTryAgain")} tone="amber" />;
   else if (!protectedScreen || snapshot.phase === 'opening') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>{t("mobile.walletViews.openingYourWalletSecurely")}</Text></View>;
   else if (snapshot.phase === 'authenticating') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>{t("mobile.walletViews.unlockingYourWalletSecurely")}</Text></View>;
   else if (stage === 'words' && presentation) {
@@ -1985,7 +1977,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
 
   const duplicateAuthenticationError = (snapshot.error === 'INVALID_CREDENTIAL' || snapshot.error === 'AUTH_THROTTLED' || snapshot.error === 'DEVICE_UNLOCK_UNAVAILABLE') &&
     error === message(new Error(snapshot.error));
-  return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
+  const walletScreen = <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen footer={footer} gap={16}>{locked
         ? <View style={s.unlockBrand}><PaliMark size={36} /><Text style={s.unlockBrandName}>Pali Wallet</Text></View>
@@ -1999,6 +1991,17 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       </Screen>
     </KeyboardAvoidingView>
   </SafeAreaView>;
+  if (!unavailable || restoreUnconfirmed) return walletScreen;
+  return <>
+    <OrphanedStorageRecovery onBack={exit} onAvailability={setOrphanedStorage} onResetOwner={setStorageResetOwner} captureOwner={() => {
+      const captured = epoch.current, token = screenToken.current;
+      return () => {
+        if (!mounted.current || epoch.current !== captured || screenToken.current !== token || controllersRef.current ||
+            nativeLifecycle.current(token) || updateSession.current || recoveryRef.current || removalRef.current) throw Error('CANCELLED');
+      };
+    }} />
+    {!orphanedStorage && walletScreen}
+  </>;
 }
 
 const s = StyleSheet.create({
