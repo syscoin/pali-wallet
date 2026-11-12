@@ -277,3 +277,45 @@ test.each([false, true])(
     expect(readFileSync(resolve('manifest.json')).equals(tracked)).toBe(true);
   }
 );
+
+test('both manifest templates and the committed manifest follow the package release fields', () => {
+  const pkg = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
+  const { MV2_OPTIONS, MV3_OPTIONS } = require('../../source/config/consts.js');
+  const committed = JSON.parse(readFileSync(resolve('manifest.json'), 'utf8'));
+  for (const manifest of [MV2_OPTIONS, MV3_OPTIONS, committed]) {
+    expect(manifest.version).toBe(pkg.version);
+    expect(manifest.description).toBe(pkg.description);
+  }
+  expect(pkg.description.length).toBeLessThanOrEqual(132);
+});
+
+test.each(['development', 'production'])(
+  'the real %s generator labels development without changing the numeric release version',
+  (mode) => {
+    const f = fixture();
+    const output = join(f.root, 'generated.json');
+    const pkg = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
+    execFileSync(
+      process.execPath,
+      [resolve('source/config/generateManifest.js')],
+      {
+        cwd: resolve('.'),
+        env: {
+          ...process.env,
+          NODE_ENV: mode,
+          MANIFEST_TYPE: 'MV3',
+          PALI_EXTENSION_MANIFEST: output,
+        },
+      }
+    );
+    const manifest = JSON.parse(readFileSync(output, 'utf8'));
+    expect(manifest.version).toBe(pkg.version);
+    expect(manifest.description).toBe(pkg.description);
+    expect(manifest.version_name).toBe(
+      mode === 'development' ? `${pkg.version} Development` : undefined
+    );
+    expect(manifest.permissions.includes('webRequest')).toBe(
+      mode === 'development'
+    );
+  }
+);

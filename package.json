@@ -1,7 +1,7 @@
 {
   "name": "paliwallet",
-  "version": "4.0.121",
-  "description": "A Non-Custodial Crypto Wallet",
+  "version": "5.0.0",
+  "description": "Self-custody wallet for Bitcoin, Ethereum and supported EVM/UTXO networks, with dApps, tokens and hardware-wallet support.",
   "private": true,
   "repository": {
     "type": "git",
@@ -15,7 +15,7 @@
   "scripts": {
     "generate-manifest": "node ./source/config/generateManifest.js",
     "set-env": "node ./source/config/setEnvAndRun.js",
-    "dev:chrome": "yarn generate-manifest && cross-env NODE_ENV=development cross-env TARGET_BROWSER=chrome webpack --config source/config/webpack.dev.js --watch",
+    "dev:chrome": "yarn set-env development chrome 'yarn generate-manifest && webpack --config source/config/webpack.dev.js --watch'",
     "build:chrome": "node scripts/build-extension.cjs production",
     "build:canary": "node scripts/build-extension.cjs canary",
     "build:canary:store": "node scripts/build-extension.cjs canary --store",

@@ -1,14 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Pali Wallet",
-  "version": "4.0.121",
+  "version": "5.0.0",
   "icons": {
     "16": "assets/all_assets/favicon-32.png",
     "32": "assets/all_assets/favicon-32.png",
     "48": "assets/all_assets/favicon-32.png",
     "128": "assets/all_assets/favicon-32.png"
   },
-  "description": "A Non-Custodial Crypto Wallet",
+  "description": "Self-custody wallet for Bitcoin, Ethereum and supported EVM/UTXO networks, with dApps, tokens and hardware-wallet support.",
   "short_name": "pali",
   "permissions": [
     "hid",
