@@ -7,6 +7,7 @@ import ts from 'typescript';
 import { createIdleComponentFixture, expandIdleElements } from './idleComponentFixture.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import { knownAssetIcon } from '../../../source/shared/assetIconIdentity.ts';
+import { CHAIN_IDS } from '../../../source/shared/evmNetworks.ts';
 import { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, subscribeNativeAssetIcon } from '../src/portfolio/assetIconCache.ts';
 
 type Element = { type: string | ((props: object) => Element); props: Record<string, unknown>; children: unknown[] };
@@ -21,6 +22,7 @@ function shell() {
     './platform/localization': nativeTranslationFixture,
     '../updates/service': { mobileUpdates: { getSnapshot: () => ({ release: null }), subscribe: () => () => undefined } },
     '../../../source/shared/assetIconIdentity': { knownAssetIcon },
+    '../../../source/shared/evmNetworks': { CHAIN_IDS },
     './portfolio/assetIconCache': { markNativeAssetIconFailed, nativeAssetIconKey, readNativeAssetIcon, subscribeNativeAssetIcon },
   };
   const load = (path: string) => {
@@ -30,7 +32,7 @@ function shell() {
       module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true,
     } }).outputText;
     runInNewContext(code, { module, exports: module.exports, require(name: string) {
-      assert.ok(Object.hasOwn(dependencies, name)); return dependencies[name];
+      assert.ok(Object.hasOwn(dependencies, name), `Missing fixture dependency: ${name}`); return dependencies[name];
     } });
     return module.exports;
   };

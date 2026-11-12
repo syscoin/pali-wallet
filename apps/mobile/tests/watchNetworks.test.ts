@@ -4,7 +4,7 @@ import { createEvmWatchAccount, getWatchNetworks, validatePublicAccounts, WatchO
 
 const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
 const SECOND_ADDRESS = '0x8617E340B3D01FA5F11F306F4090FD50E238070D';
-const NETWORK_IDS = ['arbitrum', 'base', 'ethereum', 'rollux', 'syscoin-nevm', 'syscoin-nevm-testnet', 'zksys-testnet'];
+const NETWORK_IDS = ['arbitrum', 'base', 'ethereum', 'rollux', 'syscoin-nevm', 'syscoin-nevm-testnet', 'zksys', 'zksys-testnet'];
 
 test('a new EVM watch account can select every offered registered network without signing authority', () => {
   const account = createEvmWatchAccount('watch_fixture', 'Observed account', ADDRESS.toLowerCase());
