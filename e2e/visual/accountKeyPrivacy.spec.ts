@@ -119,8 +119,7 @@ async function privateKeyPresentation(page: Page) {
   return page
     .getByText(en.settings.yourPrivateKey, { exact: true })
     .locator('../..')
-    .locator('p')
-    .last()
+    .locator(':scope > div:nth-child(2) > p')
     .evaluate((element) => {
       const text = element.textContent || '';
       return {
