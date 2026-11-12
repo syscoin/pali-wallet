@@ -1,4 +1,10 @@
-import { AUTOMATIC_FEE } from '../../../source/shared/transactionFeeChoice.ts';
+import { AUTOMATIC_FEE, snapshotEvmFeeChoice } from '../../../source/shared/transactionFeeChoice.ts';
+import { parseErc20Units, encodeErc20Transfer } from '../../../source/shared/erc20.ts';
+import { trezorResumeDraft } from '../src/screens/trezorResumeDraft.ts';
+import type { NativeSendInitialDraft } from '../src/screens/NativeSend.tsx';
+import type { SavedCollectible } from '../src/portfolio/tokenRegistry.ts';
+import { Transaction } from 'ethers';
+import { encodeNftTransferData } from '../../../source/shared/nftTransfer.ts';
 import { languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
 import { createInstance } from 'i18next';
 import assert from 'node:assert/strict';
@@ -17,6 +23,7 @@ import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FUL
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (next: unknown) => void };
 function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>, recipientResolver?: NativeRecipientResolver, onChangeNetwork?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>) => void, onViewTransaction?: (hash: string) => void, onChangeAsset?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>, token?: unknown) => void, ledgerConnection?: { subscribe(listener: () => void): () => void; isConnected(): boolean }, localization = nativeTranslationFixture) {
+  let initialDraft: NativeSendInitialDraft | undefined, collectible: SavedCollectible | undefined;
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
@@ -36,7 +43,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   const ui={...Object.fromEntries(['Button','Card','Coin','Header','Icon','IconButton','Notice','Screen','Text'].map(name=>[name,name])),colors:{},styles:{}};
   const deps: Record<string,unknown> = {
     '../platform/localization': localization,
-    '../../../../source/shared/transactionFeeChoice': { AUTOMATIC_FEE },
+    '../../../../source/shared/transactionFeeChoice': { AUTOMATIC_FEE, snapshotEvmFeeChoice },
     './NetworkFeeSheet': { NetworkFeeSheet: 'NetworkFeeSheet' },
     './RecipientQrScanner': { RecipientQrScanner: 'RecipientQrScanner' },
     './SendNetworkCard': { SendNetworkCard: 'SendNetworkCard' },
@@ -48,7 +55,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     './IdleActivityBoundary':{IdlePressable:'IdlePressable',IdleTextInput:'IdleTextInput'},
     '../core/amounts':{formatBaseUnits},
     '../../../../source/shared/decimalInput': { normalizeDecimalInput },
-    '../../../../source/shared/erc20':{formatTokenUnits:()=>'',parseErc20Units:()=>''},
+    '../../../../source/shared/erc20':{formatTokenUnits:()=>'',parseErc20Units},
     '../../../../source/shared/evmRecipientChoices':{findLocalEvmRecipientChoices:()=>[]},
     '../../../../source/utils/nftTokenId':{normalizeNftTokenId:()=>''},
     '../custody/transfers':{ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE},
@@ -81,12 +88,14 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
       if (confirmationGate) await confirmationGate;
       if (snapshot.review !== approved) throw Error('CANCELLED');
       signatures++;
-    }, async prepareToken(...args: unknown[]) { prepared.push(args); },
+    }, async prepareToken(...args: unknown[]) { prepared.push(args); selectedFees.push(args[4]); },
+    async prepareCollectible(...args: unknown[]) { prepared.push(args); selectedFees.push(args[5]); },
     async recover() { if (recoveryFailure) throw recoveryFailure; }};
   let context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false,registrationHash:'ethereum-registration'};
   let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
-  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,ledgerConnection,beforeClose,recipientResolver,account,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
+  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,collectible,initialDraft,ledgerConnection,beforeClose,recipientResolver,account,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
   return {render, selectedFees, renderInput: (props: unknown) => module.exports.NativeSendInput(props) as Element,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
+    seedDraft(draft: NativeSendInitialDraft, saved?: SavedCollectible) { initialDraft = draft; collectible = saved; },
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
     failRecovery(message: string) { recoveryFailure = new Error(message); },
     holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
@@ -596,4 +605,29 @@ test('fee choice retires prior consent and preserves MAX for a fresh quote', asy
   assert.equal(f.maximumPrepared.length, 1);
   assert.equal((f.selectedFees[0] as any).maxFeePerGas, '7000000000');
   f.dispose();
+});
+
+for (const kind of ['native', 'erc20', 'nft'] as const) test(`Trezor ${kind} return preserves custom gas and fees in the actual send form`, async () => {
+  const recipient = '0x2222222222222222222222222222222222222222';
+  const from = '0x1111111111111111111111111111111111111111';
+  const token = { contractAddress: '0x3333333333333333333333333333333333333333', name: 'Token', symbol: 'TOK', decimals: 18 };
+  const intent = kind === 'erc20' ? { kind: 'erc20-transfer' as const, chainId: '1', recipient, amountUnits: '1000000000000000000', token }
+    : kind === 'nft' ? { kind: 'nft-transfer' as const, chainId: '1', from, recipient, contractAddress: token.contractAddress,
+      tokenStandard: 'ERC-1155' as const, tokenId: '7', amountUnits: '1' } : undefined;
+  const unsignedTransaction = Transaction.from({ type: 2, chainId: 1, nonce: 7, gasLimit: 65000,
+    maxFeePerGas: 7_000_000_000, maxPriorityFeePerGas: 1_000_000_000,
+    to: intent ? token.contractAddress : recipient, value: intent ? 0 : 1_000_000_000_000_000_000n,
+    data: intent?.kind === 'erc20-transfer' ? encodeErc20Transfer(recipient, intent.amountUnits)
+      : intent ? encodeNftTransferData(intent) : '0x' }).unsignedSerialized;
+  const resumed = trezorResumeDraft({ id: 'resume', kind: 'evm', accountId: 'trezor:60:0', networkId: 'ethereum', unsignedTransaction, ...(intent ? { intent } : {}) });
+  if (resumed.kind === 'utxo') throw Error('Unexpected UTXO draft');
+  const f = setup(kind === 'erc20' ? token : undefined);
+  try {
+    f.seedDraft(resumed.draft, resumed.kind === 'collectible' ? resumed.collectible : undefined);
+    f.snapshot.phase = 'idle'; f.render();
+    assert(button(f.render(), 'Network Fee · Custom'));
+    reviewSend(f); await settle();
+    assert.deepEqual(f.selectedFees, [{ kind: 'custom', type: 2, gasLimit: '65000', maxFeePerGas: '7000000000', maxPriorityFeePerGas: '1000000000' }]);
+    assert.equal(f.prepared.length, 1); assert.equal(f.signatures(), 0);
+  } finally { f.dispose(); }
 });

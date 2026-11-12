@@ -830,11 +830,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     return () => { active = false; };
   }, [incomingPairing, onPairingHandled, protectedScreen, busy, snapshot.phase, snapshot.revision, stage,
     shell.immersive, connectionView, connectionSnapshot, signingReview, scanIntentExpiresAt, readyContext, shell.tab]);
-  const closeStage = () => {
+  const clearStage = () => {
     networkReturnOwner.current = null; setNetworkReturn(null); setReceiveContinuation(undefined);
     depositBackupReturn.current = null; setDepositBackupRoute(null); setDepositTask(null);
-    const origin = rootOrigin.current; rootOrigin.current = null;
-    const current = readyContext();
+    rootOrigin.current = null;
     if (stage === 'smart-infrastructure' || stage === 'smart-deploy' || stage === 'smart-resume' || stage === 'smart-authenticator' || stage === 'slh-dsa' || stage === 'smart-modules' || stage === 'send' && selectedAccountType === 'SmartAccount') setCatalogue(controllersRef.current?.authority.getCatalogue() ?? null);
     const local = controllersRef.current;
     setCanSignSmart(local?.canSignSmartAccount() === true); setCanManageSlh(local?.canManageSlhDsa() === true); setCanManageModules(local?.canManageSmartAccountModules() === true);
@@ -843,6 +842,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     setSmartResumeId(null); setInfrastructureResumeId(null); setInfrastructureReviewNext(false);
     setSentryScope(null);
     setStage('choose');
+  };
+  const closeStage = () => {
+    const origin = rootOrigin.current, current = readyContext();
+    clearStage();
     if (origin && current && AppState.currentState === 'active' && origin.context === current.context && origin.identity === current.identity && origin.epoch === epoch.current)
       shell.restoreRoot(origin.tab, origin.identity);
   };
@@ -866,8 +869,9 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     const context = readyContext();
     if (!mounted.current || !completedOrigin || rootOrigin.current !== completedOrigin || epoch.current !== completedOrigin.epoch ||
         !context || context.context !== completedOrigin.context || AppState.currentState !== 'active' || !/^0x[0-9a-f]{64}$/i.test(hash)) return;
+    clearStage();
     setTransactionActivity({ context: context.context, hash });
-    rootOrigin.current = null; setStage('choose'); shell.restoreRoot('activity', context.identity);
+    shell.restoreRoot('activity', context.identity);
   };
   const latestBack = useRef<() => boolean>(() => true);
   useLayoutEffect(() => {

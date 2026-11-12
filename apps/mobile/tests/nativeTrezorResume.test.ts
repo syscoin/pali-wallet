@@ -5,6 +5,7 @@ import { encodeErc20Transfer } from '../../../source/shared/erc20.ts';
 import { encodeNftTransferData } from '../../../source/shared/nftTransfer.ts';
 import { trezorResumeDraft } from '../src/screens/trezorResumeDraft.ts';
 import type { NativeTrezorResumeIntent } from '../src/custody/trezorAccounts.ts';
+import { AUTOMATIC_FEE } from '../../../source/shared/transactionFeeChoice.ts';
 
 const recipient = '0x2222222222222222222222222222222222222222';
 const tokenAddress = '0x3333333333333333333333333333333333333333';
@@ -20,6 +21,7 @@ test('Trezor resume refills exact native units and the original nonce for fresh 
   const result = trezorResumeDraft({ ...scope, kind: 'evm', unsignedTransaction: wire() });
   assert.deepEqual(result, { kind: 'native', draft: {
     recipient, amount: '1.000000000000000001', tokenId: undefined, nonce: '7',
+    feeChoice: { kind: 'custom', type: 2, maxFeePerGas: '9', maxPriorityFeePerGas: '1', gasLimit: '50000' },
   } });
 });
 
@@ -30,6 +32,7 @@ test('Trezor token resume keeps 255-decimal precision without ethers formatUnits
     unsignedTransaction: wire({ to: tokenAddress, value: 0, data: encodeErc20Transfer(recipient, '1') }) });
   assert.equal(result.kind, 'token');
   assert.equal(result.draft.amount, '0.' + '0'.repeat(254) + '1');
+  assert.deepEqual(result.draft.feeChoice, { kind: 'custom', type: 2, maxFeePerGas: '9', maxPriorityFeePerGas: '1', gasLimit: '50000' });
 });
 
 test('Trezor NFT resume retains ID and integer quantity for fresh ownership checks', () => {
@@ -41,6 +44,7 @@ test('Trezor NFT resume retains ID and integer quantity for fresh ownership chec
   assert.equal(result.kind, 'collectible');
   assert.equal(result.draft.amount, intent.amountUnits);
   assert.equal(result.draft.tokenId, '123');
+  assert.deepEqual(result.draft.feeChoice, { kind: 'custom', type: 2, maxFeePerGas: '9', maxPriorityFeePerGas: '1', gasLimit: '50000' });
 });
 
 test('Trezor resume refuses signed bytes and a mismatched asset interpretation', async () => {
@@ -57,12 +61,30 @@ test('Trezor replacement and UTXO drafts retain the corresponding normal review 
   assert.equal(evm.kind, 'replacement');
   if (evm.kind === 'replacement') assert.deepEqual(evm.replacement, replacement);
   const utxo: NativeTrezorResumeIntent = { ...scope, kind: 'utxo', recipient: 'public-utxo-address',
-    amount: '0.00000001', max: false };
+    amount: '0.00000001', max: false, feeChoice: AUTOMATIC_FEE };
   assert.deepEqual(trezorResumeDraft(utxo), { kind: 'utxo', asset: undefined,
-    draft: { recipient: utxo.recipient, amount: utxo.amount, max: false, rbf: true } });
+    draft: { recipient: utxo.recipient, amount: utxo.amount, max: false, rbf: true, feeChoice: AUTOMATIC_FEE } });
   const retainedOption = trezorResumeDraft({ ...utxo, rbf: false });
   assert.equal(retainedOption.kind, 'utxo');
   if (retainedOption.kind === 'utxo') assert.equal(retainedOption.draft.rbf, false);
+});
+
+test('Trezor legacy gas and UTXO custom fee snapshots remain exact and independent', () => {
+  const legacy = trezorResumeDraft({ ...scope, kind: 'evm', unsignedTransaction: wire({ type: 0,
+    gasPrice: 7, maxFeePerGas: null, maxPriorityFeePerGas: null, gasLimit: 65000 }) });
+  assert.deepEqual(legacy.draft.feeChoice, { kind: 'custom', type: 0, gasPrice: '7', gasLimit: '65000' });
+  const feeChoice = { kind: 'custom' as const, satPerVbyte: '7' };
+  const input = { ...scope, kind: 'utxo' as const, recipient: 'public-utxo-address', amount: '', max: true, rbf: false, feeChoice };
+  const resumed = trezorResumeDraft(input);
+  feeChoice.satPerVbyte = '8';
+  assert.equal(resumed.kind, 'utxo');
+  assert.deepEqual(resumed.draft, { recipient: input.recipient, amount: '', max: true, rbf: false,
+    feeChoice: { kind: 'custom', satPerVbyte: '7' } });
+  assert.throws(() => trezorResumeDraft({ ...input, feeChoice: { kind: 'custom', satPerVbyte: '0' } }));
+  const { feeChoice: _feeChoice, ...missing } = input;
+  assert.throws(() => trezorResumeDraft(missing as NativeTrezorResumeIntent), /Invalid Trezor resume fees/);
+  assert.throws(() => trezorResumeDraft({ ...scope, kind: 'evm', unsignedTransaction: wire({ gasLimit: 0 }) }));
+  assert.throws(() => trezorResumeDraft({ ...scope, kind: 'evm', unsignedTransaction: wire({ maxFeePerGas: 0, maxPriorityFeePerGas: 0 }) }));
 });
 
 test('Smart operation resume IDs cannot be interpreted as a transfer draft', () => {

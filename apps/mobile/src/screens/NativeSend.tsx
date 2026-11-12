@@ -1,4 +1,4 @@
-import { AUTOMATIC_FEE, type EvmFeeChoice } from '../../../../source/shared/transactionFeeChoice';
+import { AUTOMATIC_FEE, snapshotEvmFeeChoice, type EvmFeeChoice } from '../../../../source/shared/transactionFeeChoice';
 import { NetworkFeeSheet } from './NetworkFeeSheet';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { normalizeDecimalInput } from '../../../../source/shared/decimalInput';
@@ -202,6 +202,7 @@ export type NativeSendInitialDraft = Readonly<{
   nonce: string;
   max?: boolean;
   advanced?: boolean;
+  feeChoice?: EvmFeeChoice;
 }>;
 
 export function NativeSend({
@@ -262,7 +263,7 @@ export function NativeSend({
   );
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const feeScope = JSON.stringify([account.address, account.network, account.revision, context.registrationHash]);
-  const [feeSelection, setFeeSelection] = useState({ scope: feeScope, controller, choice: AUTOMATIC_FEE as EvmFeeChoice });
+  const [feeSelection, setFeeSelection] = useState({ scope: feeScope, controller, choice: snapshotEvmFeeChoice(initialDraft?.feeChoice ?? AUTOMATIC_FEE) });
   const feeChoice = feeSelection.scope === feeScope && feeSelection.controller === controller ? feeSelection.choice : AUTOMATIC_FEE;
   const [feeDialog, setFeeDialog] = useState<{ scope: string; controller: NativeTransferView } | null>(null);
   const feeOpen = feeDialog?.scope === feeScope && feeDialog.controller === controller;

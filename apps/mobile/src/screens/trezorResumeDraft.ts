@@ -2,6 +2,7 @@ import { Transaction } from 'ethers/transaction';
 
 import { formatTokenUnits } from '../../../../source/shared/erc20.ts';
 import { snapshotUtxoRbf } from '../../../../source/shared/utxoTransactionOptions.ts';
+import { snapshotEvmFeeChoice, snapshotUtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
 import { formatBaseUnits } from '../core/amounts.ts';
 import { assertTransferIntentEnvelope } from '../custody/transferIntent.ts';
 import type { NativeTrezorResumeIntent } from '../custody/trezorAccounts.ts';
@@ -11,15 +12,23 @@ export function trezorResumeDraft(value: NativeTrezorResumeIntent) {
   if (value.kind === 'infrastructure') throw Error('Infrastructure resume requires its original setup review');
   if (value.kind === 'smart-operation') throw Error('Smart account resume requires a fresh operation review');
   if (value.kind === 'external-psbt' || value.kind === 'external-signing') throw Error('External signing resume requires its original pending request');
-  if (value.kind === 'utxo')
+  if (value.kind === 'utxo') {
+    if (value.feeChoice === undefined) throw Error('Invalid Trezor resume fees');
     return {
       kind: 'utxo' as const,
       asset: value.asset,
-      draft: { recipient: value.recipient, amount: value.amount, max: value.max, rbf: snapshotUtxoRbf(value.rbf) },
+      draft: { recipient: value.recipient, amount: value.amount, max: value.max, rbf: snapshotUtxoRbf(value.rbf), feeChoice: snapshotUtxoFeeChoice(value.feeChoice) },
     };
+  }
   const transaction = Transaction.from(value.unsignedTransaction);
   if (transaction.isSigned() || !transaction.to || transaction.chainId <= 0n)
     throw Error('Invalid Trezor resume draft');
+  if (transaction.type !== 0 && transaction.type !== 2)
+    throw Error('Invalid Trezor resume fees');
+  const feeChoice = snapshotEvmFeeChoice(transaction.type === 0
+    ? { kind: 'custom', type: 0, gasPrice: transaction.gasPrice!.toString(), gasLimit: transaction.gasLimit.toString() }
+    : { kind: 'custom', type: 2, maxFeePerGas: transaction.maxFeePerGas!.toString(),
+      maxPriorityFeePerGas: transaction.maxPriorityFeePerGas!.toString(), gasLimit: transaction.gasLimit.toString() });
   assertTransferIntentEnvelope({
     chainId: transaction.chainId.toString(),
     from: value.intent?.kind === 'nft-transfer' ? value.intent.from : undefined,
@@ -36,6 +45,7 @@ export function trezorResumeDraft(value: NativeTrezorResumeIntent) {
       : formatBaseUnits(transaction.value.toString(), 18),
     tokenId: value.intent?.kind === 'nft-transfer' ? value.intent.tokenId : undefined,
     nonce: transaction.nonce.toString(),
+    feeChoice,
   };
   if (value.replacement)
     return { kind: 'replacement' as const, replacement: value.replacement, draft };

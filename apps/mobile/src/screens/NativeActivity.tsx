@@ -328,8 +328,12 @@ function NativeActivityContent({
   const replacement = findRow((row) => row.local?.originalHash === chosen?.hash &&
     (row.local?.operation === 'cancel' || row.local?.operation === 'speed-up'));
   const original = chosen?.local?.originalHash && findRow((row) => row.hash === chosen.local!.originalHash);
+  // A Smart account can use different outer fee payers. Only their own nonce
+  // group conflicts; a cancellation of any speed-up descendant still blocks it.
   const replacementBlocksReview = chosen?.local && !!findRow(({ local }) =>
-    local?.nonce === chosen.local!.nonce &&
+    local?.chainId === chosen.local!.chainId && local.nonce === chosen.local!.nonce &&
+    (local.smartAccount?.payer ?? local.address).toLowerCase() ===
+      (chosen.local!.smartAccount?.payer ?? chosen.local!.address).toLowerCase() &&
     (local.operation === 'cancel' || (local.originalHash === chosen.hash &&
       local.operation === 'speed-up' && local.phase !== 'signed' && local.phase !== 'attempted'))
   );

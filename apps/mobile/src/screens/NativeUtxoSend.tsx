@@ -1,4 +1,4 @@
-import { AUTOMATIC_FEE, type UtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice';
+import { AUTOMATIC_FEE, snapshotUtxoFeeChoice, type UtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice';
 import { NetworkFeeSheet } from './NetworkFeeSheet';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { normalizeDecimalInput } from '../../../../source/shared/decimalInput';
@@ -109,7 +109,7 @@ export function NativeUtxoSendScreen({
 }: {
   accountLabel: string;
   ledgerConnection?: NativeLedgerConnectionView;
-  initialDraft?: Readonly<{ recipient: string; amount: string; max?: boolean; rbf?: boolean }>;
+  initialDraft?: Readonly<{ recipient: string; amount: string; max?: boolean; rbf?: boolean; feeChoice?: UtxoFeeChoice }>;
   maximumAmount?: string;
   availableAmount?: string;
   onChangeNetwork?(draft: Extract<NativeUnsignedSendDraft, { kind: 'utxo' }>): void;
@@ -137,7 +137,7 @@ export function NativeUtxoSendScreen({
     isAssetAmountEqualToBalance(amount, maximumAmount, asset.decimals));
   const [rbf, setRbf] = useState(snapshotUtxoRbf(initialDraft?.rbf));
   const [advanced, setAdvanced] = useState(false);
-  const [feeSelection, setFeeSelection] = useState({ open, network, choice: AUTOMATIC_FEE as UtxoFeeChoice });
+  const [feeSelection, setFeeSelection] = useState({ open, network, choice: snapshotUtxoFeeChoice(initialDraft?.feeChoice ?? AUTOMATIC_FEE) });
   const feeChoice = feeSelection.open === open && feeSelection.network === network ? feeSelection.choice : AUTOMATIC_FEE;
   const [feeDialog, setFeeDialog] = useState<{ open: typeof open; network: UtxoNetwork } | null>(null);
   const feeOpen = feeDialog?.open === open && feeDialog.network === network;

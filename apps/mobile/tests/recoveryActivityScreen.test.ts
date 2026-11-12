@@ -447,3 +447,48 @@ test('scoped Smart Activity exposes replacement navigation without direct signer
     assert.deepEqual(navigation, [['speed-up', hash], ['cancel', hash]]);
   } finally { f.dispose(); }
 });
+
+for (const scenario of [
+  { name: 'a historical cancellation paid by a different EOA', samePayer: false, descendant: false, sameChain: true, allowed: true },
+  { name: 'a cancellation paid by the same EOA', samePayer: true, descendant: false, sameChain: true, allowed: false },
+  { name: 'a cancellation of a same-payer speed-up descendant', samePayer: true, descendant: true, sameChain: true, allowed: false },
+  { name: 'a cancellation on another chain', samePayer: true, descendant: false, sameChain: false, allowed: true },
+]) test(`Smart replacement actions account for ${scenario.name}`, async () => {
+  const payer = '0x' + 'ab'.repeat(20);
+  const otherPayer = '0x' + 'cd'.repeat(20);
+  const speedUpHash = '0x' + '44'.repeat(32);
+  const cancelledOriginalHash = scenario.samePayer ? hash : '0x' + '55'.repeat(32);
+  const row = pendingScopedRow({ speedUp: true });
+  Object.assign(row.local, { accountId: 'smart:60:0', smartAccount: {
+    payer, operationHash: '0x' + 'ab'.repeat(32), operationNonce: '0',
+  } });
+  row.observation.from = payer;
+  const cancellation = {
+    ...row, hash: '0x' + '66'.repeat(32),
+    local: { ...row.local, hash: '0x' + '66'.repeat(32), operation: 'cancel', phase: 'confirmed',
+      originalHash: scenario.descendant ? speedUpHash : cancelledOriginalHash,
+      chainId: scenario.sameChain ? '1' : '2', smartAccount: {
+        payer: scenario.samePayer ? payer.toUpperCase().replace('0X', '0x') : otherPayer,
+        operationHash: '0x' + (scenario.samePayer && scenario.sameChain ? 'ab' : 'ef').repeat(32),
+        operationNonce: '0', cancellation: true,
+      } },
+    observation: { ...row.observation, from: scenario.samePayer ? payer : otherPayer, status: 'confirmed' },
+  };
+  const speedUp = { ...row, hash: speedUpHash,
+    local: { ...row.local, hash: speedUpHash, originalHash: hash, operation: 'speed-up' } };
+  const navigation: [string, string][] = [];
+  const f = fixture(undefined, false, {
+    onNavigateToReview: (action: string, value: string) => navigation.push([action, value]),
+  });
+  try {
+    await openFixtureRow(f, row);
+    f.rows([row, ...(scenario.descendant ? [speedUp] : []), cancellation]);
+    const tree = all(f.render());
+    for (const title of ['Speed Up', 'Cancel pending transaction']) {
+      const button = tree.find(node => node.type === 'Button' && node.props.title === title);
+      assert.equal(!!button, scenario.allowed, title);
+      if (button) { button.props.onPress(); await settle(); }
+    }
+    assert.deepEqual(navigation, scenario.allowed ? [['speed-up', hash], ['cancel', hash]] : []);
+  } finally { f.dispose(); }
+});

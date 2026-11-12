@@ -15,6 +15,7 @@ import type { NativeConnectionsView } from '../src/connections/types.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import { quietActivityNotifications } from './notificationFixture.ts';
 import { createTestPublicViewLock } from './publicViewLockFixture.ts';
+import { IdleLock } from '../src/core/idleLock.ts';
 
 type Element = {
   type: unknown;
@@ -55,6 +56,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   let acquisitions = 0, releases = 0, lifecycleActive = true;
   let releaseGate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
   const viewPrivacy = createTestPublicViewLock();
+  const custodyIdle = new IdleLock(() => ({ monotonic: now, wall: now }));
   let viewAuthorizations = 0, rejectViewAuthorization = false;
   let duringLock: (() => void) | undefined;
   let guardianReads = 0;
@@ -271,7 +273,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     },
     canManageGuardianPolicy: () => smartAccount && canManage,
     canSignSmartAccount: () => smartAccount && (canManage || slh), canManageSlhDsa: () => smartAccount && slh,
-    canManageSmartAccountModules: () => false,
+    canManageSmartAccountModules: () => smartAccount && canManage && catalogue.accounts[0]?.smartAccount?.isDeployed === true,
     async openSmartAccountModules() { throw Error('Modules are outside this fixture'); },
     async openSlhDsaManagement(_signal: AbortSignal, check: () => void) { check(); authenticatorGuards.push(check); return { installedKeys: [] }; },
     canUseWalletAuthenticator: () => smartAccount && canManage && catalogue.accounts[0]?.smartAccount?.isDeployed === true,
@@ -378,7 +380,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     '../../../../source/shared/evmNetworks': { EVM_NETWORK_DEFINITIONS: networks.NATIVE_NETWORKS.map(network => ({ id: network.id, name: network.name })) },
     '../platform/security': {
       publicViewLock: viewPrivacy.viewLock,
-      custodyIdle: { begin() {}, stop() {} },
+      custodyIdle,
       securityPreferences: { getSnapshot: () => ({ status: 'ready' }) },
     },
     '../platform/credential': {
@@ -701,6 +703,42 @@ for (const back of ['Android', 'screen'] as const)
     }
   });
 
+
+test('viewing a completed deployment refreshes Wallet metadata and capabilities before returning', async () => {
+  const f = await mounted(true, true, false);
+  try {
+    const portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    assert.equal(portfolio.props.smartAccount.isDeployed, false);
+    portfolio.props.onDeploySmartAccount();
+    const result = f.render();
+    assert.equal(result.type, 'NativeSmartAccountOperationRoute');
+    // Persistence changed without a new authority event, as in real deployment.
+    f.completeDeployment();
+    const hash = '0x' + 'cd'.repeat(32);
+    result.props.onViewTransaction(hash);
+    const activity = find(f.render(), node => node.type === 'AllNetworksActivity')!;
+    assert.equal(activity.props.initialTarget.hash, hash);
+    assert.equal(activity.props.initialTarget.networkId, 'ethereum');
+    f.showWallet();
+    const refreshed = find(f.render(), node => node.type === 'NativePortfolio')!;
+    assert.equal(refreshed.props.smartAccount.isDeployed, true);
+    assert.equal(refreshed.props.onDeploySmartAccount, undefined);
+    assert.equal(typeof refreshed.props.onManageSmartAccountModules, 'function');
+    assert.equal(typeof refreshed.props.onUseWalletAuthenticator, 'function');
+    assert.equal(f.exits(), 0);
+  } finally { f.dispose(); }
+});
+
+test('a stale deployment result cannot refresh or navigate a successor public context', async () => {
+  const f = await mounted(true, true, false);
+  try {
+    find(f.render(), node => node.type === 'NativePortfolio')!.props.onDeploySmartAccount();
+    const result = f.render();
+    f.readyAtRevision(2); f.render();
+    result.props.onViewTransaction('0x' + 'cd'.repeat(32));
+    assert.equal(find(f.render(), node => node.type === 'AllNetworksActivity'), undefined);
+  } finally { f.dispose(); }
+});
 
 test('Smart native, ERC20 and NFT sends use the owned operation route', async () => {
   const f = await mounted(true, true);

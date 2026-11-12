@@ -5,6 +5,7 @@ import type { NativeReplacementMode } from './transferRpc.ts';
 import type { NativeUtxoAsset } from './utxoSend.ts';
 import { PALI_INFRASTRUCTURE_METADATA_BY_ID, type PaliInfrastructureContractId } from '../../../../source/utils/smartAccount/deploymentMetadata.ts';
 import { DAPP_REQUEST_LIMITS } from '../../../../source/utils/requestPayloadBudget.ts';
+import type { UtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
 
 export type NativeInfrastructureLocalAction = Readonly<{
   kind: 'infrastructure'; contractId: PaliInfrastructureContractId; attemptId: string; unsignedTransaction: string;
@@ -59,6 +60,7 @@ export type NativeTrezorResumeIntent = Readonly<{
       max?: boolean;
       asset?: NativeUtxoAsset;
       rbf?: boolean;
+      feeChoice: UtxoFeeChoice;
     }>
 );
 

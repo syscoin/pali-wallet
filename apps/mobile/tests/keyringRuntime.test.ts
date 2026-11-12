@@ -3533,7 +3533,7 @@ test('Trezor runtime replays saved UTXO bytes without Suite or a new signature',
   } finally { await owner.dispose(); await fixture.sessions.dispose(); }
 });
 
-test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review and device signature', async () => {
+for (const maximum of [false, true]) test(`Trezor runtime resumes a zero-step UTXO ${maximum ? 'MAX' : 'exact'} draft with its custom fee through a fresh review and device signature`, async () => {
   const [{ createTrezorSessions }, { getUtxoNetwork }, { getNetworkConfig }, { utils }, { metadata }] = await Promise.all([
     import('../src/hardware/trezorSessions.ts'), import('../src/core/utxoNetworks.ts'), import('@sidhujag/sysweb3-network'),
     import('syscoinjs-lib'), import('./publicWatchFixtures.ts'),
@@ -3629,7 +3629,10 @@ test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review 
     await owner.manageAccounts({ kind: 'import-trezor', label: 'Bitcoin Trezor' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
     const callCount = methods.length;
     const first = await runtime.openUtxoSend!(() => undefined);
-    const review = await first.prepare({ recipient, amount: '0.0005', rbf: false });
+    const feeChoice = { kind: 'custom' as const, satPerVbyte: '7' };
+    const preparing = first.prepare({ recipient, amount: maximum ? '' : '0.0005', max: maximum, rbf: false, feeChoice });
+    feeChoice.satPerVbyte = '8';
+    const review = await preparing;
     assert.equal(review.transactionOptions.rbf, false);
     assert.equal(methods.length, callCount);
     owner.lock(); await owner.unlock();
@@ -3638,9 +3641,13 @@ test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review 
     const intent = await runtime.trezor.resumeSend(); assert.equal(intent.kind, 'utxo');
     if (intent.kind !== 'utxo') throw new Error('Unexpected draft');
     assert.equal(intent.rbf, false, 'paused handoff retains the actual reviewed option');
+    assert.equal(intent.max === true, maximum);
+    assert.deepEqual(intent.feeChoice, { kind: 'custom', satPerVbyte: '7' });
     const fresh = await runtime.openUtxoSend!(() => undefined);
     const freshReview = await fresh.prepare(intent);
     assert.equal(freshReview.transactionOptions.rbf, false);
+    assert.equal(freshReview.feeSatoshis, review.feeSatoshis);
+    assert.deepEqual(freshReview.outputs, review.outputs, 'same custom rate preserves exact/MAX outputs');
     assert.notEqual(freshReview, review); assert.equal(methods.length, callCount); assert.equal(broadcasts, 0);
     const beforeAuthentication = methods.filter(method => method === 'signTransaction').length;
     assert.equal(methods.filter(method => method === 'signTransaction').length, beforeAuthentication);

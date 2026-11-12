@@ -1,5 +1,5 @@
 import type { PaliRecoveryTarget } from '../../../../source/utils/smartAccount/account.ts';
-import { AUTOMATIC_FEE, chooseEvmFees, snapshotEvmFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
+import { AUTOMATIC_FEE, chooseEvmFees, snapshotEvmFeeChoice, snapshotUtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
 import { toP256WebAuthnRecoveryTarget } from '../../../../source/utils/passkey/identity.ts';
 import { captureGuardianRecoveryClaim, type GuardianRecoveryReplacement } from '../../../../source/utils/smartAccount/guardianRecoveryClaim.ts';
 import { createNativePasskeyRegistry } from '../smartAccount/passkeyRegistry.ts';
@@ -7202,6 +7202,7 @@ export function createKeyringRuntimeFactory(
                 return opened.prepareRetry(txid);
               },
               async prepare(input) {
+                const feeChoice = snapshotUtxoFeeChoice(input.feeChoice ?? AUTOMATIC_FEE);
                 if (selected.type === 'Trezor' && (!pendingTrezor || trezorSession !== trezorAttempt?.session)) {
                   guard();
                   const check = () => {
@@ -7213,7 +7214,7 @@ export function createKeyringRuntimeFactory(
                   ring = trezorAttempt.ring;
                   opened = createOpened(); utxoSend = opened;
                 }
-                const view = await opened.prepare(input);
+                const view = await opened.prepare({ ...input, feeChoice });
                 if (trezorAttempt) {
                   guard();
                   if (!pendingTrezor || pendingTrezor.job !== trezorAttempt.session.job) throw new KeyringRuntimeError('CANCELLED');
@@ -7222,6 +7223,7 @@ export function createKeyringRuntimeFactory(
                     kind: 'utxo', accountId: selected.id, networkId: network.id,
                     recipient: input.recipient.trim(), amount: input.amount,
                     rbf: view.transactionOptions.rbf,
+                    feeChoice,
                     ...(input.max === true ? { max: true } : {}),
                     ...(input.asset ? { asset: Object.freeze({ ...input.asset }) } : {}),
                   });
