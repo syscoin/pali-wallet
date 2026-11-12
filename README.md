@@ -25,8 +25,6 @@ Both apps reuse shared account, amount, transaction, recovery and network-valida
 
 Use the network picker for built-in networks or add a supported custom registration. EVM and UTXO accounts retain their respective network and signing rules; network-specific services are available only where configured.
 
-The v5 catalogue includes **zkSYS mainnet (5757)** by default and **Gateway mainnet (57570)** as an optional network. These networks are configured ahead of launch. Each network refreshes independently, so an unavailable RPC leaves other networks usable.
-
 ## Getting started
 
 Use the Node version pinned in [`.nvmrc`](.nvmrc) and **Yarn 1.22.22**. The extension uses the root Yarn lockfile; mobile has its own npm lockfile. Install each dependency graph without regenerating its lockfile.
