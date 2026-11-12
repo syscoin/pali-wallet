@@ -225,12 +225,35 @@ test('recipient scan fills only the current draft and leaves amount and preparat
   const f = setup(); f.snapshot.phase = 'idle';
   editSend(f, 'Amount in ETH', '0.25');
   const scanner = openRecipientScanner(f);
+  assert.equal(f.render().type, 'RecipientQrScanner');
   scanner.props.onScan('0x2222222222222222222222222222222222222222');
   const tree = f.render();
   assert.equal(all(tree).find(node => node.props.label === 'Ethereum address')!.props.value, '0x2222222222222222222222222222222222222222');
   assert.equal(all(tree).find(node => node.props.label === 'Amount in ETH')!.props.value, '0.25');
   assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []);
   assert.equal(all(tree).some(node => node.type === 'RecipientQrScanner'), false); f.dispose();
+});
+
+for (const action of ['hardware', 'header', 'scanner'] as const) test(`${action} Back closes the EVM scanner before leaving its unchanged draft`, () => {
+  const f = setup(); f.snapshot.phase = 'idle';
+  try {
+    editSend(f, 'Ethereum address', '0x3333333333333333333333333333333333333333');
+    editSend(f, 'Amount in ETH', '0.25');
+    const header = one(f.render(), 'Header');
+    const scanner = openRecipientScanner(f), before = f.counts();
+    assert.equal(f.render().type, 'RecipientQrScanner');
+    if (action === 'hardware') assert.equal(f.hardware(), true);
+    else if (action === 'header') header.props.onBack();
+    else scanner.props.onClose();
+    scanner.props.onScan('0x2222222222222222222222222222222222222222');
+    const tree = f.render();
+    assert.equal(all(tree).find(node => node.props.label === 'Ethereum address')!.props.value, '0x3333333333333333333333333333333333333333');
+    assert.equal(all(tree).find(node => node.props.label === 'Amount in ETH')!.props.value, '0.25');
+    assert.deepEqual(f.counts(), before);
+    assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []);
+    f.hardware();
+    assert.deepEqual(f.counts(), { backs: before.backs + 1, cancels: before.cancels + 1 });
+  } finally { f.dispose(); }
 });
 
 test('recipient scan survives equal account and network props from a balance refresh', () => {
@@ -251,14 +274,16 @@ test('recipient scan survives equal account and network props from a balance ref
 
 for (const boundary of ['close', 'account', 'network', 'registration', 'draft', 'review'] as const) test(`recipient scan cannot fill after ${boundary} changes`, () => {
   const f = setup(); f.snapshot.phase = 'idle';
+  const amount = all(f.render()).find(node => node.props.label === 'Amount in ETH')!;
   const scanner = openRecipientScanner(f);
   if (boundary === 'close') scanner.props.onClose();
   if (boundary === 'account') { f.changeAccount(); f.render(); }
   if (boundary === 'network') { f.changeNetwork(); f.render(); }
   if (boundary === 'registration') { f.changeRegistration(); f.render(); }
-  if (boundary === 'draft') editSend(f, 'Amount in ETH', '0.5');
+  if (boundary === 'draft') amount.props.onChange('0.5');
   if (boundary === 'review') f.setSnapshot({ ...f.snapshot, phase: 'review', review: {} });
   scanner.props.onScan('0x2222222222222222222222222222222222222222');
+  scanner.props.onClose();
   if (boundary === 'review') f.setSnapshot({ ...f.snapshot, phase: 'idle', review: null });
   assert.equal(all(f.render()).find(node => node.props.label === 'Ethereum address')!.props.value, '');
   assert.deepEqual(f.prepared, []); f.dispose();
@@ -267,8 +292,9 @@ for (const boundary of ['close', 'account', 'network', 'registration', 'draft', 
 test('draft network card exposes Change only when the parent provides it', () => {
   let changes = 0;
   const f = setup(undefined, undefined, undefined, () => { changes++; }); f.snapshot.phase = 'idle';
-  assert.equal(one(f.render(), 'SendNetworkCard').props.context.name, 'Ethereum');
-  openRecipientScanner(f); one(f.render(), 'SendNetworkCard').props.onChange();
+  const network = one(f.render(), 'SendNetworkCard');
+  assert.equal(network.props.context.name, 'Ethereum');
+  openRecipientScanner(f); network.props.onChange();
   assert.equal(changes, 1); assert.equal(all(f.render()).some(node => node.type === 'RecipientQrScanner'), false);
   assert.deepEqual(f.prepared, []); f.dispose();
   const unavailable = setup(); unavailable.snapshot.phase = 'idle';

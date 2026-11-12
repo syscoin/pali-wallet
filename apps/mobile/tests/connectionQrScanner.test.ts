@@ -7,6 +7,7 @@ import ts from 'typescript';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import * as pairingLinks from '../src/connections/pairingLinks.ts';
 import { parseEvmRecipientQr } from '../src/core/recipientQr.ts';
+import { createPermissionPresentation } from '../src/platform/permissionPresentation.ts';
 
 type Element = {
   type: unknown;
@@ -133,6 +134,7 @@ function fixture(
         },
         getCameraPermissionsAsync() {
           permissionReads++;
+          if (permissionReads === 1) return Promise.resolve({ granted: false, canAskAgain: true });
           return readPermission();
         },
         requestMicrophonePermissionsAsync() {
@@ -155,6 +157,13 @@ function fixture(
   const module = {
     exports: {} as { QrScanner(props: object): Element },
   };
+  const permissionModule = { exports: {} };
+  const permissionCode = ts.transpileModule(readFileSync(new URL('../src/platform/cameraPermission.native.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  runInNewContext(permissionCode, { module: permissionModule, exports: permissionModule.exports,
+    require(name: string) { return name === './permissionPresentation' ? { createPermissionPresentation } : dependencies[name]; } });
+  dependencies['../platform/cameraPermission'] = permissionModule.exports;
   runInNewContext(code, {
     module,
     exports: module.exports,
@@ -304,7 +313,7 @@ for (const platform of ['ios', 'android']) {
       await settle();
       assert(find(f.render(), 'CameraView'));
       assert.equal(f.permissionRequests, 1);
-      assert.equal(f.permissionReads, 1);
+      assert.equal(f.permissionReads, 2);
       assert.equal(notice(f.render(), 'Camera access needed'), false);
     } finally { f.unmount(); }
   });
@@ -315,13 +324,25 @@ test('returning from the initial permission prompt waits for its result', async 
   const f = fixture(() => permission.promise);
   try {
     await settle();
-    f.emit('change', 'background'); f.emit('change', 'active'); f.emit('focus');
+    f.emit('change', 'inactive'); f.emit('change', 'active'); f.emit('focus');
     await settle();
     assert.equal(f.permissionRequests, 1);
-    assert.equal(f.permissionReads, 0);
+    assert.equal(f.permissionReads, 1);
     permission.resolve({ granted: true }); await settle();
     assert(find(f.render(), 'CameraView'));
-    assert.equal(f.permissionReads, 0);
+    assert.equal(f.permissionReads, 1);
+  } finally { f.unmount(); }
+});
+
+test('a first camera grant after real backgrounding cannot activate the scanner', async () => {
+  const permission = deferred<{ granted: boolean }>();
+  const f = fixture(() => permission.promise);
+  try {
+    await settle(); f.emit('change', 'background'); f.emit('change', 'active');
+    permission.resolve({ granted: true }); await settle();
+    assert(notice(f.render(), 'Camera unavailable'));
+    assert.equal(find(f.render(), 'CameraView'), undefined);
+    assert.deepEqual(f.scans, []);
   } finally { f.unmount(); }
 });
 

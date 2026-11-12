@@ -17,6 +17,7 @@ import { nativeTranslationFixture } from './localizationFixture.ts';
 import { quietActivityNotifications } from './notificationFixture.ts';
 import { createTestPublicViewLock } from './publicViewLockFixture.ts';
 import { IdleLock } from '../src/core/idleLock.ts';
+import { createPermissionPresentation } from '../src/platform/permissionPresentation.ts';
 
 type Element = {
   type: unknown;
@@ -46,6 +47,9 @@ const code = ts.transpileModule(
     },
   }
 ).outputText;
+const cameraCode = ts.transpileModule(readFileSync(new URL('../src/platform/cameraPermission.native.ts', import.meta.url), 'utf8'), {
+  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+}).outputText;
 
 function harness(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false, slh = false, infrastructure = false) {
   let now = 1000,
@@ -74,6 +78,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   } satisfies Pick<NativeConnectionsView, 'backgroundSigning' | 'cancelSigningHandoff' | 'resumeSigning'>;
   const authenticatorGuards: (() => void)[] = [];
   let promptActive = false;
+  let cameraPromptActive = false;
   let incoming: NativePairingEntry | null = smartAccount || !withPairing
     ? null
     : {
@@ -321,6 +326,19 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       },
     },
   };
+  let cameraOwnerAlive = true;
+  const cameraReply = Promise.withResolvers<{ granted: boolean; canAskAgain: boolean }>();
+  const cameraModule = { exports: {} as {
+    isCameraPermissionPromptActive(): boolean;
+    requestNativeCameraPermission(isCurrent: () => boolean): Promise<{ granted: boolean }>;
+  } };
+  runInNewContext(cameraCode, { module: cameraModule, exports: cameraModule.exports, require(name: string) {
+    if (name === 'react-native') return native;
+    if (name === './permissionPresentation') return { createPermissionPresentation };
+    assert.equal(name, 'expo-camera');
+    return { Camera: { getCameraPermissionsAsync: async () => ({ granted: false, canAskAgain: true }),
+      requestCameraPermissionsAsync: () => cameraReply.promise } };
+  } });
   const lifecycle = class {
     async acquire() {
       acquisitions++; lifecycleActive = true;
@@ -354,6 +372,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     './publicSendDraft': publicSendDraft,
     './NativeAccountOverview': { NativePortfolioRoute: 'NativePortfolio' },
     '../notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
+    '../platform/cameraPermission': { isCameraPermissionPromptActive: () => cameraPromptActive || cameraModule.exports.isCameraPermissionPromptActive() },
     '../activity/accountActivity': { AccountActivityController: class {} },
     './BackupIntroduction': { BackupIntroduction: 'BackupIntroduction' },
     './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
@@ -529,6 +548,9 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       for (const listener of connectionListeners) listener();
     },
     prompt(active: boolean) { promptActive = active; },
+    cameraPrompt(active: boolean) { cameraPromptActive = active; },
+    requestCameraPermission: () => cameraModule.exports.requestNativeCameraPermission(() => cameraOwnerAlive),
+    finishCameraPermission(granted: boolean) { cameraReply.resolve({ granted, canAskAgain: false }); },
     inactive() {
       native.AppState.currentState = 'inactive';
       for (const listener of appListeners.get('change') ?? []) listener('inactive');
@@ -547,6 +569,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
         listener('active');
     },
     dispose() {
+      cameraOwnerAlive = false;
       cells.forEach((entry) => entry.cleanup?.());
     },
   };
@@ -1219,5 +1242,59 @@ for (const action of ['speed-up', 'cancel', 'cancel-saved'] as const) test(`Smar
     assert.equal(completed.props.initialTarget.networkId, 'ethereum'); assert.equal(completed.props.initialTarget.hash, result);
     review.props.onViewTransaction(hash);
     assert.equal(find(f.render(), node => node.type === 'AllNetworksActivity')!.props.initialTarget.hash, result);
+  } finally { f.dispose(); }
+});
+
+for (const interruption of ['inactive', 'blur'] as const) test(`camera permission ${interruption} preserves the public Send route but never real background`, async () => {
+  const f = await mounted(true, true, false);
+  try {
+    const portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    portfolio.props.onSend();
+    const route = f.render(); assert.equal(route.type, 'NativeSmartAccountSend');
+    const before = f.lifecycle().length;
+    f.cameraPrompt(true); f[interruption]();
+    assert.equal(f.render().type, route.type);
+    assert.equal(f.lifecycle().length, before, 'the public camera dialog must not revoke the send draft');
+    f.foreground(); f.cameraPrompt(false);
+    assert.equal(f.render().type, route.type);
+    f.cameraPrompt(true); f.background();
+    assert.notEqual(f.render().type, route.type, 'background still retires a send even during a camera request');
+    assert(f.lifecycle().slice(before).includes('lock'));
+  } finally { f.dispose(); }
+});
+
+test('inactive without a camera prompt still retires the Send route', async () => {
+  const f = await mounted(true, true, false);
+  try {
+    find(f.render(), node => node.type === 'NativePortfolio')!.props.onSend();
+    assert.equal(f.render().type, 'NativeSmartAccountSend');
+    f.inactive(); assert.notEqual(f.render().type, 'NativeSmartAccountSend');
+  } finally { f.dispose(); }
+});
+
+for (const granted of [true, false]) test(`actual camera port ${granted ? 'grant' : 'denial'} preserves the mounted wallet Send route`, async () => {
+  const f = await mounted(true, true, false);
+  try {
+    find(f.render(), node => node.type === 'NativePortfolio')!.props.onSend();
+    const route = f.render(); assert.equal(route.type, 'NativeSmartAccountSend');
+    const pending = f.requestCameraPermission(); await settle();
+    f.inactive(); f.blur(); assert.equal(f.render().type, route.type);
+    f.finishCameraPermission(granted); await settle();
+    assert.equal(f.render().type, route.type);
+    f.foreground(); assert.equal((await pending).granted, granted);
+    assert.equal(f.render().type, route.type);
+  } finally { f.dispose(); }
+});
+
+test('real background during the actual camera port request still retires the mounted wallet', async () => {
+  const f = await mounted(true, true, false);
+  try {
+    find(f.render(), node => node.type === 'NativePortfolio')!.props.onSend();
+    assert.equal(f.render().type, 'NativeSmartAccountSend');
+    const pending = f.requestCameraPermission();
+    const refused = assert.rejects(pending, /interrupted/); await settle();
+    f.background(); assert.notEqual(f.render().type, 'NativeSmartAccountSend');
+    f.foreground(); f.finishCameraPermission(true); await refused;
+    assert.notEqual(f.render().type, 'NativeSmartAccountSend');
   } finally { f.dispose(); }
 });

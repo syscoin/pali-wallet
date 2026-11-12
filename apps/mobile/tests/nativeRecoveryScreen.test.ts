@@ -68,6 +68,7 @@ const walletScreenPorts = {
   './recoveryCopy': recoveryCopy,
   './NativeAccountOverview': { NativePortfolioRoute: 'NativePortfolio' },
   '../notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
+    '../platform/cameraPermission': { isCameraPermissionPromptActive: () => false },
   '../activity/accountActivity': { AccountActivityController: class {} },
   './BackupIntroduction': { BackupIntroduction: 'BackupIntroduction' },
   './WalletUpdatePanel': { LockedWalletUpdate: () => null },
@@ -485,6 +486,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   Object.assign(dependencies, {
     ...walletScreenPorts,
     '../notifications/service': { nativeActivityNotifications: notificationPort, isNotificationPermissionPromptActive: () => false },
+    '../platform/cameraPermission': { isCameraPermissionPromptActive: () => false },
     '../portfolio/nativePortfolio': { NativePortfolioController: class {
       getSnapshot = () => utxoResume && state.account ? { status: 'available', units: utxoResume.nativeUnits, account: { ...state.account, revision: state.revision } } : null;
       subscribe = () => () => {}; connect() { return () => {}; }

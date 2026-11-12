@@ -226,6 +226,7 @@ function harness(watch = false, locked = watch, idleMinutes = 0) {
     './src/screens/NativeWallet': { NativeWalletScreen: 'NativeWalletScreen' },
     './src/screens/NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' },
     './src/notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
+    './src/platform/cameraPermission': { isCameraPermissionPromptActive: () => false },
     './src/screens/WalletAccounts': {},
     './src/screens/WatchSession': { WatchSession: 'WatchSession' },
     './src/core/watchAccounts': { WatchAccounts: Accounts },

@@ -1,6 +1,7 @@
 import { NativePairingInbox, observePairingLinks } from './src/connections/pairingLinks';
 import { publicViewLock, securityPreferences, watchIdle, custodyIdle } from './src/platform/security';
 import { authorizePublicView, isNativeCredentialPromptActive } from './src/platform/credential';
+import { isCameraPermissionPromptActive } from './src/platform/cameraPermission';
 import { nativeI18n, useNativeTranslation } from './src/platform/localization';
 import { IdleActivityBoundary, IdleTextInput, IdlePressable } from './src/screens/IdleActivityBoundary';
 import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
@@ -466,7 +467,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       void openWatch(pending.selection);
     };
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
-      if (isNotificationPermissionPromptActive() || isNativeCredentialPromptActive()) return;
+      if (isNotificationPermissionPromptActive() || isNativeCredentialPromptActive() || isCameraPermissionPromptActive()) return;
       foreground.current = false; hide();
     }) : null;
     const focus = Platform.OS === 'android' ? AppState.addEventListener('focus', () => {
@@ -475,7 +476,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     }) : null;
     const sub = AppState.addEventListener('change', (state) => {
       foreground.current = state === 'active';
-      if (state === 'inactive' && isNotificationPermissionPromptActive() || state !== 'active' && isNativeCredentialPromptActive()) return;
+      if (state === 'inactive' && (isNotificationPermissionPromptActive() || isCameraPermissionPromptActive()) || state !== 'active' && isNativeCredentialPromptActive()) return;
       if (state === 'active') { resume(); return; }
       hide();
       if (requestedRoute !== 'native' && !preview && authority.current?.getSnapshot().accounts.length)

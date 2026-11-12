@@ -22,6 +22,7 @@ import { findWifAddressType, UTXO_IMPORT_LABELS, UTXO_IMPORT_TYPES, type UtxoImp
 import { walletFetch } from '../platform/http';
 import { custodyIdle, publicViewLock, securityPreferences } from '../platform/security';
 import { authorizePublicView, isNativeCredentialPromptActive } from '../platform/credential';
+import { isCameraPermissionPromptActive } from '../platform/cameraPermission';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { AutoLockSettings, type IdlePreferenceSave } from './AutoLockSettings';
 import { BackupVerification } from './BackupVerification';
@@ -1282,12 +1283,12 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       }
     };
     const lifecycle = AppState.addEventListener('change', (state) => {
-      if (((state === 'inactive' || state === 'background') && controllersRef.current?.authentication?.isAnyPromptActive()) || state === 'inactive' && isNotificationPermissionPromptActive()) { clearSecrets(); Keyboard.dismiss(); }
+      if (((state === 'inactive' || state === 'background') && controllersRef.current?.authentication?.isAnyPromptActive()) || state === 'inactive' && (isNotificationPermissionPromptActive() || isCameraPermissionPromptActive())) { clearSecrets(); Keyboard.dismiss(); }
       else if (state !== 'active') revoke(true);
       else resume();
     });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
-      if (controllersRef.current?.authentication?.isAnyPromptActive() || isNotificationPermissionPromptActive()) { clearSecrets(); Keyboard.dismiss(); } else revoke(true);
+      if (controllersRef.current?.authentication?.isAnyPromptActive() || isNotificationPermissionPromptActive() || isCameraPermissionPromptActive()) { clearSecrets(); Keyboard.dismiss(); } else revoke(true);
     }) : null;
     const focus = AppState.addEventListener('focus', resume);
     return () => {

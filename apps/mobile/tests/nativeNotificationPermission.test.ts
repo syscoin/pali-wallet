@@ -6,7 +6,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { WalletReleaseMonitor } from '../../../source/shared/walletReleaseMonitor.ts';
 import { parseWalletReleaseFeed } from '../../../source/shared/walletRelease.ts';
-import { createNotificationPermissionPresentation } from '../src/notifications/permissionPresentation.ts';
+import { createPermissionPresentation } from '../src/platform/permissionPresentation.ts';
 import type { NotificationDelivery } from '../src/notifications/types.ts';
 import type { MobileUpdateService } from '../src/updates/types.ts';
 
@@ -40,7 +40,7 @@ function fixture() {
     async cancelScheduledNotificationAsync() {}, async dismissNotificationAsync() {},
   };
   const permission = evaluate<PermissionModule>('../src/notifications/permission.native.ts', {
-    'react-native': native, 'expo-notifications': notifications, './permissionPresentation.ts': { createNotificationPermissionPresentation },
+    'react-native': native, 'expo-notifications': notifications, '../platform/permissionPresentation.ts': { createPermissionPresentation },
   });
   let delivery!: NotificationDelivery;
   const background = { BackgroundTaskStatus: { Available: 1 }, getStatusAsync: async () => 1,
