@@ -350,3 +350,23 @@ test('background closes the native public view; watch-only chooser and large typ
   await page.screenshot({ path: screenshot, fullPage: true });
   await testInfo.attach('Watch Receive at large type', { path: screenshot, contentType: 'image/png' });
 });
+
+
+test('focus during disposal of interrupted initial opening reacquires a fresh public owner', async ({ page }) => {
+  await page.goto('/?android=1');
+  await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
+  await page.evaluate(() => { window.__watchFixture.delayUnlock(true); window.__watchFixture.delayClose(true); });
+  await page.getByRole('button', { name: 'Accounts', exact: true }).click();
+  await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__watchFixture.audit().unlocks)).toBe(1);
+  await page.evaluate(() => { window.__watchFixture.blur(); window.__watchFixture.releaseUnlock(); });
+  await expect.poll(() => page.evaluate(() => window.__watchFixture.audit().closed)).toBe(1);
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await page.evaluate(() => window.__watchFixture.focus());
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await page.evaluate(() => window.__watchFixture.releaseClose());
+  await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
+  expect((await fixture(page)).closed).toBe(1);
+  expect((await fixture(page)).keyReads + (await fixture(page)).signs + (await fixture(page)).broadcasts).toBe(0);
+  await expect(deviceAuthorizationPrompt(page)).toHaveCount(0);
+});

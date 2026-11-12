@@ -15,7 +15,7 @@ import { UTXO_NETWORKS } from '../../src/core/utxoNetworks';
 import App from '../../App';
 import { latestAuthority, retiredAuthorities, latestTransfers, fixtureFetch, fixtureCatalogue, noteInventoryFixture, recreateRemovalWallet, visualReviewFixture } from './nativeFactory';
 import { UpdateFixture } from './UpdateFixture';
-import { ADDRESS, audit, events, publicShares, setWatchBalanceMode, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, releaseSign, setDelayActivityReset, failActivityReset, finishActivityReset, setDelayKeyRead, releaseKeyRead, setKeyFailure, setDelayImport, releaseImport, setImportFailure } from './state';
+import { ADDRESS, audit, events, publicShares, setWatchBalanceMode, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, setDelayClose, releaseClose, releaseSign, setDelayActivityReset, failActivityReset, finishActivityReset, setDelayKeyRead, releaseKeyRead, setKeyFailure, setDelayImport, releaseImport, setImportFailure } from './state';
 import { recoveryAudit, holdRecovery, releaseRecovery } from './recoveryState';
 import { removalFixtureEnabled, walletRemovalFixture } from './walletRemovalFixture';
 
@@ -94,6 +94,8 @@ declare global {
       readFailure(value: boolean): void;
       delayUnlock(value: boolean): void;
       releaseUnlock(): void;
+      delayClose(value: boolean): void;
+      releaseClose(): void;
       delaySign(value: boolean): void;
       releaseSign(): void;
       delayActivityReset(value: boolean): void;
@@ -101,6 +103,7 @@ declare global {
       finishActivityReset(): void;
       lifecycle(state: 'active' | 'inactive' | 'background'): void;
       blur(): void;
+      focus(): void;
       back(): boolean;
       delayKeyRead(value: boolean): void;
       releaseKeyRead(): void;
@@ -134,10 +137,11 @@ window.__watchFixture = {
   activity: activityFixture, evmActivity: evmActivityFixture, idle: idleFixture, notes: noteInventoryFixture,
   removal: { ...walletRemovalFixture, recreate: recreateRemovalWallet },
   quotes: () => [...quoteRequests], releaseQuote: () => quoteGate?.resolve(), audit: () => ({ ...audit }), events: () => [...events], shares: () => [...publicShares], watchBalance: setWatchBalanceMode, accounts: readAccounts, selection: readSelection,
-  readFailure: setReadFailure, delayUnlock: setDelayUnlock, releaseUnlock, delaySign: setDelaySign, releaseSign,
+  readFailure: setReadFailure, delayUnlock: setDelayUnlock, releaseUnlock, delayClose: setDelayClose, releaseClose, delaySign: setDelaySign, releaseSign,
   delayActivityReset: setDelayActivityReset, failActivityReset, finishActivityReset,
   lifecycle(state) { appState = state; for (const listener of [...listeners.get('change') ?? []]) listener(state); },
   blur() { for (const listener of [...listeners.get('blur') ?? []]) listener('blur'); },
+  focus() { for (const listener of [...listeners.get('focus') ?? []]) listener('focus'); },
   back() {
     const event = { type: 'hardwareBackPress', timeStamp: performance.now() };
     return [...backListeners].reverse().some((listener) => listener(event) === true);

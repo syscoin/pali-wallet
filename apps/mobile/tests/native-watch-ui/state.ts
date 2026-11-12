@@ -10,6 +10,11 @@ export let watchBalanceMode: 'value' | 'zero' | 'error' = 'value';
 export function setWatchBalanceMode(value: typeof watchBalanceMode) { watchBalanceMode = value; }
 export const audit = { unlocks: 0, signs: 0, broadcasts: 0, closed: 0, keyReads: 0, keyAttempts: 0, importAttempts: 0, imports: 0, readFailures: 0, writes: 0 };
 let pendingUnlock: (() => void) | null = null;
+let pendingClose: (() => void) | null = null;
+let delayClose = false;
+export function setDelayClose(value: boolean) { delayClose = value; }
+export async function closeGate() { if (delayClose) await new Promise<void>((resolve) => { pendingClose = resolve; }); }
+export function releaseClose() { delayClose = false; pendingClose?.(); pendingClose = null; }
 let pendingSign: (() => void) | null = null;
 let pendingImport: (() => void) | null = null;
 let pendingKeyRead: (() => void) | null = null;

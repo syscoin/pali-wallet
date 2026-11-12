@@ -286,12 +286,11 @@ test('background and Android blur revoke Activity without unlocking a signing wa
     () => window.__watchFixture.evmActivity.calls().length
   );
   await page.evaluate(() => window.__watchFixture.lifecycle('active'));
+  await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'View my accounts', exact: true })).toHaveCount(0);
   expect(
     await page.evaluate(() => window.__watchFixture.evmActivity.calls().length)
   ).toBe(stopped);
-  await page
-    .getByRole('button', { name: 'View my accounts', exact: true })
-    .click();
   await page.getByRole('tab', { name: 'Activity', exact: true }).click();
   await loaded(page);
   await noSigning(page);

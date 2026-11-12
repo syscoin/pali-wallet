@@ -30,7 +30,7 @@ import type { NativeAccountView } from '../../src/custody/accounts';
 import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCatalogue';
 import type { CustodyRuntime, NativeOperationCredential } from '../../src/custody/types';
 import { getNativeNetwork, NATIVE_NETWORKS } from '../../src/custody/networkContext';
-import { ADDRESS, SECOND, audit, events, unlockGate, signGate, keyReadGate, activityResetGate, PUBLIC_TEST_KEY, keyFailure, importGate, importFailure } from './state';
+import { ADDRESS, SECOND, audit, events, unlockGate, closeGate, signGate, keyReadGate, activityResetGate, PUBLIC_TEST_KEY, keyFailure, importGate, importFailure } from './state';
 import { recoveryAudit, recoveryGate } from './recoveryState';
 import type { RecoveryInventory } from '../../src/custody/recoveryInventory';
 import type { NativeNoteInventory, NativeSavedNote } from '../../src/custody/noteBackupRuntime';
@@ -384,7 +384,7 @@ export function createNativeWalletControllers() {
         return { presence: 'existing', backup: backupConfirmed ? 'confirmed' : 'unconfirmed' };
       },
       ...(removalFixtureEnabled ? { async retireForRemoval(operation: () => Promise<void>) { await operation(); } } : {}),
-      async close() { audit.closed++; events.push('close'); },
+      async close() { audit.closed++; events.push('close'); await closeGate(); },
     },
   };
   const authority = new NativeCustodyAuthority({ open: async () => runtime }, { preferences: securityPreferences, viewLock: publicViewLock, assertActive: custodyIdle.captureGuard() });

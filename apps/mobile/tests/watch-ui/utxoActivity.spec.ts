@@ -219,7 +219,8 @@ test('leaving and reopening the same watch Activity cannot publish a late confir
   await page.evaluate(() => window.__watchFixture.blur());
   await expect(page.getByRole('button', { name: 'View my accounts', exact: true })).toBeVisible();
   await expect(feedback).toHaveCount(0);
-  await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
+  await page.evaluate(() => window.__watchFixture.focus());
+  await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Activity', exact: true }).click();
   await expect(row).toHaveAccessibleName(/^−10\.0 BTC, 11 confirmations · Block 190\./);
   await expect(feedback).toHaveCount(0);
@@ -241,8 +242,9 @@ test('leaving a slow request and Android focus loss revoke the active account hi
   await expect(activityRows(page, '−10.0 BTC')).toHaveCount(0);
   const blurred = await page.evaluate(() => window.__watchFixture.activity.calls().length);
   await page.evaluate(() => window.__watchFixture.lifecycle('active'));
+  await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'View my accounts', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__watchFixture.activity.calls().length)).toBe(blurred);
-  await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
   await page.getByRole('tab', { name: 'Activity', exact: true }).click();
   await load(page);
   const audit = await page.evaluate(() => window.__watchFixture.audit());

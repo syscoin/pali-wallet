@@ -1113,18 +1113,26 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     setProtectedScreen(true);
   }, [clearSecrets, readyContext, controllersRef]);
   const install = useCallback(async () => {
-    if (updateSession.current) return;
+    // Android blur leaves AppState active. Controllers must capture an active
+    // idle owner, so focus restores it before any replacement is created.
+    if (updateSession.current || pausedIdle.current) return;
+    const token = screenToken.current, captured = epoch.current;
+    const current = () => !updateSession.current && !pausedIdle.current && mounted.current &&
+      screenToken.current === token && epoch.current === captured && AppState.currentState === 'active';
     try {
-      const local = await nativeLifecycle.acquire(screenToken.current, () => !updateSession.current && mounted.current && AppState.currentState === 'active');
-      if (local && !updateSession.current && mounted.current && nativeLifecycle.current(screenToken.current) === local) {
-        attach(local);
+      let local = await nativeLifecycle.acquire(token, current);
+      // Focus may have joined an older, cancelled acquisition still draining.
+      // Retry a null admission once; an actual cleanup failure still throws.
+      if (!local && current()) local = await nativeLifecycle.acquire(token, current);
+      if (local && current() && nativeLifecycle.current(token) === local) {
+        if (controllersRef.current !== local) attach(local);
         await finishPublicOpen.current(local);
       }
     } catch {
-      if (mounted.current) { setProtectedScreen(false); setError(t("mobile.walletViews.secureWalletStorageIsUnavailableCloseAndReopenPaliToTryAgain")); }
+      if (current()) { setProtectedScreen(false); setError(t("mobile.walletViews.secureWalletStorageIsUnavailableCloseAndReopenPaliToTryAgain")); }
       throw new Error('REOPEN_REQUIRED');
     }
-  }, [attach]);
+  }, [attach, controllersRef]);
   const openWalletUpdate = () => {
     if (updateSession.current || !mounted.current || AppState.currentState !== 'active' || recoveryRef.current || removalRef.current) return;
     let closed!: () => void, failed!: (error: unknown) => void;
@@ -1177,6 +1185,9 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       if (restoreIdle && !restoreIdle()) { lockWallet(); return; }
       custodyIdle.begin(screenToken.current, lockWallet);
       const local = controllersRef.current;
+      // The removal layout effect owns retirement and fresh installation.
+      // Resuming this bundle can race that effect and revive retired producers.
+      if (local?.removal?.requiresControllerReopen()) return;
       if (local) {
         const captured = epoch.current;
         void local.authority.getAuthenticationStatus().then(status => {
@@ -1191,7 +1202,9 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       else if (local && !recoveryRef.current && !removalRef.current && local.authority.getSnapshot().phase === 'locked') {
         const captured = epoch.current;
         void local.authority.unlock().then(() => finishPublicOpen.current(local)).catch(() => {
-          if (mounted.current && controllersRef.current === local && epoch.current === captured)
+          if (mounted.current && controllersRef.current === local && epoch.current === captured &&
+              nativeLifecycle.current(screenToken.current) === local && AppState.currentState === 'active' &&
+              !local.removal?.requiresControllerReopen())
             setError(t("mobile.walletViews.yourSavedWalletCouldNotBeOpenedPleaseTryAgain"));
         });
       }

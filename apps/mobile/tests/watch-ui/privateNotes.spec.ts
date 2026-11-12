@@ -131,6 +131,8 @@ test('Back and Android blur suppress late results after reopening the same walle
   await expect(page.getByText('Loading saved notes…', { exact: true })).toBeVisible();
   await page.evaluate(() => window.__watchFixture.blur());
   await expect(button(page, 'Open wallet')).toBeVisible();
+  await page.evaluate(() => window.__watchFixture.focus());
+  await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
   await openNotesFromPublicWallet(page);
   await button(page, /^Saved notes/).click();
   await expect(page.getByText('No saved notes', { exact: true })).toBeVisible();
@@ -277,6 +279,8 @@ test('leaving rejects a late reveal and Android blur clears the current secret',
   await expect(button(page, 'Open wallet')).toBeVisible();
   await expect(heading(page, 'Back up this note')).toHaveCount(0);
   await expect(shownNote(page, 2)).toHaveCount(0);
+  await page.evaluate(() => window.__watchFixture.focus());
+  await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
   await openNotesFromPublicWallet(page);
   await expect(heading(page, 'Private notes')).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.notes.revealAudit().attempts)).toEqual([1, 2]);
