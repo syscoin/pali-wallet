@@ -5,6 +5,7 @@ import path from 'path';
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
 import { startDappServer } from '../harness/dappServer';
+import { expectedProviderIdentity } from '../harness/extensionVersion';
 import {
   LOCAL_CHAINS,
   approve,
@@ -17,6 +18,7 @@ import {
 } from '../harness/testDappConformance';
 
 test('settings: disable and re-enable Ethereum without reloading or reconnecting dapps', async () => {
+  const providerIdentity = expectedProviderIdentity(process.env);
   const stopChains = await startLocalChains();
   const wallet = await launchConformanceWallet(
     'provider-property-toggle'
@@ -84,10 +86,10 @@ test('settings: disable and re-enable Ethereum without reloading or reconnecting
       await startRequest(page, 'eth_requestAccounts')
     );
     expect(connected.result).toHaveLength(1);
-    await page.evaluate(() => {
+    await page.evaluate((stateKey) => {
       (window as any).__toggleInitialProvider = window.ethereum;
-      (window as any).__toggleInitialUuid = (window as any).paliProvider.uuid;
-    });
+      (window as any).__toggleInitialUuid = (window as any)[stateKey].uuid;
+    }, providerIdentity.stateKey);
 
     await wallet.step(
       'normal settings disable removes fallback and disconnects accounts',
@@ -113,7 +115,10 @@ test('settings: disable and re-enable Ethereum without reloading or reconnecting
     // Ethereum injection was disabled. Enabling must reach its live receiver.
     const unconnected = await wallet.context.newPage();
     await unconnected.goto(`${server.url}unconnected`);
-    await unconnected.waitForFunction(() => Boolean((window as any).pali));
+    await unconnected.waitForFunction(
+      (key) => Boolean((window as any)[key]),
+      providerIdentity.sysProviderKey
+    );
     expect(await unconnected.evaluate(() => Boolean(window.ethereum))).toBe(
       false
     );
@@ -140,9 +145,10 @@ test('settings: disable and re-enable Ethereum without reloading or reconnecting
           .toBe(true);
         expect(
           await page.evaluate(
-            () =>
-              (window as any).paliProvider.uuid ===
-              (window as any).__toggleInitialUuid
+            (stateKey) =>
+              (window as any)[stateKey].uuid ===
+              (window as any).__toggleInitialUuid,
+            providerIdentity.stateKey
           )
         ).toBe(true);
         expect(await providerRequest(page, 'eth_accounts')).toEqual([]);

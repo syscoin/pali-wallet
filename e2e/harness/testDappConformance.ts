@@ -14,7 +14,10 @@ import path from 'path';
 
 import { E2E_CONFIG } from './config';
 import { clickClosingPopup } from './dismissRejectedApproval';
-import { assertExtensionVersion } from './extensionVersion';
+import {
+  assertExtensionVersion,
+  expectedProviderIdentity,
+} from './extensionVersion';
 import { PaliWallet } from './pali';
 
 // Public Anvil fixture. This mnemonic must never be used on a public network.
@@ -339,7 +342,7 @@ export async function installConformanceInstrumentation(
     }
     await route.continue();
   });
-  await context.addInitScript(() => {
+  await context.addInitScript(({ notificationEvent, rdns }) => {
     const state = {
       providers: [] as any[],
       requests: [] as any[],
@@ -348,7 +351,7 @@ export async function installConformanceInstrumentation(
       providerSnapshots: [] as any[],
     };
     (window as any).__paliConformance = state;
-    window.addEventListener('paliNotification', ((event: CustomEvent) => {
+    window.addEventListener(notificationEvent, ((event: CustomEvent) => {
       try {
         const notification = JSON.parse(event.detail);
         const data = notification.data || notification;
@@ -369,7 +372,7 @@ export async function installConformanceInstrumentation(
       event: CustomEvent
     ) => {
       const detail = event.detail;
-      if (detail.info.rdns !== 'com.paliwallet') return;
+      if (detail.info.rdns !== rdns) return;
       state.providers.push({ ...detail.info });
       const provider = detail.provider;
       (window as any).__paliConformanceProvider = provider;
@@ -440,7 +443,7 @@ export async function installConformanceInstrumentation(
         provider.on(name, listener);
       }
     }) as EventListener);
-  });
+  }, expectedProviderIdentity(process.env));
   // Prove this route also guards fetches made by the real MV3 worker. The
   // reserved .invalid destination and invalid raw bytes cannot broadcast.
   const canaryUrl = 'https://pali-conformance.invalid/rpc';
@@ -471,13 +474,14 @@ export async function installConformanceInstrumentation(
 }
 
 export async function openOfficialDapp(context: BrowserContext) {
+  const provider = expectedProviderIdentity(process.env);
   const page = await context.newPage();
   await page.goto(TEST_DAPP_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() =>
     Boolean((window as any).__paliConformanceProvider)
   );
   await page
-    .getByRole('button', { name: 'Use Pali Wallet', exact: true })
+    .getByRole('button', { name: `Use ${provider.name}`, exact: true })
     .click();
   return page;
 }

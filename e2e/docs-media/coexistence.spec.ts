@@ -191,7 +191,11 @@ test('old unnamespaced package and new Canary keep provider approvals separate',
               scope.requests[id] = { state: 'resolved', result };
             },
             (error: any) => {
-              scope.requests[id] = { state: 'rejected', code: error.code };
+              scope.requests[id] = {
+                state: 'rejected',
+                code: error.code,
+                message: error.message,
+              };
             }
           );
       }, walletId);
@@ -206,11 +210,12 @@ test('old unnamespaced package and new Canary keep provider approvals separate',
         path: path.join(OUT, `${key}-approval.png`),
         animations: 'disabled',
       });
-      approvalEvidence.push({
+      const evidence = {
         selectedProvider: walletId,
         extensionId: ids[key],
         popupUrl: popup.url(),
-      });
+      };
+      approvalEvidence.push(evidence);
       await clickClosingPopup({
         click: () =>
           popup
@@ -221,9 +226,21 @@ test('old unnamespaced package and new Canary keep provider approvals separate',
       });
       await expect
         .poll(() =>
-          dapp.evaluate((id) => (window as any).requests[id], walletId)
+          dapp.evaluate((id) => (window as any).requests[id].state, walletId)
         )
-        .toEqual({ state: 'rejected', code: 4001 });
+        .toBe('rejected');
+      const result = await dapp.evaluate(
+        (id) => (window as any).requests[id],
+        walletId
+      );
+      Object.assign(evidence, { result });
+      // Connection denial retains the existing connection middleware's
+      // unauthorized response; signing rejection is a separate 4001 path.
+      expect(result).toEqual({
+        state: 'rejected',
+        code: 4100,
+        message: 'Connection required',
+      });
       await dapp.waitForTimeout(500);
       expect(popupPages).toHaveLength(key === 'legacy' ? 1 : 2);
     }
