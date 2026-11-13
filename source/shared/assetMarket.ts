@@ -51,11 +51,21 @@ export function assetMarketLine(prices: readonly number[]): string | null {
   );
 }
 
-export function assetMarketUrl(id: string, currency: string): string {
-  if (!validMarketId(id) || !/^[a-z]{2,8}$/.test(currency))
+export type AssetMarketPurpose = 'price' | 'history';
+
+export function assetMarketUrl(
+  id: string,
+  currency: string,
+  purpose: AssetMarketPurpose
+): string {
+  if (
+    !validMarketId(id) ||
+    !/^[a-z]{2,8}$/.test(currency) ||
+    !['price', 'history'].includes(purpose)
+  )
     throw new Error('Invalid market identity');
   return `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${currency}&ids=${id}&sparkline=${
-    currency === 'usd'
+    purpose === 'history' && currency === 'usd'
   }&price_change_percentage=24h`;
 }
 

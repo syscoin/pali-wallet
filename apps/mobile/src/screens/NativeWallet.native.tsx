@@ -270,7 +270,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const accountPortfolio = useMemo(() => {
     const local = controllerOwner;
     if (!publicSource || !balanceReader || !local?.getNotificationChoices || !local.readPortfolioAssets) return null;
-    const readQuote = createNativeCoinQuoteReader(walletFetch), readMarket = createNativeAssetMarketReader(walletFetch);
+    const readQuote = createNativeCoinQuoteReader(walletFetch), readMarket = createNativeAssetMarketReader(walletFetch, 'price');
     const pendingQuotes = new Map<string, Promise<number | null>>();
     return new AccountPortfolioController({ source: publicSource, reader: balanceReader, choices: () => local.getNotificationChoices(), filter: portfolioFilter,
       assets: (scope, signal, check) => local.readPortfolioAssets(scope, signal, check),

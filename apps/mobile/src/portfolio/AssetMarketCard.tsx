@@ -8,7 +8,7 @@ import { Button, Card, colors, Text } from '../ui';
 import { createNativeAssetMarketReader, nativeAssetMarketSource, rememberNativeAssetMarketIcon, type AssetMarketReference } from './nativeAssetMarket.ts';
 import { useNativeTranslation } from '../platform/localization';
 
-const read = createNativeAssetMarketReader(walletFetch);
+const read = createNativeAssetMarketReader(walletFetch, 'history');
 export function AssetMarketCard({ asset }: { asset: AssetMarketReference }) {
   const { t, i18n } = useNativeTranslation();
   const locale = i18n.resolvedLanguage ?? i18n.language;
