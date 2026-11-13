@@ -252,7 +252,62 @@ test('welcome, import and password setup stay reachable in small windows', async
                 }, topPoint),
                 `${name}-word upward wheel targets textarea ${suffix}`
               ).toBe(true);
-              await page.mouse.wheel(0, -120);
+              // Dispatch can lag an already-true top condition. Keep its wait bounded.
+              await page.evaluate(() => {
+                const state = {
+                  delivered: false,
+                  listener: () => {
+                    state.delivered = true;
+                  },
+                };
+                (window as any).__seedWheelDelivery = state;
+                document.addEventListener('wheel', state.listener, {
+                  capture: true,
+                  once: true,
+                });
+              });
+              try {
+                await page.mouse.wheel(0, -120);
+                await page.waitForFunction(
+                  () => (window as any).__seedWheelDelivery?.delivered,
+                  undefined,
+                  { timeout: 3000 }
+                );
+              } finally {
+                await page.evaluate(() => {
+                  const state = (window as any).__seedWheelDelivery;
+                  if (state)
+                    document.removeEventListener('wheel', state.listener, true);
+                  delete (window as any).__seedWheelDelivery;
+                });
+              }
+              // Observe geometry only; the ancestor may still move after dispatch.
+              await seedField.evaluate(
+                (element) =>
+                  new Promise<void>((resolve, reject) => {
+                    let previous = element.getBoundingClientRect();
+                    let stableFrames = 0;
+                    let frame = 0;
+                    const timer = setTimeout(() => {
+                      cancelAnimationFrame(frame);
+                      reject(new Error('Textarea geometry did not settle'));
+                    }, 3000);
+                    const observe = () => {
+                      const next = element.getBoundingClientRect();
+                      stableFrames =
+                        Math.abs(next.top - previous.top) < 0.1 &&
+                        Math.abs(next.left - previous.left) < 0.1
+                          ? stableFrames + 1
+                          : 0;
+                      previous = next;
+                      if (stableFrames === 4) {
+                        clearTimeout(timer);
+                        resolve();
+                      } else frame = requestAnimationFrame(observe);
+                    };
+                    frame = requestAnimationFrame(observe);
+                  })
+              );
               await expect
                 .poll(
                   () =>
