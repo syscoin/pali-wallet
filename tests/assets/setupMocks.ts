@@ -2,7 +2,11 @@
 
 // Keep asset-test backend APIs mocked; expose the shared SDK's public codecs.
 jest.mock('syscoinjs-lib', () => ({
-  utils: { bitcoinjs: jest.requireActual('syscoinjs-lib').utils.bitcoinjs },
+  utils: {
+    bitcoinjs: jest.requireActual('syscoinjs-lib').utils.bitcoinjs,
+    retryWithBackoff:
+      jest.requireActual('syscoinjs-lib').utils.retryWithBackoff,
+  },
   networks: {
     syscoin: { messagePrefix: '\x18Syscoin Signed Message:\n' },
     bitcoin: { messagePrefix: '\x18Bitcoin Signed Message:\n' },

@@ -1,6 +1,7 @@
 import { observeFirstUseUtxoRpc, verifyOwnedUtxoRpc } from '@sidhujag/sysweb3-network/cjs/ownedUtxoRpc.js';
 import { utxoRegistrationDisplayName } from '../../../../source/shared/utxoChainCatalogue.ts';
 import { createUtxoRegistrationPin } from '../../../../source/shared/utxoRegistration.ts';
+import { fetchUtxoRead } from '../../../../source/wallet/utxoReadRetry.ts';
 import { boundedResponseText, cancelResponseBody, ResponseSizeLimitError } from '../platformRpc.ts';
 import { canonicalUtxoEndpoint, isCustomUtxoNetworkId, newCustomUtxoNetworkId, projectUtxoRegistration, resolveUtxoNetwork, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 
@@ -89,19 +90,10 @@ function openUtxoTransport(endpoint: string, options: Readonly<{ fetch: UtxoFetc
     try {
       check();
       const url = endpoint + path;
-      const pending = Promise.resolve().then(() => { check(); return options.fetch(url, {
+      const response = await Promise.resolve().then(() => fetchUtxoRead(options.fetch, url, {
         method: 'GET', headers: { Accept: 'application/json' }, signal: controller.signal,
         credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer',
-      }); }).then((response) => {
-        try { check(); return response; }
-        catch (error) { cancelResponseBody(response); throw error; }
-      });
-      const response = await new Promise<Response>((resolve, reject) => {
-        const stopped = () => reject(failure ?? new UtxoBalanceError('CANCELLED'));
-        controller.signal.addEventListener('abort', stopped, { once: true });
-        pending.then(resolve, reject).finally(() => controller.signal.removeEventListener('abort', stopped));
-        if (controller.signal.aborted) stopped();
-      });
+      }, check));
       check();
       const discard = () => { try { void response.body?.cancel().catch(() => undefined); } catch { /* Best effort. */ } };
       if (!response.ok) { discard(); return utxoFailure('UNAVAILABLE'); }

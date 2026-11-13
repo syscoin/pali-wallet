@@ -248,7 +248,7 @@ it('does not retain failed raw reads or reuse a response across owners', async (
   const endpoint = raw('a');
   const fetch = jest
     .fn(async () => reply(endpoint, '{}'))
-    .mockResolvedValueOnce(reply(endpoint, '', 503))
+    .mockResolvedValueOnce(reply(endpoint, '', 500))
     .mockRejectedValueOnce(new Error('Offline'));
   const open = () =>
     createOwnedUtxoBlockbookRead(
@@ -260,8 +260,8 @@ it('does not retain failed raw reads or reuse a response across owners', async (
   const request = (read: ReturnType<typeof open>) =>
     read.fetch(endpoint, { method: 'GET', signal: read.signal });
   const first = open();
-  await expect(request(first)).resolves.toHaveProperty('status', 503);
-  await expect(request(first)).rejects.toThrow('Offline');
+  await expect(request(first)).resolves.toHaveProperty('status', 500);
+  await expect(request(first)).rejects.toThrow('Blockbook read unavailable');
   await expect(request(first)).resolves.toHaveProperty('status', 200);
   await expect(request(first)).resolves.toHaveProperty('status', 200);
   await expect(request(open())).resolves.toHaveProperty('status', 200);
