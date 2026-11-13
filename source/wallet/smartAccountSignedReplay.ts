@@ -50,6 +50,10 @@ export type SmartAccountReplayIntent = Readonly<{
   operationCount: number;
   operationHash: string;
   operationNonce: string;
+  operations: readonly Pick<
+    SmartAccountReplayIntent,
+    'operationHash' | 'operationNonce'
+  >[];
   replayable: boolean;
   transfer?: Pick<
     RetainedSmartAccountTransfer,
@@ -187,6 +191,16 @@ export function projectSmartAccountSavedTransaction(
     operationHash: selected.operationHash,
     operationNonce: selected.operationNonce,
     operationCount: record.operations.length,
+    operations: Object.freeze(
+      record.operations
+        .filter((operation) => operation.account === account)
+        .map((operation) =>
+          Object.freeze({
+            operationHash: operation.operationHash,
+            operationNonce: operation.operationNonce,
+          })
+        )
+    ),
     replayable: record.operations.length === 1,
     callData,
     ...(calls ? { executions: Object.freeze(calls) } : {}),

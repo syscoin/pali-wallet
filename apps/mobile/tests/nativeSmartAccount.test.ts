@@ -57,6 +57,7 @@ import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { inspectRecoveryCatalogue, NativeWalletCatalogue, WALLET_CATALOGUE_KEY, type NativeInfrastructurePending } from '../src/custody/walletCatalogue.ts';
 import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
+import { ACTIVITY_STORAGE_KEY } from '../src/activity/historyStore.ts';
 import { digest, INSTALLATION, nodeConnection, type SqlHook } from './storageHelpers.ts';
 import { createGuardianRecoveryFixture } from './native-watch-ui/guardianRecoveryFixture.ts';
 import { GUARDIAN_FIXTURE_RUNTIME } from './guardianRecoveryRuntime.ts';
@@ -1864,13 +1865,19 @@ for (const success of [true, false]) test(`Smart Activity survives reopen and di
     assert.equal(row.amountUnits, '9');
     assert.equal(row.recipient, '0x2222222222222222222222222222222222222222');
     assert.equal(row.smartAccount?.payer?.toLowerCase(), payer.toLowerCase());
-    assert.equal(row.inspectionOnly, true);
+    assert.equal(row.inspectionOnly, undefined);
     assert.equal(row.speedUpEligible, true);
     assert.equal(row.reviewNavigation?.speedUp, true);
     await f.change({ kind: 'select', id: 'hd:60:0' });
     const payerBefore = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     await f.change({ kind: 'select', id: 'smart:60:0' });
     f.showReceipts(success);
+    const scoped = f.runtime.activity!.forScope!({ accountId: row.accountId, address: loaded.scope.address,
+      networkId: loaded.scope.network.id, registrationHash: loaded.scope.network.registrationHash }, () => undefined);
+    const scopedLoaded = await scoped.load(() => undefined, new AbortController().signal);
+    assert.equal(scopedLoaded.locals[0]!.inspectionOnly, true);
+    const scopedObservation = await scoped.observeLocal!(scopedLoaded.locals[0]!, () => undefined, new AbortController().signal);
+    assert.equal(scopedObservation.status === 'mined' && scopedObservation.outcome, success ? 'confirmed' : 'reverted');
     const observed = await f.runtime.activity!.observeLocal!(row, () => undefined, new AbortController().signal);
     assert.equal(observed.status === 'mined' && observed.outcome, success ? 'confirmed' : 'reverted');
     const archived = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
@@ -1894,7 +1901,7 @@ for (const success of [true, false]) test(`Smart Activity survives reopen and di
     const retired = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     assert.equal(retired.locals.length, 0);
     const archivedRow = retired.saved.archived[0]!;
-    assert.equal(archivedRow.smartAccount?.operationHash, row.smartAccount?.operationHash);
+    assert.deepEqual(archivedRow.smartAccount?.operations, row.smartAccount?.operations);
     const checkedAgain = await f.runtime.activity!.observeLocal!(archivedRow, () => undefined, new AbortController().signal);
     assert.equal(checkedAgain.status === 'mined' && checkedAgain.outcome, success ? 'confirmed' : 'reverted');
     f.reorg();
@@ -1902,7 +1909,7 @@ for (const success of [true, false]) test(`Smart Activity survives reopen and di
     await f.reopen(); await f.owner.unlock();
     const afterRestart = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     assert.equal(afterRestart.saved.archived[0]!.phase, 'submitted');
-    assert.equal(afterRestart.saved.archived[0]!.smartAccount!.operationHash, row.smartAccount!.operationHash);
+    assert.deepEqual(afterRestart.saved.archived[0]!.smartAccount!.operations, row.smartAccount!.operations);
   } finally { operation?.dispose(); await f.close(); }
 });
 
@@ -4261,6 +4268,13 @@ test('Smart fee replacement uses only the retained software payer despite a disc
     const observed = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     assert.equal(observed.locals.find(row => row.hash === cancelHash)?.phase, 'confirmed');
     assert.equal(observed.locals.find(row => row.hash === cancelHash)?.smartAccount?.cancellation, true);
+    const archiveDocument = await f.storage.keyringStorage.get(ACTIVITY_STORAGE_KEY) as {
+      archived: { hash: string; smartAccount?: { cancellation?: true } }[];
+    };
+    const archived = archiveDocument.archived.find(row => row.hash === cancelHash);
+    assert(archived?.smartAccount?.cancellation);
+    for (const hint of ['operation', 'transactionType', 'originalHash', 'inspectionOnly', 'speedUpEligible', 'reviewNavigation'])
+      assert.equal(Object.hasOwn(archived, hint), false, `transient ${hint} does not enter the archive`);
     f.assertNoSigningKeys();
     transfers.cancel();
     assert.deepEqual(f.runtime.ledger.getConnectionTargets(), ['ledger:60:0']);

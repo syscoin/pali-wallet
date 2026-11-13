@@ -1,4 +1,5 @@
 import { Transaction } from 'ethers/transaction';
+import { getAddress } from 'ethers/address';
 import { EvmSignedRecords, type EvmSignedRecordSession, type EvmRetainedSignedRecord, type EvmRetainedSmartAccountRecord } from '../../../../source/wallet/evmSignedRecords.ts';
 import { projectSavedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { projectSmartAccountSavedTransaction } from '../../../../source/wallet/smartAccountSignedReplay.ts';
@@ -79,7 +80,7 @@ export function createNativeSignedRecordView(
     const saved = projectSmartAccountSavedTransaction(record, account.address), smart = saved.smartAccount, transfer = smart.transfer;
     const single = smart.executions?.length === 1 ? smart.executions[0] : undefined;
     if (record.cancellation) return Object.freeze({ ...activity(record.entry), inspectionOnly: true,
-      smartAccount: Object.freeze({ ...record.cancellation.original, cancellation: true }) });
+      smartAccount: Object.freeze({ payer: record.cancellation.original.payer, operations: [Object.freeze({ operationHash: record.cancellation.original.operationHash, operationNonce: record.cancellation.original.operationNonce })], cancellation: true }) });
     return Object.freeze({
     walletFingerprint: walletBindingId, accountId: nativeAccountId(account.type, account.index),
     address: account.address, networkId: network.id, registrationHash: network.registrationHash,
@@ -94,7 +95,7 @@ export function createNativeSignedRecordView(
     operation: saved.operation, transactionType: saved.type ?? undefined,
     ...(saved.originalHash ? { originalHash: saved.originalHash } : {}),
     ...(maySpeedUp(record.entry, saved.type) && !!transfer ? { speedUpEligible: true as const, reviewNavigation: Object.freeze({ speedUp: true }) } : {}),
-    smartAccount: Object.freeze({ payer: saved.from, operationHash: smart.operationHash, operationNonce: smart.operationNonce }),
+    smartAccount: Object.freeze({ payer: getAddress(saved.from), operations: smart.operations }),
   }); };
   return Object.freeze({
     smartActivity(hash: string) {

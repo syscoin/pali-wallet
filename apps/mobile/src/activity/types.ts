@@ -1,5 +1,5 @@
 import type { EvmDisplayTransaction } from '../../../../source/shared/evmTransactionDisplay.ts';
-import type { SmartAccountActivityIdentity } from '../../../../source/wallet/smartAccountActivity.ts';
+import type { SmartAccountActivityGroupIdentity } from '../../../../source/wallet/smartAccountActivity.ts';
 import type { NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 import { isNativeAccountId } from '../custody/accountIdentity.ts';
 import { getAddress } from 'ethers/address';
@@ -37,7 +37,7 @@ export type TerminalActivityRecord = Readonly<{
   recipient: string;
   amountUnits: string;
   maximumFeeUnits: string;
-  smartAccount?: SmartAccountActivityIdentity;
+  smartAccount?: SmartAccountActivityGroupIdentity;
   collectibleTransfer?: NftTransferIntent;
   contractInteraction?: true;
   token?: Readonly<{
@@ -49,7 +49,7 @@ export type TerminalActivityRecord = Readonly<{
 }>;
 export type ArchivedActivityRecord = TerminalActivityRecord |
   (Omit<TerminalActivityRecord, 'phase' | 'smartAccount'> & Readonly<{
-    phase: 'submitted'; smartAccount: SmartAccountActivityIdentity;
+    phase: 'submitted'; smartAccount: SmartAccountActivityGroupIdentity;
   }>);
 export const LOCAL_ACTIVITY_LIMIT = 48;
 export type LocalActivityRecord = Omit<
