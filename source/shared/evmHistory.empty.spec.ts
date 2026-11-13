@@ -28,6 +28,7 @@ it.each([
   { status: '0', message: 'No token transfers found', result: [{}] },
   { status: 0, message: 'No token transfers found', result: [] },
   empty('NOTOK'),
+  empty('OK'),
   empty('Rate limit exceeded'),
 ])('does not classify malformed or error envelopes as empty: %p', (reply) => {
   expect(isEmptyEvmHistoryResponse(reply, 'tokentx')).toBe(false);
