@@ -761,3 +761,42 @@ it('cancels Smart replay without broadcasting or changing saved bytes', async ()
   expect(() => f.wallet.confirmEvmSignedReplay(prepared.review.id)).toThrow();
   expect(f.broadcasts).toEqual([]);
 });
+
+it('checks later pending Smart rows while earlier rows cool down, without exceeding five reads', async () => {
+  const f = await fixture();
+  let now = 100_000;
+  jest.spyOn(Date, 'now').mockImplementation(() => now);
+  const hashes = Array.from(
+    { length: 6 },
+    (_, index) => '0x' + (index + 1).toString(16).padStart(64, '0')
+  );
+  mockState.vault.accountTransactions.SmartAccount[1] = {
+    ethereum: {
+      1: hashes.map((hash) => ({ hash, smartAccountExecutionFrom: smart })),
+    },
+  };
+  f.wallet.getEvmTransactionFromProvider = jest.fn(async () => null);
+  const refresh = () =>
+    f.wallet.reconcileLocalPendingEvmSmartAccountTransactions(
+      { id: 1, type: 'SmartAccount' },
+      1
+    );
+  await refresh();
+  expect(
+    f.wallet.getEvmTransactionFromProvider.mock.calls.map(([hash]) => hash)
+  ).toEqual(hashes.slice(0, 5));
+  now += 1_000;
+  await refresh();
+  expect(
+    f.wallet.getEvmTransactionFromProvider.mock.calls.map(([hash]) => hash)
+  ).toEqual(hashes);
+  await refresh();
+  expect(f.wallet.getEvmTransactionFromProvider).toHaveBeenCalledTimes(6);
+  now += 30_000;
+  await refresh();
+  expect(
+    f.wallet.getEvmTransactionFromProvider.mock.calls
+      .slice(6)
+      .map(([hash]) => hash)
+  ).toEqual(hashes.slice(0, 5));
+});
