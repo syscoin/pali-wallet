@@ -19,19 +19,24 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
-it('retains the bundled Gateway suggestion when the remote catalogue is unavailable', async () => {
+it('retains all bundled suggestions when the remote catalogue is unavailable', async () => {
   (chromeStorage.getItem as jest.Mock).mockResolvedValue(null);
   (retryableFetch as jest.Mock).mockRejectedValue(new Error('offline'));
   const rows = await ChainListService.getInstance().getChainData(
     'ethereum' as never
   );
-  expect(rows).toEqual([
-    expect.objectContaining({
-      chainId: 57570,
-      name: 'Syscoin Gateway',
-      rpc: [{ url: 'https://rpc-gw.syscoin.org' }],
-    }),
+  expect(rows.map(({ chainId }) => chainId)).toEqual([
+    57, 1, 8453, 42161, 570, 5757, 5700, 57057, 57570,
   ]);
+  expect(rows).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        chainId: 57570,
+        name: 'Syscoin Gateway',
+        rpc: [{ url: 'https://rpc-gw.syscoin.org' }],
+      }),
+    ])
+  );
   expect(retryableFetch).toHaveBeenCalledTimes(1);
   expect(retryableFetch).toHaveBeenCalledWith(
     'https://chainlist.org/rpcs.json',
@@ -53,7 +58,8 @@ it('uses the pinned Gateway metadata ahead of a cached conflicting catalogue row
   const rows = await ChainListService.getInstance().getChainData(
     'ethereum' as never
   );
-  expect(rows).toHaveLength(1);
-  expect(rows[0].rpc).toEqual([{ url: 'https://rpc-gw.syscoin.org' }]);
+  const gatewayRows = rows.filter(({ chainId }) => chainId === 57570);
+  expect(gatewayRows).toHaveLength(1);
+  expect(gatewayRows[0].rpc).toEqual([{ url: 'https://rpc-gw.syscoin.org' }]);
   expect(retryableFetch).not.toHaveBeenCalled();
 });
