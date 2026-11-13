@@ -33,6 +33,7 @@ import {
   clickClosingPopup,
   dismissRejectedApproval,
 } from '../harness/dismissRejectedApproval';
+import { expectedProviderIdentity } from '../harness/extensionVersion';
 import {
   LOCAL_CHAINS,
   TEST_DAPP_MNEMONIC,
@@ -68,6 +69,7 @@ test('official test dapp: isolated standard provider conformance', async () => {
     );
   const checks: any[] = [];
   const buildEvidence = extensionEvidence();
+  const providerIdentity = expectedProviderIdentity(process.env);
   const report = path.join(
     E2E_CONFIG.artifactsDir,
     'test-dapp-conformance.json'
@@ -855,7 +857,7 @@ test('official test dapp: isolated standard provider conformance', async () => {
       await record(
         'EIP-6963 discovery and window.ethereum fallback',
         async () => {
-          const info = await page.evaluate(() => {
+          const info = await page.evaluate((stateKey) => {
             window.dispatchEvent(new Event('eip6963:requestProvider'));
             const state = (window as any).__paliConformance;
             return {
@@ -864,19 +866,19 @@ test('official test dapp: isolated standard provider conformance', async () => {
                 window.ethereum === (window as any).__paliConformanceProvider,
               announcedIsOwned:
                 (window as any).__paliConformanceProvider ===
-                (window as any).paliProvider?.proxiedProvider,
+                (window as any)[stateKey]?.proxiedProvider,
               foreignFallback:
                 window.ethereum !== (window as any).__paliConformanceProvider &&
                 Boolean(window.ethereum?.isMetaMask),
             };
-          });
+          }, providerIdentity.stateKey);
           expect(info.providers.length).toBeGreaterThan(0);
           expect(
             new Set(info.providers.map((provider: any) => provider.uuid)).size
           ).toBe(1);
           expect(info.providers[0]).toMatchObject({
-            name: 'Pali Wallet',
-            rdns: 'com.paliwallet',
+            name: providerIdentity.name,
+            rdns: providerIdentity.rdns,
           });
           expect(info.announcedIsOwned).toBe(true);
           // The official test dapp also initializes MetaMaskSDK, which may

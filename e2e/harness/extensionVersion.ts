@@ -34,3 +34,17 @@ export function assertExtensionVersion(
     );
   return expected;
 }
+
+/** Exact public provider identity for the already selected artifact channel. */
+export function expectedProviderIdentity(environment: VersionEnvironment) {
+  const canary = expectedExtensionVersion(environment).channel === 'canary';
+  return Object.freeze({
+    name: canary ? 'Pali Wallet Canary' : 'Pali Wallet',
+    rdns: canary ? 'com.paliwallet.canary' : 'com.paliwallet',
+    notificationEvent: canary
+      ? 'pali-canary:paliNotification'
+      : 'paliNotification',
+    stateKey: canary ? 'pali-canary:paliProvider' : 'paliProvider',
+    sysProviderKey: canary ? 'paliCanary' : 'pali',
+  });
+}
