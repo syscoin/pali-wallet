@@ -801,13 +801,19 @@ const VaultState = createSlice({
             }
           } else {
             // New transaction, add it
-            // Check if the array length is 30
             if (currentUserTransactions.length >= 30) {
-              // Create a new array by adding the new transaction at the beginning and limiting to 30 items
-              const updatedTransactions = take(
-                [transaction, ...currentUserTransactions],
-                30
-              );
+              const transactions = [transaction, ...currentUserTransactions];
+              const updatedTransactions = take(transactions, 30);
+              if (networkType === TransactionsType.Ethereum)
+                // Match setAccountTransactions: the Smart-account log cursor
+                // already passed these rows. Retain their observed inner
+                // outcomes instead of replacing them with saved summaries
+                // without receipt data when the history page is opened later.
+                updatedTransactions.push(
+                  ...transactions
+                    .slice(30)
+                    .filter((tx: any) => tx.smartAccountExecutionFrom)
+                );
 
               currentAccountTransactions[networkType][chainId] =
                 updatedTransactions as IEvmTransaction[] & ISysTransaction[];

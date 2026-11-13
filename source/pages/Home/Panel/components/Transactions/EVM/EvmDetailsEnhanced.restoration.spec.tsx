@@ -153,7 +153,13 @@ const fullTx = (hash: string, fields: any = {}) => ({
   ...fields,
 });
 const encodeBundle = (
-  operations: { callData?: string; sender: string; value?: string }[]
+  operations: {
+    callData?: string;
+    data?: string;
+    sender: string;
+    target?: string;
+    value?: string;
+  }[]
 ) => {
   const encoded = operations.map(({ sender, callData }) => [
     sender,
@@ -170,9 +176,9 @@ const encodeBundle = (
   for (let i = 0; i < encoded.length; i += 1) {
     if (!operations[i].callData) {
       const execution = hexConcat([
-        TARGET,
+        operations[i].target || TARGET,
         defaultAbiCoder.encode(['uint256'], [operations[i].value || '7']),
-        '0x',
+        operations[i].data || '0x',
       ]);
       const selector = id('execute(bytes32,bytes)').slice(0, 10);
       encoded[i][3] =
@@ -514,14 +520,18 @@ it('drops late decode and display enrichment after changing endpoint', async () 
 
 it('selects the current account operation from a bundle, retaining outer hash details', async () => {
   const hash = 'aa-current-operation';
+  const input = encodeBundle([
+    { sender: OTHER, value: '999' },
+    { sender: ACCOUNT, value: '7' },
+  ]);
   mockEmitter.mockResolvedValue(
     fullTx(hash, {
       from: OTHER,
       to: getPaliEntryPointAddress(1),
-      input: encodeBundle([
-        { sender: OTHER, value: '999' },
-        { sender: ACCOUNT, value: '7' },
-      ]),
+      value: '0',
+      input,
+      nonce: 12,
+      gasUsed: '23456',
       success: true,
       logs: [operationLog(hash, ACCOUNT, true)],
     })
@@ -535,6 +545,70 @@ it('selects the current account operation from a bundle, retaining outer hash de
     'eth'
   );
   expect(screen.getByText(/Hash:aa-current-operation/)).toBeTruthy();
+  expect(screen.getByText(`From:${ACCOUNT}|`)).toBeTruthy();
+  expect(screen.getByText(`To:${TARGET}|`)).toBeTruthy();
+  expect(
+    screen.getByText('transactions.feePayer').parentElement?.textContent
+  ).toBe(`transactions.feePayer${OTHER}`);
+  expect(screen.getByText('Nonce:12|')).toBeTruthy();
+  expect(screen.getByText('Gas Used:23,456|')).toBeTruthy();
+  expect(screen.getByText(`Input:${input}|`)).toBeTruthy();
+});
+
+it('shows the successful Smart token recipient with the Smart sender and separate outer payer', async () => {
+  const hash = 'aa-token-addresses';
+  const token = '0x4444444444444444444444444444444444444444';
+  const data =
+    id('transfer(address,uint256)').slice(0, 10) +
+    defaultAbiCoder
+      .encode(['address', 'uint256'], [TARGET, '5000000'])
+      .slice(2);
+  mockEmitter.mockResolvedValue(
+    fullTx(hash, {
+      from: OTHER,
+      to: getPaliEntryPointAddress(1),
+      value: '0',
+      input: encodeBundle([
+        { sender: ACCOUNT, target: token, data, value: '0' },
+      ]),
+      success: true,
+      logs: [operationLog(hash, ACCOUNT, true)],
+    })
+  );
+  mockDisplay.mockImplementation(async (tx: any) => ({
+    formattedValue: '5 TOK',
+    displayValue: '5',
+    displaySymbol: 'TOK',
+    actualRecipient: TARGET,
+    isErc20Transfer: tx.to.toLowerCase() === token,
+  }));
+  render(<EvmTransactionDetailsEnhanced hash={hash} />);
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe(
+      'Sent|5 TOK|Confirmed'
+    )
+  );
+  expect(mockDisplay).toHaveBeenCalledWith(
+    expect.objectContaining({ from: ACCOUNT, to: token, input: data }),
+    'eth'
+  );
+  expect(screen.getByText(`From:${ACCOUNT}|`)).toBeTruthy();
+  expect(screen.getByText(`To:${TARGET}|`)).toBeTruthy();
+  expect(
+    screen.getByText('transactions.feePayer').parentElement?.textContent
+  ).toBe(`transactions.feePayer${OTHER}`);
+});
+
+it('keeps ordinary EOA detail addresses without adding a separate Smart payer', async () => {
+  const hash = 'eoa-addresses';
+  mockEmitter.mockResolvedValue(fullTx(hash));
+  render(<EvmTransactionDetailsEnhanced hash={hash} />);
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe('Sent|7|Confirmed')
+  );
+  expect(screen.getByText(`From:${ACCOUNT}|`)).toBeTruthy();
+  expect(screen.getByText(`To:${TARGET}|`)).toBeTruthy();
+  expect(screen.queryByText('transactions.feePayer')).toBeNull();
 });
 
 it.each([
@@ -574,6 +648,8 @@ it.each([
   );
   expect(mockDisplay).not.toHaveBeenCalled();
   expect(screen.queryByText(/Success:Success/)).toBeNull();
+  expect(screen.getByText(`From:${OTHER}|`)).toBeTruthy();
+  expect(screen.queryByText('transactions.feePayer')).toBeNull();
 });
 
 it.each(['supported', 'unsupported'])(

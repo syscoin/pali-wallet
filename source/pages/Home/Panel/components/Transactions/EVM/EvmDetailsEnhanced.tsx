@@ -9,6 +9,7 @@ import {
   TransactionEventLogs,
   DecodedTransactionParams,
 } from 'components/TransactionDetails';
+import { SmartAccountFeePayer } from 'components/TransactionDetails/SmartAccountFeePayer';
 import { RetainedTransactionReplay } from 'components/TransactionOptions/RetainedTransactionReplay';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { useContextualState } from 'hooks/useContextualState';
@@ -735,7 +736,11 @@ export const EvmTransactionDetailsEnhanced = ({
       typeof directionFrom === 'string' &&
       directionFrom.toLowerCase() === currentAccount?.address?.toLowerCase();
 
-    const mergedTx = txLocal;
+    const mergedTx = { ...txLocal };
+    if (displayContext.isOperation && displayTransaction) {
+      mergedTx.from = displayTransaction.from;
+      mergedTx.to = displayTransaction.to;
+    }
     if (displayContext.isOperation) {
       // Outer receipt success does not establish an inner user operation's result.
       if (displayContext.success === undefined) delete mergedTx.success;
@@ -985,6 +990,11 @@ export const EvmTransactionDetailsEnhanced = ({
         details={formattedTransactionDetails}
         onCopy={handleCopy}
       />
+      {displayContext.isOperation &&
+        displayTransaction &&
+        typeof mergedTransaction?.from === 'string' && (
+          <SmartAccountFeePayer address={mergedTransaction.from} />
+        )}
       <RetainedTransactionReplay key="retained-replay" hash={hash} />
 
       {/* Display decoded transaction parameters */}
