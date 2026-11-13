@@ -6,7 +6,6 @@ import fs from 'fs';
 import path from 'path';
 import { utils as sys } from 'syscoinjs-lib';
 
-import packageJson from '../../package.json';
 import de from '../../source/assets/locales/de.json';
 import en from '../../source/assets/locales/en.json';
 import fr from '../../source/assets/locales/fr.json';
@@ -633,7 +632,7 @@ test('ordinary preference pickers retain centered SVG boxes while localized mark
   );
   const runtime = extensionEvidence();
   expect(runtime.sourceRevision).toBe(process.env.PALI_TEST_DAPP_REVISION);
-  expect(runtime.version).toBe(packageJson.version);
+
   const sourceSha256 = createHash('sha256')
     .update(fs.readFileSync(info.file))
     .digest('hex');

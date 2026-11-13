@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -156,6 +156,37 @@ test('first reservation is 2, uses only state.json and binds the exact source', 
   assert.equal(run(f.first.cwd, ['status', '--porcelain']), '');
   assert.equal(Object.isFrozen(receipt), true);
   assert(f.calls.filter(args => args[0] === 'push').every(args => !args.some(arg => arg.startsWith('+') || arg.includes('force'))));
+});
+
+test('counter metadata skips source hooks while ordinary source pushes still run them', async t => {
+  const f = fixture(t), cwd = f.first.cwd;
+  const originalHead = run(cwd, ['rev-parse', 'HEAD']);
+  const originalTree = run(cwd, ['rev-parse', 'HEAD^{tree}']);
+  const hook = join(cwd, '.git', 'hooks', 'pre-push');
+  const hookMarker = join(cwd, '.git', 'pre-push-hook-ran');
+  run(cwd, ['config', 'core.hooksPath', '.git/hooks']);
+  writeFileSync(hook, '#!/bin/sh\nprintf "%s\\n" "blocked fixture source push" > "$PWD/.git/pre-push-hook-ran"\nexit 1\n');
+  chmodSync(hook, 0o755);
+
+  const receipt = await f.first.reserve('store', f.first.git, 'canary', '5.0.0');
+  const ref = 'refs/heads/pali-canary-builds/5.0.0';
+  assert.equal(existsSync(hookMarker), false);
+  assert.equal(receipt.sourceRevision, originalHead);
+  assert.equal(receipt.sourceDirty, false);
+  assert.equal(receipt.allocationRevision, run(f.root, [`--git-dir=${f.remote}`, 'rev-parse', ref]));
+  assert.equal(f.state(ref).requestId, receipt.requestId);
+  assert.equal(run(f.root, [`--git-dir=${f.remote}`, 'ls-tree', '--name-only', ref]), 'state.json');
+  assert.equal(run(cwd, ['rev-parse', 'HEAD']), originalHead);
+  assert.equal(run(cwd, ['rev-parse', 'HEAD^{tree}']), originalTree);
+  assert.equal(run(cwd, ['status', '--porcelain']), '');
+
+  const sourcePush = await f.first.nativeGit(['push', f.remote, 'HEAD:refs/heads/source-under-test']);
+  assert.notEqual(sourcePush.status, 0);
+  assert.equal(readFileSync(hookMarker, 'utf8'), 'blocked fixture source push\n');
+  assert.equal((await f.first.nativeGit(['ls-remote', '--exit-code', '--heads', f.remote, 'refs/heads/source-under-test'])).status, 2);
+  assert.equal(run(cwd, ['rev-parse', 'HEAD']), originalHead);
+  assert.equal(run(cwd, ['rev-parse', 'HEAD^{tree}']), originalTree);
+  assert.equal(run(cwd, ['status', '--porcelain']), '');
 });
 
 test('same counter is used across source versions, workspaces, QA and store purposes', async t => {

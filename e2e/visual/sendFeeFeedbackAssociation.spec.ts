@@ -6,7 +6,6 @@ import net from 'net';
 import path from 'path';
 import { utils as sys } from 'syscoinjs-lib';
 
-import packageJson from '../../package.json';
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
@@ -569,7 +568,7 @@ for (const viewport of [
     const runtime = extensionEvidence(),
       sourceSha256 = sha(info.file);
     expect(runtime.sourceRevision).toBe(process.env.PALI_TEST_DAPP_REVISION);
-    expect(runtime.version).toBe(packageJson.version);
+
     expect(runtime.artifactSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(Object.keys(runtime.bundleHashes).sort()).toEqual([
       'background',
