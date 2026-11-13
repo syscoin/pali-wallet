@@ -8,7 +8,7 @@ import { encodeEcdsaValidatorInitData, getPaliSmartAccountDescriptor , getConfig
 import { derivePaliSmartAccountDeployment } from '../../../source/utils/smartAccount/counterfactual.ts';
 import { getPaliSmartAccountFactoryAddress, PALI_SMART_ACCOUNT_VERSION, paliSmartAccountInterface } from '../../../source/utils/smartAccount/contracts.ts';
 import { prepareSmartAccountOperation } from '../../../source/utils/smartAccount/prepareOperation.ts';
-import { getSmartAccountGasPayerCandidates, ensureSmartAccountDeploymentPrefund } from '../../../source/utils/smartAccount/payerPolicy.ts';
+import { getSmartAccountGasPayerCandidates, selectSmartAccountGasPayer, ensureSmartAccountDeploymentPrefund } from '../../../source/utils/smartAccount/payerPolicy.ts';
 import { signSmartAccountEcdsaOperation } from '../../../source/utils/smartAccount/signOperation.ts';
 import { submitSmartAccountOperation } from '../../../source/utils/smartAccount/submitOperation.ts';
 import { assertSmartAccountNativeSpendability } from '../../../source/utils/smartAccount/nativeSpendability.ts';
@@ -265,10 +265,48 @@ test('shared ECDSA operation signing rejects an owner change before releasing th
 
 test('shared payer policy keeps preferred and selected identities distinct from the smart account', () => {
   const hd = { ...fixture().account, address: owner, isSmartAccount: false };
-  const imported = { ...hd, id: 4, address: '0x2222222222222222222222222222222222222222' };
+  const imported = { ...hd, id: 4, address: '0x2222222222222222222222222222222222222222', xprv: 'encrypted-imported-key', isImported: true };
   const candidates = getSmartAccountGasPayerCandidates({ accounts: { HDAccount: { 0: hd }, Imported: { 4: imported }, SmartAccount: { 0: fixture().account }, Ledger: {}, Trezor: {} },
     activeAccount: { id: 0, type: 'SmartAccount' as KeyringAccountType } }, { id: 4, type: 'Imported' as KeyringAccountType, address: imported.address });
   assert.deepEqual(candidates.map(({ id, type }) => [type, id]), [['Imported', 4], ['HDAccount', 0]]);
+});
+
+function payerSelectionFixture() {
+  const hd = { ...fixture().account, address: owner, isSmartAccount: false,
+    xprv: 'encrypted-hd-key', balances: { syscoin: 0, ethereum: 0 } };
+  // Extension watch import: public address in xpub, no encrypted private key.
+  const watched = { ...hd, id: 1, address: '0x' + '22'.repeat(20), xpub: '0x' + '22'.repeat(20),
+    xprv: '', isImported: true, balances: { syscoin: 0, ethereum: 100 } };
+  // Native and extension signing imports retain encrypted key material.
+  const signer = { ...hd, id: 2, address: '0x' + '33'.repeat(20), xprv: 'encrypted-imported-key',
+    isImported: true, balances: { syscoin: 0, ethereum: 1 } };
+  const wallet = { accounts: { HDAccount: { 0: hd }, Imported: { 1: watched, 2: signer },
+    SmartAccount: { 0: fixture().account }, Ledger: {}, Trezor: {} },
+    activeAccount: { id: 0, type: 'SmartAccount' as KeyringAccountType } };
+  const preferred = { id: watched.id, type: 'Imported' as KeyringAccountType, address: watched.address };
+  return { wallet, watched, signer, preferred };
+}
+
+test('funded watch-only imports are excluded before selecting a real payer', async () => {
+  const f = payerSelectionFixture();
+  const payer = await selectSmartAccountGasPayer(f.wallet, {}, f.preferred);
+  assert.deepEqual(payer, { id: f.signer.id, type: 'Imported', address: f.signer.address });
+  assert.deepEqual(getSmartAccountGasPayerCandidates(f.wallet, f.preferred).map(candidate => candidate.address),
+    [owner, f.signer.address]);
+});
+
+test('a pinned watch-only payer is rejected instead of switching after consent', async () => {
+  const f = payerSelectionFixture();
+  await assert.rejects(selectSmartAccountGasPayer(f.wallet, {}, f.preferred, undefined, { requirePreferred: true }),
+    /selected gas payer is no longer available/);
+});
+
+test('preferred hardware payers do not require a software private key', async () => {
+  const f = payerSelectionFixture();
+  const hardware = { ...f.watched, id: 3, xprv: '', isImported: false, isLedgerWallet: true };
+  const preferred = { id: 3, type: 'Ledger' as KeyringAccountType, address: hardware.address };
+  const wallet = { ...f.wallet, accounts: { ...f.wallet.accounts, Ledger: { 3: hardware } } };
+  assert.deepEqual(await selectSmartAccountGasPayer(wallet, {}, preferred, undefined, { requirePreferred: true }), preferred);
 });
 
 test('portable deployment preserves prefund acknowledgement if handleOps submission fails', async () => {

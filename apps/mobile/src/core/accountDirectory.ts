@@ -1,9 +1,9 @@
 import { parseNativeAccountId } from '../custody/accountIdentity.ts';
 import type { NativeWalletCatalogueSnapshot } from '../custody/walletCatalogue.ts';
-import type { PublicAccount } from './types.ts';
+import type { NetworkId, PublicAccount } from './types.ts';
 
 /** A navigation hint only. It is never an authorization or a keyring account. */
-export type AccountSelection = Readonly<{ kind: 'hd' | 'imported' | 'smart' | 'ledger' | 'trezor'; id: string } | { kind: 'watch'; id: string }>;
+export type AccountSelection = Readonly<{ kind: 'hd' | 'imported' | 'smart' | 'ledger' | 'trezor'; id: string } | { kind: 'watch'; id: string; networkId?: NetworkId }>;
 type PublicIdentity = Readonly<{ identity: string; name: string; address: string }>;
 export type AccountEntry = PublicIdentity & (
   | Readonly<{ kind: 'hd' | 'imported' | 'smart' | 'ledger' | 'trezor'; selection: Readonly<{ kind: 'hd' | 'imported' | 'smart' | 'ledger' | 'trezor'; id: string }>; capabilities: Readonly<{ receive: true; signing: 'native-unlock-required' | 'hardware-connection-required' | 'unavailable'; recovery: 'native-unlock-required' }> }>
@@ -30,12 +30,18 @@ export function parseAccountSelection(value: unknown): AccountSelection | null {
   if (value === null) return null;
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid account selection');
   const record = value as Record<string, unknown>;
-  if (Object.keys(record).length !== 2 || typeof record.kind !== 'string' || !['hd', 'imported', 'smart', 'ledger', 'trezor', 'watch'].includes(record.kind) || typeof record.id !== 'string')
+  const hasNetwork = Object.hasOwn(record, 'networkId');
+  if (Object.keys(record).length !== (hasNetwork ? 3 : 2) || typeof record.kind !== 'string' || !['hd', 'imported', 'smart', 'ledger', 'trezor', 'watch'].includes(record.kind) || typeof record.id !== 'string')
     throw new Error('Invalid account selection');
   if (record.kind === 'watch') {
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(record.id)) throw new Error('Invalid account selection');
-  } else if (nativeAccountSelection(record.id).kind !== record.kind) throw new Error('Invalid account selection');
-  return Object.freeze({ kind: record.kind as AccountSelection['kind'], id: record.id });
+    // A picker may choose only an account. An opened watch view also remembers
+    // its network; the current account catalogue validates that hint on restore.
+    if (hasNetwork && (typeof record.networkId !== 'string' || !/^[a-z0-9][a-z0-9:-]{0,63}$/.test(record.networkId))) throw new Error('Invalid account selection');
+    return Object.freeze({ kind: 'watch', id: record.id, ...(hasNetwork ? { networkId: record.networkId as NetworkId } : {}) });
+  }
+  if (hasNetwork || nativeAccountSelection(record.id).kind !== record.kind) throw new Error('Invalid account selection');
+  return Object.freeze({ kind: record.kind as Exclude<AccountSelection['kind'], 'watch'>, id: record.id });
 }
 
 export function nativeAccountSelection(id: string): Readonly<{ kind: 'hd' | 'imported' | 'smart' | 'ledger' | 'trezor'; id: string }> {

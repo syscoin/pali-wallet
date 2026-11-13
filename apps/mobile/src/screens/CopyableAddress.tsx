@@ -18,7 +18,7 @@ export function CopyableAddress({ address, label, onCopy, disabled = false, styl
     accessibilityLabel={t('mobile.chartInteraction.copyAddress', { address: label ?? address })}
     accessibilityHint={t('mobile.chartInteraction.copyHint')} disabled={disabled}
     onPress={onCopy} onLongPress={onCopy} style={({ pressed }) => [s.container, pressed && !disabled && s.pressed]} testID={testID ? `${testID}-copy` : undefined}>
-    <Text style={[s.address, style]} testID={testID}>{address}</Text>
+    <Text style={[s.address, style]} textBreakStrategy="balanced" testID={testID}>{address}</Text>
     <Icon name="copy" size={18} color={disabled ? colors.muted : colors.blue} />
   </IdlePressable>;
 }

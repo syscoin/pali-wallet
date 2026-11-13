@@ -426,6 +426,8 @@ export function getSmartAccountGasPayerCandidates(
     }
     seen.add(candidateKey);
     const account = accounts[candidate.type]?.[candidate.id];
+    // Imported watch accounts have an address but no encrypted signing key.
+    if (candidate.type === 'Imported' && !account?.xprv) continue;
     if (account?.address) {
       if (
         preferred &&
