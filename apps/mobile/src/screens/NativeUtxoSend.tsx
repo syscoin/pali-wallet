@@ -281,6 +281,9 @@ export function NativeUtxoSendScreen({
     try { toEightDecimalBuilderAmount(maximumAmount, asset.decimals); assetMaximumAvailable = true; } catch { /* Unavailable or zero inventory cannot select MAX. */ }
   }
   const symbol = asset?.symbol ?? network.symbol;
+  const availableLabel = availableAmount === undefined
+    ? t('mobile.accountPortfolio.balanceUnavailable')
+    : t('mobile.sendAssetViews.utxo.availableAmount', { amount: availableAmount, symbol });
   const units = (value: string) =>
     `${formatBaseUnits(value, network.decimals)} ${network.symbol}`;
   const assetUnits = ({
@@ -583,8 +586,8 @@ export function NativeUtxoSendScreen({
                       setMax(!max);
                     }} />}
                 </View>
-                <Text style={s.available} numberOfLines={1} accessibilityLabel={t('mobile.sendAssetViews.utxo.availableAmount', { amount: availableAmount ?? t('settings.unavailable').toLocaleLowerCase(nativeI18n.resolvedLanguage), symbol })}>
-                  {t('mobile.smartSendViews.available')}{' '}{availableAmount ?? '—'} {symbol}
+                <Text style={s.available} numberOfLines={1} accessibilityLabel={availableLabel}>
+                  {availableLabel}
                 </Text>
                 <IdleTextInput
                   accessibilityLabel={t('mobile.smartSendViews.amountInSymbol', { symbol })}

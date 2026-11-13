@@ -1,5 +1,5 @@
 import { findRegisteredEvmNetwork } from '../../../../source/shared/evmNetworks.ts';
-import { assetMarketUrl, readAssetMarket, readTokenMarketId, tokenMarketIdentityUrl, type AssetMarket } from '../../../../source/shared/assetMarket.ts';
+import { assetMarketHistoryUrl, assetMarketUrl, readAssetMarket, readAssetMarketHistory, readTokenMarketId, tokenMarketIdentityUrl, type AssetMarket, type AssetMarketPurpose } from '../../../../source/shared/assetMarket.ts';
 import { getDefaultUTXONetworks } from '../../../../source/utils/defaultNetworks.ts';
 import { findUtxoNetwork } from '../core/utxoNetworks.ts';
 import { isFiatCurrency, type FiatCurrency } from '../core/fiatPreference.ts';
@@ -34,7 +34,8 @@ export function nativeAssetMarketSource(asset: AssetMarketReference): AssetMarke
     ? { kind: 'token', platform: metadata.coingeckoPlatformId, contract } : null;
 }
 
-export function createNativeAssetMarketReader(fetch: WalletHttpFetch, clock = () => performance.now()) {
+export function createNativeAssetMarketReader(fetch: WalletHttpFetch, purpose: AssetMarketPurpose, clock = () => performance.now()) {
+  if (purpose !== 'price' && purpose !== 'history') throw new Error('Invalid market purpose');
   const cache = new Map<string, { data: AssetMarket; expires: number }>();
   return async (source: AssetMarketSource, currency: FiatCurrency, owner: AbortSignal): Promise<AssetMarket | null> => {
     if (owner.aborted || !isFiatCurrency(currency)) return null;
@@ -55,8 +56,18 @@ export function createNativeAssetMarketReader(fetch: WalletHttpFetch, clock = ()
     try {
       const id = source.kind === 'native' ? source.id : readTokenMarketId(await read(tokenMarketIdentityUrl(source.platform, source.contract), 512 * 1024), source.platform, source.contract);
       if (!id || request.signal.aborted) return null;
-      const data = readAssetMarket(await read(assetMarketUrl(id, currency), 64 * 1024), id, Date.now());
+      const quote = read(assetMarketUrl(id, currency), 64 * 1024);
+      const history = purpose === 'history'
+        ? read(assetMarketHistoryUrl(id, currency), 128 * 1024).then(body => readAssetMarketHistory(body, Date.now())).catch(() => [])
+        : null;
+      let data = readAssetMarket(await quote, id, currency, Date.now());
       if (request.signal.aborted || !data) return null;
+      if (history) {
+        // History failure preserves a valid quote; owner cancellation never does.
+        const prices = await history;
+        if (owner.aborted) return null;
+        data = Object.freeze({ ...data, prices: Object.freeze(prices) });
+      }
       cache.delete(key); cache.set(key, { data, expires: clock() + 300_000 });
       if (cache.size > 24) cache.delete(cache.keys().next().value!);
       return data;
