@@ -5323,7 +5323,7 @@ export function createKeyringRuntimeFactory(
                   guard();
                   return signature;
               },
-              preparePayer(request, payer, signal, assertCurrent, metadata, funding) {
+              preparePayer(request, payer, signal, assertCurrent, metadata, funding, assertAssetState) {
                 check(); checkGuard(assertCurrent);
                 const owned = snapshot.accounts.find(candidate => candidate.index === payer.id && candidate.type === payer.type);
                 if (!owned || owned.address.toLowerCase() !== payer.address.toLowerCase()) throw new KeyringRuntimeError('INVALID_INPUT');
@@ -5333,7 +5333,7 @@ export function createKeyringRuntimeFactory(
                   if (state.accounts[payer.type]?.[payer.id] !== payerRecord || payerRecord?.address.toLowerCase() !== owned.address.toLowerCase())
                     throw new KeyringRuntimeError('CANCELLED');
                 };
-                return prepareOwnedEvmTransaction(request, owned, selected, signal, guard, metadata, funding, { kind: 'estimate' }, null, null, authentication);
+                return prepareOwnedEvmTransaction(request, owned, selected, signal, guard, metadata, funding, { kind: 'estimate' }, null, assertAssetState, authentication);
               },
               async waitForReceipt(hash, transaction, signal, assertCurrent, operation) {
                 const guard = () => { check(); checkGuard(assertCurrent); if (signal.aborted) throw new KeyringRuntimeError('CANCELLED'); };
