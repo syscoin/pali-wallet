@@ -7,7 +7,7 @@ export function SmartAccountFeePayer({ address }: { address: string }) {
   return (
     <div className="my-2 flex flex-col gap-1 text-xs">
       <span className="text-brand-gray200">
-        {t('smartAccountHub.infrastructure.feePayer')}
+        {t('mobile.infrastructure.feePayer')}
       </span>
       <span className="break-all text-brand-white">{address}</span>
     </div>
