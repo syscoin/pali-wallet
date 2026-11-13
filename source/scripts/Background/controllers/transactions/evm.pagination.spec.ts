@@ -160,6 +160,27 @@ it('accepts both explicit no-transactions responses as a genuine empty page', as
   });
 });
 
+it('accepts a distinct empty token-transfer envelope without losing the base page', async () => {
+  replies(
+    response([event('a')]),
+    response([], { status: '0', message: 'No token transfers found' })
+  );
+  const result = await fetchPage();
+  expect(result.error).toBeUndefined();
+  expect(result.transactions).toHaveLength(1);
+  expect(result.hasMore).toBe(false);
+});
+
+it.each(['NOTOK', 'Rate limit exceeded'])(
+  'does not mark an unknown empty API error as exhausted: %s',
+  async (message) => {
+    replies(response([]), response([], { status: '0', message }));
+    const result = await fetchPage();
+    expect(result.transactions).toBeNull();
+    expect(result.error).toBe(message);
+  }
+);
+
 // Explicit pages are atomic across both explorer feeds: accepting a partial
 // page would either mark history exhausted or advance past its missing rows.
 it.each(

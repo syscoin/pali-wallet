@@ -4,6 +4,7 @@ import {
 } from '../../../../source/shared/evmExplorer.ts';
 import {
   belongsToEvmHistoryAccount,
+  isEmptyEvmHistoryResponse,
   mapEvmExplorerTokenTransfer,
   mapEvmExplorerTransaction,
 } from '../../../../source/shared/evmHistory.ts';
@@ -30,13 +31,7 @@ export function decodeActivityPage(
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new ActivityError('INVALID');
   const body = value as Record<string, unknown>;
-  if (
-    body.status === '0' &&
-    body.message === 'No transactions found' &&
-    Array.isArray(body.result) &&
-    body.result.length === 0
-  )
-    return [];
+  if (isEmptyEvmHistoryResponse(body, feed)) return [];
   if (
     body.status !== '1' ||
     body.message === 'NOTOK' ||

@@ -129,17 +129,34 @@ export const mapEvmExplorerTokenTransfer = (event: any, chainId: number) => ({
   },
 });
 
+/** Recognize explicit empty account-history envelopes without hiding API errors. */
+export function isEmptyEvmHistoryResponse(
+  value: unknown,
+  feed: 'txlist' | 'tokentx'
+): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const reply = value as Record<string, unknown>;
+  return (
+    reply.status === '0' &&
+    Array.isArray(reply.result) &&
+    reply.result.length === 0 &&
+    (reply.message === 'No transactions found' ||
+      (feed === 'tokentx' && reply.message === 'No token transfers found'))
+  );
+}
+
 export function explorerApiError(
   reply: any,
-  status: number
+  status: number,
+  feed: 'txlist' | 'tokentx'
 ): string | undefined {
-  return !reply
-    ? `Explorer API status ${status}`
-    : (reply.status === '0' || reply.message === 'NOTOK') &&
-      !Array.isArray(reply.result) &&
-      reply.message !== 'No transactions found'
-    ? String(reply.result || reply.message || 'Explorer API error')
-    : undefined;
+  if (!reply) return `Explorer API status ${status}`;
+  if (isEmptyEvmHistoryResponse(reply, feed)) return undefined;
+  if (reply.status === '0' || reply.message === 'NOTOK')
+    return typeof reply.result === 'string' && reply.result
+      ? reply.result
+      : String(reply.message || 'Explorer API error');
+  return undefined;
 }
 
 const evmHistorySourcePriority = (tx: any): number => {
