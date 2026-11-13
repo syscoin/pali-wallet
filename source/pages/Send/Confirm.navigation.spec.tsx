@@ -973,6 +973,13 @@ it.each(['preparation refused', 'fee quote malformed'])(
     await waitFor(() =>
       expect(screen.getByText('send.unableToCalculateFees')).toBeTruthy()
     );
+    expect(screen.queryAllByText('send.calculating')).toHaveLength(0);
+    expect(screen.getByText('send.smartAccountMaxFee')).toHaveTextContent(
+      'send.feeUnavailable'
+    );
+    const total = screen.getByText('send.total (send.amountAndFee)');
+    expect(total).toHaveTextContent('send.feeUnavailable');
+    expect(total).not.toHaveTextContent('1.00000000 TSYS');
     expect(
       screen.getByRole('button', { name: 'buttons.confirm' })
     ).toBeDisabled();
@@ -980,6 +987,84 @@ it.each(['preparation refused', 'fee quote malformed'])(
     expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
   }
 );
+
+it('keeps Smart account fee and total unavailable until a fresh retry succeeds', async () => {
+  prepareSmartAccountConfirmation(true);
+  let resolveQuote!: (quote: any) => void;
+  (prepareSmartAccountFeeQuote as jest.Mock)
+    .mockRejectedValueOnce(new Error('Fee quote unavailable'))
+    .mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveQuote = resolve;
+        })
+    );
+  render(<SendConfirm />);
+  await screen.findByText('send.unableToCalculateFees');
+  const total = screen.getByText('send.total (send.amountAndFee)');
+  expect(total).toHaveTextContent('send.feeUnavailable');
+  expect(screen.queryAllByText('send.calculating')).toHaveLength(0);
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm' })
+  ).toBeDisabled();
+
+  fireEvent.click(screen.getByRole('button', { name: 'send.refreshFeeQuote' }));
+  await waitFor(() =>
+    expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(2)
+  );
+  expect(screen.queryByText('send.unableToCalculateFees')).toBeNull();
+  expect(total).toHaveTextContent('send.calculating');
+  expect(total).not.toHaveTextContent('100.00000000 TSYS');
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm' })
+  ).toBeDisabled();
+
+  await act(async () =>
+    resolveQuote({ gasUnits: '650000', maximumFeeWei: '650000000000000' })
+  );
+  await waitFor(() =>
+    expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(3)
+  );
+  await act(async () =>
+    resolveQuote({ gasUnits: '650000', maximumFeeWei: '650000000000000' })
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'buttons.confirm' })
+    ).toBeEnabled()
+  );
+  expect(total).toHaveTextContent('99.999999 TSYS');
+  expect(screen.queryAllByText('send.feeUnavailable')).toHaveLength(0);
+  expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
+});
+
+it('shows an unavailable Smart token fee without an amount-only total', async () => {
+  prepareSmartAccountConfirmation();
+  mockLocation.state.tx.transactionType = TransactionType.ERC20;
+  mockLocation.state.tx.tokenAmountUnits = '1000000000000000000';
+  mockLocation.state.tx.token = {
+    contractAddress: '0x5555555555555555555555555555555555555555',
+    decimals: 18,
+    name: 'Test token',
+    symbol: 'TEST',
+  };
+  (prepareSmartAccountFeeQuote as jest.Mock).mockRejectedValue(
+    new Error('Fee quote unavailable')
+  );
+  render(<SendConfirm />);
+  await screen.findByText('send.unableToCalculateFees');
+  expect(screen.queryAllByText('send.calculating')).toHaveLength(0);
+  expect(screen.getByText('send.smartAccountMaxFee')).toHaveTextContent(
+    'send.feeUnavailable'
+  );
+  expect(screen.getByText('send.total (send.amountAndFee)')).toHaveTextContent(
+    'send.feeUnavailable'
+  );
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm' })
+  ).toBeDisabled();
+  expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
+});
 
 it('bounds MAX refinement and refuses to display or sign a nonconverging fee quote', async () => {
   prepareSmartAccountConfirmation(true);
