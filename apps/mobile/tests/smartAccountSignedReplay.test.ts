@@ -128,6 +128,9 @@ async function fixture() {
       calls?: { target: string; value: string; data?: string }[];
       multi?: boolean;
       plain?: boolean;
+      outerTo?: string;
+      outerData?: string;
+      outerDataSuffix?: string;
       metadata?: any;
     } = {}
   ) {
@@ -156,15 +159,19 @@ async function fixture() {
       gasPrice: 2,
       gasLimit: 300000,
       value: 0,
-      to: options.plain ? recipient : getPaliEntryPointAddress(1),
-      data: options.plain
-        ? '0x'
-        : paliEntryPointInterface.encodeFunctionData('handleOps', [
-            options.multi
-              ? [operation, { ...operation, sender: recipient }]
-              : [operation],
-            payer.address,
-          ]),
+      to:
+        options.outerTo ??
+        (options.plain ? recipient : getPaliEntryPointAddress(1)),
+      data:
+        options.outerData ??
+        (options.plain
+          ? '0x'
+          : paliEntryPointInterface.encodeFunctionData('handleOps', [
+              options.multi
+                ? [operation, { ...operation, sender: recipient }]
+                : [operation],
+              payer.address,
+            ])) + (options.outerDataSuffix ?? ''),
     });
     const tx = Transaction.from(rawTransaction);
     const entry = await records.append(
@@ -549,6 +556,172 @@ test('expired or changed Smart authority cannot open a previously offered payer 
     await assert.rejects(
       f.replay.preparePredecessor(parent.review.id, first.entry.hash)
     );
+    assert.equal(f.dispatched.length, 0);
+  }
+});
+
+test('a multiple-UserOperation predecessor remains inspect-only after its parent offers nonce recovery', async () => {
+  const f = await fixture(),
+    first = await f.append({ multi: true }),
+    second = await f.append({ nonce: 1 });
+  const parent = await f.replay.prepare(second.entry.hash);
+  if (parent.status !== 'review') assert.fail();
+  const prior = await f.replay.preparePredecessor(
+    parent.review.id,
+    first.entry.hash
+  );
+  assert.equal(prior.status, 'inspect-only');
+  if (prior.status !== 'inspect-only') assert.fail();
+  assert.equal(prior.transaction.smartAccount.operationCount, 2);
+  assert.equal(prior.transaction.smartAccount.replayable, false);
+  await assert.rejects(f.replay.confirm(parent.review.id), { code: 'EXPIRED' });
+  assert.equal(f.dispatched.length, 0);
+});
+
+test('known EntryPoint handleOps predecessors cannot bypass classification with trailing or malformed data', async () => {
+  for (const malformed of [
+    { outerDataSuffix: '00' },
+    { outerData: paliEntryPointInterface.getFunction('handleOps')!.selector },
+  ]) {
+    const f = await fixture(),
+      first = await f.append({ multi: true, ...malformed }),
+      second = await f.append({ nonce: 1 });
+    const parent = await f.replay.prepare(second.entry.hash);
+    if (parent.status !== 'review') assert.fail();
+    await assert.rejects(
+      f.replay.preparePredecessor(parent.review.id, first.entry.hash),
+      { code: 'INVALID_RESPONSE' }
+    );
+    assert.equal(
+      (
+        await f.records.readExact(
+          f.session,
+          '1',
+          payer.address,
+          first.entry.hash
+        )
+      )?.rawTransaction,
+      first.entry.rawTransaction
+    );
+    assert.equal(f.dispatched.length, 0);
+  }
+});
+
+test('a matching selector at an unrelated contract retains ordinary predecessor review', async () => {
+  const f = await fixture(),
+    first = await f.append({
+      outerTo: recipient,
+      outerData: paliEntryPointInterface.getFunction('handleOps')!.selector,
+    }),
+    second = await f.append({ nonce: 1 });
+  const parent = await f.replay.prepare(second.entry.hash);
+  if (parent.status !== 'review') assert.fail();
+  const prior = await f.replay.preparePredecessor(
+    parent.review.id,
+    first.entry.hash
+  );
+  if (prior.status !== 'review') assert.fail();
+  assert.equal('smartAccount' in prior.review, false);
+  assert.equal(prior.review.to, recipient);
+  await f.replay.confirm(prior.review.id);
+  assert.deepEqual(f.dispatched, [first.entry.rawTransaction]);
+});
+
+test('a different Smart predecessor exposes its inner batch and native value alongside asset calldata', async () => {
+  const f = await fixture(),
+    otherAccount = '0x5555555555555555555555555555555555555555';
+  const first = await f.append({
+      owner: otherAccount,
+      calls: [
+        { target: recipient, value: '2' },
+        {
+          target: account,
+          value: '3',
+          data: encodeErc20Transfer(recipient, '11'),
+        },
+      ],
+    }),
+    second = await f.append({ nonce: 1 });
+  const parent = await f.replay.prepare(second.entry.hash);
+  if (parent.status !== 'review') assert.fail();
+  const prior = await f.replay.preparePredecessor(
+    parent.review.id,
+    first.entry.hash
+  );
+  if (prior.status !== 'review' || !('smartAccount' in prior.review))
+    assert.fail();
+  assert.equal(prior.review.smartAccount.account, otherAccount);
+  assert.equal(prior.review.smartAccount.executions?.length, 2);
+  const payable = prior.review.smartAccount.executions![1]!;
+  assert.equal(payable.value, '3');
+  assert.equal(payable.assetTransfer?.recipient, recipient);
+  assert.equal(payable.assetTransfer?.items[0]?.units, '11');
+  assert.equal(payable.assetTransfer?.standardVerified, false);
+  assert.equal(prior.review.from.toLowerCase(), payer.address.toLowerCase());
+  assert.equal(prior.review.to, getPaliEntryPointAddress(1));
+  await f.replay.confirm(prior.review.id);
+  assert.deepEqual(f.dispatched, [first.entry.rawTransaction]);
+});
+
+test('a Smart predecessor uses its inner receipt outcome while retaining the original selected-owner guard', async () => {
+  for (const outcome of ['reverted', 'owner-changed'] as const) {
+    const f = await fixture(),
+      otherAccount = '0x5555555555555555555555555555555555555555';
+    const first = await f.append({ owner: otherAccount }),
+      second = await f.append({ nonce: 1 });
+    const parent = await f.replay.prepare(second.entry.hash);
+    if (parent.status !== 'review') assert.fail();
+    if (outcome === 'reverted') {
+      const decoded = await f.records.readSmartAccountReplayExact(
+        f.session,
+        '1',
+        otherAccount,
+        first.entry.hash
+      );
+      assert(decoded);
+      const event = paliEntryPointInterface.encodeEventLog(
+        paliEntryPointInterface.getEvent('UserOperationEvent')!,
+        [
+          decoded.operations[0]!.operationHash,
+          otherAccount,
+          '0x' + '00'.repeat(20),
+          7,
+          false,
+          100,
+          50,
+        ]
+      );
+      f.mined({
+        transactionHash: first.entry.hash,
+        from: payer.address,
+        to: getPaliEntryPointAddress(1),
+        status: '0x1',
+        blockNumber: '0x10',
+        blockHash,
+        logs: [
+          {
+            ...event,
+            address: getPaliEntryPointAddress(1),
+            transactionHash: first.entry.hash,
+            blockHash,
+            blockNumber: '0x10',
+          },
+        ],
+      });
+      assert.equal(
+        (await f.replay.preparePredecessor(parent.review.id, first.entry.hash))
+          .status,
+        'reverted'
+      );
+    } else {
+      const prior = await f.replay.preparePredecessor(
+        parent.review.id,
+        first.entry.hash
+      );
+      if (prior.status !== 'review') assert.fail();
+      f.switchAwayAndBack();
+      await assert.rejects(f.replay.confirm(prior.review.id));
+    }
     assert.equal(f.dispatched.length, 0);
   }
 });

@@ -89,7 +89,7 @@ export interface NativeTransferJournalHandle {
 export type NativeTransferDispatchValidation = (planner: NativeAutomaticNoncePlanner, assertCurrent: () => void) => Promise<void>;
 export type NativeTransferReplay = Pick<EvmSignedReplay, 'confirm' | 'cancel' | 'list'> & {
   prepare(hash: string, mode: 'inspect' | 'resend'): Promise<EvmReplayPreparation | SmartAccountReplayPreparation | Readonly<{ status: 'unknown' | 'confirmed' | 'reverted' | 'nonce-consumed'; hash: string; transaction: EvmSavedTransaction }>>;
-  preparePredecessor?(parentReviewId: string, hash: string): Promise<EvmReplayPreparation>;
+  preparePredecessor?(parentReviewId: string, hash: string): Promise<EvmReplayPreparation | SmartAccountReplayPreparation>;
   listPredecessors?(parentReviewId: string, options: Readonly<{ beforeHash?: string; maximum?: number }>): ReturnType<EvmSignedReplay['list']>;
 };
 export interface NativeTransferRuntime {
