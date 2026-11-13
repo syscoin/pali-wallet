@@ -24,6 +24,8 @@ export function buildAccountHistoryUrl(
 const ROUTESCAN_ORIGIN = 'https://api.routescan.io';
 const REQUEST_TIMEOUT_MS = 15_000;
 const PAGE_INTERVAL_MS = 550; // Existing extension keyless-tier pacing.
+const HISTORY_CACHE_MS = 30_000;
+const HISTORY_ACTIONS = new Set(['txlist', 'tokentx', 'pendingtxlist']);
 
 export const isRoutescanApiUrl = (
   apiUrl: string | undefined,
@@ -83,6 +85,21 @@ export const createRoutescanFetch = (
       if (signal?.aborted) throw new Error('Explorer API request timed out');
       assertCurrent?.();
       lastRoutescanRequestAt = Date.now();
+      if (
+        requestUrl.origin === ROUTESCAN_ORIGIN &&
+        /^\/v2\/network\/mainnet\/evm\/\d+\/etherscan\/api\/?$/.test(
+          requestUrl.pathname
+        ) &&
+        (options.method === undefined ||
+          options.method.toUpperCase() === 'GET') &&
+        requestUrl.searchParams.get('module') === 'account' &&
+        HISTORY_ACTIONS.has(requestUrl.searchParams.get('action') ?? '')
+      )
+        // Routescan's CDN ignores no-cache headers; share a bounded cache window.
+        requestUrl.searchParams.set(
+          '_pali_refresh',
+          String(Math.floor(lastRoutescanRequestAt / HISTORY_CACHE_MS))
+        );
       return await fetcher(requestUrl.toString(), {
         ...options,
         headers,

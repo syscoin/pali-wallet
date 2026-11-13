@@ -777,8 +777,11 @@ test('ordinary preference pickers retain centered SVG boxes while localized mark
             keys.every((key) => url.searchParams.getAll(key).length === 1);
           const pending = action === 'pendingtxlist';
           const paged = url.searchParams.has('page');
+          const freshness = url.searchParams.get('_pali_refresh') || '';
           if (
             ['txlist', 'tokentx', 'pendingtxlist'].includes(action) &&
+            /^(0|[1-9]\d*)$/.test(freshness) &&
+            Number.isSafeInteger(Number(freshness)) &&
             owners.includes(address) &&
             url.searchParams.get('module') === 'account' &&
             (pending || url.searchParams.get('sort') === 'desc') &&
@@ -789,6 +792,7 @@ test('ordinary preference pickers retain centered SVG boxes while localized mark
               'module',
               'action',
               'address',
+              '_pali_refresh',
               ...(pending ? [] : ['sort']),
               ...(paged ? ['page', 'offset'] : []),
             ])
