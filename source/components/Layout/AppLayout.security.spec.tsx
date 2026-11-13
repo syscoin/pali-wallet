@@ -116,6 +116,30 @@ describe('wallet content safety during background changes', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
+  it('suppresses a fast loading flash and shows feedback for a genuinely slow route', async () => {
+    jest.useFakeTimers();
+    try {
+      const Pending = lazy(
+        () => new Promise<{ default: React.ComponentType }>(() => undefined)
+      );
+      mockPath = '/send/eth';
+      const view = render(
+        <AppLayout>
+          <Pending />
+        </AppLayout>
+      );
+      expect(screen.getByRole('status').textContent).toBe('');
+      act(() => jest.advanceTimersByTime(149));
+      expect(screen.getByRole('status').textContent).toBe('');
+      act(() => jest.advanceTimersByTime(1));
+      expect(screen.getByRole('status').textContent).not.toBe('');
+      view.unmount();
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('hides global Back and Close once confirmation submission starts', () => {
     mockPath = '/send/confirm';
     mockSubmissionStarted = true;
