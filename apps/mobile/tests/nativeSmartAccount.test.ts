@@ -1015,6 +1015,9 @@ test('creation allocation retries the same saved address after a later read fail
       if (signal.aborted) cancel();
       await operation.authorize(operation.getSnapshot().revision);
       assert.equal(unexpectedPurpose, undefined, 'only the expected payer consent may be approved');
+      const snapshot = operation.getSnapshot();
+      assert.equal(snapshot.phase, 'complete', JSON.stringify({ phase: snapshot.phase, error: snapshot.error,
+        transactionSubmitted: snapshot.transactionHash !== null, userOperationSubmissionStarted: snapshot.userOperationSubmissionStarted, reviews }));
       assert.deepEqual(reviews.map(review => review.purpose), expectedPurposes);
       return reviews;
     } finally {

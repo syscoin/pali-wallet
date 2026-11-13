@@ -2,7 +2,6 @@ import { expect, test } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 
-import packageJson from '../../package.json';
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
 import { createIsolatedVaultFixture } from '../harness/isolatedVaultFixture';
@@ -23,7 +22,7 @@ test('offline native history survives A → B transient failure → A through no
   if (!/^[a-f0-9]{40}$/i.test(process.env.PALI_TEST_DAPP_REVISION || ''))
     throw new Error('Pin the exact built source revision');
   const evidence = extensionEvidence();
-  expect(evidence.version).toBe(packageJson.version);
+
   const before = { ...E2E_CONFIG };
   // The existing fixture derives account 1 normally from the public test seed.
   // No human account, persisted browser profile or controller state is used.

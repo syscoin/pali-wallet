@@ -11,7 +11,6 @@ import { formatEther, parseEther, parseUnits } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 
-import packageJson from '../../package.json';
 import en from '../../source/assets/locales/en.json';
 import {
   getPaliInfrastructureContracts,
@@ -359,7 +358,7 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
   );
   const previous = { ...E2E_CONFIG };
   const runtime = extensionEvidence();
-  expect(runtime.version).toBe(packageJson.version);
+
   const testSourceSha256 = createHash('sha256')
     .update(fs.readFileSync(info.file))
     .digest('hex');
@@ -788,7 +787,7 @@ test('native MAX preserves a small exact decimal balance through unsigned review
   );
   const previous = { ...E2E_CONFIG };
   const runtime = extensionEvidence();
-  expect(runtime.version).toBe(packageJson.version);
+
   const fixture = createIsolatedVaultFixture();
   const server = await startUtxoFixtureServer();
   const initialBalanceWei = '100000000000';
@@ -975,7 +974,7 @@ test('native MAX keeps high precision unsigned review inside the popup', async (
   );
   const previous = { ...E2E_CONFIG };
   const runtime = extensionEvidence();
-  expect(runtime.version).toBe(packageJson.version);
+
   const testSourceSha256 = createHash('sha256')
     .update(fs.readFileSync(info.file))
     .digest('hex');

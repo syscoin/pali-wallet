@@ -7,7 +7,6 @@ import net from 'net';
 import path from 'path';
 import { utils as sys } from 'syscoinjs-lib';
 
-import packageJson from '../../package.json';
 import en from '../../source/assets/locales/en.json';
 import {
   getPaliInfrastructureContracts,
@@ -824,7 +823,7 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
   );
   const runtime = extensionEvidence();
   expect(runtime.sourceRevision).toBe(process.env.PALI_TEST_DAPP_REVISION);
-  expect(runtime.version).toBe(packageJson.version);
+
   const sourceSha256 = createHash('sha256')
     .update(fs.readFileSync(info.file))
     .digest('hex');

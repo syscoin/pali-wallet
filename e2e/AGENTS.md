@@ -55,6 +55,8 @@ e2e/
 | `PALI_E2E_SLOW_ACTION_TIMEOUT_MS` | `240000` | budget for on-chain waits |
 | `PALI_E2E_RUN_ID` | timestamp | pin a run id (set automatically) |
 | `PALI_TEST_DAPP_EXTENSION_PATH` | `build/chrome` | pin an immutable built extension directory for every suite |
+| `PALI_TEST_DAPP_CHANNEL` | `production` | exact artifact channel: `production` or `canary` |
+| `PALI_CANARY_BUILD_NUMBER` | unset | required for Canary; matches its exact manifest version and display name |
 
 ## Artifacts (what an agent should read)
 

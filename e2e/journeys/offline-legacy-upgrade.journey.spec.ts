@@ -5,9 +5,9 @@ import fs from 'fs';
 import net from 'net';
 import path from 'path';
 
-import packageJson from '../../package.json';
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { assertExtensionVersion } from '../harness/extensionVersion';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -69,9 +69,8 @@ function extractArtifact(prefix: 'LEGACY' | 'CURRENT', directory: string) {
     fs.readFileSync(path.join(directory, 'manifest.json'), 'utf8')
   );
   expect(manifest.manifest_version).toBe(3);
-  expect(manifest.version).toBe(
-    prefix === 'LEGACY' ? LEGACY_VERSION : packageJson.version
-  );
+  if (prefix === 'LEGACY') expect(manifest.version).toBe(LEGACY_VERSION);
+  else assertExtensionVersion(manifest, process.env);
   for (const entry of entries) {
     const stat = fs.lstatSync(path.join(directory, entry));
     if (stat.isSymbolicLink()) throw new Error('Archive symlink refused');
@@ -586,13 +585,14 @@ test('published legacy wallet upgrades in-place without reimporting its vault', 
       (value) => workerIdentities.push(value)
     );
     if (activatePackage) {
-      const currentVersion = await context!
+      const currentManifest = await context!
         .serviceWorkers()
         .find((worker) =>
           worker.url().startsWith(`chrome-extension://${extensionId}/`)
         )!
-        .evaluate(() => chrome.runtime.getManifest().version);
-      expect(currentVersion).toBe(packageJson.version);
+        .evaluate(() => chrome.runtime.getManifest());
+      assertExtensionVersion(currentManifest, process.env);
+      const currentVersion = currentManifest.version;
       snapshots.push({
         phase: 'package-update-activation',
         previousVersion,

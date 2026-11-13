@@ -14,6 +14,7 @@ import path from 'path';
 
 import { E2E_CONFIG } from './config';
 import { clickClosingPopup } from './dismissRejectedApproval';
+import { assertExtensionVersion } from './extensionVersion';
 import { PaliWallet } from './pali';
 
 // Public Anvil fixture. This mnemonic must never be used on a public network.
@@ -44,6 +45,10 @@ export type RpcObservation = {
 
 export function extensionEvidence() {
   const extensionPath = process.env.PALI_TEST_DAPP_EXTENSION_PATH!;
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(extensionPath, 'manifest.json'), 'utf8')
+  );
+  const version = assertExtensionVersion(manifest, process.env);
   const files: string[] = [];
   const walk = (directory: string) => {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
@@ -78,9 +83,9 @@ export function extensionEvidence() {
     artifactSha256: artifactHash.digest('hex'),
     fileCount: files.length,
     sourceRevision: process.env.PALI_TEST_DAPP_REVISION,
-    version: JSON.parse(
-      fs.readFileSync(path.join(extensionPath, 'manifest.json'), 'utf8')
-    ).version,
+    version: version.version,
+    versionName: version.version_name,
+    channel: version.channel,
     bundleHashes,
   };
 }

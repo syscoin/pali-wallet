@@ -107,6 +107,7 @@ async function card(
 }
 
 test('capture four current Canary listing views with synthetic network data', async () => {
+  expect(process.env.PALI_TEST_DAPP_CHANNEL).toBe('canary');
   expect(path.isAbsolute(E2E_CONFIG.extensionPath)).toBe(true);
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
   const identity = extensionEvidence();

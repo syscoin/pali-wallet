@@ -2,7 +2,6 @@ import { expect, test } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 
-import packageJson from '../../package.json';
 import en from '../../source/assets/locales/en.json';
 import {
   compactBridgeNativeOffset,
@@ -30,7 +29,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
   if (!/^[a-f0-9]{40}$/i.test(process.env.PALI_TEST_DAPP_REVISION || ''))
     throw new Error('Pin the exact built source revision');
   const evidence = extensionEvidence();
-  expect(evidence.version).toBe(packageJson.version);
+
   const before = { ...E2E_CONFIG },
     fixture = createUtxoFixture('10000000');
   const server = await startUtxoFixtureServer();

@@ -5,7 +5,6 @@ import { Transaction, formatEther, keccak256 } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 
-import packageJson from '../../package.json';
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
 import {
@@ -351,7 +350,7 @@ for (const scenario of [
     )
       throw new Error('Pin an exact immutable extension build and revision');
     const evidence = extensionEvidence();
-    expect(evidence.version).toBe(packageJson.version);
+
     const before = { ...E2E_CONFIG };
     const fixture = createIsolatedVaultFixture();
     const server = await startUtxoFixtureServer();

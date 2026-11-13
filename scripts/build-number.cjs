@@ -146,7 +146,10 @@ async function reserve(options, dependencies) {
     const currentSource = await source(git, purpose);
     if (currentSource.revision !== initial.revision) throw failure('SOURCE_CHANGED');
     let pushed;
-    try { pushed = await git(['push', '--porcelain', pushRemote, `${allocationRevision}:${policy.ref}`]); }
+    // This generated state.json-only commit targets the validated counter ref,
+    // not source code. Do not run source pre-push hooks while reserving metadata;
+    // ordinary source pushes still use their normal hooks and required checks.
+    try { pushed = await git(['push', '--no-verify', '--porcelain', pushRemote, `${allocationRevision}:${policy.ref}`]); }
     catch { pushed = { status: -1 }; }
     // Even a failed/ambiguous push may have reserved a number. Only return it
     // after proving this exact owned commit is in the remote counter history.

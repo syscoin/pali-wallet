@@ -11,7 +11,6 @@ import fs from 'fs';
 import path from 'path';
 import { utils as sys } from 'syscoinjs-lib';
 
-import packageJson from '../../package.json';
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
 import {
@@ -410,7 +409,7 @@ test('private note files: real download, saved-file verification and fenced rest
   if (!/^[a-f0-9]{40}$/i.test(process.env.PALI_TEST_DAPP_REVISION || ''))
     throw new Error('Pin the exact built source revision');
   const evidence = extensionEvidence();
-  expect(evidence.version).toBe(packageJson.version);
+
   const before = { ...E2E_CONFIG };
   const fixture = createIsolatedVaultFixture();
   const fence = await startUtxoFixtureServer();

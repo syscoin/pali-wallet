@@ -11,6 +11,7 @@ import path from 'path';
 
 import { E2E_CONFIG } from '../harness/config';
 import { clickClosingPopup } from '../harness/dismissRejectedApproval';
+import { assertExtensionVersion } from '../harness/extensionVersion';
 import { PaliWallet } from '../harness/pali';
 import { verifyExecutingWorker } from '../harness/runtimeIdentity';
 import { JourneySummary } from '../harness/summary';
@@ -72,6 +73,8 @@ test('old unnamespaced package and new Canary keep provider approvals separate',
       JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')),
     ])
   );
+  expect(process.env.PALI_TEST_DAPP_CHANNEL).toBe('canary');
+  assertExtensionVersion(manifests.canary, process.env);
   expect(manifests.legacy.version).toBe('5.0.0.2');
   expect(manifests.canary.version).not.toBe(manifests.legacy.version);
   expect(manifests.canary.name).toContain('Canary');

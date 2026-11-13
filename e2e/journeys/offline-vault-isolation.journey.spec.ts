@@ -2,7 +2,6 @@ import { expect, test } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 
-import packageJson from '../../package.json';
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
 import {
@@ -89,7 +88,7 @@ test('offline vault isolation: normal account UI, token separation and watch-onl
   if (!/^[a-f0-9]{40}$/i.test(process.env.PALI_TEST_DAPP_REVISION || ''))
     throw new Error('Pin the exact built source revision');
   const evidence = extensionEvidence();
-  expect(evidence.version).toBe(packageJson.version);
+
   const before = { ...E2E_CONFIG },
     fixture = createIsolatedVaultFixture();
   const server = await startUtxoFixtureServer();
