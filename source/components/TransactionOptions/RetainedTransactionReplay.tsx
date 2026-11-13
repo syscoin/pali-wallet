@@ -555,11 +555,18 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
           </dl>
           {smart?.executions?.map((call, index) =>
             call.assetTransfer ? (
-              <AssetTransferSummary
-                key={index}
-                compact
-                transfer={createAssetTransferDisplay(call.assetTransfer)}
-              />
+              <section key={index}>
+                <AssetTransferSummary
+                  compact
+                  transfer={createAssetTransferDisplay(call.assetTransfer)}
+                />
+                {call.value !== '0' && (
+                  <p className="mt-2 text-sm">
+                    {t('assetTransfer.nativeValue')}:{' '}
+                    {formatUnits(call.value, 18)} {currency}
+                  </p>
+                )}
+              </section>
             ) : smart.executions!.length > 1 ? (
               <section
                 key={index}

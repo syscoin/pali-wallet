@@ -12,6 +12,7 @@ import {
   type SmartAccountExecution,
 } from '../utils/smartAccount/account.ts';
 import {
+  getPaliEntryPointAddress,
   paliEntryPointInterface,
   paliSmartAccountInterface,
 } from '../utils/smartAccount/contracts.ts';
@@ -32,6 +33,7 @@ import {
   type EvmSavedTransaction,
 } from './evmSignedReplay.ts';
 import {
+  decodeRetainedSmartAccountOperations,
   decodeRetainedSmartAccountTransfer,
   observeSmartAccountActivity,
   type RetainedSmartAccountTransfer,
@@ -158,8 +160,7 @@ export function projectSmartAccountSavedTransaction(
   const index = record.operations.indexOf(selected),
     callData = decoded ? String(decoded[index].callData) : '0x';
   const calls = executions(callData)?.map((call) => {
-    const assetTransfer =
-      call.value === '0' ? decodeAssetTransfer(call.data, call.target) : null;
+    const assetTransfer = decodeAssetTransfer(call.data, call.target);
     return Object.freeze({
       ...call,
       ...(assetTransfer ? { assetTransfer } : {}),
@@ -222,7 +223,10 @@ export function createSmartAccountSignedReplay(
     engine: EvmSignedReplay | undefined;
   let activeReview:
     | {
-        allow(entry: EvmRetainedSignedRecord): void;
+        allow(
+          entry: EvmRetainedSignedRecord,
+          intent?: SmartAccountReplayIntent
+        ): void;
         check(): void;
         expires: number;
         hashes: Set<string>;
@@ -363,6 +367,7 @@ export function createSmartAccountSignedReplay(
       const allowed = new Map([
         [record.entry.hash, record.entry.rawTransaction],
       ]);
+      const intents = new Map([[record.entry.hash, intent]]);
       const session: EvmReplaySession = Object.freeze({
         ...payer,
         assertCurrent: checkPayer,
@@ -374,19 +379,20 @@ export function createSmartAccountSignedReplay(
             getAddress(expected.from) !== getAddress(record.entry.from)
           )
             throw new EvmReplayError('CONTEXT_CHANGED');
-          // Earlier payer nonces retain the engine's ordinary gap recovery.
-          if (expected.hash !== record.entry.hash)
-            return payer.observe(expected);
+          const observedIntent = intents.get(expected.hash);
+          if (!observedIntent) return payer.observe(expected);
           return observeSmartAccountActivity(
             {
-              account: address,
+              account: observedIntent.account,
               chainId,
-              hash: record.entry.hash,
+              hash: expected.hash,
               payer: getAddress(record.entry.from),
-              nonce: record.entry.nonce,
-              operationHash: intent.operationHash,
-              operationNonce: intent.operationNonce,
-              ...(intent.cancellation ? { cancellation: true as const } : {}),
+              nonce: Number(expected.nonce),
+              operationHash: observedIntent.operationHash,
+              operationNonce: observedIntent.operationNonce,
+              ...(observedIntent.cancellation
+                ? { cancellation: true as const }
+                : {}),
             },
             (method, params) => captured.read(method, params, checkPayer),
             checkPayer
@@ -411,8 +417,9 @@ export function createSmartAccountSignedReplay(
       track(result, {
         check: checkPayer,
         session,
-        allow: (entry) => {
+        allow: (entry, admittedIntent) => {
           allowed.set(entry.hash, entry.rawTransaction);
+          if (admittedIntent) intents.set(entry.hash, admittedIntent);
         },
       });
       return result.status === 'review'
@@ -458,7 +465,7 @@ export function createSmartAccountSignedReplay(
     async preparePredecessor(
       parentReviewId: string,
       hash: string
-    ): Promise<EvmReplayPreparation> {
+    ): Promise<EvmReplayPreparation | SmartAccountReplayPreparation> {
       const { active, replay } = pending(parentReviewId);
       if (!active.hashes.has(hash)) throw new EvmReplayError('NOT_FOUND');
       // Consume the parent before reading; a second click cannot repurpose its consent.
@@ -474,11 +481,47 @@ export function createSmartAccountSignedReplay(
       if (time() >= active.expires) throw new EvmReplayError('EXPIRED');
       if (!entry || entry.nonce >= Number(active.review.nonce))
         throw new EvmReplayError('NOT_FOUND');
-      active.allow(entry);
+      const operations = decodeRetainedSmartAccountOperations(entry);
+      const envelope = Transaction.from(entry.rawTransaction);
+      if (
+        operations.length === 0 &&
+        envelope.to === getPaliEntryPointAddress(Number(entry.chainId)) &&
+        envelope.data.slice(0, 10).toLowerCase() ===
+          paliEntryPointInterface.getFunction('handleOps')!.selector
+      )
+        throw new EvmReplayError('INVALID_RESPONSE');
+      const transaction = operations.length
+        ? projectSmartAccountSavedTransaction(
+            { entry, operations },
+            operations[0]!.account
+          )
+        : undefined;
+      if (transaction && !transaction.smartAccount.replayable)
+        return Object.freeze({
+          status: 'inspect-only',
+          reason: 'multiple-user-operations',
+          transaction,
+        });
+      active.allow(entry, transaction?.smartAccount);
       const result = await replay.prepare(entry.hash);
       active.check();
       track(result, active);
-      return result;
+      if (!transaction) return result;
+      return result.status === 'review'
+        ? Object.freeze({
+            ...result,
+            review: Object.freeze({
+              ...result.review,
+              smartAccount: transaction.smartAccount,
+            }),
+          })
+        : Object.freeze({
+            ...result,
+            transaction: Object.freeze({
+              ...result.transaction,
+              smartAccount: transaction.smartAccount,
+            }),
+          });
     },
     confirm(id: string) {
       if (!engine) throw new EvmReplayError('EXPIRED');

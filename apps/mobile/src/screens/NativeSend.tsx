@@ -826,6 +826,7 @@ export function NativeSend({
                       <Text style={s.amount}>{item.tokenId === null ? item.value : `#${item.tokenId}`}</Text>
                       <Text>{item.symbol ?? (item.tokenId === null ? t('assetTransfer.rawUnits') : `${item.units} ${t('assetTransfer.units')}`)}</Text>
                     </View>)}
+                    {call.value !== '0' && <><Text style={s.label}>{t('assetTransfer.nativeValue')}</Text><Text>{formatBaseUnits(call.value, 18)} {capturedContext.symbol}</Text></>}
                     <Text style={s.label}>{t('assetTransfer.recipient')}</Text><Text selectable style={s.address}>{transfer.recipient}</Text>
                     <Text style={s.label}>{t('assetTransfer.contract')}</Text><Text selectable style={s.address}>{transfer.contract}</Text>
                   </> : <>
