@@ -1090,6 +1090,7 @@
     "coinGeckoListingUnavailable": "Listing unavailable"
   },
   "transactions": {
+    "feePayer": "Fee payer",
     "labelCopied": "{{label}} copied to clipboard",
     "decodeDetailsFailed": "Failed to decode transaction details",
     "transactionOptions": "Transaction Options",

@@ -1090,6 +1090,7 @@
     "coinGeckoListingUnavailable": "暂无法获取收录信息"
   },
   "transactions": {
+    "feePayer": "手续费支付账户",
     "labelCopied": "已将{{label}}复制到剪贴板",
     "decodeDetailsFailed": "无法解码交易详情",
     "transactionOptions": "交易选项",

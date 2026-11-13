@@ -913,7 +913,7 @@ export function NativeSend({
               </Card>}
               {review.replay && <Card style={s.summary}>
                 {smartReplay && <>
-                  <Text style={s.label}>{t('mobile.infrastructure.feePayer')}</Text>
+                  <Text style={s.label}>{t('transactions.feePayer')}</Text>
                   <Text selectable style={s.address}>{review.replay.from}</Text>
                   <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.userOperationNonce')}</Text>
                   <Text>{smartReplay.operationNonce}</Text>

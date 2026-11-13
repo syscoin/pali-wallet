@@ -1090,6 +1090,7 @@
     "coinGeckoListingUnavailable": "Listagem indisponível"
   },
   "transactions": {
+    "feePayer": "Pagador de taxas",
     "labelCopied": "{{label}} copiado para a área de transferência",
     "decodeDetailsFailed": "Falha ao decodificar os detalhes da transação",
     "transactionOptions": "Opções da transação",

@@ -1090,6 +1090,7 @@
     "coinGeckoListingUnavailable": "Eintrag nicht verfügbar"
   },
   "transactions": {
+    "feePayer": "Gebührenzahler",
     "labelCopied": "{{label}} in die Zwischenablage kopiert",
     "decodeDetailsFailed": "Transaktionsdetails konnten nicht dekodiert werden",
     "transactionOptions": "Transaktionsoptionen",
