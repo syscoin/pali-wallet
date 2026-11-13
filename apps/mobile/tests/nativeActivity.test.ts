@@ -108,6 +108,112 @@ test('activity invalidation retires delayed observers before clearing the visibl
   } finally { disconnect(); }
 });
 
+test('same-scope refresh keeps the displayed token row until fresh pending history replaces it', async () => {
+  const page = deferred<readonly DiscoveredActivityCandidate[]>();
+  let refreshing = false, heldEntered = false;
+  const f = fixture({
+    explorer: new FakeExplorer(({ feed }) => {
+      if (feed !== 'tokentx') return [];
+      if (refreshing) { heldEntered = true; return page.promise; }
+      return [candidate(1, 999, true)];
+    }),
+    receipts: new FakeReceipts(call => observation(call.hash, call.owner, refreshing ? 'pending' : 'confirmed')),
+  });
+  await f.controller.refresh();
+  f.controller.inspect(hash(1));
+  await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'confirmed');
+  const before = f.controller.getSnapshot().rows[0]!;
+  assert(before.display);
+  refreshing = true;
+  const pending = f.controller.refresh();
+  assert.equal(f.controller.getSnapshot().status, 'loading');
+  assert.equal(f.controller.getSnapshot().rows[0], before);
+  await until(() => heldEntered);
+  assert.equal(f.controller.getSnapshot().rows[0]?.display, before.display);
+  assert.equal(f.controller.getSnapshot().rows[0]?.observation?.status, 'confirmed');
+  page.resolve([candidate(1, 0, true)]);
+  await pending;
+  const after = f.controller.getSnapshot().rows[0]!;
+  assert.equal(f.controller.getSnapshot().status, 'ready');
+  assert.equal(after.indexedStatus, 'pending');
+  assert.equal(after.observation, undefined, 'Old verified receipts are presentation-only and must not enter the fresh maps');
+  f.controller.inspect(hash(1));
+  await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'pending');
+  f.controller.inspect(hash(1));
+  await until(() => f.receipts.calls.length === 3 && f.controller.getSnapshot().rows[0]?.observation?.status === 'pending');
+});
+
+test('failed same-scope refresh discards its displayed receipt instead of treating it as fresh', async () => {
+  let fail = false;
+  const f = fixture({ explorer: new FakeExplorer(({ feed }) => {
+    if (fail) throw Error('Offline');
+    return feed === 'txlist' ? [candidate(1)] : [];
+  }) });
+  await f.controller.refresh();
+  f.controller.inspect(hash(1));
+  await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'confirmed');
+  fail = true;
+  await f.controller.refresh();
+  const state = f.controller.getSnapshot();
+  assert.equal(state.status, 'ready');
+  assert.equal(state.error, 'feed-unavailable');
+  assert.equal(state.rows[0]?.observation, undefined);
+  assert.equal(state.rows[0]?.indexedStatus, undefined);
+});
+
+test('fresh failed receipt replaces the refresh presentation without reviving a confirmed receipt', async () => {
+  const page = deferred<readonly DiscoveredActivityCandidate[]>();
+  let refreshing = false, heldEntered = false;
+  const f = fixture({
+    explorer: new FakeExplorer(({ feed }) => {
+      if (feed !== 'txlist') return [];
+      if (refreshing) { heldEntered = true; return page.promise; }
+      return [candidate(1)];
+    }),
+    receipts: new FakeReceipts(call => {
+      if (refreshing) throw Error('Receipt unavailable');
+      return observation(call.hash, call.owner);
+    }),
+  });
+  await f.controller.refresh();
+  f.controller.inspect(hash(1));
+  await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'confirmed');
+  refreshing = true;
+  const pending = f.controller.refresh();
+  await until(() => heldEntered);
+  f.controller.inspect(hash(1));
+  await until(() => f.controller.getSnapshot().rows[0]?.unavailable === true);
+  assert.equal(f.controller.getSnapshot().rows[0]?.observation, undefined);
+  page.resolve([candidate(1, 0)]);
+  await pending;
+  assert.equal(f.controller.getSnapshot().rows[0]?.indexedStatus, 'pending');
+  assert.equal(f.controller.getSnapshot().rows[0]?.observation, undefined);
+});
+
+test('scope changes and lock discard displayed refresh rows before delayed reads return', async () => {
+  for (const change of ['account', 'network', 'lock'] as const) {
+    const load = deferred<void>();
+    const f = fixture({ explorer: new FakeExplorer(({ feed }) => feed === 'txlist' ? [candidate(1)] : []) });
+    const disconnect = f.controller.connect();
+    try {
+      await until(() => !!f.controller.getSnapshot().rows[0]?.display);
+      const original = f.runtime.load.bind(f.runtime);
+      f.runtime.load = async (...args) => { await load.promise; return original(...args); };
+      const pending = f.controller.refresh();
+      assert.equal(f.controller.getSnapshot().rows.length, 1);
+      if (change === 'lock') f.source.change({ phase: 'locked', account: null });
+      else f.source.change({ account: { network: change === 'network' ? 'base' : 'ethereum', address: change === 'account' ? OTHER : OWNER } });
+      assert.deepEqual(f.controller.getSnapshot().rows, [], change);
+      load.resolve();
+      await pending;
+      if (change === 'lock') {
+        assert.equal(f.controller.getSnapshot().status, 'locked');
+        assert.deepEqual(f.controller.getSnapshot().rows, []);
+      }
+    } finally { load.resolve(); disconnect(); }
+  }
+});
+
 test('saved pending pages reach older hashes without polling them, and Back retires an in-flight page', async () => {
   const base = fixture();
   const recent = base.local(3, 'submitted'), older = base.local(1, 'attempted');

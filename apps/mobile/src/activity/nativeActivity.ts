@@ -163,6 +163,8 @@ export class NativeActivity {
   private snapshot = initial();
   private listeners = new Set<() => void>();
   private scope: EvmActivityReadScope | null = null;
+  private scopeRevision: number | null = null;
+  private refreshingRows: ReadonlyMap<string, ActivityRow> | null = null;
   private request: AbortController | null = null;
   private generation = 0;
   private visible = 20;
@@ -242,6 +244,8 @@ export class NativeActivity {
     this.request?.abort();
     this.request = null;
     this.scope = null;
+    this.scopeRevision = null;
+    this.refreshingRows = null;
     this.savedPending?.lifetime.abort();
     this.savedPending = undefined;
     this.hydration = [];
@@ -260,7 +264,7 @@ export class NativeActivity {
     )
       throw new ActivityError('CANCELLED');
   }
-  invalidate(): void {
+  private reset(): void {
     this.stop();
     this.candidates.clear();
     this.freshCandidates.clear();
@@ -275,16 +279,24 @@ export class NativeActivity {
     this.retainedObservations.clear();
     this.assets = [];
     this.cachedFallback = true;
+  }
+  invalidate(): void {
+    this.reset();
     this.publish(initial());
   }
   async refresh(): Promise<void> {
-    this.invalidate();
+    const state = this.source.getSnapshot();
+    const previousScope = this.scope;
+    const previous = state.phase === 'ready' && state.revision === this.scopeRevision
+      ? this.snapshot : null;
+    this.reset();
+    this.refreshingRows = previous && new Map(previous.rows.map(row => [row.hash, row]));
     const generation = this.generation;
-    const revision = this.source.getSnapshot().revision;
+    const revision = state.revision;
     this.request = new AbortController();
     const signal = this.request.signal;
     const guard = () => this.guard(generation, revision);
-    this.publish({ ...initial(), status: 'loading' });
+    this.publish({ ...(previous ?? initial()), status: 'loading', loadingMore: false, error: null, savedPending: undefined });
     try {
       const runtime = this.runtime();
       if (!runtime) throw new ActivityError('UNAVAILABLE');
@@ -293,14 +305,19 @@ export class NativeActivity {
         signal
       );
       guard();
+      if (!previousScope || previousScope.key !== scope.key || previousScope.sourceId !== scope.sourceId ||
+          previousScope.network.registrationHash !== scope.network.registrationHash)
+        this.refreshingRows = null;
       this.scope = scope;
+      this.scopeRevision = revision;
       this.assets = assets ?? [];
       for (const record of saved.archived) this.locals.set(record.hash, record);
       for (const local of locals) this.locals.set(local.hash, local);
       for (const record of saved.candidates)
         this.candidates.set(record.hash, record);
       this.publish({
-        status: 'ready',
+        status: this.refreshingRows ? 'loading' : 'ready',
+        rows: this.refreshingRows ? this.snapshot.rows : [],
         view: saved.view,
         accountAddress: scope.address,
         scopeKey: scope.key,
@@ -318,10 +335,12 @@ export class NativeActivity {
       if (!scope.apiUrl) {
         this.feeds.txlist.done = true;
         this.feeds.tokentx.done = true;
+        this.refreshingRows = null;
+        this.renderRows(true);
         this.publish({
           coverage: 'discovery-unavailable',
+          status: 'ready',
         });
-        this.renderRows(true);
         return;
       }
       const timeout = setTimeout(() => {
@@ -340,9 +359,12 @@ export class NativeActivity {
         clearTimeout(timeout);
       }
       this.cachedFallback = false;
+      this.refreshingRows = null;
       this.renderRows();
+      this.publish({ status: 'ready' });
     } catch {
       if (generation !== this.generation) return;
+      this.refreshingRows = null;
       this.cachedFallback = true;
       this.publish({
         status: this.scope ? 'ready' : 'unavailable',
@@ -422,7 +444,6 @@ export class NativeActivity {
           const { candidateSummary, ...indexed } = byHash.get(row.hash)!;
           this.candidates.set(row.hash, candidateSummary);
           this.indexed.set(row.hash, Object.freeze(indexed));
-          this.freshCandidates.add(row.hash);
         }
         await Promise.all(
           rows.map(async (row) => {
@@ -446,6 +467,7 @@ export class NativeActivity {
           })
         );
         guard();
+        for (const row of rows) this.freshCandidates.add(row.hash);
         feed.fingerprint = fingerprint;
         feed.page++;
         feed.done = rows.length < ACTIVITY_PAGE_SIZE;
@@ -548,7 +570,7 @@ export class NativeActivity {
     this.publish({ savedPending: undefined });
   }
   private renderRows(includeCached = this.cachedFallback) {
-    const records = new Map<string, ActivityRow>();
+    const records = new Map<string, ActivityRow>(this.refreshingRows);
     const candidates = this.orderedCandidates(includeCached);
     for (const local of this.locals.values())
       records.set(local.hash, {
@@ -570,6 +592,13 @@ export class NativeActivity {
       Number(this.scope?.network.chainId)
     );
     const observeRow = (row: ActivityRow, includeIndex = true): ActivityRow => {
+      const previous = includeIndex ? this.refreshingRows?.get(row.hash) : undefined;
+      // Presentation only: a healthy same-scope refresh need not erase its last
+      // display while hash-only cache hints load. Fresh facts always replace it.
+      if (previous && !this.freshCandidates.has(row.hash) && !this.observations.has(row.hash) &&
+          !this.retainedObservations.has(row.hash) && !this.unavailable.has(row.hash) &&
+          JSON.stringify(row.local) === JSON.stringify(previous.local))
+        return { ...previous, checking: this.checking.has(row.hash) };
       // An indexer describes the outer payer transaction; this row represents its verified inner operation.
       if (row.local?.smartAccount) includeIndex = false;
       const indexed = includeIndex ? this.indexed.get(row.hash) : undefined;
