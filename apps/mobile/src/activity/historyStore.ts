@@ -137,23 +137,25 @@ export function validateArchivedActivity(
     return invalid();
   if (data.smartAccount !== undefined) {
     const identity = exact(data.smartAccount, [
-      'payer',
-      'operationHash',
-      'operationNonce',
+      'payer', 'operations',
       ...(data.smartAccount && typeof data.smartAccount === 'object' && Object.hasOwn(data.smartAccount, 'cancellation') ? ['cancellation'] : []),
     ]);
-    if (
-      !data.accountId.startsWith('smart:') ||
-      typeof identity.payer !== 'string' ||
-      getAddress(identity.payer) !== identity.payer ||
-      typeof identity.operationHash !== 'string' ||
-      !/^0x[0-9a-f]{64}$/.test(identity.operationHash) ||
-      typeof identity.operationNonce !== 'string' ||
-      !/^(0|[1-9][0-9]{0,77})$/.test(identity.operationNonce) ||
-      BigInt(identity.operationNonce) >= BigInt(1) << BigInt(256) ||
-      (identity.cancellation !== undefined && identity.cancellation !== true)
-    )
-      return invalid();
+    if (!data.accountId.startsWith('smart:') || typeof identity.payer !== 'string' ||
+        getAddress(identity.payer) !== identity.payer || !Array.isArray(identity.operations) ||
+        !identity.operations.length || identity.operations.length > 512 ||
+        (identity.cancellation !== undefined && identity.cancellation !== true) ||
+        (identity.cancellation && identity.operations.length !== 1)) return invalid();
+    const keys = new Set<string>();
+    identity.operations = Object.freeze(identity.operations.map(value => {
+      const operation = exact(value, ['operationHash', 'operationNonce']);
+      if (typeof operation.operationHash !== 'string' || !/^0x[0-9a-f]{64}$/.test(operation.operationHash) ||
+          typeof operation.operationNonce !== 'string' || !/^(0|[1-9][0-9]{0,77})$/.test(operation.operationNonce) ||
+          BigInt(operation.operationNonce) >= BigInt(1) << BigInt(256)) return invalid();
+      const key = operation.operationHash + ':' + operation.operationNonce;
+      if (keys.has(key)) return invalid();
+      keys.add(key);
+      return Object.freeze(operation);
+    }));
     data.smartAccount = Object.freeze(identity);
   }
   if (

@@ -147,7 +147,7 @@ import { EvmSignedRecords, createEvmSignedRecordLifecycle, type EvmVerifiedRepla
 import { UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 import { EvmSignedReplay, observeRetainedEvmTransaction, projectSavedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { createSmartAccountSignedReplay } from '../../../../source/wallet/smartAccountSignedReplay.ts';
-import { observeSmartAccountActivity } from '../../../../source/wallet/smartAccountActivity.ts';
+import { observeSmartAccountActivity, observeSmartAccountOperations } from '../../../../source/wallet/smartAccountActivity.ts';
 import { getObservedEvmTerminalPhase } from '../../../../source/shared/evmTransactionObservation.ts';
 import { assertNativeRecordDomains } from './recoveryInventory.ts';
 import { captureInfrastructureCleanupStorage } from './infrastructureCleanup.ts';
@@ -7303,7 +7303,7 @@ export function createKeyringRuntimeFactory(
                       local.walletFingerprint !== scope.walletFingerprint || local.accountId !== scope.accountId)
                     throw new KeyringRuntimeError('CANCELLED');
                   const rpc = new EvmTransferReadRpc(scope.network, { fetch: dependencies.connectionFetch ?? walletFetch });
-                  if (local.smartAccount) return observeSmartAccountActivity({ chainId: local.chainId, hash: local.hash,
+                  if (local.smartAccount) return observeSmartAccountOperations({ chainId: local.chainId, hash: local.hash,
                     account: local.address, nonce: local.nonce, ...local.smartAccount },
                     (method, params) => rpc.retirementRead(method, params, signal, guard), guard);
                   return rpc.observation({ hash: local.hash, from: local.address,
@@ -7338,12 +7338,24 @@ export function createKeyringRuntimeFactory(
                 const record = source ? { ...source, recipient: source.recipient ?? scope.address } : undefined;
                 if (!record?.smartAccount) throw new KeyringRuntimeError('NOT_READY');
                 const rpc = new EvmTransferReadRpc(scope.network, { fetch: dependencies.connectionFetch ?? walletFetch });
-                const observation = await observeSmartAccountActivity({ chainId, hash, account: address, nonce: record.nonce, ...record.smartAccount },
+                const observation = await observeSmartAccountOperations({ chainId, hash, account: address, nonce: record.nonce, ...record.smartAccount },
                   (method, params) => rpc.retirementRead(method, params, signal, guard), guard);
                 guard();
                 const phase = getObservedEvmTerminalPhase(observation, record.nonce);
-                const observed = phase ? { ...record, phase }
-                  : { ...record, smartAccount: record.smartAccount, phase: 'submitted' as const };
+                // Archive only durable activity facts. The live projection also
+                // carries replay/navigation hints that are not storage fields.
+                const observed = {
+                  walletFingerprint: record.walletFingerprint, accountId: record.accountId,
+                  address: record.address, networkId: record.networkId,
+                  registrationHash: record.registrationHash, chainId: record.chainId,
+                  hash: record.hash, nonce: record.nonce, createdAt: record.createdAt,
+                  recipient: record.recipient, amountUnits: record.amountUnits,
+                  maximumFeeUnits: record.maximumFeeUnits,
+                  smartAccount: record.smartAccount, phase: phase ?? 'submitted' as const,
+                  ...(record.contractInteraction ? { contractInteraction: record.contractInteraction } : {}),
+                  ...(record.collectibleTransfer ? { collectibleTransfer: record.collectibleTransfer } : {}),
+                  ...(record.token ? { token: record.token } : {}),
+                };
                 await activityHistory.recordObservation(observed, guard);
                 guard();
                 return observation;
