@@ -118,6 +118,30 @@ export const normalizeAccountHistory = (accountData: any) => {
                 : atomic(entry?.value)),
             BigInt(0)
           );
+        // Coinbase creates outputs instead of spending funded prevouts.
+        if (tx.vin.some((entry: any) => entry?.coinbase !== undefined)) {
+          const input = tx.vin[0];
+          const outputTotal = sum(tx.vout);
+          if (
+            tx.vin.length !== 1 ||
+            typeof input.coinbase !== 'string' ||
+            !/^(?:[0-9a-f]{2})+$/i.test(input.coinbase) ||
+            input.txid !== undefined ||
+            input.vout !== undefined ||
+            input.isOwn === true ||
+            input.isAddress === true ||
+            (input.value !== undefined && atomic(input.value) !== BigInt(0)) ||
+            atomic(tx.fees) !== BigInt(0) ||
+            (tx.valueIn !== undefined && atomic(tx.valueIn) !== BigInt(0)) ||
+            (tx.value !== undefined && atomic(tx.value) !== outputTotal)
+          )
+            return tx;
+          return {
+            ...tx,
+            addressValueIn: '0',
+            addressValueOut: sum(tx.vout, true).toString(),
+          };
+        }
         if (sum(tx.vin) !== sum(tx.vout) + atomic(tx.fees)) return tx;
         return {
           ...tx,

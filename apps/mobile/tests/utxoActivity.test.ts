@@ -8,6 +8,7 @@ import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { BigNumber } from '../../../source/utils/ethersV6Compat.ts';
 import { XPUB } from './publicWatchFixtures.ts';
 import { SENTRY_TX_HEX, SENTRY_TXID, sentryNodeResponse } from './sentryNodeFixtures.ts';
+import { detectActivityNotifications } from '../../../source/shared/activityNotifications.ts';
 const BTC = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', SYS = 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58';
 const H = 'a'.repeat(64), BLOCK = 'b'.repeat(64), ID = (n: number) => n.toString(16).padStart(64, '0');
 const owner: UtxoActivityContext = { accountId: 'watch', networkId: 'bitcoin', address: BTC, generation: 1 };
@@ -66,6 +67,30 @@ test('whole-account input/change ownership comes from shared Blockbook normaliza
   const f = fixture({ count: 1, replace(path, body) { if (path.includes('/address/')) { const row = body.transactions[0]; delete row.addressValueIn; delete row.addressValueOut; row.vin = [{ value: '1100000000', isOwn: true, addresses: ['unrendered-receive'] }]; row.vout[0].addresses = ['unrendered-change']; } return body; } });
   const [row] = (await read(f)).rows; assert.equal(row?.netUnits, '-1000000000'); assert.equal(row?.nativeTransfer?.amount, '900000000');
   assert.ok(!JSON.stringify(row).includes('unrendered'));
+});
+test('an owned coinbase output becomes an exact received amount through the shared account reader', async () => {
+  const f = fixture({ count: 1, replace(path, body) {
+    if (path.includes('/address/')) {
+      const transaction = body.transactions[0];
+      delete transaction.addressValueIn; delete transaction.addressValueOut;
+      Object.assign(transaction, { fees: '0', valueIn: '0', value: '314182918',
+        vin: [{ n: 0, isAddress: false, coinbase: '030fe30e2c' }],
+        vout: [{ value: '546' }, { value: '314182372', isOwn: true }, { value: '0', isAddress: false }] });
+    }
+    return body;
+  } });
+  const [row] = (await read(f)).rows;
+  assert.ok(row);
+  assert.equal(row?.spentUnits, '0'); assert.equal(row?.receivedUnits, '314182372');
+  assert.equal(row?.netUnits, '314182372');
+  assert.deepEqual(row?.nativeTransfer, { amount: '314182372', direction: 'received', kind: 'received' });
+  assert.equal(row.observedConfirmations, 11); assert.equal(row.block?.height, 190);
+  const scope = { accountAddress: BTC, accountId: owner.accountId, accountType: 'watch',
+    chainId: '0', networkKey: getUtxoNetwork('bitcoin').endpoint, networkType: 'utxo' as const };
+  const { baseline } = detectActivityNotifications({ scope, previous: null, transactions: [], observedAt: 100_000 });
+  const { facts } = detectActivityNotifications({ scope, previous: baseline, transactions: [row], observedAt: 100_001 });
+  assert.equal(facts.length, 1);
+  assert.equal(facts[0]?.direction, 'incoming'); assert.equal(facts[0]?.kind, 'transaction-confirmed');
 });
 test('pending and missing block observations remain valid activity', async () => {
   const f = fixture({ count: 1, replace(path, body) { if (path.includes('/address/')) Object.assign(body.transactions[0], { blockHeight: -1, blockHash: undefined, blockTime: undefined, confirmations: 0 }); return body; } });
