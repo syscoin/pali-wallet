@@ -836,7 +836,7 @@ for (const mixed of [false, true]) test(`actual explorer ${mixed ? 'mixed-case b
 
 test('Smart Activity inspects through the inner-operation observer and ignores outer indexed status', async () => {
   const base = fixture();
-  const local: LocalActivityRecord = { ...base.local(1), smartAccount: { payer: OTHER, operationHash: hash(9), operationNonce: '0' }, inspectionOnly: true };
+  const local: LocalActivityRecord = { ...base.local(1), smartAccount: { payer: OTHER, operations: [{ operationHash: hash(9), operationNonce: '0' }] }, inspectionOnly: true };
   const f = fixture({ local, explorer: new FakeExplorer(({ feed }) => feed === 'txlist' ? [candidate(1)] : []),
     async observeLocal() { return { status: 'mined', outcome: 'reverted', block: { hash: hash(999), number: '1000' } }; } });
   await f.controller.refresh();

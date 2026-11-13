@@ -156,7 +156,7 @@ import { createSlhDsaProfileStateCrypto } from '../../../wallet/slhDsaStateCrypt
 import {
   decodeRetainedSmartAccountOperations,
   decodeSmartAccountOperations,
-  observeSmartAccountActivity,
+  observeSmartAccountOperations,
 } from '../../../wallet/smartAccountActivity';
 import { createSmartAccountSignedReplay } from '../../../wallet/smartAccountSignedReplay';
 import {
@@ -13110,32 +13110,31 @@ class MainController {
           let outcome: 'confirmed' | 'reverted' | undefined;
           if (isTransactionInBlock(txUpdate) && relevant.length) {
             try {
-              const observations = await Promise.all(
-                relevant.map((identity) =>
-                  observeSmartAccountActivity(
-                    { ...identity, nonce: identity.payerNonce },
-                    read,
-                    check
-                  )
-                )
+              const observation = await observeSmartAccountOperations(
+                {
+                  account: relevant[0].account,
+                  chainId: relevant[0].chainId,
+                  hash: relevant[0].hash,
+                  payer: relevant[0].payer,
+                  nonce: relevant[0].payerNonce,
+                  operations: relevant.map(
+                    ({ operationHash, operationNonce }) => ({
+                      operationHash,
+                      operationNonce,
+                    })
+                  ),
+                },
+                read,
+                check
               );
               check();
               if (
-                observations.every(
-                  (observation) =>
-                    observation.status === 'mined' &&
-                    Number(observation.block.number) ===
-                      Number(txUpdate.blockNumber) &&
-                    observation.block.hash === txUpdate.blockHash?.toLowerCase()
-                )
+                observation.status === 'mined' &&
+                Number(observation.block.number) ===
+                  Number(txUpdate.blockNumber) &&
+                observation.block.hash === txUpdate.blockHash?.toLowerCase()
               )
-                outcome = observations.some(
-                  (observation) =>
-                    observation.status === 'mined' &&
-                    observation.outcome === 'reverted'
-                )
-                  ? 'reverted'
-                  : 'confirmed';
+                outcome = observation.outcome;
             } catch {
               // Missing, ambiguous or noncanonical inner results stay pending.
               check();

@@ -9,7 +9,6 @@ import {
 import { isEvmProtectedEmptySelfCall } from '../shared/evmCancellationPayer.ts';
 import {
   observeEvmTransaction,
-  type EvmObservationMethod,
   type EvmTransactionObservation,
 } from '../shared/evmTransactionObservation.ts';
 import {
@@ -44,6 +43,15 @@ export type SmartAccountActivityIdentity = Readonly<{
   cancellation?: true;
   operationHash: string;
   operationNonce: string;
+  payer: string;
+}>;
+
+export type SmartAccountActivityGroupIdentity = Readonly<{
+  cancellation?: true;
+  operations: readonly Pick<
+    SmartAccountActivityIdentity,
+    'operationHash' | 'operationNonce'
+  >[];
   payer: string;
 }>;
 
@@ -391,16 +399,71 @@ export function decodeRetainedSmartAccountTransfer(
   }
 }
 
-/** Reuses canonical receipt observation and binds the inner outcome to this exact signed UserOperation. */
-export async function observeSmartAccountActivity(
+/** A single operation uses the same complete receipt validation as a group. */
+export function observeSmartAccountActivity(
   transfer: SmartAccountActivityObservation,
-  read: (
-    method: EvmObservationMethod,
-    params: readonly unknown[]
-  ) => Promise<unknown>,
+  read: Parameters<typeof observeEvmTransaction>[1],
   assertCurrent: () => void
 ): Promise<EvmTransactionObservation> {
-  transfer = Object.freeze({ ...transfer });
+  return observeSmartAccountOperations(
+    {
+      ...transfer,
+      operations: [
+        {
+          operationHash: transfer.operationHash,
+          operationNonce: transfer.operationNonce,
+        },
+      ],
+    },
+    read,
+    assertCurrent
+  );
+}
+
+/** Observe one outer receipt and require every exact inner operation outcome. */
+export async function observeSmartAccountOperations(
+  transfer: SmartAccountActivityGroupIdentity &
+    Readonly<{
+      account: string;
+      chainId: string;
+      hash: string;
+      nonce: number;
+    }>,
+  read: Parameters<typeof observeEvmTransaction>[1],
+  assertCurrent: () => void
+): Promise<EvmTransactionObservation> {
+  if (
+    !Array.isArray(transfer.operations) ||
+    !transfer.operations.length ||
+    transfer.operations.length > 512
+  )
+    throw new Error('Invalid Smart account operations');
+  const operations = transfer.operations.map((operation) =>
+    Object.freeze({ ...operation })
+  );
+  transfer = Object.freeze({
+    ...transfer,
+    operations: Object.freeze(operations),
+  });
+  if (
+    !operations.length ||
+    operations.length > 512 ||
+    (transfer.cancellation && operations.length !== 1)
+  )
+    throw new Error('Invalid Smart account operations');
+  const expected = new Map<string, boolean[]>();
+  for (const operation of operations) {
+    if (
+      !/^0x[0-9a-f]{64}$/i.test(operation.operationHash) ||
+      !/^(0|[1-9][0-9]{0,77})$/.test(operation.operationNonce) ||
+      BigInt(operation.operationNonce) >= BigInt(1) << BigInt(256)
+    )
+      throw new Error('Invalid Smart account operation');
+    const key =
+      operation.operationHash.toLowerCase() + ':' + operation.operationNonce;
+    if (expected.has(key)) throw new Error('Duplicate Smart account operation');
+    expected.set(key, []);
+  }
   if (
     !Number.isSafeInteger(Number(transfer.chainId)) ||
     Number(transfer.chainId) <= 0
@@ -444,7 +507,6 @@ export async function observeSmartAccountActivity(
       : undefined;
   if (!Array.isArray(logs) || logs.length > 512)
     throw new Error('Smart account outcome unavailable');
-  const matches: boolean[] = [];
   for (const value of logs) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
     const log = value as Record<string, unknown>;
@@ -466,20 +528,20 @@ export async function observeSmartAccountActivity(
         topics: log.topics as string[],
         data: log.data as string,
       });
-      if (
-        event.sender === transfer.account &&
-        event.operationHash === transfer.operationHash &&
-        event.nonce === transfer.operationNonce
-      )
-        matches.push(event.success);
+      if (event.sender === transfer.account)
+        expected
+          .get(event.operationHash + ':' + event.nonce)
+          ?.push(event.success);
     } catch {
-      /* Unrelated or malformed logs do not establish this operation's outcome. */
+      /* Unrelated or malformed logs cannot establish an operation outcome. */
     }
   }
-  if (matches.length !== 1)
+  if ([...expected.values()].some((matches) => matches.length !== 1))
     throw new Error('Smart account outcome unavailable');
   return Object.freeze({
     ...observation,
-    outcome: matches[0] ? 'confirmed' : 'reverted',
+    outcome: [...expected.values()].every((matches) => matches[0])
+      ? 'confirmed'
+      : 'reverted',
   });
 }
