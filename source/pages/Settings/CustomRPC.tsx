@@ -99,7 +99,9 @@ const networkFormValues = (
 });
 
 const readSuggestedApi = (
-  values: Pick<ICustomRpcParams, 'url' | 'chainId' | 'apiUrl'>,
+  values: Pick<ICustomRpcParams, 'url' | 'apiUrl'> & {
+    chainId: string | number;
+  },
   apiEdited: boolean,
   isSyscoinRpc: boolean
 ) => {
