@@ -161,9 +161,11 @@ it('refreshes an initially empty inventory when an unconfirmed restore is dismis
   });
   render(<PrivateNotes />);
   await screen.findByText(en.privacy.noNotes);
-  fireEvent.click(
-    screen.getByRole('button', { name: en.privacy.bundle.importTitle })
-  );
+  await act(async () => {
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.bundle.importTitle })
+    );
+  });
   const dialog = await screen.findByRole('dialog', {
     name: en.privacy.bundle.importTitle,
   });
