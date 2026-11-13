@@ -167,7 +167,10 @@ for (const width of [400, 320])
               headers: { 'access-control-allow-origin': '*' },
               body: JSON.stringify({
                 status: Array.isArray(result) && !result.length ? '0' : '1',
-                message: 'OK',
+                message:
+                  Array.isArray(result) && !result.length
+                    ? 'No transactions found'
+                    : 'OK',
                 result,
               }),
             });
