@@ -95,7 +95,12 @@ const source: INetwork = {
   currency: 'eth',
   url: 'https://active.api-selection.synthetic.invalid',
 };
-const gateway = withBundledEvmChainSuggestions()[0];
+const gateway = withBundledEvmChainSuggestions().find(
+  (chain) => chain.chainId === 57570
+)!;
+const sameIdEvm = withBundledEvmChainSuggestions().find(
+  (chain) => chain.chainId === 5700
+)!;
 const GATEWAY_API = 'https://explorer-gw.syscoin.org/api';
 const GATEWAY_ALTERNATE = 'https://alternate-gateway.synthetic.invalid';
 const SYS_PRICE_URL = coinGeckoNativeQuoteUrl('syscoin', 'usd');
@@ -116,14 +121,7 @@ const chains = [
     rpc: [{ url: 'https://rpc-beta.api-selection.synthetic.invalid' }],
     explorers: [{ url: 'https://beta.api-selection.synthetic.invalid' }],
   },
-  {
-    name: 'Selection Gamma',
-    chain: INetworkType.Ethereum,
-    chainId: 5700,
-    nativeCurrency: { symbol: 'GAMMA' },
-    rpc: [{ url: 'https://rpc-gamma.api-selection.synthetic.invalid' }],
-    explorers: [{ url: 'https://gamma.api-selection.synthetic.invalid' }],
-  },
+  sameIdEvm,
   gateway,
 ];
 const BLOCKBOOK = 'https://blockbook.api-selection.synthetic.invalid';
@@ -279,7 +277,12 @@ beforeEach(async () => {
         json: async () => ({ syscoin: { usd: 0.25 } }),
       } as Response;
     }
-    const allowed = [new URL(API_A), new URL(API_B), new URL(GATEWAY_API)].find(
+    const allowed = [
+      new URL(API_A),
+      new URL(API_B),
+      new URL(GATEWAY_API),
+      new URL(sameIdEvm.apiUrl!),
+    ].find(
       (item) => item.origin === api.origin && item.pathname === api.pathname
     );
     if (allowed) {
@@ -672,11 +675,11 @@ it('does not carry an old EVM API through manual UTXO discovery into a same-numb
   await discoverUtxoAndReturn(user);
   await choose(user, 2);
   const result = await save(user, 'addCustomRpc', 5700);
-  expect(result.saved?.apiUrl).toBe('');
-  expect(apiField()).toHaveValue('');
+  expect(result.saved?.apiUrl).toBe(sameIdEvm.apiUrl);
+  expect(apiField()).toHaveValue(sameIdEvm.apiUrl);
   expect(result.live).toMatchObject({
     chainId: 5700,
-    apiUrl: '',
+    apiUrl: sameIdEvm.apiUrl,
     url: chains[2].rpc[0].url,
   });
   expect(result.saved).toEqual(result.live);
@@ -688,7 +691,10 @@ it('keeps a family round trip with an initially empty API healthy', async () => 
   await discoverUtxoAndReturn(user);
   await choose(user, 2);
   const result = await save(user, 'addCustomRpc', 5700);
-  expect(result.live).toMatchObject({ chainId: 5700, apiUrl: '' });
+  expect(result.live).toMatchObject({
+    chainId: 5700,
+    apiUrl: sameIdEvm.apiUrl,
+  });
   expect(result.saved).toEqual(result.live);
 });
 

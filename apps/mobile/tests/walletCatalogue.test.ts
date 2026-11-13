@@ -435,6 +435,7 @@ test('custom registration survives reopen, explicit edits and removal without de
   try {
     const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
     let state = await catalogue.reconcile(f.identity, current);
+    state = await catalogue.mutate(state.revision, { kind: 'remove-network', id: 'zksys' }, current);
     const custom = createNativeNetwork({ id: 'custom:421614', name: 'Custom test network', kind: 'evm', chainId: '421614', rpcUrl: 'https://rpc.example/custom', slip44: 60, symbol: 'GAS', decimals: 18, testnet: true });
     state = await catalogue.mutate(state.revision, { kind: 'save-network', registration: custom }, current);
     state = await catalogue.mutate(state.revision, { kind: 'select-network', id: custom.id }, current);
@@ -443,6 +444,7 @@ test('custom registration survives reopen, explicit edits and removal without de
     await f.reopen();
     const reopened = new NativeWalletCatalogue(f.storage.keyringStorage);
     state = await reopened.reconcile(f.identity, current);
+    assert.equal(state.networks.some((network) => network.id === 'zksys'), false);
     assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), row);
     assert.equal(state.active.networkId, custom.id);
     await assert.rejects(reopened.mutate(state.revision, { kind: 'remove-network', id: custom.id }, current));

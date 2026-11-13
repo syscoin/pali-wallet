@@ -2364,7 +2364,7 @@
       "notesBody": "ノートの表示、バックアップ、復元",
       "sentry": "Sentry",
       "sentryBody": "ノード、担保、権限鍵を管理",
-      "unavailable": "このビルドでは利用できません",
+      "sentryUnavailable": "このアカウントまたはネットワークでは Sentry を利用できません。",
       "publicTitle": "公開アドレスのツール",
       "publicBody": "これらのツールは保存済みの公開アドレスを管理します。トランザクションへの署名や、そのウォレットの復旧はできません。",
       "receiveHint": "受取機能と対応するテストネットのFaucetは、ウォレットで利用できます。"

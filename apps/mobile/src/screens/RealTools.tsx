@@ -53,7 +53,7 @@ export function RealTools({ accountLabel, networkLabel, watchOnly, onAccounts, o
         setPane({ kind: 'guardian', scope: guardianRecovery.scope, lifetime: new AbortController() })
       } last={!onPrivateNotes && watchOnly} />}
       {onPrivateNotes && <Row title={t('mobile.tools.notes')} subtitle={t('mobile.tools.notesBody')} icon="lock" onPress={onPrivateNotes} last={watchOnly} /> }
-      {!watchOnly && <Row title={t('mobile.tools.sentry')} subtitle={onSentryKeys ? t('mobile.tools.sentryBody') : t('mobile.tools.unavailable')} icon="shield" onPress={onSentryKeys} last />}</Card>
+      {!watchOnly && <Row title={t('mobile.tools.sentry')} subtitle={onSentryKeys ? t('mobile.tools.sentryBody') : t('mobile.tools.sentryUnavailable')} icon="shield" onPress={onSentryKeys} last />}</Card>
     {watchOnly && <Notice title={t('mobile.tools.publicTitle')} body={t('mobile.tools.publicBody')} />}
     <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 22 }}>{t('mobile.tools.receiveHint')}</Text>
   </Screen></SafeAreaView>;

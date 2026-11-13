@@ -63,11 +63,14 @@ test('only explicit retry replaces a failed lookup and concurrent retry reuses i
   assert.equal(calls, 2);
 });
 
-test('local Gateway remains selectable without remote results and overrides conflicting metadata', () => {
+test('all bundled networks remain selectable without remote results and override conflicting metadata', () => {
   const local = withBundledNativeNetworkSuggestions();
-  assert.deepEqual(local, [{ chainId: 57570, name: 'Syscoin Gateway', isTestnet: false,
-    nativeCurrency: { symbol: 'SYS' }, rpc: [{ url: 'https://rpc-gw.syscoin.org' }] }]);
-  assert.deepEqual(withBundledNativeNetworkSuggestions([{ ...local[0]!, name: 'Wrong', rpc: [{ url: 'https://wrong.invalid' }] }]), local);
+  assert.deepEqual(local.map(({ chainId }) => chainId), [57, 1, 8453, 42161, 570, 5757, 5700, 57057, 57570]);
+  assert.deepEqual(local.find(({ chainId }) => chainId === 57570), { chainId: 57570, name: 'Syscoin Gateway', isTestnet: false,
+    nativeCurrency: { symbol: 'SYS' }, rpc: [{ url: 'https://rpc-gw.syscoin.org' }] });
+  assert.deepEqual(local.find(({ chainId }) => chainId === 5757), { chainId: 5757, name: 'zkSYS', isTestnet: false,
+    nativeCurrency: { symbol: 'SYS' }, rpc: [{ url: 'https://rpc-zk.syscoin.org' }] });
+  assert.deepEqual(withBundledNativeNetworkSuggestions(local.map(row => ({ ...row, name: 'Wrong', rpc: [{ url: 'https://wrong.invalid' }] }))), local);
   assert.deepEqual(rankChainSuggestions(local, '57570').map(({ chainId }) => chainId), [57570]);
 });
 

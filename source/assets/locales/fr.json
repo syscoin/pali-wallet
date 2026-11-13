@@ -2364,7 +2364,7 @@
       "notesBody": "Afficher, sauvegarder ou restaurer les notes",
       "sentry": "Sentry",
       "sentryBody": "Gérer les nœuds, les garanties et les clés d’autorité",
-      "unavailable": "Indisponible dans cette version",
+      "sentryUnavailable": "Sentry n’est pas disponible pour ce compte ou ce réseau.",
       "publicTitle": "Outils pour adresses publiques",
       "publicBody": "Ces outils gèrent les adresses publiques enregistrées. Ils ne peuvent ni signer des transactions ni restaurer les portefeuilles associés.",
       "receiveHint": "La réception et les éventuels robinets de réseau de test sont disponibles dans Portefeuille."

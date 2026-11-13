@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createNativeNetworkView } from '../src/custody/networkView.ts';
 import { UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
-import { NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
+import { createNativeNetwork, NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
 import type { NativeWalletCatalogueSnapshot } from '../src/custody/walletCatalogue.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import type { NativeNetworkSelectionProof } from '../src/custody/accounts.ts';
@@ -51,6 +51,23 @@ test('network projection is stable, frozen, public-only and projects all saved E
   const capable = fixture(true).view.getSnapshot()!;
   assert.deepEqual(capable.networks.filter(network => !network.registration && network.canSign).map(network => network.id),
     UTXO_NETWORKS.filter(network => network.decimals === 8).map(network => network.id));
+});
+
+test('older saved networks are preserved while Add offers absent bundled networks without remote entries', async () => {
+  const custom = createNativeNetwork({ ...NATIVE_NETWORKS[0]!, id: 'custom:123456', chainId: '123456', name: 'Saved custom', rpcUrl: 'https://custom.example', symbol: 'GAS' });
+  const saved = Object.freeze({ revision: 7, accounts: [], networks: [...NATIVE_NETWORKS.filter(({ id }) => id !== 'zksys' && id !== 'base'), custom], utxoNetworks: [], active: { accountId: 'hd:60:0', networkId: 'ethereum' } });
+  const before = JSON.stringify(saved);
+  let mutations = 0;
+  const view = createNativeNetworkView({ getSnapshot: () => ({ phase: 'ready', revision: 4, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null }),
+    getCatalogue: () => saved, subscribe: () => () => {}, selectNetwork: async () => { throw Error('Unexpected selection'); }, cancelAccountOperation() {}, manageNetwork: async () => { mutations++; } },
+    { utxoSendAvailable: false, fetch: async () => Response.json([]) });
+  assert(!view.getSnapshot()!.networks.some(({ id }) => id === 'zksys' || id === 'base'));
+  const choices = await view.loadCatalogue!();
+  assert(choices.some(({ chainId, rpc }) => chainId === 5757 && rpc[0].url === 'https://rpc-zk.syscoin.org'));
+  assert(choices.some(({ chainId }) => chainId === 8453));
+  assert.equal(JSON.stringify(saved), before);
+  assert(view.getSnapshot()!.networks.some(({ registration }) => registration === custom));
+  assert.equal(mutations, 0);
 });
 
 test('network selection forwards both captured revisions and teardown removes observation', async () => {
