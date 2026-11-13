@@ -318,7 +318,7 @@ test('empty cache groups stay within the existing limit without changing archive
 test('Smart public identity and unresolved observations survive protected history reopen', async () => {
   const f = await fixture();
   try {
-    const smartAccount = { payer: wallet.address, operationHash: entryHash(50), operationNonce: '7' };
+    const smartAccount = { payer: wallet.address, operations: [{ operationHash: entryHash(50), operationNonce: '7' }, { operationHash: entryHash(51), operationNonce: '8' }] };
     const record = f.record(1, { accountId: 'smart:60:0', smartAccount });
     await f.history().recordObservation(record, guard);
     await f.history().recordObservation({ ...record, smartAccount, phase: 'submitted' }, guard);
@@ -327,8 +327,8 @@ test('Smart public identity and unresolved observations survive protected histor
     const saved = await f.history().load(scope, guard);
     assert.equal(saved.archived[0]!.phase, 'submitted');
     assert.deepEqual(saved.archived[0]!.smartAccount, smartAccount);
-    await assert.rejects(async () => f.history().recordObservation({ ...record, smartAccount: { ...smartAccount, operationHash: '0x01' } }, guard));
-    await assert.rejects(async () => f.history().recordObservation({ ...record, smartAccount: { ...smartAccount, operationNonce: (1n << 256n).toString() } }, guard));
+    await assert.rejects(async () => f.history().recordObservation({ ...record, smartAccount: { ...smartAccount, operations: [{ operationHash: '0x01', operationNonce: '7' }] } }, guard));
+    await assert.rejects(async () => f.history().recordObservation({ ...record, smartAccount: { ...smartAccount, operations: [{ operationHash: entryHash(50), operationNonce: (1n << 256n).toString() }] } }, guard));
     await assert.rejects(async () => f.history().recordObservation({ ...record, smartAccount: { ...smartAccount, payer: RECIPIENT } }, guard), { code: 'INVALID' });
   } finally { await f.cleanup(); }
 });

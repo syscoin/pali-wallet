@@ -3,6 +3,7 @@ import test from 'node:test';
 import { Transaction, Wallet } from 'ethers';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import { createSmartAccountSignedReplay } from '../../../source/wallet/smartAccountSignedReplay.ts';
+import { observeSmartAccountOperations } from '../../../source/wallet/smartAccountActivity.ts';
 import { observeEvmTransaction } from '../../../source/shared/evmTransactionObservation.ts';
 import { encodeErc20Transfer } from '../../../source/shared/erc20.ts';
 import { encodeERC7579Executions } from '../../../source/utils/smartAccount/account.ts';
@@ -126,7 +127,7 @@ async function fixture() {
       nonce?: number;
       owner?: string;
       calls?: { target: string; value: string; data?: string }[];
-      multi?: boolean;
+      multi?: boolean | 'same';
       plain?: boolean;
       outerTo?: string;
       outerData?: string;
@@ -168,7 +169,7 @@ async function fixture() {
           ? '0x'
           : paliEntryPointInterface.encodeFunctionData('handleOps', [
               options.multi
-                ? [operation, { ...operation, sender: recipient }]
+                ? [operation, { ...operation, ...(options.multi === 'same' ? { nonce: 8n } : { sender: recipient }) }]
                 : [operation],
               payer.address,
             ])) + (options.outerDataSuffix ?? ''),
@@ -191,6 +192,7 @@ async function fixture() {
   }
   return {
     replay,
+    read,
     records,
     session,
     append,
@@ -317,6 +319,50 @@ test('multiple outer UserOperations remain inspect-only', async () => {
   assert.equal(f.dispatched.length, 0);
 });
 
+for (const mode of ['all-true', 'second-false', 'second-missing', 'second-wrong', 'duplicate'] as const)
+  test(`native same-account multi-operation observation requires every event: ${mode}`, async () => {
+    const f = await fixture(), { entry } = await f.append({ multi: 'same' });
+    const saved = await f.replay.get(entry.hash); assert(saved);
+    assert.equal(saved.smartAccount.operations.length, 2);
+    assert.equal((await f.replay.prepare(entry.hash)).status, 'inspect-only');
+    const view = createNativeSignedRecordView(f.records, f.session, '66'.repeat(32),
+      { index: 0, type: 'SmartAccount', address: account }, getNativeNetwork('ethereum'));
+    const row = await view.smartActivity(entry.hash); assert(row?.smartAccount);
+    assert.equal(row.smartAccount.operations.length, 2);
+    const logs = row.smartAccount.operations.flatMap((operation, index) => {
+      if (mode === 'second-missing' && index === 1) return [];
+      const event = paliEntryPointInterface.encodeEventLog(paliEntryPointInterface.getEvent('UserOperationEvent')!, [
+        mode === 'second-wrong' && index === 1 ? blockHash : operation.operationHash,
+        account, '0x' + '00'.repeat(20), operation.operationNonce,
+        !(mode === 'second-false' && index === 1), 1, 1,
+      ]);
+      const log = { ...event, address: getPaliEntryPointAddress(1), transactionHash: entry.hash, blockHash, blockNumber: '0x10' };
+      return mode === 'duplicate' && index === 1 ? [log, log] : [log];
+    });
+    f.mined({ transactionHash: entry.hash, from: payer.address, to: getPaliEntryPointAddress(1),
+      status: '0x1', blockNumber: '0x10', blockHash, logs });
+    f.calls.length = 0;
+    const observing = observeSmartAccountOperations({ chainId: '1', hash: entry.hash, account, nonce: row.nonce, ...row.smartAccount }, f.read, () => undefined);
+    if (mode === 'all-true' || mode === 'second-false') {
+      const observed = await observing;
+      assert.equal(observed.status === 'mined' && observed.outcome, mode === 'all-true' ? 'confirmed' : 'reverted');
+    } else await assert.rejects(observing, /outcome unavailable/);
+    assert.equal(f.calls.filter(method => method === 'eth_getTransactionReceipt').length, 1);
+    assert.equal(f.calls.filter(method => method === 'eth_getBlockByNumber').length, 1);
+  });
+
+test('aggregate Smart observation refuses duplicate or unbounded identities before any read', async () => {
+  const f = await fixture(), { entry } = await f.append();
+  const saved = await f.replay.get(entry.hash); assert(saved);
+  const identity = saved.smartAccount.operations[0]!;
+  for (const operations of [[identity, identity], Array.from({ length: 513 }, () => identity)]) {
+    f.calls.length = 0;
+    await assert.rejects(observeSmartAccountOperations({ account, chainId: '1', hash: entry.hash, nonce: 0,
+      payer: payer.address, operations }, f.read, () => undefined));
+    assert.equal(f.calls.length, 0);
+  }
+});
+
 test('wrong recorded payer, expired consent, and changed selected owner prevent replay', async () => {
   for (const mode of ['payer', 'changed', 'expired', 'aba']) {
     const f = await fixture(),
@@ -404,7 +450,7 @@ test('native Activity discovers missing-metadata transfers, administration and i
   assert.equal(page.records[2]!.maximumFeeUnits, '600000');
   assert.equal(
     (await view.smartActivity(batch.entry.hash))!.smartAccount?.payer,
-    payer.address.toLowerCase()
+    payer.address
   );
 });
 
