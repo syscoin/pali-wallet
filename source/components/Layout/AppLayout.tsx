@@ -1,4 +1,4 @@
-import React, { FC, useMemo, memo, useCallback } from 'react';
+import React, { FC, useMemo, memo, useCallback, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -395,6 +395,25 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
     ) : (
       children || <Outlet />
     );
+  const routeContent = (
+    <Suspense
+      key={location.pathname}
+      fallback={
+        <div
+          role="status"
+          className="flex min-h-[12rem] items-center justify-center gap-3 text-sm text-brand-gray200"
+        >
+          <span
+            aria-hidden="true"
+            className="h-4 w-4 animate-spin rounded-full border-2 border-brand-gray200 border-t-transparent"
+          />
+          {t('buttons.loading')}
+        </div>
+      }
+    >
+      {pageContent}
+    </Suspense>
+  );
 
   return (
     <div
@@ -502,7 +521,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
           className="animate-fadeIn h-full"
           {...contextSafetyProps}
         >
-          {pageContent}
+          {routeContent}
         </div>
       ) : hideHeader ? (
         // Hardware wallet and other hideHeader pages get a minimal wrapper
@@ -511,7 +530,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
           className="animate-fadeIn h-full"
           {...contextSafetyProps}
         >
-          {pageContent}
+          {routeContent}
         </div>
       ) : (
         // Other pages get the standard content wrapper
@@ -524,7 +543,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
             isConnectPage ? '' : 'md:max-w-sm'
           } text-brand-white sm:max-w-full`}
         >
-          {pageContent}
+          {routeContent}
         </div>
       )}
     </div>

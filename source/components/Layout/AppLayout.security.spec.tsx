@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { clearNavigationState, navigateBack } from 'utils/navigationState';
@@ -80,6 +80,40 @@ describe('wallet content safety during background changes', () => {
     mockOverlayLoading = true;
     mockReturnContext = undefined;
     jest.clearAllMocks();
+  });
+
+  it('replaces Home with a local loading state while a destination chunk loads', async () => {
+    let loaded!: (module: { default: React.ComponentType }) => void;
+    const Send = lazy(
+      () =>
+        new Promise<{ default: React.ComponentType }>((resolve) => {
+          loaded = resolve;
+        })
+    );
+    const renderRoute = (child: React.ReactNode) => (
+      <Suspense fallback={<p>Outer startup loader</p>}>
+        <AppLayout>{child}</AppLayout>
+      </Suspense>
+    );
+    const view = render(renderRoute(<button>Home send action</button>));
+    expect(
+      screen.getByRole('button', { name: 'Home send action' })
+    ).toBeTruthy();
+    mockPath = '/send/eth';
+    view.rerender(renderRoute(<Send />));
+    expect(
+      screen.queryByRole('button', { name: 'Home send action' })
+    ).toBeNull();
+    expect(screen.queryByText('Outer startup loader')).toBeNull();
+    expect(screen.getByRole('navigation')).toBeTruthy();
+    expect(screen.getByRole('status')).toBeTruthy();
+    await act(async () =>
+      loaded({ default: () => <button>Recipient input</button> })
+    );
+    expect(
+      screen.getByRole('button', { name: 'Recipient input' })
+    ).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('hides global Back and Close once confirmation submission starts', () => {
