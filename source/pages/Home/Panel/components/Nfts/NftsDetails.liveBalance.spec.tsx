@@ -141,6 +141,7 @@ let records: Record<string, any>;
 let rawBalance: string | string[] = '0';
 let testCase = 0;
 let routeState: any;
+let ownedTokensRead: Promise<unknown> | undefined;
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 
 const NavigationObserver = () => {
@@ -162,12 +163,25 @@ const renderPage = (page: React.ReactNode, state?: any) =>
     </Provider>
   );
 
+const renderOwnedTokenImport = async () => {
+  const page = renderPage(<AddToken />);
+  const pending = ownedTokensRead;
+  expect(pending).toBeDefined();
+  // Complete the real discovery pipeline and flush its React state update
+  // before testing import/refresh behavior, without racing a wall-clock query.
+  await act(async () => {
+    await pending;
+  });
+  return page;
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation();
   jest.spyOn(console, 'error').mockImplementation();
   records = {};
   routeState = undefined;
+  ownedTokensRead = undefined;
   global.chrome = {
     runtime: { id: 'nft-quantity-synthetic' },
     storage: {
@@ -253,8 +267,10 @@ beforeEach(() => {
   wallet.resetAutoLockTimer = jest.fn();
   wallet.account = { eth: EthAccountController() };
   mockEmitter.mockImplementation(async ([, method], args = []) => {
-    if (method === 'getUserOwnedTokens')
-      return assets.getUserOwnedTokens(args[0]);
+    if (method === 'getUserOwnedTokens') {
+      ownedTokensRead = assets.getUserOwnedTokens(args[0]);
+      return ownedTokensRead;
+    }
     if (method === 'saveTokenInfo') return wallet.saveTokenInfo(...args);
     if (method === 'getOnlyMarketData') return null;
     throw new Error(`Unexpected controller call: ${method}`);
@@ -282,10 +298,8 @@ it.each(
   'reflects a real refreshed NFT balance $quantity $when',
   async ({ when, quantity }) => {
     rawBalance = '42';
-    const imported = renderPage(<AddToken />);
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Import EXACT token' })
-    );
+    const imported = await renderOwnedTokenImport();
+    fireEvent.click(screen.getByRole('button', { name: 'Import EXACT token' }));
     await waitFor(() => expect(mockAlerts.success).toHaveBeenCalledTimes(1));
     const saved = store.getState().vault.accountAssets[TYPE][0].ethereum[0];
     imported.unmount();
@@ -383,10 +397,8 @@ it.each([
   'does not retain an owned snapshot after its record is %s',
   async (change) => {
     rawBalance = '42';
-    const imported = renderPage(<AddToken />);
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Import EXACT token' })
-    );
+    const imported = await renderOwnedTokenImport();
+    fireEvent.click(screen.getByRole('button', { name: 'Import EXACT token' }));
     await waitFor(() => expect(mockAlerts.success).toHaveBeenCalledTimes(1));
     const saved = store.getState().vault.accountAssets[TYPE][0].ethereum[0];
     imported.unmount();
