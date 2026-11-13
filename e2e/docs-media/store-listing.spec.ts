@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createHash } from 'crypto';
+import { AbiCoder, id } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 
@@ -11,7 +12,9 @@ import {
   createVisualFixture,
   installVisualFixtureRoutes,
   VISUAL_FIXTURE_CHAIN_ID,
+  VISUAL_FIXTURE_RPC,
   VISUAL_FIXTURE_SEED,
+  visualFixtureRead,
 } from '../harness/visualFixture';
 
 import { DEMO_DAPP_URL, installDemoDapp } from './demoDapp';
@@ -24,6 +27,7 @@ const OUT = process.env.PALI_STORE_MEDIA_OUT
   : path.join(__dirname, 'out', 'store-listing');
 const RAW = path.join(OUT, 'raw');
 const viewport = { width: 400, height: 620 };
+const DEMO_TOKEN = '0x000000000000000000000000000000000000de01';
 const escape = (value: string) =>
   value.replace(
     /[&<>"']/g,
@@ -52,7 +56,10 @@ async function card(
     `data:image/png;base64,${fs.readFileSync(file).toString('base64')}`;
   const logo = fs
     .readFileSync(
-      path.join(E2E_CONFIG.repoRoot, 'docs/portal/static/img/logo.svg')
+      path.join(
+        E2E_CONFIG.repoRoot,
+        'source/assets/all_assets/pali-canary-icon.png'
+      )
     )
     .toString('base64');
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -73,7 +80,7 @@ async function card(
       images.length > 1 ? 300 : 400
     }px;height:auto}
     footer{position:absolute;left:64px;bottom:28px;right:64px;color:#a1b3c8;font-size:14px;display:flex;justify-content:space-between}
-  </style></head><body><main><section class="copy"><div class="brand"><img src="data:image/svg+xml;base64,${logo}" alt="">Pali Wallet</div>
+  </style></head><body><main><section class="copy"><div class="brand"><img src="data:image/png;base64,${logo}" alt="">Pali Wallet</div>
   <div class="tag">CANARY · PREVIEW</div><h1>${escape(title)}</h1><p>${escape(
     description
   )}</p></section>
@@ -129,23 +136,109 @@ test('capture four current Canary listing views with synthetic network data', as
     | undefined;
   const raw: Record<string, string> = {};
   const cards: Awaited<ReturnType<typeof card>>[] = [];
+  const tokenReads: string[] = [];
+  const tokenWrites: string[] = [];
   try {
     wallet = await PaliWallet.launch('store-listing-media', {
       offlineHttpProxy: server.url,
       recordVideo: false,
       viewport,
     });
+    const fixture = createVisualFixture();
     routes = await installVisualFixtureRoutes(
       wallet.context,
-      createVisualFixture(),
+      fixture,
       server.url
     );
+    const abi = AbiCoder.defaultAbiCoder();
+    await wallet.context.route(VISUAL_FIXTURE_RPC, async (route) => {
+      const request = route.request();
+      if (request.method() !== 'POST') return route.fallback();
+      const body = request.postDataJSON();
+      const calls = Array.isArray(body) ? body : [body];
+      const tokenTarget = (call: any) =>
+        String(call?.params?.[0]?.to || call?.params?.[0]).toLowerCase() ===
+        DEMO_TOKEN;
+      if (!calls.some(tokenTarget)) return route.fallback();
+      if (
+        calls.some((call: any) =>
+          /^(eth_send|eth_sign|personal_|wallet_)/.test(call?.method || '')
+        )
+      ) {
+        tokenWrites.push(...calls.map((call: any) => call.method));
+        return route.abort('blockedbyclient');
+      }
+      const responses = calls.map((call: any) => {
+        if (!tokenTarget(call))
+          return (
+            visualFixtureRead(fixture, request.url(), 'POST', call)?.body ?? {
+              jsonrpc: '2.0',
+              id: call.id,
+              error: { code: -32601, message: 'Unsupported demo read' },
+            }
+          );
+        tokenReads.push(
+          call.method + ':' + String(call.params?.[0]?.data || '')
+        );
+        let result: string | undefined;
+        if (call.method === 'eth_getCode') result = '0x60006000fd';
+        if (call.method === 'eth_call') {
+          const data = String(call.params[0].data);
+          const selector = data.slice(0, 10);
+          if (selector === id('name()').slice(0, 10))
+            result = abi.encode(['string'], ['Pali Demo Token']);
+          if (selector === id('symbol()').slice(0, 10))
+            result = abi.encode(['string'], ['DEMO']);
+          if (selector === id('decimals()').slice(0, 10))
+            result = abi.encode(['uint8'], [6]);
+          if (selector === id('totalSupply()').slice(0, 10))
+            result = abi.encode(['uint256'], ['1250400000']);
+          if (selector === id('supportsInterface(bytes4)').slice(0, 10))
+            result = abi.encode(['bool'], [false]);
+          if (selector === id('balanceOf(address)').slice(0, 10)) {
+            const [owner] = abi.decode(['address'], '0x' + data.slice(10));
+            if (owner.toLowerCase() === fixture.address.toLowerCase())
+              result = abi.encode(['uint256'], ['1250400000']);
+            if (owner.toLowerCase() === DEMO_TOKEN)
+              result = abi.encode(['uint256'], ['0']);
+          }
+        }
+        return result === undefined
+          ? {
+              jsonrpc: '2.0',
+              id: call.id,
+              error: { code: -32601, message: 'Unsupported demo token read' },
+            }
+          : { jsonrpc: '2.0', id: call.id, result };
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(Array.isArray(body) ? responses : responses[0]),
+      });
+    });
     await wallet.importSeedAndCreatePassword();
     await wallet.switchNetwork('zkTanenbaum');
     await wallet.ensureOnHome();
     const page = wallet.page;
     await expect(page.locator('#home-balance')).toHaveText('248.88');
+    await wallet.gotoRoute('#/tokens/add?tab=custom');
+    await page.locator('#custom-token-contract').fill(DEMO_TOKEN);
+    const importToken = page.getByRole('button', {
+      name: 'Import DEMO token',
+      exact: true,
+    });
+    await expect(importToken).toBeEnabled();
+    await importToken.click();
+    await expect(importToken).toBeDisabled();
+    await wallet.gotoRoute('#/home');
+    await wallet.ensureOnHome();
     await page.getByText('Assets', { exact: true }).click();
+    await expect(page.getByText('DEMO', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(/1,?250\.4/).first()).toBeVisible();
+    await page
+      .getByText('DEMO has been added to your wallet', { exact: true })
+      .waitFor({ state: 'hidden', timeout: 10_000 });
     raw.portfolio = await shot(page, 'portfolio');
 
     await page
@@ -237,6 +330,7 @@ test('capture four current Canary listing views with synthetic network data', as
       )
     );
     expect(routes.deniedWrites).toEqual([]);
+    expect(tokenWrites).toEqual([]);
     status = 'passed';
   } finally {
     fs.writeFileSync(
@@ -251,6 +345,8 @@ test('capture four current Canary listing views with synthetic network data', as
           submittedTransactions: 0,
           deniedWrites: routes?.deniedWrites,
           deniedUnknown: routes?.deniedUnknown,
+          tokenReads,
+          tokenWrites,
           capturedAt: new Date().toISOString(),
         },
         null,
