@@ -43,6 +43,7 @@ type Props = {
   onSendCollectible?(collectible: SavedCollectible): void;
   onBackHandlerChange?(handler: (() => boolean) | null): void;
   onModeChange?(title: string | null): void;
+  onNavigation?(): void;
 };
 type CollectibleSource =
   | { source: 'manual' }
@@ -88,11 +89,13 @@ function TokenContent({
   onSendCollectible,
   onBackHandlerChange,
   onModeChange,
+  onNavigation,
   initialContract,
 }: Props & { snapshot: NativeTokenSnapshot }) {
   useNativeTranslation();
   const { hidden: hideBalances } = useBalancePrivacy();
-  const [route, setRoute] = useState<Route>(initialContract ? { kind: 'detail', contract: initialContract } : { kind: 'list' });
+  const [route, setRouteState] = useState<Route>(initialContract ? { kind: 'detail', contract: initialContract } : { kind: 'list' });
+  const setRoute = useCallback((next: React.SetStateAction<Route>) => { onNavigation?.(); setRouteState(next); }, [onNavigation]);
   const [contract, setContract] = useState('');
   const [localError, setLocalError] = useState('');
   const lifetime = useRef({ alive: false, epoch: 0, running: false });
@@ -149,7 +152,7 @@ function TokenContent({
         : { kind: 'list' }
     );
     return true;
-  }, [controller, route, snapshot.account, snapshot.busy]);
+  }, [controller, route, snapshot.account, snapshot.busy, setRoute]);
   useLayoutEffect(() => {
     onBackHandlerChange?.(back);
     return () => onBackHandlerChange?.(null);

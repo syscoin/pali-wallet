@@ -1,4 +1,4 @@
-import type { NativeNotificationScope, NotificationRoute, NotificationSnapshot } from './types.ts';
+import type { NativeNotificationScope, NotificationEnableOptions, NotificationRoute, NotificationSnapshot } from './types.ts';
 
 const unavailable = async (): Promise<void> => { throw new Error('Account alerts require a native device'); };
 const snapshot: NotificationSnapshot = Object.freeze({ status: 'ready', enabledScopeIds: [], permission: 'denied', background: 'unsupported', pendingEventId: null, lastRunAt: null });
@@ -7,7 +7,7 @@ export const nativeActivityNotifications = {
   getSnapshot: () => snapshot,
   subscribe: (_listener: () => void) => () => undefined,
   load: async () => undefined,
-  enable: async (_scopes: readonly NativeNotificationScope[], _assertCurrent: () => void) => unavailable(),
+  enable: async (_scopes: readonly NativeNotificationScope[], _assertCurrent: () => void, _options: NotificationEnableOptions) => unavailable(),
   replaceScopes: async (_scopes: readonly NativeNotificationScope[]) => undefined,
   replaceAccountTypes: async (_accountTypes: readonly string[], _scopes: readonly NativeNotificationScope[], _assertCurrent: () => void) => undefined,
   disableScope: async (_id: string) => undefined,

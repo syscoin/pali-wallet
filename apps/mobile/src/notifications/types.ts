@@ -21,6 +21,11 @@ export type NotificationSnapshot = Readonly<{
   pendingEventId: string | null;
   lastRunAt: number | null;
 }>;
+export type NotificationPermissionResult = 'granted' | 'denied' | null;
+export type NotificationEnableOptions = Readonly<{
+  onPermissionPresentation?: (result: Promise<NotificationPermissionResult>) => void;
+  requestPermission: boolean;
+}>;
 export type NotificationRoute = Readonly<{
   scopeId: string; accountId: string; accountType: string; networkId: string;
   kind: ActivityNotificationFact['kind']; transactionHash?: string;
@@ -40,7 +45,7 @@ export interface NotificationStore {
   transact<T>(action: (document: NotificationDocument) => Promise<T> | T, assertCurrent: () => void): Promise<T>;
 }
 export interface NotificationDelivery {
-  permission(request: boolean): Promise<'granted' | 'denied'>;
+  permission(request: boolean, onPresentation?: NotificationEnableOptions['onPermissionPresentation']): Promise<'granted' | 'denied'>;
   backgroundStatus(): Promise<NotificationSnapshot['background']>;
   register(): Promise<void>;
   unregister(): Promise<void>;

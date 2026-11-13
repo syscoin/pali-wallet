@@ -206,6 +206,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
   const currentFeedback = feedback?.scope === scope ? feedback : null;
   const requestReceive = () => {
     if (!account || !canReceive || !lifecycle.current.alive || AppState.currentState !== 'active' || !model.isCurrent(account)) return;
+    navigation?.beginNavigation();
     invalidateActions();
     if (requiresBackup()) {
       const captured = Object.freeze({ model, account, scope: scopeOf(account), epoch: lifecycle.current.epoch });
@@ -242,7 +243,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
   </View> : undefined;
   const nativeCoinCard = account && <Card><Row title={symbol} subtitle={networkName} icon={<Coin id={network.networkId} size={32} />}
     right={<Text style={s.assetBalance} accessibilityLabel={hideBalances ? t('mobile.activityViews.watchAccountPortfolio.balanceHidden') : `${amount ?? t('settings.unavailable')} ${symbol}`}>{hideBalances ? HIDDEN_BALANCE : amount === null ? '—' : compactActivityAmountLabel(amount)} {symbol}</Text>}
-    onPress={() => { if (model.isCurrent(account)) setNativeDetailScope(scopeOf(account)); }} last />
+    onPress={() => { if (model.isCurrent(account)) { navigation?.beginNavigation(); setNativeDetailScope(scopeOf(account)); } }} last />
   </Card>;
 
   return <SafeAreaView edges={navigation && !receiving && !nativeDetail && !tokenTitle ? ['top'] : ['top', 'bottom']} style={s.safeArea}>
@@ -313,11 +314,11 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
         </>}
         <View style={nativeDetail ? { display: 'none' } : s.assetList} accessibilityElementsHidden={nativeDetail} aria-hidden={nativeDetail}>
         {utxo && supportsSptUtxoChain(utxo.chainId) && <NativeSptAssets key={scope} chainId={utxo.chainId} holdings={snapshot.assets?.status === 'available' ? snapshot.assets.holdings : null} loading={loading}
-          onModeChange={setTokenTitle} onBackHandlerChange={setTokenBack}
+          onNavigation={navigation?.beginNavigation} onModeChange={setTokenTitle} onBackHandlerChange={setTokenBack}
           onReceive={canReceive ? requestReceive : undefined}
           onRefresh={() => { if (account && model.isCurrent(account)) void model.refresh(); }}
           onSend={account && onSendSpt ? asset => { if (model.isCurrent(account)) onSendSpt(asset); } : undefined} />}
-        {tokenView && !utxo && <NativeTokens initialContract={initialTokenContract} registration={registration} nativeAsset={nativeCoinCard} controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle}
+        {tokenView && !utxo && <NativeTokens initialContract={initialTokenContract} registration={registration} nativeAsset={nativeCoinCard} controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle} onNavigation={navigation?.beginNavigation}
           onSend={account && onSendToken ? (token) => { if (model.isCurrent(account)) onSendToken(token); } : undefined}
           onSendCollectible={account && onSendCollectible ? (collectible) => { if (model.isCurrent(account)) onSendCollectible(collectible); } : undefined}
           onReceive={requestReceive} />}

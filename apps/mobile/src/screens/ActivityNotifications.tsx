@@ -2,6 +2,8 @@ import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalSto
 import { AppState, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NotificationChoice } from '../notifications/choices';
+import type { NativeNotificationScope, NotificationPermissionResult } from '../notifications/types';
+import type { NotificationReturn } from '../notifications/permissionReturn';
 import { notificationCapabilities } from '../notifications/capabilities';
 import { nativeActivityNotifications } from '../notifications/service';
 import { useNativeTranslation } from '../platform/localization';
@@ -12,16 +14,19 @@ export type NotificationSettingsTarget = Readonly<{
   scope: string;
   readChoices(): readonly NotificationChoice[];
   assertCurrent(): void;
+  onPermissionPresentation?(scope: NativeNotificationScope, result: Promise<NotificationPermissionResult>): void;
+  cancelPermissionReturn?(): void;
 }>;
 
-export function ActivityNotifications({ target, onBack }: { target: NotificationSettingsTarget; onBack(): void }) {
+export function ActivityNotifications({ target, onBack, permissionReturn }: { target: NotificationSettingsTarget; onBack(): void; permissionReturn?: NotificationReturn | null }) {
   const { t } = useNativeTranslation();
   const snapshot = useSyncExternalStore(nativeActivityNotifications.subscribe, nativeActivityNotifications.getSnapshot, nativeActivityNotifications.getSnapshot);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState(!!permissionReturn && permissionReturn.permission !== 'granted');
   const lifetime = useRef({ alive: true, token: 0, busy: false });
   const latest = useRef(target);
+  const returned = useRef<NotificationReturn | null>(null);
   useLayoutEffect(() => { latest.current = target; }, [target]);
   useLayoutEffect(() => {
     const owner = lifetime.current;
@@ -50,7 +55,17 @@ export function ActivityNotifications({ target, onBack }: { target: Notification
     catch { if (owner.alive && owner.token === token) setError(true); }
     finally { if (owner.alive && owner.token === token) { owner.busy = false; setBusy(false); } }
   };
-  const close = () => { lifetime.current.token++; onBack(); };
+  useEffect(() => {
+    if (!permissionReturn || returned.current === permissionReturn) return;
+    returned.current = permissionReturn;
+    const choice = choices.find(value => JSON.stringify(value.scope) === permissionReturn.scopeKey);
+    if (permissionReturn.permission !== 'granted') return;
+    void Promise.resolve().then(() => run(async check => {
+      if (!choice) throw Error('Alert enrollment changed');
+      await nativeActivityNotifications.enable([choice.scope], check, { requestPermission: false });
+    }));
+  });
+  const close = () => { target.cancelPermissionReturn?.(); lifetime.current.token++; onBack(); };
   const ready = available && snapshot.status === 'ready';
   return <SafeAreaView edges={['top']} style={s.safe}><Screen gap={16} footer={<>
     <Button title={t('mobile.notifications.checkNow')} icon="refresh" variant="secondary" disabled={busy || !available || enabled.size === 0}
@@ -71,7 +86,10 @@ export function ActivityNotifications({ target, onBack }: { target: Notification
       return <IdlePressable key={choice.scope.id} accessibilityRole="checkbox"
         accessibilityLabel={`${choice.label}, ${choice.networkName}, ${choice.scope.accountAddress}${limitation ? `, ${limitation}` : ''}`}
         accessibilityState={{ checked, disabled: busy || !ready || !checked && !supported }} aria-checked={checked} disabled={busy || !ready || !checked && !supported}
-        onPress={() => { if (checked || supported) void run(check => checked ? nativeActivityNotifications.disableScope(choice.scope.id) : nativeActivityNotifications.enable([choice.scope], check)); }}
+        onPress={() => { if (checked || supported) void run(check => checked ? nativeActivityNotifications.disableScope(choice.scope.id) : nativeActivityNotifications.enable([choice.scope], check, {
+          requestPermission: true,
+          onPermissionPresentation: result => { check(); target.onPermissionPresentation?.(choice.scope, result); },
+        })); }}
         style={({ pressed }) => [s.row, index > 0 && s.divider, pressed && s.pressed]}>
         <Coin id={choice.scope.network.id} fallbackSymbol={choice.symbol} size={36} />
         <View style={s.details}><Text numberOfLines={2} style={s.name}>{choice.label}</Text>

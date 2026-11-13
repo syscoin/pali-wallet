@@ -6,6 +6,7 @@ import { WalletUpdatePanel } from './WalletUpdatePanel';
 import { NativePreferences } from './NativePreferences';
 import { WalletBackupBadge } from './WalletBackupBadge';
 import { ActivityNotifications, type NotificationSettingsTarget } from './ActivityNotifications';
+import type { NotificationReturn } from '../notifications/permissionReturn';
 import { useNativeTranslation } from '../platform/localization';
 import { useFiatCurrency } from '../platform/fiatPreferences';
 import { nativeActivityNotifications } from '../notifications/service';
@@ -57,11 +58,12 @@ function ResetActivity({ accountLabel, target, onBack }: {
   </Screen></SafeAreaView>;
 }
 
-export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, onConnections, onInfrastructure, activityReset, notifications, onLock, onUpdate, onBack, navigation, backupRequired = false, onBackup }: {
+export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, onConnections, onInfrastructure, activityReset, notifications, notificationReturn, onLock, onUpdate, onBack, navigation, backupRequired = false, onBackup }: {
   accountLabel: string; watchOnly: boolean; navigation?: ShellLeafNavigation; onSecurity?: () => void; onAutoLock?: () => void; onConnections?: () => void; onInfrastructure?: () => void; onLock(): void; onUpdate?(): void; onBack(): void;
   backupRequired?: boolean; onBackup?(): void;
   activityReset?: ActivityResetTarget;
   notifications?: NotificationSettingsTarget;
+  notificationReturn?: NotificationReturn | null;
 }) {
   const { t, i18n } = useNativeTranslation();
   const currency = useFiatCurrency();
@@ -84,8 +86,20 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
   const [opened, setOpened] = useState<Readonly<{ leaf: 'about' | 'updates' | 'currency' | 'activity' | 'language' | 'notifications'; scope?: string }> | null>(null);
   const languageOwner = useRef<typeof opened>(null);
   const notificationsOwner = useRef<typeof opened>(null);
+  const returned = useRef<NotificationReturn | null>(null);
+  useLayoutEffect(() => {
+    let current = true;
+    if (notificationReturn && returned.current !== notificationReturn && notifications) {
+      void Promise.resolve().then(() => {
+        if (!current) return;
+        returned.current = notificationReturn;
+        const next = { leaf: 'notifications' as const, scope: notifications.scope }; notificationsOwner.current = next; setOpened(next);
+      });
+    }
+    return () => { current = false; };
+  }, [notificationReturn, notifications]);
   const leaf = opened?.leaf === 'activity' && opened.scope !== activityReset?.scope || opened?.leaf === 'notifications' && opened.scope !== notifications?.scope ? null : opened?.leaf ?? null;
-  const back = () => { languageOwner.current = null; notificationsOwner.current = null; if (leaf === 'updates' || leaf === 'activity') setOpened({ leaf: 'about' }); else if (leaf) setOpened(null); else onBack(); };
+  const back = () => { notifications?.cancelPermissionReturn?.(); languageOwner.current = null; notificationsOwner.current = null; if (leaf === 'updates' || leaf === 'activity') setOpened({ leaf: 'about' }); else if (leaf) setOpened(null); else onBack(); };
   useLayoutEffect(() => () => { languageOwner.current = null; notificationsOwner.current = null; }, []);
   useLayoutEffect(() => navigation?.registerBack(() => { back(); return true; }));
   useLayoutEffect(() => { navigation?.setImmersive(leaf !== null); return () => navigation?.setImmersive(false); }, [navigation, leaf]);
@@ -101,7 +115,7 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
   if (leaf === 'activity' && activityReset) return <ResetActivity key={activityReset.scope} accountLabel={accountLabel} target={activityReset} onBack={back} />;
   if (leaf === 'notifications' && notifications) return <ActivityNotifications key={notifications.scope} target={{ ...notifications,
     assertCurrent() { if (notificationsOwner.current !== opened) throw Error('CANCELLED'); notifications.assertCurrent(); },
-  }} onBack={back} />;
+  }} onBack={back} permissionReturn={notificationReturn} />;
   return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}><Screen gap={16} footer={
     <Button title={watchOnly ? t('mobile.settings.hide') : t('mobile.settings.lock')} icon="lock" size="compact" variant="secondary" onPress={onLock} />
   }>

@@ -3,7 +3,7 @@ import { AppState } from 'react-native';
 import type { RealTab, ShellLeafNavigation } from './RealAppShell';
 import { TabDeparture } from '../navigation/tabDeparture';
 
-export function useRealShell(scope: string | null, currentScope: () => string | null, exit: () => void) {
+export function useRealShell(scope: string | null, currentScope: () => string | null, exit: () => void, onNavigation?: () => void) {
   const [view, setView] = useState<{ scope: string | null; tab: RealTab; immersive: boolean }>({ scope, tab: 'wallet', immersive: false });
   if (view.scope !== scope) setView({ scope, tab: 'wallet', immersive: false });
   const { tab, immersive } = view;
@@ -12,10 +12,12 @@ export function useRealShell(scope: string | null, currentScope: () => string | 
   const back = useRef<(() => boolean) | null>(null);
   const leave = useRef<((navigate: () => void) => void) | null>(null);
   const current = useRef(currentScope), onExit = useRef(exit);
-  useLayoutEffect(() => { current.current = currentScope; onExit.current = exit; selected.current = tab; });
+  const navigationObserver = useRef(onNavigation);
+  useLayoutEffect(() => { current.current = currentScope; onExit.current = exit; selected.current = tab; navigationObserver.current = onNavigation; });
   useLayoutEffect(() => { gate.invalidate(); }, [gate, scope]);
   useLayoutEffect(() => () => gate.invalidate(), [gate]);
   const navigate = useCallback((next: RealTab, savePosition: boolean) => {
+    navigationObserver.current?.();
     if (selected.current === next) { gate.invalidate(); return; }
     const captured = current.current();
     if (!captured || AppState.currentState !== 'active') return;
@@ -33,8 +35,9 @@ export function useRealShell(scope: string | null, currentScope: () => string | 
   }, [gate]);
   const registerBack = useCallback((handler: () => boolean) => { back.current = handler; return () => { if (back.current === handler) back.current = null; }; }, []);
   const registerLeave = useCallback((handler: (navigate: () => void) => void) => { leave.current = handler; return () => { if (leave.current === handler) leave.current = null; }; }, []);
-  const setImmersive = useCallback((value: boolean) => { setView((previous) => previous.immersive === value ? previous : { ...previous, immersive: value }); }, []);
-  const navigation = useMemo<ShellLeafNavigation>(() => ({ registerBack, registerLeave, setImmersive }), [registerBack, registerLeave, setImmersive]);
+  const beginNavigation = useCallback(() => navigationObserver.current?.(), []);
+  const setImmersive = useCallback((value: boolean) => { if (value) navigationObserver.current?.(); setView((previous) => previous.immersive === value ? previous : { ...previous, immersive: value }); }, []);
+  const navigation = useMemo<ShellLeafNavigation>(() => ({ registerBack, registerLeave, setImmersive, beginNavigation }), [registerBack, registerLeave, setImmersive, beginNavigation]);
   const goBack = () => {
     if (back.current?.()) return;
     if (current.current() && tab !== 'wallet') select('wallet'); else onExit.current();

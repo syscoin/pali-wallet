@@ -1,6 +1,6 @@
 import { detectActivityNotifications, type ActivityNotificationBaseline, type ActivityNotificationScope } from '../../../../source/shared/activityNotifications.ts';
 import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus.ts';
-import type { NativeNotificationScope, NotificationDelivery, NotificationDocument, NotificationRoute, NotificationSnapshot, NotificationStore } from './types.ts';
+import type { NativeNotificationScope, NotificationDelivery, NotificationDocument, NotificationEnableOptions, NotificationRoute, NotificationSnapshot, NotificationStore } from './types.ts';
 import { notificationCapabilities } from './capabilities.ts';
 
 export const NOTIFICATION_LIMITS = Object.freeze({ scopes: 64, events: 128, scopesPerRun: 8, runMs: 25000 });
@@ -51,7 +51,7 @@ export class NativeNotificationCoordinator {
       await Promise.allSettled([this.ports.delivery.prune([]), this.ports.delivery.unregister()]);
     }
   }
-  async enable(inputs: readonly NativeNotificationScope[], assertCurrent: () => void) {
+  async enable(inputs: readonly NativeNotificationScope[], assertCurrent: () => void, options: NotificationEnableOptions) {
     const check = () => { if (assertCurrent() !== undefined) throw new Error('Alert enrollment changed'); };
     check();
     if (!inputs.length || inputs.length > NOTIFICATION_LIMITS.scopes) throw new Error('Choose accounts for alerts');
@@ -61,7 +61,7 @@ export class NativeNotificationCoordinator {
       const capability = notificationCapabilities(scope);
       return !capability.transactions && !capability.guardian;
     })) throw new Error('Alerts are unavailable for this account and network');
-    const permission = await this.ports.delivery.permission(true);
+    const permission = await this.ports.delivery.permission(options.requestPermission, options.onPermissionPresentation);
     check();
     this.publish({ permission });
     if (permission !== 'granted') throw new Error('Allow notifications in device settings to enable alerts');

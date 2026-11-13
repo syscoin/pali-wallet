@@ -36,7 +36,7 @@ function setup(component = 'HelpAbout', watchOnly = true, options: { backupRequi
     actions.push({ kind: 'open', value }); if (blocked) throw Error('Private diagnostic must not appear'); return await pending;
   } } };
   let registeredBack: (() => boolean) | undefined, immersive = false;
-  const navigation = { registerBack(back: () => boolean) { registeredBack = back; return () => { registeredBack = undefined; }; }, setImmersive(value: boolean) { immersive = value; } };
+  const navigation = { registerBack(back: () => boolean) { registeredBack = back; return () => { registeredBack = undefined; }; }, beginNavigation() {}, setImmersive(value: boolean) { immersive = value; } };
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Header', 'Screen', 'Text', 'Notice', 'Row'].map((v) => [v, v])), colors: {} };
   const deps: Record<string, unknown> = { react, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     'expo-clipboard': { async setStringAsync(value: string) { actions.push({ kind: 'copy', value }); if (blocked) return false; return await pending; } },

@@ -1,3 +1,4 @@
+import { NotificationPermissionReturn } from '../src/notifications/permissionReturn.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { PALI_RECOVERY_ALERTS_URL } from '../../../source/shared/smartAccountLinks.ts';
@@ -371,6 +372,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   Object.assign(dependencies, {
     './publicSendDraft': publicSendDraft,
     './NativeAccountOverview': { NativePortfolioRoute: 'NativePortfolio' },
+    '../notifications/permissionReturn': { NotificationPermissionReturn },
     '../notifications/service': { nativeActivityNotifications: quietActivityNotifications, isNotificationPermissionPromptActive: () => false },
     '../platform/cameraPermission': { isCameraPermissionPromptActive: () => cameraPromptActive || cameraModule.exports.isCameraPermissionPromptActive() },
     '../activity/accountActivity': { AccountActivityController: class {} },

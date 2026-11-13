@@ -14,6 +14,8 @@ import { NativeActivityScreen } from './NativeActivity';
 import { walletFetch } from '../platform/http';
 import { watchNotificationChoices } from '../notifications/choices';
 import { nativeActivityNotifications } from '../notifications/service';
+import type { NativeNotificationScope, NotificationPermissionResult } from '../notifications/types';
+import type { NotificationReturn } from '../notifications/permissionReturn';
 import { authorizePublicView, getPublicViewAuthorizationStatus, isNativeCredentialPromptActive } from '../platform/credential';
 import { weakensIdlePolicy } from '../../../../source/shared/idleLockPolicy';
 import { bindNativePrivateAuthentication, withNativePrivateAuthentication } from '../custody/privateAuthentication';
@@ -26,8 +28,12 @@ const readGuardianStatus: import('../core/watchOnlyAuthority').GuardianRecoveryR
 };
 
 /** Owns public navigation only; the existing App-owned authority remains authoritative. */
-export function WatchSession({ authority, onAccounts, onExit }: {
+export function WatchSession({ authority, onAccounts, onExit, notificationReturn, onNotificationPermissionPresentation, cancelNotificationReturn, discardPendingNotificationReturn }: {
   authority: WatchOnlyAuthority; onAccounts(): void; onExit(): void;
+  notificationReturn?: NotificationReturn | null;
+  onNotificationPermissionPresentation?(scope: NativeNotificationScope, result: Promise<NotificationPermissionResult>): void;
+  cancelNotificationReturn?(): void;
+  discardPendingNotificationReturn?(): void;
 }) {
   const { t } = useNativeTranslation();
   const subscribe = useCallback((listener: () => void) => authority.subscribe(listener), [authority]);
@@ -50,8 +56,14 @@ export function WatchSession({ authority, onAccounts, onExit }: {
   }, [authority]);
 
   const identity = snapshot.status === 'ready' ? `${snapshot.selectedAccountId}:${snapshot.selectedNetworkId}` : null;
-  const shell = useRealShell(identity, currentScope, onExit);
+  const shell = useRealShell(identity, currentScope, onExit, discardPendingNotificationReturn);
   const restoreRoot = shell.restoreRoot;
+  const returned = useRef<NotificationReturn | null>(null);
+  useLayoutEffect(() => {
+    if (notificationReturn && returned.current !== notificationReturn && identity && currentScope()) {
+      returned.current = notificationReturn; restoreRoot('settings', identity);
+    }
+  }, [notificationReturn, identity, currentScope, restoreRoot]);
   const latestBack = useRef(shell.goBack);
   useLayoutEffect(() => { latestBack.current = shell.goBack; });
   useEffect(() => {
@@ -87,6 +99,8 @@ export function WatchSession({ authority, onAccounts, onExit }: {
         throw Error('CANCELLED');
     },
     readChoices: () => watchNotificationChoices(authority),
+    onPermissionPresentation: onNotificationPermissionPresentation,
+    cancelPermissionReturn: cancelNotificationReturn,
   } : undefined;
   useEffect(() => {
     if (viewLock.phase !== 'unlocked' || snapshot.status !== 'ready') return;
@@ -192,8 +206,8 @@ export function WatchSession({ authority, onAccounts, onExit }: {
         }),
       } : undefined} />;
   }
-  else content = <RealSettings key={liveScope} navigation={shell.navigation} notifications={notificationSettings} accountLabel={label} watchOnly onAutoLock={() => {
+  else content = <RealSettings key={liveScope} navigation={shell.navigation} notifications={notificationSettings} notificationReturn={notificationReturn} accountLabel={label} watchOnly onAutoLock={() => {
     if (liveScope && AppState.currentState === 'active' && currentScope() === liveScope) setAutoLockScope(liveScope);
   }} onLock={lockView} onBack={() => shell.select('wallet')} />;
-  return <RealAppShell tab={shell.tab} onTab={tab => { notificationTransition.current = null; shell.select(tab); }} immersive={shell.immersive || snapshot.status !== 'ready'}>{content}</RealAppShell>;
+  return <RealAppShell tab={shell.tab} onTab={tab => { cancelNotificationReturn?.(); notificationTransition.current = null; shell.select(tab); }} immersive={shell.immersive || snapshot.status !== 'ready'}>{content}</RealAppShell>;
 }

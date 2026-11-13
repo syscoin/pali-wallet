@@ -54,7 +54,7 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
   const [sheet, setSheet] = useState<'filter' | 'send' | 'receive' | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
-  const openSheet = (next: 'filter' | 'send' | 'receive') => { setError(false); setSheet(next); };
+  const openSheet = (next: 'filter' | 'send' | 'receive') => { portfolio.navigation?.beginNavigation(); setError(false); setSheet(next); };
   const lifetime = useRef({ alive: true, generation: 0, busy: false });
   useLayoutEffect(() => {
     const owner = lifetime.current;
@@ -87,7 +87,7 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
     catch { if (owner.alive && generation === owner.generation) setError(true); }
     finally { if (owner.alive && generation === owner.generation) { owner.busy = false; setBusy(false); } }
   };
-  const openDetail = (choice: NotificationChoice, receive = false, token?: string) => run(async check => {
+  const openDetail = (choice: NotificationChoice, receive = false, token?: string) => { portfolio.navigation?.beginNavigation(); return run(async check => {
     if (navigateDetail) { await navigateDetail(choice, receive, token, check); return; }
     const generation = lifetime.current.generation;
     setDetail({ accountId: choice.scope.accountId, networkId: choice.scope.network.id, receive, token });
@@ -95,7 +95,7 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
     catch (cause) { setDetail(null); throw cause; }
     if (!lifetime.current.alive || generation !== lifetime.current.generation) return;
     setSheet(null); setDetail({ accountId: choice.scope.accountId, networkId: choice.scope.network.id, receive, token });
-  });
+  }); };
   if (detailCurrent) return <NativePortfolio {...portfolio} onOverviewBack={closeDetail} openReceive={detail.receive}
     onReceiveIntentConsumed={() => {
       setDetail(current => current === detail ? { ...current, receive: false } : current);

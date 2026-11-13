@@ -32,7 +32,7 @@ function fixture(watchOnly: boolean) {
   const props = { accountLabel: 'Current account', watchOnly,
     activityReset: { scope: 'account:network', networkLabel: 'Ethereum', async reset(check: () => void) { check(); resets++; } }, onLock() { locks++; }, onUpdate() { locks++; }, onBack() { exits++; },
     navigation: { registerBack(listener: () => boolean) { back = listener; return () => { if (back === listener) back = undefined; }; },
-      setImmersive(value: boolean) { immersive = value; } } };
+      beginNavigation() {}, setImmersive(value: boolean) { immersive = value; } } };
   const render = () => {
     const route = settings.render(props);
     if (route.type === 'HelpAbout') { help ??= createHelp(); return help.render(route.props); }

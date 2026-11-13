@@ -15,14 +15,14 @@ function randomId() {
   return 'pali-alert-' + Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 const delivery: NotificationDelivery = {
-  async permission(request) {
+  async permission(request, onPresentation) {
     if (request && Platform.OS === 'android') await Notifications.setNotificationChannelAsync(ACTIVITY_NOTIFICATION_CHANNEL, {
       // eslint-disable-next-line import/namespace -- Expo's documented runtime enum is re-exported from a .types module.
       name: 'Account activity', importance: Notifications.AndroidImportance.DEFAULT,
       // eslint-disable-next-line import/namespace -- Expo's documented runtime enum is re-exported from a .types module.
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE, sound: null,
     });
-    return requestNativeNotificationPermission(request);
+    return requestNativeNotificationPermission(request, onPresentation);
   },
   async backgroundStatus() {
     if (!(await TaskManager.isAvailableAsync())) return 'unsupported';

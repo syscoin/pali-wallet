@@ -36,7 +36,7 @@ function fixture(row: UtxoActivityRow) {
     '../activity/assetIcon': { utxoActivityAssetIcon: () => undefined },
   });
   const props = { authority: {}, selectedNetwork: { id: 'syscoin', name: 'Syscoin', symbol: 'SYS', decimals: 8, chainId: 57 },
-    accountLabel: 'Daily', navigation: { registerBack: () => () => {}, registerLeave: () => () => {}, setImmersive() {} }, onBack() {} };
+    accountLabel: 'Daily', navigation: { registerBack: () => () => {}, registerLeave: () => () => {}, beginNavigation() {}, setImmersive() {} }, onBack() {} };
   const render = () => screenElements(host.render(props));
   return { render, close: host.close, row() {
     const list = render().find(item => item.type === 'FlatList')!;
