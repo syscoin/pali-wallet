@@ -52,6 +52,9 @@ jest.mock('react-redux', () => ({
 jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: mockEmitter }),
 }));
+jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
+  controllerEmitter: (...args: any[]) => mockEmitter(...args),
+}));
 jest.mock('hooks/index', () => ({
   useUtils: () => ({ useCopyClipboard: () => [false, jest.fn()], alert: {} }),
   useTransactionsListConfig: () => ({
@@ -118,6 +121,8 @@ const controller = {
 const mockState: any = {
   vaultGlobal: { activeSlip44: 60 },
   vault: {
+    activeAccount: { id: 0, type: 'HDAccount' },
+    accounts: { HDAccount: { 0: { id: 0, address: ACCOUNT } } },
     activeNetwork: {
       chainId: 5700,
       kind: 'ethereum',
@@ -313,6 +318,7 @@ it('preserves empty arrays through the real enhanced details/controller path', a
     [60, { ethereumTransaction: { web3Provider: provider } }],
   ]);
   mockEmitter.mockImplementation(([, method], args) => {
+    if (method === 'getSavedEvmTransaction') return Promise.resolve(null);
     if (method === 'getEvmTransactionFromProvider') return Promise.resolve(tx);
     if (method === 'decodeEvmTransactionData')
       return wallet.decodeEvmTransactionData(args[0]);
@@ -320,6 +326,10 @@ it('preserves empty arrays through the real enhanced details/controller path', a
   });
   render(<EvmTransactionDetailsEnhanced hash={tx.hash} tx={tx as any} />);
   await screen.findByText(/Method:SafeBatchTransferFrom/);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'getSavedEvmTransaction'],
+    [tx.hash]
+  );
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'decodeEvmTransactionData'],
     [expect.objectContaining({ input: tx.input })]
