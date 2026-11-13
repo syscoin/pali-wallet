@@ -57,6 +57,7 @@ it('preserves supplied account totals and refuses ambiguous or inconsistent coin
     { ...tx, vin: [{ ...tx.vin[0], isOwn: true }] },
     { ...tx, vin: [{ ...tx.vin[0], isAddress: true }] },
     { ...tx, vin: [{ ...tx.vin[0], value: '1' }] },
+    { ...tx, vin: [{ n: 0, isAddress: false, value: '0' }] },
     ...['', '0', 'zz', '0x0102'].map((inputHex) => ({
       ...tx,
       vin: [{ coinbase: inputHex }],
@@ -169,9 +170,7 @@ it('classifies unsupported summary only from the existing successful basic-only 
       false
     );
   }
-  expect(isUnsupportedTxSummaryResponse({ txs: 1 }, 'details=txslight')).toBe(
-    false
-  );
+  expect(isUnsupportedTxSummaryResponse({ txs: 1 }, 'details=txs')).toBe(false);
 });
 it('derives only account-relative owned totals with exact integers and preserves other fields', () => {
   const huge = '900719925474099300000';
@@ -239,10 +238,10 @@ it('retains exact request options and one host-lifetime capability memo shared a
   ).resolves.toEqual(response);
   expect(fetch.mock.calls).toEqual([
     [URL, ACCOUNT, 'details=txsummary&pageSize=30', true],
-    [URL, ACCOUNT, 'details=txslight&pageSize=30', true],
+    [URL, ACCOUNT, 'details=txs&pageSize=30', true],
   ]);
   expect(history.getHistoryRequestOptions(URL, 'other-account', 2, 20)).toBe(
-    'details=txslight&page=2&pageSize=20'
+    'details=txs&page=2&pageSize=20'
   );
   expect(history.getHistoryRequestOptions(URL + '/other', ACCOUNT)).toBe(
     'details=txsummary&pageSize=30'
@@ -279,7 +278,7 @@ it.each(['throw', 'null', 'invalid'])(
     expect(fetch.mock.calls[1]).toEqual([
       URL,
       ACCOUNT,
-      'details=txslight&page=2&pageSize=20',
+      'details=txs&page=2&pageSize=20',
       true,
     ]);
     expect(history.getHistoryRequestOptions(URL, ACCOUNT)).toBe(
@@ -289,7 +288,7 @@ it.each(['throw', 'null', 'invalid'])(
     if (failure === 'throw') expect(warn).toHaveBeenCalledWith(cause);
   }
 );
-it('propagates fallback failure and preserves direct txslight failures without another request', async () => {
+it('propagates fallback failure and preserves direct txs failures without another request', async () => {
   const error = new Error('public-test-error'),
     fetch = jest
       .fn()
@@ -301,11 +300,11 @@ it('propagates fallback failure and preserves direct txslight failures without a
     history.fetchAccountHistory(URL, ACCOUNT, 'details=txsummary')
   ).rejects.toBe(error);
   expect(history.getHistoryRequestOptions(URL, ACCOUNT)).toBe(
-    'details=txslight&pageSize=30'
+    'details=txs&pageSize=30'
   );
   fetch.mockClear();
   await expect(
-    history.fetchAccountHistory(URL, ACCOUNT, 'details=txslight')
+    history.fetchAccountHistory(URL, ACCOUNT, 'details=txs')
   ).rejects.toBe(error);
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(warn).not.toHaveBeenCalled();
@@ -327,7 +326,7 @@ it('keeps optional diagnostic propagation and explicit later-page admission', as
     page.fetchAccountHistory(
       URL,
       ACCOUNT,
-      'details=txslight&page=2&pageSize=30',
+      'details=txs&page=2&pageSize=30',
       true
     )
   ).resolves.toEqual({ txs: 9, unconfirmedTxs: 0, transactions: [] });

@@ -274,7 +274,7 @@ it('keeps rejected initial UTXO history visibly retryable instead of empty', asy
   expect(mockTransport).toHaveBeenCalledTimes(2);
   expect(mockTransport.mock.calls.map((call) => call[2])).toEqual([
     'details=txsummary&pageSize=30',
-    'details=txslight&pageSize=30',
+    'details=txs&pageSize=30',
   ]);
   expect(mockStore.getState().vaultGlobal.networkStatus).toBe('idle');
   jest.useFakeTimers();

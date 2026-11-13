@@ -77,9 +77,9 @@ export const validateAccountHistory = (data: any, allowEmptyPage: boolean) => {
   throw new Error('Incomplete Blockbook history response');
 };
 
-// Only account-history responses carry queried-account ownership flags. A raw
-// /tx read or txslight's transaction-wide value/valueIn aliases cannot supply
-// these totals. Older responses without explicit ownership stay unresolved.
+// Only account-history ownership flags can establish these totals. A raw /tx
+// response or transaction-wide value/valueIn aliases cannot supply them.
+// Responses without explicit ownership stay unresolved.
 export const normalizeAccountHistory = (accountData: any) => {
   if (!Array.isArray(accountData?.transactions)) return accountData;
   return {
@@ -174,7 +174,7 @@ export function createBlockbookAccountHistory(
     pageSize = 30
   ) => {
     const details = txSummaryUnsupportedBackends.has(networkUrl)
-      ? 'txslight'
+      ? 'txs'
       : 'txsummary';
     const pageOption = page !== undefined ? `&page=${page}` : '';
 
@@ -226,7 +226,7 @@ export function createBlockbookAccountHistory(
       txSummaryUnsupportedBackends.add(networkUrl);
     const fallbackOptions = requestOptions.replace(
       'details=txsummary',
-      'details=txslight'
+      'details=txs'
     );
     const fallback = await fetch(
       networkUrl,
