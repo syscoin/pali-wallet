@@ -1,5 +1,11 @@
 /** @jest-environment node */
-jest.mock('..', () => ({ getController: jest.fn(), notificationManager: {} }));
+jest.mock('..', () => ({
+  getController: jest.fn(),
+  notificationManager: {
+    notifyTransaction: jest.fn(),
+    updatePendingTransactionBadge: jest.fn(),
+  },
+}));
 jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
   patchFetchWithPaliHeaders: jest.fn(),
 }));
@@ -12,7 +18,13 @@ jest.mock('state/store', () => ({
   __esModule: true,
   default: {
     getState: () => mockState,
-    dispatch: jest.fn(),
+    dispatch: jest.fn((action) => {
+      const reducer = jest.requireActual('state/vault').default;
+      mockState = {
+        ...mockState,
+        vault: structuredClone(reducer(mockState.vault, action)),
+      };
+    }),
     subscribe: jest.fn(() => () => undefined),
   },
 }));
@@ -28,7 +40,9 @@ import { webcrypto } from 'crypto';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
+import { notificationManager } from '..';
 import { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
+import * as privateReplay from '../../../wallet/privateNoteReplay';
 import { encodeERC7579Executions } from 'utils/smartAccount/account';
 import {
   getPaliEntryPointAddress,
@@ -43,6 +57,7 @@ const smart = '0x' + '11'.repeat(20),
 const payer = new Wallet('0x' + '33'.repeat(32));
 const blockHash = '0x' + '44'.repeat(32);
 let mockState: any;
+afterEach(() => jest.restoreAllMocks());
 
 async function fixture(nonce = 0) {
   Object.defineProperty(globalThis, 'crypto', {
@@ -59,6 +74,7 @@ async function fixture(nonce = 0) {
         slip44: 60,
         url: 'https://rpc.invalid',
       },
+      accountTransactions: { SmartAccount: {}, HDAccount: {} },
       accounts: {
         SmartAccount: { 1: { address: smart, isSmartAccount: true } },
         HDAccount: { 0: { address: payer.address } },
@@ -107,6 +123,10 @@ async function fixture(nonce = 0) {
   const wallet: any = Object.create(MainController.prototype);
   wallet.walletSessionGeneration = 1;
   wallet.networkRequestGeneration = 1;
+  wallet.pendingEvmReceiptChecks = new Map();
+  wallet.startRapidTransactionPolling = jest.fn();
+  wallet.saveWalletState = jest.fn(async () => undefined);
+  wallet.refreshBalancesAfterReceipt = jest.fn();
   wallet.assertWalletReadyForSigning = () => undefined;
   wallet.assertCurrentWalletSession = (generation: number) => {
     if (generation !== wallet.walletSessionGeneration)
@@ -237,6 +257,155 @@ it('finds metadata-free Smart operations and replays exact bytes through the rec
   expect(f.broadcasts).toEqual([f.rawTransaction]);
 });
 
+it('seeds missing public history on replay ACK so the existing Smart receipt reconciliation can confirm it after reload', async () => {
+  const f = await fixture();
+  expect(mockState.vault.accountTransactions.SmartAccount[1]).toBeUndefined();
+  const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
+  await f.wallet.confirmEvmSignedReplay(prepared.review.id);
+  const selected =
+    mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0];
+  const payerRow =
+    mockState.vault.accountTransactions.HDAccount[0].ethereum[1][0];
+  expect(selected).toMatchObject({
+    hash: f.hash,
+    from: payer.address,
+    input: Transaction.from(f.rawTransaction).data,
+    smartAccountExecutionFrom: smart,
+  });
+  expect(payerRow.hash).toBe(f.hash);
+  expect(selected.blockNumber).toBeUndefined();
+  expect(f.wallet.startRapidTransactionPolling).toHaveBeenCalledWith(
+    f.hash,
+    1,
+    false,
+    { id: 1, type: 'SmartAccount' }
+  );
+  expect(f.wallet.saveWalletState).toHaveBeenCalled();
+  // Reopen with the persisted public row: the normal bounded receipt pass now
+  // has a candidate, whereas the original lost ACK left this array empty.
+  mockState = structuredClone(mockState);
+  f.wallet.getEvmTransactionFromProvider = jest.fn(async () => ({
+    ...selected,
+    blockNumber: 12,
+    blockHash,
+    confirmations: 1,
+    txreceipt_status: '1',
+  }));
+  await f.wallet.reconcileLocalPendingEvmSmartAccountTransactions(
+    { id: 1, type: 'SmartAccount' },
+    1
+  );
+  expect(f.wallet.getEvmTransactionFromProvider).toHaveBeenCalledWith(f.hash);
+  expect(
+    mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0]
+      .confirmations
+  ).toBe(1);
+  expect(
+    mockState.vault.accountTransactions.HDAccount[0].ethereum[1][0]
+      .confirmations
+  ).toBe(1);
+});
+
+it('tracks the Smart account actually named by earlier payer bytes, not the currently selected parent', async () => {
+  const f = await fixture();
+  const entry = await f.records.readExact(
+    f.session,
+    '1',
+    payer.address,
+    f.hash
+  );
+  mockState.vault.accounts.SmartAccount[2] = {
+    address: recipient,
+    isSmartAccount: true,
+  };
+  mockState.vault.activeAccount = { id: 2, type: 'SmartAccount' };
+  await f.wallet.recordAcknowledgedEvmReplay(entry, () => undefined);
+  expect(
+    mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0]
+  ).toMatchObject({ hash: f.hash, smartAccountExecutionFrom: smart });
+  expect(mockState.vault.accountTransactions.SmartAccount[2]).toBeUndefined();
+  expect(
+    mockState.vault.accountTransactions.HDAccount[0].ethereum[1][0].hash
+  ).toBe(f.hash);
+});
+
+it.each(['cancel', 'speed-up'] as const)(
+  'preserves the authenticated %s intent in public tracking',
+  async (operation) => {
+    const f = await fixture();
+    const entry = await f.records.readExact(
+      f.session,
+      '1',
+      payer.address,
+      f.hash
+    );
+    const originalHash = '0x' + '77'.repeat(32);
+    await f.wallet.recordAcknowledgedEvmReplay(
+      { ...entry, operation, originalHash },
+      () => undefined
+    );
+    const row = mockState.vault.accountTransactions.HDAccount[0].ethereum[1][0];
+    expect(row.replacesHash).toBe(originalHash);
+    expect(operation === 'cancel' ? row.isCancel : row.isSpeedUp).toBe(true);
+  }
+);
+
+it('runs the private-note acknowledgement before tracking and does not expose private metadata', async () => {
+  const f = await fixture();
+  let acknowledged = false;
+  jest.spyOn(privateReplay, 'authorizePrivateNoteReplay').mockResolvedValue({
+    assertCurrent: () => undefined,
+    withAdmission: async (admit) => admit(),
+    onAcknowledged: async () => {
+      acknowledged = true;
+    },
+  });
+  f.wallet.saveWalletState.mockImplementation(async () => {
+    expect(acknowledged).toBe(true);
+  });
+  const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
+  await f.wallet.confirmEvmSignedReplay(prepared.review.id);
+  expect(acknowledged).toBe(true);
+  const row =
+    mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0];
+  expect(row).not.toHaveProperty('privateDeposit');
+  expect(row).not.toHaveProperty('privateWithdrawal');
+});
+
+it('does not publish into another account when selection changes while acknowledging replay', async () => {
+  const f = await fixture();
+  jest.spyOn(privateReplay, 'authorizePrivateNoteReplay').mockResolvedValue({
+    assertCurrent: () => undefined,
+    withAdmission: async (admit) => admit(),
+    onAcknowledged: async () => {
+      mockState.vault.activeAccount = { id: 0, type: 'HDAccount' };
+    },
+  });
+  const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
+  await expect(
+    f.wallet.confirmEvmSignedReplay(prepared.review.id)
+  ).resolves.toMatchObject({ status: 'unknown', hash: f.hash });
+  expect(mockState.vault.accountTransactions.SmartAccount[1]).toBeUndefined();
+  expect(mockState.vault.accountTransactions.HDAccount[0]).toBeUndefined();
+  expect(f.broadcasts).toEqual([f.rawTransaction]);
+});
+
+it('retains an accepted replay as unknown if public history tracking fails', async () => {
+  const f = await fixture();
+  f.wallet.sendAndSaveTransaction = jest.fn(async () => {
+    throw new Error('storage failed');
+  });
+  const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
+  await expect(
+    f.wallet.confirmEvmSignedReplay(prepared.review.id)
+  ).resolves.toMatchObject({ status: 'unknown', hash: f.hash });
+  expect(f.broadcasts).toEqual([f.rawTransaction]);
+  expect(
+    (await f.records.readExact(f.session, '1', payer.address, f.hash))
+      ?.rawTransaction
+  ).toBe(f.rawTransaction);
+});
+
 it.each(['selected', 'payer', 'network', 'session'] as const)(
   'refuses %s drift after Smart replay review',
   async (change) => {
@@ -267,6 +436,36 @@ it('uses ordinary payer history when that EOA is selected', async () => {
   const saved = await f.wallet.getSavedEvmTransaction(f.hash);
   expect(saved.from.toLowerCase()).toBe(payer.address.toLowerCase());
   expect(saved).not.toHaveProperty('smartAccount');
+});
+
+it('also tracks the affected Smart account when its recorded EOA payer is selected', async () => {
+  const f = await fixture();
+  mockState.vault.activeAccount = { id: 0, type: 'HDAccount' };
+  const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
+  await f.wallet.confirmEvmSignedReplay(prepared.review.id);
+  expect(
+    mockState.vault.accountTransactions.HDAccount[0].ethereum[1][0].hash
+  ).toBe(f.hash);
+  expect(f.wallet.startRapidTransactionPolling).toHaveBeenCalledWith(
+    f.hash,
+    1,
+    false,
+    { id: 1, type: 'SmartAccount' }
+  );
+});
+
+it('does not duplicate pending notifications when replayed bytes already have public tracking', async () => {
+  const f = await fixture();
+  jest.mocked(notificationManager.notifyTransaction).mockClear();
+  const first = await f.wallet.prepareEvmSignedReplay(f.hash);
+  await f.wallet.confirmEvmSignedReplay(first.review.id);
+  const second = await f.wallet.prepareEvmSignedReplay(f.hash);
+  await f.wallet.confirmEvmSignedReplay(second.review.id);
+  expect(notificationManager.notifyTransaction).toHaveBeenCalledTimes(1);
+  expect(
+    mockState.vault.accountTransactions.SmartAccount[1].ethereum[1]
+  ).toHaveLength(1);
+  expect(f.wallet.startRapidTransactionPolling).toHaveBeenCalledTimes(2);
 });
 
 it('opens an earlier EOA payer transaction only through its current Smart parent review', async () => {

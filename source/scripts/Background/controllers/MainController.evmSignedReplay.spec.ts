@@ -203,6 +203,8 @@ beforeEach(() => {
   wallet.networkRequestGeneration = 11;
   wallet.getActiveKeyring = jest.fn(() => keyring);
   wallet.getRetainedEvmRecords = jest.fn(() => records);
+  // Public history/polling is covered by the real replay-ACK integration suite.
+  wallet.recordAcknowledgedEvmReplay = jest.fn(async () => undefined);
 });
 afterEach(() => jest.restoreAllMocks());
 
