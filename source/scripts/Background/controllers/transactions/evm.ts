@@ -317,25 +317,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       token20Data = parsed[parsedIndex++];
     }
 
-    // Handle API error responses
-    // Status "0" with "No transactions found" is not an error, it's a valid empty result
-    if (data.status === '0' || data.message === 'NOTOK') {
-      // Check if this is actually a "no transactions found" case rather than an error
-      const isNoTransactionsFound =
-        data.message === 'No transactions found' ||
-        (Array.isArray(data.result) && data.result.length === 0);
-
-      if (isNoTransactionsFound) {
-        // This is a valid response indicating no transactions, not an error
-        console.log('API response: No transactions found for this address');
-        // Continue with empty result processing below
-      } else {
-        // This is an actual error
-        const errorMsg = data.result || data.message || 'Explorer API error';
-        console.error('Explorer API error:', errorMsg);
-        return { transactions: null, error: errorMsg };
-      }
-    }
+    const apiError = explorerApiError(data, response.status, 'txlist');
+    if (apiError) return { transactions: null, error: apiError };
 
     let allTransactions: IEvmTransactionResponse[] = [];
     let baseTxCount = 0; // Number of txs returned by txlist (exclude tokentx)
@@ -462,8 +445,12 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         token20Resp.ok ? token20Resp.json() : Promise.resolve(null),
       ]);
 
-      const baseError = explorerApiError(data, response.status);
-      const tokenError = explorerApiError(token20Data, token20Resp.status);
+      const baseError = explorerApiError(data, response.status, 'txlist');
+      const tokenError = explorerApiError(
+        token20Data,
+        token20Resp.status,
+        'tokentx'
+      );
       const baseRows =
         !baseError && Array.isArray(data?.result) ? data.result : [];
       const tokenRows =

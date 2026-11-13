@@ -50,6 +50,18 @@ test('candidate codec rejects malformed status, unrelated owners, inexact intege
   for (const value of invalid) assert.throws(() => decodeActivityPage(value, 'txlist', OWNER, 1), { code: 'INVALID' });
 });
 
+test('empty token-transfer replies are healthy only on the token feed', async () => {
+  const reply = { status: '0', message: 'No token transfers found', result: [] };
+  assert.deepEqual(decodeActivityPage(reply, 'tokentx', OWNER, 1), []);
+  assert.throws(() => decodeActivityPage(reply, 'txlist', OWNER, 1), { code: 'INVALID' });
+  for (const invalid of [
+    { ...reply, result: [row()] }, { ...reply, result: '[]' },
+    { ...reply, message: 'NOTOK' }, { ...reply, message: 'Rate limit exceeded' },
+  ]) assert.throws(() => decodeActivityPage(invalid, 'tokentx', OWNER, 1), { code: 'INVALID' });
+  const reader = new ActivityExplorerReader(async () => new Response(JSON.stringify(reply)));
+  assert.deepEqual(await reader.page(scope, 'tokentx', 1, signal(), () => undefined), []);
+});
+
 test('invalid and implausibly future explorer timestamps stay unknown instead of becoming now', () => {
   for (const timeStamp of [undefined, 'bad', '-1', '01', '999999999999']) {
     assert.equal(decodeActivityPage(envelope([row({ timeStamp })]), 'txlist', OWNER, 1)[0]?.timestamp, null);
