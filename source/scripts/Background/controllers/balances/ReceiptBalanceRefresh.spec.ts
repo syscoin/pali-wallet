@@ -220,6 +220,17 @@ describe('receipt affected-key planning', () => {
     expect(result.owners.has(SA)).toBe(true);
     expect(result.tokens.has(T)).toBe(true);
   });
+  it('refreshes the Smart native balance without optional saved hints', () => {
+    const result = receiptBalanceTargets({
+      from: A,
+      to: B,
+      smartAccountExecutionFrom: SA,
+      value: '0',
+      logs: [],
+    });
+    expect([...result.native]).toEqual([A, SA]);
+    expect([...result.owners]).toEqual([SA]);
+  });
   it('handles incoming explorer token rows without charging the recipient native gas', () => {
     const result = receiptBalanceTargets({
       from: A,
