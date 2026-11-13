@@ -54,7 +54,56 @@ export function assetMarketLine(prices: readonly number[]): string | null {
 export function assetMarketUrl(id: string, currency: string): string {
   if (!validMarketId(id) || !/^[a-z]{2,8}$/.test(currency))
     throw new Error('Invalid market identity');
-  return `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${currency}&ids=${id}&sparkline=true&price_change_percentage=24h`;
+  return `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${currency}&ids=${id}&sparkline=${
+    currency === 'usd'
+  }&price_change_percentage=24h`;
+}
+
+export function assetMarketHistoryUrl(id: string, currency: string): string {
+  if (!validMarketId(id) || !/^[a-z]{2,8}$/.test(currency))
+    throw new Error('Invalid market identity');
+  return `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=${currency}&days=7`;
+}
+
+const samplePrices = (prices: readonly number[]): readonly number[] =>
+  Object.freeze(
+    prices.filter(
+      (_, index) =>
+        index % Math.ceil(prices.length / 240) === 0 ||
+        index === prices.length - 1
+    )
+  );
+
+/** /market_chart returns ordered [Unix milliseconds, requested-currency price] pairs. */
+export function readAssetMarketHistory(
+  body: unknown,
+  now: number
+): readonly number[] {
+  const raw = record(body)?.prices;
+  if (
+    !Number.isFinite(now) ||
+    !Array.isArray(raw) ||
+    raw.length < 2 ||
+    raw.length > 1024
+  )
+    return [];
+  let previous = -1;
+  const prices: number[] = [];
+  for (const point of raw) {
+    if (
+      !Array.isArray(point) ||
+      point.length !== 2 ||
+      !Number.isSafeInteger(point[0]) ||
+      point[0] <= previous ||
+      point[0] < now - 8 * 86_400_000 ||
+      point[0] > now + 300_000 ||
+      positive(point[1]) === null
+    )
+      return [];
+    previous = point[0];
+    prices.push(point[1]);
+  }
+  return previous < now - 86_400_000 ? [] : samplePrices(prices);
 }
 
 export function tokenMarketIdentityUrl(
@@ -83,9 +132,15 @@ export function readTokenMarketId(
 export function readAssetMarket(
   body: unknown,
   id: string,
+  currency: string,
   now: number
 ): AssetMarket | null {
-  if (!Array.isArray(body) || body.length !== 1) return null;
+  if (
+    !/^[a-z]{2,8}$/.test(currency) ||
+    !Array.isArray(body) ||
+    body.length !== 1
+  )
+    return null;
   const data = record(body[0]);
   if (!data || data.id !== id) return null;
   const price = positive(data.current_price);
@@ -98,18 +153,15 @@ export function readAssetMarket(
     updatedAt < now - 86_400_000
   )
     return null;
-  const raw = record(data.sparkline_in_7d)?.price;
+  // CoinGecko's market-list sparkline is USD, even for another vs_currency.
+  const raw =
+    currency === 'usd' ? record(data.sparkline_in_7d)?.price : undefined;
   const valid =
     Array.isArray(raw) &&
     raw.length >= 2 &&
     raw.length <= 1024 &&
     raw.every((value) => positive(value) !== null);
-  const prices = valid
-    ? (raw.filter(
-        (_, index) =>
-          index % Math.ceil(raw.length / 240) === 0 || index === raw.length - 1
-      ) as number[])
-    : [];
+  const prices = valid ? samplePrices(raw) : [];
   return Object.freeze({
     ...(trustedAssetIconUri(data.image)
       ? { iconUri: trustedAssetIconUri(data.image)! }

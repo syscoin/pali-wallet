@@ -71,7 +71,7 @@ test('public icon cache isolates exact network registration and notifies only it
 test('only an existing verified market result populates the captured registration icon', () => {
   const network = getNativeNetwork('ethereum');
   const asset = { kind: 'token' as const, networkId: network.id, registration: network, contractAddress: '0x' + '78'.repeat(20) };
-  const result = readAssetMarket([{ id: 'fixture', image, current_price: 1, last_updated: new Date().toISOString() }], 'fixture', Date.now());
+  const result = readAssetMarket([{ id: 'fixture', image, current_price: 1, last_updated: new Date().toISOString() }], 'fixture', 'usd', Date.now());
   assert(result); assert.equal(result.iconUri, image); assert(nativeAssetMarketSource(asset));
   rememberNativeAssetMarketIcon(asset, result);
   assert.equal(readNativeAssetIcon(nativeAssetIconKey({ kind: 'evm', chainId: '1', contractAddress: asset.contractAddress }, network.registrationHash)), image);
