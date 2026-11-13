@@ -20,7 +20,8 @@ import {
 import { isOfflineWalletReleaseAbort } from '../harness/walletReleaseFixture';
 
 const EVM_LABEL = 'Explorer Origin';
-const EVM_RPC = 'https://rpc.tanenbaum.io';
+const EVM_CHAIN_ID = 31337123;
+const EVM_RPC = 'https://explorer-origin-rpc.synthetic.invalid';
 const OLD_EXPLORER = 'https://old-evm-explorer.synthetic.invalid/';
 const LITECOIN_RPC = 'https://blockbook.ltc.zelcore.io';
 
@@ -164,8 +165,8 @@ test('network suggestions reset reopened typeahead and do not carry an EVM explo
   const chainlistWire = JSON.stringify([
     {
       name: EVM_LABEL,
-      chainId: 5700,
-      networkId: 5700,
+      chainId: EVM_CHAIN_ID,
+      networkId: EVM_CHAIN_ID,
       nativeCurrency: { name: 'Test Syscoin', symbol: 'TSYS', decimals: 18 },
       rpc: [{ url: EVM_RPC, tracking: 'none', isOpenSource: true }],
       explorers: [{ name: 'Previous EVM explorer', url: OLD_EXPLORER }],
@@ -251,7 +252,10 @@ test('network suggestions reset reopened typeahead and do not carry an EVM explo
       const replies = calls.map((call) => ({
         jsonrpc: '2.0',
         id: call.id,
-        result: call.method === 'eth_chainId' ? '0x1644' : '0x1',
+        result:
+          call.method === 'eth_chainId'
+            ? `0x${EVM_CHAIN_ID.toString(16)}`
+            : '0x1',
       }));
       await route.fulfill({
         status: 200,
@@ -441,7 +445,9 @@ test('network suggestions reset reopened typeahead and do not carry an EVM explo
         await expect(input).toHaveValue(EVM_LABEL);
         await expect(page.locator('#rpc_url')).toHaveValue(EVM_RPC);
         await expect(page.locator('#rpc_explorer')).toHaveValue(OLD_EXPLORER);
-        await expect(page.locator('#rpc_chainId')).toHaveValue('5700');
+        await expect(page.locator('#rpc_chainId')).toHaveValue(
+          String(EVM_CHAIN_ID)
+        );
         await expect(
           page.getByRole('button', { name: en.buttons.save, exact: true })
         ).toBeEnabled();

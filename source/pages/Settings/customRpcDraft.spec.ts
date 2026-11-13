@@ -33,6 +33,7 @@ jest.mock('utils/navigationState', () => ({
 }));
 const scope = () => JSON.stringify(mockScope);
 const draft = {
+  apiEdited: false,
   isSyscoinRpc: false,
   values: {
     label: 'Draft',
@@ -51,6 +52,7 @@ afterEach(clearCustomRpcDrafts);
 it('retains bounded field values only in the matching account/network/editor', () => {
   writeCustomRpcDraft('id', scope(), 'new', draft);
   expect(readCustomRpcDraft('id', scope(), 'new')).toEqual({
+    apiEdited: false,
     isSyscoinRpc: false,
     values: {
       label: 'Draft',
@@ -60,6 +62,18 @@ it('retains bounded field values only in the matching account/network/editor', (
   });
   expect(readCustomRpcDraft('id', scope(), 'edit-other')).toBeUndefined();
   expect(readCustomRpcDraft('id', 'other-scope', 'new')).toBeUndefined();
+});
+
+it('retains deliberate API clearing across a return to the same draft', () => {
+  writeCustomRpcDraft('id', scope(), 'new', {
+    ...draft,
+    apiEdited: true,
+    values: { ...draft.values, apiUrl: '' },
+  });
+  expect(readCustomRpcDraft('id', scope(), 'new')).toMatchObject({
+    apiEdited: true,
+    values: { apiUrl: '' },
+  });
 });
 
 it.each(['account', 'network'])(

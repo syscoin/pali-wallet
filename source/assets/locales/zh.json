@@ -2364,7 +2364,7 @@
       "notesBody": "查看、备份或恢复票据",
       "sentry": "Sentry",
       "sentryBody": "管理节点、抵押品和授权密钥",
-      "unavailable": "此版本不可用",
+      "sentryUnavailable": "此账户或网络无法使用 Sentry。",
       "publicTitle": "公开地址工具",
       "publicBody": "这些工具用于管理已保存的公开地址，无法签署交易或恢复其钱包。",
       "receiveHint": "收款功能及受支持的测试网水龙头可在钱包中使用。"

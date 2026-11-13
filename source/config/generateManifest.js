@@ -48,6 +48,13 @@ function generateManifest() {
       'Pali Wallet Canary BETA'
     );
     manifestOptions.description = 'THIS EXTENSION IS FOR BETA TESTING. Pali Wallet for Bitcoin and supported EVM/UTXO networks.';
+    const canaryIcon = 'assets/all_assets/pali-canary-icon.png';
+    manifestOptions.icons = Object.fromEntries(
+      [16, 32, 48, 128].map((size) => [size, canaryIcon])
+    );
+    const action = manifestOptions.action || manifestOptions.browser_action;
+    action.default_icon = { ...manifestOptions.icons };
+    action.default_title = 'Pali Wallet Canary';
     // Store uploads reject `key`; it only stabilizes unpacked Canary identity.
     if (manifestOptions.manifest_version === 3 && process.env.PALI_EXTENSION_STORE_BUILD !== '1') {
       manifestOptions.key = CANARY_EXTENSION_KEY;

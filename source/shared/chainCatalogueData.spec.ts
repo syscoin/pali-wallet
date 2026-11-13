@@ -1,4 +1,5 @@
 import {
+  getBundledEvmChainMetadata,
   parseEvmChainCatalogue,
   withBundledEvmChainSuggestions,
 } from './chainCatalogueData';
@@ -12,24 +13,76 @@ const base = {
 
 it('bundles Gateway for explicit addition and pins its identity over conflicting remote rows', () => {
   const local = withBundledEvmChainSuggestions();
-  expect(local).toEqual([
-    expect.objectContaining({
-      chainId: 57570,
-      name: 'Syscoin Gateway',
-      isTestnet: false,
-      nativeCurrency: { name: 'Syscoin', symbol: 'SYS', decimals: 18 },
-      rpc: [{ url: 'https://rpc-gw.syscoin.org' }],
-      explorers: [
-        { name: 'Syscoin Gateway', url: 'https://explorer-gw.syscoin.org' },
-      ],
-    }),
+  expect(local.map(({ chainId }) => chainId)).toEqual([
+    57, 1, 8453, 42161, 570, 5757, 5700, 57057, 57570,
   ]);
+  expect(local).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        chainId: 57570,
+        coingeckoId: 'syscoin',
+        apiUrl: 'https://explorer-gw.syscoin.org/api',
+        name: 'Syscoin Gateway',
+        isTestnet: false,
+        nativeCurrency: { name: 'SYS', symbol: 'SYS', decimals: 18 },
+        rpc: [{ url: 'https://rpc-gw.syscoin.org' }],
+        explorers: [
+          { name: 'Syscoin Gateway', url: 'https://explorer-gw.syscoin.org' },
+        ],
+      }),
+    ])
+  );
   const remote = parseEvmChainCatalogue([
     { ...base, chainId: 57570, rpc: [{ url: 'https://wrong.invalid' }] },
     { ...base, rpc: [{ url: 'https://example.invalid' }] },
   ]);
-  expect(withBundledEvmChainSuggestions(remote)).toEqual([local[0], remote[1]]);
+  expect(withBundledEvmChainSuggestions(remote)).toEqual([...local, remote[1]]);
   expect(withBundledEvmChainSuggestions()[0]).not.toBe(local[0]);
+});
+
+it('offers bundled zkSYS without a remote catalogue and retains its exact local identity', () => {
+  const local = withBundledEvmChainSuggestions().find(
+    ({ chainId }) => chainId === 5757
+  )!;
+  expect(local).toMatchObject({
+    name: 'zkSYS',
+    chainId: 5757,
+    rpc: [{ url: 'https://rpc-zk.syscoin.org' }],
+    coingeckoId: 'syscoin',
+  });
+  expect(
+    getBundledEvmChainMetadata(5757, 'https://rpc-zk.syscoin.org')
+  ).toEqual({
+    apiUrl: 'https://explorer-zk.syscoin.org/api',
+    coingeckoId: 'syscoin',
+  });
+  expect(
+    getBundledEvmChainMetadata(5757, 'https://other.invalid')
+  ).toBeUndefined();
+  const conflicting = { ...local, rpc: [{ url: 'https://wrong.invalid' }] };
+  expect(
+    withBundledEvmChainSuggestions([conflicting]).find(
+      ({ chainId }) => chainId === 5757
+    )
+  ).toEqual(local);
+});
+
+it('returns trusted native metadata only for the exact bundled chain and RPC', () => {
+  expect(
+    getBundledEvmChainMetadata(57570, 'https://rpc-gw.syscoin.org')
+  ).toEqual({
+    coingeckoId: 'syscoin',
+    apiUrl: 'https://explorer-gw.syscoin.org/api',
+  });
+  expect(
+    getBundledEvmChainMetadata(57570, 'https://other.invalid')
+  ).toBeUndefined();
+  expect(
+    getBundledEvmChainMetadata(5757, 'https://rpc-gw.syscoin.org')
+  ).toBeUndefined();
+  expect(
+    getBundledEvmChainMetadata(57570, 'https://rpc-gw.syscoin.org/?token=x')
+  ).toBeUndefined();
 });
 
 it('projects shared ChainList metadata without carrying unknown fields into wallet UI', () => {
@@ -52,6 +105,9 @@ it('projects shared ChainList metadata without carrying unknown fields into wall
         { url: 'x'.repeat(2049) },
       ],
       other: 'ignored',
+      coingeckoId: 'attacker-chosen',
+      apiUrl: 'https://untrusted.invalid/api',
+      coingeckoPlatformId: 'another-platform',
     },
     null,
     { ...base, chainId: '12345' },
@@ -73,6 +129,9 @@ it('projects shared ChainList metadata without carrying unknown fields into wall
     }),
   ]);
   expect(rows[0]).not.toHaveProperty('other');
+  expect(rows[0]).not.toHaveProperty('coingeckoId');
+  expect(rows[0]).not.toHaveProperty('coingeckoPlatformId');
+  expect(rows[0]).not.toHaveProperty('apiUrl');
 });
 
 it('keeps chain metadata available for icons without any RPC and bounds remote rows', () => {

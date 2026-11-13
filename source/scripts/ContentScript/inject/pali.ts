@@ -1,3 +1,5 @@
+import { SYS_PROVIDER_KEY } from '../providerChannel';
+
 import { PaliInpageProviderSys } from './paliProviderSyscoin';
 
 // Read files in as strings
@@ -8,4 +10,7 @@ declare global {
   }
 }
 
-window.pali = new PaliInpageProviderSys();
+const provider = new PaliInpageProviderSys();
+(window as any)[SYS_PROVIDER_KEY] = provider;
+// Keep the legacy convenience API when Canary is the only installed wallet.
+if (!window.pali) window.pali = provider;

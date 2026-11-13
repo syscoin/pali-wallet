@@ -1,4 +1,5 @@
 import paliIcon from 'assets/all_assets/favicon-32.png?inline';
+import canaryIcon from 'assets/all_assets/pali-canary-icon.png?inline';
 
 export interface IEIP6963ProviderInfo {
   icon: string;
@@ -63,12 +64,13 @@ export const EMITTED_NOTIFICATIONS = Object.freeze([
 ]);
 
 export const announceProvider = (provider: any, uuid: string) => {
+  const isCanary = process.env.PALI_EXTENSION_CHANNEL === 'canary';
   const providerInfo: IEIP6963ProviderInfo = {
     // EIP-6963 requires a URI. Keeping the image in the bundle avoids remote
     // rate limits and extension-origin CSP restrictions in wallet selectors.
-    icon: paliIcon,
-    name: 'Pali Wallet',
-    rdns: 'com.paliwallet',
+    icon: isCanary ? canaryIcon : paliIcon,
+    name: isCanary ? 'Pali Wallet Canary' : 'Pali Wallet',
+    rdns: isCanary ? 'com.paliwallet.canary' : 'com.paliwallet',
     uuid,
   };
 

@@ -18,6 +18,9 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { Provider } from 'react-redux';
 
+import { withBundledEvmChainSuggestions } from '../../shared/chainCatalogueData';
+import { coinGeckoNativeQuoteUrl } from '../../shared/nativeCoinQuotes';
+import EvmAssetsController from 'scripts/Background/controllers/assets/evm';
 import MainController from 'scripts/Background/controllers/MainController';
 import { withUtxoRpcVerification } from 'scripts/Background/controllers/providers/utxoRpcVerification';
 import EvmTransactionsController from 'scripts/Background/controllers/transactions/evm';
@@ -92,6 +95,15 @@ const source: INetwork = {
   currency: 'eth',
   url: 'https://active.api-selection.synthetic.invalid',
 };
+const gateway = withBundledEvmChainSuggestions().find(
+  (chain) => chain.chainId === 57570
+)!;
+const sameIdEvm = withBundledEvmChainSuggestions().find(
+  (chain) => chain.chainId === 5700
+)!;
+const GATEWAY_API = 'https://explorer-gw.syscoin.org/api';
+const GATEWAY_ALTERNATE = 'https://alternate-gateway.synthetic.invalid';
+const SYS_PRICE_URL = coinGeckoNativeQuoteUrl('syscoin', 'usd');
 const chains = [
   {
     name: 'Selection Alpha',
@@ -109,14 +121,8 @@ const chains = [
     rpc: [{ url: 'https://rpc-beta.api-selection.synthetic.invalid' }],
     explorers: [{ url: 'https://beta.api-selection.synthetic.invalid' }],
   },
-  {
-    name: 'Selection Gamma',
-    chain: INetworkType.Ethereum,
-    chainId: 5700,
-    nativeCurrency: { symbol: 'GAMMA' },
-    rpc: [{ url: 'https://rpc-gamma.api-selection.synthetic.invalid' }],
-    explorers: [{ url: 'https://gamma.api-selection.synthetic.invalid' }],
-  },
+  sameIdEvm,
+  gateway,
 ];
 const BLOCKBOOK = 'https://blockbook.api-selection.synthetic.invalid';
 const API_A =
@@ -182,12 +188,13 @@ beforeEach(async () => {
   blockbookCatalogue = [];
   globalThis.fetch = jest.fn(async (input, options) => {
     const url = String(input);
-    expect(
-      httpRules.some(
-        (rule) =>
-          rule.condition.urlFilter === `|${new URL(String(url)).origin}/`
-      )
-    ).toBe(true);
+    if (url !== SYS_PRICE_URL)
+      expect(
+        httpRules.some(
+          (rule) =>
+            rule.condition.urlFilter === `|${new URL(String(url)).origin}/`
+        )
+      ).toBe(true);
     if (
       url === `${BLOCKBOOK}/api/v2/` ||
       url === `${BLOCKBOOK}/api/v2/block-index/0`
@@ -229,7 +236,10 @@ beforeEach(async () => {
         },
       } as unknown as Response;
     }
-    const chain = chains.find((item) => item.rpc[0].url === url);
+    const chain =
+      url === GATEWAY_ALTERNATE
+        ? gateway
+        : chains.find((item) => item.rpc[0].url === url);
     if (chain) {
       expect(options?.method).toBe('POST');
       const body = JSON.parse(String(options?.body));
@@ -259,7 +269,20 @@ beforeEach(async () => {
       } as Response;
     }
     const api = new URL(url);
-    const allowed = [new URL(API_A), new URL(API_B)].find(
+    if (url === SYS_PRICE_URL) {
+      reads.push({ url, method: 'native-sys-price' });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ syscoin: { usd: 0.25 } }),
+      } as Response;
+    }
+    const allowed = [
+      new URL(API_A),
+      new URL(API_B),
+      new URL(GATEWAY_API),
+      new URL(sameIdEvm.apiUrl!),
+    ].find(
       (item) => item.origin === api.origin && item.pathname === api.pathname
     );
     if (allowed) {
@@ -489,6 +512,112 @@ it('associates the visible explorer API label with its input', async () => {
   expect(field).toHaveFocus();
 });
 
+it.each(['absent', 'different-native', 'rejected'] as const)(
+  'persists bundled Gateway metadata and prices SYS when optional discovery is %s',
+  async (outcome) => {
+    if (outcome === 'different-native')
+      wallet.evmAssetsController.detectCoinGeckoIds.mockResolvedValue({
+        coingeckoId: 'wrong-native',
+        coingeckoPlatformId: 'gateway-platform',
+      });
+    if (outcome === 'rejected')
+      wallet.evmAssetsController.detectCoinGeckoIds.mockRejectedValue(
+        new Error('Optional metadata unavailable')
+      );
+    const user = open();
+    await choose(user, 3);
+    expect(apiField()).toHaveValue(GATEWAY_API);
+    const result = await save(user, 'addCustomRpc', gateway.chainId);
+    expect(result.saved).toMatchObject({
+      apiUrl: GATEWAY_API,
+      coingeckoId: 'syscoin',
+    });
+    expect(wallet.evmAssetsController.detectCoinGeckoIds).toHaveBeenCalledWith(
+      gateway.chainId
+    );
+    await expect(
+      EvmAssetsController().getTokenPriceData(gateway.chainId, 'usd')
+    ).resolves.toMatchObject({ available: true, price: 0.25 });
+    expect(reads).toContainEqual({
+      url: SYS_PRICE_URL,
+      method: 'native-sys-price',
+    });
+    if (outcome === 'different-native')
+      expect(result.saved.coingeckoPlatformId).toBe('gateway-platform');
+    else expect(result.saved).not.toHaveProperty('coingeckoPlatformId');
+  }
+);
+
+it.each(['', API_B])(
+  'preserves a deliberate Gateway API edit including clearing: %s',
+  async (apiUrl) => {
+    const user = open();
+    await choose(user, 3);
+    expect(apiField()).toHaveValue(GATEWAY_API);
+    enterApi(apiUrl);
+    await choose(user, 3);
+    expect(apiField()).toHaveValue(apiUrl);
+    const result = await save(user, 'addCustomRpc', gateway.chainId);
+    expect(result.saved).toMatchObject({ apiUrl, coingeckoId: 'syscoin' });
+  }
+);
+
+it('initializes Gateway API when its chain ID was manually entered before selection', async () => {
+  const user = open();
+  fireEvent.change(screen.getByPlaceholderText('settings.chainIdCustomEvm'), {
+    target: { value: String(gateway.chainId) },
+  });
+  await choose(user, 3);
+  expect(apiField()).toHaveValue(GATEWAY_API);
+});
+
+it('retains an explicit API clearing when returning to the draft and reselecting Gateway', async () => {
+  let user = open();
+  await choose(user, 3);
+  enterApi('');
+  cleanup();
+  user = open();
+  await choose(user, 3);
+  expect(apiField()).toHaveValue('');
+});
+
+it('clears an automatic Gateway API on RPC change after returning to the draft', async () => {
+  const user = open();
+  await choose(user, 3);
+  cleanup();
+  open();
+  expect(apiField()).toHaveValue(GATEWAY_API);
+  fireEvent.change(screen.getByPlaceholderText('settings.rpcUrlPlaceholder'), {
+    target: { value: GATEWAY_ALTERNATE },
+  });
+  expect(apiField()).toHaveValue('');
+});
+
+it('does not transfer bundled Gateway metadata to a manually replaced RPC', async () => {
+  const user = open();
+  await choose(user, 3);
+  fireEvent.change(screen.getByPlaceholderText('settings.rpcUrlPlaceholder'), {
+    target: { value: GATEWAY_ALTERNATE },
+  });
+  expect(apiField()).toHaveValue('');
+  const result = await save(user, 'addCustomRpc', gateway.chainId);
+  expect(result.saved).toMatchObject({ url: GATEWAY_ALTERNATE, apiUrl: '' });
+  expect(result.saved).not.toHaveProperty('coingeckoId');
+  expect(result.saved).not.toHaveProperty('coingeckoPlatformId');
+});
+
+it('does not transfer bundled Gateway metadata to a different selected chain', async () => {
+  const user = open();
+  await choose(user, 3);
+  await choose(user, 1);
+  const result = await save(user);
+  expect(result.saved).toMatchObject({
+    apiUrl: '',
+    chainId: chains[1].chainId,
+  });
+  expect(result.saved).not.toHaveProperty('coingeckoId');
+});
+
 it('does not inherit Alpha API when the ordinary catalogue selection changes to Beta', async () => {
   const user = open();
   await choose(user, 0);
@@ -546,11 +675,11 @@ it('does not carry an old EVM API through manual UTXO discovery into a same-numb
   await discoverUtxoAndReturn(user);
   await choose(user, 2);
   const result = await save(user, 'addCustomRpc', 5700);
-  expect(result.saved?.apiUrl).toBe('');
-  expect(apiField()).toHaveValue('');
+  expect(result.saved?.apiUrl).toBe(sameIdEvm.apiUrl);
+  expect(apiField()).toHaveValue(sameIdEvm.apiUrl);
   expect(result.live).toMatchObject({
     chainId: 5700,
-    apiUrl: '',
+    apiUrl: sameIdEvm.apiUrl,
     url: chains[2].rpc[0].url,
   });
   expect(result.saved).toEqual(result.live);
@@ -562,7 +691,10 @@ it('keeps a family round trip with an initially empty API healthy', async () => 
   await discoverUtxoAndReturn(user);
   await choose(user, 2);
   const result = await save(user, 'addCustomRpc', 5700);
-  expect(result.live).toMatchObject({ chainId: 5700, apiUrl: '' });
+  expect(result.live).toMatchObject({
+    chainId: 5700,
+    apiUrl: sameIdEvm.apiUrl,
+  });
   expect(result.saved).toEqual(result.live);
 });
 

@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { ErrorModal } from '..';
+import { CanaryBanner } from 'components/CanaryBadge';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
@@ -69,6 +70,8 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
           }
         />
       </div>
+
+      <CanaryBanner />
 
       {accountHeader && <AccountHeader />}
     </>

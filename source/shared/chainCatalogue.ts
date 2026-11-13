@@ -1,11 +1,14 @@
 import type { INetworkType } from '../types/network';
 
 export type ChainInfo = {
+  apiUrl?: string;
   chain: INetworkType;
   chainId: number;
   chainSlug?: string;
   coinLabel?: string;
   coinShortcut?: string;
+  coingeckoId?: string;
+  coingeckoPlatformId?: string;
   explorers?: Array<{
     name: string;
     standard?: string;

@@ -16,7 +16,8 @@ export function screenElements(value: unknown): ScreenElement[] {
 
 /** Execute actual screen handlers/effects with public DTOs and explicit native ports. */
 export function screenFixture(file: URL, exported: string, imports: Record<string, unknown>, globals: Record<string, unknown> = {}, compilerOptions: Pick<ts.CompilerOptions, 'target'> = {}) {
-  const cells: Cell[] = [], effects: (() => void)[] = [];
+  const rootCells: Cell[] = [], nestedCells = new Map<(props: any) => ScreenElement, Cell[]>(), effects: (() => void)[] = [];
+  let cells = rootCells;
   let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
@@ -52,7 +53,13 @@ export function screenFixture(file: URL, exported: string, imports: Record<strin
       if (name === '../platform/localization' && !Object.hasOwn(imports, name)) return nativeTranslationFixture;
       assert(Object.hasOwn(imports, name), `Missing screen port: ${name}`); return imports[name]; } });
   return {
-    render(props: any, ...args: any[]) { cursor = 0; const tree = module.exports[exported]!(props, ...args); effects.splice(0).forEach(run => run()); return tree; },
-    close() { cells.forEach(c => c.cleanup?.()); },
+    render(props: any, ...args: any[]) { cells = rootCells; cursor = 0; const tree = module.exports[exported]!(props, ...args); effects.splice(0).forEach(run => run()); return tree; },
+    renderChild(element: ScreenElement) {
+      assert.equal(typeof element.type, 'function');
+      const component = element.type as (props: any) => ScreenElement;
+      cells = nestedCells.get(component) ?? []; nestedCells.set(component, cells); cursor = 0;
+      const tree = component(element.props); effects.splice(0).forEach(run => run()); return tree;
+    },
+    close() { [rootCells, ...nestedCells.values()].flat().forEach(c => c.cleanup?.()); },
   };
 }

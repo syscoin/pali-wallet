@@ -2364,7 +2364,7 @@
       "notesBody": "Notizen anzeigen, sichern oder wiederherstellen",
       "sentry": "Sentry",
       "sentryBody": "Nodes, Sicherheiten und Autorisierungsschlüssel verwalten",
-      "unavailable": "In dieser Version nicht verfügbar",
+      "sentryUnavailable": "Sentry ist für dieses Konto oder Netzwerk nicht verfügbar.",
       "publicTitle": "Werkzeuge für öffentliche Adressen",
       "publicBody": "Diese Werkzeuge verwalten gespeicherte öffentliche Adressen. Sie können keine Transaktionen signieren und die zugehörigen Wallets nicht wiederherstellen.",
       "receiveHint": "Empfang und gegebenenfalls eine Testnet-Faucet sind im Wallet-Bereich verfügbar."

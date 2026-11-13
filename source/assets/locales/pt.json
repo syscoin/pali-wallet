@@ -2364,7 +2364,7 @@
       "notesBody": "Ver, guardar cópias de segurança ou restaurar notas",
       "sentry": "Sentry",
       "sentryBody": "Gerir nós, garantias e chaves de autoridade",
-      "unavailable": "Indisponível nesta versão",
+      "sentryUnavailable": "O Sentry não está disponível para esta conta ou rede.",
       "publicTitle": "Ferramentas para endereços públicos",
       "publicBody": "Estas ferramentas gerem endereços públicos guardados. Não podem assinar transações nem recuperar as respetivas carteiras.",
       "receiveHint": "A receção e as eventuais faucets de testnet suportadas estão disponíveis em Carteira."

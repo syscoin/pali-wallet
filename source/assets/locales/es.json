@@ -2364,7 +2364,7 @@
       "notesBody": "Ver, respaldar o restaurar notas",
       "sentry": "Sentry",
       "sentryBody": "Gestionar nodos, garantías y claves de autoridad",
-      "unavailable": "No disponible en esta versión",
+      "sentryUnavailable": "Sentry no está disponible para esta cuenta o red.",
       "publicTitle": "Herramientas para direcciones públicas",
       "publicBody": "Estas herramientas gestionan direcciones públicas guardadas. No pueden firmar transacciones ni recuperar sus carteras.",
       "receiveHint": "La recepción y cualquier faucet de prueba compatible están disponibles en Cartera."

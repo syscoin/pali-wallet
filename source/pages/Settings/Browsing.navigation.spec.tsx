@@ -306,7 +306,16 @@ describe('settings browsing context', () => {
         find(
           view,
           (element) => typeof element.props.onFinish === 'function'
-        )!.props.onValuesChange();
+        )!.props.onValuesChange(
+          { label: 'Changed draft' },
+          {
+            label: 'Changed draft',
+            url: rpc.url,
+            chainId: rpc.chainId,
+            symbol: 'ETH',
+            apiUrl: 'https://explorer.example/api',
+          }
+        );
       if (change === 'family')
         find(view, (element) => element.type === 'switch')!.props.onChange(
           true

@@ -1,3 +1,5 @@
+import { providerEventName, PROVIDER_WALLET_ID } from '../providerChannel';
+
 import {
   BaseProvider,
   UnvalidatedJsonRpcRequest,
@@ -120,7 +122,7 @@ export class PaliInpageProviderEth extends BaseProvider {
   private _accountDisclosureGeneration = 0;
   private _pendingEvmGrantGeneration: number | null = null;
 
-  constructor(maxEventListeners = 100, wallet = 'pali-v2') {
+  constructor(maxEventListeners = 100, wallet = PROVIDER_WALLET_ID) {
     super('ethereum', maxEventListeners, wallet);
     this._metamask = this._getExperimentalApi();
     this._sendSync = this._sendSync.bind(this);
@@ -190,7 +192,7 @@ export class PaliInpageProviderEth extends BaseProvider {
 
   public initMessageListener() {
     window.addEventListener(
-      'paliNotification',
+      providerEventName('paliNotification'),
       (event: any) => {
         try {
           const parsed = JSON.parse(event.detail);

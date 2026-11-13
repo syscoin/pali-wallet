@@ -239,15 +239,10 @@ export function findRegisteredEvmNetwork({
 }): EvmNetworkDefinition | undefined {
   const matchesEndpoint = (item: EvmNetworkDefinition) =>
     item.network.url === rpcUrl && String(item.network.chainId) === chainId;
-  return (
-    EVM_NETWORK_DEFINITIONS.find(
-      (item) => item.id === id && matchesEndpoint(item)
-    ) ??
-    OPTIONAL_EVM_NETWORK_DEFINITIONS.find(
-      (item) =>
-        (item.id === id || id === `custom:${item.network.chainId}`) &&
-        matchesEndpoint(item)
-    )
+  return [...EVM_NETWORK_DEFINITIONS, ...OPTIONAL_EVM_NETWORK_DEFINITIONS].find(
+    (item) =>
+      (item.id === id || id === `custom:${item.network.chainId}`) &&
+      matchesEndpoint(item)
   );
 }
 

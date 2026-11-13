@@ -72,43 +72,43 @@ test('asset toolbar and network autocomplete support keyboard use in narrow wind
       },
       {
         name: 'Ethereum QA Beta',
-        chainId: 5700,
-        rpcUrl: 'https://rpc.tanenbaum.io/',
+        chainId: 31337124,
+        rpcUrl: 'https://qa121-beta.invalid/rpc',
       },
     ];
     // Distinct networks must survive the catalogue's chain-ID deduplication.
-    const alphaNetwork = catalogueNetworks[0];
-    await wallet.context.route(alphaNetwork.rpcUrl, async (route) => {
-      if (route.request().method() !== 'POST')
-        return route.abort('blockedbyclient');
-      const rpc = route.request().postDataJSON();
-      const calls = Array.isArray(rpc) ? rpc : [rpc];
-      if (
-        calls.some((call: any) =>
-          /^(eth_send|wallet_send|sys_sign)/i.test(call?.method || '')
-        )
-      ) {
-        deniedWrites.push('attempted-write');
-        return route.abort('blockedbyclient');
-      }
-      const responses = new Map([
-        ['eth_chainId', `0x${alphaNetwork.chainId.toString(16)}`],
-        ['net_version', String(alphaNetwork.chainId)],
-        ['eth_blockNumber', '0x1'],
-      ]);
-      if (calls.some((call: any) => !responses.has(call?.method)))
-        return route.abort('blockedbyclient');
-      const rpcReplies = calls.map((call: any) => ({
-        jsonrpc: '2.0',
-        id: call.id,
-        result: responses.get(call.method),
-      }));
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(Array.isArray(rpc) ? rpcReplies : rpcReplies[0]),
+    for (const network of catalogueNetworks)
+      await wallet.context.route(network.rpcUrl, async (route) => {
+        if (route.request().method() !== 'POST')
+          return route.abort('blockedbyclient');
+        const rpc = route.request().postDataJSON();
+        const calls = Array.isArray(rpc) ? rpc : [rpc];
+        if (
+          calls.some((call: any) =>
+            /^(eth_send|wallet_send|sys_sign)/i.test(call?.method || '')
+          )
+        ) {
+          deniedWrites.push('attempted-write');
+          return route.abort('blockedbyclient');
+        }
+        const responses = new Map([
+          ['eth_chainId', `0x${network.chainId.toString(16)}`],
+          ['net_version', String(network.chainId)],
+          ['eth_blockNumber', '0x1'],
+        ]);
+        if (calls.some((call: any) => !responses.has(call?.method)))
+          return route.abort('blockedbyclient');
+        const rpcReplies = calls.map((call: any) => ({
+          jsonrpc: '2.0',
+          id: call.id,
+          result: responses.get(call.method),
+        }));
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(Array.isArray(rpc) ? rpcReplies : rpcReplies[0]),
+        });
       });
-    });
     await wallet.context.route('https://rpc.tanenbaum.io/', async (route) => {
       if (route.request().method() !== 'POST') return route.fallback();
       const rpc = route.request().postDataJSON();
@@ -283,7 +283,7 @@ test('asset toolbar and network autocomplete support keyboard use in narrow wind
             name: en.settings.label,
             exact: true,
           });
-          await input.fill('Ethereum');
+          await input.fill('Ethereum QA');
           const alpha = page.getByRole('option', { name: /Ethereum QA Alpha/ });
           const beta = page.getByRole('option', { name: /Ethereum QA Beta/ });
           await expect(alpha).toBeVisible();
@@ -293,7 +293,7 @@ test('asset toolbar and network autocomplete support keyboard use in narrow wind
           await expect(beta).toHaveAttribute('aria-selected', 'true');
           await page.keyboard.press('Escape');
           await expect(input).toBeFocused();
-          await expect(input).toHaveValue('Ethereum');
+          await expect(input).toHaveValue('Ethereum QA');
           await expect(input).toHaveAttribute('aria-expanded', 'false');
           await page.keyboard.press('ArrowDown');
           await page.keyboard.press('Tab');
@@ -306,7 +306,7 @@ test('asset toolbar and network autocomplete support keyboard use in narrow wind
           await expect(input).toHaveValue('Ethereum QA Beta');
           await expect(input).toHaveAttribute('aria-expanded', 'false');
           await expect(page.getByRole('listbox')).toHaveCount(0);
-          await expect(page.locator('#rpc_chainId')).toHaveValue('5700');
+          await expect(page.locator('#rpc_chainId')).toHaveValue('31337124');
           await expect(
             page.getByRole('button', { name: en.buttons.save, exact: true })
           ).toBeEnabled();

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createNativeCoinQuoteReader, nativeCoinQuoteSource } from '../src/portfolio/nativeCoinQuote.ts';
-import { createNativeNetwork, getNativeNetwork } from '../src/custody/networkContext.ts';
+import { createNativeNetwork, getNativeNetwork, findKnownNativeNetwork, NATIVE_NETWORKS, snapshotNativeNetwork } from '../src/custody/networkContext.ts';
 import { nativeAssetMarketSource } from '../src/portfolio/nativeAssetMarket.ts';
 import { OPTIONAL_EVM_NETWORK_DEFINITIONS } from '../../../source/shared/evmNetworks.ts';
 
@@ -35,6 +35,23 @@ test('quote identity uses canonical registrations and skips unknown, edited and 
   assert.equal(nativeCoinQuoteSource('utxo:5700'), null);
   assert.equal(nativeCoinQuoteSource('arbitrary'), null);
   assert.equal(nativeCoinQuoteSource('bitcoin')?.kind, 'utxo');
+});
+
+test('explicitly readded default networks require their full canonical native registration', () => {
+  for (const canonical of NATIVE_NETWORKS) {
+    const added = createNativeNetwork({ ...canonical, id: `custom:${canonical.chainId}` });
+    assert.equal(findKnownNativeNetwork(added.id), undefined);
+    assert.deepEqual(findKnownNativeNetwork(added.id, added), added);
+    for (const fields of [{ rpcUrl: 'https://wrong.invalid' }, { chainId: '999999' }, { name: 'Changed name' }, { symbol: 'OTHER' }, { testnet: !added.testnet }]) {
+      const changed = createNativeNetwork({ ...added, ...fields });
+      assert.equal(findKnownNativeNetwork(changed.id, changed), undefined);
+      assert.equal(nativeCoinQuoteSource(changed.id, changed), null);
+    }
+    assert.throws(() => snapshotNativeNetwork({ ...added, apiUrl: 'https://wrong.invalid/api' }));
+  }
+  const zk = createNativeNetwork({ ...getNativeNetwork('zksys'), id: 'custom:5757' });
+  assert.deepEqual(nativeCoinQuoteSource(zk.id, zk), { kind: 'evm', asset: 'syscoin' });
+  assert.equal(nativeAssetMarketSource({ kind: 'token', networkId: zk.id, registration: zk, contractAddress: '0x' + '11'.repeat(20) }), null);
 });
 
 test('cache separates the selected currency and expires without requests for wallet identifiers', async () => {

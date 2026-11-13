@@ -2364,7 +2364,7 @@
       "notesBody": "노트 조회, 백업 또는 복원",
       "sentry": "Sentry",
       "sentryBody": "노드, 담보 및 권한 키 관리",
-      "unavailable": "이 빌드에서 사용할 수 없음",
+      "sentryUnavailable": "이 계정 또는 네트워크에서는 Sentry를 사용할 수 없습니다.",
       "publicTitle": "공개 주소 도구",
       "publicBody": "이 도구는 저장된 공개 주소를 관리합니다. 트랜잭션에 서명하거나 해당 지갑을 복구할 수 없습니다.",
       "receiveHint": "지갑에서 받기 기능과 지원되는 테스트넷 파우셋을 사용할 수 있습니다."

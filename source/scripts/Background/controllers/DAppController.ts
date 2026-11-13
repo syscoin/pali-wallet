@@ -2,6 +2,7 @@ import {
   createDappSessions,
   type DappSessionEvent,
 } from '../../../wallet/dappSessions';
+import { providerEventName } from '../../ContentScript/providerChannel';
 import { notificationManager } from '../notification-manager';
 import store, { dappPermissionPort } from 'state/store';
 import type { IDAppController } from 'types/controllers';
@@ -55,13 +56,17 @@ const resolveDelivery = async (origin: string, id: string) => {
         await chrome.scripting.executeScript({
           target: { tabId: tab.id },
           world: 'ISOLATED',
-          func: (eventJson, approvedOrigin) => {
+          func: (eventJson, approvedOrigin, eventName) => {
             if (self.origin !== approvedOrigin) return;
             window.dispatchEvent(
-              new CustomEvent('paliNotification', { detail: eventJson })
+              new CustomEvent(eventName, { detail: eventJson })
             );
           },
-          args: [JSON.stringify({ id, data: event }), origin],
+          args: [
+            JSON.stringify({ id, data: event }),
+            origin,
+            providerEventName('paliNotification'),
+          ],
         });
       })
     );

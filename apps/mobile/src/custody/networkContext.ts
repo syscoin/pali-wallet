@@ -47,14 +47,14 @@ const OPTIONAL_NATIVE_NETWORKS: readonly NativeNetworkRegistration[] = Object.fr
   OPTIONAL_EVM_NETWORK_DEFINITIONS.map(({ id, name, network, testnet }) => createNativeNetwork({ id, name, kind: 'evm', chainId: String(network.chainId),
     slip44: 60, rpcUrl: network.url, symbol: network.currency.toUpperCase(), decimals: 18, testnet }))
 );
-/** Optional metadata applies only after an exact registration has been added. */
+/** Added aliases use bundled metadata only after an exact registration match. */
 export function findKnownNativeNetwork(id: string, registration?: NativeNetworkRegistration | null): NativeNetworkRegistration | undefined {
   const active = NATIVE_NETWORKS.find((network) => network.id === id);
   if (active) return !registration || active.registrationHash === registration.registrationHash ? active : undefined;
   if (!registration || registration.id !== id) return undefined;
-  const optional = OPTIONAL_NATIVE_NETWORKS.find((network) => network.id === id || id === `custom:${network.chainId}`);
-  if (!optional) return undefined;
-  const known = optional.id === id ? optional : createNativeNetwork({ ...optional, id });
+  const bundled = [...NATIVE_NETWORKS, ...OPTIONAL_NATIVE_NETWORKS].find((network) => network.id === id || id === `custom:${network.chainId}`);
+  if (!bundled) return undefined;
+  const known = bundled.id === id ? bundled : createNativeNetwork({ ...bundled, id });
   return known.registrationHash === registration.registrationHash ? known : undefined;
 }
 export function getNativeNetwork(id: string, registrations: readonly NativeNetworkRegistration[] = NATIVE_NETWORKS): NativeNetworkRegistration {

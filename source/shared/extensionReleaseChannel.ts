@@ -2,7 +2,7 @@
 export const STABLE_EXTENSION_ID = 'mgffkfbidihjpoaomajlbgchddlicgpn';
 // The local packaging key identifies Canary, but does not establish a store listing.
 export const CANARY_EXTENSION_ID = 'eaapkkbcdfhchkhgkmgimhihepifmehi';
-export const CANARY_STORE_EXTENSION_ID: string | null = null;
+export const CANARY_STORE_EXTENSION_ID = 'ogkamgifjlkfkjekifikgpmlkkmcabpk';
 export const CHROME_STORE_UPDATE_URL =
   'https://clients2.google.com/service/update2/crx';
 export const STABLE_EXTENSION_FEED_URL =
@@ -10,10 +10,7 @@ export const STABLE_EXTENSION_FEED_URL =
 export const CANARY_EXTENSION_FEED_URL =
   'https://raw.githubusercontent.com/syscoin/pali-wallet/master/releases/wallet-updates-canary.json';
 export const STABLE_EXTENSION_STORE_URL = `https://chromewebstore.google.com/detail/pali-wallet/${STABLE_EXTENSION_ID}`;
-export const CANARY_EXTENSION_STORE_URL: string | null =
-  CANARY_STORE_EXTENSION_ID === null
-    ? null
-    : `https://chromewebstore.google.com/detail/pali-wallet-canary/${CANARY_STORE_EXTENSION_ID}`;
+export const CANARY_EXTENSION_STORE_URL = `https://chromewebstore.google.com/detail/pali-wallet-canary/${CANARY_STORE_EXTENSION_ID}`;
 
 export type ExtensionReleaseChannel = 'stable' | 'canary';
 export type ExtensionReleaseTarget = Readonly<{
@@ -42,7 +39,7 @@ export function getExtensionReleaseTarget(
 ): ExtensionReleaseTarget | null {
   return id === STABLE_EXTENSION_ID
     ? targets.stable
-    : CANARY_STORE_EXTENSION_ID !== null && id === CANARY_STORE_EXTENSION_ID
+    : id === CANARY_STORE_EXTENSION_ID
     ? targets.canary
     : null;
 }

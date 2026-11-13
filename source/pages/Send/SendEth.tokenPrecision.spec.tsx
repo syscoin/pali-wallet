@@ -330,7 +330,8 @@ it('hands a toolbar hardware token form to one wallet tab with its exact draft b
     mockLocation.state = route.state;
     second.rerender(<SendEth />);
     await waitFor(() => expect(amount().value).toBe(tokenAmount));
-    await waitFor(() => expect(amount()).toBeEnabled());
+    // Restored token drafts run the same one-second verification debounce.
+    await waitFor(() => expect(amount()).toBeEnabled(), { timeout: 2500 });
     fireEvent.click(next());
     await waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith(

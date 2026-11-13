@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation, useSearchParams } from 'react-router-dom';
 
+import { CanaryBadge } from 'components/CanaryBadge';
 import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import GetStarted from 'components/Start/GetStarted';
 import Unlock from 'components/Start/Unlock';
@@ -63,19 +64,22 @@ export const Start = (props: any) => {
           {t('start.welcomeTo')}
         </p>
 
-        <div className="relative z-10 flex flex-row gap-3 mb-6">
-          {['Pali', 'Wallet'].map((word, index) => (
-            <h1
-              key={word}
-              className={`text-[#4DA2CF] ${
-                index ? '' : 'text-justify '
-              }font-poppins text-[37.87px] ${
-                index ? 'font-light' : 'font-bold'
-              } leading-[37.87px] tracking-[0.379px]`}
-            >
-              {word}
-            </h1>
-          ))}
+        <div className="relative z-10 mb-6 flex flex-col items-center gap-2">
+          <div className="flex flex-row gap-3">
+            {['Pali', 'Wallet'].map((word, index) => (
+              <h1
+                key={word}
+                className={`text-[#4DA2CF] ${
+                  index ? '' : 'text-justify '
+                }font-poppins text-[37.87px] ${
+                  index ? 'font-light' : 'font-bold'
+                } leading-[37.87px] tracking-[0.379px]`}
+              >
+                {word}
+              </h1>
+            ))}
+          </div>
+          <CanaryBadge />
         </div>
 
         <div className="relative z-10 flex flex-col items-center w-full max-w-md px-6">
