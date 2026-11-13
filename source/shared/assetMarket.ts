@@ -53,20 +53,10 @@ export function assetMarketLine(prices: readonly number[]): string | null {
 
 export type AssetMarketPurpose = 'price' | 'history';
 
-export function assetMarketUrl(
-  id: string,
-  currency: string,
-  purpose: AssetMarketPurpose
-): string {
-  if (
-    !validMarketId(id) ||
-    !/^[a-z]{2,8}$/.test(currency) ||
-    !['price', 'history'].includes(purpose)
-  )
+export function assetMarketUrl(id: string, currency: string): string {
+  if (!validMarketId(id) || !/^[a-z]{2,8}$/.test(currency))
     throw new Error('Invalid market identity');
-  return `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${currency}&ids=${id}&sparkline=${
-    purpose === 'history' && currency === 'usd'
-  }&price_change_percentage=24h`;
+  return `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${currency}&ids=${id}&sparkline=false&price_change_percentage=24h`;
 }
 
 export function assetMarketHistoryUrl(id: string, currency: string): string {
@@ -163,22 +153,14 @@ export function readAssetMarket(
     updatedAt < now - 86_400_000
   )
     return null;
-  // CoinGecko's market-list sparkline is USD, even for another vs_currency.
-  const raw =
-    currency === 'usd' ? record(data.sparkline_in_7d)?.price : undefined;
-  const valid =
-    Array.isArray(raw) &&
-    raw.length >= 2 &&
-    raw.length <= 1024 &&
-    raw.every((value) => positive(value) !== null);
-  const prices = valid ? samplePrices(raw) : [];
   return Object.freeze({
     ...(trustedAssetIconUri(data.image)
       ? { iconUri: trustedAssetIconUri(data.image)! }
       : {}),
     price,
     updatedAt,
-    prices: Object.freeze(prices),
+    // The market-list sparkline is USD-only and can lag by six hours.
+    prices: Object.freeze([]),
     change24h:
       typeof data.price_change_percentage_24h === 'number' &&
       Number.isFinite(data.price_change_percentage_24h)

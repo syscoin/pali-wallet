@@ -56,12 +56,15 @@ export function createNativeAssetMarketReader(fetch: WalletHttpFetch, purpose: A
     try {
       const id = source.kind === 'native' ? source.id : readTokenMarketId(await read(tokenMarketIdentityUrl(source.platform, source.contract), 512 * 1024), source.platform, source.contract);
       if (!id || request.signal.aborted) return null;
-      let data = readAssetMarket(await read(assetMarketUrl(id, currency, purpose), 64 * 1024), id, currency, Date.now());
+      const quote = read(assetMarketUrl(id, currency), 64 * 1024);
+      const history = purpose === 'history'
+        ? read(assetMarketHistoryUrl(id, currency), 128 * 1024).then(body => readAssetMarketHistory(body, Date.now())).catch(() => [])
+        : null;
+      let data = readAssetMarket(await quote, id, currency, Date.now());
       if (request.signal.aborted || !data) return null;
-      if (purpose === 'history' && currency !== 'usd') {
-        let prices: readonly number[] = [];
-        try { prices = readAssetMarketHistory(await read(assetMarketHistoryUrl(id, currency), 128 * 1024), Date.now()); }
-        catch { /* A valid current quote remains useful when history is unavailable. */ }
+      if (history) {
+        // History failure preserves a valid quote; owner cancellation never does.
+        const prices = await history;
         if (owner.aborted) return null;
         data = Object.freeze({ ...data, prices: Object.freeze(prices) });
       }
