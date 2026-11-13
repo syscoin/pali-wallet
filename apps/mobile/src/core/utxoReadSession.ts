@@ -105,7 +105,7 @@ function openUtxoTransport(endpoint: string, options: Readonly<{ fetch: UtxoFetc
     } catch (cause) {
       const currentFailure = controller.signal.aborted ? new UtxoBalanceError('CANCELLED') : cause instanceof UtxoBalanceError ? cause
         : new UtxoBalanceError(cause instanceof ResponseSizeLimitError ? 'RESPONSE_TOO_LARGE' : 'UNAVAILABLE');
-      // A history reader may use the extension's explicit txslight fallback.
+      // A history reader may use the extension's explicit txs fallback.
       // Chain, body, timeout and cancellation failures still poison the session.
       if (retryUnavailable && currentFailure.code === 'UNAVAILABLE') throw currentFailure;
       failure ??= currentFailure;

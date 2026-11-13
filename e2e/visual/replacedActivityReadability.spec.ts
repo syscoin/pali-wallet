@@ -113,7 +113,7 @@ test('ordinary Load more retains readable replaced Activity with its mined winne
     ...[
       'details=tokenBalances&tokens=nonzero',
       'details=tokenBalances&tokens=used',
-      'details=txslight&pageSize=30',
+      'details=txs&pageSize=30',
       'details=txsummary&pageSize=30',
     ].map(
       (query) =>
@@ -131,10 +131,10 @@ test('ordinary Load more retains readable replaced Activity with its mined winne
     reads: [] as string[],
     receipts: [] as Array<{ hash: string; status: string | null }>,
     pages: [] as Array<{
-      phase: string;
       action: string;
-      page: string | null;
       hashes: string[];
+      page: string | null;
+      phase: string;
     }>,
     denied: [] as string[],
     writes: [] as string[],

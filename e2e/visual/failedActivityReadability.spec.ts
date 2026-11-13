@@ -66,7 +66,7 @@ test('mined failed Activity keeps its status and amount readable beside a confir
     ...[
       'details=tokenBalances&tokens=nonzero',
       'details=tokenBalances&tokens=used',
-      'details=txslight&pageSize=30',
+      'details=txs&pageSize=30',
       'details=txsummary&pageSize=30',
     ].map(
       (query) =>

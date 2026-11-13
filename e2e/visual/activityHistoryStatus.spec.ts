@@ -210,7 +210,7 @@ test('UTXO Activity distinguishes pending and failed history from a verified emp
         );
         if (!owner) return route.fallback();
         const details = url.searchParams.get('details');
-        if (!['txsummary', 'txslight'].includes(details || '')) {
+        if (!['txsummary', 'txs'].includes(details || '')) {
           normalReads.push({ accountId: owner.id, details });
           return route.fallback();
         }

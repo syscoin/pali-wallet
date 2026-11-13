@@ -657,7 +657,7 @@ test('ordinary preference pickers retain centered SVG boxes while localized mark
     'details=tokenBalances&tokens=used',
     'details=tokenBalances&tokens=nonzero',
     'details=txsummary&pageSize=30',
-    'details=txslight&pageSize=30',
+    'details=txs&pageSize=30',
   ]);
   const codeTargets = new Set([
     ...owners,

@@ -247,7 +247,7 @@ describe('SysTransactionController rapid polling', () => {
         ).toEqual([
           ['zpub-account-a', 'details=txsummary&pageSize=30'],
           ['zpub-account-b', 'details=txsummary&pageSize=30'],
-          ['zpub-account-b', 'details=txslight&pageSize=30'],
+          ['zpub-account-b', 'details=txs&pageSize=30'],
           ['zpub-account-a', 'details=txsummary&pageSize=30'],
         ]);
         expect(getSyscoinNativeTransferAmount(restored[0], full)).toEqual({
@@ -262,7 +262,7 @@ describe('SysTransactionController rapid polling', () => {
     }
   );
 
-  it('normalizes explicit account ownership in legitimate txslight fallback without using global value aliases', async () => {
+  it('normalizes explicit account ownership in legitimate txs fallback without using global value aliases', async () => {
     const full = fullNativeTransaction({
       value: '6547335',
       vout: [{ value: '1000000' }, { value: '5547335', isOwn: true }],
@@ -342,7 +342,7 @@ describe('SysTransactionController rapid polling', () => {
       expect(fetchBackendAccountCachedMock).toHaveBeenLastCalledWith(
         networkUrl,
         'zpub-paged-light',
-        'details=txslight&page=2&pageSize=20',
+        'details=txs&page=2&pageSize=20',
         true
       );
       expect(row.addressValueIn).toBe(accountIn);
@@ -382,7 +382,7 @@ describe('SysTransactionController rapid polling', () => {
     }
   );
 
-  it('remembers txslight compatibility after a successful basic-only response with history', async () => {
+  it('remembers the full-history fallback after a successful basic-only response with history', async () => {
     const fallbackUrl = `${URL}txsummary-unsupported/`;
     const xpub = 'zpub-txsummary-fallback';
     fetchBackendAccountCachedMock
@@ -408,7 +408,7 @@ describe('SysTransactionController rapid polling', () => {
       2,
       fallbackUrl,
       xpub,
-      'details=txslight&pageSize=30',
+      'details=txs&pageSize=30',
       true
     );
     expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
@@ -427,7 +427,7 @@ describe('SysTransactionController rapid polling', () => {
     expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
       fallbackUrl,
       secondXpub,
-      'details=txslight&pageSize=30',
+      'details=txs&pageSize=30',
       true
     );
     expect(secondResult.map((tx: any) => tx.txid)).toEqual(['tx1']);
@@ -464,7 +464,7 @@ describe('SysTransactionController rapid polling', () => {
       2,
       fallbackUrl,
       xpub,
-      'details=txslight&pageSize=30',
+      'details=txs&pageSize=30',
       true
     );
     expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
@@ -501,13 +501,13 @@ describe('SysTransactionController rapid polling', () => {
       2,
       fallbackUrl,
       xpub,
-      'details=txslight&pageSize=30',
+      'details=txs&pageSize=30',
       true
     );
     expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
   });
 
-  it('propagates failures once history uses cached txslight fallback', async () => {
+  it('propagates failures once history uses cached txs fallback', async () => {
     const fallbackUrl = `${URL}txsummary-unsupported-reject/`;
     const xpub = 'zpub-txsummary-fallback-reject';
     fetchBackendAccountCachedMock
@@ -517,9 +517,9 @@ describe('SysTransactionController rapid polling', () => {
     const controller = SysTransactionController();
     await controller.pollingSysTransactions(xpub, fallbackUrl, false);
 
-    const txslightError = new Error('txslight unavailable');
+    const txsError = new Error('txs unavailable');
     fetchBackendAccountCachedMock.mockClear();
-    fetchBackendAccountCachedMock.mockRejectedValueOnce(txslightError);
+    fetchBackendAccountCachedMock.mockRejectedValueOnce(txsError);
 
     await expect(
       controller.pollingSysTransactions(
@@ -527,12 +527,12 @@ describe('SysTransactionController rapid polling', () => {
         fallbackUrl,
         false
       )
-    ).rejects.toThrow('txslight unavailable');
+    ).rejects.toThrow('txs unavailable');
     expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(1);
     expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
       fallbackUrl,
       'zpub-txsummary-fallback-reject-second',
-      'details=txslight&pageSize=30',
+      'details=txs&pageSize=30',
       true
     );
   });
@@ -819,7 +819,7 @@ describe('SysTransactionController validated history responses', () => {
     );
   });
 
-  it('recovers an inconsistent empty txsummary through txslight without caching incompatibility', async () => {
+  it('recovers an inconsistent empty txsummary through txs without caching incompatibility', async () => {
     fetchBackendAccountCachedMock
       .mockResolvedValueOnce({ txs: 1, unconfirmedTxs: 0, transactions: [] })
       .mockResolvedValueOnce(txsResponse());
@@ -835,7 +835,7 @@ describe('SysTransactionController validated history responses', () => {
       2,
       networkUrl,
       'zpub-fallback',
-      'details=txslight&pageSize=30',
+      'details=txs&pageSize=30',
       true
     );
     fetchBackendAccountCachedMock.mockClear();

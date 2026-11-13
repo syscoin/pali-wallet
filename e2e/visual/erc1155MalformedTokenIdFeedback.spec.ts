@@ -373,7 +373,7 @@ test('manual ERC1155 token ID guidance distinguishes malformed input from health
     'details=tokenBalances&tokens=used',
     'details=txsummary&pageSize=30',
     'details=tokenBalances&tokens=nonzero',
-    'details=txslight&pageSize=30',
+    'details=txs&pageSize=30',
   ])
     addRead(
       'https://blockbook.syscoin.org/api/v2/xpub/' + initialXpub + '?' + query,

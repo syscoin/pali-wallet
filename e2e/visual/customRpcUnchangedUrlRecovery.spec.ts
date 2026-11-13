@@ -300,7 +300,7 @@ for (const scenario of ['edited-url', 'same-url'] as const) {
       'details=tokenBalances&tokens=used',
       'details=txsummary&pageSize=30',
       'details=tokenBalances&tokens=nonzero',
-      'details=txslight&pageSize=30',
+      'details=txs&pageSize=30',
     ]);
     const auxiliary = new Map<string, unknown>(BLACKLIST_FEEDS);
     const addAuxiliary = (url: string, body: unknown) =>

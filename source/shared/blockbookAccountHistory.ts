@@ -77,9 +77,9 @@ export const validateAccountHistory = (data: any, allowEmptyPage: boolean) => {
   throw new Error('Incomplete Blockbook history response');
 };
 
-// Only account-history responses carry queried-account ownership flags. A raw
-// /tx read or txslight's transaction-wide value/valueIn aliases cannot supply
-// these totals. Older responses without explicit ownership stay unresolved.
+// Only account-history ownership flags can establish these totals. A raw /tx
+// response or transaction-wide value/valueIn aliases cannot supply them.
+// Responses without explicit ownership stay unresolved.
 export const normalizeAccountHistory = (accountData: any) => {
   if (!Array.isArray(accountData?.transactions)) return accountData;
   return {
@@ -118,6 +118,30 @@ export const normalizeAccountHistory = (accountData: any) => {
                 : atomic(entry?.value)),
             BigInt(0)
           );
+        // Coinbase creates outputs instead of spending funded prevouts.
+        if (tx.vin.some((entry: any) => entry?.coinbase !== undefined)) {
+          const input = tx.vin[0];
+          const outputTotal = sum(tx.vout);
+          if (
+            tx.vin.length !== 1 ||
+            typeof input.coinbase !== 'string' ||
+            !/^(?:[0-9a-f]{2})+$/i.test(input.coinbase) ||
+            input.txid !== undefined ||
+            input.vout !== undefined ||
+            input.isOwn === true ||
+            input.isAddress === true ||
+            (input.value !== undefined && atomic(input.value) !== BigInt(0)) ||
+            atomic(tx.fees) !== BigInt(0) ||
+            (tx.valueIn !== undefined && atomic(tx.valueIn) !== BigInt(0)) ||
+            (tx.value !== undefined && atomic(tx.value) !== outputTotal)
+          )
+            return tx;
+          return {
+            ...tx,
+            addressValueIn: '0',
+            addressValueOut: sum(tx.vout, true).toString(),
+          };
+        }
         if (sum(tx.vin) !== sum(tx.vout) + atomic(tx.fees)) return tx;
         return {
           ...tx,
@@ -150,7 +174,7 @@ export function createBlockbookAccountHistory(
     pageSize = 30
   ) => {
     const details = txSummaryUnsupportedBackends.has(networkUrl)
-      ? 'txslight'
+      ? 'txs'
       : 'txsummary';
     const pageOption = page !== undefined ? `&page=${page}` : '';
 
@@ -202,7 +226,7 @@ export function createBlockbookAccountHistory(
       txSummaryUnsupportedBackends.add(networkUrl);
     const fallbackOptions = requestOptions.replace(
       'details=txsummary',
-      'details=txslight'
+      'details=txs'
     );
     const fallback = await fetch(
       networkUrl,

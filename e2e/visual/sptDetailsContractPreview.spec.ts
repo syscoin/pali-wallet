@@ -319,7 +319,7 @@ test('SPT details retain known preview contract metadata and expose a consistent
     'details=tokenBalances&tokens=used',
     'details=txsummary&pageSize=30',
     'details=tokenBalances&tokens=nonzero',
-    'details=txslight&pageSize=30',
+    'details=txs&pageSize=30',
   ]);
   const metadata = {
     assetGuid: GUID,

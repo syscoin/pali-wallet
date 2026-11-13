@@ -89,7 +89,7 @@ test('offline native history survives A → B transient failure → A through no
       vin: [],
       vout: [],
       direction: 'sent',
-      // txsummary aliases are account totals, unlike txslight global totals.
+      // txsummary aliases are account totals, unlike txs global totals.
       value: '30000000',
       addressValueIn: '100000226',
       addressValueOut: '30000000',
@@ -110,7 +110,7 @@ test('offline native history survives A → B transient failure → A through no
     txid: secondId,
     valueIn: '200000226',
     value: '200000000',
-    // A genuine account-scoped txslight response omits addressValueIn/out;
+    // A genuine account-scoped txs response omits addressValueIn/out;
     // only these explicit server ownership flags identify its account totals.
     vin: [{ addresses: [second.address], value: '200000226', isOwn: true }],
     vout: [
@@ -360,7 +360,7 @@ test('offline native history survives A → B transient failure → A through no
             historyReads.some(
               (read) =>
                 read.account === 'B' &&
-                read.details === 'txslight' &&
+                read.details === 'txs' &&
                 read.result === 'ok'
             )
           )
@@ -404,7 +404,7 @@ test('offline native history survives A → B transient failure → A through no
             (read) =>
               read.phase === 'return-a' &&
               read.account === 'A' &&
-              read.details === 'txslight'
+              read.details === 'txs'
           )
         ).toEqual([]);
         await assertAValues();

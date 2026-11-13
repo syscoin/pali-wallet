@@ -11,6 +11,83 @@ const ACCOUNT = 'public-account-fixture';
 const empty = { txs: 0, unconfirmedTxs: 0 };
 const row = { txid: 'public-tx', confirmations: 1 };
 const response = { txs: 1, unconfirmedTxs: 0, transactions: [row] };
+const coinbase = () => ({
+  txid: 'bae5f59b3665e929cd5a9cc7fceab069618e6b514e7fe0a37ed27b0388a091fd',
+  vin: [
+    {
+      n: 0,
+      isAddress: false,
+      coinbase:
+        '030fe30e2cfabe6d6d3d04ebd0185f0b6d7bd9d0985eebb334465e7f68145aea4e207c466da833f39910000000f09f909f092f4632506f6f6c2f650000000000000000000000000000000000000000000000000000000000000000000000050031516500',
+    },
+  ],
+  vout: [
+    { value: '546' },
+    { value: '314182372', isOwn: true },
+    { value: '0', isAddress: false },
+  ],
+  value: '314182918',
+  valueIn: '0',
+  fees: '0',
+});
+
+it('derives an owned mining reward without treating coinbase as a funded input', () => {
+  const tx = coinbase();
+  const [result] = normalizeAccountHistory({ transactions: [tx] }).transactions;
+  expect(result).toEqual({
+    ...tx,
+    addressValueIn: '0',
+    addressValueOut: '314182372',
+  });
+  expect(tx).not.toHaveProperty('addressValueIn');
+  const withoutAliases = { ...tx, value: undefined, valueIn: undefined };
+  expect(
+    normalizeAccountHistory({ transactions: [withoutAliases] }).transactions[0]
+  ).toMatchObject({
+    addressValueIn: '0',
+    addressValueOut: '314182372',
+  });
+});
+
+it('preserves supplied account totals and refuses ambiguous or inconsistent coinbase rows', () => {
+  const tx = coinbase();
+  const values = [
+    { ...tx, vin: [...tx.vin, { txid: 'ab'.repeat(32), vout: 0, value: '1' }] },
+    { ...tx, vin: [{ ...tx.vin[0], txid: 'ab'.repeat(32), vout: 0 }] },
+    { ...tx, vin: [{ ...tx.vin[0], isOwn: true }] },
+    { ...tx, vin: [{ ...tx.vin[0], isAddress: true }] },
+    { ...tx, vin: [{ ...tx.vin[0], value: '1' }] },
+    { ...tx, vin: [{ n: 0, isAddress: false, value: '0' }] },
+    ...['', '0', 'zz', '0x0102'].map((inputHex) => ({
+      ...tx,
+      vin: [{ coinbase: inputHex }],
+    })),
+    { ...tx, fees: '1' },
+    { ...tx, valueIn: '1' },
+    { ...tx, value: '314182917' },
+    { ...tx, vout: tx.vout.map((output) => ({ ...output, isOwn: undefined })) },
+    { ...tx, vout: [{ value: '314182918', isOwn: 'true' }] },
+    { ...tx, vout: [{ value: 'invalid', isOwn: true }] },
+    {
+      ...tx,
+      value: undefined,
+      vout: [{ value: 'invalid' }, { value: '314182372', isOwn: true }],
+    },
+    {
+      ...tx,
+      value: undefined,
+      vout: [
+        { value: Number.MAX_SAFE_INTEGER + 1 },
+        { value: '314182372', isOwn: true },
+      ],
+    },
+    { ...tx, addressValueIn: '0', addressValueOut: '123' },
+  ];
+  const normalized = normalizeAccountHistory({
+    transactions: values,
+  }).transactions;
+  values.forEach((value, index) => expect(normalized[index]).toBe(value));
+});
 
 it.each([0, 1, Number.MAX_SAFE_INTEGER, '0', '0001', '9007199254740991'])(
   'preserves supported count representation %s',
@@ -93,9 +170,7 @@ it('classifies unsupported summary only from the existing successful basic-only 
       false
     );
   }
-  expect(isUnsupportedTxSummaryResponse({ txs: 1 }, 'details=txslight')).toBe(
-    false
-  );
+  expect(isUnsupportedTxSummaryResponse({ txs: 1 }, 'details=txs')).toBe(false);
 });
 it('derives only account-relative owned totals with exact integers and preserves other fields', () => {
   const huge = '900719925474099300000';
@@ -163,10 +238,10 @@ it('retains exact request options and one host-lifetime capability memo shared a
   ).resolves.toEqual(response);
   expect(fetch.mock.calls).toEqual([
     [URL, ACCOUNT, 'details=txsummary&pageSize=30', true],
-    [URL, ACCOUNT, 'details=txslight&pageSize=30', true],
+    [URL, ACCOUNT, 'details=txs&pageSize=30', true],
   ]);
   expect(history.getHistoryRequestOptions(URL, 'other-account', 2, 20)).toBe(
-    'details=txslight&page=2&pageSize=20'
+    'details=txs&page=2&pageSize=20'
   );
   expect(history.getHistoryRequestOptions(URL + '/other', ACCOUNT)).toBe(
     'details=txsummary&pageSize=30'
@@ -203,7 +278,7 @@ it.each(['throw', 'null', 'invalid'])(
     expect(fetch.mock.calls[1]).toEqual([
       URL,
       ACCOUNT,
-      'details=txslight&page=2&pageSize=20',
+      'details=txs&page=2&pageSize=20',
       true,
     ]);
     expect(history.getHistoryRequestOptions(URL, ACCOUNT)).toBe(
@@ -213,7 +288,7 @@ it.each(['throw', 'null', 'invalid'])(
     if (failure === 'throw') expect(warn).toHaveBeenCalledWith(cause);
   }
 );
-it('propagates fallback failure and preserves direct txslight failures without another request', async () => {
+it('propagates fallback failure and preserves direct txs failures without another request', async () => {
   const error = new Error('public-test-error'),
     fetch = jest
       .fn()
@@ -225,11 +300,11 @@ it('propagates fallback failure and preserves direct txslight failures without a
     history.fetchAccountHistory(URL, ACCOUNT, 'details=txsummary')
   ).rejects.toBe(error);
   expect(history.getHistoryRequestOptions(URL, ACCOUNT)).toBe(
-    'details=txslight&pageSize=30'
+    'details=txs&pageSize=30'
   );
   fetch.mockClear();
   await expect(
-    history.fetchAccountHistory(URL, ACCOUNT, 'details=txslight')
+    history.fetchAccountHistory(URL, ACCOUNT, 'details=txs')
   ).rejects.toBe(error);
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(warn).not.toHaveBeenCalled();
@@ -251,7 +326,7 @@ it('keeps optional diagnostic propagation and explicit later-page admission', as
     page.fetchAccountHistory(
       URL,
       ACCOUNT,
-      'details=txslight&page=2&pageSize=30',
+      'details=txs&page=2&pageSize=30',
       true
     )
   ).resolves.toEqual({ txs: 9, unconfirmedTxs: 0, transactions: [] });

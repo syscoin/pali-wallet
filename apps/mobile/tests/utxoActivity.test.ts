@@ -8,6 +8,7 @@ import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { BigNumber } from '../../../source/utils/ethersV6Compat.ts';
 import { XPUB } from './publicWatchFixtures.ts';
 import { SENTRY_TX_HEX, SENTRY_TXID, sentryNodeResponse } from './sentryNodeFixtures.ts';
+import { detectActivityNotifications } from '../../../source/shared/activityNotifications.ts';
 const BTC = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', SYS = 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58';
 const H = 'a'.repeat(64), BLOCK = 'b'.repeat(64), ID = (n: number) => n.toString(16).padStart(64, '0');
 const owner: UtxoActivityContext = { accountId: 'watch', networkId: 'bitcoin', address: BTC, generation: 1 };
@@ -30,7 +31,7 @@ function fixture(options: { count?: number; network?: 'bitcoin' | 'syscoin'; rep
     else if (path === '/api/v2/block-index/0') value = { blockHash: network.genesisHash };
     else if (/^\/api\/v2\/(?:address|xpub)\//.test(path)) {
       const query = new URL(url).searchParams, page = Number(query.get('page')), count = options.count ?? 23;
-      assert.ok(['txsummary', 'txslight'].includes(query.get('details')!)); assert.equal(query.get('pageSize'), '20');
+      assert.ok(['txsummary', 'txs'].includes(query.get('details')!)); assert.equal(query.get('pageSize'), '20');
       const identifier = decodeURIComponent(new URL(url).pathname.split('/').at(-1)!);
       value = { address: identifier, txs: count, unconfirmedTxs: 0, page, totalPages: Math.max(1, Math.ceil(count / 20)), itemsOnPage: 20,
         transactions: Array.from({ length: Math.min(20, Math.max(0, count - (page - 1) * 20)) }, (_, i) => tx(ID((page - 1) * 20 + i + 1))) };
@@ -67,6 +68,36 @@ test('whole-account input/change ownership comes from shared Blockbook normaliza
   const [row] = (await read(f)).rows; assert.equal(row?.netUnits, '-1000000000'); assert.equal(row?.nativeTransfer?.amount, '900000000');
   assert.ok(!JSON.stringify(row).includes('unrendered'));
 });
+test('unsupported summaries use one full account page for exact owned coinbase amounts', async () => {
+  const f = fixture({ count: 1, replace(path, body) {
+    if (path.includes('/address/')) {
+      if (path.includes('details=txsummary&')) { delete body.transactions; return body; }
+      assert.ok(path.includes('details=txs&'));
+      const transaction = body.transactions[0];
+      delete transaction.addressValueIn; delete transaction.addressValueOut;
+      Object.assign(transaction, { fees: '0', valueIn: '0', value: '314182918',
+        vin: [{ n: 0, isAddress: false, coinbase: '030fe30e2c' }],
+        vout: [{ value: '546' }, { value: '314182372', isOwn: true }, { value: '0', isAddress: false }] });
+    }
+    return body;
+  } });
+  const [row] = (await read(f)).rows;
+  assert.ok(row);
+  assert.equal(row?.spentUnits, '0'); assert.equal(row?.receivedUnits, '314182372');
+  assert.equal(row?.netUnits, '314182372');
+  assert.deepEqual(row?.nativeTransfer, { amount: '314182372', direction: 'received', kind: 'received' });
+  assert.equal(row.observedConfirmations, 11); assert.equal(row.block?.height, 190);
+  const scope = { accountAddress: BTC, accountId: owner.accountId, accountType: 'watch',
+    chainId: '0', networkKey: getUtxoNetwork('bitcoin').endpoint, networkType: 'utxo' as const };
+  const { baseline } = detectActivityNotifications({ scope, previous: null, transactions: [], observedAt: 100_000 });
+  const { facts } = detectActivityNotifications({ scope, previous: baseline, transactions: [row], observedAt: 100_001 });
+  assert.equal(facts.length, 1);
+  assert.equal(facts[0]?.direction, 'incoming'); assert.equal(facts[0]?.kind, 'transaction-confirmed');
+  assert.equal(f.calls.length, 4);
+  assert.ok(f.calls[2]?.includes('details=txsummary&'));
+  assert.ok(f.calls[3]?.includes('details=txs&'));
+  assert.equal(f.calls.some((path) => path.startsWith('/api/v2/tx/')), false);
+});
 test('pending and missing block observations remain valid activity', async () => {
   const f = fixture({ count: 1, replace(path, body) { if (path.includes('/address/')) Object.assign(body.transactions[0], { blockHeight: -1, blockHash: undefined, blockTime: undefined, confirmations: 0 }); return body; } });
   const [row] = (await read(f)).rows; assert.equal(row?.block, null); assert.equal(row?.observedConfirmations, 0);
@@ -102,7 +133,7 @@ test('explicit zero counts without transactions are empty; incomplete positive c
   assert.equal((await read(empty)).rows.length, 0);
   const f = fixture({ count: 1, replace(path, body) { if (path.includes('details=txsummary')) delete body.transactions; return body; } });
   const reader = createUtxoActivityReader(f); assert.equal((await reader.readPage(source, { page: 1 }, signal())).rows.length, 1);
-  assert.ok(f.calls[3]?.includes('details=txslight')); await reader.readPage(source, { page: 2 }, signal()); assert.ok(f.calls.at(-1)?.includes('details=txslight'));
+  assert.ok(f.calls[3]?.includes('details=txs&')); await reader.readPage(source, { page: 2 }, signal()); assert.ok(f.calls.at(-1)?.includes('details=txs&'));
 });
 test('bad local context, page or source rejects before I/O', async () => {
   const f = fixture(), reader = createUtxoActivityReader(f);
@@ -306,9 +337,9 @@ test('concurrent reader operations keep their own source and abort lifetime',asy
   const first=reader.readPage(source,{page:1},signal());await entered.promise;
   const second=await reader.readPage({context:{...owner,address:other},identifier:other,isAccount:false},{page:2},signal());assert.equal(second.context.address,other);pause.resolve();assert.equal((await first).context.address,BTC);
 });
-test('extension txslight fallback follows exhausted account retries within the same bounded session',async()=>{
+test('extension txs fallback follows exhausted account retries within the same bounded session',async()=>{
   const f=fixture({count:1,replace(path){if(path.includes('details=txsummary'))return new Response('',{status:503});}});
-  const page=await read(f);assert.equal(page.rows.length,1);assert.equal(f.calls.filter(p=>p.includes('details=txsummary')).length,4);assert.equal(f.calls.filter(p=>p.includes('details=txslight')).length,1);
+  const page=await read(f);assert.equal(page.rows.length,1);assert.equal(f.calls.filter(p=>p.includes('details=txsummary')).length,4);assert.equal(f.calls.filter(p=>p.includes('details=txs&')).length,1);
 });
 test('oversized native integer observations stay unavailable instead of crashing formatting',async()=>{
   const f=fixture({count:1,replace(path,body){if(path.includes('/address/')){body.transactions[0].addressValueIn='9'.repeat(78);body.transactions[0].addressValueOut='9'.repeat(79);}return body;}});
@@ -370,7 +401,7 @@ test('small invalid native values retain the existing unavailable-field semantic
 test('work-budget rejection does not poison the shared backend capability for a later healthy read',async()=>{
   let oversized=true;const f=fixture({count:1,replace(path,body){if(oversized&&path.includes('/address/'))body.transactions[0].fees='1'.repeat(79);return body;}}),reader=createUtxoActivityReader(f);
   await assert.rejects(reader.readPage(source,{page:1},signal()));oversized=false;const before=f.calls.length;const page=await reader.readPage(source,{page:1},signal());
-  assert.equal(page.rows.length,1);assert.ok(f.calls.slice(before).at(-1)?.includes('details=txsummary'));assert.equal(f.calls.some(path=>path.includes('txslight')),false);
+  assert.equal(page.rows.length,1);assert.ok(f.calls.slice(before).at(-1)?.includes('details=txsummary'));assert.equal(f.calls.some(path=>path.includes('details=txs&')),false);
 });
 
 // Mirrors Blockbook worker.go accountAssetTransfersFromSummary: the amount is

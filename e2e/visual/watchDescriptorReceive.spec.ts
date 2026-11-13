@@ -366,7 +366,7 @@ for (const scenario of ['descriptor', 'plain address'] as const) {
                     read.kind ===
                       (scenario === 'descriptor' ? 'xpub' : 'address') &&
                     read.identifier === identifier &&
-                    ['txsummary', 'txslight'].includes(read.details || '')
+                    ['txsummary', 'txs'].includes(read.details || '')
                 ).length
             )
             .toBeGreaterThan(0);

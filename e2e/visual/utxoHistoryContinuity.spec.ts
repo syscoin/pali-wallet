@@ -94,9 +94,7 @@ for (const scenario of ['historical dates', 'duplicate page'] as const) {
             'https://explorer-blockbook-dev.syscoin.org',
           ].includes(url.origin) &&
           /^\/api\/v2\/(?:xpub|address)\//.test(url.pathname) &&
-          ['txsummary', 'txslight'].includes(
-            url.searchParams.get('details') || ''
-          ),
+          ['txsummary', 'txs'].includes(url.searchParams.get('details') || ''),
         async (route) => {
           const url = new URL(route.request().url());
           const page = Number(url.searchParams.get('page') || 1);
