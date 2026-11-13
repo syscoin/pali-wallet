@@ -190,33 +190,40 @@ function guardianRemoval(
   }
 }
 
-/** Authenticate the outer envelope independently of the inner execution mode. */
-export function decodeRetainedSmartAccountOperations(
-  entry: EvmRetainedSignedRecord
+/** Decode canonical handleOps identities; receipt observation authenticates provider fields. */
+export function decodeSmartAccountOperations(
+  transaction: Readonly<{
+    chainId: string;
+    data: string;
+    hash: string;
+    nonce: number;
+    payer: string;
+    to: string | null;
+    value: string;
+  }>
 ): readonly RetainedSmartAccountOperation[] {
   try {
-    const tx = Transaction.from(entry.rawTransaction);
-    const chainId = Number(entry.chainId);
+    const chainId = Number(transaction.chainId);
     if (
+      !/^[1-9][0-9]*$/.test(transaction.chainId) ||
       !Number.isSafeInteger(chainId) ||
-      !tx.isSigned() ||
-      tx.hash !== entry.hash ||
-      tx.nonce !== entry.nonce ||
-      tx.from?.toLowerCase() !== entry.from.toLowerCase() ||
-      tx.chainId.toString() !== entry.chainId ||
-      tx.to !== getPaliEntryPointAddress(chainId) ||
-      tx.value !== BigInt(0)
+      !/^0x[0-9a-f]{64}$/i.test(transaction.hash) ||
+      !Number.isSafeInteger(transaction.nonce) ||
+      transaction.nonce < 0 ||
+      transaction.to === null ||
+      getAddress(transaction.to) !== getPaliEntryPointAddress(chainId) ||
+      BigInt(transaction.value) !== BigInt(0)
     )
       return [];
     const decoded = paliEntryPointInterface.decodeFunctionData(
       'handleOps',
-      tx.data
+      transaction.data
     );
     if (
       !decoded[0].length ||
       paliEntryPointInterface
         .encodeFunctionData('handleOps', decoded)
-        .toLowerCase() !== tx.data.toLowerCase()
+        .toLowerCase() !== transaction.data.toLowerCase()
     )
       return [];
     return Object.freeze(
@@ -234,10 +241,10 @@ export function decodeRetainedSmartAccountOperations(
         };
         const removal = guardianRemoval(operation, chainId);
         return Object.freeze({
-          chainId: entry.chainId,
-          payer: entry.from,
-          hash: entry.hash,
-          payerNonce: entry.nonce,
+          chainId: transaction.chainId,
+          payer: getAddress(transaction.payer),
+          hash: transaction.hash.toLowerCase(),
+          payerNonce: transaction.nonce,
           account: operation.sender,
           operationNonce: operation.nonce,
           operationHash: getSmartAccountUserOpHash(operation, chainId),
@@ -245,6 +252,34 @@ export function decodeRetainedSmartAccountOperations(
         });
       })
     );
+  } catch {
+    return [];
+  }
+}
+
+/** Authenticate the outer envelope independently of the inner execution mode. */
+export function decodeRetainedSmartAccountOperations(
+  entry: EvmRetainedSignedRecord
+): readonly RetainedSmartAccountOperation[] {
+  try {
+    const tx = Transaction.from(entry.rawTransaction);
+    if (
+      !tx.isSigned() ||
+      tx.hash !== entry.hash ||
+      tx.nonce !== entry.nonce ||
+      tx.from?.toLowerCase() !== entry.from.toLowerCase() ||
+      tx.chainId.toString() !== entry.chainId
+    )
+      return [];
+    return decodeSmartAccountOperations({
+      chainId: entry.chainId,
+      hash: entry.hash,
+      payer: entry.from,
+      nonce: entry.nonce,
+      to: tx.to,
+      value: tx.value.toString(),
+      data: tx.data,
+    });
   } catch {
     return [];
   }

@@ -243,6 +243,7 @@ function fixture() {
     assertBeforeSign: () => undefined,
     assertCurrentContext: () => undefined,
     assertPendingState: jest.fn(async () => undefined),
+    assertAssetState: jest.fn(async () => undefined),
     feeFunding: NATIVE_EVM_FEE_FUNDING,
     clearNavigation: false,
   };
@@ -420,6 +421,38 @@ it('keeps the final pre-broadcast check after durable persistence', async () => 
   });
   expect(f.records.append).toHaveBeenCalledTimes(1);
   expect(f.broadcast).not.toHaveBeenCalled();
+});
+
+it.each(['review', 'signing', 'persistence'] as const)(
+  'rechecks Smart asset spendability after %s without resubmitting',
+  async (stage) => {
+    const f = fixture();
+    let available = stage !== 'review';
+    f.options.assertAssetState = jest.fn(async () => {
+      if (!available) throw new Error('SMART_ACCOUNT_ASSET_STATE_CHANGED');
+    });
+    const revoke = () => {
+      available = false;
+    };
+    if (stage === 'signing') f.onSigned(revoke);
+    if (stage === 'persistence') f.onPersisted(revoke);
+    await expect(f.submit()).rejects.toMatchObject({
+      transactionNotBroadcast: true,
+    });
+    expect(f.records.append).toHaveBeenCalledTimes(
+      stage === 'persistence' ? 1 : 0
+    );
+    expect(f.broadcast).not.toHaveBeenCalled();
+  }
+);
+
+it('requires the explicit Smart asset check before signing', async () => {
+  const f = fixture();
+  delete (f.options as Partial<typeof f.options>).assertAssetState;
+  await expect(f.submit()).rejects.toMatchObject({
+    transactionNotBroadcast: true,
+  });
+  expect(f.send).not.toHaveBeenCalled();
 });
 
 it.each(['signing', 'persistence'] as const)(

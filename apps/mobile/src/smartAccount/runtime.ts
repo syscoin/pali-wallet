@@ -16,7 +16,7 @@ import type { SmartAccountActivityIdentity } from '../../../../source/wallet/sma
 import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer.ts';
 import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
 import { prepareSmartAccountNativeMaximum } from '../../../../source/utils/smartAccount/nativeMaximum.ts';
-import { assertSmartAccountNativeSpendability } from '../../../../source/utils/smartAccount/nativeSpendability.ts';
+import { assertSmartAccountSpendability } from '../../../../source/utils/smartAccount/assetSpendability.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
 import { buildGuardianPolicyExecutions } from '../../../../source/utils/smartAccount/guardianPolicy.ts';
 import type { EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
@@ -101,7 +101,8 @@ export type NativeSmartOperationPorts = Readonly<{
     signal: AbortSignal,
     guard: () => void,
     metadata: Readonly<Record<string, unknown>>,
-    funding: EvmFeeFunding
+    funding: EvmFeeFunding,
+    assertAssetState: (() => Promise<void>) | null
   ): Promise<NativePreparedConnectionTransaction>;
   waitForReceipt(
     hash: string,
@@ -428,7 +429,7 @@ export function createNativeSmartOperation(
       if (intent.kind === 'guardian-policy')
         await ports.assertGuardianPolicy!(policySignal, assertCurrent);
       await pending.assertNonce(prepared.userOperation);
-      await assertSmartAccountNativeSpendability({
+      await assertSmartAccountSpendability({
         provider: pending.provider,
         chainId,
         userOperation: prepared.userOperation,
@@ -491,7 +492,7 @@ export function createNativeSmartOperation(
           typeof options.assertBeforeSign !== 'function' ||
           typeof options.assertCurrentContext !== 'function' ||
           (transactionMetadata?.smartAccountExecution === true &&
-            typeof options.assertPendingState !== 'function') ||
+            (typeof options.assertPendingState !== 'function' || typeof options.assertAssetState !== 'function')) ||
           !options.feeFunding
         )
           throw new Error('SMART_OPERATION_EXPIRED');
@@ -527,7 +528,8 @@ export function createNativeSmartOperation(
               : {}),
             smartAccountOperationHash: prepared.actionHash,
           },
-          options.feeFunding
+          options.feeFunding,
+          transactionMetadata?.smartAccountExecution === true ? options.assertAssetState : null
         );
         guard();
         await reviewPayer(

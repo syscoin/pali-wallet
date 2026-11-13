@@ -43,6 +43,10 @@ import { Wallet } from 'ethers/wallet';
 import { notificationManager } from '..';
 import { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import * as privateReplay from '../../../wallet/privateNoteReplay';
+import {
+  decodeRetainedSmartAccountOperations,
+  decodeSmartAccountOperations,
+} from '../../../wallet/smartAccountActivity';
 import { encodeERC7579Executions } from 'utils/smartAccount/account';
 import {
   getPaliEntryPointAddress,
@@ -257,53 +261,311 @@ it('finds metadata-free Smart operations and replays exact bytes through the rec
   expect(f.broadcasts).toEqual([f.rawTransaction]);
 });
 
-it('seeds missing public history on replay ACK so the existing Smart receipt reconciliation can confirm it after reload', async () => {
+async function settleReplay(
+  f: Awaited<ReturnType<typeof fixture>>,
+  outcome:
+    | 'confirmed'
+    | 'reverted'
+    | 'missing'
+    | 'wrong-operation'
+    | 'duplicate'
+    | 'missing-calldata'
+    | 'empty-calldata'
+    | 'contradictory-calldata'
+) {
+  const entry = await f.records.readExact(
+    f.session,
+    '1',
+    payer.address,
+    f.hash
+  );
+  const identity = decodeRetainedSmartAccountOperations(entry!)[0];
+  const conflictingData = Transaction.from(f.rawTransaction).data.replace(
+    '22'.repeat(20),
+    '66'.repeat(20)
+  );
+  const conflicting = decodeSmartAccountOperations({
+    chainId: '1',
+    hash: f.hash,
+    payer: payer.address,
+    nonce: 0,
+    to: getPaliEntryPointAddress(1),
+    value: '0',
+    data: conflictingData,
+  })[0];
+  const event = paliEntryPointInterface.encodeEventLog(
+    paliEntryPointInterface.getEvent('UserOperationEvent')!,
+    [
+      outcome === 'wrong-operation'
+        ? '0x' + 'aa'.repeat(32)
+        : outcome === 'contradictory-calldata'
+        ? conflicting.operationHash
+        : identity.operationHash,
+      smart,
+      '0x' + '00'.repeat(20),
+      identity.operationNonce,
+      outcome !== 'reverted',
+      1,
+      1,
+    ]
+  );
+  const log = {
+    ...event,
+    address: getPaliEntryPointAddress(1),
+    transactionHash: f.hash,
+    blockHash,
+    blockNumber: '0xc',
+  };
+  const receipt = {
+    transactionHash: f.hash,
+    from: payer.address,
+    to: getPaliEntryPointAddress(1),
+    status: '0x1',
+    blockNumber: '0xc',
+    blockHash,
+    transactionIndex: '0x0',
+    logs:
+      outcome === 'missing' ? [] : outcome === 'duplicate' ? [log, log] : [log],
+  };
+  const base = f.provider.send.getMockImplementation()!;
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (method === 'eth_getTransactionReceipt') return receipt as any;
+    if (method === 'eth_getBlockByNumber')
+      return {
+        number: '0xc',
+        hash: blockHash,
+        gasLimit: '0x100000',
+        transactions: [f.hash],
+      } as any;
+    return base(method, params);
+  });
+  Object.assign(f.provider, {
+    getTransaction: async () => {
+      const tx = Transaction.from(f.rawTransaction);
+      return [
+        'missing-calldata',
+        'empty-calldata',
+        'contradictory-calldata',
+      ].includes(outcome)
+        ? {
+            hash: tx.hash,
+            from: tx.from,
+            to: tx.to,
+            chainId: tx.chainId,
+            nonce: tx.nonce,
+            value: tx.value,
+            data:
+              outcome === 'missing-calldata'
+                ? undefined
+                : outcome === 'empty-calldata'
+                ? '0x'
+                : conflictingData,
+          }
+        : tx;
+    },
+    getTransactionReceipt: async () => receipt,
+    getBlockNumber: async () => 12,
+    getBlock: async () => ({ timestamp: 1000 }),
+  });
+  return receipt;
+}
+
+it.each([
+  'confirmed',
+  'reverted',
+  'missing',
+  'wrong-operation',
+  'duplicate',
+  'missing-calldata',
+  'empty-calldata',
+  'contradictory-calldata',
+] as const)(
+  'uses the exact canonical inner outcome (%s) when ordinary receipt reconciliation resumes after replay',
+  async (outcome) => {
+    const f = await fixture();
+    expect(mockState.vault.accountTransactions.SmartAccount[1]).toBeUndefined();
+    const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
+    await f.wallet.confirmEvmSignedReplay(prepared.review.id);
+    const pending =
+      mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0];
+    expect(pending).toMatchObject({
+      hash: f.hash,
+      from: payer.address,
+      input: Transaction.from(f.rawTransaction).data,
+      smartAccountExecutionFrom: smart,
+    });
+    expect(pending.blockNumber).toBeUndefined();
+    expect(f.wallet.startRapidTransactionPolling).toHaveBeenCalledWith(
+      f.hash,
+      1,
+      false,
+      { id: 1, type: 'SmartAccount' }
+    );
+    expect(f.wallet.saveWalletState).toHaveBeenCalled();
+    mockState = structuredClone(mockState);
+    await settleReplay(f, outcome);
+    jest.mocked(notificationManager.notifyTransaction).mockClear();
+    await f.wallet.reconcileLocalPendingEvmSmartAccountTransactions(
+      { id: 1, type: 'SmartAccount' },
+      1
+    );
+    if (
+      ['missing-calldata', 'empty-calldata', 'contradictory-calldata'].includes(
+        outcome
+      )
+    ) {
+      expect(
+        mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0]
+          .blockNumber
+      ).toBeNull();
+      // The next ordinary reconciliation must still recognize the known
+      // handleOps envelope when the RPC again omits its calldata.
+      f.wallet.pendingEvmReceiptChecks.clear();
+      await f.wallet.reconcileLocalPendingEvmSmartAccountTransactions(
+        { id: 1, type: 'SmartAccount' },
+        1
+      );
+    }
+    const smartRow =
+      mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0];
+    const payerRow =
+      mockState.vault.accountTransactions.HDAccount[0].ethereum[1][0];
+    const known = outcome === 'confirmed' || outcome === 'reverted';
+    expect(smartRow.blockNumber).toBe(known ? 12 : null);
+    expect(smartRow.txreceipt_status).toBe(
+      known ? (outcome === 'confirmed' ? '1' : '0') : null
+    );
+    expect(smartRow.confirmations).toBe(known ? 1 : 0);
+    expect(payerRow.txreceipt_status).toBe('1');
+    expect(payerRow.confirmations).toBe(1);
+    const smartNotices = jest
+      .mocked(notificationManager.notifyTransaction)
+      .mock.calls.map(([notice]) => notice)
+      .filter((notice) => notice.account.address.toLowerCase() === smart);
+    expect(smartNotices).toHaveLength(known ? 1 : 0);
+    if (known)
+      expect(smartNotices[0].type).toBe(
+        outcome === 'confirmed' ? 'confirmed' : 'failed'
+      );
+  }
+);
+
+it('keeps mined outer-only cancellation rows terminal without requiring a UserOperation event', async () => {
   const f = await fixture();
-  expect(mockState.vault.accountTransactions.SmartAccount[1]).toBeUndefined();
-  const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
-  await f.wallet.confirmEvmSignedReplay(prepared.review.id);
-  const selected =
-    mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0];
-  const payerRow =
-    mockState.vault.accountTransactions.HDAccount[0].ethereum[1][0];
-  expect(selected).toMatchObject({
+  const pending = {
     hash: f.hash,
     from: payer.address,
-    input: Transaction.from(f.rawTransaction).data,
+    to: payer.address,
+    input: '0x',
+    value: '0',
+    isCancel: true,
     smartAccountExecutionFrom: smart,
-  });
-  expect(payerRow.hash).toBe(f.hash);
-  expect(selected.blockNumber).toBeUndefined();
-  expect(f.wallet.startRapidTransactionPolling).toHaveBeenCalledWith(
+  };
+  mockState.vault.accountTransactions.SmartAccount[1] = {
+    ethereum: { 1: [pending] },
+  };
+  const unresolved = await f.wallet.updateTrackedEvmTransactionCopies(
     f.hash,
     1,
-    false,
-    { id: 1, type: 'SmartAccount' }
+    {
+      ...pending,
+      chainId: 1,
+      nonce: 0,
+      blockNumber: 12,
+      blockHash,
+      confirmations: 1,
+      // eslint-disable-next-line camelcase
+      txreceipt_status: '1',
+      success: true,
+    }
   );
-  expect(f.wallet.saveWalletState).toHaveBeenCalled();
-  // Reopen with the persisted public row: the normal bounded receipt pass now
-  // has a candidate, whereas the original lost ACK left this array empty.
-  mockState = structuredClone(mockState);
-  f.wallet.getEvmTransactionFromProvider = jest.fn(async () => ({
-    ...selected,
-    blockNumber: 12,
-    blockHash,
-    confirmations: 1,
-    txreceipt_status: '1',
-  }));
-  await f.wallet.reconcileLocalPendingEvmSmartAccountTransactions(
-    { id: 1, type: 'SmartAccount' },
-    1
-  );
-  expect(f.wallet.getEvmTransactionFromProvider).toHaveBeenCalledWith(f.hash);
+  expect(unresolved).toBe(false);
   expect(
     mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0]
-      .confirmations
-  ).toBe(1);
+  ).toMatchObject({
+    blockNumber: 12,
+    ['txreceipt_status']: '1',
+    isCancel: true,
+  });
+  expect(f.provider._send).not.toHaveBeenCalled();
+});
+
+it('does not replace a newer receipt with a delayed unknown inner result', async () => {
+  const f = await fixture();
+  const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
+  await f.wallet.confirmEvmSignedReplay(prepared.review.id);
+  await settleReplay(f, 'missing');
+  const outer = await f.wallet.getEvmTransactionFromProvider(f.hash);
+  const base = f.provider.send.getMockImplementation()!;
+  let release!: () => void;
+  let entered!: () => void;
+  const observing = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (method === 'eth_getTransactionReceipt') {
+      entered();
+      await held;
+    }
+    return base(method, params);
+  });
+  const update = f.wallet.updateTrackedEvmTransactionCopies(f.hash, 1, outer);
+  await observing;
+  const newer = {
+    blockNumber: 13,
+    blockHash: '0x' + '99'.repeat(32),
+    confirmations: 1,
+    // eslint-disable-next-line camelcase
+    txreceipt_status: '0',
+  };
+  for (const [type, id] of [
+    ['SmartAccount', 1],
+    ['HDAccount', 0],
+  ] as const) {
+    const rows = mockState.vault.accountTransactions[type][id].ethereum[1];
+    rows[0] = { ...rows[0], ...newer };
+  }
+  release();
+  await update;
+  expect(
+    mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0]
+  ).toMatchObject(newer);
   expect(
     mockState.vault.accountTransactions.HDAccount[0].ethereum[1][0]
-      .confirmations
-  ).toBe(1);
+  ).toMatchObject(newer);
+});
+
+it('keeps the existing rapid poll active while the canonical inner outcome is unavailable', async () => {
+  const f = await fixture();
+  const prepared = await f.wallet.prepareEvmSignedReplay(f.hash);
+  await f.wallet.confirmEvmSignedReplay(prepared.review.id);
+  await settleReplay(f, 'missing');
+  f.wallet.activeRapidPolls = new Map();
+  f.wallet.startRapidTransactionPolling =
+    MainController.prototype['startRapidTransactionPolling'];
+  jest.useFakeTimers();
+  try {
+    f.wallet.startRapidTransactionPolling(f.hash, 1, false, {
+      id: 1,
+      type: 'SmartAccount',
+    });
+    await jest.advanceTimersByTimeAsync(4000);
+    expect(f.wallet.activeRapidPolls.size).toBe(1);
+    expect(
+      mockState.vault.accountTransactions.SmartAccount[1].ethereum[1][0]
+        .blockNumber
+    ).toBeNull();
+    expect(
+      mockState.vault.accountTransactions.HDAccount[0].ethereum[1][0]
+        .blockNumber
+    ).toBe(12);
+  } finally {
+    for (const timer of f.wallet.activeRapidPolls.values()) clearTimeout(timer);
+    jest.useRealTimers();
+  }
 });
 
 it('tracks the Smart account actually named by earlier payer bytes, not the currently selected parent', async () => {

@@ -44,6 +44,7 @@ const mockAsset = {
   decimals: 0,
   balance: 2,
 };
+let mockSelectedFixture: any = mockAsset;
 const mockLocation = {
   key: 'nft-send',
   pathname: '/send/eth',
@@ -100,7 +101,7 @@ jest.mock('utils/index', () => ({
 jest.mock('state/vault/selectors', () => ({
   selectActiveAccountWithAssets: (state: any) => ({
     account: state.vault.accounts.HDAccount[0],
-    assets: { ethereum: [mockAsset], syscoin: [] },
+    assets: { ethereum: [mockSelectedFixture], syscoin: [] },
   }),
   selectValidEnsCache: () => ({}),
   selectEnsNameToAddress: () => ({}),
@@ -171,6 +172,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers();
   mockDiscovered = [];
+  mockSelectedFixture = mockAsset;
   window.history.replaceState(null, '', '/app.html');
   mockState = {
     vault: {
@@ -434,4 +436,40 @@ it('does not reuse a late positive result for a different manual token ID', asyn
   await next();
   expect(mockNavigate).not.toHaveBeenCalled();
   expect(screen.getByText(/send.youDontOwnThisToken/)).toBeInTheDocument();
+});
+
+it('refreshes ERC1155 quantity on selection instead of trusting the cached holding', async () => {
+  mockSelectedFixture = {
+    ...mockAsset,
+    id: `${CONTRACT}-7`,
+    tokenStandard: 'ERC-1155',
+    tokenId: '7',
+    balance: 12,
+    rawBalance: '12',
+  };
+  const prior = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation((path: string[], args?: any[]) =>
+    path.at(-1) === 'verifyERC1155Ownership'
+      ? Promise.resolve([
+          { tokenId: '7', balance: 7, rawBalance: '7', verified: true },
+        ])
+      : prior(path, args)
+  );
+  render(<SendEth />);
+  fireEvent.click(screen.getByRole('button', { name: /COLLECTI.*ERC-1155/ }));
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'verifyERC1155Ownership'],
+    [CONTRACT, OWNER, ['7']]
+  );
+  fireEvent.change(screen.getByPlaceholderText('send.receiver'), {
+    target: { value: RECIPIENT },
+  });
+  expect(screen.getByText('7 COLLECTION')).toBeTruthy();
+  const amount = screen.getByPlaceholderText('send.nftAmountRange');
+  fireEvent.change(amount, { target: { value: '8' } });
+  await next();
+  expect(mockNavigate).not.toHaveBeenCalled();
 });

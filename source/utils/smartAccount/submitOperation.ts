@@ -16,11 +16,14 @@ import {
 } from './account.ts';
 import { requireSmartAccountAddressIdentity } from './addressIdentity.ts';
 import {
+  assertSmartAccountSpendability,
+  assertSmartAccountAssetSpendability,
+} from './assetSpendability.ts';
+import {
   getPaliEntryPointAddress,
   PALI_ENTRYPOINT_V09_ABI,
 } from './contracts.ts';
 import { getZkSysGasTankAddress } from './deploymentMetadata.ts';
-import { assertSmartAccountNativeSpendability } from './nativeSpendability.ts';
 import {
   hasNativeGasFailure,
   hasSmartAccountSignatureFailure,
@@ -259,7 +262,7 @@ async function submitOwnedSmartAccountOperation<
       signature: params.signature,
     };
     const assertSpendable = () =>
-      assertSmartAccountNativeSpendability({
+      assertSmartAccountSpendability({
         provider: host.provider,
         chainId: active.metadata.chainId,
         userOperation: signedUserOperation,
@@ -408,6 +411,13 @@ async function submitOwnedSmartAccountOperation<
           await assertSpendable();
           assertCurrent();
         },
+        assertAssetState: () =>
+          assertSmartAccountAssetSpendability({
+            provider: host.provider,
+            chainId: active.metadata.chainId,
+            userOperation: signedUserOperation,
+            assertCurrent,
+          }),
         clearNavigation: true,
         async onBroadcast(broadcast: { hash: string }) {
           acknowledgedHandleOpsHash = broadcast.hash;
