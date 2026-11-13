@@ -637,6 +637,10 @@ export const SendConfirm = () => {
       !smartAccountQuoteError &&
       !smartAccountQuoteNeedsRefresh
   );
+  const smartAccountFeeUnavailable = Boolean(
+    isSmartAccountSend &&
+      (smartAccountQuoteError || smartAccountQuoteNeedsRefresh)
+  );
   const feeEstimateReady =
     isBitcoinBased ||
     (!isCalculatingFees &&
@@ -650,9 +654,13 @@ export const SendConfirm = () => {
 
   const displayedAmount = useMemo(() => {
     if (isSmartAccountSend && !basicTxValues?.token && basicTxValues?.isMax)
-      return smartAccountQuote
+      return smartAccountQuoteReady && smartAccountQuote
         ? formatEther(smartAccountQuote.executions[0].value)
-        : t('send.calculating');
+        : t(
+            smartAccountFeeUnavailable
+              ? 'send.notAvailable'
+              : 'send.calculating'
+          );
     if (basicTxValues?.token || !basicTxValues?.isMax)
       return basicTxValues?.amount;
     try {
@@ -715,6 +723,8 @@ export const SendConfirm = () => {
     exactWalletFeeReview,
     isSmartAccountSend,
     smartAccountQuote,
+    smartAccountQuoteReady,
+    smartAccountFeeUnavailable,
     t,
     feeEstimateReady,
     validateCustomGasLimit,
@@ -1064,6 +1074,7 @@ export const SendConfirm = () => {
     if (feeCalculationError) {
       return t('buttons.error');
     }
+    if (smartAccountFeeUnavailable) return t('send.feeUnavailable');
     if (
       currentFee === undefined ||
       currentFee === null ||
@@ -2651,6 +2662,16 @@ export const SendConfirm = () => {
                   )
                   <span className="text-white text-xs">
                     {(() => {
+                      if (isSmartAccountSend && !smartAccountQuoteReady)
+                        return (
+                          <span>
+                            {t(
+                              smartAccountFeeUnavailable
+                                ? 'send.feeUnavailable'
+                                : 'send.calculating'
+                            )}
+                          </span>
+                        );
                       // For ERC20 tokens, handle differently since we can't combine token amount + ETH fee into single fiat value
                       if (basicTxValues.token && !basicTxValues.token.isNft) {
                         const gasFeeFiat = feeCalculationError
