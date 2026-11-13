@@ -264,8 +264,8 @@ test('resumed SPT without an observed token balance displays unavailable and doe
   f.changeAvailable(undefined); f.render(); await tick();
   try {
     const elements = all(f.render());
-    const balance = elements.find(node => node.type === 'Text' && node.props.accessibilityLabel === 'Available unavailable SPT');
-    assert(balance); assert.equal(balance.children.join(''), 'Available — SPT');
+    const balance = elements.find(node => node.type === 'Text' && node.props.accessibilityLabel === 'Balance unavailable');
+    assert(balance); assert.equal(balance.children.join(''), 'Balance unavailable');
     assert(!elements.some(node => node.props.title === 'MAX'));
     assert.equal(f.requests.length, 0);
   } finally { f.close(); }
