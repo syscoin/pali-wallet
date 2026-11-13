@@ -92,7 +92,7 @@ function startupReads() {
     'details=tokenBalances&tokens=used',
     'details=txsummary&pageSize=30',
     'details=tokenBalances&tokens=nonzero',
-    'details=txslight&pageSize=30',
+    'details=txs&pageSize=30',
   ])
     reads.set(`https://blockbook.syscoin.org/api/v2/xpub/${xpub}?${query}`, {
       address: xpub,

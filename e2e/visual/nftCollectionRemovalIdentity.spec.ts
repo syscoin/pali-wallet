@@ -307,7 +307,7 @@ for (const scenario of ['different-symbol', 'same-symbol'] as const) {
         'details=tokenBalances&tokens=used',
         'details=txsummary&pageSize=30',
         'details=tokenBalances&tokens=nonzero',
-        'details=txslight&pageSize=30',
+        'details=txs&pageSize=30',
       ])
         addAuxiliary(
           'https://blockbook.syscoin.org/api/v2/xpub/' +

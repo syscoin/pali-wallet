@@ -568,7 +568,7 @@ test('ordinary SPT preview preserves source-valid symbol readability', async ({}
         'details=tokenBalances&tokens=used',
         'details=tokenBalances&tokens=nonzero',
         'details=txsummary&pageSize=30',
-        'details=txslight&pageSize=30',
+        'details=txs&pageSize=30',
         'details=basic&pageSize=0',
         'details=tokens&tokens=used',
       ];

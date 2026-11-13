@@ -51,7 +51,7 @@ const accountQueries = new Set([
   'details=tokenBalances&tokens=used',
   'details=tokenBalances&tokens=nonzero',
   'details=txsummary&pageSize=30',
-  'details=txslight&pageSize=30',
+  'details=txs&pageSize=30',
   // The locked SDK's real new receiving/change-address index read.
   'tokens=used&details=tokens',
 ]);

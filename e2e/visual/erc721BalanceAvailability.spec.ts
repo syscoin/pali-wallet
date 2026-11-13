@@ -169,7 +169,7 @@ for (const { mode, width } of availabilityCases) {
       'details=tokenBalances&tokens=used',
       'details=txsummary&pageSize=30',
       'details=tokenBalances&tokens=nonzero',
-      'details=txslight&pageSize=30',
+      'details=txs&pageSize=30',
     ]) {
       auxiliaryReplies.set(
         requestKey(

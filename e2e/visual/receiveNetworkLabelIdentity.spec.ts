@@ -516,7 +516,7 @@ for (const scenario of [
       'details=tokenBalances&tokens=used',
       'details=txsummary&pageSize=30',
       'details=tokenBalances&tokens=nonzero',
-      'details=txslight&pageSize=30',
+      'details=txs&pageSize=30',
     ])
       addRead(
         'https://blockbook.syscoin.org/api/v2/xpub/' +

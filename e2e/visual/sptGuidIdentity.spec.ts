@@ -120,7 +120,7 @@ for (const mode of ['padded first', 'canonical first'] as const) {
       'details=tokenBalances&tokens=used',
       'details=txsummary&pageSize=30',
       'details=tokenBalances&tokens=nonzero',
-      'details=txslight&pageSize=30',
+      'details=txs&pageSize=30',
     ]);
     const tickerUrls = new Set([
       'https://blockbook.syscoin.org/api/v2/tickers/currency',

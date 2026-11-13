@@ -433,7 +433,7 @@ for (const viewport of [
       'details=tokenBalances&tokens=used',
       'details=tokenBalances&tokens=nonzero',
       'details=txsummary&pageSize=30',
-      'details=txslight&pageSize=30',
+      'details=txs&pageSize=30',
     ]);
     const nft = new Interface([
       'function safeTransferFrom(address from,address to,uint256 tokenId)',

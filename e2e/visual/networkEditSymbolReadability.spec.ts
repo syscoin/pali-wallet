@@ -84,7 +84,7 @@ const accountQueries = new Set([
   'details=tokenBalances&tokens=used',
   'details=tokenBalances&tokens=nonzero',
   'details=txsummary&pageSize=30',
-  'details=txslight&pageSize=30',
+  'details=txs&pageSize=30',
   'tokens=used&details=tokens',
 ]);
 const digest = (value: Buffer | string) =>

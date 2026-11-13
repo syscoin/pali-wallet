@@ -848,7 +848,7 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
     'details=tokenBalances&tokens=used',
     'details=tokenBalances&tokens=nonzero',
     'details=txsummary&pageSize=30',
-    'details=txslight&pageSize=30',
+    'details=txs&pageSize=30',
   ]);
   const codeTargets = new Set([
     ...owners,

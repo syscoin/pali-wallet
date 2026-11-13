@@ -137,9 +137,7 @@ test('manual Refresh retrieves new confirmed history within the normal cache int
           'https://explorer-blockbook-dev.syscoin.org',
         ].includes(url.origin) &&
         /^\/api\/v2\/(?:xpub|address)\//.test(url.pathname) &&
-        ['txsummary', 'txslight'].includes(
-          url.searchParams.get('details') || ''
-        ),
+        ['txsummary', 'txs'].includes(url.searchParams.get('details') || ''),
       async (route) => {
         const url = new URL(route.request().url());
         const rows = available.slice();
