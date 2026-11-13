@@ -4,6 +4,9 @@ dist/
 dist-*/
 /ios/
 /android/
+# Generated outputs from local Expo native modules.
+/modules/*/android/build/
+/modules/*/android/.cxx/
 .pali-build/
 playwright-report/
 test-results/
