@@ -205,6 +205,9 @@ module.exports = {
     }),
     new DefinePlugin({
       NODE_ENV: JSON.stringify(process.env.NODE_ENV),
+      'process.env.PALI_EXTENSION_CHANNEL': JSON.stringify(
+        process.env.NODE_ENV === 'canary' ? 'canary' : 'stable'
+      ),
       'process.env.PASSKEY_GUARDIAN_SHORT_RECOVERY_DELAY_SECONDS':
         JSON.stringify(
           Number.isFinite(passkeyGuardianShortRecoveryDelaySeconds) &&
@@ -286,6 +289,10 @@ module.exports = {
             // These files are byte-identical to favicon-32.png. Keep the
             // canonical path used by saved token logos and share its payload.
             ignore: [
+              '**/pali-canary-icon.svg',
+              ...(process.env.NODE_ENV === 'canary'
+                ? []
+                : ['**/pali-canary-icon.png']),
               '**/favicon-16.png',
               '**/favicon-48.png',
               '**/favicon-128.png',

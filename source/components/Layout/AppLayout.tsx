@@ -5,6 +5,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 
 import dotsImage from 'assets/all_assets/dotsHeader.png';
+import { CanaryBadge } from 'components/CanaryBadge';
 import { Header } from 'components/Header/Header';
 import { Icon, IconButton } from 'components/index';
 import { PageLoadingOverlay } from 'components/Loading/PageLoadingOverlay';
@@ -402,6 +403,11 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
         disableScroll ? '' : 'overflow-y-auto'
       }`}
     >
+      {hideHeader && (
+        <div className="text-center">
+          <CanaryBadge />
+        </div>
+      )}
       {/* Persistent header across all routes - respect hideHeader and titleOnly */}
       {!hideHeader && !titleOnly && (
         <Header accountHeader={shouldShowAccountHeader} />
@@ -437,9 +443,12 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
             <div className="w-5" />
           )}
 
-          <p className="w-full text-center text-base z-10" id={pageId}>
-            {pageTitle}
-          </p>
+          <div className="z-10 flex w-full flex-col items-center gap-1">
+            <p className="w-full text-center text-base" id={pageId}>
+              {pageTitle}
+            </p>
+            {titleOnly && <CanaryBadge />}
+          </div>
 
           {/* Close button */}
           {showNavigationButtons ? (

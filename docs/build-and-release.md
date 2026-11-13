@@ -28,6 +28,8 @@ Review the checks and findings for the exact candidate commit. Complete the brow
 
 Promote the tested artifact and retain its source revision and build receipt. Store submission, approval and rollout are separate from creating a GitHub release. Canary and production use separate store items; do not upload a Canary build to the production item.
 
+The Canary item is `ogkamgifjlkfkjekifikgpmlkkmcabpk`; production is `mgffkfbidihjpoaomajlbgchddlicgpn`. Canary packages have an amber C icon, a Canary label in the wallet, and a separate dapp-wallet identity. Update checks use the matching store item and release feed. Unpacked builds do not receive Store update notices.
+
 ## Other browser targets
 
 Chrome is the maintained extension target. The Firefox and Opera scripts remain available for development: `dev:firefox`, `dev:opera`, `build:firefox` and `build:opera`. Test those builds in their browsers before release.

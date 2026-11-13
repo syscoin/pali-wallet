@@ -1,5 +1,7 @@
 import {
   CANARY_EXTENSION_ID,
+  CANARY_STORE_EXTENSION_ID,
+  CANARY_EXTENSION_STORE_URL,
   CHROME_STORE_UPDATE_URL,
   STABLE_EXTENSION_ID,
 } from '../shared/extensionReleaseChannel';
@@ -360,6 +362,25 @@ it('waits for exact installation identity before any release I/O and uses only t
     expect(f.store.getSnapshot()).toMatchObject({
       installation: 'store',
       channel: 'stable',
+    });
+  } finally {
+    f.store.dispose();
+  }
+});
+
+it('uses the Canary feed and listing for the verified Canary store installation', async () => {
+  const f = fixture('5.0.0.2', { id: CANARY_STORE_EXTENSION_ID });
+  try {
+    f.store.start();
+    await f.store.check();
+    expect(f.fetchFeed).toHaveBeenCalled();
+    expect(f.fetchFeed.mock.calls.every((call) => call[1] === 'canary')).toBe(
+      true
+    );
+    expect(f.store.getSnapshot()).toMatchObject({
+      installation: 'store',
+      channel: 'canary',
+      storeUrl: CANARY_EXTENSION_STORE_URL,
     });
   } finally {
     f.store.dispose();

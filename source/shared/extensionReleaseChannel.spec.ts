@@ -30,9 +30,30 @@ it('keeps fixed build, feed and store identities distinct', () => {
     feedUrl: STABLE_EXTENSION_FEED_URL,
     storeUrl: STABLE_EXTENSION_STORE_URL,
   });
-  expect(CANARY_STORE_EXTENSION_ID).toBeNull();
-  expect(CANARY_EXTENSION_STORE_URL).toBeNull();
+  expect(CANARY_STORE_EXTENSION_ID).not.toBe(STABLE_EXTENSION_ID);
+  expect(getExtensionReleaseTarget(CANARY_STORE_EXTENSION_ID)).toEqual({
+    channel: 'canary',
+    feedUrl: CANARY_EXTENSION_FEED_URL,
+    storeUrl: CANARY_EXTENSION_STORE_URL,
+  });
   expect(getExtensionReleaseTarget(CANARY_EXTENSION_ID)).toBeNull();
+});
+
+it('admits the assigned Canary store item without admitting its unpacked build', () => {
+  const canary = { ...info, id: CANARY_STORE_EXTENSION_ID };
+  expect(
+    admitExtensionReleaseTarget(CANARY_STORE_EXTENSION_ID, manifest, canary)
+  ).toEqual({
+    channel: 'canary',
+    feedUrl: CANARY_EXTENSION_FEED_URL,
+    storeUrl: CANARY_EXTENSION_STORE_URL,
+  });
+  expect(
+    admitExtensionReleaseTarget(CANARY_STORE_EXTENSION_ID, manifest, {
+      ...canary,
+      installType: 'development',
+    })
+  ).toBeNull();
 });
 
 it('requires a verified installation rather than a copied manifest key or update URL', () => {

@@ -270,9 +270,14 @@ test.each([undefined, 0, '01', 65536, '5.0.0.1'])(
   }
 );
 
-test.each([false, true])(
-  'real generator isolates the manifest and excludes local keys from store builds (%s)',
-  (store) => {
+test.each([
+  ['MV2', false],
+  ['MV2', true],
+  ['MV3', false],
+  ['MV3', true],
+])(
+  'real %s generator isolates the manifest and excludes local keys from store builds (%s)',
+  (manifestType, store) => {
     const f = fixture();
     const output = join(f.root, 'generated.json');
     const tracked = readFileSync(resolve('manifest.json'));
@@ -284,7 +289,7 @@ test.each([false, true])(
         env: {
           ...process.env,
           NODE_ENV: 'canary',
-          MANIFEST_TYPE: 'MV3',
+          MANIFEST_TYPE: String(manifestType),
           PALI_CANARY_BUILD_NUMBER: '65535',
           PALI_EXTENSION_MANIFEST: output,
           PALI_EXTENSION_STORE_BUILD: store ? '1' : '0',
@@ -301,7 +306,18 @@ test.each([false, true])(
       /^THIS EXTENSION IS FOR BETA TESTING\./
     );
     expect(manifest.description.length).toBeLessThanOrEqual(132);
-    if (store) expect(manifest).not.toHaveProperty('key');
+    expect(manifest.icons).toEqual({
+      16: 'assets/all_assets/pali-canary-icon.png',
+      32: 'assets/all_assets/pali-canary-icon.png',
+      48: 'assets/all_assets/pali-canary-icon.png',
+      128: 'assets/all_assets/pali-canary-icon.png',
+    });
+    const action = manifest.action || manifest.browser_action;
+    expect(action.default_icon).toEqual(manifest.icons);
+    expect(action.default_title).toBe('Pali Wallet Canary');
+    expect(existsSync(resolve('source', manifest.icons[128]))).toBe(true);
+    if (store || manifestType === 'MV2')
+      expect(manifest).not.toHaveProperty('key');
     else expect(manifest.key).toMatch(/^MIIB/);
     expect(readFileSync(resolve('manifest.json')).equals(tracked)).toBe(true);
   }
@@ -314,6 +330,7 @@ test('both manifest templates and the committed manifest follow the package rele
   for (const manifest of [MV2_OPTIONS, MV3_OPTIONS, committed]) {
     expect(manifest.version).toBe(pkg.version);
     expect(manifest.description).toBe(pkg.description);
+    expect(manifest.icons[128]).toBe('assets/all_assets/favicon-32.png');
   }
   expect(pkg.description.length).toBeLessThanOrEqual(132);
 });
@@ -340,6 +357,7 @@ test.each(['development', 'production'])(
     const manifest = JSON.parse(readFileSync(output, 'utf8'));
     expect(manifest.version).toBe(pkg.version);
     expect(manifest.description).toBe(pkg.description);
+    expect(manifest.icons[128]).toBe('assets/all_assets/favicon-32.png');
     expect(manifest.version_name).toBe(
       mode === 'development' ? `${pkg.version} Development` : undefined
     );
