@@ -14,6 +14,9 @@ import {
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
 
+// Keep this remote suggestion distinct from the bundled network catalogue.
+const DELAYED_CHAIN_ID = 31337122;
+
 test.use({ trace: 'off', video: 'off', screenshot: 'off' });
 
 test.beforeEach(() => {
@@ -77,8 +80,8 @@ for (const width of [400, 320]) {
           body: JSON.stringify([
             {
               name: 'QA122 Delayed Network',
-              chainId: 5700,
-              networkId: 5700,
+              chainId: DELAYED_CHAIN_ID,
+              networkId: DELAYED_CHAIN_ID,
               nativeCurrency: {
                 name: 'Synthetic',
                 symbol: 'OLD',
@@ -118,7 +121,10 @@ for (const width of [400, 320]) {
             return {
               jsonrpc: '2.0',
               id: call.id,
-              result: call.method === 'eth_chainId' ? '0x1644' : '0x1',
+              result:
+                call.method === 'eth_chainId'
+                  ? `0x${DELAYED_CHAIN_ID.toString(16)}`
+                  : '0x1',
             };
           });
           await route.fulfill({
@@ -332,7 +338,7 @@ for (const width of [400, 320]) {
           expect(routes.deniedWrites).toEqual([]);
           expect(afterOldCheck).toEqual({
             label: 'QA122 Delayed Network',
-            chainId: '5700',
+            chainId: String(DELAYED_CHAIN_ID),
             symbol: 'OLD',
             url: 'https://qa122-second.invalid/rpc',
           });
