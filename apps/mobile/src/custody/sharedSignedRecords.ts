@@ -1,7 +1,7 @@
 import { Transaction } from 'ethers/transaction';
-import { EvmSignedRecords, type EvmSignedRecordSession, type EvmRetainedSignedRecord } from '../../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedRecords, type EvmSignedRecordSession, type EvmRetainedSignedRecord, type EvmRetainedSmartAccountRecord } from '../../../../source/wallet/evmSignedRecords.ts';
 import { projectSavedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
-import type { RetainedSmartAccountActivity } from '../../../../source/wallet/smartAccountActivity.ts';
+import { projectSmartAccountSavedTransaction } from '../../../../source/wallet/smartAccountSignedReplay.ts';
 import { decodeRetainedNftTransfer, isRetainedNftReplayEnvelope } from '../../../../source/shared/nftTransfer.ts';
 import type { EvmAutoNonceSnapshot } from '../../../../source/shared/evmAutoNonce.ts';
 import type { NativeAutomaticNoncePlanner } from './evmTransferReadRpc.ts';
@@ -75,26 +75,34 @@ export function createNativeSignedRecordView(
       ...(speedUpEligible ? { speedUpEligible: true as const } : {}),
       ...(saved.collectibleTransfer ? { collectibleTransfer: saved.collectibleTransfer } : {})});
   };
-  const smartActivity = (transfer: RetainedSmartAccountActivity): LocalActivityRecord => {
-    if ('cancellation' in transfer) return Object.freeze({ ...activity(transfer.entry), inspectionOnly: true,
-      smartAccount: Object.freeze({ ...transfer.original, cancellation: true }) });
+  const smartActivity = (record: EvmRetainedSmartAccountRecord): LocalActivityRecord => {
+    const saved = projectSmartAccountSavedTransaction(record, account.address), smart = saved.smartAccount, transfer = smart.transfer;
+    const single = smart.executions?.length === 1 ? smart.executions[0] : undefined;
+    if (record.cancellation) return Object.freeze({ ...activity(record.entry), inspectionOnly: true,
+      smartAccount: Object.freeze({ ...record.cancellation.original, cancellation: true }) });
     return Object.freeze({
     walletFingerprint: walletBindingId, accountId: nativeAccountId(account.type, account.index),
     address: account.address, networkId: network.id, registrationHash: network.registrationHash,
-    chainId: network.chainId, hash: transfer.entry.hash, nonce: transfer.entry.nonce,
-    createdAt: transfer.entry.createdAt, recipient: transfer.recipient, amountUnits: transfer.amountUnits,
-    maximumFeeUnits: transfer.maximumAccountCharge,
-    ...(transfer.token ? { token: transfer.token } : {}),
-    ...(transfer.collectibleTransfer ? { collectibleTransfer: transfer.collectibleTransfer } : {}),
-    ...(transfer.contractInteraction ? { contractInteraction: true as const } : {}),
+    chainId: network.chainId, hash: saved.hash, nonce: saved.nonce,
+    createdAt: saved.createdAt, recipient: transfer?.recipient ?? single?.target ?? account.address, amountUnits: transfer?.amountUnits ?? single?.value ?? '0',
+    maximumFeeUnits: saved.maximumFee,
+    ...(transfer?.token ? { token: transfer.token } : {}),
+    ...(transfer?.collectibleTransfer ? { collectibleTransfer: transfer.collectibleTransfer } : {}),
+    ...(!transfer || transfer.contractInteraction ? { contractInteraction: true as const } : {}),
     // The outer transaction's terminal status does not establish the UserOperation outcome.
-    phase: 'submitted', inspectionOnly: true,
-    operation: transfer.entry.operation, transactionType: Transaction.from(transfer.entry.rawTransaction).type ?? undefined,
-    ...(transfer.entry.originalHash ? { originalHash: transfer.entry.originalHash } : {}),
-    ...(maySpeedUp(transfer.entry, Transaction.from(transfer.entry.rawTransaction).type) ? { speedUpEligible: true as const, reviewNavigation: Object.freeze({ speedUp: true }) } : {}),
-    smartAccount: Object.freeze({ payer: transfer.entry.from, operationHash: transfer.operationHash, operationNonce: transfer.operationNonce }),
+    phase: 'submitted', ...(!smart.replayable ? { inspectionOnly: true as const } : {}),
+    operation: saved.operation, transactionType: saved.type ?? undefined,
+    ...(saved.originalHash ? { originalHash: saved.originalHash } : {}),
+    ...(maySpeedUp(record.entry, saved.type) && !!transfer ? { speedUpEligible: true as const, reviewNavigation: Object.freeze({ speedUp: true }) } : {}),
+    smartAccount: Object.freeze({ payer: saved.from, operationHash: smart.operationHash, operationNonce: smart.operationNonce }),
   }); };
   return Object.freeze({
+    smartActivity(hash: string) {
+      return checked(async () => {
+        const record = await records.readSmartAccountReplayExact(session, network.chainId, account.address, hash);
+        return record ? smartActivity(record) : null;
+      });
+    },
     planAutomaticNonce: (...args: Parameters<NativeAutomaticNoncePlanner>) => checked(() => planAutomaticNonce(...args)),
     assertSpendingNonce(nonce: number) {
       return checked(() => records.assertSpendingNonce(session, network.chainId, account.address, nonce));
@@ -123,8 +131,8 @@ export function createNativeSignedRecordView(
     async activities():Promise<Readonly<{records: readonly LocalActivityRecord[]; truncated: boolean}>> {
       return checked(async () => {
         if (account.type === 'SmartAccount') {
-          const page = await records.readSmartAccountActivity(session, network.chainId, account.address, { maximum: LOCAL_ACTIVITY_LIMIT });
-          return Object.freeze({ records: Object.freeze(page.transfers.map(smartActivity)), truncated: page.nextCursor !== null });
+          const page = await records.readSmartAccountReplayPage(session, network.chainId, account.address, { maximum: LOCAL_ACTIVITY_LIMIT });
+          return Object.freeze({ records: Object.freeze(page.entries.map(smartActivity)), truncated: page.nextCursor !== null });
         }
         const recent=await records.readRecent(session,network.chainId,account.address,LOCAL_ACTIVITY_LIMIT);
         const projected=recent.entries.map(activity);
@@ -134,9 +142,9 @@ export function createNativeSignedRecordView(
     pendingActivities(beforeHash?: string) {
       return checked(async () => {
         if (account.type === 'SmartAccount') {
-          const page = await records.readSmartAccountActivity(session, network.chainId, account.address,
+          const page = await records.readSmartAccountReplayPage(session, network.chainId, account.address,
             { beforeHash, maximum: 20 });
-          return Object.freeze({ records: Object.freeze(page.transfers.map(smartActivity)), nextCursor: page.nextCursor });
+          return Object.freeze({ records: Object.freeze(page.entries.map(smartActivity)), nextCursor: page.nextCursor });
         }
         const page = await records.readPage(session, network.chainId, account.address,
           { beforeHash, maximum: 20, pendingOnly: true });

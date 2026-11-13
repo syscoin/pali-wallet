@@ -13,7 +13,9 @@ import { createKeyringRuntimeFactory, KeyringRuntimeError, type KeyringRuntime, 
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { NativeSmartCreationAllocation } from '../src/smartAccount/preparation.ts';
 import { deriveDefaultSmartAccount } from '../../../source/utils/smartAccount/bootstrap.ts';
-import { paliSmartAccountFactoryInterface } from '../../../source/utils/smartAccount/contracts.ts';
+import { paliSmartAccountFactoryInterface, paliSmartAccountInterface, paliEntryPointInterface, getPaliEntryPointAddress } from '../../../source/utils/smartAccount/contracts.ts';
+import { encodeERC7579Executions } from '../../../source/utils/smartAccount/account.ts';
+import { historicalSignedBundle } from './signedRecordTestSession.ts';
 import { PALI_ACCOUNT_PROXY_CREATION_CODE, PALI_CANONICAL_FACTORY_ADDRESS, PALI_INFRASTRUCTURE_METADATA_BY_ID } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
 import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
 import { AbiCoder, Interface } from 'ethers/abi';
@@ -778,7 +780,7 @@ test('runtime monitoring wrapper exports public state only during an open public
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
-async function readySmartCreationAuthority(beforeAddress: () => Promise<void> = async () => undefined) {
+async function readySmartCreationAuthority(beforeAddress: () => Promise<void> = async () => undefined, connectionFetch?: KeyringRuntimeDependencies['connectionFetch']) {
   const sdk = await loadNativeKeyringSdk(), keyrings: InstanceType<typeof sdk.HostKeyring>[] = [];
   class ObservedKeyring extends sdk.HostKeyring {
     constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) { super(...args); keyrings.push(this); }
@@ -801,15 +803,63 @@ async function readySmartCreationAuthority(beforeAddress: () => Promise<void> = 
           return paliSmartAccountFactoryInterface.encodeFunctionResult(parsed.fragment, [getCreate2Address(PALI_CANONICAL_FACTORY_ADDRESS, parsed.args[0], keccak256(creation))]);
         },
       } });
-  const disk = memoryDisk(async () => ({ ...sdk, HostKeyring: ObservedKeyring }), undefined, undefined, undefined, undefined, prepare); disk.denyNetwork();
+  const disk = memoryDisk(async () => ({ ...sdk, HostKeyring: ObservedKeyring }), undefined, connectionFetch, undefined, undefined, prepare); disk.denyNetwork();
   let runtime!: KeyringRuntime;
   const authority = new NativeCustodyAuthority({ async open() { runtime = await disk.factory.open() as KeyringRuntime; return runtime; } });
   await authority.initialize(); await authority.importPhrase(PHRASE);
   await runtime.backup.confirm(await runtime.backup.fingerprint()); await authority.refreshAuthenticatedMetadata();
-  return { authority, disk, get runtime() { return runtime; },
+  return { authority, disk, get runtime() { return runtime; }, get keyring() { return keyrings[keyrings.length - 1]!; },
     request: { networkId: 'ethereum', label: 'Owned dapp creation', target: { id: 'ecdsa' as const, config: undefined }, externalOwnersAcknowledged: false },
     async close() { await authority.dispose(); disk.restoreNetwork(); } };
 }
+
+test('native Smart saved replay uses its recorded payer and displays the inner transfer without reopening signing keys', async () => {
+  const broadcasts: string[] = [];
+  const fetcher = async (_url: string, init: RequestInit) => {
+    const request = JSON.parse(String(init.body));
+    let result: unknown;
+    if (request.method === 'eth_chainId') result = '0x1';
+    else if (request.method === 'eth_getTransactionCount') result = '0x0';
+    else if (request.method === 'eth_getTransactionReceipt') result = null;
+    else if (request.method === 'eth_sendRawTransaction') { broadcasts.push(request.params[0]); result = Transaction.from(request.params[0]).hash; }
+    else throw Error(`Unexpected replay RPC: ${request.method}`);
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const f = await readySmartCreationAuthority(undefined, fetcher);
+  const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: new NativeTransferRpc({ networkId: 'ethereum', fetch: fetcher }) });
+  try {
+    const allocation = await f.authority.allocateConnectionSmartAccount(f.request, new AbortController().signal, () => undefined, () => undefined, createTestPrivateAuthentication(() => undefined));
+    const execution = encodeERC7579Executions([{ target: '0x2222222222222222222222222222222222222222', value: '9' }]);
+    const operation = { sender: allocation.account.address, nonce: 7n, initCode: '0x',
+      callData: paliSmartAccountInterface.encodeFunctionData('execute', [execution.mode, execution.executionCalldata]),
+      accountGasLimits: '0x' + '00'.repeat(12) + '000186a0' + '00'.repeat(12) + '000186a0',
+      preVerificationGas: 21000, gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03', paymasterAndData: '0x', signature: '0x1234' };
+    const raw = await HDNodeWallet.fromPhrase(PHRASE).signTransaction({ chainId: 1, nonce: 0, type: 0, gasPrice: 2, gasLimit: 300000,
+      to: getPaliEntryPointAddress(1), value: 0, data: paliEntryPointInterface.encodeFunctionData('handleOps', [[operation], ADDRESS]) });
+    const access = f.keyring.getPrivateRecordAccess(['org.syscoin.pali.evm.signed.root.v1', 'org.syscoin.pali.evm.signed.chunk.v1',
+      'org.syscoin.pali.utxo.signed.root.v1', 'org.syscoin.pali.utxo.signed.chunk.v1']);
+    const profile = await access.getPrivateRecordProfileId();
+    f.disk.signedBundles.set(profile, await historicalSignedBundle({ keyring: access, assertCurrent: () => undefined }, raw, 'signed'));
+    const reads = f.disk.credentialPort.secretReads;
+    await transfers.recover(true, Transaction.from(raw).hash!);
+    const review = transfers.getSnapshot().review!;
+    assert.equal(review.from, allocation.account.address);
+    assert.equal(review.recipient, '0x2222222222222222222222222222222222222222');
+    assert.equal(review.amountUnits, '9');
+    assert.equal(review.replay!.from.toLowerCase(), ADDRESS.toLowerCase());
+    assert.equal(review.replay!.to, getPaliEntryPointAddress(1));
+    assert.equal(review.maximumFeeUnits, '600000');
+    assert.equal(f.disk.credentialPort.secretReads, reads);
+    await transfers.confirm(review.id, { method: 'device' });
+    assert.deepEqual(broadcasts, [raw]);
+    assert.equal(f.disk.credentialPort.secretReads, reads);
+    await transfers.recover(true, Transaction.from(raw).hash!);
+    const expired = transfers.getSnapshot().review!;
+    await f.authority.selectConnectionAccount('hd:60:0', f.authority.getSnapshot().revision, () => undefined);
+    await assert.rejects(transfers.confirm(expired.id, { method: 'device' }));
+    assert.equal(broadcasts.length, 1);
+  } finally { transfers.dispose(); await f.close(); }
+});
 
 test('account device refusal keeps the public wallet and a fresh explicit retry creates once', async () => {
   const f = await readyAccounts();

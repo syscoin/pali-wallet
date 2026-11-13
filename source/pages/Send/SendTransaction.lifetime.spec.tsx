@@ -90,6 +90,7 @@ jest.mock('utils/fetchGasAndDecodeFunction', () => ({
       result.feeDetails.smartAccountFeeQuote === undefined
     ) {
       result.feeDetails.smartAccountFeeQuote = {
+        feePayer: { address: '0x' + '44'.repeat(20), id: 2, type: 'HDAccount' },
         gasUnits: '863456',
         maximumFeeWei: '43172800000000000',
       };
@@ -881,7 +882,12 @@ it('requires an explicit refreshed quote after a fresh AA preparation exceeds th
   await prepare();
   await act(async () => mockButtonHandlers['buttons.confirm']());
   expect(mockSmartSubmit).toHaveBeenCalledWith(
-    expect.objectContaining({ maximumUserOpFeeWei: '43172800000000000' })
+    expect.objectContaining({
+      approvedFeeQuote: expect.objectContaining({
+        maximumFeeWei: '43172800000000000',
+        feePayer: expect.objectContaining({ id: 2 }),
+      }),
+    })
   );
   expect(
     (

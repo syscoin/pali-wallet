@@ -2,6 +2,8 @@ import React, { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { shallowEqual, useSelector } from 'react-redux';
 
+import { AssetTransferSummary } from '../../pages/Send/components/AssetTransferSummary';
+import { createAssetTransferDisplay } from '../../shared/assetTransferDisplay';
 import { formatTokenUnits } from '../../shared/erc20';
 import { ConfirmationModal } from 'components/Modal';
 import { useContextualState } from 'hooks/useContextualState';
@@ -18,6 +20,17 @@ import type {
   EvmReplayCandidate,
   EvmSavedTransaction,
 } from '../../wallet/evmSignedReplay';
+import type {
+  SmartAccountReplayIntent,
+  SmartAccountReplayPreparation,
+} from '../../wallet/smartAccountSignedReplay';
+
+type ReplayReview = EvmReplayReview & {
+  smartAccount?: SmartAccountReplayIntent;
+};
+type SavedTransaction = EvmSavedTransaction & {
+  smartAccount?: SmartAccountReplayIntent;
+};
 
 type View = {
   additionalPredecessors?: readonly EvmReplayCandidate[];
@@ -28,7 +41,7 @@ type View = {
   message?: string;
   predecessorCursor?: string | null;
   previousError?: boolean;
-  review?: EvmReplayReview;
+  review?: ReplayReview;
 };
 
 type ReviewReference = Readonly<{ id: string; kind: 'cancel' | 'replay' }>;
@@ -36,6 +49,10 @@ type ReviewReference = Readonly<{ id: string; kind: 'cancel' | 'replay' }>;
 /** Public review fields only. Raw bytes and the consumed consent stay in the background. */
 export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
   const { t } = useTranslation();
+  const smartAccountSelected = useSelector(
+    ({ vault }: RootState) =>
+      vault.activeAccount.type === KeyringAccountType.SmartAccount
+  );
   const network = useSelector((state: RootState) => state.vault.activeNetwork);
   const walletScope = useSelector(getWalletNavigationScope, shallowEqual);
   const canSignRetainedCancellation = useSelector(({ vault }: RootState) => {
@@ -56,8 +73,10 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
       generation: context.current.generation + 1,
       active: true,
     };
-  const [retained, setRetained] =
-    useContextualState<EvmSavedTransaction | null>(scope, null);
+  const [retained, setRetained] = useContextualState<SavedTransaction | null>(
+    scope,
+    null
+  );
   const [view, setView] = useContextualState<View>(scope, {});
   const reviewReference = useRef<ReviewReference>();
   const confirming = useRef(false);
@@ -82,7 +101,7 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
       context.current.active && context.current.generation === generation;
     void controllerEmitter(['wallet', 'getSavedEvmTransaction'], [hash])
       .then((result) => {
-        if (current()) setRetained(result as EvmSavedTransaction | null);
+        if (current()) setRetained(result as SavedTransaction | null);
       })
       .catch(() => {
         if (current()) setRetained(null);
@@ -105,10 +124,12 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
   };
   const prepare = async (
     selectedHash = hash,
-    kind: ReviewReference['kind'] = 'replay'
+    kind: ReviewReference['kind'] = 'replay',
+    parentReviewId?: string
   ) => {
     if (confirming.current) return;
-    cancelReview(reviewReference.current);
+    const priorReview = reviewReference.current;
+    if (!parentReviewId) cancelReview(priorReview);
     reviewReference.current = undefined;
     const generation = ++context.current.generation;
     const current = () =>
@@ -118,11 +139,13 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
       const response = await controllerEmitter(
         [
           'wallet',
-          kind === 'cancel'
+          parentReviewId
+            ? 'prepareSmartAccountPredecessor'
+            : kind === 'cancel'
             ? 'prepareRetainedEvmCancellation'
             : 'prepareEvmSignedReplay',
         ],
-        [selectedHash],
+        parentReviewId ? [parentReviewId, selectedHash] : [selectedHash],
         15000,
         false
       );
@@ -137,7 +160,9 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
         setView({ cancellation });
         return;
       }
-      const result = response as EvmReplayPreparation;
+      const result = response as
+        | EvmReplayPreparation
+        | SmartAccountReplayPreparation;
       if (!current()) {
         if (result?.status === 'review')
           cancelReview({ id: result.review.id, kind });
@@ -153,9 +178,16 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
               : null,
         });
       } else {
-        setView({ message: t(`transactions.replay.${result.status}`) });
+        setView({
+          message: t(
+            result.status === 'inspect-only'
+              ? 'transactions.replay.unavailable'
+              : `transactions.replay.${result.status}`
+          ),
+        });
       }
     } catch (error) {
+      if (parentReviewId) cancelReview(priorReview);
       if (current())
         setView({
           message: t(
@@ -271,8 +303,15 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
     }));
     try {
       const page = (await controllerEmitter(
-        ['wallet', 'getSavedEvmTransactions'],
-        [cursor, 20, Number(review.missingNonce)]
+        [
+          'wallet',
+          smartAccountSelected
+            ? 'getSmartAccountPredecessors'
+            : 'getSavedEvmTransactions',
+        ],
+        smartAccountSelected
+          ? [review.id, cursor, 20]
+          : [cursor, 20, Number(review.missingNonce)]
       )) as { nextCursor: string | null; transactions: EvmReplayCandidate[] };
       if (!current()) return;
       setView((previous) => ({
@@ -301,6 +340,20 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
       : undefined;
   const review = view.review;
   const cancellation = view.cancellation;
+  const smart = review?.smartAccount;
+  const inner =
+    smart?.executions?.length === 1 ? smart.executions[0] : undefined;
+  const reviewData = inner?.data;
+  const dataBytes =
+    reviewData === undefined
+      ? review?.dataBytes ?? 0
+      : (reviewData.length - 2) / 2;
+  const selector =
+    reviewData === undefined
+      ? review?.selector
+      : reviewData.length >= 10
+      ? reviewData.slice(0, 10)
+      : null;
   const currency = network.currency?.toUpperCase();
   const rows = cancellation
     ? [
@@ -322,15 +375,24 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
           t('transactions.replay.network'),
           `${network.label} · ${review.chainId}`,
         ],
-        [t('transactions.replay.from'), review.from],
-        [
-          t('transactions.replay.to'),
-          review.to ?? t('transactions.replay.creation'),
-        ],
-        [
-          t('transactions.replay.amount'),
-          `${formatUnits(review.value, 18)} ${currency}`,
-        ],
+        [t('transactions.replay.from'), smart?.account ?? review.from],
+        ...(smart
+          ? [[t('smartAccountHub.infrastructure.feePayer'), review.from]]
+          : []),
+        ...(!smart || inner
+          ? [
+              [
+                t('transactions.replay.to'),
+                inner?.target ??
+                  (smart ? smart.account : review.to) ??
+                  t('transactions.replay.creation'),
+              ],
+              [
+                t('transactions.replay.amount'),
+                `${formatUnits(inner?.value ?? review.value, 18)} ${currency}`,
+              ],
+            ]
+          : []),
         [
           t('transactions.replay.maximumFee'),
           `${formatUnits(review.maximumFee, 18)} ${currency}`,
@@ -377,12 +439,12 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
               ],
             ]
           : []),
-        ...(review.dataBytes
+        ...(dataBytes
           ? [
               [
                 t('transactions.replay.data'),
-                `${review.dataBytes} ${t('transactions.replay.bytes')}${
-                  review.selector ? ` · ${review.selector}` : ''
+                `${dataBytes} ${t('transactions.replay.bytes')}${
+                  selector ? ` · ${selector}` : ''
                 }`,
               ],
             ]
@@ -493,6 +555,38 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
               </div>
             ))}
           </dl>
+          {smart?.executions?.map((call, index) =>
+            call.assetTransfer ? (
+              <AssetTransferSummary
+                key={index}
+                compact
+                transfer={createAssetTransferDisplay(call.assetTransfer)}
+              />
+            ) : smart.executions!.length > 1 ? (
+              <section
+                key={index}
+                className="mt-4 rounded-lg bg-bkg-2 p-3 text-sm"
+              >
+                <p>
+                  {t(
+                    call.data === '0x'
+                      ? 'transactions.methodNames.transfer'
+                      : 'mobile.dappConsent.transactionReview.contractInteraction'
+                  )}
+                </p>
+                <p className="mt-2 break-all">{call.target}</p>
+                <p className="mt-1">
+                  {formatUnits(call.value, 18)} {currency}
+                </p>
+                {call.data !== '0x' && (
+                  <p className="mt-1 break-all">
+                    {call.data.slice(0, 10)} · {(call.data.length - 2) / 2}{' '}
+                    {t('transactions.replay.bytes')}
+                  </p>
+                )}
+              </section>
+            ) : null
+          )}
           {review?.missingNonce !== undefined && (
             <div className="mt-4 border-t border-bkg-white200 pt-4">
               <p className="text-sm text-brand-gray200">
@@ -508,7 +602,13 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
                   key={previous.hash}
                   type="button"
                   disabled={Boolean(view.busy)}
-                  onClick={() => void prepare(previous.hash)}
+                  onClick={() =>
+                    void prepare(
+                      previous.hash,
+                      'replay',
+                      smartAccountSelected ? review.id : undefined
+                    )
+                  }
                   className="mt-2 w-full rounded border border-bkg-white200 p-3 text-left text-xs [overflow-wrap:anywhere]"
                 >
                   {t('transactions.replay.previous')} ·{' '}

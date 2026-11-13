@@ -84,6 +84,7 @@ jest.mock('utils/fetchGasAndDecodeFunction', () => ({
       result.feeDetails.smartAccountFeeQuote === undefined
     ) {
       result.feeDetails.smartAccountFeeQuote = {
+        feePayer: { address: '0x' + '44'.repeat(20), id: 2, type: 'HDAccount' },
         gasUnits: '863456',
         maximumFeeWei: '43172800000000000',
       };

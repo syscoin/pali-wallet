@@ -128,6 +128,7 @@ beforeEach(() => {
     return undefined;
   });
   mockQuote.mockReset().mockResolvedValue({
+    feePayer: { address: '0x' + '44'.repeat(20), id: 2, type: 'HDAccount' },
     gasUnits: '21000',
     maximumFeeWei: '42000',
   });
@@ -247,7 +248,11 @@ it('shows the quoted smart-account ENS execution and discards its display author
   expect(destination).not.toHaveTextContent(TARGET_A);
   expect(destination).not.toHaveTextContent(TARGET_B);
   await act(async () =>
-    refresh.resolve({ gasUnits: '21000', maximumFeeWei: '43000' })
+    refresh.resolve({
+      feePayer: { address: '0x' + '44'.repeat(20), id: 2, type: 'HDAccount' },
+      gasUnits: '21000',
+      maximumFeeWei: '43000',
+    })
   );
   await waitFor(() => expect(screen.getByTestId('primary')).toBeEnabled());
   expect(destination).toHaveTextContent(TARGET_B);

@@ -93,7 +93,7 @@ export interface IFeeState {
   minimumGasLimit?: number;
   // Internal read-only AA preparation, never accepted from a dapp/RPC tx field.
   // This is the EntryPoint account charge, not the outer gas payer's fee.
-  smartAccountFeeQuote?: { gasUnits: string; maximumFeeWei: string };
+  smartAccountFeeQuote?: import('../shared/smartAccountFeeQuote').SmartAccountFeeQuote;
 }
 
 export interface ITransactionParams {

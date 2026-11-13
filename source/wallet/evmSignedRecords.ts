@@ -20,6 +20,7 @@ import {
   type RetainedSmartAccountOperation,
   isSmartAccountActivityCandidate,
   type RetainedSmartAccountActivity,
+  type RetainedSmartAccountCancellation,
 } from './smartAccountActivity.ts';
 import type { EvmAutoNonceSnapshot } from '../shared/evmAutoNonce.ts';
 import type { EvmTransactionObservation } from '../shared/evmTransactionObservation.ts';
@@ -141,6 +142,11 @@ export type EvmSignedRecordSummary = Readonly<{
 }>;
 export type EvmRetainedSignedRecord = EvmSignedRecordSummary &
   Readonly<{ rawTransaction: string }>;
+export type EvmRetainedSmartAccountRecord = Readonly<{
+  cancellation?: RetainedSmartAccountCancellation;
+  entry: EvmRetainedSignedRecord;
+  operations: readonly RetainedSmartAccountOperation[];
+}>;
 
 type VerifiedPendingOriginal = Readonly<{
   chainId: string;
@@ -2068,6 +2074,132 @@ export class EvmSignedRecords {
           serial = currentSerial;
           return cached;
         }),
+    });
+  }
+
+  /** General handleOps recovery: membership comes from authenticated signed bytes. */
+  readSmartAccountReplayExact(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    address: string,
+    hash: string
+  ): Promise<EvmRetainedSmartAccountRecord | null> {
+    const owner = getAddress(address);
+    if (!HASH.test(hash)) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
+    session = this.captureSession(session);
+    return this.exclusive(async () => {
+      const id = await profile(session),
+        { bundle } = await this.load(session, id);
+      const saved = bundle?.entries.find(
+        (entry) => entry.chainId === chainId && entry.hash === hash
+      );
+      if (!saved) return null;
+      const entry = await this.materialize(session, saved);
+      const operations = decodeRetainedSmartAccountOperations(entry);
+      const original =
+        entry.operation === 'cancel' && entry.originalHash
+          ? bundle?.entries.find((value) => value.hash === entry.originalHash)
+          : undefined;
+      const materializedOriginal = original
+        ? await this.materialize(session, original)
+        : undefined;
+      const cancellation = materializedOriginal
+        ? decodeRetainedSmartAccountCancellation(
+            entry,
+            materializedOriginal,
+            owner
+          )
+        : null;
+      guard(session);
+      return operations.some((operation) => operation.account === owner)
+        ? Object.freeze({ entry, operations })
+        : cancellation
+        ? Object.freeze({
+            entry,
+            cancellation,
+            operations: decodeRetainedSmartAccountOperations(
+              materializedOriginal!
+            ),
+          })
+        : null;
+    });
+  }
+
+  readSmartAccountReplayPage(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    address: string,
+    options: Readonly<{ beforeHash?: string; maximum: number }>
+  ): Promise<
+    Readonly<{
+      entries: readonly EvmRetainedSmartAccountRecord[];
+      nextCursor: string | null;
+    }>
+  > {
+    const owner = getAddress(address),
+      { beforeHash, maximum } = options;
+    if (
+      !Number.isSafeInteger(maximum) ||
+      maximum < 1 ||
+      maximum > 48 ||
+      (beforeHash !== undefined && !HASH.test(beforeHash))
+    )
+      throw new Error('EVM_SIGNED_RECORD_CAPACITY');
+    session = this.captureSession(session);
+    return this.exclusive(async () => {
+      const id = await profile(session),
+        { bundle } = await this.load(session, id);
+      const candidates = (bundle?.entries ?? []).filter(
+        (entry) => entry.chainId === chainId
+      );
+      const end =
+        beforeHash === undefined
+          ? candidates.length
+          : candidates.findIndex((entry) => entry.hash === beforeHash);
+      if (end < 0) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
+      const entries: EvmRetainedSmartAccountRecord[] = [];
+      for (
+        let index = end - 1;
+        index >= 0 && entries.length <= maximum;
+        index--
+      ) {
+        const entry = await this.materialize(session, candidates[index]!);
+        const operations = decodeRetainedSmartAccountOperations(entry);
+        if (operations.some((operation) => operation.account === owner))
+          entries.push(Object.freeze({ entry, operations }));
+        else if (entry.operation === 'cancel' && entry.originalHash) {
+          const original = bundle?.entries.find(
+            (value) => value.hash === entry.originalHash
+          );
+          const materializedOriginal = original
+            ? await this.materialize(session, original)
+            : undefined;
+          const cancellation = materializedOriginal
+            ? decodeRetainedSmartAccountCancellation(
+                entry,
+                materializedOriginal,
+                owner
+              )
+            : null;
+          if (cancellation)
+            entries.push(
+              Object.freeze({
+                entry,
+                cancellation,
+                operations: decodeRetainedSmartAccountOperations(
+                  materializedOriginal!
+                ),
+              })
+            );
+        }
+      }
+      const hasMore = entries.length > maximum;
+      if (hasMore) entries.pop();
+      guard(session);
+      return Object.freeze({
+        entries: Object.freeze(entries),
+        nextCursor: hasMore ? entries[entries.length - 1]!.entry.hash : null,
+      });
     });
   }
 

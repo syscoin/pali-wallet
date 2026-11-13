@@ -450,3 +450,36 @@ it.each(['ERC-721', 'ERC-1155'] as const)(
     expect(screen.queryByText('0 USD')).toBeNull();
   }
 );
+
+it('labels a saved Smart batch and shows its total native value without a single recipient', async () => {
+  const saved: any = {
+    hash: `0x${'f'.repeat(64)}`,
+    chainId: '1',
+    from: CONTRACT,
+    to: CONTRACT,
+    value: '0',
+    nonce: 2,
+    type: 2,
+    gasLimit: '100000',
+    feePerGas: '1',
+    createdAt: 1791655200000,
+    phase: 'signed',
+    operation: 'send',
+    dataBytes: 500,
+    selector: '0x765e827f',
+    smartAccount: {
+      account: ACCOUNT,
+      callData: '0x1234',
+      executions: [
+        { target: TARGET, value: '1000000000000000000', data: '0x' },
+        { target: CONTRACT, value: '2000000000000000000', data: '0x' },
+      ],
+    },
+  };
+  mockRows = [savedTransactionHistoryRow(saved)];
+  render(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('send.batchTransaction')).toBeTruthy();
+  expect(await screen.findByText(/3(?:\.0+)? ETH/)).toBeTruthy();
+  expect(screen.getByText('assetTransfer.nativeValue')).toBeTruthy();
+  expect(screen.queryByText(/first\.eth/)).toBeNull();
+});

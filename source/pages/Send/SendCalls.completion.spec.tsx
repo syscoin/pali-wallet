@@ -101,6 +101,7 @@ jest.mock('utils/smartAccount', () => ({
     getEvent: () => ({ topicHash: '0x' + '9'.repeat(64) }),
   },
   prepareSmartAccountFeeQuote: async () => ({
+    feePayer: { address: '0x' + '44'.repeat(20), id: 2, type: 'HDAccount' },
     gasUnits: '860000',
     maximumFeeWei: '4300000',
   }),

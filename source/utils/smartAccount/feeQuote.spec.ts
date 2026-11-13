@@ -6,6 +6,7 @@ import {
 } from './execution';
 
 const sender = '0x' + '11'.repeat(20);
+const feePayer = { address: '0x' + '44'.repeat(20), id: 2, type: 'HDAccount' };
 const executions = [
   { target: '0x' + '22'.repeat(20), data: '0x1234', value: '0x1' },
   { target: '0x' + '33'.repeat(20), data: '0x', value: '0' },
@@ -14,6 +15,7 @@ const packed = (a: number, b: number) =>
   '0x' + [a, b].map((n) => n.toString(16).padStart(32, '0')).join('');
 const prepared = () => ({
   executionContextId: 'read-only-quote',
+  gasPayer: { ...feePayer },
   executions: executions.map((execution) => ({ ...execution })),
   userOperation: {
     sender,
@@ -45,7 +47,11 @@ describe('trusted smart-account fee quote', () => {
         executions,
         feeOverrides: { maxFeePerGas: '5', maxPriorityFeePerGas: '0' },
       })
-    ).resolves.toEqual({ gasUnits: '860000', maximumFeeWei: '4300000' });
+    ).resolves.toEqual({
+      feePayer,
+      gasUnits: '860000',
+      maximumFeeWei: '4300000',
+    });
     expect(emitter).toHaveBeenCalledTimes(1);
     expect(emitter.mock.calls[0][0]).toEqual([
       'wallet',
@@ -66,6 +72,10 @@ describe('trusted smart-account fee quote', () => {
     ['order', (result: any) => result.executions.reverse()],
     ['length', (result: any) => result.executions.pop()],
     ['context', (result: any) => delete result.executionContextId],
+    ['missing payer', (result: any) => delete result.gasPayer],
+    ['payer address', (result: any) => (result.gasPayer.address = 'invalid')],
+    ['payer ID', (result: any) => (result.gasPayer.id = -1)],
+    ['payer type', (result: any) => (result.gasPayer.type = 'SmartAccount')],
     ['gas', (result: any) => (result.userOperation.accountGasLimits = '0x00')],
     ['fee cap', (result: any) => (result.userOperation.gasFees = packed(0, 6))],
     [
@@ -100,6 +110,7 @@ describe('trusted smart-account fee quote', () => {
       feeOverrides: { gasPrice: '5' },
     };
     await expect(prepareSmartAccountFeeQuote(params)).resolves.toEqual({
+      feePayer,
       gasUnits: '860000',
       maximumFeeWei: '0',
     });

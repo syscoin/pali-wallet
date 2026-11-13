@@ -47,6 +47,12 @@ export type GenericEvmFeeAuthority =
   | Readonly<{
       kind: 'private-deposit' | 'private-withdrawal';
       request: object;
+    }>
+  | Readonly<{
+      checkPendingState: (() => Promise<void>) | null;
+      kind: 'smart-payer';
+      metadata: Readonly<Record<string, unknown>>;
+      request: object;
     }>;
 const sameAuthority = (
   expected: GenericEvmFeeAuthority,
@@ -369,11 +375,30 @@ export function captureGenericEvmFeeDispatch(
   };
   return Object.freeze({
     preflight,
-    metadata: entry.privateNote
-      ? entry.privateNote.kind === 'deposit'
-        ? Object.freeze({ privateDeposit: entry.privateNote.attempt })
-        : Object.freeze({ privateWithdrawal: entry.privateNote.attempt })
-      : entry.callsMetadata,
+    beforePersist:
+      value.authority.kind === 'smart-payer'
+        ? (() => {
+            const checkPendingState = value.authority.checkPendingState;
+            return async (
+              record: EvmSignedSubmission,
+              assertCurrent: () => void,
+              snapshot: EvmAutoNonceSnapshot
+            ) => {
+              assertSynchronousEvmFeeGuard(assertCurrent);
+              assertSynchronousEvmFeeGuard(value.assertCurrent);
+              await checkPendingState?.();
+              await preflight(record, assertCurrent, snapshot);
+            };
+          })()
+        : null,
+    metadata:
+      value.authority.kind === 'smart-payer'
+        ? value.authority.metadata
+        : entry.privateNote
+        ? entry.privateNote.kind === 'deposit'
+          ? Object.freeze({ privateDeposit: entry.privateNote.attempt })
+          : Object.freeze({ privateWithdrawal: entry.privateNote.attempt })
+        : entry.callsMetadata,
   });
 }
 
