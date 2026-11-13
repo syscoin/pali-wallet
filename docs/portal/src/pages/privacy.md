@@ -5,7 +5,7 @@ description: How Pali Wallet handles local wallet data and information used by n
 
 <h1 id="privacy-policy" style={{ scrollMarginTop: '5rem' }}>Pali Wallet privacy policy</h1>
 
-Updated November 2, 2026.
+Updated November 12, 2026.
 
 This notice describes how the Pali Wallet browser extension handles information when you use it, and the logging practices of Pali/Syscoin-operated services. Separate websites, dapps, blockchain networks and independent service providers have their own practices.
 
@@ -13,11 +13,11 @@ Pali processes information to provide wallet features: showing accounts, balance
 
 ## Information kept in the wallet
 
-Pali is a self-custodial wallet. Your recovery phrase and wallet-controlled private keys are held in the wallet on your device, protected by your wallet password; the extension stores encrypted private-note records locally. The extension also keeps wallet data and preferences, such as account and network information, site permissions and transaction records, in browser storage. Not every item in browser storage should be assumed to be secret or encrypted.
+Pali is a self-custodial wallet. Your recovery phrase and wallet-controlled private keys are encrypted locally. Your wallet password unlocks the vault; if you enable local passkey unlock, a passkey-protected wrapper provides another way to unlock the same vault. The extension stores encrypted private-note records locally. It also keeps wallet data and preferences, such as account and network information, site permissions and transaction records, in browser storage. Not every item in browser storage should be assumed to be secret or encrypted.
 
 Passkey private material is held by your authenticator; its handling and any synchronization depend on your device, browser and passkey provider. Hardware wallets and their associated software handle their own keys. Pali can use public account information and signatures from those devices without requiring you to enter their private keys into the extension.
 
-Keep your recovery phrase, private keys, password and private notes secret. Pali's dapp provider does not provide those secrets as wallet API results. Anyone who has a private note can withdraw with it. Back up each note separately while you can unlock the wallet and confirm your password: the recovery phrase alone does not recreate randomly generated notes, and wallet recovery deletes saved private notes. Do not send secrets to support or enter them into a website that asks for them.
+Keep your recovery phrase, private keys, password and private notes secret. Pali's dapp provider does not provide those secrets as wallet API results. Anyone who has a private note can withdraw with it. Back up your private notes individually or as an encrypted bundle while you can unlock the wallet and confirm your password. The recovery phrase alone cannot recreate randomly generated notes. Recovering an existing browser wallet with its matching phrase preserves its validated saved notes; restoring only the phrase in a fresh installation does not restore them. Do not send secrets to support or enter them into a website that asks for them.
 
 ## Network and service requests
 
