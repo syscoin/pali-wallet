@@ -924,6 +924,11 @@ export const EvmTransactionsList = ({
                 disabled={isLoadingMore || isRestoringPages || savedLoading}
                 onClick={async () => {
                   if (filteredTransactions.length > visibleCount) {
+                    if (savedHasMore) {
+                      const isCurrentRequest = beginPageRequest();
+                      await loadMoreSaved?.();
+                      if (!isCurrentRequest()) return;
+                    }
                     setVisibleCount((count) => count + 50);
                     return;
                   }
@@ -976,11 +981,7 @@ export const EvmTransactionsList = ({
                 disabled={savedLoading}
                 onClick={async () => {
                   const isCurrentRequest = beginPageRequest();
-                  if (
-                    filteredTransactions.length <= visibleCount &&
-                    savedHasMore
-                  )
-                    await loadMoreSaved?.();
+                  if (savedHasMore) await loadMoreSaved?.();
                   if (!isCurrentRequest()) return;
                   setVisibleCount((c) => c + 50);
                 }}

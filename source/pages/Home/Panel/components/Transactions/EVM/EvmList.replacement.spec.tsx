@@ -566,3 +566,87 @@ it.each([
     expect(local.confirmations).toBeUndefined();
   }
 );
+
+const confirmedRows = (count: number) =>
+  Array.from({ length: count }, (_value, index) =>
+    transaction('1', {
+      hash: `0x${(index + 100).toString(16).padStart(64, '0')}`,
+      nonce: index,
+      timestamp: 1791655200 - index,
+      blockNumber: index + 100,
+      confirmations: 1,
+      // eslint-disable-next-line camelcase
+      txreceipt_status: '1',
+    })
+  );
+
+it.each([false, true])(
+  'advances a duplicate-only saved page while revealing cached rows (explorer=%s)',
+  async (explorer) => {
+    mockApiUrl = explorer ? 'https://explorer.example/api' : undefined;
+    mockRows = confirmedRows(51);
+    const loadMore = jest.fn();
+    const Harness = () => {
+      const [hasMore, setHasMore] = React.useState(true);
+      loadMore.mockImplementation(async () => setHasMore(false));
+      return (
+        <EvmTransactionsList
+          userTransactions={mockRows}
+          savedHasMore={hasMore}
+          loadMoreSaved={loadMore}
+        />
+      );
+    };
+    render(<Harness />);
+    expect(screen.getAllByText('Confirmed')).toHaveLength(50);
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.loadMore' }));
+    await waitFor(() => {
+      expect(loadMore).toHaveBeenCalledTimes(1);
+      expect(screen.getAllByText('Confirmed')).toHaveLength(51);
+    });
+    if (explorer)
+      // The separate explorer page is still unknown, so its control remains.
+      expect(
+        screen.getByRole('button', { name: 'buttons.loadMore' })
+      ).toBeTruthy();
+    else
+      expect(
+        screen.queryByRole('button', { name: 'buttons.loadMore' })
+      ).toBeNull();
+    expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);
+
+it('keeps genuinely unseen saved pages available beyond the cached public window', async () => {
+  mockRows = confirmedRows(51);
+  const loadMore = jest.fn();
+  const Harness = () => {
+    const [rows, setRows] = React.useState(mockRows);
+    const [page, setPage] = React.useState(0);
+    loadMore.mockImplementation(async () => {
+      setRows(confirmedRows(page === 0 ? 52 : 53));
+      setPage(page + 1);
+    });
+    return (
+      <EvmTransactionsList
+        userTransactions={rows}
+        savedHasMore={page < 2}
+        loadMoreSaved={loadMore}
+      />
+    );
+  };
+  render(<Harness />);
+  expect(screen.getAllByText('Confirmed')).toHaveLength(50);
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.loadMore' }));
+  await waitFor(() =>
+    expect(screen.getAllByText('Confirmed')).toHaveLength(52)
+  );
+  expect(screen.getByRole('button', { name: 'buttons.loadMore' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.loadMore' }));
+  await waitFor(() =>
+    expect(screen.getAllByText('Confirmed')).toHaveLength(53)
+  );
+  expect(loadMore).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole('button', { name: 'buttons.loadMore' })).toBeNull();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
