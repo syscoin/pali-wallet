@@ -4,8 +4,8 @@ import { utils } from 'syscoinjs-lib';
 import { getUtxoNetwork, UTXO_NETWORKS } from '../../src/core/utxoNetworks';
 import { UTXO_ADDRESSES } from '../publicWatchFixtures';
 import { SENTRY_TX_HEX, SENTRY_TXID, sentryNodeResponse } from '../sentryNodeFixtures';
-export type ActivityMode = 'value' | 'empty' | 'error' | 'slow' | 'asset' | 'pending' | 'included' | 'unknown' | 'window' | 'asset-exact' | 'asset-owned' | 'asset-bridge' | 'asset-invalid' | 'asset-hostile' | 'asset-max' | 'late' | 'sentry';
-const modes: readonly string[] = ['value', 'empty', 'error', 'slow', 'asset', 'pending', 'included', 'unknown', 'window', 'asset-exact', 'asset-owned', 'asset-bridge', 'asset-invalid', 'asset-hostile', 'asset-max', 'late', 'sentry'];
+export type ActivityMode = 'value' | 'empty' | 'error' | 'slow' | 'asset' | 'pending' | 'included' | 'unknown' | 'window' | 'asset-exact' | 'asset-owned' | 'asset-bridge' | 'asset-invalid' | 'asset-hostile' | 'asset-max' | 'late' | 'sentry' | 'transient';
+const modes: readonly string[] = ['value', 'empty', 'error', 'slow', 'asset', 'pending', 'included', 'unknown', 'window', 'asset-exact', 'asset-owned', 'asset-bridge', 'asset-invalid', 'asset-hostile', 'asset-max', 'late', 'sentry', 'transient'];
 const initial = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('activity-mode');
 let mode: ActivityMode = modes.includes(initial ?? '') ? initial as ActivityMode : 'value';
 let release: (() => void) | null = null;
@@ -66,12 +66,13 @@ export async function activityFetch(input: RequestInfo | URL, init?: RequestInit
   if (!network) return null;
   calls.push(url);
   const parsed = new URL(url), path = parsed.pathname;
-  if (mode === 'error') return new Response('fixture unavailable', { status: 503 });
+  if (mode === 'error') return new Response('fixture unavailable', { status: 500 });
+  if (mode === 'transient') { mode = 'value'; return new Response('temporarily unavailable', { status: 503 }); }
   if (path === '/api/v2/') return json({ blockbook: { coin: network.blockbookCoin, network: network.symbol, decimals: network.decimals, initialSync: false, inSync: true, inSyncMempool: true, bestHeight: 200 }, backend: { chain: network.backendChain } });
   if (path.endsWith('/block-index/0')) return json({ blockHash: network.genesisHash });
   if (path.startsWith('/api/v2/tx/')) {
     const observedMode = detailMode;
-    if (observedMode === 'error') return new Response('detail unavailable', { status: 503 });
+    if (observedMode === 'error') return new Response('detail unavailable', { status: 500 });
     if (observedMode === 'slow') await new Promise<void>((resolve, reject) => {
       const signal = init?.signal;
       const clear = () => { signal?.removeEventListener('abort', abort); if (releaseDetail === resume) releaseDetail = null; };
