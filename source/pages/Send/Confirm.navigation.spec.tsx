@@ -819,7 +819,7 @@ it.each([
     );
     expect(screen.getByText('send.smartAccountMaxFee')).toBeTruthy();
     expect(screen.getByText('send.smartAccountFeeDetails')).toBeTruthy();
-    expect(screen.getByText('mobile.infrastructure.feePayer')).toBeTruthy();
+    expect(screen.getByText('transactions.feePayer')).toBeTruthy();
     expect(screen.getByText(feePayer.address)).toBeTruthy();
     expect(screen.getAllByText('0.0431728 TSYS').length).toBeGreaterThan(0);
     expect(screen.queryByText('0.000021 TSYS')).toBeNull();

@@ -1090,6 +1090,7 @@
     "coinGeckoListingUnavailable": "Listado no disponible"
   },
   "transactions": {
+    "feePayer": "Pagador de comisiones",
     "labelCopied": "{{label}} copiado al portapapeles",
     "decodeDetailsFailed": "No se pudieron decodificar los detalles de la transacción",
     "transactionOptions": "Opciones de transacción",

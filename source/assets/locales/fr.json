@@ -1090,6 +1090,7 @@
     "coinGeckoListingUnavailable": "Référencement indisponible"
   },
   "transactions": {
+    "feePayer": "Payeur des frais",
     "labelCopied": "{{label}} copié dans le presse-papiers",
     "decodeDetailsFailed": "Impossible de décoder les détails de la transaction",
     "transactionOptions": "Options de transaction",

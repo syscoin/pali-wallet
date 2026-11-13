@@ -376,7 +376,7 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
           `${network.label} · ${review.chainId}`,
         ],
         [t('transactions.replay.from'), smart?.account ?? review.from],
-        ...(smart ? [[t('mobile.infrastructure.feePayer'), review.from]] : []),
+        ...(smart ? [[t('transactions.feePayer'), review.from]] : []),
         ...(!smart || inner
           ? [
               [
@@ -576,7 +576,7 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
                   {t(
                     call.data === '0x'
                       ? 'transactions.methodNames.transfer'
-                      : 'mobile.dappConsent.transactionReview.contractInteraction'
+                      : 'transactionDisplay.contractInteraction'
                   )}
                 </p>
                 <p className="mt-2 break-all">{call.target}</p>

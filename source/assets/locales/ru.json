@@ -1090,6 +1090,7 @@
     "coinGeckoListingUnavailable": "Данные каталога недоступны"
   },
   "transactions": {
+    "feePayer": "Плательщик комиссии",
     "labelCopied": "{{label}} скопировано в буфер обмена",
     "decodeDetailsFailed": "Не удалось декодировать сведения о транзакции",
     "transactionOptions": "Параметры транзакции",
