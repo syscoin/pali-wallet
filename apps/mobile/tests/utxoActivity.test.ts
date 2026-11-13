@@ -203,7 +203,7 @@ test('paging, retained pending rows and an unsuccessful observation cannot seed 
   let phase: 'pending' | 'omitted' | 'fail' | 'mined' = 'pending';
   const f = fixture({ count: 23, replace(path, body) {
     if (!path.includes('/address/')) return body;
-    if (phase === 'fail') return new Response('', { status: 503 });
+    if (phase === 'fail') return new Response('', { status: 500 });
     if (path.includes('page=2')) body.transactions[0] = tx(ID(1));
     else if (phase === 'pending') body.transactions[0] = pendingObservation(body.transactions[0]);
     else if (phase === 'omitted') body.transactions.shift();
@@ -306,9 +306,9 @@ test('concurrent reader operations keep their own source and abort lifetime',asy
   const first=reader.readPage(source,{page:1},signal());await entered.promise;
   const second=await reader.readPage({context:{...owner,address:other},identifier:other,isAccount:false},{page:2},signal());assert.equal(second.context.address,other);pause.resolve();assert.equal((await first).context.address,BTC);
 });
-test('extension txslight fallback can follow an unavailable account read within the same bounded session',async()=>{
+test('extension txslight fallback follows exhausted account retries within the same bounded session',async()=>{
   const f=fixture({count:1,replace(path){if(path.includes('details=txsummary'))return new Response('',{status:503});}});
-  const page=await read(f);assert.equal(page.rows.length,1);assert.equal(f.calls.filter(p=>p.includes('details=txsummary')).length,1);assert.equal(f.calls.filter(p=>p.includes('details=txslight')).length,1);
+  const page=await read(f);assert.equal(page.rows.length,1);assert.equal(f.calls.filter(p=>p.includes('details=txsummary')).length,4);assert.equal(f.calls.filter(p=>p.includes('details=txslight')).length,1);
 });
 test('oversized native integer observations stay unavailable instead of crashing formatting',async()=>{
   const f=fixture({count:1,replace(path,body){if(path.includes('/address/')){body.transactions[0].addressValueIn='9'.repeat(78);body.transactions[0].addressValueOut='9'.repeat(79);}return body;}});

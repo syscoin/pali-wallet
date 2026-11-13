@@ -7,6 +7,7 @@ import {
   checkAborted,
 } from '../shared/boundedHttp.ts';
 
+import { fetchUtxoRead } from './utxoReadRetry.ts';
 import { RAW_BYTES } from './utxoSignedBundle.ts';
 import { snapshotUtxoSubmission } from './utxoSignedRecords.ts';
 import type {
@@ -133,19 +134,20 @@ async function readRetainedJson(
   assertCurrent: () => void,
   maxBytes: number
 ): Promise<unknown> {
-  const pending = fetch(url, {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-    signal,
-    credentials: 'omit',
-    redirect: 'error',
-    cache: 'no-store',
-    referrerPolicy: 'no-referrer',
-  }).then((response) => {
-    if (signal.aborted) cancelResponseBody(response);
-    return response;
-  });
-  const response = await abortable(pending, signal);
+  const response = await fetchUtxoRead(
+    fetch,
+    url,
+    {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal,
+      credentials: 'omit',
+      redirect: 'error',
+      cache: 'no-store',
+      referrerPolicy: 'no-referrer',
+    },
+    assertCurrent
+  );
   try {
     assertCurrent();
     if (

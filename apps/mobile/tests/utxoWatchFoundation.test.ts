@@ -159,6 +159,30 @@ for (const network of ['syscoin', 'bitcoin', 'utxo:5700'] as const) {
   });
 }
 
+test('retries a temporary identity response before the same owned SDK balance read', async () => {
+  const temporary = new Response('busy', { status: 503 });
+  const fixture = responses('bitcoin', [temporary, statusFor('bitcoin'),
+    { blockHash: getUtxoNetwork('bitcoin').genesisHash }, balanceFor('bitcoin')]);
+  const result = await createUtxoBalanceReader(fixture).readBalance('bitcoin', BTC, signal());
+  assert.equal(result.confirmedUnits, '9007199254740993');
+  assert.equal(fixture.calls.length, 4);
+  assert.equal(fixture.calls[0]!.url, fixture.calls[1]!.url);
+  assert.equal(fixture.calls[0]!.init.signal, fixture.calls[1]!.init.signal);
+  assert.equal(temporary.bodyUsed, true);
+});
+
+test('cancels the identity backoff without querying the account', async () => {
+  const controller = new AbortController();
+  const fixture = responses('bitcoin', [new Response('busy', { status: 429 })]);
+  const pending = createUtxoBalanceReader(fixture).readBalance('bitcoin', BTC, controller.signal);
+  const rejected = assert.rejects(pending, code('CANCELLED'));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  controller.abort();
+  await rejected;
+  assert.equal(fixture.calls.length, 1);
+  assert.equal(fixture.calls[0]!.init.signal!.aborted, true);
+});
+
 test('testnet rejects mainnet status or genesis and never sends the public account key on redirect', async () => {
   const network = 'utxo:5700';
   const mismatchedFinalUrl = json(statusFor(network));

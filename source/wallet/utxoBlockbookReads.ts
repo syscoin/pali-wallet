@@ -1,10 +1,11 @@
 import {
-  abortable,
   boundedResponseText,
   cancelResponseBody,
   ResponseSizeLimitError,
 } from '../shared/boundedHttp.ts';
 import { UTXO_DETAIL_RESPONSE_BYTES } from '../shared/utxoTransactionDetailCache.ts';
+
+import { fetchUtxoRead } from './utxoReadRetry.ts';
 
 export type UtxoBlockbookReadScope =
   | Readonly<{ kind: 'fee'; url: string }>
@@ -81,18 +82,19 @@ export function createOwnedUtxoBlockbookRead(
     const timeout = setTimeout(cancel, READ_TIMEOUT_MS);
     try {
       check();
-      const pending = transport(url, {
-        method: 'GET',
-        cache: 'no-store',
-        credentials: 'omit',
-        redirect: 'error',
-        referrerPolicy: 'no-referrer',
-        signal: controller.signal,
-      }).then((response) => {
-        if (controller.signal.aborted) cancelResponseBody(response);
-        return response;
-      });
-      const response = await abortable(pending, controller.signal);
+      const response = await fetchUtxoRead(
+        transport,
+        url,
+        {
+          method: 'GET',
+          cache: 'no-store',
+          credentials: 'omit',
+          redirect: 'error',
+          referrerPolicy: 'no-referrer',
+          signal: controller.signal,
+        },
+        check
+      );
       check();
       if (response.redirected || response.url !== url) {
         cancelResponseBody(response);

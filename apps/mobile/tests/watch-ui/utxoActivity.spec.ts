@@ -151,6 +151,26 @@ test('unavailable, empty, stale and asset amounts remain distinct', async ({ pag
   await expect(activityRows(page, 'Asset activity').first()).toBeVisible();
 });
 
+test('a transient Blockbook failure retries the same read and returns to healthy activity', async ({ page }) => {
+  await open(page); await load(page);
+  const before = await page.evaluate(() => window.__watchFixture.activity.calls().length);
+  await page.evaluate(() => window.__watchFixture.activity.mode('transient'));
+  const refresh = page.getByRole('button', { name: 'Refresh activity', exact: true });
+  await refresh.click();
+  await expect(page.getByText('Could not refresh activity', { exact: true })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.__watchFixture.activity.calls().length)).toBe(before + 4);
+  await expect(refresh).toBeEnabled();
+  await load(page);
+  await expect(activityRows(page, '−10.0 BTC').first()).toBeVisible();
+  await expect(page.getByText('Activity unavailable', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Could not refresh activity', { exact: true })).toHaveCount(0);
+  const retried = await page.evaluate((offset) => window.__watchFixture.activity.calls().slice(offset), before);
+  expect(retried[0]).toBe(retried[1]);
+  expect(retried[0]).toMatch(/\/api\/v2\/$/);
+  expect(retried[2]).toMatch(/\/block-index\/0$/);
+  expect(retried[3]).toContain('/address/');
+});
+
 test('an explicit watch refresh shows one quiet confirmation result without extra reads', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await open(page, 'bitcoin', false, 'pending');
