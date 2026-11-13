@@ -127,6 +127,7 @@ import {
 import {
   retainedEvmAssetPreflightConflict,
   type EvmSignedRecords,
+  type EvmRetainedSignedRecord,
   type EvmSignedRetirementReadForChain,
 } from '../../../wallet/evmSignedRecords';
 import { observeRetainedEvmTransaction } from '../../../wallet/evmSignedReplay';
@@ -152,6 +153,7 @@ import {
   type PsbtSigningPorts,
 } from '../../../wallet/psbtApprovals';
 import { createSlhDsaProfileStateCrypto } from '../../../wallet/slhDsaStateCrypto';
+import { decodeRetainedSmartAccountOperations } from '../../../wallet/smartAccountActivity';
 import { createSmartAccountSignedReplay } from '../../../wallet/smartAccountSignedReplay';
 import {
   createOwnedUtxoBlockbookRead,
@@ -1532,6 +1534,151 @@ class MainController {
     utxoReviewsByWallet.delete(this);
   }
 
+  private async recordAcknowledgedEvmReplay(
+    entry: EvmRetainedSignedRecord,
+    assertCurrent: () => void
+  ): Promise<void> {
+    assertCurrent();
+    const tx = Transaction.from(entry.rawTransaction);
+    const { vault } = store.getState();
+    const affected = new Set(
+      decodeRetainedSmartAccountOperations(entry).map((operation) =>
+        operation.account.toLowerCase()
+      )
+    );
+    const groups = new Map<
+      string,
+      {
+        address?: string;
+        owners: Array<{
+          address: string;
+          id: number;
+          type: KeyringAccountType;
+        }>;
+      }
+    >();
+    for (const [id, account] of Object.entries(
+      vault.accounts[KeyringAccountType.SmartAccount] ?? {}
+    )) {
+      if (!account?.address || !affected.has(account.address.toLowerCase()))
+        continue;
+      const key = account.address.toLowerCase();
+      let group = groups.get(key);
+      if (!group) {
+        group = { address: account.address, owners: [] };
+        groups.set(key, group);
+      }
+      group.owners.push({
+        id: Number(id),
+        type: KeyringAccountType.SmartAccount,
+        address: account.address,
+      });
+    }
+    const payer = {
+      id: entry.signer.id,
+      type: entry.signer.type as KeyringAccountType,
+      address: entry.from,
+    };
+    if (!groups.size) groups.set('payer', { owners: [] });
+    groups.values().next().value!.owners.push(payer);
+    const isCurrentContext = () => {
+      try {
+        assertCurrent();
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const missing = [...groups.values()]
+      .map((group) => ({
+        ...group,
+        owners: group.owners.filter(
+          (owner) =>
+            !vault.accountTransactions?.[owner.type]?.[owner.id]?.ethereum?.[
+              Number(tx.chainId)
+            ]?.some(
+              (candidate) =>
+                candidate.hash?.toLowerCase() === entry.hash.toLowerCase()
+            )
+        ),
+      }))
+      .filter((group) => group.owners.length);
+    if (!missing.length) {
+      this.startRapidTransactionPolling(
+        entry.hash,
+        Number(tx.chainId),
+        false,
+        { id: payer.id, type: payer.type },
+        isCurrentContext
+      );
+      return;
+    }
+    // Re-enter the normal public history/receipt path after a lost initial ACK.
+    // No receipt is inferred from acceptance, and private journal metadata stays private.
+    for (let index = 0; index < missing.length; index++) {
+      const group = missing[index];
+      const check = () => {
+        assertCurrent();
+        for (const owner of group.owners) {
+          if (
+            store
+              .getState()
+              .vault.accounts[owner.type]?.[
+                owner.id
+              ]?.address?.toLowerCase() !== owner.address.toLowerCase()
+          )
+            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        }
+      };
+      check();
+      await this.sendAndSaveTransaction(
+        {
+          hash: entry.hash,
+          from: tx.from!,
+          to: tx.to,
+          chainId: Number(tx.chainId),
+          nonce: tx.nonce,
+          type: tx.type,
+          data: tx.data,
+          input: tx.data,
+          value: tx.value.toString(),
+          gasLimit: tx.gasLimit.toString(),
+          gasPrice: tx.gasPrice?.toString(),
+          maxFeePerGas: tx.maxFeePerGas?.toString(),
+          maxPriorityFeePerGas: tx.maxPriorityFeePerGas?.toString(),
+          ...(entry.operation === 'cancel' ? { isCancel: true } : {}),
+          ...(entry.operation === 'speed-up' ? { isSpeedUp: true } : {}),
+          ...(entry.originalHash ? { replacesHash: entry.originalHash } : {}),
+          ...(group.address
+            ? {
+                smartAccountExecution: true,
+                smartAccountExecutionFrom: group.address,
+              }
+            : {}),
+        } as unknown as IEvmTransactionResponse,
+        { id: group.owners[0].id, type: group.owners[0].type },
+        {
+          clearNavigation: false,
+          isCurrentContext: () => {
+            try {
+              check();
+              return true;
+            } catch {
+              return false;
+            }
+          },
+          transactionAccounts: group.owners.map(({ id, type }) => ({
+            id,
+            type,
+          })),
+          persist: index === missing.length - 1,
+          skipRapidPolling: index !== missing.length - 1,
+        }
+      );
+      check();
+    }
+  }
+
   private captureRetainedEvmReplaySession(
     reference: { id: number; type: KeyringAccountType },
     assertOwner: () => void = () => undefined
@@ -1581,8 +1728,8 @@ class MainController {
       provider,
       assertCurrent,
       recordSession: { keyring, assertCurrent },
-      authorizeReplay: (entry) =>
-        authorizePrivateNoteReplay(
+      authorizeReplay: async (entry) => {
+        const authorization = await authorizePrivateNoteReplay(
           entry,
           assertCurrent,
           async (attempt) => {
@@ -1608,7 +1755,19 @@ class MainController {
               privateSession
             );
           }
-        ),
+        );
+        assertCurrent();
+        return Object.freeze({
+          ...authorization,
+          onAcknowledged: async (hash: string) => {
+            await authorization.onAcknowledged(hash);
+            assertCurrent();
+            if (hash.toLowerCase() !== entry.hash.toLowerCase())
+              throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+            await this.recordAcknowledgedEvmReplay(entry, assertCurrent);
+          },
+        });
+      },
     };
   }
 
