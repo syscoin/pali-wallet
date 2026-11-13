@@ -679,7 +679,7 @@ it('reviews the inner Smart transfer and the recorded outer payer, then opens a 
   await flush();
   const dialog = screen.getByRole('dialog');
   expect(
-    within(dialog).getByText(mockT('smartAccountHub.infrastructure.feePayer'))
+    within(dialog).getByText(mockT('mobile.infrastructure.feePayer'))
   ).toBeTruthy();
   expect(within(dialog).getByText(parent.review.from)).toBeTruthy();
   expect(

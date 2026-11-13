@@ -376,9 +376,7 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
           `${network.label} · ${review.chainId}`,
         ],
         [t('transactions.replay.from'), smart?.account ?? review.from],
-        ...(smart
-          ? [[t('smartAccountHub.infrastructure.feePayer'), review.from]]
-          : []),
+        ...(smart ? [[t('mobile.infrastructure.feePayer'), review.from]] : []),
         ...(!smart || inner
           ? [
               [
