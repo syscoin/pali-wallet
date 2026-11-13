@@ -11,6 +11,11 @@ import {
 
 import { sendToBackground } from './backgroundMessaging';
 import { isAllowedPageProviderMessageType } from './pageMessageAuthorization';
+import {
+  providerEventName,
+  providerResponseEvent,
+  readProviderWireType,
+} from './providerChannel';
 
 const emitter = new EventEmitter();
 let hasAppliedProviderPreference = false;
@@ -35,15 +40,21 @@ const checkForPaliRegisterEvent = (id: any) => {
   emitter.once(id, (result) => {
     if (typeof id === 'string') {
       if (String(id).includes('isUnlocked')) {
-        window.dispatchEvent(new CustomEvent(id, { detail: result }));
+        window.dispatchEvent(
+          new CustomEvent(providerResponseEvent(id), { detail: result })
+        );
       }
     }
     if (result !== null && result !== undefined) {
       window.dispatchEvent(
-        new CustomEvent(id, { detail: JSON.stringify(result) })
+        new CustomEvent(providerResponseEvent(id), {
+          detail: JSON.stringify(result),
+        })
       );
     } else {
-      window.dispatchEvent(new CustomEvent(id, { detail: null }));
+      window.dispatchEvent(
+        new CustomEvent(providerResponseEvent(id), { detail: null })
+      );
     }
   });
 };
@@ -58,7 +69,8 @@ const start = () => {
       if (event.source !== window) return;
       if (!event.data) return;
 
-      const { id, type, data } = event.data;
+      const { id, data } = event.data;
+      const type = readProviderWireType(event.data.type);
 
       if (
         typeof id !== 'string' ||
@@ -102,7 +114,9 @@ const startEventEmitter = () => {
   for (const ev in PaliEvents) {
     emitter.on(PaliEvents[ev], (result) => {
       window.dispatchEvent(
-        new CustomEvent('notification', { detail: JSON.stringify(result) })
+        new CustomEvent(providerEventName('notification'), {
+          detail: JSON.stringify(result),
+        })
       );
     });
   }
@@ -110,7 +124,9 @@ const startEventEmitter = () => {
   for (const ev in PaliSyscoinEvents) {
     emitter.on(PaliSyscoinEvents[ev], (result) => {
       window.dispatchEvent(
-        new CustomEvent('sys_notification', { detail: JSON.stringify(result) })
+        new CustomEvent(providerEventName('sys_notification'), {
+          detail: JSON.stringify(result),
+        })
       );
     });
   }
@@ -170,9 +186,13 @@ export const shouldInjectProvider = () =>
 
 export const injectScriptFile = (file: string, id: string) => {
   try {
-    const inpage = document.getElementById('inpage');
-    const removeProperty = document.getElementById('removeProperty');
-    const pali = document.getElementById('pali-provider-script');
+    const inpage = document.getElementById(providerEventName('inpage'));
+    const removeProperty = document.getElementById(
+      providerEventName('removeProperty')
+    );
+    const pali = document.getElementById(
+      providerEventName('pali-provider-script')
+    );
 
     switch (id) {
       case 'removeProperty':
@@ -195,7 +215,7 @@ export const injectScriptFile = (file: string, id: string) => {
         // remove existing pali script
         if (pali) pali.remove();
         // Also remove any old pali script with the old ID
-        const oldPali = document.getElementById('pali');
+        const oldPali = document.getElementById(providerEventName('pali'));
         if (oldPali) oldPali.remove();
         break;
       default:
@@ -205,7 +225,10 @@ export const injectScriptFile = (file: string, id: string) => {
     const container = document.head || document.documentElement;
     const scriptTag = document.createElement('script');
     scriptTag.setAttribute('async', 'false');
-    scriptTag.setAttribute('id', id === 'pali' ? 'pali-provider-script' : id);
+    scriptTag.setAttribute(
+      'id',
+      providerEventName(id === 'pali' ? 'pali-provider-script' : id)
+    );
     scriptTag.src = chrome.runtime.getURL(file);
 
     container.insertBefore(scriptTag, container.children[0]);
@@ -260,12 +283,12 @@ if (window !== window.top) {
   );
 } else {
   // Guard against multiple content script executions in the same frame
-  if ((window as any).__paliContentScriptInitialized) {
+  if ((window as any)[providerEventName('__paliContentScriptInitialized')]) {
     console.log(
       '[Content Script] Already initialized, skipping duplicate execution'
     );
   } else {
-    (window as any).__paliContentScriptInitialized = true;
+    (window as any)[providerEventName('__paliContentScriptInitialized')] = true;
 
     // Initial setup - inject providers immediately at document_start
     if (shouldInjectProvider()) {

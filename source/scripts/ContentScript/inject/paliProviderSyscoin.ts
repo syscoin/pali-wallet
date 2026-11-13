@@ -1,3 +1,4 @@
+import { providerEventName, PROVIDER_WALLET_ID } from '../providerChannel';
 import { ISysAssetMetadata } from 'types/tokens';
 
 import { BaseProvider, Maybe, RequestArguments } from './BaseProvider';
@@ -59,7 +60,7 @@ export class PaliInpageProviderSys extends BaseProvider {
   public chainId: string | null;
   private _isInitializing = false;
   private _initializationPromise: Promise<void> | null = null;
-  constructor(maxEventListeners = 100, wallet = 'pali-v2') {
+  constructor(maxEventListeners = 100, wallet = PROVIDER_WALLET_ID) {
     super('syscoin', maxEventListeners, wallet);
     this._sys = this._getSysAPI();
     // Private state
@@ -110,7 +111,7 @@ export class PaliInpageProviderSys extends BaseProvider {
 
   public initMessageListener() {
     window.addEventListener(
-      'paliNotification',
+      providerEventName('paliNotification'),
       (event: any) => {
         try {
           const parsed = JSON.parse(event.detail);

@@ -1,6 +1,8 @@
 /* eslint-disable import/no-extraneous-dependencies */
 import { v4 as uuidv4 } from 'uuid';
 
+import { providerEventName } from '../providerChannel';
+
 import { PaliInpageProviderEth } from './paliProviderEthereum';
 import { shimWeb3 } from './shimWeb3';
 import { announceProvider } from './utils';
@@ -16,21 +18,26 @@ declare global {
   }
 }
 
+const page = window as any;
+const injectionKey = providerEventName('__paliWalletInjected');
+const stateKey = providerEventName('paliProvider');
+const announcementKey = providerEventName('__paliAnnouncementSetup');
+
 // Create or get existing ethereum provider
 let ethereumProvider: PaliInpageProviderEth;
 let proxiedProvider: any;
 
 // Guard against duplicate injections
-if ((window as any).__paliWalletInjected) {
+if (page[injectionKey]) {
   console.log('[Pali] Script already injected, exiting');
   // Get the existing provider instances
-  ethereumProvider = (window as any).paliProvider?.ethereumProvider;
-  proxiedProvider = (window as any).paliProvider?.proxiedProvider;
+  ethereumProvider = page[stateKey]?.ethereumProvider;
+  proxiedProvider = page[stateKey]?.proxiedProvider;
   // Re-enabling Ethereum can follow the normal removal of our fallback.
   // Reuse its identity without replacing another wallet's current provider.
   if (proxiedProvider && !window.ethereum) window.ethereum = proxiedProvider;
 } else {
-  (window as any).__paliWalletInjected = true;
+  page[injectionKey] = true;
   console.log('[Pali] Creating new provider instance');
 
   ethereumProvider = new PaliInpageProviderEth();
@@ -52,7 +59,7 @@ if ((window as any).__paliWalletInjected) {
   });
 
   // Store for reuse with initialization flag
-  (window as any).paliProvider = {
+  page[stateKey] = {
     ethereumProvider,
     proxiedProvider,
     initialized: true,
@@ -69,10 +76,10 @@ if ((window as any).__paliWalletInjected) {
 
     // Store reference to MetaMask for potential fallback
     // eslint-disable-next-line camelcase
-    (window as any)._metamask_ethereum = existingEthereum;
+    page[providerEventName('_metamask_ethereum')] = existingEthereum;
 
     // Also preserve MetaMask under its own namespace
-    (window as any).metamask = existingEthereum;
+    page[providerEventName('metamask')] = existingEthereum;
   } else if (!existingEthereum) {
     console.log('[Pali] No MetaMask detected, setting as primary provider');
     window.ethereum = proxiedProvider;
@@ -83,16 +90,16 @@ if ((window as any).__paliWalletInjected) {
 
 // Set up EIP-6963 announcements immediately (outside the provider setup block)
 // This ensures announcements happen even if provider setup was skipped
-if (!(window as any).__paliAnnouncementSetup) {
-  (window as any).__paliAnnouncementSetup = true;
+if (!page[announcementKey]) {
+  page[announcementKey] = true;
 
   // Generate a consistent UUID for this page session
   const providerUUID = uuidv4();
   // UUID generated for EIP-6963
 
   // Store UUID globally
-  if ((window as any).paliProvider) {
-    (window as any).paliProvider.uuid = providerUUID;
+  if (page[stateKey]) {
+    page[stateKey].uuid = providerUUID;
   }
 
   // Listen for EIP-6963 requests FIRST (before any announcements)

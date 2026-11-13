@@ -349,6 +349,7 @@ describe('DAppController idempotent permission revocation', () => {
               data: { method: PaliEvents.accountsChanged, params: [] },
             },
             host,
+            'paliNotification',
           ],
         },
         {
@@ -359,6 +360,7 @@ describe('DAppController idempotent permission revocation', () => {
               data: { method: PaliSyscoinEvents.xpubChanged, params: null },
             },
             host,
+            'paliNotification',
           ],
         },
       ]);

@@ -1,5 +1,11 @@
 import { EventEmitter } from 'events';
 
+import {
+  providerEventName,
+  providerResponseEvent,
+  PROVIDER_WALLET_ID,
+} from '../providerChannel';
+
 import messages from './messages';
 import { getRpcPromiseCallback } from './utils';
 export type Maybe<T> = Partial<T> | null | undefined;
@@ -83,7 +89,7 @@ export class BaseProvider extends EventEmitter {
   /**
    * Indicating that this provider is a MetaMask provider.
    */
-  constructor(chainType, maxEventListeners = 100, wallet = 'pali-v2') {
+  constructor(chainType, maxEventListeners = 100, wallet = PROVIDER_WALLET_ID) {
     super();
     this.setMaxListeners(maxEventListeners);
     // Public state
@@ -274,7 +280,7 @@ export class BaseProvider extends EventEmitter {
         }
       }
 
-      const id = Date.now() + '.' + Math.random();
+      const id = providerEventName(Date.now() + '.' + Math.random());
 
       const handleResponse = (event: any) => {
         if (event.detail === undefined) {
@@ -313,7 +319,7 @@ export class BaseProvider extends EventEmitter {
         }
       };
 
-      window.addEventListener(id, handleResponse, {
+      window.addEventListener(providerResponseEvent(id), handleResponse, {
         once: true,
         passive: true,
       });
@@ -327,7 +333,7 @@ export class BaseProvider extends EventEmitter {
       window.postMessage(
         {
           id,
-          type,
+          type: providerEventName(type),
           data,
         },
         targetOrigin
