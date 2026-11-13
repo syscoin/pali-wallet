@@ -95,6 +95,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let initialEoaNonce = 0;
   let physicalStorageCloses = 0;
   const spendabilityReads = { native: 0, deposit: 0 };
+  const tokens = new Map<string, { balance: bigint; decimals: number }>();
+  const tokenInterface = new Interface(['function balanceOf(address) view returns(uint256)', 'function decimals() view returns(uint8)', 'function transfer(address,uint256) returns(bool)']);
   let deployed = false;
   let deployedCode = '0x01';
   let readReceipts = true;
@@ -160,7 +162,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const target = request.params[0].toLowerCase();
           const builtIn = SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.some(address => address.toLowerCase() === target);
           const smartTarget = runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === target);
-          result = builtIn || customValidators.has(target) ? '0x01' : deployed && smartTarget && (!deployedByBroadcast || request.params[1] === 'pending' || readReceipts) ? deployedCode : '0x';
+          result = builtIn || customValidators.has(target) || tokens.has(target) ? '0x01' : deployed && smartTarget && (!deployedByBroadcast || request.params[1] === 'pending' || readReceipts) ? deployedCode : '0x';
           if (missingInfrastructure.has(target)) result = '0x';
           if (smartGuardianMetadata && smartGuardianMetadata.address.toLowerCase() === target && !smartGuardianMetadata.deployed) result = '0x';
           if (smartTarget) {
@@ -241,7 +243,20 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const smartTarget = runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === to);
           const ownGuardian = smartGuardianMetadata?.address.toLowerCase() === to ? smartGuardianMetadata : undefined;
           const smartComposite = ownGuardian ? ownGuardian.compositeThreshold !== undefined : !!composite;
-          if (to === getZkSysGasTankAddress(Number(network.chainId))?.toLowerCase()) {
+          const token = tokens.get(to);
+          if (token) {
+            const call = tokenInterface.parseTransaction({ data }); assert(call);
+            if (call.name === 'decimals') result = tokenInterface.encodeFunctionResult(call.fragment, [token.decimals]);
+            else if (call.name === 'balanceOf') {
+              assert(runtime.catalogue.getSnapshot()?.accounts.some(account => account.address.toLowerCase() === call.args[0].toLowerCase()));
+              result = tokenInterface.encodeFunctionResult(call.fragment, [token.balance]);
+            } else {
+              assert.equal(call.name, 'transfer');
+              assert(runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === request.params[0].from?.toLowerCase()));
+              assert(call.args[1] <= token.balance);
+              result = tokenInterface.encodeFunctionResult(call.fragment, [true]);
+            }
+          } else if (to === getZkSysGasTankAddress(Number(network.chainId))?.toLowerCase()) {
             result = coder.encode(['uint256'], [gasCredit]);
           } else if (smartTarget && data.startsWith(paliSmartAccountInterface.getFunction('supportsExecutionMode')!.selector)) {
             result = paliSmartAccountInterface.encodeFunctionResult('supportsExecutionMode', [true]);
@@ -459,6 +474,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     advanceSmartNonce() { externalSmartNonce++; },
     fundedSmart() { smartBalance = '0x1000000000000000'; },
     smartBalance(value: bigint) { smartBalance = '0x' + value.toString(16); },
+    tokenBalance(contract: string, balance: bigint, decimals: number) { tokens.set(contract.toLowerCase(), { balance, decimals }); },
     holdReceipts() { readReceipts = false; },
     showReceipts(success = true) { readReceipts = true; userOperationSuccess = success; },
     reorg() { readReceipts = false; nonceReset = true; },
@@ -1145,7 +1161,10 @@ test('real SDK smart account creation, selection and cold unlock retain the orig
     assert.equal(smart.smartAccount!.chainId, 1);
     assert.equal(smart.smartAccount!.isDeployed, false);
     assert.equal(f.owner.getSnapshot().account!.address, smart.address);
-    assert.throws(() => f.runtime.transfers!.assertUnlocked(() => undefined), { code: 'NOT_READY' });
+    // Public-session readiness also admits exact-byte Smart replay; signing
+    // still requires its separate operation and payer authorization.
+    assert.doesNotThrow(() => f.runtime.transfers!.assertUnlocked(() => undefined));
+    assert.equal(f.submitted.length, 0);
     const connection = await f.runtime.openConnectionHost();
     assert.equal(connection.context().accounts.some(account => account.id === smart.id), true);
     await f.change({ kind: 'rename', id: smart.id, label: 'Renamed savings' });
@@ -1934,6 +1953,7 @@ test('Smart ERC20 send preserves 255-decimal base units through approval, signin
   try {
     await f.change({ kind: 'create-smart', label: 'Token sender',});
     const metadata = { contractAddress: '0x5555555555555555555555555555555555555555', decimals: 255, name: 'Exact token', symbol: 'EXACT' };
+    f.tokenBalance(metadata.contractAddress, 9n, metadata.decimals);
     const registry = await f.runtime.tokens!.load(() => undefined);
     await f.runtime.tokens!.add(registry.revision, metadata, () => undefined);
     f.fundedSmart(); f.deployed(); f.holdReceipts();
