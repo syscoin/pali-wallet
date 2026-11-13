@@ -19,6 +19,9 @@ import { quietActivityNotifications } from './notificationFixture.ts';
 import { createTestPublicViewLock } from './publicViewLockFixture.ts';
 import { IdleLock } from '../src/core/idleLock.ts';
 import { createPermissionPresentation } from '../src/platform/permissionPresentation.ts';
+import { TabDeparture } from '../src/navigation/tabDeparture.ts';
+import { screenFixture, screenElements } from './screenFixture.ts';
+import { formatBaseUnits } from '../src/core/amounts.ts';
 
 type Element = {
   type: unknown;
@@ -52,13 +55,14 @@ const cameraCode = ts.transpileModule(readFileSync(new URL('../src/platform/came
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText;
 
-function harness(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false, slh = false, infrastructure = false) {
+function harness(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false, slh = false, infrastructure = false, realNavigation = false) {
   let now = 1000,
     cursor = 0,
     selectionCalls = 0;
   let hardwareBack: (() => boolean) | undefined;
   let exits = 0;
   let shellTab = 'wallet';
+  let liveShell: any;
   let acquisitions = 0, releases = 0, lifecycleActive = true;
   let releaseGate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
   const viewPrivacy = createTestPublicViewLock();
@@ -461,6 +465,17 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   const module = {
     exports: {} as { NativeWalletScreen(props: object): Element; NativeWalletContent(props: object): Element },
   };
+  if (realNavigation) {
+    const shellModule = { exports: {} as { useRealShell: (...args: any[]) => any } };
+    runInNewContext(ts.transpileModule(readFileSync(new URL('../src/screens/useRealShell.ts', import.meta.url), 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText, { module: shellModule, exports: shellModule.exports, require(name: string) {
+      if (name === 'react') return react;
+      if (name === 'react-native') return native;
+      assert.equal(name, '../navigation/tabDeparture'); return { TabDeparture };
+    } });
+    dependencies['./useRealShell'] = { useRealShell: (...args: any[]) => liveShell = shellModule.exports.useRealShell(...args) };
+  }
   runInNewContext(code, {
     module,
     exports: module.exports,
@@ -503,8 +518,8 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     resumedSmart: () => resumedSmart,
     resumedInfrastructure: () => resumedInfrastructure,
     showTools() { shellTab = 'tools'; },
-    showWallet() { shellTab = 'wallet'; },
-    showSettings() { shellTab = 'settings'; },
+    showWallet() { if (realNavigation) liveShell.select('wallet'); else shellTab = 'wallet'; },
+    showSettings() { if (realNavigation) liveShell.select('settings'); else shellTab = 'settings'; },
     showActivity() { shellTab = 'activity'; },
     activityChoice() { return controllers.getNotificationChoices()[0]!; },
     holdRelease() { return releaseGate = Promise.withResolvers<void>(); },
@@ -589,8 +604,8 @@ function find(
     : [...node.children, node.props.footer].flatMap((child) => find(child, predicate) ?? []).at(0);
 }
 
-async function mounted(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false, slh = false, infrastructure = false) {
-  const f = harness(ready, smartAccount, withPairing, canManage, handoff, slh, infrastructure);
+async function mounted(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false, slh = false, infrastructure = false, realNavigation = false) {
+  const f = harness(ready, smartAccount, withPairing, canManage, handoff, slh, infrastructure, realNavigation);
   f.render();
   await settle();
   f.render();
@@ -1318,5 +1333,77 @@ for (const granted of [true, false]) test(`result-first camera ${granted ? 'gran
     assert.equal(f.render().type, route.type);
     f.background(); assert.notEqual(f.render().type, route.type);
     assert(f.lifecycle().slice(before).includes('lock'));
+  } finally { f.dispose(); }
+});
+
+function notificationNavigationScreen(action: 'direct-send' | 'filtered-send' | 'filtered-activity', portfolio: Element, choice: any) {
+  const direct = action === 'direct-send';
+  const file = new URL(`../src/screens/${direct ? 'NativePortfolio' : 'NativeAccountOverview'}.tsx`, import.meta.url);
+  const source = readFileSync(file, 'utf8');
+  const imports: Record<string, any> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map(match => [match[1]!, {}]));
+  const native = { AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
+    BackHandler: { addEventListener: () => ({ remove() {} }) }, StyleSheet: { create: (value: unknown) => value },
+    useWindowDimensions: () => ({ width: 390, fontScale: 1 }) };
+  Object.assign(imports, {
+    'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+    '../ui': { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Icon', 'IconButton', 'Row', 'Screen', 'Text'].map(type => [type, type])), colors: {}, styles: {} },
+    '../platform/localization': nativeTranslationFixture,
+    '../platform/balancePrivacy': { useBalancePrivacy: () => ({ hidden: false }), HIDDEN_BALANCE: 'hidden' },
+    '../platform/fiatPreferences': { useFiatCurrency: () => ({ status: 'ready', currency: 'usd' }) },
+    '../custody/networkContext': networks, '../core/amounts': { formatBaseUnits },
+    '../activity/activityAmountLabel': { compactActivityAmountLabel: (value: string) => value },
+    '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => ({ supported: false }) },
+    '../custody/testnetFaucet': { getTestnetFaucet: () => null },
+    '../portfolio/nativePortfolio': { NativePortfolioController: class {
+      subscribe = () => () => {}; getSnapshot = () => ({ status: 'available', account: { ...portfolio.props.source.getSnapshot().account, revision: 1 }, units: '1000000000000000000', updatedAt: null });
+      connect = () => () => {}; isCurrent = () => true; getUtxoNetwork = () => undefined; getNetworkRegistration = () => networks.getNativeNetwork('ethereum');
+    } },
+  });
+  const screen = screenFixture(file, direct ? 'NativePortfolio' : 'NativeAccountOverview', imports);
+  const controller = { subscribe: () => () => {}, getSnapshot: () => ({ status: 'ready', filter: 'ethereum', choices: [choice], rows: [], currency: null }),
+    setCurrency() {}, connect: () => () => {}, cachedBalances: () => [] };
+  let tree = screen.render(direct ? portfolio.props : { controller, portfolio: portfolio.props, selectNetwork: portfolio.props.selectNetwork,
+    send: portfolio.props.sendFrom, navigateActivity: portfolio.props.navigateActivity });
+  if (direct) tree = screen.renderChild(tree);
+  const control = screenElements(tree).find(node => node.props.title === (action === 'filtered-activity' ? 'Activity' : 'Send'));
+  assert(control, `missing actual ${action} control`);
+  return { press: () => control.props.onPress(), close: screen.close };
+}
+
+for (const action of ['none', 'stale-account-navigation', 'direct-send', 'filtered-send', 'filtered-activity'] as const) test(`late notification permission respects ${action} through the actual wallet and navigation hook`, async () => {
+  const f = await mounted(true, false, false, true, false, false, false, true);
+  try {
+    f.showSettings();
+    const settings = find(f.render(), node => node.type === 'RealSettings'); assert(settings);
+    const result = Promise.withResolvers<'granted'>();
+    settings.props.notifications.onPermissionPresentation(f.activityChoice().scope, result.promise);
+    f.background(); f.render();
+    assert(f.lifecycle().includes('lock'), 'actual background still revokes custody');
+    f.foreground(); f.render(); await settle(); f.render(); await settle();
+    const open = find(f.render(), node => node.props.title === 'Open wallet');
+    if (open) { open.props.onPress(); await settle(); f.render(); await settle(); }
+    f.ready(); f.render(); await settle();
+    const portfolio = find(f.render(), node => node.type === 'NativePortfolio'); assert(portfolio);
+    if (action === 'stale-account-navigation') {
+      await assert.rejects(portfolio.props.navigateActivity(f.activityChoice(), () => { throw Error('STALE_VIEW'); }), /STALE_VIEW/);
+      await assert.rejects(portfolio.props.navigateActivity({ ...f.activityChoice(), scope: { ...f.activityChoice().scope, accountId: 'missing' } }, () => {}), /CANCELLED/);
+    }
+    const controls = action === 'none' || action === 'stale-account-navigation' ? null : notificationNavigationScreen(action, portfolio, f.activityChoice());
+    controls?.press();
+    f.render(); await settle(); f.render();
+    controls?.close();
+    result.resolve('granted'); await settle(); f.render(); await settle();
+    const tree = f.render();
+    if (action === 'none' || action === 'stale-account-navigation') {
+      assert(find(tree, node => node.type === 'RealSettings')?.props.notificationReturn);
+      f.showWallet(); f.render(); f.showSettings();
+      assert.equal(find(f.render(), node => node.type === 'RealSettings')?.props.notificationReturn, null, 'a later manual visit does not reuse the consumed return');
+    }
+    else if (action === 'filtered-activity') assert.equal(find(tree, node => node.type === 'RealAppShell')?.props.tab, 'activity');
+    else {
+      const send = find(tree, node => node.type === 'NativeSend'); assert(send);
+      send.props.onBack(); f.render(); await settle();
+      assert.equal(find(f.render(), node => node.type === 'RealAppShell')?.props.tab, 'wallet');
+    }
   } finally { f.dispose(); }
 });

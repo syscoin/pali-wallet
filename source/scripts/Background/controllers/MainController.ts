@@ -46,6 +46,7 @@ import * as syscoinjs from 'syscoinjs-lib';
 import { utils as syscoinTransactionTypes } from 'syscointx-js';
 
 import { getController, notificationManager } from '..';
+import { getBundledEvmChainMetadata } from '../../../shared/chainCatalogueData';
 import { normalizeDappTransaction } from '../../../shared/dappTransaction';
 import { assertSupportedEvmFees } from '../../../shared/dappTransaction.ts';
 import { readStoredDappPermissions } from '../../../shared/dappTypes';
@@ -7098,8 +7099,13 @@ class MainController {
     }
     this.assertUniqueUtxoNetworkVault(network);
 
+    const bundledMetadata =
+      network.kind === INetworkType.Ethereum
+        ? getBundledEvmChainMetadata(network.chainId, network.url)
+        : undefined;
     let networkWithCustomParams = {
       ...network,
+      ...(bundledMetadata && { coingeckoId: bundledMetadata.coingeckoId }),
       default: false,
     } as INetwork;
 
@@ -7123,9 +7129,10 @@ class MainController {
         if (coinGeckoIds) {
           networkWithCustomParams = {
             ...networkWithCustomParams,
-            ...(coinGeckoIds.coingeckoId && {
-              coingeckoId: coinGeckoIds.coingeckoId,
-            }),
+            ...(!bundledMetadata &&
+              coinGeckoIds.coingeckoId && {
+                coingeckoId: coinGeckoIds.coingeckoId,
+              }),
             ...(coinGeckoIds.coingeckoPlatformId && {
               coingeckoPlatformId: coinGeckoIds.coingeckoPlatformId,
             }),

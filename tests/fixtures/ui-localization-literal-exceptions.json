@@ -3,6 +3,20 @@
   "scope": "Exact normalized JSX word-copy and direct visible string props in production components/pages TSX. This is not callback-error, dynamic-text or all-source localization coverage.",
   "exceptions": [
     {
+      "file": "source/components/CanaryBadge.tsx",
+      "kind": "prop:aria-label",
+      "text": "Pali Wallet Canary",
+      "count": 1,
+      "reason": "Exact Pali Wallet Canary product-channel name for assistive technology, matching the extension and Store identity across locales."
+    },
+    {
+      "file": "source/components/CanaryBadge.tsx",
+      "kind": "jsx-text",
+      "text": "Canary",
+      "count": 1,
+      "reason": "Exact Canary release-channel label, matching the extension and Store identity rather than translated user guidance."
+    },
+    {
       "file": "source/components/Fullscreen/Fullscreen.tsx",
       "kind": "jsx-text",
       "text": "Fullscreen mode",

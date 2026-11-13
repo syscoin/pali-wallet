@@ -522,7 +522,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     Number(getNativeNetwork(snapshot.account.network, catalogue?.networks).chainId) === PRIVACY_CHAIN_ID;
   const shellIdentity = stage === 'choose' && snapshot.phase === 'ready' && snapshot.account && catalogue
     ? `${catalogue.active.accountId}:${snapshot.account.network}` : null;
-  const shell = useRealShell(shellIdentity, currentShellScope, exit, permissionReturn.discard);
+  const shell = useRealShell(shellIdentity, currentShellScope, exit, cancelNotificationReturn);
   const restoreRoot = shell.restoreRoot;
   useLayoutEffect(() => {
     permissionReturnContext.current = () => {
@@ -656,6 +656,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     if (!local || !current || (target.kind === 'spt' ? !canSendSpt :
       !canSign && !(canSendUtxo && (target.kind === 'native' || target.kind === 'utxo') ||
         canSendSmart && (target.kind === 'native' || target.kind === 'token' || target.kind === 'collectible')))) return false;
+    cancelNotificationReturn();
     const origin: RootOrigin = { tab, stage: 'send', ...current, publicDraft: current, epoch: epoch.current };
     const catalogue = local.authority.getCatalogue();
     const recipientPicker = target.kind === 'native' && canSign && catalogue &&
@@ -697,6 +698,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         AppState.currentState !== 'active' || state.phase !== 'ready' ||
         saved.active.accountId !== choice.scope.accountId || state.account.address !== choice.scope.accountAddress ||
         !local.getNotificationChoices().some(current => JSON.stringify(current.scope) === JSON.stringify(choice.scope))) throw Error('CANCELLED');
+    cancelNotificationReturn();
     const origin: RootOrigin = { tab: shell.tab, stage: 'networks', epoch: epoch.current,
       context: `${state.revision}:${saved.active.accountId}:${state.account.network}`, identity: `${saved.active.accountId}:${state.account.network}` };
     const intent: AccountNavigation = { local, origin, choice, sourceRevision: state.revision, sourceCatalogueRevision: saved.revision };

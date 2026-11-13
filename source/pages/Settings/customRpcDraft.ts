@@ -6,6 +6,7 @@ import store from 'state/store';
 import { getWalletNavigationScope } from 'utils/navigationState';
 
 export interface ICustomRpcDraft {
+  apiEdited: boolean;
   isSyscoinRpc: boolean;
   values: Record<string, string>;
 }
@@ -65,7 +66,11 @@ export const writeCustomRpcDraft = (
   drafts.set(id, {
     scope,
     editor,
-    draft: { isSyscoinRpc: draft.isSyscoinRpc, values },
+    draft: {
+      apiEdited: draft.apiEdited,
+      isSyscoinRpc: draft.isSyscoinRpc,
+      values,
+    },
     timestamp: Date.now(),
   });
   while (drafts.size > MAX_DRAFTS) drafts.delete(drafts.keys().next().value!);
@@ -83,6 +88,7 @@ export const readCustomRpcDraft = (
   const entry = drafts.get(id);
   if (!entry || entry.scope !== scope || entry.editor !== editor) return;
   return {
+    apiEdited: entry.draft.apiEdited,
     isSyscoinRpc: entry.draft.isSyscoinRpc,
     values: { ...entry.draft.values },
   };

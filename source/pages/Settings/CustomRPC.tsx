@@ -12,7 +12,10 @@ import {
   rankChainSuggestions,
   type ChainInfo,
 } from '../../shared/chainCatalogue';
-import { withBundledEvmChainSuggestions } from '../../shared/chainCatalogueData';
+import {
+  getBundledEvmChainMetadata,
+  withBundledEvmChainSuggestions,
+} from '../../shared/chainCatalogueData';
 import { isNonBlankNetworkText } from '../../shared/networkText';
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
@@ -95,6 +98,19 @@ const networkFormValues = (
   apiUrl: isSyscoinRpc ? '' : network?.apiUrl ?? '',
 });
 
+const readSuggestedApi = (
+  values: Pick<ICustomRpcParams, 'url' | 'chainId' | 'apiUrl'>,
+  apiEdited: boolean,
+  isSyscoinRpc: boolean
+) => {
+  if (apiEdited || isSyscoinRpc) return null;
+  const chainId = Number(values.chainId);
+  const apiUrl = getBundledEvmChainMetadata(chainId, values.url)?.apiUrl;
+  return apiUrl && values.apiUrl === apiUrl
+    ? { chainId, rpcUrl: values.url }
+    : null;
+};
+
 const CustomRPCView = () => {
   const location = useLocation();
   const { state }: { state: any } = location;
@@ -163,6 +179,29 @@ const CustomRPCView = () => {
   const { alert, navigate } = useUtils();
 
   const [form] = Form.useForm();
+  const apiEditedRef = React.useRef(
+    restoredDraft?.apiEdited ?? Boolean(state?.isEditing)
+  );
+  const suggestedApiRef = React.useRef(
+    readSuggestedApi(
+      {
+        ...networkFormValues(currentNetwork, isSyscoinRpc),
+        ...restoredDraft?.values,
+      },
+      apiEditedRef.current,
+      isSyscoinRpc
+    )
+  );
+  const clearStaleSuggestedApi = (chainId: unknown, rpcUrl: unknown) => {
+    const suggested = suggestedApiRef.current;
+    if (
+      suggested &&
+      (Number(chainId) !== suggested.chainId || rpcUrl !== suggested.rpcUrl)
+    ) {
+      suggestedApiRef.current = null;
+      form.setFieldsValue({ apiUrl: '' });
+    }
+  };
   const draftFamilyRef = React.useRef(isSyscoinRpc);
   draftFamilyRef.current = isSyscoinRpc;
   const draftContext = JSON.stringify([draftScope, draftEditorIdentity]);
@@ -201,6 +240,8 @@ const CustomRPCView = () => {
       networkRegistrationFingerprint(latestEditingNetworkRef.current)
     );
     invalidatePendingChecks();
+    apiEditedRef.current = true;
+    suggestedApiRef.current = null;
     discardCustomRpcDraft(draftId);
     form.setFieldsValue(
       networkFormValues(latestEditingNetworkRef.current, isSyscoinRpc)
@@ -841,6 +882,7 @@ const CustomRPCView = () => {
       )
         return;
       writeCustomRpcDraft(draftId, draftScope, draftEditor, {
+        apiEdited: apiEditedRef.current,
         isSyscoinRpc: draftFamilyRef.current,
         values: form.getFieldsValue(true),
       });
@@ -856,6 +898,8 @@ const CustomRPCView = () => {
     draftDiscarded.current = false;
     discardCustomRpcDraft(draftId);
     invalidatePendingChecks();
+    apiEditedRef.current = Boolean(state?.isEditing);
+    suggestedApiRef.current = null;
     editingNetworkRef.current = currentNetwork;
     setDraftRegistration(networkRegistrationFingerprint(currentNetwork));
     form.resetFields();
@@ -979,6 +1023,22 @@ const CustomRPCView = () => {
     setNetworkQuery(chain.name);
 
     const previous = form.getFieldsValue();
+    const preserveApi =
+      !isSyscoinRpc &&
+      apiEditedRef.current &&
+      Number(previous.chainId) === chain.chainId;
+    const suggestedRpc = chain.rpc[0]?.url;
+    const suggestedApi =
+      !isSyscoinRpc && suggestedRpc
+        ? getBundledEvmChainMetadata(chain.chainId, suggestedRpc)?.apiUrl
+        : undefined;
+    if (!preserveApi) {
+      suggestedApiRef.current =
+        suggestedApi && suggestedRpc
+          ? { chainId: chain.chainId, rpcUrl: suggestedRpc }
+          : null;
+    }
+    apiEditedRef.current = preserveApi;
     // Fill form fields immediately for instant UX, always updating symbol like chainId
     const formValues: any = {
       label: chain.name,
@@ -987,10 +1047,7 @@ const CustomRPCView = () => {
       // A new suggestion must not inherit another chain's explorer.
       // UTXO keeps its existing fallback to the RPC that passes validation.
       explorer: isSyscoinRpc ? '' : chain.explorers?.[0]?.url || '',
-      apiUrl:
-        !isSyscoinRpc && Number(previous.chainId) === chain.chainId
-          ? previous.apiUrl
-          : '',
+      apiUrl: preserveApi ? previous.apiUrl : suggestedApi || '',
     };
 
     form.setFieldsValue(formValues);
@@ -1035,6 +1092,7 @@ const CustomRPCView = () => {
 
         try {
           // Set this RPC in the form
+          clearStaleSuggestedApi(chain.chainId, rpc.url);
           form.setFieldsValue({ url: rpc.url });
 
           // Add a small delay for UX
@@ -1341,9 +1399,18 @@ const CustomRPCView = () => {
         name="rpc"
         initialValues={initialValues}
         onFinish={onSubmit}
-        onValuesChange={(_changed, values) => {
+        onValuesChange={(changed, values) => {
           invalidatePendingChecks();
+          if ('apiUrl' in changed) {
+            apiEditedRef.current = true;
+            suggestedApiRef.current = null;
+          }
+          if ('url' in changed || 'chainId' in changed) {
+            clearStaleSuggestedApi(values.chainId, values.url);
+            values.apiUrl = form.getFieldValue('apiUrl');
+          }
           writeCustomRpcDraft(draftId, draftScope, draftEditor, {
+            apiEdited: apiEditedRef.current,
             isSyscoinRpc,
             values,
           });
@@ -1376,6 +1443,8 @@ const CustomRPCView = () => {
                     checked={isSyscoinRpc}
                     onChange={(checked) => {
                       invalidatePendingChecks();
+                      apiEditedRef.current = false;
+                      suggestedApiRef.current = null;
                       form.setFieldsValue({ apiUrl: '' });
                       setIsSyscoinRpc(checked);
                     }}

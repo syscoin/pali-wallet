@@ -4,6 +4,22 @@ import type { INetworkType } from '../types/network';
 
 export const EVM_CHAIN_CATALOGUE_URL = 'https://chainlist.org/rpcs.json';
 
+/** Local metadata belongs only to the bundled chain and its exact endpoint. */
+export function getBundledEvmChainMetadata(chainId: number, rpcUrl: string) {
+  const network = OPTIONAL_EVM_NETWORK_DEFINITIONS.find(
+    (entry) => entry.network.chainId === chainId && entry.network.url === rpcUrl
+  )?.network;
+  return network
+    ? {
+        apiUrl: network.apiUrl,
+        coingeckoId: network.coingeckoId,
+        ...(network.coingeckoPlatformId && {
+          coingeckoPlatformId: network.coingeckoPlatformId,
+        }),
+      }
+    : undefined;
+}
+
 /** Local suggestions carry metadata only; Save still verifies the chosen RPC. */
 export function withBundledEvmChainSuggestions(
   chains: readonly ChainInfo[] = []
@@ -12,6 +28,7 @@ export function withBundledEvmChainSuggestions(
     ({ name, network, testnet }) => ({
       chain: 'ethereum' as INetworkType.Ethereum,
       chainId: network.chainId,
+      ...getBundledEvmChainMetadata(network.chainId, network.url),
       networkId: network.chainId,
       name,
       isTestnet: testnet,
