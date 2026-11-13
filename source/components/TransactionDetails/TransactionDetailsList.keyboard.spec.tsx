@@ -65,6 +65,9 @@ jest.mock('react-redux', () => ({
 jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: mockEmitter }),
 }));
+jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
+  controllerEmitter: (...args: any[]) => mockEmitter(...args),
+}));
 jest.mock('hooks/index', () => ({
   useUtils: () => ({
     useCopyClipboard: () => [false, jest.fn()],
@@ -125,6 +128,8 @@ const token = new Interface(ABI);
 const mockState: any = {
   vaultGlobal: { activeSlip44: 60 },
   vault: {
+    activeAccount: { id: 0, type: 'HDAccount' },
+    accounts: { HDAccount: { 0: { id: 0, address: ACCOUNT } } },
     activeNetwork: {
       chainId: 5700,
       kind: 'ethereum',
@@ -151,9 +156,11 @@ afterEach(() => {
   expect(mockHttp).not.toHaveBeenCalled();
   expect(
     mockEmitter.mock.calls.every(([[, method]]) =>
-      ['getEvmTransactionFromProvider', 'decodeEvmTransactionData'].includes(
-        method
-      )
+      [
+        'getEvmTransactionFromProvider',
+        'decodeEvmTransactionData',
+        'getSavedEvmTransaction',
+      ].includes(method)
     )
   ).toBe(true);
   Object.defineProperty(globalThis, 'fetch', {
@@ -196,6 +203,8 @@ async function details(amount: string, method = 'transfer') {
   ]);
   wallet.getErc20Abi = jest.fn(async () => ABI);
   mockEmitter.mockImplementation(([, requestMethod], args) => {
+    if (requestMethod === 'getSavedEvmTransaction')
+      return Promise.resolve(null);
     if (requestMethod === 'getEvmTransactionFromProvider')
       return Promise.resolve(tx);
     if (requestMethod === 'decodeEvmTransactionData')
@@ -224,6 +233,10 @@ async function details(amount: string, method = 'transfer') {
         )
       ).parentElement!.querySelector<HTMLElement>('span.font-mono')!
     : await screen.findByText(visible, { exact: true });
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'getSavedEvmTransaction'],
+    [tx.hash]
+  );
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'decodeEvmTransactionData'],
     [expect.objectContaining({ input: tx.input })]
