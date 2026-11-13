@@ -9,6 +9,7 @@ import path from 'node:path';
 
 import { createNoteBackupCodec } from '../../../source/wallet/noteBackup.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
+import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { openWalletStorage } from '../src/storage/coordinator.ts';
 import type { NativeStoragePorts } from '../src/storage/coordinator.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
@@ -271,6 +272,60 @@ test('the native storage coordinator exposes note backup to the real keyring acr
     exported?.fill(0);
     try { await runtime?.storage.close(); } finally { await f.cleanup(); }
   }
+});
+
+test('the native storage coordinator exposes Sentry on Syscoin and retires its scopes on lock and close', async () => {
+  const f = await setup();
+  const credential = createTestCredentialPort();
+  let secretReads = 0;
+  const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false,
+    credentialPort: { ...credential, withSecret: (...args) => { secretReads++; return credential.withSecret(...args); } },
+    privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
+    ensureCryptoReady: async () => undefined,
+    openStorage: () => openWalletStorage(f.ports),
+    deriveSentryPublicKey: async () => { throw Error('Public Sentry reads must not derive a private key'); },
+    runSentryCrypto: async () => { throw Error('Public Sentry reads must not sign'); },
+    utxoFetch: async () => { throw Error('Public Sentry inventory must not query the network'); },
+  });
+  let runtime!: KeyringRuntime;
+  const owner = () => new NativeCustodyAuthority({ async open() {
+    runtime = await factory.open() as KeyringRuntime;
+    return runtime;
+  } });
+  let authority = owner();
+  const current = () => undefined;
+  const authentication = createTestPrivateAuthentication(current);
+  try {
+    await authority.initialize();
+    await authority.importPhrase('abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about');
+    assert.equal(runtime.getSentryKeyNetwork?.(), undefined, 'EVM is not a Sentry network');
+    await authority.selectNetwork('syscoin', authority.getSnapshot().revision, authority.getCatalogue()!.revision, current);
+    assert.equal(runtime.getSentryKeyNetwork?.(), 'mainnet');
+    assert.ok(runtime.openSentryKeyManagement);
+    assert.ok(runtime.openSentryNodeManagement);
+    assert.ok(runtime.openSentryApprovals);
+    const baseline = secretReads;
+    const keys = await runtime.openSentryKeyManagement(new AbortController().signal, current, authentication);
+    assert.deepEqual(await keys.list(), []);
+    authority.lock();
+    assert.equal(runtime.getSentryKeyNetwork?.(), undefined);
+    await assert.rejects(keys.list(), /CANCELLED|NOT_READY/);
+    await authority.dispose();
+    assert.equal(f.held, false);
+    authority = owner();
+    await authority.initialize();
+    assert.equal(authority.getSnapshot().phase, 'ready');
+    assert.equal(runtime.getSentryKeyNetwork?.(), 'mainnet');
+    const nodes = await runtime.openSentryNodeManagement!(new AbortController().signal, current, authentication);
+    const inventory = await nodes.list();
+    assert.equal(inventory.network, 'mainnet');
+    assert.deepEqual(inventory.linkedNodes, []);
+    assert.deepEqual(inventory.collateral, []);
+    await authority.dispose();
+    assert.equal(f.held, false);
+    await assert.rejects(nodes.list(), /CANCELLED|NOT_READY/);
+    assert.equal(secretReads, baseline, 'Listing Sentry inventory and public reopen must not read spending credentials');
+  } finally { await authority.dispose(); await f.cleanup(); }
 });
 
 test('storage failure retains its opening checkpoint and closes its lease before reporting', async () => {
