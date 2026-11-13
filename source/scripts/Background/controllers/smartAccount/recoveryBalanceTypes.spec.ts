@@ -123,6 +123,7 @@ describe('guardian recovery provider numeric boundaries', () => {
     state.vault.accounts[KeyringAccountType.Imported][0] = {
       address: SECOND_PAYER,
       id: 0,
+      xprv: 'encrypted-fixture-key',
     };
     provider.sendBatch = jest
       .fn()
