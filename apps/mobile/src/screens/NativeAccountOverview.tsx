@@ -1,5 +1,5 @@
 import { WalletModal as Modal } from '../ui/WalletModal';
-import React, { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NotificationChoice } from '../notifications/choices';
@@ -53,6 +53,14 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
   } : null);
   const detail = externalDetail ?? localDetail;
   const [sheet, setSheet] = useState<'filter' | 'send' | 'receive' | null>(null);
+  // Commit the closed Receive sheet before navigation can unmount its modal owner.
+  const sheetRetirement = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (sheet !== null) return;
+    const release = sheetRetirement.current;
+    sheetRetirement.current = null;
+    release?.();
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const openSheet = (next: 'filter' | 'send' | 'receive') => { portfolio.navigation?.beginNavigation(); setError(false); setSheet(next); };
@@ -60,7 +68,12 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
   useLayoutEffect(() => {
     const owner = lifetime.current;
     owner.alive = true;
-    return () => { owner.alive = false; owner.generation++; };
+    return () => {
+      owner.alive = false; owner.generation++;
+      const release = sheetRetirement.current;
+      sheetRetirement.current = null;
+      release?.();
+    };
   }, []);
   const accountId = portfolio.source.getCatalogue?.()?.active.accountId ?? null;
   const detailCurrent = detail && detail.accountId === accountId && portfolio.source.getSnapshot().account?.network === detail.networkId;
@@ -74,7 +87,7 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
   const closeDetail = useCallback(() => { lifetime.current.generation++; lifetime.current.busy = false; setBusy(false); setDetail(null); closeExternalDetail?.(); }, [closeExternalDetail]);
   const closeSheet = useCallback(() => { if (busy && sheet !== 'filter') cancelSelection?.(); closeDetail(); setSheet(null); }, [busy, sheet, cancelSelection, closeDetail]);
   useLayoutEffect(() => portfolio.navigation?.registerBack(() => {
-    if (sheet) { closeSheet(); return true; }
+    if (sheet || sheetRetirement.current) { closeSheet(); return true; }
     if (detailCurrent) { closeDetail(); return true; }
     return false;
   }), [portfolio.navigation, detailCurrent, sheet, closeDetail, closeSheet]);
@@ -89,7 +102,21 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
     finally { if (owner.alive && generation === owner.generation) { owner.busy = false; setBusy(false); } }
   };
   const openDetail = (choice: NotificationChoice, receive = false, token?: string) => { portfolio.navigation?.beginNavigation(); return run(async check => {
-    if (navigateDetail) { await navigateDetail(choice, receive, token, check); return; }
+    if (navigateDetail) {
+      const retireReceive = receive && sheet === 'receive';
+      try {
+        if (retireReceive) {
+          await new Promise<void>(resolve => { sheetRetirement.current = resolve; setSheet(null); });
+          check();
+        }
+        await navigateDetail(choice, receive, token, check);
+        return;
+      } catch (cause) {
+        // Keep the existing chooser retry only while this attempt still owns it.
+        if (retireReceive) { try { check(); setSheet('receive'); } catch { /* Retired owner stays closed. */ } }
+        throw cause;
+      }
+    }
     const generation = lifetime.current.generation;
     setDetail({ accountId: choice.scope.accountId, networkId: choice.scope.network.id, receive, token });
     try { await selectNetwork(choice, check); }

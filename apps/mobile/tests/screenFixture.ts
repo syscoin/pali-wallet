@@ -16,8 +16,9 @@ export function screenElements(value: unknown): ScreenElement[] {
 }
 
 /** Execute actual screen handlers/effects with public DTOs and explicit native ports. */
-export function screenFixture(file: URL, exported: string, imports: Record<string, unknown>, globals: Record<string, unknown> = {}, compilerOptions: Pick<ts.CompilerOptions, 'target'> = {}) {
+export function screenFixture(file: URL, exported: string, imports: Record<string, unknown>, globals: Record<string, unknown> = {}, compilerOptions: Pick<ts.CompilerOptions, 'target'> = {}, options: { deferPassiveEffects?: boolean } = {}) {
   const rootCells: Cell[] = [], nestedCells = new Map<(props: any) => ScreenElement, Cell[]>(), effects: (() => void)[] = [];
+  const passiveEffects: (() => void)[] = [];
   let cells = rootCells;
   let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
@@ -45,7 +46,12 @@ export function screenFixture(file: URL, exported: string, imports: Record<strin
       if (deps && c.deps && deps.length === c.deps.length && deps.every((d, i) => Object.is(d, c.deps![i]))) return;
       c.deps = deps; effects.push(() => { c.cleanup?.(); c.cleanup = callback() || undefined; });
     },
-    useEffect(callback: () => void | (() => void), deps?: readonly unknown[]) { react.useLayoutEffect(callback, deps); },
+    useEffect(callback: () => void | (() => void), deps?: readonly unknown[]) {
+      if (!options.deferPassiveEffects) { react.useLayoutEffect(callback, deps); return; }
+      const c = cell();
+      if (deps && c.deps && deps.length === c.deps.length && deps.every((d, i) => Object.is(d, c.deps![i]))) return;
+      c.deps = deps; passiveEffects.push(() => { c.cleanup?.(); c.cleanup = callback() || undefined; });
+    },
   };
   const module = { exports: {} as Record<string, (props: any, ...args: any[]) => ScreenElement> };
   const code = ts.transpileModule(readFileSync(new NodeURL(file.href), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true, ...compilerOptions } }).outputText;
@@ -61,6 +67,7 @@ export function screenFixture(file: URL, exported: string, imports: Record<strin
       cells = nestedCells.get(component) ?? []; nestedCells.set(component, cells); cursor = 0;
       const tree = component(element.props); effects.splice(0).forEach(run => run()); return tree;
     },
-    close() { [rootCells, ...nestedCells.values()].flat().forEach(c => c.cleanup?.()); },
+    flushPassiveEffects() { passiveEffects.splice(0).forEach(run => run()); },
+    close() { passiveEffects.length = 0; [rootCells, ...nestedCells.values()].flat().forEach(c => c.cleanup?.()); },
   };
 }

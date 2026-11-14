@@ -57,6 +57,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
       slot.deps = deps;
       pendingEffects.push(() => { slot.cleanup?.(); slot.cleanup = callback() || undefined; });
     },
+    useEffect(callback: () => void | (() => void), deps?: readonly unknown[]) { react.useLayoutEffect(callback, deps); },
   };
   const network = getNativeNetwork('ethereum'), address = '0x' + '11'.repeat(20);
   let account = { address, network: network.id, revision: 1 };
