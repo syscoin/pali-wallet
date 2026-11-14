@@ -1425,6 +1425,17 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const isMaxDisabled =
     isAmountDisabled || (isErc1155Selection && verifiedTokenBalance === '0');
 
+  useEffect(() => {
+    if (
+      isErc1155Selection &&
+      verifiedTokenBalance !== null &&
+      !isVerifyingTokenId &&
+      form.getFieldValue('amount') &&
+      form.getFieldError('amount').length
+    )
+      void form.validateFields(['amount']).catch(() => undefined);
+  }, [form, isErc1155Selection, isVerifyingTokenId, verifiedTokenBalance]);
+
   return (
     <div className="w-full md:max-w-sm">
       <div className="flex flex-col items-center justify-center">

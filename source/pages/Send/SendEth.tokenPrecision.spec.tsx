@@ -702,9 +702,15 @@ it('distinguishes a verified zero ERC1155 balance from an unavailable balance', 
   expect(mockNavigate).not.toHaveBeenCalled();
 });
 
-it.each(['rejected', 'empty', 'unverified', 'malformed'])(
-  'preserves the entered ERC1155 amount through a %s read and successful retry',
-  async (failure) => {
+it.each([
+  { failure: 'rejected', nextBalance: '8' },
+  { failure: 'empty', nextBalance: '8' },
+  { failure: 'unverified', nextBalance: '8' },
+  { failure: 'malformed', nextBalance: '8' },
+  { failure: 'rejected', nextBalance: '3' },
+])(
+  'preserves the entered ERC1155 amount through a $failure read and retry with $nextBalance',
+  async ({ failure, nextBalance }) => {
     const view = await prepareERC1155('42', 42);
     fireEvent.change(nftAmount(), { target: { value: '7' } });
     mockEmitter.mockImplementation((path: string[]) => {
@@ -735,17 +741,32 @@ it.each(['rejected', 'empty', 'unverified', 'malformed'])(
     mockEmitter.mockImplementation((path: string[]) =>
       path.at(-1) === 'verifyERC1155Ownership'
         ? Promise.resolve([
-            { tokenId: '7', balance: 8, rawBalance: '8', verified: true },
+            {
+              tokenId: '7',
+              balance: Number(nextBalance),
+              rawBalance: nextBalance,
+              verified: true,
+            },
           ])
         : Promise.resolve(undefined)
     );
     fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
-    await screen.findByText('8 QTY');
+    await screen.findByText(`${nextBalance} QTY`);
+    await waitFor(() =>
+      expect(
+        screen.queryByText('send.pleaseVerifyTokenOwnership')
+      ).not.toBeInTheDocument()
+    );
     expect(nftAmount().value).toBe('7');
     expect(nftAmount()).toBeEnabled();
     expect(screen.getByRole('button', { name: 'send.max' })).toBeEnabled();
+    if (nextBalance === '3') {
+      await screen.findByText('send.youOnlyOwn');
+      fireEvent.click(next());
+      expect(mockNavigate).not.toHaveBeenCalled();
+    }
     fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
-    expect(nftAmount().value).toBe('8');
+    expect(nftAmount().value).toBe(nextBalance);
   }
 );
 
