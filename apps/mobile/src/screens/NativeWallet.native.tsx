@@ -1606,11 +1606,15 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       const published = () => {
         checkRequest();
         const state = local.authority.getSnapshot(), saved = local.authority.getCatalogue();
+        setCatalogue(saved);
+        setCanSignSmart(local.canSignSmartAccount()); setCanManageSlh(local.canManageSlhDsa());
+        setCanManageModules(local.canManageSmartAccountModules()); setCanUseWalletAuthenticator(local.canUseWalletAuthenticator());
         if (preserveDetail && detail?.owner === local && detail.detail.accountId === saved?.active.accountId && detail.detail.networkId === state.account?.network) {
           detail = { ...detail, context: `${state.revision}:${saved.active.accountId}:${state.account.network}` };
           latestPortfolioDetail.current = detail;
           setPortfolioDetail(detail);
         }
+        bridge.current?.onNativeCatalogue(saved);
       };
       pending = Promise.resolve().then(async () => {
         try {

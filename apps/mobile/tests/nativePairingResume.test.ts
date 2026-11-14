@@ -314,8 +314,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       catalogue = { ...catalogue, revision: catalogue.revision + 1,
         accounts: catalogue.accounts.map(account => account.id === catalogue.active.accountId
           ? { ...account, smartAccount: { ...account.smartAccount!, isDeployed } } : account) };
-      snapshot = { ...snapshot, revision: snapshot.revision + 1 };
-      for (const listener of authorityListeners) listener(snapshot);
+      // Runtime metadata publication changes its catalogue, not the custody authority snapshot.
       metadataPublishing?.();
       try { onPublished(); } catch { /* Match committed runtime publication. */ }
       metadataPublished?.();
@@ -568,6 +567,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     onMetadataPublished(callback: () => void) { metadataPublished = callback; },
     beforeMetadataPublished(callback: () => void) { metadataPublishing = callback; },
     metadataReads: () => metadataReads,
+    authoritySnapshot: () => snapshot,
     holdMetadata() {
       const gate = metadataGate = Promise.withResolvers<void>();
       return { resolve() { metadataGate = undefined; gate.resolve(); } };
@@ -1558,16 +1558,20 @@ test('late Trezor external resume cannot close a newer visit under the same Acco
   } finally { gate.resolve(); await pending; f.dispose(); }
 });
 
-test('visible Smart overview refreshes observed deployment once per entry without a revision loop', async () => {
+test('visible Smart overview adopts runtime-only metadata publication without an authority event or revision loop', async () => {
   const f = await mounted(true, true, false, true, false, false, false, true);
   try {
     assert.equal(typeof find(f.render(), node => node.type === 'NativePortfolio')!.props.onDeploySmartAccount, 'function');
+    const authority = f.authoritySnapshot();
     f.observeDeployment(true);
     f.showTools(); f.render();
     f.showWallet(); f.render(); await settle(); f.render(); await settle();
     const portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
     assert.equal(portfolio.props.smartAccount.isDeployed, true);
     assert.equal(portfolio.props.onDeploySmartAccount, undefined);
+    assert.equal(typeof portfolio.props.onManageSmartAccountModules, 'function');
+    assert.equal(typeof portfolio.props.onUseWalletAuthenticator, 'function');
+    assert.equal(f.authoritySnapshot(), authority, 'metadata publication does not replace or notify the authority snapshot');
     assert.equal(f.metadataReads().length, 2);
     f.render(); await settle(); f.render();
     assert.equal(f.metadataReads().length, 2, 'publishing metadata does not start another read');
