@@ -3790,8 +3790,6 @@
         "checkTheBlockbookUrlAndTryAgain": "Blockbook URL を確認して再試行してください。",
         "savedNetworksAreUnavailable": "保存済みネットワークを利用できません。",
         "watchNetworks": "監視ネットワーク",
-        "noCustomNetworks": "カスタムネットワークなし",
-        "addABlockbookEndpointToWatchAccountsOn": "Blockbook エンドポイントを追加して、別の UTXO ネットワークのアカウントを監視できます。",
         "checkingNetwork": "ネットワークを確認中",
         "reloadSavedNetworks": "保存済みネットワークを再読み込み",
         "removeAccountsFirst": "先にこのネットワークを使用する監視アカウントを削除してください。"

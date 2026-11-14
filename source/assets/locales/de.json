@@ -3790,8 +3790,6 @@
         "checkTheBlockbookUrlAndTryAgain": "Prüfe die Blockbook-URL und versuche es erneut.",
         "savedNetworksAreUnavailable": "Gespeicherte Netzwerke nicht verfügbar.",
         "watchNetworks": "Beobachtungsnetzwerke",
-        "noCustomNetworks": "Keine benutzerdefinierten Netzwerke",
-        "addABlockbookEndpointToWatchAccountsOn": "Füge einen Blockbook-Endpunkt hinzu, um Konten in einem anderen UTXO-Netzwerk zu beobachten.",
         "checkingNetwork": "Netzwerk wird geprüft",
         "reloadSavedNetworks": "Gespeicherte Netzwerke neu laden",
         "removeAccountsFirst": "Entferne zuerst das Beobachtungskonto, das dieses Netzwerk verwendet."

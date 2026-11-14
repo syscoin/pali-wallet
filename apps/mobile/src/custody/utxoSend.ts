@@ -49,7 +49,7 @@ import type {
   UtxoSignedRecords,
 } from '../../../../source/wallet/utxoSignedRecords.ts';
 import {
-  isCustomUtxoNetworkId,
+  hasUtxoEndpointOverride,
   type UtxoNetwork,
 } from '../core/utxoNetworks.ts';
 import { verifySavedUtxoEndpoint } from '../core/utxoReadSession.ts';
@@ -158,8 +158,8 @@ export function createNativeUtxoSend(
     };
     return collateral ? collateral.registry.withSentryCollateralBroadcast(collateral.scope,send) : send(()=>undefined);
   };
-  const custom = isCustomUtxoNetworkId(network.id);
-  if (custom && scope.network.url !== network.endpoint)
+  const ownedEndpoint = hasUtxoEndpointOverride(network);
+  if (ownedEndpoint && scope.network.url !== network.endpoint)
     throw new CustodyRuntimeError('NOT_READY');
   const verifyEndpoint = (signal: AbortSignal, assertCurrent: () => void) =>
     verifySavedUtxoEndpoint(
@@ -171,7 +171,7 @@ export function createNativeUtxoSend(
 
   // SDK prepare runs inside the shared journal's dispatch admission. Check
   // the saved endpoint after the bytes are durable and before SDK POST.
-  const sender: Pick<ISyscoinTransactions, 'sendTransaction'> = custom
+  const sender: Pick<ISyscoinTransactions, 'sendTransaction'> = ownedEndpoint
     ? {
         sendTransaction(raw, authority) {
           return sdk.sendTransaction(raw, {
@@ -192,7 +192,7 @@ export function createNativeUtxoSend(
     readController?.abort();
     const controller = new AbortController();
     readController = controller;
-    if (custom) await verifyEndpoint(controller.signal, assertCurrent);
+    if (ownedEndpoint) await verifyEndpoint(controller.signal, assertCurrent);
     return createOwnedUtxoBlockbookRead(
       {
         kind: 'wallet',

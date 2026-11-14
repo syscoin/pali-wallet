@@ -10,6 +10,7 @@ import { createNativePrivateAuthenticationScope } from '../src/custody/privateAu
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import * as pairingLinks from '../src/connections/pairingLinks.ts';
 import { withBundledNativeNetworkSuggestions } from '../src/custody/networkCatalogue.ts';
+import { isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
 
 const names = ['NativeConnections', 'NativeSecurity', 'NativeAccounts', 'NativeImport', 'NativeNetworks', 'RealTools'] as const;
 type Name = typeof names[number];
@@ -54,6 +55,7 @@ async function fixture(language = 'en') {
       navigation: { registerBack: () => () => {}, beginNavigation() {}, setImmersive() {} } },
   };
   const imported = {
+    '../core/utxoNetworks': { isCustomUtxoNetworkId },
     '../core/operationAuthentication': { isOperationAuthenticationCancellation },
     '../custody/accounts': { NativeUtxoNetworkConflictError },
     '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'biometrics', icon: 'fingerprint' }) },

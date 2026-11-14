@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NativeWalletCatalogue, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
-import { getUtxoSdkNetwork } from '../src/core/utxoNetworks.ts';
+import { getUtxoNetwork, getUtxoSdkNetwork } from '../src/core/utxoNetworks.ts';
 import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY } from '../src/core/publicAccountStorage.ts';
 import { WatchOnlyAuthority } from '../src/core/watchOnlyAuthority.ts';
 import { nativeNotificationChoices, watchNotificationChoices } from '../src/notifications/choices.ts';
@@ -37,9 +37,9 @@ test('monitoring projects every saved group without derivation or writes, preser
     evm.accounts.SmartAccount[0] = smartAccount(1, 0, fixture.identity.address);
     evm.accounts.SmartAccount[1] = smartAccount(Number(getNativeNetwork('base').chainId), 1, fixture.identity.address);
     const syscoin = await stageInitialWallet({ key: '57', phrase: ACCOUNT_FIXTURE_PHRASE, password: ACCOUNT_FIXTURE_PASSWORD,
-      network: getUtxoSdkNetwork('syscoin') }, { assertCurrent: current });
+      network: getUtxoSdkNetwork(getUtxoNetwork('syscoin')) }, { assertCurrent: current });
     const bitcoin = await stageInitialWallet({ key: '0', phrase: ACCOUNT_FIXTURE_PHRASE, password: ACCOUNT_FIXTURE_PASSWORD,
-      network: getUtxoSdkNetwork('bitcoin') }, { assertCurrent: current });
+      network: getUtxoSdkNetwork(getUtxoNetwork('bitcoin')) }, { assertCurrent: current });
     const record = { ...base, groups: [evm, ...syscoin.groups, ...bitcoin.groups], active: { accountId: 'hd:57:0', networkId: 'syscoin' } };
     let reads = 0;
     const storage: KeyringStoragePort = {

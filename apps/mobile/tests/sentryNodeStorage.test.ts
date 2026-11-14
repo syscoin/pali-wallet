@@ -21,7 +21,7 @@ import {
   sentryRootPublicIdentity,
   WALLET_CATALOGUE_KEY,
 } from '../src/custody/walletCatalogue.ts';
-import { getUtxoSdkNetwork } from '../src/core/utxoNetworks.ts';
+import { getUtxoNetwork, getUtxoSdkNetwork } from '../src/core/utxoNetworks.ts';
 import {
   emptySentryNodeStore,
   SENTRY_NODE_SLOTS,
@@ -52,8 +52,8 @@ const fixtureStages = () =>
         currency: 'ETH',
         label: 'Ethereum',
       },
-      getUtxoSdkNetwork('syscoin'),
-      getUtxoSdkNetwork('utxo:5700'),
+      getUtxoSdkNetwork(getUtxoNetwork('syscoin')),
+      getUtxoSdkNetwork(getUtxoNetwork('utxo:5700')),
     ].map((network) =>
       stageInitialWallet(
         {

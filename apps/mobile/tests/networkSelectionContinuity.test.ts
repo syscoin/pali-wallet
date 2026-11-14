@@ -7,7 +7,7 @@ import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { withBundledNativeNetworkSuggestions } from '../src/custody/networkCatalogue.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import type { NativeWalletCatalogueSnapshot } from '../src/custody/walletCatalogue.ts';
-import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
+import { getUtxoNetwork, isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
 import type { NativeNetworkSnapshot, NativeNetworkView } from '../src/custody/networkView.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 import { networkSelectionReceiptFixture } from './networkSelectionReceiptFixture.ts';
@@ -81,6 +81,7 @@ function picker() {
     '../../../../source/shared/chainCatalogue': { rankChainSuggestions: () => [] },
     '../custody/networkContext': { createNativeNetwork: () => { throw Error('No network editing'); } },
     '../custody/networkCatalogue': { withBundledNativeNetworkSuggestions },
+    '../core/utxoNetworks': { isCustomUtxoNetworkId },
     './NetworkSourceSheet': { NetworkSourceSheet: 'NetworkSourceSheet' },
     '../ui': { ...Object.fromEntries(['Button', 'Header', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
   });

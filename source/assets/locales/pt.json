@@ -3790,8 +3790,6 @@
         "checkTheBlockbookUrlAndTryAgain": "Verifique a URL do Blockbook e tente novamente.",
         "savedNetworksAreUnavailable": "As redes salvas estão indisponíveis.",
         "watchNetworks": "Redes de observação",
-        "noCustomNetworks": "Nenhuma rede personalizada",
-        "addABlockbookEndpointToWatchAccountsOn": "Adicione um endpoint Blockbook para observar contas em outra rede UTXO.",
         "checkingNetwork": "Verificando rede",
         "reloadSavedNetworks": "Recarregar redes salvas",
         "removeAccountsFirst": "Remova primeiro a conta de observação que usa esta rede."

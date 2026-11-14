@@ -2205,8 +2205,8 @@ test('UTXO custody reopens and recovers using current defaults when saved endpoi
     const proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined);
     assert.equal(await recovery.commit(proof), 'committed-locked');
     assert.deepEqual(recoveryEndpoints, new Map([
-      [57, getUtxoSdkNetwork('syscoin').url],
-      [0, getUtxoSdkNetwork('bitcoin').url],
+      [57, getUtxoSdkNetwork(getUtxoNetwork('syscoin')).url],
+      [0, getUtxoSdkNetwork(getUtxoNetwork('bitcoin')).url],
     ]));
     assert.equal(requests.length, 3, 'recovery must remain local');
     await f.reopen();

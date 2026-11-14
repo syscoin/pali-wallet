@@ -162,7 +162,7 @@ import { isHostWalletAuthentication } from '../../../../source/shared/walletAuth
 import { snapshotRecordEncryption, snapshotRecordDecryption } from './recordCodecInput.ts';
 import type { IKeyringAccountState, INetwork as SdkNetwork } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { normalizePublicAddress } from '../core/addresses.ts';
-import { canonicalUtxoEndpoint, findUtxoNetwork, getUtxoSdkNetwork, isCustomUtxoNetworkId, projectUtxoRegistration, supportsUtxoSoftwareCustody, UTXO_NETWORKS, utxoRegistrationData, type UtxoNetwork, type UtxoNetworkId } from '../core/utxoNetworks.ts';
+import { canonicalUtxoEndpoint, findUtxoNetwork, getUtxoSdkNetwork, hasUtxoEndpointOverride, isCustomUtxoNetworkId, projectUtxoRegistration, supportsUtxoSoftwareCustody, UTXO_NETWORKS, utxoRegistrationData, type UtxoNetwork, type UtxoNetworkId } from '../core/utxoNetworks.ts';
 import { exactUtxoResponseFetch, verifySavedUtxoEndpoint, verifyUtxoRegistration } from '../core/utxoReadSession.ts';
 import { createOwnedUtxoBlockbookRead } from '../../../../source/wallet/utxoBlockbookReads.ts';
 import type { UtxoActivityContext, UtxoActivitySource } from '../core/utxoActivity.ts';
@@ -3062,7 +3062,7 @@ export function createKeyringRuntimeFactory(
           const owner = utxoSettingsContext(expectedRevision, signal, assertOwner);
           const { id, kind } = request;
           const previous = findUtxoNetwork(id, owner.snapshot.utxoNetworks);
-          if (!previous || !isCustomUtxoNetworkId(previous.id))
+          if (!previous || kind === 'remove-utxo-network' && !isCustomUtxoNetworkId(previous.id))
             throw new KeyringRuntimeError('INVALID_INPUT');
           const approve = async (network: UtxoNetwork) => {
             owner.check();
@@ -3082,7 +3082,8 @@ export function createKeyringRuntimeFactory(
           }
           const draft = decodeStorageValue(encodeStorageValue(request.draft)) as typeof request.draft;
           if (!draft || Object.keys(draft).sort().join(',') !== 'endpoint,name' ||
-              typeof draft.endpoint !== 'string' || typeof draft.name !== 'string')
+              typeof draft.endpoint !== 'string' || typeof draft.name !== 'string' ||
+              !isCustomUtxoNetworkId(previous.id) && draft.name !== previous.name)
             throw new KeyringRuntimeError('INVALID_INPUT');
           const candidate = projectUtxoRegistration({
             ...utxoRegistrationData(previous), name: draft.name, endpoint: canonicalUtxoEndpoint(draft.endpoint),
@@ -7020,7 +7021,7 @@ export function createKeyringRuntimeFactory(
             };
             check();
             await dataBinding(captured, check);
-            if (isCustomUtxoNetworkId(network.id))
+            if (hasUtxoEndpointOverride(network))
               await verifySavedUtxoEndpoint(network, { fetch: dependencies.utxoFetch, timeoutMs: 10_000 }, signal, check);
             check();
             const read = createOwnedUtxoBlockbookRead({ kind: 'wallet', url: sdkNetwork.url,

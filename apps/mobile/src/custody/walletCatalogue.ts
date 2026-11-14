@@ -3,7 +3,7 @@ import { getAddress } from 'ethers/address';
 import { computeAddress } from 'ethers/transaction';
 import { parseUtxoPublicIdentifier } from '../core/utxoIdentifier.ts';
 import { normalizeUtxoAddress } from '../core/utxoAddresses.ts';
-import { findUtxoNetwork, getUtxoSdkNetwork, isCustomUtxoNetworkId, projectUtxoRegistration, supportsUtxoSoftwareCustody, UTXO_NETWORKS, utxoRegistrationData,
+import { findUtxoNetwork, getUtxoSdkNetwork, isCustomUtxoNetworkId, mergeUtxoNetworks, projectUtxoRegistration, supportsUtxoSoftwareCustody, UTXO_NETWORKS, utxoRegistrationData,
   type UtxoNetwork, type UtxoRegistration } from '../core/utxoNetworks.ts';
 import {
   NATIVE_NETWORKS,
@@ -327,13 +327,11 @@ export function catalogueEvmNetworks(record: NativeAccountRecord): readonly Nati
 }
 
 function savedUtxoNetwork({ kind: _kind, ...registration }: SavedUtxoNetwork): UtxoNetwork {
-  const network = projectUtxoRegistration(registration);
-  if (!isCustomUtxoNetworkId(network.id)) return invalid();
-  return network;
+  return projectUtxoRegistration(registration);
 }
 
 export function catalogueUtxoNetworks(networks: readonly SavedNetwork[]): readonly UtxoNetwork[] {
-  return Object.freeze([...UTXO_NETWORKS, ...networks.filter((network) => network.kind === 'utxo').map(savedUtxoNetwork)]);
+  return mergeUtxoNetworks(networks.filter((network) => network.kind === 'utxo').map(savedUtxoNetwork));
 }
 
 export function catalogueAccountGroup(
@@ -892,12 +890,13 @@ export class NativeWalletCatalogue {
       } else if (mutation.kind === 'edit-utxo-network') {
         const network = projectUtxoRegistration(mutation.registration);
         const index = networks.findIndex(({ id }) => id === network.id);
-        const saved = networks[index];
-        if (!saved || saved.kind !== 'utxo' || !isCustomUtxoNetworkId(network.id) ||
+        const saved = findUtxoNetwork(network.id, catalogueUtxoNetworks(networks));
+        if (!saved || (index >= 0 && networks[index]?.kind !== 'utxo') ||
             saved.chainId !== network.chainId || saved.slip44 !== network.slip44 ||
             saved.backendChain !== network.backendChain || saved.explorer !== network.explorer)
           return invalid();
-        networks[index] = Object.freeze({ kind: 'utxo', ...utxoRegistrationData(network) });
+        const registration = Object.freeze({ kind: 'utxo' as const, ...utxoRegistrationData(network) });
+        if (index < 0) networks.push(registration); else networks[index] = registration;
       } else if (mutation.kind === 'remove-utxo-network') {
         const saved = networks.find(({ id }) => id === mutation.id);
         if (!saved || saved.kind !== 'utxo' || !isCustomUtxoNetworkId(saved.id) ||

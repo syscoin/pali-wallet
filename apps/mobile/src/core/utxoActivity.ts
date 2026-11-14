@@ -20,7 +20,7 @@ import { assertPublicWatchOnlyIdentifier } from '../../../../source/utils/watchO
 import { isNativeAccountId } from '../custody/accountIdentity.ts';
 import { assertBaseUnits } from './amounts.ts';
 import { normalizeUtxoAddress } from './utxoAddresses.ts';
-import { isCustomUtxoNetworkId, resolveUtxoNetwork, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
+import { hasUtxoEndpointOverride, resolveUtxoNetwork, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 import { openUtxoReadSession, utxoFetchOptions, utxoObject, type UtxoFetch, type UtxoReadSession } from './utxoReadSession.ts';
 
 export const UTXO_ACTIVITY_LIMITS = Object.freeze({ pageSize: 20, nativeIntegerDigits: 78, displayRows: 100, windowPages: 5, bytes: UTXO_DETAIL_RESPONSE_BYTES, nodes: UTXO_DETAIL_RESPONSE_NODES, timeoutMs: 30000 });
@@ -116,7 +116,7 @@ function publicSentryRegistration(
 ): string | undefined {
   const mainnet = SENTRY_NETWORKS.mainnet;
   // The actual Blockbook detail, not an account-page type hint, supplies bytes.
-  if (full.version !== SENTRY_REGISTRATION_TX_VERSION || network !== resolveUtxoNetwork('syscoin') ||
+  if (full.version !== SENTRY_REGISTRATION_TX_VERSION || network.id !== 'syscoin' ||
       network.chainId !== mainnet.chainId || network.genesisHash !== mainnet.genesisHash ||
       !row.block?.hash || row.block.height !== full.blockHeight || row.observedConfirmations < 1 ||
       typeof full.blockHash !== 'string' || full.blockHash.toLowerCase() !== row.block.hash ||
@@ -164,7 +164,7 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
   return Object.freeze({ async readPage(input: UtxoActivitySource, request: Readonly<{ page: number }>, signal: AbortSignal) {
     const { registration, assertCurrent, readSentry } = input;
     const network = resolveUtxoNetwork(registration ?? input.context.networkId);
-    if (isCustomUtxoNetworkId(network.id) && typeof assertCurrent !== 'function') return fail('CHANGED');
+    if (hasUtxoEndpointOverride(network) && typeof assertCurrent !== 'function') return fail('CHANGED');
     const owner = context(input.context, network), page = request.page, identifier = input.identifier, isAccount = input.isAccount;
     if (!Number.isSafeInteger(page) || page < 1 || typeof isAccount !== 'boolean') return fail();
     if (isAccount) assertPublicWatchOnlyIdentifier(identifier);
@@ -227,7 +227,7 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
     cache: UtxoActivityDetailCache, guard: () => void) {
     const { registration, assertCurrent, readSentry } = input;
     const network = resolveUtxoNetwork(registration ?? input.context.networkId);
-    if (isCustomUtxoNetworkId(network.id) && typeof assertCurrent !== 'function') return fail('CHANGED');
+    if (hasUtxoEndpointOverride(network) && typeof assertCurrent !== 'function') return fail('CHANGED');
     const owner = context(input.context, network), identifier = input.identifier, isAccount = input.isAccount;
     const txid = hash(request.txid), accepted = summaries.get(request.row);
     const summary = accepted?.raw;

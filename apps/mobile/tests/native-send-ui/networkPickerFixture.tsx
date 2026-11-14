@@ -10,8 +10,8 @@ import { Text } from '../../src/ui';
 
 const networks: NativeNetworkSnapshot['networks'][number][] = NATIVE_NETWORKS.map((registration) => ({ id: registration.id, name: getNativeSendContext(registration).name,
   symbol: registration.symbol, testnet: registration.testnet, canSign: true, registration }));
-const customUtxo = { id: 'custom-litecoin', name: 'Custom Litecoin', symbol: 'LTC', testnet: false,
-  canSign: true, customUtxoEndpoint: 'https://litecoin.example/blockbook' };
+const customUtxo = { id: 'utxo:custom:11111111111111111111111111111111', name: 'Custom Litecoin', symbol: 'LTC', testnet: false,
+  canSign: true, utxoEndpoint: 'https://litecoin.example/blockbook' };
 if (new URLSearchParams(window.location.search).has('utxo')) networks.push(customUtxo);
 const activeCustomUtxo = new URLSearchParams(window.location.search).has('activeUtxo');
 let snapshot: NativeNetworkSnapshot | null = Object.freeze({
@@ -57,10 +57,10 @@ const controller: NativeNetworkView = {
         snapshot.revision !== expectedCatalogueRevision) throw Error('CANCELLED');
     if (endpoint === 'https://unresolved.example/blockbook')
       throw Object.assign(new Error('Saved transfer pending'), { code: 'UTXO_ENDPOINT_HAS_SAVED_TRANSFER' });
-    if (!['https://replacement.example/blockbook', customUtxo.customUtxoEndpoint].includes(endpoint))
+    if (!['https://replacement.example/blockbook', customUtxo.utxoEndpoint].includes(endpoint))
       throw Error('INVALID_INPUT');
     snapshot = Object.freeze({ ...snapshot, revision: snapshot.revision + 1,
-      networks: snapshot.networks.map((network) => network.id === id ? { ...network, name, customUtxoEndpoint: endpoint } : network) });
+      networks: snapshot.networks.map((network) => network.id === id ? { ...network, name, utxoEndpoint: endpoint } : network) });
     contextRevision++; notify();
   },
   async removeUtxo(id, expectedContextRevision, expectedCatalogueRevision) {

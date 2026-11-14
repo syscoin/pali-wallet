@@ -53,7 +53,7 @@ import { ActivityReceiptReader } from '../activity/receiptReader.ts';
 import { createErc20Reader } from '../portfolio/erc20ReadRpc.ts';
 import { createNftEnumerationReader, createNftOwnershipReader } from '../portfolio/nftOwnershipReadRpc.ts';
 import { createOwnedTokenReader } from '../portfolio/ownedTokenReader.ts';
-import { findUtxoNetwork, isCustomUtxoNetworkId, type UtxoNetwork } from '../core/utxoNetworks.ts';
+import { findUtxoNetwork, hasUtxoEndpointOverride, type UtxoNetwork } from '../core/utxoNetworks.ts';
 import { exactUtxoResponseFetch } from '../core/utxoReadSession.ts';
 import { createNativeUtxoActivity } from '../custody/utxoActivity.ts';
 import { createUtxoActivityReader } from '../core/utxoActivity.ts';
@@ -98,7 +98,7 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
     return privacySettings;
   };
   const scopedUtxoReader = (network: UtxoNetwork) => createUtxoBalanceReader({
-    fetch: isCustomUtxoNetworkId(network.id) ? exactUtxoResponseFetch(walletFetch) : walletFetch,
+    fetch: hasUtxoEndpointOverride(network) ? exactUtxoResponseFetch(walletFetch) : walletFetch,
   });
   return createKeyringRuntimeFactory({
     privacyServiceSettings: {

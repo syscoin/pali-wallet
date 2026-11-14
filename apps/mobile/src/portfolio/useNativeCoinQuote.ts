@@ -1,25 +1,28 @@
 import { useLayoutEffect, useMemo, useState } from 'react';
 import { AppState, Platform } from 'react-native';
-import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
+import { utxoRegistrationData } from '../core/utxoNetworks.ts';
 import { useFiatCurrency } from '../platform/fiatPreferences';
 import { walletFetch } from '../platform/http';
-import { createNativeCoinQuoteReader, nativeCoinQuoteSource, QUOTE_LIFETIME_MS, type NativeCoinQuote } from './nativeCoinQuote.ts';
+import { createNativeCoinQuoteReader, nativeCoinQuoteSource, QUOTE_LIFETIME_MS, type NativeCoinQuote, type NativeCoinQuoteNetwork } from './nativeCoinQuote.ts';
 import { formatIndicativeFiat } from './fiatDisplay.ts';
 import { useNativeTranslation } from '../platform/localization';
 
 const read = createNativeCoinQuoteReader(walletFetch);
 
 /** Display only: the exact on-chain balance and send arithmetic stay separate. */
-export function useNativeCoinQuote(id: string | null, amount: string | null, registration?: NativeNetworkRegistration | null): Readonly<{
+export function useNativeCoinQuote(registration: NativeCoinQuoteNetwork | null, amount: string | null): Readonly<{
   supported: boolean; quote: string | null;
 }> {
   const { i18n } = useNativeTranslation();
-  const source = useMemo(() => id ? nativeCoinQuoteSource(id, registration) : null, [id, registration]);
+  const source = useMemo(() => nativeCoinQuoteSource(registration), [registration]);
   const supported = source !== null;
   const available = amount !== null;
   const preference = useFiatCurrency(available);
   const currency = preference.status === 'ready' ? preference.currency : null;
-  const sourceKey = id && currency && JSON.stringify([id, registration?.registrationHash, currency]);
+  const sourceKey = source && registration && currency && JSON.stringify([
+    registration.id, registration.kind === 'utxo' ? utxoRegistrationData(registration) : registration.registrationHash,
+    source, currency,
+  ]);
   const [quote, setQuote] = useState<{ key: string; value: NativeCoinQuote } | null>(null);
   useLayoutEffect(() => {
     if (!source || !currency || !sourceKey || !available) return;

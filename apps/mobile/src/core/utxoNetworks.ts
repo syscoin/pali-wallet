@@ -78,6 +78,14 @@ export function projectUtxoRegistration(input: unknown): UtxoNetwork {
       !isNonBlankNetworkText(name) || !name.isWellFormed() || name.length > 128 || typeof explorer !== 'string')
     return invalid();
   canonicalUtxoEndpoint(explorer);
+  // Shipped IDs retain their trusted chain and display identity. Only their
+  // verified endpoint may be overridden by the normal network editor.
+  if (!isCustomUtxoNetworkId(id)) {
+    const original = sdkDefaults[chainId]!;
+    if (slip44 !== original.slip44 || backendChain !== original.utxoBackendChain ||
+        name !== original.label || canonicalUtxoEndpoint(explorer) !== canonicalUtxoEndpoint(original.explorer))
+      return invalid();
+  }
   const coin = findUtxoCoinByRegistration(registration);
   if (!coin || !/^[0-9a-f]{64}$/.test(coin.hashGenesisBlock)) return invalid();
   const testnet = coin.slip44 === 1;
@@ -91,7 +99,8 @@ export function projectUtxoRegistration(input: unknown): UtxoNetwork {
     decimals: coin.decimals, chainId, slip44, testnet,
     addressNetwork: Object.freeze({ ...addressNetwork, bip32: Object.freeze({ ...addressNetwork.bip32 }) }),
     publicKeyVersion, blockbookCoin: testnet ? coin.coinLabel : coin.coinName,
-    backendChain, genesisHash: coin.hashGenesisBlock, endpoint, explorer,
+    backendChain, genesisHash: coin.hashGenesisBlock, endpoint,
+    explorer: !isCustomUtxoNetworkId(id) ? sdkDefaults[chainId]!.explorer! : explorer,
   });
   admitted.add(network);
   return network;
@@ -113,6 +122,27 @@ export const UTXO_NETWORKS: readonly UtxoNetwork[] = Object.freeze(
     }))
 );
 
+/** Overlay saved endpoint registrations without duplicating a shipped identity. */
+export function mergeUtxoNetworks(overrides: readonly UtxoNetwork[]): readonly UtxoNetwork[] {
+  const saved = new Map<string, UtxoNetwork>();
+  for (const network of overrides) {
+    const owned = resolveUtxoNetwork(network);
+    if (saved.has(owned.id)) return invalid();
+    saved.set(owned.id, owned);
+  }
+  return Object.freeze([
+    ...UTXO_NETWORKS.map(network => saved.get(network.id) ?? network),
+    ...overrides.filter(network => isCustomUtxoNetworkId(network.id)),
+  ]);
+}
+
+/** Custom registrations and changed preset endpoints require their saved owner. */
+export function hasUtxoEndpointOverride(network: UtxoNetwork): boolean {
+  const selected = resolveUtxoNetwork(network);
+  return isCustomUtxoNetworkId(selected.id) ||
+    selected.endpoint !== canonicalUtxoEndpoint(sdkDefaults[selected.chainId]!.url);
+}
+
 export function findUtxoNetwork(id: unknown, registrations = UTXO_NETWORKS): UtxoNetwork | undefined {
   return registrations.find((entry) => entry.id === id);
 }
@@ -132,12 +162,17 @@ export function resolveUtxoNetwork(scope: UtxoNetwork | UtxoNetworkId): UtxoNetw
 
 export { supportsUtxoSoftwareCustody } from '../../../../source/shared/utxoSoftwareCustody.ts';
 
-export function getUtxoSdkNetwork(scope: UtxoNetworkId | UtxoNetwork): INetwork & {
+export function getUtxoSdkNetwork(scope: UtxoNetwork): INetwork & {
   kind: INetworkType.Syscoin;
   utxoBackendChain: string;
 } {
+  if (typeof scope !== 'object' || scope === null) throw new Error('An admitted UTXO registration is required');
   const network = resolveUtxoNetwork(scope);
-  if (!isCustomUtxoNetworkId(network.id)) return { ...sdkDefaults[network.chainId]! };
+  if (!isCustomUtxoNetworkId(network.id)) return {
+    ...sdkDefaults[network.chainId]!,
+    url: network.endpoint === canonicalUtxoEndpoint(sdkDefaults[network.chainId]!.url)
+      ? sdkDefaults[network.chainId]!.url : network.endpoint,
+  };
   return {
     kind: 'syscoin' as INetworkType.Syscoin,
     chainId: network.chainId,

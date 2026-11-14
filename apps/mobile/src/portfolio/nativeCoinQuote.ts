@@ -4,12 +4,13 @@ import {
   readBlockbookNativeQuote, readCoinGeckoNativeQuote,
 } from '../../../../source/shared/nativeCoinQuotes.ts';
 import { isFiatCurrency, type FiatCurrency } from '../core/fiatPreference.ts';
-import { findUtxoNetwork } from '../core/utxoNetworks.ts';
+import { resolveUtxoNetwork, type UtxoNetwork } from '../core/utxoNetworks.ts';
 import { findKnownNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext.ts';
 import type { WalletHttpFetch } from '../platform/httpPolicy.ts';
 import { abortable, boundedResponseText, cancelResponseBody } from '../platformRpc.ts';
 
 type QuoteSource = Readonly<{ kind: 'utxo'; endpoint: string } | { kind: 'evm'; asset: string }>;
+export type NativeCoinQuoteNetwork = NativeNetworkRegistration | UtxoNetwork;
 export const QUOTE_LIFETIME_MS = 5 * 60_000;
 export type NativeCoinQuote = Readonly<{ price: number; expiresAt: number }>;
 const MAX_QUOTES = 24;
@@ -17,10 +18,15 @@ const QUOTE_RESPONSE_BYTES = 16 * 1024;
 const REQUEST_TIMEOUT_MS = 8_000;
 
 /** Only registered public market identities can produce a quote request. */
-export function nativeCoinQuoteSource(id: string, registration?: NativeNetworkRegistration | null): QuoteSource | null {
-  const utxo = findUtxoNetwork(id);
-  if (utxo) return utxo.testnet ? null : { kind: 'utxo', endpoint: utxo.endpoint };
-  const known = findKnownNativeNetwork(id, registration);
+export function nativeCoinQuoteSource(registration: NativeCoinQuoteNetwork | null): QuoteSource | null {
+  if (!registration) return null;
+  if (registration.kind === 'utxo') {
+    try {
+      const utxo = resolveUtxoNetwork(registration);
+      return utxo.testnet ? null : { kind: 'utxo', endpoint: utxo.endpoint };
+    } catch { return null; }
+  }
+  const known = findKnownNativeNetwork(registration.id, registration);
   if (!known || known.testnet) return null;
   const asset = findRegisteredEvmNetwork(known)?.network.coingeckoId;
   return asset ? { kind: 'evm', asset } : null;

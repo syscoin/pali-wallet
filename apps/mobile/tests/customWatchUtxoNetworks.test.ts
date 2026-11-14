@@ -7,10 +7,11 @@ import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY, WATCH_UTXO_NETWORKS_KE
 import { createUtxoActivityReader } from '../src/core/utxoActivity.ts';
 import { createUtxoBalanceReader } from '../src/core/utxoBalanceReader.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
-import { getUtxoNetwork, isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
+import { UTXO_NETWORKS, canonicalUtxoEndpoint, getUtxoNetwork, isCustomUtxoNetworkId, utxoRegistrationData } from '../src/core/utxoNetworks.ts';
 import { WatchAccounts } from '../src/core/watchAccounts.ts';
 import { WatchOnlyAuthority } from '../src/core/watchOnlyAuthority.ts';
 import { deferred, json, KEY, XPUB } from './publicWatchFixtures.ts';
+import { screenElements, screenFixture } from './screenFixture.ts';
 
 const ltc = findUtxoCoinByRegistration({ chainId: 2, slip44: 2 })!;
 const btc = findUtxoCoinByRegistration({ chainId: 0, slip44: 0 })!;
@@ -351,4 +352,106 @@ test('cancelled verification performs no later identity read or save', async () 
   await cancelled;
   assert.deepEqual(f.calls, [stale + '/api/v2/']);
   assert.equal(f.raw.size, 0);
+});
+
+test('a built-in watch endpoint override survives cold reopen without changing accounts or defaults', async () => {
+  const f = fixture(), registry = f.storage.utxoNetworkSettings;
+  const original = await registry.load();
+  assert.equal(getUtxoNetwork('bitcoin', original.networks), bitcoin);
+  assert.equal(f.raw.has(WATCH_UTXO_NETWORKS_KEY), false);
+  const watches = new WatchAccounts(f.storage.records);
+  await watches.load();
+  await watches.change({ kind: 'add', id: 'btc', name: 'Bitcoin watch', network: 'bitcoin', address: XPUB });
+  const beforeRecords = f.raw.get(PUBLIC_ACCOUNTS_KEY);
+  const oldOwner = await f.open(); oldOwner.unlock();
+  const saved = await registry.save(original, draft(alternativeBitcoin), signal(), 'bitcoin');
+  const edited = getUtxoNetwork('bitcoin', saved.networks);
+  assert.deepEqual(utxoRegistrationData(edited), { ...utxoRegistrationData(bitcoin), endpoint: alternativeBitcoin });
+  assert.equal(saved.networks.length, UTXO_NETWORKS.length);
+  assert.equal(getUtxoNetwork('bitcoin'), bitcoin, 'the shipped default remains immutable');
+  assert.equal(f.raw.get(PUBLIC_ACCOUNTS_KEY), beforeRecords);
+  assert.throws(() => oldOwner.getMonitoringEntries(), /changed|Reopen|registration/i);
+  assert.throws(() => oldOwner.getNetworkRegistration('bitcoin'), /changed|Reopen|registration/i);
+  assert.deepEqual(JSON.parse(f.raw.get(WATCH_UTXO_NETWORKS_KEY)!), [utxoRegistrationData(edited)]);
+
+  const reopened = createPublicAccountStorage(f.port, f.fetch);
+  const current = getUtxoNetwork('bitcoin', (await reopened.utxoNetworkSettings.load()).networks);
+  assert.equal(current.endpoint, alternativeBitcoin);
+  const owner = await f.open(reopened.records); owner.unlock();
+  assert.equal(owner.getNetworkRegistration('bitcoin').kind, 'utxo');
+  assert.equal((owner.getNetworkRegistration('bitcoin') as typeof current).endpoint, alternativeBitcoin);
+  assert.equal(owner.getSnapshot().accounts[0]?.id, 'btc');
+  assert.equal(owner.getSnapshot().accounts[0]?.addresses.bitcoin, parseUtxoPublicIdentifier(XPUB, bitcoin).address);
+  await owner.refresh();
+  assert.ok(f.calls.at(-1)?.startsWith(alternativeBitcoin + '/api/v2/xpub/'));
+  assert.deepEqual((await owner.readUtxoActivityPage({ page: 1 }, signal())).rows, []);
+  assert.ok(f.calls.at(-1)?.startsWith(alternativeBitcoin + '/api/v2/xpub/'));
+  const raw = f.raw.get(WATCH_UTXO_NETWORKS_KEY);
+  const removable = await reopened.utxoNetworkSettings.load();
+  assert.throws(() => reopened.utxoNetworkSettings.remove(removable, 'bitcoin', signal()), /cannot be removed/);
+  assert.equal(f.raw.get(WATCH_UTXO_NETWORKS_KEY), raw);
+});
+
+test('built-in watch edits preserve identity and refuse a mismatched endpoint without persistence', async () => {
+  const f = fixture(), registry = f.storage.utxoNetworkSettings, saved = await registry.load();
+  await assert.rejects(registry.save(saved, { ...draft(alternativeBitcoin), name: 'Other chain' }, signal(), 'bitcoin'), /identity cannot change/);
+  await assert.rejects(registry.save(saved, { ...draft(alternativeBitcoin), explorer: 'https://other-explorer.invalid' }, signal(), 'bitcoin'), /identity cannot change/);
+  assert.deepEqual(f.calls, []);
+  f.wrongGenesis();
+  await assert.rejects(registry.save(saved, draft(alternativeBitcoin), signal(), 'bitcoin'), /does not match/);
+  assert.deepEqual(f.calls, [alternativeBitcoin + '/api/v2/', alternativeBitcoin + '/api/v2/block-index/0']);
+  assert.equal(f.raw.size, 0);
+});
+
+test('built-in watch override decode rejects duplicate and altered identity records offline', async () => {
+  const f = fixture();
+  const override = { ...utxoRegistrationData(bitcoin), endpoint: alternativeBitcoin };
+  for (const records of [[override, override], [{ ...override, name: 'Other chain' }],
+    [{ ...override, backendChain: 'Other-main' }], [{ ...override, explorer: 'https://other-explorer.invalid' }]]) {
+    f.raw.set(WATCH_UTXO_NETWORKS_KEY, JSON.stringify(records));
+    await assert.rejects(f.storage.utxoNetworkSettings.load(), /Invalid|Duplicate/i);
+  }
+  assert.deepEqual(f.calls, []);
+});
+
+test('canceling a built-in watch endpoint edit cannot persist or continue identity reads', async () => {
+  const f = fixture(), registry = f.storage.utxoNetworkSettings;
+  const gate = f.hold(alternativeBitcoin), abort = new AbortController();
+  const saving = registry.save(await registry.load(), draft(alternativeBitcoin), abort.signal, 'bitcoin');
+  const refused = assert.rejects(saving, /cancelled|aborted/i);
+  await gate.entered; abort.abort(); gate.release(); await refused;
+  assert.deepEqual(f.calls, [alternativeBitcoin + '/api/v2/']);
+  assert.equal(f.raw.size, 0);
+});
+
+test('the normal watch network editor exposes built-ins with fixed names and no removal', async () => {
+  const f = fixture();
+  let changes = 0;
+  const screen = screenFixture(new URL('../src/screens/WatchNetworks.tsx', import.meta.url), 'WatchNetworks', {
+    'react-native': { ActivityIndicator: 'ActivityIndicator', KeyboardAvoidingView: 'KeyboardAvoidingView',
+      AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
+      BackHandler: { addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'android' }, StyleSheet: { create: (value: unknown) => value } },
+    '../core/publicAccountStorage': { WatchUtxoNetworkReloadRequiredError },
+    '../core/utxoNetworks': { canonicalUtxoEndpoint, isCustomUtxoNetworkId, utxoRegistrationData },
+    '../ui': { Button: 'Button', Card: 'Card', Header: 'Header', Row: 'Row', Text: 'Text', colors: {}, styles: {} },
+    './IdleActivityBoundary': { IdleTextInput: 'Input' },
+  }, { AbortController, URL });
+  const props = { controller: f.storage.utxoNetworkSettings, async onChanged() { changes++; }, onBack() {} };
+  const render = () => screenElements(screen.render(props));
+  try {
+    render(); await new Promise(resolve => setImmediate(resolve));
+    const row = render().find(node => node.type === 'Row' && node.props.title === bitcoin.name); assert(row);
+    row.props.onPress();
+    const name = render().find(node => node.type === 'Input' && node.props.accessibilityLabel === 'Network name'); assert(name);
+    assert.equal(name.props.editable, false);
+    assert.equal(render().some(node => node.type === 'Button' && node.props.title === 'Remove network'), false);
+    const endpoint = render().find(node => node.type === 'Input' && node.props.value === bitcoin.endpoint); assert(endpoint);
+    assert.equal(endpoint.props.editable, true); endpoint.props.onChangeText(alternativeBitcoin);
+    const save = render().find(node => node.type === 'Button' && node.props.title === 'Save network'); assert(save);
+    save.props.onPress(); save.props.onPress();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(changes, 1);
+    assert.equal(getUtxoNetwork('bitcoin', (await f.storage.utxoNetworkSettings.load()).networks).endpoint, alternativeBitcoin);
+    assert(render().some(node => node.type === 'Row' && node.props.title === bitcoin.name));
+  } finally { screen.close(); }
 });

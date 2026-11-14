@@ -3790,8 +3790,6 @@
         "checkTheBlockbookUrlAndTryAgain": "Blockbook URL을 확인하고 다시 시도하세요.",
         "savedNetworksAreUnavailable": "저장된 네트워크를 사용할 수 없습니다.",
         "watchNetworks": "조회 네트워크",
-        "noCustomNetworks": "사용자 지정 네트워크 없음",
-        "addABlockbookEndpointToWatchAccountsOn": "다른 UTXO 네트워크의 계정을 조회하려면 Blockbook 엔드포인트를 추가하세요.",
         "checkingNetwork": "네트워크 확인 중",
         "reloadSavedNetworks": "저장된 네트워크 다시 불러오기",
         "removeAccountsFirst": "먼저 이 네트워크를 사용하는 조회 계정을 삭제하세요."

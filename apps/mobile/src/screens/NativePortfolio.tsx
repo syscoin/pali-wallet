@@ -215,7 +215,7 @@ function NativePortfolioContent({ nativeDetail, openNativeDetail, closeNativeDet
   };
 
   const amount = snapshot.status === 'available' && snapshot.units !== null ? formatBaseUnits(snapshot.units, network.decimals) : null;
-  const quote = useNativeCoinQuote(!receiving && !tokenTitle ? account?.network ?? null : null, amount, registration);
+  const quote = useNativeCoinQuote(!receiving && !tokenTitle ? utxo ?? registration : null, amount);
   const pending = snapshot.pendingDeltaUnits;
   const statusText = loading ? t('mobile.portfolioViews.loadingBalance', { network: networkName }) : snapshot.status === 'error' ? t('mobile.accountPortfolio.balanceUnavailable') : t('mobile.sendAssetViews.tokens.balanceNotLoaded');
   const currentFeedback = feedback?.scope === scope ? feedback : null;

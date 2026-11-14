@@ -1,4 +1,5 @@
 import { createNativeNetwork, getNativeNetwork } from '../src/custody/networkContext.ts';
+import { getUtxoNetwork, projectUtxoRegistration, utxoRegistrationData } from '../src/core/utxoNetworks.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -427,6 +428,30 @@ test('one canonical catalogue shape rejects incomplete development formats witho
       await assert.rejects(new NativeWalletCatalogue(f.storage.keyringStorage).reconcile(f.identity, current), invalidCatalogue);
       assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), row);
     }
+  } finally { await f.cleanup(); }
+});
+
+test('built-in UTXO endpoint override survives cold reopen without changing accounts or trusted identity', async () => {
+  const f = await fixture();
+  try {
+    const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
+    const before = await catalogue.reconcile(f.identity, current);
+    const original = getUtxoNetwork('syscoin');
+    const registration = { ...utxoRegistrationData(original), endpoint: 'https://alternate.example/blockbook' };
+    const updated = await catalogue.mutate(before.revision, { kind: 'edit-utxo-network', registration }, current);
+    assert.deepEqual(updated.active, before.active);
+    assert.deepEqual(updated.accounts, before.accounts);
+    assert.equal(updated.utxoNetworks.length, before.utxoNetworks.length);
+    assert.deepEqual(updated.utxoNetworks.find(network => network.id === original.id), projectUtxoRegistration(registration));
+    const saved = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as any;
+    assert.equal(saved.networks.filter((network: any) => network.id === original.id).length, 1);
+    await f.reopen();
+    const reopened = new NativeWalletCatalogue(f.storage.keyringStorage);
+    assert.deepEqual(await reopened.reconcile(f.identity, current), updated);
+    await assert.rejects(reopened.mutate(updated.revision, { kind: 'remove-utxo-network', id: original.id }, current));
+    assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), saved);
+    await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY, { ...saved, networks: [...saved.networks, structuredClone(saved.networks.find((network: any) => network.id === original.id))] });
+    await assert.rejects(new NativeWalletCatalogue(f.storage.keyringStorage).reconcile(f.identity, current));
   } finally { await f.cleanup(); }
 });
 

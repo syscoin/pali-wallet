@@ -3,19 +3,24 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { screenElements, screenFixture } from './screenFixture.ts';
 import { nativeTranslationFixture, languageMessages } from './localizationFixture.ts';
+import { getUtxoNetwork, isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
 
 const endpoint = 'https://bitcoin-test.invalid';
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
-function fixture() {
+function fixture(builtin = false) {
   let context = 3, revision = 5, held: Promise<void> = Promise.resolve();
   let cause: Error = new NativeUtxoNetworkConflictError('testnet', 'Syscoin Testnet');
   const drafts: unknown[] = [];
-  const controller = { getSnapshot: () => ({ revision, selectedId: 'ethereum', networks: [] }),
+  const network = getUtxoNetwork('syscoin');
+  const controller = { getSnapshot: () => ({ revision, selectedId: 'ethereum', networks: builtin ? [{ id: network.id, name: network.name,
+    symbol: network.symbol, testnet: network.testnet, canSign: true, utxoEndpoint: network.endpoint }] : [] }),
     getContextRevision: () => context, subscribe: () => () => {}, cancel() {},
-    async addUtxo(...args: unknown[]) { drafts.push(args); await held; throw cause; } };
+    async addUtxo(...args: unknown[]) { drafts.push(args); await held; throw cause; },
+    async editUtxo(...args: unknown[]) { drafts.push(args); await held; }, async removeUtxo() { throw Error('Built-in removal forbidden'); } };
   const f = screenFixture(new URL('../src/screens/NativeNetworks.tsx', import.meta.url), 'NativeNetworks', {
     '../platform/localization': nativeTranslationFixture,
     '../custody/accounts': { NativeUtxoNetworkConflictError },
+    '../core/utxoNetworks': { isCustomUtxoNetworkId },
     './IdleActivityBoundary': { IdleTextInput: 'Input', IdlePressable: 'Pressable' },
     'react-native': { Platform: { OS: 'android' }, View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView',
       StyleSheet: { create: (value: unknown) => value }, Keyboard: { dismiss() {} },
@@ -53,6 +58,26 @@ test('a valid Blockbook URL conflict names the existing network and keeps the ed
     assert.equal(f.button(f.messages.save).props.disabled, false);
     assert.deepEqual(structuredClone(f.drafts), [[{ endpoint, name: 'My Bitcoin testnet', explorer: '' }, 3, 5]]);
   } finally { f.close(); }
+});
+
+test('built-in UTXO editor keeps its name fixed and removal absent while serializing endpoint saves', async () => {
+  const f = fixture(true), held = Promise.withResolvers<void>();
+  try {
+    const row = f.render().find(element => element.props.network?.id === 'syscoin'); assert(row?.props.onEdit);
+    row.props.onEdit(row.props.network);
+    assert.equal(f.input(f.messages.name).props.editable, false);
+    f.input(f.messages.name).props.onChangeText('Wrong name');
+    assert.equal(f.input(f.messages.name).props.value, getUtxoNetwork('syscoin').name);
+    assert(!f.render().some(element => element.type === 'Button' && element.props.title === f.messages.remove));
+    f.input(f.messages.blockbook).props.onChangeText('https://alternate.example/blockbook');
+    f.hold(held.promise);
+    const save = f.button(f.messages.saveChanges);
+    save.props.onPress(); save.props.onPress();
+    assert.equal(f.drafts.length, 1);
+    assert.deepEqual(structuredClone(f.drafts), [['syscoin', { name: getUtxoNetwork('syscoin').name, endpoint: 'https://alternate.example/blockbook' }, 3, 5]]);
+    assert.equal(f.button(f.messages.saving).props.disabled, true);
+    held.resolve(); await settle();
+  } finally { held.resolve(); f.close(); }
 });
 
 for (const code of ['INVALID_INPUT', 'NETWORK_MISMATCH', 'UNAVAILABLE']) test(`non-conflict ${code} keeps generic Blockbook feedback`, async () => {

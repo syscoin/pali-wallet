@@ -12,6 +12,7 @@ import type { NativeNetworkSnapshot, NativeNetworkView } from '../custody/networ
 import { NativeUtxoNetworkConflictError, type NativeNetworkSelectionReceipt } from '../custody/accounts';
 import { Button, colors, Header, Notice, Screen, Text } from '../ui';
 import { NetworkSourceSheet } from './NetworkSourceSheet';
+import { isCustomUtxoNetworkId } from '../core/utxoNetworks';
 
 function failure(error: unknown, t: TFunction): string {
   const code = error instanceof Error ? error.message : '';
@@ -185,11 +186,11 @@ export function NativeNetworks<Id extends string>({ controller, onBack, selectio
   };
 
   const editUtxo = (network: NativeNetworkSnapshot<Id>['networks'][number]) => {
-    if (working.current || !snapshot || !network.customUtxoEndpoint) return;
+    if (working.current || !snapshot || !network.utxoEndpoint) return;
     setUi({ owner: controller, busy: false, error: '' });
     setCatalogueQuery('');
     setForm({ utxo: true, id: network.id, catalogueRevision: snapshot.revision, contextRevision: controller.getContextRevision(),
-      name: network.name, rpcUrl: network.customUtxoEndpoint,
+      name: network.name, rpcUrl: network.utxoEndpoint,
       chainId: '', symbol: network.symbol, testnet: network.testnet });
   };
 
@@ -302,14 +303,15 @@ export function NativeNetworks<Id extends string>({ controller, onBack, selectio
     }
   };
   const changeField = (key: 'name' | 'chainId' | 'rpcUrl' | 'symbol', value: string) => {
-    if (working.current) return;
+    if (working.current || key === 'name' && form?.utxo && form.id && !isCustomUtxoNetworkId(form.id)) return;
     setUi({ owner: controller, busy: false, error: '' });
     setCatalogueQuery('');
     setForm((old) => old && { ...old, [key]: key === 'symbol' ? value.toUpperCase() : value });
   };
   const field = (key: 'name' | 'chainId' | 'rpcUrl' | 'symbol', label: string) => <View style={s.field}>
     <Text style={s.help}>{label}</Text><IdleTextInput accessibilityLabel={label} value={form?.[key] ?? ''}
-      onChangeText={(value) => changeField(key, value)} editable={!busy && !(key === 'chainId' && !!form?.id)}
+      onChangeText={(value) => changeField(key, value)} editable={!busy && !(key === 'chainId' && !!form?.id) &&
+        !(key === 'name' && form?.utxo && !!form.id && !isCustomUtxoNetworkId(form.id))}
       autoCapitalize="none" autoCorrect={false} spellCheck={false} keyboardType={key === 'chainId' ? 'number-pad' : key === 'rpcUrl' ? 'url' : 'default'}
       maxLength={key === 'rpcUrl' ? 2048 : key === 'chainId' ? 16 : undefined} style={s.search} /></View>;
 
@@ -354,8 +356,8 @@ export function NativeNetworks<Id extends string>({ controller, onBack, selectio
             <Text style={{ flex: 1 }}>{form.testnet ? '✓ ' : ''}{t('mobile.networks.testNetwork')}</Text>
           </IdlePressable></>}
           {!form.utxo && <Text style={s.help}>{t('mobile.networks.rpcChanges')}</Text>}
-          {form.id && (form.utxo ? controller.removeUtxo : controller.remove) && <Button title={t('mobile.networks.remove')} variant="secondary" disabled={busy || form.id === snapshot?.selectedId} onPress={() => { void save(true); }} />}
-          {form.id && form.id === snapshot?.selectedId && <Text style={s.help}>
+          {form.id && (form.utxo ? isCustomUtxoNetworkId(form.id) && controller.removeUtxo : controller.remove) && <Button title={t('mobile.networks.remove')} variant="secondary" disabled={busy || form.id === snapshot?.selectedId} onPress={() => { void save(true); }} />}
+          {form.id && (!form.utxo || isCustomUtxoNetworkId(form.id)) && form.id === snapshot?.selectedId && <Text style={s.help}>
             {form.utxo ? t('mobile.networks.removeUnused') : t('mobile.networks.switchBeforeRemove')}
           </Text>}
         </> : <>
@@ -372,7 +374,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack, selectio
               <Text style={s.sectionTitle}>{testnet ? t('mobile.networks.testnets') : t('mobile.networks.mainnets')}</Text>
               {testnet && <Text style={s.help}>{t('mobile.networks.testHint')}</Text>}
               {networks.map((network) => {
-                const canEdit = network.registration ? controller.save : controller.editUtxo && network.customUtxoEndpoint;
+                const canEdit = network.registration ? controller.save : controller.editUtxo && network.utxoEndpoint;
                 return <NetworkOption key={network.id} network={network}
                   selected={network.id === snapshot?.selectedId} busy={busy} onSelect={handleSelect} onEdit={!selection && canEdit ? editSaved : undefined} />;
               })}

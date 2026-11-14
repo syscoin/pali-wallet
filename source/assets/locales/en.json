@@ -3790,8 +3790,6 @@
         "checkTheBlockbookUrlAndTryAgain": "Check the Blockbook URL and try again.",
         "savedNetworksAreUnavailable": "Saved networks are unavailable.",
         "watchNetworks": "Watch networks",
-        "noCustomNetworks": "No custom networks",
-        "addABlockbookEndpointToWatchAccountsOn": "Add a Blockbook endpoint to watch accounts on another UTXO network.",
         "checkingNetwork": "Checking network",
         "reloadSavedNetworks": "Reload saved networks",
         "removeAccountsFirst": "Remove the watch account using this network first."
