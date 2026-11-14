@@ -3790,8 +3790,6 @@
         "checkTheBlockbookUrlAndTryAgain": "Vérifiez l’URL Blockbook et réessayez.",
         "savedNetworksAreUnavailable": "Les réseaux enregistrés sont indisponibles.",
         "watchNetworks": "Réseaux en lecture seule",
-        "noCustomNetworks": "Aucun réseau personnalisé",
-        "addABlockbookEndpointToWatchAccountsOn": "Ajoutez un point de terminaison Blockbook pour consulter des comptes sur un autre réseau UTXO.",
         "checkingNetwork": "Vérification du réseau",
         "reloadSavedNetworks": "Recharger les réseaux enregistrés",
         "removeAccountsFirst": "Supprimez d’abord le compte en lecture seule utilisant ce réseau."

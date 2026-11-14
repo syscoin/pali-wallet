@@ -3790,8 +3790,6 @@
         "checkTheBlockbookUrlAndTryAgain": "请检查 Blockbook URL 后重试。",
         "savedNetworksAreUnavailable": "保存的网络不可用。",
         "watchNetworks": "观察网络",
-        "noCustomNetworks": "没有自定义网络",
-        "addABlockbookEndpointToWatchAccountsOn": "添加 Blockbook 端点，以观察另一 UTXO 网络上的账户。",
         "checkingNetwork": "正在检查网络",
         "reloadSavedNetworks": "重新加载保存的网络",
         "removeAccountsFirst": "请先移除使用此网络的观察账户。"

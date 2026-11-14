@@ -3790,8 +3790,6 @@
         "checkTheBlockbookUrlAndTryAgain": "Проверьте URL Blockbook и повторите попытку.",
         "savedNetworksAreUnavailable": "Сохранённые сети недоступны.",
         "watchNetworks": "Сети для наблюдения",
-        "noCustomNetworks": "Нет пользовательских сетей",
-        "addABlockbookEndpointToWatchAccountsOn": "Добавьте эндпоинт Blockbook для наблюдения за аккаунтами в другой UTXO-сети.",
         "checkingNetwork": "Проверка сети",
         "reloadSavedNetworks": "Заново загрузить сохранённые сети",
         "removeAccountsFirst": "Сначала удалите аккаунт для наблюдения, использующий эту сеть."
