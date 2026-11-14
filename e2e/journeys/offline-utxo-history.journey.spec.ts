@@ -236,7 +236,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
       const hoveredAmountBounds = await amount.boundingBox();
       expect(hoveredAmountBounds!.x).toBe(amountBounds!.x);
       expect(hoveredAmountBounds!.y).toBe(amountBounds!.y);
-      if (amountText === '1.0000 SYSX') {
+      if (amountText === '1 SYSX') {
         await page.screenshot({
           animations: 'disabled',
           path: path.join(
@@ -309,10 +309,8 @@ test('offline UTXO history: bridge value, native account change and pending deta
       'full transaction details preserve bridge value and separately label native account change',
       async () => {
         await openDetails(compactBridgeNativeOffset.txid);
-        await expect(
-          page.getByText('1.0000 SYSX', { exact: true })
-        ).toBeVisible();
-        await expectSysxDetailsIcon('1.0000 SYSX');
+        await expect(page.getByText('1 SYSX', { exact: true })).toBeVisible();
+        await expectSysxDetailsIcon('1 SYSX');
         await expect(
           page.getByText('Native account balance change: -29.5985194 TSYS', {
             exact: true,
@@ -342,10 +340,8 @@ test('offline UTXO history: bridge value, native account change and pending deta
           '/api/v2/tx/' + compactBridgeNativeOffset.txid,
         ]);
         await openDetails(compactBridgeWithAccountAsset.txid);
-        await expect(
-          page.getByText('2.0000 SYSX', { exact: true })
-        ).toBeVisible();
-        await expectSysxDetailsIcon('2.0000 SYSX');
+        await expect(page.getByText('2 SYSX', { exact: true })).toBeVisible();
+        await expectSysxDetailsIcon('2 SYSX');
         await back();
         await expect(
           row(compactBridgeWithAccountAsset.txid).getByText('2.0000 SYSX', {

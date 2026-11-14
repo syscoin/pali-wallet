@@ -47,7 +47,6 @@ import {
   getSyscoinTransactionTypeLabel,
   getSyscoinTransactionTypeStyle,
   getSyscoinOperationAmount,
-  formatSyscoinTokenAmount,
   isSyscoinTokenOperation,
   getSyscoinNativeTransferAmount,
   getSyscoinAccountChange,
@@ -473,10 +472,8 @@ export const SyscoinTransactionDetails = ({
                     />
                     <span className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-out motion-reduce:transition-none pointer-events-none" />
                   </span>
-                  <p className="text-white text-base min-w-0 break-words">
-                    {formatSyscoinTokenAmount(intent.amount, decimals) ??
-                      t('settings.unavailable')}{' '}
-                    {tokenSymbol}
+                  <p className="text-white text-base min-w-0 break-words select-text">
+                    {intent.amount} {tokenSymbol}
                   </p>
                 </div>
               );
