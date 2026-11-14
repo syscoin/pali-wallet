@@ -3266,6 +3266,7 @@
       "nodeRegistration": "노드 등록",
       "enterTheRegistrationTransactionIdPaliChecksItWithYourConfiguredSentryService": "등록 트랜잭션 ID를 입력하세요. Pali가 설정된 Sentry 서비스를 통해 확인합니다.",
       "registrationTransactionId": "등록 트랜잭션 ID",
+      "invalidRegistrationTransactionId": "64자리 16진수 트랜잭션 ID를 입력하세요.",
       "reviewNode": "노드 검토",
       "linkingSavesThisNodeSPublicIdentityAndProtectsItsCollateralFromOrdinaryWalletSends": "연결하면 노드의 공개 식별 정보를 저장하고 일반 지갑 전송으로부터 담보를 보호합니다.",
       "trustedSource": "신뢰하는 출처",

@@ -3266,6 +3266,7 @@
       "nodeRegistration": "Registro del nodo",
       "enterTheRegistrationTransactionIdPaliChecksItWithYourConfiguredSentryService": "Introduce el ID de la transacción de registro. Pali lo comprueba con tu servicio Sentry configurado.",
       "registrationTransactionId": "ID de transacción de registro",
+      "invalidRegistrationTransactionId": "Introduce un ID de transacción hexadecimal de 64 caracteres.",
       "reviewNode": "Revisar nodo",
       "linkingSavesThisNodeSPublicIdentityAndProtectsItsCollateralFromOrdinaryWalletSends": "La vinculación guarda la identidad pública de este nodo y protege su garantía de los envíos normales de la billetera.",
       "trustedSource": "Fuente confiable",

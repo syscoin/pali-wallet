@@ -3266,6 +3266,7 @@
       "nodeRegistration": "ノード登録",
       "enterTheRegistrationTransactionIdPaliChecksItWithYourConfiguredSentryService": "登録トランザクション ID を入力してください。設定済みの Sentry サービスで Pali が確認します。",
       "registrationTransactionId": "登録トランザクション ID",
+      "invalidRegistrationTransactionId": "64文字の16進数のトランザクションIDを入力してください。",
       "reviewNode": "ノードを確認",
       "linkingSavesThisNodeSPublicIdentityAndProtectsItsCollateralFromOrdinaryWalletSends": "リンクすると、このノードの公開識別情報が保存され、通常のウォレット送金から担保が保護されます。",
       "trustedSource": "信頼する情報源",

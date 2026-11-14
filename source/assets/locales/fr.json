@@ -3266,6 +3266,7 @@
       "nodeRegistration": "Enregistrement du nœud",
       "enterTheRegistrationTransactionIdPaliChecksItWithYourConfiguredSentryService": "Saisissez l’identifiant de la transaction d’enregistrement. Pali le vérifie avec le service Sentry configuré.",
       "registrationTransactionId": "Identifiant de la transaction d’enregistrement",
+      "invalidRegistrationTransactionId": "Saisissez un identifiant de transaction hexadécimal de 64 caractères.",
       "reviewNode": "Vérifier le nœud",
       "linkingSavesThisNodeSPublicIdentityAndProtectsItsCollateralFromOrdinaryWalletSends": "La liaison enregistre l’identité publique du nœud et protège sa garantie des transferts ordinaires du portefeuille.",
       "trustedSource": "Source fiable",

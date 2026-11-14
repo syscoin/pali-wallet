@@ -3266,6 +3266,7 @@
       "nodeRegistration": "节点注册",
       "enterTheRegistrationTransactionIdPaliChecksItWithYourConfiguredSentryService": "输入注册交易 ID。Pali 会通过您配置的 Sentry 服务进行检查。",
       "registrationTransactionId": "注册交易 ID",
+      "invalidRegistrationTransactionId": "请输入 64 个十六进制字符的交易 ID。",
       "reviewNode": "审阅节点",
       "linkingSavesThisNodeSPublicIdentityAndProtectsItsCollateralFromOrdinaryWalletSends": "关联将保存此节点的公开身份，并保护抵押资金免于普通钱包发送操作。",
       "trustedSource": "可信来源",

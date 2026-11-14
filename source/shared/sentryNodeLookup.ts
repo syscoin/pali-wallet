@@ -28,6 +28,11 @@ export type SentryNodeObservation = Readonly<{
   origin: string;
 }>;
 
+/** User-supplied registration IDs accept either hex case; readers use canonical lowercase. */
+export function isSentryRegistrationId(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-fA-F0-9]{64}$/.test(value);
+}
+
 /** The public node identity retained by both wallet hosts. */
 export function isSentryLinkedNode(value: unknown): value is SentryLinkedNode {
   const node = value as SentryLinkedNode | null;

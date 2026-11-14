@@ -1,5 +1,6 @@
 import { walletUiFixture } from './walletUiFixture.ts';
 import { SENTRY_NETWORKS } from '../../../source/shared/sentryNetworks.ts';
+import { isSentryRegistrationId } from '../../../source/shared/sentryNodeLookup.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -76,7 +77,7 @@ function renderer() {
   };
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Header', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {} };
   const idle = createIdleComponentFixture(hook, native);
-  const common = { '../platform/localization': nativeTranslationFixture, '../../../../source/shared/sentryNetworks': { SENTRY_NETWORKS }, react: hook, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui, './IdleActivityBoundary': idle.components };
+  const common = { '../platform/localization': nativeTranslationFixture, '../../../../source/shared/sentryNetworks': { SENTRY_NETWORKS }, '../../../../source/shared/sentryNodeLookup': { isSentryRegistrationId }, react: hook, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui, './IdleActivityBoundary': idle.components };
   const load = (name: string, additional: Record<string, unknown> = {}) => evaluate(readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8'), { ...common, ...additional });
   const nodes = load('NativeSentryNodes', { '../custody/privateAuthentication': privateAuthentication,
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption } }).NativeSentryNodes as Component;
@@ -173,6 +174,41 @@ test('hub routes node/key ports separately and keeps pane-close callback stable 
   const keys = find(tree, 'NativeSentryKeys'); assert.equal(keys.props.open, openKeys);
   keys.props.onBack(); f.render(f.hub, props); f.hardware();
   assert.equal(backs, 1); assert.equal(f.defaults(), 0); f.dispose();
+});
+
+test('invalid registration stays in the draft and never starts node review', async () => {
+  const f = fixture();
+  let tree = await ready(f);
+  press(button(tree, 'Link a node'));
+  tree = f.render();
+  assert.equal(button(tree, 'Review node').props.disabled, true);
+  assert.doesNotMatch(text(tree), /Enter a 64-character hexadecimal transaction ID/);
+  for (const value of ['abc', 'g'.repeat(64), 'a'.repeat(63), `0x${'ab'.repeat(32)}`]) {
+    tree = f.render();
+    field(tree, 'Registration transaction ID').props.onChangeText(value);
+    tree = f.render();
+    const submit = button(tree, 'Review node');
+    assert.equal(submit.props.disabled, true);
+    press(submit); // A stale/programmatic handler must obey the same validation.
+    await settle();
+    tree = f.render();
+    assert.equal(field(tree, 'Registration transaction ID').props.value, value);
+    assert.match(text(tree), /Enter a 64-character hexadecimal transaction ID/);
+    assert.equal(f.calls.prepare.length, 0);
+    assert.equal(f.calls.writes, 0);
+  }
+  const value = node.proTxHash.toUpperCase();
+  field(tree, 'Registration transaction ID').props.onChangeText(` ${value} `);
+  tree = f.render();
+  assert.equal(button(tree, 'Review node').props.disabled, false);
+  assert.doesNotMatch(text(tree), /Enter a 64-character hexadecimal transaction ID/);
+  press(button(tree, 'Review node'));
+  await settle();
+  tree = f.render();
+  assert.equal(f.calls.prepare.length, 1);
+  assert.equal((f.calls.prepare[0]!.request as { proTxHash: string }).proTxHash, value);
+  assert.ok(button(tree, 'Link node'));
+  f.dispose();
 });
 
 test('node link displays exact reviewed fields, confirms that same object and refreshes persisted state', async () => {

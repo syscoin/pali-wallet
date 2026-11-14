@@ -3266,6 +3266,7 @@
       "nodeRegistration": "Knotenregistrierung",
       "enterTheRegistrationTransactionIdPaliChecksItWithYourConfiguredSentryService": "Registrierungs-Transaktions-ID eingeben. Pali prüft sie mit dem konfigurierten Sentry-Dienst.",
       "registrationTransactionId": "Registrierungs-Transaktions-ID",
+      "invalidRegistrationTransactionId": "Gib eine 64-stellige hexadezimale Transaktions-ID ein.",
       "reviewNode": "Knoten prüfen",
       "linkingSavesThisNodeSPublicIdentityAndProtectsItsCollateralFromOrdinaryWalletSends": "Die Verknüpfung speichert die öffentliche Identität dieses Knotens und schützt seine Sicherheit vor gewöhnlichen Wallet-Überweisungen.",
       "trustedSource": "Vertrauenswürdige Quelle",

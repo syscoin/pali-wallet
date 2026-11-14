@@ -6,6 +6,7 @@ import {
 } from '../shared/sentryNetworks.ts';
 import {
   isSentryLinkedNode,
+  isSentryRegistrationId,
   readSentryNode,
   type SentryLinkedNode,
 } from '../shared/sentryNodeLookup.ts';
@@ -211,8 +212,7 @@ export function createSentryNodeManagement<Scope>(
           (key) => !['version', 'proTxHash', 'genesisHash'].includes(key)
         ) ||
         request.version !== 1 ||
-        typeof request.proTxHash !== 'string' ||
-        !/^[a-fA-F0-9]{64}$/.test(request.proTxHash)
+        !isSentryRegistrationId(request.proTxHash)
       )
         throw new Error('Supply a versioned Sentry node identity only');
       const admission = await host.captureAdmission(scope, network, check);

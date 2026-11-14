@@ -1,6 +1,7 @@
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks';
+import { isSentryRegistrationId } from '../../../../source/shared/sentryNodeLookup';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import {
   AppState,
@@ -57,6 +58,9 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
   const [registration, setRegistration] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
   const [notice, setNotice] = useState<string>();
+  const registrationId = registration.trim();
+  const registrationValid = isSentryRegistrationId(registrationId);
+  const registrationInvalid = registrationId.length > 0 && !registrationValid;
   const current = useCallback(
     (owner: Owner) =>
       ownerRef.current === owner &&
@@ -344,18 +348,24 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                 accessibilityLabel={t("mobile.sentryViews.registrationTransactionId")}
                 value={registration}
                 onChangeText={setRegistration}
-                maxLength={64}
+                maxLength={128}
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoComplete="off"
                 editable={!busy}
-                style={s.input}
+                style={[s.input, registrationInvalid && s.invalidInput]}
               />
+              {registrationInvalid && (
+                <Text accessibilityRole="alert" style={s.error}>
+                  {t("mobile.sentryViews.invalidRegistrationTransactionId")}
+                </Text>
+              )}
               <Button
                 title={busy ? t("privacy.checking") : t("mobile.sentryViews.reviewNode")}
-                disabled={busy || !registration.trim()}
+                disabled={busy || !registrationValid}
                 onPress={() => {
-                  const value = registration.trim();
+                  const value = registrationId;
+                  if (!isSentryRegistrationId(value)) return;
                   Keyboard.dismiss();
                   void run(async (owner, check) => {
                     if (!snapshot) throw new Error('CANCELLED');
@@ -468,6 +478,8 @@ const s = StyleSheet.create({
   heading: { fontSize: 18, fontWeight: '700' },
   muted: { color: colors.muted, lineHeight: 22 },
   notice: { color: colors.blue, lineHeight: 22 },
+  error: { color: colors.red, fontSize: 13, lineHeight: 20 },
+  invalidInput: { borderColor: colors.red },
   label: { color: colors.muted, fontSize: 13, marginTop: 8 },
   identifier: { fontSize: 13, lineHeight: 20, flexShrink: 1 },
   input: {
