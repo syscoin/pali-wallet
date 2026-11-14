@@ -82,13 +82,26 @@ export function NativePortfolio({ hardwareRequest, source, smartAccount, onRefre
   const custody = useSyncExternalStore(subscribeCustody, readCustody, readCustody);
   const requiresBackup = useCallback(() => source.getSnapshot().backup !== 'confirmed', [source]);
   useLayoutEffect(() => model.connect(), [model]);
+  // Public navigation survives metadata revisions; the keyed content still retires forms and acknowledgements.
+  const nativeDetailContext = useMemo(() => ({ model, network: snapshot.account?.network, address: snapshot.account?.address }),
+    [model, snapshot.account?.network, snapshot.account?.address]);
+  const [nativeDetailOwner, setNativeDetailOwner] = useState<typeof nativeDetailContext | null>(null);
+  const nativeDetail = !!snapshot.account && nativeDetailOwner === nativeDetailContext;
+  const openNativeDetail = useCallback((account: NativePortfolioAccount) => {
+    if (model.isCurrent(account) && nativeDetailContext.network === account.network && nativeDetailContext.address === account.address)
+      setNativeDetailOwner(nativeDetailContext);
+  }, [model, nativeDetailContext]);
+  const closeNativeDetail = useCallback(() => {
+    setNativeDetailOwner(current => current === nativeDetailContext ? null : current);
+  }, [nativeDetailContext]);
   const scope = snapshot.account ? scopeOf(snapshot.account) : 'unavailable';
-  return <NativePortfolioContent initialTokenContract={initialTokenContract} onOverviewBack={onOverviewBack} openReceive={openReceive} initialReceive={initialReceive} onReceiveIntentConsumed={onReceiveIntentConsumed} onChangeReceiveNetwork={onChangeReceiveNetwork} hardwareRequest={hardwareRequest} smartAccount={smartAccount} onRefreshSmartAccount={onRefreshSmartAccount} onDeploySmartAccount={onDeploySmartAccount} onUseWalletAuthenticator={onUseWalletAuthenticator} onManageSlhDsa={onManageSlhDsa} onManageSmartAccountModules={onManageSmartAccountModules} key={scope} model={model} snapshot={snapshot} backupRequired={custody.backup === 'unconfirmed'} requiresBackup={requiresBackup} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onBackup={onBackup} onSecurity={onSecurity} onSend={onSend} onSendSpt={onSendSpt} onSendToken={onSendToken} onSendCollectible={onSendCollectible} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} navigation={navigation} />;
+  return <NativePortfolioContent nativeDetail={nativeDetail} openNativeDetail={openNativeDetail} closeNativeDetail={closeNativeDetail} initialTokenContract={initialTokenContract} onOverviewBack={onOverviewBack} openReceive={openReceive} initialReceive={initialReceive} onReceiveIntentConsumed={onReceiveIntentConsumed} onChangeReceiveNetwork={onChangeReceiveNetwork} hardwareRequest={hardwareRequest} smartAccount={smartAccount} onRefreshSmartAccount={onRefreshSmartAccount} onDeploySmartAccount={onDeploySmartAccount} onUseWalletAuthenticator={onUseWalletAuthenticator} onManageSlhDsa={onManageSlhDsa} onManageSmartAccountModules={onManageSmartAccountModules} key={scope} model={model} snapshot={snapshot} backupRequired={custody.backup === 'unconfirmed'} requiresBackup={requiresBackup} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onBackup={onBackup} onSecurity={onSecurity} onSend={onSend} onSendSpt={onSendSpt} onSendToken={onSendToken} onSendCollectible={onSendCollectible} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} navigation={navigation} />;
 }
 
-function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequired, requiresBackup, smartAccount, onRefreshSmartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onManageSlhDsa, onManageSmartAccountModules, onExit, onLock, onViewRecovery, onBackup, onSecurity, onSend, onSendSpt, onSendToken, onSendCollectible, accountLabel, onManageAccounts, onManageNetworks, onChangeReceiveNetwork, initialReceive, onReceiveIntentConsumed, onActivity, tokenView, navigation, onOverviewBack, openReceive, initialTokenContract }: Omit<Props, 'source' | 'reader' | 'accountLabel'> & {
+function NativePortfolioContent({ nativeDetail, openNativeDetail, closeNativeDetail, hardwareRequest, model, snapshot, backupRequired, requiresBackup, smartAccount, onRefreshSmartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onManageSlhDsa, onManageSmartAccountModules, onExit, onLock, onViewRecovery, onBackup, onSecurity, onSend, onSendSpt, onSendToken, onSendCollectible, accountLabel, onManageAccounts, onManageNetworks, onChangeReceiveNetwork, initialReceive, onReceiveIntentConsumed, onActivity, tokenView, navigation, onOverviewBack, openReceive, initialTokenContract }: Omit<Props, 'source' | 'reader' | 'accountLabel'> & {
   model: NativePortfolioController; snapshot: NativePortfolioSnapshot; accountLabel: string;
   backupRequired: boolean; requiresBackup(): boolean;
+  nativeDetail: boolean; openNativeDetail(account: NativePortfolioAccount): void; closeNativeDetail(): void;
 }) {
   const { t } = useNativeTranslation();
   const { hidden: hideBalances } = useBalancePrivacy();
@@ -100,7 +113,6 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
   const receiveWarningOwner = useRef<ReceiveWarning | null>(null);
   const receiveAcknowledgement = useRef<ReceiveAcknowledgement | null>(initialReceiveAcknowledgement);
   const [tokenTitle, setTokenTitle] = useState<string | null>(null);
-  const [nativeDetailScope, setNativeDetailScope] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [pendingAction, setPendingAction] = useState<'copy' | 'share' | 'faucet' | null>(null);
   const requestedReceive = useRef(false);
@@ -122,7 +134,6 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
   const canReceive = !!account && (!utxo || canUseUtxoCustodyAddress(account.address, utxo));
   const receiving = canReceive && receiveScope === scope && (!backupRequired || acknowledgedReceiveScope?.scope === scope && acknowledgedReceiveScope.model === model);
   const warning = receiveWarning?.scope === scope && receiveWarning.model === model ? receiveWarning : null;
-  const nativeDetail = scope !== null && nativeDetailScope === scope;
   const loading = snapshot.status === 'loading';
   const refresh = () => { void onRefreshSmartAccount?.(); void model.refresh(); };
   const canSend = !!onSend && (utxo !== undefined ||
@@ -152,7 +163,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
   const handleBack = () => {
     if (receiveWarningOwner.current) { invalidateActions(); return true; }
     if (receiving) { setReceiveScope(null); invalidateActions(); return true; }
-    if (nativeDetail) { setNativeDetailScope(null); return true; }
+    if (nativeDetail) { closeNativeDetail(); return true; }
     if (tokenBack.current?.()) return true;
     if (onOverviewBack) { onOverviewBack(); return true; }
     return false;
@@ -247,7 +258,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
   </View> : undefined;
   const nativeCoinCard = account && <Card><Row title={symbol} subtitle={networkName} icon={<Coin id={network.networkId} size={32} />}
     right={<Text style={s.assetBalance} accessibilityLabel={hideBalances ? t('mobile.activityViews.watchAccountPortfolio.balanceHidden') : `${amount ?? t('settings.unavailable')} ${symbol}`}>{hideBalances ? HIDDEN_BALANCE : amount === null ? '—' : compactActivityAmountLabel(amount)} {symbol}</Text>}
-    onPress={() => { if (model.isCurrent(account)) { navigation?.beginNavigation(); setNativeDetailScope(scopeOf(account)); } }} last />
+    onPress={() => { if (model.isCurrent(account)) { navigation?.beginNavigation(); openNativeDetail(account); } }} last />
   </Card>;
 
   return <SafeAreaView edges={navigation && !receiving && !nativeDetail && !tokenTitle ? ['top'] : ['top', 'bottom']} style={s.safeArea}>
