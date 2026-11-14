@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Platform, StyleSheet, View } from 'react-native';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
-import { assetMarketCoordinates, assetMarketLine, type AssetMarket } from '../../../../source/shared/assetMarket.ts';
+import { ASSET_MARKET_CHART, assetMarketCoordinates, assetMarketIndexAt, assetMarketLine, type AssetMarket } from '../../../../source/shared/assetMarket.ts';
 import { useFiatCurrency } from '../platform/fiatPreferences.ts';
 import { walletFetch } from '../platform/http.ts';
 import { Button, Card, colors, Text } from '../ui';
@@ -63,7 +63,8 @@ export function AssetMarketCard({ asset }: { asset: AssetMarketReference }) {
     setSelection(current => current?.key === key && current.data === data && current.index === next ? current : { key, data, index: next });
   };
   const inspect = (x: number) => {
-    if (Number.isFinite(x) && chartWidth.current > 0) select(x / chartWidth.current * (prices.length - 1));
+    const index = assetMarketIndexAt(x, chartWidth.current, prices.length);
+    if (index !== null) select(index);
   };
   // The seven-day sparkline has no per-sample timestamps; report its relative day only.
   const selectedPosition = selected === null ? null : t('mobile.chartInteraction.historyDay', { day: 1 + Math.floor(selected / Math.max(1, prices.length - 1) * 6) });
@@ -85,7 +86,7 @@ export function AssetMarketCard({ asset }: { asset: AssetMarketReference }) {
         onTouchStart={event => inspect(event.nativeEvent.locationX)}
         onTouchMove={event => inspect(event.nativeEvent.locationX)}
         onTouchEnd={() => setSelection(null)} onTouchCancel={() => setSelection(null)} testID="asset-market-chart">
-        <Svg width="100%" height={128} viewBox="0 0 300 120" preserveAspectRatio="none" accessibilityElementsHidden pointerEvents="none">
+        <Svg width="100%" height={128} viewBox={`0 0 ${ASSET_MARKET_CHART.width} ${ASSET_MARKET_CHART.height}`} preserveAspectRatio="none" accessibilityElementsHidden pointerEvents="none">
           <Path d={path} fill="none" stroke={colors.blue} strokeWidth={2} />
           {marker && <><Line x1={marker.x} y1={4} x2={marker.x} y2={116} stroke={colors.muted} strokeWidth={1} strokeDasharray="3 3" /><Circle cx={marker.x} cy={marker.y} r={4} fill={colors.blue} stroke={colors.bg} strokeWidth={2} /></>}
         </Svg>

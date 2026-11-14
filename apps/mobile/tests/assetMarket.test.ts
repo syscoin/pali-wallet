@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assetMarketHistoryUrl, assetMarketLine, assetMarketUrl, readAssetMarket, readAssetMarketHistory, readTokenMarketId } from '../../../source/shared/assetMarket.ts';
+import { ASSET_MARKET_CHART, assetMarketCoordinates, assetMarketIndexAt, assetMarketHistoryUrl, assetMarketLine, assetMarketUrl, readAssetMarket, readAssetMarketHistory, readTokenMarketId } from '../../../source/shared/assetMarket.ts';
 import { createNativeAssetMarketReader, nativeAssetMarketSource } from '../src/portfolio/nativeAssetMarket.ts';
 
 const now = Date.now();
@@ -9,7 +9,7 @@ const market = (extra = {}) => [{ id: 'ethereum', current_price: 2200, last_upda
   sparkline_in_7d: { price: [2100, 2200, 2150, 2200] }, ...extra }];
 
 test('market data is bound to its asset and never fabricates missing history', () => {
-  assert.equal(assetMarketLine([0, 1e308]), 'M0.00,112.00 L300.00,8.00');
+  assert.equal(assetMarketLine([0, 1e308]), 'M6.00,112.00 L294.00,8.00');
   assert.equal(assetMarketLine([NaN, 1]), null);
   assert.equal(readAssetMarket(market(), 'bitcoin', 'usd', now), null);
   assert.equal(readAssetMarket([...market(), ...market()], 'ethereum', 'usd', now), null);
@@ -170,4 +170,33 @@ test('quote and history start together and share the original eight-second deadl
   t.mock.timers.tick(1);
   const data = await pending;
   assert.equal(signal?.aborted, true); assert.equal(data?.price, 8080); assert.deepEqual(data?.prices, []);
+});
+
+
+test('inset chart endpoints and inverse touch mapping stay aligned at narrow widths', () => {
+  const { width, height, inset } = ASSET_MARKET_CHART;
+  for (const count of [2, 8, 241]) {
+    const values = Array.from({ length: count }, (_, index) => index);
+    for (const prices of [values, [...values].reverse()]) {
+      const points = assetMarketCoordinates(prices)!;
+      assert.equal(points[0]!.x, inset);
+      assert.equal(points.at(-1)!.x, width - inset);
+      for (const layoutWidth of [32, 180, 300, 640]) {
+        for (const [index, point] of points.entries()) {
+          assert.equal(assetMarketIndexAt(point.x / width * layoutWidth, layoutWidth, count), index);
+          assert(point.x - 5 >= 0 && point.x + 5 <= width);
+          assert(point.y - 5 >= 0 && point.y + 5 <= height);
+        }
+        assert.equal(assetMarketIndexAt(-20, layoutWidth, count), 0);
+        assert.equal(assetMarketIndexAt(layoutWidth + 20, layoutWidth, count), count - 1);
+      }
+    }
+  }
+  assert.deepEqual(assetMarketCoordinates([7, 7]), [{ x: 6, y: 60 }, { x: 294, y: 60 }]);
+});
+
+test('invalid chart touch geometry cannot select a sample', () => {
+  for (const x of [NaN, Infinity, -Infinity]) assert.equal(assetMarketIndexAt(x, 300, 8), null);
+  for (const width of [0, -1, NaN, Infinity]) assert.equal(assetMarketIndexAt(0, width, 8), null);
+  for (const count of [0, 1, 242, 2.5, NaN]) assert.equal(assetMarketIndexAt(0, 300, count), null);
 });

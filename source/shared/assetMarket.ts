@@ -22,6 +22,37 @@ const positive = (value: unknown): number | null =>
 export const validMarketId = (value: unknown): value is string =>
   typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,127}$/.test(value);
 
+/** Six units contain the four-unit marker plus its one-unit outer stroke. */
+export const ASSET_MARKET_CHART = Object.freeze({
+  width: 300,
+  height: 120,
+  inset: 6,
+});
+
+/** Inverse of the shared plot's horizontal mapping, including its marker inset. */
+export function assetMarketIndexAt(
+  locationX: number,
+  layoutWidth: number,
+  sampleCount: number
+): number | null {
+  if (
+    !Number.isFinite(locationX) ||
+    !Number.isFinite(layoutWidth) ||
+    layoutWidth <= 0 ||
+    !Number.isInteger(sampleCount) ||
+    sampleCount < 2 ||
+    sampleCount > 241
+  )
+    return null;
+  const { width, inset } = ASSET_MARKET_CHART;
+  const fraction =
+    ((locationX / layoutWidth) * width - inset) / (width - 2 * inset);
+  return Math.min(
+    sampleCount - 1,
+    Math.max(0, Math.round(fraction * (sampleCount - 1)))
+  );
+}
+
 /** Shared plot geometry keeps the visible line and interactive sample marker aligned. */
 export function assetMarketCoordinates(
   prices: readonly number[]
@@ -35,7 +66,10 @@ export function assetMarketCoordinates(
   const low = Math.min(...prices),
     range = Math.max(...prices) - low;
   return prices.map((value, index) => ({
-    x: (index * 300) / (prices.length - 1),
+    x:
+      ASSET_MARKET_CHART.inset +
+      (index * (ASSET_MARKET_CHART.width - 2 * ASSET_MARKET_CHART.inset)) /
+        (prices.length - 1),
     y: range ? 112 - ((value - low) / range) * 104 : 60,
   }));
 }
