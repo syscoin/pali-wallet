@@ -21,10 +21,11 @@ function signed(units: string, decimals: number, symbol: string): string {
   const negative = units.startsWith('-');
   return `${negative ? '−' : units === '0' ? '' : '+'}${formatBaseUnits(negative ? units.slice(1) : units, decimals)} ${symbol}`;
 }
-function assetQuantity(row: UtxoActivityRow): string | null {
+function assetQuantity(row: UtxoActivityRow, exact = false): string | null {
   const value = row.assetAmount;
   if (!value) return null;
-  const formatted = formatSyscoinTokenAmount(value.amount, value.decimals);
+  // Shared activity projection already supplies canonical exact decimal text.
+  const formatted = exact ? value.amount : formatSyscoinTokenAmount(value.amount, value.decimals);
   if (formatted === null) return null;
   const direction = value.direction === 'sent' ? '−' : value.direction === 'received' ? '+' : '';
   return `${direction}${formatted} ${value.symbol ?? 'SPT'}`;
@@ -151,6 +152,9 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
     : chosen?.nativeTransfer
       ? `${chosen.nativeTransfer.direction === 'sent' ? '−' : chosen.nativeTransfer.direction === 'received' ? '+' : ''}${units(chosen.nativeTransfer.amount)}`
       : chosen ? net(chosen.netUnits) : '';
+  const exactDetailAmount = chosen?.hasAssetData
+    ? assetQuantity(chosen, true) ?? t('mobile.activityViews.utxoActivityScreen.assetAmountUnavailable')
+    : detailAmount;
   const rowDirection = (row: UtxoActivityRow): 'sent' | 'received' | 'self' | 'unknown' => row.hasAssetData
     ? row.assetAmount?.direction ?? 'unknown'
     : row.nativeTransfer?.direction ?? (row.netUnits?.startsWith('-') ? 'sent' : row.netUnits && row.netUnits !== '0' ? 'received' : row.netUnits === '0' ? 'self' : 'unknown');
@@ -224,7 +228,7 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
         <Button title={t('send.details')} icon={detailsFor === chosen.txid ? 'chevron-up' : 'chevron-down'} variant="quiet" size="compact" expanded={detailsFor === chosen.txid}
           onPress={() => setDetailsFor(detailsFor === chosen.txid ? null : chosen.txid)} />
         {detailsFor === chosen.txid && <>
-        <Text selectable style={s.hash}>{detailAmount}</Text>
+        <Text testID="utxo-activity-exact-amount" selectable accessibilityLabel={exactDetailAmount} style={s.hash}>{exactDetailAmount}</Text>
         <Text style={styles.muted}>{chosen.hasAssetData ? chosen.assetAmount ? chosen.assetAmount.scope === 'account' ? t('mobile.activityViews.utxoActivityScreen.accountAssetAmount') : t('mobile.activityViews.utxoActivityScreen.assetOperationAmount') : t('mobile.activityViews.utxoActivityScreen.assetQuantityUnavailable') : chosen.nativeTransfer ? chosen.nativeTransfer.kind === 'self' ? t('mobile.activityViews.utxoActivityScreen.nativeSelftransfer') : t('mobile.activityViews.utxoActivityScreen.nativeTransfer') : t('mobile.activityViews.utxoActivityScreen.nativeAccountChange')}</Text>
         <Card style={s.detail}>
           <Text style={s.label}>{t('send.transactionId')}</Text><Text selectable style={s.hash}>{chosen.txid}</Text>

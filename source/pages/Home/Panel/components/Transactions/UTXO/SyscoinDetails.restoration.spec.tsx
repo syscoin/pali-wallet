@@ -517,7 +517,7 @@ it.each([
   ['send', '0.1 Multi Word Token', undefined, true],
   ['send', '.1 PQAS', undefined, true],
   ['send', `0.${'0'.repeat(400)}1 PQAS`, undefined, true],
-  ['send', '0.0000 PQAS', undefined, false],
+  ['send', '0 PQAS', undefined, false],
   ['send', '0 PQAS1', undefined, false],
   ['send', '0 Multi Word Token 1', undefined, false],
   ['send', '-0.1 PQAS', undefined, false],
@@ -565,7 +565,7 @@ it('shows the canonical SYSX icon beside its amount without importing the token'
 
   render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
 
-  const icon = await expectAmountIcon('1.0000 SYSX', officialLogo);
+  const icon = await expectAmountIcon('1 SYSX', officialLogo);
   const decoration = icon.parentElement!;
   expect(decoration.getAttribute('aria-hidden')).toBe('true');
   expect(decoration.classList.contains('group')).toBe(true);
@@ -608,7 +608,7 @@ it('does not brand SYSX history with a conflicting six-decimal precision', async
   mockEmitter.mockResolvedValue(transaction);
   render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
 
-  const amount = await screen.findByText('100.0000 SYSX');
+  const amount = await screen.findByText('100 SYSX');
   expect(
     amount.parentElement!.querySelector(`img[src="${officialLogo}"]`)
   ).toBeNull();
@@ -637,9 +637,9 @@ it.each(['syscoinburntoallocation', 'SPTSyscoinBurnToAssetAllocation'])(
 
     render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
 
-    await expectAmountIcon('2.0000 SYSX', officialLogo);
+    await expectAmountIcon('2 SYSX', officialLogo);
     expect(mockIconFetch).not.toHaveBeenCalled();
-    expect(screen.queryByText('1.0000 SYSX')).toBeNull();
+    expect(screen.queryByText('1 SYSX')).toBeNull();
     expect(
       screen.getByText('send.nativeBalanceChange: -2.00000226 SYS')
     ).toBeTruthy();
@@ -674,7 +674,7 @@ it('uses a custom logo only from the active account and exact GUID on the active
 
   render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
 
-  await expectAmountIcon('1.0000 CUSTOM', logo);
+  await expectAmountIcon('1 CUSTOM', logo);
   expect(mockIconFetch.mock.calls.map(([url]) => url)).toEqual([logo]);
 });
 
@@ -699,7 +699,7 @@ it('does not let an earlier unscoped or wrong-chain entry shadow the exact-chain
 
   render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
 
-  await expectAmountIcon('1.0000 CUSTOM', logo);
+  await expectAmountIcon('1 CUSTOM', logo);
   expect(mockIconFetch.mock.calls.map(([url]) => url)).toEqual([logo]);
 });
 
@@ -716,7 +716,7 @@ it.each([undefined, 5700])(
     render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
 
     await waitFor(() => {
-      const amount = screen.getByText('1.0000 SPT');
+      const amount = screen.getByText('1 SPT');
       // All image imports share Jest's file stub; the generic initial fallback
       // still must remain inside this exact amount and never fetch the rejected URL.
       expect(amount.parentElement!.textContent).toContain('S');
@@ -749,7 +749,7 @@ it.each(['wrong-chain', 'other-account', 'same-symbol-other-guid'])(
 
     render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
 
-    await screen.findByText('1.0000 SPT');
+    await screen.findByText('1 SPT');
     await act(async () => {
       await Promise.resolve();
     });
@@ -779,7 +779,7 @@ it.each([false, true])(
 
     render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
 
-    await screen.findByText(wrongChain ? '1.0000 SPT' : '1.0000 SYSX');
+    await screen.findByText(wrongChain ? '1 SPT' : '1 SYSX');
     await act(async () => {
       await Promise.resolve();
     });
@@ -802,7 +802,7 @@ it('does not infer the canonical GUID from a SYSX symbol or matching imported sy
 
   render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
 
-  await screen.findByText('1.0000 SPT');
+  await screen.findByText('1 SPT');
   await act(async () => {
     await Promise.resolve();
   });
@@ -861,7 +861,7 @@ it('adds the canonical icon only after a compact transaction hydrates its GUID',
   });
 
   await expectAmountIcon(
-    '1.0000 SYSX',
+    '1 SYSX',
     getKnownTokenLogo(undefined, undefined, '123456', 57)!
   );
 });
@@ -886,7 +886,7 @@ it.each(['account', 'network', 'asset-guid', 'hash'])(
     const view = render(
       <SyscoinTransactionDetails hash={mockHash} tx={oldTransaction} />
     );
-    await expectAmountIcon('1.0000 CUSTOM', oldLogo);
+    await expectAmountIcon('1 CUSTOM', oldLogo);
     mockIconFetch.mockImplementation((url) => {
       if (url === nextLogo) return currentImage.promise;
       throw new Error(`Unexpected icon fixture: ${url}`);
@@ -937,7 +937,7 @@ it.each(['account', 'network', 'asset-guid', 'hash'])(
         blob: async () => ({ size: 256 * 1024 + 1 }),
       });
     });
-    await expectAmountIcon('1.0000 CUSTOM', nextLogo);
+    await expectAmountIcon('1 CUSTOM', nextLogo);
     expect(
       screen
         .queryAllByRole('img', { hidden: true })
@@ -990,7 +990,7 @@ it.each(['account', 'network', 'hash'])(
 
     expect(screen.queryByRole('img', { hidden: true })).toBeNull();
     expect(mockIconFetch).not.toHaveBeenCalled();
-    expect(screen.queryByText('1.0000 SYSX')).toBeNull();
+    expect(screen.queryByText('1 SYSX')).toBeNull();
   }
 );
 
@@ -1688,8 +1688,8 @@ it('labels multiple all-self native outputs as a total in Details', async () => 
 });
 
 it.each([
-  [compactBridgeNativeOffset, '1.0000 SYSX'],
-  [compactBridgeWithAccountAsset, '0.100000 SYSX'],
+  [compactBridgeNativeOffset, '1 SYSX'],
+  [compactBridgeWithAccountAsset, '0.1 SYSX'],
 ])(
   'shows actual compact bridge operation value after full transaction hydration',
   async (compact, amount) => {
@@ -1801,19 +1801,44 @@ it.each(
   }
 );
 
-it.each(['SPTAssetAllocationSend', 'SPTAssetAllocationBurnToNEVM'])(
-  'renders the exact large asset quantity in hydrated %s details',
-  async (tokenType) => {
+it.each(
+  ['SPTAssetAllocationSend', 'SPTAssetAllocationBurnToNEVM'].flatMap(
+    (tokenType) => [
+      {
+        tokenType,
+        value: '9007199254740993',
+        decimals: 0,
+        amount: '9007199254740993',
+        inexact: '9007199254740992',
+      },
+      {
+        tokenType,
+        value: '123456789',
+        decimals: 8,
+        amount: '1.23456789',
+        inexact: '1.2346',
+      },
+      {
+        tokenType,
+        value: '900719925474099312345678',
+        decimals: 8,
+        amount: '9007199254740993.12345678',
+        inexact: '9007199254740993.1235',
+      },
+    ]
+  )
+)(
+  'renders exact $amount in hydrated $tokenType details',
+  async ({ tokenType, value, decimals, amount, inexact }) => {
     const assetGuid = '900004';
-    const value = '9007199254740993';
     setAccountAssets([{ assetGuid, chainId: 57, symbol: 'BIG' }]);
     const transaction = tokenTransaction(assetGuid, 'UNTRUSTED');
     transaction.tokenType = tokenType;
     transaction.accountAssetTransfers = [
-      { assetGuid, symbol: 'UNTRUSTED', decimals: 0, value },
+      { assetGuid, symbol: 'UNTRUSTED', decimals, value },
     ];
     transaction.tokenTransfers = [
-      { token: assetGuid, symbol: 'UNTRUSTED', decimals: 0 },
+      { token: assetGuid, symbol: 'UNTRUSTED', decimals },
     ];
     if (tokenType === 'SPTAssetAllocationBurnToNEVM')
       transaction.vout = [
@@ -1824,8 +1849,10 @@ it.each(['SPTAssetAllocationSend', 'SPTAssetAllocationBurnToNEVM'])(
         },
       ] as any;
     await mountHydratedDetails(transaction);
-    expect(screen.getByText(`${value} BIG`)).toBeTruthy();
-    expect(screen.queryByText('9007199254740992 BIG')).toBeNull();
-    expect(screen.queryByText(`${value} UNTRUSTED`)).toBeNull();
+    const exact = screen.getByText(`${amount} BIG`);
+    expect(exact).toBeTruthy();
+    expect(exact.classList.contains('select-text')).toBe(true);
+    expect(screen.queryByText(`${inexact} BIG`)).toBeNull();
+    expect(screen.queryByText(`${amount} UNTRUSTED`)).toBeNull();
   }
 );

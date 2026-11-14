@@ -3,6 +3,7 @@ import test from 'node:test';
 import type { UtxoActivityRow, UtxoActivityState } from '../src/core/utxoActivity.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
+import { formatSyscoinTokenAmount } from '../../../source/shared/utxoTokenAmounts.ts';
 
 function fixture(row: UtxoActivityRow) {
   const context = { accountId: 'watch', networkId: 'syscoin' as const, address: 'sys1public', generation: 1 };
@@ -26,7 +27,7 @@ function fixture(row: UtxoActivityRow) {
       StyleSheet: { create: (value: unknown) => value } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     'expo-clipboard': { setStringAsync() { throw Error('No clipboard read during status render'); } },
-    '../../../../source/shared/utxoTokenAmounts': { formatSyscoinTokenAmount: (value: string) => value },
+    '../../../../source/shared/utxoTokenAmounts': { formatSyscoinTokenAmount },
     '../core/amounts': { formatBaseUnits: (value: string) => value },
     '../core/utxoActivity': { UtxoActivity: Activity },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'IconButton', 'Notice', 'SegmentedControl', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
@@ -58,5 +59,44 @@ for (const kind of ['zdag', 'pending', 'confirmed'] as const) test(`actual UTXO 
     assert.equal(detail.props.status, expected);
     assert.equal(detail.props.tone, kind === 'confirmed' ? 'confirmed' : 'pending');
     assert.equal(row.block === null, kind !== 'confirmed');
+  } finally { f.close(); }
+});
+
+
+for (const [amount, direction, expected] of [
+  ['1.23456789', 'sent', '−1.23456789 TSPT'],
+  ['9007199254740993.12345678', 'received', '+9007199254740993.12345678 TSPT'],
+  ['0', undefined, '0 TSPT'],
+] as const) test(`expanded SPT detail preserves exact selectable quantity ${amount}`, () => {
+  const row: UtxoActivityRow = { txid: 'c'.repeat(64), block: null, observedConfirmations: 0,
+    receivedUnits: '0', spentUnits: '180', netUnits: '-180', transactionFeeUnits: '180',
+    hasAssetData: true, zdag: false, assetAmount: { amount, decimals: 8, direction, scope: 'account', symbol: 'TSPT' }, nativeTransfer: null };
+  const f = fixture(row);
+  try {
+    f.row().props.onPress();
+    const initial = f.render();
+    const hero = initial.find(item => item.type === 'TransactionDetailLayout')!;
+    const sign = direction === 'sent' ? '−' : direction === 'received' ? '+' : '';
+    assert.equal(hero.props.amount, `${sign}${formatSyscoinTokenAmount(amount, 8)} TSPT`);
+    initial.find(item => item.type === 'Button' && item.props.expanded === false)!.props.onPress();
+    const exact = f.render().find(item => item.type === 'Text' && item.props.selectable && item.children.join('').endsWith(' TSPT'))!;
+    assert.equal(exact.children.join(''), expected);
+    assert.equal(exact.props.accessibilityLabel, expected);
+    assert.equal(exact.props.selectable, true);
+    assert.equal(exact.props.numberOfLines, undefined);
+  } finally { f.close(); }
+});
+
+test('expanded asset detail keeps an unavailable quantity distinct from known zero', () => {
+  const row: UtxoActivityRow = { txid: 'd'.repeat(64), block: null, observedConfirmations: 0,
+    receivedUnits: '0', spentUnits: '180', netUnits: '-180', transactionFeeUnits: '180',
+    hasAssetData: true, zdag: false, assetAmount: null, nativeTransfer: null };
+  const f = fixture(row);
+  try {
+    f.row().props.onPress();
+    f.render().find(item => item.type === 'Button' && item.props.expanded === false)!.props.onPress();
+    const exact = f.render().find(item => item.type === 'Text' && item.props.selectable && item.children.join('') === 'Asset amount unavailable')!;
+    assert.equal(exact.children.join(''), 'Asset amount unavailable');
+    assert.equal(exact.props.accessibilityLabel, 'Asset amount unavailable');
   } finally { f.close(); }
 });
