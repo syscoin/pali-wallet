@@ -437,6 +437,127 @@ test('completed singleton history creates no fresh observer work', async () => {
   assert.equal(f.localReads.length, 0);
 });
 
+test('failed automatic reads mark retained submissions unavailable after refresh and cold reopen', async () => {
+  const local = { ...fixture().local(1, 'submitted'), transactionType: 2 as const };
+  let offline = false;
+  const f = fixture({ locals: [local], observeLocal: async () => {
+    if (offline) throw Error('RPC unavailable');
+    return { status: 'mined', outcome: 'confirmed', block: { number: '42', hash: hash(42) }, transactionIndex: 0 };
+  } });
+  await f.controller.refresh();
+  await until(() => f.controller.getSnapshot().rows[0]?.retainedObservation?.status === 'mined');
+  offline = true;
+  await f.controller.refresh();
+  await until(() => f.controller.getSnapshot().rows[0]?.unavailable === true);
+  assert.equal(f.controller.getSnapshot().rows[0]?.retainedObservation, undefined, 'prior proof is not reused as fresh evidence');
+  assert.equal(local.phase, 'submitted', 'read failure does not fabricate a durable confirmation or mutate the journal');
+  f.controller.invalidate();
+  const reopened = fixture({ locals: [local], observeLocal: async () => { throw Error('RPC unavailable'); } });
+  await reopened.controller.refresh();
+  await until(() => reopened.controller.getSnapshot().rows[0]?.unavailable === true);
+  assert.equal(reopened.controller.getSnapshot().rows[0]?.local?.phase, 'submitted');
+});
+
+test('explicit detail failure marks a previously missing retained submission unavailable', async () => {
+  const local = fixture().local(1, 'submitted');
+  const f = fixture({ locals: [local], receipts: new FakeReceipts(() => { throw Error('RPC unavailable'); }) });
+  await f.controller.refresh();
+  await until(() => f.controller.getSnapshot().rows[0]?.retainedObservation?.status === 'missing');
+  f.controller.inspect(local.hash);
+  await until(() => f.controller.getSnapshot().rows[0]?.unavailable === true);
+  assert.equal(f.controller.getSnapshot().rows[0]?.retainedObservation?.status, 'missing');
+});
+
+for (const status of ['confirmed', 'reverted'] as const) test(`failed automatic read does not obscure a concurrent fresh ${status} receipt`, async () => {
+  const pending = Promise.withResolvers<EvmTransactionObservation>();
+  const local = fixture().local(1, 'submitted');
+  const f = fixture({ locals: [local], observeLocal: () => pending.promise,
+    receipts: new FakeReceipts(call => observation(call.hash, call.owner, status)) });
+  await f.controller.refresh();
+  await until(() => f.localReads.length === 1);
+  f.controller.inspect(local.hash);
+  await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === status);
+  pending.reject(Error('Late automatic RPC failure')); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.controller.getSnapshot().rows[0]?.unavailable, false);
+  assert.equal(f.controller.getSnapshot().rows[0]?.observation?.status, status);
+});
+
+for (const status of ['confirmed', 'reverted'] as const) test(`successful ${status} receipt clears an earlier automatic failure`, async () => {
+  const automatic = Promise.withResolvers<EvmTransactionObservation>();
+  const detail = Promise.withResolvers<ActivityTransactionObservation>();
+  const local = fixture().local(1, 'submitted');
+  const f = fixture({ locals: [local], observeLocal: () => automatic.promise,
+    receipts: new FakeReceipts(() => detail.promise) });
+  await f.controller.refresh();
+  await until(() => f.localReads.length === 1);
+  f.controller.inspect(local.hash);
+  await until(() => f.receipts.calls.length === 1);
+  automatic.reject(Error('Automatic RPC failure'));
+  await until(() => f.controller.getSnapshot().rows[0]?.unavailable === true);
+  detail.resolve(observation(local.hash, OWNER, status));
+  await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === status);
+  assert.equal(f.controller.getSnapshot().rows[0]?.unavailable, false);
+});
+
+for (const outcome of ['confirmed', 'reverted', 'missing'] as const) test(`successful retained ${outcome} clears an earlier detail failure`, async () => {
+  const automatic = Promise.withResolvers<EvmTransactionObservation>();
+  const local = fixture().local(1, 'submitted');
+  const f = fixture({ locals: [local], observeLocal: () => automatic.promise,
+    receipts: new FakeReceipts(() => { throw Error('Detail RPC failure'); }) });
+  await f.controller.refresh();
+  await until(() => f.localReads.length === 1);
+  f.controller.inspect(local.hash);
+  await until(() => f.controller.getSnapshot().rows[0]?.unavailable === true);
+  automatic.resolve(outcome === 'missing' ? { status: 'missing', latestNonce: '1' }
+    : { status: 'mined', outcome, block: { number: '42', hash: hash(42) }, transactionIndex: 0 });
+  await until(() => f.controller.getSnapshot().rows[0]?.retainedObservation !== undefined);
+  assert.equal(f.controller.getSnapshot().rows[0]?.unavailable, false);
+});
+
+test('successful Smart detail observation clears an earlier automatic failure', async () => {
+  const automatic = Promise.withResolvers<EvmTransactionObservation>();
+  const detail = Promise.withResolvers<EvmTransactionObservation>();
+  const local = { ...fixture().local(1, 'submitted'), smartAccount: {
+    payer: OWNER, operations: [{ operationHash: hash(9), operationNonce: '0' }],
+  } };
+  let reads = 0;
+  const f = fixture({ locals: [local], observeLocal: () => ++reads === 1 ? automatic.promise : detail.promise });
+  await f.controller.refresh();
+  await until(() => reads === 1);
+  f.controller.inspect(local.hash);
+  await until(() => reads === 2);
+  automatic.reject(Error('Automatic RPC failure'));
+  await until(() => f.controller.getSnapshot().rows[0]?.unavailable === true);
+  detail.resolve({ status: 'missing', latestNonce: '1' });
+  await until(() => f.controller.getSnapshot().rows[0]?.retainedObservation?.status === 'missing');
+  assert.equal(f.controller.getSnapshot().rows[0]?.unavailable, false);
+  assert.equal(f.receipts.calls.length, 0);
+});
+
+for (const boundary of ['refresh', 'lock'] as const) test(`retired automatic failure cannot mark the next ${boundary} scope unavailable`, async () => {
+  const old = Promise.withResolvers<EvmTransactionObservation>();
+  const local = fixture().local(1, 'submitted');
+  let reads = 0;
+  const f = fixture({ locals: [local], observeLocal: () => ++reads === 1 ? old.promise
+    : Promise.resolve({ status: 'mined', outcome: 'confirmed', block: { number: '42', hash: hash(42) }, transactionIndex: 0 }) });
+  const disconnect = f.controller.connect();
+  try {
+    await until(() => reads === 1);
+    if (boundary === 'lock') {
+      f.source.change({ phase: 'locked', account: null });
+      old.reject(Error('Retired RPC failure')); await new Promise(resolve => setImmediate(resolve));
+      assert.equal(f.controller.getSnapshot().status, 'locked');
+      assert.deepEqual(f.controller.getSnapshot().rows, []);
+      f.source.change({ phase: 'ready', account: { network: 'ethereum', address: OWNER } });
+    } else {
+      await f.controller.refresh();
+      old.reject(Error('Retired RPC failure'));
+    }
+    await until(() => f.controller.getSnapshot().rows[0]?.retainedObservation?.status === 'mined');
+    assert.equal(f.controller.getSnapshot().rows[0]?.unavailable, false);
+  } finally { disconnect(); }
+});
+
 test('a needed terminal sibling remains observable after only explorer work times out', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const base = fixture();

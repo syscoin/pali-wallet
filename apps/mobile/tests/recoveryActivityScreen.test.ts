@@ -349,6 +349,41 @@ const pendingScopedRow = (reviewNavigation?: { speedUp: boolean }) => ({ hash, c
   observation: { status: 'pending', timestamp: null, valueUnits: '1', feeUnits: null, nonce: '0',
     from: '0x' + '22'.repeat(20), to: '0x' + '44'.repeat(20), events: [] } });
 
+test('ordinary Activity labels failed current reads unavailable while preserving known outcomes', async () => {
+  const base = pendingScopedRow();
+  const block = { number: '42', hash: '0x' + '99'.repeat(32) };
+  const cases = [
+    { fields: { unavailable: true, observation: undefined }, status: 'Current status unavailable' },
+    { fields: { unavailable: true, observation: undefined, retainedObservation: { status: 'missing', latestNonce: '0' } }, status: 'Current status unavailable' },
+    { fields: { observation: { ...base.observation, status: 'confirmed', block } }, status: 'Confirmed' },
+    { fields: { observation: { ...base.observation, status: 'reverted', block } }, status: 'Reverted' },
+    { fields: { unavailable: true, observation: undefined, indexed: {}, indexedStatus: 'confirmed' }, status: 'Confirmed' },
+    { fields: { unavailable: true, observation: undefined, indexed: {}, indexedStatus: 'failed' }, status: 'Reverted' },
+    { fields: { unavailable: true, observation: undefined, retainedObservation: { status: 'mined', outcome: 'confirmed', block } }, status: 'Confirmed' },
+    { fields: { unavailable: true, observation: undefined, local: { ...base.local, phase: 'confirmed' } }, status: 'Previously confirmed by Pali' },
+    { fields: { observation: undefined, retainedObservation: { status: 'missing', latestNonce: '0' } }, status: 'Submission unconfirmed' },
+  ];
+  for (const { fields, status } of cases) {
+    const f = fixture();
+    try {
+      const row = { ...base, ...fields };
+      f.rows([row]);
+      const list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+      const item = list.props.renderItem({ item: row, index: 0 });
+      assert(item.props.subtitle.includes(status), status);
+      const tree = await openFixtureRow(f, row);
+      const detail = all(tree).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
+      assert.equal(detail.props.status, status);
+      if (status === 'Current status unavailable') {
+        assert(!item.props.subtitle.includes('Submission unconfirmed'));
+        assert(!item.props.subtitle.includes('Details unavailable'), 'avoid a duplicate unavailable message');
+      } else if (row.unavailable) {
+        assert(item.props.subtitle.includes('Details unavailable'), 'preserve detail failures alongside known outcomes');
+      }
+    } finally { f.dispose(); }
+  }
+});
+
 test('single-network Activity retains self transfers in Sent and Received and preserves unknown rows', () => {
   const owner = '0x' + '22'.repeat(20), other = '0x' + '44'.repeat(20);
   const row = (digit: string, from: string, to: string) => ({ hash: '0x' + digit.repeat(64),
