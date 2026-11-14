@@ -2595,6 +2595,10 @@
         "range": "Notes {{start}}–{{end}} of {{total}}",
         "noteDate": "Note {{number}} · {{date}}"
       },
+      "maintenance": {
+        "chooseNote": "Select one saved note to verify and clear. Each attempt checks only that note.",
+        "clearHelp": "The selected Ethereum RPC will receive this note’s known withdrawal transaction hash and, when present, its related deposit transaction hash. This can link its deposit and withdrawal at that provider. Only this note is removed, and only when that RPC confirms completion and the related deposit settlement as finalized. Otherwise it remains saved."
+      },
       "capacity": {
         "couldNotLoadTheNoteLimit": "Could not load the note limit.",
         "theSavedNotesDoNotFitThisLimit": "The saved notes do not fit this limit.",

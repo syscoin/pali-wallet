@@ -21,7 +21,7 @@ import type { PrivacyPoolId } from '../../../../source/utils/privacy/types.ts';
 import { WalletStorageError, type OpenWalletStorage } from '../storage/types.ts';
 import type { NativePrivateWithdrawalView } from './privateWithdrawal.ts';
 import type { NativeNoteMaintenanceProofs } from './noteMaintenance.ts';
-import { MAX_NOTES, UUID } from '../../../../source/wallet/privateVaultInspection.ts';
+import { UUID } from '../../../../source/wallet/privateVaultInspection.ts';
 
 /** Internal file authority. Exported bytes go only to the trusted file adapter. */
 export type NativeNoteBackupRuntime = Readonly<Omit<INoteBackupService, 'dispose' | 'exportEncrypted' | 'commitImport'> & {
@@ -320,24 +320,20 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
         dispose: () => drain.close(() => { closed = true; }, []),
         getNotes: (guard) => run(guard, owner => withSession(owner, operational.getNotes)),
         clearCompletedNotes: (ids, guard, onProgress, onReload) => {
-          if (!Array.isArray(ids) || !ids.length || ids.length > MAX_NOTES ||
-              ids.some(id => typeof id !== 'string' || !UUID.test(id)) || new Set(ids).size !== ids.length ||
+          if (!Array.isArray(ids) || ids.length !== 1 ||
+              typeof ids[0] !== 'string' || !UUID.test(ids[0]) ||
               typeof onProgress !== 'function' || typeof onReload !== 'function') throw Error('privacy_vault_unavailable');
-          const selected = Object.freeze([...ids]);
+          const id = ids[0];
           return runWithReload(guard, onReload, async owner => {
-            const removed: string[] = [], unresolved: string[] = [];
-            for (const id of selected) {
-              owner.assertCurrent();
-              // Keep each shared mutation independently proven and acknowledged.
-              const value = await withSession(owner, () => operational.clearCompletedNotes([id]));
-              owner.assertCurrent();
-              const resultIds = [...value.removed, ...value.unresolved];
-              if (resultIds.length !== 1 || resultIds[0] !== id) throw Error('privacy_vault_unavailable');
-              removed.push(...value.removed); unresolved.push(...value.unresolved);
-              onProgress(Object.freeze({ checked: removed.length + unresolved.length, total: selected.length }));
-              owner.assertCurrent();
-            }
-            return { removed, unresolved };
+            owner.assertCurrent();
+            // One explicitly selected note cannot be starved by earlier unresolved proofs.
+            const value = await withSession(owner, () => operational.clearCompletedNotes([id]));
+            owner.assertCurrent();
+            const resultIds = [...value.removed, ...value.unresolved];
+            if (resultIds.length !== 1 || resultIds[0] !== id) throw Error('privacy_vault_unavailable');
+            onProgress(Object.freeze({ checked: 1, total: 1 }));
+            owner.assertCurrent();
+            return value;
           });
         },
         recoverFailedWithdrawal: (id, guard, onReload) => runWithReload(guard, onReload,

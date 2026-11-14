@@ -2595,6 +2595,10 @@
         "range": "Notes {{start}}–{{end}} sur {{total}}",
         "noteDate": "Note {{number}} · {{date}}"
       },
+      "maintenance": {
+        "chooseNote": "Sélectionnez une note enregistrée à vérifier et à supprimer. Chaque tentative ne vérifie que cette note.",
+        "clearHelp": "Le RPC Ethereum sélectionné recevra le hash connu de la transaction de retrait de cette note et, le cas échéant, celui du dépôt associé. Ce fournisseur pourra ainsi relier le dépôt et le retrait. Seule cette note sera supprimée, et uniquement si ce RPC confirme la finalisation de l’opération et du règlement du dépôt associé. Sinon, elle restera enregistrée."
+      },
       "capacity": {
         "couldNotLoadTheNoteLimit": "Impossible de charger la limite de notes.",
         "theSavedNotesDoNotFitThisLimit": "Les notes enregistrées dépassent cette limite.",

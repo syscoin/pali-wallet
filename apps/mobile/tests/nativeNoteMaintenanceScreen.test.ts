@@ -6,50 +6,61 @@ import { screenElements, screenFixture } from './screenFixture.ts';
 import { isOperationAuthenticationCancellation, operationAuthenticationCancellation } from '../src/core/operationAuthentication.ts';
 
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
-const notes: IPrivateNoteView[] = [1, 2, 3].map(value => ({ id: String(value), amount: '1', createdAt: value, poolId: 'eth-1', phase: 'verified' }));
+const notes: IPrivateNoteView[] = Array.from({ length: 41 }, (_, index) => ({ id: String(index + 1), amount: '1', createdAt: Date.UTC(2026, 0, index + 1), poolId: 'eth-1', phase: 'verified' }));
 
-function fixture(fail = false, recover = false) {
-  let reads = 0, clears = 0, recoveries = 0;
+function fixture(fail = false, recover = false, count = 7, unresolved = false) {
+  let reads = 0, clears = 0, recoveries = 0, backs = 0;
+  const idsChecked: string[][] = [];
+  let pending: Promise<void> | undefined;
+  let runtimeSource = 0;
+  const listeners = new Map<string, (next: string) => void>();
   let refusal: Error | undefined;
-  const appState = { currentState: 'active', addEventListener: () => ({ remove() {} }) };
-  const shown: IPrivateNoteView[] = recover ? [{ ...notes[0]!, withdrawal: { canCheckRecovery: true, mode: 'direct', phase: 'submitted' } }] : notes;
+  const appState = { currentState: 'active', addEventListener: (event: string, listener: (next: string) => void) => { listeners.set(event, listener); return { remove() { listeners.delete(event); } }; } };
+  let shown: IPrivateNoteView[] = recover ? [{ ...notes[0]!, withdrawal: { canCheckRecovery: true, mode: 'direct', phase: 'submitted' } }] : notes.slice(0, count);
   const runtime = {
     async dispose() {},
     async getNotes() { reads++; return { notes: shown }; },
     async clearCompletedNotes(ids, check, progress, reload) {
-      clears++; assert.deepEqual(ids, notes.map(note => note.id)); check();
+      clears++; idsChecked.push([...ids]); assert.equal(ids.length, 1); check();
       if (refusal) { const error = refusal; refusal = undefined; throw error; }
-      progress({ checked: 1, total: 3 }); reload({ notes: fail ? notes : [] });
+      if (pending) await pending; check();
+      progress({ checked: 1, total: 1 });
+      if (!fail && !unresolved) shown = shown.filter(note => note.id !== ids[0]);
+      reload({ notes: shown });
       if (fail) throw Error('Synthetic late failure');
-      return { removed: [...ids], unresolved: [] };
+      return { removed: unresolved ? [] : [...ids], unresolved: unresolved ? [...ids] : [] };
     },
     async recoverFailedWithdrawal(_id, check, reload) { recoveries++; check(); reload({ notes: [] }); },
   } satisfies NativeNoteMaintenanceRuntime;
   const f = screenFixture(new URL('../src/screens/NativeNoteMaintenance.tsx', import.meta.url), 'NativeNoteMaintenance', {
-    'react-native': { AppState: appState,
+    'react-native': { AppState: appState, View: 'View',
       BackHandler: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} }, KeyboardAvoidingView: 'Avoid', Platform: { OS: 'ios' }, StyleSheet: { create: (value: unknown) => value } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
-    '../platform/localization': { useNativeTranslation: () => ({ t: (key: string) => key }) },
+    '../platform/localization': { useNativeTranslation: () => ({ t: (key: string, values: Record<string, unknown> = {}) => key === 'mobile.noteFlows.inventory.poolAmount' ? `${values.amount} ETH pool` : key === 'mobile.noteFlows.inventory.noteDate' ? `Note ${values.number} · ${values.date}` : key === 'mobile.noteFlows.inventory.recorded' ? `Recorded ${values.date}` : key }) },
     '../custody/privateAuthentication': { createNativePrivateAuthenticationScope: () => ({ retire() {}, isAuthenticating: () => false }) },
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption: () => false },
     '../core/operationAuthentication': { isOperationAuthenticationCancellation },
     '../ui': { Button: 'Button', Card: 'Card', Header: 'Header', Row: 'Row', Screen: 'Screen', Text: 'Text', colors: {}, styles: {} },
   }, { AbortController });
-  const open = async () => runtime, onBack = () => {};
-  const render = () => screenElements(f.render({ open, onBack }));
+  const open = async () => runtime, replacementOpen = async () => runtime, onBack = () => { backs++; };
+  const render = () => screenElements(f.render({ open: runtimeSource ? replacementOpen : open, onBack }));
   const press = (title: string) => {
     const button = render().find(element => element.props.title === title); assert(button); button.props.onPress();
   };
-  return { render, press, reads: () => reads, clears: () => clears, recoveries: () => recoveries,
-    refuse(error: Error) { refusal = error; }, background() { appState.currentState = 'background'; }, close: f.close };
+  const select = (number = 7) => { const row = render().find(element => element.props.icon === 'trash' && element.props.subtitle?.startsWith(`Note ${number} ·`)); assert(row); row.props.onPress(); };
+  return { render, press, select, idsChecked, backs: () => backs, pause(value: Promise<void>) { pending = value; }, replaceSource() { runtimeSource++; }, reads: () => reads, clears: () => clears, recoveries: () => recoveries,
+    refuse(error: Error) { refusal = error; }, background(notify = false) { appState.currentState = 'background'; if (notify) listeners.get('change')?.('background'); }, close: f.close };
 }
 
-for (const fail of [false, true]) test(`maintenance screen uses one batch and its final inventory after ${fail ? 'failure' : 'success'}`, async () => {
+for (const fail of [false, true]) test(`maintenance screen targets the last of seven notes and uses final inventory after ${fail ? 'failure' : 'success'}`, async () => {
   const f = fixture(fail);
   try {
     f.render(); await settle(); assert.equal(f.reads(), 1);
-    f.press('privacy.capacity.clear'); f.press('privacy.capacity.confirmClear'); await settle();
-    assert.equal(f.clears(), 1); assert.equal(f.reads(), 1, 'The screen must not start another authorized reload');
+    f.select(); f.press('privacy.capacity.confirmClear'); await settle();
+    assert.equal(f.clears(), 1); assert.deepEqual(f.idsChecked, [['7']]);
+    assert(!f.render().some(element => element.props.title === 'privacy.capacity.confirmClear'));
+    assert.equal(f.render().filter(element => element.props.icon === 'trash').length, fail ? 7 : 6);
+    assert.equal(f.reads(), 1, 'The screen must not start another authorized reload');
     const elements = f.render();
     assert.equal(elements.some(element => element.children.includes('privacy.capacity.clearError')), fail);
     assert.equal(elements.some(element => element.children.includes('privacy.capacity.clearResult')), !fail);
@@ -59,7 +70,7 @@ for (const fail of [false, true]) test(`maintenance screen uses one batch and it
 test('maintenance recovery consumes its action inventory without a second reload', async () => {
   const f = fixture(false, true);
   try {
-    f.render(); await settle(); f.press('1 ETH'); f.press('privacy.recovery.confirm'); await settle();
+    f.render(); await settle(); f.press('privacy.recovery.action'); f.press('privacy.recovery.confirm'); await settle();
     assert.equal(f.recoveries(), 1); assert.equal(f.reads(), 1);
     assert(!f.render().some(element => element.props.title === 'privacy.recovery.confirm'));
   } finally { f.close(); }
@@ -68,10 +79,10 @@ test('maintenance recovery consumes its action inventory without a second reload
 test('maintenance pre-access OS Cancel keeps the inventory and confirmation available for retry', async () => {
   const f = fixture();
   try {
-    f.render(); await settle(); f.press('privacy.capacity.clear'); f.refuse(operationAuthenticationCancellation());
+    f.render(); await settle(); f.select(); f.refuse(operationAuthenticationCancellation());
     f.press('privacy.capacity.confirmClear'); await settle();
     assert.equal(f.reads(), 1); assert.equal(f.clears(), 1);
-    assert(f.render().some(element => element.children.includes(3)));
+    assert(f.render().some(element => element.props.subtitle?.startsWith('Note 7 ·')));
     assert(!f.render().some(element => element.children.includes('privacy.capacity.clearError')));
     const retry = f.render().find(element => element.props.title === 'privacy.capacity.confirmClear'); assert(retry); assert.equal(retry.props.disabled, false);
     f.press('privacy.capacity.confirmClear'); await settle();
@@ -83,11 +94,79 @@ test('maintenance pre-access OS Cancel keeps the inventory and confirmation avai
 for (const failure of ['generic', 'unavailable', 'owner'] as const) test(`maintenance ${failure} failure without reload clears stale inventory and retry`, async () => {
   const f = fixture();
   try {
-    f.render(); await settle(); f.press('privacy.capacity.clear');
+    f.render(); await settle(); f.select();
     f.refuse(failure === 'owner' ? operationAuthenticationCancellation() : Error(failure === 'generic' ? 'CANCELLED' : 'DEVICE_UNLOCK_UNAVAILABLE'));
     f.press('privacy.capacity.confirmClear'); if (failure === 'owner') f.background(); await settle();
     assert.equal(f.reads(), 1); assert.equal(f.clears(), 1);
     assert(f.render().some(element => element.children.includes('privacy.capacity.clearError')));
     assert(!f.render().some(element => element.props.title === 'privacy.capacity.confirmClear'));
+  } finally { f.close(); }
+});
+
+
+test('choosing a note shows amount and date without invoking cleanup; cancel can select another', async () => {
+  const f = fixture();
+  try {
+    f.render(); await settle(); f.select(1);
+    assert(f.render().some(element => element.props.title === '1 ETH pool' && element.props.subtitle?.startsWith('Note 1 ·')));
+    assert(f.render().some(element => element.children.includes('mobile.noteFlows.maintenance.clearHelp')));
+    assert.deepEqual(f.idsChecked, []); f.press('buttons.cancel'); f.select();
+    f.press('privacy.capacity.confirmClear'); await settle(); assert.deepEqual(f.idsChecked, [['7']]);
+  } finally { f.close(); }
+});
+
+test('unresolved cleanup resets selection while retaining the note for a fresh attempt', async () => {
+  const f = fixture(false, false, 7, true);
+  try {
+    f.render(); await settle(); f.select(); f.press('privacy.capacity.confirmClear'); await settle();
+    assert.equal(f.render().filter(element => element.props.icon === 'trash').length, 7);
+    assert(!f.render().some(element => element.props.title === 'privacy.capacity.confirmClear'));
+    f.select(); f.press('privacy.capacity.confirmClear'); await settle(); assert.deepEqual(f.idsChecked, [['7'], ['7']]);
+  } finally { f.close(); }
+});
+
+test('maintenance renders twenty notes per page and can target the final note', async () => {
+  const f = fixture(false, false, 41);
+  try {
+    f.render(); await settle(); assert.equal(f.render().filter(element => element.props.icon === 'trash').length, 20);
+    f.press('buttons.next'); f.press('buttons.next'); assert.equal(f.render().filter(element => element.props.icon === 'trash').length, 1);
+    f.select(41); f.press('privacy.capacity.confirmClear'); await settle(); assert.deepEqual(f.idsChecked, [['41']]);
+    assert.equal(f.render().filter(element => element.props.icon === 'trash').length, 20);
+  } finally { f.close(); }
+});
+
+test('backgrounding invalidates cleanup before late reload and a retained action cannot retry', async () => {
+  const f = fixture();
+  try {
+    f.render(); await settle(); f.select();
+    let finish!: () => void; f.pause(new Promise<void>(resolve => { finish = resolve; }));
+    const action = f.render().find(element => element.props.title === 'privacy.capacity.confirmClear'); assert(action);
+    action.props.onPress(); f.background(true); assert.equal(f.backs(), 1); finish(); await settle();
+    action.props.onPress(); await settle(); assert.deepEqual(f.idsChecked, [['7']]);
+  } finally { f.close(); }
+});
+
+
+test('switching runtime source retires a selected action before it can check a note', async () => {
+  const f = fixture();
+  try {
+    f.render(); await settle(); f.select();
+    const action = f.render().find(element => element.props.title === 'privacy.capacity.confirmClear'); assert(action);
+    f.replaceSource(); f.render(); action.props.onPress(); await settle();
+    assert.deepEqual(f.idsChecked, []);
+    assert(!f.render().some(element => element.props.title === 'privacy.capacity.confirmClear'));
+  } finally { f.close(); }
+});
+
+test('a duplicate press cannot start another selected-note cleanup while busy', async () => {
+  const f = fixture();
+  try {
+    f.render(); await settle(); f.select();
+    let finish!: () => void; f.pause(new Promise<void>(resolve => { finish = resolve; }));
+    const action = f.render().find(element => element.props.title === 'privacy.capacity.confirmClear'); assert(action);
+    action.props.onPress(); action.props.onPress();
+    assert.deepEqual(f.idsChecked, [['7']]);
+    assert.equal(f.render().find(element => element.props.title === 'privacy.capacity.confirmClear')?.props.disabled, true);
+    finish(); await settle();
   } finally { f.close(); }
 });

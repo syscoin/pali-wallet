@@ -2595,6 +2595,10 @@
         "range": "Notas {{start}}–{{end}} de {{total}}",
         "noteDate": "Nota {{number}} · {{date}}"
       },
+      "maintenance": {
+        "chooseNote": "Selecione uma nota salva para verificar e remover. Cada tentativa verifica apenas essa nota.",
+        "clearHelp": "O RPC de Ethereum selecionado receberá o hash conhecido da transação de saque desta nota e, quando existir, o hash do depósito relacionado. Isso pode vincular o depósito e o saque nesse provedor. Somente esta nota será removida, e apenas quando esse RPC confirmar a conclusão e a liquidação do depósito relacionado como finalizadas. Caso contrário, ela permanecerá salva."
+      },
       "capacity": {
         "couldNotLoadTheNoteLimit": "Não foi possível carregar o limite de notas.",
         "theSavedNotesDoNotFitThisLimit": "As notas salvas excedem este limite.",
