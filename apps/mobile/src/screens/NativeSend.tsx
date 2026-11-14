@@ -311,6 +311,7 @@ export function NativeSend({
   const [advanced, setAdvancedState] = useState(initialDraft?.advanced ?? !!initialDraft);
   const [nonce, setNonceState] = useState(initialDraft?.nonce ?? '');
   const [error, setError] = useState('');
+  const [draftFeedbackRevision, setDraftFeedbackRevision] = useState(0);
   const [leavePrompt, setLeavePrompt] = useState<{ review: typeof snapshot.review; fallback: typeof snapshot | null } | null>(null);
   const leaving = useRef(false);
   const lifetime = useRef({ alive: true, epoch: 0 });
@@ -509,12 +510,27 @@ export function NativeSend({
       back.remove();
     };
   }, [controller, close]);
-  const run = async (operation: () => Promise<void>, isCurrent = () => true) => {
+  // Rejected draft reviews reveal even repeated messages without moving an
+  // existing transaction review or authorization flow.
+  const revealDraftFeedback = (feedback: string | null | undefined) => {
+    const current = controller.getSnapshot();
+    if (!feedback || !lifetime.current.alive || current.review || current.hash) return;
+    Keyboard.dismiss();
+    setDraftFeedbackRevision(value => value + 1);
+  };
+  const rejectDraft = (feedback: string) => {
+    setError(feedback);
+    revealDraftFeedback(feedback);
+  };
+  const run = async (operation: () => Promise<void>, isCurrent = () => true,
+    onDraftFeedback?: (feedback: string | null | undefined) => void) => {
     if (busy) return;
     const captured = lifetime.current.epoch;
     setError('');
     try {
       await operation();
+      if (lifetime.current.alive && captured === lifetime.current.epoch && isCurrent())
+        onDraftFeedback?.(controller.getSnapshot().message);
     } catch (cause) {
       if (lifetime.current.alive && captured === lifetime.current.epoch && isCurrent()) {
         const current = controller.getSnapshot();
@@ -524,7 +540,9 @@ export function NativeSend({
         const asset = reviewedCollectible || (draftCollectible && !current.hash)
           ? 'collectible'
           : token || current.intent ? 'token' : 'coin';
-        setError(nativeTransferFailure(cause, capturedContext, asset, !!current.hash, cancellation));
+        const feedback = nativeTransferFailure(cause, capturedContext, asset, !!current.hash, cancellation);
+        setError(feedback);
+        onDraftFeedback?.(feedback || current.message);
       }
     }
   };
@@ -599,7 +617,7 @@ export function NativeSend({
     const chosenOwner = recipientDraft.owner;
     if (chosenOwner && (chosenOwner !== recipientPicker || !chosenOwner.current())) {
       setRecipient('');
-      setError(t('mobile.sendAssetViews.evm.chooseAnAccountAgainOrEnterARecipientAddress'));
+      rejectDraft(t('mobile.sendAssetViews.evm.chooseAnAccountAgainOrEnterARecipientAddress'));
       return;
     }
     const nonceOverride = advanced ? nonce.trim() || undefined : undefined;
@@ -607,7 +625,7 @@ export function NativeSend({
       const input = recipient.trim();
       if (!input.toLowerCase().endsWith('.eth')) {
         retireResolution();
-        void run(() => operation(input));
+        void run(() => operation(input), () => true, revealDraftFeedback);
         return;
       }
       if (resolution.current || busy) return;
@@ -654,7 +672,7 @@ export function NativeSend({
         } finally {
           if (resolution.current === held && lifetime.current.alive && lifetime.current.epoch === epoch) setResolving(false);
         }
-      });
+      }, () => true, revealDraftFeedback);
     };
     if (!draftCollectible) {
       prepareRecipient((address) => token
@@ -669,7 +687,7 @@ export function NativeSend({
         ? draftCollectible.tokenId
         : normalizeNftTokenId(tokenId.trim());
     } catch {
-      setError(t('mobile.smartSendViews.enterAValidTokenId'));
+      rejectDraft(t('mobile.smartSendViews.enterAValidTokenId'));
       return;
     }
     let quantity: string;
@@ -679,7 +697,7 @@ export function NativeSend({
         : '1';
       if (quantity === '0') throw new Error('Quantity must be positive');
     } catch {
-      setError(t('mobile.smartSendViews.enterAWholeQuantityGreaterThanZero'));
+      rejectDraft(t('mobile.smartSendViews.enterAWholeQuantityGreaterThanZero'));
       return;
     }
     Keyboard.dismiss();
@@ -741,7 +759,7 @@ export function NativeSend({
         style={s.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Screen footer={footer} scrollResetKey={review ? `review:${review.id}` : hasOutcome ? `outcome:${snapshot.hash}` : 'draft'} gap={16}>
+        <Screen footer={footer} scrollResetKey={review ? `review:${review.id}` : hasOutcome ? `outcome:${snapshot.hash}` : `draft:${draftFeedbackRevision}`} gap={16}>
           <Header
             title={
               cancellation

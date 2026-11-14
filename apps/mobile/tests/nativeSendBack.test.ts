@@ -79,6 +79,8 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   const credentials: NativeOperationCredential[] = [];
   let confirmationFailure: Error | undefined;
   let recoveryFailure: Error | undefined;
+  let collectibleBalance: bigint | undefined;
+  let collectiblePreparationGate: Promise<void> | undefined;
   let confirmationGate: Promise<void> | undefined, signatures = 0;
   const selectedFees: unknown[] = [];
   const prepare = async (recipient: string, amount: string, nonce?: string, feeChoice?: unknown) => {
@@ -102,7 +104,28 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
       if (snapshot.review !== approved) throw Error('CANCELLED');
       signatures++;
     }, async prepareToken(...args: unknown[]) { prepared.push(args); selectedFees.push(args[4]); },
-    async prepareCollectible(...args: unknown[]) { prepared.push(args); selectedFees.push(args[5]); },
+    async prepareCollectible(...args: unknown[]) {
+      prepared.push(args); selectedFees.push(args[5]);
+      if (collectibleBalance === undefined) return;
+      if (collectiblePreparationGate) {
+        const pending = collectiblePreparationGate;
+        collectiblePreparationGate = undefined;
+        snapshot = { ...snapshot, phase: 'preparing', message: null };
+        await pending;
+      }
+      const [selected, recipient, tokenId, amountUnits] = args as [SavedCollectible, string, string, string];
+      if (BigInt(amountUnits) > collectibleBalance) {
+        snapshot = { ...snapshot, phase: 'idle', review: null, message: 'This account does not own enough of this collectible.' };
+        throw Error('INSUFFICIENT_NFT_BALANCE');
+      }
+      snapshot = { ...snapshot, phase: 'review', message: null, review: {
+        id: 'collectible-review', context, from: account.address, recipient, amountUnits: '0',
+        maximumFeeUnits: '21000', totalUnits: '21000', gasLimit: '21000', maximumFeePerGas: '1',
+        priorityFeePerGas: '0', nonce: '0', retry: false,
+        collectible: { ...selected, kind: 'nft-transfer', chainId: String(context.chainId),
+          from: account.address, recipient, tokenId, amountUnits },
+      } };
+    },
     async recover() { if (recoveryFailure) throw recoveryFailure; }};
   let context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false,registrationHash:'ethereum-registration'};
   let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
@@ -112,6 +135,8 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     seedDraft(draft: NativeSendInitialDraft, saved?: SavedCollectible) { initialDraft = draft; collectible = saved; },
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
     failRecovery(message: string) { recoveryFailure = new Error(message); },
+    setCollectibleBalance(value: string) { collectibleBalance = BigInt(value); },
+    holdCollectiblePreparation(wait: Promise<void>) { collectiblePreparationGate = wait; },
     holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
     refreshProps(){account={...account};context={...context};},
     changeNetwork(){account={...account,network:'sepolia'};context={...context,networkId:'sepolia'};},
@@ -130,18 +155,22 @@ function openRecipientScanner(f: ReturnType<typeof setup>) {
   return one(f.render(), 'RecipientQrScanner');
 }
 
-test('device authorization refusal keeps the exact EVM review available for retry', async () => {
+for (const failure of ['DEVICE_UNLOCK_UNAVAILABLE', 'CANCELLED']) test(`${failure} keeps the exact EVM review and scroll position available for retry`, async () => {
   const f = setup(); f.snapshot.phase = 'idle';
   editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
   editSend(f, 'Amount in ETH', '1'); reviewSend(f); await settle();
   const review = f.snapshot.review;
-  f.failConfirmation('DEVICE_UNLOCK_UNAVAILABLE');
+  const reviewKey = one(f.render(), 'Screen').props.scrollResetKey;
+  assert.equal(reviewKey, 'review:review');
+  f.failConfirmation(failure);
   button(f.render(), 'Confirm and send').props.onPress(); await settle();
   assert.strictEqual(f.snapshot.review, review);
   assert.equal(f.signatures(), 0); assert.equal(f.confirmed.length, 1);
   assert(all(f.render()).some(node => node.props.accessibilityRole === 'alert'));
+  assert.equal(one(f.render(), 'Screen').props.scrollResetKey, reviewKey);
   button(f.render(), 'Confirm and send').props.onPress(); await settle();
   assert.deepEqual(f.credentials.map(value => value.method), ['device', 'device']);
+  assert.equal(one(f.render(), 'Screen').props.scrollResetKey, reviewKey);
   assert.equal(f.signatures(), 1); f.dispose();
 });
 
@@ -449,6 +478,88 @@ const editSend = (f: ReturnType<typeof setup>, label: string, value: string) => 
 };
 const reviewSend = (f: ReturnType<typeof setup>) => one(f.render(),'Screen').props.footer.props.onPress();
 const settle = () => new Promise<void>(resolve=>setImmediate(resolve));
+
+test('rejected ERC1155 Review reveals every local or controller error without discarding the draft', async () => {
+  const recipient = '0x2222222222222222222222222222222222222222';
+  const collectible: SavedCollectible = { contractAddress: '0x3333333333333333333333333333333333333333', tokenStandard: 'ERC-1155', tokenId: '7' };
+  const f = setup(), pending = Promise.withResolvers<void>();
+  f.seedDraft({ recipient, amount: '0', nonce: '', tokenId: '7', max: false, advanced: false }, collectible);
+  f.setCollectibleBalance('7'); f.snapshot.phase = 'idle';
+  const draft = (revision: number, amount: string) => {
+    const tree = f.render();
+    assert.equal(one(tree, 'Screen').props.scrollResetKey, `draft:${revision}`);
+    assert.equal(all(tree).find(node => node.props.label === nativeTranslationFixture.nativeI18n.t('blacklist.recipientDescription'))!.props.value, recipient);
+    assert.equal(all(tree).find(node => node.props.label === 'Quantity')!.props.value, amount);
+    assert.equal(f.snapshot.review, null);
+    return tree;
+  };
+  const alert = (tree: Element, message: string) => {
+    const errors = all(tree).filter(node => node.type === 'Text' && node.props.accessibilityRole === 'alert');
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0]!.children.join(''), message);
+  };
+  try {
+    draft(0, '0');
+    for (const revision of [1, 2]) {
+      reviewSend(f); await settle();
+      alert(draft(revision, '0'), nativeTranslationFixture.nativeI18n.t('mobile.smartSendViews.enterAWholeQuantityGreaterThanZero'));
+      assert.deepEqual(f.prepared, [], 'zero quantity fails before controller preparation');
+    }
+    editSend(f, 'Quantity', '8'); draft(2, '8');
+    f.holdCollectiblePreparation(pending.promise);
+    reviewSend(f);
+    assert.equal(f.snapshot.phase, 'preparing');
+    assert.equal(one(f.render(), 'Screen').props.scrollResetKey, 'draft:2', 'a pending healthy attempt must not move scroll');
+    pending.resolve(); await settle();
+    alert(draft(3, '8'), 'This account does not own enough of this collectible.');
+    reviewSend(f); await settle();
+    alert(draft(4, '8'), 'This account does not own enough of this collectible.');
+    editSend(f, 'Quantity', '7'); draft(4, '7');
+    reviewSend(f); await settle();
+    assert.equal(one(f.render(), 'Screen').props.scrollResetKey, 'review:collectible-review');
+    assert.equal(f.snapshot.review.collectible.amountUnits, '7');
+    assert.equal(f.snapshot.review.collectible.recipient, recipient);
+    assert.equal(all(f.render()).some(node => node.props.accessibilityRole === 'alert'), false);
+    headerBack(f.render());
+    draft(4, '7');
+    assert.equal(f.prepared.length, 3);
+    assert.deepEqual(f.confirmed, []); assert.equal(f.signatures(), 0);
+  } finally { pending.resolve(); f.dispose(); }
+});
+
+test('a fulfilled draft refusal reveals repeated controller feedback without moving a healthy review', async () => {
+  const f = setup(), pending = Promise.withResolvers<void>();
+  const recipient = '0x2222222222222222222222222222222222222222';
+  const message = 'A saved cancellation uses this nonce. Check Activity before sending again.';
+  f.snapshot.phase = 'idle';
+  editSend(f, 'Ethereum address', recipient); editSend(f, 'Amount in ETH', '1');
+  const healthyPrepare = f.controller.prepare;
+  let calls = 0;
+  f.controller.prepare = async () => {
+    if (++calls === 1) await pending.promise;
+    f.setSnapshot({ ...f.snapshot, phase: 'unavailable', hash: null, review: null, message });
+  };
+  try {
+    reviewSend(f);
+    assert.equal(one(f.render(), 'Screen').props.scrollResetKey, 'draft:0');
+    pending.resolve(); await settle();
+    for (const revision of [1, 2]) {
+      const tree = f.render();
+      assert.equal(one(tree, 'Screen').props.scrollResetKey, `draft:${revision}`);
+      assert.equal(one(tree, 'Text', node => node.props.accessibilityRole === 'alert').children.join(''), message);
+      assert.equal(all(tree).find(node => node.props.label === 'Ethereum address')!.props.value, recipient);
+      assert.equal(all(tree).find(node => node.props.label === 'Amount in ETH')!.props.value, '1');
+      if (revision === 1) { reviewSend(f); await settle(); }
+    }
+    f.controller.prepare = healthyPrepare;
+    reviewSend(f); await settle();
+    assert.equal(one(f.render(), 'Screen').props.scrollResetKey, 'review:review');
+    assert.equal(f.snapshot.review.recipient, recipient);
+    headerBack(f.render());
+    assert.equal(one(f.render(), 'Screen').props.scrollResetKey, 'draft:2');
+    assert.equal(f.signatures(), 0);
+  } finally { pending.resolve(); f.dispose(); }
+});
 
 test('ENS review and final confirmation keep the exact resolved address and name', async () => {
   let lookups=0;
