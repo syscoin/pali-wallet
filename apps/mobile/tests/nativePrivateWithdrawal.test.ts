@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { backup, DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import { Interface } from 'ethers/abi';
 import { Transaction } from 'ethers/transaction';
@@ -52,7 +53,8 @@ const RECIPIENT = '0x' + '12'.repeat(20);
 
 async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-private-deposit-'));
-  const file = path.join(directory, 'wallet.sqlite');
+  let file = path.join(directory, 'wallet.sqlite');
+  let checkpoint = 0;
   let storage!: SqliteWalletStorage;
   let initialized = false;
   let privacySettings: ReturnType<typeof createNativePrivacyServiceSettings>;
@@ -85,6 +87,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   let proofGate: (() => Promise<void>) | undefined;
   let badProof = false;
   const rpcMethods: string[] = [];
+  let beforeRpc: (method: string) => Promise<void> = async () => undefined;
   let beforeResponse: () => Promise<void> = async () => undefined;
   let lost = false;
   let failPoolDispose = false;
@@ -107,6 +110,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     }
     const { id, method, params } = JSON.parse(String(init?.body));
     rpcMethods.push(method);
+    await beforeRpc(method);
     let result: unknown;
     if (method === 'eth_chainId') result = '0x1';
     else if (method === 'eth_getBlockByNumber')
@@ -323,8 +327,10 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     failSigning() { signingFault = true; },
     failCredentialRead() { credentialFault = true; },
     get signatures() { return signatures; },
+    get secretReads() { return credentialPort.secretReads; },
     refuseNextAuthorization() { credentialPort.refuseNext(operationAuthenticationCancellation()); },
     rpcMethods,
+    beforeRpc(callback: (method: string) => Promise<void>) { beforeRpc = callback; },
     relayedPosts,
     poolReads,
     get proofs() {
@@ -372,6 +378,27 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       await runtime.storage.close();
       runtime = (await factory.open()) as KeyringRuntime;
       await runtime.session.unlock();
+    },
+    async captureRestart() {
+      const savedFile = path.join(directory, `restart-${++checkpoint}.sqlite`);
+      const connection = new DatabaseSync(file);
+      try { await backup(connection, savedFile); }
+      finally { connection.close(); }
+      const saved = new DatabaseSync(savedFile, { readOnly: true });
+      let noteValue: unknown;
+      try { noteValue = saved.prepare('SELECT value FROM private_note_records').get()?.value; }
+      finally { saved.close(); }
+      return {
+        noteValue,
+        async reopen() {
+          // Cleanup may alter the old database. Reopen the exact bytes captured
+          // before cleanup, as a new process would after abrupt termination.
+          await runtime.storage.close().catch(() => undefined);
+          file = savedFile;
+          runtime = (await factory.open()) as KeyringRuntime;
+          await runtime.session.unlock();
+        },
+      };
     },
     async restore() {
       const backupPassword = 'Private note backup fixture';
@@ -534,6 +561,7 @@ test('unknown withdrawal preserves the signed transaction and note reservation f
       /^0x[0-9a-f]{64}$/
     );
     assert.equal((await f.privateNotes())[0]!.withdrawal?.phase, 'unknown');
+    assert.equal((await f.privateNotes())[0]!.withdrawal?.unsigned, undefined);
     await model.dispose();
     await f.reopen();
     const reopened = await readTestNoteInventory(f.runtime, noop);
@@ -550,6 +578,89 @@ test('unknown withdrawal preserves the signed transaction and note reservation f
   } finally {
     await f.close();
   }
+});
+
+for (const mode of ['direct', 'relayed'] as const) test(`native ${mode} unsigned withdrawal survives abrupt restart without a public-unlock secret read`, async () => {
+  let holding = false, wrote = false;
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const f = await fixture({ async after(kind, sql) {
+    if (!holding) return;
+    if (kind === 'run' && sql.startsWith('INSERT INTO private_note_records')) wrote = true;
+    if (wrote && kind === 'exec' && sql === 'COMMIT') {
+      holding = false;
+      entered.resolve();
+      await release.promise;
+    }
+  } });
+  const route = new AbortController();
+  let model: Awaited<ReturnType<NonNullable<Awaited<ReturnType<typeof f.seed>>['openWithdrawal']>>> | undefined;
+  try {
+    const inventory = await f.seed();
+    model = await inventory.openWithdrawal!(inventory.notes[0]!, route.signal, noop, testInventoryAuthentication(inventory));
+    if (mode === 'relayed') await model.loadRelayers();
+    await model.prepare({ recipient: RECIPIENT, mode,
+      ...(mode === 'relayed' ? { relayerId: model.getSnapshot().relayers[0]!.id } : {}) });
+    assert.equal(model.getSnapshot().phase, 'review');
+    const signatures = f.signatures;
+    holding = true;
+    const sending = model.confirm(model.getSnapshot().review!.intentId);
+    await entered.promise;
+    await assert.rejects(readTestNoteInventory(f.runtime, noop), { code: 'BUSY' });
+    const restart = await f.captureRestart();
+    route.abort(); release.resolve();
+    await sending;
+    await model.dispose(); model = undefined;
+    const reads = f.secretReads;
+    await restart.reopen();
+    assert.equal(f.secretReads, reads, 'public restoration must not acquire note or signing secrets');
+    assert.equal((await f.storage.notes!.read())[0]?.value, restart.noteValue, 'public restoration preserves the captured encrypted snapshot');
+    assert((await f.privateNotes())[0]?.withdrawal?.unsigned, 'the new runtime still has the pre-cleanup durable marker');
+    const recovered = await readTestNoteInventory(f.runtime, noop);
+    assert.equal((await f.privateNotes())[0]?.withdrawal, undefined);
+    assert.equal(recovered.notes.length, 1);
+    assert.equal(recovered.notes[0]!.reconciliation, undefined);
+    assert.equal(f.signatures, signatures);
+    assert.equal(f.posted.length, 1, 'only the seed deposit was broadcast');
+    assert.equal(f.relayedPosts.length, 0);
+    const retry = await recovered.openWithdrawal!(recovered.notes[0]!, new AbortController().signal, noop, testInventoryAuthentication(recovered));
+    await retry.prepare({ recipient: RECIPIENT, mode: 'direct' });
+    assert.equal(retry.getSnapshot().phase, 'review');
+    await retry.dispose();
+  } finally { holding = false; release.resolve(); route.abort(); await model?.dispose(); await f.close(); }
+});
+
+test('authenticated inventory during direct preflight cannot reclaim its live unsigned marker', { timeout: 15000 }, async () => {
+  let watch = false, wrote = false, reserved = false, paused = false;
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const f = await fixture({ after(kind, sql) {
+    if (!watch) return;
+    if (kind === 'run' && sql.startsWith('INSERT INTO private_note_records')) wrote = true;
+    if (wrote && kind === 'exec' && sql === 'COMMIT') reserved = true;
+  } });
+  const route = new AbortController();
+  try {
+    const inventory = await f.seed();
+    const model = await inventory.openWithdrawal!(inventory.notes[0]!, route.signal, noop, testInventoryAuthentication(inventory));
+    await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
+    watch = true;
+    f.beforeRpc(async method => {
+      if (reserved && method === 'eth_getTransactionCount' && !paused) {
+        paused = true; entered.resolve(); await release.promise;
+      }
+    });
+    const signatures = f.signatures;
+    const sending = model.confirm(model.getSnapshot().review!.intentId);
+    await entered.promise;
+    const before = (await f.storage.notes!.read())[0]!.value;
+    const concurrent = await readTestNoteInventory(f.runtime, noop);
+    assert.equal(concurrent.notes[0]!.reconciliation, 'withdrawal-history');
+    assert.equal((await f.storage.notes!.read())[0]!.value, before);
+    assert.equal(f.signatures, signatures);
+    release.resolve(); await sending;
+    assert.equal(model.getSnapshot().phase, 'submitted');
+    assert.equal(f.signatures, signatures + 1);
+    await model.dispose();
+  } finally { release.resolve(); route.abort(); await f.close(); }
 });
 
 for (const phase of ['credential', 'signed'] as const) test(`direct withdrawal ${phase} failure clears only known-unsigned reservations`, async () => {

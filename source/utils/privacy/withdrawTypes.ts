@@ -68,6 +68,8 @@ export interface IPrivacyRelayerChoice {
   supportedPools: readonly PrivacyPoolId[];
 }
 export interface IPrivacyWithdrawalsHost {
+  /** Consume durable unsigned evidence immediately before dispatch, under current custody. */
+  beforeDispatch: (attempt: IPrivacyWithdrawalAttempt) => Promise<void>;
   /** Durably reserve the attempt and return its synchronous final-submission fence. */
   beforeSubmission: (attempt: IPrivacyWithdrawalAttempt) => Promise<() => void>;
   captureSession: (requireSigner?: boolean) => IPrivacyWithdrawalSession;
@@ -108,7 +110,8 @@ export interface IPrivacyWithdrawalsHost {
     transaction: IPrivacyWithdrawalTransaction,
     session: IPrivacyWithdrawalSession,
     onBroadcast: (acknowledgement: { hash: string }) => Promise<void>,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    beforeDispatch: () => Promise<void>
   ) => Promise<{ hash: string }>;
   /** Decrypted note may exist only for this background callback and its proof worker. */
   withNote: <T>(

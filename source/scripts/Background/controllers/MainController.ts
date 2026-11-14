@@ -724,6 +724,7 @@ class MainController {
   private noteBackupInvalidators?: Set<() => void>;
   private privacyTransactionsController?: Promise<IPrivacyTransactionsController>;
   private privacyWithdrawalsController?: Promise<IPrivacyWithdrawalsController>;
+  private unsignedWithdrawalRuntime?: string;
   private knownUnbroadcast = new Map<
     string,
     {
@@ -3816,6 +3817,11 @@ class MainController {
     return result;
   }
 
+  private withdrawalLifetime(): string {
+    this.unsignedWithdrawalRuntime ??= crypto.randomUUID();
+    return `${this.unsignedWithdrawalRuntime}:${this.walletSessionGeneration}`;
+  }
+
   private async reconcileKnownUnbroadcast() {
     if (!this.knownUnbroadcast?.size) return;
     try {
@@ -4019,6 +4025,24 @@ class MainController {
     const session = this.capturePrivateVaultSession();
     await this.reconcileKnownUnbroadcast();
     session.assertCurrent();
+    let current: IPrivacyDepositSession | undefined;
+    try {
+      current = this.capturePrivacyDepositContext();
+    } catch {
+      // Notes remain viewable on accounts/networks that cannot withdraw them.
+    }
+    if (current) {
+      const vault = await this.getPrivateVaultController();
+      current.assertCurrent();
+      const result = await vault.reconcileUnsignedWithdrawals(
+        current.context,
+        this.withdrawalLifetime(),
+        session
+      );
+      current.assertCurrent();
+      session.assertCurrent();
+      return result;
+    }
     return this.usePrivateVault((vault) => vault.getNotes(), session);
   }
 
@@ -4410,6 +4434,8 @@ class MainController {
         session: IPrivateVaultSession;
       }
     >();
+    const lifetimes = new WeakMap<IEvmTransactionContext, string>();
+    const capturedLifetimes = new WeakMap<() => void, string>();
     const capturedSessions = new WeakMap<
       () => void,
       {
@@ -4423,6 +4449,9 @@ class MainController {
       const saved = capturedSessions.get(session.assertCurrent);
       if (!saved) throw new Error('privacy_withdrawal_context_changed');
       sessions.set(session.context, saved);
+      const lifetime = capturedLifetimes.get(session.assertCurrent);
+      if (!lifetime) throw new Error('privacy_withdrawal_context_changed');
+      lifetimes.set(session.context, lifetime);
       return saved;
     };
     const binding = (context: IEvmTransactionContext) => {
@@ -4464,6 +4493,10 @@ class MainController {
         const captured = this.capturePrivacyDepositContext(requireSigner);
         const saved = this.privacyDepositSessions.get(captured.assertCurrent);
         if (!saved) throw new Error('privacy_withdrawal_context_changed');
+        capturedLifetimes.set(
+          captured.assertCurrent,
+          this.withdrawalLifetime()
+        );
         capturedSessions.set(captured.assertCurrent, {
           ...saved,
           assertCurrent: captured.assertCurrent,
@@ -4588,6 +4621,7 @@ class MainController {
           await vault.reserveWithdrawalAttempt(
             attempt,
             saved.session,
+            lifetimes.get(attempt.context)!,
             (identity) =>
               reservationIdentity.set(attempt, {
                 ...identity,
@@ -4606,6 +4640,18 @@ class MainController {
           throw error;
         }
       },
+      beforeDispatch: async (attempt) => {
+        const saved = binding(attempt.context);
+        saved.assertCurrent();
+        const vault = await this.getPrivateVaultController();
+        saved.assertCurrent();
+        await vault.consumeUnsignedWithdrawal(
+          attempt,
+          saved.acknowledgementSession,
+          lifetimes.get(attempt.context)!
+        );
+        saved.assertCurrent();
+      },
       recordSubmission: async (attempt, acknowledgement) => {
         const saved = binding(attempt.context);
         saved.acknowledgementSession.assertCurrent();
@@ -4618,26 +4664,32 @@ class MainController {
         );
       },
       recordNotBroadcast: async (attempt) => {
-        const saved = binding(attempt.context);
-        saved.acknowledgementSession.assertCurrent();
-        const vault = await this.getPrivateVaultController();
-        saved.acknowledgementSession.assertCurrent();
-        await vault.clearUnbroadcastWithdrawalAttempt(
-          attempt,
-          saved.acknowledgementSession
-        );
+        try {
+          const saved = binding(attempt.context);
+          saved.acknowledgementSession.assertCurrent();
+          const vault = await this.getPrivateVaultController();
+          saved.acknowledgementSession.assertCurrent();
+          await vault.clearUnbroadcastWithdrawalAttempt(
+            attempt,
+            saved.acknowledgementSession
+          );
+        } catch (error) {
+          rememberKnownUnbroadcast(attempt);
+          throw error;
+        }
       },
       sendTransaction: async (
         _transaction,
         session,
         onBroadcast,
-        assertBeforeSign
+        assertBeforeSign,
+        beforeDispatch
       ) => {
         const prepared = reviews.get(session.context);
         if (!prepared)
           throw new PrivateSubmissionError({ transactionNotBroadcast: true });
         reviews.delete(session.context);
-        return prepared.submit(assertBeforeSign, onBroadcast);
+        return prepared.submit(assertBeforeSign, onBroadcast, beforeDispatch);
       },
     };
   }
@@ -9901,6 +9953,7 @@ class MainController {
       assertCurrentContext?: () => void;
       assertPendingState?: () => Promise<void>;
       authorizeDapp?: () => void;
+      beforeDispatch?: () => Promise<void>;
       clearNavigation?: boolean;
       dappApprovalOwner?: object;
       dappNonceApproval?: ExtensionReviewedNonce;
@@ -10424,6 +10477,7 @@ class MainController {
         saveOptions?.genericDispatchId === undefined
           ? undefined
           : snapshotPreparedEvmTransaction(params);
+      if (saveOptions?.beforeDispatch) await saveOptions.beforeDispatch();
       assertBeforeSign();
       if (saveOptions?.genericDispatchId !== undefined)
         markGenericEvmFeeSdkEntered(this, saveOptions.genericDispatchId);
@@ -11476,6 +11530,7 @@ class MainController {
       | { hash: string; kind: 'dispatch'; snapshot: EvmAutoNonceSnapshot };
     const initial: Admission = { kind: 'review' };
     let reviewId = '';
+    let beforeDispatch: (() => Promise<void>) | undefined;
     const review = await prepareEvmDappReview<
       Admission,
       IEvmTransactionResponse
@@ -11624,6 +11679,7 @@ class MainController {
           {
             ...payerDispatch?.saveOptions,
             ...authority,
+            ...(beforeDispatch ? { beforeDispatch } : {}),
             assertBeforeSign: payerDispatch
               ? () => {
                   assertCurrent();
@@ -11687,8 +11743,11 @@ class MainController {
       token,
       submit: async (
         assertBeforeSign: () => void,
-        onBroadcast: (response: IEvmTransactionResponse) => Promise<void>
+        onBroadcast: (response: IEvmTransactionResponse) => Promise<void>,
+        dispatch?: () => Promise<void>
       ) => {
+        if (feeAuthority.kind === 'private-withdrawal' && !dispatch)
+          throw new PrivateSubmissionError({ transactionNotBroadcast: true });
         const assertCurrent = () => {
           check();
           assertSynchronousEvmFeeGuard(assertBeforeSign);
@@ -11703,6 +11762,7 @@ class MainController {
             Math.floor(performance.now()),
             feeAuthority
           );
+          beforeDispatch = dispatch;
           return await consumed.review.submit(
             assertCurrent,
             (hash) =>

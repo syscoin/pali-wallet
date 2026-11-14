@@ -169,7 +169,11 @@ async function fixture(
     await vault().reserveDepositAttempt(attempt, session());
   else {
     noteStatus = 'verified';
-    await vault().reserveWithdrawalAttempt(direct, session());
+    await vault().reserveWithdrawalAttempt(
+      direct,
+      session(),
+      '00000000-0000-4000-8000-000000000099:0'
+    );
   }
   const raw = await signer.signTransaction(
     Transaction.from(

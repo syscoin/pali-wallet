@@ -206,7 +206,8 @@ export function createPrivacyWithdrawalsController(
   if (
     typeof host?.prove !== 'function' ||
     typeof host.classifySubmissionFailure !== 'function' ||
-    typeof host.recordNotBroadcast !== 'function'
+    typeof host.recordNotBroadcast !== 'function' ||
+    typeof host.beforeDispatch !== 'function'
   )
     throw fail('privacy_withdrawal_host_invalid');
   const relayPreflightFailures = new WeakSet<object>();
@@ -281,6 +282,7 @@ export function createPrivacyWithdrawalsController(
       // This is still before fetch entry, so a rejected final fence is known
       // not to have broadcast and may clear only its matching reservation.
       try {
+        await host.beforeDispatch(attempt);
         assertBeforeSubmit();
       } catch (error) {
         const rejected = sanitize(error);
@@ -856,7 +858,8 @@ export function createPrivacyWithdrawalsController(
             attempt.transaction,
             intent.session,
             (ack) => record({ transactionHash: ack.hash.toLowerCase() }),
-            assertBeforeSign
+            assertBeforeSign,
+            () => host.beforeDispatch(attempt)
           );
           await record({ transactionHash: result.hash.toLowerCase() });
         } else await record(await relay(attempt, assertBeforeSign));

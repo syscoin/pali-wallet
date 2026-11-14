@@ -993,7 +993,8 @@ test('deposit replay refuses a withdrawal recorded after lease capture', async (
       endpoint: 'https://relay.example',
       ensHash: HASH,
     },
-    f.session
+    f.session,
+    '00000000-0000-4000-8000-000000000099:0'
   );
   const admit = jest.fn(async () => ({ result: 'never' }));
   await expect(lease.withAdmission(admit)).rejects.toThrow(
@@ -1100,7 +1101,11 @@ async function withdrawalReplayFixture() {
   const note = await vault.importNote(NOTE);
   const session = f.host.captureSession();
   const attempt = withdrawalReplayAttempt(note.id, session.generation);
-  await vault.reserveWithdrawalAttempt(attempt, session);
+  await vault.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   return { ...f, vault, note, session, attempt };
 }
 
@@ -1116,7 +1121,11 @@ test('a new withdrawal from an explicitly reviewed restored note remains retryab
   const note = (await vault.getNotes()).notes[0];
   await vault.reviewRestoredNote(note.id, 'synthetic-password');
   const attempt = withdrawalReplayAttempt(note.id, session.generation);
-  await vault.reserveWithdrawalAttempt(attempt, session);
+  await vault.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   const lease = await vault.authorizeWithdrawalReplay(attempt, session);
   await expect(
     lease.withAdmission(async () => ({ result: 'sent' }))
@@ -1237,7 +1246,11 @@ test('withdrawal replay cannot reactivate recovered or retired attempts', async 
     intentId: RECORD_ID,
     transaction: { ...f.attempt.transaction, nonce: '8' },
   };
-  await f.vault.reserveWithdrawalAttempt(next, f.session);
+  await f.vault.reserveWithdrawalAttempt(
+    next,
+    f.session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   await expect(lease.withAdmission(admit)).rejects.toThrow(
     'privacy_withdrawal_attempt_invalid'
   );

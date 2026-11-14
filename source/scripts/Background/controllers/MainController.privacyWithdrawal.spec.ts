@@ -180,15 +180,26 @@ function setup() {
       session.assertCurrent();
       return use(NOTE, 'eth-1');
     }),
-    reserveWithdrawalAttempt: jest.fn(async (_attempt, session, onIdentity) => {
+    reserveWithdrawalAttempt: jest.fn(
+      async (_attempt, session, _lifetime, onIdentity) => {
+        session.assertCurrent();
+        onIdentity?.({
+          assertRestoreCurrent: () => undefined,
+          attemptHash: HASH,
+          profileId: '0x' + '11'.repeat(32),
+        });
+        events.push('reserve');
+      }
+    ),
+    consumeUnsignedWithdrawal: jest.fn(async (_attempt, session) => {
       session.assertCurrent();
-      onIdentity?.({
-        assertRestoreCurrent: () => undefined,
-        attemptHash: HASH,
-        profileId: '0x' + '11'.repeat(32),
-      });
-      events.push('reserve');
     }),
+    reconcileUnsignedWithdrawals: jest.fn(
+      async (_context, _lifetime, session) => {
+        session.assertCurrent();
+        return { notes: [] };
+      }
+    ),
     recordWithdrawalSubmission: jest.fn(async (_attempt, _ack, session) => {
       session.assertCurrent();
       events.push('record');
@@ -254,6 +265,8 @@ function setup() {
     sendAndSaveEthTransaction: jest.fn(
       async (_tx, _legacy, _account, _metadata, options) => {
         options.assertCurrentContext();
+        await options.beforeDispatch?.();
+        options.assertBeforeSign();
         events.push('send');
         await options.onBroadcast({ hash: HASH });
         return { hash: HASH };
@@ -1094,6 +1107,11 @@ it.each([
         throw new Error('transport indeterminate');
       }
     );
+  // This case isolates the existing memory-only exact-identity fallback.
+  // Durable restart reconciliation has separate real-vault coverage below.
+  jest
+    .spyOn(vault, 'reconcileUnsignedWithdrawals')
+    .mockImplementation(() => vault.getNotes());
   const clear = jest.spyOn(vault, 'clearUnbroadcastWithdrawalAttempt');
   if (cleanupUnavailable)
     clear.mockRejectedValueOnce(new Error('Synthetic cleanup storage refusal'));
@@ -1465,3 +1483,190 @@ it.each(['lock-unlock', 'wallet-reset', 'keyring-replacement'] as const)(
     expect(run.vault.clearUnbroadcastWithdrawalAttempt).not.toHaveBeenCalled();
   }
 );
+
+it.each(['lock', 'lock-unlock', 'wallet reset', 'worker restart'] as const)(
+  'retains a proven unsigned reservation after sender-preflight %s for fresh-session reconciliation',
+  async (change) => {
+    const { createPrivateVaultController } = await import('./privateVault');
+    const ActualKeyring = jest.requireActual(
+      '@sidhujag/sysweb3-keyring'
+    ).KeyringManager;
+    const keyring: any = Object.create(ActualKeyring.prototype);
+    keyring.sessionPassword = { isCleared: () => false };
+    keyring.sessionMnemonic = { isCleared: () => false };
+    keyring.privateRecordSessionRevision = 0;
+    keyring.getDecryptedMnemonic = () => 'synthetic private vault test root';
+    let unlocked = true;
+    let unlockEpoch = 0;
+    keyring.isUnlocked = () => unlocked;
+    keyring.captureUnlockedSessionGuard = () => {
+      const captured = unlockEpoch;
+      return () => {
+        if (!unlocked || captured !== unlockEpoch)
+          throw new Error('retired unlock');
+      };
+    };
+    const run = setup();
+    const signer = jest.fn(async () => ({ hash: HASH, nonce: 7 }));
+    Object.defineProperty(keyring, 'ethereumTransaction', {
+      configurable: true,
+      value: { web3Provider: run.provider, sendFormattedTransaction: signer },
+    });
+    run.wallet.getActiveKeyring = () => keyring;
+    run.wallet.getWalletSetupStatus = () => false;
+    run.wallet.sendAndSaveTransaction = jest.fn(async () => undefined);
+    run.wallet.sendAndSaveEthTransaction =
+      MainController.prototype.sendAndSaveEthTransaction.bind(run.wallet);
+    jest.mocked(getController).mockReturnValue({ wallet: run.wallet } as any);
+    const records: Record<string, any> = {};
+    let recordSequence = 100;
+    const storage = {
+      getItem: async (key: string) =>
+        records[key] ? structuredClone(records[key]) : null,
+      setItem: async (key: string, value: unknown) => {
+        records[key] = structuredClone(value);
+      },
+    };
+    const createVault = (wallet: any) =>
+      createPrivateVaultController(
+        {
+          captureSession: () => wallet.capturePrivateVaultSession(),
+          authenticate: jest.fn(),
+          readNote: async () => ({ phase: 'verified', blockNumber: 20000000 }),
+        },
+        {
+          storage,
+          mutex: new AsyncMutex(),
+          now: () => 1000,
+          randomId: () =>
+            recordSequence++ === 100
+              ? NOTE_ID
+              : `00000000-0000-4000-8000-${recordSequence
+                  .toString(16)
+                  .padStart(12, '0')}`,
+        }
+      );
+    const vault = createVault(run.wallet);
+    run.wallet.getPrivateVaultController.mockResolvedValue(vault);
+    await vault.importNote(NOTE);
+    const review = await prepare(run.wallet);
+    const entered = deferred(),
+      release = deferred();
+    jest
+      .mocked(getBlacklistTargetsForEvmCallWithContractType)
+      .mockImplementationOnce(async () => {
+        entered.resolve();
+        await release.promise;
+        return [];
+      });
+    const result = run.wallet.submitPrivacyWithdrawal(review.intentId).then(
+      (value: unknown) => ({ value, error: undefined }),
+      (error: unknown) => ({ value: undefined, error })
+    );
+    await entered.promise;
+    expect(
+      await vault.getWithdrawalAttempt(
+        NOTE_ID,
+        run.wallet.capturePrivateVaultSession()
+      )
+    ).toMatchObject({ phase: 'unknown' });
+    expect(signer).not.toHaveBeenCalled();
+    unlocked = false;
+    unlockEpoch += 1;
+    keyring.privateRecordSessionRevision += 1;
+    run.wallet.walletSessionGeneration += 1;
+    if (change === 'wallet reset') run.wallet.walletStateGeneration += 1;
+    if (change === 'lock-unlock') unlocked = true;
+    release.resolve();
+    const settled = await result;
+    expect(settled.value).toBeUndefined();
+    expect(settled.error).toMatchObject({ transactionNotBroadcast: true });
+    expect(signer).not.toHaveBeenCalled();
+    unlocked = true;
+    const session = run.wallet.capturePrivateVaultSession();
+    expect(await vault.getWithdrawalAttempt(NOTE_ID, session)).toMatchObject({
+      phase: 'unknown',
+    });
+    if (change === 'worker restart') {
+      const restarted = setup();
+      restarted.wallet.getActiveKeyring = () => keyring;
+      restarted.wallet.getWalletSetupStatus = () => false;
+      const freshVault = createVault(restarted.wallet);
+      restarted.wallet.getPrivateVaultController.mockResolvedValue(freshVault);
+      expect(restarted.wallet).not.toBe(run.wallet);
+      expect(restarted.wallet.walletSessionGeneration).toBe(0);
+      expect(restarted.wallet.knownUnbroadcast?.size ?? 0).toBe(0);
+      expect(
+        (await restarted.wallet.getPrivateVaultNotes()).notes[0].phase
+      ).toBe('verified');
+      expect(
+        await freshVault.getWithdrawalAttempt(
+          NOTE_ID,
+          restarted.wallet.capturePrivateVaultSession()
+        )
+      ).toBeNull();
+      expect(restarted.wallet.unsignedWithdrawalRuntime).not.toBe(
+        run.wallet.unsignedWithdrawalRuntime
+      );
+      await expect(prepare(restarted.wallet)).resolves.toMatchObject({
+        intentId: INTENT_ID,
+      });
+      expect(signer).not.toHaveBeenCalled();
+    } else if (change === 'wallet reset') {
+      jest
+        .spyOn(vault, 'reconcileUnsignedWithdrawals')
+        .mockImplementation(() => vault.getNotes());
+      expect(run.wallet.knownUnbroadcast?.size ?? 0).toBe(0);
+      expect((await run.wallet.getPrivateVaultNotes()).notes[0].phase).toBe(
+        'waiting'
+      );
+    } else {
+      expect(run.wallet.knownUnbroadcast?.has(review.intentId)).toBe(true);
+      const notes = await run.wallet.getPrivateVaultNotes();
+      expect(notes.notes[0].phase).toBe('verified');
+      expect(await vault.getWithdrawalAttempt(NOTE_ID, session)).toBeNull();
+      expect(run.wallet.knownUnbroadcast.has(review.intentId)).toBe(false);
+      await expect(prepare(run.wallet)).resolves.toMatchObject({
+        intentId: INTENT_ID,
+      });
+      expect(signer).not.toHaveBeenCalled();
+    }
+  }
+);
+
+it('a rejected duplicate fee submission cannot replace the active unsigned-dispatch hook', async () => {
+  const run = setup();
+  const createReview = run.wallet.prepareGenericEvmFeeReview.bind(run.wallet);
+  let prepared: Awaited<ReturnType<typeof createReview>>;
+  run.wallet.prepareGenericEvmFeeReview = async (...args: any[]) => {
+    prepared = await createReview(...args);
+    return prepared;
+  };
+  const entered = deferred(),
+    release = deferred();
+  run.wallet.sendAndSaveEthTransaction.mockImplementationOnce(
+    async (_tx, _legacy, _account, _metadata, options) => {
+      entered.resolve();
+      await release.promise;
+      await options.beforeDispatch();
+      options.assertBeforeSign();
+      await options.onBroadcast({ hash: HASH });
+      return { hash: HASH };
+    }
+  );
+  const review = await prepare(run.wallet);
+  const first = run.wallet.submitPrivacyWithdrawal(review.intentId);
+  await entered.promise;
+  const wrongDispatch = jest.fn(async () => undefined);
+  await expect(
+    prepared!.submit(
+      () => undefined,
+      async () => undefined,
+      wrongDispatch
+    )
+  ).rejects.toThrow();
+  release.resolve();
+  await expect(first).resolves.toMatchObject({ phase: 'submitted' });
+  expect(wrongDispatch).not.toHaveBeenCalled();
+  expect(run.vault.consumeUnsignedWithdrawal).toHaveBeenCalledTimes(1);
+});

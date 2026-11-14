@@ -712,6 +712,7 @@ export function createKeyringRuntimeFactory(
         );
         let catalogueSnapshot: NativeWalletCatalogueSnapshot | null = null;
         let generation = 0;
+        const privateWithdrawalRuntimeId = globalThis.crypto.randomUUID();
         let activeCredentialAction: NativeCredentialAction | null = null;
         const credentialActions = new Set<NativeCredentialAction>();
         const clearCredentialMaterial = () => { for (const action of credentialActions) action.clear(); };
@@ -1286,11 +1287,13 @@ export function createKeyringRuntimeFactory(
           hardwareSigner: (Pick<NativeHardwareDappSigning, 'signTransaction'> & {keyring(): IndexedKeyring}) | null,
           validateSigningAndBroadcast: (() => Promise<void>) | null,
           authentication: NativePrivateAuthentication | null = null,
-          beforeSigningFailure: (() => Promise<void>) | null = null) {
+          beforeSigningFailure: (() => Promise<void>) | null = null,
+          beforePrivateExecution: (() => Promise<void>) | null = null) {
           check();
           if (authentication !== null) assertNativePrivateAuthentication(authentication);
           if (validateSigningAndBroadcast !== null && typeof validateSigningAndBroadcast !== 'function') throw new KeyringRuntimeError('INVALID_INPUT');
           if (beforeSigningFailure !== null && (typeof beforeSigningFailure !== 'function' || authentication === null || !metadata)) throw new KeyringRuntimeError('INVALID_INPUT');
+          if (beforePrivateExecution !== null && (typeof beforePrivateExecution !== 'function' || authentication === null || !metadata)) throw new KeyringRuntimeError('INVALID_INPUT');
           const hardware = selected.type === 'Ledger' || selected.type === 'Trezor';
           if (hardware ? !hardwareSigner || typeof hardwareSigner.signTransaction !== 'function' || typeof hardwareSigner.keyring !== 'function'
             : (hardwareSigner !== null || (selected.type !== 'HDAccount' && selected.type !== 'Imported')))
@@ -1341,7 +1344,9 @@ export function createKeyringRuntimeFactory(
                 }
                 if (selected.type !== 'HDAccount' && selected.type !== 'Imported') throw new KeyringRuntimeError('INVALID_INPUT');
                 const softwareType = selected.type;
-                const signed = await withSoftwareSecret('transaction', signal, guard, () => {
+                const signed = await withSoftwareSecret('transaction', signal, guard, async () => {
+                  if (beforePrivateExecution !== null) await beforePrivateExecution();
+                  guard();
                   if (metadata) enteredPrivateExecution.add(metadata);
                   return ring.signPreparedEvmTransaction({
                     selectedAccount: { id: selectedContext.index, type: selectedContext.type, expectedAddress: selectedContext.address },
@@ -2311,6 +2316,16 @@ export function createKeyringRuntimeFactory(
                 if (!profileId) throw new KeyringRuntimeError('CANCELLED');
                 return { walletBindingId, profileId };
               },
+              withdrawalScope() {
+                const selected = selectedAccount();
+                const snapshot = catalogueSnapshot;
+                const network = snapshot?.networks.find(item => item.id === snapshot.active.networkId);
+                if (network?.chainId !== '1' || !supportsPrivateWithdrawal(selected.type, state.accounts[selected.type][selected.index])) return null;
+                return { lifetime: `${privateWithdrawalRuntimeId}:${generation}`, context: {
+                  account: { id: selected.index, type: sdk.KeyringAccountType[selected.type], address: selected.address },
+                  chainId: 1, rpcUrl: network.rpcUrl, slip44: 60, sessionGeneration: generation,
+                } };
+              },
               async authenticate(password, request, reveal) {
                 request.assertCurrent();
                 if (isHostWalletAuthentication(password)) {
@@ -2461,6 +2476,7 @@ export function createKeyringRuntimeFactory(
                 quote: Prepared;
                 metadata: Readonly<Record<string, unknown>>;
                 clearUnsigned: (() => Promise<void>) | null;
+                beforeDispatch: (() => Promise<void>) | null;
               };
               const prepared = new WeakMap<
                 IPrivacyDepositSession['context'],
@@ -2550,6 +2566,10 @@ export function createKeyringRuntimeFactory(
                               async () => {
                                 if (!saved.clearUnsigned) throw new Error('privacy_withdrawal_context_changed');
                                 await saved.clearUnsigned();
+                              },
+                              async () => {
+                                if (!saved.beforeDispatch) throw new Error('privacy_withdrawal_context_changed');
+                                await saved.beforeDispatch();
                               }
                             );
                             check();
@@ -2558,7 +2578,7 @@ export function createKeyringRuntimeFactory(
                               serializePreparedEvmTransaction(quote.transaction)
                             )
                               throw new Error('privacy_withdrawal_context_changed');
-                            saved = { quote, metadata, clearUnsigned: null };
+                            saved = { quote, metadata, clearUnsigned: null, beforeDispatch: null };
                             prepared.set(attempt.context, saved);
                           }
                           let fence!: () => void;
@@ -2575,11 +2595,13 @@ export function createKeyringRuntimeFactory(
                             fence();
                           };
                         },
+                        beforeDispatch: attempt => vault.consumeUnsigned(attempt),
                         async sendTransaction(
                           _transaction,
                           owner,
                           onBroadcast,
-                          assertBeforeSign
+                          assertBeforeSign,
+                          beforeDispatch
                         ) {
                           const saved = prepared.get(owner.context);
                           if (!saved)
@@ -2588,6 +2610,7 @@ export function createKeyringRuntimeFactory(
                             });
                           try {
                             assertBeforeSign();
+                            saved.beforeDispatch = beforeDispatch;
                             const hash = await saved.quote.submit(
                               assertBeforeSign,
                               () => undefined, { kind: 'transaction' }

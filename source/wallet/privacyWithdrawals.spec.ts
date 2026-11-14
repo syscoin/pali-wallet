@@ -169,6 +169,7 @@ function setup() {
         ].map((value) => BigInt(value).toString()),
       };
     }),
+    beforeDispatch: jest.fn(async () => undefined),
     beforeSubmission: jest.fn(async () => {
       events.push('reserve');
       return () => undefined;
@@ -179,11 +180,15 @@ function setup() {
     recordNotBroadcast: jest.fn(async () => {
       events.push('clear');
     }),
-    sendTransaction: jest.fn(async (_tx, _session, onBroadcast) => {
-      events.push('send');
-      await onBroadcast({ hash: HASH });
-      return { hash: HASH };
-    }),
+    sendTransaction: jest.fn(
+      async (_tx, _session, onBroadcast, assertCurrent, beforeDispatch) => {
+        await beforeDispatch();
+        assertCurrent();
+        events.push('send');
+        await onBroadcast({ hash: HASH });
+        return { hash: HASH };
+      }
+    ),
   };
   const fetcher = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(
     async () => {

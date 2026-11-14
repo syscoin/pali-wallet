@@ -3,6 +3,7 @@ import type {
   PrivacyDepositTransaction,
 } from './transactionTypes';
 import type { PrivacyPoolId } from './types';
+import type { IEvmTransactionContext } from '../evmTransactionContext';
 
 export type IPrivacyWithdrawalSession = IPrivacyDepositSession;
 export type IPrivacyWithdrawalTransaction = PrivacyDepositTransaction;
@@ -57,6 +58,13 @@ export interface IPrivacyWithdrawalRecovery
   recoveredAt: number;
 }
 
+/** Authenticated evidence that dispatch has not yet been entered. Never exported. */
+export interface IPrivacyUnsignedWithdrawal {
+  context: Omit<IEvmTransactionContext, 'sessionGeneration'>;
+  lifetime: string;
+  version: 1;
+}
+
 interface IPrivacyWithdrawalJournalFields {
   attemptHash: string;
   createdAt: number;
@@ -86,10 +94,11 @@ export interface IPrivacyWithdrawalJournal
   extends IPrivacyWithdrawalJournalFields {
   recovery?: IPrivacyWithdrawalRecovery;
   retired?: readonly IPrivacyRetiredWithdrawal[];
+  unsigned?: IPrivacyUnsignedWithdrawal;
 }
 
 export interface IPrivacyWithdrawalStatusRecord
-  extends IPrivacyWithdrawalJournal {
+  extends Omit<IPrivacyWithdrawalJournal, 'unsigned'> {
   noteId: string;
   poolId: PrivacyPoolId;
 }
