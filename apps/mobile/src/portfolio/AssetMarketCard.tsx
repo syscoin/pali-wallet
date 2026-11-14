@@ -5,7 +5,7 @@ import { ASSET_MARKET_CHART, assetMarketCoordinates, assetMarketIndexAt, assetMa
 import { useFiatCurrency } from '../platform/fiatPreferences.ts';
 import { walletFetch } from '../platform/http.ts';
 import { Button, Card, colors, Text } from '../ui';
-import { createNativeAssetMarketReader, nativeAssetMarketSource, rememberNativeAssetMarketIcon, type AssetMarketReference } from './nativeAssetMarket.ts';
+import { createNativeAssetMarketReader, nativeAssetMarketNow, nativeAssetMarketSource, rememberNativeAssetMarketIcon, type AssetMarketReference } from './nativeAssetMarket.ts';
 import { useNativeTranslation } from '../platform/localization';
 
 const read = createNativeAssetMarketReader(walletFetch, 'history');
@@ -29,11 +29,13 @@ export function AssetMarketCard({ asset }: { asset: AssetMarketReference }) {
       if (owner || AppState.currentState !== 'active') return;
       const current = new AbortController(); owner = current;
       setState({ key, status: 'loading' });
-      void read(source, currency, current.signal).then(data => {
+      void read(source, currency, current.signal).then(result => {
         if (current.signal.aborted || AppState.currentState !== 'active') return;
+        const data = result?.data;
         if (data) rememberNativeAssetMarketIcon({ kind, networkId, contractAddress, registration }, data);
         setState({ key, status: data ? 'ready' : 'unavailable', ...(data ? { data } : {}) });
-        timer = setTimeout(() => { stop(); start(); }, 300_000);
+        const delay = result ? Math.max(0, result.expiresAt - nativeAssetMarketNow()) : 300_000;
+        timer = setTimeout(() => { stop(); start(); }, delay);
       });
     };
     const lifecycle = AppState.addEventListener('change', value => value === 'active' ? start() : hide());

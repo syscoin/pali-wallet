@@ -289,7 +289,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         const registration = 'kind' in choice.scope.network && choice.scope.network.kind === 'evm' ? choice.scope.network : null;
         const asset = { kind: 'token' as const, networkId: choice.scope.network.id, registration, contractAddress: token.contractAddress };
         const source = nativeAssetMarketSource(asset);
-        const data = source ? await readMarket(source, currency, signal) : null;
+        const result = source ? await readMarket(source, currency, signal) : null;
+        const data = result?.data;
         if (data && !signal.aborted) rememberNativeAssetMarketIcon(asset, data);
         return data?.price ?? null;
       },

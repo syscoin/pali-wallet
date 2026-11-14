@@ -62,7 +62,7 @@ test('market requests use bounded native transport, a cache and cancellation', a
   }, 'history');
   const source = { kind: 'native' as const, id: 'ethereum' };
   const first = await read(source, 'usd', new AbortController().signal);
-  assert.equal(first?.price, 2200);
+  assert.equal(first?.data.price, 2200);
   assert.equal(await read(source, 'usd', new AbortController().signal), first);
   assert.equal(count, 2);
   assert.equal(requests[0]?.credentials, 'omit');
@@ -70,6 +70,29 @@ test('market requests use bounded native transport, a cache and cancellation', a
   assert.equal(requests[0]?.signal?.aborted, true);
   const owner = new AbortController(); owner.abort();
   assert.equal(await read(source, 'usd', owner.signal), null);
+});
+
+test('cache hits preserve the original monotonic expiry and provider timestamp', async () => {
+  let elapsed = 0, requests = 0;
+  const read = createNativeAssetMarketReader(async () => {
+    requests++;
+    return Response.json(market({ current_price: requests === 1 ? 2200 : 2300 }));
+  }, 'price', () => elapsed);
+  const source = { kind: 'native' as const, id: 'ethereum' };
+  const first = await read(source, 'usd', new AbortController().signal);
+  assert.equal(first?.expiresAt, 300_000);
+  assert.equal(first?.data.updatedAt, now);
+  assert(Object.isFrozen(first));
+  elapsed = 299_000;
+  assert.equal(await read(source, 'usd', new AbortController().signal), first);
+  assert.equal(first?.expiresAt, 300_000);
+  assert.equal(requests, 1);
+  elapsed = 300_000;
+  const fresh = await read(source, 'usd', new AbortController().signal);
+  assert.equal(requests, 2);
+  assert.equal(fresh?.data.price, 2300);
+  assert.equal(fresh?.data.updatedAt, now, 'Cache age must not replace the provider timestamp');
+  assert.equal(fresh?.expiresAt, 600_000);
 });
 
 test('market reader rejects redirects and oversized responses', async () => {
@@ -93,8 +116,8 @@ test('portfolio native and token pricing request no history in any display curre
     const before = urls.length;
     for (const currency of ['usd', 'aed'] as const) {
       const data = await read(source, currency, new AbortController().signal);
-      assert.equal(data?.price, currency === 'aed' ? 8080 : 2200);
-      assert.deepEqual(data?.prices, []);
+      assert.equal(data?.data.price, currency === 'aed' ? 8080 : 2200);
+      assert.deepEqual(data?.data.prices, []);
       assert.equal(await read(source, currency, new AbortController().signal), data);
     }
     assert.equal(urls.length - before, source.kind === 'native' ? 2 : 4, 'Each native price needs one quote; a token also needs identity');
@@ -112,10 +135,10 @@ test('AED history comes from the requested-currency endpoint and stays separate 
   }, 'history');
   const source = { kind: 'native' as const, id: 'ethereum' };
   const usd = await read(source, 'usd', new AbortController().signal);
-  assert.deepEqual(usd?.prices, [2100, 2200]);
+  assert.deepEqual(usd?.data.prices, [2100, 2200]);
   assert.equal(urls.length, 2);
   const aed = await read(source, 'aed', new AbortController().signal);
-  assert.equal(aed?.price, 8080); assert.deepEqual(aed?.prices, [7700, 8080]);
+  assert.equal(aed?.data.price, 8080); assert.deepEqual(aed?.data.prices, [7700, 8080]);
   assert.deepEqual(urls, [assetMarketUrl('ethereum', 'usd'), assetMarketHistoryUrl('ethereum', 'usd'), assetMarketUrl('ethereum', 'aed'), assetMarketHistoryUrl('ethereum', 'aed')]);
   assert.equal(requests[0]!.signal, requests[1]!.signal, 'One USD deadline covers quote and history');
   assert.equal(requests[2]!.signal, requests[3]!.signal, 'One AED deadline covers quote and history');
@@ -129,7 +152,7 @@ test('failed or invalid history keeps the current quote without using the stale 
   for (const currency of ['usd', 'aed'] as const) for (const result of [Response.json({ prices: [[now, 1], [now, 2]] }), new Response('', { status: 429 }), new Response('x'.repeat(128 * 1024 + 1))]) {
     const read = createNativeAssetMarketReader(async url => url.includes('/market_chart?') ? result : Response.json(market({ current_price: 8080 })), 'history');
     const data = await read({ kind: 'native', id: 'ethereum' }, currency, new AbortController().signal);
-    assert.equal(data?.price, 8080); assert.deepEqual(data?.prices, []);
+    assert.equal(data?.data.price, 8080); assert.deepEqual(data?.data.prices, []);
   }
 });
 
@@ -148,7 +171,7 @@ test('cancelling the history read cannot publish or cache the earlier quote', as
   await started; owner.abort();
   assert.equal(await pending, null);
   finish(Response.json(history()));
-  assert.deepEqual((await read(source, 'aed', new AbortController().signal))?.prices, [7700, 8080]);
+  assert.deepEqual((await read(source, 'aed', new AbortController().signal))?.data.prices, [7700, 8080]);
   assert.equal(calls, 4);
 });
 
@@ -169,7 +192,7 @@ test('quote and history start together and share the original eight-second deadl
   t.mock.timers.tick(999); assert.equal(signal?.aborted, false);
   t.mock.timers.tick(1);
   const data = await pending;
-  assert.equal(signal?.aborted, true); assert.equal(data?.price, 8080); assert.deepEqual(data?.prices, []);
+  assert.equal(signal?.aborted, true); assert.equal(data?.data.price, 8080); assert.deepEqual(data?.data.prices, []);
 });
 
 
