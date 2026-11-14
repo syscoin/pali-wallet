@@ -332,16 +332,6 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
       }} />
   </View> : undefined}>
     <Header title={proposal ? t('connections.connectRequest') : t('mobile.connections.title')} onBack={close} />
-    {snapshot.status !== 'locked' && <Card style={s.settingsCard}>
-      <Row title={t('mobile.connections.allowConnections')} subtitle={t('mobile.connections.allowConnectionsBody')} icon="globe" last right={<Switch
-        accessibilityLabel={t('mobile.connections.allowConnections')} value={snapshot.connectionsEnabled}
-        disabled={snapshot.connectionSettingsBusy || snapshot.status === 'unavailable'} trackColor={{ true: colors.pink }}
-        onValueChange={enabled => changeSettings(enabled)} />} />
-      <Button title={t('mobile.connections.disconnectAll')} icon="close" variant="secondary" size="compact"
-        disabled={snapshot.connectionSettingsBusy || snapshot.status === 'unavailable' || !snapshot.sessions.length && !snapshot.proposals.length && snapshot.status !== 'pairing'}
-        onPress={() => changeSettings()} />
-      {snapshot.connectionSettingsBusy && <ActivityIndicator color={colors.blue} accessibilityLabel={t('mobile.connections.savingConnections')} />}
-    </Card>}
     {snapshot.status === 'locked' ? <Notice title={t('mobile.connections.unlockTitle')} body={t('mobile.connections.unlockBody')} /> : <>
       {proposal ? <>
         <View style={s.hero}>
@@ -401,6 +391,16 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
           onPress={() => { if (lifetime.current.active && controller.getSnapshot().sessions.includes(session)) invoke(() => controller.disconnect(session.id)); }} />
       </View>)}</Card>}
     </View>}
+    {!proposal && snapshot.status !== 'locked' && <Card style={s.settingsCard}>
+      <Row title={t('mobile.connections.allowConnections')} subtitle={t('mobile.connections.allowConnectionsBody')} icon="globe" last right={<Switch
+        accessibilityLabel={t('mobile.connections.allowConnections')} value={snapshot.connectionsEnabled}
+        disabled={snapshot.connectionSettingsBusy || snapshot.status === 'unavailable'} trackColor={{ true: colors.pink }}
+        onValueChange={enabled => changeSettings(enabled)} />} />
+      {snapshot.sessions.length > 0 && <Button title={t('mobile.connections.disconnectAll')} icon="close" variant="secondary" size="compact"
+        disabled={snapshot.connectionSettingsBusy || snapshot.status === 'unavailable'}
+        onPress={() => changeSettings()} />}
+      {snapshot.connectionSettingsBusy && <ActivityIndicator color={colors.blue} accessibilityLabel={t('mobile.connections.savingConnections')} />}
+    </Card>}
   </Screen></SafeAreaView>;
 }
 
