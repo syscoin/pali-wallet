@@ -827,3 +827,25 @@ test('finalization review stays visibly preparing across observation and fee pre
     assert.deepEqual(phases, ['preparing', 'preparing', 'review']);
   } finally { observed.resolve(); estimated.resolve(); unsubscribe(); f.close(); controller.dispose(); }
 });
+
+for (const phase of ['preparing', 'submitting'] as const) test(`${phase} recovery progress stays in the fixed footer before Close and outside the scrolling body`, () => {
+  const state = { phase, revision: 1, intent, observation, action: 'finalize' as const, feeReview: null,
+    transactionHash: null, error: null, canAbandon: false, metadataRefresh: null, terminalReason: null };
+  const controller = { getSnapshot: () => state, subscribe: () => () => {}, async prepare() {} };
+  const f = screen('NativeGuardianRecoveryView');
+  try {
+    const tree = f.render({ controller, address, chainId: 1, currency: 'ETH', networkLabel: 'Ethereum',
+      async onActivity() {}, async openRecoveryAlerts() {}, onBack() {} });
+    const layout = screenElements(tree).find(element => element.type === 'Screen');
+    assert(layout);
+    const footer = screenElements(layout.props.footer), body = layout.children.flatMap(screenElements);
+    const copy = englishI18n.t(phase === 'submitting' ? 'mobile.recoveryStatusViews.guardian.submittingRecovery' : 'mobile.recoveryStatusViews.guardian.checkingRecovery');
+    const spinner = footer.findIndex(element => element.type === 'ActivityIndicator');
+    const message = footer.findIndex(element => element.type === 'Text' && element.children.includes(copy));
+    const close = footer.findIndex(element => element.type === 'Button' && element.props.title === englishI18n.t('buttons.close'));
+    assert(spinner >= 0 && message > spinner && close > message);
+    assert.equal(footer.filter(element => element.type === 'ActivityIndicator').length, 1);
+    assert(!body.some(element => element.type === 'ActivityIndicator'));
+    assert(!body.some(element => element.type === 'Text' && element.children.includes(copy)));
+  } finally { f.close(); }
+});

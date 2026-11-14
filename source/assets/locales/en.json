@@ -908,7 +908,7 @@
     "optimalExperience": "For optimal hardware wallet experience, please use a larger screen or expand your browser window.",
     "networkNotFoundForEditing": "Network not found for editing. Please refresh and try again.",
     "networkAlreadyExists": "Network with Chain ID {{chainId}} already exists. Please use a different Chain ID or edit the existing network.",
-    "utxoNetworkConflict": "A {{networkType}} network already exists ({{existingNetworkName}}). Only one {{networkType}} network can be active at a time. Please remove the existing {{networkType}} network first.",
+    "utxoNetworkConflict": "A {{networkType}} network is already saved ({{existingNetworkName}}). Pali supports one network for each coin type.",
     "confirmRemoveNetwork": "Are you sure you want to remove the network \"{{networkName}}\"?",
     "walletLoggedOut": "Wallet is logged out",
     "closeAndReopenPali": "Close this window and reopen Pali to authenticate and connect your hardware wallet",

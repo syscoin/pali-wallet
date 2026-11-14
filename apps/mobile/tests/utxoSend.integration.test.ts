@@ -42,6 +42,8 @@ import { HdKeyExportFlow, keyExportRegistrationHash } from '../src/custody/hdKey
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { createUtxoBalanceReader } from '../src/core/utxoBalanceReader.ts';
+import { NativeUtxoNetworkConflictError } from '../src/custody/accounts.ts';
+import { createNativeNetworkView } from '../src/custody/networkView.ts';
 import { verifyUtxoRegistration } from '../src/core/utxoReadSession.ts';
 import { findWifAddressType, UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../src/core/utxoAddresses.ts';
 import { WALLET_CATALOGUE_KEY, type NativeAccountRecord } from '../src/custody/walletCatalogue.ts';
@@ -868,7 +870,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   const selectAccount = (id: string) => owner.manageAccounts({ kind: 'select', id }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
   const removeAccount = (id: string) => owner.manageAccounts({ kind: 'remove', id }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
   const preview = (privateKey: string, utxoAddressType?: UtxoImportAddressType) => owner.previewUtxoImport(
-    { privateKey, ...(utxoAddressType && { utxoAddressType }) }, owner.getSnapshot().revision, owner.getCatalogue()!.revision, current
+    { privateKey, ...(utxoAddressType && { utxoAddressType }) }, owner.getSnapshot().revision, owner.getCatalogue()!.revision, new AbortController().signal, createTestPrivateAuthentication(current), current
   );
   const submit = (privateKey: string, utxoAddressType: UtxoImportAddressType | undefined, expectedAddress: string) => owner.importAccount(
     { privateKey, ...(utxoAddressType && { utxoAddressType }), expectedAddress, label: `Imported ${utxoAddressType ?? 'BIP84'}` },
@@ -1403,4 +1405,50 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     await owner.dispose();
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('verified Bitcoin testnet conflict passes the existing Syscoin testnet name through runtime and network view without writes', async (t) => {
+  t.mock.method(globalThis, 'fetch', () => { throw Error('Ambient network forbidden'); });
+  const directory = await mkdtemp(join(tmpdir(), 'pali-network-conflict-'));
+  const { connection } = nodeConnection(join(directory, 'wallet.sqlite'));
+  const storage = await SqliteWalletStorage.open(connection, digest, INSTALLATION, true);
+  const candidate = projectUtxoRegistration({ id: 'utxo:custom:' + 'bc'.repeat(16), chainId: 1, slip44: 1,
+    backendChain: 'test', endpoint: 'https://bitcoin-test.invalid', name: 'Bitcoin Testnet', explorer: 'https://bitcoin-test.invalid' });
+  const requests: string[] = [];
+  let owner: NativeCustodyAuthority | undefined;
+  try {
+    const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort,
+      privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
+      ensureCryptoReady: async () => undefined, openStorage: async () => storage,
+      loadSdk: loadNativeKeyringSdk,
+      readUtxoAccount: async () => { throw Error('Registration cannot read accounts'); },
+      readUtxoBalance: async () => { throw Error('Registration cannot read balances'); },
+      utxoFetch: async (input, init) => {
+        const url = String(input); requests.push(`${init?.method} ${url}`); assert.equal(init?.method, 'GET');
+        const value = url === candidate.endpoint + '/api/v2/' ? metadata(candidate)
+          : url === candidate.endpoint + '/api/v2/block-index/0' ? { blockHash: candidate.genesisHash }
+          : assert.fail('Unexpected network operation');
+        const response = Response.json(value); Object.defineProperty(response, 'url', { value: url }); return response;
+      },
+    });
+    owner = new NativeCustodyAuthority(factory);
+    await owner.initialize(); await owner.importPhrase(phrase);
+    const before = await storage.recovery.readSnapshot();
+    const catalogue = owner.getCatalogue()!;
+    const existing = catalogue.utxoNetworks.find(network => network.slip44 === 1)!;
+    assert.equal(existing.chainId, 5700);
+    const view = createNativeNetworkView(owner, { utxoSendAvailable: true, fetch: async () => { throw Error('EVM reads forbidden'); } });
+    await assert.rejects(view.addUtxo!({ endpoint: candidate.endpoint, name: candidate.name, explorer: '' },
+      owner.getSnapshot().revision, catalogue.revision), (error: unknown) => {
+      assert.ok(error instanceof NativeUtxoNetworkConflictError);
+      assert.equal(error.code, 'UTXO_NETWORK_CONFLICT');
+      assert.equal((error as { networkType?: string }).networkType, 'testnet');
+      assert.equal((error as { existingNetworkName?: string }).existingNetworkName, existing.name);
+      return true;
+    });
+    assert.equal(owner.getSnapshot().phase, 'ready');
+    assert.equal(owner.getCatalogue(), catalogue);
+    assert.deepEqual(await storage.recovery.readSnapshot(), before);
+    assert.deepEqual(requests, [`GET ${candidate.endpoint}/api/v2/`, `GET ${candidate.endpoint}/api/v2/block-index/0`]);
+  } finally { await owner?.dispose(); await storage.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); }
 });

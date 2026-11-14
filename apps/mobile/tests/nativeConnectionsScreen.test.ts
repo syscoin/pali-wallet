@@ -350,10 +350,10 @@ test('leaving while a clipboard read is pending never starts pairing', async () 
   f.close();
 });
 
-test('connection controls remain available during approval and do not optimistically enable after a save', async () => {
+test('connection controls remain available during pairing and do not optimistically enable after a save', async () => {
   const f = fixture();
   try {
-    f.proposal();
+    f.update({ status: 'pairing' });
     let row = f.render().find(element => element.type === 'Row' && element.props.title === 'Allow new connections');
     assert.ok(row);
     assert.equal(row.props.right.props.value, true);
@@ -361,7 +361,7 @@ test('connection controls remain available during approval and do not optimistic
     row.props.right.props.onValueChange(false); await flush();
     assert.deepEqual(f.calls.at(-1), { method: 'enable', args: [false] });
     assert.equal(f.render().find(element => element.type === 'Row')!.props.right.props.value, true, 'the view waits for the authoritative snapshot');
-    f.update({ proposals: [], connectionsEnabled: false, connectionSettingsBusy: true, sessions: [f.session()] });
+    f.update({ status: 'ready', proposals: [], connectionsEnabled: false, connectionSettingsBusy: true, sessions: [f.session()] });
     row = f.render().find(element => element.type === 'Row');
     assert.equal(row!.props.right.props.value, false);
     assert.equal(row!.props.right.props.disabled, true);
@@ -393,5 +393,36 @@ test('stale settings controls cannot act after leaving and all supported locales
         assert.equal(typeof messages.mobile.connections[key], 'string');
       }
     }
+  } finally { f.close(); }
+});
+
+
+for (const saved of [false, true]) test(`connection settings follow Connect and active apps with ${saved ? 'a saved session' : 'no saved sessions'}`, () => {
+  const f = fixture();
+  try {
+    if (saved) f.update({ sessions: [f.session()] });
+    const elements = f.render();
+    const scan = elements.findIndex(element => element.type === 'Button' && element.props.title === 'Scan QR code');
+    const active = elements.findIndex(element => element.type === 'Text' && element.children.includes('Active connections'));
+    const settings = elements.findIndex(element => element.type === 'Row' && element.props.title === 'Allow new connections');
+    assert(scan >= 0 && active > scan && settings > active);
+    const disconnect = elements.find(element => element.type === 'Button' && element.props.title === 'Disconnect all');
+    assert.equal(!!disconnect, saved);
+    if (saved) {
+      const app = elements.findIndex(element => element.type === 'Pressable' && element.props.accessibilityLabel?.startsWith('Example app,'));
+      assert(app > active && app < settings);
+    }
+  } finally { f.close(); }
+});
+
+for (const status of ['ready', 'approving'] as const) test(`proposal consent hides global connection settings while ${status}`, () => {
+  const f = fixture();
+  try {
+    f.proposal(); f.update({ status, sessions: [f.session()] });
+    const elements = f.render();
+    assert(!elements.some(element => element.type === 'Row' && element.props.title === 'Allow new connections'));
+    assert(!elements.some(element => element.type === 'Button' && element.props.title === 'Disconnect all'));
+    assert(elements.some(element => element.type === 'Button' && element.props.title === 'Reject'));
+    assert(elements.some(element => element.type === 'Button' && element.props.title === (status === 'approving' ? 'Connecting…' : 'Connect')));
   } finally { f.close(); }
 });

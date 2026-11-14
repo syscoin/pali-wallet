@@ -630,6 +630,16 @@ export function NativeGuardianRecoveryView({
                 onPress={() => void act(() => controller.refresh())}
               />
             )}
+            {pending && (
+              <>
+                <ActivityIndicator color={colors.pink} />
+                <Text style={styles.muted}>
+                  {state.phase === 'submitting'
+                    ? t('mobile.recoveryStatusViews.guardian.submittingRecovery')
+                    : t('mobile.recoveryStatusViews.guardian.checkingRecovery')}
+                </Text>
+              </>
+            )}
             <Button
               title={terminalNotice ? t('mobile.recoveryStatusViews.guardian.returnToAccount') : t('buttons.close')}
               variant="secondary"
@@ -716,16 +726,6 @@ export function NativeGuardianRecoveryView({
           )}
           <Text style={s.label}>{t('mobile.recoveryStatusViews.guardian.smartAccountChainID')}{' '}{chainId}</Text>
         </Card>
-        {pending && (
-          <>
-            <ActivityIndicator color={colors.pink} />
-            <Text style={styles.muted}>
-              {state.phase === 'submitting'
-                ? t('mobile.recoveryStatusViews.guardian.submittingRecovery')
-                : t('mobile.recoveryStatusViews.guardian.checkingRecovery')}
-            </Text>
-          </>
-        )}
         {state.phase === 'review' && state.feeReview && (
           <>
             <Card style={s.card}>

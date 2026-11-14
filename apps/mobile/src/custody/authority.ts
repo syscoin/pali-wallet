@@ -197,7 +197,7 @@ export class NativeCustodyAuthority {
 
   /** Local, read-only SDK preview. The form receives only the public address. */
   async previewUtxoImport(input: NativeUtxoImportDraft, expectedRevision: number,
-    expectedCatalogueRevision: number, assertCurrent: () => void): Promise<string> {
+    expectedCatalogueRevision: number, signal: AbortSignal, authentication: NativePrivateAuthentication, assertCurrent: () => void): Promise<string> {
     const runtime = this.runtime;
     const guard = () => {
       const result: unknown = assertCurrent();
@@ -206,13 +206,13 @@ export class NativeCustodyAuthority {
         throw new CustodyOperationError('CANCELLED');
       }
       this.checkIdle();
-      if (runtime !== this.runtime || this.revision !== expectedRevision ||
+      if (signal.aborted || runtime !== this.runtime || this.revision !== expectedRevision ||
           this.snapshot.phase !== 'ready' || this.pending)
         throw new CustodyOperationError('CANCELLED');
     };
     guard();
     if (!runtime?.imports) throw new CustodyOperationError('NOT_READY');
-    const address = await runtime.imports.previewUtxo(input, expectedCatalogueRevision, guard);
+    const address = await runtime.imports.previewUtxo(input, expectedCatalogueRevision, signal, authentication, guard);
     guard();
     return address;
   }

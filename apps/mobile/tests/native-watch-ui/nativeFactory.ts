@@ -322,9 +322,15 @@ export function createNativeWalletControllers() {
       },
     },
     imports: {
-      async previewUtxo(input, expectedRevision, check) {
+      async previewUtxo(input, expectedRevision, signal, binding, check) {
         check();
         if (expectedRevision !== catalogue.revision) throw new KeyringRuntimeError('CANCELLED');
+        await withNativePrivateAuthentication(binding, signal, () => {
+          if (!sessionUnlocked || signal.aborted || expectedRevision !== catalogue.revision) throw refused('CANCELLED');
+        }, async owner => {
+          await fixtureDeviceAuthorization.request('account-change', owner, check);
+          await unlockGate(); check();
+        });
         const fixture = fixtureUtxoImport(input);
         if (catalogue.accounts.some(({ address }) => address === fixture.address))
           throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
@@ -553,7 +559,9 @@ export function createNativeWalletControllers() {
   };
   const keyExport = new HdKeyExportFlow(authority, () => keyRuntime);
   keyExport.onClear(() => events.push('key:cancel'));
-  const imports: NativeImportView = { previewUtxo: (...args) => authority.previewUtxoImport(...args),
+  const imports: NativeImportView = { previewUtxo: (input, revision, catalogueRevision, signal, scope, check) => authority.previewUtxoImport(input, revision, catalogueRevision, signal,
+      bindNativePrivateAuthentication(scope, { assertCurrent: () => { if (signal.aborted) throw refused('CANCELLED'); },
+        isPromptActive: owner => authentication?.isActive(owner) === true }), check),
     submit: (input, revision, catalogueRevision, signal, scope) => authority.importAccount(input, revision, catalogueRevision, signal,
       bindNativePrivateAuthentication(scope, { assertCurrent: () => { if (signal.aborted) throw refused('CANCELLED'); },
         isPromptActive: owner => authentication?.isActive(owner) === true })),

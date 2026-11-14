@@ -46,6 +46,19 @@ export interface NativeAccountView {
   supportsSmartAccounts?(): boolean;
 }
 
+/** Verified registration conflicts are distinct from malformed or unavailable endpoints. */
+export class NativeUtxoNetworkConflictError extends Error {
+  readonly code = 'UTXO_NETWORK_CONFLICT';
+  readonly networkType: 'testnet' | 'mainnet';
+  readonly existingNetworkName: string;
+  constructor(networkType: 'testnet' | 'mainnet', existingNetworkName: string) {
+    super('UTXO_NETWORK_CONFLICT');
+    this.name = 'NativeUtxoNetworkConflictError';
+    this.networkType = networkType;
+    this.existingNetworkName = existingNetworkName;
+  }
+}
+
 export type NativeUtxoNetworkDraft = Readonly<{ endpoint: string; name: string; explorer: string }>;
 export type NativeUtxoNetworkEditDraft = Readonly<Pick<NativeUtxoNetworkDraft, 'endpoint' | 'name'>>;
 export type NativeUtxoNetworkChange =
