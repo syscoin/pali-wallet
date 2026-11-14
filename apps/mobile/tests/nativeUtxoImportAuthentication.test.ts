@@ -8,6 +8,7 @@ import * as importedAccounts from '../src/custody/importedAccounts.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
+import { operationAuthenticationCancellation, isOperationAuthenticationCancellation } from '../src/core/operationAuthentication.ts';
 import { DeviceUnlockPrompt } from '../src/platform/deviceUnlockPrompt.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { UTXO_IMPORT_LABELS, UTXO_IMPORT_TYPES } from '../src/core/utxoAddresses.ts';
@@ -35,15 +36,22 @@ function activity() {
     for (const listener of [...listeners.get(next === 'blur' || next === 'focus' ? next : 'change') ?? []]) listener(next);
   } };
 }
-function screen(owned = true) {
-  const app = activity(), hold = Promise.withResolvers<void>();
+function screen(owned = true, backend?: Awaited<ReturnType<typeof runtimeFixture>>) {
+  const app = backend?.app ?? activity(), hold = Promise.withResolvers<void>();
   let current = true, deny = false, submitted = 0;
+  let previewFinished = Promise.resolve(), previewError: unknown;
   let previewScope: authentication.NativePrivateAuthenticationScope | undefined, previewSignal: AbortSignal | undefined;
   let submissionScope: authentication.NativePrivateAuthenticationScope | undefined;
   const props = { imports: {
     async previewUtxo(_input: importedAccounts.NativeUtxoImportDraft, _context: number, _catalogue: number,
       signal: AbortSignal, scope: authentication.NativePrivateAuthenticationScope, check: () => void) {
       previewScope = scope; previewSignal = signal;
+      if (backend) {
+        const pending = backend.authority.previewUtxoImport(_input, backend.authority.getSnapshot().revision,
+          backend.authority.getCatalogue()!.revision, signal, backend.bind(scope), check);
+        previewFinished = pending.then(() => undefined, error => { previewError = error; });
+        return pending;
+      }
       const binding = authentication.bindNativePrivateAuthentication(scope, { assertCurrent() { if (!current || signal.aborted) throw Error('CANCELLED'); },
         isPromptActive: owner => app.prompt.isActive(owner) });
       return authentication.withNativePrivateAuthentication(binding, signal, () => { if (!current || signal.aborted) throw Error('CANCELLED'); },
@@ -60,6 +68,7 @@ function screen(owned = true) {
     '../custody/importedAccounts': importedAccounts,
     '../custody/privateAuthentication': authentication,
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+    '../core/operationAuthentication': { isOperationAuthenticationCancellation },
     '../core/utxoAddresses': { UTXO_IMPORT_LABELS, UTXO_IMPORT_TYPES },
     'react-native': { View: 'View', ActivityIndicator: 'ActivityIndicator', KeyboardAvoidingView: 'KeyboardAvoidingView',
       Platform: { OS: 'android' }, StyleSheet: { create: (value: unknown) => value }, Keyboard: { dismiss() {} },
@@ -72,15 +81,17 @@ function screen(owned = true) {
   const render = () => screenElements(f.render(props));
   const strings = languageMessages('en');
   const button = (title: string) => { const item = render().find(value => value.type === 'Button' && value.props.title === title); assert(item, title); return item; };
-  const start = () => {
+  const start = (privateKey = BITCOIN_WIF_KEY) => {
     render(); const inputs = render().filter(value => value.type === 'Input');
     inputs.find(value => value.props.accessibilityLabel === strings.mobile.accounts.accountName)!.props.onChangeText('Imported WIF');
-    inputs.find(value => value.props.accessibilityLabel === strings.mobile.importAccount.utxoKey)!.props.onChangeText(BITCOIN_WIF_KEY);
+    inputs.find(value => value.props.accessibilityLabel === strings.mobile.importAccount.utxoKey)!.props.onChangeText(privateKey);
     const legacy = render().find(value => value.props.accessibilityRole === 'radio' && value.children.some(child => (child as { children?: unknown[] })?.children?.includes(UTXO_IMPORT_LABELS.p2pkh)));
     assert(legacy); legacy.props.onPress(); button(strings.mobile.importAccount.review).props.onPress();
   };
   return { app, render, start, button, strings, release: () => hold.resolve(), deny: () => { deny = true; },
     revoke: () => { current = false; }, scope: () => previewScope, signal: () => previewSignal,
+    finished: () => previewFinished, previewError: () => previewError,
+    alerts: () => render().filter(value => value.props.accessibilityRole === 'alert').flatMap(value => value.children).join(' '),
     submitted: () => submitted, submissionScope: () => submissionScope, close: f.close };
 }
 
@@ -121,14 +132,14 @@ async function runtimeFixture() {
   const directory = await mkdtemp(join(tmpdir(), 'pali-utxo-preview-auth-'));
   const { connection } = nodeConnection(join(directory, 'wallet.sqlite'));
   const storage = await SqliteWalletStorage.open(connection, digest, INSTALLATION, true);
-  let prompted = false, deny = false, reads = 0;
+  let prompted = false, denial: Error | null = null, reads = 0;
   let hold = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
   const factory = createKeyringRuntimeFactory({ isAuthenticationActive: owner => app.prompt.isActive(owner),
     credentialPort: { ...credential, async withSecret(reference, owner, consume) {
       if (!prompted) return credential.withSecret(reference, owner, consume);
       reads++;
       return app.prompt.run(owner.signal, async () => { entered.resolve(); await hold.promise;
-        if (deny) throw Object.assign(Error('CREDENTIAL_CANCELLED'), { code: 'CREDENTIAL_CANCELLED' });
+        if (denial) throw denial;
         return credential.withSecret(reference, owner, consume); });
     } }, privacyServiceSettings: null, passkeys: null, slhExecution: null, readEvmRetirement: null,
     loadSdk: loadNativeKeyringSdk, ensureCryptoReady: async () => undefined, openStorage: async () => storage,
@@ -152,7 +163,7 @@ async function runtimeFixture() {
     });
   };
   return { app, authority, storage, bind, reads: () => reads, entered: () => entered.promise, release: () => hold.resolve(),
-    deny: () => { deny = true; }, next() { hold = Promise.withResolvers<void>(); entered = Promise.withResolvers<void>(); },
+    deny: (error: Error = Object.assign(Error('CREDENTIAL_CANCELLED'), { code: 'CREDENTIAL_CANCELLED' })) => { denial = error; }, next() { hold = Promise.withResolvers<void>(); entered = Promise.withResolvers<void>(); },
     async close() { hold.resolve(); await authority.dispose(); await storage.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); } };
 }
 
@@ -187,5 +198,69 @@ for (const end of ['success', 'deny', 'abort', 'lock'] as const) test(`actual SD
       assert.equal(f.reads(), 2); assert(f.authority.getCatalogue()!.accounts.some(account => account.address === BITCOIN_WIF_ADDRESS));
       submitScope.retire(); submitAbort.abort();
     }
+  } finally { scope.retire(); abort.abort(); f.release(); await f.close(); }
+});
+
+
+test('real OS Cancel passes through WIF preview without claiming an invalid key or changing storage', async () => {
+  const backend = await runtimeFixture(), view = screen(true, backend);
+  try {
+    const before = await backend.storage.recovery.readSnapshot(), catalogue = backend.authority.getCatalogue();
+    view.start(); await backend.entered();
+    assert.equal(view.scope()?.isAuthenticating(), true);
+    const cancelled = operationAuthenticationCancellation();
+    backend.deny(cancelled); backend.release(); await view.finished(); await tick();
+    assert.equal(view.previewError(), cancelled);
+    assert.equal(view.alerts(), '');
+    assert(view.render().some(value => value.type === 'Input' && value.props.value === BITCOIN_WIF_KEY));
+    assert.equal(view.button(view.strings.mobile.importAccount.review).props.disabled, false);
+    assert(!view.render().some(value => value.children.includes(BITCOIN_WIF_ADDRESS)));
+    assert.equal(view.signal()?.aborted, true); assert.equal(view.scope()?.isAuthenticating(), false);
+    assert.equal(view.submitted(), 0); assert.equal(backend.authority.getCatalogue(), catalogue);
+    assert.deepEqual((await backend.storage.recovery.readSnapshot()).records, before.records);
+  } finally { view.close(); backend.release(); await backend.close(); }
+});
+
+for (const code of ['CREDENTIAL_UNSUPPORTED', 'CREDENTIAL_MISSING']) test(`WIF preview ${code} reports device authorization feedback, not invalid key`, async () => {
+  const backend = await runtimeFixture(), view = screen(true, backend);
+  try {
+    const before = await backend.storage.recovery.readSnapshot();
+    view.start(); await backend.entered(); backend.deny(Object.assign(Error(code), { code })); backend.release(); await view.finished(); await tick();
+    assert.equal(view.alerts(), view.strings.mobile.walletViews.deviceAuthenticationUnavailable);
+    assert.notEqual(view.alerts(), view.strings.mobile.importAccount.invalidUtxo);
+    assert.equal(view.submitted(), 0);
+    assert.deepEqual((await backend.storage.recovery.readSnapshot()).records, before.records);
+  } finally { view.close(); backend.release(); await backend.close(); }
+});
+
+test('a malformed WIF still reports invalid-key feedback after a successful OS authorization', async () => {
+  const backend = await runtimeFixture(), view = screen(true, backend);
+  try {
+    const before = await backend.storage.recovery.readSnapshot();
+    view.start(BITCOIN_WIF_KEY.slice(0, -1) + '1'); await backend.entered(); backend.release(); await view.finished(); await tick();
+    assert.equal((view.previewError() as { code: string }).code, 'INVALID_INPUT');
+    assert.equal(view.alerts(), view.strings.mobile.importAccount.invalidUtxo);
+    assert.equal(view.submitted(), 0);
+    assert.deepEqual((await backend.storage.recovery.readSnapshot()).records, before.records);
+  } finally { view.close(); backend.release(); await backend.close(); }
+});
+
+
+test('non-preview import keeps its existing typed cancellation and does not reuse the explicit preview marker', async () => {
+  const f = await runtimeFixture(), scope = authentication.createNativePrivateAuthenticationScope(), abort = new AbortController();
+  try {
+    const before = await f.storage.recovery.readSnapshot(), catalogue = f.authority.getCatalogue();
+    const marker = operationAuthenticationCancellation();
+    const submission = f.authority.importAccount({ privateKey: BITCOIN_WIF_KEY, utxoAddressType: 'p2pkh', label: 'Imported WIF', expectedAddress: BITCOIN_WIF_ADDRESS },
+      f.authority.getSnapshot().revision, catalogue!.revision, abort.signal, f.bind(scope));
+    const rejected = assert.rejects(submission, (error: unknown) => {
+      assert(error && typeof error === 'object' && 'code' in error && error.code === 'CANCELLED');
+      assert.equal(isOperationAuthenticationCancellation(error), false);
+      assert.notEqual(error, marker); return true;
+    });
+    await f.entered(); f.deny(marker); f.release(); await rejected;
+    assert.equal(f.authority.getSnapshot().phase, 'ready');
+    assert.equal(f.authority.getCatalogue(), catalogue);
+    assert.deepEqual((await f.storage.recovery.readSnapshot()).records, before.records);
   } finally { scope.retire(); abort.abort(); f.release(); await f.close(); }
 });

@@ -1,3 +1,4 @@
+import { isOperationAuthenticationCancellation } from '../core/operationAuthentication';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import type { TFunction } from 'i18next';
 import { useNativeTranslation } from '../platform/localization';
@@ -108,9 +109,10 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
       setPrivateKey(key); setAddress(reviewed); setAcknowledged(false);
       Keyboard.dismiss();
     } catch (cause) {
-      if (state.mounted && state.request === request)
-        setError(utxo ? failure(cause, t, t('mobile.importAccount.invalidUtxo')) :
-          t('mobile.importAccount.invalidEvm'));
+      if (state.mounted && state.request === request && !isOperationAuthenticationCancellation(cause))
+        setError(utxo && cause instanceof Error && cause.message === 'DEVICE_UNLOCK_UNAVAILABLE'
+          ? t('mobile.walletViews.deviceAuthenticationUnavailable')
+          : utxo ? failure(cause, t, t('mobile.importAccount.invalidUtxo')) : t('mobile.importAccount.invalidEvm'));
     } finally {
       authentication?.retire(); abort?.abort();
       if (state.authentication === authentication) state.authentication = null;

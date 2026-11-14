@@ -1,3 +1,4 @@
+import { isOperationAuthenticationCancellation } from '../src/core/operationAuthentication.ts';
 import { NativeUtxoNetworkConflictError } from '../src/custody/accounts.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -53,6 +54,7 @@ async function fixture(language = 'en') {
       navigation: { registerBack: () => () => {}, beginNavigation() {}, setImmersive() {} } },
   };
   const imported = {
+    '../core/operationAuthentication': { isOperationAuthenticationCancellation },
     '../custody/accounts': { NativeUtxoNetworkConflictError },
     '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'biometrics', icon: 'fingerprint' }) },
     '../platform/localization': { useNativeTranslation: () => ({ t: engine.t.bind(engine), i18n: engine }) },

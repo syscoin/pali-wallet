@@ -842,7 +842,8 @@ export function createKeyringRuntimeFactory(
           purpose: NativeCredentialPurpose, signal: AbortSignal, assertOwner: () => void,
           work: (secret: string) => T | Promise<T>, supplied: NativeOperationCredential | null,
           authorization: Readonly<{ receipt: NativeOperationAuthorization; target: string }> | null,
-          interruption: Readonly<{ authentication: NativePrivateAuthentication; assertCurrent(): void }> | null = null
+          interruption: Readonly<{ authentication: NativePrivateAuthentication; assertCurrent(): void }> | null = null,
+          preserveCancellation = false
         ): Promise<T> => {
           const captured = generation, ring = keyring, identity = verifiedIdentity, owned = new AbortController();
           const abort = () => owned.abort();
@@ -880,7 +881,7 @@ export function createKeyringRuntimeFactory(
               ? await withNativePrivateAuthentication(interruption.authentication, owned.signal, interruption.assertCurrent, execute)
               : await execute(owned.signal);
           } catch (error) {
-            if (!secretDelivered) { check(); credentialFailure(credentialRejection ?? error); }
+            if (!secretDelivered) { check(); credentialFailure(credentialRejection ?? error, preserveCancellation); }
             throw error;
           } finally { owned.abort(); signal.removeEventListener('abort', abort); secretOperations.delete(owned); }
         };
@@ -3361,11 +3362,12 @@ export function createKeyringRuntimeFactory(
                 throw new KeyringRuntimeError('INVALID_INPUT');
               guard();
               const account = await withSoftwareSecret('account-change', signal, guard,
-                () => ring.importAccount(privateKey, undefined, utxoAddressType ? { utxoAddressType } : undefined), null, null, { authentication, assertCurrent: checkOwnership });
+                () => ring.importAccount(privateKey, undefined, utxoAddressType ? { utxoAddressType } : undefined), null, null, { authentication, assertCurrent: checkOwnership }, true);
               guard();
               return checkedUtxoImport(account, network, utxoAddressType ? 'address' : 'account').address;
             } catch (cause) {
               guard();
+              if (cause instanceof KeyringRuntimeError || cause && typeof cause === 'object' && secretAuthenticationRefusals.has(cause)) throw cause;
               // The SDK importer currently reports duplicates without a code.
               if (cause instanceof Error && cause.message === 'Account already exists, try again with another Private Key.')
                 throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');

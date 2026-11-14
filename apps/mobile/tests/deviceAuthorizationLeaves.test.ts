@@ -1,3 +1,4 @@
+import { isOperationAuthenticationCancellation } from '../src/core/operationAuthentication.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { screenElements, screenFixture, type ScreenElement } from './screenFixture.ts';
@@ -50,6 +51,7 @@ for (const cancel of [false, true]) test(`key import submits only its reviewed k
   const f = screenFixture(new URL('../src/screens/NativeImport.tsx', import.meta.url), 'NativeImport', {
     ...env.ports, '../custody/importedAccounts': importedAccounts, '../custody/privateAuthentication': privateAuthentication,
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+    '../core/operationAuthentication': { isOperationAuthenticationCancellation },
     '../platform/localization': { useNativeTranslation: () => ({ t: (key: string) => key }) },
     '../core/utxoAddresses': { UTXO_IMPORT_LABELS: {}, UTXO_IMPORT_TYPES: [] },
   }, { AbortController });
