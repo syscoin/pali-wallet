@@ -3,7 +3,7 @@ import { utxoRegistrationDisplayName } from '../../../../source/shared/utxoChain
 import { createUtxoRegistrationPin } from '../../../../source/shared/utxoRegistration.ts';
 import { fetchUtxoRead } from '../../../../source/wallet/utxoReadRetry.ts';
 import { boundedResponseText, cancelResponseBody, ResponseSizeLimitError } from '../platformRpc.ts';
-import { canonicalUtxoEndpoint, isCustomUtxoNetworkId, newCustomUtxoNetworkId, projectUtxoRegistration, resolveUtxoNetwork, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
+import { canonicalUtxoEndpoint, hasUtxoEndpointOverride, newCustomUtxoNetworkId, projectUtxoRegistration, resolveUtxoNetwork, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 
 export type UtxoFetch = (url: string, init: RequestInit) => Promise<Response>;
 export function exactUtxoResponseFetch(fetch: UtxoFetch): UtxoFetch {
@@ -171,7 +171,7 @@ export async function openUtxoReadSession(scope: UtxoNetworkId | UtxoNetwork, op
   sampled = false, totalBytes = Number.MAX_SAFE_INTEGER, responseBytes = 32768, assertCurrent?: () => void): Promise<UtxoReadSession> {
   let network: UtxoNetwork;
   try { network = resolveUtxoNetwork(scope); } catch { return utxoFailure('INVALID_INPUT'); }
-  if (isCustomUtxoNetworkId(network.id) && typeof assertCurrent !== 'function') return utxoFailure('INVALID_INPUT');
+  if (hasUtxoEndpointOverride(network) && typeof assertCurrent !== 'function') return utxoFailure('INVALID_INPUT');
   const { signal, check, read, close, identityPath, consumedBytes } = openUtxoTransport(network.endpoint, options, external, totalBytes, responseBytes, assertCurrent);
   try {
     let status: ReturnType<typeof readStatus> | undefined;

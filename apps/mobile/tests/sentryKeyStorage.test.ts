@@ -17,7 +17,7 @@ import {
   sentryKeyVaultStorageKey,
   type ISentryKeyStore,
 } from '../../../source/wallet/sentryKeyVault.ts';
-import { getUtxoSdkNetwork } from '../src/core/utxoNetworks.ts';
+import { getUtxoNetwork, getUtxoSdkNetwork } from '../src/core/utxoNetworks.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { createNativeSentryKeyManagement } from '../src/custody/sentryKeyManagement.ts';
 import {
@@ -99,8 +99,8 @@ function stageFixture() {
   return (stages ??= Promise.all(
     [
       fixtureNetwork,
-      getUtxoSdkNetwork('syscoin'),
-      getUtxoSdkNetwork('utxo:5700'),
+      getUtxoSdkNetwork(getUtxoNetwork('syscoin')),
+      getUtxoSdkNetwork(getUtxoNetwork('utxo:5700')),
     ].map((network) =>
       stageInitialWallet(
         {

@@ -720,6 +720,11 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   const zec = findUtxoCoinByRegistration({ chainId: 133, slip44: 133 })!;
   const btgEndpoint = 'https://offline-btg.invalid/blockbook';
   const candidateEndpoint = 'https://offline-ltc-candidate.invalid/blockbook';
+  const builtin = UTXO_NETWORKS[0]!;
+  const builtinEndpoint = 'https://offline-sys-alternate.invalid/blockbook';
+  const builtinReplacement = 'https://offline-sys-replacement.invalid/blockbook';
+  let builtinMismatch = false;
+  let holdBuiltinStatus: (() => Promise<void>) | undefined;
   const btg = findUtxoCoinByRegistration({ chainId: 156, slip44: 156 })!;
   assert.equal(zec.segwit, false);
   assert.equal(btg.segwit, true);
@@ -747,6 +752,12 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     assert.equal(typeof input, 'string');
     const url = String(input);
     routes.push(`${init?.method} ${url}`);
+    const builtinBase = [builtinEndpoint, builtinReplacement].find(base => url.startsWith(base + '/'));
+    if (builtinBase) {
+      const path = url.slice(builtinBase.length);
+      if (path === '/api/v2/') { calls.push(`${init?.method} ${path}`); await holdBuiltinStatus?.(); return reply(url, metadata(builtin)); }
+      if (path === '/api/v2/block-index/0') { calls.push(`${init?.method} ${path}`); return reply(url, { blockHash: builtinMismatch ? 'c'.repeat(64) : builtin.genesisHash }); }
+    }
     if (url.startsWith(candidateEndpoint + '/')) {
       const path = url.slice(candidateEndpoint.length);
       calls.push(`${init?.method} ${path}`);
@@ -777,9 +788,10 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
       assert.equal(path, '/api/v2/block-index/0');
       return reply(url, { blockHash: coin.hashGenesisBlock });
     }
-    const path = url.slice(network.endpoint.length);
+    const sourceEndpoint = builtinBase ?? network.endpoint;
+    const path = url.slice(sourceEndpoint.length);
     calls.push(`${init?.method} ${path}`);
-    assert(url.startsWith(network.endpoint));
+    assert(url.startsWith(sourceEndpoint));
     if (path === '/api/v2/') {
       const status = metadata(network);
       if (backendDrift || (blockBroadcast && (await storage.recovery.readSnapshot()).records
@@ -1010,8 +1022,34 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     await assert.rejects(owner.addUtxoNetwork({ endpoint, name: 'Duplicate', explorer: '' },
       owner.getSnapshot().revision, beforeDuplicate.revision, new AbortController().signal));
     assert.equal(owner.getCatalogue(), beforeDuplicate);
+    const beforeBuiltin = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+    const beforeBuiltinView = owner.getCatalogue()!;
+    const editBuiltin = (signal = new AbortController().signal) => owner.editUtxoNetwork(builtin.id,
+      { name: builtin.name, endpoint: builtinEndpoint }, owner.getSnapshot().revision, owner.getCatalogue()!.revision, signal);
+    builtinMismatch = true;
+    await assert.rejects(editBuiltin(), /UTXO registration does not match the selected coin/);
+    builtinMismatch = false;
+    assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), beforeBuiltin);
+    const builtinEntered = Promise.withResolvers<void>(), builtinRelease = Promise.withResolvers<void>();
+    const builtinLifetime = new AbortController();
+    holdBuiltinStatus = () => { builtinEntered.resolve(); return builtinRelease.promise; };
+    const cancelledBuiltin = editBuiltin(builtinLifetime.signal);
+    const builtinRefused = assert.rejects(cancelledBuiltin);
+    try { await builtinEntered.promise; builtinLifetime.abort(); }
+    finally { builtinRelease.resolve(); holdBuiltinStatus = undefined; }
+    await builtinRefused;
+    assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), beforeBuiltin);
+    await editBuiltin();
+    const builtinSaved = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+    assert.deepEqual(builtinSaved.groups, beforeBuiltin.groups);
+    assert.deepEqual(owner.getCatalogue()!.active, beforeBuiltinView.active);
+    await owner.dispose(); owner = newOwner(); await owner.initialize(); await owner.unlock();
+    assert.deepEqual(owner.getCatalogue()!.active, beforeBuiltinView.active);
+    assert.equal(owner.getCatalogue()!.utxoNetworks.find(value => value.id === builtin.id)!.endpoint, builtinEndpoint);
+    assert.equal(getUtxoSdkNetwork(owner.getCatalogue()!.utxoNetworks.find(value => value.id === builtin.id)!).url, builtinEndpoint);
+
     for (const target of [custom, ...UTXO_NETWORKS]) {
-      network = target;
+      network = owner.getCatalogue()!.utxoNetworks.find(value => value.id === target.id)!;
       await selectNetwork();
       if (target === custom) {
         const beforeIneligibleRequests = calls.length;
@@ -1260,6 +1298,11 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
         }
 
         if (target === UTXO_NETWORKS[0] && index === 0) {
+          const beforeRefusedEdit = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY);
+          await assert.rejects(owner.editUtxoNetwork(builtin.id, { name: builtin.name, endpoint: builtinReplacement },
+            owner.getSnapshot().revision, owner.getCatalogue()!.revision, new AbortController().signal),
+            { code: 'UTXO_ENDPOINT_HAS_SAVED_TRANSFER' });
+          assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), beforeRefusedEdit);
           await selectAccount(`hd:${network.slip44}:0`);
           await assert.rejects(removeAccount(accountId), { code: 'PENDING_TRANSFER' });
           await owner.unlock();
@@ -1280,6 +1323,27 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
         confirmed = true;
         assert.equal(await send.check(txid), 'confirmed');
         confirmed = false;
+        if (target === builtin && index === scripts.length - 1) {
+          const beforeReplacement = owner.getCatalogue()!;
+          await owner.editUtxoNetwork(builtin.id, { name: builtin.name, endpoint: builtinReplacement },
+            owner.getSnapshot().revision, beforeReplacement.revision, new AbortController().signal);
+          await owner.dispose(); owner = newOwner(); await owner.initialize(); await owner.unlock();
+          assert.deepEqual(owner.getCatalogue()!.active, beforeReplacement.active);
+          assert.deepEqual(owner.getCatalogue()!.accounts, beforeReplacement.accounts);
+          network = owner.getCatalogue()!.utxoNetworks.find(value => value.id === builtin.id)!;
+          assert.equal(network.endpoint, builtinReplacement);
+          const exact = posts.at(-1);
+          const resumed = await runtime.openUtxoSend!(current);
+          missingSavedTransfer = true;
+          assert.equal(await resumed.check(txid), 'unknown');
+          const retry = await resumed.prepareRetry(txid);
+          assert.equal(retry.retryProviderOrigin, new URL(builtinEndpoint).origin);
+          const retryStart = routes.length;
+          assert.equal((await resumed.confirm(retry, { method: 'device' })).txid, txid);
+          assert.equal(posts.at(-1), exact);
+          assert(routes.slice(retryStart).every(request => request.startsWith(`GET ${builtinEndpoint}/`) || request.startsWith(`POST ${builtinEndpoint}/`)));
+          missingSavedTransfer = false;
+        }
         if (target === custom && index === scripts.length - 1) {
           const beforeSwap = owner.getCatalogue()!;
           const catalogueBytes = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY);
@@ -1351,7 +1415,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     }
     // Default lanes post twice, custom lanes post on retry, and the replaced
     // provider lane replays the original bytes once more after a reorg.
-    assert.equal(posts.length, UTXO_NETWORKS.length * (UTXO_IMPORT_TYPES.length + 1) * 2 + 3);
+    assert.equal(posts.length, UTXO_NETWORKS.length * (UTXO_IMPORT_TYPES.length + 1) * 2 + 4);
     await selectAccount(`hd:${network.slip44}:0`);
     await removeAccount(`imported:${network.slip44}:0`);
     assert.equal(owner.getCatalogue()!.accounts.some((account) => account.id === `imported:${network.slip44}:0`), false);

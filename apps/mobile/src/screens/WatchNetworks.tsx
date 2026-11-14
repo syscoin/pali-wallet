@@ -5,7 +5,7 @@ import { ActivityIndicator, AppState, KeyboardAvoidingView, Platform, StyleSheet
 
 import { WatchUtxoNetworkReloadRequiredError, type WatchUtxoNetworksView, type WatchUtxoNetworkSettings } from '../core/publicAccountStorage';
 import { canonicalUtxoEndpoint, isCustomUtxoNetworkId, utxoRegistrationData, type UtxoNetwork } from '../core/utxoNetworks';
-import { Button, Card, colors, Header, Notice, Row, Screen, Text, styles } from '../ui';
+import { Button, Card, colors, Header, Row, Screen, Text, styles } from '../ui';
 import { IdleTextInput } from './IdleActivityBoundary';
 
 type Draft = { endpoint: string; name: string; explorer: string; original?: UtxoNetwork };
@@ -119,7 +119,8 @@ export function WatchNetworks({ controller, onChanged, onBack }: {
     const id = draft.original.id;
     run((signal) => controller.remove(saved, id, signal), 'mutate');
   };
-  const custom = saved?.networks.filter(({ id }) => isCustomUtxoNetworkId(id)) ?? [];
+  const networks = saved?.networks ?? [];
+  const builtin = !!draft?.original && !isCustomUtxoNetworkId(draft.original.id);
   return <KeyboardAvoidingView style={layout.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <Screen>
       <Header title={draft ? draft.original ? t('mobile.networks.edit') : t('mobile.networks.add') : t('mobile.shellViews.watchNetworks.watchNetworks')} onBack={() => back.current()} />
@@ -130,17 +131,16 @@ export function WatchNetworks({ controller, onChanged, onBack }: {
             autoCapitalize="none" autoCorrect={false} autoComplete="off" keyboardType="url"
             editable={!busy && !!saved} maxLength={2048} placeholder="https://" placeholderTextColor={colors.muted}
             value={draft.endpoint} onChangeText={(endpoint) => { setDraft({ ...draft, endpoint }); setError(''); }} />
-          <Text style={styles.muted}>{t('mobile.networks.optionalName')}</Text>
-          <IdleTextInput accessibilityLabel={t('mobile.networks.name')} style={layout.input} editable={!busy && !!saved}
+          <Text style={styles.muted}>{t(builtin ? 'mobile.networks.name' : 'mobile.networks.optionalName')}</Text>
+          <IdleTextInput accessibilityLabel={t('mobile.networks.name')} style={layout.input} editable={!busy && !!saved && !builtin}
             maxLength={64} value={draft.name} onChangeText={(name) => { setDraft({ ...draft, name }); setError(''); }} />
         </Card>
         <Button title={busy ? t('mobile.networks.checking') : t('mobile.networks.save')} disabled={busy || !saved || !draft.endpoint.trim()} onPress={save} />
-        {draft.original && <Button title={t('mobile.networks.remove')} icon="trash" variant="danger" disabled={busy || !saved} onPress={remove} />}
+        {draft.original && !builtin && <Button title={t('mobile.networks.remove')} icon="trash" variant="danger" disabled={busy || !saved} onPress={remove} />}
       </> : <>
-        {saved && custom.length === 0 && <Notice title={t('mobile.shellViews.watchNetworks.noCustomNetworks')} body={t('mobile.shellViews.watchNetworks.addABlockbookEndpointToWatchAccountsOn')} />}
-        {custom.length > 0 && <Card>{custom.map((network, index) => <Row key={network.id}
+        {networks.length > 0 && <Card>{networks.map((network, index) => <Row key={network.id}
           title={network.name} subtitle={`${network.symbol} · ${new URL(network.endpoint).hostname}`} icon="globe"
-          onPress={() => { if (!busy) edit(network); }} last={index === custom.length - 1} />)}</Card>}
+          onPress={() => { if (!busy) edit(network); }} last={index === networks.length - 1} />)}</Card>}
         {saved && <Button title={t('mobile.networks.addUtxo')} variant="secondary" disabled={busy} onPress={() => edit()} />}
       </>}
       {busy && <ActivityIndicator color={colors.pink} accessibilityLabel={t('mobile.shellViews.watchNetworks.checkingNetwork')} />}

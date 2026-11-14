@@ -45,7 +45,7 @@ test('network projection is stable, frozen, public-only and projects all saved E
     assert.equal(Object.isFrozen(network), true);
     assert.deepEqual(Object.keys(network).sort(), network.canSign
       ? ['canSign', 'id', 'name', 'registration', 'symbol', 'testnet']
-      : ['canSign', 'id', 'name', 'symbol', 'testnet']);
+      : ['canSign', 'id', 'name', 'symbol', 'testnet', 'utxoEndpoint']);
   }
   assert.equal(f.requests.length, 0);
   const capable = fixture(true).view.getSnapshot()!;

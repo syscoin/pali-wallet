@@ -12,7 +12,7 @@ import { assertJsonWorkBudget } from '../../../../source/utils/requestPayloadBud
 import { normalizePublicAddress } from './addresses.ts';
 import { loadedBalance } from './amounts.ts';
 import { getNetwork, NETWORKS } from './networks.ts';
-import { getUtxoNetwork, isCustomUtxoNetworkId, UTXO_NETWORKS, utxoRegistrationData, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
+import { getUtxoNetwork, hasUtxoEndpointOverride, UTXO_NETWORKS, utxoRegistrationData, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 import type { UtxoBalance } from './utxoBalanceReader.ts';
 import type { WatchRecordRepository, WatchRecordSnapshot } from './publicAccountStorage.ts';
 import { createWatchAccountCodec, type StoredWatchAccount } from './watchAccountCodec.ts';
@@ -257,7 +257,7 @@ export class WatchOnlyAuthority implements WalletAuthority, UtxoActivityOwner {
   getMonitoringEntries() {
     if (this.getSnapshot().status !== 'ready') throw new Error('Watch accounts are locked');
     // Enrollment exports endpoint authority just like a public read. Retire a
-    // saved custom registration before exposing a stale monitoring target.
+    // saved endpoint registration before exposing a stale monitoring target.
     this.recordSession?.assertNetworkCurrent();
     return this.accounts.flatMap(account => Object.entries(account.addresses).map(([id, address]) => {
       const network = this.getNetwork(id as NetworkId);
@@ -270,11 +270,12 @@ export class WatchOnlyAuthority implements WalletAuthority, UtxoActivityOwner {
   }
 
   getUtxoExplorer = (id: UtxoNetworkId): string => {
-    if (isCustomUtxoNetworkId(id)) {
+    const network = getUtxoNetwork(id, this.utxoNetworks);
+    if (hasUtxoEndpointOverride(network)) {
       if (!this.recordSession) throw new Error('Missing UTXO registration owner');
       this.recordSession.assertNetworkCurrent();
     }
-    return getUtxoNetwork(id, this.utxoNetworks).explorer;
+    return network.explorer;
   };
   getAccountNetworks = (account: PublicAccount | undefined): readonly WalletNetwork[] => getWatchNetworks(account, this.utxoNetworks);
 
@@ -440,7 +441,8 @@ export class WatchOnlyAuthority implements WalletAuthority, UtxoActivityOwner {
     try {
       if (request.signal.aborted || this.pending !== request || generation !== this.generation || this.locked) return;
       const source = this.currentSource(), session = this.recordSession;
-      const registered = network.kind === 'utxo' && isCustomUtxoNetworkId(network.id) ? getUtxoNetwork(network.id, this.utxoNetworks) : undefined;
+      const target = network.kind === 'utxo' ? getUtxoNetwork(network.id, this.utxoNetworks) : undefined;
+      const registered = target && hasUtxoEndpointOverride(target) ? target : undefined;
       if ((source || registered) && session) {
         const current = recordView(await session.repository.load());
         if (request.signal.aborted || this.pending !== request || generation !== this.generation || this.locked) return;
@@ -499,7 +501,8 @@ export class WatchOnlyAuthority implements WalletAuthority, UtxoActivityOwner {
     const address = account?.addresses[networkId];
     if (!account || !address) throw new Error('Account activity unavailable');
     const generation = this.generation, session = this.recordSession, source = this.currentSource();
-    const registration = kind === 'utxo' && isCustomUtxoNetworkId(networkId) ? getUtxoNetwork(networkId, this.utxoNetworks) : undefined;
+    const target = kind === 'utxo' ? getUtxoNetwork(networkId, this.utxoNetworks) : undefined;
+    const registration = target && hasUtxoEndpointOverride(target) ? target : undefined;
     if (registration && !session) throw new Error('Missing UTXO registration owner');
     const request = new AbortController(); this.historyRequests.add(request);
     const abort = () => request.abort(); external?.addEventListener('abort', abort, { once: true });

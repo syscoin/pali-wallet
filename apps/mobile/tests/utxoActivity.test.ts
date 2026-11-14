@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createUtxoActivityReader, UtxoActivity, type UtxoActivityContext, type UtxoActivitySource } from '../src/core/utxoActivity.ts';
-import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
+import { getUtxoNetwork, projectUtxoRegistration, utxoRegistrationData } from '../src/core/utxoNetworks.ts';
 import { WatchOnlyAuthority } from '../src/core/watchOnlyAuthority.ts';
-import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY } from '../src/core/publicAccountStorage.ts';
+import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY, WATCH_UTXO_NETWORKS_KEY } from '../src/core/publicAccountStorage.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { BigNumber } from '../../../source/utils/ethersV6Compat.ts';
 import { XPUB } from './publicWatchFixtures.ts';
@@ -493,8 +493,9 @@ test('oversized SPT text never reaches arbitrary-precision conversion', async ()
 });
 
 test('only an owned exact confirmed v80 Syscoin detail can request public node information', async () => {
-  for (const mode of ['healthy', 'wrong-bytes', 'pending', 'summary-only', 'bitcoin', 'changed-saved-scope'] as const) {
-    const network = getUtxoNetwork(mode === 'bitcoin' ? 'bitcoin' : 'syscoin');
+  for (const mode of ['healthy', 'override', 'wrong-bytes', 'pending', 'summary-only', 'bitcoin', 'changed-saved-scope'] as const) {
+    const original = getUtxoNetwork(mode === 'bitcoin' ? 'bitcoin' : 'syscoin');
+    const network = mode === 'override' ? projectUtxoRegistration({ ...utxoRegistrationData(original), endpoint: 'https://alternate.example' }) : original;
     const address = mode === 'bitcoin' ? BTC : SYS;
     const f = fixture({ network: mode === 'bitcoin' ? 'bitcoin' : 'syscoin', count: 1, replace(path, body) {
       if (path.includes('/address/')) body.transactions[0] = { ...tx(SENTRY_TXID), version: 80 };
@@ -512,11 +513,11 @@ test('only an owned exact confirmed v80 Syscoin detail can request public node i
         assert.equal(init.method, 'GET');
         return json(sentryNodeResponse(network.genesisHash));
       }
-      return f.fetch(url, init);
+      return f.fetch(url.replace(network.endpoint, original.endpoint), init);
     } });
     let saved = JSON.stringify({ version: 1, records: [{ kind: 'address', id: 'watch', name: 'Watch', addresses: { [network.id]: address } }] });
     const repository = createPublicAccountStorage({
-      async get(key) { return key === PUBLIC_ACCOUNTS_KEY ? saved : null; },
+      async get(key) { return key === PUBLIC_ACCOUNTS_KEY ? saved : key === WATCH_UTXO_NETWORKS_KEY && mode === 'override' ? JSON.stringify([utxoRegistrationData(network)]) : null; },
       async set() { assert.fail('Lookup is read-only'); },
     }).records;
     const a = await WatchOnlyAuthority.openRecords({
@@ -532,7 +533,7 @@ test('only an owned exact confirmed v80 Syscoin detail can request public node i
       assert.equal(c.getSnapshot().detail?.status, 'ready');
       assert.deepEqual(serviceCalls, []);
       const lookup = c.getSnapshot().detail?.readSentryNode;
-      if (mode !== 'healthy' && mode !== 'changed-saved-scope') { assert.equal(lookup, undefined, mode); continue; }
+      if (mode !== 'healthy' && mode !== 'override' && mode !== 'changed-saved-scope') { assert.equal(lookup, undefined, mode); continue; }
       assert.ok(lookup);
       if (mode === 'changed-saved-scope') {
         saved = JSON.stringify({ version: 1, records: [] });

@@ -75,7 +75,7 @@ export function createWatchAccountCodec(input = UTXO_NETWORKS) {
   if (!Array.isArray(input) || input.length > UTXO_NETWORKS.length + 16) return invalid();
   const utxoNetworks = Object.freeze(input.map(resolveUtxoNetwork));
   if (new Set(utxoNetworks.map(({ id }) => id)).size !== utxoNetworks.length ||
-      UTXO_NETWORKS.some((network) => !utxoNetworks.includes(network))) return invalid();
+      UTXO_NETWORKS.some((network) => !utxoNetworks.some(({ id }) => id === network.id))) return invalid();
   const validatedLists = new WeakSet<readonly StoredWatchAccount[]>();
   function validate(input: unknown): DecodedWatchRecords {
     const records = snapshotWatchRecords(input, utxoNetworks), accounts: PublicAccount[] = [], identifiers = new Set<string>();

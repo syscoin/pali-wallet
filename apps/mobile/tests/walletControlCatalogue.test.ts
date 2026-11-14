@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NativeWalletCatalogue, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 import { createAccountRecordTestFixture, ACCOUNT_FIXTURE_PHRASE, ACCOUNT_FIXTURE_PASSWORD } from './accountRecordTestFixture.ts';
-import { getUtxoSdkNetwork } from '../src/core/utxoNetworks.ts';
+import { getUtxoNetwork, getUtxoSdkNetwork } from '../src/core/utxoNetworks.ts';
 import { stageInitialWallet } from '../../../source/wallet/accountRecovery.ts';
 import type { KeyringStoragePort } from '../src/storage/types.ts';
 const check = () => undefined;
@@ -11,7 +11,7 @@ test('public control catalogue proves inactive EVM accounts and previews the exa
   const fixture = await createAccountRecordTestFixture();
   try {
     const binding = 'ab'.repeat(32), base = fixture.record(binding);
-    const utxo = await stageInitialWallet({ key: '57', phrase: ACCOUNT_FIXTURE_PHRASE, password: ACCOUNT_FIXTURE_PASSWORD, network: getUtxoSdkNetwork('syscoin') }, { assertCurrent: check });
+    const utxo = await stageInitialWallet({ key: '57', phrase: ACCOUNT_FIXTURE_PHRASE, password: ACCOUNT_FIXTURE_PASSWORD, network: getUtxoSdkNetwork(getUtxoNetwork('syscoin')) }, { assertCurrent: check });
     const second = await fixture.derive(1, 'Saved EVM default');
     const evmGroup = structuredClone(base.groups[0]!);
     evmGroup.accounts.HDAccount[1] = second;

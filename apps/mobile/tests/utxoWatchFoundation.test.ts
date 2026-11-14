@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { bech32, bech32m } from 'bech32';
-import { UTXO_NETWORKS, getUtxoNetwork, type UtxoNetworkId } from '../src/core/utxoNetworks.ts';
+import { UTXO_NETWORKS, getUtxoNetwork, getUtxoSdkNetwork, mergeUtxoNetworks, projectUtxoRegistration, utxoRegistrationData, type UtxoNetworkId } from '../src/core/utxoNetworks.ts';
 import { normalizeUtxoAddress } from '../src/core/utxoAddresses.ts';
 import { createUtxoBalanceReader, UtxoBalanceError, type UtxoBalanceErrorCode } from '../src/core/utxoBalanceReader.ts';
 import { getNetwork } from '../src/core/networks.ts';
@@ -58,6 +58,27 @@ test('UTXO watch registrations share all extension defaults, SDK metadata and va
   const evmTestnet = getNetwork('syscoin-nevm-testnet');
   assert.equal(evmTestnet.kind, 'evm');
   assert.equal(evmTestnet.chainId, getUtxoNetwork('utxo:5700').chainId);
+});
+
+test('built-in endpoint overlays preserve shipped identity and reject duplicate or changed identities', () => {
+  const defaults = getDefaultUTXONetworks();
+  assert.throws(() => getUtxoSdkNetwork('syscoin' as never), /admitted UTXO registration/);
+  assert.throws(() => getUtxoSdkNetwork({ ...getUtxoNetwork('syscoin') }), /Unverified UTXO registration/);
+  for (const original of UTXO_NETWORKS) {
+    assert.deepEqual(getUtxoSdkNetwork(original), defaults[original.chainId]);
+    const override = projectUtxoRegistration({ ...utxoRegistrationData(original), endpoint: 'https://alternate.example/blockbook' });
+    const merged = mergeUtxoNetworks([override]);
+    assert.equal(merged.length, UTXO_NETWORKS.length);
+    assert.equal(merged.find(network => network.id === original.id), override);
+    assert.deepEqual(getUtxoSdkNetwork(override), { ...defaults[original.chainId], url: override.endpoint });
+    assert.equal(override.genesisHash, original.genesisHash);
+    assert.equal(getUtxoNetwork(original.id), original, 'saved overrides never mutate the global defaults');
+    assert.throws(() => mergeUtxoNetworks([override, override]));
+    for (const changed of [{ name: 'Renamed' }, { backendChain: 'other' }, { explorer: 'https://other.example' },
+      { slip44: original.slip44 + 1 }, { chainId: original.chainId + 1 }]) {
+      assert.throws(() => projectUtxoRegistration({ ...utxoRegistrationData(override), ...changed }));
+    }
+  }
 });
 
 test('P2WPKH parser accepts fixed public vectors, normalizes uppercase and binds HRP', () => {

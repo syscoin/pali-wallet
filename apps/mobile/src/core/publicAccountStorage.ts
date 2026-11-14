@@ -2,7 +2,7 @@ import { utf8ByteLength } from '../platformRpc.ts';
 import { parseAccountSelection, type AccountSelection } from './accountDirectory.ts';
 import type { PublicAccount } from './types.ts';
 import { verifyUtxoRegistration, type UtxoFetch } from './utxoReadSession.ts';
-import { UTXO_NETWORKS, findUtxoNetwork, isCustomUtxoNetworkId, projectUtxoRegistration, utxoRegistrationData, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
+import { UTXO_NETWORKS, canonicalUtxoEndpoint, findUtxoNetwork, isCustomUtxoNetworkId, mergeUtxoNetworks, projectUtxoRegistration, utxoRegistrationData, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 import { createWatchAccountCodec, snapshotWatchRecords, type DecodedWatchRecords, type StoredWatchAccount } from './watchAccountCodec.ts';
 
 export const PUBLIC_ACCOUNTS_KEY = 'pali.mobile.public-accounts.v1';
@@ -64,11 +64,10 @@ export function createPublicAccountStorage(port: PublicStoragePort, fetch?: Utxo
     if (raw === null) return UTXO_NETWORKS;
     assertSize(raw, 8192);
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length > 16) throw new Error('Invalid saved UTXO networks');
-    const custom = parsed.map(projectUtxoRegistration);
-    const all = [...UTXO_NETWORKS, ...custom];
-    if (custom.some(({ id }) => !isCustomUtxoNetworkId(id)) ||
-        new Set(all.map(({ id }) => id)).size !== all.length ||
+    if (!Array.isArray(parsed) || parsed.length > 16 + UTXO_NETWORKS.length) throw new Error('Invalid saved UTXO networks');
+    const registrations = parsed.map(projectUtxoRegistration);
+    const all = mergeUtxoNetworks(registrations);
+    if (registrations.filter(({ id }) => isCustomUtxoNetworkId(id)).length > 16 ||
         new Set(all.map(({ chainId, endpoint }) => JSON.stringify([chainId, endpoint]))).size !== all.length)
       throw new Error('Duplicate or invalid saved UTXO network');
     return Object.freeze(all);
@@ -96,7 +95,8 @@ export function createPublicAccountStorage(port: PublicStoragePort, fetch?: Utxo
     return { raw: ticket!.raw, check };
   }
   async function saveNetworks(owner: ReturnType<typeof networkOwner>, next: readonly UtxoNetwork[], removed?: UtxoNetworkId) {
-    const encoded = JSON.stringify(next.filter(({ id }) => isCustomUtxoNetworkId(id)).map(utxoRegistrationData));
+    const encoded = JSON.stringify(next.filter((network) => isCustomUtxoNetworkId(network.id) ||
+      findUtxoNetwork(network.id)?.endpoint !== network.endpoint).map(utxoRegistrationData));
     const admitted = decodeNetworks(encoded);
     return serialized(async () => {
       owner.check();
@@ -127,9 +127,14 @@ export function createPublicAccountStorage(port: PublicStoragePort, fetch?: Utxo
       if (!fetch) throw new Error('UTXO network verification is unavailable');
       const owner = networkOwner(expected, signal);
       const previous = editId === undefined ? undefined : findUtxoNetwork(editId, expected.networks);
-      if (editId !== undefined && (!previous || !isCustomUtxoNetworkId(editId))) throw new Error('This network cannot be edited here.');
+      if (editId !== undefined && !previous) throw new Error('This network cannot be edited here.');
+      const builtin = previous && !isCustomUtxoNetworkId(previous.id);
+      if (builtin && (draft.name && draft.name !== previous.name || draft.explorer &&
+          canonicalUtxoEndpoint(draft.explorer) !== canonicalUtxoEndpoint(previous.explorer)))
+        throw new Error('Built-in network identity cannot change.');
+      const verifiedDraft = builtin ? { ...draft, name: previous.name, explorer: previous.explorer } : draft;
       let selected: UtxoNetwork;
-      try { selected = await verifyUtxoRegistration(draft, previous, { fetch, timeoutMs: 10_000 }, signal, owner.check); }
+      try { selected = await verifyUtxoRegistration(verifiedDraft, previous, { fetch, timeoutMs: 10_000 }, signal, owner.check); }
       catch (error) { if (!signal.aborted) owner.check(); throw error; }
       owner.check();
       if ((!previous && findUtxoNetwork(selected.id, expected.networks)) ||
