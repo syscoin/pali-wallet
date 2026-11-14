@@ -76,8 +76,10 @@
   "devDependencies": {
     "@playwright/test": "1.61.1",
     "@types/base-64": "1.0.2",
+    "@types/jsdom": "30.0.0",
     "@types/node": "^22.19.0",
     "@types/react": "~19.2.2",
+    "@types/react-dom": "19.2.7",
     "babel-plugin-transform-remove-console": "6.9.4",
     "babel-preset-expo": "58.0.23",
     "eslint": "9.39.5",
