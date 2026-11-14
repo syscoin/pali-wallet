@@ -1,6 +1,7 @@
 import type { NativeSmartModuleCommand, NativeSmartModuleConsent } from './modules.ts';
 import { isSmartAccountPendingStateError } from '../../../../source/utils/smartAccount/pendingState.ts';
 import { NativeOperationDrain } from '../custody/operationDrain.ts';
+import type { SmartAccountBuiltinInstall } from '../../../../source/utils/smartAccount/moduleCommands.ts';
 import type { SmartAccountValidatorSwitch } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
 import {
   createSmartAccountCallsExecutions,
@@ -31,7 +32,7 @@ export type NativeSmartAccountResolvedIntent = (
   | Readonly<{ kind: 'deploy' }>
   | Readonly<{
       kind: 'authenticator';
-      command: SmartAccountValidatorSwitch;
+      command: SmartAccountValidatorSwitch | SmartAccountBuiltinInstall;
     }>
   | Readonly<{ kind: 'guardian-policy'; command: GuardianPolicyCommand }>
   | Readonly<{ kind: 'modules'; command: NativeSmartModuleCommand }>
@@ -193,6 +194,8 @@ export class NativeSmartAccountOperation {
     now = () => performance.now()
   ) {
     this.host = host;
+    if (host.intent.kind === 'authenticator' && !['replace', 'add-to-combined'].includes(host.intent.command.purpose))
+      throw new Error('Invalid smart account approval purpose');
     if(typeof host.background!=='function')throw new Error('Native operation background authority is required');
     if (
       (host.intent.kind === 'guardian-policy' ||

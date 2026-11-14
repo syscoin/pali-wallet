@@ -76,3 +76,18 @@ test('native passkey admission and runtime reads reject non-public or malformed 
   assert.throws(() => inspectNativePasskeyStorageRecord(PASSKEY_CREATION_PENDING_KEY, encodeStorageValue(extraPending)), /Invalid saved passkey/);
   assert.throws(() => inspectNativePasskeyStorageRecord(passkeyAccountRecordsKey(account), encodeStorageValue({ pending: extraPending })), /Invalid saved passkey/);
 });
+
+
+test('installed inactive P256 activates only the exact pending public profile', async () => {
+  const f = fixture(); await f.registry.savePending(account, profile, f.check);
+  const built = buildP256WebAuthnAuthenticator({chainId:1,config:profile});
+  const metadata = {...built.metadata,chainId:1,contractVersion:'1',deploymentSalt:'0x00',isDeployed:true,
+    auth:{module:'ecdsa' as const,validator:'0x'+'22'.repeat(20),data:'0x'}};
+  const wrong = {...profile,publicKey:{...profile.publicKey,originHash:'0x'+'99'.repeat(32)}};
+  const mismatched = buildP256WebAuthnAuthenticator({chainId:1,config:wrong});
+  assert.equal(await f.registry.activateObserved(account, {...metadata,installedModules:mismatched.metadata.installedModules}, f.check), null);
+  assert((await f.registry.read(account,f.check)).pending);
+  assert.deepEqual(await f.registry.activateObserved(account,metadata,f.check),profile);
+  assert.deepEqual(await f.registry.read(account,f.check),{active:profile});
+  assert.deepEqual(await f.registry.activateObserved(account,metadata,f.check),profile,'cold observations reuse the retained active public profile');
+});

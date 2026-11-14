@@ -287,7 +287,7 @@ test('approval change separates the current method from proposed owners and keep
   const validator = '0x5555555555555555555555555555555555555555';
   const owners = ['0x6666666666666666666666666666666666666666', '0x7777777777777777777777777777777777777777'];
   f.update({ intent: { kind: 'authenticator', command: {
-    accountAddress: '0x1111111111111111111111111111111111111111', chainId: 1, executions: [],
+    purpose: 'replace', accountAddress: '0x1111111111111111111111111111111111111111', chainId: 1, executions: [],
     sourceAuthHash: '0x' + '88'.repeat(32), sourceModule: 'slh-dsa',
     target: { module: 'ecdsa', validator, data: '0x1234' },
     targetModule: { type: 'validator', id: 'ecdsa', address: validator, data: '0x1234', config: { owners, threshold: 1 } },

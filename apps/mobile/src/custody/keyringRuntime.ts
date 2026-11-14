@@ -1,3 +1,4 @@
+import { buildSmartAccountBuiltinInstall, assertSmartAccountBuiltinInstallApplied, type SmartAccountAuthenticatorPurpose } from '../../../../source/utils/smartAccount/moduleCommands.ts';
 import { isAccountCompatibleWithNetwork } from '../../../../source/utils/accountCompatibility.ts';
 import type { PaliRecoveryTarget } from '../../../../source/utils/smartAccount/account.ts';
 import { AUTOMATIC_FEE, chooseEvmFees, snapshotEvmFeeChoice, snapshotUtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice.ts';
@@ -352,16 +353,16 @@ export interface KeyringRuntime extends CustodyRuntime {
   canSignSmartAccount(): boolean;
   resumeSmartAccountOperation(id: string, signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
   canManageSlhDsa(): boolean;
-  openSlhDsaInstallation(keyId: string, signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
+  openSlhDsaInstallation(keyId: string, purpose: SmartAccountAuthenticatorPurpose, signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
   prepareConnectionPsbt(request: import('../connections/psbtRequests.ts').NativePsbtRequest,
     signal: AbortSignal, assertCurrent: () => void, handoff: import('../connections/signingHandoff.ts').NativeSigningHandoff, authentication: NativePrivateAuthentication | null): Promise<import('../../../../source/wallet/psbtApprovals.ts').PreparedPsbtApproval>;
   readConnectionUtxoPublic(method: 'getChangeAddress' | 'getCurrentAddressPubkey' | 'getBip32Path',
     owner: Readonly<{ accountId: string; xpub: string }>, isChangeAddress: boolean,
     signal: AbortSignal, assertCurrent: () => void): Promise<string>;
   openSmartAccountDeployment(assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
-  openWalletAuthenticator(signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
+  openWalletAuthenticator(purpose: SmartAccountAuthenticatorPurpose, signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
   canUsePasskeys(): boolean;
-  openPasskeyAuthenticator(recreate: boolean, signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
+  openPasskeyAuthenticator(recreate: boolean, purpose: SmartAccountAuthenticatorPurpose, signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
   canUseWalletAuthenticator(): boolean;
   readSmartAccountModules(signal: AbortSignal, assertCurrent: () => void): Promise<ISmartAccountMetadata>;
   preflightSmartAccountModule(address: string, signal: AbortSignal, assertCurrent: () => void): Promise<CustomValidatorPreflightResult>;
@@ -4231,7 +4232,11 @@ export function createKeyringRuntimeFactory(
                 ];
               }
               await dataBinding(captured, check); check();
-              await passkeyRegistry.activateObserved(account.address, metadata, check); check();
+              const observedPasskey = await passkeyRegistry.activateObserved(account.address, metadata, check); check();
+              if (observedPasskey) metadata.installedModules = metadata.installedModules?.map(module =>
+                module.type === 'validator' && module.id === 'p256-webauthn'
+                  ? { ...module, config: { ...module.config, credentialId: observedPasskey.credentialId, credentialIdHash: observedPasskey.credentialIdHash,
+                    passkeyName: observedPasskey.passkeyName, ...(observedPasskey.backupStatus ? { backupStatus: observedPasskey.backupStatus } : {}) } } : module);
               const committed = await run(async () => {
                 // A read may be cancelled before this queued mutation starts.
                 try { check(); } catch { return false; }
@@ -5450,7 +5455,8 @@ export function createKeyringRuntimeFactory(
                   }
                 }
                 if (intent.kind === 'authenticator') {
-                  assertSmartAccountValidatorSwitchApplied(intent.command, account.smartAccount!);
+                  if (intent.command.purpose === 'add-to-combined') assertSmartAccountBuiltinInstallApplied(intent.command, account.smartAccount!);
+                  else assertSmartAccountValidatorSwitchApplied(intent.command, account.smartAccount!);
                 }
                 if (intent.kind === 'guardian-policy') {
                   if (intent.command.kind === 'remove') {
@@ -5542,7 +5548,8 @@ export function createKeyringRuntimeFactory(
             };
             return openSmartAccountOperation({ kind: 'guardian-policy', command }, assertOwner, origin, authentication, undefined, assertPolicy);
         };
-        const openSmartAccountAuthenticator = async (target: SmartAccountAuthenticatorBuildResult, signal: AbortSignal, assertOwner: () => void, origin: SmartOperationOrigin, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation> => {
+        const openSmartAccountAuthenticator = async (target: SmartAccountAuthenticatorBuildResult, purpose: SmartAccountAuthenticatorPurpose, signal: AbortSignal, assertOwner: () => void, origin: SmartOperationOrigin, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation> => {
+            if (purpose !== 'replace' && purpose !== 'add-to-combined') throw new KeyringRuntimeError('INVALID_INPUT');
             const captured = generation, before = catalogueSnapshot;
             if (!before) throw new KeyringRuntimeError('NOT_READY');
             const address = selectedAccount().address;
@@ -5557,13 +5564,14 @@ export function createKeyringRuntimeFactory(
             const selected = selectedAccount();
             const account = state.accounts.SmartAccount[selected.index];
             if (!account?.smartAccount) throw new KeyringRuntimeError('NOT_READY');
-            if (!canSignSmartAccount() && (!account.smartAccount.auth || getSmartAccountAuthHash(account.smartAccount.auth) !== getSmartAccountAuthHash(target.auth)))
+            if (!canSignSmartAccount() && (purpose === 'add-to-combined' || !account.smartAccount.auth || getSmartAccountAuthHash(account.smartAccount.auth) !== getSmartAccountAuthHash(target.auth)))
               throw new KeyringRuntimeError('NOT_READY');
-            const command = buildSmartAccountValidatorSwitch({ accountAddress: account.address,
+            const command = (purpose === 'add-to-combined' ? buildSmartAccountBuiltinInstall : buildSmartAccountValidatorSwitch)({ accountAddress: account.address,
               chainId: account.smartAccount.chainId, metadata: account.smartAccount, target });
             return openSmartAccountOperation({ kind: 'authenticator', command }, check, origin, authentication);
         };
-        const openPasskeyAuthenticator = async (recreate: boolean, expectedCredentialHash: string | null, signal: AbortSignal, assertOwner: () => void, origin: SmartOperationOrigin | null, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation> => {
+        const openPasskeyAuthenticator = async (recreate: boolean, purpose: SmartAccountAuthenticatorPurpose, expectedCredentialHash: string | null, signal: AbortSignal, assertOwner: () => void, origin: SmartOperationOrigin | null, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation> => {
+            if (purpose !== 'replace' && purpose !== 'add-to-combined') throw new KeyringRuntimeError('INVALID_INPUT');
             if (!passkeys || !authentication || typeof recreate !== 'boolean' || !catalogueSnapshot || !canSignSmartAccount()) throw new KeyringRuntimeError('NOT_READY');
             const captured = generation, before = catalogueSnapshot, address = selectedAccount().address;
             const check = () => {
@@ -5574,6 +5582,8 @@ export function createKeyringRuntimeFactory(
             await refreshSmartAccountMetadata(signal, check); check();
             const selected = selectedAccount(), account = state.accounts.SmartAccount[selected.index];
             if (!account?.smartAccount || !canSignSmartAccount()) throw new KeyringRuntimeError('NOT_READY');
+            if (purpose === 'add-to-combined' && (!account.smartAccount.isDeployed || account.smartAccount.installedModules?.some((module: SmartAccountValidatorModule) => module.id === 'p256-webauthn')))
+              throw new KeyringRuntimeError('NOT_READY');
             const records = await passkeyRegistry.read(address, check); check();
             const candidates = [records.pending?.profile, records.active].filter((value): value is IPasskeyCredentialProfile => !!value);
             let profile = expectedCredentialHash ? candidates.find(value => value.credentialIdHash.toLowerCase() === expectedCredentialHash.toLowerCase())
@@ -5602,10 +5612,11 @@ export function createKeyringRuntimeFactory(
             if (!profile) throw new KeyringRuntimeError('NOT_READY');
             check(); await passkeyRegistry.savePending(address, profile, check); check();
             const target = buildP256WebAuthnAuthenticator({ chainId: account.smartAccount.chainId, config: profile });
-            const ownedOrigin: SmartOperationOrigin = origin ?? { kind: 'local-new', action: {kind:'passkey-authenticator',credentialIdHash:profile.credentialIdHash} };
-            return openSmartAccountAuthenticator(target, signal, check, ownedOrigin, authentication);
+            const ownedOrigin: SmartOperationOrigin = origin ?? { kind: 'local-new', action: {kind:'passkey-authenticator',purpose,credentialIdHash:profile.credentialIdHash} };
+            return openSmartAccountAuthenticator(target, purpose, signal, check, ownedOrigin, authentication);
         };
-        const openWalletAuthenticator = async (signal: AbortSignal, assertOwner: () => void, origin: SmartOperationOrigin, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation> => {
+        const openWalletAuthenticator = async (purpose: SmartAccountAuthenticatorPurpose, signal: AbortSignal, assertOwner: () => void, origin: SmartOperationOrigin, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation> => {
+            if (purpose !== 'replace' && purpose !== 'add-to-combined') throw new KeyringRuntimeError('INVALID_INPUT');
             if (!catalogueSnapshot || !canSignSmartAccount()) throw new KeyringRuntimeError('NOT_READY');
             const selected = selectedAccount(), account = state.accounts.SmartAccount[selected.index];
             if (!account?.smartAccount) throw new KeyringRuntimeError('NOT_READY');
@@ -5623,7 +5634,7 @@ export function createKeyringRuntimeFactory(
                 throw new KeyringRuntimeError('CANCELLED');
             };
             return openSmartAccountAuthenticator(buildECDSAAuthenticator({ chainId: account.smartAccount.chainId,
-              config: { owners: [ownerAddress], threshold: 1 } }), signal, checkOwner, origin, authentication);
+              config: { owners: [ownerAddress], threshold: 1 } }), purpose, signal, checkOwner, origin, authentication);
         };
         const preflightModuleInstall = async (address: string, signal: AbortSignal, assertOwner: () => void, deploymentAdmission: NativeSmartModuleDeploymentAdmission): Promise<CustomValidatorPreflightResult> => {
             const captured = generation, snapshot = catalogueSnapshot, selected = selectedAccount();
@@ -5687,7 +5698,8 @@ export function createKeyringRuntimeFactory(
             return openSmartAccountOperation({ kind: 'modules', command }, check, origin.kind === 'local-new'
               ? { kind: 'local-new', action: { kind: 'modules', draft } } : origin, authentication);
         };
-        const openSlhDsaInstallation = async (keyId: string, signal: AbortSignal, assertOwner: () => void, origin: SmartOperationOrigin, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation> => {
+        const openSlhDsaInstallation = async (keyId: string, purpose: SmartAccountAuthenticatorPurpose, signal: AbortSignal, assertOwner: () => void, origin: SmartOperationOrigin, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation> => {
+            if (purpose !== 'replace' && purpose !== 'add-to-combined') throw new KeyringRuntimeError('INVALID_INPUT');
             if (typeof keyId !== 'string' || parseSLHDSAStateStorageKey(getSLHDSAStateStorageKey(keyId)) !== keyId) throw new KeyringRuntimeError('INVALID_INPUT');
             const captured = generation, before = catalogueSnapshot;
             if (!before || !canManageSlhDsa() || !canSignSmartAccount()) throw new KeyringRuntimeError('NOT_READY');
@@ -5714,7 +5726,7 @@ export function createKeyringRuntimeFactory(
             const target = buildSLHDSAAuthenticator({ chainId: account.smartAccount.chainId, config: {
               keyId: prepared.keyId, parameterSet: prepared.parameterSet, pkRoot: prepared.pkRoot, pkSeed: prepared.pkSeed, signatureLimit: prepared.signatureLimit,
             } });
-            const command = buildSmartAccountValidatorSwitch({ accountAddress: account.address, chainId: account.smartAccount.chainId, metadata: account.smartAccount, target });
+            const command = (purpose === 'add-to-combined' ? buildSmartAccountBuiltinInstall : buildSmartAccountValidatorSwitch)({ accountAddress: account.address, chainId: account.smartAccount.chainId, metadata: account.smartAccount, target });
             return openSmartAccountOperation({ kind: 'authenticator', command }, check, origin, authentication);
         };
         return {
@@ -5729,10 +5741,10 @@ export function createKeyringRuntimeFactory(
               if(!sameSigningResumeOwner(descriptor.scope,scope)||scope.unlockGeneration<=descriptor.scope.unlockGeneration)throw new KeyringRuntimeError('CANCELLED');
               const origin:SmartOperationOrigin={kind:'local-resume',descriptor},action=descriptor.action;
               if(action.kind==='guardian-policy')return await openGuardianPolicy(action.draft,signal,assertOwner,origin,authentication);
-              if(action.kind==='passkey-authenticator')return await openPasskeyAuthenticator(false,action.credentialIdHash,signal,assertOwner,origin,authentication);
-              if(action.kind==='wallet-authenticator')return await openWalletAuthenticator(signal,assertOwner,origin,authentication);
+              if(action.kind==='passkey-authenticator')return await openPasskeyAuthenticator(false,action.purpose,action.credentialIdHash,signal,assertOwner,origin,authentication);
+              if(action.kind==='wallet-authenticator')return await openWalletAuthenticator(action.purpose,signal,assertOwner,origin,authentication);
               if(action.kind==='modules')return await openSmartAccountModuleChange(action.draft,signal,assertOwner,origin,authentication);
-              if(action.kind==='slh-installation')return await openSlhDsaInstallation(action.keyId,signal,assertOwner,origin,authentication);
+              if(action.kind==='slh-installation')return await openSlhDsaInstallation(action.keyId,action.purpose,signal,assertOwner,origin,authentication);
               return await openSmartAccountOperation(action.intent,assertOwner,origin,authentication);
             }catch(error){localSmartHandoffs.discard(descriptor);throw error;}
           },
@@ -5747,7 +5759,7 @@ export function createKeyringRuntimeFactory(
           openGuardianPolicy: (draft, signal, assertOwner, authentication) => openGuardianPolicy(draft, signal, assertOwner, {kind:'local-new',action:{kind:'guardian-policy',draft}}, authentication),
           openSlhDsaAccount, canSignSmartAccount, canManageSlhDsa,
           canUsePasskeys: () => passkeys !== null,
-          openPasskeyAuthenticator: (recreate, signal, assertOwner, authentication) => openPasskeyAuthenticator(recreate, null, signal, assertOwner, null, authentication),
+          openPasskeyAuthenticator: (recreate, purpose, signal, assertOwner, authentication) => openPasskeyAuthenticator(recreate, purpose, null, signal, assertOwner, null, authentication),
           readSmartAccountModules, preflightSmartAccountModule: (address, signal, assertOwner) => preflightModuleInstall(address, signal, assertOwner, 'deployed-only'),
           openSmartAccountModuleChange: (draft, signal, assertOwner, authentication) => openSmartAccountModuleChange(draft, signal, assertOwner, { kind: 'local-new', action: { kind: 'modules', draft } }, authentication),
           openSmartAccountDeployment: (assertOwner, authentication) => openSmartAccountOperation({ kind: 'deploy' }, assertOwner, {kind:'local-new',action:{kind:'operation',intent:{kind:'deploy'}}}, authentication),
@@ -5756,8 +5768,8 @@ export function createKeyringRuntimeFactory(
             const selected = selectedAccount();
             return state.accounts.SmartAccount[selected.index]?.smartAccount?.isDeployed === true;
           },
-          openWalletAuthenticator: (signal, assertOwner, authentication) => openWalletAuthenticator(signal, assertOwner, {kind:'local-new',action:{kind:'wallet-authenticator'}}, authentication),
-          openSlhDsaInstallation: (keyId, signal, assertOwner, authentication) => openSlhDsaInstallation(keyId, signal, assertOwner, {kind:'local-new',action:{kind:'slh-installation',keyId}}, authentication),
+          openWalletAuthenticator: (purpose, signal, assertOwner, authentication) => openWalletAuthenticator(purpose, signal, assertOwner, {kind:'local-new',action:{kind:'wallet-authenticator',purpose}}, authentication),
+          openSlhDsaInstallation: (keyId, purpose, signal, assertOwner, authentication) => openSlhDsaInstallation(keyId, purpose, signal, assertOwner, {kind:'local-new',action:{kind:'slh-installation',keyId,purpose}}, authentication),
           async openSmartAccountSend(recipient, amount, assertOwner, authentication) {
             let intent: NativeSmartAccountIntent;
             try {
@@ -6153,8 +6165,8 @@ export function createKeyringRuntimeFactory(
                 if (!state.accounts.SmartAccount[allocation.account.index]!.smartAccount!.isDeployed)
                   return openSmartAccountOperation({ kind: 'deploy' }, assertSource, { kind: 'dapp', handoff }, authentication);
                 if (owned.slh?.prepared)
-                  return openSlhDsaInstallation(owned.slh.prepared.keyId, owned.signal, assertSource, { kind: 'dapp', handoff }, authentication);
-                return openSmartAccountAuthenticator(target, owned.signal, assertSource, { kind: 'dapp', handoff }, authentication);
+                  return openSlhDsaInstallation(owned.slh.prepared.keyId, 'replace', owned.signal, assertSource, { kind: 'dapp', handoff }, authentication);
+                return openSmartAccountAuthenticator(target, 'replace', owned.signal, assertSource, { kind: 'dapp', handoff }, authentication);
               },
               async prepareModuleChange(input, assertRequestCurrent, authentication) {
                 if (authentication !== null) assertNativePrivateAuthentication(authentication);

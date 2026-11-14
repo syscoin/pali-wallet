@@ -63,7 +63,7 @@ async function fixture(smart = true) {
   let slhAuthentication: privateAuthentication.NativePrivateAuthentication | null = null;
   const slhOperation = { dispose() {} };
   runtime.openSlhDsaAccount = async (check: () => void, _signal: AbortSignal, authentication: privateAuthentication.NativePrivateAuthentication | null) => { slhAuthentication = authentication; slhCounts.opened++; check(); return { installedKeys: [] }; };
-  runtime.openSlhDsaInstallation = async (_keyId: string, _signal: AbortSignal, check: () => void) => { slhCounts.installed++; check(); return slhOperation; };
+  runtime.openSlhDsaInstallation = async (_keyId: string, _purpose: string, _signal: AbortSignal, check: () => void) => { slhCounts.installed++; check(); return slhOperation; };
   let locks = 0;
   class Authority {
     private readonly factory: { open(): Promise<unknown> };
@@ -385,9 +385,9 @@ test('native SLH factory rejects an async installation view before private insta
   const f = await fixture(), signal = new AbortController().signal;
   const manager = await f.controllers.openSlhDsaManagement(signal, () => undefined, privateAuthentication.createNativePrivateAuthenticationScope());
   assert.equal(f.slhCounts.opened, 1);
-  await assert.rejects(manager.openInstall('exact-public-key', signal, async () => undefined), /guard must be synchronous/);
+  await assert.rejects(manager.openInstall('exact-public-key', 'replace', signal, async () => undefined), /guard must be synchronous/);
   assert.equal(f.slhCounts.installed, 0);
-  assert.equal(await manager.openInstall('exact-public-key', signal, () => undefined), f.slhOperation);
+  assert.equal(await manager.openInstall('exact-public-key', 'replace', signal, () => undefined), f.slhOperation);
   assert.equal(f.slhCounts.installed, 1);
 });
 

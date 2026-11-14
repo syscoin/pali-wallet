@@ -16,6 +16,7 @@ import SmartAccountHub from './Hub';
 const address = (n: number) => `0x${n.toString(16).padStart(40, '0')}`;
 const mockEmitter = jest.fn();
 const mockSubmit = jest.fn();
+const mockNavigate = jest.fn();
 const mockAlert = { error: jest.fn(), success: jest.fn() };
 let mockState: any;
 let mockGeneration = 7;
@@ -36,7 +37,7 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 jest.mock('hooks/index', () => ({
-  useUtils: () => ({ alert: mockAlert, navigate: jest.fn() }),
+  useUtils: () => ({ alert: mockAlert, navigate: mockNavigate }),
 }));
 jest.mock('hooks/useController', () => ({
   useController: () => ({
@@ -290,6 +291,33 @@ it('submits a valid two-child policy once and closes after acknowledgement', asy
     'smartAccountHub.compositeSaved'
   );
   expect(mockAlert.error).not.toHaveBeenCalled();
+});
+
+it('offers one enabled add-method button when combined approvals need another installed method', async () => {
+  const value =
+    mockState.vault.accounts[KeyringAccountType.SmartAccount][0].smartAccount;
+  value.installedModules = [value.installedModules[0]];
+  value.auth = {
+    module: 'ecdsa',
+    validator: value.installedModules[0].address,
+    data: '0x',
+  };
+  render(<SmartAccountHub />);
+  const add = await screen.findByRole('button', {
+    name: 'settings.addToCombinedApprovals',
+  });
+  expect((add as HTMLButtonElement).disabled).toBe(false);
+  expect(add.textContent).toBe('settings.addApprovalMethod');
+  expect(add.dataset.variant).toBe('secondary');
+  expect(add.dataset.size).toBe('sm');
+  expect(
+    screen.queryByRole('button', { name: 'smartAccountHub.setUp' })
+  ).toBeNull();
+  fireEvent.click(add);
+  expect(mockNavigate).toHaveBeenCalledWith(
+    '/settings/account/smart-account-policy'
+  );
+  expect(mockSubmit).not.toHaveBeenCalled();
 });
 
 it('keeps the current account metadata when an older hydration finishes last', async () => {

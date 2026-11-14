@@ -1,3 +1,4 @@
+import type { SmartAccountAuthenticatorPurpose } from '../../../../source/utils/smartAccount/moduleCommands.ts';
 import type { NativeSlhDsaAccount } from '../custody/keyringRuntime';
 import type { NativeSmartAccountOperation } from './operation';
 
@@ -7,5 +8,5 @@ export type NativeSlhDsaManagement = Readonly<Pick<NativeSlhDsaAccount,
   accountAddress: string;
   networkName: string;
   isDeployed: boolean;
-  openInstall(keyId: string, signal: AbortSignal, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
+  openInstall(keyId: string, purpose: SmartAccountAuthenticatorPurpose, signal: AbortSignal, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
 }>;

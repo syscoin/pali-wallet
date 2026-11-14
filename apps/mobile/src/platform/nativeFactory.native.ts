@@ -698,10 +698,16 @@ export function createNativeWalletControllers() {
     return Object.freeze({
       accountAddress: snapshot.account.address, networkName: network.name,
       passkeysAvailable: selected.canUsePasskeys(),
-      async openPasskey(recreate, operationSignal, assertView) {
+      async openPasskey(recreate, purpose, operationSignal, assertView) {
         const guard = () => { check(); assertSynchronousEvmFeeGuard(assertView); if (operationSignal.aborted) throw Error('CANCELLED'); };
         guard();
-        const operation = await observeFailure(() => selected.openPasskeyAuthenticator(recreate, operationSignal, guard, binding));
+        const operation = await observeFailure(() => selected.openPasskeyAuthenticator(recreate, purpose, operationSignal, guard, binding));
+        try { guard(); return operation; } catch (error) { await operation.dispose(); throw error; }
+      },
+      async openWalletAuthenticator(operationSignal, assertView) {
+        const guard = () => { check(); assertSynchronousEvmFeeGuard(assertView); if (operationSignal.aborted) throw Error('CANCELLED'); };
+        guard();
+        const operation = await observeFailure(() => selected.openWalletAuthenticator('add-to-combined', operationSignal, guard, binding));
         try { guard(); return operation; } catch (error) { await operation.dispose(); throw error; }
       },
       read: () => observeFailure(() => selected.readSmartAccountModules(signal, check)),
@@ -733,10 +739,10 @@ export function createNativeWalletControllers() {
       hydrateInstalled: keyId => observeFailure(() => account.hydrateInstalled(keyId)),
       rebuildInstalled: (keyId, progress) => observeFailure(() => account.rebuildInstalled(keyId, progress)),
       rebuildPrepared: (keyId, progress) => observeFailure(() => account.rebuildPrepared(keyId, progress)),
-      async openInstall(keyId, operationSignal, assertView) {
+      async openInstall(keyId, purpose, operationSignal, assertView) {
         const guard = () => { assertSynchronousEvmFeeGuard(check); assertSynchronousEvmFeeGuard(assertView); if (operationSignal.aborted) throw Error('CANCELLED'); };
         guard();
-        const operation = await observeFailure(() => selected.openSlhDsaInstallation(keyId, operationSignal, guard, binding));
+        const operation = await observeFailure(() => selected.openSlhDsaInstallation(keyId, purpose, operationSignal, guard, binding));
         try { guard(); return operation; } catch (error) { await operation.dispose(); throw error; }
       },
     });
@@ -744,7 +750,7 @@ export function createNativeWalletControllers() {
   const openWalletAuthenticator = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
     const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
-    return observeFailure(() => selected.openWalletAuthenticator(signal, assertCurrent, binding));
+    return observeFailure(() => selected.openWalletAuthenticator('replace', signal, assertCurrent, binding));
   };
   const openSmartAccountSend = async (recipient: string, amount: Parameters<KeyringRuntime['openSmartAccountSend']>[1], assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);

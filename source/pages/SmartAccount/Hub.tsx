@@ -1159,20 +1159,29 @@ const SmartAccountHub = () => {
                 {t('smartAccountHub.compositeHint')}
               </span>
             </div>
-            <button
+            <Button
               type="button"
-              className="flex-shrink-0 whitespace-nowrap ml-3 text-xs text-brand-royalbluemedium hover:underline disabled:text-brand-gray300"
-              disabled={
-                compositeCandidates.length < 2 ||
-                !metadata?.isDeployed ||
-                Boolean(busyKey)
+              variant="secondary"
+              size="sm"
+              className="ml-3 shrink-0 !w-auto px-3"
+              aria-label={
+                compositeCandidates.length < 2
+                  ? t('settings.addToCombinedApprovals')
+                  : undefined
               }
-              onClick={openCompositeBuilder}
+              disabled={!metadata?.isDeployed || Boolean(busyKey)}
+              onClick={
+                compositeCandidates.length < 2
+                  ? goToPolicyPage
+                  : openCompositeBuilder
+              }
             >
-              {installedComposite
+              {compositeCandidates.length < 2
+                ? t('settings.addApprovalMethod')
+                : installedComposite
                 ? t('smartAccountHub.edit')
                 : t('smartAccountHub.setUp')}
-            </button>
+            </Button>
           </li>
 
           {/* Bring your own validator */}

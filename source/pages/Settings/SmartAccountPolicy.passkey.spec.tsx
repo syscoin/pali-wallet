@@ -26,6 +26,10 @@ import {
   buildSLHDSAAuthenticator,
 } from 'utils/smartAccount/authenticators';
 import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
+import { paliSmartAccountInterface } from 'utils/smartAccount/contracts';
+import { listCompositeChildCandidates } from 'utils/smartAccount/custom';
+import { buildCompositeValidatorExecutions } from 'utils/smartAccount/moduleCommands';
+import { isPaliValidatorAlgorithmSupported } from 'utils/smartAccount/validatorSignability';
 
 import SmartAccountPolicy from './SmartAccountPolicy';
 
@@ -56,7 +60,7 @@ jest.mock('hooks/useUtils', () => ({ useUtils: jest.fn() }));
 jest.mock('react-redux', () => ({ useSelector: jest.fn() }));
 jest.mock('react-router-dom', () => ({
   useLocation: () => ({
-    key: 'policy',
+    key: mockPolicyKey,
     pathname: '/settings/account/smart-account-policy',
     search: '',
     hash: '',
@@ -78,6 +82,7 @@ const CHAIN_ID = 57057;
 const ACCOUNT = '0x1111111111111111111111111111111111111111';
 const mockOwnerWallet = new Wallet('0x' + '32'.repeat(32));
 const OWNER = mockOwnerWallet.address;
+let mockPolicyKey = 'policy';
 const P256 = getPaliModuleAddress(CHAIN_ID, 'p256-webauthn');
 const COMPOSITE = getPaliModuleAddress(CHAIN_ID, 'composite');
 const ECDSA = getPaliModuleAddress(CHAIN_ID, 'ecdsa');
@@ -117,12 +122,21 @@ describe('SmartAccountPolicy passkey preservation', () => {
     refIndex = 0;
     return SmartAccountPolicy();
   };
-  const clickUsePasskey = async () => {
+  const clickUsePasskey = async (add = false) => {
     const card = find(render(), (element) =>
       String(element.key).includes('p256-webauthn')
     )!;
     expect(card).toBeDefined();
-    const button = find(card, (element) => element.type === 'button')!;
+    const button = find(
+      card,
+      (element) =>
+        element.type === 'button' &&
+        React.Children.toArray(element.props.children).includes(
+          add
+            ? 'settings.addToCombinedApprovals'
+            : 'settings.useSmartAccountValidator'
+        )
+    )!;
     await button.props.onClick();
   };
   const waitForTerminalResult = async () => {
@@ -135,8 +149,8 @@ describe('SmartAccountPolicy passkey preservation', () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
   };
-  const recreate = async () => {
-    await clickUsePasskey();
+  const recreate = async (add = false) => {
+    await clickUsePasskey(add);
     const confirmation = find(
       render(),
       (element) =>
@@ -149,6 +163,7 @@ describe('SmartAccountPolicy passkey preservation', () => {
   };
 
   beforeEach(async () => {
+    mockPolicyKey = 'policy';
     states = [];
     refs = [];
     storageFails = false;
@@ -428,6 +443,251 @@ describe('SmartAccountPolicy passkey preservation', () => {
     expect(signalAcceptedPasskeyCredentials).not.toHaveBeenCalled();
   });
 
+  it.each([
+    'success',
+    'wrong target',
+    'active changed',
+    'rejected',
+    'lost response',
+  ])(
+    'adds a passkey without replacing ECDSA and validates the observed result (%s)',
+    async (outcome) => {
+      const source = buildECDSAAuthenticator({
+        chainId: CHAIN_ID,
+        config: { owners: [OWNER], threshold: 1 },
+      });
+      metadata = { ...metadata, ...source.metadata, auth: source.auth };
+      const target = buildP256WebAuthnAuthenticator({
+        chainId: CHAIN_ID,
+        config: { publicKey: PUBLIC_KEY },
+      });
+      const original = emitter.getMockImplementation()!;
+      emitter.mockImplementation(async (path: string[], params: any[]) => {
+        if (path[1] === 'submitSmartAccountExecution') {
+          if (outcome === 'rejected') throw new Error('Rejected');
+          metadata = {
+            ...metadata,
+            installedModules: [
+              ...source.metadata.installedModules!,
+              ...structuredClone(target.metadata.installedModules!),
+            ],
+          };
+          if (outcome === 'wrong target')
+            metadata.installedModules[1].config.publicKey.x = `0x${'99'.repeat(
+              32
+            )}`;
+          if (outcome === 'active changed') metadata.auth = target.auth;
+          if (outcome === 'lost response')
+            throw new Error('Connection lost after broadcast');
+        }
+        return original(path, params);
+      });
+      await recreate(true);
+      const prepared = emitter.mock.calls.find(
+        ([[, method]]) => method === 'prepareSmartAccountExecutions'
+      )!;
+      expect(prepared).toBeDefined();
+      const calls = prepared[1][0].map((call: any) =>
+        paliSmartAccountInterface.parseTransaction({ data: call.data })
+      );
+      expect(calls.map((call: any) => call.name)).toEqual([
+        'installModule',
+        'rotateValidator',
+      ]);
+      expect(calls[1].args[0].toLowerCase()).toBe(
+        source.auth.validator.toLowerCase()
+      );
+      expect(calls[1].args[2]).toBe(source.auth.data);
+      if (outcome === 'success') {
+        expect(metadata.auth).toEqual(source.auth);
+        expect(alert.error).not.toHaveBeenCalled();
+        expect(alert.success).toHaveBeenCalled();
+        expect(getPasskeyAccountRecords(ACCOUNT).active?.credentialId).toBe(
+          'bmV3'
+        );
+        // The new method is already installed: another additive action is unavailable.
+        const card = find(render(), (element) =>
+          String(element.key).includes('p256-webauthn')
+        )!;
+        expect(
+          find(
+            card,
+            (element) =>
+              element.type === 'button' &&
+              React.Children.toArray(element.props.children).includes(
+                'settings.addToCombinedApprovals'
+              )
+          )
+        ).toBeUndefined();
+      } else {
+        expect(alert.success).not.toHaveBeenCalled();
+        expect(alert.error).toHaveBeenCalled();
+        expect(getPasskeyAccountRecords(ACCOUNT).active?.credentialId).toBe(
+          'b2xk'
+        );
+        expect(
+          getPasskeyAccountRecords(ACCOUNT).pending?.profile.credentialId
+        ).toBe('bmV3');
+        if (outcome === 'lost response') {
+          // Recreate the UI after the accepted transaction becomes observable.
+          states = [];
+          refs = [];
+          alert.error.mockClear();
+          const reopened = render();
+          const card = find(reopened, (element) =>
+            String(element.key).includes('p256-webauthn')
+          )!;
+          expect(
+            find(
+              card,
+              (element) =>
+                element.type === 'button' &&
+                React.Children.toArray(element.props.children).includes(
+                  'settings.addToCombinedApprovals'
+                )
+            )
+          ).toBeUndefined();
+          expect(createPasskeyCredential).toHaveBeenCalledTimes(1);
+          expect(
+            listCompositeChildCandidates(metadata).map((module) => module.id)
+          ).toEqual(['ecdsa', 'p256-webauthn']);
+          const combined = buildCompositeValidatorExecutions({
+            accountAddress: ACCOUNT,
+            metadata,
+            children: [ECDSA, P256],
+            threshold: 2,
+            compositeValidatorAddress: COMPOSITE,
+            isAlgorithmAvailable: isPaliValidatorAlgorithmSupported,
+          });
+          expect(combined).toHaveLength(1);
+          expect(
+            paliSmartAccountInterface.parseTransaction({
+              data: combined[0].data,
+            })!.name
+          ).toBe('installModule');
+          expect(
+            getPasskeyAccountRecords(ACCOUNT).pending?.profile.credentialId
+          ).toBe('bmV3');
+        }
+      }
+    }
+  );
+
+  it('does not fall back to replacement if the additive source changes during credential creation', async () => {
+    const source = buildECDSAAuthenticator({
+      chainId: CHAIN_ID,
+      config: { owners: [OWNER], threshold: 1 },
+    });
+    metadata = { ...metadata, ...source.metadata, auth: source.auth };
+    const original = emitter.getMockImplementation()!;
+    emitter.mockImplementation(async (path: string[], params: any[]) => {
+      if (path[1] === 'hydrateSmartAccount') {
+        const changed = buildECDSAAuthenticator({
+          chainId: CHAIN_ID,
+          config: { owners: [ACCOUNT], threshold: 1 },
+        });
+        return { ...metadata, ...changed.metadata, auth: changed.auth };
+      }
+      return original(path, params);
+    });
+    await recreate(true);
+    expect(
+      emitter.mock.calls.some(
+        ([[, method]]) => method === 'submitSmartAccountExecution'
+      )
+    ).toBe(false);
+    expect(alert.success).not.toHaveBeenCalled();
+  });
+
+  it('keeps recreate consent bound to the additive purpose and its exact policy visit', async () => {
+    const source = buildECDSAAuthenticator({
+      chainId: CHAIN_ID,
+      config: { owners: [OWNER], threshold: 1 },
+    });
+    metadata = { ...metadata, ...source.metadata, auth: source.auth };
+    await clickUsePasskey(true);
+    const oldPrompt = find(
+      render(),
+      (element) =>
+        element.props.title ===
+        'settings.smartAccountPasskeyRecreateConfirmTitle'
+    )!;
+    expect(oldPrompt.props.show).toBe(true);
+    expect(oldPrompt.props.description).toContain(
+      'settings.existingApprovalUnchanged'
+    );
+    mockPolicyKey = 'new-policy-visit';
+    const nextPrompt = find(
+      render(),
+      (element) =>
+        element.props.title ===
+        'settings.smartAccountPasskeyRecreateConfirmTitle'
+    )!;
+    expect(nextPrompt?.props.show ?? false).toBe(false);
+    await oldPrompt.props.onClick();
+    expect(createPasskeyCredential).not.toHaveBeenCalled();
+    expect(
+      emitter.mock.calls.some(
+        ([[, method]]) => method === 'prepareSmartAccountExecutions'
+      )
+    ).toBe(false);
+  });
+
+  it('adds the Pali wallet to a passkey account without activating it', async () => {
+    const source = buildP256WebAuthnAuthenticator({
+      chainId: CHAIN_ID,
+      config: profile,
+    });
+    const target = buildECDSAAuthenticator({
+      chainId: CHAIN_ID,
+      config: { owners: [OWNER], threshold: 1 },
+    });
+    metadata = { ...metadata, ...source.metadata, auth: source.auth };
+    jest
+      .spyOn(
+        jest.requireActual('utils/passkey/authenticator'),
+        'signP256WebAuthnActionHash'
+      )
+      .mockResolvedValue({ signature: '0x7788', proof: {} } as any);
+    const original = emitter.getMockImplementation()!;
+    emitter.mockImplementation(async (path: string[], params: any[]) => {
+      if (path[1] === 'submitSmartAccountExecution')
+        metadata = {
+          ...metadata,
+          installedModules: [
+            ...source.metadata.installedModules!,
+            ...target.metadata.installedModules!,
+          ],
+        };
+      return original(path, params);
+    });
+    const card = find(render(), (element) =>
+      String(element.key).endsWith('ecdsa')
+    )!;
+    expect(card).toBeDefined();
+    const add = find(
+      card,
+      (element) =>
+        element.type === 'button' &&
+        React.Children.toArray(element.props.children).includes(
+          'settings.addToCombinedApprovals'
+        )
+    )!;
+    await add.props.onClick();
+    expect(alert.error).not.toHaveBeenCalled();
+    expect(alert.success).toHaveBeenCalled();
+    expect(metadata.auth).toEqual(source.auth);
+    const prepared = emitter.mock.calls.find(
+      ([[, method]]) => method === 'prepareSmartAccountExecutions'
+    )!;
+    expect(
+      prepared[1][0].map(
+        (call: any) =>
+          paliSmartAccountInterface.parseTransaction({ data: call.data })!.name
+      )
+    ).toEqual(['installModule', 'rotateValidator']);
+  });
+
   it.each(['wrong config', 'unavailable metadata'])(
     'keeps the pending credential when the confirmed target has %s',
     async (failure) => {
@@ -499,9 +759,14 @@ describe('SmartAccountPolicy passkey preservation', () => {
     expect(getPasskeyAccountRecords(ACCOUNT).active?.credentialId).toBe('b2xk');
   });
 
-  it.each([false, true])(
-    'uses the shared command for an owned prepared SLH key and checks hydrated config (mismatch %s)',
-    async (mismatch) => {
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])(
+    'uses the shared command for an owned prepared SLH key and checks hydrated config (mismatch %s, add %s)',
+    async (mismatch, add) => {
       const source = buildECDSAAuthenticator({
         chainId: CHAIN_ID,
         config: { owners: [OWNER], threshold: 1 },
@@ -525,9 +790,17 @@ describe('SmartAccountPolicy passkey preservation', () => {
         if (path[1] === 'hasSLHDSALocalSignerState') return true;
         if (path[1] === 'clearSLHDSASmartAccountSetupStatus') return;
         if (path[1] === 'submitSmartAccountExecution') {
-          metadata = { ...metadata, ...target.metadata, auth: target.auth };
+          metadata = add
+            ? {
+                ...metadata,
+                installedModules: [
+                  ...source.metadata.installedModules!,
+                  ...target.metadata.installedModules!,
+                ],
+              }
+            : { ...metadata, ...target.metadata, auth: target.auth };
           if (mismatch)
-            metadata.installedModules[0].config = {
+            metadata.installedModules[add ? 1 : 0].config = {
               ...config,
               pkRoot: `0x${'66'.repeat(32)}`,
             };
@@ -538,7 +811,16 @@ describe('SmartAccountPolicy passkey preservation', () => {
         String(element.key).includes('slh-dsa')
       )!;
       expect(card).toBeDefined();
-      await find(card, (element) => element.type === 'button')!.props.onClick();
+      await find(
+        card,
+        (element) =>
+          element.type === 'button' &&
+          React.Children.toArray(element.props.children).includes(
+            add
+              ? 'settings.addToCombinedApprovals'
+              : 'settings.useSmartAccountValidator'
+          )
+      )!.props.onClick();
       const confirmation = find(
         render(),
         (element) => element.props.title === 'settings.slhDsaAuthenticator'
@@ -550,6 +832,7 @@ describe('SmartAccountPolicy passkey preservation', () => {
         methods.filter((method) => method === 'submitSmartAccountExecution')
       ).toHaveLength(1);
       expect(methods).not.toContain('startSLHDSASmartAccountValidatorSetup');
+      if (add) expect(metadata.auth).toEqual(source.auth);
       if (mismatch) {
         expect(methods).not.toContain('clearSLHDSASmartAccountSetupStatus');
         expect(alert.success).not.toHaveBeenCalled();
@@ -558,7 +841,9 @@ describe('SmartAccountPolicy passkey preservation', () => {
         expect(methods).toContain('clearSLHDSASmartAccountSetupStatus');
         expect(alert.error).not.toHaveBeenCalled();
         expect(alert.success).toHaveBeenCalledWith(
-          'settings.smartAccountAuthenticatorConfigured'
+          add
+            ? 'settings.addedToCombinedApprovals'
+            : 'settings.smartAccountAuthenticatorConfigured'
         );
       }
     }

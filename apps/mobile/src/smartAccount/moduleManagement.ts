@@ -1,3 +1,4 @@
+import type { SmartAccountAuthenticatorPurpose } from '../../../../source/utils/smartAccount/moduleCommands.ts';
 import type { ISmartAccountMetadata } from '../../../../source/types/network.ts';
 import type { CustomValidatorPreflightResult } from '../../../../source/utils/smartAccount/custom.ts';
 import type { NativeSmartAccountOperation } from './operation.ts';
@@ -8,7 +9,8 @@ export type NativeSmartModuleManagement = Readonly<{
   accountAddress: string;
   networkName: string;
   passkeysAvailable: boolean;
-  openPasskey(recreate: boolean, signal: AbortSignal, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
+  openPasskey(recreate: boolean, purpose: SmartAccountAuthenticatorPurpose, signal: AbortSignal, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
+  openWalletAuthenticator(signal: AbortSignal, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   read(): Promise<ISmartAccountMetadata>;
   preflightCustom(address: string): Promise<CustomValidatorPreflightResult>;
   openChange(

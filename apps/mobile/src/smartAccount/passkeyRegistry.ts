@@ -86,9 +86,18 @@ export function createNativePasskeyRegistry(storage: KeyringStoragePort) {
     },
     async activateObserved(account: string, metadata: ISmartAccountMetadata, guard: () => void) {
       const key = passkeyAccountRecordsKey(account), old = await read(key, guard), saved = records(old);
-      if (metadata.auth?.module !== 'p256-webauthn' || !saved.pending) return;
-      if (encodeP256WebAuthnAuthData(saved.pending.profile.publicKey).toLowerCase() !== metadata.auth.data.toLowerCase()) return;
-      await write(key, old, withActivePasskey(saved.pending.profile), guard);
+      if (metadata.isDeployed !== true) return null;
+      const installed = metadata.installedModules?.find(module => module.type === 'validator' && module.id === 'p256-webauthn');
+      if (!installed || installed.id !== 'p256-webauthn' || !installed.data ||
+          encodeP256WebAuthnAuthData(installed.config.publicKey).toLowerCase() !== installed.data.toLowerCase() ||
+          metadata.auth?.module === 'p256-webauthn' && metadata.auth.data.toLowerCase() !== installed.data.toLowerCase()) return null;
+      const matches = (candidate: IPasskeyCredentialProfile | undefined) => candidate &&
+        encodeP256WebAuthnAuthData(candidate.publicKey).toLowerCase() === installed.data!.toLowerCase();
+      if (matches(saved.pending?.profile)) {
+        await write(key, old, withActivePasskey(saved.pending!.profile), guard);
+        return saved.pending!.profile;
+      }
+      return matches(saved.active) ? saved.active! : null;
     },
   };
 }

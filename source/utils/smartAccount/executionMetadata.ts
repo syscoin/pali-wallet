@@ -1,5 +1,7 @@
 import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
+import { PasskeyBackupStatus } from '../../types/passkey.ts';
 import { getAddress, AddressZero } from '../ethersV6Compat.ts';
+import { encodeP256WebAuthnAuthData } from '../passkey/account.ts';
 
 import {
   encodeEcdsaValidatorInitData,
@@ -194,6 +196,71 @@ export async function readSmartAccountValidatorMetadata({
       chainId,
       publicKey,
     });
+    const retained = metadata.installedModules?.find(
+      (module) =>
+        module.type === 'validator' &&
+        module.id === 'p256-webauthn' &&
+        module.address.toLowerCase() === p256Address.toLowerCase()
+    );
+    // A public credential hint belongs only to this account's exact observed
+    // key and RP/origin policy. Keep primitive known fields, never caller data.
+    if (retained?.id === 'p256-webauthn') {
+      const own = Object.getOwnPropertyDescriptors(retained.config);
+      const config = built.metadata.installedModules?.[0];
+      const key = own.publicKey?.value;
+      if (
+        config?.id === 'p256-webauthn' &&
+        key &&
+        typeof key === 'object' &&
+        !Array.isArray(key)
+      ) {
+        const fields = Object.getOwnPropertyDescriptors(key);
+        const names = ['x', 'y', 'rpIdHash', 'originHash'] as const;
+        const length = fields.originLength?.value;
+        if (
+          names.every(
+            (name) =>
+              typeof fields[name]?.value === 'string' &&
+              /^0x[0-9a-f]{64}$/i.test(fields[name]!.value)
+          ) &&
+          typeof length === 'number' &&
+          Number.isSafeInteger(length) &&
+          length >= 1 &&
+          length <= 512 &&
+          encodeP256WebAuthnAuthData({
+            x: fields.x!.value!,
+            y: fields.y!.value!,
+            rpIdHash: fields.rpIdHash!.value!,
+            originHash: fields.originHash!.value!,
+            originLength: length,
+          }).toLowerCase() === built.auth.data.toLowerCase()
+        ) {
+          const credentialId = own.credentialId?.value,
+            credentialIdHash = own.credentialIdHash?.value;
+          const passkeyName = own.passkeyName?.value,
+            backupStatus = own.backupStatus?.value;
+          if (
+            typeof credentialId === 'string' &&
+            /^[A-Za-z0-9_-]{1,1364}$/.test(credentialId) &&
+            typeof credentialIdHash === 'string' &&
+            /^0x[0-9a-f]{64}$/i.test(credentialIdHash)
+          ) {
+            config.config = {
+              ...config.config,
+              credentialId,
+              credentialIdHash,
+              ...(typeof passkeyName === 'string' && passkeyName.length <= 120
+                ? { passkeyName }
+                : {}),
+              ...(backupStatus !== undefined &&
+              Object.values(PasskeyBackupStatus).includes(backupStatus)
+                ? { backupStatus }
+                : {}),
+            };
+          }
+        }
+      }
+    }
     installedModules.push(...(built.metadata.installedModules || []));
   }
 

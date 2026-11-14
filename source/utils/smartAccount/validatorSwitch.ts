@@ -25,6 +25,7 @@ export type SmartAccountValidatorSwitch = Readonly<{
   accountAddress: string;
   chainId: number;
   executions: readonly Readonly<SmartAccountExecution>[];
+  purpose: 'replace';
   sourceAuthHash: string;
   sourceModule: string;
   target: Readonly<PaliAuthConfig>;
@@ -135,6 +136,7 @@ export function buildSmartAccountValidatorSwitch({
     target,
   });
   return Object.freeze({
+    purpose: 'replace',
     accountAddress: account,
     chainId,
     executions: Object.freeze(
@@ -151,6 +153,7 @@ export function assertSmartAccountValidatorSwitchCurrent(
   command: SmartAccountValidatorSwitch,
   metadata: ISmartAccountMetadata
 ): void {
+  if (command.purpose !== 'replace') throw changed();
   const current = buildSmartAccountValidatorSwitch({
     ...command,
     metadata,
@@ -179,7 +182,10 @@ export function assertSmartAccountValidatorSwitchCurrent(
 
 /** Call after canonical hydration, independently of the confirmed transaction. */
 export function assertSmartAccountValidatorSwitchApplied(
-  command: SmartAccountValidatorSwitch,
+  command: Pick<
+    SmartAccountValidatorSwitch,
+    'chainId' | 'target' | 'targetModule'
+  >,
   metadata: ISmartAccountMetadata
 ): void {
   const auth = metadata.auth;

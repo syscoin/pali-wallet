@@ -7,8 +7,14 @@ import {
   encodeUninstallValidatorModuleCall,
   type SmartAccountExecution,
 } from './account.ts';
+import type { SmartAccountAuthenticatorBuildResult } from './authenticators.ts';
 import { listCompositeChildCandidates } from './custom.ts';
 import { isPaliSignableValidator } from './validatorSignability.ts';
+import {
+  assertSmartAccountValidatorSwitchApplied,
+  buildSmartAccountValidatorSwitch,
+  type SmartAccountValidatorSwitch,
+} from './validatorSwitch.ts';
 import type {
   ISmartAccountMetadata,
   SmartAccountValidatorModule,
@@ -94,6 +100,122 @@ export function buildCustomValidatorInstallExecutions({
       )
     ),
   ];
+}
+
+export type SmartAccountAuthenticatorPurpose = 'replace' | 'add-to-combined';
+export type SmartAccountBuiltinInstall = Omit<
+  SmartAccountValidatorSwitch,
+  'purpose'
+> &
+  Readonly<{ purpose: 'add-to-combined' }>;
+
+function assertActiveConfiguration(metadata: ISmartAccountMetadata): void {
+  const auth = metadata.auth;
+  const active = metadata.installedModules?.find(
+    (module): module is SmartAccountValidatorModule =>
+      module.type === 'validator' &&
+      module.address.toLowerCase() === auth?.validator.toLowerCase()
+  );
+  if (!auth || !active || active.id === 'custom')
+    throw new Error('Smart account authenticator changed');
+  assertSmartAccountValidatorSwitchApplied(
+    {
+      chainId: metadata.chainId,
+      target: { ...auth, module: active.id },
+      targetModule: active,
+    },
+    metadata
+  );
+}
+
+/** Install a known method without changing the account's active approval method. */
+export function buildSmartAccountBuiltinInstall(
+  input: Parameters<typeof buildSmartAccountValidatorSwitch>[0]
+): SmartAccountBuiltinInstall {
+  const command = buildSmartAccountValidatorSwitch(input);
+  assertActiveConfiguration(input.metadata);
+  if (
+    !['ecdsa', 'p256-webauthn', 'slh-dsa'].includes(command.targetModule.id) ||
+    input.metadata.installedModules?.some(
+      (module) =>
+        module.type === 'validator' &&
+        getAddress(module.address) === command.target.validator
+    )
+  )
+    throw new Error(
+      'Smart account approval method is already installed or unavailable'
+    );
+  return Object.freeze({
+    ...command,
+    purpose: 'add-to-combined',
+    executions: Object.freeze(
+      buildCustomValidatorInstallExecutions({
+        accountAddress: command.accountAddress,
+        activeValidatorAddress: input.metadata.auth!.validator,
+        activeValidatorData: input.metadata.auth!.data,
+        customValidatorAddress: command.target.validator,
+        customInitData: command.target.data,
+      }).map((item) => Object.freeze(item))
+    ),
+  });
+}
+
+function builtinTarget(
+  command: SmartAccountBuiltinInstall
+): SmartAccountAuthenticatorBuildResult {
+  if (command.purpose !== 'add-to-combined')
+    throw new Error('Invalid smart account approval purpose');
+  return {
+    auth: { ...command.target },
+    metadata: {
+      installedModules: [command.targetModule as SmartAccountValidatorModule],
+    },
+  };
+}
+
+export function assertSmartAccountBuiltinInstallCurrent(
+  command: SmartAccountBuiltinInstall,
+  metadata: ISmartAccountMetadata
+): void {
+  const current = buildSmartAccountBuiltinInstall({
+    ...command,
+    metadata,
+    target: builtinTarget(command),
+  });
+  if (
+    current.sourceAuthHash !== command.sourceAuthHash ||
+    current.sourceModule !== command.sourceModule ||
+    current.executions.length !== command.executions.length ||
+    current.executions.some(
+      (item, index) =>
+        item.target !== command.executions[index]?.target ||
+        item.data !== command.executions[index]?.data ||
+        item.value !== command.executions[index]?.value
+    )
+  )
+    throw new Error('Smart account authenticator changed');
+}
+
+/** Canonical target configuration and the original active method must both survive. */
+export function assertSmartAccountBuiltinInstallApplied(
+  command: SmartAccountBuiltinInstall,
+  metadata: ISmartAccountMetadata
+): void {
+  const current = buildSmartAccountValidatorSwitch({
+    ...command,
+    metadata,
+    target: builtinTarget(command),
+  });
+  if (
+    current.sourceAuthHash !== command.sourceAuthHash ||
+    current.sourceModule !== command.sourceModule
+  )
+    throw new Error('Smart account active approval method changed');
+  assertActiveConfiguration(metadata);
+  assertSmartAccountValidatorSwitchApplied(command, {
+    ...metadata,
+    auth: { ...command.target },
+  });
 }
 
 export function buildValidatorUninstallExecutions({
