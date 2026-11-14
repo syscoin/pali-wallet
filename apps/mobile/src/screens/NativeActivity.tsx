@@ -79,7 +79,7 @@ const statusTag = (row: ActivityRow) => {
     ? row.retainedObservation.outcome === 'confirmed'
       ? 'confirmed'
       : 'reverted'
-    : !row.indexed && row.retainedObservation?.status === 'missing'
+    : !row.unavailable && !row.indexed && row.retainedObservation?.status === 'missing'
     ? 'unconfirmed'
     : row.local?.phase === 'nonce-consumed'
     ? 'nonceConsumed'
@@ -87,6 +87,8 @@ const statusTag = (row: ActivityRow) => {
     ? 'previouslyConfirmed'
     : row.local?.phase === 'reverted'
     ? 'previouslyReverted'
+    : row.unavailable
+    ? 'unavailable'
     : row.local
     ? 'unconfirmed'
     : row.checking
