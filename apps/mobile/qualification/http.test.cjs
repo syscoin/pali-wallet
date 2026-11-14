@@ -55,6 +55,65 @@ test('snapshot bridge diagnostics preserve exact failing substage without payloa
   }
 });
 
+test('snapshot primary failure remains observable while release waits or fails', async () => {
+  for (const failRelease of [false, true]) {
+    let releaseStarted;
+    const releasing = new Promise(resolve => { releaseStarted = resolve; });
+    let finishRelease;
+    const heldRelease = new Promise((resolve, reject) => { finishRelease = () => failRelease ? reject(Error('CLEANUP_ERROR')) : resolve(); });
+    let observed;
+    const transport = { prepareSnapshot() { return {
+      async start() { throw Object.assign(Error('PRIVATE_PRIMARY_ERROR'), { code: 'PUBLIC_SNAPSHOT_UNAVAILABLE' }); },
+      async pull() { throw Error('Unexpected pull'); },
+      release() { releaseStarted(); return heldRelease; },
+    }; } };
+    const result = qualifyNativeSnapshotBridge(transport, 'https://DO_NOT_EXPORT_ORIGIN', new AbortController().signal,
+      detail => { observed = detail; });
+    const rejected = assert.rejects(result, error => {
+      assert.deepEqual([error.failureDetail.stage, error.failureDetail.rejection], ['start', 'PUBLIC_SNAPSHOT_UNAVAILABLE']);
+      assert(!JSON.stringify(error.failureDetail).includes('PRIVATE_PRIMARY_ERROR'));
+      assert(!JSON.stringify(error.failureDetail).includes('CLEANUP_ERROR'));
+      return true;
+    });
+    await releasing;
+    const pending = observed;
+    finishRelease();
+    await rejected;
+    assert.deepEqual([pending.stage, pending.rejection], ['start', 'PUBLIC_SNAPSHOT_UNAVAILABLE']);
+  }
+});
+
+test('aborted snapshot start stays distinct from a stalled successful release', async () => {
+  for (const mode of ['abort', 'timeout', 'healthy']) {
+    const abortedStart = mode !== 'healthy';
+    const controller = new AbortController();
+    let releaseStarted;
+    const releasing = new Promise(resolve => { releaseStarted = resolve; });
+    let finishRelease;
+    const heldRelease = new Promise(resolve => { finishRelease = resolve; });
+    let observed, pulls = 0;
+    const bytes = new TextEncoder().encode(PUBLIC_SNAPSHOT_FIXTURE_BODY);
+    const transport = { prepareSnapshot() { return {
+      start() { return abortedStart ? new Promise(() => undefined) : Promise.resolve({ status: 200, byteCount: bytes.length }); },
+      async pull() { return ++pulls === 1 ? bytes.slice(0, 65536) : pulls === 2 ? bytes.slice(65536) : null; },
+      release() { releaseStarted(); return heldRelease; },
+    }; } };
+    const result = qualifyNativeSnapshotBridge(transport, 'https://DO_NOT_EXPORT_ORIGIN', controller.signal,
+      detail => { observed = detail; });
+    const settled = abortedStart ? assert.rejects(result, error => {
+      assert.deepEqual([error.failureDetail.stage, error.failureDetail.rejection], ['start', mode]);
+      return true;
+    }) : result;
+    if (abortedStart) controller.abort(mode === 'timeout' ? Error('HTTP_QUALIFICATION_TIMEOUT') : undefined);
+    await releasing;
+    const pending = observed;
+    finishRelease();
+    await settled;
+    assert.equal(pending.stage, abortedStart ? 'start' : 'release');
+    if (abortedStart) assert.equal(pending.rejection, mode);
+  }
+});
+
 test('snapshot diagnostic schema refuses arbitrary text, unknown fields and unbounded numbers', () => {
   const detail = { stage: 'metadata', status: 200, byteCount: 65550, chunkKind: 'unobserved', chunkBytes: null, mismatchIndex: null, rejection: 'assertion' };
   assert.equal(validHttpSnapshotFailureDetail(detail), true);

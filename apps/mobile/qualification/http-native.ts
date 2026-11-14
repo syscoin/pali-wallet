@@ -18,7 +18,8 @@ export class HttpQualificationError extends Error {
   }
 }
 
-type SnapshotObservation = Omit<HttpSnapshotFailureDetail, 'rejection'>;
+type SnapshotObservation = Omit<HttpSnapshotFailureDetail, 'rejection'> &
+  Readonly<{ rejection?: HttpSnapshotFailureDetail['rejection'] }>;
 function snapshotRejection(error: unknown): HttpSnapshotFailureDetail['rejection'] {
   const code = error && typeof error === 'object' ? Object.getOwnPropertyDescriptor(error, 'code')?.value : undefined;
   if (HTTP_SNAPSHOT_REJECTIONS.includes(code)) return code;
@@ -52,6 +53,7 @@ export async function qualifyNativeSnapshotBridge(
         mismatchIndex: mismatch < 0 ? null : bounded(offset + mismatch, 16 * 1024 * 1024) };
     };
     let offset = 0;
+    let operationFailed = false;
     try {
       update({ stage: 'start' });
       const info = await abortable(handle.start(check), signal);
@@ -68,13 +70,21 @@ export async function qualifyNativeSnapshotBridge(
       const end = await abortable(handle.pull(check), signal);
       update(chunkDetail(end, offset));
       assert(end === null);
+    } catch (error) {
+      operationFailed = true;
+      const rejection = snapshotRejection(error);
+      update({ rejection: rejection === 'abort' && signal.aborted && snapshotRejection(signal.reason) === 'timeout' ? 'timeout' : rejection });
+      throw error;
     } finally {
       const previous = detail;
-      update({ stage: 'release' });
-      await handle.release();
-      detail = previous; observe(Object.freeze(detail));
+      // Keep the primary failure visible while retirement drains. Only a
+      // healthy operation can first fail in release itself.
+      if (!operationFailed) update({ stage: 'release' });
+      try { await handle.release(); }
+      catch (error) { if (!operationFailed) throw error; }
+      if (!operationFailed) { detail = previous; observe(Object.freeze(detail)); }
     }
-  } catch (error) { throw new HttpQualificationError('public-snapshot-bridge', { ...detail, rejection: snapshotRejection(error) }); }
+  } catch (error) { throw new HttpQualificationError('public-snapshot-bridge', { ...detail, rejection: detail.rejection ?? snapshotRejection(error) }); }
 }
 
 /** Native streaming boundaries are arbitrary; consume exactly the public prefix. */
@@ -102,7 +112,10 @@ export async function qualifyNativeHttp(options: Readonly<{
     const controller = new AbortController();
     let timer!: ReturnType<typeof setTimeout>;
     const deadline = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => { controller.abort(); reject(Error('HTTP_QUALIFICATION_TIMEOUT')); }, timeout);
+      timer = setTimeout(() => {
+        const error = Error('HTTP_QUALIFICATION_TIMEOUT');
+        controller.abort(error); reject(error);
+      }, timeout);
     });
     try { return await Promise.race([fn(controller.signal, () => controller.abort()), deadline]); }
     finally { controller.abort(); clearTimeout(timer); }
@@ -216,6 +229,6 @@ export async function qualifyNativeHttp(options: Readonly<{
   } catch (error) {
     if (error instanceof HttpQualificationError) throw error;
     throw new HttpQualificationError(currentCase, currentCase === 'public-snapshot-bridge' && snapshotObservation.current
-      ? { ...snapshotObservation.current, rejection: snapshotRejection(error) } : null);
+      ? { ...snapshotObservation.current, rejection: snapshotObservation.current.rejection ?? snapshotRejection(error) } : null);
   }
 }
