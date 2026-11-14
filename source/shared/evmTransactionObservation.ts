@@ -10,6 +10,8 @@ export type EvmObservationRequest = Readonly<{
 export type EvmTransactionObservation = Readonly<
   | {
       block: Readonly<{ hash: string; number: string }>;
+      /** Actual outer transaction fee paid by from, not UserOperation actualGasCost. */
+      feeUnits?: string;
       outcome: 'confirmed' | 'reverted';
       status: 'mined';
       transactionIndex?: number;
@@ -56,6 +58,16 @@ const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : invalid();
+
+/** Optional receipt display fields; present values must fit the native unit domain. */
+export function readEvmReceiptFeeUnits(value: unknown): string | null {
+  const receipt = object(value);
+  if (receipt.gasUsed === undefined || receipt.effectiveGasPrice === undefined)
+    return null;
+  const fee = quantity(receipt.gasUsed) * quantity(receipt.effectiveGasPrice);
+  if (fee >= BigInt(1) << BigInt(256)) invalid();
+  return fee.toString();
+}
 
 /** One ordinary canonical-receipt observation, shared by both host transports. */
 export async function observeEvmTransaction(
@@ -175,10 +187,17 @@ export async function observeEvmTransaction(
   await checkChain();
   // Reading a receipt does not prove another hash with this nonce succeeded.
   void nonce;
+  let feeUnits: string | undefined;
+  try {
+    feeUnits = readEvmReceiptFeeUnits(receipt) ?? undefined;
+  } catch {
+    /* Optional display metadata cannot invalidate the canonical outcome. */
+  }
   return Object.freeze({
     status: 'mined',
     outcome: status === BigInt(1) ? 'confirmed' : 'reverted',
     block: Object.freeze({ number: number.toString(), hash: blockHash }),
+    ...(feeUnits === undefined ? {} : { feeUnits }),
     ...(transactionIndex === undefined ? {} : { transactionIndex }),
   });
 }

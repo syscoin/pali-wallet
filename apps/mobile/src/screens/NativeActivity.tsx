@@ -168,11 +168,13 @@ export function nativeActivityRowPresentation(row: ActivityRow, context: {
 }
 function fee(row: ActivityRow, symbol: string): string {
   try {
-    if (
-      row.observation?.feeUnits !== null &&
-      row.observation?.feeUnits !== undefined
-    )
-      return `${formatBaseUnits(row.observation.feeUnits, 18)} ${symbol}`;
+    const units = row.unavailable ? undefined : row.observation
+      ? row.observation.block && (row.observation.status === 'confirmed' || row.observation.status === 'reverted')
+        ? row.observation.feeUnits : undefined
+      : !row.indexed && row.retainedObservation?.status === 'mined'
+        ? row.retainedObservation.feeUnits : undefined;
+    if (units !== null && units !== undefined)
+      return `${formatBaseUnits(units, 18)} ${symbol}`;
   } catch {
     // A malformed observation must not prevent navigation or hide other details.
   }
@@ -676,6 +678,8 @@ function NativeActivityContent({
               { label: t('send.to'), value: recipient(chosen) ?? (chosen.indexed?.to === null || chosen.indexed?.to === '' || chosen.local?.recipient === null ? t('transactions.replay.creation') : t('mobile.activityViews.nativeActivity.notAvailable')),
                 actionLabel: t('mobile.activityViews.nativeActivity.copyRecipientAddress'), ...(recipient(chosen) ? { onPress: () => setCopyAddress(recipient(chosen)) } : {}) },
               { label: t('send.networkFee'), value: fee(chosen, snapshot.nativeSymbol ?? 'ETH') },
+              ...(chosen.local?.smartAccount ? [{ label: t('transactions.feePayer'), value: chosen.local.smartAccount.payer,
+                actionLabel: t('transactions.copyAddress'), onPress: () => setCopyAddress(chosen.local!.smartAccount!.payer) }] : []),
               { label: t('send.transactionId'), value: chosen.hash },
             ]}
             {...(snapshot.explorerUrl ? { onExplorer: () => { void Linking.openURL(`${snapshot.explorerUrl!.replace(/\/$/, '')}/tx/${chosen.hash}`).catch(() => setFeedback(t('mobile.activityViews.nativeActivity.couldNotOpenTheExplorer'))); } } : {})}

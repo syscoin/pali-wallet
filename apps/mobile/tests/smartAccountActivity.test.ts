@@ -151,6 +151,8 @@ for (const success of [true, false])
             status: '0x1',
             blockNumber: '0x10',
             blockHash,
+            gasUsed: '0x64',
+            effectiveGasPrice: '0x3',
             logs: [
               {
                 ...event,
@@ -172,6 +174,8 @@ for (const success of [true, false])
       success ? 'confirmed' : 'reverted'
     );
     assert.equal(receipts, 1);
+    assert.equal(observation.status === 'mined' && observation.feeUnits, '300',
+      'the outer receipt fee is distinct from UserOperationEvent actualGasCost=100');
   });
 
 test('outer success without the exact inner event cannot confirm a Smart transfer', async () => {
