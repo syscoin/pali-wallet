@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -71,7 +72,7 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
     const module = { exports: {} as Record<string, any> };
     const source = readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8');
     const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
-    runInNewContext(compiled, { module, exports: module.exports, Error, queueMicrotask, require(name: string) {
+    runInNewContext(compiled, { module, exports: module.exports, Error, queueMicrotask, require(name: string) { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi;
       assert(Object.hasOwn(imports, name), name); return imports[name];
     } });
     return module.exports;

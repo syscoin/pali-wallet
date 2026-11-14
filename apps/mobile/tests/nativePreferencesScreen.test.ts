@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -48,7 +49,7 @@ async function fixture() {
   const module = { exports: {} as any };
   const source = readFileSync(new NodeURL('../src/screens/NativePreferences.tsx', import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
-  runInNewContext(code, { module, exports: module.exports, Error, require(name: string) { assert(Object.hasOwn(imports, name), name); return imports[name]; } });
+  runInNewContext(code, { module, exports: module.exports, Error, require(name: string) { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi; assert(Object.hasOwn(imports, name), name); return imports[name]; } });
   const render = () => { cursor = 0; const tree = module.exports.NativePreferences({ onBack() { backs++; }, assertCurrent() { if (!owner) throw Error('CANCELLED'); } }) as Element;
     effects.splice(0).forEach((run) => run()); return tree; };
   return { render, engine, preferences, counts: () => ({ writes, backs, raw }),

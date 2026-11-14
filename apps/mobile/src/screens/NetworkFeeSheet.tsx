@@ -1,7 +1,7 @@
+import { WalletModal as Modal } from '../ui/WalletModal';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
-  Modal,
   Platform,
   ScrollView,
   StyleSheet,

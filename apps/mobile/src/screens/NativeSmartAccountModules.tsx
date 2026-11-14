@@ -1,6 +1,7 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Platform, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, AppState, KeyboardAvoidingView, Platform, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ISmartAccountMetadata, SmartAccountValidatorModule } from '../../../../source/types/network';
 import { listCompositeChildCandidates, type CustomValidatorPreflightResult } from '../../../../source/utils/smartAccount/custom';

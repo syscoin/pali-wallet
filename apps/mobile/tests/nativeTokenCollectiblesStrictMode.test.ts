@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -41,7 +42,7 @@ test('real StrictMode auto-enumeration retires its replayed owner before making 
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true },
   }).outputText;
   runInNewContext(code, { module, exports: module.exports, Error, AbortController, Promise,
-    require(name: string) { assert(Object.hasOwn(imports, name), name); return imports[name]; } });
+    require(name: string) { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi; assert(Object.hasOwn(imports, name), name); return imports[name]; } });
   const root = createRoot(dom.window.document.getElementById('root'));
   const signals: AbortSignal[] = [];
   const held = Promise.withResolvers<{ tokenIds: readonly string[]; hasMore: boolean; method: 'enumeration' }>();

@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -54,7 +55,7 @@ function setup(component = 'HelpAbout', watchOnly = true, options: { backupRequi
     getSnapshot: () => ({ release: options.updateVersion ? { version: options.updateVersion } : null }) } };
   const module = { exports: {} as Record<string, (props: object) => Element> };
   const code = ts.transpileModule(source(`../src/screens/${component}.tsx`), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
-  runInNewContext(code, { module, exports: module.exports, require(name: string) { assert.ok(Object.hasOwn(deps, name), `Unexpected public-screen dependency ${name}`); return deps[name]; } });
+  runInNewContext(code, { module, exports: module.exports, require(name: string) { const walletUi = walletUiFixture(name, deps); if (walletUi) return walletUi; assert.ok(Object.hasOwn(deps, name), `Unexpected public-screen dependency ${name}`); return deps[name]; } });
   const props = { onBack() { backs++; }, accountLabel: 'Public account', watchOnly, navigation: options.navigation === false ? undefined : navigation,
     backupRequired: options.backupRequired, onBackup() { backups++; }, onSecurity() { security++; }, onAutoLock: options.autoLock === false ? undefined : () => { autoLock++; }, onConnections() { connections++; }, onLock() { closes++; },
     onUpdates: options.updates ? () => { updates++; } : undefined };

@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
@@ -20,7 +21,7 @@ const module = { exports: {} as { UnavailableActivity(props: object): Element } 
 const code = ts.transpileModule(readFileSync(new NodeURL('../src/screens/RealAppShell.tsx', import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true },
 }).outputText;
-runInNewContext(code, { module, exports: module.exports, require(name: string) {
+runInNewContext(code, { module, exports: module.exports, require(name: string) { const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi;
   assert.ok(Object.hasOwn(dependencies, name), `Unexpected shell dependency ${name}`); return dependencies[name];
 } });
 const nodes = (element: Element): Element[] => [element, ...element.children.flat(Infinity).filter((child) => child && typeof child === 'object').flatMap((child) => nodes(child as Element))];

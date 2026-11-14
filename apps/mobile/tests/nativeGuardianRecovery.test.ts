@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import * as nativeWalletReads from '../src/custody/dappWalletReads.ts';
 import * as dappWalletReads from '../../../source/shared/dappWalletReads.ts';
 import * as erc20 from '../../../source/shared/erc20.ts';
@@ -216,7 +217,7 @@ async function fixture(smart = true) {
     exports: module.exports,
     AbortController,
     process: { env: {} },
-    require(name: string) {
+    require(name: string) { const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi;
       assert.ok(Object.hasOwn(dependencies, name), name);
       return dependencies[name];
     },

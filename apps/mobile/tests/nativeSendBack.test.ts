@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import { AUTOMATIC_FEE, snapshotEvmFeeChoice } from '../../../source/shared/transactionFeeChoice.ts';
 import { createAssetTransferDisplay } from '../../../source/shared/assetTransferDisplay.ts';
 import { parseErc20Units, encodeErc20Transfer } from '../../../source/shared/erc20.ts';
@@ -67,7 +68,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   const source=readFileSync(new NodeURL('../src/screens/NativeSend.tsx',import.meta.url),'utf8');
   const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText;
   const module={exports:{} as Record<string,any>};
-  runInNewContext(code,{module,exports:module.exports,Error,URL,AbortController,Keyboard:native.Keyboard,require(name:string){assert.ok(Object.hasOwn(deps,name),`Unexpected import ${name}`);return deps[name];}});
+  runInNewContext(code,{module,exports:module.exports,Error,URL,AbortController,Keyboard:native.Keyboard,require(name:string){ const walletUi = walletUiFixture(name, deps); if (walletUi) return walletUi;assert.ok(Object.hasOwn(deps,name),`Unexpected import ${name}`);return deps[name];}});
   let snapshot: any={phase:'submitting',review:null,hash:null,message:null,intent:null,collectible:undefined};
   const replacementRequests: { hash: string; mode: 'cancel' | 'cancel-saved' | 'speed-up' }[] = [];
   let replacement: { hash: string; mode: 'cancel' | 'cancel-saved' | 'speed-up' } | undefined;

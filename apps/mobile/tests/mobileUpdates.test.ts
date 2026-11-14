@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -56,7 +57,7 @@ function fixture(options: { ios?: boolean; severity?: string; store?: string | n
   const code = ts.transpileModule(readFileSync(new NodeURL('../src/updates/service.native.ts', import.meta.url), 'utf8'),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
   runInNewContext(code, { module, exports: module.exports, AbortController, setTimeout, clearTimeout, setInterval, clearInterval,
-    require(name: string) { assert(Object.hasOwn(imports, name), name); return imports[name]; } });
+    require(name: string) { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi; assert(Object.hasOwn(imports, name), name); return imports[name]; } });
   return { ...module.exports, data, removed, advance() { clock += 21600001; },
     get reads() { return reads; }, get posts() { return posts; }, get requests() { return requests; },
     get registered() { return registered; },

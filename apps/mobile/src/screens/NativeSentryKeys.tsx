@@ -1,10 +1,10 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import { NativeSentrySettings } from './NativeSentrySettings';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import {
   AppState,
-  BackHandler,
   Keyboard,
   KeyboardAvoidingView,
   Platform,

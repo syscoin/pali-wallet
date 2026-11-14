@@ -1,8 +1,10 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
+import { WalletModal as Modal } from '../ui/WalletModal';
 import { CopyableAddress } from './CopyableAddress';
 import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import { IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, AppState, BackHandler, Linking, Modal, ScrollView, Share, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, AppState, Linking, ScrollView, Share, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';

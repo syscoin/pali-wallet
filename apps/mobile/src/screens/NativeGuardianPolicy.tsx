@@ -1,3 +1,4 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { getAddress } from 'ethers/address';
@@ -10,7 +11,6 @@ import React, {
 } from 'react';
 import {
   AppState,
-  BackHandler,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,

@@ -1,9 +1,10 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { CopyableAddress } from './CopyableAddress';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, AppState, BackHandler, Linking, Share, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, AppState, Linking, Share, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';

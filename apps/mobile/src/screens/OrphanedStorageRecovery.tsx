@@ -1,5 +1,6 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Platform, StyleSheet, View } from 'react-native';
+import { AppState, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { reloadAppAsync } from 'expo';
 import { canResetNativeWalletStorage, resetNativeWalletStorage } from '../storage/native';

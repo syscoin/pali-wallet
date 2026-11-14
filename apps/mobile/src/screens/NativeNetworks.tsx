@@ -1,8 +1,9 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import type { TFunction } from 'i18next';
 import { useNativeTranslation } from '../platform/localization';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { rankChainSuggestions } from '../../../../source/shared/chainCatalogue';
 import { withBundledNativeNetworkSuggestions, type NativeNetworkSuggestion } from '../custody/networkCatalogue';

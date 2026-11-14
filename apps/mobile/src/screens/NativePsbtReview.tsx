@@ -1,5 +1,6 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AppState, BackHandler, StyleSheet } from 'react-native';
+import { AppState, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNativeTranslation } from '../platform/localization';
 import { formatBaseUnits } from '../core/amounts';

@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL } from 'node:url';
@@ -46,7 +47,7 @@ function fixture() {
   const module = { exports: {} as { canResetNativeWalletStorage(): Promise<boolean> } };
   const source = readFileSync(new URL('../src/storage/native.native.ts', import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
-  runInNewContext(code, { module, exports: module.exports, require(name: string) {
+  runInNewContext(code, { module, exports: module.exports, require(name: string) { const walletUi = walletUiFixture(name, modules); if (walletUi) return walletUi;
     assert(Object.hasOwn(modules, name), `Unexpected native storage import: ${name}`); return modules[name];
   } });
   return {

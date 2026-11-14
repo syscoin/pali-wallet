@@ -1,5 +1,6 @@
+import { WalletModal as Modal } from '../ui/WalletModal';
 import React, { useState } from 'react';
-import { Modal, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import type { Erc20Metadata } from '../../../../source/shared/erc20';
 import { formatTokenUnits } from '../../../../source/shared/erc20';
 import type { NativeSendContext } from '../custody/networkContext';

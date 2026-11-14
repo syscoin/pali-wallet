@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import { NotificationPermissionReturn } from '../src/notifications/permissionReturn.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
@@ -469,7 +470,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     const shellModule = { exports: {} as { useRealShell: (...args: any[]) => any } };
     runInNewContext(ts.transpileModule(readFileSync(new URL('../src/screens/useRealShell.ts', import.meta.url), 'utf8'), {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-    }).outputText, { module: shellModule, exports: shellModule.exports, require(name: string) {
+    }).outputText, { module: shellModule, exports: shellModule.exports, require(name: string) { const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi;
       if (name === 'react') return react;
       if (name === 'react-native') return native;
       assert.equal(name, '../navigation/tabDeparture'); return { TabDeparture };
@@ -489,6 +490,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       }
     },
     require(name: string) {
+      const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi;
       assert.ok(Object.hasOwn(dependencies, name), name);
       return dependencies[name];
     },

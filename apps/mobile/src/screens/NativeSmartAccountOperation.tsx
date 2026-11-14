@@ -1,3 +1,4 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import type { AssetTransferCall } from '../../../../source/shared/assetTransfer';
 import { resolveAssetTransferDisplay, type AssetTransferDisplay } from '../../../../source/shared/assetTransferDisplay';
@@ -17,7 +18,6 @@ import React, {
 import {
   ActivityIndicator,
   AppState,
-  BackHandler,
   Platform,
   StyleSheet,
   Switch,

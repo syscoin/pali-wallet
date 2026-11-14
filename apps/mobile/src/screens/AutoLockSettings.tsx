@@ -1,6 +1,7 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
+import { AppState, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { idleMinutes } from '../../../../source/shared/idleLockPolicy';
 import type { IdleMode, SecurityPreferenceSnapshot } from '../core/securityPreferences';

@@ -1,9 +1,10 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import { recoveryErrorText } from './recoveryCopy';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { AccessibilityInfo, ActivityIndicator, AppState, BackHandler, findNodeHandle, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text as NativeText, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, AppState, findNodeHandle, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text as NativeText, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeRecoveryFlow } from '../custody/recoveryFlow';
 import type { RecoveryInventory } from '../custody/recoveryInventory';

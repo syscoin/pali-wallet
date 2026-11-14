@@ -1,5 +1,6 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, BackHandler, Platform, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeSmartPreparationReview as Review } from '../connections/smartPreparationRequests';
 import type { NativeConnectionsView } from '../connections/types';

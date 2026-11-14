@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import { AUTOMATIC_FEE, snapshotUtxoFeeChoice } from '../../../source/shared/transactionFeeChoice.ts';
 import { trezorResumeDraft } from '../src/screens/trezorResumeDraft.ts';
 import { languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
@@ -68,7 +69,7 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
     '../../../../source/shared/utxoTransactionOptions': { snapshotUtxoRbf },
   };
   const module = { exports: {} as any };
-  runInNewContext(code, { module, exports: module.exports, Error, require(name: string) { assert(Object.hasOwn(imports, name), name); return imports[name]; } });
+  runInNewContext(code, { module, exports: module.exports, Error, require(name: string) { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi; assert(Object.hasOwn(imports, name), name); return imports[name]; } });
   const requests: any[] = []; let cancels = 0, confirmations = 0, networkChanges = 0, gate: Promise<void> | undefined, release: (() => void) | undefined;
   let confirmationFailure: Error | undefined, confirmationGate: Promise<void> | undefined, signatures = 0;
   let retryReview: NativeUtxoReview | undefined;

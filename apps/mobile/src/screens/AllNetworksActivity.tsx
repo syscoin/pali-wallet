@@ -1,5 +1,6 @@
+import { WalletModal as Modal } from '../ui/WalletModal';
 import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, AppState, FlatList, Modal, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, FlatList, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { AccountActivityController, AccountActivityNetwork, AccountActivityRow } from '../activity/accountActivity';
 import { useBalancePrivacy } from '../platform/balancePrivacy';

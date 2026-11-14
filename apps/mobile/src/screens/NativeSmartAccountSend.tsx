@@ -1,3 +1,4 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { AUTOMATIC_FEE, type EvmFeeChoice, type EvmFeeRates } from '../../../../source/shared/transactionFeeChoice';
 import { NetworkFeeSheet } from './NetworkFeeSheet';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
@@ -31,7 +32,6 @@ import React, {
 import {
   ActivityIndicator,
   AppState,
-  BackHandler,
   Keyboard,
   KeyboardAvoidingView,
   Platform,

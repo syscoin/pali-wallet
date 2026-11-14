@@ -1,9 +1,9 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
-  BackHandler,
   KeyboardAvoidingView,
   Platform,
   ScrollView,

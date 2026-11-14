@@ -1,6 +1,7 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
+import { ActivityIndicator, AppState, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 
 import { WatchUtxoNetworkReloadRequiredError, type WatchUtxoNetworksView, type WatchUtxoNetworkSettings } from '../core/publicAccountStorage';
 import { canonicalUtxoEndpoint, isCustomUtxoNetworkId, utxoRegistrationData, type UtxoNetwork } from '../core/utxoNetworks';

@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import { NotificationPermissionReturn } from '../src/notifications/permissionReturn.ts';
 import type { NotificationPermissionResult } from '../src/notifications/types.ts';
 import { Transaction } from 'ethers/transaction';
@@ -91,7 +92,7 @@ function evaluate(source: string, dependencies: Record<string, unknown>, flow = 
     plugins: [babelRequire.resolve('babel-plugin-syntax-hermes-parser'), babelRequire.resolve('@babel/plugin-transform-flow-strip-types'), babelRequire.resolve('@babel/plugin-transform-modules-commonjs')],
   }).code : ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
   const module = { exports: {} as Record<string, unknown> };
-  runInNewContext(code, { module, exports: module.exports, Error, AbortController, performance, setTimeout, clearTimeout, queueMicrotask, require(name: string) {
+  runInNewContext(code, { module, exports: module.exports, Error, AbortController, performance, setTimeout, clearTimeout, queueMicrotask, require(name: string) { const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi;
     assert.ok(Object.hasOwn(dependencies, name), `Unexpected import ${name}`); return dependencies[name];
   } });
   return module.exports;

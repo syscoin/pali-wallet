@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import * as nativeWalletReads from '../src/custody/dappWalletReads.ts';
 import * as dappWalletReads from '../../../source/shared/dappWalletReads.ts';
 import * as erc20 from '../../../source/shared/erc20.ts';
@@ -53,7 +54,7 @@ function evaluate(
   runInNewContext(source, {
     module,
     exports: module.exports,
-    require(name: string) {
+    require(name: string) { const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi;
       assert(Object.hasOwn(dependencies, name), `unexpected import ${name}`);
       return dependencies[name];
     },

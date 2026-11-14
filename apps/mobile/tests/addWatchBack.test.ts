@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import { NotificationPermissionReturn } from '../src/notifications/permissionReturn.ts';
 import { watchNotificationChoices } from '../src/notifications/choices.ts';
 import * as pairingLinks from '../src/connections/pairingLinks.ts';
@@ -45,7 +46,7 @@ function evaluate(source: string, dependencies: Record<string, unknown>, flow = 
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true,
   } }).outputText;
   runInNewContext(code, { module, exports: module.exports, console, setTimeout, clearTimeout, AbortController,
-    require(name: string) { assert.ok(Object.hasOwn(dependencies, name), `Unexpected import: ${name}`); return dependencies[name]; },
+    require(name: string) { const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi; assert.ok(Object.hasOwn(dependencies, name), `Unexpected import: ${name}`); return dependencies[name]; },
   });
   return module.exports;
 }
