@@ -1703,9 +1703,14 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     return <WalletAccounts {...accounts} catalogue={catalogue} active={catalogue ? nativeAccountSelection(catalogue.active.accountId) : null}
       onBack={closeStage} onSelect={async (selection) => {
         if (selection.kind === 'watch') { selectWatch(selection); return; }
+        const origin = rootOrigin.current, local = controllersRef.current, captured = epoch.current;
+        const ownsReturn = () => mounted.current && controllersRef.current === local && !!local &&
+          epoch.current === captured && rootOrigin.current === origin &&
+          notificationView.current.stage === 'accounts' && AppState.currentState === 'active';
+        if (!ownsReturn()) return;
         if (snapshot.phase === 'ready' && accountView && catalogue && selection.id !== catalogue.active.accountId)
           await accountView.execute({ kind: 'select', id: selection.id }, accountView.getContextRevision(), catalogue.revision);
-        setStage('choose');
+        if (ownsReturn()) clearStage();
       }} onManageHd={snapshot.phase === 'ready' && accountView ? () => setStage('manage-hd') : undefined}
       onAdd={async (input) => { revoke(); setStage('accounts'); await accounts.onAdd(input); }} />;
   if (stage === 'trezor' && trezorView && snapshot.phase === 'ready')
@@ -1721,9 +1726,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         throw new Error('CANCELLED');
       if (intent.kind === 'external-psbt' || intent.kind === 'external-signing') {
         if (!local) throw Error('CANCELLED');
-        const resumeEpoch = epoch.current;
+        const resumeEpoch = epoch.current, origin = rootOrigin.current;
         await local.connections.resumeSigning(intent.id);
-        if (controllersRef.current === local && epoch.current === resumeEpoch && AppState.currentState === 'active') setStage('choose');
+        if (mounted.current && controllersRef.current === local && epoch.current === resumeEpoch &&
+            rootOrigin.current === origin && notificationView.current.stage === 'trezor' && AppState.currentState === 'active') clearStage();
         return;
       }
       if (intent.kind === 'infrastructure') {

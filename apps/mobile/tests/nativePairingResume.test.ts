@@ -23,6 +23,7 @@ import { createPermissionPresentation } from '../src/platform/permissionPresenta
 import { TabDeparture } from '../src/navigation/tabDeparture.ts';
 import { screenFixture, screenElements } from './screenFixture.ts';
 import { formatBaseUnits } from '../src/core/amounts.ts';
+import { nativeAccountSelection } from '../src/core/accountDirectory.ts';
 
 type Element = {
   type: unknown;
@@ -56,7 +57,7 @@ const cameraCode = ts.transpileModule(readFileSync(new URL('../src/platform/came
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText;
 
-function harness(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false, slh = false, infrastructure = false, realNavigation = false) {
+function harness(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false, slh = false, infrastructure = false, realNavigation = false, withAccounts = false) {
   let now = 1000,
     cursor = 0,
     selectionCalls = 0;
@@ -66,6 +67,9 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   let liveShell: any;
   let acquisitions = 0, releases = 0, lifecycleActive = true;
   let releaseGate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
+  let selectionGate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
+  let externalResume: (() => Promise<void>) | undefined;
+  const externalResumes: string[] = [];
   const viewPrivacy = createTestPublicViewLock();
   const custodyIdle = new IdleLock(() => ({ monotonic: now, wall: now }));
   let viewAuthorizations = 0, rejectViewAuthorization = false;
@@ -80,7 +84,10 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   const psbtLifecycle = {
     backgroundSigning() { lifecycleEvents.push('psbt-background'); },
     async cancelSigningHandoff() { lifecycleEvents.push('psbt-cancel'); },
-    async resumeSigning() { throw Error('PSBT resume is outside this fixture'); },
+    async resumeSigning(id: string) {
+      if (!externalResume) throw Error('PSBT resume is outside this fixture');
+      externalResumes.push(id); await externalResume();
+    },
   } satisfies Pick<NativeConnectionsView, 'backgroundSigning' | 'cancelSigningHandoff' | 'resumeSigning'>;
   const authenticatorGuards: (() => void)[] = [];
   let promptActive = false;
@@ -199,7 +206,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
         address: '0x' + '11'.repeat(20),
         label: 'Account 1',
       },
-      ...(handoff ? [{ id: 'hd:60:1', index: 1, slip44: 60, type: 'HDAccount', address: '0x' + '22'.repeat(20), label: 'Guardian' }] : []),
+      ...(handoff || withAccounts ? [{ id: 'hd:60:1', index: 1, slip44: 60, type: 'HDAccount', address: '0x' + '22'.repeat(20), label: 'Guardian' }] : []),
     ],
   };
   const change = (phase: string) => {
@@ -230,7 +237,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
           authorityListeners.delete(listener);
         };
       },
-      supportsAccountManagement: () => false,
+      supportsAccountManagement: () => withAccounts,
       lock() {
         lifecycleEvents.push('lock');
         change('locked');
@@ -242,9 +249,11 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       },
     },
     accounts: {
+      getContextRevision: () => snapshot.revision,
       async execute(request: { id: string }) {
         selectionCalls++;
-        if (handoff) {
+        if (selectionGate) await selectionGate.promise;
+        if (handoff || withAccounts) {
           const selected = catalogue.accounts.find(account => account.id === request.id)!;
           catalogue = { ...catalogue, revision: catalogue.revision + 1, active: { ...catalogue.active, accountId: request.id } };
           snapshot = { ...snapshot, revision: snapshot.revision + 1, account: { address: selected.address, network: 'ethereum' } };
@@ -405,6 +414,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       colors: {},
     },
     '../core/utxoNetworks': utxoNetworks,
+    '../core/accountDirectory': { nativeAccountSelection },
     '../custody/networkContext': networks,
     '../../../../source/shared/evmNetworks': { EVM_NETWORK_DEFINITIONS: networks.NATIVE_NETWORKS.map(network => ({ id: network.id, name: network.name })) },
     '../platform/security': {
@@ -462,6 +472,8 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     './NativeActivity': { NativeActivityScreen: 'NativeActivityScreen' },
     './AllNetworksActivity': { AllNetworksActivity: 'AllNetworksActivity' },
     './RealTools': { RealTools: 'RealTools' },
+    './WalletAccounts': { WalletAccounts: 'WalletAccounts' },
+    './NativeAccounts': { NativeAccounts: 'NativeAccounts' },
   });
   const module = {
     exports: {} as { NativeWalletScreen(props: object): Element; NativeWalletContent(props: object): Element },
@@ -496,6 +508,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     },
   });
   const controllerRef = { current: null };
+  const accountBridge = { onNativeCatalogue() {}, onSelectWatch() {} };
   const render = () => {
     cursor = 0;
     const tree = module.exports.NativeWalletContent({
@@ -504,6 +517,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
         exits++;
       },
       initialAccountId: 'hd:60:9',
+      ...(withAccounts ? { accounts: accountBridge } : {}),
       incomingPairing: incoming,
       onPairingHandled(id: string) {
         if (incoming?.id === id) incoming = null;
@@ -519,12 +533,15 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     lifecycle: () => lifecycleEvents,
     resumedSmart: () => resumedSmart,
     resumedInfrastructure: () => resumedInfrastructure,
-    showTools() { shellTab = 'tools'; },
+    showTools() { if (realNavigation) liveShell.select('tools'); else shellTab = 'tools'; },
     showWallet() { if (realNavigation) liveShell.select('wallet'); else shellTab = 'wallet'; },
     showSettings() { if (realNavigation) liveShell.select('settings'); else shellTab = 'settings'; },
     showActivity() { shellTab = 'activity'; },
     activityChoice() { return controllers.getNotificationChoices()[0]!; },
     holdRelease() { return releaseGate = Promise.withResolvers<void>(); },
+    holdSelection() { return selectionGate = Promise.withResolvers<void>(); },
+    resumeExternal(work: () => Promise<void>) { externalResume = work; },
+    externalResumes: () => externalResumes,
     acquisitions: () => acquisitions,
     releases: () => releases,
     viewPrivacy,
@@ -606,8 +623,8 @@ function find(
     : [...node.children, node.props.footer].flatMap((child) => find(child, predicate) ?? []).at(0);
 }
 
-async function mounted(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false, slh = false, infrastructure = false, realNavigation = false) {
-  const f = harness(ready, smartAccount, withPairing, canManage, handoff, slh, infrastructure, realNavigation);
+async function mounted(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false, slh = false, infrastructure = false, realNavigation = false, withAccounts = false) {
+  const f = harness(ready, smartAccount, withPairing, canManage, handoff, slh, infrastructure, realNavigation, withAccounts);
   f.render();
   await settle();
   f.render();
@@ -1408,4 +1425,82 @@ for (const action of ['none', 'stale-account-navigation', 'direct-send', 'filter
       assert.equal(find(f.render(), node => node.type === 'RealAppShell')?.props.tab, 'wallet');
     }
   } finally { f.dispose(); }
+});
+
+for (const accountId of ['hd:60:0', 'hd:60:1']) for (const destination of ['detail', 'activity'] as const)
+  test(`Accounts return for ${accountId} admits current ${destination} navigation`, async () => {
+    const f = await mounted(true, false, false, true, false, false, false, true, true);
+    try {
+      f.showTools();
+      find(f.render(), node => node.type === 'RealTools')!.props.onAccounts();
+      const accounts = f.render();
+      assert.equal(accounts.type, 'WalletAccounts');
+      await accounts.props.onSelect({ kind: 'hd', id: accountId });
+      f.render();
+      f.showWallet();
+      const portfolio = find(f.render(), node => node.type === 'NativePortfolio'); assert(portfolio);
+      const choice = f.activityChoice();
+      assert.equal(choice.scope.accountId, accountId);
+      assert.equal(f.selectionCalls(), accountId === 'hd:60:0' ? 0 : 1);
+      if (destination === 'detail') {
+        await portfolio.props.navigateDetail(choice, false, undefined, () => {});
+        const detail = find(f.render(), node => node.type === 'NativePortfolio')!.props.detail;
+        assert.equal(detail.accountId, accountId);
+        assert.equal(detail.networkId, 'ethereum');
+        assert.equal(detail.receive, false);
+      } else {
+        await portfolio.props.navigateActivity(choice, () => {});
+        assert.equal(find(f.render(), node => node.type === 'RealAppShell')!.props.tab, 'activity');
+      }
+    } finally { f.dispose(); }
+  });
+
+test('late Accounts selection cannot close a newer Accounts route', async () => {
+  const f = await mounted(true, false, false, true, false, false, false, true, true);
+  const gate = f.holdSelection();
+  let pending: Promise<void> | undefined;
+  try {
+    f.showTools();
+    find(f.render(), node => node.type === 'RealTools')!.props.onAccounts();
+    const previous = f.render();
+    pending = previous.props.onSelect({ kind: 'hd', id: 'hd:60:1' });
+    await settle();
+    previous.props.onBack();
+    find(f.render(), node => node.type === 'RealTools')!.props.onAccounts();
+    assert.equal(f.render().type, 'WalletAccounts');
+    gate.resolve(); await pending;
+    assert.equal(f.render().type, 'WalletAccounts', 'the previous completion does not clear the new route owner');
+  } finally { gate.resolve(); await pending; f.dispose(); }
+});
+
+for (const stale of [false, true]) test(`Trezor external resume ${stale ? 'preserves a newer route' : 'returns with current Home navigation'}`, async () => {
+  const f = await mounted(true, false, false, true, false, false, true, true, true);
+  const gate = Promise.withResolvers<void>();
+  f.resumeExternal(() => gate.promise);
+  let pending: Promise<void> | undefined;
+  try {
+    f.showTools();
+    find(f.render(), node => node.type === 'RealTools')!.props.onAccounts();
+    f.render().props.onManageHd();
+    f.render().props.onTrezor();
+    const trezor = f.render(); assert.equal(trezor.type, 'NativeTrezor');
+    pending = trezor.props.onResumeSend({ kind: 'external-signing', id: 'external-request', accountId: 'trezor:60:0', networkId: 'ethereum' });
+    await settle();
+    assert.deepEqual(f.externalResumes(), ['external-request']);
+    if (stale) {
+      trezor.props.onBack();
+      f.render().props.onBack();
+      f.render().props.onBack();
+      find(f.render(), node => node.type === 'RealTools')!.props.onAccounts();
+      assert.equal(f.render().type, 'WalletAccounts');
+    }
+    gate.resolve(); await pending;
+    if (stale) assert.equal(f.render().type, 'WalletAccounts');
+    else {
+      f.render(); f.showWallet();
+      const portfolio = find(f.render(), node => node.type === 'NativePortfolio'); assert(portfolio);
+      await portfolio.props.navigateActivity(f.activityChoice(), () => {});
+      assert.equal(find(f.render(), node => node.type === 'RealAppShell')!.props.tab, 'activity');
+    }
+  } finally { gate.resolve(); await pending; f.dispose(); }
 });
