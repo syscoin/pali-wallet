@@ -2,6 +2,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
+import { decodeSmartAccountOperations } from '../../../../../../wallet/smartAccountActivity';
 import { defaultAbiCoder, hexConcat, id } from 'utils/ethersV6Compat';
 import {
   getPaliEntryPointAddress,
@@ -33,6 +34,7 @@ const ACCOUNT = '0x1111111111111111111111111111111111111111';
 const OTHER = '0x2222222222222222222222222222222222222222';
 const TARGET = '0x3333333333333333333333333333333333333333';
 const ZERO = '0x' + '00'.repeat(32);
+const BLOCK = '0x' + '56'.repeat(32);
 
 jest.mock('react-redux', () => ({
   useSelector: (selector: any) => selector(mockState),
@@ -148,16 +150,26 @@ const fullTx = (hash: string, fields: any = {}) => ({
   to: TARGET,
   value: '7',
   input: '0x',
+  nonce: 0,
+  chainId: 1,
   blockNumber: 42,
+  blockHash: BLOCK,
   confirmations: 3,
   ...fields,
 });
 const encodeBundle = (
-  operations: { callData?: string; sender: string; value?: string }[]
+  operations: {
+    callData?: string;
+    data?: string;
+    nonce?: number;
+    sender: string;
+    target?: string;
+    value?: string;
+  }[]
 ) => {
-  const encoded = operations.map(({ sender, callData }) => [
+  const encoded = operations.map(({ sender, callData, nonce }) => [
     sender,
-    0,
+    nonce ?? 0,
     '0x',
     callData ||
       paliEntryPointInterface.encodeFunctionData('handleOps', [[], OTHER]),
@@ -170,9 +182,9 @@ const encodeBundle = (
   for (let i = 0; i < encoded.length; i += 1) {
     if (!operations[i].callData) {
       const execution = hexConcat([
-        TARGET,
+        operations[i].target || TARGET,
         defaultAbiCoder.encode(['uint256'], [operations[i].value || '7']),
-        '0x',
+        operations[i].data || '0x',
       ]);
       const selector = id('execute(bytes32,bytes)').slice(0, 10);
       encoded[i][3] =
@@ -191,15 +203,39 @@ const operationLog = (
   hash: string,
   sender: string,
   success: boolean,
-  address = getPaliEntryPointAddress(1)
-) => ({
-  ...paliEntryPointInterface.encodeEventLog(
-    paliEntryPointInterface.getEvent('UserOperationEvent'),
-    [ZERO, sender, OTHER, 0, success, 1, 1]
-  ),
-  address,
-  transactionHash: hash,
-});
+  address = getPaliEntryPointAddress(1),
+  input = encodeBundle([{ sender }]),
+  operationIndex = 0
+) => {
+  const operation = decodeSmartAccountOperations({
+    chainId: '1',
+    hash,
+    payer: OTHER,
+    nonce: 0,
+    to: getPaliEntryPointAddress(1),
+    value: '0',
+    data: input,
+  }).filter((candidate) => candidate.account === sender)[operationIndex];
+  if (!operation) throw new Error('Missing fixture UserOperation');
+  return {
+    ...paliEntryPointInterface.encodeEventLog(
+      paliEntryPointInterface.getEvent('UserOperationEvent'),
+      [
+        operation.operationHash,
+        sender,
+        OTHER,
+        operation.operationNonce,
+        success,
+        1,
+        1,
+      ]
+    ),
+    address,
+    transactionHash: hash,
+    blockHash: BLOCK,
+    blockNumber: '0x2a',
+  };
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -513,15 +549,19 @@ it('drops late decode and display enrichment after changing endpoint', async () 
 });
 
 it('selects the current account operation from a bundle, retaining outer hash details', async () => {
-  const hash = 'aa-current-operation';
+  const hash = id('aa-current-operation');
+  const input = encodeBundle([
+    { sender: OTHER, value: '999' },
+    { sender: ACCOUNT, value: '7' },
+  ]);
   mockEmitter.mockResolvedValue(
     fullTx(hash, {
       from: OTHER,
       to: getPaliEntryPointAddress(1),
-      input: encodeBundle([
-        { sender: OTHER, value: '999' },
-        { sender: ACCOUNT, value: '7' },
-      ]),
+      value: '0',
+      input,
+      nonce: 12,
+      gasUsed: '23456',
       success: true,
       logs: [operationLog(hash, ACCOUNT, true)],
     })
@@ -534,7 +574,72 @@ it('selects the current account operation from a bundle, retaining outer hash de
     expect.objectContaining({ from: ACCOUNT, value: '7', to: TARGET }),
     'eth'
   );
-  expect(screen.getByText(/Hash:aa-current-operation/)).toBeTruthy();
+  expect(screen.getByText(`Hash:${hash}|`)).toBeTruthy();
+  expect(screen.getByText(`From:${ACCOUNT}|`)).toBeTruthy();
+  expect(screen.getByText(`To:${TARGET}|`)).toBeTruthy();
+  expect(
+    screen.getByText('transactions.feePayer').parentElement?.textContent
+  ).toBe(`transactions.feePayer${OTHER}`);
+  expect(screen.getByText('Nonce:12|')).toBeTruthy();
+  expect(screen.getByText('Gas Used:23,456|')).toBeTruthy();
+  expect(screen.getByText(`Input:${input}|`)).toBeTruthy();
+});
+
+it('shows the successful Smart token recipient with the Smart sender and separate outer payer', async () => {
+  const hash = id('aa-token-addresses');
+  const token = '0x4444444444444444444444444444444444444444';
+  const data =
+    id('transfer(address,uint256)').slice(0, 10) +
+    defaultAbiCoder
+      .encode(['address', 'uint256'], [TARGET, '5000000'])
+      .slice(2);
+  const input = encodeBundle([
+    { sender: ACCOUNT, target: token, data, value: '0' },
+  ]);
+  mockEmitter.mockResolvedValue(
+    fullTx(hash, {
+      from: OTHER,
+      to: getPaliEntryPointAddress(1),
+      value: '0',
+      input,
+      success: true,
+      logs: [operationLog(hash, ACCOUNT, true, undefined, input)],
+    })
+  );
+  mockDisplay.mockImplementation(async (tx: any) => ({
+    formattedValue: '5 TOK',
+    displayValue: '5',
+    displaySymbol: 'TOK',
+    actualRecipient: TARGET,
+    isErc20Transfer: tx.to.toLowerCase() === token,
+  }));
+  render(<EvmTransactionDetailsEnhanced hash={hash} />);
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe(
+      'Sent|5 TOK|Confirmed'
+    )
+  );
+  expect(mockDisplay).toHaveBeenCalledWith(
+    expect.objectContaining({ from: ACCOUNT, to: token, input: data }),
+    'eth'
+  );
+  expect(screen.getByText(`From:${ACCOUNT}|`)).toBeTruthy();
+  expect(screen.getByText(`To:${TARGET}|`)).toBeTruthy();
+  expect(
+    screen.getByText('transactions.feePayer').parentElement?.textContent
+  ).toBe(`transactions.feePayer${OTHER}`);
+});
+
+it('keeps ordinary EOA detail addresses without adding a separate Smart payer', async () => {
+  const hash = 'eoa-addresses';
+  mockEmitter.mockResolvedValue(fullTx(hash));
+  render(<EvmTransactionDetailsEnhanced hash={hash} />);
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe('Sent|7|Confirmed')
+  );
+  expect(screen.getByText(`From:${ACCOUNT}|`)).toBeTruthy();
+  expect(screen.getByText(`To:${TARGET}|`)).toBeTruthy();
+  expect(screen.queryByText('transactions.feePayer')).toBeNull();
 });
 
 it.each([
@@ -543,13 +648,15 @@ it.each([
   'wrong-event-contract',
   'unsupported-target',
 ])('keeps bundle %s account impact unknown', async (mode) => {
-  const hash = 'aa-unknown-' + mode;
+  const hash = id('aa-unknown-' + mode);
   const sender = mode === 'other-sender' ? OTHER : ACCOUNT;
+  const input = encodeBundle([{ sender, value: '999' }]);
   mockEmitter.mockResolvedValue(
     fullTx(hash, {
       from: OTHER,
       to: mode === 'unsupported-target' ? TARGET : getPaliEntryPointAddress(1),
-      input: encodeBundle([{ sender, value: '999' }]),
+      value: '0',
+      input,
       success: true,
       logs:
         mode === 'no-event'
@@ -561,7 +668,8 @@ it.each([
                 true,
                 mode === 'wrong-event-contract'
                   ? TARGET
-                  : getPaliEntryPointAddress(1)
+                  : getPaliEntryPointAddress(1),
+                input
               ),
             ],
     })
@@ -569,30 +677,34 @@ it.each([
   render(<EvmTransactionDetailsEnhanced hash={hash} />);
   await waitFor(() =>
     expect(screen.getByTestId('header').textContent).toBe(
-      'Transaction|-|Confirmed'
+      'Transaction|-|Pending'
     )
   );
   expect(mockDisplay).not.toHaveBeenCalled();
   expect(screen.queryByText(/Success:Success/)).toBeNull();
+  expect(screen.getByText(`From:${OTHER}|`)).toBeTruthy();
+  expect(screen.queryByText('transactions.feePayer')).toBeNull();
 });
 
 it.each(['supported', 'unsupported'])(
   'shows failed current userOp in successful outer %s bundle without claiming its intended amount',
   async (mode) => {
-    const hash = 'aa-failed-' + mode;
+    const hash = id('aa-failed-' + mode);
+    const input = encodeBundle([
+      {
+        sender: ACCOUNT,
+        value: '999',
+        callData: mode === 'unsupported' ? '0xabcdef' : undefined,
+      },
+    ]);
     mockEmitter.mockResolvedValue(
       fullTx(hash, {
         from: OTHER,
         to: getPaliEntryPointAddress(1),
-        input: encodeBundle([
-          {
-            sender: ACCOUNT,
-            value: '999',
-            callData: mode === 'unsupported' ? '0xabcdef' : undefined,
-          },
-        ]),
+        value: '0',
+        input,
         success: true,
-        logs: [operationLog(hash, ACCOUNT, false)],
+        logs: [operationLog(hash, ACCOUNT, false, undefined, input)],
       })
     );
     render(<EvmTransactionDetailsEnhanced hash={hash} />);
@@ -606,11 +718,12 @@ it.each(['supported', 'unsupported'])(
   }
 );
 
-it('retains a confirmed current-account failed operation summary over outer success when receipt logs are absent', async () => {
-  const hash = 'aa-summary-failed';
+it('does not infer an inner outcome from a summary flag when receipt logs are absent', async () => {
+  const hash = id('aa-summary-failed');
   const summary = fullTx(hash, {
     from: OTHER,
     to: getPaliEntryPointAddress(1),
+    value: '0',
     input: encodeBundle([{ sender: ACCOUNT }]),
     smartAccountExecutionFrom: ACCOUNT,
     // eslint-disable-next-line camelcase
@@ -625,7 +738,12 @@ it('retains a confirmed current-account failed operation summary over outer succ
     logs: [],
   });
   render(<EvmTransactionDetailsEnhanced hash={hash} tx={summary as any} />);
-  await waitFor(() => expect(screen.getByText(/Success:Failed/)).toBeTruthy());
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe(
+      'Transaction|-|Pending'
+    )
+  );
+  expect(screen.queryByText(/Success:Failed/)).toBeNull();
   expect(mockDisplay).not.toHaveBeenCalled();
 });
 
@@ -649,17 +767,19 @@ it('falls back from a partial hash-only explorer lookup to the full provider rec
 });
 
 it('selects a supported current operation after another sender with unsupported call data', async () => {
-  const hash = 'aa-second-supported';
+  const hash = id('aa-second-supported');
+  const input = encodeBundle([
+    { sender: OTHER, callData: '0xabcdef' },
+    { sender: ACCOUNT, value: '11' },
+  ]);
   mockEmitter.mockResolvedValue(
     fullTx(hash, {
       from: OTHER,
       to: getPaliEntryPointAddress(1),
-      input: encodeBundle([
-        { sender: OTHER, callData: '0xabcdef' },
-        { sender: ACCOUNT, value: '11' },
-      ]),
+      value: '0',
+      input,
       success: true,
-      logs: [operationLog(hash, ACCOUNT, true)],
+      logs: [operationLog(hash, ACCOUNT, true, undefined, input)],
     })
   );
   render(<EvmTransactionDetailsEnhanced hash={hash} />);
@@ -669,11 +789,12 @@ it('selects a supported current operation after another sender with unsupported 
 });
 
 it('keeps malformed receipt logs neutral without crashing or showing unproven bundle success', async () => {
-  const hash = 'aa-malformed-logs';
+  const hash = id('aa-malformed-logs');
   mockEmitter.mockResolvedValue(
     fullTx(hash, {
       from: OTHER,
       to: getPaliEntryPointAddress(1),
+      value: '0',
       input: encodeBundle([{ sender: ACCOUNT }]),
       success: true,
       logs: {},
@@ -682,7 +803,7 @@ it('keeps malformed receipt logs neutral without crashing or showing unproven bu
   render(<EvmTransactionDetailsEnhanced hash={hash} />);
   await waitFor(() =>
     expect(screen.getByTestId('header').textContent).toBe(
-      'Transaction|-|Confirmed'
+      'Transaction|-|Pending'
     )
   );
   expect(mockDisplay).not.toHaveBeenCalled();
@@ -690,31 +811,281 @@ it('keeps malformed receipt logs neutral without crashing or showing unproven bu
 });
 
 it('immediately hides previously displayed operation amount when current summary reports failure', async () => {
-  const hash = 'aa-summary-update';
+  const hash = id('aa-summary-update');
   const summary = fullTx(hash, {
     from: OTHER,
     to: getPaliEntryPointAddress(1),
+    value: '0',
     input: encodeBundle([{ sender: ACCOUNT }]),
     smartAccountExecutionFrom: ACCOUNT,
     // eslint-disable-next-line camelcase
     txreceipt_status: '1',
   });
-  mockEmitter.mockResolvedValue({ ...summary, success: true, logs: [] });
+  mockHistory = [summary];
+  mockEmitter.mockResolvedValue({
+    ...summary,
+    success: true,
+    logs: [operationLog(hash, ACCOUNT, true)],
+  });
   const view = render(
     <EvmTransactionDetailsEnhanced hash={hash} tx={summary as any} />
   );
   await waitFor(() =>
     expect(screen.getByTestId('header').textContent).toBe('Sent|7|Confirmed')
   );
+  const failed = {
+    ...summary,
+    // eslint-disable-next-line camelcase -- RPC receipt status field.
+    txreceipt_status: '0',
+    logs: [operationLog(hash, ACCOUNT, false)],
+  };
+  mockHistory = [failed];
   view.rerender(
     <EvmTransactionDetailsEnhanced
       hash={hash}
       // eslint-disable-next-line camelcase
-      tx={{ ...summary, txreceipt_status: '0' } as any}
+      tx={failed as any}
     />
   );
   expect(screen.getByTestId('header').textContent).toBe('Transaction|-|Failed');
   expect(screen.getByText(/Success:Failed/)).toBeTruthy();
+});
+
+it.each([
+  'complete',
+  'normalized-logs',
+  'fractional-log',
+  'unsafe-log',
+  'nan-log',
+  'failed',
+  'missing-one',
+  'missing-all',
+  'duplicate',
+  'wrong-hash',
+  'wrong-nonce',
+  'wrong-sender',
+  'wrong-block',
+  'wrong-transaction',
+  'removed',
+  'outer-reverted',
+])(
+  'requires the same complete operation outcome as Activity: %s',
+  async (mode) => {
+    const hash = id('complete-outcome-' + mode);
+    const input = encodeBundle([
+      { sender: ACCOUNT, value: '7' },
+      { sender: ACCOUNT, nonce: 1, value: '9' },
+    ]);
+    const first = operationLog(hash, ACCOUNT, true, undefined, input);
+    const second = operationLog(
+      hash,
+      ACCOUNT,
+      mode !== 'failed',
+      undefined,
+      input,
+      1
+    );
+    let logs: any[] = [first, second];
+    if (mode === 'normalized-logs')
+      logs = logs.map((log) => ({ ...log, blockNumber: 42 }));
+    if (mode === 'fractional-log') logs[1] = { ...second, blockNumber: 42.5 };
+    if (mode === 'unsafe-log')
+      logs[1] = { ...second, blockNumber: Number.MAX_SAFE_INTEGER + 1 };
+    if (mode === 'nan-log') logs[1] = { ...second, blockNumber: Number.NaN };
+    if (mode === 'missing-one') logs = [first];
+    if (mode === 'missing-all' || mode === 'outer-reverted') logs = [];
+    if (mode === 'duplicate') logs.push(second);
+    if (mode === 'wrong-hash')
+      logs[1] = {
+        ...second,
+        topics: [second.topics[0], ZERO, ...second.topics.slice(2)],
+      };
+    if (mode === 'wrong-nonce')
+      logs[1] = {
+        ...second,
+        data: paliEntryPointInterface.encodeEventLog(
+          paliEntryPointInterface.getEvent('UserOperationEvent'),
+          [second.topics[1], ACCOUNT, OTHER, 2, true, 1, 1]
+        ).data,
+      };
+    if (mode === 'wrong-sender')
+      logs[1] = {
+        ...second,
+        topics: [
+          second.topics[0],
+          second.topics[1],
+          '0x' + OTHER.slice(2).padStart(64, '0'),
+          second.topics[3],
+        ],
+      };
+    if (mode === 'wrong-block') logs[1] = { ...second, blockHash: ZERO };
+    if (mode === 'wrong-transaction')
+      logs[1] = { ...second, transactionHash: ZERO };
+    if (mode === 'removed') logs[1] = { ...second, removed: true };
+    const outer = fullTx(hash, {
+      from: OTHER,
+      to: getPaliEntryPointAddress(1),
+      value: '0',
+      input,
+      success: mode !== 'outer-reverted',
+      // eslint-disable-next-line camelcase -- RPC receipt status field.
+      txreceipt_status: mode === 'outer-reverted' ? '0' : '1',
+      logs,
+    });
+    const summary = {
+      ...outer,
+      logs: undefined,
+      blockNumber: null,
+      blockHash: null,
+      confirmations: 0,
+      success: null,
+      // eslint-disable-next-line camelcase -- RPC receipt status field.
+      txreceipt_status: null,
+      smartAccountExecutionFrom: ACCOUNT,
+    };
+    mockHistory = [summary];
+    mockEmitter.mockResolvedValue(outer);
+    render(<EvmTransactionDetailsEnhanced hash={hash} tx={summary as any} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const expected =
+      mode === 'complete' || mode === 'normalized-logs'
+        ? 'Sent|7|Confirmed'
+        : mode === 'failed' || mode === 'outer-reverted'
+        ? 'Transaction|-|Failed'
+        : 'Transaction|-|Pending';
+    await waitFor(() =>
+      expect(screen.getByTestId('header').textContent).toBe(expected)
+    );
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([method]) => method[1] === 'getEvmTransactionFromProvider'
+      )
+    ).toHaveLength(1);
+    if (mode !== 'complete' && mode !== 'normalized-logs') {
+      expect(mockDisplay).not.toHaveBeenCalled();
+      expect(screen.queryByText('transactions.feePayer')).toBeNull();
+    }
+  }
+);
+
+it('shows incoming Smart details only for a decoded recipient of the originating operation', async () => {
+  const hash = id('incoming-origin-operation');
+  const input = encodeBundle([{ sender: OTHER, target: ACCOUNT, value: '7' }]);
+  const summary = fullTx(hash, {
+    from: TARGET,
+    to: getPaliEntryPointAddress(1),
+    value: '0',
+    input,
+    smartAccountExecutionFrom: OTHER,
+    success: true,
+    logs: [operationLog(hash, OTHER, true, undefined, input)],
+  });
+  mockHistory = [summary];
+  mockEmitter.mockResolvedValue(summary);
+  render(<EvmTransactionDetailsEnhanced hash={hash} tx={summary as any} />);
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe(
+      'Received|7|Confirmed'
+    )
+  );
+  expect(screen.getByText(`From:${OTHER}|`)).toBeTruthy();
+  expect(screen.getByText(`To:${ACCOUNT}|`)).toBeTruthy();
+});
+
+it.each([false, true])(
+  'keeps an ordinary outer-payer receipt separate from inner outcome (origin hint=%s)',
+  async (hint) => {
+    const hash = id('payer-only-' + hint);
+    const input = encodeBundle([
+      { sender: ACCOUNT, target: TARGET, value: '7' },
+    ]);
+    const summary = fullTx(hash, {
+      from: OTHER,
+      to: getPaliEntryPointAddress(1),
+      value: '0',
+      input,
+      ...(hint ? { smartAccountExecutionFrom: ACCOUNT } : {}),
+      success: true,
+      logs: [operationLog(hash, ACCOUNT, false, undefined, input)],
+    });
+    mockState.account = { id: 0, address: OTHER };
+    mockHistory = [summary];
+    mockEmitter.mockResolvedValue(summary);
+    render(<EvmTransactionDetailsEnhanced hash={hash} tx={summary as any} />);
+    await waitFor(() =>
+      expect(screen.getByTestId('header').textContent).toBe('Sent|0|Confirmed')
+    );
+    expect(screen.getByText(`From:${OTHER}|`)).toBeTruthy();
+    expect(screen.getByText(`To:${getPaliEntryPointAddress(1)}|`)).toBeTruthy();
+    expect(screen.queryByText('transactions.feePayer')).toBeNull();
+    expect(mockDisplay).not.toHaveBeenCalled();
+  }
+);
+
+it('requires the inner outcome when the outer payer also receives native funds', async () => {
+  const hash = id('payer-recipient');
+  const input = encodeBundle([{ sender: ACCOUNT, target: OTHER, value: '7' }]);
+  const summary = fullTx(hash, {
+    from: OTHER,
+    to: getPaliEntryPointAddress(1),
+    value: '0',
+    input,
+    smartAccountExecutionFrom: ACCOUNT,
+    success: true,
+    logs: [operationLog(hash, ACCOUNT, false, undefined, input)],
+  });
+  mockState.account = { id: 0, address: OTHER };
+  mockHistory = [summary];
+  mockEmitter.mockResolvedValue(summary);
+  render(<EvmTransactionDetailsEnhanced hash={hash} tx={summary as any} />);
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe(
+      'Transaction|-|Failed'
+    )
+  );
+  expect(mockDisplay).not.toHaveBeenCalled();
+});
+
+it('keeps a successful recipient operation separate from an unrelated failed operation', async () => {
+  const hash = id('recipient-operation-subset');
+  const input = encodeBundle([
+    { sender: OTHER, target: ACCOUNT, value: '7' },
+    { sender: OTHER, target: TARGET, nonce: 1, value: '9' },
+  ]);
+  const summary = fullTx(hash, {
+    from: TARGET,
+    to: getPaliEntryPointAddress(1),
+    value: '0',
+    input,
+    smartAccountExecutionFrom: OTHER,
+    success: true,
+    logs: [
+      operationLog(hash, OTHER, true, undefined, input),
+      operationLog(hash, OTHER, false, undefined, input, 1),
+    ],
+  });
+  mockHistory = [summary];
+  mockEmitter.mockResolvedValue(summary);
+  const view = render(
+    <EvmTransactionDetailsEnhanced hash={hash} tx={summary as any} />
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe(
+      'Received|7|Confirmed'
+    )
+  );
+  mockState.account = { id: 1, address: OTHER };
+  view.rerender(
+    <EvmTransactionDetailsEnhanced hash={hash} tx={summary as any} />
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe(
+      'Transaction|-|Failed'
+    )
+  );
 });
 
 const replacementHash = (digit: string) => `0x${digit.repeat(64)}`;
@@ -727,6 +1098,33 @@ const replacementTx = (digit: string, fields: any = {}) =>
     confirmations: 0,
     ...fields,
   });
+
+it('preserves independent replacement proof when the Smart inner result is unavailable', async () => {
+  const original = replacementTx('7', {
+    hash: id('unavailable-smart-replacement'),
+    from: OTHER,
+    to: getPaliEntryPointAddress(1),
+    value: '0',
+    input: encodeBundle([{ sender: ACCOUNT }]),
+    smartAccountExecutionFrom: ACCOUNT,
+    isReplaced: true,
+    blockHash: null,
+  });
+  mockHistory = [
+    original,
+    replacementTx('8', { from: OTHER, blockNumber: 43, confirmations: 1 }),
+  ];
+  mockEmitter.mockResolvedValue(original);
+  render(
+    <EvmTransactionDetailsEnhanced hash={original.hash} tx={original as any} />
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe(
+      'Transaction|-|Replaced'
+    )
+  );
+  expect(mockDisplay).not.toHaveBeenCalled();
+});
 
 it('shows a replaced original even when its RPC lookup remains pending', async () => {
   const original = replacementTx('a', { isReplaced: true });

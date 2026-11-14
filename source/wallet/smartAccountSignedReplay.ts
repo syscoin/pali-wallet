@@ -1,4 +1,3 @@
-import { AbiCoder } from 'ethers/abi';
 import { getAddress } from 'ethers/address';
 import { Transaction } from 'ethers/transaction';
 
@@ -6,15 +5,10 @@ import {
   decodeAssetTransfer,
   type AssetTransferCall,
 } from '../shared/assetTransfer.ts';
-import {
-  ERC7579_MODE_BATCH_DEFAULT,
-  ERC7579_MODE_SINGLE_DEFAULT,
-  type SmartAccountExecution,
-} from '../utils/smartAccount/account.ts';
+import { decodeSmartAccountExecutions } from '../shared/smartAccountExecutions.ts';
 import {
   getPaliEntryPointAddress,
   paliEntryPointInterface,
-  paliSmartAccountInterface,
 } from '../utils/smartAccount/contracts.ts';
 
 import {
@@ -39,6 +33,7 @@ import {
   type RetainedSmartAccountTransfer,
 } from './smartAccountActivity.ts';
 import type { EvmObservationMethod } from '../shared/evmTransactionObservation.ts';
+import type { SmartAccountExecution } from '../utils/smartAccount/account.ts';
 
 export type SmartAccountReplayIntent = Readonly<{
   account: string;
@@ -98,54 +93,6 @@ export type SmartAccountReplayOwner = Readonly<{
   recordSession: EvmSignedRecordSession;
 }>;
 
-function executions(
-  callData: string
-): readonly Readonly<SmartAccountExecution>[] | undefined {
-  try {
-    const [mode, payload] = paliSmartAccountInterface.decodeFunctionData(
-      'execute',
-      callData
-    );
-    if (
-      paliSmartAccountInterface
-        .encodeFunctionData('execute', [mode, payload])
-        .toLowerCase() !== callData.toLowerCase()
-    )
-      return;
-    if (mode === ERC7579_MODE_SINGLE_DEFAULT && payload.length >= 106)
-      return Object.freeze([
-        Object.freeze({
-          target: getAddress('0x' + payload.slice(2, 42)),
-          value: BigInt('0x' + payload.slice(42, 106)).toString(),
-          data: '0x' + payload.slice(106),
-        }),
-      ]);
-    if (mode === ERC7579_MODE_BATCH_DEFAULT) {
-      const abi = AbiCoder.defaultAbiCoder(),
-        types = ['tuple(address target,uint256 value,bytes callData)[]'];
-      const decoded = abi.decode(types, payload);
-      if (
-        !decoded[0].length ||
-        decoded[0].length > 50 ||
-        abi.encode(types, decoded).toLowerCase() !== payload.toLowerCase()
-      )
-        return;
-      return Object.freeze(
-        decoded[0].map(
-          (call: { callData: string; target: string; value: bigint }) =>
-            Object.freeze({
-              target: getAddress(call.target),
-              value: call.value.toString(),
-              data: call.callData,
-            })
-        )
-      );
-    }
-  } catch {
-    /* Unknown account methods stay inspectable as contract calls. */
-  }
-}
-
 export function projectSmartAccountSavedTransaction(
   record: EvmRetainedSmartAccountRecord,
   address: string
@@ -163,7 +110,7 @@ export function projectSmartAccountSavedTransaction(
       )[0];
   const index = record.operations.indexOf(selected),
     callData = decoded ? String(decoded[index].callData) : '0x';
-  const calls = executions(callData)?.map((call) => {
+  const calls = decodeSmartAccountExecutions(callData)?.map((call) => {
     const assetTransfer = decodeAssetTransfer(call.data, call.target);
     return Object.freeze({
       ...call,

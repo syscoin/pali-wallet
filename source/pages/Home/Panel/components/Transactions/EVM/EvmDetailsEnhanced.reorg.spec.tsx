@@ -7,6 +7,7 @@ jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
   RetainedTransactionReplay: () => null,
 }));
 
+import { decodeSmartAccountOperations } from '../../../../../../wallet/smartAccountActivity';
 import { DetailsView } from '../../Details';
 import { defaultAbiCoder, hexConcat, id } from 'utils/ethersV6Compat';
 import {
@@ -744,18 +745,30 @@ it('does not let an old successful EntryPoint receipt override the current faile
   const original = transaction({
     from: TARGET,
     to: getPaliEntryPointAddress(1),
+    value: '0',
     input,
     smartAccountExecutionFrom: ACCOUNT,
     // eslint-disable-next-line camelcase -- Explorer wire field.
     txreceipt_status: '1',
   });
+  const [operation] = decodeSmartAccountOperations({
+    chainId: '1',
+    hash: mockHash,
+    payer: TARGET,
+    nonce: original.nonce,
+    to: original.to,
+    value: '0',
+    data: input,
+  });
   const log = {
     ...paliEntryPointInterface.encodeEventLog(
       paliEntryPointInterface.getEvent('UserOperationEvent'),
-      [zero, ACCOUNT, TARGET, 0, true, 1, 1]
+      [operation.operationHash, ACCOUNT, TARGET, 0, true, 1, 1]
     ),
     address: getPaliEntryPointAddress(1),
     transactionHash: mockHash,
+    blockHash: OLD_BLOCK,
+    blockNumber: '0x64',
   };
   mockHistory = [original];
   mockEmitter.mockResolvedValue({ ...original, logs: [log], success: true });
@@ -767,6 +780,15 @@ it('does not let an old successful EntryPoint receipt override the current faile
     expect(screen.getByTestId('transaction-amount').textContent).toBe('7')
   );
   firstVisit.unmount();
+  const failedLog = {
+    ...log,
+    ...paliEntryPointInterface.encodeEventLog(
+      paliEntryPointInterface.getEvent('UserOperationEvent'),
+      [operation.operationHash, ACCOUNT, TARGET, 0, false, 1, 1]
+    ),
+    blockHash: NEW_BLOCK,
+    blockNumber: '0x66',
+  };
   mockHistory = [
     {
       ...original,
@@ -775,6 +797,7 @@ it('does not let an old successful EntryPoint receipt override the current faile
       confirmations: 1,
       // eslint-disable-next-line camelcase -- Per-operation summary status.
       txreceipt_status: '0',
+      logs: [failedLog],
     },
   ];
   render(<DetailsView />);
@@ -783,6 +806,6 @@ it('does not let an old successful EntryPoint receipt override the current faile
     'send.failed'
   );
   expect(screen.getByTestId('transaction-amount').textContent).toBe('-');
-  expect(screen.getByTestId('event-logs').textContent).toBe('');
+  expect(screen.getByTestId('event-logs').textContent).toBe(failedLog.data);
   expect(detailValue('Success')).toBe('Failed');
 });

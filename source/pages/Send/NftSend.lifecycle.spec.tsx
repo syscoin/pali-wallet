@@ -198,6 +198,7 @@ jest.mock('antd', () => {
         values,
         getFieldsValue: () => ({ ...values }),
         getFieldValue: (name: string) => values[name],
+        getFieldError: () => [],
         setFieldsValue: (next: any) => {
           Object.assign(values, next);
           update((v) => v + 1);

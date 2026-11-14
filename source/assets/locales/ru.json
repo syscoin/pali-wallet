@@ -659,7 +659,8 @@
     "status": "Статус",
     "reverted": "Revert",
     "partiallyReverted": "Частичный revert",
-    "receipts": "Квитанции"
+    "receipts": "Квитанции",
+    "balanceUnavailable": "Баланс недоступен"
   },
   "settings": {
     "clearActivityAndNonce": "Очистить историю и данные nonce",

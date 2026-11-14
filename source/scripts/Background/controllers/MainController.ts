@@ -92,6 +92,10 @@ import {
 } from '../../../shared/nativeCoinQuotes';
 import { snapshotNftTransferIntent } from '../../../shared/nftTransfer';
 import {
+  filterSmartAccountNativeRecipientOperations,
+  isSmartAccountNativeRecipient,
+} from '../../../shared/smartAccountExecutions';
+import {
   boundUtxoActivityParticipants,
   type UtxoActivityParticipants,
 } from '../../../shared/utxoActivityParticipants';
@@ -9410,7 +9414,8 @@ class MainController {
             if (!isBitcoinBased) {
               await this.reconcileLocalPendingEvmSmartAccountTransactions(
                 activeAccount,
-                activeNetwork.chainId
+                activeNetwork.chainId,
+                forceRefresh || bypassCompletedCache
               );
             } else if (!isRapidPolling) {
               // The bounded saved-record pass does not delay public history or
@@ -13091,22 +13096,62 @@ class MainController {
         const knownCalldata = isHandleOps(existingTx)
           ? (existingTx as any).input ?? (existingTx as any).data
           : undefined;
+        const originatingAccount = (existingTx as any)
+          .smartAccountExecutionFrom;
+        const isOuterPayer =
+          account?.address?.toLowerCase() === existingTx.from?.toLowerCase();
+        const roleIdentities =
+          !isOuterPayer || knownCalldata === undefined
+            ? identities
+            : decodeSmartAccountOperations({
+                chainId: String(chainId),
+                hash: txHash,
+                payer: existingTx.from,
+                nonce: Number(existingTx.nonce),
+                to: existingTx.to,
+                value: String(existingTx.value),
+                data: knownCalldata,
+              });
+        // A payer may also receive the native execution. That row follows the
+        // inner result; a payer-only copy continues to describe the outer fee.
+        const receivesNative =
+          isOuterPayer &&
+          typeof originatingAccount === 'string' &&
+          roleIdentities.some(
+            (identity) =>
+              identity.account.toLowerCase() ===
+                originatingAccount?.toLowerCase() &&
+              isSmartAccountNativeRecipient(
+                identity.callData,
+                account?.address || ''
+              )
+          );
         let update = txUpdate;
         if (
-          accountType === KeyringAccountType.SmartAccount &&
+          (accountType === KeyringAccountType.SmartAccount ||
+            (originatingAccount !== undefined &&
+              (!isOuterPayer || receivesNative))) &&
           (isHandleOps(txUpdate) || knownCalldata !== undefined)
         ) {
           const sameCalldata =
             knownCalldata === undefined ||
             (txUpdate.input ?? txUpdate.data)?.toLowerCase() ===
               knownCalldata.toLowerCase();
-          const relevant = sameCalldata
-            ? identities.filter(
-                (identity) =>
-                  identity.account.toLowerCase() ===
-                  account?.address?.toLowerCase()
-              )
-            : [];
+          // Native recipient copies retain the executing account's identity.
+          // The recipient did not execute its own UserOperation; authenticate
+          // the originating group from this exact outer envelope instead.
+          const operationAccount = originatingAccount ?? account?.address;
+          const relevant =
+            sameCalldata && typeof operationAccount === 'string'
+              ? filterSmartAccountNativeRecipientOperations(
+                  identities.filter(
+                    (identity) =>
+                      identity.account.toLowerCase() ===
+                      operationAccount.toLowerCase()
+                  ),
+                  account?.address || ''
+                )
+              : [];
           let outcome: 'confirmed' | 'reverted' | undefined;
           if (isTransactionInBlock(txUpdate) && relevant.length) {
             try {
@@ -13535,9 +13580,22 @@ class MainController {
 
   private async reconcileLocalPendingEvmSmartAccountTransactions(
     accountInfo: { id: number; type: KeyringAccountType },
-    chainId: number
+    chainId: number,
+    forceRefresh = false
   ) {
     const generation = this.walletSessionGeneration;
+    const networkGeneration = this.networkRequestGeneration;
+    const scope = getWalletNavigationScope();
+    const isCurrent = () => {
+      const currentScope = getWalletNavigationScope();
+      return (
+        generation === this.walletSessionGeneration &&
+        networkGeneration === this.networkRequestGeneration &&
+        !this.clearingEvmActivity &&
+        currentScope.account === scope.account &&
+        currentScope.network === scope.network
+      );
+    };
     const chainTxs =
       store.getState().vault.accountTransactions[accountInfo.type]?.[
         accountInfo.id
@@ -13556,25 +13614,22 @@ class MainController {
         (tx: IEvmTransactionResponse | any) =>
           tx?.hash && tx?.smartAccountExecutionFrom && !isTransactionInBlock(tx)
       )
-      .filter((tx) => now - lastCheck(tx) >= 30_000)
+      .filter((tx) => forceRefresh || now - lastCheck(tx) >= 30_000)
       .sort((a, b) => lastCheck(a) - lastCheck(b))
       .slice(0, 5);
 
     for (const tx of pendingSmartAccountTxs) {
+      if (!isCurrent()) return;
       const txHash = tx.hash.toLowerCase();
       const checkKey = `${chainId}:${txHash}`;
       const lastCheckedAt = this.pendingEvmReceiptChecks.get(checkKey) || 0;
-      if (now - lastCheckedAt < 30_000) {
+      if (!forceRefresh && now - lastCheckedAt < 30_000) {
         continue;
       }
       this.pendingEvmReceiptChecks.set(checkKey, now);
 
       const directTx = await this.getEvmTransactionFromProvider(tx.hash);
-      if (
-        generation !== this.walletSessionGeneration ||
-        this.clearingEvmActivity
-      )
-        return;
+      if (!isCurrent()) return;
       if (directTx && isTransactionInBlock(directTx)) {
         await this.updateTrackedEvmTransactionCopies(
           tx.hash,

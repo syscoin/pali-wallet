@@ -659,7 +659,8 @@
     "status": "상태",
     "reverted": "리버트됨",
     "partiallyReverted": "부분 리버트됨",
-    "receipts": "영수증"
+    "receipts": "영수증",
+    "balanceUnavailable": "잔액을 확인할 수 없습니다"
   },
   "settings": {
     "clearActivityAndNonce": "활동 및 nonce 데이터 지우기",

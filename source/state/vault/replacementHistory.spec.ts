@@ -609,3 +609,94 @@ it.each([30, 35, 60])(
     expect(rows(state)[0].isCancel).toBe(true);
   }
 );
+
+it.each([
+  ['confirmed', '1'],
+  ['failed', '0'],
+] as const)(
+  'retains an older Smart-account %s outcome beyond 30 sends, refresh and reopen',
+  (status, receiptStatus) => {
+    const oldest = tx(ROOT, {
+      smartAccountExecutionFrom: SMART,
+      blockNumber: 100,
+      blockHash: hash('d'),
+      confirmations: 1,
+      txreceipt_status: receiptStatus,
+      input: '0x1234',
+    });
+    let state = insert(initial(), oldest, KeyringAccountType.SmartAccount);
+    for (let index = 0; index < 50; index++)
+      state = insert(
+        state,
+        tx(`0x${(index + 100).toString(16).padStart(64, '0')}`, {
+          nonce: index + 10,
+          smartAccountExecutionFrom: SMART,
+          blockNumber: index + 101,
+          confirmations: 1,
+          txreceipt_status: '1',
+        }),
+        KeyringAccountType.SmartAccount
+      );
+
+    expect(rows(state, KeyringAccountType.SmartAccount)).toHaveLength(51);
+    expect(rows(state, KeyringAccountType.SmartAccount).at(-1)).toEqual(oldest);
+
+    // The existing log cursor only returns recent rows; reopening restores
+    // the persisted public history before the older saved page is requested.
+    state = structuredClone(state);
+    state = refresh(
+      state,
+      rows(state, KeyringAccountType.SmartAccount).slice(0, 30),
+      KeyringAccountType.SmartAccount
+    );
+    const retained = rows(state, KeyringAccountType.SmartAccount).find(
+      (row) => row.hash === ROOT
+    );
+    expect(retained).toEqual(oldest);
+    expect(settlement(retained, state, KeyringAccountType.SmartAccount)).toBe(
+      status
+    );
+
+    // Preserving a row never overrides a new observation of the same hash.
+    state = refresh(
+      state,
+      [
+        {
+          ...oldest,
+          blockNumber: null,
+          blockHash: null,
+          confirmations: 0,
+          txreceipt_status: null,
+        },
+      ],
+      KeyringAccountType.SmartAccount
+    );
+    expect(
+      settlement(
+        rows(state, KeyringAccountType.SmartAccount).find(
+          (row) => row.hash === ROOT
+        ),
+        state,
+        KeyringAccountType.SmartAccount
+      )
+    ).toBe('pending');
+  }
+);
+
+it('preserves Smart history when an ordinary incoming row advances the recent window', () => {
+  const oldest = tx(ROOT, {
+    smartAccountExecutionFrom: SMART,
+    blockNumber: 100,
+    confirmations: 1,
+    txreceipt_status: '1',
+  });
+  const recent = Array.from({ length: 30 }, (_value, index) =>
+    tx(`0x${(index + 100).toString(16).padStart(64, '0')}`)
+  );
+  const state = insert(refresh(initial(), [...recent, oldest]), tx(WINNER));
+  expect(rows(state)).toHaveLength(31);
+  expect(rows(state).at(-1)).toEqual(oldest);
+  expect(
+    rows(state).filter((row) => !row.smartAccountExecutionFrom)
+  ).toHaveLength(30);
+});

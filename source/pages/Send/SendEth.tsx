@@ -1028,7 +1028,12 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       }
 
       if (selectedAsset.tokenStandard === 'ERC-1155') {
-        if (verifiedTokenBalance === null) return t('send.verifyingBalance');
+        if (verifiedTokenBalance === null)
+          return t(
+            verificationError
+              ? 'send.balanceUnavailable'
+              : 'send.verifyingBalance'
+          );
         return `${formatFullPrecisionBalance(verifiedTokenBalance, 4)} ${
           selectedAsset.tokenSymbol
         }`;
@@ -1076,7 +1081,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     if (selectedAsset) {
       // For ERC-1155 NFTs, REQUIRE verified balance
       if (selectedAsset.isNft && selectedAsset?.tokenStandard === 'ERC-1155') {
-        if (verifiedTokenBalance === null) return; // Don't proceed if not verified
+        if (verifiedTokenBalance === null || verifiedTokenBalance === '0')
+          return;
         fullBalance = String(verifiedTokenBalance);
       } else if (!selectedAsset.isNft) {
         // For ERC-20 tokens, REQUIRE verified balance
@@ -1146,28 +1152,27 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       if (result && result.length > 0) {
         const tokenInfo = result[0];
         const balance = getExactNftBalance(tokenInfo);
-        if (tokenInfo.verified && balance !== null && balance !== '0') {
-          ownedNftRef.current = nftOwnershipKey(
-            asset.contractAddress,
-            tokenId.trim()
-          );
+        if (tokenInfo.verified && balance !== null) {
+          if (balance !== '0')
+            ownedNftRef.current = nftOwnershipKey(
+              asset.contractAddress,
+              tokenId.trim()
+            );
           setVerifiedTokenBalance(balance);
-          setVerificationError(null);
-        } else {
-          setVerifiedTokenBalance('0');
           setVerificationError(
-            tokenInfo.verified && balance === '0'
-              ? t('send.youDontOwnThisToken')
-              : t('send.tokenVerificationFailed')
+            balance === '0' ? t('send.youDontOwnThisToken') : null
           );
+        } else {
+          setVerifiedTokenBalance(null);
+          setVerificationError(t('send.tokenVerificationFailed'));
         }
       } else {
-        setVerifiedTokenBalance('0');
+        setVerifiedTokenBalance(null);
         setVerificationError(t('send.tokenNotFound'));
       }
     } catch {
       if (!current()) return;
-      setVerifiedTokenBalance('0');
+      setVerifiedTokenBalance(null);
       setVerificationError(t('send.verificationFailed'));
     } finally {
       if (current()) setIsVerifyingTokenId(false);
@@ -1417,6 +1422,19 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     (!selectedAsset?.isNft && selectedAsset && verifiedERC20Balance === null) ||
     isVerifyingERC20 ||
     isVerifyingTokenId;
+  const isMaxDisabled =
+    isAmountDisabled || (isErc1155Selection && verifiedTokenBalance === '0');
+
+  useEffect(() => {
+    if (
+      isErc1155Selection &&
+      verifiedTokenBalance !== null &&
+      !isVerifyingTokenId &&
+      form.getFieldValue('amount') &&
+      form.getFieldError('amount').length
+    )
+      void form.validateFields(['amount']).catch(() => undefined);
+  }, [form, isErc1155Selection, isVerifyingTokenId, verifiedTokenBalance]);
 
   return (
     <div className="w-full md:max-w-sm">
@@ -1817,13 +1835,13 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
               <div className="value-custom-input w-full relative">
                 <button
                   type="button"
-                  disabled={isAmountDisabled}
+                  disabled={isMaxDisabled}
                   onClick={
                     // Disable MAX button until verification complete
-                    isAmountDisabled ? undefined : handleMaxButton
+                    isMaxDisabled ? undefined : handleMaxButton
                   }
                   className={`absolute left-[15px] top-5 transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-pill z-10 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-bkg-1 ${
-                    isAmountDisabled
+                    isMaxDisabled
                       ? 'opacity-50 cursor-not-allowed'
                       : 'cursor-pointer hover:bg-alpha-whiteAlpha200'
                   }`}

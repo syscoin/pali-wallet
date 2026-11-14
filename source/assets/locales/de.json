@@ -659,7 +659,8 @@
     "status": "Status",
     "reverted": "Zurückgesetzt",
     "partiallyReverted": "Teilweise zurückgesetzt",
-    "receipts": "Belege"
+    "receipts": "Belege",
+    "balanceUnavailable": "Kontostand nicht verfügbar"
   },
   "settings": {
     "clearActivityAndNonce": "Aktivitäts- und Nonce-Daten löschen",

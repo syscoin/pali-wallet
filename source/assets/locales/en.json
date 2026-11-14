@@ -659,7 +659,8 @@
     "status": "Status",
     "reverted": "Reverted",
     "partiallyReverted": "Partially reverted",
-    "receipts": "Receipts"
+    "receipts": "Receipts",
+    "balanceUnavailable": "Balance unavailable"
   },
   "settings": {
     "clearActivityAndNonce": "Clear activity and nonce data",
