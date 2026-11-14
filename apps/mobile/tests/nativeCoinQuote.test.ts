@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createNativeCoinQuoteReader, nativeCoinQuoteSource } from '../src/portfolio/nativeCoinQuote.ts';
 import { createNativeNetwork, getNativeNetwork, findKnownNativeNetwork, NATIVE_NETWORKS, snapshotNativeNetwork } from '../src/custody/networkContext.ts';
 import { nativeAssetMarketSource } from '../src/portfolio/nativeAssetMarket.ts';
+import { getUtxoNetwork, projectUtxoRegistration, utxoRegistrationData } from '../src/core/utxoNetworks.ts';
 import { OPTIONAL_EVM_NETWORK_DEFINITIONS } from '../../../source/shared/evmNetworks.ts';
 
 const signal = () => new AbortController().signal;
@@ -12,16 +13,16 @@ test('mainnet native SYS pricing is separate from token identity and optional Ga
   assert.equal(zkSys.chainId, '5757');
   assert.equal(zkSys.symbol, 'SYS');
   assert.equal(zkSys.testnet, false);
-  assert.deepEqual(nativeCoinQuoteSource(zkSys.id, zkSys), { kind: 'evm', asset: 'syscoin' });
+  assert.deepEqual(nativeCoinQuoteSource(zkSys), { kind: 'evm', asset: 'syscoin' });
   const profile = OPTIONAL_EVM_NETWORK_DEFINITIONS[0]!;
   const gateway = createNativeNetwork({ id: 'custom:57570', name: profile.name, kind: 'evm', chainId: '57570',
     rpcUrl: profile.network.url, slip44: 60, symbol: 'SYS', decimals: 18, testnet: false });
-  assert.equal(nativeCoinQuoteSource(gateway.id), null);
+  assert.equal(nativeCoinQuoteSource(null), null);
   assert.equal(nativeAssetMarketSource({ kind: 'native', networkId: gateway.id }), null);
-  assert.deepEqual(nativeCoinQuoteSource(gateway.id, gateway), { kind: 'evm', asset: 'syscoin' });
+  assert.deepEqual(nativeCoinQuoteSource(gateway), { kind: 'evm', asset: 'syscoin' });
   assert.deepEqual(nativeAssetMarketSource({ kind: 'native', networkId: gateway.id, registration: gateway }), { kind: 'native', id: 'syscoin' });
   const changed = createNativeNetwork({ ...gateway, rpcUrl: `${profile.network.url}/unverified` });
-  assert.equal(nativeCoinQuoteSource(changed.id, changed), null);
+  assert.equal(nativeCoinQuoteSource(changed), null);
   assert.equal(nativeAssetMarketSource({ kind: 'native', networkId: changed.id, registration: changed }), null);
   for (const registration of [zkSys, gateway])
     assert.equal(nativeAssetMarketSource({ kind: 'token', networkId: registration.id, registration, contractAddress: '0x' + '11'.repeat(20) }), null);
@@ -30,11 +31,11 @@ test('mainnet native SYS pricing is separate from token identity and optional Ga
 test('quote identity uses canonical registrations and skips unknown, edited and testnet registrations', () => {
   const { registrationHash: _hash, ...ethereum } = getNativeNetwork('ethereum');
   const edited = createNativeNetwork({ ...ethereum, rpcUrl: 'https://different.invalid/' });
-  assert.deepEqual(nativeCoinQuoteSource('ethereum'), { kind: 'evm', asset: 'ethereum' });
-  assert.equal(nativeCoinQuoteSource('ethereum', edited), null);
-  assert.equal(nativeCoinQuoteSource('utxo:5700'), null);
-  assert.equal(nativeCoinQuoteSource('arbitrary'), null);
-  assert.equal(nativeCoinQuoteSource('bitcoin')?.kind, 'utxo');
+  assert.deepEqual(nativeCoinQuoteSource(getNativeNetwork('ethereum')), { kind: 'evm', asset: 'ethereum' });
+  assert.equal(nativeCoinQuoteSource(edited), null);
+  assert.equal(nativeCoinQuoteSource(getUtxoNetwork('utxo:5700')), null);
+  assert.equal(nativeCoinQuoteSource(null), null);
+  assert.equal(nativeCoinQuoteSource(getUtxoNetwork('bitcoin'))?.kind, 'utxo');
 });
 
 test('explicitly readded default networks require their full canonical native registration', () => {
@@ -45,13 +46,33 @@ test('explicitly readded default networks require their full canonical native re
     for (const fields of [{ rpcUrl: 'https://wrong.invalid' }, { chainId: '999999' }, { name: 'Changed name' }, { symbol: 'OTHER' }, { testnet: !added.testnet }]) {
       const changed = createNativeNetwork({ ...added, ...fields });
       assert.equal(findKnownNativeNetwork(changed.id, changed), undefined);
-      assert.equal(nativeCoinQuoteSource(changed.id, changed), null);
+      assert.equal(nativeCoinQuoteSource(changed), null);
     }
     assert.throws(() => snapshotNativeNetwork({ ...added, apiUrl: 'https://wrong.invalid/api' }));
   }
   const zk = createNativeNetwork({ ...getNativeNetwork('zksys'), id: 'custom:5757' });
-  assert.deepEqual(nativeCoinQuoteSource(zk.id, zk), { kind: 'evm', asset: 'syscoin' });
+  assert.deepEqual(nativeCoinQuoteSource(zk), { kind: 'evm', asset: 'syscoin' });
   assert.equal(nativeAssetMarketSource({ kind: 'token', networkId: zk.id, registration: zk, contractAddress: '0x' + '11'.repeat(20) }), null);
+});
+
+test('UTXO quotes require an admitted registration and use only its saved endpoint', async () => {
+  const original = getUtxoNetwork('syscoin');
+  const registrations = [
+    projectUtxoRegistration({ ...utxoRegistrationData(original), endpoint: 'https://saved-syscoin.invalid' }),
+    projectUtxoRegistration({ ...utxoRegistrationData(original), id: 'utxo:custom:0123456789abcdef0123456789abcdef',
+      name: 'Saved Syscoin', endpoint: 'https://custom-syscoin.invalid' }),
+  ];
+  assert.equal(nativeCoinQuoteSource({ ...original }), null, 'A copied or unadmitted UTXO registration is refused');
+  assert.equal(nativeCoinQuoteSource('syscoin' as never), null, 'An ID alone cannot select a default endpoint');
+  const calls: string[] = [];
+  const read = createNativeCoinQuoteReader(async url => { calls.push(url); return Response.json({ rates: { usd: 7 } }); });
+  for (const registration of registrations) {
+    const source = nativeCoinQuoteSource(registration)!;
+    assert.deepEqual(source, { kind: 'utxo', endpoint: registration.endpoint });
+    assert.equal((await read(source, 'usd', signal()))?.price, 7);
+  }
+  assert.deepEqual(calls, registrations.map(network => `${network.endpoint}/api/v2/tickers/currency`));
+  assert(calls.every(url => !url.startsWith(original.endpoint + '/')));
 });
 
 test('cache separates the selected currency and expires without requests for wallet identifiers', async () => {
@@ -62,7 +83,7 @@ test('cache separates the selected currency and expires without requests for wal
     assert.equal(init.method, 'GET'); assert.equal(init.credentials, 'omit'); assert.equal(init.redirect, 'error'); assert.equal(init.body, undefined);
     return Response.json({ ethereum: { usd: 100, eur: 200 } });
   }, () => now);
-  const source = nativeCoinQuoteSource('ethereum')!;
+  const source = nativeCoinQuoteSource(getNativeNetwork('ethereum'))!;
   assert.deepEqual(await read(source, 'usd', signal()), { price: 100, expiresAt: now + 300_000 });
   assert.equal((await read(source, 'eur', signal()))?.price, 200);
   assert.equal((await read(source, 'usd', signal()))?.price, 100);
@@ -73,7 +94,7 @@ test('cache separates the selected currency and expires without requests for wal
 
 test('Blockbook uses its shared ticker route and a real zero is visible without caching it', async () => {
   let calls = 0;
-  const source = nativeCoinQuoteSource('bitcoin')!;
+  const source = nativeCoinQuoteSource(getUtxoNetwork('bitcoin'))!;
   assert.equal(source.kind, 'utxo');
   const read = createNativeCoinQuoteReader(async (url) => {
     assert.equal(url, `${source.endpoint}/api/v2/tickers/currency`);
@@ -88,7 +109,7 @@ test('Blockbook uses its shared ticker route and a real zero is visible without 
 test('a cancelled, redirected, oversized or invalid quote cannot be used or cached', async () => {
   let release!: (response: Response) => void;
   let calls = 0;
-  const source = nativeCoinQuoteSource('ethereum')!;
+  const source = nativeCoinQuoteSource(getNativeNetwork('ethereum'))!;
   const read = createNativeCoinQuoteReader(async () => {
     calls++;
     if (calls === 1) return new Promise((resolve) => { release = resolve; });
@@ -121,7 +142,7 @@ for (const [name, responseInit] of [
       requestSignal?.addEventListener('abort', () => { aborts++; });
       return new Response(new ReadableStream({ cancel() { bodyCancels++; } }), responseInit);
     });
-    assert.equal(await read(nativeCoinQuoteSource('ethereum')!, 'usd', owner.signal), null);
+    assert.equal(await read(nativeCoinQuoteSource(getNativeNetwork('ethereum'))!, 'usd', owner.signal), null);
     assert.equal(bodyCancels, 1);
     assert.equal(requestSignal?.aborted, true);
     assert.equal(aborts, 1);
@@ -136,7 +157,7 @@ test('a completed valid quote and its warm cache hit do not abort or start anoth
     requests.push(init.signal);
     return Response.json({ ethereum: { usd: 100 } });
   });
-  const source = nativeCoinQuoteSource('ethereum')!;
+  const source = nativeCoinQuoteSource(getNativeNetwork('ethereum'))!;
   const quote = await read(source, 'usd', owner.signal);
   assert.equal(quote?.price, 100);
   assert.equal(await read(source, 'usd', signal()), quote);

@@ -278,7 +278,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       assets: (scope, signal, check) => local.readPortfolioAssets(scope, signal, check),
       async nativePrice(choice, currency, signal) {
         const registration = 'kind' in choice.scope.network && choice.scope.network.kind === 'evm' ? choice.scope.network : null;
-        const source = nativeCoinQuoteSource(choice.scope.network.id, registration);
+        const source = nativeCoinQuoteSource(registration);
         if (!source) return null;
         const key = JSON.stringify([source, currency]);
         let pending = pendingQuotes.get(key);

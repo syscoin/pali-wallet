@@ -3,18 +3,19 @@ import test from 'node:test';
 import { knownAssetIcon } from '../../../source/shared/assetIconIdentity.ts';
 import * as inventory from '../../../source/shared/sptInventory.ts';
 import { formatBalanceDelta, formatBaseUnits } from '../src/core/amounts.ts';
-import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
+import { getUtxoNetwork, projectUtxoRegistration, utxoRegistrationData } from '../src/core/utxoNetworks.ts';
 import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 
 for (const networkId of ['syscoin', 'utxo:5700']) test(`watch-only ${networkId} preserves known SPT artwork in list and detail`, () => {
-  const network = getUtxoNetwork(networkId);
+  const network = projectUtxoRegistration({ ...utxoRegistrationData(getUtxoNetwork(networkId)), endpoint: 'https://saved-watch.invalid' });
+  const quoteNetworks: unknown[] = [];
   const address = 'public-watch-address';
   const holding = { assetGuid: '123456', decimals: 8, symbol: 'SYSX', confirmedUnits: '123000000', pendingDeltaUnits: '0' };
   const account = { id: 'watch', name: 'Watch account', addresses: { [network.id]: address } };
   const snapshot = { status: 'ready', generation: 1, accounts: [account], selectedAccountId: account.id, selectedNetworkId: network.id,
     capabilities: { receive: true }, balance: { kind: 'utxo', status: 'available', units: '100000000', pendingDeltaUnits: '0', assets: [holding] } };
-  const authority = { getSnapshot: () => snapshot, subscribe: () => () => undefined, getNetwork: () => network,
+  const authority = { getSnapshot: () => snapshot, subscribe: () => () => undefined, getNetwork: () => network, getNetworkRegistration: () => network,
     getAccountNetworks: () => [network], cancelRefresh() {}, refresh: async () => { assert.fail('Rendering cached holdings must not fetch'); } };
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'IconButton', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {}, styles: {} };
   const native = { View: 'View', ActivityIndicator: 'ActivityIndicator', StyleSheet: { create: (value: unknown) => value },
@@ -27,7 +28,7 @@ for (const networkId of ['syscoin', 'utxo:5700']) test(`watch-only ${networkId} 
     'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', '../core/amounts': { formatBalanceDelta, formatBaseUnits },
     '../custody/networkContext': { getNativeNetwork() { assert.fail('A UTXO watch account must keep its own network'); } },
-    '../custody/testnetFaucet': {}, '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => ({ supported: false, quote: null }) },
+    '../custody/testnetFaucet': {}, '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: (registration: unknown) => { quoteNetworks.push(registration); return { supported: false, quote: null }; } },
     './CopyableAddress': { CopyableAddress: 'CopyableAddress' },
     './PortfolioQuote': { PortfolioQuote: 'PortfolioQuote' }, '../portfolio/AssetMarketCard': { AssetMarketCard: 'AssetMarketCard' },
     './NativeSptAssets': { NativeSptAssets: 'NativeSptAssets' }, '../../../../source/shared/sptInventory': inventory,
@@ -42,6 +43,8 @@ for (const networkId of ['syscoin', 'utxo:5700']) test(`watch-only ${networkId} 
     const panel = screenElements(watch.render({ authority, onAccounts() {}, onExit() {}, onLock() {} }))
       .find(node => node.type === 'NativeSptAssets');
     assert(panel);
+    assert(quoteNetworks.length > 0);
+    assert(quoteNetworks.every(value => value === network), 'The quote receives the saved watch registration, not its default ID');
     assert.equal(panel.props.onSend, undefined, 'Watch-only holdings cannot expose Send');
     const row = screenElements(tokens.render(panel.props)).find(node => node.type === 'Row'); assert(row);
     assert.equal(knownAssetIcon(row.props.icon.props.asset), 'syscoin');

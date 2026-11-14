@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createNativeNetwork, getNativeNetwork, type NativeNetworkRegistration } from '../src/custody/networkContext.ts';
+import { createNativeNetwork, getNativeNetwork } from '../src/custody/networkContext.ts';
 import { formatIndicativeFiat } from '../src/portfolio/fiatDisplay.ts';
 import { createNativeCoinQuoteReader, nativeCoinQuoteSource, QUOTE_LIFETIME_MS } from '../src/portfolio/nativeCoinQuote.ts';
 import { screenFixture } from './screenFixture.ts';
+import { findUtxoNetwork, getUtxoNetwork, projectUtxoRegistration, utxoRegistrationData } from '../src/core/utxoNetworks.ts';
+import type { NativeCoinQuoteNetwork } from '../src/portfolio/nativeCoinQuote.ts';
 
 type QuoteView = Readonly<{ supported: boolean; quote: string | null }>;
 const flush = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -31,6 +33,7 @@ function fixture(platform = 'ios', language = 'en') {
       requests.push({ url, signal: init.signal });
       return responder(requests.length);
     } },
+    '../core/utxoNetworks.ts': { utxoRegistrationData },
     './nativeCoinQuote.ts': { nativeCoinQuoteSource, QUOTE_LIFETIME_MS,
       createNativeCoinQuoteReader: (fetch: Parameters<typeof createNativeCoinQuoteReader>[0]) => createNativeCoinQuoteReader(fetch, () => now) },
     './fiatDisplay.ts': { formatIndicativeFiat },
@@ -41,8 +44,8 @@ function fixture(platform = 'ios', language = 'en') {
   });
   return {
     requests, close: host.close,
-    render(id: string | null = 'ethereum', amount: string | null = '2', registration?: NativeNetworkRegistration | null) {
-      return host.render(id, amount, registration) as unknown as QuoteView;
+    render(id: string | null = 'ethereum', amount: string | null = '2', registration?: NativeCoinQuoteNetwork | null) {
+      return host.render(registration ?? (id ? findUtxoNetwork(id) ?? getNativeNetwork(id) : null), amount) as unknown as QuoteView;
     },
     setCurrency(value: string) { currency = value; },
     setLanguage(value: string) { language = value; },
@@ -167,4 +170,41 @@ test('changing Pali language reformats an existing quote without another price r
     assert.equal(f.render('ethereum', '12.3456').quote, '≈ 1,234.56 EUR');
     assert.equal(f.requests.length, requests);
   } finally { f.close(); }
+});
+
+for (const custom of [false, true]) test(`${custom ? 'custom' : 'built-in'} UTXO endpoint edits abort the old quote and retire its late result`, async () => {
+  const f = fixture('android'), oldResponse = Promise.withResolvers<Response>();
+  const original = getUtxoNetwork('syscoin');
+  const first = projectUtxoRegistration({ ...utxoRegistrationData(original),
+    ...(custom ? { id: 'utxo:custom:0123456789abcdef0123456789abcdef', name: 'Saved Syscoin' } : {}),
+    endpoint: 'https://first-saved.invalid' });
+  const second = projectUtxoRegistration({ ...utxoRegistrationData(first), endpoint: 'https://second-saved.invalid' });
+  try {
+    f.setResponder(async index => index === 1 ? oldResponse.promise : response(7));
+    f.render(first.id, '2', first);
+    assert.equal(f.requests[0]?.url, `${first.endpoint}/api/v2/tickers/currency`);
+    assert.equal(f.render(second.id, '2', second).quote, null);
+    assert.equal(f.requests[0]?.signal.aborted, true);
+    assert.equal(f.requests[1]?.url, `${second.endpoint}/api/v2/tickers/currency`);
+    await flush();
+    assert.equal(f.render(second.id, '2', second).quote, formatIndicativeFiat(14, 'usd', 'en'));
+    oldResponse.resolve(response(999)); await flush();
+    assert.equal(f.render(second.id, '2', second).quote, formatIndicativeFiat(14, 'usd', 'en'));
+    assert.equal(f.requests.length, 2);
+    assert(f.requests.every(request => !request.url.startsWith(original.endpoint + '/')));
+  } finally { oldResponse.resolve(response()); f.close(); }
+});
+
+test('a warm quote from the previous UTXO endpoint is hidden immediately on edit', async () => {
+  const f = fixture(), held = Promise.withResolvers<Response>();
+  const original = getUtxoNetwork('syscoin');
+  const first = projectUtxoRegistration({ ...utxoRegistrationData(original), endpoint: 'https://warm-saved.invalid' });
+  const second = projectUtxoRegistration({ ...utxoRegistrationData(original), endpoint: 'https://replacement.invalid' });
+  try {
+    f.setResponder(async index => index === 1 ? response(10) : held.promise);
+    f.render(first.id, '2', first); await flush();
+    assert.equal(f.render(first.id, '2', first).quote, formatIndicativeFiat(20, 'usd', 'en'));
+    assert.equal(f.render(second.id, '2', second).quote, null);
+    assert.equal(f.requests.length, 2);
+  } finally { held.resolve(response()); f.close(); }
 });

@@ -13,6 +13,7 @@ import type { WatchOnlyAuthority } from '../core/watchOnlyAuthority';
 import { getNativeNetwork } from '../custody/networkContext';
 import { openTestnetFaucet } from '../custody/testnetFaucet';
 import { useNativeCoinQuote } from '../portfolio/useNativeCoinQuote';
+import type { NativeCoinQuoteNetwork } from '../portfolio/nativeCoinQuote';
 import { PortfolioQuote } from './PortfolioQuote';
 import { AssetMarketCard } from '../portfolio/AssetMarketCard';
 import { NativeSptAssets } from './NativeSptAssets';
@@ -84,7 +85,12 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
     finally { if (action === lifecycle.current.action) { lifecycle.current.busy = false; if (lifecycle.current.alive) { setBusy(false); setOpeningFaucet(false); } } }
   };
   const amount = snapshot.balance.status === 'available' ? formatBaseUnits(snapshot.balance.units, network.decimals) : null;
-  const quote = useNativeCoinQuote((mode === 'home' || mode === 'asset') && snapshot.status === 'ready' ? network.id : null, amount);
+  let quoteNetwork: NativeCoinQuoteNetwork | null = null;
+  if ((mode === 'home' || mode === 'asset') && snapshot.status === 'ready') {
+    try { quoteNetwork = authority.getNetworkRegistration(network.id); }
+    catch { /* An edited saved registration must not retain its old quote. */ }
+  }
+  const quote = useNativeCoinQuote(quoteNetwork, amount);
   const utxo = network.kind === 'utxo';
   const pending = snapshot.balance.status === 'available' && 'kind' in snapshot.balance && snapshot.balance.kind === 'utxo'
     ? snapshot.balance.pendingDeltaUnits : null;

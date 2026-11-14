@@ -371,12 +371,15 @@ test('a built-in watch endpoint override survives cold reopen without changing a
   assert.equal(getUtxoNetwork('bitcoin'), bitcoin, 'the shipped default remains immutable');
   assert.equal(f.raw.get(PUBLIC_ACCOUNTS_KEY), beforeRecords);
   assert.throws(() => oldOwner.getMonitoringEntries(), /changed|Reopen|registration/i);
+  assert.throws(() => oldOwner.getNetworkRegistration('bitcoin'), /changed|Reopen|registration/i);
   assert.deepEqual(JSON.parse(f.raw.get(WATCH_UTXO_NETWORKS_KEY)!), [utxoRegistrationData(edited)]);
 
   const reopened = createPublicAccountStorage(f.port, f.fetch);
   const current = getUtxoNetwork('bitcoin', (await reopened.utxoNetworkSettings.load()).networks);
   assert.equal(current.endpoint, alternativeBitcoin);
   const owner = await f.open(reopened.records); owner.unlock();
+  assert.equal(owner.getNetworkRegistration('bitcoin').kind, 'utxo');
+  assert.equal((owner.getNetworkRegistration('bitcoin') as typeof current).endpoint, alternativeBitcoin);
   assert.equal(owner.getSnapshot().accounts[0]?.id, 'btc');
   assert.equal(owner.getSnapshot().accounts[0]?.addresses.bitcoin, parseUtxoPublicIdentifier(XPUB, bitcoin).address);
   await owner.refresh();

@@ -253,6 +253,14 @@ export class WatchOnlyAuthority implements WalletAuthority, UtxoActivityOwner {
   }
 
   getNetwork = (id: NetworkId): WalletNetwork => getNetwork(id, this.utxoNetworks);
+  /** Selected public reads use the saved registration, including its endpoint. */
+  getNetworkRegistration = (id: NetworkId) => {
+    this.recordSession?.assertNetworkCurrent();
+    if (this.getNetwork(id).kind === 'evm') return getNativeNetwork(id);
+    const network = getUtxoNetwork(id, this.utxoNetworks);
+    if (hasUtxoEndpointOverride(network) && !this.recordSession) throw new Error('Missing UTXO registration owner');
+    return network;
+  };
   /** Public monitoring enrollment only; no account or network selection changes. */
   getMonitoringEntries() {
     if (this.getSnapshot().status !== 'ready') throw new Error('Watch accounts are locked');
