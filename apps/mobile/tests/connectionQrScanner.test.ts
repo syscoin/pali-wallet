@@ -176,6 +176,8 @@ function fixture(
     module,
     exports: module.exports,
     require(name: string) {
+      const walletUi = walletUiFixture(name, dependencies);
+      if (walletUi) return walletUi;
       assert.ok(
         Object.hasOwn(dependencies, name),
         `Unexpected scanner dependency ${name}`
