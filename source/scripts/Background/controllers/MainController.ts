@@ -12408,6 +12408,7 @@ class MainController {
     activeNetwork,
     activeAccount,
     isPolling = false,
+    showLoading = true,
   }: {
     activeAccount: {
       id: number;
@@ -12416,11 +12417,16 @@ class MainController {
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
     isPolling?: boolean;
+    showLoading?: boolean;
   }) {
-    // Polling requests never own the blocking loading state. Each non-polling
-    // request receives a generation so a superseded executor cannot clear the
-    // flag after a newer foreground balance request has started.
-    const loadingRequestId = isPolling ? null : ++this.balanceLoadingRequestId;
+    // Presentation is independent of polling: a silent foreground refresh
+    // still requires the normal unlocked keyring. Only visible foreground
+    // requests own a generation so a silent refresh cannot clear or orphan
+    // the flag belonging to another foreground balance request.
+    const ownsLoading = !isPolling && showLoading;
+    const loadingRequestId = ownsLoading
+      ? ++this.balanceLoadingRequestId
+      : null;
     const clearBalanceLoadingIfOwned = () => {
       if (
         loadingRequestId !== null &&
@@ -12430,9 +12436,8 @@ class MainController {
       }
     };
 
-    // Set loading state immediately for non-polling updates
-    // This prevents skeleton flashing by ensuring loading state is set before any async operations
-    if (!isPolling) {
+    // Publish visible loading before any async work starts.
+    if (ownsLoading) {
       store.dispatch(setIsLoadingBalances(true));
     }
 
@@ -12594,10 +12599,12 @@ class MainController {
   public async refreshActiveAccountBalances({
     includeAssets = false,
     isPolling = false,
+    showLoading = true,
     targetEvmTokenContractAddress,
   }: {
     includeAssets?: boolean;
     isPolling?: boolean;
+    showLoading?: boolean;
     targetEvmTokenContractAddress?: string;
   } = {}): Promise<{ assetsUpdated: boolean; nativeBalance: string }> {
     const { accounts, activeAccount, isBitcoinBased, activeNetwork } =
@@ -12613,6 +12620,7 @@ class MainController {
       activeNetwork,
       isBitcoinBased,
       isPolling,
+      showLoading,
     });
 
     let assetsUpdated = false;

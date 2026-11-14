@@ -313,3 +313,118 @@ it('preserves a stale native error and stops its asset preflight without changin
   replacement.resolve('99');
   await flushExecutor();
 });
+
+it.each(['success', 'error'])(
+  'keeps a silent balance refresh out of global loading on %s',
+  async (outcome) => {
+    const read = deferred<string>();
+    readBalance.mockReturnValue(read.promise);
+    const request = controller.refreshActiveAccountBalances({
+      showLoading: false,
+    });
+    expect(
+      mockStore.getState().vaultGlobal.loadingStates.isLoadingBalances
+    ).toBe(false);
+    if (outcome === 'success') {
+      read.resolve('2');
+      await expect(request).resolves.toMatchObject({ nativeBalance: '2' });
+      expect(
+        mockStore.getState().vault.accounts[type][0].balances.ethereum
+      ).toBe('2');
+    } else {
+      read.reject(new Error('Balance unavailable'));
+      await expect(request).rejects.toThrow('Balance unavailable');
+    }
+    expect(
+      mockStore.getState().vaultGlobal.loadingStates.isLoadingBalances
+    ).toBe(false);
+  }
+);
+
+it('still checks the unlocked keyring for a silent foreground balance refresh', async () => {
+  controller.getActiveKeyring = jest.fn(() => ({ isUnlocked: () => false }));
+  await controller.refreshActiveAccountBalances({ showLoading: false });
+  expect(controller.getActiveKeyring).toHaveBeenCalled();
+  expect(readBalance).not.toHaveBeenCalled();
+  expect(mockStore.getState().vaultGlobal.loadingStates.isLoadingBalances).toBe(
+    false
+  );
+});
+
+it.each(['success', 'error'])(
+  'does not release another foreground load when a silent refresh returns %s',
+  async (outcome) => {
+    const foreground = deferred<string>();
+    const silent = deferred<string>();
+    readBalance
+      .mockReturnValueOnce(foreground.promise)
+      .mockReturnValueOnce(silent.promise);
+    const loading = controller.refreshActiveAccountBalances();
+    expect(
+      mockStore.getState().vaultGlobal.loadingStates.isLoadingBalances
+    ).toBe(true);
+    const refreshing = controller.refreshActiveAccountBalances({
+      showLoading: false,
+    });
+    if (outcome === 'success') {
+      silent.resolve('2');
+      await refreshing;
+    } else {
+      silent.reject(new Error('Balance unavailable'));
+      await expect(refreshing).rejects.toThrow('Balance unavailable');
+    }
+    expect(
+      mockStore.getState().vaultGlobal.loadingStates.isLoadingBalances
+    ).toBe(true);
+    foreground.resolve('1');
+    await loading;
+    expect(
+      mockStore.getState().vaultGlobal.loadingStates.isLoadingBalances
+    ).toBe(false);
+  }
+);
+
+it('does not reacquire loading when an older silent refresh finishes after a foreground read', async () => {
+  const silent = deferred<string>();
+  const foreground = deferred<string>();
+  readBalance
+    .mockReturnValueOnce(silent.promise)
+    .mockReturnValueOnce(foreground.promise);
+  const refreshing = controller.refreshActiveAccountBalances({
+    showLoading: false,
+  });
+  const loading = controller.refreshActiveAccountBalances();
+  expect(mockStore.getState().vaultGlobal.loadingStates.isLoadingBalances).toBe(
+    true
+  );
+  foreground.resolve('2');
+  await loading;
+  expect(mockStore.getState().vaultGlobal.loadingStates.isLoadingBalances).toBe(
+    false
+  );
+  silent.resolve('1');
+  await refreshing;
+  expect(mockStore.getState().vaultGlobal.loadingStates.isLoadingBalances).toBe(
+    false
+  );
+  expect(mockStore.getState().vault.accounts[type][0].balances.ethereum).toBe(
+    '2'
+  );
+});
+
+it('keeps polling silent even when loading presentation is requested', async () => {
+  const read = deferred<string>();
+  readBalance.mockReturnValue(read.promise);
+  const request = controller.refreshActiveAccountBalances({
+    isPolling: true,
+    showLoading: true,
+  });
+  expect(mockStore.getState().vaultGlobal.loadingStates.isLoadingBalances).toBe(
+    false
+  );
+  read.resolve('2');
+  await request;
+  expect(mockStore.getState().vaultGlobal.loadingStates.isLoadingBalances).toBe(
+    false
+  );
+});

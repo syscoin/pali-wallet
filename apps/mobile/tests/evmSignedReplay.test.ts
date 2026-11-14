@@ -656,6 +656,51 @@ test('lost dispatch acknowledgement is unknown and exact bytes stay retained', a
     tx.serialized
   );
 });
+for (const scenario of [
+  { name: 'structured RPC insufficient funds', error: () => Object.assign(new Error('insufficient funds for gas * price + value'), { code: -32003 }), diagnostic: true },
+  { name: 'ethers envelope-bound insufficient funds', error: (raw: string) => Object.assign(new Error('insufficient funds for intrinsic transaction cost'), { code: 'INSUFFICIENT_FUNDS', transaction: raw, info: { error: { code: -32000, message: 'insufficient funds for gas * price + value' } } }), diagnostic: true },
+  { name: 'message without RPC code', error: () => new Error('insufficient funds for gas * price + value'), diagnostic: false },
+  { name: 'unrecognized RPC code', error: () => ({ code: 123, message: 'insufficient funds' }), diagnostic: false },
+  { name: 'ethers wrong envelope', error: () => ({ code: 'INSUFFICIENT_FUNDS', transaction: '0x1234', info: { error: { code: -32000, message: 'insufficient funds for gas' } } }), diagnostic: false },
+  { name: 'generic contract insufficient funds', error: () => ({ code: -32003, message: 'insufficient funds' }), diagnostic: false },
+  { name: 'remote text only mentions insufficient funds', error: () => ({ code: -32003, message: 'gateway timeout: insufficient funds' }), diagnostic: false },
+  { name: 'oversized RPC message', error: () => ({ code: -32003, message: 'insufficient funds' + 'x'.repeat(1024) }), diagnostic: false },
+  { name: 'accessor RPC message', error: () => Object.defineProperty({ code: -32003 }, 'message', { get() { throw new Error('must not read accessor'); } }), diagnostic: false },
+]) {
+  test(`replay preserves its reservation and unknown outcome for ${scenario.name}`, async () => {
+    const f = await fixture(), tx = await f.append(0), replay = f.create();
+    const before = await f.records.readExact(f.session, '7654321', wallet.address, tx.hash!);
+    const result = await replay.prepare(tx.hash!);
+    if (result.status !== 'review') throw Error('review');
+    f.beforeAck(async () => { throw scenario.error(tx.serialized); });
+    assert.deepEqual(await replay.confirm(result.review.id), {
+      status: 'unknown', hash: tx.hash,
+      ...(scenario.diagnostic ? { reason: 'rpc-insufficient-funds' } : {}),
+    });
+    const after = await f.records.readExact(f.session, '7654321', wallet.address, tx.hash!);
+    assert.equal(after!.rawTransaction, tx.serialized);
+    assert.equal(after!.phase, before!.phase);
+    assert.deepEqual(f.dispatched, [tx.serialized]);
+    await assert.rejects(replay.confirm(result.review.id), { code: 'EXPIRED' });
+    await assert.rejects(f.records.assertSpendingNonce(f.session, '7654321', wallet.address, 0));
+    assert.equal(f.dispatched.length, 1);
+  });
+}
+test('acknowledgement persistence errors cannot become RPC funding diagnostics', async () => {
+  const f = await fixture(), tx = await f.append(0), replay = f.create();
+  f.authorize(async () => ({
+    assertCurrent() {},
+    async onAcknowledged() {
+      throw Object.assign(new Error('insufficient funds for gas'), { code: -32003 });
+    },
+    withAdmission: (admit) => admit(),
+  }));
+  const result = await replay.prepare(tx.hash!);
+  if (result.status !== 'review') throw Error('review');
+  assert.deepEqual(await replay.confirm(result.review.id), { status: 'unknown', hash: tx.hash });
+  assert.deepEqual(f.dispatched, [tx.serialized]);
+  assert.equal((await f.records.readExact(f.session, '7654321', wallet.address, tx.hash!))!.phase, 'signed');
+});
 test('canonical receipt identity and current chain are mandatory', async () => {
   const f = await fixture(),
     tx = await f.append(0);

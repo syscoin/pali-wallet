@@ -10,9 +10,10 @@ import {
   getPaliEntryPointAddress,
   paliEntryPointInterface,
 } from './contracts.ts';
+import { SMART_ACCOUNT_PENDING_STATE } from './pendingStateError.ts';
 import type { SmartAccountPendingRecords } from '../../wallet/evmSignedRecords.ts';
 
-export const SMART_ACCOUNT_PENDING_STATE = 'SMART_ACCOUNT_PENDING_STATE';
+export { SMART_ACCOUNT_PENDING_STATE } from './pendingStateError.ts';
 export const isSmartAccountPendingStateError = (error: unknown) =>
   error instanceof Error && error.message === SMART_ACCOUNT_PENDING_STATE;
 const unavailable = () =>

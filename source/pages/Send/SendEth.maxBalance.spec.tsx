@@ -442,3 +442,91 @@ describe('native MAX classification after balance changes', () => {
     }
   });
 });
+
+describe('opening balance refresh', () => {
+  it.each(['0.09629548', '0'])(
+    'keeps known native balance %s usable while silently refreshing',
+    async (balance) => {
+      changeBalance(balance);
+      account().isSmartAccount = balance !== '0';
+      let resolveRefresh!: () => void;
+      const pendingRefresh = new Promise<void>((resolve) => {
+        resolveRefresh = resolve;
+      });
+      mockEmitter.mockImplementation((path) =>
+        path.at(-1) === 'refreshActiveAccountBalances'
+          ? pendingRefresh
+          : Promise.resolve(QUOTE)
+      );
+      render(<SendEth />);
+      await flush();
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'refreshActiveAccountBalances'],
+        [{ includeAssets: false, showLoading: false }]
+      );
+      expect(screen.getByText(`${balance} ETH`)).toBeVisible();
+      expect(screen.getByPlaceholderText('send.amount')).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'send.max' })).toBeEnabled();
+      expect(next()).toBeEnabled();
+      await act(async () => resolveRefresh());
+    }
+  );
+
+  it.each(['-1', '', 'unavailable'])(
+    'keeps unknown native balance %s out of display and transfer controls until loaded',
+    async (balance) => {
+      changeBalance(balance);
+      const view = render(<SendEth />);
+      await flush();
+      expect(screen.getByText('send.balanceUnavailable')).toBeVisible();
+      expect(screen.queryByText(`${balance} ETH`)).not.toBeInTheDocument();
+      expect(screen.getByPlaceholderText('send.amount')).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'send.max' })).toBeDisabled();
+      expect(next()).toBeDisabled();
+      setRecipient();
+      fireEvent.click(next());
+      expect(mockNavigateWithContext).not.toHaveBeenCalled();
+      changeBalance('0.09629548');
+      view.rerender(<SendEth />);
+      expect(screen.getByText('0.09629548 ETH')).toBeVisible();
+      expect(
+        screen.queryByText('send.balanceUnavailable')
+      ).not.toBeInTheDocument();
+      expect(screen.getByPlaceholderText('send.amount')).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'send.max' })).toBeEnabled();
+      expect(next()).toBeEnabled();
+    }
+  );
+
+  it('does not use an unknown native balance to disable a verified token transfer', async () => {
+    changeBalance('-1');
+    mockAssets = [
+      {
+        id: 'test-token',
+        contractAddress: '0x3333333333333333333333333333333333333333',
+        chainId: 1,
+        tokenSymbol: 'TOKEN',
+        balance: 1,
+        decimals: 18,
+        isNft: false,
+        tokenStandard: 'ERC-20',
+      },
+    ];
+    mockEmitter.mockImplementation((path) =>
+      path.at(-1) === 'getERC20TokenInfo'
+        ? Promise.resolve({ balance: '1000000000000000000', decimals: 18 })
+        : Promise.resolve(QUOTE)
+    );
+    render(<SendEth />);
+    fireEvent.click(screen.getByRole('button', { name: /TOKEN.*ERC-20/ }));
+    await waitFor(
+      () => expect(screen.getByPlaceholderText('send.amount')).toBeEnabled(),
+      { timeout: 2500 }
+    );
+    expect(screen.getByRole('button', { name: 'send.max' })).toBeEnabled();
+    expect(next()).toBeEnabled();
+    expect(
+      screen.queryByText('send.balanceUnavailable')
+    ).not.toBeInTheDocument();
+  });
+});

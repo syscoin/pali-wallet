@@ -57,6 +57,7 @@ describe('transaction detail API compatibility', () => {
       .spyOn(React, 'useRef')
       .mockImplementation((value) => ({ current: value }));
     jest.spyOn(React, 'useMemo').mockImplementation((factory) => factory());
+    jest.spyOn(React, 'useCallback').mockImplementation((callback) => callback);
     jest.spyOn(React, 'useEffect').mockImplementation((effect) => {
       effects.push(effect as () => void);
     });

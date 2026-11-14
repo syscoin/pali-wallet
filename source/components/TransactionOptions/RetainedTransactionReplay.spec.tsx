@@ -138,6 +138,42 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
+test.each([
+  ['rpc-insufficient-funds', true],
+  [undefined, false],
+  ['remote untrusted details', false],
+])(
+  'unknown replay shows only its bounded funding diagnostic: %s',
+  async (reason, diagnostic) => {
+    mockAccountType = 'SmartAccount';
+    render(<RetainedTransactionReplay hash={HASH} />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Review resend' }));
+    await flush();
+    mockEmitter.mockResolvedValueOnce({
+      status: 'unknown',
+      hash: HASH,
+      reason,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Resend' }));
+    await flush();
+    const message = screen.getByRole('status').textContent;
+    expect(message).toContain(
+      diagnostic
+        ? `The RPC reported insufficient funds for the original fee payer (${
+            review().review.from
+          }). Submission remains unconfirmed.`
+        : 'Submission could not be confirmed.'
+    );
+    expect(message).not.toContain('remote untrusted details');
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([route]) => route[1] === 'confirmEvmSignedReplay'
+      )
+    ).toHaveLength(1);
+  }
+);
+
 const savedCancellationQuote = {
   id: 'cancel-1',
   hash: HASH,

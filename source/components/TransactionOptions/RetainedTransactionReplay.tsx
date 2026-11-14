@@ -19,6 +19,7 @@ import type {
   EvmReplayReview,
   EvmReplayCandidate,
   EvmSavedTransaction,
+  EvmReplaySubmissionResult,
 } from '../../wallet/evmSignedReplay';
 import type {
   SmartAccountReplayIntent,
@@ -28,7 +29,7 @@ import type {
 type ReplayReview = EvmReplayReview & {
   smartAccount?: SmartAccountReplayIntent;
 };
-type SavedTransaction = EvmSavedTransaction & {
+export type SavedTransaction = EvmSavedTransaction & {
   smartAccount?: SmartAccountReplayIntent;
 };
 
@@ -47,7 +48,13 @@ type View = {
 type ReviewReference = Readonly<{ id: string; kind: 'cancel' | 'replay' }>;
 
 /** Public review fields only. Raw bytes and the consumed consent stay in the background. */
-export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
+export const RetainedTransactionReplay = ({
+  hash,
+  onRetainedTransaction,
+}: {
+  hash: string;
+  onRetainedTransaction?: (transaction: SavedTransaction | null) => void;
+}) => {
   const { t } = useTranslation();
   const smartAccountSelected = useSelector(
     ({ vault }: RootState) =>
@@ -101,10 +108,17 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
       context.current.active && context.current.generation === generation;
     void controllerEmitter(['wallet', 'getSavedEvmTransaction'], [hash])
       .then((result) => {
-        if (current()) setRetained(result as SavedTransaction | null);
+        if (current()) {
+          const transaction = result as SavedTransaction | null;
+          setRetained(transaction);
+          onRetainedTransaction?.(transaction);
+        }
       })
       .catch(() => {
-        if (current()) setRetained(null);
+        if (current()) {
+          setRetained(null);
+          onRetainedTransaction?.(null);
+        }
       });
     return () => {
       context.current.active = false;
@@ -113,7 +127,7 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
       reviewReference.current = undefined;
       confirming.current = false;
     };
-  }, [scope]);
+  }, [scope, onRetainedTransaction]);
 
   const close = () => {
     if (confirming.current) return;
@@ -250,9 +264,7 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
         [reference.id],
         30000,
         false
-      )) as
-        | { hash: string; status: 'submitted' | 'unknown' }
-        | { status: 'not-dispatched' };
+      )) as EvmReplaySubmissionResult | { status: 'not-dispatched' };
       if (current()) {
         if (result.status === 'not-dispatched') {
           setView({ message: t('transactions.transactionCancelFailed') });
@@ -263,7 +275,11 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
             message: t(
               cancellation && result.status === 'submitted'
                 ? 'transactions.transactionCancelSubmitted'
-                : `transactions.replay.${result.status}`
+                : result.status === 'unknown' &&
+                  result.reason === 'rpc-insufficient-funds'
+                ? 'transactions.replay.insufficientFundsUnknown'
+                : `transactions.replay.${result.status}`,
+              { payer: displayed.from }
             ),
           });
         }

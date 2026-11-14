@@ -82,6 +82,7 @@ import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { buildSmartAccountErc20Transfer } from 'utils/smartAccount/erc20Transfer';
 import { prepareSmartAccountNativeMaximum } from 'utils/smartAccount/nativeMaximum';
 import { buildSmartAccountNftTransfer } from 'utils/smartAccount/nftTransfer';
+import { isSmartAccountPendingReviewError } from 'utils/smartAccountErrors';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
@@ -354,8 +355,10 @@ export const SendConfirm = () => {
       key: string;
     }
   >();
-  const [smartAccountQuoteError, setSmartAccountQuoteError] =
-    useState<string>();
+  const [smartAccountQuoteError, setSmartAccountQuoteError] = useState<{
+    message: string;
+    pendingReview: boolean;
+  }>();
   const [smartAccountQuoteNeedsRefresh, setSmartAccountQuoteNeedsRefresh] =
     useState(false);
   const requiresSptReview = isBitcoinBased && Boolean(basicTxValues?.token);
@@ -973,9 +976,18 @@ export const SendConfirm = () => {
           key: smartAccountQuoteKey,
         });
     };
-    prepare().catch(() => {
-      if (!cancelled && submission.isActive())
-        setSmartAccountQuoteError(t('send.unableToCalculateFees'));
+    prepare().catch((error) => {
+      if (!cancelled && submission.isActive()) {
+        const pendingReview = isSmartAccountPendingReviewError(error);
+        setSmartAccountQuoteError({
+          message: t(
+            pendingReview
+              ? 'send.smartAccountPendingReview'
+              : 'send.unableToCalculateFees'
+          ),
+          pendingReview,
+        });
+      }
     });
     return () => {
       cancelled = true;
@@ -2637,21 +2649,35 @@ export const SendConfirm = () => {
                     <p role="status">
                       {smartAccountQuoteNeedsRefresh
                         ? t('send.smartAccountFeeQuoteChanged')
-                        : smartAccountQuoteError}
+                        : smartAccountQuoteError?.message}
                     </p>
-                    <button
-                      type="button"
-                      className="underline"
-                      disabled={loading || submission.pending}
-                      onClick={() => {
-                        setSmartAccountQuoteNeedsRefresh(false);
-                        setSmartAccountQuoteError(undefined);
-                        setSmartAccountQuote(undefined);
-                        setRetryTrigger((previous) => previous + 1);
-                      }}
-                    >
-                      {t('send.refreshFeeQuote')}
-                    </button>
+                    {smartAccountQuoteError?.pendingReview ? (
+                      <Button
+                        variant="neutral"
+                        className="mt-3"
+                        disabled={loading || submission.pending}
+                        onClick={() => {
+                          if (submission.isActive())
+                            navigate('/home?tab=activity', { replace: true });
+                        }}
+                      >
+                        {t('buttons.activity')}
+                      </Button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="underline"
+                        disabled={loading || submission.pending}
+                        onClick={() => {
+                          setSmartAccountQuoteNeedsRefresh(false);
+                          setSmartAccountQuoteError(undefined);
+                          setSmartAccountQuote(undefined);
+                          setRetryTrigger((previous) => previous + 1);
+                        }}
+                      >
+                        {t('send.refreshFeeQuote')}
+                      </button>
+                    )}
                   </>
                 )}
               </div>

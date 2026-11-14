@@ -1004,6 +1004,79 @@ it.each(['preparation refused', 'fee quote malformed'])(
   }
 );
 
+it.each([
+  new Error('SMART_ACCOUNT_PENDING_STATE'),
+  { message: 'SMART_ACCOUNT_PENDING_STATE', transactionNotBroadcast: true },
+  'SMART_ACCOUNT_PENDING_STATE',
+])(
+  'guides unresolved Smart account sends to Activity without signing: %p',
+  async (error) => {
+    prepareSmartAccountConfirmation();
+    (prepareSmartAccountFeeQuote as jest.Mock).mockRejectedValue(error);
+    render(<SendConfirm />);
+    await screen.findByText('send.smartAccountPendingReview');
+    expect(screen.queryByText('send.unableToCalculateFees')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'send.refreshFeeQuote' })
+    ).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'buttons.confirm' })
+    ).toBeDisabled();
+    expect(
+      screen.getByText('send.total (send.amountAndFee)')
+    ).toHaveTextContent('send.feeUnavailable');
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.activity' }));
+    expect(mockNavigate).toHaveBeenCalledWith('/home?tab=activity', {
+      replace: true,
+    });
+    expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
+  }
+);
+
+it('keeps generic fee retry for text merely containing the pending error name', async () => {
+  prepareSmartAccountConfirmation();
+  (prepareSmartAccountFeeQuote as jest.Mock).mockRejectedValue(
+    new Error('RPC failed before SMART_ACCOUNT_PENDING_STATE could be read')
+  );
+  render(<SendConfirm />);
+  await screen.findByText('send.unableToCalculateFees');
+  expect(screen.queryByText('send.smartAccountPendingReview')).toBeNull();
+  expect(
+    screen.getByRole('button', { name: 'send.refreshFeeQuote' })
+  ).toBeEnabled();
+});
+
+it('does not use an old Activity action after its confirmation loses ownership', async () => {
+  prepareSmartAccountConfirmation();
+  (prepareSmartAccountFeeQuote as jest.Mock).mockRejectedValue(
+    new Error('SMART_ACCOUNT_PENDING_STATE')
+  );
+  render(<SendConfirm />);
+  await screen.findByText('send.smartAccountPendingReview');
+  mockPublishedAuth = { ...mockAuth, isUnlocked: false };
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.activity' }));
+  expect(mockNavigate).not.toHaveBeenCalled();
+  expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
+});
+
+it('discards a late pending-transaction quote failure after leaving the confirmation', async () => {
+  prepareSmartAccountConfirmation();
+  let rejectQuote!: (error: Error) => void;
+  (prepareSmartAccountFeeQuote as jest.Mock).mockImplementation(
+    () =>
+      new Promise((_, reject) => {
+        rejectQuote = reject;
+      })
+  );
+  const view = render(<SendConfirm />);
+  await waitFor(() => expect(prepareSmartAccountFeeQuote).toHaveBeenCalled());
+  view.unmount();
+  await act(async () => rejectQuote(new Error('SMART_ACCOUNT_PENDING_STATE')));
+  expect(screen.queryByText('send.smartAccountPendingReview')).toBeNull();
+  expect(mockNavigate).not.toHaveBeenCalled();
+  expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
+});
+
 it('keeps Smart account fee and total unavailable until a fresh retry succeeds', async () => {
   prepareSmartAccountConfirmation(true);
   let resolveQuote!: (quote: any) => void;
