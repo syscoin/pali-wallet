@@ -13547,11 +13547,17 @@ class MainController {
     }
 
     const now = Date.now();
+    const lastCheck = (tx: { hash?: string }) =>
+      this.pendingEvmReceiptChecks.get(
+        `${chainId}:${tx.hash!.toLowerCase()}`
+      ) || 0;
     const pendingSmartAccountTxs = chainTxs
       .filter(
         (tx: IEvmTransactionResponse | any) =>
           tx?.hash && tx?.smartAccountExecutionFrom && !isTransactionInBlock(tx)
       )
+      .filter((tx) => now - lastCheck(tx) >= 30_000)
+      .sort((a, b) => lastCheck(a) - lastCheck(b))
       .slice(0, 5);
 
     for (const tx of pendingSmartAccountTxs) {
