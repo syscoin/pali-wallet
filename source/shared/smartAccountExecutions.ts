@@ -69,6 +69,41 @@ export function isSmartAccountNativeRecipient(
   );
 }
 
+/** Sum every decoded native payment to one recipient, without rounding units. */
+export function sumSmartAccountNativePayments(
+  operations: readonly { callData: string }[],
+  recipient: string
+): string | undefined {
+  const address = recipient.toLowerCase();
+  let total = BigInt(0);
+  for (const operation of operations) {
+    const calls = decodeSmartAccountExecutions(operation.callData);
+    // A partially decoded group cannot establish its complete received value.
+    if (!calls) return;
+    for (const call of calls) {
+      if (call.target.toLowerCase() === address) total += BigInt(call.value);
+    }
+  }
+  return total > BigInt(0) ? total.toString() : undefined;
+}
+
+/** Native value display only; the caller retains the outer calldata and outcome. */
+export function projectSmartAccountNativePayment(
+  operations: readonly { callData: string }[],
+  context: { chainId: number; recipient: string; sender: string }
+) {
+  const value = sumSmartAccountNativePayments(operations, context.recipient);
+  if (value === undefined) return;
+  return Object.freeze({
+    chainId: context.chainId,
+    from: context.sender,
+    to: context.recipient,
+    value,
+    input: '0x',
+    data: '0x',
+  });
+}
+
 /** Senders observe their whole group; native recipients only the paying operations. */
 export function filterSmartAccountNativeRecipientOperations<
   T extends { account: string; callData: string }
