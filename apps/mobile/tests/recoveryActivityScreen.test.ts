@@ -374,8 +374,12 @@ test('ordinary Activity labels failed current reads unavailable while preserving
       const tree = await openFixtureRow(f, row);
       const detail = all(tree).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
       assert.equal(detail.props.status, status);
-      if (status === 'Current status unavailable')
+      if (status === 'Current status unavailable') {
         assert(!item.props.subtitle.includes('Submission unconfirmed'));
+        assert(!item.props.subtitle.includes('Details unavailable'), 'avoid a duplicate unavailable message');
+      } else if (row.unavailable) {
+        assert(item.props.subtitle.includes('Details unavailable'), 'preserve detail failures alongside known outcomes');
+      }
     } finally { f.dispose(); }
   }
 });
