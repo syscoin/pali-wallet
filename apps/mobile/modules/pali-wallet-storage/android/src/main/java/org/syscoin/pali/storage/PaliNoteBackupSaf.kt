@@ -84,7 +84,7 @@ internal object PaliNoteBackupSaf {
   fun read(context: Context, uri: Uri, signal: CancellationSignal, check: () -> Unit): ByteArray {
     check()
     if (!DocumentsContract.isDocumentUri(context, uri)) fail(PaliNoteBackupFileError.INVALID)
-    return readFile(context.contentResolver, uri, signal, check)
+    return readFile(context.contentResolver, uri, signal, check, "r")
   }
 
   fun write(selected: Destination, bytes: ByteArray, signal: CancellationSignal, checkOwner: () -> Unit): ByteArray {
@@ -109,8 +109,10 @@ internal object PaliNoteBackupSaf {
     if (id == root || !validId(id)) fail(PaliNoteBackupFileError.WRITE_UNCONFIRMED)
 
     check()
-    // Pin the original inode until after the writer closes and independent readback completes.
-    return open(resolver, child, "r", signal).use { anchor ->
+    // Keep one access mode for the pinned inode, writer and independent readback:
+    // a provider may return different filesystem views for read-only and writable opens.
+    // "rw" does not truncate; imports still request read-only access.
+    return open(resolver, child, "rw", signal).use { anchor ->
       val identity = ensureEmpty(anchor.fileDescriptor, ::check)
       check()
       // "rw" requests no truncation and a seekable file. Recheck before the first byte is written.
@@ -124,17 +126,17 @@ internal object PaliNoteBackupSaf {
         retryInterrupted(::check) { Os.fsync(fd) }
         if (Os.fstat(fd).st_size != bytes.size.toLong()) fail(PaliNoteBackupFileError.WRITE_UNCONFIRMED)
       }
-      val readback = readFile(resolver, child, signal, ::check, identity, bytes.size)
+      val readback = readFile(resolver, child, signal, ::check, "rw", identity, bytes.size)
       PaliNoteBackupFile.verifyReadback(bytes, readback, ::check)
     }
   }
 
   private fun readFile(
-    resolver: ContentResolver, uri: Uri, signal: CancellationSignal, check: () -> Unit,
+    resolver: ContentResolver, uri: Uri, signal: CancellationSignal, check: () -> Unit, mode: String,
     identity: StructStat? = null, length: Int? = null
   ): ByteArray {
     check()
-    return open(resolver, uri, "r", signal).use {
+    return open(resolver, uri, mode, signal).use {
       val fd = it.fileDescriptor
       check()
       val stat = regularFile(fd)
