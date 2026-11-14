@@ -417,6 +417,23 @@ test('scoped retained actions navigate to a host review without invoking direct 
   } finally { f.dispose(); }
 });
 
+for (const outcome of ['confirmed', 'reverted'] as const)
+  test(`a ${outcome} saved transaction offers resend only after a new pending observation`, async () => {
+    const f = fixture();
+    const pending = pendingScopedRow();
+    const local = { ...pending.local, inspectionOnly: false };
+    const hasResend = (tree: unknown) => all(tree).some(node =>
+      node.type === 'Button' && node.props.title === 'Review resend');
+    try {
+      const tree = await openFixtureRow(f, {
+        ...pending, local, observation: { ...pending.observation, status: outcome },
+      });
+      assert.equal(hasResend(tree), false);
+      f.rows([{ ...pending, local }]);
+      assert.equal(hasResend(f.render()), true, 'a reorg can make the saved transaction pending again');
+    } finally { f.dispose(); }
+  });
+
 for (const host of [false, true]) test(`read-only actions stay hidden without ${host ? 'canonical navigation eligibility' : 'an explicit host navigation callback'}`, async () => {
   const forbidden = () => { throw Error('Unexpected transaction action'); };
   const f = fixture(undefined, false, { onReplay: forbidden, onSpeedUpPending: forbidden,
