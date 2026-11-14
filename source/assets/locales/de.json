@@ -2595,6 +2595,10 @@
         "range": "Notizen {{start}}–{{end}} von {{total}}",
         "noteDate": "Notiz {{number}} · {{date}}"
       },
+      "maintenance": {
+        "chooseNote": "Wähle eine gespeicherte Note zum Prüfen und Entfernen aus. Jeder Versuch prüft nur diese Note.",
+        "clearHelp": "Der ausgewählte Ethereum-RPC erhält den bekannten Transaktionshash der Auszahlung dieser Note und, falls vorhanden, den des zugehörigen Deposits. Dadurch kann dieser Anbieter Deposit und Auszahlung verknüpfen. Nur diese Note wird entfernt, und nur wenn dieser RPC den Abschluss und die Abwicklung des zugehörigen Deposits als endgültig bestätigt. Andernfalls bleibt sie gespeichert."
+      },
       "capacity": {
         "couldNotLoadTheNoteLimit": "Notizlimit konnte nicht geladen werden.",
         "theSavedNotesDoNotFitThisLimit": "Die gespeicherten Notizen überschreiten dieses Limit.",

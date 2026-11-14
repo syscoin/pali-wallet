@@ -2595,6 +2595,10 @@
         "range": "노트 {{start}}–{{end}} / {{total}}",
         "noteDate": "노트 {{number}} · {{date}}"
       },
+      "maintenance": {
+        "chooseNote": "확인하고 삭제할 저장된 노트 하나를 선택하세요. 각 시도는 해당 노트만 확인합니다.",
+        "clearHelp": "선택한 Ethereum RPC는 이 노트의 알려진 출금 거래 해시와, 존재하는 경우 관련 입금 거래 해시를 받습니다. 이로 인해 해당 제공자가 입금과 출금을 연결할 수 있습니다. 이 RPC가 작업 완료와 관련 입금 정산의 최종 확정을 확인한 경우에만 이 노트 하나가 삭제됩니다. 그렇지 않으면 저장된 상태로 유지됩니다."
+      },
       "capacity": {
         "couldNotLoadTheNoteLimit": "노트 한도를 불러올 수 없습니다.",
         "theSavedNotesDoNotFitThisLimit": "저장된 노트 수가 이 한도를 초과합니다.",

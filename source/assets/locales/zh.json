@@ -2595,6 +2595,10 @@
         "range": "票据 {{start}}–{{end}}，共 {{total}} 张",
         "noteDate": "票据 {{number}} · {{date}}"
       },
+      "maintenance": {
+        "chooseNote": "选择一条已保存的票据进行验证并清除。每次尝试只检查该票据。",
+        "clearHelp": "所选的以太坊 RPC 将收到此票据已知的提款交易哈希，以及相关存款交易的哈希（如有）。这可能使该服务提供商关联其存款和提款。只有当该 RPC 确认操作完成且相关存款结算已最终确定时，才会删除这一条票据。否则，它将继续保存。"
+      },
       "capacity": {
         "couldNotLoadTheNoteLimit": "无法加载票据上限。",
         "theSavedNotesDoNotFitThisLimit": "已保存票据超出此上限。",

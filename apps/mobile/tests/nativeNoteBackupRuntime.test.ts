@@ -302,15 +302,24 @@ async function maintenanceFixture() {
   } catch (error) { route.abort(); await f.dispose(); throw error; }
 }
 
-test('one maintenance authorization covers three notes and reload, then retires its access', async () => {
+test('maintenance refuses implicit multi-note batches before authorizing', async () => {
+  const { f, route, maintenance, ids } = await maintenanceFixture();
+  try {
+    const before = f.unlockCalls;
+    assert.throws(() => maintenance.clearCompletedNotes(ids, current, () => assert.fail('No progress'), () => assert.fail('No reload')));
+    assert.equal(f.unlockCalls, before);
+  } finally { route.abort(); await maintenance.dispose(); await f.dispose(); }
+});
+
+test('one maintenance authorization covers the selected note and reload, then retires its access', async () => {
   const { f, route, maintenance, ids } = await maintenanceFixture();
   try {
     const before = f.unlockCalls, writes = f.noteWrites, progress: number[] = [];
     let reloaded = false;
-    assert.deepEqual(await maintenance.clearCompletedNotes(ids, current, value => progress.push(value.checked), inventory => {
+    assert.deepEqual(await maintenance.clearCompletedNotes([ids[0]!], current, value => progress.push(value.checked), inventory => {
       reloaded = true; assert.deepEqual(inventory.notes.map(note => note.id), ids);
-    }), { removed: [], unresolved: ids });
-    assert(reloaded); assert.deepEqual(progress, [1, 2, 3]);
+    }), { removed: [], unresolved: [ids[0]!] });
+    assert(reloaded); assert.deepEqual(progress, [1]);
     assert.equal(f.unlockCalls, before + 1, 'The OS credential boundary is entered once for the whole action');
     assert.equal(f.noteWrites, writes, 'Unspent notes are never removed');
     const access = f.latestPrivateAccess; assert(access);
@@ -325,7 +334,7 @@ test('late maintenance failure stops the batch and reloads without another autho
   try {
     const before = f.unlockCalls, writes = f.noteWrites, progress: number[] = [];
     let reloaded = false;
-    await assert.rejects(maintenance.clearCompletedNotes(ids, current, value => {
+    await assert.rejects(maintenance.clearCompletedNotes([ids[0]!], current, value => {
       progress.push(value.checked); throw Error('Synthetic late action failure');
     }, inventory => { reloaded = true; assert.equal(inventory.notes.length, 3); }));
     assert(reloaded); assert.deepEqual(progress, [1]);
@@ -339,7 +348,7 @@ test('maintenance abort stops remaining notes and disposal drains the one author
   try {
     const before = f.unlockCalls, writes = f.noteWrites, progress: number[] = [];
     let reloaded = false, closing: Promise<void> | undefined;
-    await assert.rejects(maintenance.clearCompletedNotes(ids, current, value => {
+    await assert.rejects(maintenance.clearCompletedNotes([ids[0]!], current, value => {
       progress.push(value.checked); route.abort(); closing = maintenance.dispose();
     }, () => { reloaded = true; }));
     await closing;
@@ -354,14 +363,14 @@ test('explicit pre-access maintenance cancellation preserves its brand and permi
   try {
     const before = f.unlockCalls, writes = f.noteWrites, works = f.secretWorks, access = f.latestPrivateAccess;
     const cancelled = operationAuthenticationCancellation(); f.refuseCredential(cancelled);
-    await assert.rejects(maintenance.clearCompletedNotes(ids, current, () => assert.fail('No note runs after refusal'), () => assert.fail('No reload after refusal')),
+    await assert.rejects(maintenance.clearCompletedNotes([ids[0]!], current, () => assert.fail('No note runs after refusal'), () => assert.fail('No reload after refusal')),
       error => error === cancelled && isOperationAuthenticationCancellation(error));
     assert.equal(f.unlockCalls, before + 1); assert.equal(f.noteWrites, writes); assert.equal(f.secretWorks, works);
     assert.equal(f.latestPrivateAccess, access, 'Cancellation must not allocate private record access');
     let reloaded = false;
-    assert.deepEqual(await maintenance.clearCompletedNotes(ids, current, () => {}, inventory => {
+    assert.deepEqual(await maintenance.clearCompletedNotes([ids[0]!], current, () => {}, inventory => {
       reloaded = true; assert.deepEqual(inventory.notes.map(note => note.id), ids);
-    }), { removed: [], unresolved: ids });
+    }), { removed: [], unresolved: [ids[0]!] });
     assert(reloaded); assert.equal(f.unlockCalls, before + 2); assert.equal(f.noteWrites, writes);
   } finally { route.abort(); await maintenance.dispose(); await f.dispose(); }
 });
@@ -372,7 +381,7 @@ for (const code of ['CANCELLED', 'CREDENTIAL_CANCELLED', 'CREDENTIAL_MISSING', '
     try {
       const before = f.unlockCalls, works = f.secretWorks, writes = f.noteWrites;
       f.refuseCredential(Object.assign(Error(code), { code }));
-      await assert.rejects(maintenance.clearCompletedNotes(ids, current, () => assert.fail('No note runs'), () => assert.fail('No reload')),
+      await assert.rejects(maintenance.clearCompletedNotes([ids[0]!], current, () => assert.fail('No note runs'), () => assert.fail('No reload')),
         error => !isOperationAuthenticationCancellation(error));
       assert.equal(f.unlockCalls, before + 1); assert.equal(f.secretWorks, works); assert.equal(f.noteWrites, writes);
     } finally { route.abort(); await maintenance.dispose(); await f.dispose(); }
@@ -385,7 +394,7 @@ for (const revoke of ['route', 'deadline'] as const) test(`maintenance OS Cancel
   try {
     const before = f.unlockCalls, works = f.secretWorks, writes = f.noteWrites;
     f.refuseCredential(); f.onCredential(async () => { if (revoke === 'route') route.abort(); else elapsed += 60_001; });
-    await assert.rejects(maintenance.clearCompletedNotes(ids, current, () => assert.fail('No note runs'), () => assert.fail('No reload')),
+    await assert.rejects(maintenance.clearCompletedNotes([ids[0]!], current, () => assert.fail('No note runs'), () => assert.fail('No reload')),
       error => !isOperationAuthenticationCancellation(error));
     assert.equal(f.unlockCalls, before + 1); assert.equal(f.secretWorks, works); assert.equal(f.noteWrites, writes);
   } finally { context.mock.restoreAll(); route.abort(); await maintenance.dispose(); await f.dispose(); }
@@ -395,7 +404,7 @@ for (const boundary of ['progress', 'reload'] as const) test(`a branded error at
   const { f, route, maintenance, ids } = await maintenanceFixture();
   try {
     const before = f.unlockCalls; let reloaded = false;
-    await assert.rejects(maintenance.clearCompletedNotes(ids, current, () => {
+    await assert.rejects(maintenance.clearCompletedNotes([ids[0]!], current, () => {
       if (boundary === 'progress') throw operationAuthenticationCancellation();
     }, () => { reloaded = true; if (boundary === 'reload') throw operationAuthenticationCancellation(); }),
     error => !isOperationAuthenticationCancellation(error));
@@ -410,7 +419,7 @@ test('maintenance deadline stops later notes and retires the action access', asy
   context.mock.method(performance, 'now', () => elapsed);
   try {
     const before = f.unlockCalls, progress: number[] = [];
-    await assert.rejects(maintenance.clearCompletedNotes(ids, current, value => {
+    await assert.rejects(maintenance.clearCompletedNotes([ids[0]!], current, value => {
       progress.push(value.checked); elapsed += 60_001;
     }, () => assert.fail('Expired action cannot publish inventory')));
     assert.deepEqual(progress, [1]); assert.equal(f.unlockCalls, before + 1);

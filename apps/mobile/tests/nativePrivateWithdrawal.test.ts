@@ -92,6 +92,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   let lost = false;
   let failPoolDispose = false;
   let completionReads = false, completionReverted = false;
+  let missingCompletionReceipt: ((hash: string) => boolean) | undefined;
   let noteStatus: IPrivateNoteStatus = { phase: 'waiting' };
   const posted: string[] = [];
   const relayedPosts: unknown[] = [];
@@ -120,6 +121,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
         gasLimit: '0x1c9c380',
         baseFeePerGas: '0x2',
       };
+    else if (completionReads && method === 'eth_getTransactionReceipt' && missingCompletionReceipt?.(params[0])) result = null;
     else if (completionReads && (method === 'eth_getTransactionReceipt' || method === 'eth_getTransactionByHash')) {
       const transaction = posted.map(raw => Transaction.from(raw)).find(tx => tx.hash === params[0]);
       assert(transaction);
@@ -315,6 +317,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       return storage;
     },
     enableCompletionReads(reverted = false) { completionReads = true; completionReverted = reverted; },
+    missingCompletionReceipts(read: (hash: string) => boolean) { missingCompletionReceipt = read; },
     markUnsupported(
       flag: 'isLedgerWallet' | 'isTrezorWallet' | 'isSmartAccount'
     ) {
@@ -400,7 +403,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
         },
       };
     },
-    async restore(seed = '02') {
+    async restore(seed = '02', createdAt = 10) {
       const backupPassword = 'Private note backup fixture';
       const codec = createNoteBackupCodec({
         crypto: globalThis.crypto,
@@ -412,7 +415,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
           version: 1,
           createdAt: 20,
           notes: [
-            { note: `tornado-eth-1-1-0x${seed.repeat(62)}`, createdAt: 10 },
+            { note: `tornado-eth-1-1-0x${seed.repeat(62)}`, createdAt },
           ],
         },
         backupPassword
@@ -1061,7 +1064,7 @@ test('native maintenance clears only shared-verified completed notes and preserv
     const localReads = f.rpcMethods.length;
     const notes = await maintenance.getNotes(noop); assert.equal(notes.notes.length, 2);
     assert.equal(f.rpcMethods.length, localReads, 'opening inventory performs no note-specific RPC');
-    assert.deepEqual(await maintenance.clearCompletedNotes([unspent.id, completed.id], noop, noop, noop), { removed: [completed.id], unresolved: [unspent.id] });
+    assert.deepEqual(await maintenance.clearCompletedNotes([completed.id], noop, noop, noop), { removed: [completed.id], unresolved: [] });
     assert.deepEqual((await f.privateNotes()).map(note => note.id), [unspent.id]);
     assert(f.runtime.catalogue.getSnapshot());
     assert.equal(f.posted.length, 2, 'maintenance does not sign or broadcast');
@@ -1069,6 +1072,88 @@ test('native maintenance clears only shared-verified completed notes and preserv
     await f.runtime.session.lock(); await f.runtime.session.unlock();
     assert.deepEqual((await f.privateNotes()).map(note => note.id), [unspent.id]);
   } finally { route.abort(); await f.close(); }
+});
+
+test('single-note maintenance reaches a completed seventh note past a slow unresolved prefix with fresh authorization', async context => {
+  const f = await fixture();
+  const submitted: string[] = [];
+  const routes: AbortController[] = [];
+  let maintenance: Awaited<ReturnType<NonNullable<KeyringRuntime['openNoteMaintenance']>>> | undefined;
+  try {
+    f.enableCompletionReads();
+    for (let index = 0; index < 7; index++) {
+      const inventory = index === 0 ? await f.seed() : await f.restore(String(index + 1).padStart(2, '0'), index + 20);
+      const selected = (await f.privateNotes()).find(note => !note.withdrawal);
+      assert(selected);
+      const note = inventory.notes.find(note => note.createdAt === selected.createdAt);
+      assert(note, `iteration ${index}: inventory ${inventory.notes.length}, submitted ${submitted.length}`);
+      const route = new AbortController(); routes.push(route);
+      const withdrawal = await inventory.openWithdrawal!(note, route.signal, noop, testInventoryAuthentication(inventory));
+      if (withdrawal.getSnapshot().restored) await withdrawal.reviewRestored();
+      await withdrawal.prepare({ recipient: RECIPIENT, mode: 'direct' });
+      assert.equal(withdrawal.getSnapshot().phase, 'review', `iteration ${index}: ${JSON.stringify(withdrawal.getSnapshot())}`);
+      await withdrawal.confirm(withdrawal.getSnapshot().review!.intentId);
+      assert.equal(withdrawal.getSnapshot().phase, 'submitted');
+      submitted.push(selected.id);
+      route.abort(); await withdrawal.dispose();
+    }
+    const before = await f.privateNotes();
+    assert.equal(before.length, 7);
+    assert(before.every(note => note.withdrawal?.phase === 'submitted'));
+    f.enableCompletionReads();
+    let elapsed = performance.now();
+    const start = elapsed;
+    context.mock.method(performance, 'now', () => elapsed);
+    const checked: string[] = [];
+    const slow = new Set(before.filter(note => note.id !== submitted[6]).map(note => note.withdrawal!.transactionHash));
+    f.missingCompletionReceipts(hash => {
+      checked.push(hash);
+      if (!slow.has(hash)) return false;
+      elapsed += 11_000;
+      return true;
+    });
+    let route = new AbortController(); routes.push(route);
+    maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop, createTestPrivateAuthentication(noop));
+    const inventory = await maintenance.getNotes(noop);
+    assert.equal(inventory.notes.length, 7);
+    const first = before.find(note => note.id === submitted[0])!;
+    const last = before.find(note => note.id === submitted[6])!;
+    let authorizations = f.secretReads;
+    let reloaded = false;
+    assert.deepEqual(await maintenance.clearCompletedNotes([first.id], noop, noop, inventory => {
+      reloaded = true; assert.equal(inventory.notes.length, 7);
+    }), { removed: [], unresolved: [first.id] });
+    assert(reloaded);
+    assert.equal(elapsed - start, 11_000);
+    assert.equal(f.secretReads, authorizations + 1);
+    route.abort(); await maintenance.dispose(); maintenance = undefined;
+    route = new AbortController(); routes.push(route);
+    maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop, createTestPrivateAuthentication(noop));
+    assert.equal((await maintenance.getNotes(noop)).notes.length, 7);
+    authorizations = f.secretReads;
+    checked.length = 0; reloaded = false;
+    const progress: number[] = [];
+    assert.deepEqual(await maintenance.clearCompletedNotes([last.id], noop, value => progress.push(value.checked), inventory => {
+      reloaded = true;
+      assert.equal(inventory.notes.length, 6);
+      assert(!inventory.notes.some(note => note.id === last.id));
+    }), { removed: [last.id], unresolved: [] });
+    assert(reloaded); assert.deepEqual(progress, [1]);
+    assert.equal(elapsed - start, 11_000, 'The selected last note does not re-read the slow prefix');
+    assert.equal(f.secretReads, authorizations + 1, 'Selecting another note requires fresh authorization');
+    assert.deepEqual(checked, [last.withdrawal!.transactionHash, last.withdrawal!.transactionHash], 'Only the selected note is proved and revalidated');
+    assert.equal(f.posted.length, 8, 'Maintenance does not sign or broadcast');
+    route.abort(); await maintenance.dispose(); maintenance = undefined;
+    await f.reopen();
+    const after = await f.privateNotes();
+    assert.equal(after.length, 6);
+    assert(after.every(note => note.id !== last.id));
+  } finally {
+    context.mock.restoreAll();
+    routes.forEach(route => route.abort());
+    await maintenance?.dispose();
+    await f.close();
+  }
 });
 
 for (const cancel of ['route', 'lock'] as const) test(`native maintenance rolls back a completed-note removal when ${cancel} revokes SQL authority`, async () => {
@@ -1118,7 +1203,7 @@ test('native maintenance preserves a lost-ack removal and never processes the re
     const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop, createTestPrivateAuthentication(noop));
     const authorizations = f.secretReads, progress: number[] = [];
     armed = true;
-    await assert.rejects(maintenance.clearCompletedNotes([completed.id, ...remaining], noop, value => progress.push(value.checked), noop));
+    await assert.rejects(maintenance.clearCompletedNotes([completed.id], noop, value => progress.push(value.checked), noop));
     assert.equal(writes, 1); assert.deepEqual(progress, []);
     assert.equal(f.secretReads, authorizations + 1, 'An uncertain commit must not cause another prompt or replay');
     route.abort(); await maintenance.dispose(); await f.reopen();

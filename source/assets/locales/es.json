@@ -2595,6 +2595,10 @@
         "range": "Notas {{start}}–{{end}} de {{total}}",
         "noteDate": "Nota {{number}} · {{date}}"
       },
+      "maintenance": {
+        "chooseNote": "Selecciona una nota guardada para verificarla y eliminarla. Cada intento comprueba solo esa nota.",
+        "clearHelp": "El RPC de Ethereum seleccionado recibirá el hash conocido de la transacción de retiro de esta nota y, si existe, el de su depósito relacionado. Esto puede vincular el depósito y el retiro ante ese proveedor. Solo se elimina esta nota, y únicamente si ese RPC confirma que la operación y la liquidación del depósito relacionado son definitivas. De lo contrario, seguirá guardada."
+      },
       "capacity": {
         "couldNotLoadTheNoteLimit": "No se pudo cargar el límite de notas.",
         "theSavedNotesDoNotFitThisLimit": "Las notas guardadas superan este límite.",
