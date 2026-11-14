@@ -3040,7 +3040,6 @@
         "thisDepositCouldNotBeOpenedReturnToYourWallet": "Não foi possível abrir este depósito. Volte à carteira e tente novamente.",
         "closingDeposit": "Fechando depósito…",
         "openingDeposit": "Abrindo depósito",
-        "thisNoteHasAnUnresolvedDepositCheckActivityBeforeContinuing": "Esta nota tem um depósito não resolvido. Confira a Atividade antes de continuar.",
         "thisDepositIsUnavailableCheckYourAccountAndNetwork": "Este depósito está indisponível. Confira a conta e a rede.",
         "couldNotCheckThePoolStatusTryAgain": "Não foi possível verificar o estado do pool. Tente novamente.",
         "depositVerified": "Depósito verificado",

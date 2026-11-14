@@ -3040,7 +3040,6 @@
         "thisDepositCouldNotBeOpenedReturnToYourWallet": "Diese Einzahlung konnte nicht geöffnet werden. Zur Wallet zurückkehren und erneut versuchen.",
         "closingDeposit": "Einzahlung wird geschlossen…",
         "openingDeposit": "Einzahlung wird geöffnet",
-        "thisNoteHasAnUnresolvedDepositCheckActivityBeforeContinuing": "Diese Note hat eine ungeklärte Einzahlung. Vor dem Fortfahren die Aktivität prüfen.",
         "thisDepositIsUnavailableCheckYourAccountAndNetwork": "Diese Einzahlung ist nicht verfügbar. Konto und Netzwerk prüfen.",
         "couldNotCheckThePoolStatusTryAgain": "Pool-Status konnte nicht geprüft werden. Erneut versuchen.",
         "depositVerified": "Einzahlung verifiziert",
