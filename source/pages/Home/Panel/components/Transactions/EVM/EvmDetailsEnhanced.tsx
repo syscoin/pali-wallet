@@ -4,8 +4,8 @@ import { shallowEqual, useSelector } from 'react-redux';
 
 import { getEvmTransactionDisplayInfo } from '../../../../../../shared/evmTransactionDisplay';
 import {
-  decodeSmartAccountExecutions,
   filterSmartAccountNativeRecipientOperations,
+  projectSmartAccountNativePayment,
 } from '../../../../../../shared/smartAccountExecutions';
 import {
   decodeSmartAccountOperations,
@@ -396,20 +396,15 @@ export const EvmTransactionDetailsEnhanced = ({
         isOperation: false,
         outerPayerOnly: true,
       };
-    const incomingExecution =
-      accountAddress !== currentAddress
-        ? identities
-            .flatMap(
-              (identity) =>
-                decodeSmartAccountExecutions(identity.callData) ?? []
-            )
-            .find(
-              (call) =>
-                call.target.toLowerCase() === currentAddress &&
-                BigInt(call.value) > BigInt(0)
-            )
+    const incomingPayment =
+      accountAddress !== currentAddress && currentAddress
+        ? projectSmartAccountNativePayment(identities, {
+            chainId,
+            sender: origin,
+            recipient: currentAccount!.address,
+          })
         : undefined;
-    if (accountAddress !== currentAddress && !incomingExecution)
+    if (accountAddress !== currentAddress && !incomingPayment)
       return { transaction: undefined, isOperation: true, success: undefined };
     const executions = getSmartAccountExecutionTransactions(anchored, {
       requireMatchingSmartAccount: true,
@@ -454,17 +449,8 @@ export const EvmTransactionDetailsEnhanced = ({
     }
     return {
       transaction:
-        success === true && (incomingExecution || executions.length)
-          ? incomingExecution
-            ? {
-                ...anchored,
-                from: origin,
-                to: incomingExecution.target,
-                value: incomingExecution.value,
-                input: incomingExecution.data,
-                data: incomingExecution.data,
-              }
-            : getSmartAccountDisplayTransaction(anchored)
+        success === true && (incomingPayment || executions.length)
+          ? incomingPayment ?? getSmartAccountDisplayTransaction(anchored)
           : undefined,
       isOperation: true,
       success,

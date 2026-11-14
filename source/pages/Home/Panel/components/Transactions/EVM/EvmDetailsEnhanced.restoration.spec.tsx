@@ -4,9 +4,11 @@ import React from 'react';
 
 import { decodeSmartAccountOperations } from '../../../../../../wallet/smartAccountActivity';
 import { defaultAbiCoder, hexConcat, id } from 'utils/ethersV6Compat';
+import { encodeERC7579Executions } from 'utils/smartAccount/account';
 import {
   getPaliEntryPointAddress,
   paliEntryPointInterface,
+  paliSmartAccountInterface,
 } from 'utils/smartAccount/contracts';
 
 import { EvmTransactionDetailsEnhanced } from './EvmDetailsEnhanced';
@@ -197,6 +199,15 @@ const encodeBundle = (
   return paliEntryPointInterface.encodeFunctionData('handleOps', [
     encoded,
     OTHER,
+  ]);
+};
+const encodeCalls = (
+  calls: { data?: string; target: string; value: string }[]
+) => {
+  const { mode, executionCalldata } = encodeERC7579Executions(calls);
+  return paliSmartAccountInterface.encodeFunctionData('execute', [
+    mode,
+    executionCalldata,
   ]);
 };
 const operationLog = (
@@ -994,6 +1005,126 @@ it('shows incoming Smart details only for a decoded recipient of the originating
   expect(screen.getByText(`From:${OTHER}|`)).toBeTruthy();
   expect(screen.getByText(`To:${ACCOUNT}|`)).toBeTruthy();
 });
+
+it.each(['batch', 'operations', 'large-units'] as const)(
+  'totals every verified incoming native payment without losing the outer calldata (%s)',
+  async (mode) => {
+    const first =
+      mode === 'large-units' ? '9007199254740993' : '1000000000000000000';
+    const second = mode === 'large-units' ? '7' : '2000000000000000000';
+    const calls = [
+      { target: ACCOUNT, value: first, data: '0x1234' },
+      { target: TARGET, value: '77000000000000000000' },
+      { target: ACCOUNT, value: second },
+    ];
+    const operations =
+      mode === 'operations'
+        ? [
+            { sender: OTHER, callData: encodeCalls(calls.slice(0, 2)) },
+            { sender: OTHER, nonce: 1, callData: encodeCalls(calls.slice(2)) },
+            {
+              sender: TARGET,
+              callData: encodeCalls([
+                { target: ACCOUNT, value: '99000000000000000000' },
+              ]),
+            },
+          ]
+        : [{ sender: OTHER, callData: encodeCalls(calls) }];
+    const hash = id('incoming-native-total-' + mode);
+    const input = encodeBundle(operations);
+    const summary = fullTx(hash, {
+      from: TARGET,
+      to: getPaliEntryPointAddress(1),
+      value: '0',
+      input,
+      smartAccountExecutionFrom: OTHER,
+      success: true,
+      logs: operations.map((operation, index) =>
+        operationLog(
+          hash,
+          operation.sender,
+          true,
+          undefined,
+          input,
+          operation.sender === OTHER ? index : 0
+        )
+      ),
+    });
+    const display = jest.requireActual(
+      '../../../../../../shared/evmTransactionDisplay'
+    );
+    mockDisplay.mockImplementation(display.getEvmTransactionDisplayInfo);
+    mockHistory = [summary];
+    mockEmitter.mockImplementation(async ([, method]) =>
+      method === 'decodeEvmTransactionData'
+        ? { method: 'handleOps', types: [], inputs: [], names: [] }
+        : summary
+    );
+    render(<EvmTransactionDetailsEnhanced hash={hash} tx={summary as any} />);
+    await waitFor(() =>
+      expect(screen.getByTestId('header').textContent).toBe(
+        `Received|${
+          mode === 'large-units' ? '0.009007199254741' : '3'
+        }|Confirmed`
+      )
+    );
+    expect(mockDisplay.mock.calls.at(-1)?.[0]).toMatchObject({
+      from: OTHER,
+      to: ACCOUNT,
+      value: (BigInt(first) + BigInt(second)).toString(),
+      input: '0x',
+      data: '0x',
+    });
+    expect(
+      mockEmitter.mock.calls.some(
+        ([method, args]) =>
+          method[1] === 'decodeEvmTransactionData' &&
+          args[0].input === input &&
+          args[0].to === getPaliEntryPointAddress(1)
+      )
+    ).toBe(true);
+    expect(screen.getByTestId('decoded').textContent).toBe('handleOps');
+  }
+);
+
+it.each(['missing', 'failed'] as const)(
+  'does not publish an incoming aggregate with a %s operation outcome',
+  async (mode) => {
+    const hash = id('incoming-native-total-' + mode);
+    const input = encodeBundle([
+      { sender: OTHER, value: '1000000000000000000', target: ACCOUNT },
+      {
+        sender: OTHER,
+        nonce: 1,
+        value: '2000000000000000000',
+        target: ACCOUNT,
+      },
+    ]);
+    const summary = fullTx(hash, {
+      from: TARGET,
+      to: getPaliEntryPointAddress(1),
+      value: '0',
+      input,
+      smartAccountExecutionFrom: OTHER,
+      success: true,
+      logs: [
+        operationLog(hash, OTHER, true, undefined, input),
+        ...(mode === 'failed'
+          ? [operationLog(hash, OTHER, false, undefined, input, 1)]
+          : []),
+      ],
+    });
+    mockHistory = [summary];
+    mockEmitter.mockResolvedValue(summary);
+    render(<EvmTransactionDetailsEnhanced hash={hash} tx={summary as any} />);
+    await waitFor(() =>
+      expect(screen.getByTestId('header').textContent).toBe(
+        `Transaction|-|${mode === 'missing' ? 'Pending' : 'Failed'}`
+      )
+    );
+    expect(mockDisplay).not.toHaveBeenCalled();
+  }
+);
 
 it.each([false, true])(
   'keeps an ordinary outer-payer receipt separate from inner outcome (origin hint=%s)',

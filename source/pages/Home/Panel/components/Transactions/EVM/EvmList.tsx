@@ -7,6 +7,12 @@ import {
   EVM_TRANSACTION_HISTORY_SOURCE,
   mergeEvmExplorerTransactions,
 } from '../../../../../../shared/evmHistory';
+import { getEvmTransactionDisplayInfo } from '../../../../../../shared/evmTransactionDisplay';
+import {
+  filterSmartAccountNativeRecipientOperations,
+  projectSmartAccountNativePayment,
+} from '../../../../../../shared/smartAccountExecutions';
+import { decodeSmartAccountOperations } from '../../../../../../wallet/smartAccountActivity';
 import { getHomeBrowsingScope } from '../../../../useHomeBrowsingState';
 import { useHistoryBrowsingState } from '../useHistoryBrowsingState';
 import { useTransactionConfirmationToast } from '../useTransactionConfirmationToast';
@@ -34,6 +40,7 @@ import {
   getTransactionTypeLabel,
   getTransactionTypeDisplayLabel,
 } from 'utils/commonMethodSignatures';
+import { parseEvmInteger } from 'utils/evmNonce';
 import {
   buildEvmMinedNonceIndex,
   buildEvmTransactionHashIndex,
@@ -119,11 +126,42 @@ const EvmTransactionItem = React.memo(
     const isCancel = cancellationIntent;
     const isReplaced = settlement === 'replaced';
     const isSpeedUp = tx?.isSpeedUp === true;
+    const incomingPayment = useMemo(() => {
+      const recipient = currentAccount?.address;
+      const sender = (tx as any).smartAccountExecutionFrom;
+      if (
+        typeof recipient !== 'string' ||
+        typeof sender !== 'string' ||
+        recipient.toLowerCase() === sender.toLowerCase()
+      )
+        return;
+      const operations = decodeSmartAccountOperations({
+        chainId: String(chainId),
+        hash: tx.hash,
+        payer: tx.from,
+        nonce: parseEvmInteger(tx.nonce) ?? -1,
+        to: tx.to ?? null,
+        value: String(tx.value ?? '0'),
+        data: String((tx as any).input || (tx as any).data || ''),
+      }).filter(
+        (operation) => operation.account.toLowerCase() === sender.toLowerCase()
+      );
+      return projectSmartAccountNativePayment(
+        filterSmartAccountNativeRecipientOperations(operations, recipient),
+        {
+          chainId,
+          recipient,
+          sender,
+        }
+      );
+    }, [tx, chainId, currentAccount?.address]);
     const smartBatch =
       'historySource' in tx &&
       tx.historySource === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
       ((tx as any).smartAccount?.executions?.length ?? 0) > 1;
-    const displayTx = smartBatch
+    const displayTx = incomingPayment
+      ? { ...incomingPayment, hash: tx.hash }
+      : smartBatch
       ? tx
       : getSmartAccountDisplayTransaction(tx) || tx;
     const isConfirmed = isTransactionInBlock(tx);
@@ -180,13 +218,16 @@ const EvmTransactionItem = React.memo(
     });
 
     // Create a stable cache key for memoization
-    const cacheKey = getTransactionDisplayCacheKey({
+    const baseCacheKey = getTransactionDisplayCacheKey({
       accountAddress: currentAccount?.address,
       chainId,
       currency,
       transaction: displayTx,
       tokenMeta,
     });
+    const cacheKey = incomingPayment
+      ? `${baseCacheKey}:${settlement}`
+      : baseCacheKey;
 
     // Effect to get proper transaction display info
     React.useEffect(() => {
@@ -208,11 +249,23 @@ const EvmTransactionItem = React.memo(
             return;
           }
 
-          const info = await getTransactionDisplayInfo(
-            tx,
-            currency,
-            true // Skip fetching unknown tokens in transaction list
-          );
+          const info = incomingPayment
+            ? settlement === 'confirmed'
+              ? await getEvmTransactionDisplayInfo(displayTx, currency)
+              : {
+                  actualRecipient: incomingPayment.to,
+                  displayValue: '?',
+                  formattedValue: '?',
+                  displaySymbol: currency.toUpperCase(),
+                  isErc20Transfer: false,
+                  isNft: false,
+                  amountUnavailable: true as const,
+                }
+            : await getTransactionDisplayInfo(
+                tx,
+                currency,
+                true // Skip fetching unknown tokens in transaction list
+              );
           if (!cancelled && cacheKeyLocal) {
             if (txDisplayInfoCache.size >= 500) {
               const oldestKey = txDisplayInfoCache.keys().next().value;
@@ -241,6 +294,8 @@ const EvmTransactionItem = React.memo(
       cacheKey,
       currency,
       tx,
+      incomingPayment,
+      settlement,
       tokenMeta?.contractAddress,
       tokenMeta?.decimals,
       tokenMeta?.tokenSymbol,

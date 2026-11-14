@@ -2,7 +2,14 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
+import { decodeSmartAccountOperations } from '../../../../../../wallet/smartAccountActivity';
 import { defaultAbiCoder, id } from 'utils/ethersV6Compat';
+import { encodeERC7579Executions } from 'utils/smartAccount/account';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+  paliSmartAccountInterface,
+} from 'utils/smartAccount/contracts';
 
 import { EvmTransactionsList } from './EvmList';
 import { savedTransactionHistoryRow } from './useSavedEvmTransactions';
@@ -10,6 +17,7 @@ import { savedTransactionHistoryRow } from './useSavedEvmTransactions';
 const ACCOUNT = `0x${'11'.repeat(20)}`;
 const TARGET = `0x${'22'.repeat(20)}`;
 const CONTRACT = `0x${'33'.repeat(20)}`;
+const ZERO = `0x${'00'.repeat(32)}`;
 const mockAlert = { success: jest.fn(), warning: jest.fn(), error: jest.fn() };
 const mockVault = {
   activeAccount: { id: 0, type: 'HDAccount' },
@@ -18,12 +26,14 @@ const mockVault = {
   activeNetwork: { chainId: 1, currency: 'eth' },
 };
 let mockRows: any[] = [];
+let mockAccountAddress = ACCOUNT;
 let mockFiatAvailable = true;
 let mockFiatText = '0 USD';
 const mockGetFiatAmount = () => mockFiatText;
 beforeEach(() => {
   mockFiatAvailable = true;
   mockFiatText = '0 USD';
+  mockAccountAddress = ACCOUNT;
   mockVault.accountAssets.HDAccount[0].ethereum = [];
 });
 const mockEnsCache = {
@@ -39,7 +49,7 @@ jest.mock('react-redux', () => ({
     selector({ vault: mockVault, vaultGlobal: { ensCache: mockEnsCache } }),
 }));
 jest.mock('state/vault/selectors', () => ({
-  selectActiveAccount: () => ({ address: ACCOUNT }),
+  selectActiveAccount: () => ({ address: mockAccountAddress }),
   selectActiveAccountRef: () => mockVault.activeAccount,
   selectActiveAccountAssets: () => ({ ethereum: [] }),
   selectActiveAccountTransactions: () => ({ ethereum: { 1: mockRows } }),
@@ -482,4 +492,141 @@ it('labels a saved Smart batch and shows its total native value without a single
   expect(await screen.findByText(/3(?:\.0+)? ETH/)).toBeTruthy();
   expect(screen.getByText('assetTransfer.nativeValue')).toBeTruthy();
   expect(screen.queryByText(/first\.eth/)).toBeNull();
+});
+
+const smartIncomingRow = (
+  name: string,
+  second = '2000000000000000000',
+  multiple = false
+) => {
+  const calls = [
+    { target: CONTRACT, value: '7000000000000000000' },
+    { target: ACCOUNT, value: '1000000000000000000' },
+    { target: ACCOUNT, value: second },
+  ];
+  const operations = (
+    multiple ? [calls.slice(0, 2), calls.slice(2)] : [calls]
+  ).map((group, nonce) => {
+    const execution = encodeERC7579Executions(group);
+    return [
+      TARGET,
+      nonce,
+      '0x',
+      paliSmartAccountInterface.encodeFunctionData('execute', [
+        execution.mode,
+        execution.executionCalldata,
+      ]),
+      ZERO,
+      50000,
+      ZERO,
+      '0x',
+      '0x1234',
+    ];
+  });
+  const input = paliEntryPointInterface.encodeFunctionData('handleOps', [
+    operations,
+    CONTRACT,
+  ]);
+  const hash = id(name);
+  const blockHash = id('activity-incoming-smart-batch-block');
+  const identities = decodeSmartAccountOperations({
+    chainId: '1',
+    hash,
+    payer: CONTRACT,
+    nonce: 2,
+    to: getPaliEntryPointAddress(1),
+    value: '0',
+    data: input,
+  });
+  return {
+    hash,
+    from: CONTRACT,
+    to: getPaliEntryPointAddress(1),
+    value: '0',
+    input,
+    nonce: 2,
+    chainId: 1,
+    blockNumber: 42,
+    blockHash,
+    confirmations: 1,
+    timestamp: 1791655200,
+    success: true,
+    smartAccountExecutionFrom: TARGET,
+    logs: identities.map((operation) => ({
+      ...paliEntryPointInterface.encodeEventLog(
+        paliEntryPointInterface.getEvent('UserOperationEvent'),
+        [
+          operation.operationHash,
+          TARGET,
+          CONTRACT,
+          operation.operationNonce,
+          true,
+          1,
+          1,
+        ]
+      ),
+      address: getPaliEntryPointAddress(1),
+      transactionHash: hash,
+      blockHash,
+      blockNumber: '0x2a',
+    })),
+  };
+};
+
+it.each([false, true])(
+  'shows all successful Smart native payments in Activity (multiple operations=%s)',
+  async (multiple) => {
+    mockRows = [
+      smartIncomingRow(
+        'activity-incoming-smart-batch-' + multiple,
+        undefined,
+        multiple
+      ),
+    ];
+    render(<EvmTransactionsList userTransactions={mockRows} />);
+    expect(await screen.findByText('3 ETH')).toBeTruthy();
+    expect(screen.queryByText('1 ETH')).toBeNull();
+  }
+);
+
+it('refreshes the cached native total when the same transaction or selected recipient changes', async () => {
+  mockRows = [smartIncomingRow('activity-incoming-smart-cache')];
+  const view = render(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('3 ETH')).toBeTruthy();
+  mockRows = [
+    smartIncomingRow('activity-incoming-smart-cache', '4000000000000000000'),
+  ];
+  view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('5 ETH')).toBeTruthy();
+  mockAccountAddress = CONTRACT;
+  view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('7 ETH')).toBeTruthy();
+  expect(screen.queryByText('5 ETH')).toBeNull();
+});
+
+it('does not retain a positive received total when stored outcome becomes pending or failed', async () => {
+  const confirmed = smartIncomingRow('activity-incoming-smart-outcome');
+  mockRows = [confirmed];
+  const view = render(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('3 ETH')).toBeTruthy();
+  mockRows = [
+    {
+      ...confirmed,
+      blockNumber: null,
+      blockHash: null,
+      confirmations: 0,
+      success: undefined,
+    },
+  ];
+  view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('? ETH')).toBeTruthy();
+  expect(screen.getByText('send.pending')).toBeTruthy();
+  expect(screen.queryByText('3 ETH')).toBeNull();
+  mockRows = [{ ...confirmed, success: false }];
+  view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('send.failed')).toBeTruthy();
+  expect(screen.getByText('? ETH')).toBeTruthy();
+  mockRows = [confirmed];
+  view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('3 ETH')).toBeTruthy();
 });
