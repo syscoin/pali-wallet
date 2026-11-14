@@ -303,7 +303,6 @@ for (const quantity of [
         .filter({ hasText: SYMBOL })
         .click();
       const max = page.getByRole('button', { name: 'MAX', exact: true });
-      await expect(max).toBeEnabled();
       await expect
         .poll(() =>
           ownershipReads
@@ -318,8 +317,14 @@ for (const quantity of [
         'max',
         quantity
       );
-      await max.click();
-      await expect(page.locator('#with-max-button')).toHaveValue(quantity);
+      if (quantity === '0') {
+        await expect(max).toBeDisabled();
+        await expect(page.locator('#with-max-button')).toHaveValue('1');
+      } else {
+        await expect(max).toBeEnabled();
+        await max.click();
+        await expect(page.locator('#with-max-button')).toHaveValue(quantity);
+      }
       if (!Number.isSafeInteger(Number(quantity)))
         await expect.poll(saved).toMatchObject({ rawBalance: quantity });
       await page.reload();
@@ -343,7 +348,6 @@ for (const quantity of [
         .locator('button[role="menuitem"]')
         .filter({ hasText: SYMBOL })
         .click();
-      await expect(max).toBeEnabled();
       await expect
         .poll(() =>
           ownershipReads
@@ -358,10 +362,16 @@ for (const quantity of [
         'max',
         currentQuantity
       );
-      await max.click();
-      await expect(page.locator('#with-max-button')).toHaveValue(
-        currentQuantity
-      );
+      if (currentQuantity === '0') {
+        await expect(max).toBeDisabled();
+        await expect(page.locator('#with-max-button')).toHaveValue('1');
+      } else {
+        await expect(max).toBeEnabled();
+        await max.click();
+        await expect(page.locator('#with-max-button')).toHaveValue(
+          currentQuantity
+        );
+      }
       await info.attach('fresh-ownership-reads', {
         contentType: 'application/json',
         body: JSON.stringify({

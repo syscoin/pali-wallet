@@ -659,7 +659,8 @@
     "status": "Status",
     "reverted": "Revertido",
     "partiallyReverted": "Parcialmente revertido",
-    "receipts": "Recibos"
+    "receipts": "Recibos",
+    "balanceUnavailable": "Saldo indisponível"
   },
   "settings": {
     "clearActivityAndNonce": "Limpar atividade e dados de nonce",

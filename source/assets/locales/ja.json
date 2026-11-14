@@ -659,7 +659,8 @@
     "status": "ステータス",
     "reverted": "リバート済み",
     "partiallyReverted": "部分的にリバート",
-    "receipts": "レシート"
+    "receipts": "レシート",
+    "balanceUnavailable": "残高を取得できません"
   },
   "settings": {
     "clearActivityAndNonce": "アクティビティと nonce データを消去",

@@ -659,7 +659,8 @@
     "status": "状态",
     "reverted": "已回滚",
     "partiallyReverted": "部分回滚",
-    "receipts": "收据"
+    "receipts": "收据",
+    "balanceUnavailable": "余额暂不可用"
   },
   "settings": {
     "clearActivityAndNonce": "清除活动和 nonce 数据",

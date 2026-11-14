@@ -681,13 +681,71 @@ it.each([
     expect(
       screen.queryByTitle('send.tokenOwnershipVerified')
     ).not.toBeInTheDocument();
-    expect(screen.getByText('0 QTY')).toBeInTheDocument();
+    expect(screen.getByText('send.balanceUnavailable')).toBeInTheDocument();
+    expect(screen.queryByText('0 QTY')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'send.max' })).toBeDisabled();
+    expect(nftAmount()).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
-    expect(nftAmount().value).toBe('0');
-    fireEvent.change(nftAmount(), { target: { value: '1' } });
+    expect(nftAmount().value).toBe('1');
     fireEvent.click(next());
-    await screen.findByText('send.youOnlyOwn');
     expect(mockNavigate).not.toHaveBeenCalled();
+  }
+);
+
+it('distinguishes a verified zero ERC1155 balance from an unavailable balance', async () => {
+  await prepareERC1155('0', 0);
+  expect(screen.getByText('0 QTY')).toBeInTheDocument();
+  expect(screen.queryByText('send.balanceUnavailable')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'send.max' })).toBeDisabled();
+  expect(nftAmount().value).toBe('1');
+  fireEvent.click(next());
+  expect(mockNavigate).not.toHaveBeenCalled();
+});
+
+it.each(['rejected', 'empty', 'unverified', 'malformed'])(
+  'preserves the entered ERC1155 amount through a %s read and successful retry',
+  async (failure) => {
+    const view = await prepareERC1155('42', 42);
+    fireEvent.change(nftAmount(), { target: { value: '7' } });
+    mockEmitter.mockImplementation((path: string[]) => {
+      if (path.at(-1) !== 'verifyERC1155Ownership')
+        return Promise.resolve(undefined);
+      if (failure === 'rejected') return Promise.reject(new Error('offline'));
+      if (failure === 'empty') return Promise.resolve([]);
+      return Promise.resolve([
+        {
+          tokenId: '7',
+          balance: 41,
+          rawBalance: failure === 'malformed' ? '1.5' : '41',
+          verified: failure !== 'unverified',
+        },
+      ]);
+    });
+    mockAssets = [{ ...mockAssets[0], balance: 41, rawBalance: '41' }];
+    view.rerender(<SendEth />);
+    await screen.findByText('send.balanceUnavailable');
+    expect(screen.queryByText('0 QTY')).not.toBeInTheDocument();
+    expect(nftAmount().value).toBe('7');
+    expect(nftAmount()).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'send.max' })).toBeDisabled();
+    fireEvent.click(next());
+    await screen.findByText('send.pleaseVerifyTokenOwnership');
+    expect(mockNavigate).not.toHaveBeenCalled();
+
+    mockEmitter.mockImplementation((path: string[]) =>
+      path.at(-1) === 'verifyERC1155Ownership'
+        ? Promise.resolve([
+            { tokenId: '7', balance: 8, rawBalance: '8', verified: true },
+          ])
+        : Promise.resolve(undefined)
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
+    await screen.findByText('8 QTY');
+    expect(nftAmount().value).toBe('7');
+    expect(nftAmount()).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'send.max' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
+    expect(nftAmount().value).toBe('8');
   }
 );
 
