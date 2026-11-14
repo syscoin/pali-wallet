@@ -10,7 +10,7 @@ import { Text } from '../../src/ui';
 
 const networks: NativeNetworkSnapshot['networks'][number][] = NATIVE_NETWORKS.map((registration) => ({ id: registration.id, name: getNativeSendContext(registration).name,
   symbol: registration.symbol, testnet: registration.testnet, canSign: true, registration }));
-const customUtxo = { id: 'custom-litecoin', name: 'Custom Litecoin', symbol: 'LTC', testnet: false,
+const customUtxo = { id: 'utxo:custom:11111111111111111111111111111111', name: 'Custom Litecoin', symbol: 'LTC', testnet: false,
   canSign: true, utxoEndpoint: 'https://litecoin.example/blockbook' };
 if (new URLSearchParams(window.location.search).has('utxo')) networks.push(customUtxo);
 const activeCustomUtxo = new URLSearchParams(window.location.search).has('activeUtxo');
