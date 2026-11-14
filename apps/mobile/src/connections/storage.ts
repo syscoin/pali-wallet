@@ -27,6 +27,7 @@ import {
   encodeConnectionRecord,
 } from '../storage/connectionRecordKey.ts';
 export { NATIVE_CONNECTION_STORAGE_KEY } from '../storage/connectionRecordKey.ts';
+export const NATIVE_CONNECTION_ADMISSION_KEY = 'native-dapp-admission';
 const MAX_SESSIONS = 64;
 const MAX_TRANSPORT_ENTRIES = 128;
 const HEX_32 = /^[0-9a-f]{64}$/;
@@ -260,6 +261,16 @@ function readRecord(value: unknown, walletBindingId: string): ConnectionRecord {
   });
 }
 
+type ConnectionAdmission = Readonly<{ version: 1; walletBindingId: string; enabled: boolean }>;
+function readAdmission(value: unknown, walletBindingId: string): ConnectionAdmission {
+  const row = fields(value, ['version', 'walletBindingId', 'enabled']);
+  if (row.version !== 1 || row.walletBindingId !== walletBindingId || !HEX_32.test(walletBindingId) || typeof row.enabled !== 'boolean') return invalid();
+  return Object.freeze({ version: 1, walletBindingId, enabled: row.enabled });
+}
+export function inspectNativeConnectionAdmission(value: unknown, walletBindingId: string): void {
+  readAdmission(value, walletBindingId);
+}
+
 /** Recovery validates this domain without returning any transport secrets. */
 export function inspectNativeConnectionRecord(
   value: unknown,
@@ -279,6 +290,9 @@ export interface NativeConnectionTransportStorage {
 export type NativeConnectionRepository = Readonly<{
   calls: ReturnType<typeof createCallsBundleRegistry>;
   assertHealthy(): void;
+  connectionsEnabled(): boolean;
+  /** A pause atomically removes every grant; history and transport state are retained. */
+  setConnectionsEnabled(enabled: boolean, assertCurrent: () => void): Promise<void>;
   permissions(binding: NativeConnectionBinding): DappPermissionPort;
   /** Trusted host inventory only. Includes public peer identifiers, never protocol secret values. */
   bindings(): readonly NativeConnectionBinding[];
@@ -342,12 +356,16 @@ export async function openNativeConnectionRepository({
     return unavailable();
   check();
   if (!HEX_32.test(walletBindingId)) return invalid();
+  let admission: unknown = await storage.get(NATIVE_CONNECTION_ADMISSION_KEY);
+  check();
+  let enabled = admission === undefined ? true : readAdmission(admission, walletBindingId).enabled;
   let persisted = await storage.get(NATIVE_CONNECTION_STORAGE_KEY);
   check();
   const initial: ConnectionRecord =
     persisted === undefined
       ? { version: 1, walletBindingId, sessions: [], transport: [] }
       : readRecord(persisted, walletBindingId);
+  if (!enabled && initial.sessions.length) return invalid();
   // Only a cold load filters uncommitted candidates. Live marked grants remain
   // usable after their commit point when only marker cleanup failed.
   const sessions = new Map(
@@ -407,19 +425,10 @@ export async function openNativeConnectionRepository({
     const detached = readRecord(next, walletBindingId);
     guard();
     try {
-      const saved =
-        persisted === undefined
-          ? await storage.createManyIfAbsent(
-              { [NATIVE_CONNECTION_STORAGE_KEY]: detached },
-              guard
-            )
-          : await storage.compareAndSet(
-              NATIVE_CONNECTION_STORAGE_KEY,
-              persisted,
-              detached,
-              undefined,
-              guard
-            );
+      const saved = await storage.compareAndSetMany([
+        { key: NATIVE_CONNECTION_STORAGE_KEY, expected: persisted, value: detached },
+        { key: NATIVE_CONNECTION_ADMISSION_KEY, expected: admission, value: admission },
+      ], guard);
       if (!saved) return unavailable();
       guard();
       persisted = detached;
@@ -481,6 +490,27 @@ export async function openNativeConnectionRepository({
   return Object.freeze({
     assertHealthy: check,
     calls,
+    connectionsEnabled: () => { check(); return enabled; },
+    setConnectionsEnabled(nextEnabled, assertCurrent) {
+      if (typeof nextEnabled !== 'boolean' || typeof assertCurrent !== 'function') return Promise.reject(new NativeConnectionStorageError('INVALID_CONNECTION_STATE'));
+      return queued(async () => {
+        const guard = () => { check(); if (assertCurrent() !== undefined) return unavailable(); };
+        guard();
+        if (nextEnabled && sessions.size) return invalid();
+        const nextAdmission: ConnectionAdmission = Object.freeze({ version: 1, walletBindingId, enabled: nextEnabled });
+        const nextRecord = readRecord(record(nextEnabled ? sessions : new Map()), walletBindingId);
+        try {
+          const saved = await storage.compareAndSetMany([
+            { key: NATIVE_CONNECTION_ADMISSION_KEY, expected: admission, value: nextAdmission },
+            { key: NATIVE_CONNECTION_STORAGE_KEY, expected: persisted, value: nextRecord },
+          ], guard);
+          if (!saved) return unavailable();
+          guard();
+          admission = nextAdmission; enabled = nextEnabled; persisted = nextRecord;
+          if (!nextEnabled) { sessions.clear(); permissionRevision++; }
+        } catch { poisoned = true; return unavailable(); }
+      });
+    },
     permissions(input: NativeConnectionBinding): DappPermissionPort {
       const binding = readBinding(input),
         id = bindingKey(binding);
@@ -500,7 +530,9 @@ export async function openNativeConnectionRepository({
         read: () => matchBinding(binding)?.permissions ?? EMPTY_FRAME,
         publish: (frame: DappPermissionFrame) => {
           matchBinding(binding);
-          const next = withFrame(binding, readFrame(frame, binding.origin));
+          const parsed = readFrame(frame, binding.origin);
+          if (!enabled && (Object.keys(parsed.dapps).length || parsed.pendingOrigins.length)) return unavailable();
+          const next = withFrame(binding, parsed);
           sessions.clear();
           for (const [key, value] of next) sessions.set(key, value);
           permissionRevision++;
@@ -508,6 +540,7 @@ export async function openNativeConnectionRepository({
         write: async (frame: DappPermissionFrame) => {
           matchBinding(binding);
           if (permissionWriter !== id) return unavailable();
+          if (!enabled && (Object.keys(frame.dapps).length || frame.pendingOrigins.length)) return unavailable();
           await persist(
             record(withFrame(binding, readFrame(frame, binding.origin))),
             check
@@ -636,6 +669,7 @@ export async function openNativeConnectionRepository({
                 const saved = await storage.compareAndSetMany(
                   [
                     { key, expected, value },
+                    { key: NATIVE_CONNECTION_ADMISSION_KEY, expected: admission, value: admission },
                     {
                       key: NATIVE_CONNECTION_STORAGE_KEY,
                       expected: persisted,

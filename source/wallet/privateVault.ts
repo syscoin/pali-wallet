@@ -55,6 +55,7 @@ import {
   envelopeHash,
   recoveryReceipt,
   withdrawalJournal,
+  unsignedWithdrawal,
   checkEnvelope,
   readPrivateVaultBundle,
   JOB_ID,
@@ -70,6 +71,7 @@ import type {
   IVaultBundle,
 } from './privateVaultInspection.ts';
 import type { WalletAuthentication } from '../shared/walletAuthentication.ts';
+import type { IEvmTransactionContext } from '../utils/evmTransactionContext';
 import type {
   generateClassicNote,
   identifyClassicNote,
@@ -79,6 +81,7 @@ import type {
   IPrivacyNoteReader,
   IPrivateNoteStatus,
   IPrivateNoteView,
+  IPrivateVaultView,
   IPrivateVaultController,
   PrivateVaultCapacity,
 } from '../utils/privacy/privateVaultTypes';
@@ -92,6 +95,7 @@ import type {
   IPrivacyWithdrawalRecoveryReceipt,
   IPrivacyRetiredWithdrawal,
   IPrivacyWithdrawalStatusRecord,
+  IPrivacyUnsignedWithdrawal,
 } from '../utils/privacy/withdrawalTransactionTypes';
 import type { IEncryptedPrivateRecord } from '@sidhujag/sysweb3-keyring';
 
@@ -163,10 +167,20 @@ export interface IPrivateVaultWithdrawalController {
     attempt: IPrivacyWithdrawalAttempt,
     session: IPrivateVaultSession
   ) => Promise<void>;
+  consumeUnsignedWithdrawal: (
+    attempt: IPrivacyWithdrawalAttempt,
+    session: IPrivateVaultSession,
+    lifetime: string
+  ) => Promise<void>;
   getWithdrawalAttempt: (
     noteId: string,
     session: IPrivateVaultSession
   ) => Promise<IPrivacyWithdrawalStatusRecord | null>;
+  reconcileUnsignedWithdrawals: (
+    context: IEvmTransactionContext,
+    lifetime: string,
+    session: IPrivateVaultSession
+  ) => Promise<IPrivateVaultView>;
   recordWithdrawalJobStatus: (
     noteId: string,
     attemptHash: string,
@@ -181,6 +195,7 @@ export interface IPrivateVaultWithdrawalController {
   reserveWithdrawalAttempt: (
     attempt: IPrivacyWithdrawalAttempt,
     session: IPrivateVaultSession,
+    lifetime: string,
     onIdentity?: (identity: {
       assertRestoreCurrent: () => void;
       attemptHash: string;
@@ -624,6 +639,21 @@ export function createPrivateVaultController(
       : {}),
   });
 
+  const noteViews = async (
+    context: IContext,
+    saved: IStoredNote[],
+    identities: WeakMap<IStoredNote, IClassicNoteIdentity>
+  ): Promise<IPrivateVaultView> => {
+    const notes: IPrivateNoteView[] = [];
+    for (const note of saved) {
+      const identity = identities.get(note);
+      if (!identity) throw new Error('privacy_vault_corrupt');
+      notes.push(view(note, identity, await readStatus(context, identity)));
+    }
+    await assertProfile(context);
+    return { notes };
+  };
+
   const encrypt = async (
     context: IContext,
     domain: string,
@@ -874,6 +904,21 @@ export function createPrivateVaultController(
       throw new Error('privacy_verification_pending');
     return identity;
   };
+  const unsignedScope = (context: IEvmTransactionContext, lifetime: string) =>
+    unsignedWithdrawal({
+      version: 1,
+      lifetime,
+      context: {
+        account: context.account,
+        chainId: context.chainId,
+        rpcUrl: context.rpcUrl,
+        slip44: context.slip44,
+      },
+    });
+  const sameUnsignedScope = (
+    left: IPrivacyUnsignedWithdrawal,
+    right: IPrivacyUnsignedWithdrawal
+  ) => JSON.stringify(left.context) === JSON.stringify(right.context);
   const matchingWithdrawal = (
     note: IStoredNote,
     attempt: IPrivacyWithdrawalAttempt
@@ -924,8 +969,10 @@ export function createPrivateVaultController(
       (previous.jobId && jobId && previous.jobId !== jobId)
     )
       throw new Error('privacy_withdrawal_attempt_invalid');
+    const dispatched = { ...previous };
+    delete dispatched.unsigned;
     const withdrawal = withdrawalJournal({
-      ...previous,
+      ...dispatched,
       phase: 'submitted',
       ...(transactionHash
         ? { transactionHash: transactionHash.toLowerCase() }
@@ -1185,9 +1232,11 @@ export function createPrivateVaultController(
         const { manifest } = await load(context);
         const note = findNote(manifest, noteId);
         await assertProfile(context);
+        const status = { ...note.withdrawal };
+        delete status.unsigned;
         return note.withdrawal && !note.withdrawal.recovery
           ? {
-              ...note.withdrawal,
+              ...(status as Omit<IPrivacyWithdrawalJournal, 'unsigned'>),
               noteId: note.id,
               poolId: identify(note.note).poolId,
             }
@@ -1243,7 +1292,7 @@ export function createPrivateVaultController(
           basis
         );
       }),
-    reserveWithdrawalAttempt: (attempt, session, onIdentity) =>
+    reserveWithdrawalAttempt: (attempt, session, lifetime, onIdentity) =>
       internal(session, async (context) => {
         if (
           attempt?.context?.sessionGeneration !== session.generation ||
@@ -1261,6 +1310,7 @@ export function createPrivateVaultController(
         const previous = note.withdrawal;
         const withdrawal = withdrawalJournal({
           ...created,
+          unsigned: unsignedScope(attempt.context, lifetime),
           ...(previous?.recovery
             ? {
                 retired: [
@@ -1291,6 +1341,69 @@ export function createPrivateVaultController(
             await assertWithdrawable(context, note);
           }
         );
+      }),
+    consumeUnsignedWithdrawal: (attempt, session, lifetime) =>
+      internal(session, async (context) => {
+        if (attempt.context.sessionGeneration !== session.generation)
+          throw new Error('privacy_vault_session_changed');
+        const expected = unsignedScope(attempt.context, lifetime);
+        const assertRestoreCurrent = restoreFence(context);
+        const { manifest, basis } = await load(context);
+        const note = findNote(manifest, attempt.noteId);
+        const previous = matchingWithdrawal(note, attempt);
+        if (
+          previous.phase !== 'unknown' ||
+          !previous.unsigned ||
+          previous.unsigned.lifetime !== expected.lifetime ||
+          !sameUnsignedScope(previous.unsigned, expected) ||
+          restoredNoteBlocksWithdrawal(note.restoreGuard)
+        )
+          throw new Error('privacy_withdrawal_attempt_invalid');
+        const withdrawal = { ...previous };
+        delete withdrawal.unsigned;
+        await persist(
+          context,
+          manifest.notes.map((entry) =>
+            entry.id === note.id ? { ...entry, withdrawal } : entry
+          ),
+          basis,
+          async () => assertRestoreCurrent(),
+          assertRestoreCurrent
+        );
+      }),
+    reconcileUnsignedWithdrawals: (scope, lifetime, session) =>
+      internal(session, async (context) => {
+        if (scope.sessionGeneration !== session.generation)
+          throw new Error('privacy_vault_session_changed');
+        const current = unsignedScope(scope, lifetime);
+        const assertRestoreCurrent = restoreFence(context);
+        const identities = new WeakMap<IStoredNote, IClassicNoteIdentity>();
+        const { manifest, basis } = await load(context, identities);
+        let changed = false;
+        const notes = manifest.notes.map((note) => {
+          const marker = note.withdrawal?.unsigned;
+          if (
+            !marker ||
+            marker.lifetime === current.lifetime ||
+            !sameUnsignedScope(marker, current)
+          )
+            return note;
+          changed = true;
+          const cleared = clearUnbroadcastJournal(note);
+          const identity = identities.get(note);
+          if (!identity) throw new Error('privacy_vault_corrupt');
+          identities.set(cleared, identity);
+          return cleared;
+        });
+        if (changed)
+          await persist(
+            context,
+            notes,
+            basis,
+            async () => assertRestoreCurrent(),
+            assertRestoreCurrent
+          );
+        return noteViews(context, notes, identities);
       }),
     authorizeWithdrawalReplay: async (input, session) => {
       let attempt: Readonly<
@@ -1858,16 +1971,7 @@ export function createPrivateVaultController(
           context.session.assertCurrent();
           const identities = new WeakMap<IStoredNote, IClassicNoteIdentity>();
           const { manifest } = await load(context, identities);
-          const notes: IPrivateNoteView[] = [];
-          for (const note of manifest.notes) {
-            const identity = identities.get(note);
-            if (!identity) throw new Error('privacy_vault_corrupt');
-            notes.push(
-              view(note, identity, await readStatus(context, identity))
-            );
-          }
-          await assertProfile(context);
-          return { notes };
+          return noteViews(context, manifest.notes, identities);
         });
       } catch (error) {
         throw publicError(error);

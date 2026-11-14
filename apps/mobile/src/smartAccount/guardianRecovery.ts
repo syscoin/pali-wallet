@@ -218,7 +218,7 @@ export class NativeGuardianRecoveryController {
       error: recoveryErrorMessage(error),
     });
   }
-  private async observe() {
+  private async observe(preparingReview = false) {
     const status = await this.host.observe(this.lifetime.signal);
     this.check();
     const terminal =
@@ -242,6 +242,8 @@ export class NativeGuardianRecoveryController {
           ? 'complete'
           : status.terminal === 'obsolete'
           ? 'failed'
+          : preparingReview && status.action !== null
+          ? 'preparing'
           : status.action === 'finalize'
           ? 'ready'
           : status.transactionHash
@@ -273,9 +275,10 @@ export class NativeGuardianRecoveryController {
     if (this.busy || this.disposed) return;
     this.busy = true;
     this.clearReview();
+    this.publish({ phase: 'preparing', feeReview: null, error: null });
     try {
       this.check();
-      await this.observe();
+      await this.observe(true);
       const action = this.snapshot.action;
       if (!action || this.snapshot.phase === 'complete') return;
       const prepared = await this.host.prepare(action, this.lifetime.signal);

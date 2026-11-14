@@ -1,7 +1,7 @@
 import type { NativePrivateAuthenticationScope } from './privateAuthentication.ts';
 import { HOST_WALLET_AUTHENTICATION } from '../../../../source/shared/walletAuthentication.ts';
 import { NativeOperationDrain } from './operationDrain.ts';
-import type { IPrivacyWithdrawalAttempt } from '../../../../source/utils/privacy/withdrawalTransactionTypes.ts';
+import type { IPrivacyWithdrawalAttempt, IPrivacyWithdrawalSession } from '../../../../source/utils/privacy/withdrawalTransactionTypes.ts';
 import type { IPrivacyDepositAttempt } from '../../../../source/utils/privacy/transactionTypes.ts';
 import { generateClassicNote, identifyClassicNote } from '../../../../source/utils/privacy/note.ts';
 import type { IPrivacyNoteReader, IPrivateNoteStatus, IPrivateVaultCapacity, IPrivateVaultController } from '../../../../source/utils/privacy/privateVaultTypes.ts';
@@ -50,6 +50,7 @@ type NativeNoteBackupPorts = Readonly<{
   assertAvailable(): void;
   authenticate: IPrivateVaultHost['authenticate'];
   binding(): Promise<Readonly<{ profileId: string; walletBindingId: string }>>;
+  withdrawalScope(): Readonly<{ context: IPrivacyWithdrawalSession['context']; lifetime: string }> | null;
   notes: NonNullable<OpenWalletStorage['notes']>;
   requireReopen(): void;
   run<T>(operation: () => Promise<T>): Promise<T>;
@@ -179,12 +180,16 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
     },
     openWithdrawal(session: IPrivateVaultSession, acknowledgement: NativeNoteAcknowledgement, readNote: IPrivacyNoteReader) {
       const operational = createVault(readNote, null);
+      const scope = ports.withdrawalScope();
+      if (!scope) throw new Error('privacy_withdrawal_context_changed');
       return Object.freeze({
         withNote: <T>(noteId: string, use: (note: string, poolId: PrivacyPoolId) => Promise<T>) =>
           ports.run(() => operational.withWithdrawalNote(noteId, session, use)),
         getAttempt: (noteId: string) => ports.run(() => operational.getWithdrawalAttempt(noteId, session)),
         reserve: (attempt: IPrivacyWithdrawalAttempt, onFence: (guard: () => void) => void) =>
-          ports.run(() => operational.reserveWithdrawalAttempt(attempt, session, identity => { acknowledgement.retain(); onFence(identity.assertRestoreCurrent); })),
+          ports.run(() => operational.reserveWithdrawalAttempt(attempt, session, scope.lifetime, identity => { acknowledgement.retain(); onFence(identity.assertRestoreCurrent); })),
+        consumeUnsigned: (attempt: IPrivacyWithdrawalAttempt) =>
+          operational.consumeUnsignedWithdrawal(attempt, acknowledgement.session, scope.lifetime),
         recordSubmission: (attempt: IPrivacyWithdrawalAttempt, response: Parameters<typeof operational.recordWithdrawalSubmission>[1]) =>
           operational.recordWithdrawalSubmission(attempt, response, acknowledgement.session).finally(acknowledgement.settle),
         recordNotBroadcast: (attempt: IPrivacyWithdrawalAttempt) =>
@@ -217,7 +222,10 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
       openWithdrawal: ((id: string, poolId: PrivacyPoolId, restored: boolean, signal: AbortSignal, guard: () => void, authentication: NativePrivateAuthenticationScope) => Promise<NativePrivateWithdrawalView>) | null,
       reveal: (id: string, guard: () => void, authentication: NativePrivateAuthenticationScope) => Promise<string>): Promise<NativeNoteInventory> {
       session.assertCurrent();
-      const { notes } = await withSession(session, vault.getNotes);
+      const scope = ports.withdrawalScope();
+      const { notes } = await withSession(session, () => scope
+        ? vault.reconcileUnsignedWithdrawals(scope.context, scope.lifetime, session)
+        : vault.getNotes());
       session.assertCurrent();
       const selections = new WeakMap<NativeSavedNote, { id: string; poolId: PrivacyPoolId; restored: boolean }>();
       const rows = notes.map((note) => {

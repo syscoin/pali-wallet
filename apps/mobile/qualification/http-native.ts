@@ -18,7 +18,8 @@ export class HttpQualificationError extends Error {
   }
 }
 
-type SnapshotObservation = Omit<HttpSnapshotFailureDetail, 'rejection'>;
+type SnapshotObservation = Omit<HttpSnapshotFailureDetail, 'rejection'> &
+  Readonly<{ rejection?: HttpSnapshotFailureDetail['rejection'] }>;
 function snapshotRejection(error: unknown): HttpSnapshotFailureDetail['rejection'] {
   const code = error && typeof error === 'object' ? Object.getOwnPropertyDescriptor(error, 'code')?.value : undefined;
   if (HTTP_SNAPSHOT_REJECTIONS.includes(code)) return code;
@@ -52,6 +53,7 @@ export async function qualifyNativeSnapshotBridge(
         mismatchIndex: mismatch < 0 ? null : bounded(offset + mismatch, 16 * 1024 * 1024) };
     };
     let offset = 0;
+    let operationFailed = false;
     try {
       update({ stage: 'start' });
       const info = await abortable(handle.start(check), signal);
@@ -68,13 +70,21 @@ export async function qualifyNativeSnapshotBridge(
       const end = await abortable(handle.pull(check), signal);
       update(chunkDetail(end, offset));
       assert(end === null);
+    } catch (error) {
+      operationFailed = true;
+      const rejection = snapshotRejection(error);
+      update({ rejection: rejection === 'abort' && signal.aborted && snapshotRejection(signal.reason) === 'timeout' ? 'timeout' : rejection });
+      throw error;
     } finally {
       const previous = detail;
-      update({ stage: 'release' });
-      await handle.release();
-      detail = previous; observe(Object.freeze(detail));
+      // Keep the primary failure visible while retirement drains. Only a
+      // healthy operation can first fail in release itself.
+      if (!operationFailed) update({ stage: 'release' });
+      try { await handle.release(); }
+      catch (error) { if (!operationFailed) throw error; }
+      if (!operationFailed) { detail = previous; observe(Object.freeze(detail)); }
     }
-  } catch (error) { throw new HttpQualificationError('public-snapshot-bridge', { ...detail, rejection: snapshotRejection(error) }); }
+  } catch (error) { throw new HttpQualificationError('public-snapshot-bridge', { ...detail, rejection: detail.rejection ?? snapshotRejection(error) }); }
 }
 
 /** Native streaming boundaries are arbitrary; consume exactly the public prefix. */
@@ -89,6 +99,27 @@ async function readStart(reader: ReadableStreamDefaultReader<Uint8Array>, signal
   assert(offset === expected.length);
 }
 
+const owned = async <T>(fn: (signal: AbortSignal, abort: () => void) => Promise<T>, timeout = TIMEOUT): Promise<T> => {
+  const controller = new AbortController();
+  let timer!: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      const error = Error('HTTP_QUALIFICATION_TIMEOUT');
+      controller.abort(error); reject(error);
+    }, timeout);
+  });
+  try { return await Promise.race([fn(controller.signal, () => controller.abort()), deadline]); }
+  finally { controller.abort(); clearTimeout(timer); }
+};
+
+/** Allow the native 25s deadline to settle; a hung bridge still fails this 30s guard. */
+export function qualifyNativeSnapshot(
+  transport: Pick<OwnedPrivacyPullTransport, 'prepareSnapshot'>, origin: string,
+  observe: (detail: SnapshotObservation) => void
+): Promise<void> {
+  return owned(signal => qualifyNativeSnapshotBridge(transport, origin, signal, observe), 30_000);
+}
+
 /** Uses the production adapter and real Expo cookie jar, never global fetch. */
 export async function qualifyNativeHttp(options: Readonly<{
   launch: HttpLaunch; build: HttpBuild; walletFetch: FetchPort; cookieFetch: FetchPort;
@@ -98,15 +129,6 @@ export async function qualifyNativeHttp(options: Readonly<{
 }>): Promise<HttpReport> {
   const { launch, walletFetch, cookieFetch } = options;
   const url = (route: string) => `http://127.0.0.1:${launch.port}/${launch.token}/${route}?q=exact`;
-  const owned = async <T>(fn: (signal: AbortSignal, abort: () => void) => Promise<T>, timeout = TIMEOUT): Promise<T> => {
-    const controller = new AbortController();
-    let timer!: ReturnType<typeof setTimeout>;
-    const deadline = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => { controller.abort(); reject(Error('HTTP_QUALIFICATION_TIMEOUT')); }, timeout);
-    });
-    try { return await Promise.race([fn(controller.signal, () => controller.abort()), deadline]); }
-    finally { controller.abort(); clearTimeout(timer); }
-  };
   const query = (route: string, fetcher = walletFetch, credentials: RequestCredentials = 'omit') => owned(async (signal) => {
     const response = await fetcher(url(route), { method: 'GET', signal, credentials, redirect: 'error', cache: 'no-store' });
     assert(response.ok && response.url === url(route) && !response.redirected);
@@ -205,8 +227,8 @@ export async function qualifyNativeHttp(options: Readonly<{
     await query(`${STALLED_QUOTE_ROUTE}-closed`);
   }, 11_000);
   currentCase = 'public-snapshot-bridge';
-  await owned(signal => qualifyNativeSnapshotBridge(options.snapshotTransport, `http://127.0.0.1:${launch.port}`, signal,
-    detail => { snapshotObservation.current = detail; }));
+  await qualifyNativeSnapshot(options.snapshotTransport, `http://127.0.0.1:${launch.port}`,
+    detail => { snapshotObservation.current = detail; });
   currentCase = 'healthy-after-cancel';
   await query('healthy');
   assert(options.networkCalls() === 0);
@@ -216,6 +238,6 @@ export async function qualifyNativeHttp(options: Readonly<{
   } catch (error) {
     if (error instanceof HttpQualificationError) throw error;
     throw new HttpQualificationError(currentCase, currentCase === 'public-snapshot-bridge' && snapshotObservation.current
-      ? { ...snapshotObservation.current, rejection: snapshotRejection(error) } : null);
+      ? { ...snapshotObservation.current, rejection: snapshotObservation.current.rejection ?? snapshotRejection(error) } : null);
   }
 }

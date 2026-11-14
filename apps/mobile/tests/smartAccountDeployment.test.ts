@@ -1,6 +1,8 @@
 import { freshSmartOperationDeadline } from './nonSuiteSigningHandoff.ts';
 import { createSmartAccountCallsExecutions, normalizeDappCallsRequest } from '../../../source/shared/dappCalls.ts';
 import { buildSmartAccountErc20Transfer } from '../../../source/utils/smartAccount/erc20Transfer.ts';
+import { buildSmartAccountNftTransfer } from '../../../source/utils/smartAccount/nftTransfer.ts';
+import { EvmAssetStateError } from '../../../source/shared/evmAssetState.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
@@ -47,6 +49,58 @@ const transaction: PreparedEvmTransaction = {
 const flush = async () => {
   for (let i = 0; i < 8; i++) await Promise.resolve();
 };
+
+for (const point of ['prepare', 'untyped-prepare', 'sign', 'submit'] as const) test(`Smart asset shortfall feedback remains preparation-only (${point})`, async () => {
+  const intent = { kind: 'nft-transfer' as const, chainId: '1', from: address,
+    contractAddress: '0x2222222222222222222222222222222222222222', recipient: '0x3333333333333333333333333333333333333333',
+    tokenStandard: 'ERC-1155' as const, tokenId: '3', amountUnits: '11' };
+  const error = Object.assign(point === 'untyped-prepare'
+    ? new Error('Insufficient token or collectible balance')
+    : new EvmAssetStateError('INSUFFICIENT_ASSET'),
+  { message: 'Insufficient token or collectible balance', code: 'INSUFFICIENT_ASSET', transactionNotBroadcast: true });
+  let signatures = 0, submissions = 0;
+  const model = new NativeSmartAccountOperation({ background() {}, authorizationExpiresAt: freshSmartOperationDeadline(),
+    account: address, intent, network: getNativeNetwork('ethereum'), assertCurrent() {},
+    async prepare() {
+      if (point === 'prepare' || point === 'untyped-prepare') throw error;
+      return { kind: 'authorization', intent, operation: { ...prepared, executions: [{ ...buildSmartAccountNftTransfer(intent), nonce: '0' }] } };
+    },
+    async sign() { signatures++; if (point === 'sign') throw error; return '0xsignature'; },
+    async submit() { submissions++; throw error; },
+  });
+  try {
+    await model.prepare();
+    if (point === 'sign' || point === 'submit') await model.authorize(model.getSnapshot().revision);
+    const state = model.getSnapshot();
+    assert.equal(state.phase, 'failed');
+    assert.equal(state.preparationFailure, point === 'prepare' ? 'INSUFFICIENT_ASSET' : undefined);
+    assert.equal(signatures, point === 'prepare' || point === 'untyped-prepare' ? 0 : 1);
+    assert.equal(submissions, point === 'submit' ? 1 : 0);
+    assert.equal(state.transactionHash, null);
+    if (point === 'sign' || point === 'submit') assert.match(state.error!, /Check the account and Activity/);
+  } finally { await model.dispose(); }
+});
+
+for (const departure of ['cancel', 'dispose', 'owner'] as const) test(`late Smart asset shortfall cannot replace ${departure} with amount feedback`, async () => {
+  const gate = Promise.withResolvers<void>();
+  let current = true, signatures = 0;
+  const model = new NativeSmartAccountOperation({ background() {}, authorizationExpiresAt: freshSmartOperationDeadline(),
+    account: address, intent: { kind: 'deploy' }, network: getNativeNetwork('ethereum'),
+    assertCurrent() { if (!current) throw Error('CANCELLED'); },
+    async prepare() { await gate.promise; throw new EvmAssetStateError('INSUFFICIENT_ASSET'); },
+    async sign() { signatures++; return '0xsignature'; }, async submit() { return hash; },
+  });
+  let closing: Promise<void> | undefined;
+  try {
+    const preparing = model.prepare(); await flush();
+    if (departure === 'cancel') model.cancel();
+    else if (departure === 'dispose') closing = model.dispose();
+    else current = false;
+    gate.resolve(); await preparing;
+    assert.equal(model.getSnapshot().preparationFailure, undefined);
+    assert.equal(signatures, 0);
+  } finally { gate.resolve(); await (closing ?? model.dispose()); }
+});
 function fixture(authorizationExpiresAt = freshSmartOperationDeadline()) {
   let current = true,
     now = 0,

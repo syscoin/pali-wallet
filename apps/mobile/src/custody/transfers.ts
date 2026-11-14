@@ -847,11 +847,11 @@ export class NativeTransfers {
       this.publish({ phase: 'preparing', context, review: null, hash: null, message: null, intent: null, collectible: undefined, inspectionOnly: false });
       const journal = await runtime.journal(assertCurrent);
       assertCurrent();
-      const saved = await journal.load();
-      assertCurrent();
-      if (saved && ['signed', 'attempted', 'submitted'].includes(saved.phase)) throw new NativeTransferError('MAX_PENDING');
       const quote = await rpc.prepareMaximum(address, to, reserve, signal, nonceOverride, journal.planAutomaticNonce, feeChoice)
-        .catch((error: unknown) => this.rejectDraftNonce(error, journal, nonceOverride !== undefined));
+        .catch((error: unknown) => {
+          if (error instanceof EvmAutomaticNonceUnresolved) throw new NativeTransferError('MAX_PENDING');
+          return this.rejectDraftNonce(error, journal, nonceOverride !== undefined);
+        });
       assertCurrent();
       await this.checkDraftNonce(journal, quote.transaction.nonce, nonceOverride !== undefined);
       assertCurrent();

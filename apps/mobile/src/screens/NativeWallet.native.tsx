@@ -1572,6 +1572,66 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   };
   const recoveryNotice = recoveryOutcome && <Notice title={recoveryOutcome.kind === 'success' ? t("mobile.walletViews.walletRestored") : recoveryOutcome.kind === 'uncertain' ? t("mobile.walletViews.checkYourWallet") : t("mobile.walletViews.recoveryUpdate")} body={recoveryOutcomeText(recoveryOutcome, t) + (recoveryOutcome.cleanupFailed ? " " + t("mobile.walletViews.theWalletCouldNotBeReopenedCloseAndReopenPaliToUnlock") : '')} tone={recoveryOutcome.kind === 'success' ? undefined : 'amber'} />;
   const restoreNotice = noteRestore.step.phase === 'unconfirmed' && <Notice title={t("mobile.noteFlows.restore.restoreCouldNotBeConfirmed")} body={t("mobile.walletViews.openThisBackupAgainAfterUnlockingToSeeWhichNotesAreAlreadySaved")} tone="amber" />;
+  const smartMetadataScope = !updatePhase && !locked && stage === 'choose' && shell.tab === 'wallet' && snapshot.phase === 'ready' &&
+    selectedCatalogueAccount?.smartAccount && !signingReview && !connectionSnapshot?.accountChangeReview && !connectionSnapshot?.preparationReview &&
+    !connectionSnapshot?.psbtReview && !connectionSnapshot?.sentryReview && !connectionSnapshot?.controlReview && !connectionSnapshot?.callsStatus
+    ? JSON.stringify([selectedCatalogueAccount.id, snapshot.account?.address, snapshot.account?.network,
+      catalogue?.networks.find(network => network.id === snapshot.account?.network)]) : null;
+  const metadataDetail = portfolioDetail?.owner === controllerOwner && portfolioDetail.detail.accountId === selectedCatalogueAccount?.id &&
+    portfolioDetail.detail.networkId === snapshot.account?.network ? portfolioDetail.detail : null;
+  const smartMetadataKey = smartMetadataScope && JSON.stringify([smartMetadataScope, metadataDetail
+    ? [metadataDetail.accountId, metadataDetail.networkId, metadataDetail.token, metadataDetail.receive] : null]);
+  const smartMetadataView = useRef(smartMetadataKey);
+  const latestPortfolioDetail = useRef(portfolioDetail);
+  useLayoutEffect(() => { smartMetadataView.current = smartMetadataKey; latestPortfolioDetail.current = portfolioDetail; }, [smartMetadataKey, portfolioDetail]);
+  const smartMetadataRefresh = useRef<(() => Promise<void>) | null>(null);
+  useEffect(() => {
+    if (!smartMetadataKey || !controllerOwner) return;
+    const local = controllerOwner, capturedEpoch = epoch.current, key = smartMetadataKey, scope = smartMetadataScope;
+    let live = true, request: AbortController | undefined, pending: Promise<void> | undefined;
+    const check = () => {
+      const state = local.authority.getSnapshot(), saved = local.authority.getCatalogue();
+      if (!live || request?.signal.aborted || !mounted.current || controllersRef.current !== local || epoch.current !== capturedEpoch ||
+          smartMetadataView.current !== key || AppState.currentState !== 'active' || state.phase !== 'ready' ||
+          JSON.stringify([saved?.active.accountId, state.account?.address, state.account?.network,
+            saved?.networks.find(network => network.id === state.account?.network)]) !== scope) throw Error('CANCELLED');
+    };
+    const refresh = () => {
+      if (pending) return pending;
+      request = new AbortController();
+      let detail = latestPortfolioDetail.current;
+      const before = local.authority.getSnapshot(), savedBefore = local.authority.getCatalogue();
+      const preserveDetail = detail?.owner === local && detail.context === `${before.revision}:${savedBefore?.active.accountId}:${before.account?.network}`;
+      const checkRequest = () => { check(); if (latestPortfolioDetail.current !== detail) throw Error('CANCELLED'); };
+      const published = () => {
+        checkRequest();
+        const state = local.authority.getSnapshot(), saved = local.authority.getCatalogue();
+        setCatalogue(saved);
+        setCanSignSmart(local.canSignSmartAccount()); setCanManageSlh(local.canManageSlhDsa());
+        setCanManageModules(local.canManageSmartAccountModules()); setCanUseWalletAuthenticator(local.canUseWalletAuthenticator());
+        if (preserveDetail && detail?.owner === local && detail.detail.accountId === saved?.active.accountId && detail.detail.networkId === state.account?.network) {
+          detail = { ...detail, context: `${state.revision}:${saved.active.accountId}:${state.account.network}` };
+          latestPortfolioDetail.current = detail;
+          setPortfolioDetail(detail);
+        }
+        bridge.current?.onNativeCatalogue(saved);
+      };
+      pending = Promise.resolve().then(async () => {
+        try {
+          checkRequest(); await local.refreshSmartAccountMetadata(request!.signal, checkRequest, published); checkRequest();
+        } catch { /* Keep the last observed metadata until a later explicit refresh. */ }
+      }).finally(() => { pending = undefined; });
+      return pending;
+    };
+    smartMetadataRefresh.current = refresh;
+    void refresh();
+    const background = AppState.addEventListener('change', state => { if (state !== 'active') request?.abort(); });
+    return () => {
+      live = false; request?.abort(); background.remove();
+      if (smartMetadataRefresh.current === refresh) smartMetadataRefresh.current = null;
+    };
+  }, [smartMetadataKey, smartMetadataScope, controllerOwner, controllersRef]);
+  const refreshVisibleSmartAccount = useCallback(async () => { await smartMetadataRefresh.current?.(); }, []);
   if (updatePhase) return <WalletUpdateScreen phase={updatePhase} onBack={() => void closeWalletUpdate()} />;
   if (stage === 'recovery' && recoveryFlow) return <NativeRecovery flow={recoveryFlow} />;
   if (snapshot.phase === 'empty' && stage === 'choose') return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
@@ -1987,6 +2047,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     if (shell.tab === 'wallet') content = <NativePortfolioRoute overview={utxo ? null : accountPortfolio} selectNetwork={selectPortfolioNetwork} sendFrom={sendFromPortfolio} detail={visiblePortfolioDetail} closeDetail={() => setPortfolioDetail(null)} navigateDetail={openPortfolioDetail} navigateActivity={openPortfolioActivity} cancelSelection={() => { if (accountNavigation.current) revoke(); else controllersRef.current?.authority.cancelAccountOperation(); }}
     hardwareRequest={trezorView ? <NativeTrezorResumeNotice controller={trezorView} onResume={() => openStage('trezor')} /> : undefined}
     smartAccount={selectedCatalogueAccount?.smartAccount}
+    onRefreshSmartAccount={selectedCatalogueAccount?.smartAccount ? refreshVisibleSmartAccount : undefined}
     onManageSmartAccountModules={selectedCatalogueAccount?.smartAccount?.isDeployed && canManageModules && openSmartAccountModules ? () => openStage('smart-modules') : undefined}
     onManageSlhDsa={canManageSlh && openSlhDsaManagement ? () => openStage('slh-dsa') : undefined}
     onUseWalletAuthenticator={canUseWalletAuthenticator && openWalletAuthenticator ? () => openStage('smart-authenticator') : undefined}

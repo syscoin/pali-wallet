@@ -1,3 +1,4 @@
+import type { SmartAccountAuthenticatorPurpose } from '../../../../source/utils/smartAccount/moduleCommands';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -89,8 +90,8 @@ export function NativeSlhDsaManagementScreen({ open, onBack, ledgerConnection }:
     });
   };
   const reportProgress = (owner: Owner) => (value: { completed: number; total: number }) => { check(owner); setProgress(Math.floor(value.completed * 100 / value.total)); };
-  const install = (keyId: string) => action(async (owner, value) => {
-    const next = await value.openInstall(keyId, owner.abort.signal, () => check(owner));
+  const install = (keyId: string, purpose: SmartAccountAuthenticatorPurpose) => action(async (owner, value) => {
+    const next = await value.openInstall(keyId, purpose, owner.abort.signal, () => check(owner));
     try { check(owner); owner.operation = next; setOperationAuthentication(owner.authentication); setOperation(next); }
     catch (error) { await next.dispose(); throw error; }
   });
@@ -109,7 +110,8 @@ export function NativeSlhDsaManagementScreen({ open, onBack, ledgerConnection }:
     {state && <Text accessibilityLabel={`SLH-DSA ${state.signatureCount} / ${state.signatureLimit}`}>SLH-DSA · {state.signatureCount} / {state.signatureLimit}</Text>}
     {!state && <Text>{t('settings.slhDsaLocalSignerMissing')}</Text>}
     {state && <View style={s.actions}>
-      <Button title={t('settings.useSmartAccountValidator')} disabled={busy || closing || !manager?.isDeployed} onPress={() => install(keyId)} />
+      <Button title={t('settings.useSmartAccountValidator')} disabled={busy || closing || !manager?.isDeployed} onPress={() => install(keyId, 'replace')} />
+      {!installed && !manager?.installedKeys.length && <Button title={t('settings.addToCombinedApprovals')} icon="plus" variant="secondary" disabled={busy || closing || !manager?.isDeployed} onPress={() => install(keyId, 'add-to-combined')} />}
       <Button title={t('settings.slhDsaRegenerateLocalSigner')} variant="secondary" disabled={busy || closing} onPress={() => action(async (owner, value) => {
         if (installed) await value.rebuildInstalled(keyId, reportProgress(owner)); else await value.rebuildPrepared(keyId, reportProgress(owner));
         check(owner); await load(owner);

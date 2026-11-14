@@ -184,6 +184,18 @@ it('links only the frozen reviewed identity through one atomic registry commit w
   await expect(f.manager.confirmLink(review)).rejects.toThrow('expired');
 });
 
+it.each(['abc', 'g'.repeat(64), 'a'.repeat(63), `0x${'ab'.repeat(32)}`])(
+  'rejects malformed registration %s before any node read or write',
+  async (proTxHash) => {
+    const f = fixture();
+    await expect(
+      f.manager.prepareLink({ ...request, proTxHash }, 'Pali wallet')
+    ).rejects.toThrow('Supply a versioned Sentry node identity only');
+    expect(f.fetch).not.toHaveBeenCalled();
+    expect(f.write).not.toHaveBeenCalled();
+  }
+);
+
 it('refuses a substituted review even when its fields match', async () => {
   const f = fixture();
   const review = await f.manager.prepareLink(request, 'Pali wallet');

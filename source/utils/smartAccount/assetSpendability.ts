@@ -5,6 +5,7 @@ import { isCallException, isHexString } from 'ethers/utils';
 import { decodeAssetTransfer } from '../../shared/assetTransfer.ts';
 import { parseErc20Decimals } from '../../shared/erc20.ts';
 import {
+  EvmAssetStateError,
   readEvmAssetBalance,
   type EvmAssetRead,
   type EvmTransferAsset,
@@ -218,7 +219,10 @@ export async function assertSmartAccountAssetSpendability({
       );
       check();
       if (balance < BigInt(asset.amountUnits))
-        throw rejected('Insufficient token or collectible balance');
+        throw Object.assign(new EvmAssetStateError('INSUFFICIENT_ASSET'), {
+          message: 'Insufficient token or collectible balance',
+          transactionNotBroadcast: true,
+        });
     }
     const result = await read('eth_call', [
       {

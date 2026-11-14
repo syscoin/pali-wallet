@@ -31,9 +31,9 @@ function metadata(): ISmartAccountMetadata {
     ] };
 }
 const ui = { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} };
-function fixture(passkeys = false) {
+function fixture(passkeys = false, observed = metadata()) {
   let returned = 0, reads = 0, opens = 0, disposed = 0, failPasskey = false;
-  const passkeyRequests: boolean[] = [];
+  const passkeyRequests: boolean[] = []; const passkeyPurposes: string[] = []; const walletRequests: string[] = [];
   let readWait: Promise<void> = Promise.resolve(), openWait: Promise<void> = Promise.resolve();
   const drafts: any[] = [], preflights: string[] = [], events = new Map<string, (...args: any[]) => void>();
   const native = { AppState: { currentState: 'active', addEventListener(event: string, callback: (...args: any[]) => void) { events.set(event, callback); return { remove() { events.delete(event); } }; } },
@@ -41,7 +41,8 @@ function fixture(passkeys = false) {
   const operation = { async dispose() { disposed++; } };
   let authentication!: privateAuthentication.NativePrivateAuthenticationScope, guard!: () => void;
   const manager = { accountAddress: ownerAddress, networkName: 'Ethereum', passkeysAvailable: passkeys,
-    async openPasskey(recreate: boolean, signal: AbortSignal, guard: () => void) { guard(); assert(!signal.aborted); passkeyRequests.push(recreate); if (failPasskey && !recreate) throw Object.assign(Error('Unavailable'), {code:'PASSKEY_POSSESSION_FAILED'}); await openWait; return operation; }, async read() { reads++; await readWait; return metadata(); },
+    async openPasskey(recreate: boolean, purpose: string, signal: AbortSignal, guard: () => void) { guard(); assert(!signal.aborted); passkeyRequests.push(recreate); passkeyPurposes.push(purpose); if (failPasskey && !recreate) throw Object.assign(Error('Unavailable'), {code:'PASSKEY_POSSESSION_FAILED'}); await openWait; return operation; }, async read() { reads++; await readWait; return observed; },
+    async openWalletAuthenticator(signal: AbortSignal, guard: () => void) { guard(); assert(!signal.aborted); walletRequests.push('add-to-combined'); await openWait; return operation; },
     async preflightCustom(address: string) { preflights.push(address); return { ok: true, failures: [], compositeCompatible: true }; },
     async openChange(draft: any, signal: AbortSignal, guard: () => void) { assert.equal(signal.aborted, false); guard(); drafts.push(draft); await openWait; return operation; } };
   const open = async (_signal: AbortSignal, check: () => void, scope: privateAuthentication.NativePrivateAuthenticationScope) => { authentication = scope; guard = check; guard(); opens++; return manager; };
@@ -58,7 +59,7 @@ function fixture(passkeys = false) {
   const button = (title: string) => { const value = render().find(element => element.type === 'Button' && element.props.title === title); assert(value, `Missing button ${title}`); return value; };
   const edit = (label: string, value: string) => { const field = render().find(element => element.type === 'Input' && element.props.label === label); assert(field); field.props.onChange(value); };
   const switchValue = (label: string, value: boolean) => { const field = render().find(element => element.type === 'Switch' && element.props.accessibilityLabel === label); assert(field); field.props.onValueChange(value); };
-  return { render, button, edit, switchValue, drafts, preflights, operation, passkeyRequests, failPasskey() { failPasskey = true; }, close: screen.close,
+  return { render, button, edit, switchValue, drafts, preflights, operation, passkeyRequests, passkeyPurposes, walletRequests, failPasskey() { failPasskey = true; }, close: screen.close,
     get authentication() { return authentication; }, guard: () => guard(),
     event(state: string) { native.AppState.currentState = state; events.get('change')?.(state); },
     get returned() { return returned; }, get disposed() { return disposed; }, get opens() { return opens; }, get reads() { return reads; },
@@ -361,4 +362,32 @@ test('shared module content preserves acknowledgement only for its own prompt an
     assert.equal(f.checkbox().props.value, true); f.button().props.onPress(); assert.deepEqual(f.acknowledgements, [true]);
     f.background(); f.active(); f.button().props.onPress(); assert.deepEqual(f.acknowledgements, [true]);
   } finally { held.resolve(); await proof.catch(() => undefined); authentication.retire(); f.close(); }
+});
+
+
+test('Add Passkey to Combined preserves its explicit purpose through possession failure and recreation', async () => {
+  const f = fixture(true); f.render(); await tick();
+  try {
+    const button = f.button(t('settings.addPasskeyToCombinedApprovals')); assert.equal(button.props.icon, 'fingerprint');
+    f.failPasskey(); button.props.onPress(); await tick();
+    assert.deepEqual(f.passkeyPurposes, ['add-to-combined']);
+    f.button(t('settings.smartAccountPasskeyRecreateConfirmButton')).props.onPress(); await tick();
+    assert.deepEqual(f.passkeyRequests, [false, true]);
+    assert.deepEqual(f.passkeyPurposes, ['add-to-combined', 'add-to-combined']);
+    assert.equal(f.render()[0]!.type, 'Operation');
+  } finally { f.close(); }
+});
+
+test('Add Pali Wallet to Combined enters one owned operation and disappears once ECDSA is installed', async () => {
+  const observed = metadata(); observed.installedModules = observed.installedModules!.filter(module => module.id !== 'ecdsa');
+  const f = fixture(false, observed); f.render(); await tick();
+  try {
+    const button = f.button(t('settings.addWalletToCombinedApprovals')); assert.equal(button.props.icon, 'wallet');
+    button.props.onPress(); button.props.onPress(); await tick();
+    assert.deepEqual(f.walletRequests, ['add-to-combined']);
+    assert.equal(f.render()[0]!.type, 'Operation');
+  } finally { f.close(); }
+  const existing = fixture(); existing.render(); await tick();
+  try { assert(!existing.render().some(node => node.type === 'Button' && node.props.title === t('settings.addWalletToCombinedApprovals'))); }
+  finally { existing.close(); }
 });

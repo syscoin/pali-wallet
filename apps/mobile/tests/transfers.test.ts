@@ -397,6 +397,25 @@ test('native MAX refuses externally pending and retained outgoing transactions',
   } finally { retained.close(); }
 });
 
+test('native MAX accepts a consumed nonce while its local record still says submitted', async () => {
+  const f = fixture('HDAccount');
+  try {
+    const approved = await review(f);
+    await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
+    const journal = await f.runtime.journal(() => {});
+    assert.equal((await journal.load())?.phase, 'submitted');
+    f.consumeNonce();
+    const signatures = f.signatures(), broadcasts = f.broadcasts.length;
+    await f.transfers.prepareMaximum(to);
+    const maximum = f.transfers.getSnapshot().review;
+    assert(maximum);
+    assert.equal(maximum.nonce, '1');
+    assert.equal((await journal.load())?.phase, 'submitted', 'MAX uses fresh nonce evidence without manufacturing a receipt');
+    assert.equal(f.signatures(), signatures);
+    assert.equal(f.broadcasts.length, broadcasts);
+  } finally { f.close(); }
+});
+
 test('native MAX preserves an explicit unused higher nonce through the reviewed signature', async () => {
   const f = fixture('HDAccount');
   try {

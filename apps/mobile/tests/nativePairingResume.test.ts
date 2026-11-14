@@ -70,6 +70,11 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   let selectionGate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
   let externalResume: (() => Promise<void>) | undefined;
   const externalResumes: string[] = [];
+  const metadataReads: { signal: AbortSignal; check(): void }[] = [];
+  let metadataGate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
+  let observedDeployment: boolean | undefined;
+  let metadataPublished: (() => void) | undefined;
+  let metadataPublishing: (() => void) | undefined;
   const viewPrivacy = createTestPublicViewLock();
   const custodyIdle = new IdleLock(() => ({ monotonic: now, wall: now }));
   let viewAuthorizations = 0, rejectViewAuthorization = false;
@@ -298,6 +303,22 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     async openSmartAccountModules() { throw Error('Modules are outside this fixture'); },
     async openSlhDsaManagement(_signal: AbortSignal, check: () => void) { check(); authenticatorGuards.push(check); return { installedKeys: [] }; },
     canUseWalletAuthenticator: () => smartAccount && canManage && catalogue.accounts[0]?.smartAccount?.isDeployed === true,
+    async refreshSmartAccountMetadata(signal: AbortSignal, check: () => void, onPublished: () => void) {
+      const before = snapshot, saved = catalogue, gate = metadataGate;
+      check(); metadataReads.push({ signal, check });
+      await gate?.promise;
+      check();
+      if (signal.aborted || snapshot !== before || catalogue !== saved) throw Error('CANCELLED');
+      const isDeployed = observedDeployment;
+      if (isDeployed === undefined) return;
+      catalogue = { ...catalogue, revision: catalogue.revision + 1,
+        accounts: catalogue.accounts.map(account => account.id === catalogue.active.accountId
+          ? { ...account, smartAccount: { ...account.smartAccount!, isDeployed } } : account) };
+      // Runtime metadata publication changes its catalogue, not the custody authority snapshot.
+      metadataPublishing?.();
+      try { onPublished(); } catch { /* Match committed runtime publication. */ }
+      metadataPublished?.();
+    },
     async openWalletAuthenticator(_signal: AbortSignal, check: () => void) {
       check();
       authenticatorGuards.push(check);
@@ -542,6 +563,15 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     holdSelection() { return selectionGate = Promise.withResolvers<void>(); },
     resumeExternal(work: () => Promise<void>) { externalResume = work; },
     externalResumes: () => externalResumes,
+    observeDeployment(value: boolean) { observedDeployment = value; },
+    onMetadataPublished(callback: () => void) { metadataPublished = callback; },
+    beforeMetadataPublished(callback: () => void) { metadataPublishing = callback; },
+    metadataReads: () => metadataReads,
+    authoritySnapshot: () => snapshot,
+    holdMetadata() {
+      const gate = metadataGate = Promise.withResolvers<void>();
+      return { resolve() { metadataGate = undefined; gate.resolve(); } };
+    },
     acquisitions: () => acquisitions,
     releases: () => releases,
     viewPrivacy,
@@ -1526,4 +1556,124 @@ test('late Trezor external resume cannot close a newer visit under the same Acco
     gate.resolve(); await pending;
     assert.equal(f.render().type, 'NativeTrezor', 'the previous completion does not close a new Trezor visit under the same root');
   } finally { gate.resolve(); await pending; f.dispose(); }
+});
+
+test('visible Smart overview adopts runtime-only metadata publication without an authority event or revision loop', async () => {
+  const f = await mounted(true, true, false, true, false, false, false, true);
+  try {
+    assert.equal(typeof find(f.render(), node => node.type === 'NativePortfolio')!.props.onDeploySmartAccount, 'function');
+    const authority = f.authoritySnapshot();
+    f.observeDeployment(true);
+    f.showTools(); f.render();
+    f.showWallet(); f.render(); await settle(); f.render(); await settle();
+    const portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    assert.equal(portfolio.props.smartAccount.isDeployed, true);
+    assert.equal(portfolio.props.onDeploySmartAccount, undefined);
+    assert.equal(typeof portfolio.props.onManageSmartAccountModules, 'function');
+    assert.equal(typeof portfolio.props.onUseWalletAuthenticator, 'function');
+    assert.equal(f.authoritySnapshot(), authority, 'metadata publication does not replace or notify the authority snapshot');
+    assert.equal(f.metadataReads().length, 2);
+    f.render(); await settle(); f.render();
+    assert.equal(f.metadataReads().length, 2, 'publishing metadata does not start another read');
+    assert.equal(f.viewAuthorizations(), 0, 'public metadata refresh does not request OS authorization');
+  } finally { f.dispose(); }
+});
+
+test('manual Smart metadata refresh preserves the same open asset detail and coalesces requests', async () => {
+  const f = await mounted(true, true, false, true, false, false, false, true);
+  const gate = f.holdMetadata();
+  try {
+    let portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    await portfolio.props.navigateDetail(f.activityChoice(), false, undefined, () => {});
+    portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    const detail = portfolio.props.detail;
+    assert(detail);
+    let duringPublication: unknown;
+    let forcedPublicationRender = false;
+    f.beforeMetadataPublished(() => { f.render(); forcedPublicationRender = true; });
+    f.onMetadataPublished(() => {
+      duringPublication = find(f.render(), node => node.type === 'NativePortfolio')!.props.detail;
+    });
+    f.observeDeployment(true);
+    const first = portfolio.props.onRefreshSmartAccount(), second = portfolio.props.onRefreshSmartAccount();
+    await settle();
+    assert.equal(f.metadataReads().length, 2);
+    gate.resolve(); await Promise.all([first, second]);
+    portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    assert.equal(portfolio.props.smartAccount.isDeployed, true);
+    assert.equal(forcedPublicationRender, true);
+    assert.equal(duringPublication, detail, 'the detail is preserved in the publication turn before the refresh promise returns');
+    assert.equal(portfolio.props.detail, detail, 'only the owned detail context is advanced');
+    assert.equal(f.metadataReads().length, 2);
+  } finally { gate.resolve(); f.dispose(); }
+});
+
+test('leaving the Smart overview cancels metadata and cannot revive the previous detail', async () => {
+  const f = await mounted(true, true, false, true, false, false, false, true);
+  const gate = f.holdMetadata();
+  try {
+    let portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    await portfolio.props.navigateDetail(f.activityChoice(), false, undefined, () => {});
+    portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    f.observeDeployment(true);
+    const pending = portfolio.props.onRefreshSmartAccount(); await settle();
+    portfolio.props.closeDetail();
+    f.showTools(); f.render();
+    assert.equal(f.metadataReads().at(-1)!.signal.aborted, true);
+    gate.resolve(); await pending;
+    assert(find(f.render(), node => node.type === 'RealTools'));
+    f.observeDeployment(false);
+    f.showWallet(); f.render(); await settle();
+    portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    assert.equal(portfolio.props.smartAccount.isDeployed, false);
+    assert.equal(portfolio.props.detail, undefined, 'cancelled metadata cannot rebind a stale detail');
+    assert.equal(f.metadataReads().length, 3);
+    f.render(); await settle(); assert.equal(f.metadataReads().length, 3, 'unchanged undeployed observation does not loop');
+  } finally { gate.resolve(); f.dispose(); }
+});
+
+test('ordinary account overview does not read Smart deployment metadata', async () => {
+  const f = await mounted(true, false, false, true, false, false, false, true);
+  try {
+    assert.equal(f.metadataReads().length, 0);
+    assert.equal(find(f.render(), node => node.type === 'NativePortfolio')!.props.onRefreshSmartAccount, undefined);
+  } finally { f.dispose(); }
+});
+
+test('an external revision during Smart refresh cannot rebind the previous detail', async () => {
+  const f = await mounted(true, true, false, true, false, false, false, true);
+  const gate = f.holdMetadata();
+  try {
+    let portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    await portfolio.props.navigateDetail(f.activityChoice(), false, undefined, () => {});
+    portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    f.observeDeployment(true);
+    const pending = portfolio.props.onRefreshSmartAccount(); await settle();
+    f.readyAtRevision(50); f.render();
+    gate.resolve(); await pending;
+    portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    assert.equal(portfolio.props.smartAccount.isDeployed, false);
+    assert.equal(portfolio.props.detail, undefined);
+    assert.equal(f.metadataReads().length, 2);
+  } finally { gate.resolve(); f.dispose(); }
+});
+
+test('opening a Smart detail retries an unfinished overview observation without a revision loop', async () => {
+  const f = await mounted(true, true, false, true, false, false, false, true);
+  const gate = f.holdMetadata();
+  try {
+    f.observeDeployment(true);
+    f.showTools(); f.render(); f.showWallet(); f.render(); await settle();
+    const abandoned = f.metadataReads().at(-1)!;
+    const portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    await portfolio.props.navigateDetail(f.activityChoice(), false, undefined, () => {});
+    f.render(); await settle();
+    assert.equal(abandoned.signal.aborted, true);
+    assert.equal(f.metadataReads().length, 3);
+    gate.resolve(); await settle();
+    const detail = find(f.render(), node => node.type === 'NativePortfolio')!;
+    assert.equal(detail.props.smartAccount.isDeployed, true);
+    assert(detail.props.detail);
+    f.render(); await settle(); assert.equal(f.metadataReads().length, 3);
+  } finally { gate.resolve(); f.dispose(); }
 });

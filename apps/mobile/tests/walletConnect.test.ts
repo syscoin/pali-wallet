@@ -94,6 +94,8 @@ function fixture() {
   const history: unknown[] = [];
   const listeners = new Map<string, (event: unknown) => void>();
   const repository = {
+    connectionsEnabled: () => true,
+    async setConnectionsEnabled() { throw Error('Unused transport admission control'); },
     assertHealthy() {
       if (!healthy) throw new Error('private storage error');
     },

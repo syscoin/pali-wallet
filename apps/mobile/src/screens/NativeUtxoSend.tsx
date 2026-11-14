@@ -1,3 +1,4 @@
+import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { AUTOMATIC_FEE, snapshotUtxoFeeChoice, type UtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice';
 import { NetworkFeeSheet } from './NetworkFeeSheet';
@@ -121,6 +122,7 @@ export function NativeUtxoSendScreen({
   onBack(): void;
 }) {
   useNativeTranslation();
+  const { hidden: hideBalances } = useBalancePrivacy();
   const [ledgerPicker, setLedgerPicker] = useState<NativeLedgerConnectionView | null>(null);
   const ledgerReady = useSyncExternalStore(
     (listener) => ledgerConnection?.subscribe(listener) ?? (() => undefined),
@@ -283,7 +285,7 @@ export function NativeUtxoSendScreen({
   const symbol = asset?.symbol ?? network.symbol;
   const availableLabel = availableAmount === undefined
     ? t('mobile.accountPortfolio.balanceUnavailable')
-    : t('mobile.sendAssetViews.utxo.availableAmount', { amount: availableAmount, symbol });
+    : t('mobile.sendAssetViews.utxo.availableAmount', { amount: hideBalances ? HIDDEN_BALANCE : availableAmount, symbol });
   const units = (value: string) =>
     `${formatBaseUnits(value, network.decimals)} ${network.symbol}`;
   const assetUnits = ({

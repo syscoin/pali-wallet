@@ -2,6 +2,7 @@ import { walletUiFixture } from './walletUiFixture.ts';
 import * as transactionFeeChoice from '../../../source/shared/transactionFeeChoice.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import * as cameraPermission from '../src/platform/cameraPermission.ts';
+import * as balancePrivacy from '../src/core/balancePrivacy.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { NativeSigningHandoffs, type NativeSigningHandoff } from '../src/connections/signingHandoff.ts';
 import assert from 'node:assert/strict';
@@ -160,7 +161,32 @@ function harness(
       const text = key.split('.').reduce((value: any, part) => value?.[part], dictionary) ?? key;
       return typeof text === 'string' ? text.replace(/{{-?\s*(\w+)\s*}}/g, (match: string, name: string) => String(values[name] ?? match)) : text;
     };
+  const privacyModule = { exports: {} as Record<string, unknown> };
+  const privacyDependencies: Record<string, unknown> = {
+    react,
+    'react-native': native,
+    '../core/balancePrivacy.ts': balancePrivacy,
+    './credential': {
+      authorizePublicView: () => assert.fail('Send lifecycle must not request a privacy reveal'),
+    },
+    'expo-secure-store': {
+      WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
+      getItemAsync: async () => null,
+      setItemAsync: () => assert.fail('Send lifecycle must not change privacy settings'),
+    },
+  };
+  const privacyCode = ts.transpileModule(readFileSync(
+    new NodeURL('../src/platform/balancePrivacy.ts', import.meta.url), 'utf8'
+  ), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
+  runInNewContext(privacyCode, {
+    module: privacyModule, exports: privacyModule.exports,
+    require(dependency: string) {
+      assert(Object.hasOwn(privacyDependencies, dependency), dependency);
+      return privacyDependencies[dependency];
+    },
+  });
   const dependencies: Record<string, unknown> = {
+    '../platform/balancePrivacy': privacyModule.exports,
     react,
     '../../../../source/shared/transactionFeeChoice': transactionFeeChoice,
     './NetworkFeeSheet': { NetworkFeeSheet: 'NetworkFeeSheet' },
@@ -424,6 +450,7 @@ function operationState(): NativeSmartAccountOperationSnapshot {
     intent: {
       kind: 'authenticator',
       command: {
+        purpose: 'replace',
         accountAddress: account,
         chainId: 1,
         sourceAuthHash: hash,
@@ -703,8 +730,8 @@ function slhManager(overrides: Record<string, unknown> = {}) {
 test('SLH management reviews the exact prepared key once and drains a late operation after Back', async () => {
   const f = harness('NativeSlhDsaManagement'), held = Promise.withResolvers<any>(), drained = Promise.withResolvers<void>();
   const calls: string[] = []; let capturedSignal!: AbortSignal, capturedCheck!: () => void;
-  const { key, manager } = slhManager({ openInstall(keyId: string, signal: AbortSignal, check: () => void) {
-    assert.equal(keyId, 'exact-prepared-key'); capturedSignal = signal; capturedCheck = check; calls.push('open'); return held.promise;
+  const { key, manager } = slhManager({ openInstall(keyId: string, purpose: string, signal: AbortSignal, check: () => void) {
+    assert.equal(keyId, 'exact-prepared-key'); assert.equal(purpose, 'replace'); capturedSignal = signal; capturedCheck = check; calls.push('open'); return held.promise;
   } });
   const props = { open: async () => manager, onBack: () => calls.push('back') };
   f.render('NativeSlhDsaManagementScreen', props); await settle();
@@ -916,3 +943,34 @@ for (const route of ['authenticator', 'deployment', 'send', 'guardian', 'slh'] a
     } finally { await prompt.finish(); f.f.dispose(); }
   });
 }
+
+
+test('SLH Add to Combined reviews the same prepared key with an explicit additive purpose', async () => {
+  const f = harness('NativeSlhDsaManagement'); const calls: string[] = [];
+  const dictionary = JSON.parse(readFileSync(new NodeURL('../../../source/assets/locales/en.json', import.meta.url), 'utf8'));
+  const { manager } = slhManager({ async openInstall(keyId: string, purpose: string, signal: AbortSignal, check: () => void) {
+    check(); assert(!signal.aborted); assert.equal(keyId, 'exact-prepared-key'); calls.push(purpose); return { async dispose() {} };
+  } });
+  const props = { open: async () => manager, onBack() {} };
+  try {
+    f.render('NativeSlhDsaManagementScreen', props); await settle();
+    const button = one(f.render('NativeSlhDsaManagementScreen', props), 'Button', dictionary.settings.addToCombinedApprovals);
+    assert.equal(button.props.icon, 'plus'); button.props.onPress(); button.props.onPress(); await settle();
+    assert.deepEqual(calls, ['add-to-combined']);
+  } finally { f.dispose(); }
+});
+
+
+test('additive approval review says the existing method stays active through payer confirmation', () => {
+  const f=harness('NativeSmartAccountOperation'), previous=operationState();
+  if(previous.intent.kind!=='authenticator')throw Error('Wrong fixture');
+  const state={...previous,intent:{...previous.intent,command:{...previous.intent.command,purpose:'add-to-combined' as const}}};
+  const dictionary=JSON.parse(readFileSync(new NodeURL('../../../source/assets/locales/en.json',import.meta.url),'utf8'));
+  const props={state,authorize(){},confirmPayer(){},onBack(){}};
+  try {
+    const tree=f.render('NativeSmartAccountOperationContent',props);
+    assert.equal(one(tree,'Header').props.title,dictionary.settings.addToCombinedApprovals);
+    assert(all(tree).some(node=>node.children.includes(dictionary.settings.existingApprovalUnchanged)));
+    assert(!all(tree).some(node=>node.children.includes('Replace how this account approves transactions. Review the new owners and threshold.')));
+  }finally{f.dispose();}
+});

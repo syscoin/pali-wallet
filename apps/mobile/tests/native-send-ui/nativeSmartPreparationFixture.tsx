@@ -24,7 +24,7 @@ const initialReview = Object.freeze<NativeSmartPreparationReview>({
 });
 
 const baseSnapshot = Object.freeze<NativeConnectionsSnapshot>({
-  revision: 7, status: 'ready', pairingExpiresAt: null,
+  revision: 7, status: 'ready', connectionsEnabled: true, connectionSettingsBusy: false, pairingExpiresAt: null,
   network: { id: 'ethereum', label: 'Ethereum', chainId: '1' },
   accounts: [], selectedAccountId: null, proposals: [], sessions: [],
   preparationReview: null, signingReview: null, psbtReview: null,

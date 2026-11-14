@@ -23,6 +23,7 @@ import type {
 } from '../../../source/types/network.ts';
 import {
   NATIVE_CONNECTION_STORAGE_KEY,
+  NATIVE_CONNECTION_ADMISSION_KEY,
   openNativeConnectionRepository,
   type NativeConnectionBinding,
 } from '../src/connections/storage.ts';
@@ -619,8 +620,8 @@ test('a staged grant with lost acknowledgement stays denied after reopen and ord
     const repository = await openNativeConnectionRepository({
       storage: {
         ...storage,
-        async createManyIfAbsent(items, guard) {
-          await storage.createManyIfAbsent(items, guard);
+        async compareAndSetMany(items, guard) {
+          await storage.compareAndSetMany(items, guard);
           throw new Error(
             'simulated acknowledgement lost after the committed write'
           );
@@ -887,6 +888,7 @@ for (const failure of ['conflict', 'acknowledgement-loss'] as const) {
     const rows = new Map<string, unknown>([
       ['vault', 'retained-wallet-record'],
     ]);
+    let commits = 0;
     const storage: KeyringStoragePort = {
       get: async (key) => structuredClone(rows.get(key)),
       set: async (key, value) => {
@@ -907,10 +909,15 @@ for (const failure of ['conflict', 'acknowledgement-loss'] as const) {
         rows.set(key, structuredClone(value));
         throw new Error('private transport error must not escape');
       },
-      compareAndSetMany: async () => {
-        throw new Error(
-          'Account retirement is outside this transport failure fixture'
-        );
+      compareAndSetMany: async (changes, guard) => {
+        guard();
+        if (commits++ && failure === 'conflict') return false;
+        for (const { key, value } of changes) {
+          if (value === undefined) rows.delete(key);
+          else rows.set(key, structuredClone(value));
+        }
+        if (commits > 1) throw Error('private storage acknowledgement lost');
+        return true;
       },
     };
     const repository = await openNativeConnectionRepository({
@@ -1050,5 +1057,80 @@ test('bundle metadata uses the existing connection document budget for valid lon
     await repository.dispose();
     const reopened = await openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: WALLET, assertOwner: current });
     assert(await reopened.calls.getStoredSendCallsBundle(ORIGIN, '0x000f' + 'a'.repeat(8188)));
+  } finally { await f.close(); }
+});
+
+test('connection admission pauses durably, preserves history, and fresh enable never restores grants', async () => {
+  const f = await fixture();
+  try {
+    let repository = await openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: WALLET, assertOwner: current });
+    const port = await publish(repository);
+    await repository.transport.setItem('retained-session-metadata', { retained: true });
+    assert.equal(await repository.calls.reserveSendCallsBundle(ORIGIN, '0xad', { atomic: false, smartAccount: false, chainId: 1 }, 'attempt', '0x' + '11'.repeat(20)), true);
+    assert.equal(repository.connectionsEnabled(), true);
+    await repository.setConnectionsEnabled(false, current);
+    assert.equal(repository.connectionsEnabled(), false);
+    assert.deepEqual(repository.bindings(), []);
+    assert.throws(() => port.publish(FRAME));
+    await assert.rejects(port.exclusive(() => port.write(FRAME)));
+    await repository.dispose();
+    await f.reopen();
+    repository = await openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: WALLET, assertOwner: current });
+    assert.equal(repository.connectionsEnabled(), false);
+    assert.deepEqual(repository.bindings(), []);
+    assert.deepEqual(await repository.transport.getItem('retained-session-metadata'), { retained: true });
+    assert.ok(await repository.calls.getStoredSendCallsBundle(ORIGIN, '0xad'));
+    await repository.setConnectionsEnabled(true, current);
+    assert.deepEqual(repository.bindings(), []);
+    await publish(repository);
+    assert.equal(repository.bindings().length, 1);
+    await repository.dispose();
+  } finally { await f.close(); }
+});
+
+test('a stale repository cannot commit a grant after another repository pauses admission', async () => {
+  const f = await fixture();
+  try {
+    const active = await openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: WALLET, assertOwner: current });
+    await publish(active);
+    const stale = await openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: WALLET, assertOwner: current });
+    await active.setConnectionsEnabled(false, current);
+    await assert.rejects(publish(stale, { ...BINDING, topic: '55'.repeat(32) }));
+    assert.throws(() => stale.assertHealthy());
+    const reopened = await openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: WALLET, assertOwner: current });
+    assert.equal(reopened.connectionsEnabled(), false);
+    assert.deepEqual(reopened.bindings(), []);
+    await active.dispose(); await stale.dispose(); await reopened.dispose();
+  } finally { await f.close(); }
+});
+
+test('lost acknowledgement after atomic admission pause reopens disabled with every grant removed', async () => {
+  const f = await fixture();
+  try {
+    let loseAcknowledgement = false;
+    const storage = f.storage.keyringStorage;
+    const repository = await openNativeConnectionRepository({ storage: { ...storage, async compareAndSetMany(changes, guard) {
+      const result = await storage.compareAndSetMany(changes, guard);
+      if (loseAcknowledgement) throw Error('Lost acknowledgement');
+      return result;
+    } }, walletBindingId: WALLET, assertOwner: current });
+    await publish(repository);
+    loseAcknowledgement = true;
+    await assert.rejects(repository.setConnectionsEnabled(false, current));
+    assert.throws(() => repository.assertHealthy());
+    await repository.dispose();
+    await f.reopen();
+    const reopened = await openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: WALLET, assertOwner: current });
+    assert.equal(reopened.connectionsEnabled(), false);
+    assert.deepEqual(reopened.bindings(), []);
+    await reopened.dispose();
+  } finally { await f.close(); }
+});
+
+for (const admission of [null, false, { version: 1, walletBindingId: WALLET, enabled: 'false' }, { version: 1, walletBindingId: 'ff'.repeat(32), enabled: false }]) test('malformed or foreign admission preference cannot default enabled: ' + JSON.stringify(admission), async () => {
+  const f = await fixture();
+  try {
+    await f.storage.keyringStorage.set(NATIVE_CONNECTION_ADMISSION_KEY, admission);
+    await assert.rejects(openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: WALLET, assertOwner: current }));
   } finally { await f.close(); }
 });

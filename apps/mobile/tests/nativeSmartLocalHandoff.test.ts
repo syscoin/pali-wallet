@@ -91,9 +91,9 @@ test('local scope changes discard only the exact old public job',async()=>{
 });
 
 test('public action snapshot removes unrelated private constructor fields and keeps only durable SLH key identity',()=>{
-  const action={kind:'slh-installation',keyId:'public-key-id',password:'must-not-retain',seed:new Uint8Array([1,2]),privateConstructorState:{key:'secret'}} as const;
-  assert.deepEqual(snapshotNativeSmartLocalAction(action),{kind:'slh-installation',keyId:'public-key-id'});
-  assert.deepEqual(snapshotNativeSmartLocalAction({kind:'wallet-authenticator',password:'secret'} as NativeSmartLocalAction),{kind:'wallet-authenticator'});
+  const action={kind:'slh-installation',purpose:'replace',keyId:'public-key-id',password:'must-not-retain',seed:new Uint8Array([1,2]),privateConstructorState:{key:'secret'}} as const;
+  assert.deepEqual(snapshotNativeSmartLocalAction(action),{kind:'slh-installation',purpose:'replace',keyId:'public-key-id'});
+  assert.deepEqual(snapshotNativeSmartLocalAction({kind:'wallet-authenticator',purpose:'replace',password:'secret'} as NativeSmartLocalAction),{kind:'wallet-authenticator',purpose:'replace'});
   assert.throws(()=>snapshotNativeSmartLocalAction({kind:'operation',intent:{kind:'authenticator',privateKey:'secret'}} as unknown as NativeSmartLocalAction),/Invalid public/);
 });
 
@@ -142,7 +142,7 @@ for(const change of ['scope','generation','deadline','action'] as const)test(`a 
     f.handoff.beforeSuiteOpen(Date.now()+45000,{});f.manager.background(f.handoff);f.unlock();
     const saved=f.manager.localDescriptor(f.handoff.id)!;
     assert.throws(()=>f.manager.resumeLocal({id:saved.id,scope:{...saved.scope,unlockGeneration:change==='generation'?1:2,...(change==='scope'?{wallet:'different'}:{})},
-      expiresAt:saved.expiresAt+(change==='deadline'?1:0),order:saved.order,action:change==='action'?{kind:'wallet-authenticator'}:saved.action,
+      expiresAt:saved.expiresAt+(change==='deadline'?1:0),order:saved.order,action:change==='action'?{kind:'wallet-authenticator',purpose:'replace'}:saved.action,
       assertCurrent(){},eligible:()=>true,drain:async()=>undefined,retire(){}},snapshotNativeSmartLocalAction,saved),/REQUEST_EXPIRED/);
     assert.equal(retired,1);assert.equal(f.manager.localDescriptor(saved.id),null);
   } finally {await f.close();}
@@ -152,7 +152,7 @@ test('a synchronous retirement inside a current guard cannot release a private c
   let handoff!:ReturnType<NativeSigningHandoffs['captureLocal']>,retireDuringGuard=false,retired=0;
   const manager=new NativeSigningHandoffs({async cancel(){},changed(){}});
   handoff=manager.captureLocal({id:'guard-retirement',scope:{wallet:'wallet',unlockGeneration:1,accountId:'smart:60:0',address:'0x'+'22'.repeat(20),type:'SmartAccount',xpub:'public',registration:'endpoint',signing:'policy',trezor:true},
-    expiresAt:Date.now()+60000,order:0,action:{kind:'wallet-authenticator'},assertCurrent(){if(retireDuringGuard)retireNativeSigningHandoff(handoff);},eligible:()=>true,drain:async()=>undefined,retire(){}},snapshotNativeSmartLocalAction);
+    expiresAt:Date.now()+60000,order:0,action:{kind:'wallet-authenticator',purpose:'replace'},assertCurrent(){if(retireDuringGuard)retireNativeSigningHandoff(handoff);},eligible:()=>true,drain:async()=>undefined,retire(){}},snapshotNativeSmartLocalAction);
   captureNativeSigningContinuation(handoff,()=>({retire(){retired++;}}));retireDuringGuard=true;
   assert.throws(()=>captureNativeSigningContinuation(handoff,()=>{throw Error('must not recreate');}),/REQUEST_EXPIRED/);
   assert.equal(retired,1);
@@ -198,7 +198,7 @@ for(const callback of ['retire','throw'] as const)test(`background replacement c
   try{
     captureNativeSigningContinuation(f.handoff,()=>({retire(){previousRetired++;}}));
     f.handoff.beforeSuiteOpen(Date.now()+45000,{});f.manager.background(f.handoff);f.unlock();
-    const next=f.manager.captureLocal({id:'next-owner-step',scope:f.scope,expiresAt:Date.now()+60000,order:1,action:{kind:'wallet-authenticator'},
+    const next=f.manager.captureLocal({id:'next-owner-step',scope:f.scope,expiresAt:Date.now()+60000,order:1,action:{kind:'wallet-authenticator',purpose:'replace'},
       assertCurrent(){},eligible:()=>true,drain:async()=>undefined,retire(){}},snapshotNativeSmartLocalAction);
     captureNativeSigningContinuation(next,()=>({retire(){nextRetired++;}}));
     next.beforeSuiteOpen(Date.now()+45000,{});
@@ -239,4 +239,26 @@ for (const kind of ['erc20-transfer', 'nft-transfer'] as const) test(`Smart ${ki
   const copied = snapshotNativeSmartLocalAction({ kind: 'operation', intent });
   assert(copied.kind === 'operation'); assert.deepEqual(copied.intent.feeChoice, feeChoice);
   assert.equal(copied.intent.kind, kind);
+});
+
+
+for (const kind of ['wallet-authenticator', 'passkey-authenticator', 'slh-installation'] as const) test(`${kind} retains explicit additive purpose and rejects missing or unknown purpose`, () => {
+  const action = {kind, purpose:'add-to-combined' as const, ...(kind === 'passkey-authenticator' ? {credentialIdHash:'0x'+'ab'.repeat(32)} : kind === 'slh-installation' ? {keyId:'saved-key'} : {})} as NativeSmartLocalAction;
+  assert.deepEqual(snapshotNativeSmartLocalAction(action), action);
+  const {purpose: _purpose, ...missing} = action as any;
+  assert.throws(() => snapshotNativeSmartLocalAction(missing), /Invalid public/);
+  assert.throws(() => snapshotNativeSmartLocalAction({...action,purpose:'fallback'} as any), /Invalid public/);
+});
+
+
+test('a resumed additive setup cannot become a replacement operation', async () => {
+  const f=fixture();
+  try {
+    const entry={id:'explicit-add',scope:f.scope,expiresAt:Date.now()+60000,order:0,
+      action:{kind:'wallet-authenticator' as const,purpose:'add-to-combined' as const},assertCurrent(){},eligible:()=>true,drain:async()=>{},retire(){}};
+    const handoff=f.manager.captureLocal(entry,snapshotNativeSmartLocalAction);
+    handoff.beforeSuiteOpen(entry.expiresAt,{});f.manager.background(handoff);
+    const saved=f.manager.localDescriptor(entry.id)!;assert.deepEqual(saved.action,entry.action);
+    assert.throws(()=>f.manager.resumeLocal({...entry,scope:{...entry.scope,unlockGeneration:2},action:{...entry.action,purpose:'replace'}},snapshotNativeSmartLocalAction,saved),/REQUEST_EXPIRED/);
+  } finally {await f.close();}
 });

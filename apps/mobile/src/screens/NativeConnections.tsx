@@ -1,11 +1,11 @@
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import type { NativeConnectionError, NativeConnectionsView, NativeConnectionsSnapshot } from '../connections/types';
-import { Button, Card, colors, Header, Icon, IconButton, Notice, Screen, Text } from '../ui';
+import { Button, Card, colors, Header, Icon, IconButton, Notice, Row, Screen, Text } from '../ui';
 import { IdlePressable } from './IdleActivityBoundary';
 import { DappSiteStatus } from './DappSiteStatus';
 import { ConnectionQrScanner } from './ConnectionQrScanner';
@@ -212,13 +212,13 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
 
   useEffect(() => {
     if (!incomingPairing || !onPairingHandled || handledEntry.current === incomingPairing.id ||
-        scanning || snapshot.status !== 'ready' || !snapshot.network || proposal || snapshot.accountChangeReview || snapshot.preparationReview || snapshot.signingReview || snapshot.psbtReview) return;
+        scanning || !snapshot.connectionsEnabled || snapshot.connectionSettingsBusy || snapshot.status !== 'ready' || !snapshot.network || proposal || snapshot.accountChangeReview || snapshot.preparationReview || snapshot.signingReview || snapshot.psbtReview) return;
     const current = lifetime.current;
     const revision = ++current.revision;
     let active = true;
     queueMicrotask(() => {
       const latest = controller.getSnapshot();
-      if (!active || !current.active || current.revision !== revision || latest.status !== 'ready' ||
+      if (!active || !current.active || current.revision !== revision || !latest.connectionsEnabled || latest.connectionSettingsBusy || latest.status !== 'ready' ||
           !latest.network || latest.proposals.length || latest.accountChangeReview || latest.preparationReview || latest.signingReview || latest.psbtReview) return;
       handledEntry.current = incomingPairing.id;
       onPairingHandled(incomingPairing.id);
@@ -227,12 +227,12 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
       if (!expired) void controller.pair(incomingPairing.uri).catch(() => undefined);
     });
     return () => { active = false; };
-  }, [controller, incomingPairing, onPairingHandled, proposal, scanning, snapshot.accountChangeReview, snapshot.preparationReview, snapshot.signingReview, snapshot.psbtReview, snapshot.network, snapshot.status]);
+  }, [controller, incomingPairing, onPairingHandled, proposal, scanning, snapshot.accountChangeReview, snapshot.preparationReview, snapshot.signingReview, snapshot.psbtReview, snapshot.network, snapshot.status, snapshot.connectionsEnabled, snapshot.connectionSettingsBusy]);
 
-  const close = () => { if (sessionLife.current) sessionLife.current.active = false; lifetime.current.revision++; onScanFinished?.(); controller.cancel(); onBack(); };
+  const close = () => { lifetime.current.active = false; if (sessionLife.current) sessionLife.current.active = false; lifetime.current.revision++; onScanFinished?.(); controller.cancel(); onBack(); };
   const finishScan = () => { setScanning(false); onScanFinished?.(); };
   const paste = async () => {
-    if (busy) return;
+    if (busy || !snapshot.connectionsEnabled || snapshot.connectionSettingsBusy) return;
     const current = lifetime.current;
     const revision = ++current.revision;
     setClipboardError(false);
@@ -248,6 +248,11 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
     await controller.pair(extractPairingUri(uri) ?? uri).catch(() => undefined);
   };
   const invoke = (operation: () => Promise<void>) => { void operation().catch(() => undefined); };
+  const changeSettings = (enabled?: boolean) => {
+    const latest = controller.getSnapshot();
+    if (!lifetime.current.active || latest.connectionSettingsBusy || latest.status === 'locked' || latest.status === 'unavailable') return;
+    invoke(() => enabled === undefined ? controller.disconnectAll() : controller.setConnectionsEnabled(enabled));
+  };
   const runSessionAction = async (action: 'open' | 'disconnect') => {
     const owner = sessionLife.current;
     const current = () => owner?.active && sessionLife.current === owner && owner.owner === sessionOwner && lifetime.current.active && controller.getSnapshot().status !== 'locked' &&
@@ -310,9 +315,9 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
     </Screen></SafeAreaView>;
   }
 
-  if (scanning && snapshot.status === 'ready') return <ConnectionQrScanner
+  if (scanning && snapshot.connectionsEnabled && !snapshot.connectionSettingsBusy && snapshot.status === 'ready') return <ConnectionQrScanner
     onClose={finishScan} onScan={(uri) => {
-      if (!lifetime.current.active || controller.getSnapshot().status !== 'ready') return;
+      if (!lifetime.current.active || controller.getSnapshot().status !== 'ready' || !controller.getSnapshot().connectionsEnabled || controller.getSnapshot().connectionSettingsBusy) return;
       finishScan();
       setEntryExpired(false);
       invoke(() => controller.pair(uri));
@@ -327,6 +332,16 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
       }} />
   </View> : undefined}>
     <Header title={proposal ? t('connections.connectRequest') : t('mobile.connections.title')} onBack={close} />
+    {snapshot.status !== 'locked' && <Card style={s.settingsCard}>
+      <Row title={t('mobile.connections.allowConnections')} subtitle={t('mobile.connections.allowConnectionsBody')} icon="globe" last right={<Switch
+        accessibilityLabel={t('mobile.connections.allowConnections')} value={snapshot.connectionsEnabled}
+        disabled={snapshot.connectionSettingsBusy || snapshot.status === 'unavailable'} trackColor={{ true: colors.pink }}
+        onValueChange={enabled => changeSettings(enabled)} />} />
+      <Button title={t('mobile.connections.disconnectAll')} icon="close" variant="secondary" size="compact"
+        disabled={snapshot.connectionSettingsBusy || snapshot.status === 'unavailable' || !snapshot.sessions.length && !snapshot.proposals.length && snapshot.status !== 'pairing'}
+        onPress={() => changeSettings()} />
+      {snapshot.connectionSettingsBusy && <ActivityIndicator color={colors.blue} accessibilityLabel={t('mobile.connections.savingConnections')} />}
+    </Card>}
     {snapshot.status === 'locked' ? <Notice title={t('mobile.connections.unlockTitle')} body={t('mobile.connections.unlockBody')} /> : <>
       {proposal ? <>
         <View style={s.hero}>
@@ -360,9 +375,10 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
           <Button title={t('buttons.cancel')} variant="secondary" size="compact" onPress={() => controller.cancel()} /></>
           : snapshot.status === 'unavailable'
           ? <Button title={t('mobile.connections.tryAgain')} onPress={() => invoke(() => controller.retry())} />
-          : <><Button title={t('mobile.connections.scan')} icon="scan" disabled={!snapshot.network}
+          : !snapshot.connectionsEnabled ? <Text style={s.body}>{t('mobile.connections.connectionsPaused')}</Text>
+          : <><Button title={t('mobile.connections.scan')} icon="scan" disabled={!snapshot.network || snapshot.connectionSettingsBusy}
             onPress={() => { lifetime.current.revision++; onScanStarted?.(); setScanning(true); }} />
-            <Button title={t('mobile.connections.paste')} icon="copy" variant="secondary" size="compact" disabled={!snapshot.network} onPress={paste} /></>}
+            <Button title={t('mobile.connections.paste')} icon="copy" variant="secondary" size="compact" disabled={!snapshot.network || snapshot.connectionSettingsBusy} onPress={paste} /></>}
       </Card>}
       {(snapshot.error || clipboardError) && <Notice title={t('mobile.connections.unavailableTitle')}
         body={snapshot.error ? t(ERRORS[snapshot.error]) : t('mobile.connections.clipboard')} />}
@@ -391,6 +407,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   card: { gap: 12, padding: 16 },
+  settingsCard: { gap: 12, padding: 12 },
   connectHeading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   title: { flex: 1, fontSize: 18, lineHeight: 25, fontWeight: '600' },
   hero: { alignItems: 'center', gap: 9, paddingVertical: 12 },

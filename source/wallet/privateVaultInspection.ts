@@ -39,6 +39,7 @@ import type {
   IPrivacyWithdrawalRecovery,
   IPrivacyWithdrawalRecoveryReceipt,
   IPrivacyRetiredWithdrawal,
+  IPrivacyUnsignedWithdrawal,
 } from '../utils/privacy/withdrawalTransactionTypes.ts';
 import type {
   KeyringManager,
@@ -231,6 +232,7 @@ const WITHDRAWAL_JOURNAL_KEYS = [
   'recovery',
   'retired',
   'transactionHash',
+  'unsigned',
 ];
 const MAX_RETIRED_WITHDRAWALS = NOTE_BACKUP_MAX_HISTORY_HINTS - 1;
 export function recoveryReceipt(value: IPrivacyWithdrawalRecoveryReceipt) {
@@ -301,6 +303,71 @@ export const validRelayEndpoint = (value: unknown) => {
     return false;
   }
 };
+/** Strict local dispatch evidence; the enclosing encrypted shard binds the wallet/profile. */
+export function unsignedWithdrawal(
+  value: IPrivacyUnsignedWithdrawal
+): IPrivacyUnsignedWithdrawal {
+  const context = value?.context,
+    account = context?.account;
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    Object.keys(value).length !== 3 ||
+    Object.keys(value).some(
+      (key) => !['version', 'lifetime', 'context'].includes(key)
+    ) ||
+    value.version !== 1 ||
+    typeof value.lifetime !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}:(?:0|[1-9][0-9]{0,15})$/.test(
+      value.lifetime
+    ) ||
+    !Number.isSafeInteger(Number(value.lifetime.split(':')[1])) ||
+    !context ||
+    typeof context !== 'object' ||
+    Array.isArray(context) ||
+    Object.keys(context).length !== 4 ||
+    Object.keys(context).some(
+      (key) => !['account', 'chainId', 'rpcUrl', 'slip44'].includes(key)
+    ) ||
+    context.chainId !== 1 ||
+    !Number.isSafeInteger(context.slip44) ||
+    context.slip44 < 0 ||
+    typeof context.rpcUrl !== 'string' ||
+    !context.rpcUrl ||
+    context.rpcUrl.length > 2048 ||
+    !account ||
+    typeof account !== 'object' ||
+    Array.isArray(account) ||
+    Object.keys(account).length !== 3 ||
+    Object.keys(account).some(
+      (key) => !['id', 'type', 'address'].includes(key)
+    ) ||
+    !Number.isSafeInteger(account.id) ||
+    account.id < 0 ||
+    typeof account.type !== 'string' ||
+    !account.type ||
+    account.type.length > 64 ||
+    typeof account.address !== 'string' ||
+    !ADDRESS.test(account.address)
+  )
+    throw new Error('privacy_vault_corrupt');
+  return {
+    version: 1,
+    lifetime: value.lifetime,
+    context: {
+      chainId: context.chainId,
+      slip44: context.slip44,
+      rpcUrl: context.rpcUrl,
+      account: {
+        id: account.id,
+        type: account.type,
+        address: account.address.toLowerCase(),
+      },
+    },
+  };
+}
+
 export function withdrawalJournal(
   value: IPrivateVaultWithdrawalJournal,
   isRetired = false
@@ -311,6 +378,10 @@ export function withdrawalJournal(
     Array.isArray(value) ||
     Object.keys(value).some((key) => !WITHDRAWAL_JOURNAL_KEYS.includes(key)) ||
     (isRetired && value.retired !== undefined) ||
+    (value.unsigned !== undefined &&
+      (isRetired ||
+        value.phase !== 'unknown' ||
+        value.recovery !== undefined)) ||
     typeof value.intentId !== 'string' ||
     !UUID.test(value.intentId) ||
     ![value.attemptHash, value.proofHash, value.inputHash].every(
@@ -398,6 +469,7 @@ export function withdrawalJournal(
     ...(value.jobId ? { jobId: value.jobId } : {}),
     ...(recovery ? { recovery } : {}),
     ...(retired ? { retired } : {}),
+    ...(value.unsigned ? { unsigned: unsignedWithdrawal(value.unsigned) } : {}),
   };
 }
 

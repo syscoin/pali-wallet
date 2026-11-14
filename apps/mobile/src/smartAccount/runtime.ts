@@ -6,6 +6,7 @@ import {
   createSmartAccountPendingState,
   type SmartAccountPendingState,
 } from '../../../../source/utils/smartAccount/pendingState.ts';
+import { assertSmartAccountBuiltinInstallCurrent } from '../../../../source/utils/smartAccount/moduleCommands.ts';
 import { assertSmartAccountValidatorSwitchCurrent } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
 import {
   createSmartAccountCallsExecutions,
@@ -188,7 +189,8 @@ export function createNativeSmartOperation(
         assertCurrent();
         if (!preflight.ok) throw new Error('Custom validator preflight changed');
       }
-    } else assertSmartAccountValidatorSwitchCurrent(intent.command, observed);
+    } else if (intent.command.purpose === 'add-to-combined') assertSmartAccountBuiltinInstallCurrent(intent.command, observed);
+    else assertSmartAccountValidatorSwitchCurrent(intent.command, observed);
   };
   return new NativeSmartAccountOperation({ authorizationExpiresAt: ports.authorizationExpiresAt, background:ports.background,
     account: account.address,
@@ -275,6 +277,7 @@ export function createNativeSmartOperation(
         });
         assertCurrent();
         if (intent.kind === 'modules') await assertValidatorSwitch(assertCurrent, metadata);
+        else if (intent.command.purpose === 'add-to-combined') assertSmartAccountBuiltinInstallCurrent(intent.command, metadata);
         else assertSmartAccountValidatorSwitchCurrent(intent.command, metadata);
         if (intent.kind === 'authenticator' && intent.command.executions.length === 0)
           return { kind: 'already-configured' };

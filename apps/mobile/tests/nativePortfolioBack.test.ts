@@ -24,9 +24,11 @@ function elements(value: unknown): Element[] {
 /** Actual overview, portfolio and shell handlers with public data and native event ports. */
 function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', unbacked = false, receiveAcknowledged = true, onNavigation?: () => void) {
   const cells = new Map<unknown, Cell[]>(), nativeBacks = new Set<() => boolean>();
+  const componentKeys = new Map<unknown, unknown>(), childComponents = new Map<unknown, Set<unknown>>(), componentStack: unknown[] = [];
   const renderedComponents = new Set<unknown>();
   let current: Cell[] = [], cursor = 0, pendingEffects: (() => void)[] = [], dirty = false;
   let exits = 0, sends = 0, backups = 0, consumed = 0, shell: any, currentAccount = true;
+  let metadataRefreshes = 0, balanceRefreshes = 0;
   const copied: string[] = [];
   const cell = () => current[cursor++] ?? (current[cursor - 1] = {});
   const react = {
@@ -57,14 +59,14 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
     },
   };
   const network = getNativeNetwork('ethereum'), address = '0x' + '11'.repeat(20);
-  const account = { address, network: network.id, revision: 1 };
-  const source = { getSnapshot: () => ({ phase: 'ready', backup: receiveEntry || unbacked ? 'unconfirmed' : 'confirmed', revision: 1, account }),
-    getCatalogue: () => ({ active: { accountId: 'hd:60:0', networkId: network.id }, networks: [network] }), subscribe: () => () => {} };
+  let account = { address, network: network.id, revision: 1 };
+  let source = { getSnapshot: () => ({ phase: 'ready', backup: receiveEntry || unbacked ? 'unconfirmed' : 'confirmed', revision: account.revision, account }),
+    getCatalogue: () => ({ active: { accountId: 'hd:60:0', networkId: account.network }, networks: [network] }), subscribe: () => () => {} };
   const choice = { networkName: network.name, symbol: network.symbol,
     scope: { id: 'native:hd:60:0:ethereum', accountId: 'hd:60:0', accountAddress: address, network } };
   const controller = { subscribe: () => () => {}, getSnapshot: () => ({ status: 'ready', filter: 'all', choices: [choice],
     rows: [{ choice, units: '1000000000000000000', decimals: 18, status: 'available', tokens: [], collectibles: [] }],
-    knownValue: null, currency: null, partial: true, refreshing: false }), setCurrency() {}, connect: () => () => {}, cachedBalances: () => [] };
+    knownValue: null, currency: null, partial: true, refreshing: false }), setCurrency() {}, connect: () => () => {}, cachedBalances: () => [], async refresh() { balanceRefreshes++; } };
   const native = {
     ...Object.fromEntries(['ActivityIndicator', 'Modal', 'ScrollView', 'View'].map(value => [value, value])),
     AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
@@ -109,7 +111,8 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
     '../platformRpc': {}, '../platform/http': {}, '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => ({ supported: false }) },
     '../portfolio/nativePortfolio': { NativePortfolioController: class {
       subscribe = () => () => {}; getSnapshot = () => ({ status: 'available', account, units: '1000000000000000000', updatedAt: 1 });
-      connect = () => () => {}; getUtxoNetwork = () => undefined; getNetworkRegistration = () => network; isCurrent = () => currentAccount;
+      connect = () => () => {}; getUtxoNetwork = () => undefined; getNetworkRegistration = (id: string) => getNativeNetwork(id); isCurrent = () => currentAccount;
+      async refresh() { balanceRefreshes++; }
     } }, './NativeTokens': { NativeTokens: TokenFixture }, './PortfolioQuote': { PortfolioQuote: 'PortfolioQuote' },
     '../portfolio/AssetMarketCard': { AssetMarketCard: 'AssetMarketCard' }, './TestnetFaucetCard': {},
     '../../../../source/shared/sptInventory': {}, './NativeSptAssets': {},
@@ -127,7 +130,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
     shell = useRealShell(scope(), scope, exit, onNavigation);
     const portfolio = { source, reader, tokenView, accountLabel: 'Account 1', onExit: exit, onLock() {}, onViewRecovery() { backups++; },
       onReceiveIntentConsumed() { consumed++; if (detail) detail = { ...detail, receive: false }; continuation = undefined; dirty = true; },
-      initialReceive: continuation, onSend, navigation: shell.navigation };
+      initialReceive: continuation, onSend, navigation: shell.navigation, async onRefreshSmartAccount() { metadataRefreshes++; } };
     if (receiveEntry) return react.createElement(NativePortfolioRoute, { ...portfolio, overview: overview || receiveEntry === 'detail' ? controller : undefined,
       detail, selectNetwork: async () => {}, sendFrom: async () => {} });
     return overview ? react.createElement(NativeAccountOverview, { controller, portfolio, selectNetwork: async () => {}, send: async () => {} })
@@ -141,10 +144,23 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
       ...(value.props.footer ? { footer: expand(value.props.footer) } : {}), ...(value.props.right ? { right: expand(value.props.right) } : {}) } };
   }
   function renderOne(component: (props: any) => Element, props: any): Element {
+    const parent = componentStack.at(-1);
+    if (parent) { const children = childComponents.get(parent) ?? new Set(); children.add(component); childComponents.set(parent, children); }
+    if (componentKeys.has(component) && !Object.is(componentKeys.get(component), props.key)) {
+      const retire = (target: unknown) => {
+        for (const child of childComponents.get(target) ?? []) retire(child);
+        for (const slot of cells.get(target) ?? []) slot.cleanup?.();
+        cells.delete(target); componentKeys.delete(target); childComponents.delete(target);
+      };
+      retire(component);
+    }
+    componentKeys.set(component, props.key);
     renderedComponents.add(component);
     current = cells.get(component) ?? []; cells.set(component, current); cursor = 0; pendingEffects = [];
     const result = component(props), ownEffects = pendingEffects;
+    componentStack.push(component);
     const expanded = expand(result);
+    componentStack.pop();
     ownEffects.forEach(run => run());
     return expanded;
   }
@@ -153,10 +169,16 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
     throw Error('Portfolio layout did not settle');
   };
   return { render, copied, retireAccount() { currentAccount = false; },
+    publishRevision() { account = { ...account, revision: account.revision + 1 }; },
+    changeAccount() { account = { ...account, address: '0x' + '22'.repeat(20), revision: account.revision + 1 }; },
+    changeNetwork() { account = { ...account, network: 'syscoin-nevm', revision: account.revision + 1 }; },
+    restoreAccount() { account = { ...account, address, network: network.id, revision: account.revision + 1 }; },
+    replaceSource() { source = { ...source }; },
     get renderedOverview() { return renderedComponents.has(NativeAccountOverview); },
     back(nativeFirst = false) { if (!nativeFirst || ![...nativeBacks].reverse().some(handler => handler())) shell.goBack(); },
     get exits() { return exits; }, get sends() { return sends; },
     get backups() { return backups; }, get consumed() { return consumed; },
+    refreshes: () => ({ metadata: metadataRefreshes, balance: balanceRefreshes }),
     remountPortfolio() {
       for (const [component, slots] of cells) if (component !== Root) {
         for (const slot of slots) slot.cleanup?.();
@@ -166,6 +188,75 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
     close() { for (const slots of cells.values()) for (const slot of slots) slot.cleanup?.(); },
   };
 }
+
+for (const overview of [false, true]) test(`manual ${overview ? 'all-network overview' : 'network portfolio'} refresh updates both public balance and Smart metadata`, () => {
+  const f = fixture(overview);
+  try {
+    const button = elements(f.render()).find(value => value.props.testID === 'native-portfolio-refresh' || value.type === 'IconButton' && value.props.icon === 'refresh');
+    assert(button); button.props.onPress();
+    assert.deepEqual(f.refreshes(), { metadata: 1, balance: 1 });
+  } finally { f.close(); }
+});
+
+test('native coin detail survives metadata revision publication while Back still closes it', () => {
+  const f = fixture(false);
+  try {
+    const asset = elements(f.render()).find(value => value.type === 'Row' && value.props.title === 'ETH');
+    assert(asset); asset.props.onPress();
+    assert(elements(f.render()).some(value => value.type === 'AssetMarketCard'));
+    f.publishRevision();
+    assert(elements(f.render()).some(value => value.type === 'AssetMarketCard'), 'keyed content remount must preserve only the owned native detail');
+    f.back();
+    assert(!elements(f.render()).some(value => value.type === 'AssetMarketCard'));
+    assert.equal(f.exits, 0);
+    f.back(); assert.equal(f.exits, 1);
+  } finally { f.close(); }
+});
+
+for (const change of ['changeAccount', 'changeNetwork', 'replaceSource'] as const) test(`native coin detail closes on ${change}`, () => {
+  const f = fixture(false);
+  try {
+    const asset = elements(f.render()).find(value => value.type === 'Row' && value.props.title === 'ETH');
+    assert(asset); asset.props.onPress();
+    assert(elements(f.render()).some(value => value.type === 'AssetMarketCard'));
+    f[change]();
+    assert(!elements(f.render()).some(value => value.type === 'AssetMarketCard'));
+    if (change !== 'replaceSource') {
+      f.restoreAccount();
+      assert(!elements(f.render()).some(value => value.type === 'AssetMarketCard'), 'returning to the old account does not revive retired navigation');
+    }
+  } finally { f.close(); }
+});
+
+test('metadata revision still resets Receive state in the keyed content', () => {
+  const f = fixture(false);
+  try {
+    const receive = elements(f.render()).find(value => value.type === 'Button' && value.props.title === 'Receive');
+    assert(receive); receive.props.onPress();
+    assert(elements(f.render()).some(value => value.props.testID === 'native-receive-address'));
+    f.publishRevision();
+    assert(!elements(f.render()).some(value => value.props.testID === 'native-receive-address'));
+  } finally { f.close(); }
+});
+
+test('a previous account detail Back callback cannot close the current account detail', () => {
+  const f = fixture(false);
+  try {
+    const open = () => {
+      const asset = elements(f.render()).find(value => value.type === 'Row' && value.props.title === 'ETH');
+      assert(asset); asset.props.onPress();
+      const header = elements(f.render()).find(value => value.type === 'Header' && value.props.title === 'Ethereum');
+      assert(header); return header;
+    };
+    const previous = open();
+    f.changeAccount(); f.render();
+    const current = open();
+    previous.props.onBack();
+    assert(elements(f.render()).some(value => value.type === 'AssetMarketCard'));
+    current.props.onBack();
+    assert(!elements(f.render()).some(value => value.type === 'AssetMarketCard'));
+  } finally { f.close(); }
+});
 
 for (const nativeFirst of [false, true]) test(`overview market detail returns through both Back levels (${nativeFirst ? 'native' : 'shell'} first)`, async () => {
   const f = fixture(true);

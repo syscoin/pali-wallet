@@ -35,6 +35,8 @@ async function fixture(holdKeychain = false, initializeSession = false) {
   let reads = 0,
     writes = 0;
   const repository = {
+    connectionsEnabled: () => true,
+    async setConnectionsEnabled() { throw Error('Unused transport admission control'); },
     assertHealthy() {},
     permissions() {
       throw Error('Unused permission path');

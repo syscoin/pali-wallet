@@ -698,10 +698,16 @@ export function createNativeWalletControllers() {
     return Object.freeze({
       accountAddress: snapshot.account.address, networkName: network.name,
       passkeysAvailable: selected.canUsePasskeys(),
-      async openPasskey(recreate, operationSignal, assertView) {
+      async openPasskey(recreate, purpose, operationSignal, assertView) {
         const guard = () => { check(); assertSynchronousEvmFeeGuard(assertView); if (operationSignal.aborted) throw Error('CANCELLED'); };
         guard();
-        const operation = await observeFailure(() => selected.openPasskeyAuthenticator(recreate, operationSignal, guard, binding));
+        const operation = await observeFailure(() => selected.openPasskeyAuthenticator(recreate, purpose, operationSignal, guard, binding));
+        try { guard(); return operation; } catch (error) { await operation.dispose(); throw error; }
+      },
+      async openWalletAuthenticator(operationSignal, assertView) {
+        const guard = () => { check(); assertSynchronousEvmFeeGuard(assertView); if (operationSignal.aborted) throw Error('CANCELLED'); };
+        guard();
+        const operation = await observeFailure(() => selected.openWalletAuthenticator('add-to-combined', operationSignal, guard, binding));
         try { guard(); return operation; } catch (error) { await operation.dispose(); throw error; }
       },
       read: () => observeFailure(() => selected.readSmartAccountModules(signal, check)),
@@ -733,10 +739,10 @@ export function createNativeWalletControllers() {
       hydrateInstalled: keyId => observeFailure(() => account.hydrateInstalled(keyId)),
       rebuildInstalled: (keyId, progress) => observeFailure(() => account.rebuildInstalled(keyId, progress)),
       rebuildPrepared: (keyId, progress) => observeFailure(() => account.rebuildPrepared(keyId, progress)),
-      async openInstall(keyId, operationSignal, assertView) {
+      async openInstall(keyId, purpose, operationSignal, assertView) {
         const guard = () => { assertSynchronousEvmFeeGuard(check); assertSynchronousEvmFeeGuard(assertView); if (operationSignal.aborted) throw Error('CANCELLED'); };
         guard();
-        const operation = await observeFailure(() => selected.openSlhDsaInstallation(keyId, operationSignal, guard, binding));
+        const operation = await observeFailure(() => selected.openSlhDsaInstallation(keyId, purpose, operationSignal, guard, binding));
         try { guard(); return operation; } catch (error) { await operation.dispose(); throw error; }
       },
     });
@@ -744,12 +750,20 @@ export function createNativeWalletControllers() {
   const openWalletAuthenticator = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
     const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
-    return observeFailure(() => selected.openWalletAuthenticator(signal, assertCurrent, binding));
+    return observeFailure(() => selected.openWalletAuthenticator('replace', signal, assertCurrent, binding));
   };
   const openSmartAccountSend = async (recipient: string, amount: Parameters<KeyringRuntime['openSmartAccountSend']>[1], assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
     const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
     const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: owner => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner) });
     return observeFailure(() => selected.openSmartAccountSend(recipient, amount, assertCurrent, binding));
+  };
+  const refreshSmartAccountMetadata = async (signal: AbortSignal, assertOwner: () => void, onPublished: () => void): Promise<void> => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    const check = () => { assertCurrent(); if (signal.aborted) throw new CustodyOperationError('CANCELLED'); };
+    check();
+    await observeFailure(() => selected.refreshSmartAccountMetadata(signal, check, onPublished));
+    // A successful refresh publishes its own catalogue revision.
+    assertSynchronousEvmFeeGuard(assertOwner);
   };
   const guardianRecovery = Object.freeze({
     supportsPasskeys: () => runtime?.canUsePasskeys() === true,
@@ -916,6 +930,6 @@ export function createNativeWalletControllers() {
       networkId: scope.network.id, registrationHash: 'registrationHash' in scope.network ? scope.network.registrationHash : '' }, check);
   };
   const activityReaders = Object.freeze({ explorer: new ActivityExplorerReader(walletFetch), receipts: new ActivityReceiptReader({ fetch: walletFetch }) });
-  return { getNotificationChoices, readPortfolioAssets, getScopedActivityRuntime, activityReaders, authority, saveIdlePreference, sentry, recipientResolver, openSmartInfrastructure, openResumedSmartInfrastructure, openSmartAccountModules, canManageSmartAccountModules: () => runtime?.canUseWalletAuthenticator() === true, openSlhDsaManagement, canManageSlhDsa: () => runtime?.canManageSlhDsa() === true, canSignSmartAccount: () => runtime?.canSignSmartAccount() === true, guardianRecovery, authentication: { isActive: (owner: AbortSignal) => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner), isAnyPromptActive: () => isNativeCredentialPromptActive() || isBoundNativePasskeyPromptActive(), cancel: () => nativeCredentialAuthentication.cancel(), run: nativeCredentialAuthentication.run }, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openResumedSmartAccountOperation, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, openNoteMaintenance, openPrivacyControls, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { getNotificationChoices, readPortfolioAssets, getScopedActivityRuntime, activityReaders, authority, saveIdlePreference, sentry, recipientResolver, openSmartInfrastructure, openResumedSmartInfrastructure, openSmartAccountModules, canManageSmartAccountModules: () => runtime?.canUseWalletAuthenticator() === true, openSlhDsaManagement, canManageSlhDsa: () => runtime?.canManageSlhDsa() === true, canSignSmartAccount: () => runtime?.canSignSmartAccount() === true, guardianRecovery, authentication: { isActive: (owner: AbortSignal) => isNativeCredentialPromptActive(owner) || isBoundNativePasskeyPromptActive(owner), isAnyPromptActive: () => isNativeCredentialPromptActive() || isBoundNativePasskeyPromptActive(), cancel: () => nativeCredentialAuthentication.cancel(), run: nativeCredentialAuthentication.run }, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, refreshSmartAccountMetadata, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openResumedSmartAccountOperation, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, openNoteMaintenance, openPrivacyControls, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => { stopTokenObservation(); tokens.dispose(); }, disposeTransfers: () => transfers.dispose() };
 }

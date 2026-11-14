@@ -71,6 +71,7 @@ export function NativeSmartManagementFixture({ kind }: { kind: 'modules' | 'auth
     if (query.get('modules-mode') === 'unavailable') throw new Error('Preview unavailable state');
     return {
       accountAddress: account, networkName: 'Ethereum', passkeysAvailable: false,
+      async openWalletAuthenticator() { throw Error('Use explicit public review fixture'); },
       async openPasskey() { throw Error('Native credentials are outside this browser fixture'); },
       async read() { assertCurrent(); return query.get('modules-mode') === 'empty' ? { ...metadata, installedModules: [] } : metadata; },
       async preflightCustom() { assertCurrent(); return { ok: true, failures: [], compositeCompatible: true }; },

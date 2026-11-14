@@ -12,14 +12,17 @@ const invalid = (): never => { throw new Error('Invalid public Smart account act
 export function snapshotNativeSmartLocalAction(action: NativeSmartLocalAction): NativeSmartLocalAction {
   if (!action || typeof action !== 'object') return invalid();
   if (action.kind === 'modules') return Object.freeze({ kind: action.kind, draft: snapshotNativeSmartModuleDraft(action.draft) });
-  if (action.kind === 'wallet-authenticator') return Object.freeze({ kind: action.kind });
+  const purpose = Object.getOwnPropertyDescriptor(action, 'purpose')?.value;
+  if (['wallet-authenticator', 'passkey-authenticator', 'slh-installation'].includes(action.kind) &&
+      purpose !== 'replace' && purpose !== 'add-to-combined') return invalid();
+  if (action.kind === 'wallet-authenticator') return Object.freeze({ kind: action.kind, purpose });
   if (action.kind === 'passkey-authenticator') {
     if (!/^0x[0-9a-f]{64}$/i.test(action.credentialIdHash)) return invalid();
-    return Object.freeze({ kind: action.kind, credentialIdHash: action.credentialIdHash.toLowerCase() });
+    return Object.freeze({ kind: action.kind, purpose, credentialIdHash: action.credentialIdHash.toLowerCase() });
   }
   if (action.kind === 'slh-installation') {
     if (typeof action.keyId !== 'string' || !action.keyId || action.keyId.length > 256) return invalid();
-    return Object.freeze({ kind: action.kind, keyId: action.keyId });
+    return Object.freeze({ kind: action.kind, purpose, keyId: action.keyId });
   }
   if (action.kind === 'guardian-policy') {
     const draft = action.draft;

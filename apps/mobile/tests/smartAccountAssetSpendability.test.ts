@@ -11,6 +11,7 @@ import {
   paliSmartAccountInterface,
 } from '../../../source/utils/smartAccount/contracts.ts';
 import { encodeErc20Transfer } from '../../../source/shared/erc20.ts';
+import { EvmAssetStateError } from '../../../source/shared/evmAssetState.ts';
 
 const owner = '0x1111111111111111111111111111111111111111';
 const token = '0x2222222222222222222222222222222222222222';
@@ -137,6 +138,19 @@ const run = (
     userOperation: op,
     assertCurrent: f.check,
   });
+
+test('verified ERC1155 shortfall retains its typed reason and extension message before simulation', async () => {
+  const f = fixture();
+  f.state.balance = 10n;
+  await assert.rejects(run(f, operation([nftCall('11')])), error => {
+    assert(error instanceof EvmAssetStateError);
+    assert.equal(error.code, 'INSUFFICIENT_ASSET');
+    assert.equal(error.message, 'Insufficient token or collectible balance');
+    assert.equal((error as EvmAssetStateError & { transactionNotBroadcast?: boolean }).transactionNotBroadcast, true);
+    return true;
+  });
+  assert.equal(f.calls.some(call => call.method === 'eth_call' && call.params[0].from === owner), false);
+});
 
 test('ERC1155 shared guard sees the changed exact balance instead of an earlier UI balance', async () => {
   const f = fixture();

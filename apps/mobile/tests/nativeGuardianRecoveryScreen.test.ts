@@ -492,6 +492,42 @@ test('saved review and Activity use the captured payer while proofs and submissi
   }
 });
 
+test('unknown recovery timing stays absent until the matching operation is observed', async () => {
+  let knownOperation: NonNullable<GuardianRecoveryObservation['knownOperation']> = {
+    operationId: hash, status: 'unknown', scheduledAt: 0, executableAt: 0, expiresAt: 0,
+  };
+  const readyAt = Date.UTC(2030, 3, 5, 16, 7, 8) / 1000;
+  let reads = 0;
+  const controller = new NativeGuardianRecoveryController({
+    assertCurrent() {}, dispose() {}, submissionFailure() { return undefined; },
+    async observe() {
+      reads++;
+      return { intent, observation: { ...observation, knownOperation }, action: null,
+        transactionHash: hash, terminal: null, canAbandon: true };
+    },
+    async prepare() { throw new Error('status refresh must not prepare a transaction'); },
+    async reconcile() {}, async abandon() {},
+  }, new AbortController().signal);
+  const f = screen('NativeGuardianRecoveryView');
+  const props = { controller, address, chainId: 1, currency: 'ETH', networkLabel: 'Ethereum',
+    async onActivity() {}, async openRecoveryAlerts() {}, onBack() {} };
+  try {
+    f.render(props); await tick();
+    let elements = screenElements(f.render(props));
+    assert.equal(controller.getSnapshot().phase, 'waiting');
+    assert(!text(elements).includes(new Date(0).toLocaleString('en')));
+    assert(!text(elements).includes('Expires'));
+    assert(text(elements).includes(hash), 'retained transaction stays visible');
+    knownOperation = { ...knownOperation, status: 'pending', scheduledAt: readyAt - 600,
+      executableAt: readyAt, expiresAt: readyAt + 1200 };
+    button(elements, 'Check status').props.onPress(); await tick();
+    elements = screenElements(f.render(props));
+    assert(text(elements).includes(new Date(readyAt * 1000).toLocaleString('en')));
+    assert(text(elements).includes(new Date((readyAt + 1200) * 1000).toLocaleString('en')));
+    assert.equal(reads, 2);
+  } finally { f.close(); controller.dispose(); }
+});
+
 test('saved recovery dates follow Pali language without changing deadlines or refreshing status', async () => {
   const knownOperation = {
     operationId: hash,
@@ -735,4 +771,59 @@ test('watch recovery changes status and date language without repeating the netw
     assert(localized.some(node => node.children.includes(dateLabel)));
     assert.equal(reads, 1);
   } finally { await englishI18n.changeLanguage('en'); f.close(); }
+});
+
+test('finalization review stays visibly preparing across observation and fee preparation without duplicate actions', async () => {
+  const observed = Promise.withResolvers<void>(), estimated = Promise.withResolvers<void>();
+  let observationWait: Promise<void> = Promise.resolve(), preparationWait: Promise<void> = Promise.resolve();
+  let observations = 0, preparations = 0;
+  const prepared = {
+    transaction: { chainId: '1', from: payer.address, to: moduleAddress, nonce: '3', type: 2 as const,
+      value: '0x0', data: '0x1234', gasLimit: '0x186a0', maxFeePerGas: '0x3b9aca00', maxPriorityFeePerGas: '0x3b9aca00', accessList: [] },
+    feeComparison: { recommendationOnly: true as const }, maximumFeeUnits: '100000000000000',
+    maximumTotalUnits: '100000000000000', coveredFeeUnits: '0', approval: null,
+    expiresAtMonotonicMilliseconds: performance.now() + 60_000,
+    async submit() { throw Error('Review must not submit'); },
+  };
+  const controller = new NativeGuardianRecoveryController({
+    assertCurrent() {}, dispose() {}, submissionFailure() { return undefined; },
+    async observe() { observations++; await observationWait; return { intent, observation, action: 'finalize', transactionHash: hash, terminal: null, canAbandon: false }; },
+    async prepare(action) { assert.equal(action, 'finalize'); preparations++; await preparationWait; return prepared; },
+    async reconcile() {}, async abandon() {},
+  }, new AbortController().signal);
+  const f = screen('NativeGuardianRecoveryView');
+  const props = { controller, address, chainId: 1, currency: 'ETH', networkLabel: 'Ethereum',
+    async onActivity() {}, async openRecoveryAlerts() {}, onBack() {} };
+  const render = () => screenElements(f.render(props));
+  const phases: string[] = [];
+  const unsubscribe = controller.subscribe(() => phases.push(controller.getSnapshot().phase));
+  const assertPreparing = () => {
+    const elements = render();
+    assert.equal(controller.getSnapshot().phase, 'preparing');
+    assert(elements.some(element => element.type === 'ActivityIndicator'));
+    assert(!elements.some(element => element.type === 'Button' && /Review finalization fee|Confirm finalization/.test(element.props.title)));
+  };
+  try {
+    render(); await tick();
+    assert.equal(controller.getSnapshot().phase, 'ready');
+    const reviewButton = button(render(), 'Review finalization fee');
+    observationWait = observed.promise; preparationWait = estimated.promise; phases.length = 0;
+    reviewButton.props.onPress();
+    assertPreparing();
+    reviewButton.props.onPress(); await controller.review();
+    assert.equal(observations, 2); assert.equal(preparations, 0);
+    observed.resolve(); await tick();
+    assertPreparing();
+    reviewButton.props.onPress(); await controller.review();
+    assert.equal(preparations, 1); assert.equal(observations, 2);
+    estimated.resolve(); await tick();
+    const feeReview = render();
+    assert.equal(controller.getSnapshot().phase, 'review');
+    button(feeReview, 'Confirm finalization');
+    assert(!feeReview.some(element => element.type === 'ActivityIndicator'));
+    assert.equal(controller.getSnapshot().feeReview?.transaction, prepared.transaction);
+    assert.equal(controller.getSnapshot().feeReview?.maximumFeeUnits, prepared.maximumFeeUnits);
+    assert(text(feeReview).includes('0.0001'));
+    assert.deepEqual(phases, ['preparing', 'preparing', 'review']);
+  } finally { observed.resolve(); estimated.resolve(); unsubscribe(); f.close(); controller.dispose(); }
 });

@@ -140,6 +140,8 @@ export type NativeConnectionsSnapshot = Readonly<{
     status: CallsBundleStatus;
   }> | null;
   revision: number;
+  connectionsEnabled: boolean;
+  connectionSettingsBusy: boolean;
   status: 'locked' | 'ready' | 'pairing' | 'approving' | 'unavailable';
   pairingExpiresAt: number | null;
   selectedAccountId: string | null;
@@ -205,6 +207,8 @@ export type NativeConnectionsView = Readonly<{
   ): Promise<void>;
   reject(proposalId: number): Promise<void>;
   disconnect(connectionId: string): Promise<void>;
+  setConnectionsEnabled(enabled: boolean): Promise<void>;
+  disconnectAll(): Promise<void>;
   previewEncryption(id: string, revision: number): Promise<string>;
   approveRequest(
     id: string,

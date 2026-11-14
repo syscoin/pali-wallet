@@ -131,7 +131,11 @@ async function failedWithdrawalFixture(mode: 'direct' | 'relayed' = 'direct') {
   const note = await f.controller.importNote(NOTE);
   const session = f.captureSession();
   const attempt = withdrawalAttempt(note.id, mode);
-  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   await f.controller.recordWithdrawalSubmission(
     attempt,
     { transactionHash: TX_HASH },
@@ -426,7 +430,11 @@ it.each(['direct', 'relayed'] as const)(
     const session = f.captureSession();
     for (const [index, note] of notes.entries()) {
       const attempt = capacityAttempt(note, index, mode, identify);
-      await f.controller.reserveWithdrawalAttempt(attempt, session);
+      await f.controller.reserveWithdrawalAttempt(
+        attempt,
+        session,
+        '00000000-0000-4000-8000-000000000099:0'
+      );
       recordOperationEvidence();
       await f.controller.recordWithdrawalSubmission(
         attempt,
@@ -481,7 +489,11 @@ async function chunkedFixture() {
   const session = ready.f.captureSession();
   for (let i = 0; i < 24; i++) {
     const attempt = capacityAttempt(ready.notes[i], i, 'relayed');
-    await ready.f.controller.reserveWithdrawalAttempt(attempt, session);
+    await ready.f.controller.reserveWithdrawalAttempt(
+      attempt,
+      session,
+      '00000000-0000-4000-8000-000000000099:0'
+    );
   }
   expect(ready.f.records[ready.key].version).toBe(1);
   return { ...ready, session };
@@ -631,7 +643,11 @@ it('bounds sharding for escaped long endpoints and both journal types', async ()
       createdAt: Number.MAX_SAFE_INTEGER - 60000,
       expiresAt: Number.MAX_SAFE_INTEGER,
     };
-    await f.controller.reserveWithdrawalAttempt(attempt, session);
+    await f.controller.reserveWithdrawalAttempt(
+      attempt,
+      session,
+      '00000000-0000-4000-8000-000000000099:0'
+    );
     if (index !== notes.length - 1)
       await f.controller.recordWithdrawalSubmission(
         attempt,
@@ -674,7 +690,11 @@ it('rejects missing, duplicate, swapped and stale encrypted shards without repla
   const { f, key, notes, session } = await chunkedFixture();
   const saved = structuredClone(f.records[key]);
   const attempt = capacityAttempt(notes[24], 24, 'relayed');
-  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   const latest = structuredClone(f.records[key]);
   for (const corrupt of [
     { ...latest, shards: latest.shards.slice(1) },
@@ -706,7 +726,11 @@ it('keeps an atomic encrypted bundle readable after failed and uncertain writes'
     throw new Error('write refused');
   });
   await expect(
-    f.controller.reserveWithdrawalAttempt(attempt, session)
+    f.controller.reserveWithdrawalAttempt(
+      attempt,
+      session,
+      '00000000-0000-4000-8000-000000000099:0'
+    )
   ).rejects.toThrow('privacy_vault_unavailable');
   expect(f.records[key]).toEqual(saved);
   expect(
@@ -717,13 +741,23 @@ it('keeps an atomic encrypted bundle readable after failed and uncertain writes'
     throw new Error('uncertain acknowledgement');
   });
   await expect(
-    f.controller.reserveWithdrawalAttempt(attempt, session)
+    f.controller.reserveWithdrawalAttempt(
+      attempt,
+      session,
+      '00000000-0000-4000-8000-000000000099:0'
+    )
   ).rejects.toThrow('privacy_vault_unavailable');
   expect(
     (await f.create().getWithdrawalAttempt(notes[24].id, session))?.phase
   ).toBe('unknown');
   await expect(
-    f.create().reserveWithdrawalAttempt(attempt, session)
+    f
+      .create()
+      .reserveWithdrawalAttempt(
+        attempt,
+        session,
+        '00000000-0000-4000-8000-000000000099:0'
+      )
   ).rejects.toThrow('privacy_withdrawal_attempt_exists');
   await f.controller.clearUnbroadcastWithdrawalAttempt(attempt, session);
   expect(f.records[key].version).toBe(1);
@@ -1266,7 +1300,11 @@ it.each(['direct', 'relayed'] as const)(
     });
     let completed = false;
     const reserve = f.controller
-      .reserveWithdrawalAttempt(attempt, session)
+      .reserveWithdrawalAttempt(
+        attempt,
+        session,
+        '00000000-0000-4000-8000-000000000099:0'
+      )
       .then(() => {
         completed = true;
       });
@@ -1289,7 +1327,11 @@ it.each(['direct', 'relayed'] as const)(
       restarted.withWithdrawalNote(saved.id, session, jest.fn())
     ).rejects.toThrow('privacy_withdrawal_attempt_exists');
     await expect(
-      restarted.reserveWithdrawalAttempt(attempt, session)
+      restarted.reserveWithdrawalAttempt(
+        attempt,
+        session,
+        '00000000-0000-4000-8000-000000000099:0'
+      )
     ).rejects.toThrow('privacy_withdrawal_attempt_exists');
     const disk = JSON.stringify(f.records);
     for (const secret of [
@@ -1310,7 +1352,11 @@ it('journals a relay job then its transaction hash idempotently and refuses mism
   const saved = await f.controller.importNote(NOTE);
   const attempt = withdrawalAttempt(saved.id, 'relayed');
   const session = f.captureSession();
-  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   await f.controller.recordWithdrawalSubmission(
     attempt,
     { jobId: UUID },
@@ -1348,7 +1394,11 @@ it('recovers a relay job from encrypted custody and records a verified hash with
   const saved = await f.controller.importNote(NOTE);
   const attempt = withdrawalAttempt(saved.id, 'relayed');
   const session = f.captureSession();
-  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   await f.controller.recordWithdrawalSubmission(
     attempt,
     { jobId: UUID },
@@ -1407,10 +1457,18 @@ it('reserves a withdrawal only once under concurrent confirmations', async () =>
   const attempt = withdrawalAttempt(saved.id, 'relayed');
   const session = f.captureSession();
   const results = await Promise.allSettled([
-    f.controller.reserveWithdrawalAttempt(attempt, session),
+    f.controller.reserveWithdrawalAttempt(
+      attempt,
+      session,
+      '00000000-0000-4000-8000-000000000099:0'
+    ),
     f
       .create()
-      .reserveWithdrawalAttempt({ ...attempt, intentId: UUID }, session),
+      .reserveWithdrawalAttempt(
+        { ...attempt, intentId: UUID },
+        session,
+        '00000000-0000-4000-8000-000000000099:0'
+      ),
   ]);
   expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(
     1
@@ -1438,13 +1496,21 @@ it('retains a withdrawal reservation when storage applies it before reporting fa
     throw new Error('uncertain storage acknowledgement');
   });
   await expect(
-    f.controller.reserveWithdrawalAttempt(attempt, session)
+    f.controller.reserveWithdrawalAttempt(
+      attempt,
+      session,
+      '00000000-0000-4000-8000-000000000099:0'
+    )
   ).rejects.toThrow('privacy_vault_unavailable');
   expect(
     (await f.create().getWithdrawalAttempt(saved.id, session))?.phase
   ).toBe('unknown');
   await expect(
-    f.controller.reserveWithdrawalAttempt(attempt, session)
+    f.controller.reserveWithdrawalAttempt(
+      attempt,
+      session,
+      '00000000-0000-4000-8000-000000000099:0'
+    )
   ).rejects.toThrow('privacy_withdrawal_attempt_exists');
 });
 
@@ -1453,7 +1519,11 @@ it('clears only a matching proven-unbroadcast withdrawal reservation', async () 
   const saved = await f.controller.importNote(NOTE);
   const attempt = withdrawalAttempt(saved.id);
   const session = f.captureSession();
-  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   await expect(
     f.controller.clearUnbroadcastWithdrawalAttempt(
       { ...attempt, intentId: UUID },
@@ -1480,7 +1550,11 @@ it.each([
     const saved = await f.controller.importNote(NOTE);
     const attempt = withdrawalAttempt(saved.id, 'relayed');
     const session = f.captureSession();
-    await f.controller.reserveWithdrawalAttempt(attempt, session);
+    await f.controller.reserveWithdrawalAttempt(
+      attempt,
+      session,
+      '00000000-0000-4000-8000-000000000099:0'
+    );
     const modified: any = { ...attempt };
     if (field === 'context')
       modified.context = {
@@ -1518,10 +1592,15 @@ it('binds direct withdrawal calldata and fee fields and rejects a different nonc
   await expect(
     f.controller.reserveWithdrawalAttempt(
       { ...attempt, transaction: { ...attempt.transaction, data: '0x1234' } },
-      session
+      session,
+      '00000000-0000-4000-8000-000000000099:0'
     )
   ).rejects.toThrow('privacy_withdrawal_attempt_invalid');
-  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   for (const field of [
     'nonce',
     'gasLimit',
@@ -1562,10 +1641,18 @@ it('rejects competing deposit and withdrawal reservations sharing an account non
       await f.controller.reserveDepositAttempt(deposit, session);
       f.setStatus({ phase: 'verified' });
       await expect(
-        f.controller.reserveWithdrawalAttempt(withdraw, session)
+        f.controller.reserveWithdrawalAttempt(
+          withdraw,
+          session,
+          '00000000-0000-4000-8000-000000000099:0'
+        )
       ).rejects.toThrow('privacy_withdrawal_attempt_exists');
     } else {
-      await f.controller.reserveWithdrawalAttempt(withdraw, session);
+      await f.controller.reserveWithdrawalAttempt(
+        withdraw,
+        session,
+        '00000000-0000-4000-8000-000000000099:0'
+      );
       f.setStatus({ phase: 'not-found' });
       await expect(
         f.controller.reserveDepositAttempt(deposit, session)
@@ -1579,7 +1666,11 @@ it('leaves withdrawal unknown when the original crypto session locks before ackn
   const saved = await f.controller.importNote(NOTE);
   const session = f.captureSession();
   const attempt = withdrawalAttempt(saved.id, 'relayed');
-  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   const before = JSON.stringify(f.records);
   f.lock();
   await expect(
@@ -1597,7 +1688,11 @@ it('keeps the original withdrawal unknown if its profile changes during acknowle
   const saved = await f.controller.importNote(NOTE);
   const session = f.captureSession();
   const attempt = withdrawalAttempt(saved.id);
-  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   const before = JSON.stringify(f.records);
   const entered = deferred(),
     release = deferred();
@@ -1662,11 +1757,19 @@ it('rechecks withdrawal status after encryption and refuses tampered encrypted c
       return result;
     });
   await expect(
-    f.controller.reserveWithdrawalAttempt(attempt, session)
+    f.controller.reserveWithdrawalAttempt(
+      attempt,
+      session,
+      '00000000-0000-4000-8000-000000000099:0'
+    )
   ).rejects.toThrow('privacy_note_spent');
   expect(await f.controller.getWithdrawalAttempt(saved.id, session)).toBeNull();
   f.setStatus({ phase: 'verified' });
-  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   const key = Object.keys(f.records)[0];
   f.records[key].root.ciphertext =
     f.records[key].root.ciphertext.slice(0, -4) + 'AAAA';
@@ -2123,10 +2226,15 @@ it.each([
         request.refund,
       ].map((x) => BigInt(x).toString()),
     }),
+    beforeDispatch: async () => undefined,
     beforeSubmission: async (attempt) => {
       reservedAttempt = attempt;
       captured.assertCurrent();
-      await f.controller.reserveWithdrawalAttempt(attempt, originalSession);
+      await f.controller.reserveWithdrawalAttempt(
+        attempt,
+        originalSession,
+        '00000000-0000-4000-8000-000000000099:0'
+      );
       captured.assertCurrent();
       if (scenario === 'healthy pre-sign cancellation') forceCancel = true;
       return () => undefined;
@@ -2204,7 +2312,11 @@ async function completedClearFixture() {
   const unrelated = await f.controller.importNote(SECOND_NOTE);
   const session = f.captureSession();
   const attempt = withdrawalAttempt(completed.id, 'relayed');
-  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   await f.controller.recordWithdrawalSubmission(
     attempt,
     { transactionHash: TX_HASH },
@@ -2260,7 +2372,11 @@ it('clear completed leaves unknown or no-hash journals untouched', async () => {
   const note = await f.controller.importNote(NOTE);
   const session = f.captureSession();
   const attempt = withdrawalAttempt(note.id, 'relayed');
-  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   expect(await f.controller.clearCompletedNotes([note.id])).toEqual({
     removed: [],
     unresolved: [note.id],
@@ -2397,7 +2513,11 @@ it('clear completed preserves a note with an unknown deposit journal even after 
   await f.controller.reserveDepositAttempt(depositAttempt(note.id), session);
   f.setStatus({ phase: 'verified' });
   const withdrawal = withdrawalAttempt(note.id, 'relayed');
-  await f.controller.reserveWithdrawalAttempt(withdrawal, session);
+  await f.controller.reserveWithdrawalAttempt(
+    withdrawal,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   await f.controller.recordWithdrawalSubmission(
     withdrawal,
     { transactionHash: TX_HASH },
@@ -2947,7 +3067,11 @@ it('restores atomically after fresh authentication and keeps unknown history blo
     restarted.withWithdrawalNote(note.id, session, use)
   ).rejects.toThrow('privacy_note_restore_required');
   await expect(
-    restarted.reserveWithdrawalAttempt(withdrawalAttempt(note.id), session)
+    restarted.reserveWithdrawalAttempt(
+      withdrawalAttempt(note.id),
+      session,
+      '00000000-0000-4000-8000-000000000099:0'
+    )
   ).rejects.toThrow('privacy_note_restore_required');
   expect(use).not.toHaveBeenCalled();
   const backup = await restarted.exportBackupSnapshot(
@@ -3000,7 +3124,11 @@ it('preserves existing live journals and timestamps while adding imported eviden
   const session = f.captureSession();
   const local = await f.controller.importNote(NOTE);
   const attempt = withdrawalAttempt(local.id);
-  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   const before = (await decryptedVault(f)).notes[0];
   const entry = {
     note: NOTE,
@@ -3041,7 +3169,11 @@ it('trusted unbroadcast cleanup cannot remove an independent restore guard', asy
   const session = f.captureSession();
   const local = await f.controller.importNote(NOTE);
   const attempt = withdrawalAttempt(local.id);
-  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   const plan = await f.controller.prepareRestore(
     [{ note: NOTE, createdAt: 1, reconciliationRequired: true }],
     session
@@ -3393,6 +3525,7 @@ it.each(['deposit', 'withdrawal'] as const)(
       await f.controller.reserveWithdrawalAttempt(
         attempt as IPrivacyWithdrawalAttempt,
         session,
+        '00000000-0000-4000-8000-000000000099:0',
         (identity) => {
           fence = identity.assertRestoreCurrent;
         }
@@ -3459,6 +3592,7 @@ it('revokes a reservation fence before a restore whose storage acknowledgment is
   await f.controller.reserveWithdrawalAttempt(
     withdrawalAttempt(local.id),
     session,
+    '00000000-0000-4000-8000-000000000099:0',
     (identity) => {
       fence = identity.assertRestoreCurrent;
     }
@@ -3779,7 +3913,11 @@ it.each(['direct cleanup', 'known-unbroadcast cleanup'] as const)(
     await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
     const recovered = (await decryptedVault(f)).notes[0].withdrawal;
     const next = { ...attempt, intentId: UUID };
-    await f.controller.reserveWithdrawalAttempt(next, session);
+    await f.controller.reserveWithdrawalAttempt(
+      next,
+      session,
+      '00000000-0000-4000-8000-000000000099:0'
+    );
     const pending = await f.controller.getWithdrawalAttempt(note.id, session);
     expect(pending?.retired).toEqual([recovered]);
     expect((await f.controller.getNotes()).notes[0].phase).toBe('waiting');
@@ -3797,7 +3935,11 @@ it.each(['direct cleanup', 'known-unbroadcast cleanup'] as const)(
     }
     expect((await decryptedVault(f)).notes[0].withdrawal).toEqual(recovered);
     expect(await f.create().getWithdrawalAttempt(note.id, session)).toBeNull();
-    await f.controller.reserveWithdrawalAttempt(next, session);
+    await f.controller.reserveWithdrawalAttempt(
+      next,
+      session,
+      '00000000-0000-4000-8000-000000000099:0'
+    );
     await f.controller.recordWithdrawalSubmission(
       next,
       { transactionHash: '0x' + 'de'.repeat(32) },
@@ -3831,7 +3973,8 @@ it('failed withdrawal recovery authenticates before RPC and refuses relayed or u
   const note = await unknown.controller.importNote(NOTE);
   await unknown.controller.reserveWithdrawalAttempt(
     withdrawalAttempt(note.id),
-    unknown.captureSession()
+    unknown.captureSession(),
+    '00000000-0000-4000-8000-000000000099:0'
   );
   await expect(
     unknown.controller.recoverFailedWithdrawal(note.id, 'correct-password')
@@ -3844,7 +3987,11 @@ it('failed withdrawal recovery also preserves prior history when the fresh attem
   await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
   const recovered = (await decryptedVault(f)).notes[0].withdrawal;
   const next = { ...withdrawalAttempt(note.id, 'relayed'), intentId: UUID };
-  await f.controller.reserveWithdrawalAttempt(next, session);
+  await f.controller.reserveWithdrawalAttempt(
+    next,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   await f.controller.clearUnbroadcastWithdrawalAttempt(next, session);
   expect((await decryptedVault(f)).notes[0].withdrawal).toEqual(recovered);
 });
@@ -3961,7 +4108,8 @@ it('failed withdrawal recovery reserves backup capacity before a seventeenth his
       .create()
       .reserveWithdrawalAttempt(
         { ...withdrawalAttempt(note.id), intentId: UUID },
-        session
+        session,
+        '00000000-0000-4000-8000-000000000099:0'
       )
   ).rejects.toThrow();
   expect(f.records).toEqual(before);
@@ -4204,7 +4352,11 @@ it('preserves exact local failed-withdrawal recovery after a duplicate deposit-o
     intentId: UUID,
     transaction: { ...attempt.transaction, nonce: '0x8' },
   };
-  await f.controller.reserveWithdrawalAttempt(next, session);
+  await f.controller.reserveWithdrawalAttempt(
+    next,
+    session,
+    '00000000-0000-4000-8000-000000000099:0'
+  );
   await f.controller.recordWithdrawalSubmission(
     next,
     { transactionHash: '0x' + 'cd'.repeat(32) },
@@ -4283,3 +4435,309 @@ it('a lost review acknowledgement preserves durable consent and a retry does not
   await f.create().reviewRestoredNote(note.id, 'correct-password');
   expect(f.storage.setItem).toHaveBeenCalledTimes(writes);
 });
+
+const UNSIGNED_LIFETIME = '00000000-0000-4000-8000-000000000099:0';
+const REOPENED_LIFETIME = '00000000-0000-4000-8000-000000000100:0';
+
+it.each(['direct', 'relayed'] as const)(
+  'reclaims only undispatched %s attempts across a fresh runtime with the same numeric generation',
+  async (mode) => {
+    const f = fixture();
+    const note = await f.controller.importNote(NOTE);
+    const session = f.captureSession();
+    const attempt = withdrawalAttempt(note.id, mode);
+    await f.controller.reserveWithdrawalAttempt(
+      attempt,
+      session,
+      UNSIGNED_LIFETIME
+    );
+    const stored = (await decryptedVault(f)).notes[0].withdrawal;
+    expect(stored.unsigned).toMatchObject({
+      lifetime: UNSIGNED_LIFETIME,
+      version: 1,
+    });
+    expect(stored.unsigned.context).not.toHaveProperty('sessionGeneration');
+    expect(
+      await f.controller.getWithdrawalAttempt(note.id, session)
+    ).not.toHaveProperty('unsigned');
+    const backup = await f.controller.exportBackupSnapshot(
+      'correct-password',
+      session
+    );
+    expect(JSON.stringify(backup)).not.toContain(UNSIGNED_LIFETIME);
+    expect(JSON.stringify(backup)).not.toContain('unsigned');
+    const reopened = f.create();
+    await reopened.reconcileUnsignedWithdrawals(
+      attempt.context,
+      REOPENED_LIFETIME,
+      session
+    );
+    expect(await reopened.getWithdrawalAttempt(note.id, session)).toBeNull();
+    await expect(
+      reopened.withWithdrawalNote(note.id, session, () => 'proof')
+    ).resolves.toBe('proof');
+  }
+);
+
+it.each(['current', 'consumed', 'no-marker'] as const)(
+  'does not reclaim a %s withdrawal journal',
+  async (state) => {
+    const f = fixture();
+    const note = await f.controller.importNote(NOTE);
+    const attempt = withdrawalAttempt(note.id);
+    const session = f.captureSession();
+    await f.controller.reserveWithdrawalAttempt(
+      attempt,
+      session,
+      UNSIGNED_LIFETIME
+    );
+    if (state === 'consumed')
+      await f.controller.consumeUnsignedWithdrawal(
+        attempt,
+        session,
+        UNSIGNED_LIFETIME
+      );
+    if (state === 'no-marker') {
+      const snapshot = await decryptedVault(f);
+      delete snapshot.notes[0].withdrawal.unsigned;
+      await storeCanonicalManifest(f, { version: 1, notes: snapshot.notes });
+    }
+    const before = JSON.stringify(f.records);
+    await f
+      .create()
+      .reconcileUnsignedWithdrawals(
+        attempt.context,
+        state === 'current' ? UNSIGNED_LIFETIME : REOPENED_LIFETIME,
+        session
+      );
+    expect(JSON.stringify(f.records)).toBe(before);
+    expect(
+      await f.controller.getWithdrawalAttempt(note.id, session)
+    ).toMatchObject({ phase: 'unknown' });
+  }
+);
+
+it.each(['rpc', 'slip44', 'account-id', 'account-type', 'address'] as const)(
+  'does not reclaim another %s scope',
+  async (field) => {
+    const f = fixture();
+    const note = await f.controller.importNote(NOTE);
+    const attempt = withdrawalAttempt(note.id);
+    const session = f.captureSession();
+    await f.controller.reserveWithdrawalAttempt(
+      attempt,
+      session,
+      UNSIGNED_LIFETIME
+    );
+    const scope = structuredClone(attempt.context);
+    if (field === 'rpc') scope.rpcUrl = 'https://different.example';
+    if (field === 'slip44') scope.slip44 = 1;
+    if (field === 'account-id') scope.account.id++;
+    if (field === 'account-type')
+      scope.account.type = KeyringAccountType.Imported;
+    if (field === 'address') scope.account.address = '0x' + '33'.repeat(20);
+    const before = JSON.stringify(f.records);
+    await f
+      .create()
+      .reconcileUnsignedWithdrawals(scope, REOPENED_LIFETIME, session);
+    expect(JSON.stringify(f.records)).toBe(before);
+  }
+);
+
+it('consumes an exact marker once and refuses wrong lifetimes or changed attempts', async () => {
+  const f = fixture();
+  const note = await f.controller.importNote(NOTE);
+  const session = f.captureSession();
+  const attempt = withdrawalAttempt(note.id);
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    UNSIGNED_LIFETIME
+  );
+  const before = JSON.stringify(f.records);
+  await expect(
+    f.controller.consumeUnsignedWithdrawal(attempt, session, REOPENED_LIFETIME)
+  ).rejects.toThrow('privacy_withdrawal_attempt_invalid');
+  await expect(
+    f.controller.consumeUnsignedWithdrawal(
+      { ...attempt, recipient: '0x' + '33'.repeat(20) },
+      session,
+      UNSIGNED_LIFETIME
+    )
+  ).rejects.toThrow('privacy_withdrawal_attempt_invalid');
+  expect(JSON.stringify(f.records)).toBe(before);
+  await f.controller.consumeUnsignedWithdrawal(
+    attempt,
+    session,
+    UNSIGNED_LIFETIME
+  );
+  await expect(
+    f.controller.consumeUnsignedWithdrawal(attempt, session, UNSIGNED_LIFETIME)
+  ).rejects.toThrow('privacy_withdrawal_attempt_invalid');
+  expect((await decryptedVault(f)).notes[0].withdrawal).not.toHaveProperty(
+    'unsigned'
+  );
+});
+
+it('preserves an independently restored note guard when retiring its old unsigned attempt', async () => {
+  const f = fixture();
+  const note = await f.controller.importNote(NOTE);
+  const session = f.captureSession();
+  const attempt = withdrawalAttempt(note.id);
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    UNSIGNED_LIFETIME
+  );
+  const entries = [
+    { note: NOTE, createdAt: 1, reconciliationRequired: true as const },
+  ];
+  const plan = await f.controller.prepareRestore(entries, session);
+  await f.controller.commitRestore(plan, entries, 'correct-password', session);
+  await f
+    .create()
+    .reconcileUnsignedWithdrawals(attempt.context, REOPENED_LIFETIME, session);
+  expect(await f.controller.getWithdrawalAttempt(note.id, session)).toBeNull();
+  expect((await decryptedVault(f)).notes[0].restoreGuard).toBeDefined();
+  await expect(
+    f.controller.withWithdrawalNote(note.id, session, jest.fn())
+  ).rejects.toThrow('privacy_note_restore_required');
+});
+
+it('refuses dispatch after a restore guards the unsigned attempt', async () => {
+  const f = fixture();
+  const note = await f.controller.importNote(NOTE);
+  const session = f.captureSession();
+  const attempt = withdrawalAttempt(note.id);
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    UNSIGNED_LIFETIME
+  );
+  const entries = [
+    { note: NOTE, createdAt: 1, reconciliationRequired: true as const },
+  ];
+  const plan = await f.controller.prepareRestore(entries, session);
+  await f.controller.commitRestore(plan, entries, 'correct-password', session);
+  await expect(
+    f.controller.consumeUnsignedWithdrawal(attempt, session, UNSIGNED_LIFETIME)
+  ).rejects.toThrow('privacy_withdrawal_attempt_invalid');
+  expect((await decryptedVault(f)).notes[0].withdrawal.unsigned).toBeDefined();
+});
+
+it.each([
+  { version: 2 },
+  { lifetime: '00000000-0000-4000-8000-000000000099' },
+  { lifetime: '00000000-0000-4000-8000-000000000099:9007199254740992' },
+  { extra: true },
+  { context: { chainId: 1 } },
+])('rejects malformed unsigned markers %j', async (mutation) => {
+  const f = fixture();
+  const note = await f.controller.importNote(NOTE);
+  const attempt = withdrawalAttempt(note.id);
+  const session = f.captureSession();
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    UNSIGNED_LIFETIME
+  );
+  const snapshot = await decryptedVault(f);
+  Object.assign(snapshot.notes[0].withdrawal.unsigned, mutation);
+  await storeCanonicalManifest(f, { version: 1, notes: snapshot.notes });
+  await expect(f.create().getNotes()).rejects.toThrow('privacy_vault_corrupt');
+});
+
+it('only one concurrent dispatch can consume an unsigned attempt', async () => {
+  const f = fixture();
+  const note = await f.controller.importNote(NOTE);
+  const attempt = withdrawalAttempt(note.id);
+  const session = f.captureSession();
+  await f.controller.reserveWithdrawalAttempt(
+    attempt,
+    session,
+    UNSIGNED_LIFETIME
+  );
+  const results = await Promise.allSettled([
+    f.controller.consumeUnsignedWithdrawal(attempt, session, UNSIGNED_LIFETIME),
+    f.controller.consumeUnsignedWithdrawal(attempt, session, UNSIGNED_LIFETIME),
+  ]);
+  expect(results.map((result) => result.status).sort()).toEqual([
+    'fulfilled',
+    'rejected',
+  ]);
+});
+
+it.each([false, true])(
+  'keeps dispatch closed when consuming fails (write committed: %s)',
+  async (committed) => {
+    const f = fixture();
+    const note = await f.controller.importNote(NOTE);
+    const attempt = withdrawalAttempt(note.id);
+    const session = f.captureSession();
+    await f.controller.reserveWithdrawalAttempt(
+      attempt,
+      session,
+      UNSIGNED_LIFETIME
+    );
+    const write = f.storage.setItem.getMockImplementation()!;
+    f.storage.setItem.mockImplementationOnce(async (key, value) => {
+      if (committed) await write(key, value);
+      throw new Error('lost write acknowledgement');
+    });
+    await expect(
+      f.controller.consumeUnsignedWithdrawal(
+        attempt,
+        session,
+        UNSIGNED_LIFETIME
+      )
+    ).rejects.toThrow();
+    await f
+      .create()
+      .reconcileUnsignedWithdrawals(
+        attempt.context,
+        REOPENED_LIFETIME,
+        session
+      );
+    if (committed)
+      expect(
+        await f.controller.getWithdrawalAttempt(note.id, session)
+      ).toMatchObject({ phase: 'unknown' });
+    else
+      expect(
+        await f.controller.getWithdrawalAttempt(note.id, session)
+      ).toBeNull();
+  }
+);
+
+it.each([false, true])(
+  'projects reconciled notes from one authenticated read (reclaim: %s)',
+  async (reclaim) => {
+    const f = fixture();
+    const note = await f.controller.importNote(NOTE);
+    const attempt = withdrawalAttempt(note.id);
+    const session = f.captureSession();
+    await f.controller.reserveWithdrawalAttempt(
+      attempt,
+      session,
+      UNSIGNED_LIFETIME
+    );
+    const decrypt = jest.spyOn(f.getKeyring(), 'decryptPrivateRecord');
+    decrypt.mockClear();
+    f.storage.getItem.mockClear();
+    f.readNote.mockClear();
+    const result = await f
+      .create()
+      .reconcileUnsignedWithdrawals(
+        attempt.context,
+        reclaim ? REOPENED_LIFETIME : UNSIGNED_LIFETIME,
+        session
+      );
+    expect(f.storage.getItem).toHaveBeenCalledTimes(1);
+    expect(decrypt).toHaveBeenCalledTimes(2); // authenticated root plus one shard
+    expect(f.readNote).toHaveBeenCalledTimes(1);
+    expect(result.notes[0]).toMatchObject({
+      id: note.id,
+      phase: reclaim ? 'verified' : 'waiting',
+    });
+  }
+);

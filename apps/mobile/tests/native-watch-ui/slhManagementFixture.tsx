@@ -17,7 +17,7 @@ const account = `0x${'11'.repeat(20)}`, validator = `0x${'22'.repeat(20)}`, hash
 const reviewed: NativeSmartAccountOperationSnapshot = {
   phase: 'authorize', revision: 1, account, network: getNativeNetwork('ethereum'), maximumPrefundUnits: '1023000', userOperationHash: hash,
   authorization: { entryPoint: validator, nonce: '1', initCode: '0x', callData: '0x' }, payerReview: null, transactionHash: null, userOperationSubmissionStarted: false, error: null,
-  intent: { kind: 'authenticator', command: { accountAddress: account, chainId: 1, sourceAuthHash: hash, sourceModule: 'ecdsa', executions: [],
+  intent: { kind: 'authenticator', command: { purpose: 'replace', accountAddress: account, chainId: 1, sourceAuthHash: hash, sourceModule: 'ecdsa', executions: [],
     target: { module: 'slh-dsa', validator, data: '0x' }, targetModule: { type: 'validator', id: 'slh-dsa', address: validator, config: key } } },
 };
 const held = new Set<() => void>();

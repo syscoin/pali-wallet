@@ -1,3 +1,4 @@
+import type { SmartAccountAuthenticatorPurpose } from '../../../../source/utils/smartAccount/moduleCommands.ts';
 import type { NativeSmartModuleDraft } from '../smartAccount/modules.ts';
 import type { NativeSmartAccountIntent, NativeGuardianPolicyDraft } from '../smartAccount/operation.ts';
 import type { NativeAssetTransferIntent } from './transferIntent.ts';
@@ -30,10 +31,10 @@ export function snapshotNativeInfrastructureLocalAction(action: NativeInfrastruc
 export type NativeSmartLocalAction =
   | Readonly<{kind:'operation';intent:Exclude<NativeSmartAccountIntent,{kind:'guardian-policy' | 'authenticator' | 'modules' | 'dapp-call' | 'dapp-batch'}>}>
   | Readonly<{kind:'guardian-policy';draft:NativeGuardianPolicyDraft}>
-  | Readonly<{kind:'wallet-authenticator'}>
-  | Readonly<{kind:'passkey-authenticator';credentialIdHash:string}>
+  | Readonly<{kind:'wallet-authenticator';purpose:SmartAccountAuthenticatorPurpose}>
+  | Readonly<{kind:'passkey-authenticator';purpose:SmartAccountAuthenticatorPurpose;credentialIdHash:string}>
   | Readonly<{kind:'modules';draft:NativeSmartModuleDraft}>
-  | Readonly<{kind:'slh-installation';keyId:string}>;
+  | Readonly<{kind:'slh-installation';purpose:SmartAccountAuthenticatorPurpose;keyId:string}>;
 
 export type NativeTrezorResumeIntent = Readonly<{
   id: string;

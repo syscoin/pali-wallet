@@ -1,3 +1,4 @@
+import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { AUTOMATIC_FEE, type EvmFeeChoice, type EvmFeeRates } from '../../../../source/shared/transactionFeeChoice';
 import { NetworkFeeSheet } from './NetworkFeeSheet';
@@ -132,6 +133,7 @@ export function NativeSmartAccountSend({
   onViewTransaction?(hash: string): void;
 }) {
   useNativeTranslation();
+  const { hidden: hideBalances } = useBalancePrivacy();
   const portfolio = useMemo(
     () => new NativePortfolioController(source, reader),
     [source, reader]
@@ -172,8 +174,9 @@ export function NativeSmartAccountSend({
   const loadingBalance = token
     ? selectedToken?.status === 'loading'
     : balance.status === 'loading';
+  const shownAvailableBalance = hideBalances && typeof displayedBalance === 'string' ? HIDDEN_BALANCE : displayedBalance;
   const availableBalanceLabel = typeof displayedBalance === 'string'
-    ? t('mobile.sendAssetViews.utxo.availableAmount', { amount: displayedBalance, symbol })
+    ? t('mobile.sendAssetViews.utxo.availableAmount', { amount: shownAvailableBalance, symbol })
     : `${t(loadingBalance ? 'mobile.activityViews.nativeSptAssets.loadingBalance' : 'mobile.accountPortfolio.balanceUnavailable')} · ${symbol}`;
   const [recipient, setRecipient] = useState(initialRecipient ?? '');
   const [amount, setAmount] = useState(
@@ -558,7 +561,7 @@ export function NativeSmartAccountSend({
               />
             </>
           )}
-          {!collectible && <Text accessibilityLabel={availableBalanceLabel} style={styles.muted}>{t("mobile.smartSendViews.available")}{' '}{displayedBalance ?? '—'} {symbol}</Text>}
+          {!collectible && <Text accessibilityLabel={availableBalanceLabel} style={styles.muted}>{t("mobile.smartSendViews.available")}{' '}{shownAvailableBalance ?? '—'} {symbol}</Text>}
           {!collectible && loadingBalance && <Text style={styles.muted}>{t("mobile.activityViews.nativeSptAssets.loadingBalance")}</Text>}
           <Button title={`${t('send.networkFee')} · ${t(feeChoice.kind === 'custom' ? 'mobile.feeChoice.custom' : feeChoice.kind === 'automatic' ? 'mobile.sendAssetViews.evm.automatic' : `send.${feeChoice.kind}`)}`}
             variant="secondary" size="compact" icon="settings" disabled={busy} onPress={() => { closeScanner(); setFeeDialog({ open, scope: feeScope }); }} />

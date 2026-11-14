@@ -132,7 +132,7 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
     else void openDetail(source.row.choice, true);
   };
   return <SafeAreaView edges={['top']} style={s.safe}><Screen gap={18}>
-    <Header title="Pali Wallet" brand right={<IconButton label={t('mobile.accountPortfolio.refresh')} icon="refresh" disabled={busy || snapshot.refreshing || snapshot.status !== 'ready'} onPress={() => void controller.refresh()} />} />
+    <Header title="Pali Wallet" brand right={<IconButton label={t('mobile.accountPortfolio.refresh')} icon="refresh" disabled={busy || snapshot.refreshing || snapshot.status !== 'ready'} onPress={() => { void portfolio.onRefreshSmartAccount?.(); void controller.refresh(); }} />} />
     {portfolio.onManageAccounts ? <IdlePressable accessibilityRole="button" accessibilityLabel={t('mobile.accountPortfolio.chooseAccount', { account: portfolio.accountLabel ?? 'Account 1' })} onPress={portfolio.onManageAccounts} style={s.account}>
       <Icon name="wallet" size={18} color={colors.blue} /><Text style={s.accountName}>{portfolio.accountLabel ?? 'Account 1'}</Text><Icon name="chevron-down" size={17} color={colors.muted} />
     </IdlePressable> : <View style={s.account}>

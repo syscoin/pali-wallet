@@ -5,7 +5,7 @@ import { ActivityIndicator, AppState, KeyboardAvoidingView, Platform, StyleSheet
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ISmartAccountMetadata, SmartAccountValidatorModule } from '../../../../source/types/network';
 import { listCompositeChildCandidates, type CustomValidatorPreflightResult } from '../../../../source/utils/smartAccount/custom';
-import { canRemoveValidatorModule } from '../../../../source/utils/smartAccount/moduleCommands';
+import { canRemoveValidatorModule, type SmartAccountAuthenticatorPurpose } from '../../../../source/utils/smartAccount/moduleCommands';
 import { useNativeTranslation } from '../platform/localization';
 import type { NativeSmartModuleManagement } from '../smartAccount/moduleManagement';
 import type { NativeSmartModuleDraft } from '../smartAccount/modules';
@@ -32,6 +32,7 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
   const [operation, setOperation] = useState<NativeSmartAccountOperation>(), [busy, setBusy] = useState(false), [failure, setFailure] = useState<string>(), [closing, setClosing] = useState(false);
   const [operationAuthentication, setOperationAuthentication] = useState<NativePrivateAuthenticationScope>();
   const [mode, setMode] = useState<'installed' | 'custom' | 'composite' | 'passkey'>('installed');
+  const [passkeyPurpose, setPasskeyPurpose] = useState<SmartAccountAuthenticatorPurpose>('replace');
   const modeRef = useRef(mode);
   useLayoutEffect(() => { modeRef.current = mode; }, [mode]);
   const [address, setAddress] = useState(''), [name, setName] = useState(''), [initData, setInitData] = useState('0x');
@@ -97,12 +98,12 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
     try { check(owner); owner.operation = next; setOperationAuthentication(owner.authentication); setOperation(next); }
     catch (error) { await next.dispose(); throw error; }
   });
-  const openPasskey = (recreate: boolean) => action(async (owner, value) => {
+  const openPasskey = (recreate: boolean, purpose: SmartAccountAuthenticatorPurpose) => action(async (owner, value) => {
     let next: NativeSmartAccountOperation;
-    try { next = await value.openPasskey(recreate, owner.abort.signal, () => check(owner)); }
+    try { next = await value.openPasskey(recreate, purpose, owner.abort.signal, () => check(owner)); }
     catch (error) {
       if ((error as { code?: string })?.code === 'PASSKEY_POSSESSION_FAILED' && !recreate) {
-        check(owner); setMode('passkey'); return;
+        check(owner); setPasskeyPurpose(purpose); setMode('passkey'); return;
       }
       throw error;
     }
@@ -123,7 +124,7 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
 {!closing && metadata && mode === 'custom' && (<Button title={t('smartAccountHub.install')} icon="plus" disabled={blocked || !checked?.ok || !validInit} onPress={() => {
             if (checked?.ok && validInit) review({ kind: 'install-custom', address: address.trim(), name: name.trim(), initData: initData.trim() });
           }} />)}
-{!closing && metadata && mode === 'passkey' && <Button title={t('settings.smartAccountPasskeyRecreateConfirmButton')} icon="fingerprint" disabled={blocked} onPress={() => openPasskey(true)} />}
+{!closing && metadata && mode === 'passkey' && <Button title={t('settings.smartAccountPasskeyRecreateConfirmButton')} icon="fingerprint" disabled={blocked} onPress={() => openPasskey(true, passkeyPurpose)} />}
 {!closing && metadata && mode === 'composite' && (<Button title={t('smartAccountHub.compositeSavePolicy')} icon="check" disabled={blocked || !validComposite} onPress={() => { if (validComposite) review({ kind: 'composite', children: [...children], threshold: Number(threshold) }); }} />)}
 <Button title={t('buttons.close')} icon="close" variant="secondary" size="compact" disabled={closing} onPress={close} />
 </>}>
@@ -153,7 +154,13 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
               if (canRemoveValidatorModule(metadata, module.address, 'all-installed-composites')) review({ kind: 'uninstall', address: module.address });
             }} />}
           </Card>)}
-          {manager?.passkeysAvailable && <Button title={t('settings.passkeyAuthenticator')} icon="fingerprint" variant="secondary" size="compact" disabled={blocked} onPress={() => openPasskey(false)} />}
+          {manager?.passkeysAvailable && <Button title={t('settings.passkeyAuthenticator')} icon="fingerprint" variant="secondary" size="compact" disabled={blocked} onPress={() => openPasskey(false, 'replace')} />}
+          {manager?.passkeysAvailable && !validators.some(module => module.id === 'p256-webauthn') && <Button title={t('settings.addPasskeyToCombinedApprovals')} icon="fingerprint" variant="secondary" size="compact" disabled={blocked} onPress={() => openPasskey(false, 'add-to-combined')} />}
+          {!validators.some(module => module.id === 'ecdsa') && <Button title={t('settings.addWalletToCombinedApprovals')} icon="wallet" variant="secondary" size="compact" disabled={blocked} onPress={() => action(async (owner, value) => {
+            const next = await value.openWalletAuthenticator(owner.abort.signal, () => check(owner));
+            try { check(owner); owner.operation = next; setOperationAuthentication(owner.authentication); setOperation(next); }
+            catch (error) { await next.dispose(); throw error; }
+          })} />}
           <Button title={t('smartAccountHub.customModule')} icon="plus" variant="secondary" size="compact" disabled={blocked} onPress={() => setMode('custom')} />
           <Button title={t('settings.compositeAuthenticator')} icon="grid" variant="secondary" size="compact" disabled={blocked} onPress={() => setMode('composite')} />
         </>}

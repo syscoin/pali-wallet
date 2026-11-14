@@ -338,6 +338,7 @@ export function NativeSmartAccountOperationContent({
   const authenticator =
     state.intent.kind === 'authenticator' ? state.intent.command : null;
   const modules = state.intent.kind === 'modules' ? state.intent.command : null;
+  const additiveAuthenticator = authenticator?.purpose === 'add-to-combined';
   const methodName = (id: string) => id === 'ecdsa' ? t('mobile.recoveryStatusViews.operation.walletOwners') : id === 'p256-webauthn' ? t('settings.passkeyAuthenticator') : id === 'slh-dsa' ? t('mobile.recoveryStatusViews.operation.postquantumKey') : id === 'composite' ? t('mobile.recoveryStatusViews.operation.combinedApprovalMethods') : t('mobile.recoveryStatusViews.operation.customApprovalMethod');
   const transfer =
     state.intent.kind !== 'deploy' &&
@@ -383,7 +384,7 @@ export function NativeSmartAccountOperationContent({
                   : modules
                   ? t('mobile.smartAccountModules.confirm')
                   : authenticator
-                  ? t('mobile.recoveryStatusViews.operation.changeApprovalMethod')
+                  ? t(additiveAuthenticator ? 'settings.addToCombinedApprovals' : 'mobile.recoveryStatusViews.operation.changeApprovalMethod')
                   : guardian
                   ? guardian.kind === 'remove'
                     ? t('mobile.recoveryStatusViews.operation.confirmRemoval')
@@ -402,6 +403,8 @@ export function NativeSmartAccountOperationContent({
   ) : null;
   const viewableHash = state.transactionHash && /^0x[0-9a-f]{64}$/i.test(state.transactionHash) &&
     (state.phase === 'complete' || state.userOperationSubmissionStarted) ? state.transactionHash : null;
+  const insufficientAsset = state.phase === 'failed' && state.preparationFailure === 'INSUFFICIENT_ASSET' &&
+    !state.transactionHash && !state.userOperationSubmissionStarted;
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
       <Screen scrollResetKey={`${state.phase}:${payer?.id ?? ''}`} footer={<>{primary}{viewableHash && onViewTransaction && <Button title={t('mobile.sendAssetViews.evm.viewTransaction')} onPress={() => {
@@ -414,7 +417,7 @@ export function NativeSmartAccountOperationContent({
               ? modules
                 ? t('mobile.smartAccountModules.review')
                 : authenticator
-                ? t('mobile.recoveryStatusViews.operation.changeApprovalMethod')
+                ? t(additiveAuthenticator ? 'settings.addToCombinedApprovals' : 'mobile.recoveryStatusViews.operation.changeApprovalMethod')
                 : guardian
                 ? guardian.kind === 'remove'
                   ? t('mobile.recoveryStatusViews.operation.reviewGuardianRemoval')
@@ -431,7 +434,7 @@ export function NativeSmartAccountOperationContent({
               : modules
               ? t('mobile.smartAccountModules.title')
               : authenticator
-              ? t('mobile.recoveryStatusViews.operation.changeApprovalMethod')
+              ? t(additiveAuthenticator ? 'settings.addToCombinedApprovals' : 'mobile.recoveryStatusViews.operation.changeApprovalMethod')
               : guardian
               ? guardian.kind === 'remove'
                 ? t('mobile.recoveryStatusViews.operation.guardianRemoval')
@@ -470,13 +473,13 @@ export function NativeSmartAccountOperationContent({
           </Card>
         )}
         {authenticator && <>
-          <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.replaceHowThisAccountApprovesTransactionsReviewTheNewOwners')}</Text>
+          <Text style={s.label}>{t(additiveAuthenticator ? 'settings.existingApprovalUnchanged' : 'mobile.recoveryStatusViews.operation.replaceHowThisAccountApprovesTransactionsReviewTheNewOwners')}</Text>
           <Card style={s.card}>
             <Text style={s.label}>{t('settings.smartAccountCurrentApprovalMethod')}</Text>
             <Text style={s.value}>{methodName(authenticator.sourceModule)}</Text>
           </Card>
           <Card style={s.card}>
-            <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.newApprovalMethod')}</Text>
+            <Text style={s.label}>{t(additiveAuthenticator ? 'settings.addToCombinedApprovals' : 'mobile.recoveryStatusViews.operation.newApprovalMethod')}</Text>
             <Text style={s.value}>{methodName(authenticator.targetModule.id)}</Text>
             {authenticator.targetModule.id === 'ecdsa' && <>
               <Text>{t('mobile.recoveryStatusViews.operation.ownersThreshold', { threshold: authenticator.targetModule.config.threshold, count: authenticator.targetModule.config.owners.length })}</Text>
@@ -642,7 +645,9 @@ export function NativeSmartAccountOperationContent({
                 modules
                   ? t('mobile.smartAccountModules.authorizationHint')
                   : authenticator
-                  ? authenticator.targetModule.id === 'slh-dsa'
+                  ? additiveAuthenticator
+                    ? t('settings.existingApprovalUnchanged')
+                    : authenticator.targetModule.id === 'slh-dsa'
                     ? t('settings.slhDsaSetupConfirmDescription')
                     : t('mobile.recoveryStatusViews.operation.authorizeReplacingTheCurrentAuthenticatorSettingsWithTheOwnerAnd')
                   : guardian
@@ -721,7 +726,7 @@ export function NativeSmartAccountOperationContent({
                   : modules
                   ? t('mobile.smartAccountModules.submit')
                   : authenticator
-                  ? t('mobile.recoveryStatusViews.operation.changeApprovalMethod')
+                  ? t(additiveAuthenticator ? 'settings.addToCombinedApprovals' : 'mobile.recoveryStatusViews.operation.changeApprovalMethod')
                   : guardian
                   ? guardian.kind === 'remove'
                     ? t('mobile.recoveryStatusViews.operation.submitTheAuthorizedRemoval')
@@ -807,7 +812,9 @@ export function NativeSmartAccountOperationContent({
               modules
                 ? t('mobile.smartAccountModules.confirmed')
                 : authenticator
-                ? state.transactionHash
+                ? additiveAuthenticator
+                  ? t('settings.addedToCombinedApprovals')
+                  : state.transactionHash
                   ? t('mobile.recoveryStatusViews.operation.approvalMethodChanged')
                   : t('settings.smartAccountAuthenticatorConfigured')
                 : guardian
@@ -826,7 +833,9 @@ export function NativeSmartAccountOperationContent({
               modules
                 ? t('mobile.smartAccountModules.confirmedHint')
                 : authenticator
-                ? state.transactionHash
+                ? additiveAuthenticator
+                  ? t('settings.existingApprovalUnchanged')
+                  : state.transactionHash
                   ? t('mobile.recoveryStatusViews.operation.theNetworkConfirmedTheAuthenticatorChange')
                   : t('settings.smartAccountCurrentApprovalMethodHint')
                 : guardian
@@ -871,7 +880,9 @@ export function NativeSmartAccountOperationContent({
         {state.error && state.phase !== 'preparing' && (
           <Notice
             title={
-              modules
+              insufficientAsset
+                ? t('send.insufficientFunds')
+                : modules
                 ? t('mobile.smartAccountModules.checkStatus')
                 : authenticator
                 ? t('mobile.recoveryStatusViews.operation.checkAuthenticatorStatus')
@@ -885,7 +896,7 @@ export function NativeSmartAccountOperationContent({
                 ? t('mobile.recoveryStatusViews.operation.checkTransferStatus')
                 : t('mobile.recoveryStatusViews.operation.checkDeploymentStatus')
             }
-            body={state.error}
+            body={insufficientAsset ? t('mobile.sendAssetViews.evm.notEnoughTokensForThisTransfer') : state.error}
             tone="amber"
           />
         )}

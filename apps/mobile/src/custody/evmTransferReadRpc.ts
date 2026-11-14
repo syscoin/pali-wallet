@@ -8,6 +8,7 @@ import { getAddress } from 'ethers/address';
 import { getEvmFeeData, assertEvmGasLimit, planEvmCancellationFees, planEvmSpeedUpFees } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import type { Transaction } from 'ethers/transaction';
 import { encodeNftTransferData, type NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
+import { normalizeNftExecutionRevert } from '../../../../source/shared/nftReads.ts';
 import { snapshotNftTransferSelection, type NftTransferRequest, type NftTransferSelection } from './nftTransferAdmission.ts';
 import { boundedResponseText, cancelResponseBody, parseRpcQuantity } from '../platformRpc.ts';
 import { getNativeNetwork, snapshotNativeNetwork, type EvmNetworkId, type NativeNetworkRegistration } from './networkContext.ts';
@@ -129,6 +130,7 @@ export class EvmTransferReadRpc {
     const controller = new AbortController();
     const nft = scope === 'nft-quote';
     const boundedContractCode = nft || scope === 'smart-account';
+    const smartCallReverts = new WeakSet<Error>();
     const expectedUrl = scope ? new URL(this.network.rpcUrl).href : undefined;
     const abort = () => controller.abort();
     external.addEventListener('abort', abort, { once: true });
@@ -173,7 +175,17 @@ export class EvmTransferReadRpc {
         // Only an explicit unsupported priority-fee method reaches the SDK's bounded history fallback.
         if (method === 'eth_maxPriorityFeePerGas' && (error.code === -32601 || error.code === 4200))
           throw Object.assign(new Error('Unsupported priority fee RPC'), { code: error.code });
-        if (method === 'eth_call') throw error;
+        if (method === 'eth_call') {
+          if (scope === 'smart-account' && params[0] && typeof params[0] === 'object') {
+            const to = Object.getOwnPropertyDescriptor(params[0], 'to')?.value;
+            const data = Object.getOwnPropertyDescriptor(params[0], 'data')?.value;
+            if (typeof to === 'string' && typeof data === 'string') {
+              const normalized = normalizeNftExecutionRevert(error, { to, data });
+              if (normalized) { smartCallReverts.add(normalized); throw normalized; }
+            }
+          }
+          throw error;
+        }
         return rejectRead('INVALID_RESPONSE');
       }
       if (!Object.hasOwn(result, 'result')) return rejectRead('INVALID_RESPONSE');
@@ -189,6 +201,9 @@ export class EvmTransferReadRpc {
     } catch (error) {
       guardedRead(guard);
       if (controller.signal.aborted) return rejectRead('CANCELLED');
+      // Only bounded explicit reverts normalized by this operation retain their
+      // call evidence for shared NFT verification. Transport errors stay opaque.
+      if (error instanceof Error && smartCallReverts.has(error)) throw error;
       if (error instanceof EvmTransferReadError) throw error;
       if (scope === 'dapp-rpc' && error instanceof EthereumRpcErrorHandler) throw error;
       if (error instanceof EvmAssetStateError) {
