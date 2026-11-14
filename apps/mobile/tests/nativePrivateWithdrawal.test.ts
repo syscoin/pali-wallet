@@ -400,7 +400,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
         },
       };
     },
-    async restore() {
+    async restore(seed = '02') {
       const backupPassword = 'Private note backup fixture';
       const codec = createNoteBackupCodec({
         crypto: globalThis.crypto,
@@ -412,7 +412,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
           version: 1,
           createdAt: 20,
           notes: [
-            { note: `tornado-eth-1-1-0x${'02'.repeat(62)}`, createdAt: 10 },
+            { note: `tornado-eth-1-1-0x${seed.repeat(62)}`, createdAt: 10 },
           ],
         },
         backupPassword
@@ -1061,8 +1061,7 @@ test('native maintenance clears only shared-verified completed notes and preserv
     const localReads = f.rpcMethods.length;
     const notes = await maintenance.getNotes(noop); assert.equal(notes.notes.length, 2);
     assert.equal(f.rpcMethods.length, localReads, 'opening inventory performs no note-specific RPC');
-    assert.deepEqual(await maintenance.clearCompletedNote(unspent.id, noop), { removed: [], unresolved: [unspent.id] });
-    assert.deepEqual(await maintenance.clearCompletedNote(completed.id, noop), { removed: [completed.id], unresolved: [] });
+    assert.deepEqual(await maintenance.clearCompletedNotes([unspent.id, completed.id], noop, noop, noop), { removed: [completed.id], unresolved: [unspent.id] });
     assert.deepEqual((await f.privateNotes()).map(note => note.id), [unspent.id]);
     assert(f.runtime.catalogue.getSnapshot());
     assert.equal(f.posted.length, 2, 'maintenance does not sign or broadcast');
@@ -1086,7 +1085,7 @@ for (const cancel of ['route', 'lock'] as const) test(`native maintenance rolls 
     withdrawalRoute.abort(); await model.dispose(); f.enableCompletionReads();
     const [note] = await f.privateNotes(); assert(note);
     const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop, createTestPrivateAuthentication(noop)); hold = true;
-    const removed = assert.rejects(maintenance.clearCompletedNote(note.id, noop)); await entered.promise;
+    const removed = assert.rejects(maintenance.clearCompletedNotes([note.id], noop, noop, noop)); await entered.promise;
     let retired: Promise<void>;
     if (cancel === 'lock') retired = f.runtime.session.lock();
     else { route.abort(); retired = maintenance.dispose(); }
@@ -1096,6 +1095,35 @@ for (const cancel of ['route', 'lock'] as const) test(`native maintenance rolls 
     route.abort(); await maintenance.dispose(); await f.reopen();
     assert.deepEqual((await f.privateNotes()).map(saved => saved.id), [note.id]);
   } finally { hold = false; release.resolve(); route.abort(); await f.close(); }
+});
+
+test('native maintenance preserves a lost-ack removal and never processes the remaining notes', async () => {
+  let armed = false, noteWrite = false, writes = 0;
+  const f = await fixture({ after(kind, sql) {
+    if (armed && kind === 'run' && sql.startsWith('INSERT INTO private_note_records')) { noteWrite = true; writes++; }
+    if (armed && noteWrite && kind === 'exec' && sql === 'COMMIT') {
+      armed = false; throw Error('Synthetic lost maintenance acknowledgement');
+    }
+  } });
+  const route = new AbortController();
+  try {
+    const inventory = await f.seed(), withdrawalRoute = new AbortController();
+    const model = await inventory.openWithdrawal!(inventory.notes[0]!, withdrawalRoute.signal, noop, testInventoryAuthentication(inventory));
+    await model.prepare({ recipient: RECIPIENT, mode: 'direct' }); await model.confirm(model.getSnapshot().review!.intentId);
+    withdrawalRoute.abort(); await model.dispose();
+    await f.restore(); await f.restore('03'); f.enableCompletionReads();
+    const before = await f.privateNotes(), completed = before.find(note => note.withdrawal)!;
+    const remaining = before.filter(note => note !== completed).map(note => note.id);
+    assert.equal(remaining.length, 2);
+    const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop, createTestPrivateAuthentication(noop));
+    const authorizations = f.secretReads, progress: number[] = [];
+    armed = true;
+    await assert.rejects(maintenance.clearCompletedNotes([completed.id, ...remaining], noop, value => progress.push(value.checked), noop));
+    assert.equal(writes, 1); assert.deepEqual(progress, []);
+    assert.equal(f.secretReads, authorizations + 1, 'An uncertain commit must not cause another prompt or replay');
+    route.abort(); await maintenance.dispose(); await f.reopen();
+    assert.deepEqual((await f.privateNotes()).map(note => note.id).sort(), remaining.sort());
+  } finally { armed = false; route.abort(); await f.close(); }
 });
 
 
@@ -1135,9 +1163,16 @@ test('native failed-withdrawal recovery authenticates, preserves the original jo
     const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop, createTestPrivateAuthentication(noop));
     assert((await maintenance.getNotes(noop)).notes[0]!.withdrawal?.canCheckRecovery);
     f.refuseNextAuthorization();
-    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id, noop));
+    const refusedAt = f.secretReads;
+    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id, noop, noop));
+    assert.equal(f.secretReads, refusedAt + 1, 'A refused action must not prompt again for a reload');
     assert.equal((await f.privateNotes())[0]!.withdrawal?.recovery, undefined);
-    await maintenance.recoverFailedWithdrawal(before.id, noop);
+    const authorizedAt = f.secretReads;
+    let reloaded = false;
+    await maintenance.recoverFailedWithdrawal(before.id, noop, inventory => {
+      reloaded = true; assert.equal(inventory.notes[0]!.withdrawal?.canCheckRecovery, undefined);
+    });
+    assert(reloaded); assert.equal(f.secretReads, authorizedAt + 1, 'Recovery and reload share one authorization');
     const [after] = await f.privateNotes(); assert(after?.withdrawal?.recovery);
     assert.equal(after.note, before.note); assert.equal(after.withdrawal.transactionHash, before.withdrawal.transactionHash);
     assert.equal(after.withdrawal.proofHash, before.withdrawal.proofHash); assert.equal(f.posted.length, 2);

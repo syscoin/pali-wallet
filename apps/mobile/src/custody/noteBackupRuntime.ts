@@ -21,6 +21,7 @@ import type { PrivacyPoolId } from '../../../../source/utils/privacy/types.ts';
 import { WalletStorageError, type OpenWalletStorage } from '../storage/types.ts';
 import type { NativePrivateWithdrawalView } from './privateWithdrawal.ts';
 import type { NativeNoteMaintenanceProofs } from './noteMaintenance.ts';
+import { MAX_NOTES, UUID } from '../../../../source/wallet/privateVaultInspection.ts';
 
 /** Internal file authority. Exported bytes go only to the trusted file adapter. */
 export type NativeNoteBackupRuntime = Readonly<Omit<INoteBackupService, 'dispose' | 'exportEncrypted' | 'commitImport'> & {
@@ -30,8 +31,11 @@ export type NativeNoteBackupRuntime = Readonly<Omit<INoteBackupService, 'dispose
 export type NativeNoteMaintenanceRuntime = Readonly<{
   dispose(): Promise<void>;
   getNotes(assertCurrent: () => void): ReturnType<IPrivateVaultController['getNotes']>;
-  clearCompletedNote(id: string, assertCurrent: () => void): ReturnType<IPrivateVaultController['clearCompletedNotes']>;
-  recoverFailedWithdrawal(id: string, assertCurrent: () => void): Promise<void>;
+  clearCompletedNotes(ids: readonly string[], assertCurrent: () => void,
+    onProgress: (progress: Readonly<{ checked: number; total: number }>) => void,
+    onReload: (inventory: Awaited<ReturnType<IPrivateVaultController['getNotes']>>) => void): ReturnType<IPrivateVaultController['clearCompletedNotes']>;
+  recoverFailedWithdrawal(id: string, assertCurrent: () => void,
+    onReload: (inventory: Awaited<ReturnType<IPrivateVaultController['getNotes']>>) => void): Promise<void>;
 }>;
 export type NativeNoteCapacityRuntime = Readonly<Pick<IPrivateVaultController, 'getCapacity' | 'setCapacity'>>;
 export type NativeSavedNote = Readonly<{
@@ -279,22 +283,65 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
       }));
       let closed = false;
       const drain = new NativeOperationDrain();
-      const run = async <T>(assertCurrent: () => void, operation: () => Promise<T>) => {
+      const run = async <T>(assertCurrent: () => void, operation: (owner: IPrivateVaultSession) => Promise<T>) => {
         const owner = ownedSession(session, () => {
           if (closed) throw Error('privacy_vault_session_changed');
           return assertCurrent();
         });
         owner.assertCurrent(); const finish = drain.begin();
         try {
-          const result = await ports.run(() => withSession(owner, operation));
+          const result = await ports.run(() => operation(owner));
           owner.assertCurrent(); return result;
         } finally { finish(); }
       };
+      const runWithReload = <T>(guard: () => void,
+        onReload: (inventory: Awaited<ReturnType<IPrivateVaultController['getNotes']>>) => void,
+        operation: (owner: IPrivateVaultSession) => Promise<T>) => {
+        if (typeof onReload !== 'function') throw Error('privacy_vault_unavailable');
+        const deadline = monotonicNow() + 60_000;
+        return run(guard, async actionOwner => {
+          const owner = ownedSession(actionOwner, () => { if (monotonicNow() >= deadline) throw Error('privacy_vault_session_changed'); });
+          // Authorize before mutations; a refused prompt must not be retried by the final reload.
+          owner.assertCurrent(); await withSession(owner, operational.getNotes); owner.assertCurrent();
+          let failed = false;
+          try { owner.assertCurrent(); return await operation(owner); }
+          catch (error) { failed = true; throw error; }
+          finally {
+            // Reload after success or an ambiguous acknowledgement, inside this authorization only.
+            try {
+              owner.assertCurrent();
+              const inventory = await withSession(owner, operational.getNotes);
+              owner.assertCurrent(); onReload(inventory); owner.assertCurrent();
+            } catch (error) { if (!failed) throw error; }
+          }
+        });
+      };
       return Object.freeze({
         dispose: () => drain.close(() => { closed = true; }, []),
-        getNotes: (guard) => run(guard, operational.getNotes),
-        clearCompletedNote: (id, guard) => run(guard, () => operational.clearCompletedNotes([id])),
-        recoverFailedWithdrawal: (id, guard) => run(guard, () => operational.recoverFailedWithdrawal(id, HOST_WALLET_AUTHENTICATION)),
+        getNotes: (guard) => run(guard, owner => withSession(owner, operational.getNotes)),
+        clearCompletedNotes: (ids, guard, onProgress, onReload) => {
+          if (!Array.isArray(ids) || !ids.length || ids.length > MAX_NOTES ||
+              ids.some(id => typeof id !== 'string' || !UUID.test(id)) || new Set(ids).size !== ids.length ||
+              typeof onProgress !== 'function' || typeof onReload !== 'function') throw Error('privacy_vault_unavailable');
+          const selected = Object.freeze([...ids]);
+          return runWithReload(guard, onReload, async owner => {
+            const removed: string[] = [], unresolved: string[] = [];
+            for (const id of selected) {
+              owner.assertCurrent();
+              // Keep each shared mutation independently proven and acknowledged.
+              const value = await withSession(owner, () => operational.clearCompletedNotes([id]));
+              owner.assertCurrent();
+              const resultIds = [...value.removed, ...value.unresolved];
+              if (resultIds.length !== 1 || resultIds[0] !== id) throw Error('privacy_vault_unavailable');
+              removed.push(...value.removed); unresolved.push(...value.unresolved);
+              onProgress(Object.freeze({ checked: removed.length + unresolved.length, total: selected.length }));
+              owner.assertCurrent();
+            }
+            return { removed, unresolved };
+          });
+        },
+        recoverFailedWithdrawal: (id, guard, onReload) => runWithReload(guard, onReload,
+          owner => withSession(owner, () => operational.recoverFailedWithdrawal(id, HOST_WALLET_AUTHENTICATION))),
       });
     },
     bindCapacity(session: IPrivateVaultSession): NativeNoteCapacityRuntime {

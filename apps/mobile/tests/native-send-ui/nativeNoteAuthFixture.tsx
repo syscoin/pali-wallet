@@ -40,11 +40,12 @@ export function NativeNoteAuthFixture() {
     return {
       async getNotes(check) { current(); guard(); check(); return { notes: [{ id: 'public-note', poolId: 'eth-1', amount: '1', createdAt: 1762000000000,
         phase: 'verified', withdrawal: { canCheckRecovery: true, mode: 'direct', phase: 'submitted', transactionHash: '0x' + 'ab'.repeat(32) } }] }; },
-      async recoverFailedWithdrawal(id, check) {
+      async recoverFailedWithdrawal(id, check, reload) {
         current(); guard(); check(); if (id !== 'public-note') throw Error('Wrong presentation note');
         await withNativePrivateAuthentication(binding, signal, current, proof => authorize(proof, check));
+        reload({ notes: [] });
       },
-      async clearCompletedNote() { throw Error('No note mutation in this presentation fixture'); },
+      async clearCompletedNotes() { throw Error('No note mutation in this presentation fixture'); },
       async dispose() { disposed = true; },
     };
   }, [authorize]);
