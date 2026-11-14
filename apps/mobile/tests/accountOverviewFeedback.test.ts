@@ -17,7 +17,7 @@ const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 const address = '0x' + '1'.repeat(40);
 const tokenAddress = '0x' + '2'.repeat(40);
 
-function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts?: () => void) {
+function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts?: () => void, activityPresentation?: Record<string, unknown>) {
   const choice = { label: 'Account 1', networkName: 'Ethereum', symbol: 'ETH', scope: {
     id: 'account-1:ethereum', accountId: 'account-1', accountAddress: address,
     network: { id: 'ethereum', kind: 'evm', chainId: '1', testnet: false },
@@ -64,7 +64,7 @@ function fixture(screen: 'wallet' | 'activity', failed = false, onManageAccounts
     '../custody/networkContext': { nativeSigningEnabled: () => true },
     './NativePortfolio': { NativePortfolio: 'NativePortfolio' }, './WalletBackupBadge': { WalletBackupBadge: 'WalletBackupBadge' },
     './ActivityListRow': { ActivityListRow: 'ActivityListRow' }, '../activity/assetIcon': { activityAssetIcon: () => undefined },
-    './NativeActivity': { NativeActivityScreen: 'NativeActivityScreen', nativeActivityRowPresentation: () => { throw Error('No activity rows expected'); } },
+    './NativeActivity': { NativeActivityScreen: 'NativeActivityScreen', nativeActivityRowPresentation: () => { if (activityPresentation) return activityPresentation; throw Error('No activity rows expected'); } },
     './IdleActivityBoundary': { IdlePressable: 'Pressable', IdleTextInput: 'TextInput' },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Icon', 'IconButton', 'Notice', 'Row', 'Screen', 'SegmentedControl', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
   };
@@ -244,5 +244,22 @@ test('wallet account chooser remains actionable when account management is avail
     assert(choice); assert.equal(choice.props.accessibilityRole, 'button');
     assert(f.nodes(choice).some(node => node.type === 'Icon' && node.props.name === 'chevron-down'));
     choice.props.onPress(); assert.equal(opened, 1);
+  } finally { f.close(); }
+});
+
+
+test('all-network and filtered Activity use the shared status summary without duplicating failures', () => {
+  const statusSummary = 'Current status unavailable';
+  const f = fixture('activity', false, undefined, { status: statusSummary, statusSummary,
+    subtitle: `Ethereum · ${statusSummary}`, date: { key: 'today', label: 'Today', time: '10:00' },
+    title: 'Sent', direction: 'sent', amount: '-1 ETH', label: 'Sent, current status unavailable' });
+  try {
+    const entry = { choice: f.row.choice, row: { hash: '0x' + '3'.repeat(64), unavailable: true } };
+    for (const filter of ['all', 'ethereum']) {
+      f.setActivity({ filter, rows: [entry] });
+      const row = f.nodes(f.render()).find(node => node.type === 'ActivityListRow'); assert(row);
+      assert.equal(row.props.subtitle, statusSummary);
+      assert.equal(row.props.networkBadge, filter === 'all' ? 'Ethereum' : undefined);
+    }
   } finally { f.close(); }
 });

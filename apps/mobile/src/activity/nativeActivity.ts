@@ -747,11 +747,12 @@ export class NativeActivity {
           const observation = await runtime.observeLocal(local, guard, signal);
           guard();
           this.retainedObservations.set(hash, observation);
+          this.unavailable.delete(hash);
           return;
         }
         const observation = await this.receipts.read(hash, scope.address, signal, guard, scope.network);
         guard();
-        if (observation)
+        if (observation) {
           this.observations.set(hash, {
             ...observation,
             events: observation.events.map((event) => ({
@@ -759,7 +760,8 @@ export class NativeActivity {
               id: `${scope.key}:${event.id}`,
             })),
           });
-        else this.unavailable.add(hash);
+          this.unavailable.delete(hash);
+        } else this.unavailable.add(hash);
       };
       void readDetail()
         .catch(() => {
@@ -823,8 +825,13 @@ export class NativeActivity {
           );
           guard();
           this.retainedObservations.set(local.hash, observation);
+          this.unavailable.delete(local.hash);
         } catch {
-          /* A read failure does not discard a retained transaction. */
+          try { guard(); } catch { return; }
+          // Keep the record, but do not describe an unavailable read as unconfirmed.
+          // A concurrent successful detail read still owns its current evidence.
+          if (!this.observations.has(local.hash) && !this.retainedObservations.has(local.hash))
+            this.unavailable.add(local.hash);
         }
         if (generation === this.generation) this.renderRows();
       } } finally { work.workers--; }
