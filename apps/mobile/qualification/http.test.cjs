@@ -12,7 +12,7 @@ const { HTTP_CASES, httpBuild, httpLaunch, assertHttpReport, httpDiagnosticCase,
 const { createCommandRunner } = require('./command-runner.cjs');
 const { createHttpFixture, ROUTES, HELD_ROUTES, snapshotFixtureControl } = require('./http-server.cjs');
 const { startHttpCompanion, assertAudit } = require('./http-companion.cjs');
-const { qualifyNativeHttp, qualifyNativeSnapshotBridge } = require('./http-native.ts');
+const { qualifyNativeHttp, qualifyNativeSnapshotBridge, qualifyNativeSnapshot } = require('./http-native.ts');
 const { qualifyNativePost } = require('./post-native.ts');
 const { paliHttpHeaders } = require('../../../source/shared/paliHttpIdentity.ts');
 
@@ -112,6 +112,66 @@ test('aborted snapshot start stays distinct from a stalled successful release', 
     assert.equal(pending.stage, abortedStart ? 'start' : 'release');
     if (abortedStart) assert.equal(pending.rejection, mode);
   }
+});
+
+async function flushSnapshotTasks() {
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+}
+function delayedSnapshotFixture(delay, nativeTimeout = false, holdRelease = false) {
+  const bytes = new TextEncoder().encode(PUBLIC_SNAPSHOT_FIXTURE_BODY);
+  let pulls = 0, releases = 0, signal;
+  return { get releases() { return releases; }, get signal() { return signal; }, transport: { prepareSnapshot(_pool, _origin, owner) {
+    signal = owner;
+    return {
+      start() { return new Promise((resolve, reject) => setTimeout(() => nativeTimeout
+        ? reject(Object.assign(Error('native deadline'), { code: 'PUBLIC_SNAPSHOT_TIMEOUT' }))
+        : resolve({ status: 200, byteCount: bytes.length }), delay)); },
+      async pull() { return ++pulls === 1 ? bytes.slice(0, 65536) : pulls === 2 ? bytes.slice(65536) : null; },
+      release() { releases++; return holdRelease ? new Promise(() => undefined) : Promise.resolve(); },
+    };
+  } } };
+}
+
+test('snapshot harness accepts healthy completion beyond the ordinary read deadline', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const fixture = delayedSnapshotFixture(9000);
+  let state = 'pending';
+  const work = qualifyNativeSnapshot(fixture.transport, 'https://fixture.invalid', () => undefined)
+    .then(() => { state = 'passed'; }, () => { state = 'failed'; });
+  t.mock.timers.tick(8000); await flushSnapshotTasks();
+  assert.equal(state, 'pending');
+  t.mock.timers.tick(1000); await work;
+  assert.equal(state, 'passed'); assert.equal(fixture.releases, 1);
+});
+
+test('snapshot native deadline still fails before the outer guard', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const fixture = delayedSnapshotFixture(25000, true);
+  let error;
+  const work = qualifyNativeSnapshot(fixture.transport, 'https://fixture.invalid', () => undefined)
+    .then(() => assert.fail('native timeout cannot pass'), value => { error = value; });
+  t.mock.timers.tick(24999); await flushSnapshotTasks();
+  assert.equal(error, undefined);
+  t.mock.timers.tick(1); await work;
+  assert.deepEqual([error.failureDetail.stage, error.failureDetail.rejection], ['start', 'PUBLIC_SNAPSHOT_TIMEOUT']);
+  assert.equal(fixture.releases, 1);
+});
+
+for (const holdRelease of [false, true]) test(`snapshot outer guard rejects hung ${holdRelease ? 'release' : 'start'} and late success`, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const fixture = delayedSnapshotFixture(holdRelease ? 0 : 35000, false, holdRelease);
+  let state = 'pending', error, observed;
+  const work = qualifyNativeSnapshot(fixture.transport, 'https://fixture.invalid', detail => { observed = detail; })
+    .then(() => { state = 'passed'; }, value => { state = 'failed'; error = value; });
+  if (holdRelease) { t.mock.timers.tick(0); await flushSnapshotTasks(); }
+  t.mock.timers.tick(29999); await flushSnapshotTasks();
+  assert.equal(state, 'pending');
+  t.mock.timers.tick(1); await work;
+  assert.equal(state, 'failed'); assert.match(error.message, /HTTP_QUALIFICATION_TIMEOUT/);
+  assert.equal(observed.stage, holdRelease ? 'release' : 'start');
+  assert.equal(fixture.signal.aborted, true); assert.equal(fixture.releases, 1);
+  t.mock.timers.tick(5000); await flushSnapshotTasks();
+  assert.equal(state, 'failed');
 });
 
 test('snapshot diagnostic schema refuses arbitrary text, unknown fields and unbounded numbers', () => {

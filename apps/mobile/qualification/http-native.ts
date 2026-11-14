@@ -99,6 +99,27 @@ async function readStart(reader: ReadableStreamDefaultReader<Uint8Array>, signal
   assert(offset === expected.length);
 }
 
+const owned = async <T>(fn: (signal: AbortSignal, abort: () => void) => Promise<T>, timeout = TIMEOUT): Promise<T> => {
+  const controller = new AbortController();
+  let timer!: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      const error = Error('HTTP_QUALIFICATION_TIMEOUT');
+      controller.abort(error); reject(error);
+    }, timeout);
+  });
+  try { return await Promise.race([fn(controller.signal, () => controller.abort()), deadline]); }
+  finally { controller.abort(); clearTimeout(timer); }
+};
+
+/** Allow the native 25s deadline to settle; a hung bridge still fails this 30s guard. */
+export function qualifyNativeSnapshot(
+  transport: Pick<OwnedPrivacyPullTransport, 'prepareSnapshot'>, origin: string,
+  observe: (detail: SnapshotObservation) => void
+): Promise<void> {
+  return owned(signal => qualifyNativeSnapshotBridge(transport, origin, signal, observe), 30_000);
+}
+
 /** Uses the production adapter and real Expo cookie jar, never global fetch. */
 export async function qualifyNativeHttp(options: Readonly<{
   launch: HttpLaunch; build: HttpBuild; walletFetch: FetchPort; cookieFetch: FetchPort;
@@ -108,18 +129,6 @@ export async function qualifyNativeHttp(options: Readonly<{
 }>): Promise<HttpReport> {
   const { launch, walletFetch, cookieFetch } = options;
   const url = (route: string) => `http://127.0.0.1:${launch.port}/${launch.token}/${route}?q=exact`;
-  const owned = async <T>(fn: (signal: AbortSignal, abort: () => void) => Promise<T>, timeout = TIMEOUT): Promise<T> => {
-    const controller = new AbortController();
-    let timer!: ReturnType<typeof setTimeout>;
-    const deadline = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => {
-        const error = Error('HTTP_QUALIFICATION_TIMEOUT');
-        controller.abort(error); reject(error);
-      }, timeout);
-    });
-    try { return await Promise.race([fn(controller.signal, () => controller.abort()), deadline]); }
-    finally { controller.abort(); clearTimeout(timer); }
-  };
   const query = (route: string, fetcher = walletFetch, credentials: RequestCredentials = 'omit') => owned(async (signal) => {
     const response = await fetcher(url(route), { method: 'GET', signal, credentials, redirect: 'error', cache: 'no-store' });
     assert(response.ok && response.url === url(route) && !response.redirected);
@@ -218,8 +227,8 @@ export async function qualifyNativeHttp(options: Readonly<{
     await query(`${STALLED_QUOTE_ROUTE}-closed`);
   }, 11_000);
   currentCase = 'public-snapshot-bridge';
-  await owned(signal => qualifyNativeSnapshotBridge(options.snapshotTransport, `http://127.0.0.1:${launch.port}`, signal,
-    detail => { snapshotObservation.current = detail; }));
+  await qualifyNativeSnapshot(options.snapshotTransport, `http://127.0.0.1:${launch.port}`,
+    detail => { snapshotObservation.current = detail; });
   currentCase = 'healthy-after-cancel';
   await query('healthy');
   assert(options.networkCalls() === 0);
