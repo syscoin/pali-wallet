@@ -262,6 +262,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const [snapshot, setSnapshot] = useState(INITIAL);
   const [protectedScreen, setProtectedScreen] = useState(false);
   const [stage, setStage] = useState<Stage>('choose');
+  const trezorVisit = useRef<object | null>(null);
   const notificationSnapshot = useSyncExternalStore(nativeActivityNotifications.subscribe, nativeActivityNotifications.getSnapshot, nativeActivityNotifications.getSnapshot);
   const notificationTransition = useRef<object | null>(null);
   const [notificationWake, setNotificationWake] = useState(0);
@@ -650,6 +651,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       setSendDraft({ origin, target: sendTarget, recipientPicker });
     }
     rootOrigin.current = origin;
+    if (next === 'trezor') trezorVisit.current = {};
     setStage(next);
   };
   const installPublicSendDraft = (target: PublicSendTarget, form?: NativeUnsignedSendDraft, tab = shell.tab) => {
@@ -1703,27 +1705,37 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     return <WalletAccounts {...accounts} catalogue={catalogue} active={catalogue ? nativeAccountSelection(catalogue.active.accountId) : null}
       onBack={closeStage} onSelect={async (selection) => {
         if (selection.kind === 'watch') { selectWatch(selection); return; }
+        const origin = rootOrigin.current, local = controllersRef.current, captured = epoch.current;
+        const ownsReturn = () => mounted.current && controllersRef.current === local && !!local &&
+          epoch.current === captured && rootOrigin.current === origin &&
+          notificationView.current.stage === 'accounts' && AppState.currentState === 'active';
+        if (!ownsReturn()) return;
         if (snapshot.phase === 'ready' && accountView && catalogue && selection.id !== catalogue.active.accountId)
           await accountView.execute({ kind: 'select', id: selection.id }, accountView.getContextRevision(), catalogue.revision);
-        setStage('choose');
+        if (ownsReturn()) clearStage();
       }} onManageHd={snapshot.phase === 'ready' && accountView ? () => setStage('manage-hd') : undefined}
       onAdd={async (input) => { revoke(); setStage('accounts'); await accounts.onAdd(input); }} />;
-  if (stage === 'trezor' && trezorView && snapshot.phase === 'ready')
+  if (stage === 'trezor' && trezorView && snapshot.phase === 'ready') {
+    const visit = trezorVisit.current;
+    const ownsVisit = () => mounted.current && visit !== null && trezorVisit.current === visit;
     return <NativeTrezor controller={trezorView} onBack={() => {
+      if (!ownsVisit()) return;
+      trezorVisit.current = null;
       void controllersRef.current?.connections.cancelSigningHandoff().catch(() => undefined);
       if (rootOrigin.current?.stage === 'trezor') closeStage(); else setStage('manage-hd');
-    }} onImported={() => { rootOrigin.current = null; setStage('choose'); }} onResumeSend={async (intent: NativeTrezorResumeIntent) => {
+    }} onImported={() => { if (ownsVisit()) { trezorVisit.current = null; rootOrigin.current = null; setStage('choose'); } }} onResumeSend={async (intent: NativeTrezorResumeIntent) => {
       const local = controllersRef.current;
       const current = readyContext();
       const captured = local?.authority.getCatalogue();
-      if (!current || !captured || AppState.currentState !== 'active' ||
+      if (!ownsVisit() || !current || !captured || AppState.currentState !== 'active' ||
           captured.active.accountId !== intent.accountId || captured.active.networkId !== intent.networkId)
         throw new Error('CANCELLED');
       if (intent.kind === 'external-psbt' || intent.kind === 'external-signing') {
         if (!local) throw Error('CANCELLED');
-        const resumeEpoch = epoch.current;
+        const resumeEpoch = epoch.current, origin = rootOrigin.current;
         await local.connections.resumeSigning(intent.id);
-        if (controllersRef.current === local && epoch.current === resumeEpoch && AppState.currentState === 'active') setStage('choose');
+        if (ownsVisit() && controllersRef.current === local && epoch.current === resumeEpoch &&
+            rootOrigin.current === origin && notificationView.current.stage === 'trezor' && AppState.currentState === 'active') clearStage();
         return;
       }
       if (intent.kind === 'infrastructure') {
@@ -1750,12 +1762,13 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       setSendDraft({ origin, target, resume, resumeId: intent.id });
       setStage('send');
     }} />;
+  }
   if (stage === 'ledger' && ledgerView && ['ready', 'authenticating'].includes(snapshot.phase))
     return <NativeLedger controller={ledgerView} onBack={() => setStage('manage-hd')} onFinished={() => {
       rootOrigin.current = null; setStage('choose');
     }} />;
   if (stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase))
-    return <NativeAccounts controller={accountView} networkLabel={utxo?.name} onTrezor={trezorView ? () => setStage('trezor') : undefined} onLedger={ledgerView ? () => setStage('ledger') : undefined} onImport={canSign || canSendUtxo ? openImport : undefined} onBack={() => setStage(accounts ? 'accounts' : 'choose')} />;
+    return <NativeAccounts controller={accountView} networkLabel={utxo?.name} onTrezor={trezorView ? () => { trezorVisit.current = {}; setStage('trezor'); } : undefined} onLedger={ledgerView ? () => setStage('ledger') : undefined} onImport={canSign || canSendUtxo ? openImport : undefined} onBack={() => setStage(accounts ? 'accounts' : 'choose')} />;
   if (stage === 'import-key' && importScope && ['ready', 'authenticating'].includes(snapshot.phase) &&
       (snapshot.revision === importScope.contextRevision || importActiveToken === importScope.token && snapshot.revision === importScope.contextRevision + 1))
     return <NativeImport key={`${importScope.token}:${importScope.contextRevision}:${importScope.catalogueRevision}`} imports={importScope.imports} contextRevision={importScope.contextRevision} catalogueRevision={importScope.catalogueRevision}
