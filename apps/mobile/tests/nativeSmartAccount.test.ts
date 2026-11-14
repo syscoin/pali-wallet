@@ -2248,7 +2248,15 @@ test('owned Smart metadata refresh commits shared observations and survives auth
     const before = (await f.inspectRecovery()).record;
     const accountBefore = savedSmartAccount(before);
     f.guardianStatus();
-    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    const credentialReads = f.credentialReads;
+    let published = false;
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined, () => {
+      published = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!.smartAccount!.isDeployed;
+      throw Error('A retired view cannot undo committed metadata');
+    });
+    assert.equal(published, true, 'the public callback runs after publication');
+    assert.equal(f.owner.getSnapshot().phase, 'ready', 'a UI callback failure does not lock custody');
+    assert.equal(f.credentialReads, credentialReads, 'public metadata refresh does not retrieve a signing credential');
     const after = (await f.inspectRecovery()).record;
     const accountAfter = savedSmartAccount(after);
     assert.deepEqual((after as any).recovery, (before as any).recovery);

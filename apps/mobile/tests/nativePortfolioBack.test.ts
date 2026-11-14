@@ -27,6 +27,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
   const renderedComponents = new Set<unknown>();
   let current: Cell[] = [], cursor = 0, pendingEffects: (() => void)[] = [], dirty = false;
   let exits = 0, sends = 0, backups = 0, consumed = 0, shell: any, currentAccount = true;
+  let metadataRefreshes = 0, balanceRefreshes = 0;
   const copied: string[] = [];
   const cell = () => current[cursor++] ?? (current[cursor - 1] = {});
   const react = {
@@ -64,7 +65,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
     scope: { id: 'native:hd:60:0:ethereum', accountId: 'hd:60:0', accountAddress: address, network } };
   const controller = { subscribe: () => () => {}, getSnapshot: () => ({ status: 'ready', filter: 'all', choices: [choice],
     rows: [{ choice, units: '1000000000000000000', decimals: 18, status: 'available', tokens: [], collectibles: [] }],
-    knownValue: null, currency: null, partial: true, refreshing: false }), setCurrency() {}, connect: () => () => {}, cachedBalances: () => [] };
+    knownValue: null, currency: null, partial: true, refreshing: false }), setCurrency() {}, connect: () => () => {}, cachedBalances: () => [], async refresh() { balanceRefreshes++; } };
   const native = {
     ...Object.fromEntries(['ActivityIndicator', 'Modal', 'ScrollView', 'View'].map(value => [value, value])),
     AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
@@ -110,6 +111,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
     '../portfolio/nativePortfolio': { NativePortfolioController: class {
       subscribe = () => () => {}; getSnapshot = () => ({ status: 'available', account, units: '1000000000000000000', updatedAt: 1 });
       connect = () => () => {}; getUtxoNetwork = () => undefined; getNetworkRegistration = () => network; isCurrent = () => currentAccount;
+      async refresh() { balanceRefreshes++; }
     } }, './NativeTokens': { NativeTokens: TokenFixture }, './PortfolioQuote': { PortfolioQuote: 'PortfolioQuote' },
     '../portfolio/AssetMarketCard': { AssetMarketCard: 'AssetMarketCard' }, './TestnetFaucetCard': {},
     '../../../../source/shared/sptInventory': {}, './NativeSptAssets': {},
@@ -127,7 +129,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
     shell = useRealShell(scope(), scope, exit, onNavigation);
     const portfolio = { source, reader, tokenView, accountLabel: 'Account 1', onExit: exit, onLock() {}, onViewRecovery() { backups++; },
       onReceiveIntentConsumed() { consumed++; if (detail) detail = { ...detail, receive: false }; continuation = undefined; dirty = true; },
-      initialReceive: continuation, onSend, navigation: shell.navigation };
+      initialReceive: continuation, onSend, navigation: shell.navigation, async onRefreshSmartAccount() { metadataRefreshes++; } };
     if (receiveEntry) return react.createElement(NativePortfolioRoute, { ...portfolio, overview: overview || receiveEntry === 'detail' ? controller : undefined,
       detail, selectNetwork: async () => {}, sendFrom: async () => {} });
     return overview ? react.createElement(NativeAccountOverview, { controller, portfolio, selectNetwork: async () => {}, send: async () => {} })
@@ -157,6 +159,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
     back(nativeFirst = false) { if (!nativeFirst || ![...nativeBacks].reverse().some(handler => handler())) shell.goBack(); },
     get exits() { return exits; }, get sends() { return sends; },
     get backups() { return backups; }, get consumed() { return consumed; },
+    refreshes: () => ({ metadata: metadataRefreshes, balance: balanceRefreshes }),
     remountPortfolio() {
       for (const [component, slots] of cells) if (component !== Root) {
         for (const slot of slots) slot.cleanup?.();
@@ -166,6 +169,15 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
     close() { for (const slots of cells.values()) for (const slot of slots) slot.cleanup?.(); },
   };
 }
+
+for (const overview of [false, true]) test(`manual ${overview ? 'all-network overview' : 'network portfolio'} refresh updates both public balance and Smart metadata`, () => {
+  const f = fixture(overview);
+  try {
+    const button = elements(f.render()).find(value => value.props.testID === 'native-portfolio-refresh' || value.type === 'IconButton' && value.props.icon === 'refresh');
+    assert(button); button.props.onPress();
+    assert.deepEqual(f.refreshes(), { metadata: 1, balance: 1 });
+  } finally { f.close(); }
+});
 
 for (const nativeFirst of [false, true]) test(`overview market detail returns through both Back levels (${nativeFirst ? 'native' : 'shell'} first)`, async () => {
   const f = fixture(true);

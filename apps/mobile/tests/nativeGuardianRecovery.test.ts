@@ -234,6 +234,19 @@ async function fixture(smart = true) {
     listeners,
     snapshot: () => snapshot,
     locks: () => locks,
+    prepareMetadataRefresh(wait: () => Promise<void> = async () => {}) {
+      let reads = 0;
+      runtime.refreshSmartAccountMetadata = async (signal: AbortSignal, check: () => void, onPublished: () => void) => {
+        reads++; check(); await wait(); check();
+        assert.equal(signal.aborted, false);
+        catalogue = { ...catalogue, revision: catalogue.revision + 1,
+          accounts: catalogue.accounts.map((account: Record<string, any>) => ({ ...account, smartAccount: { ...account.smartAccount, isDeployed: true } })) };
+        snapshot = { ...snapshot, revision: snapshot.revision + 1 };
+        for (const listener of listeners) listener();
+        try { onPublished(); } catch { /* A UI callback cannot undo committed metadata. */ }
+      };
+      return () => reads;
+    },
     async deferredPolicyFailure(failure: 'rpc' | 'storage' | 'stale' | 'old-runtime') {
       runtime.openGuardianPolicy = async (_draft: unknown, _signal: AbortSignal, guard: () => void) => {
         const command = { kind: 'install' as const, accountAddress: GUARDIAN_FIXTURE_ACCOUNT,
@@ -289,6 +302,31 @@ test('the controlled Smart read uses the canonical guardian observer and selecte
   assert.equal(status.observation.pending?.status, 'pending');
   assert.equal(f.rpc.methods().length, 11);
   assert.equal(f.listeners.size, 0);
+});
+
+test('public Smart metadata factory accepts its own catalogue publication without credential access', async () => {
+  const f = await fixture(), reads = f.prepareMetadataRefresh();
+  const before = f.snapshot().revision;
+  await f.controllers.refreshSmartAccountMetadata(new AbortController().signal, () => {}, () => {});
+  assert.equal(reads(), 1);
+  assert.equal(f.snapshot().revision, before + 1);
+  assert.equal(f.controllers.authority.getCatalogue()!.accounts[0]!.smartAccount!.isDeployed, true);
+  assert.equal(f.locks(), 0);
+});
+
+for (const change of ['signal', 'account', 'view'] as const) test(`public Smart metadata factory rejects a delayed ${change} departure`, async () => {
+  const f = await fixture(), gate = Promise.withResolvers<void>(), signal = new AbortController();
+  const reads = f.prepareMetadataRefresh(() => gate.promise);
+  let current = true;
+  const work = f.controllers.refreshSmartAccountMetadata(signal.signal, () => { if (!current) throw Error('CANCELLED'); }, () => {});
+  const rejection = assert.rejects(work);
+  if (change === 'signal') signal.abort();
+  else if (change === 'view') current = false;
+  else f.change('account');
+  gate.resolve(); await rejection;
+  assert.equal(reads(), 1);
+  assert.notEqual(f.controllers.authority.getCatalogue()!.accounts[0]!.smartAccount!.isDeployed, true);
+  assert.equal(f.locks(), 0);
 });
 
 test('a missing compatible policy is explicit and ordinary EOAs cannot invoke the controlled Smart port', async () => {

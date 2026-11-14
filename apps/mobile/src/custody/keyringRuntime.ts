@@ -367,7 +367,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   preflightSmartAccountModule(address: string, signal: AbortSignal, assertCurrent: () => void): Promise<CustomValidatorPreflightResult>;
   openSmartAccountModuleChange(draft: NativeSmartModuleDraft, signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
   openSmartAccountSend(recipient: string, amount: NativeSmartAccountAmount, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeSmartAccountOperation>;
-  refreshSmartAccountMetadata(signal: AbortSignal, assertCurrent: () => void): Promise<GuardianRecoveryObservation | null>;
+  refreshSmartAccountMetadata(signal: AbortSignal, assertCurrent: () => void, onPublished?: () => void): Promise<GuardianRecoveryObservation | null>;
   getGuardianRecoveryIntent(): NativeGuardianRecoveryIntent | null;
   openSmartInfrastructure(signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeInfrastructureController>;
   openResumedSmartInfrastructure(id: string, signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthentication | null): Promise<NativeInfrastructureController>;
@@ -4192,7 +4192,7 @@ export function createKeyringRuntimeFactory(
             }
           },
         });
-        const refreshSmartAccountMetadata = async (signal: AbortSignal, assertOwner: () => void) => {
+        const refreshSmartAccountMetadata = async (signal: AbortSignal, assertOwner: () => void, onPublished?: () => void) => {
             const captured = generation, snapshot = catalogueSnapshot, ring = keyring;
             if (active || reserved) throw new KeyringRuntimeError('BUSY');
             if (!snapshot || !ring.hasPublicSession()) throw new KeyringRuntimeError('NOT_READY');
@@ -4239,6 +4239,7 @@ export function createKeyringRuntimeFactory(
                   metadata: { auth: metadata.auth, availableModules: metadata.availableModules,
                     isDeployed: metadata.isDeployed === true, installedModules: metadata.installedModules } }, check);
                 check(); publishAccounts(next);
+                try { onPublished?.(); } catch { /* UI bookkeeping cannot undo committed public metadata. */ }
                 return true;
               });
               if (!committed) throw new KeyringRuntimeError('CANCELLED');
