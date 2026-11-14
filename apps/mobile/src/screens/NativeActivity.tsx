@@ -372,7 +372,9 @@ function NativeActivityContent({
     ? reviewAction('speed-up', onSpeedUpPending) : undefined;
   const cancelPending = reviewAction('cancel', onCancelPending);
   const cancelSaved = reviewAction('cancel-saved', onCancelSaved);
-  const replay = reviewAction('saved', onReplay);
+  const observedStatus = chosen && (savedPending ? savedPendingStatusTag(chosen) : statusTag(chosen));
+  const replay = observedStatus === 'confirmed' || observedStatus === 'reverted'
+    ? undefined : reviewAction('saved', onReplay);
   const retained = chosen?.retainedObservation;
   const chosenBlock = chosenObservation
     ? chosenObservation.block?.number

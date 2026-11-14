@@ -430,6 +430,59 @@ test('bounded batch reads and native alias Activity include contract creation an
  assert.equal(a.truncated,false);assert.equal(b.records[0]!.accountId,'imported:60:9');
 });
 
+test('native EOA Activity distinguishes zero-value contract calls from coin and asset transfers', async () => {
+  const { createNativeSignedRecordView } = await import('../src/custody/sharedSignedRecords.ts');
+  const { createNativeNetwork } = await import('../src/custody/networkContext.ts');
+  const { encodeNftTransferData } = await import('../../../source/shared/nftTransfer.ts');
+  const f = fixture(), session = f.session();
+  const token = { contractAddress: '0x' + '22'.repeat(20), name: 'Test token', symbol: 'TOK', decimals: 6 };
+  const recipient = '0x' + '33'.repeat(20);
+  const intent = { kind: 'erc20-transfer', chainId: '7654321', token, recipient, amountUnits: '5000000' };
+  const collectible = (standard: 'ERC-721' | 'ERC-1155') => ({
+    kind: 'nft-transfer' as const, chainId: '7654321', tokenStandard: standard,
+    contractAddress: token.contractAddress, from: signer.address, recipient,
+    tokenId: '7', amountUnits: standard === 'ERC-721' ? '1' : '5',
+  });
+  const cases = [
+    { operation: 'send' as const, data: '0x12345678', value: 0, metadata: undefined },
+    { operation: 'send' as const, data: '0x', value: 0, metadata: undefined },
+    { operation: 'send' as const, data: '0x12345678', value: 123, metadata: undefined },
+    { operation: 'erc20' as const, data: encodeErc20Transfer(recipient, intent.amountUnits), value: 0, metadata: { intent } },
+    { operation: 'erc721' as const, data: encodeNftTransferData(collectible('ERC-721')), value: 0, metadata: undefined },
+    { operation: 'erc1155' as const, data: encodeNftTransferData(collectible('ERC-1155')), value: 0, metadata: undefined },
+  ];
+  const inputs: { hash: string }[] = [];
+  for (const [nonce, item] of cases.entries()) {
+    const base = await signed(nonce);
+    const rawTransaction = await signer.signTransaction({ type: 2, chainId: 7654321, nonce,
+      to: token.contractAddress, value: item.value, data: item.data, gasLimit: 60_000,
+      maxFeePerGas: 3, maxPriorityFeePerGas: 1 });
+    const input = { ...base, rawTransaction, hash: Transaction.from(rawTransaction).hash!,
+      context: { ...base.context, operation: item.operation } };
+    await f.store.append(session, input, item.metadata);
+    inputs.push(input);
+  }
+  const network = createNativeNetwork({ id: 'custom:7654321', name: 'Custom', kind: 'evm', chainId: '7654321',
+    slip44: 60, rpcUrl: 'https://offline.invalid', symbol: 'ANY', decimals: 18, testnet: true });
+  const view = createNativeSignedRecordView(new EvmSignedRecords(f.port), f.session(), '1'.repeat(64),
+    { type: 'HDAccount', index: 0, address: signer.address }, network);
+  for (const rows of [(await view.activities()).records, (await view.pendingActivities()).records]) {
+    const read = (index: number) => rows.find(row => row.hash === inputs[index]!.hash)!;
+    assert.equal(rows.length, cases.length);
+    assert.equal(read(0).contractInteraction, true);
+    assert.equal(read(0).amountUnits, '0', 'outer value is not replaced with a contract payout');
+    assert.equal(read(0).recipient, token.contractAddress);
+    for (const index of [1, 2, 3, 4, 5]) assert.equal(read(index).contractInteraction, undefined);
+    assert.equal(read(1).amountUnits, '0');
+    assert.equal(read(2).amountUnits, '123');
+    assert.equal(read(3).amountUnits, intent.amountUnits);
+    assert.equal(read(3).recipient, recipient);
+    assert.deepEqual(read(3).token, token);
+    assert.deepEqual(read(4).collectibleTransfer, collectible('ERC-721'));
+    assert.deepEqual(read(5).collectibleTransfer, collectible('ERC-1155'));
+  }
+});
+
 for (const phase of ['signed', 'attempted', 'submitted'] as const) {
   test(`shared current query keeps ${phase} visible after clock rollback, later terminal writes and alias reopen`, async () => {
     const { createNativeSignedRecordView } = await import('../src/custody/sharedSignedRecords.ts');
