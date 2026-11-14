@@ -288,6 +288,8 @@ export async function qualifyNativeWalletConnect(options: {
     let client: InstanceType<typeof SignClient> | undefined;
     const repository: Omit<NativeConnectionRepository, 'calls'> = {
       assertHealthy() {},
+      connectionsEnabled: () => true,
+      async setConnectionsEnabled() { throw Error('Unused qualification admission control'); },
       bindings: () => [],
       async reconcileSessions() {
         throw Error('Unused qualification reconciliation');

@@ -2107,6 +2107,11 @@
       "testNetwork": "Test network"
     },
     "connections": {
+      "allowConnections": "Allow new connections",
+      "allowConnectionsBody": "Turning this off disconnects all apps and stops new connection requests.",
+      "disconnectAll": "Disconnect all",
+      "savingConnections": "Saving connection settings",
+      "connectionsPaused": "Connections are paused. Turn on Allow new connections to connect an app.",
       "invalidLink": "Copy a WalletConnect link from the app you want to connect to.",
       "expired": "This connection request expired. Request a new connection from the app.",
       "contextChanged": "Your wallet context changed. Review the connection again.",

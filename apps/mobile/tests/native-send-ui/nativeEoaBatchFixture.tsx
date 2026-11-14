@@ -139,7 +139,7 @@ export function NativeEoaBatchFixture() {
   ...unsupportedDappViews,
     getSnapshot: () => ({
       revision: review?.revision ?? 0,
-      status: 'ready',
+      status: 'ready', connectionsEnabled: true, connectionSettingsBusy: false,
       pairingExpiresAt: null,
       accounts: [],
       selectedAccountId: null,

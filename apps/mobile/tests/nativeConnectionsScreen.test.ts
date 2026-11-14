@@ -12,7 +12,7 @@ function fixture(dateLocale?: Intl.LocalesArgument) {
   let clipboard: () => Promise<string> = async () => 'wc:clipboard-link';
   let sessionAction: () => Promise<void> = async () => {};
   let snapshot: NativeConnectionsSnapshot = {
-    revision: 7, status: 'ready', pairingExpiresAt: null, accounts: [account], selectedAccountId: account.id,
+    revision: 7, status: 'ready', connectionsEnabled: true, connectionSettingsBusy: false, pairingExpiresAt: null, accounts: [account], selectedAccountId: account.id,
     network: { id: 'ethereum', label: 'Ethereum', chainId: '1' }, proposals: [], sessions: [],
     preparationReview: null, controlReview: null, psbtReview: null, sentryReview: null,
     signingReview: null, callsStatus: null, error: null,
@@ -26,6 +26,8 @@ function fixture(dateLocale?: Intl.LocalesArgument) {
     async pair(uri: string) { calls.push({ method: 'pair', args: [uri] }); },
     async approve(...args: unknown[]) { calls.push({ method: 'approve', args }); },
     async reject(...args: unknown[]) { calls.push({ method: 'reject', args }); },
+    async setConnectionsEnabled(...args: unknown[]) { calls.push({ method: 'enable', args }); await sessionAction(); },
+    async disconnectAll() { calls.push({ method: 'disconnectAll', args: [] }); await sessionAction(); },
     async disconnect(...args: unknown[]) { calls.push({ method: 'disconnect', args }); await sessionAction(); },
     async returnToDapp(...args: unknown[]) { calls.push({ method: 'return', args }); await sessionAction(); },
     async retry() { calls.push({ method: 'retry', args: [] }); },
@@ -35,11 +37,11 @@ function fixture(dateLocale?: Intl.LocalesArgument) {
   const host = screenFixture(new URL('../src/screens/NativeConnections.tsx', import.meta.url), 'NativeConnections', {
     '../platform/localization': nativeTranslationFixture,
     '../connections/pairingLinks': { extractPairingUri },
-    'react-native': { ActivityIndicator: 'ActivityIndicator', View: 'View', StyleSheet: { create: (value: unknown) => value },
+    'react-native': { ActivityIndicator: 'ActivityIndicator', View: 'View', Switch: 'Switch', StyleSheet: { create: (value: unknown) => value },
       BackHandler: { addEventListener: (_event: string, handler: () => boolean) => { backHandlers.add(handler); return { remove: () => backHandlers.delete(handler) }; } } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     'expo-clipboard': { async getStringAsync() { reads++; return clipboard(); } },
-    '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'IconButton', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
+    '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'IconButton', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
     './IdleActivityBoundary': { IdlePressable: 'Pressable' },
     './DappSiteStatus': { DappSiteStatus: 'DappSiteStatus' },
     './ConnectionQrScanner': { ConnectionQrScanner: 'Scanner' },
@@ -346,4 +348,50 @@ test('leaving while a clipboard read is pending never starts pairing', async () 
   resolve('wc:late-link'); await paste;
   assert(!f.calls.some(call => call.method === 'pair'));
   f.close();
+});
+
+test('connection controls remain available during approval and do not optimistically enable after a save', async () => {
+  const f = fixture();
+  try {
+    f.proposal();
+    let row = f.render().find(element => element.type === 'Row' && element.props.title === 'Allow new connections');
+    assert.ok(row);
+    assert.equal(row.props.right.props.value, true);
+    assert.equal(row.props.right.props.disabled, false);
+    row.props.right.props.onValueChange(false); await flush();
+    assert.deepEqual(f.calls.at(-1), { method: 'enable', args: [false] });
+    assert.equal(f.render().find(element => element.type === 'Row')!.props.right.props.value, true, 'the view waits for the authoritative snapshot');
+    f.update({ proposals: [], connectionsEnabled: false, connectionSettingsBusy: true, sessions: [f.session()] });
+    row = f.render().find(element => element.type === 'Row');
+    assert.equal(row!.props.right.props.value, false);
+    assert.equal(row!.props.right.props.disabled, true);
+    assert.equal(f.button('Disconnect all').props.disabled, true);
+    f.update({ connectionSettingsBusy: false });
+    assert.match(f.text(), /Connections are paused/);
+    assert.equal(f.render().some(element => element.type === 'Button' && element.props.title === 'Scan QR code'), false);
+    assert.equal(f.button('Disconnect all').props.disabled, false);
+    click(f.button('Disconnect all')); await flush();
+    assert.deepEqual(f.calls.at(-1), { method: 'disconnectAll', args: [] });
+    f.update({ status: 'unavailable', error: 'CONNECTION_UNAVAILABLE' });
+    assert.equal(f.render().find(element => element.type === 'Row')!.props.right.props.disabled, true);
+    assert.equal(f.render().find(element => element.type === 'Row')!.props.right.props.value, false);
+  } finally { f.close(); }
+});
+
+test('stale settings controls cannot act after leaving and all supported locales explain existing disconnects', () => {
+  const f = fixture();
+  try {
+    f.update({ sessions: [f.session()] });
+    const row = f.render().find(element => element.type === 'Row')!;
+    const disconnect = f.button('Disconnect all');
+    f.render().find(element => element.type === 'Header')!.props.onBack();
+    row.props.right.props.onValueChange(false); click(disconnect);
+    assert.equal(f.calls.some(call => call.method === 'enable' || call.method === 'disconnectAll'), false);
+    for (const locale of ['en', 'de', 'es', 'fr', 'ja', 'ko', 'pt', 'ru', 'zh']) {
+      const messages = languageMessages(locale);
+      for (const key of ['allowConnections', 'allowConnectionsBody', 'disconnectAll', 'savingConnections', 'connectionsPaused']) {
+        assert.equal(typeof messages.mobile.connections[key], 'string');
+      }
+    }
+  } finally { f.close(); }
 });

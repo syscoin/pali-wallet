@@ -2107,6 +2107,11 @@
       "testNetwork": "Red de prueba"
     },
     "connections": {
+      "allowConnections": "Permitir nuevas conexiones",
+      "allowConnectionsBody": "Al desactivar esta opción se desconectan todas las apps y se detienen las nuevas solicitudes de conexión.",
+      "disconnectAll": "Desconectar todas",
+      "savingConnections": "Guardando ajustes de conexión",
+      "connectionsPaused": "Las conexiones están pausadas. Activa Permitir nuevas conexiones para conectar una app.",
       "invalidLink": "Copia un enlace de WalletConnect de la aplicación que quieras conectar.",
       "expired": "Esta solicitud de conexión ha caducado. Solicita una nueva conexión desde la aplicación.",
       "contextChanged": "El contexto de tu cartera ha cambiado. Revisa la conexión de nuevo.",

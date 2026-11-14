@@ -123,6 +123,7 @@ const METHODS = Object.freeze([
   'eth_signTypedData_v4',
 ]);
 const EVENTS = Object.freeze(['accountsChanged', 'chainChanged']);
+const CONNECTION_CLEANUP_TIMEOUT_MS = 5_000;
 type Source = {
   getSnapshot(): CustodySnapshot;
   subscribe(listener: (snapshot: CustodySnapshot) => void): () => void;
@@ -285,6 +286,12 @@ export class NativeConnectionsController {
   private readonly lifetime = new AbortController();
   private revision = 0;
   private actionEpoch = 0;
+  private connectionSettingsEpoch = 0;
+  private connectionSettingsBusy = false;
+  private connectionAdmissionBlocked = false;
+  private connectionsEnabled = false;
+  private connectionSettingsFailed = false;
+  private readonly admissionRejections = new Set<Promise<void>>();
   private serial = 0;
   private action: AbortController | undefined;
   private pairing: WalletConnectPairing | undefined;
@@ -503,6 +510,8 @@ export class NativeConnectionsController {
         this.perform(() => this.approve(id, accountId, networkId, revision)),
       reject: (id) => this.perform(() => this.reject(id)),
       disconnect: (id) => this.perform(() => this.disconnect(id)),
+      setConnectionsEnabled: enabled => this.changeConnectionSettings(enabled),
+      disconnectAll: () => this.changeConnectionSettings(undefined),
       previewEncryption: (id, revision) => this.previewEncryption(id, revision),
       approveRequest: (id, revision, acknowledgeWarning) =>
         this.perform(
@@ -548,13 +557,17 @@ export class NativeConnectionsController {
         this.perform(() => this.editApprovalAmount(id, revision, amount), {
           owner: this.requests.get(id),
         }),
-      retry: () =>
-        this.perform(async () => {
-          if (this.action) return failure('BUSY');
-          if (this.options.source.getSnapshot().phase !== 'ready')
-            return failure('CONTEXT_CHANGED');
-          await this.ensure();
-        }),
+      retry: async () => {
+        this.check(true);
+        if (this.action || this.connectionSettingsBusy) return failure('BUSY');
+        if (this.options.source.getSnapshot().phase !== 'ready') return failure('CONTEXT_CHANGED');
+        try {
+          // A healthy paused repository can recover after old SDK disposal;
+          // failed storage and unfinished transport retirement remain closed.
+          await this.ensure(); this.check(true);
+          this.status = 'ready'; this.error = null; this.publish();
+        } catch (cause) { this.unavailable(); throw cause; }
+      },
       cancel: () => this.cancel(),
     });
     this.unsubscribe = options.source.subscribe(() => {
@@ -597,10 +610,11 @@ export class NativeConnectionsController {
       void this.ensure().catch(() => this.unavailable());
   }
 
-  private check() {
+  private check(allowPaused = false) {
     if (this.disposed || this.accountRetirementFailed) return failure('CONNECTION_UNAVAILABLE');
     this.host?.assertOwner();
     this.repository?.assertHealthy();
+    if (!allowPaused && (this.connectionAdmissionBlocked || this.repository && !this.connectionsEnabled)) return failure('CONNECTION_UNAVAILABLE');
   }
   private unavailable() {
     if (!this.disposed) {
@@ -765,6 +779,8 @@ export class NativeConnectionsController {
       sentryReview: ready ? this.sentry?.review(this.revision) ?? null : null,
       callsStatus: ready ? this.callsStatus : null,
       revision: this.revision,
+      connectionsEnabled: this.connectionsEnabled && !this.connectionAdmissionBlocked,
+      connectionSettingsBusy: this.connectionSettingsBusy || !this.repository,
       status: ready ? this.status : 'locked',
       pairingExpiresAt: ready && this.pairing ? this.pairing.expiresAt : null,
       selectedAccountId: ready && evm ? context!.activeAccountId : null,
@@ -879,7 +895,7 @@ export class NativeConnectionsController {
   }
   private ensure(): Promise<void> {
     if (this.restored) {
-      return Promise.resolve().then(() => this.check());
+      return Promise.resolve().then(() => this.check(true));
     }
     if (this.opening) return this.opening;
     this.opening = (async () => {
@@ -887,18 +903,19 @@ export class NativeConnectionsController {
         return failure('CONTEXT_CHANGED');
       if (!this.host || !this.repository) {
         this.host = await this.options.openHost();
-        this.check();
+        this.check(true);
         this.repository = this.host.repository;
       }
       this.repository.assertHealthy();
+      this.connectionsEnabled = this.repository.connectionsEnabled();
       this.publishedScope = this.publicScope();
       await this.transportRetirement;
       await this.requestRetirement;
-      if (this.repository.bindings().length) await this.ensureTransport();
-      this.check();
+      if (this.connectionsEnabled && this.repository.bindings().length) await this.ensureTransport();
+      this.check(true);
       this.restored = true;
       if (!this.action) this.status = 'ready';
-      this.error = null;
+      if (!this.connectionAdmissionBlocked) this.error = null;
       this.publish();
     })().finally(() => {
       this.opening = undefined;
@@ -915,7 +932,7 @@ export class NativeConnectionsController {
       const events: WalletConnectTransportEvent[] = [];
       this.transportOwner = owner;
       const guard = () => {
-        this.check();
+        this.check(true);
         if (this.transportOwner !== owner) return failure('CONTEXT_CHANGED');
       };
       let transport: WalletConnectTransport | undefined;
@@ -1079,17 +1096,25 @@ export class NativeConnectionsController {
     if (this.disposed) return;
     if (event.type === 'proposal') {
       if (this.pairing && this.pairing.expiresAt <= Date.now()) this.expirePairing(this.pairing);
-      if (this.canceledPairings.has(event.proposal.pairingTopic) || event.proposal.expiresAt !== null && event.proposal.expiresAt <= Date.now()) {
+      if (this.connectionAdmissionBlocked || !this.connectionsEnabled || this.canceledPairings.has(event.proposal.pairingTopic) || event.proposal.expiresAt !== null && event.proposal.expiresAt <= Date.now()) {
         const transport = this.transport, owner = this.transportOwner;
         if (!transport) return;
-        void transport.reject(event.proposal, {
+        const paused = this.connectionAdmissionBlocked || !this.connectionsEnabled;
+        const rejection = transport.reject(event.proposal, {
           code: 5000,
           message: 'Connection cancelled',
-        }).catch(() => {
+        });
+        if (paused) this.admissionRejections.add(rejection);
+        void rejection.catch(() => {
           if (this.disposed || this.transportOwner !== owner) return;
+          if (paused) {
+            this.connectionSettingsFailed = true;
+            this.connectionAdmissionBlocked = true;
+            this.connectionsEnabled = false;
+          }
           this.error = 'CONNECTION_UNAVAILABLE';
           this.publish();
-        });
+        }).finally(() => this.admissionRejections.delete(rejection));
         return;
       }
       this.proposals.set(event.proposal.id, event.proposal);
@@ -1098,7 +1123,7 @@ export class NativeConnectionsController {
     } else if (event.type === 'proposal-expired') {
       const proposal = this.proposals.get(event.id);
       if (proposal) this.expireProposal(proposal);
-    } else if (event.type === 'session') this.connection(event.session);
+    } else if (event.type === 'session') { if (!this.connectionAdmissionBlocked && this.connectionsEnabled) this.connection(event.session); }
     else if (event.type === 'session-ended') {
       for (const [key, value] of this.connections)
         if (value.session.binding.topic === event.topic) {
@@ -1116,6 +1141,7 @@ export class NativeConnectionsController {
         if (message.wire.id === event.id) this.retireRequest(message, false);
     } else if (event.type === 'request')
       void this.respond(event.request).catch(() => {
+        if (this.connectionAdmissionBlocked || !this.connectionsEnabled) return;
         try {
           this.check();
         } catch {
@@ -1442,6 +1468,79 @@ export class NativeConnectionsController {
       code: 5000,
       message: 'User rejected',
     });
+  }
+  /** Fence all request families before the first asynchronous storage operation. */
+  private async changeConnectionSettings(enabled: boolean | undefined): Promise<void> {
+    if (this.connectionSettingsBusy) return failure('BUSY');
+    if (this.status === 'unavailable' && this.connectionAdmissionBlocked) return failure('CONNECTION_UNAVAILABLE');
+    this.check(true);
+    if (enabled === true && this.connectionsEnabled && !this.connectionAdmissionBlocked) return;
+    if (this.options.source.getSnapshot().phase !== 'ready') return failure('CONTEXT_CHANGED');
+    const epoch = ++this.connectionSettingsEpoch;
+    const sourceRevision = this.options.source.getSnapshot().revision;
+    this.connectionSettingsFailed = false;
+    this.connectionSettingsBusy = true;
+    this.connectionAdmissionBlocked = true;
+    this.actionEpoch++; this.action?.abort(); this.action = undefined;
+    const proposals = [...this.proposals.values()], pairing = this.pairing;
+    this.proposals.clear(); this.pairing = undefined; this.clearDeadlines();
+    if (pairing) this.canceledPairings.set(pairing.topic, pairing);
+    this.activeProposalId = undefined;
+    for (const read of this.reads.values()) read.lifetime.abort();
+    this.accountChanges.clear(); this.controls.clear(); this.sentry.clear(); this.psbt.clear(); this.preparations.clear(); this.handoffs.cancelDapp();
+    for (const request of [...this.requests.values()]) void this.retireRequest(request, false);
+    this.error = null; this.publish();
+    let resuming = false;
+    const guard = () => {
+      this.check(true);
+      if (this.connectionSettingsFailed || resuming && this.admissionRejections.size || epoch !== this.connectionSettingsEpoch || this.options.source.getSnapshot().phase !== 'ready' || this.options.source.getSnapshot().revision !== sourceRevision) failure('CONTEXT_CHANGED');
+    };
+    try {
+      await this.ensure(); guard();
+      const repository = this.repository!;
+      const wasEnabled = repository.connectionsEnabled();
+      const connections = [...this.connections.values()];
+      // Queue the atomic tombstone first. Shared revocation synchronously removes
+      // live capabilities, then its writes queue behind that tombstone.
+      const paused = repository.setConnectionsEnabled(false, guard);
+      const retired = connections.map(connection => this.retireConnection(connection));
+      this.activeGrant = undefined;
+      const local = await Promise.allSettled([paused, ...retired]);
+      const failed = local.find(result => result.status === 'rejected');
+      if (failed?.status === 'rejected') throw failed.reason;
+      guard();
+      this.connectionsEnabled = false;
+      // All local grants are durably gone before any optional relay cleanup.
+      const transport = this.transport;
+      const cleanup = new AbortController();
+      const deadline = setTimeout(() => cleanup.abort(), CONNECTION_CLEANUP_TIMEOUT_MS);
+      try {
+        const remote = await abortable(Promise.allSettled([
+          ...connections.map(connection => transport?.disconnect(connection.session.binding)),
+          ...proposals.map(proposal => transport?.reject(proposal, { code: 5000, message: 'Connection cancelled' })),
+          pairing?.cancel(),
+        ]), cleanup.signal);
+        const remoteFailure = remote.find(result => result.status === 'rejected');
+        if (remoteFailure?.status === 'rejected') throw remoteFailure.reason;
+        while (this.admissionRejections.size) await abortable(Promise.all([...this.admissionRejections]), cleanup.signal);
+      } finally { clearTimeout(deadline); }
+      guard();
+      if (enabled === true || enabled === undefined && wasEnabled) {
+        resuming = true;
+        await repository.setConnectionsEnabled(true, guard);
+        guard(); this.connectionsEnabled = true;
+      }
+      this.connectionAdmissionBlocked = !this.connectionsEnabled;
+      this.status = 'ready';
+    } catch (cause) {
+      this.connectionsEnabled = false;
+      this.connectionAdmissionBlocked = true;
+      this.unavailable();
+      throw cause;
+    } finally {
+      this.connectionSettingsBusy = false;
+      this.publish();
+    }
   }
   private async disconnect(id: string) {
     this.check();
@@ -1918,6 +2017,11 @@ export class NativeConnectionsController {
     } finally { clearTimeout(timer); lifetime.abort(); if (this.reads.get(key) === entry) this.reads.delete(key); finish(); }
   }
   private async respond(request: WalletConnectRequest) {
+    if (this.connectionAdmissionBlocked || !this.connectionsEnabled) {
+      this.check(true);
+      await this.transport?.respond(request.session.binding, request.id, { error: { code: 4100, message: 'Connections are paused' } }, () => this.check(true), () => {});
+      return;
+    }
     this.check();
     if (this.accountTransitions.has(sessionKey(request.session))) {
       await this.transport!.respond(request.session.binding, request.id, { error: { code: -32002, message: 'Account selection is in progress' } }, () => this.check(), () => {}).catch(() => undefined);
@@ -3521,6 +3625,7 @@ export class NativeConnectionsController {
     }
   }
   private cancel() {
+    this.connectionSettingsEpoch++;
     // Leaving the connection screen may reveal an incoming message review.
     // Its cleanup owns pairing, while message rejection owns that request.
     this.error = null;

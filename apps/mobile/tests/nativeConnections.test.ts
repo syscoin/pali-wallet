@@ -69,6 +69,7 @@ const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fixture(
   options: {
     requestAuthentication?: boolean;
+    persistedRows?: ReadonlyMap<string, unknown>;
     walletReads?: boolean;
     utxo?: boolean;
     hardware?: 'Ledger' | 'Trezor';
@@ -110,7 +111,7 @@ function fixture(
   };
   let promptActive = false, credentialWait: Promise<void> = Promise.resolve();
   const listeners = new Set<() => void>();
-  const rows = new Map<string, unknown>();
+  const rows = new Map<string, unknown>([...(options.persistedRows ?? [])].map(([key, value]) => [key, structuredClone(value)]));
   const signatures: unknown[] = [];
   const transactions: unknown[] = [];
   const controlCommits: unknown[] = [], externalUrls: string[] = [];
@@ -144,6 +145,7 @@ function fixture(
   let moduleMetadataWait = Promise.resolve();
   let signWait: Promise<void> = Promise.resolve();
   let storageWait: Promise<void> = Promise.resolve();
+  let storageFailure: 'before' | 'after' | undefined;
   let permissionPublished: ((hasGrant: boolean) => void) | undefined;
   let permissionSettlement: (() => Promise<void>) | undefined;
   let preparationError: Error | undefined;
@@ -184,6 +186,7 @@ function fixture(
   let pairWait: Promise<void> = Promise.resolve();
   let disconnectWait: Promise<void> = Promise.resolve();
   let rejectFailure: Error | undefined;
+  let rejectWait: Promise<void> = Promise.resolve(), cancelPairWait: Promise<void> = Promise.resolve();
   let pairFailure: { error: Error; beforeHandle: boolean } | undefined;
   let selectedChainId = 1;
   let selectedUtxo = options.utxo ?? false, defaultEvmAccountId = firstAccountId;
@@ -225,7 +228,9 @@ function fixture(
       return true;
     },
     compareAndSetMany: async (changes, guard) => {
+      await storageWait;
       guard();
+      if (storageFailure === 'before') throw Error('Storage unavailable');
       if (
         changes.some(
           ({ key, expected }) =>
@@ -237,6 +242,7 @@ function fixture(
         if (value === undefined) rows.delete(key);
         else rows.set(key, structuredClone(value));
       }
+      if (storageFailure === 'after') throw Error('Lost storage acknowledgement');
       return true;
     },
   };
@@ -733,6 +739,7 @@ function fixture(
               return pairingExpiry;
             },
             cancel: async () => {
+              await cancelPairWait;
               pairCanceled++;
               cancelledTopics.push(pairing.topic);
             },
@@ -754,6 +761,7 @@ function fixture(
           return session;
         },
         reject: async () => {
+          await rejectWait;
           if (rejectFailure) throw rejectFailure;
         },
         disconnect: async (binding) => {
@@ -865,6 +873,7 @@ function fixture(
     preparedTransactions,
     setApprovalMetadata(value: ApprovalContractMetadata) { approvalMetadata = value; },
     setPreparationWait(value: Promise<void>) { preparationWait = value; },
+    failStorage(value: 'before' | 'after') { storageFailure = value; },
     setStorageWait(value: Promise<void>) { storageWait = value; },
     onPermissionPublication(callback: typeof permissionPublished) { permissionPublished = callback; },
     setPermissionSettlement(callback: typeof permissionSettlement) { permissionSettlement = callback; },
@@ -930,6 +939,8 @@ function fixture(
       closeFailure = value;
     },
     cancelledTopics,
+    setRejectWait(value: Promise<void>) { rejectWait = value; },
+    setCancelPairWait(value: Promise<void>) { cancelPairWait = value; },
     setRejectFailure(value: Error) {
       rejectFailure = value;
     },
@@ -5933,4 +5944,210 @@ test('unlock rejects a namespace mismatch received while locked before publishin
     assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN], undefined);
     assert.equal((f.emissions.slice(before) as any[]).some(event => event.name === 'accountsChanged' && event.data.includes(ADDRESS)), false);
   } finally { await f.controller.dispose(); }
+});
+
+test('connection controls disable pending signing and reads, persist the pause, and require fresh pairing on enable', async () => {
+  const f = await connectedFixture({ walletReads: true });
+  let release!: () => void;
+  try {
+    const review = await messageRequest(f);
+    assert.ok(review);
+    f.setReadWait(new Promise<void>(resolve => { release = resolve; }));
+    f.event({ type: 'request', request: { freshness: 'fresh', id: 71, session: f.session, method: 'wallet_getBalance', params: [], chainId: 'eip155:1', expiresAt: Date.now() + 300000, verification: UNKNOWN } });
+    await settle();
+    const pause = f.view.setConnectionsEnabled(false);
+    assert.equal(f.view.getSnapshot().connectionsEnabled, false);
+    assert.equal(f.view.getSnapshot().connectionSettingsBusy, true);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    await assert.rejects(f.view.pair('wc:new'));
+    release(); await pause;
+    await assert.rejects(f.view.approveRequest(review.id, review.revision, true));
+    assert.deepEqual(f.signatures, []);
+    assert.deepEqual(f.view.getSnapshot().sessions, []);
+    assert.equal((await f.repository).connectionsEnabled(), false);
+    assert.equal(f.handedOff.some(value => (value as { id: number; result: { result?: unknown } }).id === 71 && 'result' in (value as { result: object }).result), false);
+    await f.view.setConnectionsEnabled(true);
+    assert.equal(f.view.getSnapshot().connectionsEnabled, true);
+    assert.deepEqual(f.view.getSnapshot().sessions, []);
+    await f.view.pair('wc:new');
+    f.event({ type: 'proposal', proposal: { ...f.proposal, pairingTopic: 'ef'.repeat(32) } });
+    await f.view.approve(3, 'hd:60:0', 'ethereum', f.view.getSnapshot().revision);
+    assert.equal(f.view.getSnapshot().sessions.length, 1);
+  } finally { release?.(); await f.controller.dispose(); }
+});
+
+test('disconnect all retires every peer before relay cleanup and rejects concurrent proposals', async () => {
+  const f = await connectedFixture();
+  let release!: () => void;
+  try {
+    const repository = await f.repository;
+    const other = { ...f.session, binding: { ...f.session.binding, peerPublicKey: '65'.repeat(32), topic: '66'.repeat(32) } };
+    const existing = repository.permissions(f.session.binding).read();
+    const port = repository.permissions(other.binding);
+    await port.exclusive(async () => { const frame = structuredClone(existing); await port.write(frame); port.publish(frame); });
+    f.event({ type: 'session', session: other });
+    assert.equal(f.view.getSnapshot().sessions.length, 2);
+    f.setDisconnectWait(new Promise<void>(resolve => { release = resolve; }));
+    const disconnect = f.view.disconnectAll();
+    await settle();
+    assert.equal(f.view.getSnapshot().connectionSettingsBusy, true);
+    assert.deepEqual(repository.bindings(), []);
+    assert.deepEqual(f.view.getSnapshot().sessions, []);
+    assert.equal(repository.connectionsEnabled(), false);
+    f.event({ type: 'proposal', proposal: { ...f.proposal, id: 75, pairingTopic: '67'.repeat(32) } });
+    assert.deepEqual(f.view.getSnapshot().proposals, []);
+    await assert.rejects(f.view.pair('wc:new'));
+    release(); await disconnect;
+    assert.equal(f.remoteDisconnects.length, 2);
+    assert.equal(f.view.getSnapshot().connectionsEnabled, true);
+    assert.deepEqual(repository.bindings(), []);
+  } finally { release?.(); await f.controller.dispose(); }
+});
+
+test('an approval waiting on its grant write cannot repopulate sessions after pause', async () => {
+  const f = fixture(); let release!: () => void;
+  try {
+    await settle(); await f.view.pair('wc:fixture');
+    f.event({ type: 'proposal', proposal: f.proposal });
+    f.setStorageWait(new Promise<void>(resolve => { release = resolve; }));
+    const approval = assert.rejects(f.view.approve(3, 'hd:60:0', 'ethereum', f.view.getSnapshot().revision));
+    await settle();
+    const pause = f.view.setConnectionsEnabled(false);
+    assert.deepEqual(f.view.getSnapshot().proposals, []);
+    release(); await approval; await pause;
+    assert.equal(f.view.getSnapshot().connectionsEnabled, false);
+    assert.deepEqual((await f.repository).bindings(), []);
+    await f.view.setConnectionsEnabled(true);
+    assert.deepEqual(f.view.getSnapshot().sessions, []);
+  } finally { release?.(); await f.controller.dispose(); }
+});
+
+for (const interruption of ['cancel', 'lock'] as const) test(`connection pause interrupted by ${interruption} never reports enabled success`, async () => {
+  const f = await connectedFixture(); let release!: () => void;
+  try {
+    f.setStorageWait(new Promise<void>(resolve => { release = resolve; }));
+    const pending = assert.rejects(f.view.disconnectAll());
+    await settle();
+    if (interruption === 'cancel') f.view.cancel(); else f.lock();
+    release(); await pending;
+    assert.equal(f.view.getSnapshot().connectionsEnabled, false);
+    assert.equal(f.view.getSnapshot().connectionSettingsBusy, false);
+    assert.deepEqual(f.view.getSnapshot().sessions, []);
+  } finally { release?.(); await f.controller.dispose(); }
+});
+
+for (const failure of ['before', 'after'] as const) test(`connection controls fail closed on ${failure} persistence failure`, async () => {
+  const f = await connectedFixture();
+  try {
+    f.failStorage(failure);
+    await assert.rejects(f.view.disconnectAll());
+    assert.equal(f.view.getSnapshot().connectionsEnabled, false);
+    assert.equal(f.view.getSnapshot().status, 'unavailable');
+    assert.deepEqual(f.view.getSnapshot().sessions, []);
+    await assert.rejects(f.view.setConnectionsEnabled(true));
+    if (failure === 'after') {
+      assert.equal((f.rows.get('native-dapp-admission') as { enabled: boolean }).enabled, false);
+      assert.deepEqual((f.rows.get('native-dapp-connections') as { sessions: unknown[] }).sessions, []);
+    }
+  } finally { await f.controller.dispose(); }
+});
+
+test('relay rejection failure leaves disconnect-all paused with no durable grants', async () => {
+  const f = await connectedFixture();
+  try {
+    f.event({ type: 'proposal', proposal: { ...f.proposal, id: 92 } });
+    f.setRejectFailure(Error('Relay rejected cleanup'));
+    await assert.rejects(f.view.disconnectAll());
+    assert.equal(f.view.getSnapshot().connectionsEnabled, false);
+    assert.deepEqual((await f.repository).bindings(), []);
+    assert.equal((await f.repository).connectionsEnabled(), false);
+  } finally { await f.controller.dispose(); }
+});
+
+
+test('a reopened controller keeps admission disabled and never restores the retired session', async () => {
+  const original = await connectedFixture();
+  let reopened: ReturnType<typeof fixture> | undefined;
+  try {
+    await original.view.setConnectionsEnabled(false);
+    reopened = fixture({ persistedRows: original.rows });
+    await settle();
+    assert.equal(reopened.view.getSnapshot().connectionsEnabled, false);
+    assert.equal(reopened.opened(), 0);
+    assert.deepEqual(reopened.view.getSnapshot().sessions, []);
+    await assert.rejects(reopened.view.pair('wc:new'));
+    await reopened.view.setConnectionsEnabled(true);
+    assert.deepEqual(reopened.view.getSnapshot().sessions, []);
+    await reopened.view.pair('wc:new');
+    assert.equal(reopened.opened(), 1);
+  } finally { await reopened?.controller.dispose(); await original.controller.dispose(); }
+});
+
+test('failure rejecting a concurrently arriving proposal prevents disconnect-all from reenabling admission', async () => {
+  const f = await connectedFixture(); let release!: () => void;
+  try {
+    f.setDisconnectWait(new Promise<void>(resolve => { release = resolve; }));
+    const disconnect = assert.rejects(f.view.disconnectAll());
+    await settle();
+    f.setRejectFailure(Error('Concurrent rejection failed'));
+    f.event({ type: 'proposal', proposal: { ...f.proposal, id: 99, pairingTopic: '61'.repeat(32) } });
+    await settle();
+    release(); await disconnect;
+    assert.equal(f.view.getSnapshot().connectionsEnabled, false);
+    assert.equal((await f.repository).connectionsEnabled(), false);
+    assert.deepEqual((await f.repository).bindings(), []);
+  } finally { release?.(); await f.controller.dispose(); }
+});
+
+
+for (const remote of ['disconnect', 'reject', 'pairing'] as const) test(`unresponsive ${remote} cleanup cannot keep connection settings busy or reopen admission`, async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = await connectedFixture();
+  try {
+    const forever = new Promise<void>(() => {});
+    if (remote === 'disconnect') f.setDisconnectWait(forever);
+    else if (remote === 'reject') {
+      f.event({ type: 'proposal', proposal: { ...f.proposal, id: 110 } });
+      f.setRejectWait(forever);
+    } else {
+      await f.view.pair('wc:new');
+      f.setCancelPairWait(forever);
+    }
+    const failed = assert.rejects(f.view.disconnectAll());
+    await settle();
+    assert.deepEqual((await f.repository).bindings(), []);
+    assert.equal((await f.repository).connectionsEnabled(), false);
+    context.mock.timers.tick(5_000);
+    await failed;
+    assert.equal(f.view.getSnapshot().connectionSettingsBusy, false);
+    assert.equal(f.view.getSnapshot().connectionsEnabled, false);
+    assert.equal(f.view.getSnapshot().status, 'unavailable');
+    await assert.rejects(f.view.setConnectionsEnabled(true));
+    await assert.rejects(f.view.pair('wc:new'));
+    await settle();
+    assert.equal(f.closed(), 1, 'the existing transport retirement barrier owns cleanup');
+    await f.view.retry();
+    assert.equal(f.view.getSnapshot().status, 'ready');
+    assert.equal(f.view.getSnapshot().connectionsEnabled, false);
+    await f.view.setConnectionsEnabled(true);
+    assert.equal(f.view.getSnapshot().connectionsEnabled, true);
+    assert.deepEqual(f.view.getSnapshot().sessions, []);
+  } finally { await f.controller.dispose(); context.mock.timers.reset(); }
+});
+
+
+test('late remote completion cannot restore old grants after timeout, retry and a fresh enable', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = await connectedFixture(); const remote = Promise.withResolvers<void>();
+  try {
+    f.setDisconnectWait(remote.promise);
+    const failed = assert.rejects(f.view.disconnectAll());
+    await settle(); context.mock.timers.tick(5_000); await failed; await settle();
+    await f.view.retry(); await f.view.setConnectionsEnabled(true);
+    await f.view.pair('wc:new');
+    remote.resolve(); await settle();
+    assert.equal(f.view.getSnapshot().connectionsEnabled, true);
+    assert.deepEqual(f.view.getSnapshot().sessions, []);
+    assert.deepEqual((await f.repository).bindings(), []);
+  } finally { remote.resolve(); await f.controller.dispose(); context.mock.timers.reset(); }
 });

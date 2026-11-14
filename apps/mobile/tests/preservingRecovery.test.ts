@@ -17,7 +17,7 @@ import test from 'node:test';
 import { HDNodeWallet, Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
 import type { EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
-import { openNativeConnectionRepository, NATIVE_CONNECTION_STORAGE_KEY } from '../src/connections/storage.ts';
+import { openNativeConnectionRepository, NATIVE_CONNECTION_STORAGE_KEY, NATIVE_CONNECTION_ADMISSION_KEY } from '../src/connections/storage.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
@@ -2350,4 +2350,43 @@ test('recovery OS Cancel returns to the same verified review only after exact cl
     assert.equal(stages, 2); assert.deepEqual(retained(f.read()), retained(before));
     await f.reopen(); assert.equal(f.owner.getSnapshot().phase, 'ready');
   } finally { flow.cancel(); await coordinator.dispose(); await f.close(); }
+});
+
+test('matching-phrase recovery retains disabled connection admission and transport records across credential replacement', async () => {
+  const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
+  try {
+    const binding = await f.store.getWalletFingerprint();
+    const repository = await openNativeConnectionRepository({ storage: f.store.keyringStorage, walletBindingId: binding, assertOwner() {} });
+    await repository.transport.setItem('retained-connection-metadata', { secret: 'recovery-test-only' });
+    await repository.setConnectionsEnabled(false, () => undefined);
+    await repository.dispose();
+    assert.equal((await readRecoveryInventory(f.store)).status, 'needs-matching-phrase-verification');
+    const before = f.read();
+    f.owner.lock(); recovery = f.coordinator();
+    const proof = await prepareRecoveryCredential(recovery, PHRASE, () => undefined);
+    assert.equal(await recovery.commit(proof), 'committed-locked');
+    assert.deepEqual(retained(f.read()), retained(before));
+    await f.reopen(); await f.owner.unlock();
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
+    const identity = await f.store.recovery.readIdentity();
+    assert.equal(identity?.walletBindingId, binding);
+    assert.notEqual(await f.store.getWalletFingerprint(), binding);
+    const reopened = await openNativeConnectionRepository({ storage: f.store.keyringStorage, walletBindingId: identity!.walletBindingId, assertOwner() {} });
+    assert.equal(reopened.connectionsEnabled(), false);
+    assert.deepEqual(reopened.bindings(), []);
+    assert.deepEqual(await reopened.transport.getItem('retained-connection-metadata'), { secret: 'recovery-test-only' });
+    await reopened.dispose();
+  } finally { await recovery?.dispose(); await f.close(); }
+});
+
+test('matching-phrase recovery rejects an admission preference bound to another wallet without rewriting records', async () => {
+  const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
+  try {
+    f.write(NATIVE_CONNECTION_ADMISSION_KEY, { version: 1, walletBindingId: 'ff'.repeat(32), enabled: false });
+    const before = f.read();
+    assert.equal((await readRecoveryInventory(f.store)).reason, 'invalid-record');
+    f.owner.lock(); recovery = f.coordinator();
+    await assert.rejects(prepareRecoveryCredential(recovery, PHRASE, () => undefined), { code: 'INVALID_SAVED_DATA' });
+    assert.deepEqual(f.read(), before);
+  } finally { await recovery?.dispose(); await f.close(); }
 });

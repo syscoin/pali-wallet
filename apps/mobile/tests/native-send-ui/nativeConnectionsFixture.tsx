@@ -11,7 +11,7 @@ const accounts = [
 ] as const;
 let snapshot: NativeConnectionsSnapshot = {
   revision: 7,
-  status: 'ready',
+  status: 'ready', connectionsEnabled: true, connectionSettingsBusy: false,
   pairingExpiresAt: null,
   accounts,
   selectedAccountId: accounts[0].id,
@@ -52,6 +52,8 @@ const controller: NativeConnectionsView = {
     ] });
   },
   async reject(id) { calls.push({ method: 'reject', args: [id] }); publish({ ...snapshot, proposals: [] }); },
+  async setConnectionsEnabled(enabled) { calls.push({ method: 'enable', args: [enabled] }); publish({ ...snapshot, connectionsEnabled: enabled, sessions: [], proposals: [] }); },
+  async disconnectAll() { calls.push({ method: 'disconnectAll', args: [] }); publish({ ...snapshot, sessions: [], proposals: [] }); },
   async disconnect(id) { calls.push({ method: 'disconnect', args: [id] }); publish({ ...snapshot, sessions: [] }); },
   async approveRequest() { throw new Error('Message signing is outside this fixture'); },
   async rejectRequest() { throw new Error('Message signing is outside this fixture'); },

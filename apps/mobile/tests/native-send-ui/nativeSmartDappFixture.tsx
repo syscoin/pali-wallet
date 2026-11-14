@@ -159,7 +159,7 @@ export function NativeSmartDappFixture() {
     dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     getSnapshot: () => ({
       revision: latest.current?.revision ?? 0,
-      status: 'ready',
+      status: 'ready', connectionsEnabled: true, connectionSettingsBusy: false,
       pairingExpiresAt: null,
       accounts: [],
       selectedAccountId: null,

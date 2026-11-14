@@ -2,7 +2,7 @@ import { PRIVACY_SERVICE_ORIGIN_STORAGE_KEY, normalizePrivacyServiceOrigin } fro
 import { captureSLHDSAEncryptedStateEnvelope, parseSLHDSAStateStorageKey } from '../../../../source/wallet/slhDsaState.ts';
 import { captureSLHDSAProfileStateEnvelope } from '../../../../source/wallet/slhDsaStateCrypto.ts';
 import { normalizeSentryServiceSettings, parseSentrySettingsStorageKey } from '../../../../source/shared/sentrySettings.ts';
-import { NATIVE_CONNECTION_STORAGE_KEY, inspectNativeConnectionRecord } from '../connections/storage.ts';
+import { NATIVE_CONNECTION_STORAGE_KEY, NATIVE_CONNECTION_ADMISSION_KEY, inspectNativeConnectionRecord, inspectNativeConnectionAdmission } from '../connections/storage.ts';
 import { decodeConnectionRecord } from '../storage/connectionRecordKey.ts';
 import { decodeAccountRecord } from '../storage/accountRecordKey.ts';
 import { PUBLIC_SESSION_RECORD_KEY, decodePublicSessionRecord } from '../storage/publicSessionRecordKey.ts';
@@ -73,7 +73,7 @@ export function assertNativeRecordDomains(records: RecoveryStorageSnapshot['reco
         throw new Error('NATIVE_STORAGE_INVALID_SENTRY_NODE');
       continue;
     }
-    if (!['vault', 'vault-keys', 'utf8Error', WALLET_CATALOGUE_KEY, NATIVE_TOKEN_REGISTRY_KEY, ACTIVITY_STORAGE_KEY, UTXO_SIGNED_RECORD_KEY, NATIVE_CONNECTION_STORAGE_KEY].includes(key))
+    if (!['vault', 'vault-keys', 'utf8Error', WALLET_CATALOGUE_KEY, NATIVE_TOKEN_REGISTRY_KEY, ACTIVITY_STORAGE_KEY, UTXO_SIGNED_RECORD_KEY, NATIVE_CONNECTION_STORAGE_KEY, NATIVE_CONNECTION_ADMISSION_KEY].includes(key))
       throw new Error('NATIVE_STORAGE_UNSUPPORTED_RECORD');
     if (key === 'utf8Error') {
       const diagnostic = decodeStorageValue(value);
@@ -139,6 +139,8 @@ export function inspectRecoveryInventory(snapshot: RecoveryStorageSnapshot): Rec
         history.accounts.forEach((account) => accountReference(account.id, account.address));
         counts.historySummaries = history.summaries; counts.cachedTransactions = history.cachedTransactions;
         counts.activityPreferences = history.preferences;
+      } else if (key === NATIVE_CONNECTION_ADMISSION_KEY) {
+        inspectNativeConnectionAdmission(decodeStorageValue(value), binding);
       } else if (key === NATIVE_CONNECTION_STORAGE_KEY) {
         inspectNativeConnectionRecord(decodeConnectionRecord(value), binding);
       } else if (key === UTXO_SIGNED_RECORD_KEY) {

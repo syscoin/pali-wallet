@@ -2107,6 +2107,11 @@
       "testNetwork": "Réseau de test"
     },
     "connections": {
+      "allowConnections": "Autoriser de nouvelles connexions",
+      "allowConnectionsBody": "La désactivation déconnecte toutes les applications et bloque les nouvelles demandes de connexion.",
+      "disconnectAll": "Tout déconnecter",
+      "savingConnections": "Enregistrement des paramètres de connexion",
+      "connectionsPaused": "Les connexions sont suspendues. Activez Autoriser de nouvelles connexions pour connecter une application.",
       "invalidLink": "Copiez un lien WalletConnect depuis l’application à connecter.",
       "expired": "Cette demande de connexion a expiré. Demandez une nouvelle connexion depuis l’application.",
       "contextChanged": "Le contexte de votre portefeuille a changé. Vérifiez à nouveau la connexion.",

@@ -18,7 +18,7 @@ import { encodeAccountRecord } from '../src/storage/accountRecordKey.ts';
 import { createAccountRecordTestFixture } from './accountRecordTestFixture.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection, validPair } from './storageHelpers.ts';
-import { openNativeConnectionRepository, NATIVE_CONNECTION_STORAGE_KEY } from '../src/connections/storage.ts';
+import { openNativeConnectionRepository, NATIVE_CONNECTION_STORAGE_KEY, NATIVE_CONNECTION_ADMISSION_KEY } from '../src/connections/storage.ts';
 import { PASSKEY_CREATION_PENDING_KEY, passkeyAccountRecordsKey } from '../../../source/utils/passkey/registry.ts';
 
 // Setup uses actual SDK-encrypted account records. Inventory itself only reads public counts.
@@ -352,5 +352,25 @@ for (const malformed of ['prefix', 'case', 'outer-key', 'outer-extra', 'version'
     const before = f.bytes(); f.sql.length = 0;
     assert.equal((await readRecoveryInventory(f.storage)).status, 'unavailable');
     assert.equal(f.bytes(), before); assertReadsOnly(f.sql);
+  } finally { await f.close(); }
+});
+
+test('disabled admission is a retained wallet-bound recovery domain and malformed or foreign records stay invalid', async () => {
+  const f = await fixture();
+  try {
+    const repository = await openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: f.fingerprint, assertOwner() {} });
+    await repository.setConnectionsEnabled(false, () => undefined);
+    await repository.dispose();
+    const before = f.bytes(); f.sql.length = 0;
+    assert.equal((await readRecoveryInventory(f.storage)).status, 'needs-matching-phrase-verification');
+    assert.equal(f.bytes(), before); assertReadsOnly(f.sql);
+    await f.reopen();
+    assert.equal((await readRecoveryInventory(f.storage)).status, 'needs-matching-phrase-verification');
+    for (const value of [{ version: 1, walletBindingId: 'ee'.repeat(32), enabled: false }, { version: 1, walletBindingId: f.fingerprint, enabled: null }]) {
+      f.put(NATIVE_CONNECTION_ADMISSION_KEY, value);
+      const invalid = f.bytes();
+      assert.equal((await readRecoveryInventory(f.storage)).reason, 'invalid-record');
+      assert.equal(f.bytes(), invalid);
+    }
   } finally { await f.close(); }
 });

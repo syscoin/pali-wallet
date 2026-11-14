@@ -2107,6 +2107,11 @@
       "testNetwork": "测试网络"
     },
     "connections": {
+      "allowConnections": "允许新连接",
+      "allowConnectionsBody": "关闭后将断开所有应用，并停止新的连接请求。",
+      "disconnectAll": "全部断开",
+      "savingConnections": "正在保存连接设置",
+      "connectionsPaused": "连接已暂停。开启“允许新连接”以连接应用。",
       "invalidLink": "请从您要连接的应用复制 WalletConnect 链接。",
       "expired": "此连接请求已过期。请从应用请求新的连接。",
       "contextChanged": "钱包上下文已更改。请重新审核连接。",

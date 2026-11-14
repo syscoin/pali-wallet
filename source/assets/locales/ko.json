@@ -2107,6 +2107,11 @@
       "testNetwork": "테스트 네트워크"
     },
     "connections": {
+      "allowConnections": "새 연결 허용",
+      "allowConnectionsBody": "끄면 모든 앱의 연결이 해제되고 새 연결 요청이 중지됩니다.",
+      "disconnectAll": "모두 연결 해제",
+      "savingConnections": "연결 설정 저장 중",
+      "connectionsPaused": "연결이 일시 중지되었습니다. 앱을 연결하려면 새 연결 허용을 켜세요.",
       "invalidLink": "연결할 앱에서 WalletConnect 링크를 복사하세요.",
       "expired": "연결 요청이 만료되었습니다. 앱에서 새 연결을 요청하세요.",
       "contextChanged": "지갑 컨텍스트가 변경되었습니다. 연결을 다시 검토하세요.",

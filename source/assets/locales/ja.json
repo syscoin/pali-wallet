@@ -2107,6 +2107,11 @@
       "testNetwork": "テストネットワーク"
     },
     "connections": {
+      "allowConnections": "新しい接続を許可",
+      "allowConnectionsBody": "オフにするとすべてのアプリが切断され、新しい接続リクエストが停止されます。",
+      "disconnectAll": "すべて切断",
+      "savingConnections": "接続設定を保存中",
+      "connectionsPaused": "接続は一時停止中です。アプリを接続するには「新しい接続を許可」をオンにしてください。",
       "invalidLink": "接続するアプリからWalletConnectリンクをコピーしてください。",
       "expired": "この接続リクエストは期限切れです。アプリから新しい接続をリクエストしてください。",
       "contextChanged": "ウォレットのコンテキストが変わりました。接続を再確認してください。",

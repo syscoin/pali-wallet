@@ -159,7 +159,7 @@ export function NativeSmartBatchFixture() {
       ...unsupportedDappViews,
       getSnapshot: () => ({
         revision: current.current.review?.revision ?? 0,
-        status: 'ready',
+        status: 'ready', connectionsEnabled: true, connectionSettingsBusy: false,
         pairingExpiresAt: null,
         accounts: [],
         selectedAccountId: null,
