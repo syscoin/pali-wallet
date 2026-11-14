@@ -492,6 +492,42 @@ test('saved review and Activity use the captured payer while proofs and submissi
   }
 });
 
+test('unknown recovery timing stays absent until the matching operation is observed', async () => {
+  let knownOperation: NonNullable<GuardianRecoveryObservation['knownOperation']> = {
+    operationId: hash, status: 'unknown', scheduledAt: 0, executableAt: 0, expiresAt: 0,
+  };
+  const readyAt = Date.UTC(2030, 3, 5, 16, 7, 8) / 1000;
+  let reads = 0;
+  const controller = new NativeGuardianRecoveryController({
+    assertCurrent() {}, dispose() {}, submissionFailure() { return undefined; },
+    async observe() {
+      reads++;
+      return { intent, observation: { ...observation, knownOperation }, action: null,
+        transactionHash: hash, terminal: null, canAbandon: true };
+    },
+    async prepare() { throw new Error('status refresh must not prepare a transaction'); },
+    async reconcile() {}, async abandon() {},
+  }, new AbortController().signal);
+  const f = screen('NativeGuardianRecoveryView');
+  const props = { controller, address, chainId: 1, currency: 'ETH', networkLabel: 'Ethereum',
+    async onActivity() {}, async openRecoveryAlerts() {}, onBack() {} };
+  try {
+    f.render(props); await tick();
+    let elements = screenElements(f.render(props));
+    assert.equal(controller.getSnapshot().phase, 'waiting');
+    assert(!text(elements).includes(new Date(0).toLocaleString('en')));
+    assert(!text(elements).includes('Expires'));
+    assert(text(elements).includes(hash), 'retained transaction stays visible');
+    knownOperation = { ...knownOperation, status: 'pending', scheduledAt: readyAt - 600,
+      executableAt: readyAt, expiresAt: readyAt + 1200 };
+    button(elements, 'Check status').props.onPress(); await tick();
+    elements = screenElements(f.render(props));
+    assert(text(elements).includes(new Date(readyAt * 1000).toLocaleString('en')));
+    assert(text(elements).includes(new Date((readyAt + 1200) * 1000).toLocaleString('en')));
+    assert.equal(reads, 2);
+  } finally { f.close(); controller.dispose(); }
+});
+
 test('saved recovery dates follow Pali language without changing deadlines or refreshing status', async () => {
   const knownOperation = {
     operationId: hash,

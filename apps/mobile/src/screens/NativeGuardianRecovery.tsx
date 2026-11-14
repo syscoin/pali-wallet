@@ -580,6 +580,10 @@ export function NativeGuardianRecoveryView({
     ? guardianRecoveryTerminalNotice(state.terminalReason)
     : null;
   const pending = state.phase === 'preparing' || state.phase === 'submitting';
+  const observedOperation = state.observation?.knownOperation;
+  const recoveryTiming = observedOperation &&
+    (observedOperation.status === 'pending' || observedOperation.status === 'ready')
+    ? observedOperation : null;
   const clear = async () => {
     if (!acknowledged || !live.current || AppState.currentState !== 'active') return;
     await controller.abandon();
@@ -772,19 +776,19 @@ export function NativeGuardianRecoveryView({
             tone="amber"
           />
         )}
-        {state.observation?.knownOperation &&
+        {recoveryTiming &&
           (state.phase === 'waiting' || state.phase === 'ready') && (
             <Card style={s.card}>
               <Text style={s.label}>
                 {t('settings.smartAccountInfrastructureReadyStatus')}{' '}{' '}
                 {new Date(
-                  state.observation.knownOperation.executableAt * 1000
+                  recoveryTiming.executableAt * 1000
                 ).toLocaleString(locale)}
               </Text>
               <Text style={s.label}>
                 {t('mobile.connections.expires')}{' '}{' '}
                 {new Date(
-                  state.observation.knownOperation.expiresAt * 1000
+                  recoveryTiming.expiresAt * 1000
                 ).toLocaleString(locale)}
               </Text>
             </Card>
