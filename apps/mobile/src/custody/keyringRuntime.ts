@@ -1441,7 +1441,7 @@ export function createKeyringRuntimeFactory(
           verifiedIdentity = null;
           const identity = await readIdentity(); current(captured);
           const admitted = await storage.recovery!.readSnapshot(); current(captured);
-          assertNativeRecordDomains(admitted.records, identity.root?.profileId ?? null);
+          assertNativeRecordDomains(admitted.records, identity);
           if (
             !identity.root ||
             (authenticatedPair !== null && authenticatedPair !== identity.pairFingerprint)
@@ -1539,7 +1539,7 @@ export function createKeyringRuntimeFactory(
             throw new KeyringRuntimeError('NOT_READY');
           const admitted = await storage.recovery.readSnapshot();
           guard();
-          assertNativeRecordDomains(admitted.records, admitted.identity?.root?.profileId ?? null);
+          assertNativeRecordDomains(admitted.records, admitted.identity);
           if (
             admitted.records.some((row) => row.key !== 'utf8Error') ||
             admitted.notes.length ||
