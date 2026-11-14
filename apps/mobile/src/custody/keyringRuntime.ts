@@ -1085,7 +1085,7 @@ export function createKeyringRuntimeFactory(
           })().then(resolveClose, () => rejectClose(new KeyringRuntimeError('CLEANUP_FAILED')));
           return closing;
         };
-        const run = <T>(operation: (captured: number) => Promise<T>, privacyRetirement: 'join' | 'revoke' = 'join'): Promise<T> => {
+        const run = <T>(operation: (captured: number) => Promise<T>, privacyRetirement: 'join' | 'revoke' = 'join', beforeFailureRevocation: (() => Promise<void>) | null = null): Promise<T> => {
           if (closed) return Promise.reject(new Error('CANCELLED'));
           if (requiresReopen()) {
             void lock().catch(() => undefined);
@@ -1109,8 +1109,13 @@ export function createKeyringRuntimeFactory(
               current(captured);
               throw error;
             }
+            let cleanupFailed = false;
+            // A private attempt that never entered its signer can release its exact
+            // reservation while its existing acknowledgement access is live.
+            try { await beforeFailureRevocation?.(); } catch { cleanupFailed = true; }
             try { await (privacyRetirement === 'revoke' ? revokeCustody('revoke') : lock()); }
             catch { closed = true; throw new KeyringRuntimeError('CLEANUP_FAILED'); }
+            if (cleanupFailed) throw new KeyringRuntimeError('CLEANUP_FAILED');
             if (closed) throw new KeyringRuntimeError('CANCELLED');
             if (error instanceof KeyringRuntimeError) throw error;
             if (error && typeof error === 'object' && 'code' in error && error.code === 'HARDWARE_REQUEST_CANCELLED')
@@ -1271,7 +1276,7 @@ export function createKeyringRuntimeFactory(
             ) : undefined,
           });
         }
-        const enteredPrivateSubmissions = new WeakSet<object>();
+        const enteredPrivateExecution = new WeakSet<object>();
         // One-use private refusal receipts, issued only after the owned hardware
         // request retires. Rethrow outside run() without retiring the result screen.
         const infrastructureSigningFailures = new WeakSet<Error>();
@@ -1279,10 +1284,12 @@ export function createKeyringRuntimeFactory(
           selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void, metadata: Readonly<Record<string, unknown>> | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy,
           hardwareSigner: (Pick<NativeHardwareDappSigning, 'signTransaction'> & {keyring(): IndexedKeyring}) | null,
           validateSigningAndBroadcast: (() => Promise<void>) | null,
-          authentication: NativePrivateAuthentication | null = null) {
+          authentication: NativePrivateAuthentication | null = null,
+          beforeSigningFailure: (() => Promise<void>) | null = null) {
           check();
           if (authentication !== null) assertNativePrivateAuthentication(authentication);
           if (validateSigningAndBroadcast !== null && typeof validateSigningAndBroadcast !== 'function') throw new KeyringRuntimeError('INVALID_INPUT');
+          if (beforeSigningFailure !== null && (typeof beforeSigningFailure !== 'function' || authentication === null || !metadata)) throw new KeyringRuntimeError('INVALID_INPUT');
           const hardware = selected.type === 'Ledger' || selected.type === 'Trezor';
           if (hardware ? !hardwareSigner || typeof hardwareSigner.signTransaction !== 'function' || typeof hardwareSigner.keyring !== 'function'
             : (hardwareSigner !== null || (selected.type !== 'HDAccount' && selected.type !== 'Imported')))
@@ -1313,6 +1320,7 @@ export function createKeyringRuntimeFactory(
                 if (hardwareSigner) {
                   const transport = ledgerTransport, proof = ledgerVerified;
                   try {
+                    if (metadata) enteredPrivateExecution.add(metadata);
                     const signed = await hardwareSigner.signTransaction(serializePreparedEvmTransaction(transaction), {signal, assertCurrent: guard});
                     return {kind: 'signed' as const, signed};
                   } catch (error) {
@@ -1332,12 +1340,15 @@ export function createKeyringRuntimeFactory(
                 }
                 if (selected.type !== 'HDAccount' && selected.type !== 'Imported') throw new KeyringRuntimeError('INVALID_INPUT');
                 const softwareType = selected.type;
-                const signed = await withSoftwareSecret('transaction', signal, guard, () => ring.signPreparedEvmTransaction({
-                  selectedAccount: { id: selectedContext.index, type: selectedContext.type, expectedAddress: selectedContext.address },
-                  account: { id: selected.index, type: softwareType, expectedAddress: selected.address },
-                  network: { kind: 'ethereum', chainId: network.chainId, slip44: 60, url: network.rpcUrl },
-                  transaction,
-                }, { assertCurrent: guard }), null, null, authentication ? {
+                const signed = await withSoftwareSecret('transaction', signal, guard, () => {
+                  if (metadata) enteredPrivateExecution.add(metadata);
+                  return ring.signPreparedEvmTransaction({
+                    selectedAccount: { id: selectedContext.index, type: selectedContext.type, expectedAddress: selectedContext.address },
+                    account: { id: selected.index, type: softwareType, expectedAddress: selected.address },
+                    network: { kind: 'ethereum', chainId: network.chainId, slip44: 60, url: network.rpcUrl },
+                    transaction,
+                  }, { assertCurrent: guard });
+                }, null, null, authentication ? {
                   authentication,
                   assertCurrent() {
                     current(ownerGeneration);
@@ -1348,7 +1359,9 @@ export function createKeyringRuntimeFactory(
                 return {kind: 'signed' as const, signed: Object.freeze({ rawTransaction: signed.rawTransaction, hash: signed.hash })};
               // The enclosing private confirmation owns its drain. Revoke keys
               // on error here, then let that confirmation finish without self-joining.
-              }, authentication ? 'revoke' : 'join');
+              }, authentication ? 'revoke' : 'join', beforeSigningFailure && (async () => {
+                if (metadata && !enteredPrivateExecution.has(metadata)) await beforeSigningFailure();
+              }));
               if (result.kind === 'ledger-signing-failure' || result.kind === 'infrastructure-signing-failure') {
                 check(); checkGuard(assertSigningCurrent);
                 throw result.error;
@@ -1375,7 +1388,7 @@ export function createKeyringRuntimeFactory(
                 return submission.kind === 'eoa-calls'
                   ? bindEoaCallsSignedLifecycle(lifecycle, registry!, submission.attempt) : lifecycle;
               });
-              if (metadata) enteredPrivateSubmissions.add(metadata);
+              if (metadata) enteredPrivateExecution.add(metadata);
               const broadcast: Parameters<typeof sdk.submitSignedEvmTransaction<string>>[1] = async ({rawTransaction, admit}) => {
                 if (validateSigningAndBroadcast !== null) await validateSigningAndBroadcast();
                 guard();
@@ -2443,12 +2456,14 @@ export function createKeyringRuntimeFactory(
                 network.rpcUrl
               );
               type Prepared = Awaited<ReturnType<typeof prepareOwnedEvmTransaction>>;
+              type PreparedWithdrawal = {
+                quote: Prepared;
+                metadata: Readonly<Record<string, unknown>>;
+                clearUnsigned: (() => Promise<void>) | null;
+              };
               const prepared = new WeakMap<
                 IPrivacyDepositSession['context'],
-                {
-                  quote: Prepared;
-                  metadata: Readonly<Record<string, unknown>>;
-                }
+                PreparedWithdrawal
               >();
               const withdrawal = new NativePrivateWithdrawal(
                 {
@@ -2521,6 +2536,7 @@ export function createKeyringRuntimeFactory(
                             const metadata = Object.freeze({
                               privateWithdrawal: canonical,
                             });
+                            let saved!: PreparedWithdrawal;
                             const quote = await prepareOwnedEvmTransaction(
                               attempt.transaction,
                               selected,
@@ -2529,7 +2545,11 @@ export function createKeyringRuntimeFactory(
                               check,
                               metadata,
                               NATIVE_EVM_FEE_FUNDING,
-                              { kind: 'fixed', gasLimit: PRIVACY_WITHDRAWAL_GAS }, null, null, authentication
+                              { kind: 'fixed', gasLimit: PRIVACY_WITHDRAWAL_GAS }, null, null, authentication,
+                              async () => {
+                                if (!saved.clearUnsigned) throw new Error('privacy_withdrawal_context_changed');
+                                await saved.clearUnsigned();
+                              }
                             );
                             check();
                             if (
@@ -2537,12 +2557,18 @@ export function createKeyringRuntimeFactory(
                               serializePreparedEvmTransaction(quote.transaction)
                             )
                               throw new Error('privacy_withdrawal_context_changed');
-                            prepared.set(attempt.context, { quote, metadata });
+                            saved = { quote, metadata, clearUnsigned: null };
+                            prepared.set(attempt.context, saved);
                           }
                           let fence!: () => void;
                           await vault.reserve(attempt, (guard) => {
                             fence = guard;
                           });
+                          if (attempt.mode === 'direct') {
+                            const saved = prepared.get(attempt.context)!;
+                            let settlement: Promise<void> | undefined;
+                            saved.clearUnsigned = () => settlement ??= vault.recordNotBroadcast(attempt);
+                          }
                           return () => {
                             check();
                             fence();
@@ -2571,7 +2597,7 @@ export function createKeyringRuntimeFactory(
                             const failure = sdk.evmSubmissionFailure(error);
                             throw new NativePrivateSubmissionError({
                               transactionNotBroadcast:
-                                !enteredPrivateSubmissions.has(saved.metadata) ||
+                                !enteredPrivateExecution.has(saved.metadata) ||
                                 failure?.transactionNotBroadcast === true,
                               ...(failure?.signedTransactionHash
                                 ? {
@@ -2595,7 +2621,9 @@ export function createKeyringRuntimeFactory(
                         },
                         async recordNotBroadcast(attempt) {
                           try {
-                            await vault.recordNotBroadcast(attempt);
+                            const clearUnsigned = prepared.get(attempt.context)?.clearUnsigned;
+                            if (clearUnsigned) await clearUnsigned();
+                            else await vault.recordNotBroadcast(attempt);
                           } finally {
                             await finalizePrivateDomain();
                           }
@@ -2726,9 +2754,14 @@ export function createKeyringRuntimeFactory(
               return vault;
             };
             type Prepared = Awaited<ReturnType<typeof prepareOwnedEvmTransaction>>;
+            type PreparedDeposit = {
+              quote: Prepared;
+              metadata: Record<string, unknown>;
+              clearUnsigned: (() => Promise<void>) | null;
+            };
             const prepared = new WeakMap<
               IPrivacyDepositSession['context'],
-              { quote: Prepared; metadata: Record<string, unknown> }
+              PreparedDeposit
             >();
             const transactions = createPrivacyTransactionsController({
               captureContext: () => ({
@@ -2755,6 +2788,7 @@ export function createKeyringRuntimeFactory(
               prepareFees: async (transaction, owner) => {
                 check();
                 const metadata: Record<string, unknown> = {};
+                let saved!: PreparedDeposit;
                 const quote = await prepareOwnedEvmTransaction(
                   transaction,
                   selected,
@@ -2763,10 +2797,15 @@ export function createKeyringRuntimeFactory(
                   check,
                   metadata,
                   NATIVE_EVM_FEE_FUNDING,
-                  { kind: 'estimate' }, null, null, authentication
+                  { kind: 'estimate' }, null, null, authentication,
+                  async () => {
+                    if (!saved.clearUnsigned) throw new Error('privacy_deposit_context_changed');
+                    await saved.clearUnsigned();
+                  }
                 );
                 check();
-                prepared.set(owner.context, { quote, metadata });
+                saved = { quote, metadata, clearUnsigned: null };
+                prepared.set(owner.context, saved);
                 const tx = quote.transaction;
                 return {
                   gasLimit: tx.gasLimit,
@@ -2788,10 +2827,13 @@ export function createKeyringRuntimeFactory(
                   throw new Error('privacy_deposit_context_changed');
                 saved.metadata.privateDeposit = canonical;
                 Object.freeze(saved.metadata);
+                const reservation = vault;
                 let fence!: () => void;
-                await vault.reserve(attempt, (guard) => {
+                await reservation.reserve(attempt, (guard) => {
                   fence = guard;
                 });
+                let settlement: Promise<void> | undefined;
+                saved.clearUnsigned = () => settlement ??= reservation.recordNotBroadcast(attempt);
                 return () => {
                   check();
                   fence();
@@ -2809,7 +2851,7 @@ export function createKeyringRuntimeFactory(
                   const failure = sdk.evmSubmissionFailure(error);
                   throw new NativePrivateSubmissionError({
                     transactionNotBroadcast:
-                      !enteredPrivateSubmissions.has(saved.metadata) ||
+                      !enteredPrivateExecution.has(saved.metadata) ||
                       failure?.transactionNotBroadcast === true,
                     ...(failure?.signedTransactionHash
                       ? { signedTransactionHash: failure.signedTransactionHash }
@@ -2832,7 +2874,9 @@ export function createKeyringRuntimeFactory(
               recordNotBroadcast: async (attempt) => {
                 if (!vault) throw new Error('privacy_vault_unavailable');
                 try {
-                  await vault.recordNotBroadcast(attempt);
+                  const clearUnsigned = prepared.get(attempt.context)?.clearUnsigned;
+                  if (clearUnsigned) await clearUnsigned();
+                  else await vault.recordNotBroadcast(attempt);
                 } finally {
                   await finalizePrivateDomain();
                 }

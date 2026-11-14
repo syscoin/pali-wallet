@@ -38,7 +38,9 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   let runtime!: KeyringRuntime;
   let keyring!: InstanceType<typeof sdk.HostKeyring>;
   let secretConsumptions = 0, secretLeases = 0, leasesAtBroadcast: number | undefined;
-  let signingFault = false;
+  let signingFault: 'before' | 'after' | null = null;
+  let credentialFault = false, signingAttempts = 0, signatures = 0;
+  let afterSigning = () => {};
   let privateAccess: { released: Promise<void>; disposed: boolean } | undefined;
   const credentialRequests: string[] = [];
   let beforeCredential: () => Promise<void> = async () => {};
@@ -54,8 +56,13 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       work: (secret: string) => T | Promise<T>
     ): Promise<T> { secretLeases++; return super.withSecretOperation(credential, options, async secret => { secretConsumptions++; return work(secret); }); }
     override signPreparedEvmTransaction(...args: Parameters<InstanceType<typeof sdk.HostKeyring>['signPreparedEvmTransaction']>) {
-      if (signingFault) throw Error('Synthetic unknown signing fault');
-      return super.signPreparedEvmTransaction(...args);
+      signingAttempts++;
+      if (signingFault === 'before') throw Error('Synthetic unknown signing fault');
+      const signed = super.signPreparedEvmTransaction(...args);
+      signatures++;
+      afterSigning();
+      if (signingFault === 'after') throw Error('Synthetic post-signing fault');
+      return signed;
     }
     override async createPrivateRecordAccess(
       domains: readonly string[], options: Parameters<InstanceType<typeof sdk.HostKeyring>['createPrivateRecordAccess']>[1]
@@ -122,7 +129,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     });
   };
   const credentials: NativeCredentialPort = { ...credentialPort,
-    async withSecret(reference, owner, consume) { credentialRequests.push(owner.purpose); await beforeCredential(); return credentialPort.withSecret(reference, owner, consume); },
+    async withSecret(reference, owner, consume) { credentialRequests.push(owner.purpose); await beforeCredential(); if (credentialFault && owner.purpose === 'transaction') throw Error('Synthetic protected read failure'); return credentialPort.withSecret(reference, owner, consume); },
     async authorize(reference, owner) { credentialRequests.push(owner.purpose); await beforeCredential(); return credentialPort.authorize(reference, owner); },
   };
   const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort: credentials, privacyServiceSettings: null, passkeys: null, slhExecution: null,
@@ -185,7 +192,11 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     get privateAccess() { return privateAccess; },
     assertNoSigningKeys() { assert.equal(keyring.isUnlocked(), false); },
     beforeCredential(callback: () => Promise<void>) { beforeCredential = callback; },
-    failSigning() { signingFault = true; },
+    failSigning(after = false) { signingFault = after ? 'after' : 'before'; },
+    failCredentialRead() { credentialFault = true; },
+    get signingAttempts() { return signingAttempts; },
+    get signatures() { return signatures; },
+    afterSigning(callback: () => void) { afterSigning = callback; },
     beforeNoteEncryption(callback: () => Promise<void>) { beforeNoteEncryption = callback; },
     assertAcknowledgementKeyLifetime() {
       assert.equal(secretLeases, leasesAtBroadcast, 'post-broadcast private acknowledgement must use only its retained record keys');
@@ -756,6 +767,10 @@ for (const outcome of ['return', 'retire', 'view-abort', 'unknown-fault'] as con
     assert.equal(scope.isAuthenticating(), false);
     assert.equal(f.posted.length, outcome === 'return' ? 1 : 0);
     if (outcome !== 'return') assert.equal(f.runtime.catalogue.getSnapshot(), null);
+    if (outcome === 'unknown-fault') {
+      await f.runtime.session.unlock();
+      assert.equal((await f.privateNotes())[0]!.deposit?.phase, 'unknown', 'unknown signer outcome retains its reservation');
+    }
     f.assertNoSigningKeys();
   } finally {
     release.resolve();
@@ -764,4 +779,60 @@ for (const outcome of ['return', 'retire', 'view-abort', 'unknown-fault'] as con
     stage = 'controller cleanup'; await bounded(operation.dispose());
     stage = 'runtime cleanup'; await bounded(f.close());
   }
+});
+
+for (const phase of ['credential', 'signed', 'post-sign-guard'] as const) test(`private deposit ${phase} failure clears only known-unsigned reservations`, async () => {
+  const f = await fixture();
+  let live = true;
+  const check = () => { if (!live) throw Error('stale view'); };
+  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, check, createTestPrivateAuthentication(noop));
+  try {
+    await operation.prepare({ poolId: 'eth-1' });
+    if (phase === 'credential') f.failCredentialRead();
+    else if (phase === 'signed') f.failSigning(true);
+    else f.afterSigning(() => { live = false; });
+    await operation.confirm(operation.getSnapshot().review!.intentId);
+    assert.equal(f.posted.length, 0);
+    assert.equal(f.signingAttempts, phase === 'credential' ? 0 : 1);
+    assert.equal(f.signatures, phase === 'credential' ? 0 : 1);
+    assert.equal(f.runtime.catalogue.getSnapshot(), null);
+    await f.runtime.session.unlock();
+    const saved = (await f.privateNotes())[0]!;
+    if (phase === 'credential') {
+      assert.equal(saved.deposit, undefined);
+      const retry = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
+      try {
+        await retry.prepare({ poolId: 'eth-1', noteId: saved.id });
+        assert.equal(retry.getSnapshot().phase, 'review');
+        assert.equal(retry.getSnapshot().review!.nonce, '0');
+      } finally { await retry.dispose(); }
+    }
+    else assert.equal(saved.deposit?.phase, 'unknown');
+    f.assertNoSigningKeys();
+  } finally { await operation.dispose(); await f.close(); }
+});
+
+test('failed unsigned deposit cleanup locks custody and retains the exact unknown reservation', async () => {
+  let writes = 0;
+  const f = await fixture({ before(kind, sql) {
+    if (kind === 'run' && sql.startsWith('INSERT INTO private_note_records') && ++writes === 3)
+      throw Error('synthetic unsigned cleanup failure');
+  } });
+  const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
+  try {
+    await operation.prepare({ poolId: 'eth-1' });
+    const review = operation.getSnapshot().review!;
+    f.failCredentialRead();
+    await operation.confirm(review.intentId);
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.posted.length, 0);
+    assert.equal(f.signingAttempts, 0);
+    assert.equal(f.runtime.catalogue.getSnapshot(), null);
+    await f.runtime.session.unlock();
+    const saved = (await f.privateNotes())[0]!.deposit!;
+    assert.equal(saved.intentId, review.intentId);
+    assert.equal(saved.phase, 'unknown');
+    assert.equal(saved.transactionHash, undefined);
+    f.assertNoSigningKeys();
+  } finally { await operation.dispose(); await f.close(); }
 });

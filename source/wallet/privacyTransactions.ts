@@ -332,6 +332,7 @@ export function createPrivacyTransactionsController(
         if (key === id || other.attempt?.noteId === attempt.noteId)
           intents.delete(key);
       let senderEntered = false;
+      let reservationReturned = false;
       let acknowledged: string | undefined;
       let saved = false;
       let acknowledgementConflict = false;
@@ -357,6 +358,7 @@ export function createPrivacyTransactionsController(
       };
       try {
         const assertReservedCurrent = await host.beforeSubmission(attempt);
+        reservationReturned = true;
         const assertBeforeSign = () => {
           assertCurrent(intent.session);
           if (now() >= intent.expiresAt)
@@ -410,8 +412,15 @@ export function createPrivacyTransactionsController(
           } catch {
             /* Never reinterpret a persistence error as a broadcast. */
           }
+          const existingReservation =
+            !senderEntered &&
+            !reservationReturned &&
+            error instanceof Error &&
+            error.message === 'privacy_deposit_attempt_exists';
           throw failure(
-            senderEntered
+            existingReservation
+              ? 'privacy_deposit_attempt_exists'
+              : senderEntered
               ? 'privacy_deposit_not_broadcast'
               : 'privacy_deposit_submission_blocked'
           );
