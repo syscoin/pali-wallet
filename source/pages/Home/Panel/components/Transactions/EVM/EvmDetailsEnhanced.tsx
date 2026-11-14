@@ -2,6 +2,15 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { shallowEqual, useSelector } from 'react-redux';
 
+import { getEvmTransactionDisplayInfo } from '../../../../../../shared/evmTransactionDisplay';
+import {
+  decodeSmartAccountExecutions,
+  filterSmartAccountNativeRecipientOperations,
+} from '../../../../../../shared/smartAccountExecutions';
+import {
+  decodeSmartAccountOperations,
+  getSmartAccountOperationOutcome,
+} from '../../../../../../wallet/smartAccountActivity';
 import { EnhancedEvmTxDetailsLabelsToKeep } from '../utils/txLabelsDetail';
 import {
   TransactionHeader,
@@ -345,60 +354,117 @@ export const EvmTransactionDetailsEnhanced = ({
       mergedTransaction.input || mergedTransaction.data || ''
     );
     if (
-      !input.startsWith(
-        paliEntryPointInterface.getFunction('handleOps')!.selector
-      )
+      !input
+        .toLowerCase()
+        .startsWith(paliEntryPointInterface.getFunction('handleOps')!.selector)
     ) {
       return { transaction: mergedTransaction, isOperation: false };
     }
     const entryPoint = getPaliEntryPointAddress(chainId).toLowerCase();
-    const accountAddress = currentAccount?.address?.toLowerCase();
+    const origin =
+      (matchingTx as any)?.smartAccountExecutionFrom || currentAccount?.address;
+    const accountAddress = origin?.toLowerCase();
     const anchored = {
       ...mergedTransaction,
-      smartAccountExecutionFrom: currentAccount?.address,
+      smartAccountExecutionFrom: origin,
     };
-    const executions = getSmartAccountExecutionTransactions(anchored, {
-      requireMatchingSmartAccount: true,
-    });
     if (String(mergedTransaction.to || '').toLowerCase() !== entryPoint) {
       return { transaction: undefined, isOperation: true, success: undefined };
     }
     let success: boolean | undefined;
-    for (const log of Array.isArray(mergedTransaction.logs)
-      ? mergedTransaction.logs
-      : []) {
-      if (
-        String(log?.address || '').toLowerCase() !== entryPoint ||
-        (log.transactionHash &&
-          String(log.transactionHash).toLowerCase() !== normalizedHash)
-      )
-        continue;
+    const currentAddress = currentAccount?.address?.toLowerCase();
+    const originIdentities = decodeSmartAccountOperations({
+      chainId: String(chainId),
+      hash: normalizedHash,
+      payer: mergedTransaction.from,
+      nonce: parseEvmInteger(mergedTransaction.nonce) ?? -1,
+      to: mergedTransaction.to ?? null,
+      value: String(mergedTransaction.value ?? '0'),
+      data: input,
+    }).filter((identity) => identity.account.toLowerCase() === accountAddress);
+    const identities = currentAddress
+      ? filterSmartAccountNativeRecipientOperations(
+          originIdentities,
+          currentAddress
+        )
+      : [];
+    const isOuterPayer =
+      currentAddress === mergedTransaction.from?.toLowerCase();
+    if (isOuterPayer && !identities.length)
+      return {
+        transaction: mergedTransaction,
+        isOperation: false,
+        outerPayerOnly: true,
+      };
+    const incomingExecution =
+      accountAddress !== currentAddress
+        ? identities
+            .flatMap(
+              (identity) =>
+                decodeSmartAccountExecutions(identity.callData) ?? []
+            )
+            .find(
+              (call) =>
+                call.target.toLowerCase() === currentAddress &&
+                BigInt(call.value) > BigInt(0)
+            )
+        : undefined;
+    if (accountAddress !== currentAddress && !incomingExecution)
+      return { transaction: undefined, isOperation: true, success: undefined };
+    const executions = getSmartAccountExecutionTransactions(anchored, {
+      requireMatchingSmartAccount: true,
+    });
+    if (isTransactionInBlock(mergedTransaction) && identities.length) {
       try {
-        const event = paliEntryPointInterface.parseLog(log);
-        if (
-          event?.name === 'UserOperationEvent' &&
-          String(event.args.sender).toLowerCase() === accountAddress
-        ) {
-          success = (success ?? true) && Boolean(event.args.success);
-        }
+        // A reverted outer receipt cannot have executed an inner operation.
+        // A successful outer receipt still needs every exact inner event.
+        const sameOuterBlock =
+          enhancedDetails?.blockHash &&
+          String(enhancedDetails.blockHash).toLowerCase() ===
+            String(mergedTransaction.blockHash).toLowerCase() &&
+          parseEvmInteger(enhancedDetails.blockNumber) ===
+            parseEvmInteger(mergedTransaction.blockNumber);
+        success =
+          sameOuterBlock &&
+          getEvmSettlementStatus(enhancedDetails, chainId) === 'failed'
+            ? false
+            : getSmartAccountOperationOutcome(
+                {
+                  account: identities[0].account,
+                  chainId: String(chainId),
+                  hash: normalizedHash,
+                  operations: identities.map(
+                    ({ operationHash, operationNonce }) => ({
+                      operationHash,
+                      operationNonce,
+                    })
+                  ),
+                },
+                {
+                  hash: mergedTransaction.blockHash,
+                  number: String(
+                    parseEvmInteger(mergedTransaction.blockNumber)
+                  ),
+                },
+                mergedTransaction.logs
+              ) === 'confirmed';
       } catch {
-        /* Other receipt events do not prove this operation's outcome. */
+        // Missing or conflicting inner evidence cannot inherit outer success.
       }
-    }
-    if (
-      success === undefined &&
-      isTransactionInBlock(matchingTx) &&
-      String(
-        (matchingTx as any)?.smartAccountExecutionFrom || ''
-      ).toLowerCase() === accountAddress
-    ) {
-      const status = (matchingTx as any)?.txreceipt_status;
-      if (status === '0' || status === '1') success = status === '1';
     }
     return {
       transaction:
-        success === true && executions.length
-          ? getSmartAccountDisplayTransaction(anchored)
+        success === true && (incomingExecution || executions.length)
+          ? incomingExecution
+            ? {
+                ...anchored,
+                from: origin,
+                to: incomingExecution.target,
+                value: incomingExecution.value,
+                input: incomingExecution.data,
+                data: incomingExecution.data,
+              }
+            : getSmartAccountDisplayTransaction(anchored)
           : undefined,
       isOperation: true,
       success,
@@ -406,6 +472,7 @@ export const EvmTransactionDetailsEnhanced = ({
   }, [
     mergedTransaction,
     matchingTx,
+    enhancedDetails,
     currentAccount?.address,
     chainId,
     normalizedHash,
@@ -702,7 +769,9 @@ export const EvmTransactionDetailsEnhanced = ({
         return;
       }
       try {
-        const displayInfo = await getTransactionDisplayInfo(baseTx, currency);
+        const displayInfo = await (displayContext.outerPayerOnly
+          ? getEvmTransactionDisplayInfo(baseTx, currency)
+          : getTransactionDisplayInfo(baseTx, currency));
         if (isCurrent()) setTransactionDisplayInfo(displayInfo);
       } catch (error) {
         if (isCurrent()) {
@@ -715,7 +784,13 @@ export const EvmTransactionDetailsEnhanced = ({
     return () => {
       cancelled = true;
     };
-  }, [hash, scope, displayTransaction, currency]);
+  }, [
+    hash,
+    scope,
+    displayTransaction,
+    displayContext.outerPayerOnly,
+    currency,
+  ]);
 
   // Build details from the available transaction (passed + enhanced)
   if (transactionTx) {
@@ -949,7 +1024,18 @@ export const EvmTransactionDetailsEnhanced = ({
             address.toLowerCase() === accountAddress
         )));
   const settlement = getEvmSettlementStatus(
-    displayContext.isOperation && displayContext.success !== undefined
+    displayContext.isOperation && displayContext.success === undefined
+      ? {
+          ...transactionTx,
+          blockNumber: null,
+          blockHash: null,
+          confirmations: 0,
+          success: undefined,
+          // eslint-disable-next-line camelcase -- RPC receipt status field.
+          txreceipt_status: null,
+          isError: null,
+        }
+      : displayContext.isOperation
       ? {
           ...transactionTx,
           // eslint-disable-next-line camelcase -- RPC receipt status field.

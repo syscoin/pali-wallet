@@ -150,6 +150,8 @@ export type RetainedSmartAccountOperation = Readonly<{
   payer: string;
   payerNonce: number;
 }>;
+type DecodedSmartAccountOperation = RetainedSmartAccountOperation &
+  Readonly<{ callData: string }>;
 
 function guardianRemoval(
   operation: SmartAccountPackedUserOperation,
@@ -209,7 +211,7 @@ export function decodeSmartAccountOperations(
     to: string | null;
     value: string;
   }>
-): readonly RetainedSmartAccountOperation[] {
+): readonly DecodedSmartAccountOperation[] {
   try {
     const chainId = Number(transaction.chainId);
     if (
@@ -254,6 +256,7 @@ export function decodeSmartAccountOperations(
           hash: transaction.hash.toLowerCase(),
           payerNonce: transaction.nonce,
           account: operation.sender,
+          callData: operation.callData,
           operationNonce: operation.nonce,
           operationHash: getSmartAccountUserOpHash(operation, chainId),
           ...(removal ? { guardianRemoval: removal } : {}),
@@ -279,15 +282,21 @@ export function decodeRetainedSmartAccountOperations(
       tx.chainId.toString() !== entry.chainId
     )
       return [];
-    return decodeSmartAccountOperations({
-      chainId: entry.chainId,
-      hash: entry.hash,
-      payer: entry.from,
-      nonce: entry.nonce,
-      to: tx.to,
-      value: tx.value.toString(),
-      data: tx.data,
-    });
+    return Object.freeze(
+      decodeSmartAccountOperations({
+        chainId: entry.chainId,
+        hash: entry.hash,
+        payer: entry.from,
+        nonce: entry.nonce,
+        to: tx.to,
+        value: tx.value.toString(),
+        data: tx.data,
+      }).map(({ callData, ...identity }) => {
+        // Retained public identities deliberately exclude the execution body.
+        void callData;
+        return Object.freeze(identity);
+      })
+    );
   } catch {
     return [];
   }
@@ -420,6 +429,98 @@ export function observeSmartAccountActivity(
   );
 }
 
+function expectedSmartAccountOperations(
+  operations: SmartAccountActivityGroupIdentity['operations']
+) {
+  if (
+    !Array.isArray(operations) ||
+    !operations.length ||
+    operations.length > 512
+  )
+    throw new Error('Invalid Smart account operations');
+  const expected = new Map<string, boolean[]>();
+  for (const operation of operations) {
+    if (
+      !/^0x[0-9a-f]{64}$/i.test(operation.operationHash) ||
+      !/^(0|[1-9][0-9]{0,77})$/.test(operation.operationNonce) ||
+      BigInt(operation.operationNonce) >= BigInt(1) << BigInt(256)
+    )
+      throw new Error('Invalid Smart account operation');
+    const key =
+      operation.operationHash.toLowerCase() + ':' + operation.operationNonce;
+    if (expected.has(key)) throw new Error('Duplicate Smart account operation');
+    expected.set(key, []);
+  }
+  return expected;
+}
+
+function smartAccountLogBlockNumber(value: unknown): string | undefined {
+  if (typeof value === 'number')
+    return Number.isSafeInteger(value) && value >= 0
+      ? String(value)
+      : undefined;
+  return typeof value === 'string' &&
+    /^0x(?:0|[1-9a-f][0-9a-f]{0,63})$/i.test(value)
+    ? BigInt(value).toString()
+    : undefined;
+}
+
+/** Read the complete inner outcome from one already-observed receipt. */
+export function getSmartAccountOperationOutcome(
+  transfer: Pick<SmartAccountActivityGroupIdentity, 'operations'> &
+    Readonly<{ account: string; chainId: string; hash: string }>,
+  block: Readonly<{ hash: string; number: string }>,
+  logs: unknown
+): 'confirmed' | 'reverted' {
+  const expected = expectedSmartAccountOperations(transfer.operations);
+  const chainId = Number(transfer.chainId);
+  if (
+    !/^[1-9][0-9]{0,77}$/.test(transfer.chainId) ||
+    !Number.isSafeInteger(chainId) ||
+    chainId <= 0 ||
+    !/^0x[0-9a-f]{64}$/i.test(transfer.hash) ||
+    !/^0x[0-9a-f]{64}$/i.test(block.hash) ||
+    !/^(0|[1-9][0-9]{0,77})$/.test(block.number)
+  )
+    throw new Error('Invalid Smart account receipt');
+  const account = getAddress(transfer.account);
+  const entryPoint = getPaliEntryPointAddress(chainId);
+  if (!Array.isArray(logs) || logs.length > 512)
+    throw new Error('Smart account outcome unavailable');
+  for (const value of logs) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const log = value as Record<string, unknown>;
+    try {
+      if (
+        typeof log.address !== 'string' ||
+        getAddress(log.address) !== entryPoint ||
+        log.removed === true ||
+        typeof log.transactionHash !== 'string' ||
+        log.transactionHash.toLowerCase() !== transfer.hash.toLowerCase() ||
+        typeof log.blockHash !== 'string' ||
+        log.blockHash.toLowerCase() !== block.hash.toLowerCase() ||
+        smartAccountLogBlockNumber(log.blockNumber) !== block.number
+      )
+        continue;
+      const event = decodeSmartAccountUserOperationEvent({
+        topics: log.topics as string[],
+        data: log.data as string,
+      });
+      if (event.sender === account)
+        expected
+          .get(event.operationHash + ':' + event.nonce)
+          ?.push(event.success);
+    } catch {
+      /* Unrelated or malformed logs cannot establish an operation outcome. */
+    }
+  }
+  if ([...expected.values()].some((matches) => matches.length !== 1))
+    throw new Error('Smart account outcome unavailable');
+  return [...expected.values()].every((matches) => matches[0])
+    ? 'confirmed'
+    : 'reverted';
+}
+
 /** Observe one outer receipt and require every exact inner operation outcome. */
 export async function observeSmartAccountOperations(
   transfer: SmartAccountActivityGroupIdentity &
@@ -451,19 +552,7 @@ export async function observeSmartAccountOperations(
     (transfer.cancellation && operations.length !== 1)
   )
     throw new Error('Invalid Smart account operations');
-  const expected = new Map<string, boolean[]>();
-  for (const operation of operations) {
-    if (
-      !/^0x[0-9a-f]{64}$/i.test(operation.operationHash) ||
-      !/^(0|[1-9][0-9]{0,77})$/.test(operation.operationNonce) ||
-      BigInt(operation.operationNonce) >= BigInt(1) << BigInt(256)
-    )
-      throw new Error('Invalid Smart account operation');
-    const key =
-      operation.operationHash.toLowerCase() + ':' + operation.operationNonce;
-    if (expected.has(key)) throw new Error('Duplicate Smart account operation');
-    expected.set(key, []);
-  }
+  expectedSmartAccountOperations(operations);
   if (
     !Number.isSafeInteger(Number(transfer.chainId)) ||
     Number(transfer.chainId) <= 0
@@ -505,43 +594,8 @@ export async function observeSmartAccountOperations(
     receipt && typeof receipt === 'object'
       ? (receipt as Record<string, unknown>).logs
       : undefined;
-  if (!Array.isArray(logs) || logs.length > 512)
-    throw new Error('Smart account outcome unavailable');
-  for (const value of logs) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
-    const log = value as Record<string, unknown>;
-    try {
-      if (
-        typeof log.address !== 'string' ||
-        getAddress(log.address) !== entryPoint ||
-        log.removed === true ||
-        typeof log.transactionHash !== 'string' ||
-        log.transactionHash.toLowerCase() !== transfer.hash ||
-        typeof log.blockHash !== 'string' ||
-        log.blockHash.toLowerCase() !== observation.block.hash ||
-        typeof log.blockNumber !== 'string' ||
-        !/^0x(?:0|[1-9a-f][0-9a-f]{0,63})$/i.test(log.blockNumber) ||
-        BigInt(log.blockNumber).toString() !== observation.block.number
-      )
-        continue;
-      const event = decodeSmartAccountUserOperationEvent({
-        topics: log.topics as string[],
-        data: log.data as string,
-      });
-      if (event.sender === transfer.account)
-        expected
-          .get(event.operationHash + ':' + event.nonce)
-          ?.push(event.success);
-    } catch {
-      /* Unrelated or malformed logs cannot establish an operation outcome. */
-    }
-  }
-  if ([...expected.values()].some((matches) => matches.length !== 1))
-    throw new Error('Smart account outcome unavailable');
   return Object.freeze({
     ...observation,
-    outcome: [...expected.values()].every((matches) => matches[0])
-      ? 'confirmed'
-      : 'reverted',
+    outcome: getSmartAccountOperationOutcome(transfer, observation.block, logs),
   });
 }

@@ -92,6 +92,10 @@ import {
 } from '../../../shared/nativeCoinQuotes';
 import { snapshotNftTransferIntent } from '../../../shared/nftTransfer';
 import {
+  filterSmartAccountNativeRecipientOperations,
+  isSmartAccountNativeRecipient,
+} from '../../../shared/smartAccountExecutions';
+import {
   boundUtxoActivityParticipants,
   type UtxoActivityParticipants,
 } from '../../../shared/utxoActivityParticipants';
@@ -13091,22 +13095,62 @@ class MainController {
         const knownCalldata = isHandleOps(existingTx)
           ? (existingTx as any).input ?? (existingTx as any).data
           : undefined;
+        const originatingAccount = (existingTx as any)
+          .smartAccountExecutionFrom;
+        const isOuterPayer =
+          account?.address?.toLowerCase() === existingTx.from?.toLowerCase();
+        const roleIdentities =
+          !isOuterPayer || knownCalldata === undefined
+            ? identities
+            : decodeSmartAccountOperations({
+                chainId: String(chainId),
+                hash: txHash,
+                payer: existingTx.from,
+                nonce: Number(existingTx.nonce),
+                to: existingTx.to,
+                value: String(existingTx.value),
+                data: knownCalldata,
+              });
+        // A payer may also receive the native execution. That row follows the
+        // inner result; a payer-only copy continues to describe the outer fee.
+        const receivesNative =
+          isOuterPayer &&
+          typeof originatingAccount === 'string' &&
+          roleIdentities.some(
+            (identity) =>
+              identity.account.toLowerCase() ===
+                originatingAccount?.toLowerCase() &&
+              isSmartAccountNativeRecipient(
+                identity.callData,
+                account?.address || ''
+              )
+          );
         let update = txUpdate;
         if (
-          accountType === KeyringAccountType.SmartAccount &&
+          (accountType === KeyringAccountType.SmartAccount ||
+            (originatingAccount !== undefined &&
+              (!isOuterPayer || receivesNative))) &&
           (isHandleOps(txUpdate) || knownCalldata !== undefined)
         ) {
           const sameCalldata =
             knownCalldata === undefined ||
             (txUpdate.input ?? txUpdate.data)?.toLowerCase() ===
               knownCalldata.toLowerCase();
-          const relevant = sameCalldata
-            ? identities.filter(
-                (identity) =>
-                  identity.account.toLowerCase() ===
-                  account?.address?.toLowerCase()
-              )
-            : [];
+          // Native recipient copies retain the executing account's identity.
+          // The recipient did not execute its own UserOperation; authenticate
+          // the originating group from this exact outer envelope instead.
+          const operationAccount = originatingAccount ?? account?.address;
+          const relevant =
+            sameCalldata && typeof operationAccount === 'string'
+              ? filterSmartAccountNativeRecipientOperations(
+                  identities.filter(
+                    (identity) =>
+                      identity.account.toLowerCase() ===
+                      operationAccount.toLowerCase()
+                  ),
+                  account?.address || ''
+                )
+              : [];
           let outcome: 'confirmed' | 'reverted' | undefined;
           if (isTransactionInBlock(txUpdate) && relevant.length) {
             try {
