@@ -1644,19 +1644,21 @@ it('a rejected duplicate fee submission cannot replace the active unsigned-dispa
   };
   const entered = deferred(),
     release = deferred();
-  run.wallet.sendAndSaveEthTransaction.mockImplementationOnce(
-    async (_tx, _legacy, _account, _metadata, options) => {
+  const reserve = run.vault.reserveWithdrawalAttempt.getMockImplementation()!;
+  run.vault.reserveWithdrawalAttempt.mockImplementationOnce(async (...args) => {
+    await reserve(...args);
+    // Pause the final quote refresh before send() captures its options.
+    run.pendingNonce.mockImplementationOnce(async () => {
       entered.resolve();
       await release.promise;
-      await options.beforeDispatch();
-      options.assertBeforeSign();
-      await options.onBroadcast({ hash: HASH });
-      return { hash: HASH };
-    }
-  );
+      return 7;
+    });
+  });
   const review = await prepare(run.wallet);
   const first = run.wallet.submitPrivacyWithdrawal(review.intentId);
   await entered.promise;
+  expect(run.wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  expect(run.vault.consumeUnsignedWithdrawal).not.toHaveBeenCalled();
   const wrongDispatch = jest.fn(async () => undefined);
   await expect(
     prepared!.submit(
