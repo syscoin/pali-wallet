@@ -55,6 +55,7 @@ import {
 } from 'utils/smartAccount/contracts';
 
 import MainController from './MainController';
+import { CancellablePromises } from './promises/cancellablesPromises';
 import SmartAccountController from './smartAccount';
 
 const smart = '0x' + '11'.repeat(20),
@@ -566,6 +567,84 @@ it('does not give a native recipient the outcome of an unrelated originating ope
   ).toBe('0');
 });
 
+it.each(['forceRefresh', 'bypassCompletedCache'] as const)(
+  'rechecks a recipient after logs recover on explicit %s while routine polling respects cooldown',
+  async (refreshOption) => {
+    const f = await fixture();
+    const recipientRow = await saveNativeRecipientCopies(f, 'SmartAccount');
+    await settleReplay(f, 'missing');
+    await f.wallet.reconcileLocalPendingEvmSmartAccountTransactions(
+      { id: 1, type: 'SmartAccount' },
+      1
+    );
+    expect(recipientRow().txreceipt_status).toBeNull();
+    await settleReplay(f, 'confirmed');
+    mockState.vault.activeAccount = { id: 2, type: 'SmartAccount' };
+    f.wallet.transactionUpdateRequestId = 0;
+    f.wallet.transactionUpdateCommitId = 0;
+    f.wallet.cancellablePromises = new CancellablePromises();
+    f.wallet.transactionsManager = {
+      utils: { updateTransactionsFromCurrentAccount: jest.fn(async () => []) },
+    };
+    f.wallet.activityNotificationObserver = () => ({ history: () => [] });
+    f.provider.send.mockClear();
+    const request = {
+      isBitcoinBased: false,
+      activeNetwork: mockState.vault.activeNetwork,
+      isPolling: true,
+    };
+    await f.wallet.updateUserTransactionsState(request);
+    expect(f.provider.send).not.toHaveBeenCalled();
+    expect(recipientRow().txreceipt_status).toBeNull();
+    await f.wallet.updateUserTransactionsState({
+      ...request,
+      [refreshOption]: true,
+    });
+    expect(recipientRow()).toMatchObject({
+      blockNumber: 12,
+      confirmations: 1,
+      // eslint-disable-next-line camelcase -- RPC receipt field.
+      txreceipt_status: '1',
+    });
+    expect(
+      f.provider.send.mock.calls.filter(
+        ([method]) => method === 'eth_getTransactionReceipt'
+      )
+    ).toHaveLength(1);
+  }
+);
+
+it.each(['endpoint', 'account'] as const)(
+  'does not apply a late receipt after the %s changes during reconciliation',
+  async (changed) => {
+    const f = await fixture();
+    await saveNativeRecipientCopies(f, 'SmartAccount');
+    await settleReplay(f, 'confirmed');
+    const outer = await f.wallet.getEvmTransactionFromProvider(f.hash);
+    const before = structuredClone(mockState.vault.accountTransactions);
+    let release!: (value: unknown) => void;
+    f.wallet.getEvmTransactionFromProvider = jest.fn(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        })
+    );
+    const pending = f.wallet.reconcileLocalPendingEvmSmartAccountTransactions(
+      { id: 1, type: 'SmartAccount' },
+      1,
+      true
+    );
+    expect(f.wallet.getEvmTransactionFromProvider).toHaveBeenCalledTimes(1);
+    if (changed === 'endpoint')
+      mockState.vault.activeNetwork.url = 'https://other.invalid';
+    else mockState.vault.activeAccount = { id: 2, type: 'SmartAccount' };
+    release(outer);
+    await pending;
+    expect(mockState.vault.accountTransactions).toEqual(before);
+    expect(f.wallet.refreshBalancesAfterReceipt).not.toHaveBeenCalled();
+  }
+);
+
 it.each([
   'confirmed',
   'reverted',
@@ -995,4 +1074,17 @@ it('checks later pending Smart rows while earlier rows cool down, without exceed
       .slice(6)
       .map(([hash]) => hash)
   ).toEqual(hashes.slice(0, 5));
+  const beforeForced = f.wallet.getEvmTransactionFromProvider.mock.calls.length;
+  await f.wallet.reconcileLocalPendingEvmSmartAccountTransactions(
+    { id: 1, type: 'SmartAccount' },
+    1,
+    true
+  );
+  expect(
+    f.wallet.getEvmTransactionFromProvider.mock.calls.length - beforeForced
+  ).toBe(5);
+  await refresh();
+  expect(f.wallet.getEvmTransactionFromProvider).toHaveBeenCalledTimes(
+    beforeForced + 5
+  );
 });

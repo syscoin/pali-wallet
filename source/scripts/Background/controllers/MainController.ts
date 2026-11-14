@@ -9414,7 +9414,8 @@ class MainController {
             if (!isBitcoinBased) {
               await this.reconcileLocalPendingEvmSmartAccountTransactions(
                 activeAccount,
-                activeNetwork.chainId
+                activeNetwork.chainId,
+                forceRefresh || bypassCompletedCache
               );
             } else if (!isRapidPolling) {
               // The bounded saved-record pass does not delay public history or
@@ -13579,9 +13580,22 @@ class MainController {
 
   private async reconcileLocalPendingEvmSmartAccountTransactions(
     accountInfo: { id: number; type: KeyringAccountType },
-    chainId: number
+    chainId: number,
+    forceRefresh = false
   ) {
     const generation = this.walletSessionGeneration;
+    const networkGeneration = this.networkRequestGeneration;
+    const scope = getWalletNavigationScope();
+    const isCurrent = () => {
+      const currentScope = getWalletNavigationScope();
+      return (
+        generation === this.walletSessionGeneration &&
+        networkGeneration === this.networkRequestGeneration &&
+        !this.clearingEvmActivity &&
+        currentScope.account === scope.account &&
+        currentScope.network === scope.network
+      );
+    };
     const chainTxs =
       store.getState().vault.accountTransactions[accountInfo.type]?.[
         accountInfo.id
@@ -13600,25 +13614,22 @@ class MainController {
         (tx: IEvmTransactionResponse | any) =>
           tx?.hash && tx?.smartAccountExecutionFrom && !isTransactionInBlock(tx)
       )
-      .filter((tx) => now - lastCheck(tx) >= 30_000)
+      .filter((tx) => forceRefresh || now - lastCheck(tx) >= 30_000)
       .sort((a, b) => lastCheck(a) - lastCheck(b))
       .slice(0, 5);
 
     for (const tx of pendingSmartAccountTxs) {
+      if (!isCurrent()) return;
       const txHash = tx.hash.toLowerCase();
       const checkKey = `${chainId}:${txHash}`;
       const lastCheckedAt = this.pendingEvmReceiptChecks.get(checkKey) || 0;
-      if (now - lastCheckedAt < 30_000) {
+      if (!forceRefresh && now - lastCheckedAt < 30_000) {
         continue;
       }
       this.pendingEvmReceiptChecks.set(checkKey, now);
 
       const directTx = await this.getEvmTransactionFromProvider(tx.hash);
-      if (
-        generation !== this.walletSessionGeneration ||
-        this.clearingEvmActivity
-      )
-        return;
+      if (!isCurrent()) return;
       if (directTx && isTransactionInBlock(directTx)) {
         await this.updateTrackedEvmTransactionCopies(
           tx.hash,
