@@ -908,7 +908,7 @@
     "optimalExperience": "Para uma experiência ideal com carteira de hardware, use uma tela maior ou expanda a janela do seu navegador.",
     "networkNotFoundForEditing": "Rede não encontrada para edição. Por favor, atualize e tente novamente.",
     "networkAlreadyExists": "A rede com ID da cadeia {{chainId}} já existe. Por favor, use um ID de cadeia diferente ou edite a rede existente.",
-    "utxoNetworkConflict": "Uma rede {{networkType}} já existe ({{existingNetworkName}}). Apenas uma rede {{networkType}} pode estar ativa por vez. Por favor, remova primeiro a rede {{networkType}} existente.",
+    "utxoNetworkConflict": "Uma rede {{networkType}} já está salva ({{existingNetworkName}}). O Pali permite uma rede para cada tipo de moeda.",
     "confirmRemoveNetwork": "Tem certeza de que deseja remover a rede \"{{networkName}}\"?",
     "walletLoggedOut": "A carteira está desconectada",
     "closeAndReopenPali": "Feche esta janela e reabra o Pali para autenticar e conectar sua carteira de hardware",

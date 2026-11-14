@@ -116,7 +116,7 @@ test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows
   const select = (id: string) => authority.manageAccounts({ kind: 'select', id }, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
   const submit = async (privateKey: string, utxoAddressType?: 'p2wpkh') => {
     const input = { privateKey, ...(utxoAddressType && { utxoAddressType }) };
-    const expectedAddress = await authority.previewUtxoImport(input, authority.getSnapshot().revision, authority.getCatalogue()!.revision, () => undefined);
+    const expectedAddress = await authority.previewUtxoImport(input, authority.getSnapshot().revision, authority.getCatalogue()!.revision, new AbortController().signal, createTestPrivateAuthentication(() => undefined), () => undefined);
     await authority.importAccount({ ...input, expectedAddress, label: 'Public fixture' },
       authority.getSnapshot().revision, authority.getCatalogue()!.revision, new AbortController().signal, createTestPrivateAuthentication(() => undefined));
     return expectedAddress;

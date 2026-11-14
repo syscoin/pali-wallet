@@ -88,8 +88,12 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
       setError(t('mobile.importAccount.invalidName')); return;
     }
     const request = ++state.request;
+    const authentication = utxo ? createNativePrivateAuthenticationScope() : null;
+    const abort = utxo ? new AbortController() : null;
+    state.authentication = authentication; state.abort = abort;
     const check = () => {
-      if (!state.mounted || state.request !== request || AppState.currentState !== 'active')
+      if (!state.mounted || state.request !== request || abort?.signal.aborted ||
+          AppState.currentState !== 'active' && !(authentication && allowsPrivateAuthenticationInterruption(authentication, AppState.currentState)))
         throw new Error('CANCELLED');
     };
     state.working = true;
@@ -98,7 +102,7 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
       const draft = utxo ? normalizeUtxoImport({ privateKey, ...wifOptions }) : undefined;
       const key = draft?.privateKey ?? normalizeImportedKey(privateKey);
       const reviewed = draft
-        ? await imports.previewUtxo(draft, scope.current.contextRevision, scope.current.catalogueRevision, check)
+        ? await imports.previewUtxo(draft, scope.current.contextRevision, scope.current.catalogueRevision, abort!.signal, authentication!, check)
         : importedKeyIdentity(key, 0).address;
       check();
       setPrivateKey(key); setAddress(reviewed); setAcknowledged(false);
@@ -108,6 +112,9 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
         setError(utxo ? failure(cause, t, t('mobile.importAccount.invalidUtxo')) :
           t('mobile.importAccount.invalidEvm'));
     } finally {
+      authentication?.retire(); abort?.abort();
+      if (state.authentication === authentication) state.authentication = null;
+      if (state.abort === abort) state.abort = null;
       state.working = false;
       if (state.mounted) setBusy(false);
     }

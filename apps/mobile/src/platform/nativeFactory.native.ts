@@ -497,7 +497,10 @@ export function createNativeWalletControllers() {
     cancel: () => authority.cancelAccountOperation(),
   });
   const imports: NativeImportView = Object.freeze<NativeImportView>({
-    previewUtxo: (...args: Parameters<NativeImportView['previewUtxo']>) => authority.previewUtxoImport(...args),
+    previewUtxo: (input, revision, catalogueRevision, signal, authentication, assertCurrent) => {
+      if (!runtime) return Promise.reject(new CustodyOperationError('NOT_READY'));
+      return authority.previewUtxoImport(input, revision, catalogueRevision, signal, bindOperationAuthentication(authentication, runtime), assertCurrent);
+    },
     submit: (input, revision, catalogueRevision, signal, authentication) => {
       if (!runtime) return Promise.reject(new CustodyOperationError('NOT_READY'));
       return authority.importAccount(input, revision, catalogueRevision, signal, bindOperationAuthentication(authentication, runtime));

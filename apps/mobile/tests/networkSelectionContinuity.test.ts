@@ -1,3 +1,4 @@
+import { NativeUtxoNetworkConflictError } from '../src/custody/accounts.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { sendDraftForNetwork, type NativeUnsignedSendDraft } from '../src/screens/sendNetworkDraft.ts';
@@ -72,6 +73,7 @@ function picker() {
   let back = () => false, closes = 0;
   const screen = screenFixture(new URL('../src/screens/NativeNetworks.tsx', import.meta.url), 'NativeNetworks', {
     '../platform/localization': nativeTranslationFixture,
+    '../custody/accounts': { NativeUtxoNetworkConflictError },
     './IdleActivityBoundary': { IdleTextInput: 'Input', IdlePressable: 'Pressable' },
     'react-native': { Platform: { OS: 'android' }, View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView', StyleSheet: { create: (value: unknown) => value }, Keyboard: { dismiss() {} },
       BackHandler: { addEventListener(_event: string, callback: () => boolean) { back = callback; return { remove() {} }; } } },

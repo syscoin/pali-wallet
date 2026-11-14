@@ -186,7 +186,7 @@ import { NativeWalletCatalogue, WalletCatalogueError,
   WALLET_CATALOGUE_KEY,
 } from './walletCatalogue.ts';
 import { getNativeNetwork, snapshotNativeNetwork, nativeSigningEnabled } from './networkContext.ts';
-import type { NativeAccountRequest, NativeAccountRuntime, NativeNetworkRuntime, NativeNetworkSelectionProof } from './accounts.ts';
+import { NativeUtxoNetworkConflictError, type NativeAccountRequest, type NativeAccountRuntime, type NativeNetworkRuntime, type NativeNetworkSelectionProof } from './accounts.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import { NativeTransferError, type NativeTransferDispatchValidation, type NativeReplacementApproval, type NativeTransferRuntime } from './transfers.ts';
 import { assertTransferIntentEnvelope, equalTransferIntent, snapshotErc20TransferIntent, snapshotNativeAssetTransferIntent, type NativeAssetTransferIntent } from './transferIntent.ts';
@@ -3048,9 +3048,9 @@ export function createKeyringRuntimeFactory(
             throw new KeyringRuntimeError('INVALID_INPUT');
           const network = await verifyUtxoSettings(draft, undefined, owner, signal);
           owner.check();
-          if (!supportsUtxoSoftwareCustody(network) ||
-              owner.snapshot.utxoNetworks.some(({ chainId, slip44 }) => chainId === network.chainId || slip44 === network.slip44))
-            throw new KeyringRuntimeError('INVALID_INPUT');
+          if (!supportsUtxoSoftwareCustody(network)) throw new KeyringRuntimeError('INVALID_INPUT');
+          const conflict = owner.snapshot.utxoNetworks.find(({ chainId, slip44 }) => chainId === network.chainId || slip44 === network.slip44);
+          if (conflict) throw new NativeUtxoNetworkConflictError(network.slip44 === 1 ? 'testnet' : 'mainnet', conflict.name);
           const proof = Object.freeze({ kind: 'add-utxo-network' } as const);
           registrationApprovals.set(proof, { network, generation: owner.captured, snapshot: owner.snapshot, signal });
           return proof;
@@ -3338,16 +3338,20 @@ export function createKeyringRuntimeFactory(
             };
         };
         const imports: NativeImportRuntime = {
-          async previewUtxo(input, expectedRevision, assertCurrent) {
+          async previewUtxo(input, expectedRevision, signal, authentication, assertCurrent) {
             const captured = generation, snapshot = catalogueSnapshot, ring = keyring;
             const network = snapshot && findUtxoNetwork(snapshot.active.networkId, snapshot.utxoNetworks);
-            const guard = () => {
-              current(captured); checkGuard(assertCurrent); current(captured);
+            // The prompt marker checks ownership without re-entering the view's
+            // lifecycle guard, which may itself inspect that marker.
+            const checkOwnership = () => {
+              current(captured); assertNativePrivateAuthentication(authentication);
+              if (signal.aborted) throw new KeyringRuntimeError('CANCELLED');
               if (active || reserved) throw new KeyringRuntimeError('BUSY');
               if (!ring.hasPublicSession() || catalogueSnapshot !== snapshot || keyring !== ring ||
                   snapshot?.revision !== expectedRevision)
                 throw new KeyringRuntimeError('CANCELLED');
             };
+            const guard = () => { checkOwnership(); checkGuard(assertCurrent); checkOwnership(); };
             guard();
             if (!network || network.decimals !== 8 || !utxoRecords || !dependencies.utxoFetch || !dependencies.readUtxoBalance)
               throw new KeyringRuntimeError('NOT_READY');
@@ -3356,8 +3360,8 @@ export function createKeyringRuntimeFactory(
               if (!supportsUtxoSoftwareCustody(network, utxoAddressType === 'p2tr' ? 1 : 0))
                 throw new KeyringRuntimeError('INVALID_INPUT');
               guard();
-              const account = await withSoftwareSecret('account-change', new AbortController().signal, guard,
-                () => ring.importAccount(privateKey, undefined, utxoAddressType ? { utxoAddressType } : undefined), null, null);
+              const account = await withSoftwareSecret('account-change', signal, guard,
+                () => ring.importAccount(privateKey, undefined, utxoAddressType ? { utxoAddressType } : undefined), null, null, { authentication, assertCurrent: checkOwnership });
               guard();
               return checkedUtxoImport(account, network, utxoAddressType ? 'address' : 'account').address;
             } catch (cause) {

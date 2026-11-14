@@ -908,7 +908,7 @@
     "optimalExperience": "Pour une expérience optimale avec le portefeuille matériel, veuillez utiliser un écran plus grand ou agrandir la fenêtre de votre navigateur.",
     "networkNotFoundForEditing": "Réseau non trouvé pour l'édition. Veuillez actualiser et réessayer.",
     "networkAlreadyExists": "Le réseau avec l'ID de chaîne {{chainId}} existe déjà. Veuillez utiliser un ID de chaîne différent ou modifier le réseau existant.",
-    "utxoNetworkConflict": "Un réseau {{networkType}} existe déjà ({{existingNetworkName}}). Un seul réseau {{networkType}} peut être actif à la fois. Veuillez d'abord supprimer le réseau {{networkType}} existant.",
+    "utxoNetworkConflict": "Un réseau {{networkType}} est déjà enregistré ({{existingNetworkName}}). Pali prend en charge un réseau par type de monnaie.",
     "confirmRemoveNetwork": "Êtes-vous sûr de vouloir supprimer le réseau \"{{networkName}}\" ?",
     "walletLoggedOut": "Le portefeuille est déconnecté",
     "closeAndReopenPali": "Fermez cette fenêtre et rouvrez Pali pour vous authentifier et connecter votre portefeuille matériel",

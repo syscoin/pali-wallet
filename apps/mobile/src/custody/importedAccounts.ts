@@ -10,14 +10,14 @@ export type NativeUtxoImportDraft = Readonly<{ privateKey: string; utxoAddressTy
 /** Private form input; never an account-directory action or public snapshot. */
 export type NativeImportRequest = Readonly<{ privateKey: string; label: string; expectedAddress: string; utxoAddressType?: UtxoImportAddressType }>;
 export interface NativeImportRuntime {
-  previewUtxo(input: NativeUtxoImportDraft, catalogueRevision: number, assertCurrent: () => void): Promise<string>;
+  previewUtxo(input: NativeUtxoImportDraft, catalogueRevision: number, signal: AbortSignal, authentication: NativePrivateAuthentication, assertCurrent: () => void): Promise<string>;
   reserve(input: NativeImportRequest, catalogueRevision: number, signal: AbortSignal, authentication: NativePrivateAuthentication): {
     execute(assertCurrent: () => void): Promise<void>;
     cancel(): void;
   };
 }
 export interface NativeImportView {
-  previewUtxo(input: NativeUtxoImportDraft, contextRevision: number, catalogueRevision: number, assertCurrent: () => void): Promise<string>;
+  previewUtxo(input: NativeUtxoImportDraft, contextRevision: number, catalogueRevision: number, signal: AbortSignal, authentication: NativePrivateAuthenticationScope, assertCurrent: () => void): Promise<string>;
   submit(input: NativeImportRequest, contextRevision: number, catalogueRevision: number, signal: AbortSignal, authentication: NativePrivateAuthenticationScope): Promise<void>;
   cancel(): void;
 }

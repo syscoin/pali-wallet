@@ -908,7 +908,7 @@
     "optimalExperience": "最適なハードウェアウォレット体験のために、より大きな画面を使用するか、ブラウザウィンドウを拡張してください。",
     "networkNotFoundForEditing": "編集するネットワークが見つかりません。ページを更新してもう一度お試しください。",
     "networkAlreadyExists": "チェーンID {{chainId}}のネットワークは既に存在します。別のチェーンIDを使用するか、既存のネットワークを編集してください。",
-    "utxoNetworkConflict": "{{networkType}}ネットワークが既に存在します（{{existingNetworkName}}）。一度に一つの{{networkType}}ネットワークのみアクティブにできます。まず既存の{{networkType}}ネットワークを削除してください。",
+    "utxoNetworkConflict": "{{networkType}}ネットワークは既に保存されています（{{existingNetworkName}}）。Paliはコインタイプごとに1つのネットワークをサポートします。",
     "confirmRemoveNetwork": "ネットワーク \"{{networkName}}\" を削除してもよろしいですか？",
     "walletLoggedOut": "ウォレットがログアウトしています",
     "closeAndReopenPali": "このウィンドウを閉じてPaliを再度開き、認証してハードウェアウォレットを接続してください",

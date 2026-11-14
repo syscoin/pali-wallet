@@ -9,7 +9,7 @@ import { rankChainSuggestions } from '../../../../source/shared/chainCatalogue';
 import { withBundledNativeNetworkSuggestions, type NativeNetworkSuggestion } from '../custody/networkCatalogue';
 import { createNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext';
 import type { NativeNetworkSnapshot, NativeNetworkView } from '../custody/networkView';
-import type { NativeNetworkSelectionReceipt } from '../custody/accounts';
+import { NativeUtxoNetworkConflictError, type NativeNetworkSelectionReceipt } from '../custody/accounts';
 import { Button, colors, Header, Notice, Screen, Text } from '../ui';
 import { NetworkSourceSheet } from './NetworkSourceSheet';
 
@@ -279,6 +279,12 @@ export function NativeNetworks<Id extends string>({ controller, onBack, selectio
           : t('mobile.networks.invalidBlockbook')
           : t('mobile.networks.addBlockbook')
           : t('mobile.networks.invalidEvm');
+        if (form.utxo && !form.id && !remove && cause instanceof NativeUtxoNetworkConflictError) {
+          message = t('settings.utxoNetworkConflict', {
+            networkType: cause.networkType,
+            existingNetworkName: cause.existingNetworkName,
+          });
+        }
         if (form.utxo && remove) {
           message = code === 'ACCOUNT_NOT_REMOVABLE'
             ? t('mobile.networks.keepAccounts')
