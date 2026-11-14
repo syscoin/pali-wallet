@@ -442,7 +442,7 @@ module.exports = {
               /\/source\/utils\/(?:evmTransactionContext|smartAccountErrors|slhDsa\/constants)\.ts$/.test(
                 resource
               ) ||
-              /\/node_modules\/ethers\/lib\.esm\/(?:crypto\/(?:signature|signing-key)|constants\/hashes|transaction\/address)\.js$/.test(
+              /\/node_modules\/ethers\/lib\.esm\/(?:crypto\/(?:signature|signing-key)|constants\/hashes|transaction\/(?:address|transaction))\.js$/.test(
                 resource
               ) ||
               /\/node_modules\/ethers\/node_modules\/@noble\/(?:curves\/esm\/(?:secp256k1|_shortw_utils|abstract\/(?:modular|utils|weierstrass|curve))|hashes\/esm\/(?:hmac|sha256|_sha2))\.js$/.test(
@@ -465,6 +465,28 @@ module.exports = {
           },
           name: 'smart-account-execution-shared',
           // Different approval routes use different exports of the same graph.
+          usedExports: false,
+          minChunks: 2,
+          enforce: true,
+        },
+        // Configuration and management screens share the same lazy command
+        // helpers. Keep one UI copy without moving the worker's initial graph.
+        smartAccountModuleCommands: {
+          test: /[\\/]source[\\/]utils[\\/]smartAccount[\\/]moduleCommands\.ts$/,
+          chunks(chunk) {
+            const runtimes =
+              typeof chunk.runtime === 'string'
+                ? [chunk.runtime]
+                : [...(chunk.runtime || [])];
+            return (
+              !chunk.canBeInitial() &&
+              runtimes.length > 0 &&
+              runtimes.every(
+                (runtime) => runtime === 'app' || runtime === 'external'
+              )
+            );
+          },
+          name: 'smart-account-module-commands',
           usedExports: false,
           minChunks: 2,
           enforce: true,
