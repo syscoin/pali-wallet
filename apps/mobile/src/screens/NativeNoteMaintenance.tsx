@@ -8,6 +8,7 @@ import { useNativeTranslation } from '../platform/localization';
 import { Button, Card, colors, Header, Row, Screen, styles, Text } from '../ui';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
+import { isOperationAuthenticationCancellation } from '../core/operationAuthentication';
 
 type Props = {
   open(signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeNoteMaintenanceRuntime>;
@@ -68,6 +69,7 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
     };
     Keyboard.dismiss();
     let reloaded = false;
+    let cancelledBeforeAccess = false;
     const reload = (inventory: Awaited<ReturnType<NativeNoteMaintenanceRuntime['getNotes']>>) => {
       check(); if (AppState.currentState !== 'active') throw Error('CANCELLED'); setNotes(inventory.notes); reloaded = true;
     };
@@ -83,12 +85,17 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
         check(); if (AppState.currentState !== 'active') throw Error('CANCELLED');
         setResult({ removed: value.removed.length, unresolved: value.unresolved.length }); setConfirmClear(false);
       }
-    } catch { if (current.live) setError(kind === 'clear' ? 'privacy.capacity.clearError' : 'privacy.recovery.failed'); }
+    } catch (error) {
+      if (!reloaded && isOperationAuthenticationCancellation(error)) {
+        try { check(); cancelledBeforeAccess = AppState.currentState === 'active'; } catch { /* Retired owners stay fail-closed. */ }
+      }
+      if (!cancelledBeforeAccess && current.live) setError(kind === 'clear' ? 'privacy.capacity.clearError' : 'privacy.recovery.failed');
+    }
     finally {
       // The action reloads within its authorization, even after a lost acknowledgement.
       try {
         check();
-        if (!reloaded) throw Error('Maintenance inventory unavailable');
+        if (!reloaded && !cancelledBeforeAccess) throw Error('Maintenance inventory unavailable');
       }
       catch { if (current.live) { setReady(false); setNotes([]); setError('privacy.capacity.clearError'); } }
       current.busy = false;

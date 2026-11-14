@@ -57,7 +57,7 @@ type NativeNoteBackupPorts = Readonly<{
   withdrawalScope(): Readonly<{ context: IPrivacyWithdrawalSession['context']; lifetime: string }> | null;
   notes: NonNullable<OpenWalletStorage['notes']>;
   requireReopen(): void;
-  run<T>(operation: () => Promise<T>): Promise<T>;
+  run<T>(operation: () => Promise<T>, preserveCancellation?: boolean): Promise<T>;
 }>;
 type NativeNoteAcknowledgement = Readonly<{
   session: IPrivateVaultSession;
@@ -283,14 +283,14 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
       }));
       let closed = false;
       const drain = new NativeOperationDrain();
-      const run = async <T>(assertCurrent: () => void, operation: (owner: IPrivateVaultSession) => Promise<T>) => {
+      const run = async <T>(assertCurrent: () => void, operation: (owner: IPrivateVaultSession) => Promise<T>, preserveCancellation = false) => {
         const owner = ownedSession(session, () => {
           if (closed) throw Error('privacy_vault_session_changed');
           return assertCurrent();
         });
         owner.assertCurrent(); const finish = drain.begin();
         try {
-          const result = await ports.run(() => operation(owner));
+          const result = await ports.run(() => operation(owner), preserveCancellation);
           owner.assertCurrent(); return result;
         } finally { finish(); }
       };
@@ -314,7 +314,7 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
               owner.assertCurrent(); onReload(inventory); owner.assertCurrent();
             } catch (error) { if (!failed) throw error; }
           }
-        });
+        }, true);
       };
       return Object.freeze({
         dispose: () => drain.close(() => { closed = true; }, []),

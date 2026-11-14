@@ -9,6 +9,7 @@ import { screenElements, screenFixture } from './screenFixture.ts';
 import { createNativeNoteRestore } from '../src/custody/nativeNoteRestore.ts';
 import { createNoteBackupCodec } from '../../../source/wallet/noteBackup.ts';
 import type { useNativeNoteBackup } from '../src/screens/useNativeNoteBackup.ts';
+import { isOperationAuthenticationCancellation } from '../src/core/operationAuthentication.ts';
 
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 const note = Object.freeze({ amount: '1', createdAt: 1 });
@@ -49,6 +50,7 @@ function fixture(kind: Kind, owned = true) {
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map(value => [value, value])), colors: {}, styles: {} },
     '../custody/privateAuthentication': { createNativePrivateAuthenticationScope, createNativePrivateAuthenticationChild },
     './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
+    '../core/operationAuthentication': { isOperationAuthenticationCancellation },
     './NativeNoteReveal': { NativeNoteReveal: 'NativeNoteReveal' }, './NativePrivateWithdrawal': { NativePrivateWithdrawal: 'NativePrivateWithdrawal' },
     './IdleActivityBoundary': { IdleTextInput: 'Input', IdlePressable: 'Pressable' }, './PinEntry': { PinField: 'PinField' },
     '../platform/localization': nativeTranslationFixture,

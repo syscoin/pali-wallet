@@ -1,7 +1,7 @@
 import { bindNativePrivateAuthentication, createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { createTestCredentialPort } from './fixtures/credential.ts';
 import { readTestNoteInventory, testInventoryAuthentication } from './fixtures/privateAuthentication.ts';
-import { operationAuthenticationCancellation } from '../src/core/operationAuthentication.ts';
+import { isOperationAuthenticationCancellation, operationAuthenticationCancellation } from '../src/core/operationAuthentication.ts';
 import type { NativeCredentialPort } from '../src/custody/credentialVault.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -349,13 +349,58 @@ test('maintenance abort stops remaining notes and disposal drains the one author
   } finally { route.abort(); await maintenance.dispose(); await f.dispose(); }
 });
 
-test('refused maintenance authorization is not retried for final inventory', async () => {
+test('explicit pre-access maintenance cancellation preserves its brand and permits a fresh authorized retry', async () => {
   const { f, route, maintenance, ids } = await maintenanceFixture();
   try {
-    const before = f.unlockCalls, writes = f.noteWrites;
-    f.refuseCredential();
-    await assert.rejects(maintenance.clearCompletedNotes(ids, current, () => assert.fail('No note runs after refusal'), () => assert.fail('No reload after refusal')));
-    assert.equal(f.unlockCalls, before + 1); assert.equal(f.noteWrites, writes);
+    const before = f.unlockCalls, writes = f.noteWrites, works = f.secretWorks, access = f.latestPrivateAccess;
+    const cancelled = operationAuthenticationCancellation(); f.refuseCredential(cancelled);
+    await assert.rejects(maintenance.clearCompletedNotes(ids, current, () => assert.fail('No note runs after refusal'), () => assert.fail('No reload after refusal')),
+      error => error === cancelled && isOperationAuthenticationCancellation(error));
+    assert.equal(f.unlockCalls, before + 1); assert.equal(f.noteWrites, writes); assert.equal(f.secretWorks, works);
+    assert.equal(f.latestPrivateAccess, access, 'Cancellation must not allocate private record access');
+    let reloaded = false;
+    assert.deepEqual(await maintenance.clearCompletedNotes(ids, current, () => {}, inventory => {
+      reloaded = true; assert.deepEqual(inventory.notes.map(note => note.id), ids);
+    }), { removed: [], unresolved: ids });
+    assert(reloaded); assert.equal(f.unlockCalls, before + 2); assert.equal(f.noteWrites, writes);
+  } finally { route.abort(); await maintenance.dispose(); await f.dispose(); }
+});
+
+for (const code of ['CANCELLED', 'CREDENTIAL_CANCELLED', 'CREDENTIAL_MISSING', 'CREDENTIAL_UNAVAILABLE', 'CREDENTIAL_UNSUPPORTED']) {
+  test(`maintenance ${code} cannot masquerade as a pre-access OS Cancel`, async () => {
+    const { f, route, maintenance, ids } = await maintenanceFixture();
+    try {
+      const before = f.unlockCalls, works = f.secretWorks, writes = f.noteWrites;
+      f.refuseCredential(Object.assign(Error(code), { code }));
+      await assert.rejects(maintenance.clearCompletedNotes(ids, current, () => assert.fail('No note runs'), () => assert.fail('No reload')),
+        error => !isOperationAuthenticationCancellation(error));
+      assert.equal(f.unlockCalls, before + 1); assert.equal(f.secretWorks, works); assert.equal(f.noteWrites, writes);
+    } finally { route.abort(); await maintenance.dispose(); await f.dispose(); }
+  });
+}
+
+for (const revoke of ['route', 'deadline'] as const) test(`maintenance OS Cancel after ${revoke} revocation stays fail-closed`, async context => {
+  const { f, route, maintenance, ids } = await maintenanceFixture();
+  let elapsed = performance.now(); context.mock.method(performance, 'now', () => elapsed);
+  try {
+    const before = f.unlockCalls, works = f.secretWorks, writes = f.noteWrites;
+    f.refuseCredential(); f.onCredential(async () => { if (revoke === 'route') route.abort(); else elapsed += 60_001; });
+    await assert.rejects(maintenance.clearCompletedNotes(ids, current, () => assert.fail('No note runs'), () => assert.fail('No reload')),
+      error => !isOperationAuthenticationCancellation(error));
+    assert.equal(f.unlockCalls, before + 1); assert.equal(f.secretWorks, works); assert.equal(f.noteWrites, writes);
+  } finally { context.mock.restoreAll(); route.abort(); await maintenance.dispose(); await f.dispose(); }
+});
+
+for (const boundary of ['progress', 'reload'] as const) test(`a branded error at maintenance ${boundary} is not a pre-access cancellation`, async () => {
+  const { f, route, maintenance, ids } = await maintenanceFixture();
+  try {
+    const before = f.unlockCalls; let reloaded = false;
+    await assert.rejects(maintenance.clearCompletedNotes(ids, current, () => {
+      if (boundary === 'progress') throw operationAuthenticationCancellation();
+    }, () => { reloaded = true; if (boundary === 'reload') throw operationAuthenticationCancellation(); }),
+    error => !isOperationAuthenticationCancellation(error));
+    assert(reloaded); assert.equal(f.unlockCalls, before + 1);
+    const access = f.latestPrivateAccess; assert(access); await assert.rejects(access.getPrivateRecordProfileId());
   } finally { route.abort(); await maintenance.dispose(); await f.dispose(); }
 });
 

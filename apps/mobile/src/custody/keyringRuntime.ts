@@ -935,12 +935,12 @@ export function createKeyringRuntimeFactory(
           generation: number; ring: IndexedKeyring;
           snapshot: NativeWalletCatalogueSnapshot | null; target: string; assertCurrent(): void;
         }>();
-        type PrivateRecordAction = { policy: 'action' | 'acknowledgement'; generation: number; ring: IndexedKeyring; verified: boolean; closed: boolean; signal: AbortController; tail: Promise<void>; access?: NativeRecordAccess; retained?: boolean };
+        type PrivateRecordAction = { policy: 'action' | 'acknowledgement'; generation: number; ring: IndexedKeyring; verified: boolean; closed: boolean; signal: AbortController; tail: Promise<void>; access?: NativeRecordAccess; retained?: boolean; preserveCancellation?: boolean; accessStarted?: boolean; authenticationCancellation?: { error: Error; assertCurrent(): void } };
         let privateRecordAction: PrivateRecordAction | null = null;
         const privateAcknowledgements = new Map<IPrivateVaultSession, PrivateRecordAction>();
         const privateRecordOwners = new WeakMap<object, IndexedKeyring>();
         const privateRecordAuthorizers = new WeakMap<object, () => Promise<void>>();
-        const privateRecordKeyring = (ring: IndexedKeyring, assertOwner: () => void, action: PrivateRecordAction, authentication: NativePrivateAuthentication | null = null): IPrivateVaultSession['keyring'] => {
+        const privateRecordKeyring = (ring: IndexedKeyring, assertOwner: () => void, action: PrivateRecordAction, authentication: NativePrivateAuthentication | null = null, assertCancellationOwner = assertOwner): IPrivateVaultSession['keyring'] => {
           const identity = verifiedIdentity;
           const checkOwnership = () => {
             if (authentication) assertNativePrivateAuthentication(authentication);
@@ -955,13 +955,24 @@ export function createKeyringRuntimeFactory(
           const invoke = <T>(work: (access: NativeRecordAccess) => Promise<T>): Promise<T> => {
             const pending = action.tail.then(async () => {
               check();
+              if (action.authenticationCancellation) throw action.authenticationCancellation.error;
               let result: T;
               if (!action.access) {
                 if (action.policy !== 'action') throw new KeyringRuntimeError('NOT_READY');
-                result = await withSoftwareSecret('secret-read', action.signal.signal, check, async () => {
-                  check(); action.access = await ring.createPrivateRecordAccess(privateNoteRecordDomains, { transferable: false });
-                  check(); action.verified = true; return work(action.access);
-                }, null, null, authentication ? { authentication, assertCurrent: checkOwnership } : null);
+                try {
+                  result = await withSoftwareSecret('secret-read', action.signal.signal, check, async () => {
+                    check(); action.accessStarted = true;
+                    action.access = await ring.createPrivateRecordAccess(privateNoteRecordDomains, { transferable: false });
+                    check(); action.verified = true; return work(action.access);
+                  }, null, null, authentication ? { authentication, assertCurrent: checkOwnership } : null, action.preserveCancellation);
+                } catch (error) {
+                  if (action.preserveCancellation && !action.accessStarted && !action.verified && !action.access && isOperationAuthenticationCancellation(error)) {
+                    check();
+                    // The shared vault sanitizes errors. Retain only this action's pre-access OS Cancel.
+                    action.authenticationCancellation = { error, assertCurrent: assertCancellationOwner };
+                  }
+                  throw error;
+                }
               } else result = await work(action.access);
               try { check(); return result; }
               catch (error) { if (result instanceof Uint8Array) result.fill(0); throw error; }
@@ -1788,11 +1799,11 @@ export function createKeyringRuntimeFactory(
             try { await revokeCustody('revoke'); } catch { /* The owner remains quarantined. */ }
           }
         };
-        const runPrivateDomain = async <T>(operation: (captured: number) => Promise<T>): Promise<T> => {
+        const runPrivateDomain = async <T>(operation: (captured: number) => Promise<T>, preserveCancellation = false): Promise<T> => {
           assertPrivateDomainAvailable();
           const captured = generation;
           const credentialAction = beginCredentialAction(captured);
-          const recordAction: PrivateRecordAction = { policy: 'action', generation: captured, ring: keyring, verified: false, closed: false, signal: new AbortController(), tail: Promise.resolve() };
+          const recordAction: PrivateRecordAction = { policy: 'action', generation: captured, ring: keyring, verified: false, closed: false, signal: new AbortController(), tail: Promise.resolve(), preserveCancellation };
           privateRecordAction = recordAction;
           let resolve!: (result: Promise<T>) => void, reject!: (error: unknown) => void;
           const task = new Promise<T>((accept, refuse) => { resolve = accept; reject = refuse; }).finally(async () => {
@@ -1809,7 +1820,16 @@ export function createKeyringRuntimeFactory(
           // to snapshot caller bytes in this same turn.
           active = task;
           try { resolve(operation(captured)); } catch (error) { reject(error); }
-          return task;
+          return task.catch(error => {
+            const cancellation = recordAction.authenticationCancellation;
+            if (cancellation && !recordAction.accessStarted && !recordAction.verified && !recordAction.access) {
+              current(captured); cancellation.assertCurrent();
+              throw cancellation.error;
+            }
+            // A later cancellation cannot prove that maintenance left the inventory unchanged.
+            if (preserveCancellation && isOperationAuthenticationCancellation(error)) throw new KeyringRuntimeError('CANCELLED');
+            throw error;
+          });
         };
         const privateDomainWalletSession = (captured: number, policy: PrivateRecordAction['policy'], authentication: NativePrivateAuthentication | null = null): IPrivateVaultSession => {
           const ring = keyring, identity = verifiedIdentity;
@@ -1838,12 +1858,13 @@ export function createKeyringRuntimeFactory(
               const action = policy === 'action' ? privateRecordAction : acknowledgement;
               if (!action || action.closed || action.ring !== ring || action.generation !== captured ||
                   (policy === 'acknowledgement' && !action.access)) throw new KeyringRuntimeError('NOT_READY');
+              const checkOwner = () => { assertCurrent(); checkGuard(guard); };
               const check = () => {
-                assertCurrent(); checkGuard(guard);
+                checkOwner();
                 if ((policy === 'action' && privateRecordAction !== action) || action.closed) throw new KeyringRuntimeError('CANCELLED');
               };
               check();
-              return createPrivateVaultSession({ generation: captured, keyring: privateRecordKeyring(ring, check, action, authentication), assertCurrent: check });
+              return createPrivateVaultSession({ generation: captured, keyring: privateRecordKeyring(ring, check, action, authentication, checkOwner), assertCurrent: check });
             },
           });
           if (acknowledgement) privateAcknowledgements.set(session, acknowledgement);
