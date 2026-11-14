@@ -1,6 +1,7 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { AppState, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeSentryAssent, NativeSentryReview as Review } from '../connections/sentryRequests';
 import type { NativeConnectionsView } from '../connections/types';

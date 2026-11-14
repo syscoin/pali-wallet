@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import { ActivityExplorerReader } from '../src/activity/explorerReader.ts';
 import { ActivityReceiptReader } from '../src/activity/receiptReader.ts';
 import { createActivityScope } from '../src/activity/types.ts';
@@ -43,7 +44,7 @@ function evaluate(path: string, dependencies: Record<string, unknown>) {
     {
       module,
       exports: module.exports,
-      require(name: string) {
+      require(name: string) { const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi;
         assert.ok(
           Object.hasOwn(dependencies, name),
           `Unexpected platform import: ${name}`

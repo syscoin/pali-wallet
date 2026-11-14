@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import * as transactionFeeChoice from '../../../source/shared/transactionFeeChoice.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import * as cameraPermission from '../src/platform/cameraPermission.ts';
@@ -249,7 +250,7 @@ function harness(
     AbortController,
     Promise,
     Error,
-    require(dependency: string) {
+    require(dependency: string) { const walletUi = walletUiFixture(dependency, dependencies); if (walletUi) return walletUi;
       assert(Object.hasOwn(dependencies, dependency), dependency);
       return dependencies[dependency];
     },

@@ -1,8 +1,9 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { useDappLedgerConnection } from './useDappLedgerConnection';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import type {
   NativeConnectionsView,
   NativeSmartTransactionReview,

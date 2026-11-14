@@ -1,5 +1,6 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { AppState, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PRIVACY_POOLS } from '../../../../source/utils/privacy/registry';
 import { normalizePrivacyServiceOrigin } from '../../../../source/shared/privacyServiceOrigin';

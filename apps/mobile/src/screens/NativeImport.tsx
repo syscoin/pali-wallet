@@ -1,10 +1,11 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import type { TFunction } from 'i18next';
 import { useNativeTranslation } from '../platform/localization';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { importedKeyIdentity, isUtxoAccountPrivateKey, normalizeImportedKey, normalizeUtxoImport, type NativeImportView } from '../custody/importedAccounts';
 import { UTXO_IMPORT_LABELS, UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../core/utxoAddresses';

@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
@@ -115,7 +116,7 @@ function fixture() {
     {
       module,
       exports: module.exports,
-      require: (name: string) => {
+      require: (name: string) => { const walletUi = walletUiFixture(name, importsByName); if (walletUi) return walletUi;
         assert(name in importsByName, name);
         return importsByName[name];
       },

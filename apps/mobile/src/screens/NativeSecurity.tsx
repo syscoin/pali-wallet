@@ -1,8 +1,9 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import { BalancePrivacySetting } from './BalancePrivacySetting';
 import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { copyNativeSecret } from '../platform/secretClipboard';
 import type { HdKeyExportFlow, HdKeyExportPresentation } from '../custody/hdKeyExport';

@@ -1,6 +1,6 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useState } from 'react';
-import { BackHandler } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeSentryKeyManagement } from '../custody/sentryKeyManagement';
 import type { NativeSentryNodeManagement } from '../custody/sentryNodeManagement';

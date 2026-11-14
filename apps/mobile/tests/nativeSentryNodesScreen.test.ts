@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import { SENTRY_NETWORKS } from '../../../source/shared/sentryNetworks.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -37,7 +38,7 @@ function evaluate(source: string, dependencies: Record<string, unknown>, flow = 
   const code = flow ? babel.transformSync(source, { babelrc: false, configFile: false, plugins: [babelRequire.resolve('babel-plugin-syntax-hermes-parser'), babelRequire.resolve('@babel/plugin-transform-flow-strip-types'), babelRequire.resolve('@babel/plugin-transform-modules-commonjs')] }).code
     : ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
   const module = { exports: {} as Record<string, any> };
-  runInNewContext(code, { module, exports: module.exports, Error, AbortController, performance, setTimeout, clearTimeout, queueMicrotask, require(name: string) {
+  runInNewContext(code, { module, exports: module.exports, Error, AbortController, performance, setTimeout, clearTimeout, queueMicrotask, require(name: string) { const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi;
     assert.ok(Object.hasOwn(dependencies, name), `Unexpected screen import ${name}`); return dependencies[name];
   } });
   return module.exports;

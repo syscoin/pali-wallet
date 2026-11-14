@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
@@ -116,7 +117,7 @@ async function screenHarness(initialPermission: Permission = { granted: false, c
     '../platform/permissionPresentation.ts': { createPermissionPresentation },
   };
   runInNewContext(code, { module, exports: module.exports, setTimeout, clearTimeout,
-    require(name: string) { assert(Object.hasOwn(imports, name), name); return imports[name]; } });
+    require(name: string) { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi; assert(Object.hasOwn(imports, name), name); return imports[name]; } });
   const permissionPort = module.exports;
   let document = emptyNotificationDocument(), serial: Promise<unknown> = Promise.resolve(), nextId = 0;
   const permissionReads: boolean[] = [], enrolledWith: string[] = [];

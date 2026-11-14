@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -54,7 +55,7 @@ function fixture() {
   const module = { exports: {} as Record<string, any> };
   const source = readFileSync(new NodeURL('../src/screens/NativeSmartTransactionReview.tsx', import.meta.url), 'utf8');
   runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true, target: ts.ScriptTarget.ES2022 } }).outputText,
-    { module, exports: module.exports, require: (name: string) => { assert(name in imports, name); return imports[name]; } });
+    { module, exports: module.exports, require: (name: string) => { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi; assert(name in imports, name); return imports[name]; } });
   return { calls, controller, current: () => current,
     replaceIntent() { current = { ...current, revision: current.revision + 1, operation: { ...current.operation, intent: { ...current.operation.intent, data: '0xabcd' } } }; },
     render(): Element { cursor = 0; return module.exports.NativeSmartTransactionReviewScreen({ review: current, controller }); },

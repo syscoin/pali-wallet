@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -37,7 +38,7 @@ function fixture() {
   const module = { exports: {} as { DisplayCurrency: (props: object) => Element } };
   const source = readFileSync(new NodeURL('../src/screens/DisplayCurrency.tsx', import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
-  runInNewContext(code, { module, exports: module.exports, Intl, require(name: string) { assert.ok(Object.hasOwn(imports, name), name); return imports[name]; } });
+  runInNewContext(code, { module, exports: module.exports, Intl, require(name: string) { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi; assert.ok(Object.hasOwn(imports, name), name); return imports[name]; } });
   const render = () => { cursor = 0; return module.exports.DisplayCurrency({ onBack() {} }); };
   const list = () => all(render()).find((node) => node.type === 'FlatList')!;
   const row = (code: string) => {

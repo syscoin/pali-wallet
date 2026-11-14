@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import * as nativeWalletReads from '../src/custody/dappWalletReads.ts';
 import * as dappWalletReads from '../../../source/shared/dappWalletReads.ts';
 import * as erc20 from '../../../source/shared/erc20.ts';
@@ -193,7 +194,7 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
   const source = ts.transpileModule(readFileSync(new NodeURL('../src/platform/nativeFactory.native.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  runInNewContext(source, { module, exports: module.exports, process: { env: {} }, require(name: string) {
+  runInNewContext(source, { module, exports: module.exports, process: { env: {} }, require(name: string) { const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi;
     assert.ok(Object.hasOwn(dependencies, name), `unexpected import ${name}`);
     return dependencies[name];
   } });

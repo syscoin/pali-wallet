@@ -1,3 +1,5 @@
+import { WalletBackHandler as BackHandler } from './src/ui/WalletBackHandler';
+import { WalletModal as Modal, WalletModalHost } from './src/ui/WalletModal';
 import { NativePairingInbox, observePairingLinks } from './src/connections/pairingLinks';
 import { publicViewLock, securityPreferences, watchIdle, custodyIdle } from './src/platform/security';
 import { authorizePublicView, isNativeCredentialPromptActive } from './src/platform/credential';
@@ -9,12 +11,10 @@ import {
   View,
   ScrollView,
   StyleSheet,
-  Modal,
   Platform,
   AppState,
   AccessibilityInfo,
   Linking,
-  BackHandler,
   Share,
   KeyboardAvoidingView,
   ActivityIndicator,
@@ -1773,7 +1773,7 @@ function SecurityGate(props: AppProps) {
   const viewLock = useSyncExternalStore(publicViewLock.subscribe, publicViewLock.getSnapshot, publicViewLock.getSnapshot);
   useEffect(() => { if (state.status !== 'ready') { custodyIdle.allowNewInput(); watchIdle.allowNewInput(); } }, [state.status]);
   useEffect(() => { void securityPreferences.load().catch(() => undefined); void publicViewLock.load().catch(() => undefined); return () => { custodyIdle.invalidate(); watchIdle.invalidate(); }; }, []);
-  return state.status === 'ready' && (viewLock.phase === 'unlocked' || viewLock.phase === 'locked') ? <IdleActivityBoundary><AppContent {...props} /></IdleActivityBoundary> : <Screen><Header title={nativeI18n.t('mobile.shellViews.app.securitySettings')} /><Notice title={state.status === 'opening' || viewLock.phase === 'opening' ? nativeI18n.t('mobile.shellViews.app.openingSecuritySettings') : nativeI18n.t('mobile.shellViews.app.securitySettingsUnavailable')} body={nativeI18n.t('mobile.shellViews.app.yourSavedDataHasNotBeenReplacedRetry')} />{(state.status === 'unavailable' || viewLock.phase === 'unavailable') && <Button title={nativeI18n.t('mobile.shellViews.app.retrySecuritySettings')} onPress={() => { void securityPreferences.load().catch(() => undefined); void publicViewLock.load().catch(() => undefined); }} />}</Screen>;
+  return state.status === 'ready' && (viewLock.phase === 'unlocked' || viewLock.phase === 'locked') ? <IdleActivityBoundary><WalletModalHost><AppContent {...props} /></WalletModalHost></IdleActivityBoundary> : <Screen><Header title={nativeI18n.t('mobile.shellViews.app.securitySettings')} /><Notice title={state.status === 'opening' || viewLock.phase === 'opening' ? nativeI18n.t('mobile.shellViews.app.openingSecuritySettings') : nativeI18n.t('mobile.shellViews.app.securitySettingsUnavailable')} body={nativeI18n.t('mobile.shellViews.app.yourSavedDataHasNotBeenReplacedRetry')} />{(state.status === 'unavailable' || viewLock.phase === 'unavailable') && <Button title={nativeI18n.t('mobile.shellViews.app.retrySecuritySettings')} onPress={() => { void securityPreferences.load().catch(() => undefined); void publicViewLock.load().catch(() => undefined); }} />}</Screen>;
 }
 export default function App(props: AppProps = {}) {
   return (

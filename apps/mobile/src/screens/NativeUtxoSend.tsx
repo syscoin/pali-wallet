@@ -1,3 +1,4 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { AUTOMATIC_FEE, snapshotUtxoFeeChoice, type UtxoFeeChoice } from '../../../../source/shared/transactionFeeChoice';
 import { NetworkFeeSheet } from './NetworkFeeSheet';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
@@ -5,7 +6,6 @@ import { normalizeDecimalInput } from '../../../../source/shared/decimalInput';
 import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   ActivityIndicator,
-  BackHandler,
   Keyboard,
   KeyboardAvoidingView,
   Platform,

@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -169,12 +170,14 @@ function fixture(
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   runInNewContext(permissionCode, { module: permissionModule, exports: permissionModule.exports,
-    require(name: string) { return name === './permissionPresentation' ? { createPermissionPresentation } : dependencies[name]; } });
+    require(name: string) { const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi; return name === './permissionPresentation' ? { createPermissionPresentation } : dependencies[name]; } });
   dependencies['../platform/cameraPermission'] = permissionModule.exports;
   runInNewContext(code, {
     module,
     exports: module.exports,
     require(name: string) {
+      const walletUi = walletUiFixture(name, dependencies);
+      if (walletUi) return walletUi;
       assert.ok(
         Object.hasOwn(dependencies, name),
         `Unexpected scanner dependency ${name}`
@@ -187,7 +190,7 @@ function fixture(
   const wrapperCode = ts.transpileModule(readFileSync(new URL(`../src/screens/${kind === 'connection' ? 'ConnectionQrScanner.shared' : 'RecipientQrScanner'}.tsx`, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true },
   }).outputText;
-  runInNewContext(wrapperCode, { module: wrapper, exports: wrapper.exports, require(name: string) {
+  runInNewContext(wrapperCode, { module: wrapper, exports: wrapper.exports, require(name: string) { const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi;
     if (name === './QrScanner') return { QrScanner: 'QrScanner' };
     if (name === '../core/recipientQr') return { parseEvmRecipientQr };
     assert(Object.hasOwn(dependencies, name), `Unexpected wrapper dependency ${name}`); return dependencies[name];

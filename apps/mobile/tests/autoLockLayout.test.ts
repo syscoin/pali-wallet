@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -47,7 +48,7 @@ test('custody and watch auto-lock resize Android for the keyboard and preserve i
       '../ui': { Button: 'Button', Card: 'Card', Header: 'Header', Icon: 'Icon', Notice: 'Notice', Screen: 'Screen', Text: 'Text', colors: {}, styles: { screen: screenStyle } },
     };
     const module = { exports: {} as { AutoLockSettings(props: object): Element } };
-    runInNewContext(code, { module, exports: module.exports, require(name: string) {
+    runInNewContext(code, { module, exports: module.exports, require(name: string) { const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi;
       assert.ok(Object.hasOwn(dependencies, name), `Unexpected import ${name}`);
       return dependencies[name];
     } });

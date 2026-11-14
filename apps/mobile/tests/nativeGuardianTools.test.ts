@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
@@ -103,7 +104,7 @@ function screen(name: string, props: Record<string, unknown>) {
     module,
     exports: module.exports,
     AbortController,
-    require(key: keyof typeof dependencies) {
+    require(key: keyof typeof dependencies) { const walletUi = walletUiFixture(key, dependencies); if (walletUi) return walletUi;
       assert.ok(Object.hasOwn(dependencies, key), key);
       return dependencies[key];
     },

@@ -1,3 +1,4 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import React, {
   useCallback,
@@ -8,7 +9,6 @@ import React, {
 } from 'react';
 import {
   AppState,
-  BackHandler,
   Keyboard,
   KeyboardAvoidingView,
   Platform,

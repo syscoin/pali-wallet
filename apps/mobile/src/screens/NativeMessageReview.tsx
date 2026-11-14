@@ -1,6 +1,7 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, BackHandler, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeConnectionsView, NativeMessageReview } from '../connections/types';
 import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';

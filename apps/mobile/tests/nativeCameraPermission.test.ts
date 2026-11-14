@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL } from 'node:url';
@@ -31,7 +32,7 @@ function fixture() {
   const code = ts.transpileModule(readFileSync(new URL('../src/platform/cameraPermission.native.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  runInNewContext(code, { module, exports: module.exports, require(name: string) { assert(Object.hasOwn(imports, name), name); return imports[name]; } });
+  runInNewContext(code, { module, exports: module.exports, require(name: string) { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi; assert(Object.hasOwn(imports, name), name); return imports[name]; } });
   return { port: module.exports as Port, listeners,
     get requests() { return requests; }, get reads() { return reads; },
     status(value: Permission) { permission = value; },

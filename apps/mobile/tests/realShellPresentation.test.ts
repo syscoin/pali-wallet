@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -31,7 +32,7 @@ function shell() {
     const code = ts.transpileModule(source, { compilerOptions: {
       module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true,
     } }).outputText;
-    runInNewContext(code, { module, exports: module.exports, require(name: string) {
+    runInNewContext(code, { module, exports: module.exports, require(name: string) { const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi;
       assert.ok(Object.hasOwn(dependencies, name), `Missing fixture dependency: ${name}`); return dependencies[name];
     } });
     return module.exports;

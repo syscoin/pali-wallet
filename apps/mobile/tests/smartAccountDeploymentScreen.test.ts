@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { resolveAssetTransferDisplay } from '../../../source/shared/assetTransferDisplay.ts';
@@ -119,7 +120,7 @@ function fixture() {
   runInNewContext(code, {
     module,
     exports: module.exports,
-    require(name: string) {
+    require(name: string) { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi;
       assert(Object.hasOwn(imports, name), name);
       return imports[name];
     },

@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import { englishI18n, languageMessages, nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -175,7 +176,7 @@ function fixture(initialHash?: string, held = false, props: Record<string, unkno
     exports: module.exports,
     setTimeout,
     clearTimeout,
-    require(name: string) {
+    require(name: string) { const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi;
       assert(Object.hasOwn(dependencies, name), name);
       return dependencies[name];
     },

@@ -1,5 +1,6 @@
+import { WalletModal as Modal } from '../ui/WalletModal';
 import React, { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, Modal, StyleSheet, View } from 'react-native';
+import { AppState, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NotificationChoice } from '../notifications/choices';
 import { AccountPortfolioController, type AccountPortfolioRow } from '../portfolio/accountPortfolio';

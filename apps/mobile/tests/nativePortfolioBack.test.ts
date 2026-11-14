@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -87,7 +88,7 @@ function fixture(overview: boolean, receiveEntry?: 'detail' | 'continuation', un
     const module = { exports: {} as Record<string, any> };
     runInNewContext(ts.transpileModule(source, { compilerOptions: {
       module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true,
-    } }).outputText, { module, exports: module.exports, require(name: string) {
+    } }).outputText, { module, exports: module.exports, require(name: string) { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi;
       assert(Object.hasOwn(imports, name), `Missing ${file} port: ${name}`); return imports[name];
     } });
     return module.exports;

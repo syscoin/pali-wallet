@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import { defaultAbiCoder, id } from 'utils/ethersV6Compat';
@@ -138,6 +138,15 @@ beforeEach(() => {
   ];
 });
 
+const renderHistory = async () => {
+  let view!: ReturnType<typeof render>;
+  // Flush the local async display decoder before starting timed DOM assertions.
+  await act(async () => {
+    view = render(<EvmTransactionsList userTransactions={mockRows} />);
+  });
+  return view;
+};
+
 it.each([
   { chainId: 1, assets: [1] },
   { chainId: 1, assets: [137, 1] },
@@ -149,7 +158,7 @@ it.each([
     mockVault.activeNetwork.chainId = chainId;
     mockRows[0].chainId = chainId;
     mockVault.accountAssets.HDAccount[0].ethereum = assets.map(token);
-    render(<EvmTransactionsList userTransactions={mockRows} />);
+    await renderHistory();
     await screen.findByText(`1 TOKEN${chainId}`);
     const icon = screen.getByTestId('history-token-icon');
     expect(icon.getAttribute('data-symbol')).toBe(`TOKEN${chainId}`);
@@ -164,7 +173,7 @@ it.each([
 
 it('refreshes a same-chain tooltip when only the imported token name changes', async () => {
   mockVault.accountAssets.HDAccount[0].ethereum = [token(1)];
-  const view = render(<EvmTransactionsList userTransactions={mockRows} />);
+  const view = await renderHistory();
   await screen.findByText('1 TOKEN1');
   const icon = screen.getByTestId('history-token-icon');
   expect(icon.parentElement?.parentElement?.getAttribute('title')).toBe(
@@ -173,7 +182,9 @@ it('refreshes a same-chain tooltip when only the imported token name changes', a
   mockVault.accountAssets.HDAccount[0].ethereum = [
     { ...token(1), name: 'Updated token name' },
   ];
-  view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
+  await act(async () => {
+    view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
+  });
   await waitFor(() =>
     expect(
       screen
@@ -203,7 +214,7 @@ it.each([undefined, null, 0, '', 137])(
   'does not use stored token metadata with nonmatching chainId %s',
   async (chainId) => {
     mockVault.accountAssets.HDAccount[0].ethereum = [unscopedToken(chainId)];
-    render(<EvmTransactionsList userTransactions={mockRows} />);
+    await renderHistory();
     // Missing token chainId is malformed, not evidence of a historical format.
     // Await the generic decoded result rather than its loading placeholder.
     await screen.findByText('0x3333...3333 Transfer');
@@ -222,7 +233,7 @@ it.each(
     mockVault.accountAssets.HDAccount[0].ethereum = matchingLast
       ? assets.reverse()
       : assets;
-    render(<EvmTransactionsList userTransactions={mockRows} />);
+    await renderHistory();
     await screen.findByText('1 TOKEN1');
     expectMetadata('TOKEN1', 'Chain 1 token', 'https://icons.invalid/1.png');
   }

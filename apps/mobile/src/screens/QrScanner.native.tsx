@@ -1,6 +1,7 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, BackHandler, Linking, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, Linking, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Camera, CameraView } from 'expo-camera';
 import type { PermissionResponse } from 'expo';

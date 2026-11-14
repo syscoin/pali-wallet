@@ -1,3 +1,4 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { NativeAccountChangeReview } from './NativeAccountChangeReview';
 import type { NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
@@ -30,7 +31,7 @@ import { AutoLockSettings, type IdlePreferenceSave } from './AutoLockSettings';
 import { BackupVerification } from './BackupVerification';
 import { nativeAccountSelection } from '../core/accountDirectory';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Linking, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, Keyboard, KeyboardAvoidingView, Linking, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createNativeRecoveryCoordinator, createNativeWalletControllers } from '../platform/nativeFactory';
 import { NativeControllerLifecycle } from '../custody/nativeControllerLifecycle';

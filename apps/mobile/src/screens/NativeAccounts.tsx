@@ -1,3 +1,4 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import type { TFunction } from 'i18next';
 import { useNativeTranslation } from '../platform/localization';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
@@ -10,7 +11,6 @@ import React, {
   useSyncExternalStore,
 } from 'react';
 import {
-  BackHandler,
   FlatList,
   Keyboard,
   KeyboardAvoidingView,

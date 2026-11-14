@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import { NotificationPermissionReturn } from '../src/notifications/permissionReturn.ts';
 import { watchNotificationChoices } from '../src/notifications/choices.ts';
 import assert from 'node:assert/strict';
@@ -283,7 +284,7 @@ function harness(watch = false, locked = watch, idleMinutes = 0) {
     AbortController,
     setTimeout,
     clearTimeout,
-    require(name: string) {
+    require(name: string) { const walletUi = walletUiFixture(name, dependencies); if (walletUi) return walletUi;
       assert.ok(
         Object.hasOwn(dependencies, name),
         `Unexpected dependency ${name}`

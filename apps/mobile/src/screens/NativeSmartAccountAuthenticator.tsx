@@ -1,3 +1,4 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import React, {
@@ -10,7 +11,6 @@ import React, {
 import {
   ActivityIndicator,
   AppState,
-  BackHandler,
   Platform,
   StyleSheet,
 } from 'react-native';

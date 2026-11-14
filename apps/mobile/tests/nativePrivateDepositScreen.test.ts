@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -68,7 +69,7 @@ function mount(file: string, name: string) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true },
   }).outputText;
   runInNewContext(code, { module, exports: module.exports, Error, AbortController, Date, setTimeout, clearTimeout,
-    require(path: string) { assert(Object.hasOwn(imports, path), `Missing screen port ${path}`); return imports[path]; } });
+    require(path: string) { const walletUi = walletUiFixture(path, imports); if (walletUi) return walletUi; assert(Object.hasOwn(imports, path), `Missing screen port ${path}`); return imports[path]; } });
   const expand = (value: any, visited: Set<Component>): any => {
     if (Array.isArray(value)) return value.map(child => expand(child, visited));
     if (!value || typeof value !== 'object' || !('type' in value)) return value;

@@ -1,7 +1,8 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import { resolveAssetTransferDisplay } from '../../../../source/shared/assetTransferDisplay';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { useDappLedgerConnection } from './useDappLedgerConnection';

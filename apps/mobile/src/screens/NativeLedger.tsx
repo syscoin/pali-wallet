@@ -1,3 +1,5 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
+import { WalletModal as Modal } from '../ui/WalletModal';
 import { useNativeTranslation } from '../platform/localization';
 import React, {
   useCallback,
@@ -8,10 +10,8 @@ import React, {
 } from 'react';
 import {
   ActivityIndicator,
-  BackHandler,
   KeyboardAvoidingView,
   Linking,
-  Modal,
   Platform,
   StyleSheet,
   View,

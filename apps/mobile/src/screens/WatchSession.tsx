@@ -1,7 +1,8 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { AutoLockSettings } from './AutoLockSettings';
 import { publicViewLock, securityPreferences, watchIdle } from '../platform/security';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { Alert, AppState, BackHandler } from 'react-native';
+import { Alert, AppState } from 'react-native';
 import type { WatchOnlyAuthority } from '../core/watchOnlyAuthority';
 import { RealAppShell } from './RealAppShell';
 import { RealTools } from './RealTools';

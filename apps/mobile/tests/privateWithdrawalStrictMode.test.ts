@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -75,7 +76,7 @@ test('real React StrictMode gives Withdrawal a fresh effect scope and preserves 
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true },
   }).outputText;
   runInNewContext(code, { module, exports: module.exports, Error, AbortController, Date, setTimeout, clearTimeout,
-    require(name: string) { assert(Object.hasOwn(imports, name), name); return imports[name]; } });
+    require(name: string) { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi; assert(Object.hasOwn(imports, name), name); return imports[name]; } });
   const container = dom.window.document.getElementById('root');
   const root = createRoot(container);
   try {

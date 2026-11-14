@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import { AUTOMATIC_FEE } from '../../../source/shared/transactionFeeChoice.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
@@ -157,7 +158,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
     module,
     exports: module.exports,
     AbortController,
-    require(name: string) {
+    require(name: string) { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi;
       assert(Object.hasOwn(imports, name), name);
       return imports[name];
     },

@@ -1,3 +1,4 @@
+import { walletUiFixture } from './walletUiFixture.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -42,7 +43,7 @@ test('direct token detail distinguishes loading, retryable inventory failure and
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true },
   }).outputText;
   runInNewContext(code, { module, exports: module.exports, Error, AbortController, Promise,
-    require(name: string) { assert(Object.hasOwn(imports, name), name); return imports[name]; } });
+    require(name: string) { const walletUi = walletUiFixture(name, imports); if (walletUi) return walletUi; assert(Object.hasOwn(imports, name), name); return imports[name]; } });
   const metadata = { contractAddress: '0x' + '2'.repeat(40), name: 'Saved token', symbol: 'TOK', decimals: 2 };
   let snapshot: NativeTokenSnapshot = {
     account: { address: '0x' + '1'.repeat(40), network: 'ethereum', revision: 1 },

@@ -1,7 +1,8 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { accountIdentity, projectAccounts, type AccountSelection } from '../core/accountDirectory';
 import type { WatchUtxoNetworksView } from '../core/publicAccountStorage';

@@ -1,3 +1,4 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { guardianRecoveryTerminalNotice } from '../../../../source/utils/smartAccount/guardianRecoveryLifecycle';
 import React, {
   useCallback,
@@ -10,7 +11,6 @@ import React, {
 import {
   ActivityIndicator,
   AppState,
-  BackHandler,
   FlatList,
   KeyboardAvoidingView,
   Platform,

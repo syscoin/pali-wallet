@@ -1,3 +1,5 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
+import { WalletModal as Modal } from '../ui/WalletModal';
 import { createAssetTransferDisplay } from '../../../../source/shared/assetTransferDisplay';
 import { AUTOMATIC_FEE, snapshotEvmFeeChoice, type EvmFeeChoice } from '../../../../source/shared/transactionFeeChoice';
 import { NetworkFeeSheet } from './NetworkFeeSheet';
@@ -25,10 +27,8 @@ import React, {
 } from 'react';
 import {
   ActivityIndicator,
-  BackHandler,
   Keyboard,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   ScrollView,
   StyleSheet,

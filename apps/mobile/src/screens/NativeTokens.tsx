@@ -1,3 +1,4 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
 import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
@@ -11,7 +12,6 @@ import React, {
 } from 'react';
 import {
   ActivityIndicator,
-  BackHandler,
   Keyboard,
   StyleSheet,
   View,

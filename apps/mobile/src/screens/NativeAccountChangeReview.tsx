@@ -1,5 +1,6 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import React, { useEffect, useState } from 'react';
-import { BackHandler, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeAccountChangeReview as Review } from '../connections/accountChangeRequests';
 import type { NativeConnectionsView } from '../connections/types';

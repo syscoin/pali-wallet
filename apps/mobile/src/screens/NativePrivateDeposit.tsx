@@ -1,3 +1,4 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import React, {
   useCallback,
@@ -10,7 +11,6 @@ import React, {
 import {
   ActivityIndicator,
   AppState,
-  BackHandler,
   type KeyDownEvent,
   Platform,
   StyleSheet,

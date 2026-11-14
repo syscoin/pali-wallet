@@ -1,6 +1,7 @@
+import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
+import { AppState, Keyboard, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeNoteInventory, NativeSavedNote } from '../custody/noteBackupRuntime';
 import { Button, Card, colors, Header, Notice, Screen, styles, Text } from '../ui';
