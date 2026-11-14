@@ -8,6 +8,7 @@ import {
 } from '../../../../source/shared/dappCalls.ts';
 import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer.ts';
 import type { NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
+import { EvmAssetStateError } from '../../../../source/shared/evmAssetState.ts';
 import type { SavedCollectible } from '../portfolio/tokenRegistry.ts';
 import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
 import type { Erc20Metadata } from '../../../../source/shared/erc20.ts';
@@ -129,6 +130,7 @@ export type NativeSmartAccountOperationSnapshot = Readonly<{
   userOperationSubmissionStarted: boolean;
   metadataRefresh?: 'refreshing' | 'failed' | 'complete';
   error: string | null;
+  preparationFailure?: 'INSUFFICIENT_ASSET';
 }>;
 export type NativeSmartAccountOperationHost = Readonly<{
   account: string;
@@ -444,8 +446,13 @@ export class NativeSmartAccountOperation {
           callData: prepared.userOperation.callData,
         }),
       });
-    } catch {
-      this.fail();
+    } catch (error) {
+      let preparationFailure: 'INSUFFICIENT_ASSET' | undefined;
+      if (error instanceof EvmAssetStateError && error.code === 'INSUFFICIENT_ASSET') {
+        // A late read cannot replace cancellation or a departed view's outcome.
+        try { this.check(); preparationFailure = 'INSUFFICIENT_ASSET'; } catch { /* Preserve lifecycle failure. */ }
+      }
+      this.fail(preparationFailure);
     } finally {
       this.preparing = false;
       finish();
@@ -610,7 +617,7 @@ export class NativeSmartAccountOperation {
       this.cancel();
     }
   }
-  private fail() {
+  private fail(preparationFailure?: 'INSUFFICIENT_ASSET') {
     if (this.disposed || this.snapshot.phase === 'complete') return;
     this.prepared = null;
     this.pendingPayer?.reject(new Error('SMART_OPERATION_EXPIRED'));
@@ -620,6 +627,7 @@ export class NativeSmartAccountOperation {
     this.publish({
       phase: 'failed',
       payerReview: null,
+      preparationFailure: this.signingStarted ? undefined : preparationFailure,
       error: this.signingStarted
         ? 'Authorization ended. Check the account and Activity before starting again.'
         : 'This operation could not be prepared. Return to your account and try again.',

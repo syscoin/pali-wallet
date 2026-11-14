@@ -41,6 +41,33 @@ function fixture() {
 }
 const text = (nodes: ReturnType<ReturnType<typeof fixture>['render']>) => nodes.flatMap(node => node.children.filter(value => typeof value === 'string')).join(' ');
 
+test('unsigned Smart collectible shortfall shows localized amount feedback instead of transfer status', () => {
+  const f = fixture();
+  try {
+    const state = { ...f.state({ kind: 'nft-transfer', chainId: '1', from: owner, contractAddress: contract,
+      recipient, tokenStandard: 'ERC-1155', tokenId: '3', amountUnits: '11' }), phase: 'failed' as const,
+    error: 'This operation could not be prepared. Return to your account and try again.', preparationFailure: 'INSUFFICIENT_ASSET' as const };
+    const notices = f.render(state).filter(node => node.type === 'Notice');
+    assert(notices.some(node => node.props.title === 'Insufficient funds' && node.props.body === 'Not enough tokens for this transfer.'));
+    assert(!notices.some(node => node.props.title === 'Check transfer status'));
+    assert.equal(f.calls.length, 0);
+  } finally { f.close(); }
+});
+
+for (const submission of [false, true]) test(`Smart asset feedback does not relabel ${submission ? 'a submission' : 'an untyped error'} as an unsigned amount failure`, () => {
+  const f = fixture();
+  try {
+    const state = { ...f.state({ kind: 'nft-transfer', chainId: '1', from: owner, contractAddress: contract,
+      recipient, tokenStandard: 'ERC-1155', tokenId: '3', amountUnits: '11' }), phase: 'failed' as const,
+    error: 'Insufficient token or collectible balance', ...(submission ? {
+      preparationFailure: 'INSUFFICIENT_ASSET' as const, transactionHash: '0x' + 'ab'.repeat(32), userOperationSubmissionStarted: true,
+    } : {}) };
+    const notices = f.render(state).filter(node => node.type === 'Notice');
+    assert(notices.some(node => node.props.title === 'Check transfer status' && node.props.body === state.error));
+    assert(!notices.some(node => node.props.title === 'Insufficient funds'));
+  } finally { f.close(); }
+});
+
 test('Smart dapp token review shows exact token amount and recipient with native value separately', () => {
   const f = fixture();
   try {

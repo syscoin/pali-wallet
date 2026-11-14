@@ -402,6 +402,8 @@ export function NativeSmartAccountOperationContent({
   ) : null;
   const viewableHash = state.transactionHash && /^0x[0-9a-f]{64}$/i.test(state.transactionHash) &&
     (state.phase === 'complete' || state.userOperationSubmissionStarted) ? state.transactionHash : null;
+  const insufficientAsset = state.phase === 'failed' && state.preparationFailure === 'INSUFFICIENT_ASSET' &&
+    !state.transactionHash && !state.userOperationSubmissionStarted;
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
       <Screen scrollResetKey={`${state.phase}:${payer?.id ?? ''}`} footer={<>{primary}{viewableHash && onViewTransaction && <Button title={t('mobile.sendAssetViews.evm.viewTransaction')} onPress={() => {
@@ -871,7 +873,9 @@ export function NativeSmartAccountOperationContent({
         {state.error && state.phase !== 'preparing' && (
           <Notice
             title={
-              modules
+              insufficientAsset
+                ? t('send.insufficientFunds')
+                : modules
                 ? t('mobile.smartAccountModules.checkStatus')
                 : authenticator
                 ? t('mobile.recoveryStatusViews.operation.checkAuthenticatorStatus')
@@ -885,7 +889,7 @@ export function NativeSmartAccountOperationContent({
                 ? t('mobile.recoveryStatusViews.operation.checkTransferStatus')
                 : t('mobile.recoveryStatusViews.operation.checkDeploymentStatus')
             }
-            body={state.error}
+            body={insufficientAsset ? t('mobile.sendAssetViews.evm.notEnoughTokensForThisTransfer') : state.error}
             tone="amber"
           />
         )}
