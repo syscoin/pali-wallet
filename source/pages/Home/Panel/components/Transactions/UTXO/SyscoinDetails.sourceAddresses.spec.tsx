@@ -327,7 +327,7 @@ it('keeps reflected token metadata out of the hero and Asset GUID copy', async (
       ],
     },
   });
-  await screen.findByText('1.0000 SPT');
+  await screen.findByText('1 SPT');
   expect(screen.queryByText(reflection)).toBeNull();
   expect(screen.queryByRole('button', { name: /asset.?guid/i })).toBeNull();
 });
@@ -347,7 +347,7 @@ it('copies the exact canonical uint64 Asset GUID while excluding invalid alterna
       vout: [{ n: 0, assetInfo: { assetGuid: guid, value: '100000000' } }],
     },
   });
-  await screen.findByText('1.0000 SPT');
+  await screen.findByText('1 SPT');
   fireEvent.click(screen.getByRole('button', { name: /asset.?guid/i }));
   expect(mockCopy).toHaveBeenLastCalledWith(guid);
 });
@@ -366,7 +366,7 @@ it.each([
       ],
     },
   });
-  await screen.findByText('2.0000 SYSX');
+  await screen.findByText('2 SYSX');
   expect(screen.queryByText(/reflected-label/)).toBeNull();
 });
 
