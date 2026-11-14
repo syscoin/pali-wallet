@@ -131,6 +131,20 @@ test('Smart ERC721 transferFrom uses verified token ID instead of treating it as
   } finally { f.close(); }
 });
 
+for (const units of ['1', '2', ((1n << 256n) - 1n).toString()]) test(`Smart NFT quantity preserves ${units} with the matching noun`, () => {
+  const f = fixture();
+  try {
+    const data = encode('safeTransferFrom(address,address,uint256,uint256,bytes)', [owner, recipient, 3, units, '0x']);
+    const assetTransfer = decodeAssetTransfer(data, contract, { standard: 'ERC-1155' });
+    const nodes = f.render(f.state({ kind: 'dapp-call', recipient: contract, amountUnits: '0', data }), { assetTransfer });
+    const expected = `${units} ${units === '1' ? 'NFT' : 'NFTs'}`;
+    assert(nodes.some(node => node.type === 'Text' && node.children.join('') === expected));
+    assert(nodes.some(node => node.type === 'Text' && node.props.accessibilityLabel === `Token ID 3, quantity ${units}`));
+    assert(!nodes.some(node => node.type === 'Text' && node.children.join('') === '1 NFTs'));
+    assert.deepEqual(f.calls, []);
+  } finally { f.close(); }
+});
+
 test('unknown Smart contract calls retain explicit native-only value and raw transaction details', () => {
   const f = fixture();
   try {
