@@ -8,8 +8,9 @@ import { decodeAccountRecord } from '../storage/accountRecordKey.ts';
 import { PUBLIC_SESSION_RECORD_KEY, decodePublicSessionRecord } from '../storage/publicSessionRecordKey.ts';
 import { inspectNoteDomain } from '../storage/noteDomain.ts';
 import { decodeStorageValue, STORAGE_LIMITS } from '../storage/json.ts';
-import type { OpenWalletStorage, RecoveryStorageSnapshot } from '../storage/types.ts';
+import type { OpenWalletStorage, RecoveryStorageSnapshot, WalletIdentityRead } from '../storage/types.ts';
 import { readSentrySlot, sentrySlotNetwork } from '../storage/sentryKeyDomain.ts';
+import { readSentryNodeStore, sentryNodeSlotNetwork } from '../storage/sentryNodeDomain.ts';
 import { ACTIVITY_STORAGE_KEY, inspectRecoveryHistory } from '../activity/historyStore.ts';
 import { NATIVE_TOKEN_REGISTRY_KEY, inspectRecoveryTokens } from '../portfolio/tokenRegistry.ts';
 import { inspectRecoveryCatalogue, WALLET_CATALOGUE_KEY } from './walletCatalogue.ts';
@@ -38,7 +39,8 @@ const zero = (): RecoveryInventoryCounts => ({ hdAccounts: 0, importedKeys: 0,
   retainedSignedTransactions: 0, tokenEntries: 0, historySummaries: 0, cachedTransactions: 0, activityPreferences: 0 });
 
 /** Canonical native record domains. Runtime and recovery share this admission check. */
-export function assertNativeRecordDomains(records: RecoveryStorageSnapshot['records'], profileId: string | null): void {
+export function assertNativeRecordDomains(records: RecoveryStorageSnapshot['records'], identity: WalletIdentityRead | null): void {
+  const profileId = identity?.root?.profileId ?? null;
   for (const { key, value } of records) {
     if (key === PUBLIC_SESSION_RECORD_KEY) { decodePublicSessionRecord(value); continue; }
     if (inspectNativePasskeyStorageRecord(key, value)) continue;
@@ -63,6 +65,14 @@ export function assertNativeRecordDomains(records: RecoveryStorageSnapshot['reco
       readSentrySlot(value, sentryNetwork);
       continue;
     }
+    const nodeNetwork = sentryNodeSlotNetwork(key);
+    if (nodeNetwork) {
+      if (!identity?.root) throw new Error('NATIVE_STORAGE_INVALID_SENTRY_NODE');
+      const node = readSentryNodeStore(value, nodeNetwork);
+      if (node.profileId !== identity.root.profileId || node.walletBindingId !== identity.walletBindingId)
+        throw new Error('NATIVE_STORAGE_INVALID_SENTRY_NODE');
+      continue;
+    }
     if (!['vault', 'vault-keys', 'utf8Error', WALLET_CATALOGUE_KEY, NATIVE_TOKEN_REGISTRY_KEY, ACTIVITY_STORAGE_KEY, UTXO_SIGNED_RECORD_KEY, NATIVE_CONNECTION_STORAGE_KEY].includes(key))
       throw new Error('NATIVE_STORAGE_UNSUPPORTED_RECORD');
     if (key === 'utf8Error') {
@@ -79,11 +89,13 @@ export function assertNativeRecordDomains(records: RecoveryStorageSnapshot['reco
 export function inspectRecoveryInventory(snapshot: RecoveryStorageSnapshot): RecoveryInventory {
   const backup = snapshot.state.backup;
   try {
-    if (snapshot.records.length > STORAGE_LIMITS.records + 2 ||
-        snapshot.records.filter(({ key }) => !sentrySlotNetwork(key)).length > STORAGE_LIMITS.records) throw new Error();
+    if (snapshot.records.length > STORAGE_LIMITS.records + 4 ||
+        snapshot.records.filter(({ key }) => !sentrySlotNetwork(key) && !sentryNodeSlotNetwork(key)).length > STORAGE_LIMITS.records ||
+        snapshot.records.filter(({ key }) => sentrySlotNetwork(key)).length > 2 ||
+        snapshot.records.filter(({ key }) => sentryNodeSlotNetwork(key)).length > 2) throw new Error();
     const records = new Map(snapshot.records.map(({ key, value }) => [key, value]));
     if (records.size !== snapshot.records.length) throw new Error();
-    try { assertNativeRecordDomains(snapshot.records, snapshot.identity?.root?.profileId ?? null); }
+    try { assertNativeRecordDomains(snapshot.records, snapshot.identity); }
     catch { return result('unavailable', 'unsupported-record', backup, null); }
     if (snapshot.state.presence === 'empty') {
       if (snapshot.identity ||
