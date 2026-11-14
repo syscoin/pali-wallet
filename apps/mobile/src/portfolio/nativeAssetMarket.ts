@@ -12,6 +12,9 @@ export type AssetMarketReference = Readonly<{
   kind: 'native' | 'token'; networkId: string; registration?: NativeNetworkRegistration | null; contractAddress?: string;
 }>;
 export type AssetMarketSource = Readonly<{ kind: 'native'; id: string } | { kind: 'token'; platform: string; contract: string }>;
+/** Reader-local monotonic expiry, separate from the provider's updatedAt. */
+export type NativeAssetMarketResult = Readonly<{ data: AssetMarket; expiresAt: number }>;
+export const nativeAssetMarketNow = () => performance.now();
 /** Reuse only images accompanying the existing verified, registered market read. */
 export function rememberNativeAssetMarketIcon(asset: AssetMarketReference, data: AssetMarket): void {
   if (asset.kind !== 'token' || !data.iconUri || !asset.contractAddress || !nativeAssetMarketSource(asset)) return;
@@ -34,13 +37,13 @@ export function nativeAssetMarketSource(asset: AssetMarketReference): AssetMarke
     ? { kind: 'token', platform: metadata.coingeckoPlatformId, contract } : null;
 }
 
-export function createNativeAssetMarketReader(fetch: WalletHttpFetch, purpose: AssetMarketPurpose, clock = () => performance.now()) {
+export function createNativeAssetMarketReader(fetch: WalletHttpFetch, purpose: AssetMarketPurpose, clock = nativeAssetMarketNow) {
   if (purpose !== 'price' && purpose !== 'history') throw new Error('Invalid market purpose');
-  const cache = new Map<string, { data: AssetMarket; expires: number }>();
-  return async (source: AssetMarketSource, currency: FiatCurrency, owner: AbortSignal): Promise<AssetMarket | null> => {
+  const cache = new Map<string, NativeAssetMarketResult>();
+  return async (source: AssetMarketSource, currency: FiatCurrency, owner: AbortSignal): Promise<NativeAssetMarketResult | null> => {
     if (owner.aborted || !isFiatCurrency(currency)) return null;
-    const key = JSON.stringify([source, currency]), cached = cache.get(key);
-    if (cached && cached.expires > clock() && cached.expires - clock() <= 300_000) return cached.data;
+    const key = JSON.stringify([source, currency]), cached = cache.get(key), now = clock();
+    if (cached && cached.expiresAt > now && cached.expiresAt - now <= 300_000) return cached;
     const request = new AbortController(), cancel = () => request.abort();
     owner.addEventListener('abort', cancel, { once: true });
     const timer = setTimeout(cancel, 8000);
@@ -68,9 +71,10 @@ export function createNativeAssetMarketReader(fetch: WalletHttpFetch, purpose: A
         if (owner.aborted) return null;
         data = Object.freeze({ ...data, prices: Object.freeze(prices) });
       }
-      cache.delete(key); cache.set(key, { data, expires: clock() + 300_000 });
+      const result = Object.freeze({ data, expiresAt: clock() + 300_000 });
+      cache.delete(key); cache.set(key, result);
       if (cache.size > 24) cache.delete(cache.keys().next().value!);
-      return data;
+      return result;
     } catch { return null; }
     finally { clearTimeout(timer); owner.removeEventListener('abort', cancel); cancel(); }
   };
