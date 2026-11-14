@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { shallowEqual, useSelector } from 'react-redux';
 
@@ -19,7 +19,10 @@ import {
   DecodedTransactionParams,
 } from 'components/TransactionDetails';
 import { SmartAccountFeePayer } from 'components/TransactionDetails/SmartAccountFeePayer';
-import { RetainedTransactionReplay } from 'components/TransactionOptions/RetainedTransactionReplay';
+import {
+  RetainedTransactionReplay,
+  type SavedTransaction,
+} from 'components/TransactionOptions/RetainedTransactionReplay';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { useContextualState } from 'hooks/useContextualState';
 import { useController } from 'hooks/useController';
@@ -69,6 +72,7 @@ import {
   replacementHash,
   ReplacementWinner,
 } from './replacementWinner';
+import { savedTransactionHistoryRow } from './useSavedEvmTransactions';
 
 type LiveObservation = { summary?: string; token: object };
 type DetailsRead = {
@@ -191,6 +195,29 @@ export const EvmTransactionDetailsEnhanced = ({
   const scope = `${walletScope.account}:${walletScope.network}:${normalizedHash}`;
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
+  // Reuse the replay view's authenticated public read. No transaction body is
+  // persisted in navigation, and local intent supplies no receipt evidence.
+  const [savedTransaction, setSavedTransaction] =
+    useContextualState<SavedTransaction | null>(scope, null);
+  const onRetainedTransaction = useCallback(
+    (transaction: SavedTransaction | null) => {
+      if (scopeRef.current !== scope) return;
+      setSavedTransaction(
+        transaction?.hash?.toLowerCase() === normalizedHash &&
+          parseEvmInteger(transaction.chainId) === chainId
+          ? transaction
+          : null
+      );
+    },
+    [scope, normalizedHash, chainId]
+  );
+  const savedSummary = useMemo(
+    () =>
+      savedTransaction
+        ? savedTransactionHistoryRow(savedTransaction)
+        : undefined,
+    [savedTransaction]
+  );
   const copyContextRef = useRef({ active: true, sequence: 0 });
   useEffect(() => {
     copyContextRef.current.active = true;
@@ -297,7 +324,9 @@ export const EvmTransactionDetailsEnhanced = ({
     );
   // A disappearing history row must not restore an already superseded body or
   // route snapshot. Revalidate once through the same scoped lookup lifecycle.
-  const usableSummary = refreshSupersededRead ? undefined : matchingTx;
+  const usableSummary = refreshSupersededRead
+    ? undefined
+    : matchingTx || savedSummary;
   const enhancedDetails = refreshSupersededRead
     ? null
     : detailsRead?.data ?? null;
@@ -990,7 +1019,11 @@ export const EvmTransactionDetailsEnhanced = ({
             {t('transactions.transactionMayNotExistYet')}
           </p>
         </div>
-        <RetainedTransactionReplay key="retained-replay" hash={hash} />
+        <RetainedTransactionReplay
+          key="retained-replay"
+          hash={hash}
+          onRetainedTransaction={onRetainedTransaction}
+        />
       </>
     );
   }
@@ -1052,7 +1085,14 @@ export const EvmTransactionDetailsEnhanced = ({
           <p
             className={`text-xs font-normal ${evmSettlementClass(settlement)}`}
           >
-            {t(evmSettlementLabel(settlement))}
+            {t(
+              settlement === 'pending' &&
+                !enhancedDetails &&
+                (transactionTx as any)?.historySource ===
+                  EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned
+                ? 'transactions.savedUnconfirmed'
+                : evmSettlementLabel(settlement)
+            )}
           </p>
         }
         isLoading={isLoadingDetails}
@@ -1067,7 +1107,11 @@ export const EvmTransactionDetailsEnhanced = ({
         typeof mergedTransaction?.from === 'string' && (
           <SmartAccountFeePayer address={mergedTransaction.from} />
         )}
-      <RetainedTransactionReplay key="retained-replay" hash={hash} />
+      <RetainedTransactionReplay
+        key="retained-replay"
+        hash={hash}
+        onRetainedTransaction={onRetainedTransaction}
+      />
 
       {/* Display decoded transaction parameters */}
       <DecodedTransactionParams decodedData={decodedTxData} />

@@ -1,4 +1,5 @@
 import { defaultAbiCoder } from './ethersV6Compat.ts';
+import { SMART_ACCOUNT_PENDING_STATE } from './smartAccount/pendingState.ts';
 
 const GUARDIAN_RECOVERY_POLICY_CHANGED =
   'PALI_GUARDIAN_RECOVERY_POLICY_CHANGED';
@@ -22,6 +23,16 @@ export const isGuardianRecoveryPolicyChangedError = (
   return (
     value.code === GUARDIAN_RECOVERY_POLICY_CHANGED ||
     value.message === GUARDIAN_RECOVERY_POLICY_CHANGED
+  );
+};
+
+/** Display guidance only; this does not release the retained nonce reservation. */
+export const isSmartAccountPendingReviewError = (error: unknown): boolean => {
+  if (error === SMART_ACCOUNT_PENDING_STATE) return true;
+  if (!error || typeof error !== 'object') return false;
+  return (
+    Object.getOwnPropertyDescriptor(error, 'message')?.value ===
+    SMART_ACCOUNT_PENDING_STATE
   );
 };
 

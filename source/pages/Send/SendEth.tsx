@@ -51,6 +51,7 @@ import {
   navigateWithContext,
   getWalletNavigationScope,
 } from 'utils/index';
+import { isNativeBalanceAvailable } from 'utils/nativeBalance';
 import { takeHardwareSendDraft } from 'utils/navigationState';
 import { isErc721BalanceAvailable } from 'utils/nftQuantity';
 import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
@@ -264,6 +265,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     selectActiveAccountWithAssets
   );
 
+  const isNativeBalanceKnown = isNativeBalanceAvailable(
+    activeAccount?.balances?.ethereum
+  );
+
   // Lazy reverse ENS for typed addresses. Placed later to ensure dependencies are declared
   const reverseEnsTimeoutRef = useRef<NodeJS.Timeout>();
 
@@ -452,11 +457,13 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   }, [isCurrentForm]);
 
   useEffect(() => {
+    // Opening a draft refreshes its balance without interrupting the form.
+    // Submission keeps its separate foreground balance preflight.
     const refreshBalances = async () => {
       try {
         await controllerEmitter(
           ['wallet', 'refreshActiveAccountBalances'],
-          [{ includeAssets: false }]
+          [{ includeAssets: false, showLoading: false }]
         );
       } catch (error) {
         console.error('Failed to refresh send balances:', error);
@@ -814,6 +821,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const handleSubmit = useCallback(
     async (values: any) => {
       if (!isCurrentForm()) return;
+      if (!selectedAsset && !isNativeBalanceKnown) return;
       if (
         submittedAssetSelectionRevision.current !==
         assetSelectionRevision.current
@@ -993,6 +1001,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     [
       navigate,
       isHardwareAccount,
+      isNativeBalanceKnown,
       activeAccount.address,
       activeAccount?.balances?.ethereum,
       selectedAsset,
@@ -1048,6 +1057,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       return getAssetBalance(selectedAsset, false);
     }
 
+    if (!isNativeBalanceKnown) return t('send.balanceUnavailable');
     // For native currency, format the balance for display (4 decimals)
     const fullBalance = String(activeAccount?.balances?.ethereum || 0);
     const displayBalance = formatFullPrecisionBalance(fullBalance, 4);
@@ -1096,7 +1106,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         return;
       }
     } else {
-      // For native ETH, use full balance
+      // For native ETH, use full balance only once it is known.
+      if (!isNativeBalanceKnown) return;
       // The backend will handle gas deduction for MAX sends
       if (hasPendingOutgoingEvmTx) {
         alert.error(t('send.maxUnavailablePendingTx'));
@@ -1418,6 +1429,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const isErc1155Selection =
     selectedAsset?.isNft && selectedAsset?.tokenStandard === 'ERC-1155';
   const isAmountDisabled =
+    (!selectedAsset && !isNativeBalanceKnown) ||
     (isErc1155Selection && verifiedTokenBalance === null) ||
     (!selectedAsset?.isNft && selectedAsset && verifiedERC20Balance === null) ||
     isVerifyingERC20 ||
@@ -1940,6 +1952,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                           return Promise.resolve();
                         }
 
+                        if (!isNativeBalanceKnown)
+                          return Promise.reject(t('send.balanceUnavailable'));
+
                         // Native currency uses its 18-decimal denomination.
                         let valueBN: BigNumber;
                         try {
@@ -2284,6 +2299,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
             className="text-sm text-brand-royalblue"
             type="submit"
             fullWidth
+            disabled={!selectedAsset && !isNativeBalanceKnown}
             loading={
               hardwareDraftPending || (!selectedAsset && isCalculatingGas)
             }

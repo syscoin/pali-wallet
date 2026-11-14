@@ -40,6 +40,7 @@ const mockT = (key: string) =>
     {
       'send.confirmed': 'Confirmed',
       'send.pending': 'Pending',
+      'transactions.savedUnconfirmed': 'Saved · unconfirmed',
       'send.failed': 'Failed',
       'transactions.replaced': 'Replaced',
       'transactions.replacementPending': 'Replacement pending',
@@ -169,6 +170,17 @@ beforeEach(() => {
   mockRows = [];
   mockApiUrl = undefined;
   mockEmitter.mockReset();
+});
+
+it('changes the saved-only label when the same hash arrives in pending network history', async () => {
+  const local = transaction('a', { historySource: 'local-signed' });
+  mockRows = [local];
+  const view = render(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('Saved · unconfirmed')).toBeTruthy();
+  mockRows = [transaction('a', { historySource: 'explorer-txlist' })];
+  view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('Pending')).toBeTruthy();
+  expect(screen.queryByText('Saved · unconfirmed')).toBeNull();
 });
 
 it.each([
@@ -543,7 +555,7 @@ it.each([
       hasMore: false,
     }));
     render(<EvmTransactionsList userTransactions={mockRows} />);
-    expect(await screen.findByText('Pending')).toBeTruthy();
+    expect(await screen.findByText('Saved · unconfirmed')).toBeTruthy();
     expect(screen.queryByText(`Options:${local.hash}`)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     expect(mockNavigate).toHaveBeenLastCalledWith('/home/details', {
@@ -551,7 +563,7 @@ it.each([
     });
     fireEvent.click(screen.getByRole('button', { name: 'buttons.loadMore' }));
     await waitFor(() => {
-      expect(screen.queryByText('Pending')).toBeNull();
+      expect(screen.queryByText('Saved · unconfirmed')).toBeNull();
       expect(screen.getByText(label)).toBeTruthy();
     });
     expect(screen.queryByText(`Options:${local.hash}`)).toBeNull();

@@ -85,6 +85,52 @@ export type EvmReplayPreparation = Readonly<
       transaction: EvmSavedTransaction;
     }
 >;
+export type EvmReplaySubmissionResult = Readonly<{
+  hash: string;
+  /** Display only: never proves non-broadcast or releases the retained nonce. */
+  reason?: 'rpc-insufficient-funds';
+  status: 'submitted' | 'unknown';
+}>;
+
+function replaySubmissionDiagnostic(
+  error: unknown,
+  rawTransaction: string
+): EvmReplaySubmissionResult['reason'] {
+  // Do not traverse arbitrary error graphs, accessors, or serialized bodies.
+  const own = (value: unknown, key: string): unknown => {
+    if (!value || typeof value !== 'object') return undefined;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    return descriptor && 'value' in descriptor ? descriptor.value : undefined;
+  };
+  const rpcInsufficientFunds = (value: unknown): boolean => {
+    const code = own(value, 'code');
+    const message = own(value, 'message');
+    return (
+      typeof code === 'number' &&
+      Number.isInteger(code) &&
+      code >= -32099 &&
+      code <= -32000 &&
+      typeof message === 'string' &&
+      message.length <= 1024 &&
+      /^(?:insufficient funds for gas\b|insufficient gas funds\b)/i.test(
+        message
+      )
+    );
+  };
+  try {
+    if (rpcInsufficientFunds(error)) return 'rpc-insufficient-funds';
+    // Ethers attaches the submitted envelope and the underlying RPC error.
+    if (
+      own(error, 'code') === 'INSUFFICIENT_FUNDS' &&
+      own(error, 'transaction') === rawTransaction &&
+      rpcInsufficientFunds(own(own(error, 'info'), 'error'))
+    )
+      return 'rpc-insufficient-funds';
+  } catch {
+    // A malformed diagnostic must never replace the original unknown result.
+  }
+  return undefined;
+}
 export type EvmReplayDispatchAdmission = (
   send: () => Promise<string>,
   preflight: () => Promise<void>
@@ -534,9 +580,7 @@ export class EvmSignedReplay {
     this.pending = { ...state, entry, review };
     return Object.freeze({ status: 'review', review });
   }
-  async confirm(
-    id: string
-  ): Promise<Readonly<{ hash: string; status: 'submitted' | 'unknown' }>> {
+  async confirm(id: string): Promise<EvmReplaySubmissionResult> {
     const pending = this.pending;
     if (!pending || pending.review.id !== id)
       throw new EvmReplayError('EXPIRED');
@@ -589,6 +633,7 @@ export class EvmSignedReplay {
       hash: retainedHash,
     });
     let dispatched = false;
+    let reason: EvmReplaySubmissionResult['reason'];
     try {
       // Replay comes only from the authenticated retained record. The network
       // callback must pass the durable replay admission below before sending.
@@ -618,7 +663,13 @@ export class EvmSignedReplay {
                   checkAdmission();
                   assertSynchronousEvmFeeGuard(authorization.assertCurrent);
                   if (!requiresPayerCheck) dispatched = true;
-                  const response = send();
+                  const response = send().catch((error: unknown) => {
+                    reason = replaySubmissionDiagnostic(
+                      error,
+                      current.rawTransaction
+                    );
+                    throw error;
+                  });
                   dispatched = true;
                   // The response can reject before the storage queue yields.
                   void response.catch(() => undefined);
@@ -664,7 +715,11 @@ export class EvmSignedReplay {
     } catch (error) {
       if (!dispatched) throw error;
       // Retained bytes survive a lost acknowledgement; never dispatch again here.
-      return Object.freeze({ status: 'unknown', hash: entry.hash });
+      return Object.freeze({
+        status: 'unknown',
+        hash: entry.hash,
+        ...(reason ? { reason } : {}),
+      });
     }
   }
 }

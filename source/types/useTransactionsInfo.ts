@@ -1,4 +1,5 @@
 import type { ITransactionInfoUtxo } from './utxoTransaction';
+import type { EvmTransactionHistorySource } from '../shared/evmHistory';
 export type {
   IAssetInfo,
   ITransactionInfoUtxo,
@@ -21,6 +22,7 @@ export interface ITransactionInfoEvm {
   gas: string;
   gasPrice: string;
   hash: string;
+  historySource?: EvmTransactionHistorySource;
   input: string;
   isCanceled?: boolean;
   isError?: string | null;
