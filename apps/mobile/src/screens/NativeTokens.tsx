@@ -909,6 +909,10 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
       if (alive.current && autoEnumerated.current === request) return findTokenIds();
     });
   });
+  const collectionQuantity = !hideBalances && enumeration.kind === 'ready' && enumeration.totalOwned !== undefined
+    ? t(enumeration.totalOwned === '1' ? 'mobile.dappConsent.transactionReview.nftQuantityOne' : 'mobile.dappConsent.transactionReview.nftQuantity', { quantity: enumeration.totalOwned })
+    : HIDDEN_BALANCE;
+  const collectionBalance = `${t('mobile.sendAssetViews.tokens.collectionBalance2')} ${collectionQuantity}`;
   return <View style={s.section} testID="native-collectible-ownership">
     {item ? <Card style={s.tokenRow}>
       {'name' in item && <Text style={s.provenance}>{t('mobile.sendAssetViews.tokens.explorerreportedName')}</Text>}
@@ -975,8 +979,8 @@ export function CollectibleOwnership({ item, network, check, enumerate, busy, ca
       {enumeration.kind === 'error' && <Notice title={t('mobile.sendAssetViews.tokens.tokenIDsUnavailable')} body={t('mobile.sendAssetViews.tokens.theNetworkCouldntListTokenIDsTryAgainOrEnter')} tone="amber" />}
       {enumeration.kind === 'ready' && <Card style={s.tokenRow} testID="native-collectible-enumeration">
         {enumeration.totalOwned !== undefined && <Text selectable style={s.contract} testID="native-collection-balance"
-          accessibilityLabel={hideBalances ? t('mobile.sendAssetViews.tokens.collectionBalanceHidden') : t('mobile.sendAssetViews.tokens.collectionBalance', { amount: enumeration.totalOwned })}>
-          {t('mobile.sendAssetViews.tokens.collectionBalance2')}{' '}{hideBalances ? HIDDEN_BALANCE : t('mobile.sendAssetViews.tokens.nftQuantity', { amount: enumeration.totalOwned })}
+          accessibilityLabel={hideBalances ? t('mobile.sendAssetViews.tokens.collectionBalanceHidden') : collectionBalance}>
+          {collectionBalance}
         </Text>}
         {enumeration.method === 'manual' ? <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.tokenIDLookupIsUnavailableEnterATokenIDManually')}</Text>
           : !enumeration.tokenIds.length ? <Text style={styles.muted}>{t('mobile.sendAssetViews.tokens.noTokenIDsFoundForThisAccountYouCanStill')}</Text>

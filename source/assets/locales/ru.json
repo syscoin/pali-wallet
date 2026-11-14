@@ -3598,8 +3598,6 @@
         "viewToken": "Посмотреть токен {{name}} {{id}}",
         "reviewTokenContract": "Проверить контракт токена {{symbol}} {{address}}",
         "tokenBalance": "Баланс токена {{amount}}",
-        "collectionBalance": "Баланс коллекции: {{amount}} NFT",
-        "nftQuantity": "{{amount}} NFT",
         "tokenId": "ID токена {{id}}",
         "networkQuantity": "Количество в сети: {{amount}}",
         "importTokenHint": "Введите контракт токена в сети {{network}}. Название и символ не подтверждают его подлинность.",

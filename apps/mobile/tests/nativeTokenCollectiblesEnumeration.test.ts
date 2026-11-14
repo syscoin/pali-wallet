@@ -190,25 +190,31 @@ test('failed enumeration permits retry and never blocks a manual ownership check
   } finally { f.close(); }
 });
 
-for (const totalOwned of ['0', maximumId, undefined]) test(`collection balance preserves ${totalOwned ?? 'unavailable'} without another lookup`, async () => {
+for (const totalOwned of ['0', '1', '2', maximumId, undefined]) test(`collection balance preserves ${totalOwned ?? 'unavailable'} without another lookup`, async () => {
   const f = fixture({ enumerate: async () => ({ tokenIds: totalOwned === '0' ? [] : ['0'], hasMore: totalOwned === maximumId, method: 'enumeration', totalOwned }) });
   try {
     manual(f); button(f.render(), 'Find token IDs').props.onPress(); await tick();
     const balance = f.render().find(node => node.props.testID === 'native-collection-balance');
     if (totalOwned === undefined) assert.equal(balance, undefined);
-    else { assert(balance); assert.equal(balance.props.accessibilityLabel, `Collection balance: ${totalOwned} NFTs`); }
+    else {
+      assert(balance);
+      const expected = `Collection balance: ${totalOwned} ${totalOwned === '1' ? 'NFT' : 'NFTs'}`;
+      assert.equal(balance.props.accessibilityLabel, expected);
+      assert.equal(balance.children.join(''), expected);
+      assert.equal(balance.props.selectable, true);
+    }
     assert.equal(f.enumerations.length, 1); assert.deepEqual(f.checks, []);
   } finally { f.close(); }
 });
 
-test('private collection balance masks the count in visible and accessible text', async () => {
-  const f = fixture({ hidden: true, enumerate: async () => ({ tokenIds: [], hasMore: false, method: 'manual', totalOwned: maximumId }) });
+for (const totalOwned of ['1', maximumId]) test(`private collection balance masks ${totalOwned} in visible and accessible text`, async () => {
+  const f = fixture({ hidden: true, enumerate: async () => ({ tokenIds: [], hasMore: false, method: 'manual', totalOwned }) });
   try {
     manual(f); button(f.render(), 'Find token IDs').props.onPress(); await tick();
     const balance = f.render().find(node => node.props.testID === 'native-collection-balance'); assert(balance);
     assert.equal(balance.props.accessibilityLabel, 'Collection balance hidden');
-    assert.equal(JSON.stringify(balance).includes(maximumId), false);
-    assert(balance.children.includes('Hidden'));
+    assert.equal(balance.children.join(''), 'Collection balance: Hidden');
+    if (totalOwned === maximumId) assert.equal(JSON.stringify(balance).includes(maximumId), false);
   } finally { f.close(); }
 });
 

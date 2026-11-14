@@ -325,7 +325,7 @@ export function NativeSmartAccountOperationContent({
     </View>
     {display.items.map((item, index) => <View key={index} style={s.transferItem}>
       <Text selectable style={[s.transferValue, item.value.length > 20 && s.preciseValue]} accessibilityLabel={item.symbol ? `${item.value} ${item.symbol}` : item.tokenId !== null ? t('mobile.recoveryStatusViews.operation.tokenQuantity', { id: item.tokenId, amount: item.units }) : t('mobile.recoveryStatusViews.operation.rawQuantity', { amount: item.units })}>{item.value}</Text>
-      <Text style={s.unit}>{item.symbol ?? (item.tokenId !== null ? t('mobile.sendAssetViews.tokens.nftQuantity', { amount: item.units }) : t('assetTransfer.rawUnits'))}</Text>
+      <Text style={s.unit}>{item.symbol ?? (item.tokenId !== null ? item.units === '1' ? t('mobile.dappConsent.transactionReview.nftQuantityOne', { quantity: item.units }) : t('mobile.dappConsent.transactionReview.nftQuantity', { quantity: item.units }) : t('assetTransfer.rawUnits'))}</Text>
     </View>)}
     <View style={s.transferFact}><Text style={s.label}>{t('assetTransfer.recipient')}</Text><Text selectable style={s.transferAddress}>{display.recipient}</Text></View>
     <View style={s.transferFact}><Text style={s.label}>{t('assetTransfer.contract')}</Text><Text selectable style={s.transferAddress}>{display.contract}</Text></View>

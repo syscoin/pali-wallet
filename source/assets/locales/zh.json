@@ -3598,8 +3598,6 @@
         "viewToken": "查看 {{name}} 代币 {{id}}",
         "reviewTokenContract": "审核 {{symbol}} 代币合约 {{address}}",
         "tokenBalance": "代币余额 {{amount}}",
-        "collectionBalance": "收藏集余额：{{amount}} 个 NFT",
-        "nftQuantity": "{{amount}} 个 NFT",
         "tokenId": "代币 ID {{id}}",
         "networkQuantity": "链上数量：{{amount}}",
         "importTokenHint": "请输入 {{network}} 上的代币合约。名称和符号无法验证其身份。",

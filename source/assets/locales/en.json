@@ -3598,8 +3598,6 @@
         "viewToken": "View {{name}} token {{id}}",
         "reviewTokenContract": "Review {{symbol}} token contract {{address}}",
         "tokenBalance": "Token balance {{amount}}",
-        "collectionBalance": "Collection balance: {{amount}} NFTs",
-        "nftQuantity": "{{amount}} NFTs",
         "tokenId": "Token ID {{id}}",
         "networkQuantity": "Quantity on network: {{amount}}",
         "importTokenHint": "Enter the token contract on {{network}}. Its name and symbol do not verify its identity.",

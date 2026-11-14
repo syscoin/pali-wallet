@@ -3598,8 +3598,6 @@
         "viewToken": "{{name}} 토큰 {{id}} 보기",
         "reviewTokenContract": "{{symbol}} 토큰 계약 {{address}} 검토",
         "tokenBalance": "토큰 잔액 {{amount}}",
-        "collectionBalance": "컬렉션 보유량: NFT {{amount}}개",
-        "nftQuantity": "NFT {{amount}}개",
         "tokenId": "토큰 ID {{id}}",
         "networkQuantity": "네트워크 수량: {{amount}}",
         "importTokenHint": "{{network}}의 토큰 계약을 입력하세요. 이름과 심볼은 신원을 검증하지 않습니다.",

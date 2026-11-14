@@ -3598,8 +3598,6 @@
         "viewToken": "Token {{id}} von {{name}} anzeigen",
         "reviewTokenContract": "{{symbol}}-Token-Contract {{address}} prüfen",
         "tokenBalance": "Token-Guthaben {{amount}}",
-        "collectionBalance": "Sammlungsbestand: {{amount}} NFTs",
-        "nftQuantity": "{{amount}} NFTs",
         "tokenId": "Token-ID {{id}}",
         "networkQuantity": "Menge im Netzwerk: {{amount}}",
         "importTokenHint": "Gib den Token-Contract auf {{network}} ein. Name und Symbol bestätigen nicht seine Identität.",

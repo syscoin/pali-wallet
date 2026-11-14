@@ -3598,8 +3598,6 @@
         "viewToken": "Voir le jeton {{id}} de {{name}}",
         "reviewTokenContract": "Examiner le contrat du jeton {{symbol}} {{address}}",
         "tokenBalance": "Solde de jetons {{amount}}",
-        "collectionBalance": "Solde de la collection : {{amount}} NFT",
-        "nftQuantity": "{{amount}} NFT",
         "tokenId": "ID du jeton {{id}}",
         "networkQuantity": "Quantité sur le réseau : {{amount}}",
         "importTokenHint": "Saisissez le contrat du jeton sur {{network}}. Son nom et son symbole ne vérifient pas son identité.",

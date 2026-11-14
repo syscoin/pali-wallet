@@ -3598,8 +3598,6 @@
         "viewToken": "Ver token {{id}} de {{name}}",
         "reviewTokenContract": "Revisar contrato del token {{symbol}} {{address}}",
         "tokenBalance": "Saldo de tokens {{amount}}",
-        "collectionBalance": "Saldo de la colección: {{amount}} NFT",
-        "nftQuantity": "{{amount}} NFT",
         "tokenId": "ID del token {{id}}",
         "networkQuantity": "Cantidad en la red: {{amount}}",
         "importTokenHint": "Introduce el contrato del token en {{network}}. Su nombre y símbolo no verifican su identidad.",
