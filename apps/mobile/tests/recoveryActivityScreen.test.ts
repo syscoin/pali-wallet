@@ -434,6 +434,89 @@ for (const outcome of ['confirmed', 'reverted'] as const)
     } finally { f.dispose(); }
   });
 
+for (const savedPending of [false, true]) {
+  for (const pendingObservation of [false, true]) {
+    for (const operation of ['speed-up', 'cancel'] as const) test(`${savedPending ? 'saved-pending' : 'ordinary'} Activity keeps a replaced original distinct from its confirmed ${operation} with ${pendingObservation ? 'an older pending observation' : 'unavailable own details'}`, async () => {
+      const pending = pendingScopedRow({ speedUp: true });
+      const winnerHash = '0x' + '77'.repeat(32);
+      const original = { ...pending, replacementStatus: 'replaced',
+        observation: pendingObservation ? pending.observation : undefined,
+        unavailable: !pendingObservation };
+      const winner = { ...pending, hash: winnerHash,
+        local: { ...pending.local, hash: winnerHash, originalHash: hash, operation, phase: 'confirmed',
+          ...(operation === 'cancel' ? { recipient: pending.local.address, amountUnits: '0' } : {}) },
+        observation: { ...pending.observation, hash: winnerHash, status: 'confirmed',
+          block: { number: '7', hash: '0x' + '88'.repeat(32) }, feeUnits: '42000',
+          ...(operation === 'cancel' ? { to: pending.local.address, valueUnits: '0' } : {}) } };
+      const rows = [original, winner];
+      const navigations: unknown[] = [];
+      const forbidden = (...args: unknown[]) => { navigations.push(args); };
+      const f = fixture(undefined, false, { savedPendingOnly: savedPending,
+        onNavigateToReview: forbidden, onReplay: forbidden, onSpeedUpPending: forbidden,
+        onCancelPending: forbidden, onCancelSaved: forbidden });
+      try {
+        f.rows(rows);
+        if (savedPending) {
+          f.render(); await settle();
+          f.state({ savedPending: { rows, status: 'ready', hasMore: false } });
+        }
+        const list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+        const preview = list.props.renderItem({ item: original, index: 0 });
+        assert(preview.props.subtitle.includes(englishI18n.t('transactions.replaced')));
+        await preview.props.onPress();
+        let tree = all(f.render());
+        const detail = tree.find(node => node.type === 'TransactionDetailLayout'); assert(detail);
+        assert.equal(detail.props.status, englishI18n.t('transactions.replaced'));
+        assert.equal(detail.props.rows.find((row: { label: string }) => row.label === englishI18n.t('send.networkFee')).value,
+          englishI18n.t('mobile.activityViews.nativeActivity.actualFeeNotVerified'));
+        for (const title of ['Review resend', 'Speed Up', 'Cancel pending transaction', 'Cancel saved transaction'])
+          assert(!tree.some(node => node.type === 'Button' && node.props.title === title), title);
+        const winnerAction = operation === 'cancel' ? 'View cancellation attempt' : 'View Speed Up attempt';
+        const navigate = tree.find(node => node.type === 'Button' && node.props.title === winnerAction); assert(navigate);
+        navigate.props.onPress();
+        tree = all(f.render());
+        const winnerDetail = tree.find(node => node.type === 'TransactionDetailLayout'); assert(winnerDetail);
+        assert.equal(winnerDetail.props.status, englishI18n.t('send.confirmed'));
+        assert.equal(winnerDetail.props.rows.find((row: { label: string }) => row.label === englishI18n.t('send.networkFee')).value,
+          '0.000000000000042 ETH');
+        assert.deepEqual(f.inspected(), [hash, winnerHash]);
+        assert.deepEqual(navigations, []);
+      } finally { f.dispose(); }
+    });
+  }
+
+  for (const outcome of ['confirmed', 'reverted'] as const) {
+    for (const retained of [false, true]) {
+      test(`${savedPending ? 'saved-pending' : 'ordinary'} Activity prefers its own ${retained ? 'retained' : 'direct'} ${outcome} receipt over replacement status`, async () => {
+        const pending = pendingScopedRow({ speedUp: true });
+        const block = { number: '7', hash: '0x' + '88'.repeat(32) };
+        const original = { ...pending, replacementStatus: 'replaced',
+          observation: retained ? undefined : { ...pending.observation, status: outcome, block, feeUnits: '21000' },
+          ...(retained ? { retainedObservation: { status: 'mined', outcome, block, feeUnits: '21000' } } : {}) };
+        const f = fixture(undefined, false, { savedPendingOnly: savedPending });
+        try {
+          f.rows([original]);
+          if (savedPending) {
+            f.render(); await settle();
+            f.state({ savedPending: { rows: [original], status: 'ready', hasMore: false } });
+          }
+          const list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+          const preview = list.props.renderItem({ item: original, index: 0 });
+          assert(preview.props.subtitle.includes(englishI18n.t(`send.${outcome}`)));
+          await preview.props.onPress();
+          const tree = all(f.render());
+          const detail = tree.find(node => node.type === 'TransactionDetailLayout'); assert(detail);
+          assert.equal(detail.props.status, englishI18n.t(`send.${outcome}`));
+          assert.equal(detail.props.tone, outcome === 'confirmed' ? 'confirmed' : 'failed');
+          assert.equal(detail.props.rows.find((row: { label: string }) => row.label === englishI18n.t('send.networkFee')).value,
+            '0.000000000000021 ETH');
+          assert(!tree.some(node => node.type === 'Button' && node.props.title === 'Review resend'));
+        } finally { f.dispose(); }
+      });
+    }
+  }
+}
+
 for (const host of [false, true]) test(`read-only actions stay hidden without ${host ? 'canonical navigation eligibility' : 'an explicit host navigation callback'}`, async () => {
   const forbidden = () => { throw Error('Unexpected transaction action'); };
   const f = fixture(undefined, false, { onReplay: forbidden, onSpeedUpPending: forbidden,

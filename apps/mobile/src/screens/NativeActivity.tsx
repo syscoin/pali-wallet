@@ -57,12 +57,14 @@ const currentObservation = (row: ActivityRow) =>
     : undefined;
 const statusTag = (row: ActivityRow) => {
   const observation = currentObservation(row);
-  if (observation)
+  if (observation && observation.status !== 'pending')
     return observation.status === 'confirmed'
       ? 'confirmed'
-      : observation.status === 'reverted'
-      ? 'reverted'
-      : 'pending';
+      : 'reverted';
+  if (!observation && !row.unavailable && !row.indexed && row.retainedObservation?.status === 'mined')
+    return row.retainedObservation.outcome === 'confirmed' ? 'confirmed' : 'reverted';
+  if (row.replacementStatus === 'replaced') return 'replaced';
+  if (observation) return 'pending';
   return row.indexedStatus === 'confirmed'
     ? 'confirmed'
     : row.indexedStatus === 'failed'
@@ -93,7 +95,7 @@ const statusTag = (row: ActivityRow) => {
 };
 function savedPendingStatusTag(row: ActivityRow) {
   const retained = row.retainedObservation;
-  if (currentObservation(row) || !row.local) return statusTag(row);
+  if (currentObservation(row) || row.replacementStatus === 'replaced' || !row.local) return statusTag(row);
   if (retained?.status === 'mined')
     return retained.outcome === 'confirmed' ? 'confirmed' : 'reverted';
   if (retained?.status === 'missing' && BigInt(retained.latestNonce) > BigInt(row.local.nonce))
@@ -350,11 +352,11 @@ function NativeActivityContent({
     (local.operation === 'cancel' || (local.originalHash === chosen.hash &&
       local.operation === 'speed-up' && local.phase !== 'signed' && local.phase !== 'attempted'))
   );
-  const canReplace = chosen?.local && chosen.local.operation !== 'cancel' && !replacementBlocksReview &&
+  const canReplace = chosen?.replacementStatus !== 'replaced' && chosen?.local && chosen.local.operation !== 'cancel' && !replacementBlocksReview &&
     (chosen.local.transactionType === 0 || chosen.local.transactionType === 2) &&
     chosenObservation?.status === 'pending' && chosenObservation.from.toLowerCase() === (chosen.local.smartAccount?.payer ?? owner).toLowerCase() &&
     chosenObservation.nonce === String(chosen.local.nonce);
-  const canCancelSaved = chosen?.local && !chosen.checking && !chosenObservation &&
+  const canCancelSaved = chosen?.replacementStatus !== 'replaced' && chosen?.local && !chosen.checking && !chosenObservation &&
     chosen.local.operation !== 'cancel' && !replacementBlocksReview &&
     (chosen.local.transactionType === 0 || chosen.local.transactionType === 2) &&
     ['signed', 'attempted', 'submitted'].includes(chosen.local.phase) &&
@@ -373,7 +375,7 @@ function NativeActivityContent({
   const cancelPending = reviewAction('cancel', onCancelPending);
   const cancelSaved = reviewAction('cancel-saved', onCancelSaved);
   const observedStatus = chosen && (savedPending ? savedPendingStatusTag(chosen) : statusTag(chosen));
-  const replay = observedStatus === 'confirmed' || observedStatus === 'reverted'
+  const replay = observedStatus === 'confirmed' || observedStatus === 'reverted' || observedStatus === 'replaced'
     ? undefined : reviewAction('saved', onReplay);
   const retained = chosen?.retainedObservation;
   const chosenBlock = chosenObservation
