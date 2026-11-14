@@ -1504,3 +1504,26 @@ for (const stale of [false, true]) test(`Trezor external resume ${stale ? 'prese
     }
   } finally { gate.resolve(); await pending; f.dispose(); }
 });
+
+test('late Trezor external resume cannot close a newer visit under the same Accounts root', async () => {
+  const f = await mounted(true, false, false, true, false, false, true, true, true);
+  const gate = Promise.withResolvers<void>();
+  f.resumeExternal(() => gate.promise);
+  let pending: Promise<void> | undefined;
+  try {
+    f.showTools();
+    find(f.render(), node => node.type === 'RealTools')!.props.onAccounts();
+    f.render().props.onManageHd();
+    f.render().props.onTrezor();
+    const firstVisit = f.render(); assert.equal(firstVisit.type, 'NativeTrezor');
+    pending = firstVisit.props.onResumeSend({ kind: 'external-signing', id: 'external-request', accountId: 'trezor:60:0', networkId: 'ethereum' });
+    await settle();
+    assert.deepEqual(f.externalResumes(), ['external-request']);
+    firstVisit.props.onBack();
+    const manage = f.render(); assert.equal(manage.type, 'NativeAccounts');
+    manage.props.onTrezor();
+    assert.equal(f.render().type, 'NativeTrezor');
+    gate.resolve(); await pending;
+    assert.equal(f.render().type, 'NativeTrezor', 'the previous completion does not close a new Trezor visit under the same root');
+  } finally { gate.resolve(); await pending; f.dispose(); }
+});
