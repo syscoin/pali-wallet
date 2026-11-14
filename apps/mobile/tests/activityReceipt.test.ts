@@ -64,6 +64,17 @@ test('canonical success and revert are observed without finalized RPC calls', as
   }
 });
 
+test('only a canonical block containing the exact receipt hash supplies sibling inclusion evidence', async () => {
+  for (const transactions of [undefined, [], [HASH], [BLOCK, FINAL_BLOCK, HASH], [BLOCK, FINAL_BLOCK, BLOCK]]) {
+    const f = fixture(call => call.method === 'eth_getBlockByNumber'
+      ? { number: '0x50', hash: BLOCK, timestamp: '0x6553f100', transactions } : undefined);
+    const observed = await f.reader.read(HASH, OWNER, signal(), () => undefined, getNativeNetwork('ethereum'));
+    assert.equal(observed?.status, 'confirmed', 'its own canonical receipt remains displayable');
+    assert.equal(observed?.transactionIndex, transactions?.[2] === HASH ? 2 : undefined);
+    assert.equal(f.calls.filter(call => call.method === 'eth_getBlockByNumber').length, 1);
+  }
+});
+
 test('ERC20 receipt identity retains identical transfers at different indices and deduplicates a repeated log', async () => {
   const events = [log(), log({ logIndex: '0x4' }), log()];
   const f = fixture((call) => call.method === 'eth_getTransactionByHash' ? tx({ from: OTHER, to: TOKEN, value: '0x0' }) :

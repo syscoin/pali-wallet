@@ -35,6 +35,7 @@ import {
 } from '../../../../source/utils/evmReplacement.ts';
 import type { EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import type { NativeTokenPortfolioScope } from '../portfolio/tokenRegistry.ts';
+import { nativeLocalReplacementStatuses, nativeLocalReplacementWinnersToObserve } from './localReplacementStatus.ts';
 
 export interface NativeActivityRuntime {
   /** Selected-account public reads on an explicit saved network. */
@@ -82,6 +83,8 @@ export type ActivityRow = Readonly<{
   indexedStatus?: EvmSettlementStatus;
   zeroValueToken?: boolean;
   retainedObservation?: EvmTransactionObservation;
+  /** Current, scope-bound canonical sibling evidence; never persisted. */
+  replacementStatus?: 'replaced';
   checking: boolean;
   unavailable: boolean;
 }>;
@@ -137,6 +140,12 @@ type SavedPendingPage = {
   status: NonNullable<NativeActivitySnapshot['savedPending']>['status'];
 };
 type ActivityDetailRequest = Readonly<{ hash: string; page?: SavedPendingPage }>;
+type RetainedObservationWork = {
+  lifetime: AbortController;
+  queue: LocalActivityRecord[];
+  seen: Set<string>;
+  workers: number;
+};
 const initial = (): NativeActivitySnapshot =>
   Object.freeze({
     status: 'locked',
@@ -173,6 +182,7 @@ export class NativeActivity {
   private tokenEvents = new Map<string, Readonly<Record<string, unknown>>>();
   private assets: readonly EvmDisplayTokenMetadata[] = [];
   private retainedObservations = new Map<string, EvmTransactionObservation>();
+  private retainedWork?: RetainedObservationWork;
   private cachedFallback = false;
   private candidates = new Map<string, ActivityCandidate>();
   private freshCandidates = new Set<string>();
@@ -248,6 +258,8 @@ export class NativeActivity {
     this.refreshingRows = null;
     this.savedPending?.lifetime.abort();
     this.savedPending = undefined;
+    this.retainedWork?.lifetime.abort();
+    this.retainedWork = undefined;
     this.hydration = [];
     this.checking.clear();
   }
@@ -296,7 +308,9 @@ export class NativeActivity {
     this.request = new AbortController();
     const signal = this.request.signal;
     const guard = () => this.guard(generation, revision);
-    this.publish({ ...(previous ?? initial()), status: 'loading', loadingMore: false, error: null, savedPending: undefined });
+    this.publish({ ...(previous ?? initial()),
+      rows: previous?.rows.map(row => row.replacementStatus ? { ...row, replacementStatus: undefined } : row) ?? [],
+      status: 'loading', loadingMore: false, error: null, savedPending: undefined });
     try {
       const runtime = this.runtime();
       if (!runtime) throw new ActivityError('UNAVAILABLE');
@@ -536,7 +550,7 @@ export class NativeActivity {
         });
     }
   }
-  /** Pages only the authenticated local journal. No explorer or receipt reads. */
+  /** Pages the authenticated journal; needed terminal siblings reuse the bounded observer. */
   async loadSavedPending(): Promise<void> {
     const runtime = this.runtime(), scope = this.scope;
     if (!scope || !runtime?.loadSavedPending) return;
@@ -563,6 +577,7 @@ export class NativeActivity {
       page.status = 'unavailable';
     }
     this.renderRows();
+    if (page.status === 'ready') this.observeRetained();
   }
   closeSavedPending(): void {
     this.savedPending?.lifetime.abort();
@@ -622,6 +637,20 @@ export class NativeActivity {
       };
     };
     const observedRows = [...records.values()].map((row) => observeRow(row));
+    const pending = this.savedPending;
+    const pendingRows = pending ? [...pending.records.values()].map(local => observeRow({
+      hash: local.hash, local, checking: false, unavailable: false,
+    }, false)) : [];
+    // Previous rows may preserve a display during refresh, but cannot supply
+    // fresh sibling proof. Use only observations owned by this generation.
+    const replacements = this.scope ? nativeLocalReplacementStatuses(
+      [...observedRows, ...pendingRows].map(row => ({ ...row,
+        observation: this.observations.get(row.hash),
+        retainedObservation: this.retainedObservations.get(row.hash),
+      })), this.scope) : new Map<string, 'replaced'>();
+    const withReplacement = (row: ActivityRow): ActivityRow => ({ ...row,
+      replacementStatus: replacements.get(row.hash),
+    });
     const representatives = selectEvmHistoryRepresentatives(
       observedRows.map((row) => ({
         row,
@@ -651,7 +680,7 @@ export class NativeActivity {
     // local replacement history after choosing the fetched representative.
     const retained = new Map(representatives.map((row) => [row.hash, row]));
     for (const row of observedRows) if (row.local) retained.set(row.hash, row);
-    const rows = [...retained.values()].sort(
+    const rows = [...retained.values()].map(withReplacement).sort(
       (a, b) =>
         (b.observation?.timestamp ??
           b.candidate?.timestamp ??
@@ -664,13 +693,10 @@ export class NativeActivity {
     );
     const moreToLoad = Object.values(this.feeds).some((f) => !f.done);
     const atDisplayLimit = this.visible >= 200 && candidates.length >= 200;
-    const pending = this.savedPending;
     this.publish({
       rows,
       savedPending: pending ? Object.freeze({
-        rows: Object.freeze([...pending.records.values()].map((local) => observeRow({
-          hash: local.hash, local, checking: false, unavailable: false,
-        }, false))),
+        rows: Object.freeze(pendingRows.map(withReplacement)),
         status: pending.status,
         hasMore: pending.cursor !== null,
       }) : undefined,
@@ -767,21 +793,33 @@ export class NativeActivity {
     if (!runtime?.observeLocal || !scope || !request) return;
     const generation = this.generation,
       revision = this.source.getSnapshot().revision;
-    const guard = () => this.guard(generation, revision);
-    // Only retained unresolved local submissions use the existing shared observer.
-    // Indexed list rows never trigger transaction/receipt/block RPC requests.
-    const queue = [...this.locals.values()].filter((local) =>
+    // Explorer deadlines do not retire this generation's owned journal reads.
+    const work = this.retainedWork ??= { lifetime: new AbortController(), queue: [], seen: new Set(), workers: 0 };
+    const guard = () => {
+      this.guard(generation, revision, work.lifetime.signal);
+      if (this.retainedWork !== work) throw new ActivityError('CANCELLED');
+    };
+    // A completed local sibling needs fresh proof only while its nonce still
+    // has an unresolved row. Ordinary completed history never starts a read.
+    const locals = [...this.locals.values()];
+    const candidates = locals.filter((local) =>
       ['signed', 'attempted', 'submitted'].includes(local.phase)
     );
+    candidates.push(...nativeLocalReplacementWinnersToObserve(locals,
+      [...(this.savedPending?.records.values() ?? [])], scope));
+    for (const local of candidates) if (!work.seen.has(local.hash)) {
+      work.seen.add(local.hash); work.queue.push(local);
+    }
     const run = async () => {
-      while (queue.length && !request.signal.aborted) {
-        const local = queue.shift()!;
+      work.workers++;
+      try { while (work.queue.length && !work.lifetime.signal.aborted) {
+        const local = work.queue.shift()!;
         try {
           guard();
           const observation = await runtime.observeLocal!(
             local,
             guard,
-            request.signal
+            work.lifetime.signal
           );
           guard();
           this.retainedObservations.set(local.hash, observation);
@@ -789,10 +827,9 @@ export class NativeActivity {
           /* A read failure does not discard a retained transaction. */
         }
         if (generation === this.generation) this.renderRows();
-      }
+      } } finally { work.workers--; }
     };
-    void run();
-    void run();
+    while (work.workers < 2 && work.queue.length && !work.lifetime.signal.aborted) void run();
   }
 
   async setView(update: Partial<ActivityViewState>): Promise<void> {

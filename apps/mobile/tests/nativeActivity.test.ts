@@ -340,6 +340,157 @@ test('shared representative selection prefers the mined replacement while retain
   assert.equal(remoteOnly.receipts.calls.length, 0);
 });
 
+for (const operation of ['speed-up', 'cancel'] as const)
+  test(`current included local ${operation} settles ordinary and saved-pending original rows without explorer history`, async () => {
+    const base = fixture();
+    const original = { ...base.local(1, 'submitted'), nonce: 7, transactionType: 2 };
+    const replacement = { ...base.local(2, 'submitted'), nonce: 7, transactionType: 2, operation, originalHash: original.hash };
+    const f = fixture({ locals: [original, replacement],
+      loadSavedPending: async () => ({ records: [original, replacement], nextCursor: null }),
+      observeLocal: async local => local.hash === replacement.hash
+        ? { status: 'mined', outcome: 'confirmed', block: { number: '42', hash: hash(42) }, transactionIndex: 0 }
+        : { status: 'missing', latestNonce: '8' } });
+    await f.controller.refresh();
+    await until(() => f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus === 'replaced');
+    await f.controller.loadSavedPending();
+    assert.equal(f.controller.getSnapshot().savedPending?.rows.find(row => row.hash === original.hash)?.replacementStatus, 'replaced');
+    assert.equal(f.controller.getSnapshot().rows.find(row => row.hash === replacement.hash)?.replacementStatus, undefined);
+    assert.equal(f.receipts.calls.length, 0, 'projection does not add reads');
+    assert.equal(original.phase, 'submitted', 'projection does not mutate retained journals');
+  });
+
+test('a saved-only original uses a verified winner in ordinary rows without copying indexed status', async () => {
+  const base = fixture();
+  const original = { ...base.local(1, 'submitted'), nonce: 7, transactionType: 2 };
+  const replacement = { ...base.local(2, 'submitted'), nonce: 7, transactionType: 2, operation: 'speed-up' as const, originalHash: original.hash };
+  const f = fixture({ locals: [replacement],
+    loadSavedPending: async () => ({ records: [original], nextCursor: null }),
+    observeLocal: async () => ({ status: 'mined', outcome: 'confirmed',
+      block: { number: '42', hash: hash(42) }, transactionIndex: 0 }) });
+  await f.controller.refresh();
+  await until(() => f.controller.getSnapshot().rows[0]?.retainedObservation?.status === 'mined');
+  await f.controller.loadSavedPending();
+  const saved = f.controller.getSnapshot().savedPending?.rows[0];
+  assert.equal(saved?.hash, original.hash);
+  assert.equal(saved?.indexed, undefined);
+  assert.equal(saved?.replacementStatus, 'replaced');
+  assert.equal(f.controller.getSnapshot().rows.some(row => row.hash === original.hash), false);
+  assert.equal(f.receipts.calls.length, 0);
+});
+
+for (const phase of ['confirmed', 'reverted'] as const)
+  for (const originalPhase of ['submitted', 'nonce-consumed'] as const)
+    test(`cold loaded ${phase} winner is reobserved only for its ${originalPhase} sibling`, async () => {
+      const base = fixture();
+      const original = { ...base.local(1, originalPhase), nonce: 7, transactionType: 2 };
+      const replacement = { ...base.local(2, phase), nonce: 7, transactionType: 2,
+        operation: 'speed-up' as const, originalHash: original.hash };
+      const unrelated = { ...base.local(3, 'confirmed'), transactionType: 2 };
+      for (let reopen = 0; reopen < 2; reopen++) {
+        const f = fixture({ locals: [original, replacement, unrelated],
+          loadSavedPending: async () => ({ records: [original], nextCursor: null }),
+          observeLocal: async local => {
+            assert.notEqual(local.hash, unrelated.hash, 'completed singleton is not polled');
+            return local.hash === replacement.hash
+              ? { status: 'mined', outcome: phase, block: { number: '42', hash: hash(42) }, transactionIndex: 0 }
+              : { status: 'missing', latestNonce: '8' };
+          } });
+        await f.controller.refresh();
+        await until(() => f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus === 'replaced');
+        assert.deepEqual(f.localReads.map(row => row.hash).sort(),
+          (originalPhase === 'submitted' ? [original.hash, replacement.hash] : [replacement.hash]).sort());
+        await f.controller.loadSavedPending();
+        assert.equal(f.controller.getSnapshot().savedPending?.rows[0]?.replacementStatus, 'replaced');
+      }
+    });
+
+test('a late saved-only sibling queues its terminal winner under the same two-reader cap', async () => {
+  const base = fixture(), gate = deferred<void>();
+  const original = { ...base.local(1, 'submitted'), nonce: 7, transactionType: 2 };
+  const winner = { ...base.local(2, 'confirmed'), nonce: 7, transactionType: 2 };
+  const unrelatedPending = [base.local(3, 'submitted'), base.local(4, 'submitted')];
+  let active = 0, maximum = 0;
+  const f = fixture({ locals: [winner, ...unrelatedPending],
+    loadSavedPending: async () => ({ records: [original], nextCursor: null }),
+    observeLocal: async local => {
+      active++; maximum = Math.max(maximum, active); await gate.promise; active--;
+      return local.hash === winner.hash
+        ? { status: 'mined', outcome: 'confirmed', block: { number: '42', hash: hash(42) }, transactionIndex: 0 }
+        : { status: 'missing', latestNonce: String(local.nonce) };
+    } });
+  await f.controller.refresh();
+  assert.equal(f.localReads.length, 2);
+  await f.controller.loadSavedPending();
+  assert.equal(f.localReads.length, 2, 'late winner waits for the current readers');
+  gate.resolve();
+  await until(() => f.controller.getSnapshot().savedPending?.rows[0]?.replacementStatus === 'replaced');
+  assert.equal(f.localReads.length, 3);
+  assert.equal(maximum, 2);
+  assert.equal(f.localReads.some(row => row.hash === original.hash), false, 'paging does not poll every saved row');
+});
+
+test('completed singleton history creates no fresh observer work', async () => {
+  const base = fixture();
+  const f = fixture({ locals: [{ ...base.local(1, 'confirmed'), transactionType: 2 },
+    { ...base.local(2, 'reverted'), transactionType: 2 }] });
+  await f.controller.refresh();
+  assert.equal(f.localReads.length, 0);
+});
+
+test('a needed terminal sibling remains observable after only explorer work times out', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const base = fixture();
+  const original = { ...base.local(1, 'submitted'), nonce: 7, transactionType: 2 };
+  const winner = { ...base.local(2, 'confirmed'), nonce: 7, transactionType: 2 };
+  const explorer = new FakeExplorer(({ signal }) => new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(Error('timeout')), { once: true });
+  }));
+  const f = fixture({ locals: [winner], explorer,
+    loadSavedPending: async () => ({ records: [original], nextCursor: null }),
+    observeLocal: async () => ({ status: 'mined', outcome: 'confirmed',
+      block: { number: '42', hash: hash(42) }, transactionIndex: 0 }) });
+  const refresh = f.controller.refresh();
+  for (let turn = 0; turn < 20 && !explorer.pages.length; turn++) await Promise.resolve();
+  t.mock.timers.tick(30000); await refresh; t.mock.timers.reset();
+  assert.equal(f.localReads.length, 0);
+  await f.controller.loadSavedPending();
+  await until(() => f.controller.getSnapshot().savedPending?.rows[0]?.replacementStatus === 'replaced');
+  assert.deepEqual(f.localReads.map(row => row.hash), [winner.hash]);
+});
+
+test('refresh and fresh missing winner reads retire prior replacement proof in ordinary and saved rows', async () => {
+  const base = fixture();
+  const original = { ...base.local(1, 'submitted'), nonce: 7, transactionType: 2 };
+  const replacement = { ...base.local(2, 'submitted'), nonce: 7, transactionType: 2, operation: 'speed-up' as const, originalHash: original.hash };
+  let included = true;
+  const f = fixture({ locals: [original, replacement], receipts: new FakeReceipts(() => null),
+    loadSavedPending: async () => ({ records: [original, replacement], nextCursor: null }),
+    observeLocal: async local => included && local.hash === replacement.hash
+      ? { status: 'mined', outcome: 'confirmed', block: { number: '42', hash: hash(42) }, transactionIndex: 0 }
+      : { status: 'missing', latestNonce: '7' } });
+  await f.controller.refresh();
+  await until(() => f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus === 'replaced');
+  await f.controller.loadSavedPending();
+  f.controller.inspect(replacement.hash);
+  await until(() => f.controller.getSnapshot().rows.find(row => row.hash === replacement.hash)?.unavailable === true);
+  assert.equal(f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus, undefined);
+  assert.equal(f.controller.getSnapshot().savedPending?.rows.find(row => row.hash === original.hash)?.replacementStatus, undefined);
+  // Restore the proof, then hold the next load to inspect the refresh boundary.
+  await f.controller.refresh();
+  await until(() => f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus === 'replaced');
+  included = false;
+  const gate = deferred<void>();
+  const load = f.runtime.load.bind(f.runtime);
+  f.runtime.load = async (...args) => { await gate.promise; return load(...args); };
+  const refresh = f.controller.refresh();
+  assert.equal(f.controller.getSnapshot().status, 'loading');
+  assert.equal(f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus, undefined);
+  gate.resolve(); await refresh;
+  await until(() => f.localReads.length >= 6);
+  assert.equal(f.controller.getSnapshot().rows.find(row => row.hash === original.hash)?.replacementStatus, undefined);
+  assert.equal(f.receipts.calls.length, 1);
+});
+
 test('a healthy feed remains visible when the other feed fails, with explicit partial coverage', async () => {
   const explorer = new FakeExplorer(({ feed }) => { if (feed === 'txlist') throw Error('offline'); return [candidate(1, 100, true)]; });
   const f = fixture({ explorer });

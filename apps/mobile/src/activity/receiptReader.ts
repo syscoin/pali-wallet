@@ -36,6 +36,8 @@ export type ActivityTransactionObservation = Readonly<{
     | 'unknown';
   events: readonly ActivityTransferEvent[];
   feeUnits: string | null;
+  /** Present only when the canonical block lists this exact transaction hash. */
+  transactionIndex?: number;
 }>;
 export class ActivityReceiptError extends Error {
   readonly code:
@@ -403,12 +405,15 @@ export class ActivityReceiptReader {
         fail('CONTEXT_CHANGED');
     };
     const canonical = async (block: Block | Receipt['block']) => {
-      const observed = readBlock(
-        await read('eth_getBlockByNumber', [tag(block.number), false])
-      );
+      const raw = await read('eth_getBlockByNumber', [tag(block.number), false]);
+      const observed = readBlock(raw);
       if (observed.hash !== block.hash || observed.number !== block.number)
         fail('CONTEXT_CHANGED');
-      return observed;
+      const index = 'transactionIndex' in block ? Number(block.transactionIndex) : NaN;
+      const transactions = object(raw).transactions;
+      return { ...observed, ...(Number.isSafeInteger(index) && index >= 0 && Array.isArray(transactions) &&
+        typeof transactions[index] === 'string' && transactions[index].toLowerCase() === expectedHash
+        ? { transactionIndex: index } : {}) };
     };
     try {
       await checkChain();
@@ -467,6 +472,7 @@ export class ActivityReceiptReader {
         status: receipt.succeeded ? 'confirmed' : 'reverted',
         events: receipt.events,
         feeUnits: receipt.feeUnits,
+        ...(included.transactionIndex === undefined ? {} : { transactionIndex: included.transactionIndex }),
       });
     } catch (error) {
       check();
