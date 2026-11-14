@@ -139,12 +139,11 @@ internal class PaliCredentialStore(private val app: Context) {
   }
   fun write(binding: PaliCredentialBinding, bytes: ByteArray) {
     check(bytes.size == 102)
-    val final = file(binding); val temporary = File(directory(), "${binding.id}.new")
+    val parent = directory(); val temporary = File(parent, "${binding.id}.new")
     val descriptor = Os.open(temporary.path, OsConstants.O_WRONLY or OsConstants.O_CREAT or OsConstants.O_EXCL or OsConstants.O_NOFOLLOW, 384)
     try {
       FileOutputStream(descriptor).use { output -> output.write(bytes); output.flush(); Os.fsync(descriptor) }
-      Os.link(temporary.path, final.path)
-      Os.remove(temporary.path)
+      PaliCredentialPublication.publish(parent, binding.id)
       syncDirectory()
       val readback = read(binding) ?: credentialFailure()
       try { if (!MessageDigest.isEqual(bytes, readback)) credentialFailure() } finally { readback.fill(0) }
