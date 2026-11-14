@@ -152,7 +152,7 @@ export function AllNetworksActivity({ controller, accountLabel, navigation, onAc
         const display = present(item), previous = snapshot.rows[index - 1], next = snapshot.rows[index + 1];
         const first = !previous || present(previous).date.key !== display.date.key, last = !next || present(next).date.key !== display.date.key;
         return <ActivityListRow testID={`account-activity-row-${item.choice.scope.network.id}-${item.row.hash}`} first={first} last={last}
-          heading={first ? display.date.label : undefined} title={display.title} subtitle={`${display.status}${item.row.unavailable ? ` · ${t('mobile.activityViews.nativeActivity.detailsUnavailable')}` : ''}`}
+          heading={first ? display.date.label : undefined} title={display.title} subtitle={display.statusSummary}
           networkBadge={snapshot.filter === 'all' ? item.choice.networkName : undefined} networkId={item.choice.scope.network.id} networkSymbol={item.choice.symbol}
           direction={display.direction} amount={display.amount} time={display.date.time}
           asset={activityAssetIcon(item.row, String(item.choice.scope.network.chainId), 'registrationHash' in item.choice.scope.network ? item.choice.scope.network.registrationHash : undefined)}

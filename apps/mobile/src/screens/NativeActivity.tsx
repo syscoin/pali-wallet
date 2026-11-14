@@ -163,10 +163,11 @@ export function nativeActivityRowPresentation(row: ActivityRow, context: {
   const tag = context.savedPending ? savedPendingStatusTag(row) : statusTag(row);
   const numeric = !!rowMonetaryAmount(row), state = statusLabels[tag]();
   const date = rowDate(row);
+  const statusSummary = `${state}${row.unavailable && tag !== 'unavailable' ? ` · ${t('mobile.activityViews.nativeActivity.detailsUnavailable')}` : ''}`;
   return {
-    date, direction: flow, status: state, fullAmount, numeric,
+    date, direction: flow, status: state, statusSummary, fullAmount, numeric,
     title: !numeric ? fullAmount : flow === 'sent' ? t('send.sent') : flow === 'received' ? t('send.received') : flow === 'self' ? t('mobile.activityViews.nativeActivity.selfTransfer') : t('buttons.activity'),
-    subtitle: `${context.networkName} · ${state}${row.unavailable && tag !== 'unavailable' ? ` · ${t('mobile.activityViews.nativeActivity.detailsUnavailable')}` : ''}`,
+    subtitle: `${context.networkName} · ${statusSummary}`,
     amount: numeric && context.hideBalances ? HIDDEN_BALANCE : numeric ? compactActivityAmountLabel(`${/^[+−-]/.test(fullAmount) ? '' : flow === 'received' ? '+' : flow === 'sent' ? '-' : ''}${fullAmount}`.replace(/^−/, '-')) : '',
     label: t('mobile.activityViews.nativeActivity.transactionLabel', { amount: context.hideBalances && numeric ? t('mobile.activityViews.nativeActivity.amountHidden') : fullAmount, status: state, date: date.label, time: date.time }),
   };
