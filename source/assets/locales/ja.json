@@ -3598,8 +3598,6 @@
         "viewToken": "{{name}}のトークン{{id}}を表示",
         "reviewTokenContract": "{{symbol}}のトークンコントラクト{{address}}を確認",
         "tokenBalance": "トークン残高 {{amount}}",
-        "collectionBalance": "コレクション残高: NFT {{amount}}点",
-        "nftQuantity": "NFT {{amount}}点",
         "tokenId": "トークンID {{id}}",
         "networkQuantity": "ネットワーク上の数量: {{amount}}",
         "importTokenHint": "{{network}}のトークンコントラクトを入力してください。名前とシンボルではその正当性を確認できません。",
