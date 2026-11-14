@@ -586,6 +586,37 @@ it('preserves all local AA refresh hints when explorer history confirms the oute
   });
 });
 
+it('refreshes the Smart balance after replay confirmation without optional native hints', async () => {
+  const saType = KeyringAccountType.SmartAccount;
+  const sa = `0x${'55'.repeat(20)}`;
+  const unrelated = `0x${'66'.repeat(20)}`;
+  state.vault.activeAccount = { type: saType, id: 0 };
+  state.vault.accounts[saType] = {
+    0: { address: sa, nativeBalance: '0.1' },
+    1: { address: unrelated, nativeBalance: '7' },
+  };
+  provider.getBalance.mockImplementation(async (address: string) =>
+    address === sa ? BigInt('87541280849000000') : BigInt('1000000000000000000')
+  );
+  controller.refreshBalancesAfterHistory({
+    hash: `0x${'bb'.repeat(32)}`,
+    from: A,
+    to: U,
+    chainId: 1,
+    value: '0',
+    blockNumber: 10,
+    smartAccountExecutionFrom: sa,
+    logs: [],
+  });
+  await jest.advanceTimersByTimeAsync(100);
+  expect(provider.getBalance).toHaveBeenCalledTimes(2);
+  expect(provider.getBalance).toHaveBeenCalledWith(sa, 11);
+  expect(state.vault.accounts[saType][0].nativeBalance).toBe('0.087541280849');
+  expect(state.vault.accounts[saType][1].nativeBalance).toBe('7');
+  expect(provider.send).toHaveBeenCalledTimes(1);
+  expect(balanceOf).not.toHaveBeenCalled();
+});
+
 it('coalesces pending history receipt reads and refuses their late result after context changes', async () => {
   const hash = `0x${'ee'.repeat(32)}`;
   let resolve!: (value: any) => void;

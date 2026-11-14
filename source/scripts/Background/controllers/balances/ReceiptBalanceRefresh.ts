@@ -168,6 +168,7 @@ export const receiptBalanceTargets = (tx: any) => {
   add(owners, tx.smartAccountExecutionFrom);
   add(owners, tx.tokenRecipient);
   add(native, tx.from); // the actual outer EOA gas payer, also on failed receipts
+  add(native, tx.smartAccountExecutionFrom); // inner value and account-paid fees
   try {
     if (BigInt(tx.value || 0) > BigInt(0) && !tx.contractAddress)
       add(native, tx.to);
