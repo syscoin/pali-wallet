@@ -131,6 +131,7 @@ test('Bitcoin WIF import and OS-authorized key backup stay readable at 320px', a
   await expect(page.getByRole('radio', { name: 'Legacy', exact: true })).toHaveAttribute('aria-checked', 'true');
   await page.screenshot({ path: info.outputPath('wif-entry-320.png'), fullPage: true });
   await page.getByRole('button', { name: 'Review address', exact: true }).click();
+  await authenticateNativeOperation(page);
   await expect(page.getByText(fixtureAddress, { exact: true })).toBeVisible();
   await expect(page.getByText('Your recovery phrase cannot restore this account.', { exact: true })).toBeVisible();
   await expect(keyField).toHaveCount(0);
@@ -174,6 +175,7 @@ test('Bitcoin WIF import and OS-authorized key backup stay readable at 320px', a
   await keyField.fill(fixtureKey);
   await page.getByRole('radio', { name: 'Legacy', exact: true }).click();
   await page.getByRole('button', { name: 'Review address', exact: true }).click();
+  await authenticateNativeOperation(page);
   await expect(page.getByText('This address is already a wallet account. Select that account instead.', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Import account', exact: true })).toHaveCount(0);
   await expect(keyField).toHaveAttribute('type', 'password');
@@ -198,6 +200,7 @@ test('Bitcoin BIP84 import clears stale WIF script choices at 320px', async ({ p
   await expect(keyField).toHaveValue(BITCOIN_BIP84_KEY);
   await expect(page.getByRole('radio')).toHaveCount(0);
   await review.press('Enter');
+  await authenticateNativeOperation(page);
   await expect(page.getByText('Bitcoin', { exact: true })).toBeVisible();
   await expect(page.getByText(BITCOIN_BIP84_ADDRESS, { exact: true })).toBeVisible();
   await expect(page.getByText('Check the complete SegWit address for Bitcoin.', { exact: true })).toBeVisible();
@@ -215,6 +218,7 @@ test('Bitcoin BIP84 import clears stale WIF script choices at 320px', async ({ p
   await nameField.fill(name);
   await keyField.fill(BITCOIN_BIP84_KEY);
   await review.click();
+  await authenticateNativeOperation(page);
   await expect(page.getByText(BITCOIN_BIP84_ADDRESS, { exact: true })).toBeVisible();
 
   const confirm = page.getByRole('button', { name: 'Import account', exact: true });
