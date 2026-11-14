@@ -276,7 +276,7 @@ function DepositContent({
     state.error === 'expired'
       ? t('privacy.deposit.expired')
       : state.error === 'pending'
-      ? t('mobile.privacyFlows.deposit.thisNoteHasAnUnresolvedDepositCheckActivityBeforeContinuing')
+      ? t('send.savedNonceConflict')
       : state.error === 'unavailable'
       ? t('mobile.privacyFlows.deposit.thisDepositIsUnavailableCheckYourAccountAndNetwork')
       : state.error === 'failed'

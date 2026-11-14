@@ -3040,7 +3040,6 @@
         "thisDepositCouldNotBeOpenedReturnToYourWallet": "이 입금을 열지 못했습니다. 지갑으로 돌아가 다시 시도하세요.",
         "closingDeposit": "입금 닫는 중…",
         "openingDeposit": "입금 여는 중",
-        "thisNoteHasAnUnresolvedDepositCheckActivityBeforeContinuing": "이 노트에 미해결 입금이 있습니다. 계속하기 전에 활동을 확인하세요.",
         "thisDepositIsUnavailableCheckYourAccountAndNetwork": "이 입금은 사용할 수 없습니다. 계정과 네트워크를 확인하세요.",
         "couldNotCheckThePoolStatusTryAgain": "풀 상태를 확인하지 못했습니다. 다시 시도하세요.",
         "depositVerified": "입금 검증됨",

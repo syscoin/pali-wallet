@@ -3040,7 +3040,6 @@
         "thisDepositCouldNotBeOpenedReturnToYourWallet": "无法打开此存款，请返回钱包后重试。",
         "closingDeposit": "正在关闭存款…",
         "openingDeposit": "正在打开存款",
-        "thisNoteHasAnUnresolvedDepositCheckActivityBeforeContinuing": "此票据存在未解决的存款。继续前请检查活动。",
         "thisDepositIsUnavailableCheckYourAccountAndNetwork": "此存款不可用，请检查账户和网络。",
         "couldNotCheckThePoolStatusTryAgain": "无法检查资金池状态，请重试。",
         "depositVerified": "存款已验证",

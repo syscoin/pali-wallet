@@ -349,7 +349,8 @@ it('honors the durable per-note guard across a controller restart after an unkno
   const f = setup();
   const reserved = new Set<string>();
   jest.mocked(f.host.beforeSubmission).mockImplementation(async (attempt) => {
-    if (reserved.has(attempt.noteId)) throw new Error('prior unknown attempt');
+    if (reserved.has(attempt.noteId))
+      throw new Error('privacy_deposit_attempt_exists');
     reserved.add(attempt.noteId);
     return () => undefined;
   });
@@ -370,6 +371,7 @@ it('honors the durable per-note guard across a controller restart after an unkno
   });
   await expect(restarted.submitDeposit(second.intentId)).rejects.toMatchObject({
     transactionNotBroadcast: true,
+    message: 'privacy_deposit_attempt_exists',
   });
   expect(f.host.sendTransaction).toHaveBeenCalledTimes(1);
   expect(f.host.recordNotBroadcast).toHaveBeenCalledTimes(1);
@@ -383,6 +385,38 @@ it('honors the durable per-note guard across a controller restart after an unkno
       .mock.calls.some(([attempt]) => attempt.intentId === first.intentId)
   ).toBe(false);
 });
+
+it.each(['signing guard', 'sender'] as const)(
+  'does not classify a same-text %s failure as a reservation refusal',
+  async (stage) => {
+    const f = setup();
+    const error = new Error('privacy_deposit_attempt_exists');
+    if (stage === 'signing guard') {
+      jest.mocked(f.host.beforeSubmission).mockResolvedValue(() => {
+        throw error;
+      });
+    } else {
+      jest.mocked(f.host.sendTransaction).mockRejectedValue(error);
+      jest.mocked(f.host.classifySubmissionFailure).mockReturnValue({
+        transactionNotBroadcast: true,
+      });
+    }
+    const review = await f.controller.prepareDeposit({ poolId: 'eth-1' });
+    await expect(
+      f.controller.submitDeposit(review.intentId)
+    ).rejects.toMatchObject({
+      transactionNotBroadcast: true,
+      message:
+        stage === 'sender'
+          ? 'privacy_deposit_not_broadcast'
+          : 'privacy_deposit_submission_blocked',
+    });
+    expect(f.host.sendTransaction).toHaveBeenCalledTimes(
+      stage === 'sender' ? 1 : 0
+    );
+    expect(f.host.recordNotBroadcast).toHaveBeenCalledTimes(1);
+  }
+);
 
 it('honors only host-owned proven-not-broadcast errors before any acknowledgement', async () => {
   const f = setup();

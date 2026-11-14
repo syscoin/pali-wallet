@@ -4,6 +4,7 @@ import { createTestPrivateAuthentication, readTestNoteInventory, testInventoryAu
 import { createPrivateVaultSession } from '../../../source/wallet/privateVault.ts';
 import { createTestCredentialRecordKeyring } from './fixtures/credentialOperation.ts';
 import { createTestCredentialPort } from './fixtures/credential.ts';
+import type { NativeCredentialPort } from '../src/custody/credentialVault.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -57,6 +58,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   let privacySettings: ReturnType<typeof createNativePrivacyServiceSettings>;
   let runtime!: KeyringRuntime;
   let keyring!: InstanceType<typeof sdk.HostKeyring>;
+  let signingFault = false, credentialFault = false, signatures = 0;
   let privateState!: () => {
     activeAccount: { id: number; type: string };
     accounts: Record<string, Record<number, Record<string, unknown>>>;
@@ -70,6 +72,12 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
         privateState = read;
         setState(read);
       };
+    }
+    override signPreparedEvmTransaction(...args: Parameters<InstanceType<typeof sdk.HostKeyring>['signPreparedEvmTransaction']>) {
+      const signed = super.signPreparedEvmTransaction(...args);
+      signatures++;
+      if (signingFault) throw Error('Synthetic post-signing fault');
+      return signed;
     }
   }
   let nonce = 0;
@@ -160,7 +168,11 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       headers: { 'content-type': 'application/json' },
     });
   };
-  const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort, privacyServiceSettings: { getOrigin: () => privacySettings.getOrigin(), changeOrigin: (...args) => privacySettings.changeOrigin(...args) }, passkeys: null, slhExecution: null,
+  const credentials: NativeCredentialPort = { ...credentialPort, async withSecret(reference, owner, consume) {
+    if (credentialFault && owner.purpose === 'transaction') throw Error('Synthetic protected read failure');
+    return credentialPort.withSecret(reference, owner, consume);
+  } };
+  const factory = createKeyringRuntimeFactory({ isAuthenticationActive: () => false, credentialPort: credentials, privacyServiceSettings: { getOrigin: () => privacySettings.getOrigin(), changeOrigin: (...args) => privacySettings.changeOrigin(...args) }, passkeys: null, slhExecution: null,
     readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
@@ -308,6 +320,9 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       ] = true;
     },
     posted,
+    failSigning() { signingFault = true; },
+    failCredentialRead() { credentialFault = true; },
+    get signatures() { return signatures; },
     refuseNextAuthorization() { credentialPort.refuseNext(operationAuthenticationCancellation()); },
     rpcMethods,
     relayedPosts,
@@ -535,6 +550,28 @@ test('unknown withdrawal preserves the signed transaction and note reservation f
   } finally {
     await f.close();
   }
+});
+
+for (const phase of ['credential', 'signed'] as const) test(`direct withdrawal ${phase} failure clears only known-unsigned reservations`, async () => {
+  const f = await fixture();
+  try {
+    const inventory = await f.seed();
+    const deposit = (await f.privateNotes())[0]!.deposit;
+    const model = await inventory.openWithdrawal!(inventory.notes[0]!, new AbortController().signal, noop, testInventoryAuthentication(inventory));
+    await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
+    if (phase === 'credential') f.failCredentialRead(); else f.failSigning();
+    await model.confirm(model.getSnapshot().review!.intentId);
+    assert.equal(model.getSnapshot().phase, phase === 'credential' ? 'failed' : 'unknown');
+    assert.equal(f.posted.length, 1, 'only the original deposit was broadcast');
+    assert.equal(f.signatures, phase === 'credential' ? 1 : 2);
+    assert.equal(f.runtime.catalogue.getSnapshot(), null);
+    await f.runtime.session.unlock();
+    const saved = (await f.privateNotes())[0]!;
+    if (phase === 'credential') assert.equal(saved.withdrawal, undefined);
+    else assert.equal(saved.withdrawal?.phase, 'unknown');
+    assert.deepEqual(saved.deposit, deposit, 'the prior submitted deposit remains intact');
+    await model.dispose();
+  } finally { await f.close(); }
 });
 
 test('cancel during held proof drains the runtime before returning to inventory', async () => {
