@@ -1,5 +1,5 @@
 import { defaultAbiCoder } from './ethersV6Compat.ts';
-import { SMART_ACCOUNT_PENDING_STATE } from './smartAccount/pendingState.ts';
+import { SMART_ACCOUNT_PENDING_STATE } from './smartAccount/pendingStateError.ts';
 
 const GUARDIAN_RECOVERY_POLICY_CHANGED =
   'PALI_GUARDIAN_RECOVERY_POLICY_CHANGED';
