@@ -387,12 +387,14 @@ export class WatchOnlyAuthority implements WalletAuthority, UtxoActivityOwner {
   }
 
   /** Restore a saved public navigation hint without opening balances or custody. */
-  restoreSelection(id: string): void {
+  restoreSelection(id: string, networkId?: NetworkId): void {
     if (!this.locked) throw new Error('Selection restoration requires a locked view');
     const account = this.accounts.find((entry) => entry.id === id);
     if (!account) return;
     this.invalidate(); this.accountId = id;
-    if (!account.addresses[this.networkId]) this.networkId = Object.keys(account.addresses)[0] as NetworkId;
+    const selected = getWatchNetworks(account, this.utxoNetworks).find(network => network.id === networkId);
+    if (selected) this.networkId = selected.id;
+    else if (!account.addresses[this.networkId]) this.networkId = Object.keys(account.addresses)[0] as NetworkId;
     this.publish();
   }
 

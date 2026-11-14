@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ACCOUNT_SELECTION_KEY, PUBLIC_ACCOUNTS_KEY, createPublicAccountStorage } from '../src/core/publicAccountStorage.ts';
-import { createEvmWatchAccount } from '../src/core/watchOnlyAuthority.ts';
+import { createEvmWatchAccount, WatchOnlyAuthority } from '../src/core/watchOnlyAuthority.ts';
 
 const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
 const OTHER = '0x1111111111111111111111111111111111111111';
@@ -103,4 +103,24 @@ test('a selection write that is not persisted fails visibly without touching pub
   const repository = createPublicAccountStorage({ get: async (key) => key === PUBLIC_ACCOUNTS_KEY ? encode([first]) : null, set: async () => undefined });
   await assert.rejects(repository.saveSelection({ kind: 'watch', id: first.id }), /could not be verified/);
   assert.deepEqual(await repository.loadAccounts(), [first]);
+});
+
+test('a saved watch account and network restore together after recreation without querying other networks', async () => {
+  const f = fixture(), reads: string[] = [];
+  const reader = { async readBalance(networkId: string) { reads.push(networkId); return { chainId: 5757, units: '0' }; } };
+  const original = new WatchOnlyAuthority(await f.repository.loadAccounts(), reader);
+  original.unlock(); original.selectNetwork('zksys');
+  const { selectedAccountId, selectedNetworkId } = original.getSnapshot();
+  await f.repository.saveSelection({ kind: 'watch', id: selectedAccountId!, networkId: selectedNetworkId });
+  original.lock(); original.unlock();
+  assert.equal(original.getSnapshot().selectedNetworkId, 'zksys', 'ordinary privacy lock preserves the selected network');
+  const recreated = new WatchOnlyAuthority(await f.repository.loadAccounts(), reader);
+  const selection = await f.repository.loadSelection();
+  assert(selection?.kind === 'watch');
+  recreated.restoreSelection(selection.id, selection.networkId);
+  assert.equal(recreated.getSnapshot().status, 'locked');
+  assert.equal(recreated.getSnapshot().selectedNetworkId, 'zksys');
+  assert.deepEqual(reads, [], 'restoring a navigation hint makes no blockchain request');
+  recreated.unlock(); await recreated.refresh();
+  assert.deepEqual(reads, ['zksys']);
 });

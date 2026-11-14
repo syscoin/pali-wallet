@@ -50,7 +50,7 @@ function harness(watch = false, locked = watch, idleMinutes = 0) {
   let authSignal: AbortSignal | undefined;
   const appListeners = new Map<string, Set<(state: string) => void>>();
   const initial = deferred<string | null>(),
-    selection = deferred<null | { kind: 'hd' | 'watch'; id: string }>();
+    selection = deferred<null | { kind: 'hd' | 'watch'; id: string; networkId?: string }>();
   const load = deferred<void>();
   const cells: Cell[] = [],
     effects: (() => void)[] = [];
@@ -123,7 +123,7 @@ function harness(watch = false, locked = watch, idleMinutes = 0) {
     }
     return entry.value;
   };
-  const watchRecords = watch ? [{ id: 'watch-1', name: 'Watch', addresses: { ethereum: '0x' + '11'.repeat(20) } }] : [];
+  const watchRecords: { id: string; name: string; addresses: Record<string, string> }[] = watch ? [{ id: 'watch-1', name: 'Watch', addresses: { ethereum: '0x' + '11'.repeat(20), zksys: '0x' + '11'.repeat(20) } }] : [];
   let blank = {
     status: 'locked',
     accounts: watchRecords,
@@ -141,8 +141,13 @@ function harness(watch = false, locked = watch, idleMinutes = 0) {
     lock() { watchIdle?.stop(); blank = { ...blank, status: 'locked' }; publish(); },
     unlock() { watchIdle?.begin(); publicOpens++; blank = { ...blank, status: 'ready' }; publish(); },
     selectAccount(id: string) { blank = { ...blank, selectedAccountId: id }; publish(); },
+    selectNetwork(id: string) { assert(watchRecords.find(account => account.id === blank.selectedAccountId)?.addresses[id]); blank = { ...blank, selectedNetworkId: id }; publish(); },
     async refresh() {},
-    restoreSelection() {},
+    restoreSelection(id: string, networkId?: string) {
+      const account = watchRecords.find(item => item.id === id);
+      if (!account) return;
+      blank = { ...blank, selectedAccountId: id, selectedNetworkId: networkId && account.addresses[networkId] ? networkId : blank.selectedNetworkId }; publish();
+    },
     subscribe: (notify: (state: typeof blank) => void) => { authorityListeners.add(notify); return () => authorityListeners.delete(notify); },
     getNetwork: core.getNetwork,
     getAccountNetworks: () => [],
@@ -533,15 +538,27 @@ test('a persisted privacy lock also guards Welcome and remains unlockable withou
   } finally { f.authorization.resolve(); f.dispose(); }
 });
 
-async function openRememberedWatch(idleMinutes = 0) {
+async function openRememberedWatch(idleMinutes = 0, networkId?: string) {
   const f = harness(true, false, idleMinutes);
   await f.viewPrivacy.ready;
-  f.initial.resolve(null); f.load.resolve(); f.selection.resolve({ kind: 'watch', id: 'watch-1' });
+  f.initial.resolve(null); f.load.resolve(); f.selection.resolve({ kind: 'watch', id: 'watch-1', ...(networkId ? { networkId } : {}) });
   await settle(); f.render(); await settle();
   assert(f.find(f.render(), 'WatchSession'));
   assert.equal(f.authCalls(), 0);
   return f;
 }
+
+test('App restores the saved watch network before opening and remembers later network changes', async () => {
+  const f = await openRememberedWatch(0, 'zksys');
+  try {
+    const session = f.find(f.render(), 'WatchSession')!;
+    assert.equal(session.props.authority.getSnapshot().selectedNetworkId, 'zksys');
+    session.props.authority.selectNetwork('ethereum'); await settle();
+    assert.deepEqual(JSON.parse(JSON.stringify(f.saved.at(-1))), { kind: 'watch', id: 'watch-1', networkId: 'ethereum' });
+    session.props.authority.selectNetwork('zksys'); await settle();
+    assert.deepEqual(JSON.parse(JSON.stringify(f.saved.at(-1))), { kind: 'watch', id: 'watch-1', networkId: 'zksys' });
+  } finally { f.dispose(); }
+});
 
 test('App watch permission return survives lock and fresh reopening for either OS decision', async () => {
   for (const permission of ['granted', 'denied'] as const) {

@@ -48,3 +48,23 @@ test('new public account creation rejects invalid identifiers before any record 
   assert.throws(() => createEvmWatchAccount('invalid/id', 'Observed account', ADDRESS));
   assert.throws(() => createEvmWatchAccount('watch_fixture', ' ', ADDRESS));
 });
+
+test('restoring a network hint cannot add a removed mapping or use another account mapping', () => {
+  let reads = 0;
+  const accounts = validatePublicAccounts([
+    { id: 'first', name: 'First', addresses: { ethereum: ADDRESS } },
+    { id: 'second', name: 'Second', addresses: { base: SECOND_ADDRESS } },
+  ]);
+  const authority = new WatchOnlyAuthority(accounts, { async readBalance() { reads++; throw Error('No read expected'); } });
+  authority.restoreSelection('first', 'zksys');
+  assert.equal(authority.getSnapshot().selectedNetworkId, 'ethereum');
+  authority.restoreSelection('first', 'base');
+  assert.equal(authority.getSnapshot().selectedNetworkId, 'ethereum');
+  authority.restoreSelection('missing', 'base');
+  assert.equal(authority.getSnapshot().selectedAccountId, 'first');
+  authority.restoreSelection('second', 'base');
+  assert.equal(authority.getSnapshot().selectedAccountId, 'second');
+  assert.equal(authority.getSnapshot().selectedNetworkId, 'base');
+  assert.equal(authority.getSnapshot().status, 'locked');
+  assert.equal(reads, 0);
+});

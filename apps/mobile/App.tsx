@@ -325,10 +325,13 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     };
   }, [go, pairingInbox, setSheet]);
   const rememberSelection = useCallback((selection: AccountSelection | null) => {
-    if ((!selection && !lastSelection.current) || (selection && lastSelection.current?.kind === selection.kind && lastSelection.current.id === selection.id)) return;
+    const matches = (other: AccountSelection | null) => selection === other || !!selection && !!other &&
+      selection.kind === other.kind && selection.id === other.id &&
+      (selection.kind !== 'watch' || other.kind !== 'watch' || selection.networkId === other.networkId);
+    if (matches(lastSelection.current)) return;
     lastSelection.current = selection;
     void saveAccountSelection(selection).then(() => setSelectionError('')).catch(() => {
-      if (selection && lastSelection.current?.kind === selection.kind && lastSelection.current.id === selection.id) lastSelection.current = null;
+      if (matches(lastSelection.current)) lastSelection.current = null;
       setSelectionError(nativeI18n.t('mobile.shellViews.app.yourLastAccountChoiceCouldNotBeSaved'));
     });
   }, []);
@@ -355,8 +358,9 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       check();
       if (publicViewLock.getSnapshot().phase === 'locked') await publicViewLock.unlock(authorizePublicView, check);
       publicViewLock.assertUnlocked(); check();
+      if (local.getSnapshot().status === 'locked') local.restoreSelection(selection.id, selection.networkId);
       local.unlock(); local.selectAccount(selection.id);
-      rememberSelection(selection); setPreview(false); setSheet(null); go('home', resumingPermission);
+      rememberSelection({ kind: 'watch', id: selection.id, networkId: local.getSnapshot().selectedNetworkId }); setPreview(false); setSheet(null); go('home', resumingPermission);
       void local.refresh();
       return true;
     } catch { setViewError(true); }
@@ -415,7 +419,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(''), 2800);
   };
-  const connect = async (accounts: readonly PublicAccount[]) => {
+  const connect = useCallback(async (accounts: readonly PublicAccount[]) => {
     openingWatch.current?.abort();
     const opening = new AbortController(); openingWatch.current = opening;
     removeListener.current?.();
@@ -428,12 +432,18 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       }), check: () => watchIdle.check(owner), stop: () => watchIdle.stop(owner) },
     });
     if (opening.signal.aborted || openingWatch.current !== opening || JSON.stringify(next.getSnapshot().accounts) !== JSON.stringify(accounts)) throw new Error(nativeI18n.t('mobile.shellViews.app.savedWatchAccountsChangedReopenThem'));
+    const remembered = lastSelection.current;
+    if (remembered?.kind === 'watch') next.restoreSelection(remembered.id, remembered.networkId);
     openingWatch.current = null;
     authority.current = next; setWatchAuthority(next);
     setSnapshot(next.getSnapshot());
-    removeListener.current = next.subscribe(setSnapshot);
+    removeListener.current = next.subscribe(state => {
+      setSnapshot(state);
+      if (state.status === 'ready' && state.selectedAccountId && !openingView.current)
+        rememberSelection({ kind: 'watch', id: state.selectedAccountId, networkId: state.selectedNetworkId });
+    });
     return next;
-  };
+  }, [rememberSelection]);
   const loadAccounts = async () => {
     await watchAccounts.load();
     return connect(watchAccounts.getSnapshot().accounts);
@@ -453,7 +463,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
           lastSelection.current = saved;
           if (saved?.kind === 'watch' && next.accounts.some((entry) => entry.id === saved.id)) {
             // Restore only an advisory choice; the authority remains privacy-locked.
-            authority.current?.restoreSelection(saved.id);
+            authority.current?.restoreSelection(saved.id, saved.networkId);
             if (publicViewLock.getSnapshot().phase === 'unlocked') { await openWatch(saved); return; }
           }
           if (saved && saved.kind !== 'watch' && Platform.OS !== 'web') { setRequestedHdId(saved.id); setRoute('native'); }
@@ -467,7 +477,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       if (openingView.current) publicViewLock.cancelUnlock();
       if (toastTimer.current) clearTimeout(toastTimer.current);
     };
-  }, [watchAccounts, openWatch]);
+  }, [watchAccounts, openWatch, connect]);
   useEffect(() => {
     const hide = () => {
       if (isNativeCredentialPromptActive()) return;
@@ -606,9 +616,8 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     if (lastSelection.current?.kind === 'watch' && !accounts.some((entry) => entry.id === lastSelection.current?.id))
       rememberSelection(accounts[0] ? { kind: 'watch', id: accounts[0].id } : null);
     if (wasReady && publicViewLock.getSnapshot().phase === 'unlocked' && accounts.length && foreground.current && navigation === navigationGeneration.current && lifecycle === lifecycleGeneration.current) {
+      if (selectedId && accounts.some((entry) => entry.id === selectedId)) next.restoreSelection(selectedId, selectedNetwork);
       next.unlock();
-      if (selectedId && accounts.some((entry) => entry.id === selectedId)) next.selectAccount(selectedId);
-      if (selectedNetwork && next.getSnapshot().selectedNetworkId !== selectedNetwork && next.getSnapshot().accounts.find((entry) => entry.id === next.getSnapshot().selectedAccountId)?.addresses[selectedNetwork]) next.selectNetwork(selectedNetwork);
       void next.refresh();
     }
     return next;
