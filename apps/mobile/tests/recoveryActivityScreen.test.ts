@@ -13,6 +13,7 @@ import { activityAssetIcon } from '../src/activity/assetIcon.ts';
 import { getEvmTransactionDisplayInfo } from '../../../source/shared/evmTransactionDisplay.ts';
 import { mapEvmExplorerTokenTransfer, mapEvmExplorerTransaction } from '../../../source/shared/evmHistory.ts';
 import { activityRowDirection, matchesActivityView, zeroOnlyActivity } from '../src/activity/activityFiltering.ts';
+import { observeEvmTransaction } from '../../../source/shared/evmTransactionObservation.ts';
 
 type Element = { type: any; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; dependencies?: unknown[]; cleanup?: () => void };
@@ -371,6 +372,34 @@ async function openFixtureRow(f: ReturnType<typeof fixture>, row: unknown) {
   await list.props.renderItem({ item: row, index: 0 }).props.onPress();
   return f.render();
 }
+
+test('Smart Activity details show the observed outer network fee and its actual payer', async () => {
+  const payer = '0x' + '55'.repeat(20), blockHash = '0x' + '66'.repeat(32);
+  const observation = await observeEvmTransaction({ chainId: '1', hash, from: payer, to: '0x' + '77'.repeat(20), nonce: '0' },
+    async method => method === 'eth_chainId' ? '0x1' : method === 'eth_getTransactionReceipt'
+      ? { transactionHash: hash, from: payer, to: '0x' + '77'.repeat(20), status: '0x1', blockNumber: '0x2', blockHash,
+          gasUsed: '0x5208', effectiveGasPrice: '0x2' }
+      : { number: '0x2', hash: blockHash, gasLimit: '0x100000' }, () => undefined);
+  const base = pendingScopedRow();
+  const local = { ...base.local, smartAccount: { payer, operations: [{ operationHash: hash, operationNonce: '0' }] } };
+  for (const scenario of [
+    { retainedObservation: observation, expected: '0.000000000000042 ETH' },
+    { retainedObservation: { status: 'missing', latestNonce: '0' }, expected: 'Actual fee not verified' },
+    { retainedObservation: observation, observation: base.observation, expected: 'Actual fee not verified' },
+    { retainedObservation: observation, unavailable: true, expected: 'Actual fee not verified' },
+    { retainedObservation: observation, indexed: {}, indexedStatus: 'pending', expected: 'Actual fee not verified' },
+    { retainedObservation: observation, observation: { ...base.observation, status: 'confirmed', block: { hash: blockHash, number: '2' }, feeUnits: null }, expected: 'Actual fee not verified' },
+    { retainedObservation: observation, observation: { ...base.observation, status: 'confirmed', block: { hash: blockHash, number: '2' }, feeUnits: '1' }, expected: '0.000000000000000001 ETH' },
+  ]) {
+    const { expected, ...fields } = scenario, f = fixture();
+    try {
+      const tree = await openFixtureRow(f, { ...base, observation: undefined, local, ...fields });
+      const detail = all(tree).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
+      assert.equal(detail.props.rows.find((row: { label: string }) => row.label === englishI18n.t('send.networkFee')).value, expected);
+      assert.equal(detail.props.rows.find((row: { label: string }) => row.label === englishI18n.t('transactions.feePayer')).value, payer);
+    } finally { f.dispose(); }
+  }
+});
 
 test('scoped retained actions navigate to a host review without invoking direct action callbacks', async () => {
   const navigation: [string, string][] = [];
