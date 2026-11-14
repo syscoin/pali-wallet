@@ -643,6 +643,7 @@ test('public platform and native Portfolio fallback bind platform-owned fetch; N
   const react = {
     createElement: (...args: unknown[]) => args,
     useMemo: (work: () => unknown) => work(),
+    useState: (initial: unknown) => [initial, () => { throw Error('Unexpected state update in fetch wiring test'); }],
     useCallback: (callback: unknown) => callback,
     useLayoutEffect() {},
     useSyncExternalStore: () => ({ account: null }),
