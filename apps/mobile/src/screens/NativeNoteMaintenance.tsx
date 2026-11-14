@@ -8,6 +8,7 @@ import { useNativeTranslation } from '../platform/localization';
 import { Button, Card, colors, Header, Row, Screen, styles, Text } from '../ui';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
+import { isOperationAuthenticationCancellation } from '../core/operationAuthentication';
 
 type Props = {
   open(signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeNoteMaintenanceRuntime>;
@@ -67,29 +68,35 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
           (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, AppState.currentState))) throw Error('CANCELLED');
     };
     Keyboard.dismiss();
+    let reloaded = false;
+    let cancelledBeforeAccess = false;
+    const reload = (inventory: Awaited<ReturnType<NativeNoteMaintenanceRuntime['getNotes']>>) => {
+      check(); if (AppState.currentState !== 'active') throw Error('CANCELLED'); setNotes(inventory.notes); reloaded = true;
+    };
     try {
       if (kind === 'recover') {
-        await activeRuntime.recoverFailedWithdrawal(note!.id, check); check();
+        await activeRuntime.recoverFailedWithdrawal(note!.id, check, reload); check();
         if (AppState.currentState !== 'active') throw Error('CANCELLED');
         setSelected(null);
       } else {
-        let removed = 0, unresolved = 0;
         setProgress({ checked: 0, total: notes.length });
-        for (const candidate of notes) {
-          check();
-          const value = await activeRuntime.clearCompletedNote(candidate.id, check); check();
-          if (AppState.currentState !== 'active') throw Error('CANCELLED');
-          const ids = [...value.removed, ...value.unresolved];
-          if (ids.length !== 1 || ids[0] !== candidate.id) throw Error('Invalid maintenance result');
-          removed += value.removed.length; unresolved += value.unresolved.length;
-          setProgress({ checked: removed + unresolved, total: notes.length });
-        }
-        setResult({ removed, unresolved }); setConfirmClear(false);
+        const value = await activeRuntime.clearCompletedNotes(notes.map(note => note.id), check,
+          value => { check(); setProgress(value); }, reload);
+        check(); if (AppState.currentState !== 'active') throw Error('CANCELLED');
+        setResult({ removed: value.removed.length, unresolved: value.unresolved.length }); setConfirmClear(false);
       }
-    } catch { if (current.live) setError(kind === 'clear' ? 'privacy.capacity.clearError' : 'privacy.recovery.failed'); }
+    } catch (error) {
+      if (!reloaded && isOperationAuthenticationCancellation(error)) {
+        try { check(); cancelledBeforeAccess = AppState.currentState === 'active'; } catch { /* Retired owners stay fail-closed. */ }
+      }
+      if (!cancelledBeforeAccess && current.live) setError(kind === 'clear' ? 'privacy.capacity.clearError' : 'privacy.recovery.failed');
+    }
     finally {
-      // A committed write can lose its acknowledgement. Always reload, never replay the operation.
-      try { check(); const inventory = await activeRuntime.getNotes(check); check(); if (AppState.currentState !== 'active') throw Error('CANCELLED'); setNotes(inventory.notes); }
+      // The action reloads within its authorization, even after a lost acknowledgement.
+      try {
+        check();
+        if (!reloaded && !cancelledBeforeAccess) throw Error('Maintenance inventory unavailable');
+      }
       catch { if (current.live) { setReady(false); setNotes([]); setError('privacy.capacity.clearError'); } }
       current.busy = false;
       if (current.live) { setBusy(false); setProgress(null); }
