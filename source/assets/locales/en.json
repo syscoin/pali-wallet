@@ -3040,7 +3040,6 @@
         "thisDepositCouldNotBeOpenedReturnToYourWallet": "This deposit could not be opened. Return to your wallet and try again.",
         "closingDeposit": "Closing deposit…",
         "openingDeposit": "Opening deposit",
-        "thisNoteHasAnUnresolvedDepositCheckActivityBeforeContinuing": "This note has an unresolved deposit. Check Activity before continuing.",
         "thisDepositIsUnavailableCheckYourAccountAndNetwork": "This deposit is unavailable. Check your account and network.",
         "couldNotCheckThePoolStatusTryAgain": "Could not check the pool status. Try again.",
         "depositVerified": "Deposit verified",

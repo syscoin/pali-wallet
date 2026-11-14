@@ -3040,7 +3040,6 @@
         "thisDepositCouldNotBeOpenedReturnToYourWallet": "この入金を開けませんでした。ウォレットに戻って再試行してください。",
         "closingDeposit": "入金を閉じています…",
         "openingDeposit": "入金を開いています",
-        "thisNoteHasAnUnresolvedDepositCheckActivityBeforeContinuing": "このノートには未解決の入金があります。続行前に履歴を確認してください。",
         "thisDepositIsUnavailableCheckYourAccountAndNetwork": "この入金は利用できません。アカウントとネットワークを確認してください。",
         "couldNotCheckThePoolStatusTryAgain": "プールの状態を確認できませんでした。再試行してください。",
         "depositVerified": "入金確認済み",
