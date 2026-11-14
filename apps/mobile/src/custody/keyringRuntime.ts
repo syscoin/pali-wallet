@@ -146,7 +146,8 @@ import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
 import { EvmSignedRecords, createEvmSignedRecordLifecycle, type EvmVerifiedReplacementBinding, type EvmSignedRetirementReadMethod, type EvmSignedRetirementReadForChain } from '../../../../source/wallet/evmSignedRecords.ts';
 import { UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 import { EvmSignedReplay, observeRetainedEvmTransaction, projectSavedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
-import { observeSmartAccountActivity } from '../../../../source/wallet/smartAccountActivity.ts';
+import { createSmartAccountSignedReplay } from '../../../../source/wallet/smartAccountSignedReplay.ts';
+import { observeSmartAccountActivity, observeSmartAccountOperations } from '../../../../source/wallet/smartAccountActivity.ts';
 import { getObservedEvmTerminalPhase } from '../../../../source/shared/evmTransactionObservation.ts';
 import { assertNativeRecordDomains } from './recoveryInventory.ts';
 import { captureInfrastructureCleanupStorage } from './infrastructureCleanup.ts';
@@ -5322,7 +5323,7 @@ export function createKeyringRuntimeFactory(
                   guard();
                   return signature;
               },
-              preparePayer(request, payer, signal, assertCurrent, metadata, funding) {
+              preparePayer(request, payer, signal, assertCurrent, metadata, funding, assertAssetState) {
                 check(); checkGuard(assertCurrent);
                 const owned = snapshot.accounts.find(candidate => candidate.index === payer.id && candidate.type === payer.type);
                 if (!owned || owned.address.toLowerCase() !== payer.address.toLowerCase()) throw new KeyringRuntimeError('INVALID_INPUT');
@@ -5332,7 +5333,7 @@ export function createKeyringRuntimeFactory(
                   if (state.accounts[payer.type]?.[payer.id] !== payerRecord || payerRecord?.address.toLowerCase() !== owned.address.toLowerCase())
                     throw new KeyringRuntimeError('CANCELLED');
                 };
-                return prepareOwnedEvmTransaction(request, owned, selected, signal, guard, metadata, funding, { kind: 'estimate' }, null, null, authentication);
+                return prepareOwnedEvmTransaction(request, owned, selected, signal, guard, metadata, funding, { kind: 'estimate' }, null, assertAssetState, authentication);
               },
               async waitForReceipt(hash, transaction, signal, assertCurrent, operation) {
                 const guard = () => { check(); checkGuard(assertCurrent); if (signal.aborted) throw new KeyringRuntimeError('CANCELLED'); };
@@ -7302,7 +7303,7 @@ export function createKeyringRuntimeFactory(
                       local.walletFingerprint !== scope.walletFingerprint || local.accountId !== scope.accountId)
                     throw new KeyringRuntimeError('CANCELLED');
                   const rpc = new EvmTransferReadRpc(scope.network, { fetch: dependencies.connectionFetch ?? walletFetch });
-                  if (local.smartAccount) return observeSmartAccountActivity({ chainId: local.chainId, hash: local.hash,
+                  if (local.smartAccount) return observeSmartAccountOperations({ chainId: local.chainId, hash: local.hash,
                     account: local.address, nonce: local.nonce, ...local.smartAccount },
                     (method, params) => rpc.retirementRead(method, params, signal, guard), guard);
                   return rpc.observation({ hash: local.hash, from: local.address,
@@ -7328,36 +7329,33 @@ export function createKeyringRuntimeFactory(
               if (chainId !== scope.network.chainId || address !== scope.address || walletFingerprint !== scope.walletFingerprint || local.accountId !== scope.accountId)
                 throw new KeyringRuntimeError('CANCELLED');
               if (type === 'SmartAccount') {
-                const transfer = await signedRecords.readSmartAccountActivityExact({ keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard }, chainId, address, hash);
-                guard();
-                const saved = transfer ? null : await activityHistory.load(scope, guard);
-                guard();
-                const record = transfer && 'cancellation' in transfer ? {
-                  walletFingerprint, accountId: scope.accountId, address, networkId: scope.network.id,
-                  registrationHash: scope.network.registrationHash, chainId, hash,
-                  nonce: transfer.entry.nonce, createdAt: transfer.entry.createdAt,
-                  recipient: normalizePublicAddress(transfer.entry.from, scope.network.id), amountUnits: '0',
-                  maximumFeeUnits: (Transaction.from(transfer.entry.rawTransaction).gasLimit *
-                    (Transaction.from(transfer.entry.rawTransaction).maxFeePerGas ?? Transaction.from(transfer.entry.rawTransaction).gasPrice ?? 0n)).toString(),
-                  smartAccount: { ...transfer.original, cancellation: true as const },
-                } : transfer ? {
-                  walletFingerprint, accountId: scope.accountId, address, networkId: scope.network.id,
-                  registrationHash: scope.network.registrationHash, chainId, hash,
-                  nonce: transfer.entry.nonce, createdAt: transfer.entry.createdAt,
-                  recipient: transfer.recipient, amountUnits: transfer.amountUnits, maximumFeeUnits: transfer.maximumAccountCharge,
-                  ...(transfer.token ? { token: transfer.token } : {}),
-                  ...(transfer.collectibleTransfer ? { collectibleTransfer: transfer.collectibleTransfer } : {}),
-    ...(transfer.contractInteraction ? { contractInteraction: true as const } : {}),
-                  smartAccount: { payer: normalizePublicAddress(transfer.entry.from, scope.network.id), operationHash: transfer.operationHash, operationNonce: transfer.operationNonce },
-                } : saved?.archived.find(item => item.hash === hash);
+                const journal = createNativeSignedRecordView(signedRecords,
+                  { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard }, scope.walletFingerprint,
+                  { index: selectedAccount().index, type, address: scope.address }, scope.network);
+                const retained = await journal.smartActivity(hash); guard();
+                const saved = retained ? null : await activityHistory.load(scope, guard); guard();
+                const source = retained ?? saved?.archived.find(item => item.hash === hash);
+                const record = source ? { ...source, recipient: source.recipient ?? scope.address } : undefined;
                 if (!record?.smartAccount) throw new KeyringRuntimeError('NOT_READY');
                 const rpc = new EvmTransferReadRpc(scope.network, { fetch: dependencies.connectionFetch ?? walletFetch });
-                const observation = await observeSmartAccountActivity({ chainId, hash, account: address, nonce: record.nonce, ...record.smartAccount },
+                const observation = await observeSmartAccountOperations({ chainId, hash, account: address, nonce: record.nonce, ...record.smartAccount },
                   (method, params) => rpc.retirementRead(method, params, signal, guard), guard);
                 guard();
                 const phase = getObservedEvmTerminalPhase(observation, record.nonce);
-                const observed = phase ? { ...record, phase }
-                  : { ...record, smartAccount: record.smartAccount, phase: 'submitted' as const };
+                // Archive only durable activity facts. The live projection also
+                // carries replay/navigation hints that are not storage fields.
+                const observed = {
+                  walletFingerprint: record.walletFingerprint, accountId: record.accountId,
+                  address: record.address, networkId: record.networkId,
+                  registrationHash: record.registrationHash, chainId: record.chainId,
+                  hash: record.hash, nonce: record.nonce, createdAt: record.createdAt,
+                  recipient: record.recipient, amountUnits: record.amountUnits,
+                  maximumFeeUnits: record.maximumFeeUnits,
+                  smartAccount: record.smartAccount, phase: phase ?? 'submitted' as const,
+                  ...(record.contractInteraction ? { contractInteraction: record.contractInteraction } : {}),
+                  ...(record.collectibleTransfer ? { collectibleTransfer: record.collectibleTransfer } : {}),
+                  ...(record.token ? { token: record.token } : {}),
+                };
                 await activityHistory.recordObservation(observed, guard);
                 guard();
                 return observation;
@@ -7451,9 +7449,9 @@ export function createKeyringRuntimeFactory(
                 ...(collectible ? { collectible } : {}), ...(selected.type === 'SmartAccount' ? { smartAccount: selected.address } : {}) });
             },
             replay(assertCurrent, transport, options) {
-              if (active || reserved || closed || !canSign()) throw new KeyringRuntimeError('NOT_READY');
+              if (active || reserved || closed || !keyring.hasPublicSession() || (!canSign() && selectedAccount().type !== 'SmartAccount')) throw new KeyringRuntimeError('NOT_READY');
               const captured = generation,
-                selected = selectedAccount();
+                selected = selectedAccount(), snapshot = catalogueSnapshot!;
               const network = getNativeNetwork(
                 catalogueSnapshot!.active.networkId,
                 catalogueSnapshot!.networks
@@ -7478,11 +7476,71 @@ export function createKeyringRuntimeFactory(
                 );
                 if (
                   live !== selected ||
+                  catalogueSnapshot !== snapshot ||
                   currentNetwork.chainId !== network.chainId ||
                   currentNetwork.rpcUrl !== network.rpcUrl
                 )
                   throw new KeyringRuntimeError('CANCELLED');
               };
+              if (selected.type === 'SmartAccount') {
+                let lifetime = new AbortController();
+                const rpc = new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch });
+                const replay = createSmartAccountSignedReplay(signedRecords, () => {
+                  const ownedLifetime = lifetime;
+                  const current = () => { check(); if (ownedLifetime.signal.aborted) throw new KeyringRuntimeError('CANCELLED'); };
+                  current();
+                  return {
+                    account: { id: selected.index, address: selected.address }, chainId: network.chainId,
+                    recordSession: { keyring: transactionRecordKeyring(keyring, current), assertCurrent: current },
+                    assertCurrent: current,
+                    read: (method, params, guard) => rpc.retirementRead(method, params, ownedLifetime.signal, guard),
+                    capturePayer(entry) {
+                      current();
+                      const payer = findRetainedSignerAccount(snapshot.accounts, entry);
+                      if (!payer) throw new KeyringRuntimeError('NOT_READY');
+                      const record = state.accounts[payer.type]?.[payer.index];
+                      if (!record || record.address.toLowerCase() !== payer.address.toLowerCase()) throw new KeyringRuntimeError('NOT_READY');
+                      const identity = { address: record.address, xpub: record.xpub };
+                      const guard = () => {
+                        current();
+                        if (state.accounts[payer.type]?.[payer.index] !== record || record.address !== identity.address || record.xpub !== identity.xpub)
+                          throw new KeyringRuntimeError('CANCELLED');
+                      };
+                      return {
+                        context: { ...context, account: { id: payer.index, type: payer.type, address: payer.address } },
+                        recordSession: { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard },
+                        assertCurrent: guard, ...transport,
+                        authorizeReplay: saved => authorizePrivateNoteReplay(saved, guard,
+                          async () => { throw new KeyringRuntimeError('NOT_READY'); },
+                          async () => { throw new KeyringRuntimeError('NOT_READY'); }),
+                      };
+                    },
+                  };
+                }, options.now, options.randomBytes);
+                return {
+                  async prepare(hash, mode) {
+                    if (mode !== 'inspect' && mode !== 'resend') throw new KeyringRuntimeError('INVALID_INPUT');
+                    replay.cancel(); lifetime.abort(); lifetime = new AbortController();
+                    const result = await replay.prepare(hash);
+                    if (mode === 'inspect' && result.status === 'review') {
+                      const transaction = await replay.get(hash); check();
+                      replay.cancel(result.review.id);
+                      if (!transaction) throw new KeyringRuntimeError('NOT_READY');
+                      return Object.freeze({ status: 'unknown' as const, hash, transaction });
+                    }
+                    return result;
+                  },
+                  list: replay.list,
+                  listPredecessors: replay.listPredecessors,
+                  preparePredecessor: replay.preparePredecessor,
+                  cancel(id) { const cancelled = replay.cancel(id); if (cancelled) lifetime.abort(); return cancelled; },
+                  confirm(id) {
+                    const work = replay.confirm(id);
+                    const pending = work.finally(() => { pendingSubmissions.delete(pending); });
+                    pendingSubmissions.add(pending); return pending;
+                  },
+                };
+              }
               type PrivateReplayOwner = {
                 lifetime: AbortController;
                 pool?: Awaited<ReturnType<typeof openOwnedPrivatePool>>;
@@ -7826,7 +7884,9 @@ export function createKeyringRuntimeFactory(
               const captured = generation;
               current(captured); checkGuard(assertCurrent); current(captured);
               if (active || reserved) throw new KeyringRuntimeError('BUSY');
-              if (!keyring.hasPublicSession() || (!canSign() && !activeReplacement)) throw new KeyringRuntimeError('NOT_READY');
+              // This guard is used only before exact-byte replay. The replay
+              // adapter independently binds a Smart account to its saved payer.
+              if (!keyring.hasPublicSession() || (!canSign() && !activeReplacement && selectedAccount().type !== 'SmartAccount')) throw new KeyringRuntimeError('NOT_READY');
               activeReplacement?.assertCurrent();
             },
             sign: (transaction, authority, inputIntent, replacement) => {

@@ -6,6 +6,7 @@ import { controllerEmitter } from 'scripts/Background/controllers/controllerEmit
 import type { ITransactionInfoEvm } from 'types/useTransactionsInfo';
 
 import type { EvmSavedTransaction } from '../../../../../../wallet/evmSignedReplay';
+import type { SmartAccountReplayIntent } from '../../../../../../wallet/smartAccountSignedReplay';
 
 type Page = {
   nextCursor: string | null;
@@ -19,15 +20,36 @@ const EMPTY: State = {
 
 /** Project the shared public summary without inventing unsigned calldata or receipt fields. */
 export const savedTransactionHistoryRow = (
-  tx: EvmSavedTransaction
-): ITransactionInfoEvm =>
-  ({
+  tx: EvmSavedTransaction & { smartAccount?: SmartAccountReplayIntent }
+): ITransactionInfoEvm => {
+  const smart = tx.smartAccount;
+  const batch = (smart?.executions?.length ?? 0) > 1;
+  const single =
+    smart?.executions?.length === 1 ? smart.executions[0] : undefined;
+  return {
     hash: tx.hash,
     historySource: EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned,
     chainId: Number(tx.chainId),
-    from: tx.from,
-    to: tx.to,
-    value: tx.value,
+    from: smart?.account ?? tx.from,
+    to: single?.target ?? tx.to,
+    value:
+      single?.value ??
+      (batch
+        ? smart!
+            .executions!.reduce(
+              (total, call) => total + BigInt(call.value),
+              BigInt(0)
+            )
+            .toString()
+        : tx.value),
+    ...(smart
+      ? {
+          smartAccountExecutionFrom: smart.account,
+          smartAccount: smart,
+          feePayer: tx.from,
+          input: batch ? undefined : single?.data ?? smart.callData,
+        }
+      : {}),
     nonce: String(tx.nonce),
     type: tx.type,
     timestamp: Math.floor(tx.createdAt / 1000),
@@ -57,7 +79,8 @@ export const savedTransactionHistoryRow = (
           },
         }
       : {}),
-  } as unknown as ITransactionInfoEvm);
+  } as unknown as ITransactionInfoEvm;
+};
 
 /** One bounded authenticated local page; explorer fetching stays with the existing history flow. */
 export const useSavedEvmTransactions = (enabled: boolean, scope: string) => {

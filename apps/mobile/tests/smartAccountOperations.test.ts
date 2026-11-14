@@ -49,7 +49,7 @@ function fixture() {
     estimateGas: async () => BigNumber.from(100000),
   };
   const pending = createSmartAccountPendingState(rawProvider, { profileId: '0x' + '11'.repeat(32), read: async () => [] }, chainId, account.address, () => undefined);
-  return { account, metadata, deployment, provider: pending.provider, pending, funds };
+  return { account, metadata, deployment, provider: pending.provider, rawProvider, pending, funds };
 }
 
 const nativeRecipient = '0x2222222222222222222222222222222222222222';
@@ -69,6 +69,46 @@ function nativeSubmitHost(f: ReturnType<typeof fixture>, prepared: Awaited<Retur
     sendTransaction: send, invalidateMetadata() {},
   };
 }
+
+test('shared asset preparation and the separate late dispatch check reject a changed ERC1155 balance', async () => {
+  const f = fixture(), token = '0x3333333333333333333333333333333333333333';
+  const abi = new Interface(['function balanceOf(address,uint256) view returns(uint256)', 'function balanceOfBatch(address[],uint256[]) view returns(uint256[])', 'function safeTransferFrom(address,address,uint256,uint256,bytes)']);
+  let balance = 12n;
+  const originalRead = f.rawProvider.send;
+  f.rawProvider.send = async (method, params) => {
+    if (method === 'eth_getCode' && params[0] === token) return '0x6000';
+    if (method === 'eth_call' && params[0].to === token) {
+      assert.equal(params[1], 'pending');
+      if (params[0].data.startsWith('0x01ffc9a7')) return AbiCoder.defaultAbiCoder().encode(['bool'], [true]);
+      const parsed = abi.parseTransaction({ data: params[0].data }); assert(parsed);
+      if (parsed.name === 'balanceOf') return AbiCoder.defaultAbiCoder().encode(['uint256'], [parsed.args[1] === 7n ? balance : 0]);
+      if (parsed.name === 'balanceOfBatch') return abi.encodeFunctionResult(parsed.fragment, [[balance]]);
+      return '0x';
+    }
+    return originalRead(method, params);
+  };
+  const prepare = (amount: string) => prepareSmartAccountOperation({ account: f.account as IKeyringAccountState & { smartAccount: typeof f.metadata }, chainId,
+    executions: [{ target: token, value: '0', data: abi.encodeFunctionData('safeTransferFrom', [f.account.address, nativeRecipient, 7, amount, '0x']) }],
+    knownDeployed: true, provider: f.provider, pending: f.pending, async selectGasPayer() { return { gasPayer: payer, useGasTank: false }; }, assertCurrent() {} });
+  f.funds.failEstimate = true;
+  await prepare('5'); balance = 7n;
+  await assert.rejects(prepare('8'), /Insufficient token or collectible balance/);
+  const prepared = await prepare('7');
+  f.funds.failEstimate = false;
+  let dispatched = 0;
+  const host = nativeSubmitHost(f, prepared, async (...args) => {
+    // The outer record is now reserved: its own nonce cannot be checked again.
+    balance = 6n;
+    await args[4].assertAssetState();
+    dispatched++;
+    return { hash: '0x' + 'aa'.repeat(32), async wait() {} };
+  });
+  await assert.rejects(submitSmartAccountOperation({ ...prepared, accountId: 0, executionContextId: 'fixture', signature: '0x1234' }, host, () => {}), /Insufficient token or collectible balance/);
+  assert.equal(dispatched, 0);
+  balance = 6n;
+  host.sendTransaction = async () => { assert.fail('Changed post-authentication asset balance reached sender'); };
+  await assert.rejects(submitSmartAccountOperation({ ...prepared, accountId: 0, executionContextId: 'fixture', signature: '0x1234' }, host, () => {}), /Insufficient token or collectible balance/);
+});
 
 test('shared preparation rejects excess native value despite a failed execution estimate, with exact units', async () => {
   const f = fixture();

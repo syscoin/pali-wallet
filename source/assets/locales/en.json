@@ -1090,6 +1090,7 @@
     "coinGeckoListingUnavailable": "Listing unavailable"
   },
   "transactions": {
+    "feePayer": "Fee payer",
     "labelCopied": "{{label}} copied to clipboard",
     "decodeDetailsFailed": "Failed to decode transaction details",
     "transactionOptions": "Transaction Options",
@@ -1751,7 +1752,7 @@
       "createFile": "Create encrypted file",
       "reviewImport": "Review backup",
       "working": "Working securely…",
-      "exportReady": "{{count}} notes are in this encrypted file.",
+      "exportReady": "Notes in this encrypted file: {{count}}.",
       "saveFile": "Save file",
       "handoff": "File sent to your browser. Check that it was saved before relying on it.",
       "verifyHelp": "Optional: select the saved file and re-enter its password to check it matches this backup.",

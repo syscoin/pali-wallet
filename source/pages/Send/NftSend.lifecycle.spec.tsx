@@ -452,6 +452,7 @@ describe('NFT send lookup lifetime', () => {
 
   it('keeps the selected ERC1155 quantity bound to that token after an older ownership result', async () => {
     const first = deferred();
+    const second = deferred();
     const priorMulti = {
       ...firstNft,
       tokenStandard: 'ERC-1155',
@@ -471,14 +472,26 @@ describe('NFT send lookup lifetime', () => {
       selectedNftTokenId: '11',
       formValues: { receiver: 'recipient', amount: '1', nftTokenId: '11' },
     };
-    mockEmitter.mockImplementation(([, method]) =>
+    mockEmitter.mockImplementation(([, method], args) =>
       method === 'verifyERC1155Ownership'
-        ? first.promise
+        ? args[2][0] === '11'
+          ? first.promise
+          : second.promise
         : new Promise(() => undefined)
     );
     render(<SendEth />);
     fireEvent.click(screen.getByRole('button', { name: /COLLB.*ERC-1155/ }));
     await act(async () => first.resolve(ownedReply('11', 99)));
+    expect(screen.queryByPlaceholderText('Amount (1-99)')).toBeNull();
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'verifyERC1155Ownership'],
+      [
+        multi.contractAddress,
+        mockState.vault.accounts.HDAccount[0].address,
+        ['22'],
+      ]
+    );
+    await act(async () => second.resolve(ownedReply('22', 3)));
     fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
     expect(
       (screen.getByPlaceholderText('Amount (1-3)') as HTMLInputElement).value

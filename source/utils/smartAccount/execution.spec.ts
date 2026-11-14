@@ -47,6 +47,11 @@ describe('signAndSubmitSmartAccountExecutions', () => {
     });
   });
 
+  const feePayer = {
+    address: '0x' + '44'.repeat(20),
+    id: 2,
+    type: KeyringAccountType.HDAccount as const,
+  };
   const expectedContext = {
     account: {
       address: ACCOUNT_ADDRESS,
@@ -60,11 +65,14 @@ describe('signAndSubmitSmartAccountExecutions', () => {
   };
 
   it.each([
-    ['5000', false],
-    ['5001', true],
+    ['5000', false, {}],
+    ['5001', true, {}],
+    ['5001', false, { id: 3 }],
+    ['5001', false, { type: KeyringAccountType.Ledger }],
+    ['5001', false, { address: '0x' + '55'.repeat(20) }],
   ])(
     'enforces the approved EntryPoint account-charge ceiling before signing (%s)',
-    async (approved, allowed) => {
+    async (approved, allowed, payerChange) => {
       const signActionHash = jest.fn().mockResolvedValue(validSlhDsaSignature);
       const emitter = jest.fn(async ([, method]: string[], payload: any[]) => {
         if (method === 'prepareSmartAccountExecutions')
@@ -72,6 +80,7 @@ describe('signAndSubmitSmartAccountExecutions', () => {
             accountId: 0,
             actionHash: `0x${'12'.repeat(32)}`,
             executionContextId: 'fee-context',
+            gasPayer: { ...feePayer, ...payerChange },
             executions: [],
             smartAccount,
             userOperation: {
@@ -103,7 +112,7 @@ describe('signAndSubmitSmartAccountExecutions', () => {
         controllerEmitter: emitter,
         executions: [],
         expectedContext,
-        maximumUserOpFeeWei: approved,
+        approvedFeeQuote: { maximumFeeWei: approved, feePayer },
       });
       if (allowed) await expect(request).resolves.toBeTruthy();
       else

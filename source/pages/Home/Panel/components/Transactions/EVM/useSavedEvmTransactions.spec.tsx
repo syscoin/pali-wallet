@@ -57,6 +57,39 @@ test('local projection retains exact money, null creation target and a call hint
   expect(result.confirmations).toBeUndefined();
 });
 
+test('saved smart-account history uses authenticated inner transfer facts and keeps the outer fee payer', async () => {
+  const account = '0x' + '44'.repeat(20),
+    recipient = '0x' + '55'.repeat(20);
+  const outer = row('3');
+  const tx: any = {
+    ...outer,
+    value: '0',
+    to: '0x' + '66'.repeat(20),
+    smartAccount: {
+      account,
+      operationHash: hash('4'),
+      operationNonce: '0',
+      operationCount: 1,
+      replayable: true,
+      callData: '0x1234',
+      executions: [
+        { target: recipient, value: '1000000000000000001', data: '0x' },
+      ],
+    },
+  };
+  const result: any = savedTransactionHistoryRow(tx);
+  expect(result.from).toBe(account);
+  expect(result.to).toBe(recipient);
+  expect(result.value).toBe('1000000000000000001');
+  expect(result.feePayer).toBe(outer.from);
+  expect(result.gas).toBe(outer.gasLimit);
+  expect(result.gasPrice).toBe(outer.feePerGas);
+  expect(result.hash).toBe(outer.hash);
+  expect(result.input).toBe('0x');
+  expect(result.blockNumber).toBeUndefined();
+  expect(result.txreceipt_status).toBeUndefined();
+});
+
 test('bounded pages cross the JSON message boundary and preserve older records on refresh', async () => {
   mockEmitter.mockImplementation((_: unknown, params: unknown[]) => {
     const [cursor] = JSON.parse(JSON.stringify(params));

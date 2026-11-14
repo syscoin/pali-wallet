@@ -13,6 +13,7 @@ import { createEoaCallsSequence } from '../../wallet/evmCallsSequence';
 import { Button, Icon, Tooltip } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { ToastActionFooter } from 'components/ToastActionFooter';
+import { SmartAccountFeePayer } from 'components/TransactionDetails/SmartAccountFeePayer';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -863,7 +864,7 @@ export const SendCalls = () => {
             controllerEmitter,
             executions: approvedQuote.executions,
             expectedContext: approvedContext,
-            maximumUserOpFeeWei: approvedQuote.maximumFeeWei,
+            approvedFeeQuote: approvedQuote,
             onPrepared: () => {
               if (
                 !mountedRef.current ||
@@ -1673,6 +1674,9 @@ export const SendCalls = () => {
                 ? t('send.feeUnavailable')
                 : t('send.calculating')}
             </p>
+            {hasCurrentFeeQuote && feeQuote && (
+              <SmartAccountFeePayer address={feeQuote.feePayer.address} />
+            )}
             <p className="text-xs text-brand-gray200 mt-1">
               {t('send.smartAccountFeeDetails')}
             </p>

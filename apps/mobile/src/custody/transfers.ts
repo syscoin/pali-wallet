@@ -3,6 +3,7 @@ import { Transaction } from 'ethers/transaction';
 import { EVM_SIGNED_RECORD_LIMITS } from '../../../../source/shared/evmSignedRecordLimits.ts';
 import { assertSignedEvmTransactionMatches, type EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { EvmReplayError, type EvmReplayPreparation, type EvmReplayReview, type EvmReplaySession, type EvmSignedReplay, type EvmSavedTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
+import type { SmartAccountReplayIntent, SmartAccountReplayPreparation } from '../../../../source/wallet/smartAccountSignedReplay.ts';
 import { EvmSignedRecordCancellationFence, EvmSignedRecordNonceConflict, consumeSignedEvmCapacityRefusal, type EvmReplacementRates, type EvmVerifiedReplacementBinding } from '../../../../source/wallet/evmSignedRecords.ts';
 import { assertEvmFeeApprovalCurrent, assertEvmFeeRefreshApproved, assertEvmSpeedUpFeeRefreshApproved, captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS, type EvmFeeApproval } from '../../../../source/shared/evmFeeApproval.ts';
@@ -35,6 +36,8 @@ import { snapshotSavedCollectible, type SavedCollectible } from '../portfolio/to
 import { snapshotNftTransferSelection, withNftInventorySignal, type NftTransferSelection } from './nftTransferAdmission.ts';
 import { nativeEvmMaximumReserve } from '../../../../source/shared/evmNativeMaximum.ts';
 
+export const SMART_ACCOUNT_REPLAY_INSPECT_ONLY_MESSAGE = 'SMART_ACCOUNT_REPLAY_INSPECT_ONLY';
+
 export type NativeTransferReview = Readonly<{
   context: NativeSendContext;
   id: string;
@@ -51,7 +54,7 @@ export type NativeTransferReview = Readonly<{
   retry: boolean;
   intent?: Erc20TransferIntent;
   collectible?: NftTransferIntent;
-  replay?: EvmReplayReview;
+  replay?: EvmReplayReview & { smartAccount?: SmartAccountReplayIntent };
   replacement?: Readonly<{ mode: NativeReplacementMode; originalHash: string; originalMaximumFeeUnits: string }>;
   execution?: Readonly<{ kind: 'transfer' | 'contract-call' | 'contract-creation'; dataBytes: number; accessListEntries: number; smartAccount?: string }>;
 }>;
@@ -85,7 +88,9 @@ export interface NativeTransferJournalHandle {
 }
 export type NativeTransferDispatchValidation = (planner: NativeAutomaticNoncePlanner, assertCurrent: () => void) => Promise<void>;
 export type NativeTransferReplay = Pick<EvmSignedReplay, 'confirm' | 'cancel' | 'list'> & {
-  prepare(hash: string, mode: 'inspect' | 'resend'): Promise<EvmReplayPreparation | Readonly<{ status: 'unknown'; hash: string; transaction: EvmSavedTransaction }>>;
+  prepare(hash: string, mode: 'inspect' | 'resend'): Promise<EvmReplayPreparation | SmartAccountReplayPreparation | Readonly<{ status: 'unknown' | 'confirmed' | 'reverted' | 'nonce-consumed'; hash: string; transaction: EvmSavedTransaction }>>;
+  preparePredecessor?(parentReviewId: string, hash: string): Promise<EvmReplayPreparation | SmartAccountReplayPreparation>;
+  listPredecessors?(parentReviewId: string, options: Readonly<{ beforeHash?: string; maximum?: number }>): ReturnType<EvmSignedReplay['list']>;
 };
 export interface NativeTransferRuntime {
   isAuthenticationRefusal(error: unknown): boolean;
@@ -1318,8 +1323,10 @@ export class NativeTransfers {
       return Promise.resolve();
     return this.perform(async ({ assertCurrent }) => {
       this.publish({phase:'preparing'});
-      const page = await current.replay!.list({ nonce: Number(saved.missingNonce), maximum: 20,
-        beforeHash: saved.predecessors[saved.predecessors.length - 1]?.hash });
+      const options = { maximum: 20, beforeHash: saved.predecessors[saved.predecessors.length - 1]?.hash };
+      const page = current.replay!.listPredecessors
+        ? await current.replay!.listPredecessors(saved.id, options)
+        : await current.replay!.list({ ...options, nonce: Number(saved.missingNonce) });
       assertCurrent();
       if (this.review !== current) throw new NativeTransferError('CANCELLED');
       const known = new Set(saved.predecessors.map(candidate => candidate.hash));
@@ -1357,6 +1364,9 @@ export class NativeTransfers {
       this.queuedRecovery = { generation, retry: offerRetry, hash, promise: queued };
       return queued;
     }
+    const parent = this.review;
+    const predecessor = offerRetry && hash && parent?.replay?.preparePredecessor && parent.public.replay?.predecessors.some(entry => entry.hash === hash)
+      ? { replay: parent.replay, parentId: parent.public.replay.id, hash } : undefined;
     return this.perform(async ({ assertCurrent, runtime, context, rpc }) => {
       this.review = null;
       this.publish({ phase: 'preparing', context, review: null, hash: null, message: null,
@@ -1365,14 +1375,21 @@ export class NativeTransfers {
       let selected = hash;
       if (!selected) { const entry = await (await runtime.journal(assertCurrent)).load(); assertCurrent(); selected = entry?.hash; }
       if (!selected) { this.publish(initial()); return; }
-      this.replay?.cancel(); this.replayAbort?.abort();
-      const abort = new AbortController(); this.replayAbort = abort;
-      const generation = this.generation, identity = this.sourceIdentity;
-      const current = () => {
-        if (this.disposed || generation !== this.generation || identity !== this.sourceIdentity || this.runtime() !== runtime || abort.signal.aborted)
-          throw new NativeTransferError('CANCELLED');
-      };
-      const replay = runtime.replay(current, {
+      let replay: NativeTransferReplay;
+      let result: Awaited<ReturnType<NativeTransferReplay['prepare']>>;
+      if (predecessor) {
+        if (this.replay !== predecessor.replay) throw new NativeTransferError('CANCELLED');
+        replay = predecessor.replay;
+        result = await replay.preparePredecessor!(predecessor.parentId, predecessor.hash);
+      } else {
+        this.replay?.cancel(); this.replayAbort?.abort();
+        const abort = new AbortController(); this.replayAbort = abort;
+        const generation = this.generation, identity = this.sourceIdentity;
+        const current = () => {
+          if (this.disposed || generation !== this.generation || identity !== this.sourceIdentity || this.runtime() !== runtime || abort.signal.aborted)
+            throw new NativeTransferError('CANCELLED');
+        };
+        replay = runtime.replay(current, {
         observe: ({ hash, from, to, nonce }) => {
           // Replay calls this only after the selected record is authenticated for
           // the current wallet and network. Keep its identity if the RPC read fails.
@@ -1382,20 +1399,29 @@ export class NativeTransfers {
           return rpc.observation({ hash, from, to, nonce }, abort.signal);
         },
         dispatch: (raw, admit, context) => rpc.broadcast(raw, context.hash, abort.signal, { mode: 'replay', admit, context }),
-      }, { now: this.now, randomBytes: this.randomBytes });
-      this.replay = replay;
-      const result = await replay.prepare(selected, offerRetry ? 'resend' : 'inspect'); assertCurrent();
+        }, { now: this.now, randomBytes: this.randomBytes });
+        this.replay = replay;
+        result = await replay.prepare(selected, offerRetry ? 'resend' : 'inspect');
+      }
+      assertCurrent();
+      if (result.status === 'inspect-only') {
+        this.publish({ phase: 'unknown', hash: result.transaction.hash, review: null, intent: null, inspectionOnly: true,
+          message: SMART_ACCOUNT_REPLAY_INSPECT_ONLY_MESSAGE });
+        return;
+      }
       if (result.status !== 'review') {
-        const transfer = result.transaction.tokenTransfer, token = transfer?.token;
+        const smart = 'smartAccount' in result.transaction ? result.transaction.smartAccount as SmartAccountReplayIntent : undefined;
+        const transfer = smart?.transfer?.token ? { ...smart.transfer, token: smart.transfer.token } : result.transaction.tokenTransfer, token = transfer?.token;
         const intent: Erc20TransferIntent | undefined = token ? Object.freeze({kind:'erc20-transfer',chainId:result.transaction.chainId,token,recipient:transfer!.recipient,amountUnits:transfer!.amountUnits}) : undefined;
         this.publish({ phase: result.status, hash: result.hash, review: null, intent: intent ?? null,
-          collectible: result.transaction.collectibleTransfer,
+          collectible: smart?.transfer?.collectibleTransfer ?? result.transaction.collectibleTransfer,
           message: result.status === 'unknown' ? 'No current receipt was found. The saved transaction remains available; check its status before sending again.'
             : result.status === 'confirmed' && result.transaction.collectibleTransfer
             ? 'Transaction confirmed.' : this.terminalMessage(result.status, intent, context) }); return;
       }
       const approved = result.review;
-      const collectible = approved.collectibleTransfer;
+      const smart = 'smartAccount' in approved ? approved.smartAccount as SmartAccountReplayIntent : undefined;
+      const collectible = smart?.transfer?.collectibleTransfer ?? approved.collectibleTransfer;
       if (isCollectibleRecord(approved.operation) && !collectible) {
         replay.cancel(approved.id);
         this.publish({ phase: 'unknown', hash: approved.hash, review: null, intent: null, inspectionOnly: true,
@@ -1409,11 +1435,17 @@ export class NativeTransfers {
         assertCurrent();
         return;
       }
-      const token = approved.tokenTransfer?.token;
-      const intent: Erc20TransferIntent | undefined = token ? Object.freeze({kind:'erc20-transfer',chainId:approved.chainId,token,recipient:approved.tokenTransfer!.recipient,amountUnits:approved.tokenTransfer!.amountUnits}) : undefined;
-      const publicReview: NativeTransferReview = Object.freeze({ id:approved.id,context,from:approved.from,recipient:collectible?.recipient ?? approved.tokenTransfer?.recipient ?? approved.to ?? 'Contract creation',
-        amountUnits:collectible?.amountUnits ?? intent?.amountUnits ?? approved.value, maximumFeeUnits:approved.maximumFee,totalUnits:(BigInt(approved.value)+BigInt(approved.maximumFee)).toString(),
-        gasLimit:approved.gasLimit,maximumFeePerGas:approved.feePerGas,priorityFeePerGas:approved.priorityFeePerGas,nonce:approved.nonce,retry:true,replay:approved,...(intent?{intent}:{}),...(collectible?{collectible}:{}) });
+      const transfer = smart?.transfer?.token ? { ...smart.transfer, token: smart.transfer.token } : approved.tokenTransfer;
+      const token = transfer?.token;
+      const intent: Erc20TransferIntent | undefined = token ? Object.freeze({kind:'erc20-transfer',chainId:approved.chainId,token,recipient:transfer!.recipient,amountUnits:transfer!.amountUnits}) : undefined;
+      const single = smart?.executions?.length === 1 ? smart.executions[0] : undefined;
+      const publicReview: NativeTransferReview = Object.freeze({ id:approved.id,context,from:smart?.account ?? approved.from,
+        recipient:collectible?.recipient ?? intent?.recipient ?? smart?.transfer?.recipient ?? single?.target ?? smart?.account ?? approved.to ?? 'Contract creation',
+        amountUnits:collectible?.amountUnits ?? intent?.amountUnits ?? smart?.transfer?.amountUnits ?? single?.value ?? approved.value,
+        maximumFeeUnits:approved.maximumFee,totalUnits:(BigInt(approved.value)+BigInt(approved.maximumFee)).toString(),
+        gasLimit:approved.gasLimit,maximumFeePerGas:approved.feePerGas,priorityFeePerGas:approved.priorityFeePerGas,nonce:approved.nonce,retry:true,replay:approved,...(intent?{intent}:{}),...(collectible?{collectible}:{}),
+        ...(smart ? { execution: { kind: smart.transfer && !smart.transfer.contractInteraction ? 'transfer' as const : 'contract-call' as const,
+          dataBytes: (smart.callData.length - 2) / 2, accessListEntries: approved.accessListEntries, smartAccount: smart.account } } : {}) });
       this.review = { public:publicReview,expires:this.now()+approved.validForMs,replay };
       if (this.expiry !== null) clearTimeout(this.expiry);
       this.expiry=setTimeout(()=>{if(this.review?.public.id===approved.id&&!this.active)this.cancel();},approved.validForMs);

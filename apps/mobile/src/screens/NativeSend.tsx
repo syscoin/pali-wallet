@@ -1,3 +1,4 @@
+import { createAssetTransferDisplay } from '../../../../source/shared/assetTransferDisplay';
 import { AUTOMATIC_FEE, snapshotEvmFeeChoice, type EvmFeeChoice } from '../../../../source/shared/transactionFeeChoice';
 import { NetworkFeeSheet } from './NetworkFeeSheet';
 import { nativeI18n, useNativeTranslation } from '../platform/localization';
@@ -46,7 +47,7 @@ import {
   type EvmRecipientChoice,
 } from '../../../../source/shared/evmRecipientChoices';
 import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId';
-import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE,
+import { SMART_ACCOUNT_REPLAY_INSPECT_ONLY_MESSAGE, ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE,
   type NativeTransferReview, type NativeTransferView } from '../custody/transfers';
 import type { NativeReplacementMode } from '../custody/transferRpc';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
@@ -70,6 +71,7 @@ const t = nativeI18n.t.bind(nativeI18n);
 const savedTransferMessages = [ASSET_STATE_SAVED_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE];
 const displayTransferMessage = (message: string | null) => {
   switch (message) {
+    case SMART_ACCOUNT_REPLAY_INSPECT_ONLY_MESSAGE: return t('transactions.replay.unavailable');
     case ASSET_STATE_SAVED_MESSAGE: return t('mobile.sendAssetViews.evm.asset_state_saved_message');
     case ASSET_STATE_WAIT_MESSAGE: return t('mobile.sendAssetViews.evm.asset_state_wait_message');
     case SIGNED_STORAGE_FULL_MESSAGE: return t('send.signedStorageFull');
@@ -361,6 +363,7 @@ export function NativeSend({
     current.phase === 'submitting' && current.review === leavePrompt.review &&
     (leavePrompt.review !== null || current === leavePrompt.fallback);
   const review = snapshot.review;
+  const smartReplay = review?.replay?.smartAccount;
   useLayoutEffect(() => {
     // A quote owns its lookup only until that exact review is retired. Release
     // the ticket without cancelling any successor work in the controller.
@@ -790,7 +793,10 @@ export function NativeSend({
           )}
           {review ? (
             <>
-              {reviewedCollectible ? collectibleIdentity(reviewedCollectible) : (
+              {smartReplay ? <Card style={s.summary}>
+                <Text style={s.label}>{t('receive.smartAccount')}</Text>
+                <Text selectable style={s.address}>{smartReplay.account}</Text>
+              </Card> : reviewedCollectible ? collectibleIdentity(reviewedCollectible) : (
                 <View style={s.hero}>
                   <Coin
                     id={reviewedToken ? 'custom-token' : capturedContext.networkId}
@@ -811,6 +817,24 @@ export function NativeSend({
                   </Text>
                 </View>
               )}
+              {smartReplay?.executions?.map((call, index) => {
+                const transfer = call.assetTransfer ? createAssetTransferDisplay(call.assetTransfer) : null;
+                return <Card key={index} style={s.summary}>
+                  <Text style={s.label}>{transfer ? t(`assetTransfer.${transfer.heading}`) : call.data === '0x' ? t('transactions.methodNames.transfer') : t('mobile.dappConsent.transactionReview.contractInteraction')}</Text>
+                  {transfer ? <>
+                    {transfer.items.map((item, itemIndex) => <View key={itemIndex}>
+                      <Text style={s.amount}>{item.tokenId === null ? item.value : `#${item.tokenId}`}</Text>
+                      <Text>{item.symbol ?? (item.tokenId === null ? t('assetTransfer.rawUnits') : `${item.units} ${t('assetTransfer.units')}`)}</Text>
+                    </View>)}
+                    {call.value !== '0' && <><Text style={s.label}>{t('assetTransfer.nativeValue')}</Text><Text>{formatBaseUnits(call.value, 18)} {capturedContext.symbol}</Text></>}
+                    <Text style={s.label}>{t('assetTransfer.recipient')}</Text><Text selectable style={s.address}>{transfer.recipient}</Text>
+                    <Text style={s.label}>{t('assetTransfer.contract')}</Text><Text selectable style={s.address}>{transfer.contract}</Text>
+                  </> : <>
+                    <Text>{formatBaseUnits(call.value, 18)} {capturedContext.symbol}</Text>
+                    <Text style={s.label}>{t('send.to')}</Text><Text selectable style={s.address}>{call.target}</Text>
+                  </>}
+                </Card>;
+              })}
               {review.replay?.missingNonce !== undefined && <Card style={s.summary}>
                 <Text style={s.label}>{t('mobile.sendAssetViews.evm.pREVIOUSTRANSACTIONNONCE')}{' '}{review.replay.missingNonce}</Text>
                 <Text style={s.hint}>{t('mobile.sendAssetViews.evm.thisTransactionIsWaitingForAnEarlierNonce')}</Text>
@@ -847,7 +871,7 @@ export function NativeSend({
                   {formatBaseUnits(review.maximumFeeUnits, 18)}{' '}
                   {capturedContext.symbol}
                 </Text>
-                {!reviewedToken && !reviewedCollectible && !reviewCancellation && (
+                {!smartReplay && !reviewedToken && !reviewedCollectible && !reviewCancellation && (
                   <>
                     <View style={s.separator} />
                     <Text style={s.label}>{t('mobile.sendAssetViews.evm.aMOUNTEXECUTIONFEELIMIT')}</Text>
@@ -888,6 +912,12 @@ export function NativeSend({
                   : t('mobile.sendAssetViews.evm.onlyTheNetworkFeeChangesTheOriginalRecipientValueAnd')}</Text>
               </Card>}
               {review.replay && <Card style={s.summary}>
+                {smartReplay && <>
+                  <Text style={s.label}>{t('transactions.feePayer')}</Text>
+                  <Text selectable style={s.address}>{review.replay.from}</Text>
+                  <Text style={s.label}>{t('mobile.recoveryStatusViews.operation.userOperationNonce')}</Text>
+                  <Text>{smartReplay.operationNonce}</Text>
+                </>}
                 <Text style={s.label}>{t('mobile.sendAssetViews.evm.sAVEDTRANSACTIONNONCE')}{' '}{review.nonce}</Text>
                 <Text selectable style={s.address}>{review.replay.hash}</Text>
                 <Text style={s.hint}>{t('mobile.sendAssetViews.evm.connection')}{' '}{new URL(capturedContext.rpcUrl).host}</Text>

@@ -443,7 +443,7 @@ test('scoped Smart Activity exposes replacement navigation without direct signer
   try {
     const row = pendingScopedRow({ speedUp: true });
     Object.assign(row.local, { accountId: 'smart:60:0', smartAccount: { payer: row.local.address,
-      operationHash: '0x' + 'ab'.repeat(32), operationNonce: '0' } });
+      operations: [{ operationHash: '0x' + 'ab'.repeat(32), operationNonce: '0' }] } });
     const tree = await openFixtureRow(f, row);
     for (const title of ['Speed Up', 'Cancel pending transaction']) {
       const button = all(tree).find(node => node.type === 'Button' && node.props.title === title); assert(button, title);
@@ -465,7 +465,7 @@ for (const scenario of [
   const cancelledOriginalHash = scenario.samePayer ? hash : '0x' + '55'.repeat(32);
   const row = pendingScopedRow({ speedUp: true });
   Object.assign(row.local, { accountId: 'smart:60:0', smartAccount: {
-    payer, operationHash: '0x' + 'ab'.repeat(32), operationNonce: '0',
+    payer, operations: [{ operationHash: '0x' + 'ab'.repeat(32), operationNonce: '0' }],
   } });
   row.observation.from = payer;
   const cancellation = {
@@ -474,8 +474,7 @@ for (const scenario of [
       originalHash: scenario.descendant ? speedUpHash : cancelledOriginalHash,
       chainId: scenario.sameChain ? '1' : '2', smartAccount: {
         payer: scenario.samePayer ? payer.toUpperCase().replace('0X', '0x') : otherPayer,
-        operationHash: '0x' + (scenario.samePayer && scenario.sameChain ? 'ab' : 'ef').repeat(32),
-        operationNonce: '0', cancellation: true,
+        operations: [{ operationHash: '0x' + (scenario.samePayer && scenario.sameChain ? 'ab' : 'ef').repeat(32), operationNonce: '0' }], cancellation: true,
       } },
     observation: { ...row.observation, from: scenario.samePayer ? payer : otherPayer, status: 'confirmed' },
   };

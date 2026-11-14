@@ -79,6 +79,7 @@ jest.mock('utils/navigationState', () => ({
 jest.mock('utils/smartAccount', () => ({
   getSmartAccountLocalOwnerContexts: () => [],
   prepareSmartAccountFeeQuote: async () => ({
+    feePayer: { address: '0x' + '44'.repeat(20), id: 2, type: 'HDAccount' },
     gasUnits: '860000',
     maximumFeeWei: '4300000',
   }),

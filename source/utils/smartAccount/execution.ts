@@ -23,6 +23,9 @@ import {
 } from './authenticatorDispatch';
 import type { SmartAccountAuthenticatorSignature } from './signature';
 import { canUseReservedSLHDSASignature } from './slhDsaPurpose';
+import type { SmartAccountFeeQuote } from '../../shared/smartAccountFeeQuote';
+
+export type { SmartAccountFeeQuote } from '../../shared/smartAccountFeeQuote';
 
 export {
   SmartAccountExternalSignatureRequired,
@@ -87,15 +90,15 @@ const getSmartAccountSubmitJobKey = async ({
   executions,
   expectedContext,
   feeOverrides,
-  maximumUserOpFeeWei,
+  approvedFeeQuote,
   smartAccount,
 }: {
   accountAddress?: string;
   accountId?: number;
+  approvedFeeQuote?: Pick<SmartAccountFeeQuote, 'feePayer' | 'maximumFeeWei'>;
   executions: SmartAccountExecutionIntent[];
   expectedContext?: IEvmTransactionContext;
   feeOverrides?: SmartAccountFeeOverrides;
-  maximumUserOpFeeWei?: string;
   smartAccount: ISmartAccountMetadata;
 }) =>
   sha256Hex(
@@ -118,19 +121,19 @@ const getSmartAccountSubmitJobKey = async ({
         maxFeePerGas: feeOverrides?.maxFeePerGas ?? null,
         maxPriorityFeePerGas: feeOverrides?.maxPriorityFeePerGas ?? null,
       },
-      maximumUserOpFeeWei: maximumUserOpFeeWei ?? null,
+      approvedFeeQuote: approvedFeeQuote ?? null,
     })
   );
 
 export type SubmitSmartAccountExecutionsParams = {
   accountAddress?: string;
   accountId?: number;
+  approvedFeeQuote?: Pick<SmartAccountFeeQuote, 'feePayer' | 'maximumFeeWei'>;
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
   controllerEmitter: ControllerEmitter;
   executions: SmartAccountExecutionIntent[];
   expectedContext?: IEvmTransactionContext;
   feeOverrides?: SmartAccountFeeOverrides;
-  maximumUserOpFeeWei?: string;
   onAssertionResolved?: () => void;
   onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
   onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
@@ -151,11 +154,6 @@ export type SmartAccountFeeOverrides = {
   gasPrice?: string;
   maxFeePerGas?: string;
   maxPriorityFeePerGas?: string;
-};
-
-export type SmartAccountFeeQuote = {
-  gasUnits: string;
-  maximumFeeWei: string;
 };
 
 // This is a wallet-internal read-only preparation, not a provider method or
@@ -216,6 +214,7 @@ export const prepareSmartAccountFeeQuote = async ({
     300000
   );
   const userOp = prepared?.userOperation;
+  const payer = prepared?.gasPayer;
   if (
     !prepared?.executionContextId ||
     !Array.isArray(prepared.executions) ||
@@ -231,7 +230,11 @@ export const prepareSmartAccountFeeQuote = async ({
     }) ||
     userOp?.sender?.toLowerCase() !== accountAddress.toLowerCase() ||
     !/^0x[\da-f]{64}$/i.test(userOp?.accountGasLimits || '') ||
-    !/^0x[\da-f]{64}$/i.test(userOp?.gasFees || '')
+    !/^0x[\da-f]{64}$/i.test(userOp?.gasFees || '') ||
+    !Number.isSafeInteger(payer?.id) ||
+    payer.id < 0 ||
+    !['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(payer?.type) ||
+    typeof payer?.address !== 'string'
   )
     throw new Error(INVALID_FEE_QUOTE_ERROR);
   const gasUnits = quantity(hexDataSlice(userOp.accountGasLimits, 0, 16))
@@ -251,6 +254,11 @@ export const prepareSmartAccountFeeQuote = async ({
   )
     throw new Error(INVALID_FEE_QUOTE_ERROR);
   return {
+    feePayer: {
+      address: getAddress(payer.address),
+      id: payer.id,
+      type: payer.type,
+    },
     gasUnits: gasUnits.toString(),
     maximumFeeWei: getSmartAccountUserOpRequiredPrefund(userOp).toString(),
   };
@@ -482,7 +490,7 @@ export const signAndSubmitSmartAccountExecutions = async (
     executions,
     expectedContext,
     feeOverrides,
-    maximumUserOpFeeWei,
+    approvedFeeQuote,
     onAssertionResolved,
     onAuthenticatorSigningResolved,
     onAuthenticatorSigningStarted,
@@ -508,7 +516,7 @@ export const signAndSubmitSmartAccountExecutions = async (
         executions,
         expectedContext,
         feeOverrides,
-        maximumUserOpFeeWei,
+        approvedFeeQuote,
         smartAccount,
       })
     : '';
@@ -538,11 +546,15 @@ export const signAndSubmitSmartAccountExecutions = async (
       throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
         transactionNotBroadcast: true,
       });
-    if (maximumUserOpFeeWei !== undefined) {
+    if (approvedFeeQuote !== undefined) {
       if (
-        !/^\d+$/.test(maximumUserOpFeeWei) ||
+        !/^\d+$/.test(approvedFeeQuote.maximumFeeWei) ||
+        prepared.gasPayer?.id !== approvedFeeQuote.feePayer.id ||
+        prepared.gasPayer?.type !== approvedFeeQuote.feePayer.type ||
+        prepared.gasPayer?.address?.toLowerCase() !==
+          approvedFeeQuote.feePayer.address.toLowerCase() ||
         getSmartAccountUserOpRequiredPrefund(prepared.userOperation).gt(
-          maximumUserOpFeeWei
+          approvedFeeQuote.maximumFeeWei
         )
       ) {
         throw Object.assign(new Error(SMART_ACCOUNT_FEE_QUOTE_CHANGED), {

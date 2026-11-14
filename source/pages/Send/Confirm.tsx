@@ -36,6 +36,7 @@ import {
 } from 'components/index';
 import { PqSigningOverlay } from 'components/Loading';
 import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
+import { SmartAccountFeePayer } from 'components/TransactionDetails/SmartAccountFeePayer';
 import { useUtils, usePrice } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useEIP1559 } from 'hooks/useEIP1559';
@@ -75,6 +76,7 @@ import {
   prepareSmartAccountFeeQuote,
   signAndSubmitSmartAccountExecutions,
   type SmartAccountFeeOverrides,
+  type SmartAccountFeeQuote,
 } from 'utils/smartAccount';
 import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { buildSmartAccountErc20Transfer } from 'utils/smartAccount/erc20Transfer';
@@ -345,13 +347,13 @@ export const SendConfirm = () => {
   const isSmartAccountSend =
     !isBitcoinBased &&
     Boolean(activeAccount?.isSmartAccount && activeAccount.smartAccount);
-  const [smartAccountQuote, setSmartAccountQuote] = useState<{
-    executions: { data: string; target: string; value: string }[];
-    feeOverrides: SmartAccountFeeOverrides;
-    gasUnits: string;
-    key: string;
-    maximumFeeWei: string;
-  }>();
+  const [smartAccountQuote, setSmartAccountQuote] = useState<
+    SmartAccountFeeQuote & {
+      executions: { data: string; target: string; value: string }[];
+      feeOverrides: SmartAccountFeeOverrides;
+      key: string;
+    }
+  >();
   const [smartAccountQuoteError, setSmartAccountQuoteError] =
     useState<string>();
   const [smartAccountQuoteNeedsRefresh, setSmartAccountQuoteNeedsRefresh] =
@@ -1336,7 +1338,7 @@ export const SendConfirm = () => {
             controllerEmitter: submitEmitter,
             executions: [{ target, value, data }],
             feeOverrides,
-            maximumUserOpFeeWei: smartAccountQuote.maximumFeeWei,
+            approvedFeeQuote: smartAccountQuote,
             onPrepared: assertSmartAccountConfirmationCurrent,
             onBeforeSubmit: async () => {
               assertSmartAccountConfirmationCurrent();
@@ -2624,6 +2626,11 @@ export const SendConfirm = () => {
             )}
             {isSmartAccountSend && (
               <div className="text-xs text-brand-gray200 mt-2">
+                {smartAccountQuoteReady && (
+                  <SmartAccountFeePayer
+                    address={smartAccountQuote!.feePayer.address}
+                  />
+                )}
                 <p>{t('send.smartAccountFeeDetails')}</p>
                 {(smartAccountQuoteError || smartAccountQuoteNeedsRefresh) && (
                   <>

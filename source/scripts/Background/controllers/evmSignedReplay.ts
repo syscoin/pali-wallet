@@ -123,69 +123,75 @@ export function createExtensionEvmReplay(
   records: EvmSignedRecords,
   capture: () => Captured
 ): EvmSignedReplay {
-  return new EvmSignedReplay(records, () => {
-    const captured = capture();
-    captured.assertCurrent();
-    const send = captured.provider.send.bind(captured.provider);
-    return Object.freeze({
-      context: captured.context,
-      recordSession: captured.recordSession,
-      assertCurrent: captured.assertCurrent,
-      authorizeReplay: captured.authorizeReplay,
-      observe: (expected) =>
-        observeEvmTransaction(
-          expected,
-          (method, params) =>
-            method === 'eth_chainId'
-              ? readLiveEvmChainId(captured.provider, captured.assertCurrent)
-              : send(method, [...params]),
+  return new EvmSignedReplay(records, () =>
+    createExtensionEvmReplaySession(capture())
+  );
+}
+
+/** Reuse the same owned transport and authorization for a recorded local payer. */
+export function createExtensionEvmReplaySession(
+  captured: Captured
+): EvmReplaySession {
+  captured.assertCurrent();
+  const send = captured.provider.send.bind(captured.provider);
+  return Object.freeze({
+    context: captured.context,
+    recordSession: captured.recordSession,
+    assertCurrent: captured.assertCurrent,
+    authorizeReplay: captured.authorizeReplay,
+    observe: (expected) =>
+      observeEvmTransaction(
+        expected,
+        (method, params) =>
+          method === 'eth_chainId'
+            ? readLiveEvmChainId(captured.provider, captured.assertCurrent)
+            : send(method, [...params]),
+        captured.assertCurrent
+      ),
+    dispatch: (raw, admit, context) => {
+      const broadcast = () => send('eth_sendRawTransaction', [raw]);
+      const requiresPayerCheck =
+        context.operation === 'cancel' || context.requiresPayerCheck;
+      const speedUp =
+        context.operation === 'speed-up' && !requiresPayerCheck
+          ? Transaction.from(raw)
+          : undefined;
+      if (requiresPayerCheck) {
+        const tx = Transaction.from(raw);
+        if (
+          tx.from?.toLowerCase() !== context.from.toLowerCase() ||
+          !isEvmProtectedEmptySelfCall(tx, context.operation)
+        )
+          throw new EvmReplayError('INVALID_RESPONSE');
+      }
+      return admit(broadcast, async () => {
+        await assertLiveEvmReplacementChain(
+          captured.provider,
+          context.chainId,
           captured.assertCurrent
-        ),
-      dispatch: (raw, admit, context) => {
-        const broadcast = () => send('eth_sendRawTransaction', [raw]);
-        const requiresPayerCheck =
-          context.operation === 'cancel' || context.requiresPayerCheck;
-        const speedUp =
-          context.operation === 'speed-up' && !requiresPayerCheck
-            ? Transaction.from(raw)
-            : undefined;
-        if (requiresPayerCheck) {
-          const tx = Transaction.from(raw);
-          if (
-            tx.from?.toLowerCase() !== context.from.toLowerCase() ||
-            !isEvmProtectedEmptySelfCall(tx, context.operation)
-          )
-            throw new EvmReplayError('INVALID_RESPONSE');
-        }
-        return admit(broadcast, async () => {
+        );
+        if (speedUp) {
+          const [nonce, block] = await Promise.all([
+            send('eth_getTransactionCount', [context.from, 'latest']),
+            send('eth_getBlockByNumber', ['latest', false]),
+          ]);
+          captured.assertCurrent();
+          assertEvmSpeedUpExecutable(speedUp, nonce, block);
           await assertLiveEvmReplacementChain(
             captured.provider,
             context.chainId,
             captured.assertCurrent
           );
-          if (speedUp) {
-            const [nonce, block] = await Promise.all([
-              send('eth_getTransactionCount', [context.from, 'latest']),
-              send('eth_getBlockByNumber', ['latest', false]),
-            ]);
-            captured.assertCurrent();
-            assertEvmSpeedUpExecutable(speedUp, nonce, block);
-            await assertLiveEvmReplacementChain(
-              captured.provider,
-              context.chainId,
-              captured.assertCurrent
-            );
-          }
-          if (!requiresPayerCheck) return;
-          await assertEvmCancellationPayerReady(
-            context.from,
-            context.nonce,
-            (method, address, tag) => send(method, [address, tag]),
-            captured.assertCurrent
-          );
-        });
-      },
-    });
+        }
+        if (!requiresPayerCheck) return;
+        await assertEvmCancellationPayerReady(
+          context.from,
+          context.nonce,
+          (method, address, tag) => send(method, [address, tag]),
+          captured.assertCurrent
+        );
+      });
+    },
   });
 }
 

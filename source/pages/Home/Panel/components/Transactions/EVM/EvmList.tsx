@@ -119,7 +119,13 @@ const EvmTransactionItem = React.memo(
     const isCancel = cancellationIntent;
     const isReplaced = settlement === 'replaced';
     const isSpeedUp = tx?.isSpeedUp === true;
-    const displayTx = getSmartAccountDisplayTransaction(tx) || tx;
+    const smartBatch =
+      'historySource' in tx &&
+      tx.historySource === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
+      ((tx as any).smartAccount?.executions?.length ?? 0) > 1;
+    const displayTx = smartBatch
+      ? tx
+      : getSmartAccountDisplayTransaction(tx) || tx;
     const isConfirmed = isTransactionInBlock(tx);
     const currentAddress = currentAccount?.address?.toLowerCase();
     const txFrom = displayTx?.from?.toLowerCase?.();
@@ -135,7 +141,9 @@ const EvmTransactionItem = React.memo(
     // Check transaction status from API
     // txreceipt_status: '0' = failed, '1' = success, null/undefined = pending
     const isFailed = settlement === 'failed';
-    const transactionLabel = isCancel
+    const transactionLabel = smartBatch
+      ? t('send.batchTransaction')
+      : isCancel
       ? t('transactions.cancellation')
       : getTransactionTypeDisplayLabel(
           'historySource' in tx &&
@@ -367,7 +375,7 @@ const EvmTransactionItem = React.memo(
                   const recipient =
                     (displayInfo as any)?.actualRecipient ||
                     (displayTx as any)?.to;
-                  if (recipient) {
+                  if (recipient && !smartBatch) {
                     const cache = (ensCache as any)?.[
                       String(recipient).toLowerCase()
                     ];
@@ -396,6 +404,11 @@ const EvmTransactionItem = React.memo(
           <div className="text-brand-gray200 text-xs font-normal min-w-0 max-w-full truncate text-right">
             {fiatText === '---' ? '---' : fiatText}
           </div>
+          {smartBatch && (
+            <span className="text-xs text-brand-gray200">
+              {t('assetTransfer.nativeValue')}
+            </span>
+          )}
           {displayInfo.hasUnknownDecimals && (
             <div className="text-warning-error text-[10px]">
               {t('transactions.unknownDecimals')}
@@ -482,7 +495,7 @@ const EvmTransactionItem = React.memo(
                 <span className="min-w-0 break-words text-white text-xs font-normal">
                   {transactionLabel}
                 </span>
-                {isContractCall && displayTx?.to && (
+                {!smartBatch && isContractCall && displayTx?.to && (
                   <Tooltip
                     content={
                       <div className="flex flex-col gap-1">

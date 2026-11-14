@@ -398,7 +398,7 @@ it.each([
   { isNft: false, standard: 'ERC-20' },
   { isNft: true, standard: 'ERC-1155' },
 ])(
-  'shows the stored balance for a $standard asset sharing the native symbol',
+  'shows the selected balance for a $standard asset sharing the native symbol',
   async ({ isNft, standard }) => {
     mockAssets = [
       {
@@ -416,6 +416,10 @@ it.each([
     mockEmitter.mockImplementation((path: string[]) => {
       if (path.at(-1) === 'getERC20TokenInfo')
         return Promise.reject(new Error('Token metadata unavailable'));
+      if (path.at(-1) === 'verifyERC1155Ownership')
+        return Promise.resolve([
+          { tokenId: '5', balance: 42, rawBalance: '42', verified: true },
+        ]);
       return Promise.resolve(undefined);
     });
     const consoleError = jest.spyOn(console, 'error').mockImplementation();
@@ -481,12 +485,24 @@ const prepareERC1155 = async (
       formValues: { amount: '1', nftTokenId: '7' },
     };
   }
-  mockEmitter.mockImplementation((path: string[]) =>
-    path.at(-1) === 'verifyERC1155Ownership'
-      ? ownershipReply ??
-        Promise.resolve([{ tokenId: '7', balance, rawBalance, verified: true }])
-      : Promise.resolve(undefined)
-  );
+  mockEmitter.mockImplementation((path: string[]) => {
+    if (path.at(-1) !== 'verifyERC1155Ownership')
+      return Promise.resolve(undefined);
+    // Model the new ownership read on each selection/metadata refresh. Its
+    // response is separate from the component's previously verified balance.
+    const current = mockAssets[0];
+    return (
+      ownershipReply ??
+      Promise.resolve([
+        {
+          tokenId: '7',
+          balance: current.balance,
+          rawBalance: current.rawBalance,
+          verified: true,
+        },
+      ])
+    );
+  });
   const view = render(<SendEth />);
   if (!restored)
     fireEvent.click(screen.getByRole('button', { name: /QTY.*ERC-1155/ }));
@@ -550,7 +566,16 @@ it.each([
       { ...mockAssets[0], balance: afterDisplay, rawBalance: after },
     ];
     view.rerender(<SendEth />);
-    await act(async () => void (await Promise.resolve()));
+    await waitFor(() =>
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path.at(-1) === 'verifyERC1155Ownership'
+        )
+      ).toHaveLength(2)
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'send.max' })).toBeEnabled()
+    );
     fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
     expect(nftAmount().value).toBe(after);
     fireEvent.click(next());
@@ -650,8 +675,19 @@ it.each([
   'does not use an inexact or malformed ERC1155 balance: %p',
   async (asset) => {
     await prepareERC1155(asset.rawBalance, asset.balance);
-    expect(screen.getByRole('button', { name: 'send.max' })).toBeDisabled();
-    expect(nftAmount()).toBeDisabled();
+    expect(
+      screen.getByText('send.tokenVerificationFailed')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTitle('send.tokenOwnershipVerified')
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('0 QTY')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
+    expect(nftAmount().value).toBe('0');
+    fireEvent.change(nftAmount(), { target: { value: '1' } });
+    fireEvent.click(next());
+    await screen.findByText('send.youOnlyOwn');
+    expect(mockNavigate).not.toHaveBeenCalled();
   }
 );
 
@@ -662,9 +698,25 @@ it('keeps a refreshed ERC1155 balance when an older restored ownership read reso
   });
   const view = await prepareERC1155('42', 42, true, ownershipReply);
   expect(screen.getByRole('button', { name: 'send.max' })).toBeDisabled();
+  mockEmitter.mockImplementation((path: string[]) =>
+    path.at(-1) === 'verifyERC1155Ownership'
+      ? Promise.resolve([
+          { tokenId: '7', balance: 41, rawBalance: '41', verified: true },
+        ])
+      : Promise.resolve(undefined)
+  );
   mockAssets = [{ ...mockAssets[0], balance: 41, rawBalance: '41' }];
   view.rerender(<SendEth />);
-  await act(async () => void (await Promise.resolve()));
+  await waitFor(() =>
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([path]) => path.at(-1) === 'verifyERC1155Ownership'
+      )
+    ).toHaveLength(2)
+  );
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'send.max' })).toBeEnabled()
+  );
   fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
   expect(nftAmount().value).toBe('41');
   await act(async () =>

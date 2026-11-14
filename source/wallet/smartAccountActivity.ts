@@ -9,7 +9,6 @@ import {
 import { isEvmProtectedEmptySelfCall } from '../shared/evmCancellationPayer.ts';
 import {
   observeEvmTransaction,
-  type EvmObservationMethod,
   type EvmTransactionObservation,
 } from '../shared/evmTransactionObservation.ts';
 import {
@@ -44,6 +43,15 @@ export type SmartAccountActivityIdentity = Readonly<{
   cancellation?: true;
   operationHash: string;
   operationNonce: string;
+  payer: string;
+}>;
+
+export type SmartAccountActivityGroupIdentity = Readonly<{
+  cancellation?: true;
+  operations: readonly Pick<
+    SmartAccountActivityIdentity,
+    'operationHash' | 'operationNonce'
+  >[];
   payer: string;
 }>;
 
@@ -190,33 +198,40 @@ function guardianRemoval(
   }
 }
 
-/** Authenticate the outer envelope independently of the inner execution mode. */
-export function decodeRetainedSmartAccountOperations(
-  entry: EvmRetainedSignedRecord
+/** Decode canonical handleOps identities; receipt observation authenticates provider fields. */
+export function decodeSmartAccountOperations(
+  transaction: Readonly<{
+    chainId: string;
+    data: string;
+    hash: string;
+    nonce: number;
+    payer: string;
+    to: string | null;
+    value: string;
+  }>
 ): readonly RetainedSmartAccountOperation[] {
   try {
-    const tx = Transaction.from(entry.rawTransaction);
-    const chainId = Number(entry.chainId);
+    const chainId = Number(transaction.chainId);
     if (
+      !/^[1-9][0-9]*$/.test(transaction.chainId) ||
       !Number.isSafeInteger(chainId) ||
-      !tx.isSigned() ||
-      tx.hash !== entry.hash ||
-      tx.nonce !== entry.nonce ||
-      tx.from?.toLowerCase() !== entry.from.toLowerCase() ||
-      tx.chainId.toString() !== entry.chainId ||
-      tx.to !== getPaliEntryPointAddress(chainId) ||
-      tx.value !== BigInt(0)
+      !/^0x[0-9a-f]{64}$/i.test(transaction.hash) ||
+      !Number.isSafeInteger(transaction.nonce) ||
+      transaction.nonce < 0 ||
+      transaction.to === null ||
+      getAddress(transaction.to) !== getPaliEntryPointAddress(chainId) ||
+      BigInt(transaction.value) !== BigInt(0)
     )
       return [];
     const decoded = paliEntryPointInterface.decodeFunctionData(
       'handleOps',
-      tx.data
+      transaction.data
     );
     if (
       !decoded[0].length ||
       paliEntryPointInterface
         .encodeFunctionData('handleOps', decoded)
-        .toLowerCase() !== tx.data.toLowerCase()
+        .toLowerCase() !== transaction.data.toLowerCase()
     )
       return [];
     return Object.freeze(
@@ -234,10 +249,10 @@ export function decodeRetainedSmartAccountOperations(
         };
         const removal = guardianRemoval(operation, chainId);
         return Object.freeze({
-          chainId: entry.chainId,
-          payer: entry.from,
-          hash: entry.hash,
-          payerNonce: entry.nonce,
+          chainId: transaction.chainId,
+          payer: getAddress(transaction.payer),
+          hash: transaction.hash.toLowerCase(),
+          payerNonce: transaction.nonce,
           account: operation.sender,
           operationNonce: operation.nonce,
           operationHash: getSmartAccountUserOpHash(operation, chainId),
@@ -245,6 +260,34 @@ export function decodeRetainedSmartAccountOperations(
         });
       })
     );
+  } catch {
+    return [];
+  }
+}
+
+/** Authenticate the outer envelope independently of the inner execution mode. */
+export function decodeRetainedSmartAccountOperations(
+  entry: EvmRetainedSignedRecord
+): readonly RetainedSmartAccountOperation[] {
+  try {
+    const tx = Transaction.from(entry.rawTransaction);
+    if (
+      !tx.isSigned() ||
+      tx.hash !== entry.hash ||
+      tx.nonce !== entry.nonce ||
+      tx.from?.toLowerCase() !== entry.from.toLowerCase() ||
+      tx.chainId.toString() !== entry.chainId
+    )
+      return [];
+    return decodeSmartAccountOperations({
+      chainId: entry.chainId,
+      hash: entry.hash,
+      payer: entry.from,
+      nonce: entry.nonce,
+      to: tx.to,
+      value: tx.value.toString(),
+      data: tx.data,
+    });
   } catch {
     return [];
   }
@@ -356,16 +399,71 @@ export function decodeRetainedSmartAccountTransfer(
   }
 }
 
-/** Reuses canonical receipt observation and binds the inner outcome to this exact signed UserOperation. */
-export async function observeSmartAccountActivity(
+/** A single operation uses the same complete receipt validation as a group. */
+export function observeSmartAccountActivity(
   transfer: SmartAccountActivityObservation,
-  read: (
-    method: EvmObservationMethod,
-    params: readonly unknown[]
-  ) => Promise<unknown>,
+  read: Parameters<typeof observeEvmTransaction>[1],
   assertCurrent: () => void
 ): Promise<EvmTransactionObservation> {
-  transfer = Object.freeze({ ...transfer });
+  return observeSmartAccountOperations(
+    {
+      ...transfer,
+      operations: [
+        {
+          operationHash: transfer.operationHash,
+          operationNonce: transfer.operationNonce,
+        },
+      ],
+    },
+    read,
+    assertCurrent
+  );
+}
+
+/** Observe one outer receipt and require every exact inner operation outcome. */
+export async function observeSmartAccountOperations(
+  transfer: SmartAccountActivityGroupIdentity &
+    Readonly<{
+      account: string;
+      chainId: string;
+      hash: string;
+      nonce: number;
+    }>,
+  read: Parameters<typeof observeEvmTransaction>[1],
+  assertCurrent: () => void
+): Promise<EvmTransactionObservation> {
+  if (
+    !Array.isArray(transfer.operations) ||
+    !transfer.operations.length ||
+    transfer.operations.length > 512
+  )
+    throw new Error('Invalid Smart account operations');
+  const operations = transfer.operations.map((operation) =>
+    Object.freeze({ ...operation })
+  );
+  transfer = Object.freeze({
+    ...transfer,
+    operations: Object.freeze(operations),
+  });
+  if (
+    !operations.length ||
+    operations.length > 512 ||
+    (transfer.cancellation && operations.length !== 1)
+  )
+    throw new Error('Invalid Smart account operations');
+  const expected = new Map<string, boolean[]>();
+  for (const operation of operations) {
+    if (
+      !/^0x[0-9a-f]{64}$/i.test(operation.operationHash) ||
+      !/^(0|[1-9][0-9]{0,77})$/.test(operation.operationNonce) ||
+      BigInt(operation.operationNonce) >= BigInt(1) << BigInt(256)
+    )
+      throw new Error('Invalid Smart account operation');
+    const key =
+      operation.operationHash.toLowerCase() + ':' + operation.operationNonce;
+    if (expected.has(key)) throw new Error('Duplicate Smart account operation');
+    expected.set(key, []);
+  }
   if (
     !Number.isSafeInteger(Number(transfer.chainId)) ||
     Number(transfer.chainId) <= 0
@@ -409,7 +507,6 @@ export async function observeSmartAccountActivity(
       : undefined;
   if (!Array.isArray(logs) || logs.length > 512)
     throw new Error('Smart account outcome unavailable');
-  const matches: boolean[] = [];
   for (const value of logs) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
     const log = value as Record<string, unknown>;
@@ -431,20 +528,20 @@ export async function observeSmartAccountActivity(
         topics: log.topics as string[],
         data: log.data as string,
       });
-      if (
-        event.sender === transfer.account &&
-        event.operationHash === transfer.operationHash &&
-        event.nonce === transfer.operationNonce
-      )
-        matches.push(event.success);
+      if (event.sender === transfer.account)
+        expected
+          .get(event.operationHash + ':' + event.nonce)
+          ?.push(event.success);
     } catch {
-      /* Unrelated or malformed logs do not establish this operation's outcome. */
+      /* Unrelated or malformed logs cannot establish an operation outcome. */
     }
   }
-  if (matches.length !== 1)
+  if ([...expected.values()].some((matches) => matches.length !== 1))
     throw new Error('Smart account outcome unavailable');
   return Object.freeze({
     ...observation,
-    outcome: matches[0] ? 'confirmed' : 'reverted',
+    outcome: [...expected.values()].every((matches) => matches[0])
+      ? 'confirmed'
+      : 'reverted',
   });
 }

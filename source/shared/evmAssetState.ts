@@ -142,24 +142,22 @@ function word(value: unknown): bigint {
   return BigInt(value);
 }
 
-/** A canonical block supplies one coherent balance and sender nonce basis. */
-export async function readEvmAssetState(
+/** The same exact holdings decoder supports canonical and owned pending-state reads. */
+export async function readEvmAssetBalance(
   read: EvmAssetRead,
   sender: string,
   input: EvmTransferAsset,
-  atBlock?: Readonly<{ hash: string; number: string }>
-): Promise<EvmAssetState> {
-  const asset = snapshotEvmTransferAsset(input);
-  const from = address(sender);
-  const sampled = block(
-    atBlock ?? (await read('eth_getBlockByNumber', ['latest', false]))
-  );
-  const accountReads = await Promise.all([
-    read('eth_getCode', [asset.contractAddress, sampled.number]),
-    read('eth_getTransactionCount', [from, sampled.number]),
-  ]);
-  const code = accountReads[0];
-  const rawNonce = accountReads[1];
+  blockTag: string
+): Promise<bigint> {
+  const asset = snapshotEvmTransferAsset(input),
+    from = address(sender);
+  if (
+    blockTag !== 'pending' &&
+    blockTag !== 'latest' &&
+    !/^0x(?:0|[1-9a-f][0-9a-f]*)$/i.test(blockTag)
+  )
+    return fail('INVALID_INPUT');
+  const code = await read('eth_getCode', [asset.contractAddress, blockTag]);
   if (
     typeof code !== 'string' ||
     code.length > 65538 ||
@@ -174,7 +172,7 @@ export async function readEvmAssetState(
           to: asset.contractAddress,
           data: `0x70a08231${from.slice(2).toLowerCase().padStart(64, '0')}`,
         },
-        sampled.number,
+        blockTag,
       ])
     );
   } else {
@@ -196,10 +194,7 @@ export async function readEvmAssetState(
           )
             return fail('INVALID_RESPONSE');
           try {
-            const result = await read('eth_call', [
-              { to, data },
-              sampled.number,
-            ]);
+            const result = await read('eth_call', [{ to, data }, blockTag]);
             if (
               typeof result !== 'string' ||
               result.length > 8194 ||
@@ -219,6 +214,25 @@ export async function readEvmAssetState(
       asset.standard === 'ERC721' ? holding.balance : holding.rawBalance!
     );
   }
+  return balanceUnits;
+}
+
+/** A canonical block supplies one coherent balance and sender nonce basis. */
+export async function readEvmAssetState(
+  read: EvmAssetRead,
+  sender: string,
+  input: EvmTransferAsset,
+  atBlock?: Readonly<{ hash: string; number: string }>
+): Promise<EvmAssetState> {
+  const asset = snapshotEvmTransferAsset(input);
+  const from = address(sender);
+  const sampled = block(
+    atBlock ?? (await read('eth_getBlockByNumber', ['latest', false]))
+  );
+  const [balanceUnits, rawNonce] = await Promise.all([
+    readEvmAssetBalance(read, from, asset, sampled.number),
+    read('eth_getTransactionCount', [from, sampled.number]),
+  ]);
   return Object.freeze({
     asset,
     from,

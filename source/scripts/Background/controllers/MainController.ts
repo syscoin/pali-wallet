@@ -70,7 +70,10 @@ import {
 } from '../../../shared/evmCancellationPayer.ts';
 import { prepareEvmDappQuote } from '../../../shared/evmDappPreparation';
 import { prepareEvmDappReview } from '../../../shared/evmDappReview';
-import { NATIVE_EVM_FEE_FUNDING } from '../../../shared/evmFeeApproval';
+import {
+  NATIVE_EVM_FEE_FUNDING,
+  type EvmFeeFunding,
+} from '../../../shared/evmFeeApproval';
 import {
   assertEvmFeeApprovalCurrent,
   assertEvmFeeRefreshApproved,
@@ -124,6 +127,7 @@ import {
 import {
   retainedEvmAssetPreflightConflict,
   type EvmSignedRecords,
+  type EvmRetainedSignedRecord,
   type EvmSignedRetirementReadForChain,
 } from '../../../wallet/evmSignedRecords';
 import { observeRetainedEvmTransaction } from '../../../wallet/evmSignedReplay';
@@ -149,6 +153,12 @@ import {
   type PsbtSigningPorts,
 } from '../../../wallet/psbtApprovals';
 import { createSlhDsaProfileStateCrypto } from '../../../wallet/slhDsaStateCrypto';
+import {
+  decodeRetainedSmartAccountOperations,
+  decodeSmartAccountOperations,
+  observeSmartAccountOperations,
+} from '../../../wallet/smartAccountActivity';
+import { createSmartAccountSignedReplay } from '../../../wallet/smartAccountSignedReplay';
 import {
   createOwnedUtxoBlockbookRead,
   type UtxoBlockbookReadScope,
@@ -380,6 +390,10 @@ import type {
   SmartAccountGuardianRecoveryOperation,
 } from 'utils/smartAccount';
 import { requireSmartAccountAddressIdentity } from 'utils/smartAccount/addressIdentity';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+} from 'utils/smartAccount/contracts';
 import type { SmartAccountSubmitParams } from 'utils/smartAccount/submitOperation';
 import { chromeStorage } from 'utils/storageAPI';
 import {
@@ -455,6 +469,7 @@ import {
   assertExtensionRetainedCancellationReady,
   assertLiveEvmReplacementChain,
   createExtensionEvmReplay,
+  createExtensionEvmReplaySession,
   createExtensionRetainedCancellation,
   readLiveEvmChainId,
 } from './evmSignedReplay';
@@ -534,6 +549,7 @@ import type { SentryRequestLifetime } from '../../../wallet/sentryApprovalTypes'
 import type {
   EvmReplacementFeeApproval,
   EvmSubmissionContext,
+  EvmSignedSubmission,
   KeyringHost,
 } from '@sidhujag/sysweb3-keyring';
 import type {
@@ -1244,6 +1260,9 @@ class MainController {
   private retainedEvmRecords?: EvmSignedRecords;
   private clearingEvmActivity = false;
   private retainedEvmReplay?: EvmSignedReplay;
+  private retainedSmartAccountReplay?: ReturnType<
+    typeof createSmartAccountSignedReplay
+  >;
 
   private async captureGuardianRecoveryTransactions(
     chainId: number,
@@ -1523,89 +1542,335 @@ class MainController {
     utxoReviewsByWallet.delete(this);
   }
 
+  private async recordAcknowledgedEvmReplay(
+    entry: EvmRetainedSignedRecord,
+    assertCurrent: () => void
+  ): Promise<void> {
+    assertCurrent();
+    const tx = Transaction.from(entry.rawTransaction);
+    const { vault } = store.getState();
+    const affected = new Set(
+      decodeRetainedSmartAccountOperations(entry).map((operation) =>
+        operation.account.toLowerCase()
+      )
+    );
+    const groups = new Map<
+      string,
+      {
+        address?: string;
+        owners: Array<{
+          address: string;
+          id: number;
+          type: KeyringAccountType;
+        }>;
+      }
+    >();
+    for (const [id, account] of Object.entries(
+      vault.accounts[KeyringAccountType.SmartAccount] ?? {}
+    )) {
+      if (!account?.address || !affected.has(account.address.toLowerCase()))
+        continue;
+      const key = account.address.toLowerCase();
+      let group = groups.get(key);
+      if (!group) {
+        group = { address: account.address, owners: [] };
+        groups.set(key, group);
+      }
+      group.owners.push({
+        id: Number(id),
+        type: KeyringAccountType.SmartAccount,
+        address: account.address,
+      });
+    }
+    const payer = {
+      id: entry.signer.id,
+      type: entry.signer.type as KeyringAccountType,
+      address: entry.from,
+    };
+    if (!groups.size) groups.set('payer', { owners: [] });
+    groups.values().next().value!.owners.push(payer);
+    const isCurrentContext = () => {
+      try {
+        assertCurrent();
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const missing = [...groups.values()]
+      .map((group) => ({
+        ...group,
+        owners: group.owners.filter(
+          (owner) =>
+            !vault.accountTransactions?.[owner.type]?.[owner.id]?.ethereum?.[
+              Number(tx.chainId)
+            ]?.some(
+              (candidate) =>
+                candidate.hash?.toLowerCase() === entry.hash.toLowerCase()
+            )
+        ),
+      }))
+      .filter((group) => group.owners.length);
+    if (!missing.length) {
+      this.startRapidTransactionPolling(
+        entry.hash,
+        Number(tx.chainId),
+        false,
+        { id: payer.id, type: payer.type },
+        isCurrentContext
+      );
+      return;
+    }
+    // Re-enter the normal public history/receipt path after a lost initial ACK.
+    // No receipt is inferred from acceptance, and private journal metadata stays private.
+    for (let index = 0; index < missing.length; index++) {
+      const group = missing[index];
+      const check = () => {
+        assertCurrent();
+        for (const owner of group.owners) {
+          if (
+            store
+              .getState()
+              .vault.accounts[owner.type]?.[
+                owner.id
+              ]?.address?.toLowerCase() !== owner.address.toLowerCase()
+          )
+            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        }
+      };
+      check();
+      await this.sendAndSaveTransaction(
+        {
+          hash: entry.hash,
+          from: tx.from!,
+          to: tx.to,
+          chainId: Number(tx.chainId),
+          nonce: tx.nonce,
+          type: tx.type,
+          data: tx.data,
+          input: tx.data,
+          value: tx.value.toString(),
+          gasLimit: tx.gasLimit.toString(),
+          gasPrice: tx.gasPrice?.toString(),
+          maxFeePerGas: tx.maxFeePerGas?.toString(),
+          maxPriorityFeePerGas: tx.maxPriorityFeePerGas?.toString(),
+          ...(entry.operation === 'cancel' ? { isCancel: true } : {}),
+          ...(entry.operation === 'speed-up' ? { isSpeedUp: true } : {}),
+          ...(entry.originalHash ? { replacesHash: entry.originalHash } : {}),
+          ...(group.address
+            ? {
+                smartAccountExecution: true,
+                smartAccountExecutionFrom: group.address,
+              }
+            : {}),
+        } as unknown as IEvmTransactionResponse,
+        { id: group.owners[0].id, type: group.owners[0].type },
+        {
+          clearNavigation: false,
+          isCurrentContext: () => {
+            try {
+              check();
+              return true;
+            } catch {
+              return false;
+            }
+          },
+          transactionAccounts: group.owners.map(({ id, type }) => ({
+            id,
+            type,
+          })),
+          persist: index === missing.length - 1,
+          skipRapidPolling: index !== missing.length - 1,
+        }
+      );
+      check();
+    }
+  }
+
+  private captureRetainedEvmReplaySession(
+    reference: { id: number; type: KeyringAccountType },
+    assertOwner: () => void = () => undefined
+  ) {
+    assertOwner();
+    this.assertWalletReadyForSigning();
+    const keyring = this.getActiveKeyring();
+    const { vault } = store.getState();
+    const account = vault.accounts[reference.type]?.[reference.id];
+    // The existing extension represents a view-only import without xprv.
+    if (
+      !account?.address ||
+      vault.isBitcoinBased ||
+      (reference.type === KeyringAccountType.Imported && !account.xprv)
+    )
+      throw new Error('Replay requires a signing account');
+    const context = {
+      account: {
+        id: reference.id,
+        type: reference.type,
+        address: account.address,
+      },
+      network: {
+        kind: vault.activeNetwork.kind,
+        chainId: vault.activeNetwork.chainId,
+        slip44: vault.activeNetwork.slip44,
+        url: vault.activeNetwork.url,
+      },
+      operation: 'send' as const,
+    };
+    const provider = this.ethereumTransaction.web3Provider;
+    const lifecycle = this.captureEvmSignedSubmission(keyring, context);
+    const assertCurrent = () => {
+      assertOwner();
+      lifecycle.assertCurrent();
+      const current =
+        store.getState().vault.accounts[reference.type]?.[reference.id];
+      if (
+        this.ethereumTransaction.web3Provider !== provider ||
+        (reference.type === KeyringAccountType.Imported && !current?.xprv)
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    assertCurrent();
+    return {
+      context,
+      provider,
+      assertCurrent,
+      recordSession: { keyring, assertCurrent },
+      authorizeReplay: async (entry) => {
+        const authorization = await authorizePrivateNoteReplay(
+          entry,
+          assertCurrent,
+          async (attempt) => {
+            const privateSession =
+              this.capturePrivateVaultAcknowledgementSession(
+                this.capturePrivateVaultSession()
+              );
+            assertCurrent();
+            const privateVault = await this.getPrivateVaultController();
+            assertCurrent();
+            return privateVault.authorizeDepositReplay(attempt, privateSession);
+          },
+          async (attempt) => {
+            const privateSession =
+              this.capturePrivateVaultAcknowledgementSession(
+                this.capturePrivateVaultSession()
+              );
+            assertCurrent();
+            const privateVault = await this.getPrivateVaultController();
+            assertCurrent();
+            return privateVault.authorizeWithdrawalReplay(
+              attempt,
+              privateSession
+            );
+          }
+        );
+        assertCurrent();
+        return Object.freeze({
+          ...authorization,
+          onAcknowledged: async (hash: string) => {
+            await authorization.onAcknowledged(hash);
+            assertCurrent();
+            if (hash.toLowerCase() !== entry.hash.toLowerCase())
+              throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+            await this.recordAcknowledgedEvmReplay(entry, assertCurrent);
+          },
+        });
+      },
+    };
+  }
+
   private getRetainedEvmReplay(): EvmSignedReplay {
     this.retainedEvmReplay ??= createExtensionEvmReplay(
       this.getRetainedEvmRecords(),
+      () =>
+        this.captureRetainedEvmReplaySession(
+          store.getState().vault.activeAccount
+        )
+    );
+    return this.retainedEvmReplay;
+  }
+
+  private getRetainedSmartAccountReplay() {
+    this.retainedSmartAccountReplay ??= createSmartAccountSignedReplay(
+      this.getRetainedEvmRecords(),
       () => {
         this.assertWalletReadyForSigning();
-        const keyring = this.getActiveKeyring();
         const { vault } = store.getState();
-        const reference = vault.activeAccount;
+        const reference = { ...vault.activeAccount };
         const account = vault.accounts[reference.type]?.[reference.id];
-        // The existing extension represents a view-only import without xprv.
         if (
+          reference.type !== KeyringAccountType.SmartAccount ||
           !account?.address ||
-          vault.isBitcoinBased ||
-          (reference.type === KeyringAccountType.Imported && !account.xprv)
+          vault.isBitcoinBased
         )
-          throw new Error('Replay requires a signing account');
-        const context = {
-          account: {
-            id: reference.id,
-            type: reference.type,
-            address: account.address,
-          },
-          network: {
-            kind: vault.activeNetwork.kind,
-            chainId: vault.activeNetwork.chainId,
-            slip44: vault.activeNetwork.slip44,
-            url: vault.activeNetwork.url,
-          },
-          operation: 'send' as const,
-        };
-        const provider = this.ethereumTransaction.web3Provider;
-        const lifecycle = this.captureEvmSignedSubmission(keyring, context);
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        const read = this.captureFreshEvmRead(getWalletNavigationScope());
+        const address = account.address;
         const assertCurrent = () => {
-          lifecycle.assertCurrent();
-          const current =
-            store.getState().vault.accounts[reference.type]?.[reference.id];
+          read.assertCurrent();
+          const current = store.getState().vault;
           if (
-            this.ethereumTransaction.web3Provider !== provider ||
-            (reference.type === KeyringAccountType.Imported && !current?.xprv)
+            current.activeAccount.id !== reference.id ||
+            current.activeAccount.type !== reference.type ||
+            current.accounts[reference.type]?.[
+              reference.id
+            ]?.address?.toLowerCase() !== address.toLowerCase()
           )
             throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
         };
         assertCurrent();
         return {
-          context,
-          provider,
+          account: { id: reference.id, address },
+          chainId: String(read.network.chainId),
+          recordSession: { keyring: read.keyring, assertCurrent },
           assertCurrent,
-          recordSession: { keyring, assertCurrent },
-          authorizeReplay: (entry) =>
-            authorizePrivateNoteReplay(
-              entry,
-              assertCurrent,
-              async (attempt) => {
-                const privateSession =
-                  this.capturePrivateVaultAcknowledgementSession(
-                    this.capturePrivateVaultSession()
-                  );
-                assertCurrent();
-                const privateVault = await this.getPrivateVaultController();
-                assertCurrent();
-                return privateVault.authorizeDepositReplay(
-                  attempt,
-                  privateSession
-                );
-              },
-              async (attempt) => {
-                const privateSession =
-                  this.capturePrivateVaultAcknowledgementSession(
-                    this.capturePrivateVaultSession()
-                  );
-                assertCurrent();
-                const privateVault = await this.getPrivateVaultController();
-                assertCurrent();
-                return privateVault.authorizeWithdrawalReplay(
-                  attempt,
-                  privateSession
-                );
-              }
-            ),
+          read: (method, params, assertReplayCurrent) =>
+            read.run(async (provider) => {
+              assertCurrent();
+              assertReplayCurrent();
+              const result =
+                method === 'eth_chainId'
+                  ? await readLiveEvmChainId(provider, assertReplayCurrent)
+                  : await provider.send(method, [...params]);
+              assertReplayCurrent();
+              assertCurrent();
+              return result;
+            }),
+          capturePayer: (entry) => {
+            assertCurrent();
+            const payerReference = {
+              id: entry.signer.id,
+              type: entry.signer.type as KeyringAccountType,
+            };
+            const payer =
+              store.getState().vault.accounts[payerReference.type]?.[
+                payerReference.id
+              ];
+            if (
+              !payer?.address ||
+              payer.address.toLowerCase() !== entry.from.toLowerCase() ||
+              payerReference.type === KeyringAccountType.SmartAccount ||
+              payer.isSmartAccount
+            )
+              throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+            return createExtensionEvmReplaySession(
+              this.captureRetainedEvmReplaySession(
+                payerReference,
+                assertCurrent
+              )
+            );
+          },
         };
       }
     );
-    return this.retainedEvmReplay;
+    return this.retainedSmartAccountReplay;
+  }
+
+  private isSmartAccountReplay() {
+    return (
+      store.getState().vault.activeAccount.type ===
+      KeyringAccountType.SmartAccount
+    );
   }
   public async clearEvmActivityAndNonce(
     expectedScope: IWalletNavigationScope,
@@ -1680,22 +1945,65 @@ class MainController {
     }
   }
   public prepareEvmSignedReplay(hash: string) {
-    return this.getRetainedEvmReplay().prepare(hash);
+    return this.isSmartAccountReplay()
+      ? this.getRetainedSmartAccountReplay().prepare(hash)
+      : this.getRetainedEvmReplay().prepare(hash);
+  }
+  public prepareSmartAccountPredecessor(parentReviewId: string, hash: string) {
+    if (!this.isSmartAccountReplay())
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    return this.getRetainedSmartAccountReplay().preparePredecessor(
+      parentReviewId,
+      hash
+    );
+  }
+  public getSmartAccountPredecessors(
+    parentReviewId: string,
+    beforeHash?: string,
+    limit = 30
+  ) {
+    if (!this.isSmartAccountReplay())
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    return this.getRetainedSmartAccountReplay().listPredecessors(
+      parentReviewId,
+      { beforeHash, maximum: limit }
+    );
   }
   public confirmEvmSignedReplay(id: string) {
-    return this.getRetainedEvmReplay().confirm(id);
+    return this.isSmartAccountReplay()
+      ? this.getRetainedSmartAccountReplay().confirm(id)
+      : this.getRetainedEvmReplay().confirm(id);
   }
   public cancelEvmSignedReplay(id: string) {
-    if (typeof id === 'string') this.retainedEvmReplay?.cancel(id);
+    if (typeof id === 'string') {
+      this.retainedEvmReplay?.cancel(id);
+      this.retainedSmartAccountReplay?.cancel(id);
+    }
   }
   public getSavedEvmTransaction(hash: string) {
-    return this.getRetainedEvmReplay().get(hash);
+    return this.isSmartAccountReplay()
+      ? this.getRetainedSmartAccountReplay().get(hash)
+      : this.getRetainedEvmReplay().get(hash);
   }
   public getSavedEvmTransactions(
     beforeHash?: string,
     limit = 30,
     nonce?: number
   ) {
+    if (this.isSmartAccountReplay()) {
+      return this.getRetainedSmartAccountReplay()
+        .list({ beforeHash, maximum: limit })
+        .then((page) =>
+          nonce === undefined
+            ? page
+            : {
+                ...page,
+                transactions: page.transactions.filter(
+                  (entry) => entry.nonce === nonce
+                ),
+              }
+        );
+    }
     return this.getRetainedEvmReplay().list({
       beforeHash,
       maximum: limit,
@@ -1871,6 +2179,14 @@ class MainController {
         retainAssetPreflightFailure: assetOperation,
         metadata: feePreflight?.metadata,
         preflight: async (record, assertDispatchCurrent, snapshot) => {
+          if (feePreflight?.beforePersist) {
+            await feePreflight.preflight(
+              record,
+              assertDispatchCurrent,
+              snapshot
+            );
+            return;
+          }
           const signed = Transaction.from(record.rawTransaction);
           const feePerGas = signed.maxFeePerGas ?? signed.gasPrice;
           if (feePerGas === null)
@@ -1911,9 +2227,30 @@ class MainController {
             );
         },
       });
+      if (feePreflight?.beforePersist) {
+        return Object.freeze({
+          ...lifecycle,
+          async persistSigned(record: EvmSignedSubmission) {
+            assertCurrent();
+            const snapshot = await records.captureAutoNonceSnapshot(
+              session,
+              record.chainId,
+              record.from
+            );
+            await feePreflight.beforePersist!(record, assertCurrent, snapshot);
+            assertCurrent();
+            await lifecycle.persistSigned(record);
+          },
+        });
+      }
       const metadata = feePreflight?.metadata;
       return metadata && 'eoaCalls' in metadata
-        ? bindEoaCallsSignedLifecycle(lifecycle, metadata.eoaCalls)
+        ? bindEoaCallsSignedLifecycle(
+            lifecycle,
+            metadata.eoaCalls as Parameters<
+              typeof bindEoaCallsSignedLifecycle
+            >[1]
+          )
         : lifecycle;
     }
     const payer = context.account.address;
@@ -3302,6 +3639,8 @@ class MainController {
     // A new authenticated session must re-read and authenticate retained bytes.
     this.retainedEvmReplay?.cancel();
     this.retainedEvmReplay = undefined;
+    this.retainedSmartAccountReplay?.cancel();
+    this.retainedSmartAccountReplay = undefined;
     retainedCancellationReviewsByWallet.get(this)?.cancel();
     retainedCancellationReviewsByWallet.delete(this);
     this.retainedEvmRecords = undefined;
@@ -9552,6 +9891,7 @@ class MainController {
     targetAccount?: { id: number; type: KeyringAccountType },
     transactionMetadata?: Record<string, unknown>,
     saveOptions?: {
+      assertAssetState?: () => Promise<void>;
       assertBeforeSign?: () => void;
       assertCurrentContext?: () => void;
       assertPendingState?: () => Promise<void>;
@@ -9560,12 +9900,14 @@ class MainController {
       dappApprovalOwner?: object;
       dappNonceApproval?: ExtensionReviewedNonce;
       expectedContext?: IEvmTransactionContext;
+      feeFunding?: EvmFeeFunding;
       genericDispatchId?: string;
       genericReviewId?: string;
       hardwareScope?: IWalletNavigationScope;
       nativeReview?: { id: string; scope: IWalletNavigationScope };
       onBroadcast?: (response: IEvmTransactionResponse) => Promise<void>;
       persist?: boolean;
+      selectedContext?: IEvmTransactionContext;
       skipRapidPolling?: boolean;
       submission?: import('../../../shared/evmDappReview').EvmDappSubmission;
       transactionAccounts?: Array<{ id: number; type: KeyringAccountType }>;
@@ -9574,6 +9916,7 @@ class MainController {
     let txResponse: IEvmTransactionResponse | undefined;
     let submissionStarted = false;
     const expectedContext = saveOptions?.expectedContext;
+    const selectedContext = saveOptions?.selectedContext ?? expectedContext;
     const nativeReview = saveOptions?.nativeReview;
     const hardwareScope = saveOptions?.hardwareScope && {
       ...saveOptions.hardwareScope,
@@ -9605,10 +9948,10 @@ class MainController {
         vault.activeNetwork.chainId !== expectedContext.chainId ||
         vault.activeNetwork.url !== expectedContext.rpcUrl ||
         vaultGlobal.activeSlip44 !== expectedContext.slip44 ||
-        vault.activeAccount.id !== expectedContext.account.id ||
-        vault.activeAccount.type !== expectedContext.account.type ||
+        vault.activeAccount.id !== selectedContext!.account.id ||
+        vault.activeAccount.type !== selectedContext!.account.type ||
         currentAccount?.address?.toLowerCase() !==
-          expectedContext.account.address.toLowerCase() ||
+          selectedContext!.account.address.toLowerCase() ||
         (params.chainId !== undefined &&
           params.chainId !== null &&
           Number(params.chainId) !== expectedContext.chainId) ||
@@ -9681,6 +10024,123 @@ class MainController {
       throw Object.assign(new Error('Invalid generic fee review dispatch'), {
         transactionNotBroadcast: true,
       });
+    const smartPayer =
+      transactionMetadata?.smartAccountExecution === true ||
+      transactionMetadata?.smartAccountDeploymentPrefund === true;
+    if (smartPayer && saveOptions?.genericDispatchId === undefined) {
+      try {
+        assertAuthority();
+        if (
+          !internal ||
+          !targetAccount ||
+          !saveOptions?.feeFunding ||
+          typeof saveOptions.assertBeforeSign !== 'function' ||
+          (transactionMetadata?.smartAccountExecution === true &&
+            (typeof saveOptions.assertPendingState !== 'function' ||
+              typeof saveOptions.assertAssetState !== 'function'))
+        )
+          throw new Error('Smart account payer approval is required');
+        const scope = getWalletNavigationScope();
+        const read = this.captureFreshEvmRead(scope);
+        const { vault, vaultGlobal } = store.getState();
+        const selected =
+          vault.accounts[vault.activeAccount.type]?.[vault.activeAccount.id];
+        const payer = vault.accounts[targetAccount.type]?.[targetAccount.id];
+        if (
+          !selected?.address ||
+          !payer?.address ||
+          vault.isBitcoinBased ||
+          targetAccount.type === KeyringAccountType.SmartAccount ||
+          payer.isSmartAccount
+        )
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        const selectedOwner: IEvmTransactionContext = Object.freeze({
+          account: Object.freeze({
+            ...vault.activeAccount,
+            address: selected.address,
+          }),
+          chainId: read.network.chainId,
+          rpcUrl: read.network.url,
+          slip44: vaultGlobal.activeSlip44,
+          sessionGeneration,
+        });
+        const payerOwner: IEvmTransactionContext = Object.freeze({
+          ...selectedOwner,
+          account: Object.freeze({ ...targetAccount, address: payer.address }),
+        });
+        const check = () => {
+          assertAuthority();
+          assertSynchronousEvmFeeGuard(saveOptions.assertBeforeSign!);
+          read.assertCurrent();
+          const live = store.getState().vault;
+          if (
+            live.activeAccount.id !== selectedOwner.account.id ||
+            live.activeAccount.type !== selectedOwner.account.type ||
+            live.accounts[selectedOwner.account.type]?.[
+              selectedOwner.account.id
+            ]?.address?.toLowerCase() !==
+              selectedOwner.account.address.toLowerCase() ||
+            live.accounts[payerOwner.account.type]?.[
+              payerOwner.account.id
+            ]?.address?.toLowerCase() !==
+              payerOwner.account.address.toLowerCase()
+          )
+            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        };
+        check();
+        const request = normalizeDappTransaction(params);
+        if (
+          request.from.toLowerCase() !== payer.address.toLowerCase() ||
+          (request.chainId !== undefined &&
+            BigInt(request.chainId) !== BigInt(read.network.chainId))
+        )
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        const explicit =
+          request.nonce === undefined
+            ? undefined
+            : reviewedExtensionNonce(request.nonce, 'manual');
+        const plan = await this.inspectOrdinaryEvmNonce(read, payer.address, {
+          reviewed: explicit,
+          assertCurrent: check,
+        });
+        check();
+        const nonce =
+          explicit ?? reviewedExtensionNonce(plan.nonce, 'automatic');
+        const prepared = await this.prepareGenericEvmFeeReview(
+          { ...request, nonce: nonce.nonce },
+          payerOwner,
+          nonce,
+          check,
+          { assertCurrentContext: check },
+          {
+            kind: 'smart-payer',
+            checkPendingState: saveOptions.assertPendingState ?? null,
+            request,
+            metadata: Object.freeze({ ...transactionMetadata }),
+          },
+          {
+            funding: saveOptions.feeFunding,
+            selectedContext: selectedOwner,
+            targetAccount,
+            transactionMetadata,
+            saveOptions,
+          }
+        );
+        check();
+        return await prepared.submit(check, async (response) => {
+          await saveOptions.onBroadcast?.(response);
+        });
+      } catch (error) {
+        if (error instanceof PrivateSubmissionError)
+          throw Object.assign(error, error.failure);
+        throw Object.assign(
+          error instanceof Error ? error : new Error(String(error)),
+          {
+            transactionNotBroadcast: true,
+          }
+        );
+      }
+    }
     if (saveOptions?.genericReviewId !== undefined) {
       let owned: ReturnType<typeof consumeGenericEvmFeeReview> | undefined;
       try {
@@ -9938,9 +10398,14 @@ class MainController {
         expectedAddress: targetAccountExists.address,
       };
       if (transactionMetadata?.smartAccountExecution === true) {
-        if (typeof saveOptions?.assertPendingState !== 'function')
-          throw new Error('Smart account pending-state approval is required');
+        if (
+          typeof saveOptions?.assertPendingState !== 'function' ||
+          typeof saveOptions.assertAssetState !== 'function'
+        )
+          throw new Error('Smart account spendability approval is required');
         await saveOptions.assertPendingState();
+        assertAuthority();
+        await saveOptions.assertAssetState();
         assertAuthority();
       }
       const keyring = this.getActiveKeyring();
@@ -10979,8 +11444,19 @@ class MainController {
       | { authorizeDapp: () => void; dappApprovalOwner: object }
       | { hardwareScope: IWalletNavigationScope }
       | { assertCurrentContext: () => void },
-    feeAuthority: import('./nativeEvmFeeReviews').GenericEvmFeeAuthority
+    feeAuthority: import('./nativeEvmFeeReviews').GenericEvmFeeAuthority,
+    payerDispatch?: Readonly<{
+      funding: EvmFeeFunding;
+      saveOptions: NonNullable<
+        Parameters<MainController['sendAndSaveEthTransaction']>[4]
+      >;
+      selectedContext: IEvmTransactionContext;
+      targetAccount: { id: number; type: KeyringAccountType };
+      transactionMetadata: Record<string, unknown>;
+    }>
   ) {
+    if ((feeAuthority.kind === 'smart-payer') !== Boolean(payerDispatch))
+      throw new Error('Invalid smart account payer fee review');
     const read = this.captureFreshEvmRead(getWalletNavigationScope());
     const expected = Object.freeze({
       ...context,
@@ -11006,13 +11482,29 @@ class MainController {
       assertCurrent: check,
       now: () => Math.floor(performance.now()),
       prepare: (request, assertCurrent, admission, approved) =>
-        read.run(async (provider) =>
-          prepareEvmDappQuote(
+        read.run(async (provider) => {
+          // Once our exact signed row is persisted, the broad Smart-account
+          // pending gate includes it. Dispatch checks its envelope and payer
+          // nonce below; only pre-sign reviews use the no-predecessor gate.
+          if (
+            admission.kind === 'review' &&
+            payerDispatch?.saveOptions.assertPendingState
+          ) {
+            await payerDispatch.saveOptions.assertPendingState();
+            assertCurrent();
+          }
+          // Asset ownership/balance can change after signing or persistence,
+          // independently of the payer nonce and this operation's own row.
+          if (payerDispatch?.saveOptions.assertAssetState) {
+            await payerDispatch.saveOptions.assertAssetState();
+            assertCurrent();
+          }
+          return prepareEvmDappQuote(
             request,
             {
               chainId: String(context.chainId),
               scope: JSON.stringify(expected),
-              funding: NATIVE_EVM_FEE_FUNDING,
+              funding: payerDispatch?.funding ?? NATIVE_EVM_FEE_FUNDING,
               gasPolicy:
                 feeAuthority.kind === 'private-withdrawal'
                   ? { kind: 'fixed', gasLimit: '650000' }
@@ -11093,8 +11585,8 @@ class MainController {
                 ),
             },
             approved
-          )
-        ),
+          );
+        }),
       send: async (
         transaction,
         assertCurrent,
@@ -11122,14 +11614,26 @@ class MainController {
         const work = this.sendAndSaveEthTransaction(
           transaction,
           transaction.type === 0,
-          undefined,
-          undefined,
+          payerDispatch?.targetAccount,
+          payerDispatch?.transactionMetadata,
           {
+            ...payerDispatch?.saveOptions,
             ...authority,
-            assertBeforeSign: assertCurrent,
+            assertBeforeSign: payerDispatch
+              ? () => {
+                  assertCurrent();
+                  assertSynchronousEvmFeeGuard(
+                    payerDispatch.saveOptions.assertBeforeSign!
+                  );
+                }
+              : assertCurrent,
             expectedContext: expected,
+            ...(payerDispatch
+              ? { selectedContext: payerDispatch.selectedContext }
+              : {}),
             genericDispatchId: reviewId,
-            clearNavigation: false,
+            clearNavigation:
+              payerDispatch?.saveOptions.clearNavigation ?? false,
             dappNonceApproval: walletNonce,
             onBroadcast: async (response) => {
               await onBroadcast(response.hash);
@@ -11142,6 +11646,27 @@ class MainController {
       },
     });
     check();
+    if (payerDispatch) {
+      // These fields were already approved; a higher shared quote requires
+      // another review, never an implicit increase during submission.
+      const request = normalizeDappTransaction(params);
+      for (const key of [
+        'gasLimit',
+        'gasPrice',
+        'maxFeePerGas',
+        'maxPriorityFeePerGas',
+      ] as const) {
+        const supplied =
+          request[key] ?? (key === 'gasLimit' ? request.gas : undefined);
+        const quoted = review.transaction[key];
+        if (
+          supplied !== undefined &&
+          quoted !== undefined &&
+          BigInt(quoted) > BigInt(supplied)
+        )
+          throw new Error('REVIEW_REQUIRED');
+      }
+    }
     const token = issueGenericEvmFeeReview(
       this,
       review,
@@ -12389,9 +12914,14 @@ class MainController {
           }
 
           if (directTx) {
-            this.updateTrackedEvmTransactionCopies(txHash, chainId, directTx);
+            const unresolvedSmart =
+              await this.updateTrackedEvmTransactionCopies(
+                txHash,
+                chainId,
+                directTx
+              );
 
-            if (isTransactionInBlock(directTx)) {
+            if (isTransactionInBlock(directTx) && !unresolvedSmart) {
               // Targeted receipt reads are independently retried/coalesced.
               const blockInfo = getTransactionBlockInfo(directTx);
               console.log(
@@ -12479,95 +13009,258 @@ class MainController {
     this.activeRapidPolls.set(pollKey, timeoutId);
   }
 
-  private updateTrackedEvmTransactionCopies(
+  private async updateTrackedEvmTransactionCopies(
     txHash: string,
     chainId: number,
     txUpdate: IEvmTransactionResponse | any
-  ) {
-    const { accountTransactions, accounts, activeNetwork } =
+  ): Promise<boolean> {
+    const { accountTransactions, accounts, activeNetwork, activeAccount } =
       store.getState().vault;
-    const isConfirmedUpdate = isTransactionInBlock(txUpdate);
-    const notificationType =
-      this.getEvmMinedTransactionNotificationType(txUpdate);
+    const generation = this.walletSessionGeneration;
+    const networkGeneration = this.networkRequestGeneration;
+    const check = () => {
+      const current = store.getState().vault;
+      if (
+        this.walletSessionGeneration !== generation ||
+        this.networkRequestGeneration !== networkGeneration ||
+        this.clearingEvmActivity ||
+        current.activeNetwork.chainId !== chainId ||
+        current.activeNetwork.url !== activeNetwork.url ||
+        current.activeAccount.id !== activeAccount.id ||
+        current.activeAccount.type !== activeAccount.type
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    const identities = decodeSmartAccountOperations({
+      chainId: String(txUpdate.chainId),
+      hash: txHash,
+      payer: txUpdate.from,
+      nonce: Number(txUpdate.nonce),
+      to: txUpdate.to,
+      value: String(txUpdate.value),
+      data: txUpdate.input ?? txUpdate.data,
+    });
+    const sharedReads = new Map<string, Promise<unknown>>();
+    let provider: Pick<CustomJsonRpcProvider, 'send' | '_send'> | undefined;
+    const isHandleOps = (transaction: any) => {
+      try {
+        return (
+          transaction.to?.toLowerCase() ===
+            getPaliEntryPointAddress(chainId).toLowerCase() &&
+          (transaction.input ?? transaction.data)
+            ?.slice(0, 10)
+            .toLowerCase() ===
+            paliEntryPointInterface.getFunction('handleOps')!.selector
+        );
+      } catch {
+        return false;
+      }
+    };
+    const read = (method: any, params: readonly unknown[]) => {
+      check();
+      provider ??= this.ethereumTransaction.web3Provider;
+      if (method === 'eth_chainId') return readLiveEvmChainId(provider!, check);
+      // Receipt/block data is shared only within this one reconciliation.
+      // Chain checks remain fresh before and after canonical observation.
+      const key = JSON.stringify([method, params]);
+      const reusable =
+        method === 'eth_getTransactionReceipt' ||
+        method === 'eth_getBlockByNumber';
+      let result = reusable ? sharedReads.get(key) : undefined;
+      if (!result) {
+        result = provider!.send(method, [...params]);
+        if (reusable) sharedReads.set(key, result!);
+      }
+      return result!;
+    };
     const notifiedAccounts = new Set<string>();
-
-    Object.values(KeyringAccountType).forEach((accountType) => {
-      Object.entries(accountTransactions[accountType] || {}).forEach(
-        ([accountId, transactionsByNetwork]: [string, any]) => {
-          const chainTxs = transactionsByNetwork?.ethereum?.[chainId];
-          if (!Array.isArray(chainTxs)) {
-            return;
+    let unresolvedSmart = false;
+    for (const accountType of Object.values(KeyringAccountType)) {
+      for (const [accountId, transactionsByNetwork] of Object.entries(
+        accountTransactions[accountType] || {}
+      )) {
+        const chainTxs = transactionsByNetwork?.ethereum?.[chainId];
+        if (!Array.isArray(chainTxs)) continue;
+        const existingTx = chainTxs.find(
+          (candidate: IEvmTransactionResponse) =>
+            candidate.hash?.toLowerCase() === txHash.toLowerCase()
+        );
+        if (!existingTx) continue;
+        check();
+        const account = accounts[accountType]?.[Number(accountId)];
+        const knownCalldata = isHandleOps(existingTx)
+          ? (existingTx as any).input ?? (existingTx as any).data
+          : undefined;
+        let update = txUpdate;
+        if (
+          accountType === KeyringAccountType.SmartAccount &&
+          (isHandleOps(txUpdate) || knownCalldata !== undefined)
+        ) {
+          const sameCalldata =
+            knownCalldata === undefined ||
+            (txUpdate.input ?? txUpdate.data)?.toLowerCase() ===
+              knownCalldata.toLowerCase();
+          const relevant = sameCalldata
+            ? identities.filter(
+                (identity) =>
+                  identity.account.toLowerCase() ===
+                  account?.address?.toLowerCase()
+              )
+            : [];
+          let outcome: 'confirmed' | 'reverted' | undefined;
+          if (isTransactionInBlock(txUpdate) && relevant.length) {
+            try {
+              const observation = await observeSmartAccountOperations(
+                {
+                  account: relevant[0].account,
+                  chainId: relevant[0].chainId,
+                  hash: relevant[0].hash,
+                  payer: relevant[0].payer,
+                  nonce: relevant[0].payerNonce,
+                  operations: relevant.map(
+                    ({ operationHash, operationNonce }) => ({
+                      operationHash,
+                      operationNonce,
+                    })
+                  ),
+                },
+                read,
+                check
+              );
+              check();
+              if (
+                observation.status === 'mined' &&
+                Number(observation.block.number) ===
+                  Number(txUpdate.blockNumber) &&
+                observation.block.hash === txUpdate.blockHash?.toLowerCase()
+              )
+                outcome = observation.outcome;
+            } catch {
+              // Missing, ambiguous or noncanonical inner results stay pending.
+              check();
+            }
           }
-
-          const existingTx = chainTxs.find(
-            (candidate: IEvmTransactionResponse) =>
+          update = {
+            ...txUpdate,
+            ...(outcome === undefined
+              ? { blockNumber: null, blockHash: null, confirmations: 0 }
+              : {}),
+            status:
+              outcome === undefined
+                ? 'pending'
+                : outcome === 'confirmed'
+                ? 'success'
+                : 'failed',
+            success: outcome === undefined ? null : outcome === 'confirmed',
+            isError:
+              outcome === undefined
+                ? null
+                : outcome === 'confirmed'
+                ? '0'
+                : '1',
+            // eslint-disable-next-line camelcase
+            txreceipt_status:
+              outcome === undefined
+                ? null
+                : outcome === 'confirmed'
+                ? '1'
+                : '0',
+          };
+        }
+        check();
+        if (
+          store.getState().vault.accounts[accountType]?.[Number(accountId)]
+            ?.address !== account?.address
+        )
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        const currentTx = store
+          .getState()
+          .vault.accountTransactions[accountType]?.[
+            Number(accountId)
+          ]?.ethereum?.[chainId]?.find(
+            (candidate) =>
               candidate.hash?.toLowerCase() === txHash.toLowerCase()
           );
-          if (!existingTx) {
-            return;
+        // A newer concurrent receipt/history update owns this row. A later
+        // reconciliation can still apply a genuine reorg to that new state.
+        if (!isEqual(currentTx, existingTx)) {
+          unresolvedSmart ||=
+            accountType === KeyringAccountType.SmartAccount &&
+            !isTransactionInBlock(currentTx);
+          continue;
+        }
+        unresolvedSmart ||=
+          accountType === KeyringAccountType.SmartAccount &&
+          !isTransactionInBlock(update);
+        if (
+          isTransactionInBlock(txUpdate) &&
+          !isTransactionInBlock(existingTx)
+        ) {
+          // A mined outer receipt can affect balances even if the inner
+          // operation outcome is not yet available.
+          this.refreshBalancesAfterReceipt({
+            ...existingTx,
+            ...txUpdate,
+            balanceRefreshTokenAddresses: (existingTx as any)
+              .balanceRefreshTokenAddresses,
+            balanceRefreshNativeAddresses: (existingTx as any)
+              .balanceRefreshNativeAddresses,
+            smartAccountExecutionFrom: (existingTx as any)
+              .smartAccountExecutionFrom,
+          });
+          const notificationKey = `${accountType}:${accountId}`;
+          if (
+            isTransactionInBlock(update) &&
+            account &&
+            !notifiedAccounts.has(notificationKey)
+          ) {
+            notificationManager.notifyTransaction({
+              transaction: update,
+              type: this.getEvmMinedTransactionNotificationType(update),
+              account: { address: account.address, label: account.label },
+              network: activeNetwork,
+              isEvm: true,
+            });
+            notifiedAccounts.add(notificationKey);
           }
-
-          if (isConfirmedUpdate && !isTransactionInBlock(existingTx)) {
-            this.refreshBalancesAfterReceipt({
-              ...existingTx,
-              ...txUpdate,
+        }
+        store.dispatch(
+          setSingleTransactionToState({
+            accountId: Number(accountId),
+            accountType,
+            chainId,
+            networkType: TransactionsType.Ethereum,
+            transaction: {
+              ...update,
+              // Hash-bound calldata cannot change or disappear on later reads.
+              data: knownCalldata ?? update.data ?? (existingTx as any).data,
+              input: knownCalldata ?? update.input ?? (existingTx as any).input,
+              to:
+                knownCalldata === undefined
+                  ? update.to
+                  : (existingTx as any).to,
+              smartAccountExecutionFrom: (existingTx as any)
+                .smartAccountExecutionFrom,
               balanceRefreshTokenAddresses: (existingTx as any)
                 .balanceRefreshTokenAddresses,
               balanceRefreshNativeAddresses: (existingTx as any)
                 .balanceRefreshNativeAddresses,
-              smartAccountExecutionFrom: (existingTx as any)
-                .smartAccountExecutionFrom,
-            });
-            const notificationKey = `${accountType}:${accountId}`;
-            const account = accounts[accountType]?.[Number(accountId)];
-            if (account && !notifiedAccounts.has(notificationKey)) {
-              notificationManager.notifyTransaction({
-                transaction: txUpdate,
-                type: notificationType,
-                account: {
-                  address: account.address,
-                  label: account.label,
-                },
-                network: activeNetwork,
-                isEvm: true,
-              });
-              notifiedAccounts.add(notificationKey);
-            }
-          }
-
-          store.dispatch(
-            setSingleTransactionToState({
-              accountId: Number(accountId),
-              accountType,
-              chainId,
-              networkType: TransactionsType.Ethereum,
-              transaction: {
-                ...txUpdate,
-                smartAccountExecutionFrom: (existingTx as any)
-                  .smartAccountExecutionFrom,
-                balanceRefreshTokenAddresses: (existingTx as any)
-                  .balanceRefreshTokenAddresses,
-                balanceRefreshNativeAddresses: (existingTx as any)
-                  .balanceRefreshNativeAddresses,
-                timestamp: (existingTx as any).timestamp,
-              } as IEvmTransactionResponse,
-            })
-          );
-        }
-      );
-    });
-
+              timestamp: (existingTx as any).timestamp,
+            } as IEvmTransactionResponse,
+          })
+        );
+      }
+    }
     const latestVault = store.getState().vault;
     if (latestVault.activeNetwork.chainId === chainId) {
       const activeAccountTxs =
         latestVault.accountTransactions[latestVault.activeAccount.type]?.[
           latestVault.activeAccount.id
         ]?.ethereum?.[chainId];
-
-      if (Array.isArray(activeAccountTxs)) {
+      if (Array.isArray(activeAccountTxs))
         notificationManager.updatePendingTransactionBadge(activeAccountTxs);
-      }
     }
+    return unresolvedSmart;
   }
 
   // SYSCOIN: History may confirm a router/AA transaction after rapid polling
@@ -12877,7 +13570,11 @@ class MainController {
       )
         return;
       if (directTx && isTransactionInBlock(directTx)) {
-        this.updateTrackedEvmTransactionCopies(tx.hash, chainId, directTx);
+        await this.updateTrackedEvmTransactionCopies(
+          tx.hash,
+          chainId,
+          directTx
+        );
       }
     }
   }

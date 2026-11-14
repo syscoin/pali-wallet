@@ -1,4 +1,5 @@
 import { AUTOMATIC_FEE, snapshotEvmFeeChoice } from '../../../source/shared/transactionFeeChoice.ts';
+import { createAssetTransferDisplay } from '../../../source/shared/assetTransferDisplay.ts';
 import { parseErc20Units, encodeErc20Transfer } from '../../../source/shared/erc20.ts';
 import { trezorResumeDraft } from '../src/screens/trezorResumeDraft.ts';
 import type { NativeSendInitialDraft } from '../src/screens/NativeSend.tsx';
@@ -18,7 +19,7 @@ import type { NativeUnsignedSendDraft } from '../src/screens/sendNetworkDraft.ts
 import type { NativeOperationCredential } from '../src/custody/types.ts';
 import { formatBaseUnits, parseDecimalAmount } from '../src/core/amounts.ts';
 import { normalizeDecimalInput } from '../../../source/shared/decimalInput.ts';
-import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE } from '../src/custody/transfers.ts';
+import { SMART_ACCOUNT_REPLAY_INSPECT_ONLY_MESSAGE, ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE } from '../src/custody/transfers.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (next: unknown) => void };
@@ -46,6 +47,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   const deps: Record<string,unknown> = {
     '../platform/localization': localization,
     '../../../../source/shared/transactionFeeChoice': { AUTOMATIC_FEE, snapshotEvmFeeChoice },
+    '../../../../source/shared/assetTransferDisplay': { createAssetTransferDisplay },
     './NetworkFeeSheet': { NetworkFeeSheet: 'NetworkFeeSheet' },
     './RecipientQrScanner': { RecipientQrScanner: 'RecipientQrScanner' },
     './SendNetworkCard': { SendNetworkCard: 'SendNetworkCard' },
@@ -60,7 +62,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     '../../../../source/shared/erc20':{formatTokenUnits:()=>'',parseErc20Units},
     '../../../../source/shared/evmRecipientChoices':{findLocalEvmRecipientChoices:()=>[]},
     '../../../../source/utils/nftTokenId':{normalizeNftTokenId:()=>''},
-    '../custody/transfers':{ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE},
+    '../custody/transfers':{SMART_ACCOUNT_REPLAY_INSPECT_ONLY_MESSAGE, ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE},
   };
   const source=readFileSync(new NodeURL('../src/screens/NativeSend.tsx',import.meta.url),'utf8');
   const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText;

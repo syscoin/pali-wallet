@@ -9,6 +9,7 @@ import {
 } from './account.ts';
 import { toPaliSmartAccount } from './adapter.ts';
 import { requireSmartAccountAddressIdentity } from './addressIdentity.ts';
+import { assertSmartAccountSpendability } from './assetSpendability.ts';
 import {
   getPaliEntryPointAddress,
   getPaliSmartAccountFactoryAddress,
@@ -20,7 +21,6 @@ import {
   getSmartAccountValidatorProfile,
   type SmartAccountUserOpGasEstimate,
 } from './gas.ts';
-import { assertSmartAccountNativeSpendability } from './nativeSpendability.ts';
 import type { SmartAccountPendingState } from './pendingState.ts';
 import { getSmartAccountUserOpHash } from './userOperationHash.ts';
 import type {
@@ -232,7 +232,7 @@ export async function prepareSmartAccountOperation({
     sender: account.address,
   });
   await pending.assertNonce(userOperation);
-  await assertSmartAccountNativeSpendability({
+  await assertSmartAccountSpendability({
     provider,
     chainId,
     userOperation,

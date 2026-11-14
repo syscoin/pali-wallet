@@ -2,6 +2,8 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import React from 'react';
 
+import { decodeAssetTransfer } from '../../shared/assetTransfer';
+
 import { RetainedTransactionReplay } from './RetainedTransactionReplay';
 
 const HASH = `0x${'11'.repeat(32)}`;
@@ -74,6 +76,9 @@ jest.mock('components/Modal', () => ({
         </button>
       </div>
     ) : null,
+}));
+jest.mock('../../pages/Send/components/ReviewedAssetIcon', () => ({
+  ReviewedAssetIcon: () => null,
 }));
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -636,3 +641,155 @@ test.each(['native', 'erc20'])(
     }
   }
 );
+
+it('reviews the inner Smart transfer and the recorded outer payer, then opens a bound predecessor', async () => {
+  mockAccountType = 'SmartAccount';
+  const parent: any = review();
+  parent.review.smartAccount = {
+    account: `0x${'44'.repeat(20)}`,
+    operationHash: HASH,
+    operationNonce: '0',
+    operationCount: 1,
+    replayable: true,
+    callData: '0x',
+    executions: [
+      {
+        target: `0x${'55'.repeat(20)}`,
+        value: '2000000000000000001',
+        data: '0x',
+      },
+    ],
+  };
+  parent.review.missingNonce = '0';
+  parent.review.predecessorCount = 2;
+  parent.review.predecessors = [
+    { hash: PREVIOUS, nonce: 0, operation: 'send' },
+  ];
+  mockEmitter.mockImplementation(([, method]: string[], args: any[]) => {
+    if (method === 'getSavedEvmTransaction')
+      return Promise.resolve({ hash: HASH });
+    if (method === 'prepareEvmSignedReplay') return Promise.resolve(parent);
+    if (method === 'prepareSmartAccountPredecessor')
+      return Promise.resolve(review('prior-review', args[1]));
+    return Promise.resolve();
+  });
+  render(<RetainedTransactionReplay hash={HASH} />);
+  await flush();
+  fireEvent.click(
+    screen.getByRole('button', { name: mockT('transactions.replay.review') })
+  );
+  await flush();
+  const dialog = screen.getByRole('dialog');
+  expect(within(dialog).getByText(mockT('transactions.feePayer'))).toBeTruthy();
+  expect(within(dialog).getByText(parent.review.from)).toBeTruthy();
+  expect(
+    within(dialog).getByText(parent.review.smartAccount.account)
+  ).toBeTruthy();
+  expect(within(dialog).getByText('2.000000000000000001 SYS')).toBeTruthy();
+  expect(
+    within(dialog).getByText(parent.review.smartAccount.executions[0].target)
+  ).toBeTruthy();
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: new RegExp(PREVIOUS) })
+  );
+  await flush();
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'prepareSmartAccountPredecessor'],
+    ['review-1', PREVIOUS],
+    15000,
+    false
+  );
+  expect(
+    mockEmitter.mock.calls.some(
+      ([, args]) => args?.[0] === 'review-1' && args?.[1] === undefined
+    )
+  ).toBe(false);
+  expect(screen.getByRole('dialog')).toBeTruthy();
+});
+
+it('shows every recipient and native amount in a saved Smart batch', async () => {
+  mockAccountType = 'SmartAccount';
+  const parent: any = review();
+  parent.review.value = '0';
+  parent.review.smartAccount = {
+    account: `0x${'44'.repeat(20)}`,
+    operationHash: HASH,
+    operationNonce: '0',
+    operationCount: 1,
+    replayable: true,
+    callData: '0x',
+    executions: [
+      {
+        target: `0x${'55'.repeat(20)}`,
+        value: '2000000000000000001',
+        data: '0x',
+      },
+      {
+        target: `0x${'66'.repeat(20)}`,
+        value: '3000000000000000001',
+        data: '0x',
+      },
+    ],
+  };
+  mockEmitter.mockImplementation(([, method]: string[]) =>
+    Promise.resolve(
+      method === 'getSavedEvmTransaction' ? { hash: HASH } : parent
+    )
+  );
+  render(<RetainedTransactionReplay hash={HASH} />);
+  await flush();
+  fireEvent.click(
+    screen.getByRole('button', { name: mockT('transactions.replay.review') })
+  );
+  await flush();
+  const dialog = screen.getByRole('dialog');
+  for (const call of parent.review.smartAccount.executions)
+    expect(within(dialog).getByText(call.target)).toBeTruthy();
+  expect(within(dialog).getByText('2.000000000000000001 SYS')).toBeTruthy();
+  expect(within(dialog).getByText('3.000000000000000001 SYS')).toBeTruthy();
+  expect(within(dialog).queryByText('0.0 SYS')).toBeNull();
+});
+
+it('keeps payable transfer-call asset arguments and native value visible together', async () => {
+  mockAccountType = 'SmartAccount';
+  const recipient = `0x${'55'.repeat(20)}`,
+    token = `0x${'66'.repeat(20)}`;
+  const data =
+    '0xa9059cbb' + recipient.slice(2).padStart(64, '0') + '7'.padStart(64, '0');
+  const parent: any = review();
+  parent.review.smartAccount = {
+    account: `0x${'44'.repeat(20)}`,
+    operationHash: HASH,
+    operationNonce: '0',
+    operationCount: 1,
+    replayable: true,
+    callData: '0x',
+    executions: [
+      {
+        target: token,
+        value: '1000000000000000000',
+        data,
+        assetTransfer: decodeAssetTransfer(data, token),
+      },
+      { target: `0x${'77'.repeat(20)}`, value: '0', data: '0x' },
+    ],
+  };
+  mockEmitter.mockImplementation(([, method]: string[]) =>
+    Promise.resolve(
+      method === 'getSavedEvmTransaction' ? { hash: HASH } : parent
+    )
+  );
+  render(<RetainedTransactionReplay hash={HASH} />);
+  await flush();
+  fireEvent.click(
+    screen.getByRole('button', { name: mockT('transactions.replay.review') })
+  );
+  await flush();
+  const dialog = screen.getByRole('dialog');
+  expect(within(dialog).getByText('7')).toBeTruthy();
+  expect(within(dialog).getByText(recipient)).toBeTruthy();
+  expect(within(dialog).getByText(token)).toBeTruthy();
+  expect(
+    within(dialog).getByText('Native currency sent: 1.0 SYS')
+  ).toBeTruthy();
+});

@@ -63,7 +63,9 @@ jest.mock('utils/smartAccount', () => ({
 const address = '0x' + '11'.repeat(20);
 const sign = () =>
   screen.getByRole('button', { name: 'send.sign' }) as HTMLButtonElement;
+const feePayer = { address: '0x' + '44'.repeat(20), id: 2, type: 'HDAccount' };
 const quote = (maximumFeeWei = '4300000000000000') => ({
+  feePayer,
   gasUnits: '860000',
   maximumFeeWei,
 });
@@ -123,7 +125,10 @@ it('shows full EntryPoint maximum and binds exact batch at signing', async () =>
       { target: mockQuery.calls[0].to, data: '0x1234', value: '0x1' },
       { target: mockQuery.calls[1].to, data: '0x', value: '0x0' },
     ],
-    maximumUserOpFeeWei: '4300000000000000',
+    approvedFeeQuote: expect.objectContaining({
+      maximumFeeWei: '4300000000000000',
+      feePayer,
+    }),
     expectedContext: mockQuery.approvedContext,
   });
 });
@@ -167,7 +172,9 @@ it('keeps every call in a refreshed quote and ignores an obsolete in-flight resp
   await act(async () => resolve(quote('999999999999999999')));
   fireEvent.click(sign());
   await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
-  expect(mockSubmit.mock.calls[0][0].maximumUserOpFeeWei).toBe('123');
+  expect(mockSubmit.mock.calls[0][0].approvedFeeQuote).toEqual(
+    expect.objectContaining({ maximumFeeWei: '123', feePayer })
+  );
   expect(mockSubmit.mock.calls[0][0].executions).toHaveLength(2);
 });
 

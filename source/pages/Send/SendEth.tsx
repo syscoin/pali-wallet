@@ -489,9 +489,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     ) {
       setSelectedAsset(refreshedAsset);
       if (refreshedAsset.isNft && refreshedAsset.tokenStandard === 'ERC-1155') {
-        // A newer balance read supersedes any in-flight ownership lookup.
-        beginNftLookup();
-        setVerifiedTokenBalance(getExactNftBalance(refreshedAsset));
+        // Catalogue balances are display hints; re-read this selected token.
+        void verifyTokenId(String(refreshedAsset.tokenId), refreshedAsset);
       }
     }
   }, [
@@ -745,8 +744,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
             setSelectedNftTokenId(getAsset.tokenId);
             form.setFieldValue('nftTokenId', getAsset.tokenId);
             form.setFieldValue('amount', '1');
-            // Set the balance from the stored token (already specific to this tokenId)
-            setVerifiedTokenBalance(getExactNftBalance(getAsset));
+            await verifyTokenId(String(getAsset.tokenId), getAsset);
           } else {
             // ERC-721 flow - enumerate token IDs
             setIsLoadingNftTokenIds(true);
@@ -1030,12 +1028,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       }
 
       if (selectedAsset.tokenStandard === 'ERC-1155') {
-        const balance =
-          verifiedTokenBalance ?? getExactNftBalance(selectedAsset);
-        if (balance !== null)
-          return `${formatFullPrecisionBalance(balance, 4)} ${
-            selectedAsset.tokenSymbol
-          }`;
+        if (verifiedTokenBalance === null) return t('send.verifyingBalance');
+        return `${formatFullPrecisionBalance(verifiedTokenBalance, 4)} ${
+          selectedAsset.tokenSymbol
+        }`;
       }
 
       // For NFTs and unverified tokens, use stored balance
@@ -1119,9 +1115,12 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   };
 
   // Verify manually entered NFT token ID
-  const verifyTokenId = async (tokenId: string) => {
+  const verifyTokenId = async (
+    tokenId: string,
+    asset: ITokenEthProps | null = selectedAsset
+  ) => {
     const current = beginNftLookup();
-    if (!selectedAsset || !activeAccount.address || !tokenId.trim()) {
+    if (!asset || !activeAccount.address || !tokenId.trim()) {
       return;
     }
 
@@ -1131,11 +1130,11 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       const result = (await controllerEmitter(
         [
           'wallet',
-          selectedAsset?.tokenStandard === 'ERC-721'
+          asset.tokenStandard === 'ERC-721'
             ? 'verifyERC721Ownership'
             : 'verifyERC1155Ownership',
         ],
-        [selectedAsset.contractAddress, activeAccount.address, [tokenId]]
+        [asset.contractAddress, activeAccount.address, [tokenId]]
       )) as {
         balance: number;
         rawBalance?: string;
@@ -1149,7 +1148,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         const balance = getExactNftBalance(tokenInfo);
         if (tokenInfo.verified && balance !== null && balance !== '0') {
           ownedNftRef.current = nftOwnershipKey(
-            selectedAsset.contractAddress,
+            asset.contractAddress,
             tokenId.trim()
           );
           setVerifiedTokenBalance(balance);
@@ -1493,15 +1492,39 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           {isErc1155Selection && isVerifyingTokenId && (
             <span className="text-brand-royalblue text-xs ml-1">🔄</span>
           )}
-          {isErc1155Selection && verifiedTokenBalance !== null && (
-            <span
-              className="text-green-400 text-xs ml-1"
-              title={t('send.tokenOwnershipVerified')}
-            >
-              ✓
-            </span>
-          )}
+          {isErc1155Selection &&
+            !isVerifyingTokenId &&
+            !verificationError &&
+            verifiedTokenBalance !== null &&
+            verifiedTokenBalance !== '0' && (
+              <span
+                className="text-green-400 text-xs ml-1"
+                title={t('send.tokenOwnershipVerified')}
+              >
+                ✓
+              </span>
+            )}
         </div>
+        {isErc1155Selection && verificationError && (
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <p role="alert" className="text-warning-error text-xs">
+              {verificationError}
+            </p>
+            <button
+              type="button"
+              className="rounded-md border border-brand-gray200 px-3 py-1 text-xs text-brand-gray200"
+              onClick={() => {
+                if (isCurrentForm() && selectedAsset)
+                  void verifyTokenId(
+                    String(selectedAsset.tokenId),
+                    selectedAsset
+                  );
+              }}
+            >
+              {t('receive.retry')}
+            </button>
+          </div>
+        )}
       </div>
       <Form
         validateMessages={{ default: '' }}

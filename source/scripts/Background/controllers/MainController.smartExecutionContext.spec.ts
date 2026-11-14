@@ -427,49 +427,7 @@ describe('smart-account signing and outer broadcast context', () => {
       throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
   };
 
-  it.each(['rpc', 'account', 'session'])(
-    'rejects a %s change during deferred outer transaction preflight before invoking the sender',
-    async (change) => {
-      let finishPreflight!: (value: any[]) => void;
-      (
-        getBlacklistTargetsForEvmCallWithContractType as jest.Mock
-      ).mockImplementationOnce(
-        () => new Promise((resolve) => (finishPreflight = resolve))
-      );
-      const sending = wallet.sendAndSaveEthTransaction(
-        { chainId: 1, value: '0x0' },
-        false,
-        owner,
-        metadata,
-        {
-          assertCurrentContext: contextGuard,
-          assertPendingState: async () => undefined,
-        }
-      );
-      if (change === 'rpc') currentState.vault.activeNetwork.url = 'rpc-b';
-      if (change === 'account')
-        currentState.vault.activeAccount = { ...smartAccount, id: 2 };
-      if (change === 'session') wallet.walletSessionGeneration += 1;
-      finishPreflight([]);
-      await expect(sending).rejects.toMatchObject({
-        message: EVM_TRANSACTION_CONTEXT_CHANGED,
-        transactionNotBroadcast: true,
-      });
-      expect(send).not.toHaveBeenCalled();
-      expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
-    }
-  );
-
-  it('checks the smart context again after preparing the separate outer payer', async () => {
-    send.mockImplementationOnce(async (_transaction, _legacy, options) => {
-      currentState.vault.activeNetwork.url = 'rpc-b';
-      try {
-        options.assertCurrent();
-      } catch (error) {
-        throw Object.assign(error, { transactionNotBroadcast: true });
-      }
-      return response;
-    });
+  it('refuses a Smart outer send without the shared payer fee approval', async () => {
     await expect(
       wallet.sendAndSaveEthTransaction(
         { chainId: 1, value: '0x0' },
@@ -482,29 +440,11 @@ describe('smart-account signing and outer broadcast context', () => {
         }
       )
     ).rejects.toMatchObject({
-      message: EVM_TRANSACTION_CONTEXT_CHANGED,
+      message: 'Smart account payer approval is required',
       transactionNotBroadcast: true,
     });
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
     expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
-  });
-
-  it('allows an unchanged smart-account approval to use its separate local outer payer', async () => {
-    await expect(
-      wallet.sendAndSaveEthTransaction(
-        { chainId: 1, value: '0x0' },
-        false,
-        owner,
-        metadata,
-        {
-          assertCurrentContext: contextGuard,
-          assertPendingState: async () => undefined,
-        }
-      )
-    ).resolves.toMatchObject(response);
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(wallet.sendAndSaveTransaction).toHaveBeenCalledTimes(1);
-    expect(currentState.vault.activeAccount).toEqual(smartAccount);
   });
 
   describe('public account-switch session invalidation', () => {

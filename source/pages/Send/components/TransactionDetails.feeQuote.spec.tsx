@@ -58,7 +58,18 @@ const show = (
         ...(legacy ? { gasPrice: 50 } : {}),
         maxFeePerGas: 50,
         maxPriorityFeePerGas: 0,
-        ...(quote ? { smartAccountFeeQuote: quote } : {}),
+        ...(quote
+          ? {
+              smartAccountFeeQuote: {
+                ...quote,
+                feePayer: {
+                  address: '0x' + '44'.repeat(20),
+                  id: 2,
+                  type: 'HDAccount',
+                },
+              },
+            }
+          : {}),
       }}
       customFee={{
         isCustom: false,

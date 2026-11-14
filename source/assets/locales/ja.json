@@ -1090,6 +1090,7 @@
     "coinGeckoListingUnavailable": "掲載情報を取得できません"
   },
   "transactions": {
+    "feePayer": "手数料の支払元",
     "labelCopied": "{{label}}をクリップボードにコピーしました",
     "decodeDetailsFailed": "トランザクション詳細をデコードできませんでした",
     "transactionOptions": "トランザクションのオプション",

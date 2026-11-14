@@ -20,6 +20,11 @@ import { fetchGasAndDecodeFunction } from './fetchGasAndDecodeFunction';
 
 const FROM = `0x${'11'.repeat(20)}`;
 const TO = `0x${'22'.repeat(20)}`;
+const FEE_PAYER = {
+  address: `0x${'33'.repeat(20)}`,
+  id: 1,
+  type: KeyringAccountType.HDAccount,
+};
 const network = { chainId: 1, url: 'https://rpc.example' } as INetwork;
 const approvedContext: IEvmTransactionContext = {
   account: { address: FROM, id: 0, type: KeyringAccountType.HDAccount },
@@ -46,7 +51,7 @@ beforeEach(() => {
       isBitcoinBased: false,
       activeNetwork: { ...network },
       activeAccount: { type: KeyringAccountType.HDAccount, id: 0 },
-      accounts: { HDAccount: { 0: { address: FROM } } },
+      accounts: { HDAccount: { 0: { address: FROM }, 1: FEE_PAYER } },
     },
     vaultGlobal: { activeSlip44: 60 },
   };
@@ -72,6 +77,7 @@ beforeEach(() => {
           smartQuote || {
             executionContextId: 'read-only-fee-context',
             executions: args[0],
+            gasPayer: FEE_PAYER,
             userOperation: {
               sender: FROM,
               accountGasLimits: pack(700000, 33456),
@@ -153,6 +159,7 @@ describe('dapp transaction fee preparation', () => {
       const result = await prepare(fields);
       expect(result.formTx.gasLimit.toString()).toBe('70000');
       expect(result.feeDetails.smartAccountFeeQuote).toEqual({
+        feePayer: FEE_PAYER,
         gasUnits: '863456',
         maximumFeeWei: BigNumber.from(863456)
           .mul(legacy ? '4000000000' : '5000000000')
@@ -183,6 +190,7 @@ describe('dapp transaction fee preparation', () => {
     smartQuote = {
       executionContextId: 'tank',
       executions: [{ target: TO, data: '0x', value: '0x0' }],
+      gasPayer: FEE_PAYER,
       userOperation: {
         sender: FROM,
         accountGasLimits: pack(700000, 33456),
@@ -194,6 +202,7 @@ describe('dapp transaction fee preparation', () => {
       smartAccountFeeQuote: { maximumFeeWei: '1' },
     });
     expect(result.feeDetails.smartAccountFeeQuote).toEqual({
+      feePayer: FEE_PAYER,
       gasUnits: '863456',
       maximumFeeWei: '0',
     });
@@ -205,11 +214,13 @@ describe('dapp transaction fee preparation', () => {
     'malformed limits',
     'different execution',
     'changed account',
+    'missing payer',
   ])('never invents an AA fee after %s', async (reason) => {
     state.vault.accounts.HDAccount[0].isSmartAccount = true;
     smartQuote = {
       executionContextId: 'quote',
       executions: [{ target: TO, data: '0x', value: '0x0' }],
+      gasPayer: FEE_PAYER,
       userOperation: {
         sender: FROM,
         accountGasLimits: pack(700000, 33456),
@@ -223,6 +234,7 @@ describe('dapp transaction fee preparation', () => {
       smartQuote.userOperation.accountGasLimits = '0x1234';
     if (reason === 'different execution')
       smartQuote.executions[0].target = FROM;
+    if (reason === 'missing payer') delete smartQuote.gasPayer;
     if (reason === 'changed account') {
       const invoke = emitterMock.getMockImplementation()!;
       emitterMock.mockImplementation(async (path, args) => {

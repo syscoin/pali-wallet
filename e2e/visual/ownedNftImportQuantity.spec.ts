@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { Interface } from 'ethers';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
@@ -28,7 +29,16 @@ for (const quantity of [
     const fixture = createIsolatedVaultFixture();
     const server = await startUtxoFixtureServer();
     const discoveries: string[] = [];
+    const ownershipReads: { ids: string[]; quantity: string }[] = [];
+    let currentQuantity = quantity;
+    const nft = new Interface([
+      'function supportsInterface(bytes4) view returns (bool)',
+      'function balanceOf(address,uint256) view returns (uint256)',
+      'function balanceOfBatch(address[],uint256[]) view returns (uint256[])',
+    ]);
     Object.assign(E2E_CONFIG, {
+      chainId: 5700,
+      networkLabel: 'Syscoin NEVM Testnet',
       seedPhrase: UTXO_FIXTURE_SEED,
       password: 'OwnedNftSynthetic!2026',
       rpcUrl: server.url,
@@ -48,6 +58,93 @@ for (const quantity of [
         fixture,
         server.url
       );
+      // The explorer supplies discovery metadata; Send independently verifies
+      // ownership through the real controller and shared contract reader.
+      await wallet.context.route('https://rpc.tanenbaum.io/', async (route) => {
+        if (route.request().method() !== 'POST') return route.fallback();
+        const rpc = route.request().postDataJSON();
+        const calls = Array.isArray(rpc) ? rpc : [rpc];
+        if (
+          calls.some((call: any) =>
+            /^(?:eth_send|eth_sign|personal_|wallet_send|sys_sign)/i.test(
+              call?.method || ''
+            )
+          )
+        ) {
+          routes.deniedWrites.push('attempted-write-or-sign');
+          return route.abort('blockedbyclient');
+        }
+        if (
+          !calls.some(
+            (call: any) =>
+              ['eth_call', 'eth_getCode'].includes(call?.method) &&
+              (call.params?.[0]?.to || call.params?.[0])?.toLowerCase() ===
+                CONTRACT
+          )
+        )
+          return route.fallback();
+        const replies = calls.map((call: any) => {
+          let result: unknown;
+          const target = (
+            call.params?.[0]?.to || call.params?.[0]
+          )?.toLowerCase();
+          if (call.method === 'eth_chainId') result = '0x1644';
+          if (target === CONTRACT && call.method === 'eth_getCode')
+            result = '0x60006000fd';
+          if (target === CONTRACT && call.method === 'eth_call') {
+            const decoded = nft.parseTransaction({ data: call.params[0].data });
+            if (decoded?.name === 'supportsInterface')
+              result = nft.encodeFunctionResult(decoded.fragment, [
+                ['0xd9b67a26', '0x01ffc9a7'].includes(decoded.args[0]),
+              ]);
+            if (
+              decoded?.name === 'balanceOf' ||
+              decoded?.name === 'balanceOfBatch'
+            ) {
+              const owners =
+                decoded.name === 'balanceOf'
+                  ? [decoded.args[0]]
+                  : Array.from(decoded.args[0]);
+              const ids = (
+                decoded.name === 'balanceOf'
+                  ? [decoded.args[1]]
+                  : Array.from(decoded.args[1])
+              ).map(String);
+              if (
+                owners.length === ids.length &&
+                owners.every(
+                  (owner: any) =>
+                    owner.toLowerCase() ===
+                    fixture.evmAddresses[0].toLowerCase()
+                )
+              ) {
+                ownershipReads.push({ ids, quantity: currentQuantity });
+                const balances = ids.map((id) =>
+                  id === TOKEN_ID ? currentQuantity : '0'
+                );
+                result = nft.encodeFunctionResult(decoded.fragment, [
+                  decoded.name === 'balanceOf' ? balances[0] : balances,
+                ]);
+              }
+            }
+          }
+          return result === undefined
+            ? {
+                jsonrpc: '2.0',
+                id: call.id,
+                error: {
+                  code: -32000,
+                  message: 'Unsupported synthetic contract read',
+                },
+              }
+            : { jsonrpc: '2.0', id: call.id, result };
+        });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(Array.isArray(rpc) ? replies : replies[0]),
+        });
+      });
       await wallet.context.route(
         'https://explorer.tanenbaum.io/api?**',
         async (route) => {
@@ -198,9 +295,7 @@ for (const quantity of [
         }
       }
       await page.setViewportSize({ width: 400, height: 620 });
-      // Do not supply contract balances to repair the explorer result later.
-      // Healthy small quantities remain usable through the numeric fallback;
-      // quantities beyond Number precision require the exact stored string.
+      const readsBeforeSend = ownershipReads.length;
       await wallet.gotoRoute('#/send/eth');
       await page.getByRole('button', { name: 'TSYS', exact: true }).click();
       await page
@@ -209,6 +304,20 @@ for (const quantity of [
         .click();
       const max = page.getByRole('button', { name: 'MAX', exact: true });
       await expect(max).toBeEnabled();
+      await expect
+        .poll(() =>
+          ownershipReads
+            .slice(readsBeforeSend)
+            .some(
+              (read) =>
+                read.ids.includes(TOKEN_ID) && read.quantity === quantity
+            )
+        )
+        .toBe(true);
+      await expect(page.locator('#with-max-button')).toHaveAttribute(
+        'max',
+        quantity
+      );
       await max.click();
       await expect(page.locator('#with-max-button')).toHaveValue(quantity);
       if (!Number.isSafeInteger(Number(quantity)))
@@ -224,16 +333,43 @@ for (const quantity of [
         exact: true,
       });
       await expect(native.or(selected)).toBeVisible();
-      // Re-enter through the ordinary asset picker, not the saved draft's
-      // ownership refresh (contract reads are intentionally unavailable).
+      // Keep the saved explorer quantity unchanged, but make the fresh chain
+      // read smaller. Re-selection must use that current balance for MAX.
+      currentQuantity =
+        quantity === '0' ? '0' : (BigInt(quantity) - BigInt(1)).toString();
+      const readsBeforeReselect = ownershipReads.length;
       await native.or(selected).click();
       await page
         .locator('button[role="menuitem"]')
         .filter({ hasText: SYMBOL })
         .click();
       await expect(max).toBeEnabled();
+      await expect
+        .poll(() =>
+          ownershipReads
+            .slice(readsBeforeReselect)
+            .some(
+              (read) =>
+                read.ids.includes(TOKEN_ID) && read.quantity === currentQuantity
+            )
+        )
+        .toBe(true);
+      await expect(page.locator('#with-max-button')).toHaveAttribute(
+        'max',
+        currentQuantity
+      );
       await max.click();
-      await expect(page.locator('#with-max-button')).toHaveValue(quantity);
+      await expect(page.locator('#with-max-button')).toHaveValue(
+        currentQuantity
+      );
+      await info.attach('fresh-ownership-reads', {
+        contentType: 'application/json',
+        body: JSON.stringify({
+          importedQuantity: quantity,
+          currentQuantity,
+          ownershipReads,
+        }),
+      });
       await info.attach('owned-quantity-max', {
         contentType: 'image/png',
         body: await page.screenshot({ animations: 'disabled' }),

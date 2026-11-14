@@ -212,11 +212,18 @@ jest.mock('utils/validations', () => ({
   ],
 }));
 
+const feePayer = {
+  address: '0x4444444444444444444444444444444444444444',
+  id: 2,
+  type: 'HDAccount',
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockHandleTransactionError.mockReturnValue(false);
   (prepareSmartAccountFeeQuote as jest.Mock).mockImplementation(
     async ({ feeOverrides }: any) => ({
+      feePayer,
       gasUnits: '650000',
       maximumFeeWei: BigNumber.from(
         feeOverrides?.gasPrice ?? feeOverrides?.maxFeePerGas ?? '1000000000'
@@ -802,6 +809,7 @@ it.each([
         isNft: transactionType !== TransactionType.ERC20,
       };
     (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
+      feePayer,
       gasUnits: '863456',
       maximumFeeWei: '43172800000000000',
     });
@@ -811,6 +819,8 @@ it.each([
     );
     expect(screen.getByText('send.smartAccountMaxFee')).toBeTruthy();
     expect(screen.getByText('send.smartAccountFeeDetails')).toBeTruthy();
+    expect(screen.getByText('transactions.feePayer')).toBeTruthy();
+    expect(screen.getByText(feePayer.address)).toBeTruthy();
     expect(screen.getAllByText('0.0431728 TSYS').length).toBeGreaterThan(0);
     expect(screen.queryByText('0.000021 TSYS')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
@@ -822,7 +832,9 @@ it.each([
     const quoted = (prepareSmartAccountFeeQuote as jest.Mock).mock.calls.at(
       -1
     )[0];
-    expect(sent.maximumUserOpFeeWei).toBe('43172800000000000');
+    expect(sent.approvedFeeQuote).toEqual(
+      expect.objectContaining({ maximumFeeWei: '43172800000000000', feePayer })
+    );
     expect(sent.executions).toEqual(quoted.executions);
     expect(sent.expectedContext).toEqual(quoted.expectedContext);
     expect(
@@ -836,6 +848,7 @@ it.each([
 it('quotes and displays the exact native MAX net before signing, without a submit-time fee read', async () => {
   prepareSmartAccountConfirmation(true);
   (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
+    feePayer,
     gasUnits: '863456',
     maximumFeeWei: '43172800000000000',
   });
@@ -869,6 +882,7 @@ it('adds a native 1-wei amount to the full charge without rounding the displayed
   prepareSmartAccountConfirmation();
   mockLocation.state.tx.amount = '0.000000000000000001';
   (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
+    feePayer,
     gasUnits: '863456',
     maximumFeeWei: '43172800000000000',
   });
@@ -900,6 +914,7 @@ it('requires explicit refresh after a proven fee increase, and never auto-resubm
   ).toBeDisabled();
   expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1);
   (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
+    feePayer,
     gasUnits: '900000',
     maximumFeeWei: '900000000000000',
   });
@@ -912,6 +927,7 @@ it('requires explicit refresh after a proven fee increase, and never auto-resubm
 it('uses trusted zero account-charge tank mode for native MAX without subtracting outer payer fees', async () => {
   prepareSmartAccountConfirmation(true);
   (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
+    feePayer,
     gasUnits: '863456',
     maximumFeeWei: '0',
   });
@@ -927,7 +943,7 @@ it('uses trusted zero account-charge tank mode for native MAX without subtractin
   expect(
     (signAndSubmitSmartAccountExecutions as jest.Mock).mock.calls[0][0]
   ).toMatchObject({
-    maximumUserOpFeeWei: '0',
+    approvedFeeQuote: expect.objectContaining({ maximumFeeWei: '0', feePayer }),
     executions: [
       { value: BigNumber.from('99999999000000000000').toHexString() },
     ],
@@ -1020,13 +1036,21 @@ it('keeps Smart account fee and total unavailable until a fresh retry succeeds',
   ).toBeDisabled();
 
   await act(async () =>
-    resolveQuote({ gasUnits: '650000', maximumFeeWei: '650000000000000' })
+    resolveQuote({
+      feePayer,
+      gasUnits: '650000',
+      maximumFeeWei: '650000000000000',
+    })
   );
   await waitFor(() =>
     expect(prepareSmartAccountFeeQuote).toHaveBeenCalledTimes(3)
   );
   await act(async () =>
-    resolveQuote({ gasUnits: '650000', maximumFeeWei: '650000000000000' })
+    resolveQuote({
+      feePayer,
+      gasUnits: '650000',
+      maximumFeeWei: '650000000000000',
+    })
   );
   await waitFor(() =>
     expect(
@@ -1070,6 +1094,7 @@ it('bounds MAX refinement and refuses to display or sign a nonconverging fee quo
   prepareSmartAccountConfirmation(true);
   let quote = 0;
   (prepareSmartAccountFeeQuote as jest.Mock).mockImplementation(async () => ({
+    feePayer,
     gasUnits: '650000',
     maximumFeeWei: String(++quote * 1000000000000),
   }));
@@ -1087,6 +1112,7 @@ it('bounds MAX refinement and refuses to display or sign a nonconverging fee quo
 it('refuses MAX when the full account charge exceeds the refreshed balance', async () => {
   prepareSmartAccountConfirmation(true);
   (prepareSmartAccountFeeQuote as jest.Mock).mockResolvedValue({
+    feePayer,
     gasUnits: '650000',
     maximumFeeWei: '100000000000000000000',
   });
@@ -1263,7 +1289,11 @@ it.each(['network', 'fee'])(
         screen.getByRole('button', { name: 'choose-legacy-price' })
       );
     await act(async () =>
-      finishReserve({ gasUnits: '650000', maximumFeeWei: '650000000000000' })
+      finishReserve({
+        feePayer,
+        gasUnits: '650000',
+        maximumFeeWei: '650000000000000',
+      })
     );
     expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
   }

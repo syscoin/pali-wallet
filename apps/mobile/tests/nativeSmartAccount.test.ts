@@ -57,6 +57,7 @@ import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { inspectRecoveryCatalogue, NativeWalletCatalogue, WALLET_CATALOGUE_KEY, type NativeInfrastructurePending } from '../src/custody/walletCatalogue.ts';
 import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
+import { ACTIVITY_STORAGE_KEY } from '../src/activity/historyStore.ts';
 import { digest, INSTALLATION, nodeConnection, type SqlHook } from './storageHelpers.ts';
 import { createGuardianRecoveryFixture } from './native-watch-ui/guardianRecoveryFixture.ts';
 import { GUARDIAN_FIXTURE_RUNTIME } from './guardianRecoveryRuntime.ts';
@@ -94,6 +95,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let initialEoaNonce = 0;
   let physicalStorageCloses = 0;
   const spendabilityReads = { native: 0, deposit: 0 };
+  const tokens = new Map<string, { balance: bigint; decimals: number }>();
+  const tokenInterface = new Interface(['function balanceOf(address) view returns(uint256)', 'function decimals() view returns(uint8)', 'function transfer(address,uint256) returns(bool)']);
   let deployed = false;
   let deployedCode = '0x01';
   let readReceipts = true;
@@ -159,7 +162,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const target = request.params[0].toLowerCase();
           const builtIn = SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.some(address => address.toLowerCase() === target);
           const smartTarget = runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === target);
-          result = builtIn || customValidators.has(target) ? '0x01' : deployed && smartTarget && (!deployedByBroadcast || request.params[1] === 'pending' || readReceipts) ? deployedCode : '0x';
+          result = builtIn || customValidators.has(target) || tokens.has(target) ? '0x01' : deployed && smartTarget && (!deployedByBroadcast || request.params[1] === 'pending' || readReceipts) ? deployedCode : '0x';
           if (missingInfrastructure.has(target)) result = '0x';
           if (smartGuardianMetadata && smartGuardianMetadata.address.toLowerCase() === target && !smartGuardianMetadata.deployed) result = '0x';
           if (smartTarget) {
@@ -240,7 +243,20 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const smartTarget = runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === to);
           const ownGuardian = smartGuardianMetadata?.address.toLowerCase() === to ? smartGuardianMetadata : undefined;
           const smartComposite = ownGuardian ? ownGuardian.compositeThreshold !== undefined : !!composite;
-          if (to === getZkSysGasTankAddress(Number(network.chainId))?.toLowerCase()) {
+          const token = tokens.get(to);
+          if (token) {
+            const call = tokenInterface.parseTransaction({ data }); assert(call);
+            if (call.name === 'decimals') result = tokenInterface.encodeFunctionResult(call.fragment, [token.decimals]);
+            else if (call.name === 'balanceOf') {
+              assert(runtime.catalogue.getSnapshot()?.accounts.some(account => account.address.toLowerCase() === call.args[0].toLowerCase()));
+              result = tokenInterface.encodeFunctionResult(call.fragment, [token.balance]);
+            } else {
+              assert.equal(call.name, 'transfer');
+              assert(runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === request.params[0].from?.toLowerCase()));
+              assert(call.args[1] <= token.balance);
+              result = tokenInterface.encodeFunctionResult(call.fragment, [true]);
+            }
+          } else if (to === getZkSysGasTankAddress(Number(network.chainId))?.toLowerCase()) {
             result = coder.encode(['uint256'], [gasCredit]);
           } else if (smartTarget && data.startsWith(paliSmartAccountInterface.getFunction('supportsExecutionMode')!.selector)) {
             result = paliSmartAccountInterface.encodeFunctionResult('supportsExecutionMode', [true]);
@@ -458,6 +474,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     advanceSmartNonce() { externalSmartNonce++; },
     fundedSmart() { smartBalance = '0x1000000000000000'; },
     smartBalance(value: bigint) { smartBalance = '0x' + value.toString(16); },
+    tokenBalance(contract: string, balance: bigint, decimals: number) { tokens.set(contract.toLowerCase(), { balance, decimals }); },
     holdReceipts() { readReceipts = false; },
     showReceipts(success = true) { readReceipts = true; userOperationSuccess = success; },
     reorg() { readReceipts = false; nonceReset = true; },
@@ -1144,7 +1161,10 @@ test('real SDK smart account creation, selection and cold unlock retain the orig
     assert.equal(smart.smartAccount!.chainId, 1);
     assert.equal(smart.smartAccount!.isDeployed, false);
     assert.equal(f.owner.getSnapshot().account!.address, smart.address);
-    assert.throws(() => f.runtime.transfers!.assertUnlocked(() => undefined), { code: 'NOT_READY' });
+    // Public-session readiness also admits exact-byte Smart replay; signing
+    // still requires its separate operation and payer authorization.
+    assert.doesNotThrow(() => f.runtime.transfers!.assertUnlocked(() => undefined));
+    assert.equal(f.submitted.length, 0);
     const connection = await f.runtime.openConnectionHost();
     assert.equal(connection.context().accounts.some(account => account.id === smart.id), true);
     await f.change({ kind: 'rename', id: smart.id, label: 'Renamed savings' });
@@ -1845,13 +1865,19 @@ for (const success of [true, false]) test(`Smart Activity survives reopen and di
     assert.equal(row.amountUnits, '9');
     assert.equal(row.recipient, '0x2222222222222222222222222222222222222222');
     assert.equal(row.smartAccount?.payer?.toLowerCase(), payer.toLowerCase());
-    assert.equal(row.inspectionOnly, true);
+    assert.equal(row.inspectionOnly, undefined);
     assert.equal(row.speedUpEligible, true);
     assert.equal(row.reviewNavigation?.speedUp, true);
     await f.change({ kind: 'select', id: 'hd:60:0' });
     const payerBefore = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     await f.change({ kind: 'select', id: 'smart:60:0' });
     f.showReceipts(success);
+    const scoped = f.runtime.activity!.forScope!({ accountId: row.accountId, address: loaded.scope.address,
+      networkId: loaded.scope.network.id, registrationHash: loaded.scope.network.registrationHash }, () => undefined);
+    const scopedLoaded = await scoped.load(() => undefined, new AbortController().signal);
+    assert.equal(scopedLoaded.locals[0]!.inspectionOnly, true);
+    const scopedObservation = await scoped.observeLocal!(scopedLoaded.locals[0]!, () => undefined, new AbortController().signal);
+    assert.equal(scopedObservation.status === 'mined' && scopedObservation.outcome, success ? 'confirmed' : 'reverted');
     const observed = await f.runtime.activity!.observeLocal!(row, () => undefined, new AbortController().signal);
     assert.equal(observed.status === 'mined' && observed.outcome, success ? 'confirmed' : 'reverted');
     const archived = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
@@ -1875,7 +1901,7 @@ for (const success of [true, false]) test(`Smart Activity survives reopen and di
     const retired = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     assert.equal(retired.locals.length, 0);
     const archivedRow = retired.saved.archived[0]!;
-    assert.equal(archivedRow.smartAccount?.operationHash, row.smartAccount?.operationHash);
+    assert.deepEqual(archivedRow.smartAccount?.operations, row.smartAccount?.operations);
     const checkedAgain = await f.runtime.activity!.observeLocal!(archivedRow, () => undefined, new AbortController().signal);
     assert.equal(checkedAgain.status === 'mined' && checkedAgain.outcome, success ? 'confirmed' : 'reverted');
     f.reorg();
@@ -1883,7 +1909,7 @@ for (const success of [true, false]) test(`Smart Activity survives reopen and di
     await f.reopen(); await f.owner.unlock();
     const afterRestart = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     assert.equal(afterRestart.saved.archived[0]!.phase, 'submitted');
-    assert.equal(afterRestart.saved.archived[0]!.smartAccount!.operationHash, row.smartAccount!.operationHash);
+    assert.deepEqual(afterRestart.saved.archived[0]!.smartAccount!.operations, row.smartAccount!.operations);
   } finally { operation?.dispose(); await f.close(); }
 });
 
@@ -1927,6 +1953,7 @@ test('Smart ERC20 send preserves 255-decimal base units through approval, signin
   try {
     await f.change({ kind: 'create-smart', label: 'Token sender',});
     const metadata = { contractAddress: '0x5555555555555555555555555555555555555555', decimals: 255, name: 'Exact token', symbol: 'EXACT' };
+    f.tokenBalance(metadata.contractAddress, 9n, metadata.decimals);
     const registry = await f.runtime.tokens!.load(() => undefined);
     await f.runtime.tokens!.add(registry.revision, metadata, () => undefined);
     f.fundedSmart(); f.deployed(); f.holdReceipts();
@@ -4241,6 +4268,13 @@ test('Smart fee replacement uses only the retained software payer despite a disc
     const observed = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     assert.equal(observed.locals.find(row => row.hash === cancelHash)?.phase, 'confirmed');
     assert.equal(observed.locals.find(row => row.hash === cancelHash)?.smartAccount?.cancellation, true);
+    const archiveDocument = await f.storage.keyringStorage.get(ACTIVITY_STORAGE_KEY) as {
+      archived: { hash: string; smartAccount?: { cancellation?: true } }[];
+    };
+    const archived = archiveDocument.archived.find(row => row.hash === cancelHash);
+    assert(archived?.smartAccount?.cancellation);
+    for (const hint of ['operation', 'transactionType', 'originalHash', 'inspectionOnly', 'speedUpEligible', 'reviewNavigation'])
+      assert.equal(Object.hasOwn(archived, hint), false, `transient ${hint} does not enter the archive`);
     f.assertNoSigningKeys();
     transfers.cancel();
     assert.deepEqual(f.runtime.ledger.getConnectionTargets(), ['ledger:60:0']);

@@ -28,6 +28,7 @@ import {
 import { Button, DeviceWaitingBanner, WarningModal } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { ToastActionFooter } from 'components/ToastActionFooter';
+import { SmartAccountFeePayer } from 'components/TransactionDetails/SmartAccountFeePayer';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import store, { RootState } from 'state/store';
@@ -1074,7 +1075,7 @@ export const SendTransaction = () => {
               },
             ],
             feeOverrides: getSmartAccountFeeOverrides(),
-            maximumUserOpFeeWei: fee!.smartAccountFeeQuote!.maximumFeeWei,
+            approvedFeeQuote: fee!.smartAccountFeeQuote!,
             expectedContext: approvedContext,
             onPrepared: assertApprovedQuoteCurrent,
             onBeforeSubmit: async () => assertApprovedQuoteCurrent(),
@@ -2291,6 +2292,13 @@ export const SendTransaction = () => {
                     {activeNetwork.currency}
                   </p>
                 </div>
+              )}
+            {isSmartAccountApproval &&
+              hasCurrentSmartAccountFeeQuote &&
+              fee?.smartAccountFeeQuote && (
+                <SmartAccountFeePayer
+                  address={fee.smartAccountFeeQuote.feePayer.address}
+                />
               )}
             {feeQuoteNeedsRefresh && (
               <div className="text-center text-warning-info text-xs mb-2">
