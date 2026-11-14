@@ -30,7 +30,7 @@ const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativeTranslationFixture) {
   let initialDraft: Extract<ReturnType<typeof trezorResumeDraft>, { kind: 'utxo' }>['draft'] | undefined;
   let network = getUtxoNetwork(asset ? 'syscoin' : 'bitcoin');
-  let availableAmount: string | undefined = '1.25000001';
+  let availableAmount: string | undefined = '1.25000001', privacyHidden = false;
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
@@ -57,6 +57,7 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'IconButton', 'Notice', 'Screen', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
   const imports: Record<string, unknown> = {
     '../platform/localization': localization,
+    '../platform/balancePrivacy': { HIDDEN_BALANCE: '••••', useBalancePrivacy: () => ({ hidden: privacyHidden }) },
     '../../../../source/shared/transactionFeeChoice': { AUTOMATIC_FEE, snapshotUtxoFeeChoice },
     './NetworkFeeSheet': { NetworkFeeSheet: 'NetworkFeeSheet' },
     '../../../../source/shared/decimalInput': { normalizeDecimalInput },
@@ -111,7 +112,7 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string, localization = nativ
   const press = (title: string) => { const button = all(render()).find((node) => node.type === 'Button' && node.props.title === title); assert(button, title); button.props.onPress(); };
   const edit = (label: string, value: string) => { const input = all(render()).find((node) => node.type === 'Input' && node.props.accessibilityLabel === label); assert(input, label); input.props.onChangeText(value); };
   const review = () => { const screen = all(render()).find((node) => node.type === 'Screen')!; screen.props.footer.props.onPress(); };
-  return { render, press, edit, review, requests, reviews, authorized, openedTransactions, networkDrafts, counts: () => ({ cancels, confirmations, networkChanges }),
+  return { render, privacy(hidden: boolean) { privacyHidden = hidden; }, press, edit, review, requests, reviews, authorized, openedTransactions, networkDrafts, counts: () => ({ cancels, confirmations, networkChanges }),
     hardware() { assert(hardware); return hardware(); }, backs: () => backs,
     opens: () => opens,
     seedDraft(draft: NonNullable<typeof initialDraft>) { initialDraft = draft; },
@@ -247,6 +248,25 @@ test('an unavailable or zero SPT balance cannot select MAX', async () => {
   }
 });
 
+for (const asset of [undefined, { assetGuid: '987654321', decimals: 3, symbol: 'SPT' }]) {
+  test(`balance privacy masks UTXO ${asset ? 'asset' : 'coin'} availability and accessibility`, async () => {
+    const f = fixture(asset, asset ? '1.25000001' : undefined), symbol = asset?.symbol ?? 'BTC';
+    try {
+      f.render(); await tick();
+      assert(all(f.render()).some(node => node.props.accessibilityLabel === `Available 1.25000001 ${symbol}`));
+      f.privacy(true);
+      const nodes = all(f.render());
+      const hidden = nodes.find(node => node.props.accessibilityLabel === `Available •••• ${symbol}`);
+      assert(hidden); assert.equal(hidden.children.join(''), `Available •••• ${symbol}`);
+      assert(!nodes.some(node => String(node.props.accessibilityLabel ?? '').includes('1.25000001')));
+      f.privacy(false);
+      assert(all(f.render()).some(node => node.props.accessibilityLabel === `Available 1.25000001 ${symbol}`));
+      f.changeAvailable(undefined); f.privacy(true);
+      assert(all(f.render()).some(node => node.props.accessibilityLabel === 'Balance unavailable'));
+    } finally { f.close(); }
+  });
+}
+
 test('UTXO draft shows the selected network, exact available amount and bordered MAX without preparing', async () => {
   const f = fixture(); f.render(); await tick();
   const elements = all(f.render());
@@ -358,7 +378,7 @@ test('submitted UTXO transaction action uses the saved hash and retires with the
 });
 
 test('successful native UTXO outcome retains the exact reviewed amount, recipient and fee', async () => {
-  const f = fixture();
+  const f = fixture(); f.privacy(true);
   try {
     f.render(); await tick();
     f.edit('Recipient address', 'bc1qreviewedrecipient'); f.edit('Amount in BTC', '0.12345678');

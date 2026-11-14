@@ -1,3 +1,4 @@
+import { HIDDEN_BALANCE, useBalancePrivacy } from '../platform/balancePrivacy';
 import { WalletBackHandler as BackHandler } from '../ui/WalletBackHandler';
 import { WalletModal as Modal } from '../ui/WalletModal';
 import { createAssetTransferDisplay } from '../../../../source/shared/assetTransferDisplay';
@@ -253,6 +254,7 @@ export function NativeSend({
   replacement?: Readonly<{ hash: string; mode: NativeReplacementMode | 'cancel-saved' }>;
 }) {
   useNativeTranslation();
+  const { hidden: hideBalances } = useBalancePrivacy();
   const snapshot = useSyncExternalStore(
     (listener) => controller.subscribe(listener),
     () => controller.getSnapshot(),
@@ -699,8 +701,9 @@ export function NativeSend({
     ].includes(snapshot.phase);
   const availableBalanceAmount = token ? nativeTokenAvailableAmount(token, account, tokenSnapshot) : availableAmount;
   const availableBalanceSymbol = token?.symbol ?? capturedContext.symbol;
+  const shownAvailableBalance = hideBalances && typeof availableBalanceAmount === 'string' ? HIDDEN_BALANCE : availableBalanceAmount;
   const availableBalanceLabel = typeof availableBalanceAmount === 'string'
-    ? t('mobile.sendAssetViews.utxo.availableAmount', { amount: availableBalanceAmount, symbol: availableBalanceSymbol })
+    ? t('mobile.sendAssetViews.utxo.availableAmount', { amount: shownAvailableBalance, symbol: availableBalanceSymbol })
     : `${t(token && tokenSnapshot?.status === 'loading' ? 'mobile.activityViews.nativeSptAssets.loadingBalance' : 'mobile.accountPortfolio.balanceUnavailable')} · ${availableBalanceSymbol}`;
   const footer = review ? <>
               <Button
@@ -1139,7 +1142,7 @@ export function NativeSend({
                         setAmount(availableAmount);
                       }} />} />
                   <Text style={styles.muted} accessibilityLabel={availableBalanceLabel}>
-                    {t('mobile.smartSendViews.available')}{' '}{token ? nativeTokenAvailableAmount(token, account, tokenSnapshot) ?? '—' : availableAmount ?? '—'} {token?.symbol ?? capturedContext.symbol}
+                    {t('mobile.smartSendViews.available')}{' '}{shownAvailableBalance ?? '—'} {token?.symbol ?? capturedContext.symbol}
                   </Text>
                 </>
               )}

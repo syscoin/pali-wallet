@@ -43,6 +43,7 @@ const code = ts.transpileModule(source, {
   },
 }).outputText;
 function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, collectible?: SavedCollectible, recipientResolver?: NativeRecipientResolver) {
+  let privacyHidden = false;
   let account={ address: '0x1111111111111111111111111111111111111111', network: 'ethereum', revision: 1 };
   const balance = { account, status: 'available', units: '5000000000000000000' };
   const inventory = { status: 'ready', account, items: token ? [{ metadata: token, status: 'available', units: '100' }] : [] };
@@ -95,6 +96,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
   };
   const imports: Record<string, any> = {
     '../platform/localization': nativeTranslationFixture,
+    '../platform/balancePrivacy': { HIDDEN_BALANCE: '••••', useBalancePrivacy: () => ({ hidden: privacyHidden }) },
     '../../../../source/shared/transactionFeeChoice': { AUTOMATIC_FEE },
     './NetworkFeeSheet': { NetworkFeeSheet: 'NetworkFeeSheet' },
     react,
@@ -194,6 +196,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
   };
   return {
     render,
+    privacy(hidden: boolean) { privacyHidden = hidden; },
     edit,
     press,
     hardware() { assert(hardware); return hardware(); }, backs: () => backs,
@@ -678,6 +681,38 @@ test('Smart ENS a late marker cannot release the review of a canceled operation'
     assert.equal(t.counts().operationWires, 0);
   } finally { await t.close(); }
 });
+
+for (const token of [undefined, { contractAddress: '0x' + 'ab'.repeat(20), decimals: 2, name: 'Saved token', symbol: 'TOK' }]) {
+  test(`balance privacy masks Smart ${token ? 'token' : 'native'} availability without changing the chosen amount`, async () => {
+    let requested: any;
+    const f = fixture(async (_recipient, amount) => { requested = amount; return { dispose() {} }; }, token);
+    const amount = token ? '1.0' : '5.0', symbol = token?.symbol ?? 'ETH';
+    try {
+      assert(all(f.render()).some(node => node.props.accessibilityLabel === `Available ${amount} ${symbol}`));
+      f.privacy(true);
+      const nodes = all(f.render());
+      const hidden = nodes.find(node => node.props.accessibilityLabel === `Available •••• ${symbol}`);
+      assert(hidden); assert.equal(hidden.children.join(''), `Available •••• ${symbol}`);
+      assert(!nodes.some(node => String(node.props.accessibilityLabel ?? '').includes(`Available ${amount}`)));
+      f.privacy(false);
+      assert(all(f.render()).some(node => node.props.accessibilityLabel === `Available ${amount} ${symbol}`));
+      f.privacy(true);
+      if (!token) {
+        f.setBalanceStatus('loading');
+        assert(all(f.render()).some(node => node.props.accessibilityLabel === 'Loading balance… · ETH'));
+        f.setBalanceStatus('unavailable');
+        assert(all(f.render()).some(node => node.props.accessibilityLabel === 'Balance unavailable · ETH'));
+        f.setBalanceStatus('available');
+      }
+      f.edit('Recipient address', '0x2222222222222222222222222222222222222222');
+      f.edit(`Amount in ${symbol}`, '0.25');
+      assert.equal(all(f.render()).find(node => node.type === 'Input' && node.props.label === `Amount in ${symbol}`)!.props.value, '0.25');
+      f.press(); await tick();
+      assert.equal(requested.amount, '0.25');
+      assert.equal(f.render().type, 'Operation');
+    } finally { f.close(); }
+  });
+}
 
 test('Smart send announces available, loading and unavailable balance with its unit', () => {
   const f = fixture(async () => ({ dispose() {} }));

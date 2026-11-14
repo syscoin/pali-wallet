@@ -26,6 +26,7 @@ type Element = { type: unknown; props: Record<string, any>; children: unknown[] 
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (next: unknown) => void };
 function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>, recipientResolver?: NativeRecipientResolver, onChangeNetwork?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>) => void, onViewTransaction?: (hash: string) => void, onChangeAsset?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>, token?: unknown) => void, ledgerConnection?: { subscribe(listener: () => void): () => void; isConnected(): boolean }, localization = nativeTranslationFixture) {
   let initialDraft: NativeSendInitialDraft | undefined, collectible: SavedCollectible | undefined;
+  let privacyHidden = false, availableAmount: string | undefined = '2';
   let tokenConnections = 0;
   const tokenView = { subscribe: () => () => {}, getSnapshot: () => ({ items: [], collectibles: [] }), connect() { tokenConnections++; return () => {}; } };
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
@@ -47,6 +48,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   const ui={...Object.fromEntries(['Button','Card','Coin','Header','Icon','IconButton','Notice','Screen','Text'].map(name=>[name,name])),colors:{},styles:{}};
   const deps: Record<string,unknown> = {
     '../platform/localization': localization,
+    '../platform/balancePrivacy': { HIDDEN_BALANCE: '••••', useBalancePrivacy: () => ({ hidden: privacyHidden }) },
     '../../../../source/shared/transactionFeeChoice': { AUTOMATIC_FEE, snapshotEvmFeeChoice },
     '../../../../source/shared/assetTransferDisplay': { createAssetTransferDisplay },
     './NetworkFeeSheet': { NetworkFeeSheet: 'NetworkFeeSheet' },
@@ -104,8 +106,8 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     async recover() { if (recoveryFailure) throw recoveryFailure; }};
   let context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false,registrationHash:'ethereum-registration'};
   let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
-  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,collectible,initialDraft,replacement,ledgerConnection,beforeClose,tokenView,recipientResolver,account,availableAmount:'2',onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
-  return {render, selectedFees, replacementRequests, seedReplacement(value: NonNullable<typeof replacement>) { replacement = value; }, renderInput: (props: unknown) => module.exports.NativeSendInput(props) as Element,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
+  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,collectible,initialDraft,replacement,ledgerConnection,beforeClose,tokenView,recipientResolver,account,availableAmount,onChangeNetwork,onChangeAsset,assetChoices:onChangeAsset?[]:undefined,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
+  return {render, privacy(hidden: boolean) { privacyHidden = hidden; }, available(value: string | undefined) { availableAmount = value; }, selectedFees, replacementRequests, seedReplacement(value: NonNullable<typeof replacement>) { replacement = value; }, renderInput: (props: unknown) => module.exports.NativeSendInput(props) as Element,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
     tokenConnections: () => tokenConnections,
     seedDraft(draft: NativeSendInitialDraft, saved?: SavedCollectible) { initialDraft = draft; collectible = saved; },
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
@@ -534,7 +536,7 @@ test('unresolved ENS gives feedback without entering fee preparation',async()=>{
 });
 
 test('native coin MAX is inline, selects the dedicated review, and editing returns to fixed amount', async () => {
-  const f = setup();
+  const f = setup(); f.privacy(true);
   f.snapshot.phase = 'idle';
   editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
   const amount = all(f.render()).find(node => node.props.label === 'Amount in ETH');
@@ -621,6 +623,28 @@ test('shared decimal input normalizes locale commas only for decimal fields', as
     assert.equal(values.at(-1), 'name,example');
   } finally { f.dispose(); }
 });
+
+for (const token of [undefined, { contractAddress: '0x' + 'ab'.repeat(20), decimals: 3, name: 'Saved token', symbol: 'TOK', balance: '42.125' }]) {
+  test(`balance privacy masks EVM ${token ? 'token' : 'native'} availability and accessibility`, () => {
+    const f = setup(token); f.snapshot.phase = 'idle';
+    const amount = token?.balance ?? '2', symbol = token?.symbol ?? 'ETH';
+    try {
+      assert(one(f.render(), 'Text', node => node.props.accessibilityLabel === `Available ${amount} ${symbol}`));
+      f.privacy(true);
+      const nodes = all(f.render());
+      const hidden = nodes.find(node => node.props.accessibilityLabel === `Available •••• ${symbol}`);
+      assert(hidden);
+      assert.equal(hidden.children.join(''), `Available •••• ${symbol}`);
+      assert(!nodes.some(node => String(node.props.accessibilityLabel ?? '').includes(`Available ${amount}`)));
+      f.privacy(false);
+      assert(one(f.render(), 'Text', node => node.props.accessibilityLabel === `Available ${amount} ${symbol}`));
+      if (!token) {
+        f.available(undefined); f.privacy(true);
+        assert(one(f.render(), 'Text', node => node.props.accessibilityLabel === 'Balance unavailable · ETH'));
+      }
+    } finally { f.dispose(); }
+  });
+}
 
 test('EVM available balance accessibility retains the exact value and unit', () => {
   const f = setup();
