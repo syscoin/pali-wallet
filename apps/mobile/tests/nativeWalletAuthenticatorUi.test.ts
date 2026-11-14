@@ -2,6 +2,7 @@ import { walletUiFixture } from './walletUiFixture.ts';
 import * as transactionFeeChoice from '../../../source/shared/transactionFeeChoice.ts';
 import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import * as cameraPermission from '../src/platform/cameraPermission.ts';
+import * as balancePrivacy from '../src/core/balancePrivacy.ts';
 import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 import { NativeSigningHandoffs, type NativeSigningHandoff } from '../src/connections/signingHandoff.ts';
 import assert from 'node:assert/strict';
@@ -160,7 +161,32 @@ function harness(
       const text = key.split('.').reduce((value: any, part) => value?.[part], dictionary) ?? key;
       return typeof text === 'string' ? text.replace(/{{-?\s*(\w+)\s*}}/g, (match: string, name: string) => String(values[name] ?? match)) : text;
     };
+  const privacyModule = { exports: {} as Record<string, unknown> };
+  const privacyDependencies: Record<string, unknown> = {
+    react,
+    'react-native': native,
+    '../core/balancePrivacy.ts': balancePrivacy,
+    './credential': {
+      authorizePublicView: () => assert.fail('Send lifecycle must not request a privacy reveal'),
+    },
+    'expo-secure-store': {
+      WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
+      getItemAsync: async () => null,
+      setItemAsync: () => assert.fail('Send lifecycle must not change privacy settings'),
+    },
+  };
+  const privacyCode = ts.transpileModule(readFileSync(
+    new NodeURL('../src/platform/balancePrivacy.ts', import.meta.url), 'utf8'
+  ), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
+  runInNewContext(privacyCode, {
+    module: privacyModule, exports: privacyModule.exports,
+    require(dependency: string) {
+      assert(Object.hasOwn(privacyDependencies, dependency), dependency);
+      return privacyDependencies[dependency];
+    },
+  });
   const dependencies: Record<string, unknown> = {
+    '../platform/balancePrivacy': privacyModule.exports,
     react,
     '../../../../source/shared/transactionFeeChoice': transactionFeeChoice,
     './NetworkFeeSheet': { NetworkFeeSheet: 'NetworkFeeSheet' },
