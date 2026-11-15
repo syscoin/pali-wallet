@@ -144,3 +144,30 @@ test('arbitrary calls and unanchored selectors never enter aggregation', async (
   );
   assert.equal(touched, false);
 });
+
+test('a failed aggregate chunk retries only its own getters and preserves successful chunks', async () => {
+  const all = Array.from({ length: 42 }, (_, index) => ({ ...calls[0]!,
+    target: `0x${(index + 1).toString(16).padStart(40, '0')}` }));
+  const direct: string[] = [];
+  const batch = createErc20BalanceBatch();
+  const result = await batch({
+    async read(method, params) {
+      if (method === 'eth_getCode') return runtime;
+      direct.push((params[0] as { to: string }).to);
+      if (direct.length === 2) throw new Error('Bad token');
+      return '0x' + '0'.repeat(63) + '5';
+    },
+    async readMany(requests) {
+      assert.equal(requests.length, 2);
+      return [
+        { status: 'fulfilled', value: abi.encodeFunctionResult('aggregate3', [Array.from({ length: 40 }, () => ({ success: true, returnData: '0x' + '0'.repeat(63) + '9' }))]) },
+        { status: 'rejected', reason: new Error('Oversized aggregate') },
+      ];
+    },
+  }, all, '0x123');
+  assert.equal(result.length, 42);
+  assert(result.slice(0, 40).every(value => value.status === 'fulfilled' && BigInt(value.value as string) === 9n));
+  assert.deepEqual(direct, all.slice(40).map(call => call.target));
+  assert.equal(result[40]!.status, 'fulfilled');
+  assert.equal(result[41]!.status, 'rejected');
+});

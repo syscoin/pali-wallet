@@ -893,6 +893,7 @@ export function createNativeWalletControllers() {
       throw new CustodyOperationError('NOT_READY');
     return nativeNotificationChoices(monitoring);
   };
+  let scopedPortfolioAssets: ReturnType<typeof createScopedPortfolioAssetReader> | undefined;
   const readPortfolioAssets = (scope: NativeNotificationScope, signal: AbortSignal, assertCurrent: () => void) => {
     const selected = runtime, before = authority.getSnapshot(), catalogue = authority.getCatalogue();
     const check = () => {
@@ -903,9 +904,14 @@ export function createNativeWalletControllers() {
         throw new CustodyOperationError('CANCELLED');
     };
     check();
-    return createScopedPortfolioAssetReader({ fetch: walletFetch,
-      load: (target, guard) => { check(); return selected!.tokens!.loadScoped!(target, guard); },
-    })(scope, signal, check).then(value => {
+    scopedPortfolioAssets ??= createScopedPortfolioAssetReader({ fetch: walletFetch,
+      load: (target, guard) => {
+        guard();
+        if (!runtime?.tokens?.loadScoped) throw new CustodyOperationError('NOT_READY');
+        return runtime.tokens.loadScoped(target, guard);
+      },
+    });
+    return scopedPortfolioAssets(scope, signal, check).then(value => {
       check();
       if ('kind' in scope.network && scope.network.kind === 'evm' && Number.isSafeInteger(Number(scope.network.chainId))) rememberTokens(selected!, walletTokenScope(scope.accountId, scope.accountAddress, scope.network), {
         syscoin: [], ethereum: [

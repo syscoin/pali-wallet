@@ -31,7 +31,8 @@ export interface Erc20Reader {
     network: EvmNetworkId,
     address: string,
     tokens: readonly Erc20Metadata[],
-    signal: AbortSignal
+    signal: AbortSignal,
+    assertCurrent?: () => void
   ): Promise<readonly Erc20BalanceResult[]>;
   readToken(
     network: EvmNetworkId,
@@ -223,11 +224,58 @@ function createReadOperation(options: ReadOptions) {
     });
   const boundedFetch: FetchLike = async (url, init) => {
     await acquire(init.signal as AbortSignal);
-    try {
-      return await fetcher(url, init);
-    } finally {
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
       active--;
       waiting.shift()?.admit();
+    };
+    try {
+      if (init.signal?.aborted) return fail('CANCELLED');
+      const response = await fetcher(url, init);
+      const body = response.body;
+      let text: Promise<string> | undefined;
+      const consumeText = () => text ??= response.text().finally(release);
+      const wrappedBody = body
+        ? {
+            async cancel(reason?: unknown) {
+              try { await body.cancel(reason); } finally { release(); }
+            },
+            ...(typeof body.getReader === 'function'
+              ? { getReader() {
+                  const reader = body.getReader();
+                  return {
+                    async read() {
+                      try {
+                        // The SDK always cancels in finally. Retain the slot
+                        // through that cleanup, including an EOF response.
+                        return await reader.read();
+                      } catch (error) {
+                        try { await reader.cancel(); } finally { release(); }
+                        throw error;
+                      }
+                    },
+                    async cancel(reason?: unknown) {
+                      try { await reader.cancel(reason); } finally { release(); }
+                    },
+                    releaseLock() { reader.releaseLock(); },
+                  };
+                } }
+              : {}),
+          }
+        : { async cancel() { await consumeText(); } };
+      return new Proxy(response, {
+        get(target, property) {
+          if (property === 'body') return wrappedBody;
+          if (property === 'text') return consumeText;
+          const value = Reflect.get(target, property, target);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    } catch (error) {
+      release();
+      throw error;
     }
   };
 
@@ -284,22 +332,18 @@ function createReadOperation(options: ReadOptions) {
         assertCurrent();
         if (url !== network.rpcUrl) return fail('WRONG_CHAIN');
         const response = await boundedFetch(url, init);
-        assertCurrent();
-        if (response.redirected || (response.url && response.url !== network.rpcUrl)) {
+        try {
+          assertCurrent();
+          if (response.redirected || (response.url && response.url !== network.rpcUrl))
+            return fail('WRONG_CHAIN');
+          const contentType = response.headers.get('content-type');
+          if (contentType && !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(contentType))
+            return fail('INVALID_RESPONSE');
+          return response;
+        } catch (error) {
           cancelResponseBody(response);
-          return fail('WRONG_CHAIN');
+          throw error;
         }
-        const contentType = response.headers.get('content-type');
-        if (
-          contentType &&
-          !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(
-            contentType
-          )
-        ) {
-          cancelResponseBody(response);
-          return fail('INVALID_RESPONSE');
-        }
-        return response;
       },
     });
     const maximumFor = (method: Method) =>
@@ -477,7 +521,8 @@ export function createErc20Reader(options: ReadOptions = {}): Erc20Reader {
       network: EvmNetworkId,
       address: string,
       tokens: readonly Erc20Metadata[],
-      signal: AbortSignal
+      signal: AbortSignal,
+      assertCurrent: () => void = () => undefined
     ) => {
       if (!Array.isArray(tokens) || tokens.length > 256)
         return fail('INVALID_INPUT');
@@ -533,7 +578,7 @@ export function createErc20Reader(options: ReadOptions = {}): Erc20Reader {
             })
           );
         },
-        undefined,
+        { network: registration, assertCurrent },
         true
       );
     },

@@ -265,7 +265,13 @@ export function createNativeSmartOperation(
         }
         const { SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES, projectSmartAccountInfrastructureObservation,
           assertSmartAccountInfrastructureReady } = await import('../../../../source/utils/smartAccount/infrastructureObservation.ts');
-        const codes = await Promise.all(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => provider.getCode(address)));
+        const codeResults = await provider.readMany(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => ({
+          method: 'eth_getCode', params: [address, 'latest'],
+        })));
+        const codes = codeResults.map((result: PromiseSettledResult<unknown>) => {
+          if (result.status === 'rejected') throw result.reason;
+          return result.value;
+        });
         const infrastructure = projectSmartAccountInfrastructureObservation(chainId, codes);
         if (!infrastructure) throw new Error('Invalid smart account infrastructure response');
         assertSmartAccountInfrastructureReady(infrastructure);

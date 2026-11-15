@@ -8,7 +8,7 @@ import {
   type NativeTokenRuntime,
 } from '../src/portfolio/nativeTokens.ts';
 import { createNftEnumerationReader, createNftOwnershipReader } from '../src/portfolio/nftOwnershipReadRpc.ts';
-import type { Erc20Reader } from '../src/portfolio/erc20ReadRpc.ts';
+import { createErc20Reader, type Erc20Reader } from '../src/portfolio/erc20ReadRpc.ts';
 import type { SavedCollectible } from '../src/portfolio/tokenRegistry.ts';
 import type {
   OwnedTokenReader,
@@ -31,6 +31,47 @@ const metadata = {
 const tick = async () => {
   for (let i = 0; i < 10; i++) await Promise.resolve();
 };
+
+for (const multicall of [false, true]) test(`the token screen batches twenty balances on connect and manual refresh (Multicall ${multicall})`, async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../../../source/utils/smartAccount/deployment.ts', import.meta.url), 'utf8');
+  const creation = source.match(/const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/)![1]!;
+  const runtime = `0x${creation.slice(2 + 0x20 * 2, 2 + (0x20 + 0xee0) * 2)}`;
+  const abi = new Interface(['function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)']);
+  const items = Array.from({ length: 20 }, (_, index) => ({ ...metadata,
+    contractAddress: `0x${(index + 1).toString(16).padStart(40, '0')}` }));
+  let methods = 0, posts = 0;
+  const reader = createErc20Reader({ fetch: async (_url, init) => {
+    posts++;
+    const payload = JSON.parse(String(init.body));
+    const rows = Array.isArray(payload) ? payload : [payload];
+    const responses = rows.map(request => {
+      methods++;
+      let result = request.method === 'eth_chainId' ? '0x1'
+        : request.method === 'eth_getBlockByNumber' ? { number: '0x1', hash: `0x${'11'.repeat(32)}` }
+        : request.method === 'eth_getCode' ? multicall ? runtime : '0x'
+        : `0x${BigInt(request.params[0].data === '0x313ce567' ? 255 : 5).toString(16).padStart(64, '0')}`;
+      if (request.method === 'eth_call' && request.params[0].data.startsWith(abi.getFunction('aggregate3')!.selector))
+        result = abi.encodeFunctionResult('aggregate3', [Array.from(abi.decodeFunctionData('aggregate3', request.params[0].data)[0],
+          (call: { callData: string }) => ({ success: true, returnData: `0x${BigInt(call.callData === '0x313ce567' ? 255 : 5).toString(16).padStart(64, '0')}` }))]);
+      return { jsonrpc: '2.0', id: request.id, result };
+    });
+    return Response.json(Array.isArray(payload) ? responses : responses[0]);
+  } });
+  const f = fixture({ items, reader });
+  const disconnect = f.model.connect();
+  try {
+    for (let i = 0; i < 100 && f.model.getSnapshot().status !== 'ready'; i++)
+      await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.model.getSnapshot().status, 'ready');
+    assert(f.model.getSnapshot().items.every(item => item.units === '5'));
+    assert.deepEqual({ methods, posts }, multicall ? { methods: 6, posts: 4 } : { methods: 46, posts: 5 });
+    methods = 0; posts = 0;
+    await f.model.view.refresh();
+    assert(f.model.getSnapshot().items.every(item => item.units === '5'));
+    assert.deepEqual({ methods, posts }, multicall ? { methods: 5, posts: 3 } : { methods: 44, posts: 3 });
+  } finally { disconnect(); }
+});
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (error: unknown) => void;

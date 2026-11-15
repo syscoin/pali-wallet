@@ -92,9 +92,9 @@ test('separate bounded block responses preserve ordinary response caps',async()=
  const wide=fixture(undefined,c=>c.method==='eth_getBlockByNumber'?{number:c.params[0]==='latest'?'0x64':c.params[0],hash:blockHash,baseFeePerGas:'0x4',gasLimit:'0x1c9c380',transactions:Array(400).fill(hash)}:undefined);
  assert.equal((await wide.rpc.quoteFees(transaction(),signal(),()=>undefined)).maximumTotalUnits,'210100');
  const huge=fixture(undefined,c=>c.method==='eth_getBlockByNumber'?{number:'0x64',hash,baseFeePerGas:'0x4',gasLimit:'0x1c9c380',padding:'a'.repeat(512*1024)}:undefined);
- await assert.rejects(huge.rpc.quoteFees(transaction(),signal(),()=>undefined),{code:'UNAVAILABLE'});
+ await assert.rejects(huge.rpc.quoteFees(transaction(),signal(),()=>undefined),{code:'INVALID_RESPONSE'});
  const ordinary=fixture(undefined,c=>c.method==='eth_chainId'?'0x'+'1'.repeat(17000):undefined);
- await assert.rejects(ordinary.rpc.quoteFees(transaction(),signal(),()=>undefined),{code:'UNAVAILABLE'});
+ await assert.rejects(ordinary.rpc.quoteFees(transaction(),signal(),()=>undefined),{code:'INVALID_RESPONSE'});
 });
 
 test('aborted input emits no request and malformed RPC envelopes never become fees',async()=>{
@@ -236,7 +236,7 @@ test('signed-record retirement exposes only bounded endpoint reads', async () =>
  assert.equal(f.calls.length, 4);
  const oversized = fixture(custom, call => call.method === 'eth_getBlockByNumber'
   ? { number: '0x64', hash: blockHash, padding: 'x'.repeat(512 * 1024) } : undefined);
- await assert.rejects(oversized.rpc.retirementRead('eth_getBlockByNumber', ['finalized', false], signal(), () => undefined), { code: 'UNAVAILABLE' });
+ await assert.rejects(oversized.rpc.retirementRead('eth_getBlockByNumber', ['finalized', false], signal(), () => undefined), { code: 'INVALID_RESPONSE' });
 });
 
 
@@ -320,9 +320,9 @@ test('receipt reads accept bounded batch logs while preserving scalar and receip
  const f = fixture(custom, call => call.method === 'eth_getTransactionReceipt' ? receipt : undefined);
  assert.deepEqual(await f.rpc.retirementRead('eth_getTransactionReceipt', [hash], signal(), () => undefined), receipt);
  const tooLarge = fixture(custom, call => call.method === 'eth_getTransactionReceipt' ? { ...receipt, padding: 'x'.repeat(1024 * 1024) } : undefined);
- await assert.rejects(tooLarge.rpc.retirementRead('eth_getTransactionReceipt', [hash], signal(), () => undefined), { code: 'UNAVAILABLE' });
+ await assert.rejects(tooLarge.rpc.retirementRead('eth_getTransactionReceipt', [hash], signal(), () => undefined), { code: 'INVALID_RESPONSE' });
  const scalar = fixture(custom, call => call.method === 'eth_getBalance' ? '0x' + '1'.repeat(16 * 1024) : undefined);
- await assert.rejects(scalar.rpc.smartAccountRead('eth_getBalance', [from, 'pending'], signal(), () => undefined), { code: 'UNAVAILABLE' });
+ await assert.rejects(scalar.rpc.smartAccountRead('eth_getBalance', [from, 'pending'], signal(), () => undefined), { code: 'INVALID_RESPONSE' });
 });
 
 for (const maximum of [false, true]) test(`explicit fees bind the initial ${maximum ? 'MAX' : 'ordinary'} quote and remain unchanged on requote`, async () => {

@@ -778,6 +778,37 @@ export class NativeTokens {
       let next = 0;
       const timer = setTimeout(() => request.controller.abort(), 15_000);
       try {
+        if (!target && this.reader.readBalances && indices.length) {
+          this.publish({ items: Object.freeze(pending.map(item =>
+            Object.freeze({ ...item, status: 'loading' as const }))) });
+          let values: readonly import('./erc20ReadRpc.ts').Erc20BalanceResult[];
+          try {
+            this.guard(request);
+            values = await bounded(this.reader.readBalances(
+              request.account.network, request.account.address,
+              pending.map(item => item.metadata), request.controller.signal,
+              () => this.guard(request)
+            ), request.controller.signal);
+            this.guard(request);
+            if (values.length !== pending.length) throw new Error('Invalid token balance count');
+          } catch {
+            values = pending.map(() => ({ status: 'error' as const, units: null }));
+          }
+          if (!this.current(request)) return;
+          const updatedAt = this.now();
+          this.publish({ items: Object.freeze(pending.map((item, index) => {
+            try {
+              const value = values[index]!;
+              if (value.status !== 'available' || !Number.isSafeInteger(updatedAt) || updatedAt < 0)
+                throw new Error('Unavailable token balance');
+              return Object.freeze({ metadata: item.metadata, status: 'available' as const,
+                units: parseErc20Units(value.units), updatedAt });
+            } catch {
+              return Object.freeze({ metadata: item.metadata, status: 'error' as const, units: null, updatedAt: null });
+            }
+          })) });
+          next = indices.length;
+        }
         const worker = async () => {
           while (
             next < indices.length &&

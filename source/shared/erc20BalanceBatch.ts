@@ -89,23 +89,24 @@ export function createErc20BalanceBatch(clock = () => performance.now()) {
           ],
         }))
       );
-      return observations.flatMap(
-        (observation, index): PromiseSettledResult<unknown>[] => {
-          const chunk = chunks[index]!;
-          try {
-            if (observation.status === 'rejected') throw observation.reason;
-            if (
-              typeof observation.value !== 'string' ||
-              !/^0x(?:[a-f\d]{2})*$/i.test(observation.value)
-            )
-              throw new Error('Invalid aggregated balances');
-            const values = abi.decodeFunctionResult(
-              'aggregate3',
-              observation.value
-            )[0];
-            if (values.length !== chunk.length)
-              throw new Error('Invalid aggregated balance count');
-            return Array.from(
+      const results: PromiseSettledResult<unknown>[][] = [];
+      for (const [index, observation] of observations.entries()) {
+        const chunk = chunks[index]!;
+        try {
+          if (observation.status === 'rejected') throw observation.reason;
+          if (
+            typeof observation.value !== 'string' ||
+            !/^0x(?:[a-f\d]{2})*$/i.test(observation.value)
+          )
+            throw new Error('Invalid aggregated balances');
+          const values = abi.decodeFunctionResult(
+            'aggregate3',
+            observation.value
+          )[0];
+          if (values.length !== chunk.length)
+            throw new Error('Invalid aggregated balance count');
+          results.push(
+            Array.from(
               values,
               (value: { returnData: string; success: boolean }) =>
                 value.success
@@ -114,12 +115,29 @@ export function createErc20BalanceBatch(clock = () => performance.now()) {
                       status: 'rejected' as const,
                       reason: new Error('Token balance read reverted'),
                     }
+            )
+          );
+        } catch {
+          // A broken aggregate must not hide other tokens in its chunk.
+          // The transport keeps the same deadline, selector and limits.
+          const fallback: PromiseSettledResult<unknown>[] = [];
+          for (let offset = 0; offset < chunk.length; offset += 4)
+            fallback.push(
+              ...(await Promise.allSettled(
+                chunk
+                  .slice(offset, offset + 4)
+                  .map((call) =>
+                    read.read('eth_call', [
+                      { to: call.target, data: call.data },
+                      block,
+                    ])
+                  )
+              ))
             );
-          } catch (reason) {
-            return chunk.map(() => ({ status: 'rejected' as const, reason }));
-          }
+          results.push(fallback);
         }
-      );
+      }
+      return results.flat();
     }
 
     return read.readMany(

@@ -95,6 +95,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let initialEoaNonce = 0;
   let physicalStorageCloses = 0;
   const spendabilityReads = { native: 0, deposit: 0 };
+  const rpcBatches: string[][] = [];
   const tokens = new Map<string, { balance: bigint; decimals: number }>();
   const tokenInterface = new Interface(['function balanceOf(address) view returns(uint256)', 'function decimals() view returns(uint8)', 'function transfer(address,uint256) returns(bool)']);
   let deployed = false;
@@ -148,6 +149,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   const backend = async (network: NativeNetworkRegistration, init: RequestInit): Promise<Response> => {
         const payload = JSON.parse(String(init.body));
         if (Array.isArray(payload)) {
+          rpcBatches.push(payload.map(request => request.method));
           const rows = await Promise.all(payload.map(async request => {
             const response = await backend(network, { ...init, body: JSON.stringify(request) });
             return response.json();
@@ -450,7 +452,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; },
     transferRpc: new NativeTransferRpc({ registration: getNativeNetwork('ethereum'), fetch: (_url, init) => backend(getNativeNetwork(runtime.catalogue.getSnapshot()?.active.networkId ?? 'ethereum'), init) }),
     get sdkHost() { assert(sdkHost); return sdkHost; }, get sdkHostStorage() { assert(sdkHostStorage); return sdkHostStorage; },
-    get physicalStorageCloses() { return physicalStorageCloses; }, calls, submitted, signatures, payerSignatures, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
+    get physicalStorageCloses() { return physicalStorageCloses; }, calls, rpcBatches, submitted, signatures, payerSignatures, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
     infrastructureCode(id: PaliInfrastructureContractId, present: boolean) {
       const address = PALI_INFRASTRUCTURE_METADATA_BY_ID[id].address.toLowerCase();
       if (present) missingInfrastructure.delete(address); else missingInfrastructure.add(address);
@@ -1958,6 +1960,22 @@ for (const sponsored of [false, true]) test(`Smart native MAX uses the shared re
   } finally { operation?.dispose(); await f.close(); }
 });
 
+
+test('native Smart preparation batches all eleven infrastructure reads', async () => {
+  const f = await fixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Infrastructure batch' });
+    f.fundedSmart(); f.deployed();
+    f.rpcBatches.length = 0;
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', {
+      kind: 'exact', amount: '0.000001',
+    }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    assert(f.rpcBatches.some(methods => methods.length === 11 && methods.every(method => method === 'eth_getCode')));
+  } finally { operation?.dispose(); await f.close(); }
+});
 
 test('Smart ERC20 send preserves 255-decimal base units through approval, signing and Activity', async () => {
   const f = await fixture();

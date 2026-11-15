@@ -318,7 +318,7 @@ test('cancellation settles ignored transport and one deadline bounds the complet
     contractAddress,
     signal.signal
   );
-  await Promise.resolve();
+  while (calls === 0) await new Promise(resolve => setImmediate(resolve));
   signal.abort();
   await assert.rejects(pending, { code: 'CANCELLED' });
   assert.equal(calls, 1);
@@ -461,4 +461,109 @@ test('verified Multicall3 serves twenty warm saved balances in five wire methods
   assert(full.every(balance => balance.status === 'available' && balance.units === '123'));
   assert.equal(requests.length, 17);
   assert.equal(posts, 4);
+});
+
+test('one oversized aggregate member leaves a healthy token available at the same block', async () => {
+  const { Interface } = await import('ethers/abi');
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../../../source/utils/smartAccount/deployment.ts', import.meta.url), 'utf8');
+  const creation = source.match(/const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/)![1]!;
+  const runtime = `0x${creation.slice(2 + 0x20 * 2, 2 + (0x20 + 0xee0) * 2)}`;
+  const aggregate = new Interface(['function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)']);
+  const bad = { ...metadata, contractAddress: `0x${'22'.repeat(20)}` };
+  const reader = createErc20Reader({ fetch: async (_url, init) => {
+    const body = JSON.parse(String(init.body));
+    const rows = Array.isArray(body) ? body : [body];
+    const responses = rows.map((request: Request) => {
+      let value = result(request);
+      if (request.method === 'eth_getCode') value = runtime;
+      if (request.method === 'eth_call') {
+        assert.equal(request.params[1], '0x123');
+        const input = request.params[0];
+        if (input.data.startsWith(aggregate.getFunction('aggregate3')!.selector)) {
+          const calls = aggregate.decodeFunctionData('aggregate3', input.data)[0];
+          value = aggregate.encodeFunctionResult('aggregate3', [Array.from(calls, (call: { target: string; callData: string }) => ({
+            success: true, returnData: call.callData === '0x313ce567' ? uint(18)
+              : call.target.toLowerCase() === bad.contractAddress ? `0x${'00'.repeat(20 * 1024)}` : uint(5),
+          }))]);
+        } else if (input.data !== '0x313ce567') value = input.to === bad.contractAddress ? `0x${'00'.repeat(20 * 1024)}` : uint(5);
+      }
+      return { jsonrpc: '2.0', id: request.id, result: value };
+    });
+    return Response.json(Array.isArray(body) ? responses : responses[0]);
+  } });
+  const values = await reader.readBalances!('ethereum', holder, [metadata, bad], new AbortController().signal);
+  assert.deepEqual(values, [{ status: 'available', units: '5' }, { status: 'error', units: null }]);
+});
+
+test('cross-operation admission retains its four slots until response bodies finish', async () => {
+  let active = 0, maximum = 0;
+  const releases: (() => void)[] = [];
+  const reader = createErc20Reader({ timeoutMs: 1000, fetch: async (_url, init) => {
+    active++; maximum = Math.max(maximum, active);
+    const request = JSON.parse(String(init.body)) as Request;
+    return { ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }),
+      text: () => new Promise<string>(resolve => releases.push(() => {
+        active--; resolve(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: result(request) }));
+      })),
+    } as Response;
+  } });
+  const reads = Array.from({ length: 8 }, () => reader.readBalance('ethereum', holder, metadata, new AbortController().signal));
+  for (let i = 0; i < 10; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(active, 4);
+  let complete = false;
+  const finished = Promise.all(reads).then(() => { complete = true; });
+  while (!complete) {
+    releases.splice(0).forEach(release => release());
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  await finished;
+  assert.equal(maximum, 4);
+});
+
+test('invalid response headers retain slots until asynchronous body cancellation finishes', async () => {
+  let opened = 0;
+  const releases: (() => void)[] = [];
+  const controllers = Array.from({ length: 8 }, () => new AbortController());
+  const reader = createErc20Reader({ fetch: async () => {
+    opened++;
+    return { ok: true, status: 200, headers: new Headers({ 'content-type': 'text/html' }),
+      body: { cancel: () => new Promise<void>(resolve => releases.push(resolve)) },
+    } as unknown as Response;
+  } });
+  const reads = controllers.map(controller => reader.readBalance('ethereum', holder, metadata, controller.signal));
+  const settled = Promise.allSettled(reads);
+  for (let i = 0; i < 10; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(opened, 4);
+  controllers.forEach(controller => controller.abort());
+  assert((await settled).every(result => result.status === 'rejected'));
+  releases.splice(0).forEach(release => release());
+});
+
+test('stream completion retains physical capacity until reader cancellation drains', async () => {
+  let active = 0, maximum = 0;
+  const releases: (() => void)[] = [];
+  const reader = createErc20Reader({ timeoutMs: 2000, fetch: async (_url, init) => {
+    active++; maximum = Math.max(maximum, active);
+    const request = JSON.parse(String(init.body)) as Request;
+    const bytes = new TextEncoder().encode(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: result(request) }));
+    return { ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }),
+      body: { getReader() {
+        let read = false;
+        return { read: async () => read ? { done: true } : (read = true, { done: false, value: bytes }),
+          cancel: () => new Promise<void>(resolve => releases.push(() => { active--; resolve(); })), releaseLock() {} };
+      } },
+    } as unknown as Response;
+  } });
+  const work = Promise.all(Array.from({ length: 8 }, () => reader.readBalance('ethereum', holder, metadata, new AbortController().signal)));
+  for (let i = 0; i < 10; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(active, 4);
+  let complete = false;
+  const done = work.then(() => { complete = true; });
+  while (!complete) {
+    releases.splice(0).forEach(release => release());
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  await done;
+  assert.equal(maximum, 4);
 });

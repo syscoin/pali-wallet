@@ -26,6 +26,9 @@ export function createScopedPortfolioAssetReader(ports: {
   load(scope: NativeTokenPortfolioScope, assertCurrent: () => void): Promise<NativeTokenInventory>;
   fetch(url: string, init: RequestInit): Promise<Response>;
 }) {
+  const registrations = new Map<string, ReturnType<typeof snapshotNativeNetwork>>();
+  const erc20 = createErc20Reader({ fetch: ports.fetch,
+    registrations: () => [...registrations.values()] });
   return async (
     input: NativeNotificationScope,
     signal: AbortSignal,
@@ -40,6 +43,8 @@ export function createScopedPortfolioAssetReader(ports: {
     if (!input?.network || !('kind' in input.network) || input.network.kind !== 'evm') return empty();
     const scope = Object.freeze({ accountId: input.accountId, accountAddress: getAddress(input.accountAddress) });
     const network = snapshotNativeNetwork(input.network);
+    registrations.set(network.id, network);
+    if (registrations.size > 32) registrations.delete(registrations.keys().next().value!);
     const inventory = await ports.load(Object.freeze({ accountId: scope.accountId,
       address: scope.accountAddress, networkId: network.id, registrationHash: network.registrationHash }), check);
     check();
@@ -58,7 +63,6 @@ export function createScopedPortfolioAssetReader(ports: {
         return response;
       },
     };
-    const erc20 = createErc20Reader(options);
     const ownership = createNftOwnershipReader(options);
     const collection = createSelectedNftReadOperation(options);
     const work: (() => Promise<void>)[] = [];
@@ -67,7 +71,7 @@ export function createScopedPortfolioAssetReader(ports: {
     if (metadata.length) work.push(async () => {
       check();
       try {
-        const results = await erc20.readBalances!(network.id, scope.accountAddress, metadata, signal);
+        const results = await erc20.readBalances!(network.id, scope.accountAddress, metadata, signal, check);
         check();
         for (const [index, token] of metadata.entries()) {
           const result = results[index]!;

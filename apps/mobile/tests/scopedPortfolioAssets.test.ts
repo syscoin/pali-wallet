@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { Interface } from 'ethers/abi';
 import { createNativeNetwork } from '../src/custody/networkContext.ts';
 import { createScopedPortfolioAssetReader } from '../src/portfolio/scopedPortfolioAssets.ts';
@@ -16,7 +17,11 @@ const uint = (value: bigint | number) => `0x${BigInt(value).toString(16).padStar
 const abi = new Interface(['function balanceOfBatch(address[],uint256[]) view returns (uint256[])']);
 type Wire = { id: number; method: string; params: any[] };
 
-function fixture(inventory: NativeTokenInventory) {
+function fixture(inventory: NativeTokenInventory, multicall = false) {
+  const source = readFileSync(new URL('../../../source/utils/smartAccount/deployment.ts', import.meta.url), 'utf8');
+  const creation = source.match(/const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/)![1]!;
+  const runtime = `0x${creation.slice(2 + 0x20 * 2, 2 + (0x20 + 0xee0) * 2)}`;
+  const aggregate = new Interface(['function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)']);
   const requests: Wire[] = [], urls: string[] = [], loads: NativeTokenPortfolioScope[] = [];
   let current = true, invalidateOnFetch = false, failToken = false;
   const read = createScopedPortfolioAssetReader({
@@ -30,12 +35,14 @@ function fixture(inventory: NativeTokenInventory) {
       let result: unknown;
       if (request.method === 'eth_chainId') result = '0x1';
       else if (request.method === 'eth_getBlockByNumber') result = { number: '0x10', hash: '0x' + 'a'.repeat(64) };
-      else if (request.method === 'eth_getCode') result = '0x6000';
+      else if (request.method === 'eth_getCode') result = multicall ? runtime : '0x6000';
       else if (request.method === 'eth_call') {
         const call = request.params[0] as { to: string; data: string };
         assert.equal(request.params[1], '0x10');
         const selector = call.data.slice(0, 10);
-        result = selector === '0x313ce567' ? uint(failToken ? 18 : 6)
+        result = selector === aggregate.getFunction('aggregate3')!.selector ? aggregate.encodeFunctionResult('aggregate3', [Array.from(aggregate.decodeFunctionData('aggregate3', call.data)[0],
+          (entry: { callData: string }) => ({ success: true, returnData: uint(entry.callData === '0x313ce567' ? 6 : 1234567) }))])
+          : selector === '0x313ce567' ? uint(failToken ? 18 : 6)
           : selector === '0x01ffc9a7' ? uint(1)
           : selector === '0x4e1273f4' ? abi.encodeFunctionResult('balanceOfBatch', [[5]])
           : selector === '0x00fdd58e' ? uint(0)
@@ -83,4 +90,20 @@ test('scope retirement stops later RPCs and refuses publishing a held result', a
   await assert.rejects(f.read(), /Changed visible scope/);
   assert.equal(f.requests.length, 2);
   assert.equal(f.requests[0]!.method, 'eth_chainId');
+});
+
+for (const multicall of [false, true]) test(`repeated scoped snapshots retain endpoint capability without retaining an old guard (Multicall ${multicall})`, async () => {
+  const tokens = Array.from({ length: 20 }, (_, index) => ({ ...token,
+    contractAddress: `0x${(index + 1).toString(16).padStart(40, '0')}` }));
+  const f = fixture({ revision: 1, items: tokens }, multicall);
+  const first = await f.read();
+  assert(first.tokens.every(row => row.status === 'available'));
+  assert.equal(f.requests.filter(row => row.method === 'eth_getCode').length, multicall ? 1 : 2);
+  f.requests.length = 0;
+  const second = await f.read();
+  assert(second.tokens.every(row => row.status === 'available'));
+  assert.equal(f.requests.filter(row => row.method === 'eth_getCode').length, 0);
+  assert.equal(f.requests.length, multicall ? 5 : 44);
+  f.invalidateOnFetch();
+  await assert.rejects(f.read(), /Changed visible scope/);
 });
