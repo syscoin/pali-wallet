@@ -1,4 +1,5 @@
 import { JsonRpcReadClient, RpcReadError } from '@sidhujag/sysweb3-keyring/cjs/rpc-read-client.js';
+import { RpcResponseIntegrityError } from '@sidhujag/sysweb3-keyring/cjs/rpc-transport.js';
 import { AUTOMATIC_FEE, chooseEvmFees, snapshotEvmFeeChoice, type EvmFeeChoice, type EvmFeeRates } from '../../../../source/shared/transactionFeeChoice.ts';
 import { DAPP_PUBLIC_RPC_METHODS, normalizeDappRpcRequest, type DappPublicRpcMethod, type DappPublicRpcRequest } from '../../../../source/shared/dappRpcReads.ts';
 import { EthereumRpcErrorHandler } from '../../../../source/helpers/errors/errorClassesHandlers.ts';
@@ -268,6 +269,7 @@ export class EvmTransferReadRpc {
       // call evidence for shared NFT verification. Transport errors stay opaque.
       if (error instanceof Error && smartCallReverts.has(error)) throw error;
       if (error instanceof EvmTransferReadError) throw error;
+      if (error instanceof RpcResponseIntegrityError) return rejectRead('INVALID_RESPONSE');
       if (scope === 'dapp-rpc' && error instanceof EthereumRpcErrorHandler) throw error;
       if (error instanceof EvmAssetStateError) {
         if (nft) return rejectRead(error.code === 'INSUFFICIENT_ASSET' ? 'INSUFFICIENT_NFT_BALANCE'

@@ -145,6 +145,16 @@ const runner = {
     reads.push({ name: 'multicallCode' });
     return target === multicallAddress && multicallDeployed ? '0x6000' : '0x';
   },
+  readMany: async (
+    requests: readonly { method: string; params: unknown[] }[]
+  ) =>
+    Promise.allSettled(
+      requests.map(({ method, params }) => {
+        if (method !== 'eth_call')
+          throw new Error('Unexpected token RPC ' + method);
+        return runner.call(params[0] as { data: string; to: string });
+      })
+    ),
   call: async (transaction: { data: string; to: string }) => {
     if (transaction.to.toLowerCase() === multicallAddress) {
       expect(multicallDeployed).toBe(true);

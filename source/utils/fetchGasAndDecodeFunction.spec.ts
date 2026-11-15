@@ -159,6 +159,7 @@ describe('dapp transaction fee preparation', () => {
       const result = await prepare(fields);
       expect(result.formTx.gasLimit.toString()).toBe('70000');
       expect(result.feeDetails.smartAccountFeeQuote).toEqual({
+        executionContextId: 'read-only-fee-context',
         feePayer: FEE_PAYER,
         gasUnits: '863456',
         maximumFeeWei: BigNumber.from(863456)
@@ -202,6 +203,7 @@ describe('dapp transaction fee preparation', () => {
       smartAccountFeeQuote: { maximumFeeWei: '1' },
     });
     expect(result.feeDetails.smartAccountFeeQuote).toEqual({
+      executionContextId: 'tank',
       feePayer: FEE_PAYER,
       gasUnits: '863456',
       maximumFeeWei: '0',

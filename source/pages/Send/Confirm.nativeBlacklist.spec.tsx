@@ -530,7 +530,7 @@ it('accepts an unlisted native recipient through the same controller path', asyn
   expect(mockSdkSend.mock.calls[0][2]).toMatchObject({
     walletNonce: { nonce: 7, source: 'automatic' },
   });
-  expect(mockWallet.withReceiptReadProvider).toHaveBeenCalledTimes(3);
+  expect(mockWallet.withReceiptReadProvider).toHaveBeenCalledTimes(2);
   await waitFor(() =>
     expect(mockWallet.sendAndSaveTransaction).toHaveBeenCalledTimes(1)
   );
@@ -599,7 +599,7 @@ it.each([
     expect(data.params[4]).toEqual({
       nativeReview: { id: reviewId, scope: mockScope },
     });
-    expect(mockWallet.withReceiptReadProvider).toHaveBeenCalledTimes(3);
+    expect(mockWallet.withReceiptReadProvider).toHaveBeenCalledTimes(2);
     if (affordable) {
       expect(mockSdkSend).toHaveBeenCalledTimes(1);
       expect(mockSdkSend.mock.calls[0][0].value).toBe(reviewedValue);

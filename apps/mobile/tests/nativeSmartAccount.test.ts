@@ -1675,9 +1675,9 @@ for (const alreadyDeployed of [false, true]) test(`real SDK smart native send au
     assert.equal('0x' + execution.slice(2, 42), recipient);
     assert.equal(BigInt('0x' + execution.slice(42, 106)), 9n);
     assert.equal(f.calls.includes('eth_getTransactionReceipt'), false);
-    // Four explicit spendability boundaries. Counterfactual sends also keep
-    // the existing deployment-prefund check, even when no topup is needed.
-    const expectedReads = alreadyDeployed ? 4 : 5;
+    // Preparation, owner signing and payer authorization each observe spendability.
+    // Counterfactual sends also retain the deployment-prefund check.
+    const expectedReads = alreadyDeployed ? 3 : 4;
     assert.equal(f.spendabilityReads.native - initialReads.native, expectedReads);
     assert.equal(f.spendabilityReads.deposit - initialReads.deposit, expectedReads);
   } finally { operation?.dispose(); await f.close(); }
@@ -1695,12 +1695,12 @@ for (const boundary of ['before-authentication', 'during-signing', 'payer-review
     if (boundary === 'before-authentication') f.smartBalance(8n);
     if (boundary === 'during-signing') f.onSignature(() => { f.smartBalance(8n); });
     const sending = operation.authorize(operation.getSnapshot().revision);
-    if (boundary === 'payer-review') {
+    if (boundary !== 'before-authentication') {
       for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
         await new Promise(resolve => setTimeout(resolve, 5));
       const review = operation.getSnapshot().payerReview;
       assert(review, JSON.stringify(operation.getSnapshot()));
-      f.smartBalance(8n);
+      if (boundary === 'payer-review') f.smartBalance(8n);
       operation.confirmPayer(review.id);
     }
     await sending;

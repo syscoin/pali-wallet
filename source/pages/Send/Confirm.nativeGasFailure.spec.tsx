@@ -239,7 +239,7 @@ afterAll(() => {
 });
 beforeEach(() => {
   reviewFailures = [];
-  jest.useFakeTimers();
+  jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
   jest.clearAllMocks();
   jest.spyOn(console, 'error').mockImplementation();
   jest.spyOn(console, 'warn').mockImplementation();
@@ -269,7 +269,19 @@ beforeEach(() => {
     estimateGas: jest.fn().mockResolvedValue(BigNumber.from(21000)),
     verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
     send: jest.fn(async (method: string) => {
-      if (method === 'eth_getBlockByNumber') return block();
+      if (method === 'eth_getBlockByNumber') {
+        const header = block();
+        return {
+          ...header,
+          gasLimit: '0x' + header.gasLimit.toBigInt().toString(16),
+          ...(header.baseFeePerGas
+            ? {
+                baseFeePerGas:
+                  '0x' + header.baseFeePerGas.toBigInt().toString(16),
+              }
+            : {}),
+        };
+      }
       if (method === 'eth_maxPriorityFeePerGas') return '0x3b9aca00';
       if (method === 'eth_getBalance') return '0x56bc75e2d63100000';
       if (method === 'eth_getTransactionCount') return '0x2';
@@ -683,7 +695,19 @@ it.each([false, true])(
     let estimate: string | Promise<string> = heldEstimate;
     provider.verifyConfiguredChainId = jest.fn().mockResolvedValue(undefined);
     provider.send.mockImplementation(async (method: string) => {
-      if (method === 'eth_getBlockByNumber') return block();
+      if (method === 'eth_getBlockByNumber') {
+        const header = block();
+        return {
+          ...header,
+          gasLimit: '0x' + header.gasLimit.toBigInt().toString(16),
+          ...(header.baseFeePerGas
+            ? {
+                baseFeePerGas:
+                  '0x' + header.baseFeePerGas.toBigInt().toString(16),
+              }
+            : {}),
+        };
+      }
       if (method === 'eth_getBalance') return '0x56bc75e2d63100000';
       if (method === 'eth_getTransactionCount') return '0x2';
       if (method === 'eth_estimateGas') return estimate;
