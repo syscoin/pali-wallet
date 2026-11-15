@@ -145,8 +145,16 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     initialized = true;
     return storage;
   };
-  const backend = async (network: NativeNetworkRegistration, init: RequestInit) => {
-        const request = JSON.parse(String(init.body));
+  const backend = async (network: NativeNetworkRegistration, init: RequestInit): Promise<Response> => {
+        const payload = JSON.parse(String(init.body));
+        if (Array.isArray(payload)) {
+          const rows = await Promise.all(payload.map(async request => {
+            const response = await backend(network, { ...init, body: JSON.stringify(request) });
+            return response.json();
+          }));
+          return Response.json(rows);
+        }
+        const request = payload;
         calls.push(request.method);
         if (request.method === 'eth_getBalance' && request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase()) spendabilityReads.native++;
         if (request.method === 'eth_call' && request.params[0].to.toLowerCase() === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase() && request.params[0].data.startsWith(paliEntryPointInterface.getFunction('balanceOf')!.selector)) spendabilityReads.deposit++;

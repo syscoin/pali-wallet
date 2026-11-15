@@ -1,4 +1,5 @@
 export type SmartAccountFeeQuote = Readonly<{
+  executionContextId?: string;
   feePayer: Readonly<{
     address: string;
     id: number;

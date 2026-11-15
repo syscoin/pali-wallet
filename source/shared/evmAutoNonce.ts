@@ -4,6 +4,7 @@ import {
 } from './evmAssetState.ts';
 import type { EvmAssetState, EvmTransferAsset } from './evmAssetState.ts';
 import type { EvmSignedRecordSummary } from '../wallet/evmSignedRecords';
+import type { RetainedSmartAccountOperation } from '../wallet/smartAccountActivity';
 
 type NonceIdentity = Pick<
   EvmSignedRecordSummary,
@@ -16,6 +17,10 @@ export type EvmAutoNonceSnapshot = Readonly<{
   owner: string;
   readAssetDebit(hash: string, asset: EvmTransferAsset): Promise<bigint>;
   readMaximumCost(hash: string): Promise<bigint>;
+  readSmartAccountOperations?(
+    chainId: string,
+    address: string
+  ): Promise<readonly RetainedSmartAccountOperation[]>;
   retained: readonly RetainedNonce[];
 }>;
 

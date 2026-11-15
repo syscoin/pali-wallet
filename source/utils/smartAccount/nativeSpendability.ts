@@ -51,16 +51,24 @@ export async function assertSmartAccountNativeSpendability({
   const value = nativeValue(operation);
   if (value.isZero()) return;
   const requiredPrefund = getSmartAccountUserOpRequiredPrefund(operation);
-  const [[balance], rawDeposit] = await Promise.all([
-    readSmartAccountNativeBalances(provider, [operation.sender]),
-    requiredPrefund.isZero()
-      ? Promise.resolve(0)
-      : new Contract(
-          getPaliEntryPointAddress(chainId),
-          PALI_ENTRYPOINT_V09_ABI,
-          provider
-        ).balanceOf(operation.sender),
-  ]);
+  const financial =
+    typeof provider.readSmartAccountFinancialState === 'function'
+      ? await provider.readSmartAccountFinancialState(
+          BigInt(operation.nonce) >> BigInt(64)
+        )
+      : undefined;
+  const [[balance], rawDeposit] = financial
+    ? [[financial.balance], financial.deposit]
+    : await Promise.all([
+        readSmartAccountNativeBalances(provider, [operation.sender]),
+        requiredPrefund.isZero()
+          ? Promise.resolve(0)
+          : new Contract(
+              getPaliEntryPointAddress(chainId),
+              PALI_ENTRYPOINT_V09_ABI,
+              provider
+            ).balanceOf(operation.sender),
+      ]);
   check();
   const deposit = BigNumber.from(rawDeposit);
   const missingPrefund = requiredPrefund.gt(deposit)

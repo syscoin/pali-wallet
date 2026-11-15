@@ -22,7 +22,10 @@ function fixture(inventory: NativeTokenInventory) {
   const read = createScopedPortfolioAssetReader({
     async load(target, check) { check(); loads.push(target); return inventory; },
     async fetch(url, init) {
-      const request = JSON.parse(String(init.body)) as Wire; requests.push(request); urls.push(url);
+      const body = JSON.parse(String(init.body)) as Wire | Wire[];
+      const rows = Array.isArray(body) ? body : [body];
+      const responses = rows.map(request => {
+      requests.push(request); urls.push(url);
       if (invalidateOnFetch) current = false;
       let result: unknown;
       if (request.method === 'eth_chainId') result = '0x1';
@@ -38,7 +41,9 @@ function fixture(inventory: NativeTokenInventory) {
           : selector === '0x00fdd58e' ? uint(0)
           : uint(call.to === collectionAddress ? 3 : 1234567);
       } else assert.fail('No discovery or transaction RPC is permitted');
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { headers: { 'content-type': 'application/json' } });
+      return { jsonrpc: '2.0', id: request.id, result };
+      });
+      return Response.json(Array.isArray(body) ? responses : responses[0]);
     },
   });
   const check = () => { if (!current) throw Error('Changed visible scope'); };
@@ -76,6 +81,6 @@ test('an empty saved registry performs no asset RPC and one failed token does no
 test('scope retirement stops later RPCs and refuses publishing a held result', async () => {
   const f = fixture({ revision: 1, items: [token] }); f.invalidateOnFetch();
   await assert.rejects(f.read(), /Changed visible scope/);
-  assert.equal(f.requests.length, 1);
+  assert.equal(f.requests.length, 2);
   assert.equal(f.requests[0]!.method, 'eth_chainId');
 });

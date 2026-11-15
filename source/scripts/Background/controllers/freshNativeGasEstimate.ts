@@ -15,8 +15,14 @@ import {
   EVM_FEE_APPROVAL_LIFETIME_MS,
 } from '../../../shared/evmFeeApproval';
 import { assertSynchronousEvmFeeGuard } from '../../../shared/evmFeeGuard';
+import { withEvmReadPhase } from '../../../shared/evmReadPhase';
+import {
+  readEvmRpcHash,
+  readEvmRpcQuantity,
+} from '../../../shared/evmTransactionObservation';
 import { BigNumber } from '../../../utils/ethersV6Compat';
 
+import type { EvmDappBlock } from '../../../shared/evmDappPreparation';
 import type {
   CustomJsonRpcProvider,
   EthereumTransactions,
@@ -161,6 +167,25 @@ export function captureReviewedNativeEvmTransfer(
   });
 }
 
+/** Sample once inside the caller's phase for nonce, balance and gas checks. */
+export async function readNativeEvmReviewBlock(
+  provider: CustomJsonRpcProvider,
+  assertCurrent: () => void
+): Promise<EvmDappBlock> {
+  assertSynchronousEvmFeeGuard(assertCurrent);
+  const block = await provider.send('eth_getBlockByNumber', ['latest', false]);
+  assertSynchronousEvmFeeGuard(assertCurrent);
+  return Object.freeze({
+    hash: readEvmRpcHash(block?.hash),
+    number: readEvmRpcQuantity(block?.number).toString(),
+    gasLimit: readEvmRpcQuantity(block?.gasLimit),
+    baseFee:
+      block?.baseFeePerGas === undefined || block?.baseFeePerGas === null
+        ? null
+        : readEvmRpcQuantity(block.baseFeePerGas),
+  });
+}
+
 /** Recheck the approved envelope with bounded, host-owned reads. */
 export async function recheckReviewedNativeEvmTransfer(
   review: ReturnType<typeof captureReviewedNativeEvmTransfer>,
@@ -178,66 +203,71 @@ export async function recheckReviewedNativeEvmTransfer(
     assertEvmFeeApprovalCurrent(review.approval, Math.floor(performance.now()));
     if (provider.signal.aborted) throw provider.signal.reason;
   };
-  const read = async (method: string, params: unknown[]) => {
+  return withEvmReadPhase(provider, check, async (phase) => {
+    const read = async (method: string, params: unknown[]) => {
+      check();
+      const result = await phase.send(method, params);
+      check();
+      return result;
+    };
     check();
-    const result = await provider.send(method, params);
+    const nonce = review.nonce;
+    if (nonce === undefined) throw new Error('Missing reviewed native nonce');
+    const tx = review.transaction;
+    const { state, balanceState, nativeReservations, canonicalBlock } =
+      noncePlan;
+    const [header, rawCanonical, rawPending] = await Promise.all([
+      read('eth_getBlockByNumber', ['latest', false]),
+      read('eth_getBalance', [tx.from, canonicalBlock.number]),
+      read('eth_getBalance', [tx.from, 'pending']),
+    ]);
+    const balance = availableEvmNativeBalance(
+      {
+        canonical: parseEvmFeeQuantity(rawCanonical, 'canonical balance'),
+        pending: parseEvmFeeQuantity(rawPending, 'pending balance'),
+      },
+      nativeReservations,
+      balanceState
+    );
+    const observation = {
+      balance,
+      sampledBlockGasLimit: parseEvmFeeQuantity(
+        header?.gasLimit,
+        'block gas limit'
+      ),
+      ...(tx.type === 2
+        ? {
+            baseFeePerGas: parseEvmFeeQuantity(
+              header?.baseFeePerGas,
+              'base fee'
+            ),
+          }
+        : {}),
+    };
+    assertEvmFeeEstimateApproved(
+      review.approval,
+      { ...observation, estimatedGas: BigInt(tx.gasLimit) },
+      Math.floor(performance.now()),
+      captureNativeEvmFeeCoverage(review.approval)
+    );
+    const request = { ...tx, nonce: nonce.toString() };
+    const estimate = parseEvmFeeQuantity(
+      await read('eth_estimateGas', [evmEstimateRequest(request), state]),
+      'native gas estimate'
+    );
+    assertEvmFeeEstimateApproved(
+      review.approval,
+      { ...observation, estimatedGas: estimate },
+      Math.floor(performance.now()),
+      captureNativeEvmFeeCoverage(review.approval)
+    );
+    const canonical = await read('eth_getBlockByNumber', [
+      canonicalBlock.number,
+      false,
+    ]);
+    if (canonical?.hash?.toLowerCase() !== canonicalBlock.hash)
+      throw new Error('Canonical balance changed');
     check();
-    return result;
-  };
-  check();
-  const nonce = review.nonce;
-  if (nonce === undefined) throw new Error('Missing reviewed native nonce');
-  await provider.verifyConfiguredChainId();
-  const tx = review.transaction;
-  const { state, balanceState, nativeReservations, canonicalBlock } = noncePlan;
-  const [header, rawCanonical, rawPending] = await Promise.all([
-    read('eth_getBlockByNumber', ['latest', false]),
-    read('eth_getBalance', [tx.from, canonicalBlock.number]),
-    read('eth_getBalance', [tx.from, 'pending']),
-  ]);
-  const balance = availableEvmNativeBalance(
-    {
-      canonical: parseEvmFeeQuantity(rawCanonical, 'canonical balance'),
-      pending: parseEvmFeeQuantity(rawPending, 'pending balance'),
-    },
-    nativeReservations,
-    balanceState
-  );
-  const observation = {
-    balance,
-    sampledBlockGasLimit: parseEvmFeeQuantity(
-      header?.gasLimit,
-      'block gas limit'
-    ),
-    ...(tx.type === 2
-      ? {
-          baseFeePerGas: parseEvmFeeQuantity(header?.baseFeePerGas, 'base fee'),
-        }
-      : {}),
-  };
-  assertEvmFeeEstimateApproved(
-    review.approval,
-    { ...observation, estimatedGas: BigInt(tx.gasLimit) },
-    Math.floor(performance.now()),
-    captureNativeEvmFeeCoverage(review.approval)
-  );
-  const request = { ...tx, nonce: nonce.toString() };
-  const estimate = parseEvmFeeQuantity(
-    await read('eth_estimateGas', [evmEstimateRequest(request), state]),
-    'native gas estimate'
-  );
-  assertEvmFeeEstimateApproved(
-    review.approval,
-    { ...observation, estimatedGas: estimate },
-    Math.floor(performance.now()),
-    captureNativeEvmFeeCoverage(review.approval)
-  );
-  const canonical = await read('eth_getBlockByNumber', [
-    canonicalBlock.number,
-    false,
-  ]);
-  if (canonical?.hash?.toLowerCase() !== canonicalBlock.hash)
-    throw new Error('Canonical balance changed');
-  check();
-  return Object.freeze(request);
+    return Object.freeze(request);
+  });
 }

@@ -64,15 +64,19 @@ export function createScopedPortfolioAssetReader(ports: {
     const work: (() => Promise<void>)[] = [];
     const tokenRows: PortfolioAssetSnapshot['tokens'][number][] = new Array(metadata.length);
     const collectibleRows: PortfolioAssetSnapshot['collectibles'][number][] = new Array(collectibles.length);
-    for (const [index, token] of metadata.entries()) work.push(async () => {
+    if (metadata.length) work.push(async () => {
       check();
       try {
-        const result = await erc20.readBalance(network.id, scope.accountAddress, token, signal);
+        const results = await erc20.readBalances!(network.id, scope.accountAddress, metadata, signal);
         check();
-        tokenRows[index] = Object.freeze({ metadata: token, status: 'available', units: parseErc20Units(result.units) });
+        for (const [index, token] of metadata.entries()) {
+          const result = results[index]!;
+          tokenRows[index] = Object.freeze({ metadata: token, status: result.status, units: result.units });
+        }
       } catch {
         check();
-        tokenRows[index] = Object.freeze({ metadata: token, status: 'error', units: null });
+        for (const [index, token] of metadata.entries())
+          tokenRows[index] = Object.freeze({ metadata: token, status: 'error', units: null });
       }
     });
     for (const [index, saved] of collectibles.entries()) work.push(async () => {

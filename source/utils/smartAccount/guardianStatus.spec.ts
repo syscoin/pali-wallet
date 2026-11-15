@@ -319,3 +319,25 @@ test('rejects a backward clock jump beyond thirty seconds at completion', async 
   expect(now).toHaveBeenCalledTimes(2);
   expect(f.send).toHaveBeenCalledWith('eth_getBlockByNumber', ['0x64', false]);
 });
+
+test('settled batches preserve individual failures without repeating successful guardian reads', async () => {
+  const f = fixture();
+  const batches: string[][] = [];
+  const provider = {
+    send: jest.fn(),
+    readMany: async (requests: { method: string; params: any[] }[]) => {
+      batches.push(requests.map((request) => request.method));
+      return Promise.allSettled(
+        requests.map((request) => f.send(request.method, request.params))
+      );
+    },
+  };
+  const expected = await f.read();
+  f.send.mockClear();
+  expect(await f.read({ provider })).toEqual(expected);
+  expect(provider.send).not.toHaveBeenCalled();
+  expect(batches.length).toBeGreaterThan(0);
+  expect(
+    f.send.mock.calls.filter(([method]) => method === 'eth_getCode')
+  ).toHaveLength(1);
+});

@@ -5,7 +5,7 @@ import { findUtxoNetwork } from '../core/utxoNetworks.ts';
 import { isFiatCurrency, type FiatCurrency } from '../core/fiatPreference.ts';
 import { findKnownNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext.ts';
 import type { WalletHttpFetch } from '../platform/httpPolicy.ts';
-import { abortable, boundedResponseText, cancelResponseBody } from '../platformRpc.ts';
+import { readPublicMarketJson } from '../../../../source/shared/publicMarketRead.ts';
 import { rememberNativeAssetIcon } from './assetIconCache.ts';
 
 export type AssetMarketReference = Readonly<{
@@ -37,25 +37,20 @@ export function nativeAssetMarketSource(asset: AssetMarketReference): AssetMarke
     ? { kind: 'token', platform: metadata.coingeckoPlatformId, contract } : null;
 }
 
+type MarketReadWork = {
+  promise: Promise<NativeAssetMarketResult | null>;
+  controller: AbortController;
+  subscribers: number;
+  settled: boolean;
+};
+
 export function createNativeAssetMarketReader(fetch: WalletHttpFetch, purpose: AssetMarketPurpose, clock = nativeAssetMarketNow) {
   if (purpose !== 'price' && purpose !== 'history') throw new Error('Invalid market purpose');
   const cache = new Map<string, NativeAssetMarketResult>();
-  return async (source: AssetMarketSource, currency: FiatCurrency, owner: AbortSignal): Promise<NativeAssetMarketResult | null> => {
-    if (owner.aborted || !isFiatCurrency(currency)) return null;
-    const key = JSON.stringify([source, currency]), cached = cache.get(key), now = clock();
-    if (cached && cached.expiresAt > now && cached.expiresAt - now <= 300_000) return cached;
-    const request = new AbortController(), cancel = () => request.abort();
-    owner.addEventListener('abort', cancel, { once: true });
-    const timer = setTimeout(cancel, 8000);
-    const read = async (url: string, limit: number): Promise<unknown> => {
-      const pending = fetch(url, { method: 'GET', signal: request.signal, credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer' })
-        .then(response => { if (request.signal.aborted) cancelResponseBody(response); return response; });
-      const response = await abortable(pending, request.signal);
-      if (request.signal.aborted || !response.ok || response.redirected || (response.url && response.url !== url)) {
-        cancelResponseBody(response); throw new Error('Market unavailable');
-      }
-      return JSON.parse(await boundedResponseText(response, request.signal, limit));
-    };
+  const pending = new Map<string, MarketReadWork>();
+  const load = async (source: AssetMarketSource, currency: FiatCurrency, key: string, request: AbortController) => {
+    const timer = setTimeout(() => request.abort(), 8000);
+    const read = (url: string, limit: number): Promise<unknown> => readPublicMarketJson(fetch, url, limit, request.signal);
     try {
       const id = source.kind === 'native' ? source.id : readTokenMarketId(await read(tokenMarketIdentityUrl(source.platform, source.contract), 512 * 1024), source.platform, source.contract);
       if (!id || request.signal.aborted) return null;
@@ -66,16 +61,50 @@ export function createNativeAssetMarketReader(fetch: WalletHttpFetch, purpose: A
       let data = readAssetMarket(await quote, id, currency, Date.now());
       if (request.signal.aborted || !data) return null;
       if (history) {
-        // History failure preserves a valid quote; owner cancellation never does.
         const prices = await history;
-        if (owner.aborted) return null;
+        // The deadline can leave a valid quote available with no history. A
+        // canceled last subscriber never permits that result into the cache.
         data = Object.freeze({ ...data, prices: Object.freeze(prices) });
       }
       const result = Object.freeze({ data, expiresAt: clock() + 300_000 });
-      cache.delete(key); cache.set(key, result);
-      if (cache.size > 24) cache.delete(cache.keys().next().value!);
+      if (pending.get(key)?.controller === request && pending.get(key)?.subscribers) {
+        cache.delete(key); cache.set(key, result);
+        if (cache.size > 24) cache.delete(cache.keys().next().value!);
+      }
       return result;
     } catch { return null; }
-    finally { clearTimeout(timer); owner.removeEventListener('abort', cancel); cancel(); }
+    finally { clearTimeout(timer); request.abort(); }
+  };
+  return async (source: AssetMarketSource, currency: FiatCurrency, owner: AbortSignal): Promise<NativeAssetMarketResult | null> => {
+    if (owner.aborted || !isFiatCurrency(currency)) return null;
+    const key = JSON.stringify([source, currency]), cached = cache.get(key), now = clock();
+    if (cached && cached.expiresAt > now && cached.expiresAt - now <= 300_000) return cached;
+    let work = pending.get(key);
+    if (!work || work.controller.signal.aborted) {
+      const controller = new AbortController();
+      work = { controller, subscribers: 0, settled: false, promise: Promise.resolve(null) };
+      pending.set(key, work);
+      const captured = work;
+      work.promise = load(source, currency, key, controller).finally(() => {
+        captured.settled = true;
+        if (pending.get(key) === captured) pending.delete(key);
+      });
+    }
+    const selected = work;
+    selected.subscribers++;
+    return new Promise(resolve => {
+      let complete = false;
+      const finish = (result: NativeAssetMarketResult | null) => {
+        if (complete) return;
+        complete = true;
+        owner.removeEventListener('abort', cancel);
+        selected.subscribers--;
+        if (!selected.subscribers && !selected.settled) selected.controller.abort();
+        resolve(owner.aborted ? null : result);
+      };
+      const cancel = () => finish(null);
+      owner.addEventListener('abort', cancel, { once: true });
+      selected.promise.then(finish, () => finish(null));
+    });
   };
 }

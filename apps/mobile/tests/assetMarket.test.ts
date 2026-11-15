@@ -140,8 +140,7 @@ test('AED history comes from the requested-currency endpoint and stays separate 
   const aed = await read(source, 'aed', new AbortController().signal);
   assert.equal(aed?.data.price, 8080); assert.deepEqual(aed?.data.prices, [7700, 8080]);
   assert.deepEqual(urls, [assetMarketUrl('ethereum', 'usd'), assetMarketHistoryUrl('ethereum', 'usd'), assetMarketUrl('ethereum', 'aed'), assetMarketHistoryUrl('ethereum', 'aed')]);
-  assert.equal(requests[0]!.signal, requests[1]!.signal, 'One USD deadline covers quote and history');
-  assert.equal(requests[2]!.signal, requests[3]!.signal, 'One AED deadline covers quote and history');
+  assert(requests.every(request => request.signal?.aborted), 'Completed transport work releases its own signals');
   for (const request of requests) { assert.equal(request.credentials, 'omit'); assert.equal(request.redirect, 'error'); }
   assert.equal(await read(source, 'aed', new AbortController().signal), aed);
   assert.equal(await read(source, 'usd', new AbortController().signal), usd);
@@ -222,4 +221,50 @@ test('invalid chart touch geometry cannot select a sample', () => {
   for (const x of [NaN, Infinity, -Infinity]) assert.equal(assetMarketIndexAt(x, 300, 8), null);
   for (const width of [0, -1, NaN, Infinity]) assert.equal(assetMarketIndexAt(0, width, 8), null);
   for (const count of [0, 1, 242, 2.5, NaN]) assert.equal(assetMarketIndexAt(0, 300, count), null);
+});
+
+test('concurrent market consumers share cold reads and cancel independently', async () => {
+  let finish!: (value: Response) => void;
+  let requests = 0;
+  let physicalSignal: AbortSignal | null | undefined;
+  const read = createNativeAssetMarketReader(async (_url, init) => {
+    requests++;
+    physicalSignal = init.signal;
+    return new Promise<Response>(resolve => { finish = resolve; });
+  }, 'price');
+  const first = new AbortController(), second = new AbortController();
+  const source = { kind: 'native' as const, id: 'ethereum' };
+  const a = read(source, 'usd', first.signal);
+  const b = read(source, 'usd', second.signal);
+  assert.equal(requests, 1);
+  first.abort();
+  assert.equal(await a, null);
+  assert.equal(physicalSignal?.aborted, false);
+  finish(Response.json(market()));
+  const result = await b;
+  assert.equal(result?.data.price, 2200);
+  assert.equal(await read(source, 'usd', new AbortController().signal), result);
+  assert.equal(requests, 1);
+});
+
+test('simultaneous token price and chart share public identity and quote reads', async () => {
+  const contract = '0x' + '11'.repeat(20);
+  const urls: string[] = [];
+  const fetcher = async (url: string) => {
+    urls.push(url);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    if (url.includes('/contract/')) return Response.json({ id: 'ethereum', platforms: { ethereum: contract } });
+    if (url.includes('/market_chart?')) return Response.json(history());
+    return Response.json(market());
+  };
+  const price = createNativeAssetMarketReader(fetcher, 'price');
+  const chart = createNativeAssetMarketReader(fetcher, 'history');
+  const source = { kind: 'token' as const, platform: 'ethereum', contract };
+  const [quote, graph] = await Promise.all([
+    price(source, 'usd', new AbortController().signal),
+    chart(source, 'usd', new AbortController().signal),
+  ]);
+  assert.equal(urls.length, 3);
+  assert.equal(quote?.data.price, 2200);
+  assert.deepEqual(graph?.data.prices, [7700, 8080]);
 });

@@ -135,6 +135,9 @@ export async function readGuardianRecoveryObservation({
   now?: () => number;
   provider: {
     batch?: (requests: GuardianRpcRequest[]) => Promise<unknown[]>;
+    readMany?: (
+      requests: GuardianRpcRequest[]
+    ) => Promise<PromiseSettledResult<unknown>[]>;
     send: (
       method: GuardianRpcRequest['method'],
       params: unknown[]
@@ -148,8 +151,22 @@ export async function readGuardianRecoveryObservation({
     requests: GuardianRpcRequest[]
   ): Promise<PromiseSettledResult<unknown>[]> => {
     assertCurrent();
-    // The extension uses a validated JSON-RPC batch. Native singles settle
-    // together and never serve as a retry after a batch fails.
+    if (provider.readMany) {
+      const results = await provider.readMany(requests);
+      assertCurrent();
+      if (
+        !Array.isArray(results) ||
+        results.length !== requests.length ||
+        results.some(
+          (result) =>
+            !result ||
+            (result.status !== 'fulfilled' && result.status !== 'rejected')
+        )
+      )
+        throw new Error('Invalid guardian recovery batch response');
+      return results;
+    }
+    // Older providers keep their validated all-or-error batch contract.
     if (provider.batch) {
       const results = await provider.batch(requests);
       assertCurrent();

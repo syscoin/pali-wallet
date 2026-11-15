@@ -1583,10 +1583,22 @@ describe('worker-owned token state at review and initial held POST', () => {
     expect(
       good.verifyConfiguredChainId.mock.invocationCallOrder[1]
     ).toBeGreaterThan(good.send.mock.invocationCallOrder[simulationIndex]);
-    expect(good.send).toHaveBeenLastCalledWith('eth_getBlockByNumber', [
-      '0x10',
-      false,
+    expect(good.send).toHaveBeenLastCalledWith('eth_getTransactionCount', [
+      signer.address,
+      'latest',
     ]);
+    expect(
+      good.send.mock.calls.filter(
+        ([method, args]) =>
+          method === 'eth_getBlockByNumber' && args[0] === '0x10'
+      )
+    ).toHaveLength(1);
+    expect(
+      good.send.mock.calls.filter(
+        ([method, args]) =>
+          method === 'eth_getTransactionCount' && args[1] === '0x10'
+      )
+    ).toHaveLength(1);
     const bad = rpcFixture({ staleBalance: true });
     await expect(
       wallet.inspectOrdinaryEvmNonce(

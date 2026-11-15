@@ -129,6 +129,75 @@ describe('signAndSubmitSmartAccountExecutions', () => {
     }
   );
 
+  it('reuses the approved candidate and checks local ownership before authenticator entry', async () => {
+    const localChecks: string[] = [];
+    const signActionHash = jest.fn(async () => {
+      expect(localChecks.length).toBeGreaterThanOrEqual(2);
+      return validSlhDsaSignature;
+    });
+    const emitter = jest.fn(async ([, method]: string[], payload: any[]) => {
+      if (method === 'reuseSmartAccountExecutions') {
+        expect(payload).toEqual([
+          [],
+          0,
+          expect.objectContaining({
+            executionContextId: 'approved-context',
+            expectedContext,
+          }),
+        ]);
+        return {
+          accountId: 0,
+          actionHash: `0x${'12'.repeat(32)}`,
+          executionContextId: 'approved-context',
+          gasPayer: feePayer,
+          executions: [],
+          smartAccount,
+          userOperation: {
+            sender: ACCOUNT_ADDRESS,
+            accountGasLimits:
+              '0x' +
+              BigInt(1000).toString(16).padStart(32, '0') +
+              BigInt(500).toString(16).padStart(32, '0'),
+            preVerificationGas: '167',
+            gasFees:
+              '0x' + '0'.repeat(32) + BigInt(3).toString(16).padStart(32, '0'),
+          },
+        };
+      }
+      if (method === 'assertSmartAccountExecutionContext') {
+        expect(payload).toEqual(['approved-context', `0x${'12'.repeat(32)}`]);
+        localChecks.push(method);
+        return;
+      }
+      if (method === 'submitSmartAccountExecution') return payload[0];
+      throw Error(`Unexpected method ${method}`);
+    });
+    await expect(
+      signAndSubmitSmartAccountExecutions({
+        accountId: 0,
+        accountAddress: ACCOUNT_ADDRESS,
+        smartAccount,
+        authenticatorContexts: { 'slh-dsa': { signActionHash } },
+        controllerEmitter: emitter,
+        executions: [],
+        expectedContext,
+        approvedFeeQuote: {
+          executionContextId: 'approved-context',
+          maximumFeeWei: '5001',
+          feePayer,
+        },
+      })
+    ).resolves.toMatchObject({ executionContextId: 'approved-context' });
+    expect(signActionHash).toHaveBeenCalledTimes(1);
+    expect(
+      emitter.mock.calls.some(
+        ([[, method]]) =>
+          method === 'assertSmartAccountPreparedNonce' ||
+          method === 'prepareSmartAccountExecutions'
+      )
+    ).toBe(false);
+  });
+
   it.each(['before signing', 'after signing', 'after durable marker'])(
     'rejects a stale approval %s before submission',
     async (stage) => {
@@ -136,7 +205,7 @@ describe('signAndSubmitSmartAccountExecutions', () => {
       const beforeSubmit = jest.fn();
       let checks = 0;
       const expectedCheck =
-        stage === 'before signing' ? 1 : stage === 'after signing' ? 2 : 3;
+        stage === 'before signing' ? 1 : stage === 'after signing' ? 3 : 4;
       const emitter = jest.fn(async ([, method]: string[], payload: any[]) => {
         if (method === 'prepareSmartAccountExecutions') {
           expect(payload[2].expectedContext).toEqual(expectedContext);
@@ -172,13 +241,17 @@ describe('signAndSubmitSmartAccountExecutions', () => {
           smartAccount,
         })
       ).rejects.toMatchObject({ transactionNotBroadcast: true });
-      expect(signActionHash).toHaveBeenCalledTimes(expectedCheck === 1 ? 0 : 1);
-      if (expectedCheck > 1)
+      expect(signActionHash).toHaveBeenCalledTimes(
+        stage === 'before signing' ? 0 : 1
+      );
+      if (stage !== 'before signing')
         expect(signActionHash).toHaveBeenCalledWith(
           expect.objectContaining({ executionContextId: 'prepared-context' })
         );
-      expect(beforeSubmit).toHaveBeenCalledTimes(expectedCheck === 3 ? 1 : 0);
-      if (expectedCheck === 3)
+      expect(beforeSubmit).toHaveBeenCalledTimes(
+        stage === 'after durable marker' ? 1 : 0
+      );
+      if (stage === 'after durable marker')
         expect(beforeSubmit).toHaveBeenCalledWith({
           executionContextId: 'prepared-context',
         });
@@ -574,7 +647,7 @@ describe('signAndSubmitSmartAccountExecutions', () => {
     expect(emitter.mock.calls.map(([[, method]]) => method)).toEqual([
       'prepareSmartAccountExecutions',
       'assertSmartAccountExecutionContext',
-      'assertSmartAccountPreparedNonce',
+      'assertSmartAccountExecutionContext',
       'assertSmartAccountExecutionContext',
     ]);
   });

@@ -106,7 +106,7 @@ test('shared asset preparation and the separate late dispatch check reject a cha
   await assert.rejects(submitSmartAccountOperation({ ...prepared, accountId: 0, executionContextId: 'fixture', signature: '0x1234' }, host, () => {}), /Insufficient token or collectible balance/);
   assert.equal(dispatched, 0);
   balance = 6n;
-  host.sendTransaction = async () => { assert.fail('Changed post-authentication asset balance reached sender'); };
+  host.sendTransaction = async (...args) => { await args[4].assertPendingState(); assert.fail('Changed post-authentication asset balance reached sender'); };
   await assert.rejects(submitSmartAccountOperation({ ...prepared, accountId: 0, executionContextId: 'fixture', signature: '0x1234' }, host, () => {}), /Insufficient token or collectible balance/);
 });
 
@@ -147,7 +147,7 @@ test('shared submission rechecks Smart balance after authenticator signing and i
   f.funds.balance = BigInt(122);
   let sends = 0;
   await assert.rejects(submitSmartAccountOperation({ ...prepared, executions: [], accountId: 0, executionContextId: 'fixture', signature: '0x1234' },
-    nativeSubmitHost(f, prepared, async () => { sends++; throw new Error('Unexpected send'); }), () => {}),
+    nativeSubmitHost(f, prepared, async (...args) => { await args[4].assertPendingState(); sends++; throw new Error('Unexpected send'); }), () => {}),
     (error: any) => error.transactionNotBroadcast === true);
   assert.equal(sends, 0);
 });
@@ -166,10 +166,10 @@ test('ordinary native submission succeeds and rechecks balance at the payer auth
   });
   const params = { ...prepared, accountId: 0, executionContextId: 'fixture', signature: '0x1234' };
   const response = await submitSmartAccountOperation(params, host, () => {});
-  // One pair during preparation, one at submission entry, and one after the
-  // separate payer authorization. Synchronous context guards do no RPC work.
-  assert.equal(f.funds.balanceReads, 3);
-  assert.equal(f.funds.depositReads, 3);
+  // Preparation and the fresh payer authorization each check spendability.
+  // The lane delegates its nonce check to that same owned authorization.
+  assert.equal(f.funds.balanceReads, 2);
+  assert.equal(f.funds.depositReads, 2);
   assert.match(response.hash, /^0x[0-9a-f]{64}$/);
   assert.equal(sends, 1);
   host.sendTransaction = async (...args) => {

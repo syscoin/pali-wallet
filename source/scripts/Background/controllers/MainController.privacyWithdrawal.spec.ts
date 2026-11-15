@@ -129,7 +129,9 @@ function setup() {
       if (method === 'eth_getBalance')
         return '0x' + (await provider.getBalance()).toString(16);
       if (method === 'eth_maxPriorityFeePerGas') return '0x1';
-      throw new Error('Unexpected synthetic RPC');
+      if (method === 'eth_gasPrice')
+        return '0x' + (await provider.getGasPrice()).toString(16);
+      throw new Error('Unexpected synthetic RPC ' + method);
     }),
     getGasPrice: jest.fn(async () => BigInt(5)),
     verifyConfiguredChainId: jest.fn(async () => undefined),
@@ -388,7 +390,15 @@ it.each(['healthy', 'snapshot', 'expiry', 'service change'] as const)(
       (value: unknown) => ({ value, error: undefined }),
       (error: unknown) => ({ value: undefined, error })
     );
-    await entered.promise;
+    await Promise.race([
+      entered.promise,
+      result.then((settled) => {
+        throw (
+          settled.error ??
+          new Error('Submission finished before sender preflight')
+        );
+      }),
+    ]);
     expect(run.vault.reserveWithdrawalAttempt).toHaveBeenCalledTimes(1);
     expect(signer).not.toHaveBeenCalled();
     if (state === 'snapshot')
@@ -545,7 +555,7 @@ afterEach(() => {
 });
 
 it('quotes a fresh pending nonce and rechecks it even while the actual SDK read cache retains the previous nonce', async () => {
-  jest.useFakeTimers();
+  jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
   const { CustomJsonRpcProvider } = jest.requireActual(
     '@sidhujag/sysweb3-keyring/cjs/providers'
   );
@@ -582,6 +592,13 @@ it('quotes a fresh pending nonce and rechecks it even while the actual SDK read 
       };
     })
   );
+  live.readMany = jest.fn(async (calls) => {
+    const responses = await live.requestRpc(calls, calls.length > 1);
+    return responses.map((response) => ({
+      status: 'fulfilled' as const,
+      value: response.result,
+    }));
+  });
   live.getFeeData = jest.fn(async () => ({
     maxFeePerGas: BigInt(100),
     maxPriorityFeePerGas: BigInt(1),
@@ -1408,7 +1425,7 @@ function cachedChainProvider() {
       if (method === 'eth_chainId') return { jsonrpc: '2.0', result: chain };
       if (method === 'eth_getTransactionCount')
         return { jsonrpc: '2.0', result: '0x7' };
-      throw new Error('Unexpected synthetic RPC');
+      throw new Error('Unexpected synthetic RPC ' + method);
     })
   );
   live.estimateGas = jest.fn(async () => BigInt(100001));

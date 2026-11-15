@@ -1,3 +1,4 @@
+import { JsonRpcReadClient, RpcReadError } from '@sidhujag/sysweb3-keyring/cjs/rpc-read-client.js';
 import { AUTOMATIC_FEE, chooseEvmFees, snapshotEvmFeeChoice, type EvmFeeChoice, type EvmFeeRates } from '../../../../source/shared/transactionFeeChoice.ts';
 import { DAPP_PUBLIC_RPC_METHODS, normalizeDappRpcRequest, type DappPublicRpcMethod, type DappPublicRpcRequest } from '../../../../source/shared/dappRpcReads.ts';
 import { EthereumRpcErrorHandler } from '../../../../source/helpers/errors/errorClassesHandlers.ts';
@@ -39,12 +40,20 @@ const RETIREMENT_METHODS: Readonly<Record<EvmSignedRetirementReadMethod, true>> 
 const BLOCK_BYTES = 512 * 1024;
 const RECEIPT_BYTES = 1024 * 1024;
 const CODE_BYTES = 32 * 1024;
+export type NativeSmartAccountReadMethod = 'eth_call' | 'eth_getCode' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getBlockByNumber' | 'eth_chainId' | 'eth_gasPrice' | 'eth_maxPriorityFeePerGas' | 'eth_feeHistory' | 'eth_getTransactionCount' | 'eth_getTransactionReceipt';
+export type NativeSmartAccountReadPhase = Readonly<{
+  read(method: NativeSmartAccountReadMethod, params: readonly unknown[]): Promise<unknown>;
+  readMany(requests: readonly { method: NativeSmartAccountReadMethod; params: readonly unknown[] }[]): Promise<PromiseSettledResult<unknown>[]>;
+  feeData(): ReturnType<EvmTransferReadRpc['smartAccountFeeData']>;
+  assertCurrent(): void;
+}>;
 type Method = DappPublicRpcMethod | 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_call' | 'eth_getStorageAt' | 'eth_gasPrice' |
   'eth_maxPriorityFeePerGas' | 'eth_feeHistory' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getTransactionReceipt' | 'eth_getTransactionCount' | 'eth_getTransactionByHash';
 const METHODS: readonly string[] = Object.freeze([...DAPP_PUBLIC_RPC_METHODS, 'eth_chainId', 'eth_getBlockByNumber', 'eth_getCode', 'eth_call', 'eth_getStorageAt', 'eth_gasPrice',
   'eth_maxPriorityFeePerGas', 'eth_feeHistory', 'eth_getBalance', 'eth_estimateGas', 'eth_getTransactionReceipt', 'eth_getTransactionCount', 'eth_getTransactionByHash']);
 type Reader = ((method: Method, params: readonly unknown[]) => Promise<unknown>) & {
   assertCurrent(): void;
+  many(requests: readonly { method: Method; params: readonly unknown[] }[]): Promise<PromiseSettledResult<unknown>[]>;
 };
 type TransferRequest = Readonly<{ from: string; to: string; value: string; data: string }>;
 type ReadBlock = EvmSampledBlock & Readonly<{ baseFee: bigint | null; gasLimit: bigint }>;
@@ -135,6 +144,9 @@ export class EvmTransferReadRpc {
     const abort = () => controller.abort();
     external.addEventListener('abort', abort, { once: true });
     const timer = setTimeout(abort, this.timeoutMs);
+    const limitFor = (method: Method) => scope === 'dapp-rpc' ? DAPP_REQUEST_LIMITS.bytes
+      : method === 'eth_getTransactionReceipt' ? RECEIPT_BYTES : method === 'eth_getBlockByNumber' ? BLOCK_BYTES
+      : method === 'eth_getCode' ? (boundedContractCode ? CODE_BYTES * 2 + 512 : CODE_BYTES) : 16 * 1024;
     const request = async (method: Method, params: readonly unknown[]) => {
       guardedRead(guard);
       if (controller.signal.aborted) return rejectRead('CANCELLED');
@@ -155,15 +167,14 @@ export class EvmTransferReadRpc {
       if (!response.ok) return rejectRead('UNAVAILABLE');
       const contentType = response.headers.get('content-type');
       if (contentType && !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(contentType)) return rejectRead('INVALID_RESPONSE');
-      const limit = scope === 'dapp-rpc' ? DAPP_REQUEST_LIMITS.bytes : method === 'eth_getTransactionReceipt' ? RECEIPT_BYTES : method === 'eth_getBlockByNumber' ? BLOCK_BYTES : method === 'eth_getCode' ? (boundedContractCode ? CODE_BYTES * 2 + 512 : CODE_BYTES) : 16 * 1024;
+      const limit = limitFor(method);
       const text = await cancellable(boundedResponseText(response, controller.signal, limit), controller.signal);
       guardedRead(guard);
       const result = object(JSON.parse(text));
       if (result.jsonrpc !== '2.0' || result.id !== id) return rejectRead('INVALID_RESPONSE');
       return result;
     };
-    const read: Reader = Object.assign(async (method: Method, params: readonly unknown[]) => {
-      const result = await request(method, params);
+    const resultValue = (result: Record<string, unknown>, method: Method, params: readonly unknown[]) => {
       if (Object.hasOwn(result, 'error')) {
         if (Object.hasOwn(result, 'result')) return rejectRead('INVALID_RESPONSE');
         const error = object(result.error);
@@ -190,7 +201,59 @@ export class EvmTransferReadRpc {
       }
       if (!Object.hasOwn(result, 'result')) return rejectRead('INVALID_RESPONSE');
       return result.result;
+    };
+    const batch = new JsonRpcReadClient(this.network.rpcUrl, {
+      signal: controller.signal, timeoutMs: this.timeoutMs, recoverResponse: false, maxConcurrency: 4,
+      maxBatchItems: 40, maxResponseBytes: 2 * 1024 * 1024,
+      requestInit: { credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer' },
+      fetch: async (url, init) => {
+        guardedRead(guard);
+        if (url !== this.network.rpcUrl) return rejectRead('PROFILE_CHANGED');
+        const response = await this.fetcher(url, init);
+        guardedRead(guard);
+        if (response.redirected || (response.url && new URL(response.url).href !== new URL(this.network.rpcUrl).href)) {
+          cancelResponseBody(response); return rejectRead('PROFILE_CHANGED');
+        }
+        const type = response.headers.get('content-type');
+        if (type && !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(type))
+          return rejectRead('INVALID_RESPONSE');
+        return response;
+      },
+    });
+    const read: Reader = Object.assign(async (method: Method, params: readonly unknown[]) => {
+      if (controller.signal.aborted) return rejectRead('CANCELLED');
+      if (scope === 'dapp-rpc') return resultValue(await request(method, params), method, params);
+      guardedRead(guard);
+      if (!METHODS.includes(method)) return rejectRead('INVALID_INPUT');
+      try {
+        const result = await batch.read(method, params, { signal: controller.signal, maxResponseBytes: limitFor(method) });
+        guardedRead(guard);
+        if (controller.signal.aborted) return rejectRead('CANCELLED');
+        return result;
+      } catch (error) {
+        if (error instanceof RpcReadError) return resultValue({ error }, method, params);
+        throw error;
+      }
     }, {
+      many: async (requests: readonly { method: Method; params: readonly unknown[] }[]) => {
+        guardedRead(guard);
+        const results = await batch.readMany(requests, { signal: controller.signal });
+        guardedRead(guard);
+        if (controller.signal.aborted) return rejectRead('CANCELLED');
+        return results.map((result, index): PromiseSettledResult<unknown> => {
+          const method = requests[index]!.method;
+          const limit = limitFor(method);
+          if (result.status === 'fulfilled') {
+            if (new TextEncoder().encode(JSON.stringify(result.value)).byteLength > limit)
+              return { status: 'rejected', reason: new EvmTransferReadError('INVALID_RESPONSE') };
+            return result;
+          }
+          if (!(result.reason instanceof RpcReadError)) return result;
+          try {
+            return { status: 'fulfilled', value: resultValue({ error: result.reason }, requests[index]!.method, requests[index]!.params) };
+          } catch (error) { return { status: 'rejected', reason: error }; }
+        });
+      },
       assertCurrent: () => { guardedRead(guard); if (controller.signal.aborted) rejectRead('CANCELLED'); },
 
     });
@@ -215,7 +278,7 @@ export class EvmTransferReadRpc {
         return rejectRead('INVALID_RESPONSE');
       return rejectRead('UNAVAILABLE');
     } finally {
-      controller.abort(); clearTimeout(timer); external.removeEventListener('abort', abort);
+      controller.abort(); batch.destroy(); clearTimeout(timer); external.removeEventListener('abort', abort);
     }
   }
   private async checkChain(read: Reader) {
@@ -263,6 +326,36 @@ export class EvmTransferReadRpc {
       return result;
     }, 'smart-account');
   }
+  smartAccountReadPhase<T>(signal: AbortSignal, guard: () => void,
+    work: (phase: NativeSmartAccountReadPhase) => Promise<T>): Promise<T> {
+    return this.operation(signal, guard, async (read) => {
+      await this.checkChain(read);
+      const phase = Object.freeze({
+        read: (method: NativeSmartAccountReadMethod, params: readonly unknown[]) => {
+          if (!['eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber',
+            'eth_chainId', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory',
+            'eth_getTransactionCount', 'eth_getTransactionReceipt'].includes(method) || !Array.isArray(params) || params.length > 5)
+            return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
+          return read(method, params);
+        },
+        readMany: (requests: readonly { method: NativeSmartAccountReadMethod; params: readonly unknown[] }[]) => {
+          if (requests.some(request => !['eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber',
+            'eth_chainId', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory',
+            'eth_getTransactionCount', 'eth_getTransactionReceipt'].includes(request.method) || !Array.isArray(request.params) || request.params.length > 5))
+            return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
+          return read.many(requests);
+        },
+        feeData: async () => {
+          const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
+          return this.feeData(read, sampled, signal);
+        },
+        assertCurrent: read.assertCurrent,
+      });
+      const result = await work(phase);
+      await this.checkChain(read);
+      return result;
+    }, 'smart-account');
+  }
   smartAccountFeeData(signal: AbortSignal, guard: () => void) {
     return this.operation(signal, guard, async (read) => {
       await this.checkChain(read);
@@ -281,7 +374,8 @@ export class EvmTransferReadRpc {
   private async observeSmartAccountInfrastructure(read: Reader) {
     const { projectSmartAccountInfrastructureObservation,
       SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } = await import('../../../../source/utils/smartAccount/infrastructureObservation.ts');
-    const codes = await Promise.all(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => read('eth_getCode', [address, 'latest'])));
+    const outcomes = await read.many(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => ({ method: 'eth_getCode' as const, params: [address, 'latest'] })));
+    const codes = outcomes.map(result => { if (result.status === 'rejected') throw result.reason; return result.value; });
     const status = projectSmartAccountInfrastructureObservation(Number(this.network.chainId), codes);
     if (!status) return rejectRead('INVALID_RESPONSE');
     return status;
@@ -345,7 +439,7 @@ export class EvmTransferReadRpc {
           chainId,
           moduleAddress: getPaliModuleAddress(chainId, 'guardian-recovery'),
           knownOperationId,
-          provider: { send: read },
+          provider: { send: read, readMany: requests => read.many(requests) },
           assertCurrent: read.assertCurrent,
         });
         return { status: 'observed', observation };

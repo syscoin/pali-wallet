@@ -245,13 +245,7 @@ describe('infrastructure transaction broadcast boundary', () => {
           }
         )
       ).resolves.toBe(response);
-      expect(wallet.inspectOrdinaryEvmNonce).toHaveBeenCalledWith(
-        expect.any(Object),
-        address,
-        expect.objectContaining({
-          reviewed: { nonce: expected, source },
-        })
-      );
+      expect(wallet.inspectOrdinaryEvmNonce).not.toHaveBeenCalled();
       expect(send).toHaveBeenCalledWith(
         snapshotPreparedEvmTransaction(transaction),
         true,

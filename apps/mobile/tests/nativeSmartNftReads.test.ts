@@ -110,3 +110,73 @@ test('native Smart NFT reads preserve wrong-chain and cancellation refusals', as
   assert.equal(cancelled.ids.length, 1);
   assert.notEqual(cancelled.ids[0], 3n, 'a cancelled negative probe cannot authorize an ownership read');
 });
+
+test('a native Smart Account phase brackets nested reads once and preserves explicit selectors', async () => {
+  const calls: { method: string; params: unknown[] }[] = [];
+  const rpc = new EvmTransferReadRpc(getNativeNetwork('ethereum'), { fetch: async (_url, init) => {
+    const request = JSON.parse(String(init.body));
+    calls.push(request);
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result:
+      request.method === 'eth_chainId' ? '0x1' : request.method === 'eth_getBalance' ? '0x12' : '0x6000' }),
+      { headers: { 'content-type': 'application/json' } });
+  } });
+  const provider = createNativeSmartAccountProvider(getNativeNetwork('ethereum'), rpc, new AbortController().signal, () => undefined);
+  await provider.verifyConfiguredChainId();
+  assert.deepEqual(calls.map(call => call.method), ['eth_chainId']);
+  calls.length = 0;
+  await provider.withReadPhase(async phase => {
+    await phase.verifyConfiguredChainId();
+    await phase.send('eth_getBalance', [owner, 'pending']);
+    await phase.withReadPhase(async nested => {
+      await nested.verifyConfiguredChainId();
+      await nested.send('eth_getBalance', [owner, '0x12']);
+    });
+  });
+  assert.deepEqual(calls.map(call => call.method), ['eth_chainId', 'eth_getBalance', 'eth_getBalance', 'eth_chainId']);
+  assert.equal(calls[1]!.params[1], 'pending');
+  assert.equal(calls[2]!.params[1], '0x12');
+});
+
+test('native Smart Account phases reject wrong chains and late escaped readers', async () => {
+  for (const failAt of [1, 2]) {
+    let chains = 0;
+    const calls: string[] = [];
+    const rpc = new EvmTransferReadRpc(getNativeNetwork('ethereum'), { fetch: async (_url, init) => {
+      const request = JSON.parse(String(init.body)); calls.push(request.method);
+      const result = request.method === 'eth_chainId' ? (++chains === failAt ? '0x2' : '0x1') : '0x12';
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { headers: { 'content-type': 'application/json' } });
+    } });
+    const provider = createNativeSmartAccountProvider(getNativeNetwork('ethereum'), rpc, new AbortController().signal, () => undefined);
+    await assert.rejects(provider.withReadPhase(phase => phase.send('eth_getBalance', [owner, 'pending'])), { code: 'PROFILE_CHANGED' });
+    if (failAt === 1) assert.deepEqual(calls, ['eth_chainId']);
+  }
+  const f = fixture();
+  let escaped: Parameters<Parameters<typeof f.provider.withReadPhase>[0]>[0] | undefined;
+  await f.provider.withReadPhase(async phase => { escaped = phase; });
+  await assert.rejects(escaped!.send('eth_getBalance', [owner, 'pending']), { code: 'CANCELLED' });
+});
+
+test('shared native phase sends mixed reads in one HTTP batch with two chain probes', async () => {
+  const { withEvmReadPhase } = await import('../../../source/shared/evmReadPhase.ts');
+  const bodies: { method: string; params: unknown[] }[][] = [];
+  const rpc = new EvmTransferReadRpc(getNativeNetwork('ethereum'), { fetch: async (_url, init) => {
+    const body = JSON.parse(String(init.body));
+    const rows = Array.isArray(body) ? body : [body];
+    bodies.push(rows);
+    const response = rows.map((request: { method: string; id: number }) => ({ jsonrpc: '2.0', id: request.id,
+      result: request.method === 'eth_chainId' ? '0x1' : request.method === 'eth_getCode' ? '0x6000' : '0x1',
+    }));
+    return Response.json(Array.isArray(body) ? response : response[0]);
+  } });
+  const provider = createNativeSmartAccountProvider(getNativeNetwork('ethereum'), rpc, new AbortController().signal, () => undefined);
+  await withEvmReadPhase(provider, () => undefined, async phase => {
+    assert.deepEqual(await Promise.all([
+      phase.send('eth_getCode', [token, 'pending']),
+      phase.send('eth_getBalance', [owner, 'pending']),
+      phase.send('eth_getTransactionCount', [owner, 'pending']),
+    ]), ['0x6000', '0x1', '0x1']);
+  });
+  assert.deepEqual(bodies.map(rows => rows.map(row => row.method)), [
+    ['eth_chainId'], ['eth_getCode', 'eth_getBalance', 'eth_getTransactionCount'], ['eth_chainId'],
+  ]);
+});

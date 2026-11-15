@@ -188,3 +188,42 @@ test('a malformed preference needs explicit reset and an uncertain save is only 
   assert.deepEqual(preferences.getSnapshot(), { status: 'ready', currency: 'eur' });
   assert.equal(writes, 2);
 });
+
+test('concurrent native quotes share one read with independent cancellation', async () => {
+  let release!: (response: Response) => void;
+  let calls = 0;
+  let requestSignal: AbortSignal | null | undefined;
+  const read = createNativeCoinQuoteReader(async (_url, init) => {
+    calls++; requestSignal = init.signal;
+    return new Promise(resolve => { release = resolve; });
+  });
+  const source = nativeCoinQuoteSource(getNativeNetwork('ethereum'))!;
+  const first = new AbortController(), second = new AbortController();
+  const a = read(source, 'usd', first.signal), b = read(source, 'usd', second.signal);
+  assert.equal(calls, 1);
+  first.abort();
+  assert.equal(await a, null);
+  assert.equal(requestSignal?.aborted, false);
+  release(Response.json({ ethereum: { usd: 100 } }));
+  const quote = await b;
+  assert.equal(quote?.price, 100);
+  assert.equal(await read(source, 'usd', signal()), quote);
+  assert.equal(calls, 1);
+});
+
+test('cancelled native quote work cannot populate or overwrite a newer cache', async () => {
+  const releases: ((response: Response) => void)[] = [];
+  const read = createNativeCoinQuoteReader(async () => new Promise(resolve => releases.push(resolve)));
+  const source = nativeCoinQuoteSource(getNativeNetwork('ethereum'))!;
+  const owner = new AbortController();
+  const old = read(source, 'usd', owner.signal);
+  owner.abort();
+  assert.equal(await old, null);
+  const current = read(source, 'usd', signal());
+  assert.equal(releases.length, 2);
+  releases[1]!(Response.json({ ethereum: { usd: 200 } }));
+  assert.equal((await current)?.price, 200);
+  releases[0]!(Response.json({ ethereum: { usd: 100 } }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal((await read(source, 'usd', signal()))?.price, 200);
+});

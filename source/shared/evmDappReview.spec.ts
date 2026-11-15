@@ -57,7 +57,7 @@ function fixture(legacy = false) {
     async read(
       method: 'eth_getBlockByNumber' | 'eth_estimateGas',
       params: readonly unknown[]
-    ) {
+    ): Promise<unknown> {
       requests.push({ method, params });
       if (method === 'eth_estimateGas') return `0x${estimate.toString(16)}`;
       if (params[0] === 'pending' && pendingHeader !== 'valid')
@@ -206,6 +206,80 @@ describe('shared generic per-call fee review', () => {
     }
   );
 
+  test.each([false, true])(
+    'refreshes approved fees without rereading market recommendations, legacy=%s',
+    async (legacy) => {
+      const f = fixture(legacy);
+      const fees = jest.spyOn(f.ports, 'fees');
+      const review = await f.review({
+        from,
+        to,
+        data: '0x1234',
+        ...(legacy
+          ? { type: '0x0', gasPrice: '0x0' }
+          : {
+              type: '0x2',
+              maxFeePerGas: '0x1',
+              maxPriorityFeePerGas: '0x0',
+            }),
+      });
+      expect(
+        legacy
+          ? review.feeComparison.gasPrice
+          : review.feeComparison.maxFeePerGas
+      ).toBeDefined();
+      fees.mockRejectedValue(new Error('Fee oracle unavailable'));
+      await expect(
+        review.submit(f.check, jest.fn(), { kind: 'transaction' })
+      ).resolves.toBe(hash);
+      expect(fees).toHaveBeenCalledTimes(1);
+      expect(
+        f.requests.filter(({ method }) => method === 'eth_estimateGas')
+      ).toHaveLength(3);
+      const refreshed = await f.prepare.mock.results.at(-1)!.value;
+      expect(refreshed.transaction).toEqual(review.transaction);
+      expect(refreshed.feeComparison).toBe(review.feeComparison);
+      expect(f.sign).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test.each(['baseFee', 'estimate', 'balance', 'nonce', 'block'] as const)(
+    'an unavailable recommendation oracle cannot bypass refreshed %s checks',
+    async (change) => {
+      const f = fixture();
+      const review = await f.review();
+      const fees = jest.spyOn(f.ports, 'fees');
+      fees.mockRejectedValue(new Error('Fee oracle unavailable'));
+      if (change === 'baseFee') {
+        const read = f.ports.read;
+        f.ports.read = async (method, params) => {
+          const result = await read(method, params);
+          if (typeof result === 'string') return result;
+          return { ...(result as object), baseFeePerGas: '0x4' };
+        };
+      } else if (change === 'estimate') {
+        f.growEstimate();
+      } else if (change === 'balance') {
+        f.ports.balance = async () => BigInt(0);
+      } else if (change === 'nonce') {
+        f.ports.nonce = async () => ({
+          nonce: BigInt(5),
+          state: 'pending' as const,
+        });
+      } else {
+        f.ports.verifyBlock = async () => {
+          throw new Error('Canonical block changed');
+        };
+      }
+      await expect(
+        review.submit(f.check, jest.fn(), { kind: 'transaction' })
+      ).rejects.toThrow();
+      expect(fees).not.toHaveBeenCalled();
+      expect(f.sign).not.toHaveBeenCalled();
+      expect(f.submit).not.toHaveBeenCalled();
+    }
+  );
+
   test.each(['expire', 'retire', 'switchChain', 'growEstimate'] as const)(
     '%s requires a fresh review before signing',
     async (change) => {
@@ -282,6 +356,140 @@ describe('shared generic per-call fee review', () => {
       code: 'INVALID_RESPONSE',
     });
     expect(f.sign).not.toHaveBeenCalled();
+  });
+});
+
+describe('host-owned fixed fee prices', () => {
+  const input = (legacy: boolean): EvmDappTransactionRequest => ({
+    from,
+    to,
+    data: '0x1234',
+    value: '5',
+    gasLimit: '25200',
+    nonce: 4,
+    ...(legacy
+      ? { type: 0, gasPrice: '2' }
+      : { type: 2, maxFeePerGas: '3', maxPriorityFeePerGas: '1' }),
+  });
+  test.each([false, true])(
+    'keeps complete fixed prices with fresh execution checks, legacy=%s',
+    async (legacy) => {
+      const f = fixture(legacy);
+      const fees = jest
+        .spyOn(f.ports, 'fees')
+        .mockRejectedValue(new Error('Fee oracle forbidden'));
+      const nonce = jest.spyOn(f.ports, 'nonce');
+      const balance = jest.spyOn(f.ports, 'balance');
+      const verifyChain = jest.spyOn(f.ports, 'verifyChain');
+      const verifyBlock = jest.spyOn(f.ports, 'verifyBlock');
+      const quote = await prepareEvmDappQuote(input(legacy), {
+        ...f.ports,
+        feePolicy: 'fixed',
+      });
+      expect(quote.transaction).toMatchObject({
+        nonce: '4',
+        gasLimit: '25200',
+        value: '5',
+        data: '0x1234',
+        ...(legacy
+          ? { type: 0, gasPrice: '2' }
+          : { type: 2, maxFeePerGas: '3', maxPriorityFeePerGas: '1' }),
+      });
+      expect(fees).not.toHaveBeenCalled();
+      expect(nonce).toHaveBeenCalledTimes(1);
+      expect(balance).toHaveBeenCalledTimes(1);
+      expect(verifyChain).toHaveBeenCalledTimes(2);
+      expect(verifyBlock).toHaveBeenCalledTimes(1);
+      expect(f.requests).toEqual([
+        { method: 'eth_getBlockByNumber', params: ['latest', false] },
+        {
+          method: 'eth_estimateGas',
+          params: [
+            {
+              from,
+              to,
+              value: '0x5',
+              data: '0x1234',
+              nonce: '0x4',
+              chainId: '0x1',
+              ...(legacy
+                ? { type: '0x0', gasPrice: '0x2' }
+                : {
+                    type: '0x2',
+                    maxFeePerGas: '0x3',
+                    maxPriorityFeePerGas: '0x1',
+                    accessList: [],
+                  }),
+            },
+            'pending',
+          ],
+        },
+      ]);
+    }
+  );
+
+  test.each([{}, { maxFeePerGas: '3' }, { maxPriorityFeePerGas: '1' }])(
+    'rejects incomplete fixed prices %j',
+    async (partial) => {
+      const f = fixture();
+      const fees = jest.spyOn(f.ports, 'fees');
+      await expect(
+        prepareEvmDappQuote(
+          { from, to, data: '0x1234', value: '0', ...partial },
+          { ...f.ports, feePolicy: 'fixed' }
+        )
+      ).rejects.toThrow('REVIEW_REQUIRED');
+      expect(fees).not.toHaveBeenCalled();
+      expect(
+        f.requests.some(({ method }) => method === 'eth_estimateGas')
+      ).toBe(false);
+    }
+  );
+
+  test.each([false, true])(
+    'rejects a new base fee above the fixed cap, legacy=%s',
+    async (legacy) => {
+      const f = fixture(legacy);
+      const read = f.ports.read;
+      f.ports.read = async (method, params) => {
+        const result = await read(method, params);
+        return method === 'eth_getBlockByNumber'
+          ? { ...(result as object), baseFeePerGas: '0x4' }
+          : result;
+      };
+      await expect(
+        prepareEvmDappQuote(input(legacy), { ...f.ports, feePolicy: 'fixed' })
+      ).rejects.toThrow('REVIEW_REQUIRED');
+    }
+  );
+
+  test.each(['funds', 'estimate', 'block', 'chain', 'owner'])(
+    'retains %s rejection with fixed prices',
+    async (failure) => {
+      const f = fixture();
+      if (failure === 'funds') f.ports.balance = async () => BigInt(0);
+      if (failure === 'estimate') f.growEstimate();
+      if (failure === 'block')
+        f.ports.verifyBlock = async () => {
+          throw new Error('canonical block changed');
+        };
+      if (failure === 'chain') f.switchChain();
+      if (failure === 'owner') f.retire();
+      await expect(
+        prepareEvmDappQuote(input(false), { ...f.ports, feePolicy: 'fixed' })
+      ).rejects.toThrow();
+    }
+  );
+
+  test('keeps ordinary dapp price recommendation and pending-header behavior', async () => {
+    const f = fixture();
+    const fees = jest.spyOn(f.ports, 'fees');
+    await prepareEvmDappQuote(input(false), f.ports);
+    expect(fees).toHaveBeenCalledTimes(1);
+    expect(f.requests).toContainEqual({
+      method: 'eth_getBlockByNumber',
+      params: ['pending', false],
+    });
   });
 });
 

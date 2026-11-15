@@ -158,15 +158,33 @@ beforeEach(() => {
   provider = {
     getTransactionCount: jest.fn().mockResolvedValue(0),
     getBlockNumber: jest.fn().mockResolvedValue(100),
-    sendBatch: jest.fn(async (method: string, params: any[]) => {
-      if (method !== 'eth_getBlockByNumber')
-        throw new Error('Unexpected provider method');
-      return params.map(([number]) => ({
-        number,
-        timestamp: '0x6553f100',
-        transactions: [],
-      }));
-    }),
+    signal: new AbortController().signal,
+    readMany: jest.fn(async (requests: { method: string; params: any[] }[]) =>
+      requests.map(({ method, params }) => {
+        if (method === 'eth_chainId')
+          return {
+            status: 'fulfilled',
+            value: `0x${network.chainId.toString(16)}`,
+          };
+        if (method !== 'eth_getBlockByNumber')
+          throw new Error('Unexpected provider method');
+        const number = params[0] === 'latest' ? 100 : Number(BigInt(params[0]));
+        const blockHash = (height: number) =>
+          `0x${BigInt(height + 1)
+            .toString(16)
+            .padStart(64, '0')}`;
+        return {
+          status: 'fulfilled',
+          value: {
+            number: `0x${number.toString(16)}`,
+            hash: blockHash(number),
+            parentHash: blockHash(number - 1),
+            timestamp: '0x6553f100',
+            transactions: [],
+          },
+        };
+      })
+    ),
   };
   manager = TransactionsManager();
   manager.utils.clearCache();
@@ -323,7 +341,13 @@ it('caches validated empty history without repeating the public reads', async ()
   expect(reads).toHaveLength(3);
   expect(await update()).toEqual([]);
   expect(reads).toHaveLength(3);
-  expect(provider.sendBatch).toHaveBeenCalledTimes(5);
+  expect(
+    provider.readMany.mock.calls
+      .flatMap(([calls]) => calls)
+      .filter(
+        ({ method, params }) => method === 'eth_getBlockByNumber' && params[1]
+      )
+  ).toHaveLength(21);
 });
 
 it.each(['both500', 'bothReject'] as const)(
@@ -346,7 +370,7 @@ it.each(['both500', 'bothReject'] as const)(
       secondHashes: [TOKEN_HASH],
       finalReads: 6,
     });
-    expect(provider.sendBatch).not.toHaveBeenCalled();
+    expect(provider.readMany).not.toHaveBeenCalled();
   }
 );
 

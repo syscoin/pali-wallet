@@ -1,9 +1,12 @@
 import { EvmAutoNonceAcceptance } from '../../../shared/evmAutoNonce';
+import { prepareEvmDappQuote } from '../../../shared/evmDappPreparation';
+import { NATIVE_EVM_FEE_FUNDING } from '../../../shared/evmFeeApproval';
 
 import { inspectWorkerAssetState } from './evmAssetState';
 import {
   assertNoObservedLegacyPending,
   planExtensionEvmNonce,
+  planExtensionEvmNonceForQuote,
   reviewedExtensionNonce,
 } from './evmAutoNonce';
 
@@ -575,3 +578,135 @@ it.each(['automatic', 'manual'] as const)(
     });
   }
 );
+
+describe('nonce selection within an owned fee-quote read phase', () => {
+  const block = { number: '10', hash: '0x' + '12'.repeat(32) };
+
+  it('uses the enclosing canonical block, with fresh counts on every phase', async () => {
+    const f = fixture('0x0', '0x0');
+    await expect(
+      planExtensionEvmNonceForQuote(f.input, block)
+    ).resolves.toMatchObject({
+      nonce: 0,
+      canonicalBlock: { ...block, number: '0xa' },
+    });
+    f.replies.set('eth_getTransactionCount:pending', '0x1');
+    await expect(
+      planExtensionEvmNonceForQuote(f.input, block)
+    ).resolves.toMatchObject({ nonce: 1 });
+    expect(f.provider.verifyConfiguredChainId).not.toHaveBeenCalled();
+    expect(f.provider.send.mock.calls).toEqual([
+      ['eth_getTransactionCount', [from, '0xa']],
+      ['eth_getTransactionCount', [from, 'pending']],
+      ['eth_getTransactionCount', [from, '0xa']],
+      ['eth_getTransactionCount', [from, 'pending']],
+    ]);
+  });
+
+  it('keeps retained reservations and cancellation authoritative', async () => {
+    const f = fixture('0x0', '0x0');
+    f.input.snapshot.retained.push(retained);
+    f.provider.send.mockImplementation(async (method) =>
+      method === 'eth_getTransactionByHash' ? null : '0x0'
+    );
+    await expect(
+      planExtensionEvmNonceForQuote(f.input, block)
+    ).rejects.toMatchObject({
+      code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT',
+      transactionNotBroadcast: true,
+    });
+    f.abort.abort(new Error('quote retired'));
+    await expect(planExtensionEvmNonceForQuote(f.input, block)).rejects.toThrow(
+      'quote retired'
+    );
+  });
+
+  it.each(['none', 'block', 'chain'])(
+    'leaves final canonical and chain checks with the enclosing quote: %s drift',
+    async (drift) => {
+      const f = fixture('0x0', '0x0');
+      const header = {
+        ...block,
+        number: '0xa',
+        gasLimit: '0x1c9c380',
+        baseFeePerGas: '0x1',
+      };
+      const original = f.provider.send.getMockImplementation()!;
+      f.provider.send.mockImplementation(async (method, params) => {
+        if (method === 'eth_getBlockByNumber')
+          return params[0] === '0xa' && drift === 'block'
+            ? { ...header, hash: '0x' + '34'.repeat(32) }
+            : header;
+        if (method === 'eth_estimateGas') return '0x5208';
+        return original(method, params);
+      });
+      const work = prepareEvmDappQuote(
+        {
+          from,
+          to: '0x' + '22'.repeat(20),
+          value: '1',
+          data: '0x',
+          type: 2,
+          maxFeePerGas: '2',
+          maxPriorityFeePerGas: '0',
+        },
+        {
+          chainId,
+          scope: 'owned-test-quote',
+          assertCurrent: f.input.assertCurrent,
+          now: () => 0,
+          funding: NATIVE_EVM_FEE_FUNDING,
+          gasPolicy: { kind: 'estimate' },
+          read: (method, params) => f.provider.send(method, [...params]),
+          verifyChain: async () => {
+            await f.provider.verifyConfiguredChainId();
+            if (
+              drift === 'chain' &&
+              f.provider.verifyConfiguredChainId.mock.calls.length === 2
+            )
+              throw new Error('chain changed');
+          },
+          verifyBlock: async (sampled) => {
+            const observed: any = await f.provider.send(
+              'eth_getBlockByNumber',
+              ['0xa', false]
+            );
+            if (observed.hash !== sampled.hash)
+              throw new Error('block changed');
+          },
+          nonce: async (sampled) => {
+            const result = await planExtensionEvmNonceForQuote(
+              f.input,
+              sampled
+            );
+            return { ...result, nonce: BigInt(result.nonce) };
+          },
+          balance: async () => BigInt(1000000),
+          fees: async () => ({
+            baseFeePerGas: BigInt(1),
+            gasPrice: BigInt(1),
+            maxFeePerGas: BigInt(2),
+            maxPriorityFeePerGas: BigInt(0),
+          }),
+        }
+      );
+      if (drift === 'none')
+        await expect(work).resolves.toMatchObject({
+          transaction: { nonce: '0' },
+        });
+      else await expect(work).rejects.toThrow(drift + ' changed');
+      expect(
+        f.provider.send.mock.calls.filter(
+          ([method]) => method === 'eth_getBlockByNumber'
+        )
+      ).toEqual([
+        ['eth_getBlockByNumber', ['latest', false]],
+        ['eth_getBlockByNumber', ['pending', false]],
+        ['eth_getBlockByNumber', ['0xa', false]],
+      ]);
+      expect(f.provider.verifyConfiguredChainId).toHaveBeenCalledTimes(
+        drift === 'block' ? 1 : 2
+      );
+    }
+  );
+});

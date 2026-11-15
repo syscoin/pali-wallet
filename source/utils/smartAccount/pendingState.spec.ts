@@ -124,6 +124,44 @@ it('never advances a nonce beyond the pending RPC view to bypass a retained oper
   );
 });
 
+it('excludes only the exact current signed row during fresh submission checks', async () => {
+  const f = fixture();
+  f.retain();
+  const current = f.state.onProvider(f.provider, hash.toUpperCase());
+  await expect(current.assertNonce(operation('0'))).resolves.toBeUndefined();
+  expect(f.records.read).toHaveBeenCalledWith(true);
+  expect(f.provider.send).not.toHaveBeenCalledWith(
+    'eth_getTransactionReceipt',
+    expect.anything()
+  );
+  await expect(f.state.assertNonce(operation('0'))).rejects.toThrow(
+    SMART_ACCOUNT_PENDING_STATE
+  );
+});
+
+it('still blocks a competing signed row with the same smart-account nonce', async () => {
+  const f = fixture();
+  f.retain();
+  const retained = await f.records.read(true);
+  const competitor = {
+    ...retained[0],
+    hash: `0x${'55'.repeat(32)}`,
+    payerNonce: 1,
+  };
+  f.records.read.mockResolvedValue([...retained, competitor]);
+  const current = f.state.onProvider(f.provider, hash);
+  await expect(current.assertNonce(operation('0'))).rejects.toThrow(
+    SMART_ACCOUNT_PENDING_STATE
+  );
+  expect(f.provider.send).toHaveBeenCalledWith('eth_getTransactionReceipt', [
+    competitor.hash,
+  ]);
+  expect(f.provider.send).not.toHaveBeenCalledWith(
+    'eth_getTransactionReceipt',
+    [hash]
+  );
+});
+
 it('serializes different payers on the same profile and Smart account and rechecks the second', async () => {
   const f = fixture();
   let release!: () => void;
@@ -134,7 +172,8 @@ it('serializes different payers on the same profile and Smart account and rechec
   const held = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const first = f.state.submit(operation('0'), async () => {
+  const first = f.state.submit(operation('0'), async (admit) => {
+    await admit();
     started();
     await held;
     f.retain();
@@ -142,7 +181,10 @@ it('serializes different payers on the same profile and Smart account and rechec
   });
   await entered;
   const secondAction = jest.fn(async () => 'second');
-  const second = f.state.submit(operation('0'), secondAction);
+  const second = f.state.submit(operation('0'), async (admit) => {
+    await admit();
+    return secondAction();
+  });
   release();
   await expect(first).resolves.toBe('first');
   await expect(second).rejects.toThrow(SMART_ACCOUNT_PENDING_STATE);
@@ -161,7 +203,8 @@ it('retires a queued owner before the first payer has finished', async () => {
   const held = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const active = first.state.submit(operation('0'), async () => {
+  const active = first.state.submit(operation('0'), async (admit) => {
+    await admit();
     started();
     await held;
   });

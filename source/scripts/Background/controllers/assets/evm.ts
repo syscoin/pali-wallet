@@ -80,6 +80,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
     }
   >();
 
+  const pendingPriceData = new Map<
+    string,
+    Promise<{ available: boolean; price: number; priceChange24h?: number }>
+  >();
+
   // Cache for token details
   const tokenDetailsCache = new Map<
     string,
@@ -346,35 +351,46 @@ const EvmAssetsController = (): IEvmAssetsController => {
       return cached.data;
     }
 
-    try {
-      const priceResponse = await retryableFetch(
-        coinGeckoNativeQuoteUrl(network.coingeckoId, currency)
-      );
-      if (priceResponse.ok) {
-        const result = readCoinGeckoNativeQuote(
-          await priceResponse.json(),
-          network.coingeckoId,
-          currency
+    const active = pendingPriceData.get(cacheKey);
+    if (active) return active;
+    const request = (async () => {
+      try {
+        const priceResponse = await retryableFetch(
+          coinGeckoNativeQuoteUrl(network.coingeckoId, currency)
         );
-        if (result) {
-          priceDataCache.set(cacheKey, { data: result, timestamp: now });
-          console.log(
-            `[EvmAssetsController] Fetched and cached price data for ${network.coingeckoId}`
+        if (priceResponse.ok) {
+          const result = readCoinGeckoNativeQuote(
+            await priceResponse.json(),
+            network.coingeckoId,
+            currency
           );
-          return result;
+          if (result) {
+            priceDataCache.set(cacheKey, { data: result, timestamp: now });
+            console.log(
+              `[EvmAssetsController] Fetched and cached price data for ${network.coingeckoId}`
+            );
+            return result;
+          }
         }
-      }
 
-      console.warn(
-        `[EvmAssetsController] Failed to fetch price for ${network.coingeckoId}`
-      );
-      return { available: false, price: 0 };
-    } catch (error) {
-      console.error(
-        `[EvmAssetsController] Error fetching price for chain ${chainId}:`,
-        error
-      );
-      return { available: false, price: 0 };
+        console.warn(
+          `[EvmAssetsController] Failed to fetch price for ${network.coingeckoId}`
+        );
+        return { available: false, price: 0 };
+      } catch (error) {
+        console.error(
+          `[EvmAssetsController] Error fetching price for chain ${chainId}:`,
+          error
+        );
+        return { available: false, price: 0 };
+      }
+    })();
+    pendingPriceData.set(cacheKey, request);
+    try {
+      return await request;
+    } finally {
+      if (pendingPriceData.get(cacheKey) === request)
+        pendingPriceData.delete(cacheKey);
     }
   };
 
@@ -602,58 +618,45 @@ const EvmAssetsController = (): IEvmAssetsController => {
         }
       }
 
-      // Process ERC-721 tokens individually with queue
+      // One collection balance serves all saved token IDs in this refresh.
+      const erc721ByContract = new Map<string, ITokenEthProps[]>();
+      erc721Assets.forEach((asset) => {
+        const key = asset.contractAddress.toLowerCase();
+        const members = erc721ByContract.get(key) ?? [];
+        members.push(asset);
+        erc721ByContract.set(key, members);
+      });
       const queue = new Queue(3);
-      const DELAY_BETWEEN_REQUESTS = 100; // 100ms between each request
-
-      // Queue each ERC-721 NFT individually - this ensures only 3 run at a time
-      erc721Assets.forEach((nftAsset) => {
+      for (const collection of erc721ByContract.values()) {
         queue.execute(async () => {
-          // SYSCOIN: Constant per-worker pacing, not quadratic cumulative sleeps.
-          await new Promise((resolve) =>
-            setTimeout(resolve, DELAY_BETWEEN_REQUESTS)
-          );
-
+          await new Promise((resolve) => setTimeout(resolve, 100));
           try {
-            // ERC-721: isolate even malformed addresses/ABI construction.
             const contract = new Contract(
-              nftAsset.contractAddress,
+              collection[0].contractAddress,
               getErc21Abi(),
               w3Provider
             );
-            const balanceCallMethod = await contract.balanceOf(account.address);
-            // Convert BigNumber to number safely (NFT counts are typically small)
-            const collectionBalance = balanceCallMethod.toNumber
-              ? balanceCallMethod.toNumber()
-              : Number(balanceCallMethod);
-            if (!Number.isFinite(collectionBalance) || collectionBalance < 0)
+            const result = await contract.balanceOf(account.address);
+            const rawBalance = parseErc20Units(result).toString();
+            const balance = Number(rawBalance);
+            if (!Number.isFinite(balance))
               throw new Error('Invalid NFT balance');
-            const updated = {
-              ...nftAsset,
-              balance: collectionBalance,
-              rawBalance: balanceCallMethod.toString(),
-            };
-            onBalanceRead?.(updated);
-
-            console.log(
-              `[EvmAssetsController] Updated ERC-721 collection ${nftAsset.contractAddress}: ${collectionBalance} NFTs`
-            );
-
-            return updated;
+            return collection.map((asset) => {
+              const updated = { ...asset, balance, rawBalance };
+              onBalanceRead?.(updated);
+              return updated;
+            });
           } catch (error) {
             console.error(
-              `[EvmAssetsController] Failed to fetch NFT balance for ${nftAsset.contractAddress}:`,
+              `[EvmAssetsController] Failed to fetch NFT balance for ${collection[0].contractAddress}:`,
               error
             );
-            return nftAsset; // Return unchanged on error
+            return collection;
           }
         });
-      });
-
+      }
       const erc721Results = await queue.done();
-      const updatedErc721Assets = erc721Results
-        .filter((result) => result.success)
-        .map(({ result }) => result);
+      const updatedErc721Assets = erc721Results.flatMap(({ result }) => result);
 
       // Combine ERC-721 and ERC-1155 results
       updatedNftAssets = [...updatedErc1155Assets, ...updatedErc721Assets];

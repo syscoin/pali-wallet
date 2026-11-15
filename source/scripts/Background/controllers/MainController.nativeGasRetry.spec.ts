@@ -151,12 +151,27 @@ it('uses the same SDK floor and exact tx through a fresh read-only provider', as
   expect(sdk.web3Provider).toBe(originalProvider);
 });
 it('captures a type2 fee review through the controller after allocating its nonce', async () => {
+  jest.useRealTimers();
+  const provider = {
+    signal: new AbortController().signal,
+    verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
+    send: jest.fn().mockResolvedValue({
+      number: '0x1',
+      hash: '0x' + 'ab'.repeat(32),
+      gasLimit: '0x100000',
+      baseFeePerGas: '0x1',
+    }),
+  };
   wallet.captureFreshEvmRead = jest.fn(() => ({
     network: mockState.vault.activeNetwork,
     overrides: {},
     assertCurrent: () => undefined,
+    run: (work: (read: typeof provider) => Promise<unknown>) => work(provider),
   }));
-  wallet.inspectOrdinaryEvmNonce = jest.fn().mockResolvedValue({ nonce: 3 });
+  wallet.inspectOrdinaryEvmNonce = jest.fn().mockResolvedValue({
+    nonce: 3,
+    canonicalBlock: { number: '0x1', hash: '0x' + 'ab'.repeat(32) },
+  });
   const result = await wallet.captureNativeEvmFeeReview(
     {
       ...tx,
@@ -182,6 +197,27 @@ it('captures a type2 fee review through the controller after allocating its nonc
     nonce: '3',
   });
   expect(wallet.inspectOrdinaryEvmNonce).toHaveBeenCalledTimes(1);
+  expect(wallet.inspectOrdinaryEvmNonce.mock.calls[0][2]).toEqual({
+    reviewed: undefined,
+    quotePhase: {
+      provider: expect.objectContaining({
+        withReadPhase: expect.any(Function),
+      }),
+      block: {
+        number: '1',
+        hash: '0x' + 'ab'.repeat(32),
+        gasLimit: BigInt(0x100000),
+        baseFee: BigInt(1),
+      },
+    },
+  });
+  expect(provider.verifyConfiguredChainId).toHaveBeenCalledTimes(2);
+  expect(
+    provider.send.mock.calls.map(([method, params]) => [method, params])
+  ).toEqual([
+    ['eth_getBlockByNumber', ['latest', false]],
+    ['eth_getBlockByNumber', ['0x1', false]],
+  ]);
 });
 it('uses the same SDK20 percent buffer above the configured floor', async () => {
   mockEstimate.mockResolvedValue(BigNumber.from(50000));

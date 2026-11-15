@@ -2,11 +2,14 @@ import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 import { getAddress } from 'ethers/address';
 
 import { EvmAutoNonceAcceptance } from '../../../shared/evmAutoNonce';
+import { withEvmReadPhase } from '../../../shared/evmReadPhase';
 import { BigNumber } from 'utils/ethersV6Compat';
 
+import { planExtensionEvmNonceForQuote } from './evmAutoNonce';
 import {
   captureReviewedNativeEvmTransfer,
   recheckReviewedNativeEvmTransfer,
+  readNativeEvmReviewBlock,
 } from './freshNativeGasEstimate';
 
 const sender = `0x${'ab'.repeat(20)}`;
@@ -88,6 +91,7 @@ it('rejects nonempty and malformed access lists in ordinary reviews', () => {
 function fixture() {
   const abort = new AbortController();
   const calls: Array<{ method: string; params: unknown[] }> = [];
+  const batches: string[][] = [];
   const replies = new Map<string, unknown>([
     ['eth_chainId', hex(chainId)],
     ['eth_getBalance', hex('1000000000000000000000')],
@@ -95,23 +99,31 @@ function fixture() {
       'eth_getBlockByNumber',
       {
         hash: noncePlan.canonicalBlock.hash,
+        number: noncePlan.canonicalBlock.number,
         baseFeePerGas: '0x3b9aca00',
         gasLimit: '0x1c9c380',
       },
     ],
     ['eth_estimateGas', '0x5208'],
+    ['eth_getTransactionCount', '0x9'],
   ]);
   jest.spyOn(globalThis, 'fetch').mockImplementation(async (_, init) => {
-    const { id, method, params } = JSON.parse(String(init?.body));
-    calls.push({ method, params });
-    if (!replies.has(method)) throw new Error('Unexpected RPC call');
-    const response = replies.get(method);
-    return new Response(
-      JSON.stringify({
+    const request = JSON.parse(String(init?.body));
+    const inputs = Array.isArray(request) ? request : [request];
+    batches.push(inputs.map(({ method }) => method));
+    const responses = inputs.map(({ id, method, params }) => {
+      calls.push({ method, params });
+      if (!replies.has(method)) throw new Error('Unexpected RPC call');
+      const response = replies.get(method);
+      return {
         jsonrpc: '2.0',
         id,
         result: typeof response === 'function' ? response(params) : response,
-      })
+      };
+    });
+    return new Response(
+      JSON.stringify(Array.isArray(request) ? responses : responses[0]),
+      { headers: { 'content-type': 'application/json' } }
     );
   });
   const provider = new CustomJsonRpcProvider(
@@ -119,7 +131,7 @@ function fixture() {
     'https://rpc.invalid',
     chainId
   );
-  return { abort, calls, provider, replies };
+  return { abort, batches, calls, provider, replies };
 }
 
 afterEach(() => jest.restoreAllMocks());
@@ -341,8 +353,9 @@ it.each([0, 9])(
         'eth_getBalance',
         'eth_estimateGas',
         'eth_getBlockByNumber',
+        'eth_chainId',
       ]);
-      expect(calls.at(-2)?.params).toEqual([
+      expect(calls.at(-3)?.params).toEqual([
         {
           from: getAddress(sender),
           to: getAddress(recipient),
@@ -483,6 +496,78 @@ it('checks authority before any I/O and after the chain read', async () => {
       recheckReviewedNativeEvmTransfer(capture(), provider, guard, noncePlan)
     ).rejects.toThrow('Stale reviewed context');
     expect(calls.map(({ method }) => method)).toEqual(['eth_chainId']);
+  } finally {
+    provider.destroy();
+  }
+});
+
+it('shares nonce and affordability reads in one phase and resamples the next attempt', async () => {
+  const { batches, calls, provider, replies } = fixture();
+  const prepare = () =>
+    withEvmReadPhase(
+      provider,
+      () => undefined,
+      async (phase) => {
+        const block = await readNativeEvmReviewBlock(phase, () => undefined);
+        const planned = await planExtensionEvmNonceForQuote(
+          {
+            provider: phase,
+            scope: {
+              chainId: String(chainId),
+              from: sender,
+              endpoint: 'https://rpc.invalid',
+            },
+            acceptance: new EvmAutoNonceAcceptance(),
+            snapshot: {
+              owner: 'fixture',
+              minimumNonce: 0,
+              retained: [],
+              readMaximumCost: async () => BigInt(0),
+              readAssetDebit: async () => BigInt(0),
+            },
+            reviewed: { nonce: 9, source: 'automatic' },
+            assertCurrent: () => undefined,
+          },
+          { number: '0x' + BigInt(block.number).toString(16), hash: block.hash }
+        );
+        return recheckReviewedNativeEvmTransfer(
+          capture(),
+          phase,
+          () => undefined,
+          planned
+        );
+      }
+    );
+  try {
+    await expect(prepare()).resolves.toMatchObject({
+      nonce: '9',
+      value: approved.value,
+    });
+    expect(calls.map(({ method }) => method)).toEqual([
+      'eth_chainId',
+      'eth_getBlockByNumber',
+      'eth_getTransactionCount',
+      'eth_getTransactionCount',
+      'eth_getBalance',
+      'eth_getBalance',
+      'eth_estimateGas',
+      'eth_getBlockByNumber',
+      'eth_chainId',
+    ]);
+    expect(batches).toHaveLength(7);
+    expect(batches[2]).toEqual([
+      'eth_getTransactionCount',
+      'eth_getTransactionCount',
+    ]);
+    expect(batches[3]).toEqual(['eth_getBalance', 'eth_getBalance']);
+    replies.set('eth_getTransactionCount', '0xa');
+    await expect(prepare()).rejects.toThrow('account nonce changed');
+    expect(calls.filter(({ method }) => method === 'eth_chainId')).toHaveLength(
+      3
+    );
+    expect(
+      calls.filter(({ method }) => method === 'eth_getTransactionCount')
+    ).toHaveLength(4);
   } finally {
     provider.destroy();
   }

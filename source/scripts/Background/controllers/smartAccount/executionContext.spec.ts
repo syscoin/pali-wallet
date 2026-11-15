@@ -199,7 +199,16 @@ describe('smart-account execution approval context', () => {
       }),
       send: jest.fn(async (method, params) => {
         if (method === 'eth_chainId') return '0x1';
+        if (method === 'eth_getBalance') return '0xde0b6b3a7640000';
         if (method === 'eth_call') {
+          if (
+            params[0].data.startsWith(
+              paliEntryPointInterface.getFunction('balanceOf')!.selector
+            )
+          )
+            return paliEntryPointInterface.encodeFunctionResult('balanceOf', [
+              0,
+            ]);
           const [, key] = paliEntryPointInterface.decodeFunctionData(
             'getNonce',
             params[0].data
@@ -239,6 +248,135 @@ describe('smart-account execution approval context', () => {
     controller.getWalletGasPayerCandidates = jest.fn(() => []);
     controller.getWalletGasPayerAccount = jest.fn().mockResolvedValue(payer);
     controller.getLocalNativeExecutionRecipients = jest.fn(() => []);
+  });
+
+  it('reuses the exact retained candidate without repeating preparation reads', async () => {
+    const prepared = await prepare();
+    const reads = provider.send.mock.calls.length;
+    const estimates = provider.estimateGas.mock.calls.length;
+    const reused = controller.reuseSmartAccountExecutions(
+      [
+        {
+          target: TARGET.toUpperCase().replace('0X', '0x'),
+          value: '0',
+          data: '0x',
+        },
+      ],
+      7,
+      { executionContextId: prepared.executionContextId, expectedContext }
+    );
+    expect(reused).toEqual(prepared);
+    expect(reused.userOperation).toBe(prepared.userOperation);
+    expect(provider.send).toHaveBeenCalledTimes(reads);
+    expect(provider.estimateGas).toHaveBeenCalledTimes(estimates);
+  });
+
+  it.each([
+    [[{ target: OWNER, value: '0', data: '0x' }]],
+    [[{ target: TARGET, value: '1', data: '0x' }]],
+    [[{ target: TARGET, value: '0', data: '0x1234' }]],
+    [[]],
+    [[...calls, ...calls]],
+  ])('rejects a changed retained execution intent %j', async (executions) => {
+    const prepared = await prepare();
+    expect(() =>
+      controller.reuseSmartAccountExecutions(executions, 7, {
+        executionContextId: prepared.executionContextId,
+        expectedContext,
+      })
+    ).toThrow('PALI_TRANSACTION_CONTEXT_CHANGED');
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {},
+    { maxFeePerGas: '2000000001', maxPriorityFeePerGas: '1' },
+    { maxFeePerGas: '2000000000', maxPriorityFeePerGas: '2' },
+    { gasPrice: '2000000000' },
+  ])(
+    'rejects changed or removed retained fee overrides %j',
+    async (changedFees) => {
+      const feeOverrides = {
+        maxFeePerGas: '2000000000',
+        maxPriorityFeePerGas: '1',
+      };
+      const prepared = await controller.prepareSmartAccountExecutions(
+        calls,
+        7,
+        {
+          expectedContext,
+          feeOverrides,
+        }
+      );
+      expect(() =>
+        controller.reuseSmartAccountExecutions(calls, 7, {
+          executionContextId: prepared.executionContextId,
+          expectedContext,
+          feeOverrides: changedFees,
+        })
+      ).toThrow('PALI_TRANSACTION_CONTEXT_CHANGED');
+      expect(send).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    'account',
+    'address',
+    'chain',
+    'RPC',
+    'slip44',
+    'session',
+    'provider',
+    'transaction',
+  ])(
+    'rejects retained preparation after its %s owner changes',
+    async (axis) => {
+      const prepared = await prepare();
+      mutate(axis);
+      expect(() =>
+        controller.reuseSmartAccountExecutions(calls, 7, {
+          executionContextId: prepared.executionContextId,
+        })
+      ).toThrow('PALI_TRANSACTION_CONTEXT_CHANGED');
+      expect(send).not.toHaveBeenCalled();
+    }
+  );
+
+  it('rejects another account and an expired retained preparation', async () => {
+    const prepared = await prepare();
+    const options = { executionContextId: prepared.executionContextId };
+    expect(() =>
+      controller.reuseSmartAccountExecutions(calls, 8, options)
+    ).toThrow('PALI_TRANSACTION_CONTEXT_CHANGED');
+    const now = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.now() + 15 * 60 * 1000);
+    try {
+      expect(() =>
+        controller.reuseSmartAccountExecutions(calls, 7, options)
+      ).toThrow('PALI_TRANSACTION_CONTEXT_CHANGED');
+    } finally {
+      now.mockRestore();
+    }
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('freshly checks the network before signing a reused candidate', async () => {
+    const prepared = await prepare();
+    controller.reuseSmartAccountExecutions(calls, 7, {
+      executionContextId: prepared.executionContextId,
+      expectedContext,
+    });
+    const originalSend = provider.send.getMockImplementation();
+    provider.send.mockImplementation((method, params) =>
+      method === 'eth_chainId'
+        ? Promise.resolve('0x2')
+        : originalSend(method, params)
+    );
+    await expect(
+      controller.assertSmartAccountPreparedNonce(prepared.executionContextId)
+    ).rejects.toThrow('wrong chain');
+    expect(send).not.toHaveBeenCalled();
   });
 
   it('rechecks native value and prefund before extension authenticator entry', async () => {
@@ -837,10 +975,13 @@ describe('smart-account execution approval context', () => {
     async (axis) => {
       const prepared = await prepare();
       const gate = deferred<string>();
-      provider.estimateGas.mockImplementationOnce(() => {
+      const actualSend = send;
+      controller.deps.sendAndSaveEthTransaction = async (...args) => {
         mutate(axis);
-        return gate.promise;
-      });
+        await gate.promise;
+        args[4].assertCurrentContext();
+        return actualSend(...args);
+      };
       const submitting = submit(prepared);
       const rejected = expect(submitting).rejects.toMatchObject({
         transactionNotBroadcast: true,
@@ -856,10 +997,13 @@ describe('smart-account execution approval context', () => {
     const entered = deferred<void>();
     const estimate = deferred<string>();
     const document = new AbortController();
-    provider.estimateGas.mockImplementationOnce(() => {
+    const actualSend = send;
+    controller.deps.sendAndSaveEthTransaction = async (...args) => {
       entered.resolve();
-      return estimate.promise;
-    });
+      await estimate.promise;
+      args[4].assertBeforeSign();
+      return actualSend(...args);
+    };
     const operation = submit(prepared, {}, () => {
       if (document.signal.aborted)
         throw Object.assign(new Error('Approval document changed'), {
@@ -955,11 +1099,9 @@ describe('smart-account execution approval context', () => {
       })
     );
     await expect(submit(prepared)).resolves.toEqual({ hash: HASH });
-    expect(provider.estimateGas).toHaveBeenCalledWith(
-      expect.objectContaining({ gasPrice: '0xd', from: OWNER })
-    );
+    expect(provider.estimateGas).not.toHaveBeenCalled();
     expect(send).toHaveBeenCalledWith(
-      expect.objectContaining({ gasPrice: '13', gasLimit: '200000' }),
+      expect.objectContaining({ gasPrice: '13', from: OWNER }),
       true,
       { id: payer.id, type: payer.type },
       expect.any(Object),

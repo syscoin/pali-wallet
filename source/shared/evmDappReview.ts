@@ -67,11 +67,14 @@ export type EvmDappReviewPorts<NonceContext, Result> = Readonly<{
   signal: AbortSignal;
 }>;
 
-/** Private one-use approval, held by the host controller until explicit user confirmation. */
-export async function prepareEvmDappReview<NonceContext, Result>(
+/** Shared preparation; the immediate submission capability never leaves this module. */
+async function createEvmDappReview<NonceContext, Result>(
   input: unknown,
   ports: EvmDappReviewPorts<NonceContext, Result>
-): Promise<EvmDappReview<Result>> {
+): Promise<{
+  review: EvmDappReview<Result>;
+  submitPrepared: EvmDappReview<Result>['submit'];
+}> {
   ports = Object.freeze({
     ...ports,
     assertCurrent: ports.assertCurrent.bind(ports),
@@ -153,64 +156,105 @@ export async function prepareEvmDappReview<NonceContext, Result>(
     quote.expiresAtMonotonicMilliseconds
   );
   let consumed = false;
-  return Object.freeze({
+  const submit = async (
+    refreshBeforeSend: boolean,
+    assertCurrent: () => void,
+    onBroadcast: (hash: string) => void,
+    context: EvmDappSubmission
+  ): Promise<Result> => {
+    if (
+      consumed ||
+      typeof onBroadcast !== 'function' ||
+      !context ||
+      (context.kind !== 'transaction' && context.kind !== 'eoa-calls')
+    )
+      throw new Error('REVIEW_REQUIRED');
+    consumed = true;
+    const submission: EvmDappSubmission =
+      context.kind === 'transaction'
+        ? Object.freeze({ kind: 'transaction' })
+        : Object.freeze({
+            kind: 'eoa-calls',
+            attempt: snapshotEoaCallsSignedAttempt(context.attempt),
+          });
+    const current = () => {
+      assertSynchronousEvmFeeGuard(assertCurrent);
+      check();
+      assertEvmFeeApprovalCurrent(approved, now());
+    };
+    const refresh = async (
+      nonceContext: NonceContext,
+      assertDispatchCurrent: () => void
+    ) => {
+      const guard = () => {
+        assertSynchronousEvmFeeGuard(assertDispatchCurrent);
+        current();
+      };
+      guard();
+      const latest = await ports.prepare(request, guard, nonceContext, quote);
+      guard();
+      assertEvmFeeRefreshApproved(
+        approved,
+        captureEvmFeeApproval(
+          latest.transaction,
+          ports.scope,
+          latest.expiresAtMonotonicMilliseconds
+        ),
+        now()
+      );
+    };
+    if (refreshBeforeSend) await refresh(ports.nonceContext, current);
+    current();
+    return ports.send(
+      quote.transaction,
+      current,
+      refresh,
+      onBroadcast,
+      submission
+    );
+  };
+  const review: EvmDappReview<Result> = Object.freeze({
     feeComparison: quote.feeComparison,
     transaction: quote.transaction,
     maximumFeeUnits: quote.maximumFeeUnits,
     coveredFeeUnits: quote.coveredFeeUnits,
     maximumTotalUnits: quote.maximumTotalUnits,
     expiresAtMonotonicMilliseconds: quote.expiresAtMonotonicMilliseconds,
-    async submit(assertCurrent, onBroadcast, context) {
-      if (
-        consumed ||
-        typeof onBroadcast !== 'function' ||
-        !context ||
-        (context.kind !== 'transaction' && context.kind !== 'eoa-calls')
-      )
-        throw new Error('REVIEW_REQUIRED');
-      consumed = true;
-      const submission: EvmDappSubmission =
-        context.kind === 'transaction'
-          ? Object.freeze({ kind: 'transaction' })
-          : Object.freeze({
-              kind: 'eoa-calls',
-              attempt: snapshotEoaCallsSignedAttempt(context.attempt),
-            });
-      const current = () => {
-        assertSynchronousEvmFeeGuard(assertCurrent);
-        check();
-        assertEvmFeeApprovalCurrent(approved, now());
-      };
-      const refresh = async (
-        nonceContext: NonceContext,
-        assertDispatchCurrent: () => void
-      ) => {
-        const guard = () => {
-          assertSynchronousEvmFeeGuard(assertDispatchCurrent);
-          current();
-        };
-        guard();
-        const latest = await ports.prepare(request, guard, nonceContext, quote);
-        guard();
-        assertEvmFeeRefreshApproved(
-          approved,
-          captureEvmFeeApproval(
-            latest.transaction,
-            ports.scope,
-            latest.expiresAtMonotonicMilliseconds
-          ),
-          now()
-        );
-      };
-      await refresh(ports.nonceContext, current);
-      current();
-      return ports.send(
-        quote.transaction,
-        current,
-        refresh,
-        onBroadcast,
-        submission
-      );
-    },
+    submit: (assertCurrent, onBroadcast, context) =>
+      submit(true, assertCurrent, onBroadcast, context),
   });
+  return {
+    review,
+    submitPrepared: (assertCurrent, onBroadcast, context) =>
+      submit(false, assertCurrent, onBroadcast, context),
+  };
+}
+
+/** Private one-use approval, held by the host controller until explicit user confirmation. */
+export async function prepareEvmDappReview<NonceContext, Result>(
+  input: unknown,
+  ports: EvmDappReviewPorts<NonceContext, Result>
+): Promise<EvmDappReview<Result>> {
+  return (await createEvmDappReview(input, ports)).review;
+}
+
+/**
+ * Prepare and enter submission in one owned action with no intervening approval.
+ * Later signing and dispatch boundaries retain the ordinary fresh validation.
+ */
+export async function prepareAndSubmitEvmDappReview<NonceContext, Result>(
+  input: unknown,
+  ports: EvmDappReviewPorts<NonceContext, Result>,
+  admission: Readonly<{
+    assertCurrent(): void;
+    onBroadcast(hash: string): void;
+    onPrepared(review: EvmDappReview<Result>): void;
+    submission: EvmDappSubmission;
+  }>
+): Promise<Result> {
+  const { assertCurrent, onBroadcast, onPrepared, submission } = admission;
+  const prepared = await createEvmDappReview(input, ports);
+  assertSynchronousEvmFeeGuard(assertCurrent);
+  assertSynchronousEvmFeeGuard(() => onPrepared(prepared.review));
+  return prepared.submitPrepared(assertCurrent, onBroadcast, submission);
 }
