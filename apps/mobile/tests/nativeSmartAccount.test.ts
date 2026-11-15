@@ -1676,8 +1676,8 @@ for (const alreadyDeployed of [false, true]) test(`real SDK smart native send au
     assert.equal(BigInt('0x' + execution.slice(42, 106)), 9n);
     assert.equal(f.calls.includes('eth_getTransactionReceipt'), false);
     // Preparation, owner signing and payer authorization each observe spendability.
-    // Counterfactual sends also retain the deployment-prefund check.
-    const expectedReads = alreadyDeployed ? 3 : 4;
+    // Counterfactual sends also recheck before prefunding and in prefund calculation.
+    const expectedReads = alreadyDeployed ? 3 : 5;
     assert.equal(f.spendabilityReads.native - initialReads.native, expectedReads);
     assert.equal(f.spendabilityReads.deposit - initialReads.deposit, expectedReads);
   } finally { operation?.dispose(); await f.close(); }
@@ -2012,6 +2012,30 @@ test('Smart ERC20 send requires the selected account owned token catalogue', asy
     }, () => undefined, null), { code: 'NOT_READY' });
     assert.equal(f.submitted.length, 0);
   } finally { await f.close(); }
+});
+
+test('counterfactual Smart ERC20 balance loss after owner signing prevents deployment prefunding', async () => {
+  const f = await fixture({}, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Token prefund guard' });
+    const token = { contractAddress: '0x5555555555555555555555555555555555555555', decimals: 0, name: 'Token', symbol: 'TOKEN' };
+    f.tokenBalance(token.contractAddress, 9n, token.decimals);
+    const registry = await f.runtime.tokens!.load(() => undefined);
+    await f.runtime.tokens!.add(registry.revision, token, () => undefined);
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', {
+      kind: 'erc20', contractAddress: token.contractAddress, amount: '9',
+    }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    assert.notEqual(operation.getSnapshot().authorization!.initCode, '0x');
+    f.onSignature(() => f.tokenBalance(token.contractAddress, 0n, token.decimals));
+    await operation.authorize(operation.getSnapshot().revision);
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(operation.getSnapshot().payerReview, null);
+    assert.equal(f.signatures.length, 1);
+    assert.equal(f.submitted.length, 0);
+  } finally { operation?.dispose(); await f.close(); }
 });
 
 

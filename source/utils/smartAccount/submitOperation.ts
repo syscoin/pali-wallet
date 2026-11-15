@@ -164,13 +164,8 @@ export async function submitSmartAccountOperation<
     );
   }
   params = snapshotSubmitParams(params);
-  return host.pending.submit(params.userOperation, (assertNonce) =>
-    submitOwnedSmartAccountOperation(
-      params,
-      host,
-      assertApprovalCurrent,
-      assertNonce
-    )
+  return host.pending.submit(params.userOperation, () =>
+    submitOwnedSmartAccountOperation(params, host, assertApprovalCurrent)
   );
 }
 
@@ -179,8 +174,7 @@ async function submitOwnedSmartAccountOperation<
 >(
   params: SmartAccountSubmitParams,
   host: SmartAccountSubmitHost<TResponse>,
-  assertApprovalCurrent: () => void,
-  assertNonce: () => Promise<void>
+  assertApprovalCurrent: () => void
 ) {
   // The call may first fund a counterfactual account, then submit handleOps.
   // Only failures before either sender is entered are definitely read-only.
@@ -305,7 +299,15 @@ async function submitOwnedSmartAccountOperation<
       signedUserOperation.initCode !== '0x' &&
       !requiredPrefund.isZero()
     ) {
-      await assertNonce();
+      await host.pending.withReadPhase(async (phase) => {
+        await phase.assertNonce(signedUserOperation);
+        await assertSmartAccountSpendability({
+          provider: phase.provider,
+          chainId: active.metadata.chainId,
+          userOperation: signedUserOperation,
+          assertCurrent,
+        });
+      });
       assertCurrent();
       await host.ensureDeploymentPrefund(
         active.account.address,
