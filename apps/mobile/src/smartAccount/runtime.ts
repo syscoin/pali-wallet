@@ -110,7 +110,8 @@ export type NativeSmartOperationPorts = Readonly<{
     metadata: Readonly<Record<string, unknown>>,
     funding: EvmFeeFunding,
     assertAssetState: (() => Promise<void>) | null,
-    assertFinalAdmission?: NativeSmartPayerAdmission
+    assertFinalAdmission?: NativeSmartPayerAdmission,
+    finalAdmissionIncludesAssets?: true
   ): Promise<NativePreparedConnectionTransaction>;
   waitForReceipt(
     hash: string,
@@ -571,10 +572,15 @@ export function createNativeSmartOperation(
             smartAccountOperationHash: prepared.actionHash,
           },
           options.feeFunding,
-          transactionMetadata?.smartAccountExecution === true ? options.assertAssetState : null,
+          transactionMetadata?.smartAccountExecution === true
+            ? intent.kind === 'native-transfer' || intent.kind === 'native-max'
+              ? options.assertAssetState
+              : () => pending.withReadPhase(phase => options.assertAssetState(phase.provider))
+            : null,
           (transactionMetadata?.smartAccountDeploymentPrefund === true || transactionMetadata?.smartAccountExecution === true)
             ? (provider, hash, admission) => options.assertPendingState(provider, hash, admission)
-            : undefined
+            : undefined,
+          options.assertPendingStateIncludesAssets
         );
         guard();
         await reviewPayer(

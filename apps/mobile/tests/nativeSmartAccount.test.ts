@@ -99,6 +99,10 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let observedHead = { number: '0x10', hash: '0x' + 'aa'.repeat(32) };
   const tokens = new Map<string, { balance: bigint; decimals: number }>();
   const tokenInterface = new Interface(['function balanceOf(address) view returns(uint256)', 'function decimals() view returns(uint8)', 'function transfer(address,uint256) returns(bool)']);
+  const nfts = new Map<string, { standard: 'ERC-721' | 'ERC-1155'; balance: bigint }>();
+  const nftInterface = new Interface(['function supportsInterface(bytes4) view returns(bool)', 'function ownerOf(uint256) view returns(address)',
+    'function balanceOf(address,uint256) view returns(uint256)', 'function balanceOfBatch(address[],uint256[]) view returns(uint256[])',
+    'function safeTransferFrom(address,address,uint256)', 'function safeTransferFrom(address,address,uint256,uint256,bytes)']);
   let deployed = false;
   let deployedCode = '0x01';
   let readReceipts = true;
@@ -176,7 +180,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const target = request.params[0].toLowerCase();
           const builtIn = SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.some(address => address.toLowerCase() === target);
           const smartTarget = runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === target);
-          result = builtIn || customValidators.has(target) || tokens.has(target) ? '0x01' : deployed && smartTarget && (!deployedByBroadcast || request.params[1] === 'pending' || readReceipts) ? deployedCode : '0x';
+          result = builtIn || customValidators.has(target) || tokens.has(target) || nfts.has(target) ? '0x01' : deployed && smartTarget && (!deployedByBroadcast || request.params[1] === 'pending' || readReceipts) ? deployedCode : '0x';
           if (missingInfrastructure.has(target)) result = '0x';
           if (smartGuardianMetadata && smartGuardianMetadata.address.toLowerCase() === target && !smartGuardianMetadata.deployed) result = '0x';
           if (smartTarget) {
@@ -258,7 +262,24 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const ownGuardian = smartGuardianMetadata?.address.toLowerCase() === to ? smartGuardianMetadata : undefined;
           const smartComposite = ownGuardian ? ownGuardian.compositeThreshold !== undefined : !!composite;
           const token = tokens.get(to);
-          if (token) {
+          const nft = nfts.get(to);
+          if (nft) {
+            const call = nftInterface.parseTransaction({ data }); assert(call);
+            if (call.name === 'supportsInterface') result = nftInterface.encodeFunctionResult(call.fragment,
+              [call.args[0] === (nft.standard === 'ERC-721' ? '0x80ac58cd' : '0xd9b67a26')]);
+            else if (call.name === 'ownerOf') {
+              if (call.args[0] !== 0n) return Response.json({ jsonrpc: '2.0', id: request.id, error: { code: 3, message: 'execution reverted', data: '0x' } });
+              const owner = runtime.catalogue.getSnapshot()!.accounts.find(account => account.type === 'SmartAccount')!.address;
+              result = nftInterface.encodeFunctionResult(call.fragment, [nft.balance > 0n ? owner : '0x1111111111111111111111111111111111111111']);
+            } else if (call.name === 'balanceOf') result = nftInterface.encodeFunctionResult(call.fragment, [call.args[1] === 0n ? nft.balance : 0n]);
+            else if (call.name === 'balanceOfBatch') result = nftInterface.encodeFunctionResult(call.fragment,
+              [[...call.args[1]].map(id => id === 0n ? nft.balance : 0n)]);
+            else {
+              assert.equal(call.name, 'safeTransferFrom');
+              assert(nft.balance >= (nft.standard === 'ERC-721' ? 1n : call.args[3]));
+              result = '0x';
+            }
+          } else if (token) {
             const call = tokenInterface.parseTransaction({ data }); assert(call);
             if (call.name === 'balanceOf') spendabilityReads.token++;
             if (call.name === 'decimals') result = tokenInterface.encodeFunctionResult(call.fragment, [token.decimals]);
@@ -495,6 +516,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     fundedSmart() { smartBalance = '0x1000000000000000'; },
     smartBalance(value: bigint) { smartBalance = '0x' + value.toString(16); },
     tokenBalance(contract: string, balance: bigint, decimals: number) { tokens.set(contract.toLowerCase(), { balance, decimals }); },
+    nftBalance(contract: string, standard: 'ERC-721' | 'ERC-1155', balance: bigint) { nfts.set(contract.toLowerCase(), { standard, balance }); },
     holdReceipts() { readReceipts = false; },
     showReceipts(success = true) { readReceipts = true; userOperationSuccess = success; },
     reorg() { readReceipts = false; nonceReset = true; },
@@ -6289,5 +6311,96 @@ for (const sponsored of [false, true]) test(`counted native warm Smart payer pha
     assert.equal(f.submitted.length, 1);
     assert.deepEqual(measure(), { methods: 55, http: sponsored ? 41 : 38, chains: 13 });
     console.log('NATIVE_PHASE_COUNTS', JSON.stringify({ sponsored, preparation, payerReview, confirmation: delta(confirmed), total: measure() }));
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const standard of ['ERC20', 'ERC-721', 'ERC-1155'] as const) test(`counted native Smart asset payer phases (${standard})`, async () => {
+  const f = await fixture({}, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Counted asset' });
+    const contractAddress = '0x5555555555555555555555555555555555555555';
+    const registry = await f.runtime.tokens!.load(() => undefined);
+    if (standard === 'ERC20') {
+      f.tokenBalance(contractAddress, 9n, 0);
+      await f.runtime.tokens!.add(registry.revision, { contractAddress, name: 'Asset', symbol: 'ASSET', decimals: 0 }, () => undefined);
+    } else {
+      f.nftBalance(contractAddress, standard, 9n);
+      await f.runtime.tokens!.addCollectible!(registry.revision, standard === 'ERC-721'
+        ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId: '0' }, () => undefined);
+    }
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    f.mutateSelectedSmart(account => {
+      account.smartAccount!.isDeployed = true;
+      account.smartAccount!.installedModules = [{ type: 'validator', id: 'ecdsa', address: getConfiguredAuthenticatorAddress(Number(account.smartAccount!.chainId), 'ecdsa'), config: { owners: [f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!.address], threshold: 1 } }];
+    });
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', standard === 'ERC20'
+      ? { kind: 'erc20', contractAddress, amount: '1' }
+      : { kind: 'nft', collectible: standard === 'ERC-721'
+        ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId: '0' }, tokenId: '0', amountUnits: '1' }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    const review = operation.getSnapshot().payerReview; assert(review, JSON.stringify(operation.getSnapshot()));
+    f.calls.length = 0; f.rpcBatches.length = 0;
+    operation.confirmPayer(review.id); await sending;
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length, 1);
+    const counts = { methods: f.calls.length,
+      http: f.calls.length - f.rpcBatches.reduce((sum, batch) => sum + batch.length - 1, 0),
+      chains: f.calls.filter(method => method === 'eth_chainId').length };
+    assert.deepEqual(counts, { methods: standard === 'ERC20' ? 40 : 43, http: standard === 'ERC20' ? 29 : 35, chains: 9 });
+    console.log('NATIVE_ASSET_CONFIRM_COUNTS', JSON.stringify({ standard, ...counts }));
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const standard of ['ERC20', 'ERC-721', 'ERC-1155'] as const)
+for (const boundary of ['payer-signing', 'payer-persistence'] as const)
+test(`deployed Smart ${standard} final admission rejects asset loss during ${boundary}`, async () => {
+  let loseBalance: (() => void) | undefined, changed = false;
+  const f = await fixture({ after(kind, sql) {
+    if (boundary === 'payer-persistence' && kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records') && loseBalance) {
+      loseBalance(); loseBalance = undefined;
+    }
+  } }, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Late asset loss' });
+    const contractAddress = '0x5555555555555555555555555555555555555555';
+    const registry = await f.runtime.tokens!.load(() => undefined);
+    if (standard === 'ERC20') {
+      f.tokenBalance(contractAddress, 9n, 0);
+      await f.runtime.tokens!.add(registry.revision, { contractAddress, name: 'Asset', symbol: 'ASSET', decimals: 0 }, () => undefined);
+    } else {
+      f.nftBalance(contractAddress, standard, 9n);
+      await f.runtime.tokens!.addCollectible!(registry.revision, standard === 'ERC-721'
+        ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId: '0' }, () => undefined);
+    }
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', standard === 'ERC20'
+      ? { kind: 'erc20', contractAddress, amount: '1' }
+      : { kind: 'nft', collectible: standard === 'ERC-721'
+        ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId: '0' }, tokenId: '0', amountUnits: '1' }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    const review = operation.getSnapshot().payerReview; assert(review, JSON.stringify(operation.getSnapshot()));
+    const lose = () => {
+      changed = true;
+      if (standard === 'ERC20') f.tokenBalance(contractAddress, 0n, 0);
+      else f.nftBalance(contractAddress, standard, 0n);
+    };
+    if (boundary === 'payer-signing') f.onPayerSignature(lose); else loseBalance = lose;
+    operation.confirmPayer(review.id); await sending;
+    assert(changed);
+    assert.equal(f.payerSignatures.length, 1);
+    assert.equal(f.submitted.length, 0);
+    assert.equal(operation.getSnapshot().phase, 'failed', JSON.stringify(operation.getSnapshot()));
+    const identity = (await f.storage.recovery.readIdentity())!.root!;
+    const retained = await f.storage.signedRecords.read(identity.profileId);
+    assert(retained);
+    assert.equal(inspectEvmSignedBundle(retained, identity.profileId).transactions, 1);
   } finally { operation?.dispose(); await f.close(); }
 });

@@ -1318,7 +1318,8 @@ export function createKeyringRuntimeFactory(
           authentication: NativePrivateAuthentication | null = null,
           beforeSigningFailure: (() => Promise<void>) | null = null,
           beforePrivateExecution: (() => Promise<void>) | null = null,
-          assertSmartAdmission?: NativeSmartPayerAdmission) {
+          assertSmartAdmission?: NativeSmartPayerAdmission,
+          finalAdmissionIncludesAssets?: true) {
           check();
           if (authentication !== null) assertNativePrivateAuthentication(authentication);
           if (validateSigningAndBroadcast !== null && typeof validateSigningAndBroadcast !== 'function') throw new KeyringRuntimeError('INVALID_INPUT');
@@ -1428,7 +1429,9 @@ export function createKeyringRuntimeFactory(
               });
               if (metadata) enteredPrivateExecution.add(metadata);
               const broadcast: Parameters<typeof sdk.submitSignedEvmTransaction<string>>[1] = async ({rawTransaction, admit}) => {
-                if (validateSigningAndBroadcast !== null) await validateSigningAndBroadcast();
+                if (validateSigningAndBroadcast !== null && !(finalAdmissionIncludesAssets === true &&
+                    metadata?.smartAccountExecution === true && typeof assertSmartAdmission === 'function'))
+                  await validateSigningAndBroadcast();
                 guard();
                 return sender.broadcastDapp(rawTransaction, signed.hash, transaction, signal, admit, guard, onBroadcast);
               };
@@ -5444,7 +5447,7 @@ export function createKeyringRuntimeFactory(
                   guard();
                   return signature;
               },
-              preparePayer(request, payer, signal, assertCurrent, metadata, funding, assertAssetState, assertFinalAdmission) {
+              preparePayer(request, payer, signal, assertCurrent, metadata, funding, assertAssetState, assertFinalAdmission, finalAdmissionIncludesAssets) {
                 check(); checkGuard(assertCurrent);
                 const owned = snapshot.accounts.find(candidate => candidate.index === payer.id && candidate.type === payer.type);
                 if (!owned || owned.address.toLowerCase() !== payer.address.toLowerCase()) throw new KeyringRuntimeError('INVALID_INPUT');
@@ -5454,7 +5457,7 @@ export function createKeyringRuntimeFactory(
                   if (state.accounts[payer.type]?.[payer.id] !== payerRecord || payerRecord?.address.toLowerCase() !== owned.address.toLowerCase())
                     throw new KeyringRuntimeError('CANCELLED');
                 };
-                return prepareOwnedEvmTransaction(request, owned, selected, signal, guard, metadata, funding, { kind: 'estimate' }, null, assertAssetState, authentication, null, null, assertFinalAdmission);
+                return prepareOwnedEvmTransaction(request, owned, selected, signal, guard, metadata, funding, { kind: 'estimate' }, null, assertAssetState, authentication, null, null, assertFinalAdmission, finalAdmissionIncludesAssets);
               },
               async waitForReceipt(hash, transaction, signal, assertCurrent, operation) {
                 const guard = () => { check(); checkGuard(assertCurrent); if (signal.aborted) throw new KeyringRuntimeError('CANCELLED'); };
