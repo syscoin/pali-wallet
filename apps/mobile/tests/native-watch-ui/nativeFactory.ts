@@ -659,6 +659,7 @@ export function createNativeRecoveryCoordinator(controllers: ReturnType<typeof c
 export const fixtureFetch: typeof fetch = async (_url, init) => {
   fixtureRpcCalls++;
   const request = JSON.parse(String(init?.body));
+  if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fixtureFetch(_url, { ...init, body: JSON.stringify(row) })).json())));
   let result: unknown;
   switch (request.method) {
     case 'eth_chainId': result = '0x1'; break;

@@ -99,8 +99,9 @@ const block = (number: string) => ({
 });
 const rpc = new NativeTransferRpc({
   networkId: 'ethereum',
-  fetch: async (_url, init) => {
+  fetch: async function fixtureFetch(_url, init): Promise<Response> {
     const request = JSON.parse(String(init.body));
+    if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fixtureFetch(_url, { ...init, body: JSON.stringify(row) })).json())));
     rpcMethods.push(request.method);
     if (observationUnavailable && request.method === 'eth_getTransactionReceipt')
       throw Error('Synthetic observation outage');

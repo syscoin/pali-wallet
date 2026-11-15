@@ -180,7 +180,9 @@ const nftAbi = new Interface([
 ]);
 const nftReadOptions: Parameters<typeof createNftOwnershipReader>[0] = {
   registrations: () => [getNativeNetwork('ethereum')],
-  fetch: async (url, init) => {
+  fetch: async function fixtureNftFetch(url, init): Promise<Response> {
+  const request = JSON.parse(String(init.body));
+  if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fixtureNftFetch(url, { ...init, body: JSON.stringify(row) })).json())));
   if (url !== getNativeNetwork('ethereum').rpcUrl) throw new Error('Unexpected fixture network');
   const { id, method, params } = JSON.parse(String(init.body));
   const respond = (result: unknown) => Response.json({ jsonrpc: '2.0', id, result });
