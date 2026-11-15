@@ -100,6 +100,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   const tokens = new Map<string, { balance: bigint; decimals: number }>();
   const tokenInterface = new Interface(['function balanceOf(address) view returns(uint256)', 'function decimals() view returns(uint8)', 'function transfer(address,uint256) returns(bool)']);
   const nfts = new Map<string, { standard: 'ERC-721' | 'ERC-1155'; balance: bigint; owner: string }>();
+  const assetCodes = new Map<string, string>();
   const nftInterface = new Interface(['function supportsInterface(bytes4) view returns(bool)', 'function ownerOf(uint256) view returns(address)',
     'function balanceOf(address,uint256) view returns(uint256)', 'function balanceOfBatch(address[],uint256[]) view returns(uint256[])',
     'function transferFrom(address,address,uint256)', 'function safeTransferFrom(address,address,uint256)', 'function safeTransferFrom(address,address,uint256,uint256,bytes)']);
@@ -181,6 +182,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const builtIn = SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.some(address => address.toLowerCase() === target);
           const smartTarget = runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === target);
           result = builtIn || customValidators.has(target) || tokens.has(target) || nfts.has(target) ? '0x01' : deployed && smartTarget && (!deployedByBroadcast || request.params[1] === 'pending' || readReceipts) ? deployedCode : '0x';
+          result = assetCodes.get(target) ?? result;
           if (missingInfrastructure.has(target)) result = '0x';
           if (smartGuardianMetadata && smartGuardianMetadata.address.toLowerCase() === target && !smartGuardianMetadata.deployed) result = '0x';
           if (smartTarget) {
@@ -515,6 +517,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     fundedSmart() { smartBalance = '0x1000000000000000'; },
     smartBalance(value: bigint) { smartBalance = '0x' + value.toString(16); },
     tokenBalance(contract: string, balance: bigint, decimals: number) { tokens.set(contract.toLowerCase(), { balance, decimals }); },
+    assetCode(contract: string, bytes: number) { assetCodes.set(contract.toLowerCase(), `0x${'60'.repeat(bytes)}`); },
     nftBalance(contract: string, standard: 'ERC-721' | 'ERC-1155', balance: bigint) {
       const snapshot = runtime.catalogue.getSnapshot()!;
       const owner = nfts.get(contract.toLowerCase())?.owner ?? snapshot.accounts.find(account => account.type === 'SmartAccount')?.address ??
@@ -6324,7 +6327,8 @@ for (const sponsored of [false, true]) test(`counted native warm Smart payer pha
   } finally { operation?.dispose(); await f.close(); }
 });
 
-for (const standard of ['ERC20', 'ERC-721', 'ERC-1155'] as const) test(`counted native Smart asset payer phases (${standard})`, async () => {
+for (const standard of ['ERC20', 'ERC-721', 'ERC-1155'] as const)
+for (const codeBytes of [1, 20 * 1024]) test(`counted native Smart asset payer phases (${standard}, code ${codeBytes})`, async () => {
   const f = await fixture({}, true);
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
   try {
@@ -6340,6 +6344,7 @@ for (const standard of ['ERC20', 'ERC-721', 'ERC-1155'] as const) test(`counted 
         ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId: '0' }, () => undefined);
     }
     f.fundedSmart(); f.deployed(); f.holdReceipts();
+    f.assetCode(contractAddress, codeBytes);
     f.mutateSelectedSmart(account => {
       account.smartAccount!.isDeployed = true;
       account.smartAccount!.installedModules = [{ type: 'validator', id: 'ecdsa', address: getConfiguredAuthenticatorAddress(Number(account.smartAccount!.chainId), 'ecdsa'), config: { owners: [f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!.address], threshold: 1 } }];
@@ -6421,7 +6426,8 @@ test(`deployed Smart ${standard} final admission rejects asset loss during ${bou
   } finally { operation?.dispose(); await f.close(); }
 });
 
-for (const standard of ['native', 'ERC20', 'ERC-721', 'ERC-1155'] as const) test(`counted actual native EOA transfer (${standard})`, async () => {
+for (const standard of ['native', 'ERC20', 'ERC-721', 'ERC-1155'] as const)
+for (const codeBytes of standard === 'native' ? [1] : [1, 20 * 1024]) test(`counted actual native EOA transfer (${standard}, code ${codeBytes})`, async () => {
   const f = await fixture({}, true);
   const transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
   try {
@@ -6436,6 +6442,7 @@ for (const standard of ['native', 'ERC20', 'ERC-721', 'ERC-1155'] as const) test
       await f.runtime.tokens!.addCollectible!(registry.revision, standard === 'ERC-721'
         ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId: '0' }, () => undefined);
     }
+    if (standard !== 'native') f.assetCode(contractAddress, codeBytes);
     f.holdReceipts(); f.calls.length = 0; f.rpcBatches.length = 0;
     const measure = () => ({ methods: f.calls.length,
       http: f.calls.length - f.rpcBatches.reduce((sum, batch) => sum + batch.length - 1, 0),

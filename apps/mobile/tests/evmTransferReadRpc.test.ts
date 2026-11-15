@@ -99,6 +99,16 @@ test('separate bounded block responses preserve ordinary response caps',async()=
  await assert.rejects(ordinary.rpc.quoteFees(transaction(),signal(),()=>undefined),{code:'INVALID_RESPONSE'});
 });
 
+test('internal contract reads allow 32 KiB runtime bytes and retain scalar limits', async () => {
+ const deployed = `0x${'60'.repeat(32 * 1024)}`;
+ const f = fixture(undefined, call => call.method === 'eth_getCode' ? deployed : undefined);
+ assert.equal(await f.rpc.smartAccountRead('eth_getCode', [to, 'pending'], signal(), () => {}), deployed);
+ const scalar = fixture(undefined, call => call.method === 'eth_getBalance' ? deployed : undefined);
+ await assert.rejects(scalar.rpc.smartAccountRead('eth_getBalance', [from, 'pending'], signal(), () => {}), { code: 'INVALID_RESPONSE' });
+ const oversized = fixture(undefined, call => call.method === 'eth_getCode' ? `0x${'60'.repeat(33 * 1024)}` : undefined);
+ await assert.rejects(oversized.rpc.smartAccountRead('eth_getCode', [to, 'pending'], signal(), () => {}), { code: 'INVALID_RESPONSE' });
+});
+
 test('aborted input emits no request and malformed RPC envelopes never become fees',async()=>{
  const f=fixture(),controller=new AbortController();controller.abort();await assert.rejects(f.rpc.quoteFees(transaction(),controller.signal,()=>undefined),{code:'CANCELLED'});assert.equal(f.calls.length,0);
  const rpc=new EvmTransferReadRpc(custom,{fetch:async(_url,init)=>{const body=JSON.parse(String(init.body));return new Response(JSON.stringify({jsonrpc:'2.0',id:body.id,error:{code:-32000,message:'unavailable'}}));}});

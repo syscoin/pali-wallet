@@ -150,7 +150,6 @@ export class EvmTransferReadRpc {
     const controller = new AbortController();
     let responseFailure: unknown;
     const nft = scope === 'nft-quote';
-    const boundedContractCode = nft || scope === 'smart-account';
     const smartCallReverts = new WeakSet<Error>();
     const unsupportedPriorityErrors = new WeakSet<Error>();
     const expectedUrl = scope ? new URL(this.network.rpcUrl).href : undefined;
@@ -159,7 +158,7 @@ export class EvmTransferReadRpc {
     const timer = setTimeout(abort, this.timeoutMs);
     const limitFor = (method: Method) => scope === 'dapp-rpc' ? DAPP_REQUEST_LIMITS.bytes
       : method === 'eth_getTransactionReceipt' ? RECEIPT_BYTES : method === 'eth_getBlockByNumber' ? BLOCK_BYTES
-      : method === 'eth_getCode' ? (boundedContractCode ? CODE_BYTES * 2 + 512 : CODE_BYTES) : 16 * 1024;
+      : method === 'eth_getCode' ? CODE_BYTES * 2 + 512 : 16 * 1024;
     const request = async (method: Method, params: readonly unknown[]) => {
       guardedRead(guard);
       if (controller.signal.aborted) return rejectRead('CANCELLED');
