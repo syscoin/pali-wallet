@@ -2,6 +2,7 @@ import { isReadOnlyRpcMethod } from '@sidhujag/sysweb3-keyring/cjs/rpc-transport
 import {
   classifyDappRpcMethod,
   executeDappRpcRequest,
+  publicRpcReadKey,
   type DappPublicRpcRequest,
 } from '../../../../source/shared/dappRpcReads.ts';
 import { EthereumRpcErrorHandler } from '../../../../source/helpers/errors/errorClassesHandlers.ts';
@@ -41,8 +42,11 @@ type ReadOwner = {
   verification?: { controller: AbortController; promise: Promise<void> };
   pending: Map<string, SharedRead>;
   queued: QueuedRead[];
+  collection?: ReturnType<typeof setTimeout>;
 };
 const IDENTITY_LEASE_MS = 30_000;
+// Collect neighboring bridge callbacks without restarting the timer on arrival.
+const COLLECTION_MS = 4;
 const cancelled = () => new Error('CONTEXT_CHANGED');
 
 /** Public node queries share one selected-session owner; controls remain single-attempt. */
@@ -64,7 +68,9 @@ export function createNativeDappRpcReadHost(
       snapshotNativeNetwork(ports.registration()).registrationHash,
     ]);
   const reset = () => {
+    if (owner?.collection !== undefined) clearTimeout(owner.collection);
     owner?.controller.abort();
+    owner?.queued.splice(0).forEach(row => row.reject(new EvmTransferReadError('CANCELLED')));
     owner = undefined;
   };
   const current = (captured: ReadOwner) => {
@@ -188,7 +194,10 @@ export function createNativeDappRpcReadHost(
       return captured.rpc.dappRequest(request, controller.signal, () => current(captured), () => verify(captured));
     return new Promise<unknown>((resolve, reject) => {
       captured.queued.push({ request, controller, resolve, reject });
-      if (captured.queued.length === 1) queueMicrotask(() => void flushQueries(captured));
+      if (captured.collection === undefined) captured.collection = setTimeout(() => {
+        captured.collection = undefined;
+        void flushQueries(captured);
+      }, COLLECTION_MS);
     });
   };
   const query = (
@@ -197,7 +206,7 @@ export function createNativeDappRpcReadHost(
     signal: AbortSignal,
     check: () => void
   ) => {
-    const requestKey = JSON.stringify(request);
+    const requestKey = publicRpcReadKey(request);
     let shared = captured.pending.get(requestKey);
     if (!shared || shared.controller.signal.aborted) {
       if (captured.pending.size >= 32)

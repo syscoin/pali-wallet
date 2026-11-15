@@ -3,6 +3,7 @@ import { isReadOnlyRpcMethod } from '@sidhujag/sysweb3-keyring/cjs/rpc-transport
 import {
   classifyDappRpcMethod,
   normalizeDappRpcRequest,
+  publicRpcReadKey,
   type DappPublicRpcRequest,
 } from '../../shared/dappRpcReads';
 import { assertJsonWorkBudget } from '../../utils/requestPayloadBudget';
@@ -56,15 +57,7 @@ export function readPublicRpc(
   )
     return provider.send(request.method, [...request.params]);
   const normalized = normalizeDappRpcRequest(request.method, request.params);
-  const key = JSON.stringify(normalized, (_name, value) =>
-    value && typeof value === 'object' && !Array.isArray(value)
-      ? Object.fromEntries(
-          Object.keys(value)
-            .sort()
-            .map((name) => [name, value[name]])
-        )
-      : value
-  );
+  const key = publicRpcReadKey(normalized);
   let owner = owners.get(provider);
   if (!owner) {
     owner = { scopes: new Map(), subscribers: 0 };

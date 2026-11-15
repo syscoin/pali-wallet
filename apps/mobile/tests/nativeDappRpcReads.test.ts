@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { MessageChannel } from 'node:worker_threads';
 import { createNativeDappRpcReadHost } from '../src/custody/dappRpcReads.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { createNativeNetwork } from '../src/custody/networkContext.ts';
@@ -275,25 +276,28 @@ test('identical concurrent queries share transport with independent cancellation
 test('sixteen different reads keep four physical requests active across owner replacement', async () => {
   let context = 'first', active = 0, peak = 0;
   const releases: (() => void)[] = [];
+  const firstFour = Promise.withResolvers<void>(), nextEntered = Promise.withResolvers<void>();
   const host = createNativeDappRpcReadHost({ registration: () => registration, context: () => context,
     verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
       const request = JSON.parse(String(init.body));
       if (Array.isArray(request)) return Response.json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Batch not supported' } });
       if (request.method === 'eth_chainId') return json(request.id, { result: '0x1' });
       active++; peak = Math.max(peak, active);
+      if (active === 4) firstFour.resolve();
+      if (request.method === 'eth_blockNumber') nextEntered.resolve();
       await new Promise<void>(resolve => releases.push(() => { active--; resolve(); }));
       return json(request.id, { result: '0x42' });
     } });
   const tasks = Array.from({ length: 16 }, (_, index) => host.read(normalizeDappRpcRequest('eth_getBalance', [`0x${(index + 1).toString(16).padStart(40, '0')}`, 'latest']), new AbortController().signal, () => {}));
   const completed = Promise.allSettled(tasks);
-  for (let i = 0; i < 10; i++) await new Promise(resolve => setImmediate(resolve));
+  await firstFour.promise;
   assert.equal(active, 4); context = 'second'; host.reset!();
   await completed;
   const next = host.read(normalizeDappRpcRequest('eth_blockNumber', []), new AbortController().signal, () => {});
   for (let i = 0; i < 3; i++) await new Promise(resolve => setImmediate(resolve));
   assert.equal(active, 4);
   releases.splice(0).forEach(release => release());
-  for (let i = 0; i < 10; i++) await new Promise(resolve => setImmediate(resolve));
+  await nextEntered.promise;
   releases.splice(0).forEach(release => release());
   assert.equal(await next, '0x42'); assert(peak <= 4);
 });
@@ -638,7 +642,92 @@ test('control deadlines cancel post-control verification before a delayed respon
     assert(postSignals.every(signal => signal.aborted));
     assert(owners.every(owner => !owner.signal.aborted), 'caller lifetime remains live while response handoff waits');
     const next = host.read(normalizeDappRpcRequest('eth_blockNumber', []), new AbortController().signal, () => {});
-    await flush();
+    await flush(); context.mock.timers.tick(4); await flush();
     assert.equal(await next, '0x42');
   } finally { host.reset?.(); reply.resolve(); await handoffs; context.mock.timers.reset(); }
+});
+
+
+test('warm public reads from separate message events use one bounded collection window', async () => {
+  const envelopes: unknown[][] = [];
+  const host = createNativeDappRpcReadHost({ registration: () => registration, now: () => 1,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const input = JSON.parse(String(init.body));
+      const requests = Array.isArray(input) ? input : [input];
+      envelopes.push(requests);
+      const responses = requests.map(request => ({ jsonrpc: '2.0', id: request.id,
+        result: request.method === 'eth_chainId' ? '0x1' : '0x42' }));
+      return Response.json(Array.isArray(input) ? responses : responses[0]);
+    } });
+  const channel = new MessageChannel();
+  const reads: Promise<unknown>[] = [];
+  try {
+    await host.read(normalizeDappRpcRequest('eth_blockNumber', []), new AbortController().signal, () => {});
+    envelopes.length = 0;
+    await new Promise<void>(resolve => {
+      channel.port1.on('message', (index: number) => {
+        reads.push(host.read(normalizeDappRpcRequest('eth_getBalance', [`0x${(index + 1).toString(16).padStart(40, '0')}`, 'latest']), new AbortController().signal, () => {}));
+        if (reads.length === 4) resolve();
+      });
+      for (let index = 0; index < 4; index++) channel.port2.postMessage(index);
+    });
+    assert.deepEqual(await Promise.all(reads), ['0x42', '0x42', '0x42', '0x42']);
+    assert.deepEqual(envelopes.map(rows => rows.length), [4]);
+  } finally { host.reset?.(); channel.port1.close(); channel.port2.close(); }
+});
+
+test('equivalent reordered call fields join after dispatch and return independent results', async () => {
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let calls = 0;
+  const source = { values: ['original'] };
+  const host = createNativeDappRpcReadHost({ registration: () => registration, now: () => 1,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const input = JSON.parse(String(init.body));
+      if (input.method === 'eth_chainId') return json(input.id, { result: '0x1' });
+      calls++; entered.resolve(); await release.promise;
+      return json(input.id, { result: source });
+    } });
+  const to = `0x${'11'.repeat(20)}`, from = `0x${'22'.repeat(20)}`;
+  const first = host.read(normalizeDappRpcRequest('eth_call', [{ to, from, data: '0x1234', value: '0x1' }, 'pending']), new AbortController().signal, () => {});
+  try {
+    await entered.promise;
+    const second = host.read(normalizeDappRpcRequest('eth_call', [{ value: '0x01', data: '0x1234', from, to }, 'pending']), new AbortController().signal, () => {});
+    await new Promise(resolve => setTimeout(resolve, 8));
+    const observed = calls;
+    release.resolve();
+    const values = await Promise.all([first, second]) as typeof source[];
+    assert.equal(observed, 1);
+    values[0]!.values[0] = 'changed';
+    assert.deepEqual(values[1], { values: ['original'] });
+    assert.deepEqual(source, { values: ['original'] });
+  } finally { release.resolve(); host.reset?.(); }
+});
+
+
+test('collection has a fixed four millisecond window and reset retires queued work', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1 });
+  const methods: string[][] = [];
+  const host = createNativeDappRpcReadHost({ registration: () => registration, now: () => Date.now(),
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const input = JSON.parse(String(init.body));
+      const rows = Array.isArray(input) ? input : [input];
+      methods.push(rows.map(row => row.method));
+      const responses = rows.map(row => ({ jsonrpc: '2.0', id: row.id, result: row.method === 'eth_chainId' ? '0x1' : '0x42' }));
+      return Response.json(Array.isArray(input) ? responses : responses[0]);
+    } });
+  const flush = async () => { for (let index = 0; index < 5; index++) await new Promise(resolve => setImmediate(resolve)); };
+  try {
+    const first = host.read(normalizeDappRpcRequest('eth_blockNumber', []), new AbortController().signal, () => {});
+    await flush(); assert.deepEqual(methods, [['eth_chainId']]);
+    context.mock.timers.tick(3); await flush(); assert.equal(methods.length, 1);
+    const second = host.read(normalizeDappRpcRequest('eth_gasPrice', []), new AbortController().signal, () => {});
+    await flush(); context.mock.timers.tick(1); await flush();
+    assert.deepEqual(await Promise.all([first, second]), ['0x42', '0x42']);
+    assert.deepEqual(methods, [['eth_chainId'], ['eth_blockNumber', 'eth_gasPrice']]);
+    const queued = host.read(normalizeDappRpcRequest('eth_blockNumber', []), new AbortController().signal, () => {});
+    const rejected = assert.rejects(queued);
+    await flush(); host.reset!(); await rejected;
+    context.mock.timers.tick(4); await flush();
+    assert.equal(methods.length, 2, 'reset queued work must not start an RPC');
+  } finally { host.reset?.(); context.mock.timers.reset(); }
 });

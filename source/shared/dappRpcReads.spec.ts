@@ -6,6 +6,7 @@ import {
   classifyDappRpcMethod,
   executeDappRpcRequest,
   normalizeDappRpcRequest,
+  publicRpcReadKey,
 } from './dappRpcReads';
 
 const address = `0x${'11'.repeat(20)}`,
@@ -518,4 +519,52 @@ it.each([
   ['eth_call', [{ to: address, data: `0x${'00'.repeat(1024 * 1024)}` }]],
 ])('rejects malformed or oversized %s before any RPC', (method, params) => {
   expect(() => normalizeDappRpcRequest(method as string, params)).toThrow();
+});
+
+it('keys normalized public reads by every field and selector with stable object ordering', () => {
+  const call = {
+    to: address,
+    from: address,
+    data: '0x1234',
+    value: '0x1',
+    gas: '0x5208',
+    gasPrice: '0x2',
+    accessList: [{ address, storageKeys: [hash] }],
+  };
+  const key = (transaction: unknown, block: unknown = 'pending') =>
+    publicRpcReadKey(normalizeDappRpcRequest('eth_call', [transaction, block]));
+  const expected = key(call);
+  expect(
+    key({
+      accessList: call.accessList,
+      gasPrice: '0x02',
+      gas: '0x05208',
+      value: '0x01',
+      data: '0x1234',
+      from: address,
+      to: address,
+    })
+  ).toBe(expected);
+  for (const [field, value] of Object.entries({
+    from: `0x${'33'.repeat(20)}`,
+    to: `0x${'44'.repeat(20)}`,
+    data: '0xabcd',
+    value: '0x2',
+    gas: '0x5209',
+    gasPrice: '0x3',
+    accessList: [{ address, storageKeys: [hash, hash] }],
+  }))
+    expect(key({ ...call, [field]: value })).not.toBe(expected);
+  for (const selector of [
+    'latest',
+    '0x1',
+    { blockHash: hash },
+    { blockHash: hash, requireCanonical: true },
+  ])
+    expect(key(call, selector)).not.toBe(expected);
+  const topics = (items: unknown[]) =>
+    publicRpcReadKey(
+      normalizeDappRpcRequest('eth_getLogs', [{ topics: items }])
+    );
+  expect(topics([hash, null])).not.toBe(topics([null, hash]));
 });

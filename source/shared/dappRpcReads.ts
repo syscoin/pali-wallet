@@ -469,6 +469,19 @@ export function normalizeDappRpcRequest(
   return Object.freeze({ method, params: Object.freeze(params) });
 }
 
+/** Stable identity for a normalized query, preserving every field and array position. */
+export function publicRpcReadKey(request: DappPublicRpcRequest): string {
+  return JSON.stringify(request, (_name, value) =>
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(
+          Object.keys(value)
+            .sort()
+            .map((name) => [name, value[name]])
+        )
+      : value
+  );
+}
+
 /** One owned request per node query/control; controls never retry automatically. */
 export async function executeDappRpcRequest(
   input: DappPublicRpcRequest,
