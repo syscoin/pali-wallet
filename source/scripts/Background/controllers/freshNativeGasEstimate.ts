@@ -15,7 +15,10 @@ import {
   EVM_FEE_APPROVAL_LIFETIME_MS,
 } from '../../../shared/evmFeeApproval';
 import { assertSynchronousEvmFeeGuard } from '../../../shared/evmFeeGuard';
-import { withEvmReadPhase } from '../../../shared/evmReadPhase';
+import {
+  readFreshEvmState,
+  withEvmReadPhase,
+} from '../../../shared/evmReadPhase';
 import {
   readEvmRpcHash,
   readEvmRpcQuantity,
@@ -261,7 +264,7 @@ export async function recheckReviewedNativeEvmTransfer(
       Math.floor(performance.now()),
       captureNativeEvmFeeCoverage(review.approval)
     );
-    const canonical = await read('eth_getBlockByNumber', [
+    const canonical = await readFreshEvmState(phase, 'eth_getBlockByNumber', [
       canonicalBlock.number,
       false,
     ]);

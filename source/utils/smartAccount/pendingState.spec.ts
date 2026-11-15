@@ -1,3 +1,7 @@
+import { prepareEvmDappQuote } from '../../shared/evmDappPreparation';
+import { NATIVE_EVM_FEE_FUNDING } from '../../shared/evmFeeApproval';
+import { readFreshEvmState } from '../../shared/evmReadPhase';
+
 import type { SmartAccountPackedUserOperation } from './account';
 import { getPaliEntryPointAddress, paliEntryPointInterface } from './contracts';
 import {
@@ -80,6 +84,78 @@ function fixture() {
 }
 const operation = (nonce: string) =>
   ({ sender: account, nonce } as SmartAccountPackedUserOperation);
+
+it.each([false, true])(
+  'verifies canonicality after retained-revert reconciliation, reorg=%s',
+  async (reorg) => {
+    const f = fixture();
+    f.retain();
+    const original = f.provider.send.getMockImplementation()!;
+    const canonicalHash = `0x${'55'.repeat(32)}`;
+    let estimated = false;
+    let numberedReads = 0;
+    f.provider.send.mockImplementation(async (method, params) => {
+      if (method === 'eth_getTransactionReceipt')
+        return {
+          transactionHash: hash,
+          from: payer,
+          to: getPaliEntryPointAddress(1),
+          status: '0x0',
+          blockNumber: '0x10',
+          blockHash: canonicalHash,
+          transactionIndex: '0x0',
+        } as never;
+      if (method === 'eth_getBlockByNumber') {
+        if (params[0] === '0x10') numberedReads++;
+        return {
+          number: '0x10',
+          gasLimit: '0x100000',
+          transactions: [hash],
+          hash: reorg && estimated ? hash : canonicalHash,
+        } as never;
+      }
+      if (method === 'eth_estimateGas') estimated = true;
+      return original(method, params);
+    });
+    const quoted = f.state.withReadPhase(async (state) => {
+      await state.assertNonce(operation('0'));
+      return prepareEvmDappQuote(
+        { from: payer, to: account, value: '0', data: '0x', gasPrice: '1' },
+        {
+          chainId: '1',
+          scope: 'reconciled payer',
+          feePolicy: 'fixed',
+          funding: NATIVE_EVM_FEE_FUNDING,
+          gasPolicy: { kind: 'estimate' },
+          assertCurrent: () => undefined,
+          now: () => 1,
+          read: (method, params) => state.provider.send(method, params),
+          verifyChain: () => state.provider.verifyConfiguredChainId(true),
+          verifyBlock: async (block) => {
+            const current = await readFreshEvmState(
+              state.provider,
+              'eth_getBlockByNumber',
+              ['0x10', false]
+            );
+            if (current.hash !== block.hash)
+              throw new Error('Canonical block changed');
+          },
+          nonce: async () => ({ nonce: BigInt(0), state: 'pending' }),
+          balance: async () => BigInt(1_000_000),
+          fees: async () => {
+            throw new Error('Fixed fees do not need recommendations');
+          },
+        }
+      );
+    });
+    if (reorg) await expect(quoted).rejects.toThrow('Canonical block changed');
+    else
+      await expect(quoted).resolves.toMatchObject({
+        transaction: { nonce: '0' },
+      });
+    expect(numberedReads).toBe(2);
+  }
+);
 
 it('uses explicit pending state for code, calls, balances and both fee forms', async () => {
   const f = fixture();

@@ -32,16 +32,31 @@ type ReadProvider = {
     options?: { signal: AbortSignal }
   ) => Promise<PromiseSettledResult<unknown>[]>;
   send(method: string, params: unknown[]): Promise<unknown>;
+  sendFresh?: (method: string, params: unknown[]) => Promise<unknown>;
   signal?: AbortSignal;
   verifyConfiguredChainId(fresh?: boolean): Promise<void>;
   withReadPhase?: <T>(work: (provider: any) => Promise<T>) => Promise<T>;
 };
 
+/** Verification must observe the endpoint after the preceding work completes. */
+export function readFreshEvmState(
+  provider: {
+    send(rpcMethod: string, rpcParams: unknown[]): Promise<any>;
+    sendFresh?: (rpcMethod: string, rpcParams: unknown[]) => Promise<any>;
+  },
+  method: string,
+  params: unknown[]
+): Promise<any> {
+  return provider.sendFresh
+    ? provider.sendFresh(method, params)
+    : provider.send(method, params);
+}
+
 /** One bounded host-owned observation, retired before signing or storage. */
 export async function withEvmReadPhase<T>(
   provider: ReadProvider,
   assertCurrent: () => void,
-  work: (provider: any) => Promise<T>
+  work: (phase: any) => Promise<T>
 ): Promise<T> {
   const lifetime = new AbortController();
   const abort = () => lifetime.abort(provider.signal?.reason);
@@ -75,7 +90,9 @@ export async function withEvmReadPhase<T>(
     const pending = new Map<string, Promise<unknown>>();
     const helpers = new Map<string, Promise<unknown>>();
     let requestBytes = 0;
+    let requestCount = 0;
     let queue: Array<{
+      fresh: boolean;
       reject(error: unknown): void;
       request: ReadRequest;
       resolve(value: unknown): void;
@@ -86,14 +103,19 @@ export async function withEvmReadPhase<T>(
       try {
         active();
         const results = await bounded(
-          source.readMany
+          source.readMany &&
+            !batch.some((item) => item.fresh && source.sendFresh)
             ? source.readMany(
                 batch.map(({ request }) => request),
                 { signal: lifetime.signal }
               )
             : Promise.allSettled(
-                batch.map(({ request }) =>
-                  source.send(request.method, [...request.params])
+                batch.map(({ request, fresh }) =>
+                  fresh
+                    ? readFreshEvmState(source, request.method, [
+                        ...request.params,
+                      ])
+                    : source.send(request.method, [...request.params])
                 )
               )
         );
@@ -111,30 +133,36 @@ export async function withEvmReadPhase<T>(
         batch.forEach(({ reject }) => reject(error));
       }
     };
-    const send = (method: string, params: readonly unknown[]) => {
+    const send = (
+      method: string,
+      params: readonly unknown[],
+      fresh = false
+    ) => {
       active();
       if (!READ_METHODS.has(method) || !Array.isArray(params))
         throw new Error('Unsupported EVM phase read');
       assertJsonWorkBudget(params, MAX_PHASE_BYTES);
       const key = JSON.stringify([method, params]);
-      let result = pending.get(key);
+      let result = fresh ? undefined : pending.get(key);
       if (!result) {
         requestBytes += key.length * 2;
+        requestCount++;
         if (
-          pending.size + helpers.size >= MAX_PHASE_READS ||
+          requestCount + helpers.size > MAX_PHASE_READS ||
           requestBytes > MAX_PHASE_BYTES
         )
           throw new Error('EVM read phase work limit exceeded');
         const request = JSON.parse(key) as [string, unknown[]];
         result = new Promise((resolve, reject) => {
           queue.push({
+            fresh,
             request: { method: request[0], params: request[1] },
             resolve,
             reject,
           });
           if (queue.length === 1) queueMicrotask(() => void flush());
         });
-        pending.set(key, result);
+        if (!fresh) pending.set(key, result);
       }
       return bounded(result).then((value) => {
         active();
@@ -156,7 +184,7 @@ export async function withEvmReadPhase<T>(
       if (!result) {
         requestBytes += key.length * 2;
         if (
-          pending.size + helpers.size >= MAX_PHASE_READS ||
+          requestCount + helpers.size >= MAX_PHASE_READS ||
           requestBytes > MAX_PHASE_BYTES
         )
           throw new Error('EVM read phase work limit exceeded');
@@ -220,6 +248,8 @@ export async function withEvmReadPhase<T>(
     const scoped: any = Object.freeze({
       signal: lifetime.signal,
       send,
+      sendFresh: (method: string, params: readonly unknown[]) =>
+        send(method, params, true),
       readMany: async (requests: readonly ReadRequest[]) => {
         active();
         assertJsonWorkBudget(requests, MAX_PHASE_BYTES);

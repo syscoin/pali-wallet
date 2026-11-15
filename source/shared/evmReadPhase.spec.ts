@@ -75,6 +75,67 @@ it('retires all exposed methods and never exposes signer or broadcast methods', 
   );
   expect(provider.getSigner).not.toHaveBeenCalled();
 });
+it('fresh verification does not reuse completed or in-flight observations', async () => {
+  const { provider } = fixture();
+  const old = deferred<any>();
+  provider.readMany.mockImplementationOnce(() => old.promise);
+  await withEvmReadPhase(
+    provider,
+    () => undefined,
+    async (phase) => {
+      const observed = phase.send('eth_getBlockByNumber', ['0x5', false]);
+      await jest.advanceTimersByTimeAsync(0);
+      provider.readMany.mockImplementationOnce(async () => [
+        {
+          status: 'fulfilled',
+          value: { hash: 'replacement' },
+        },
+      ]);
+      expect(
+        await phase.sendFresh('eth_getBlockByNumber', ['0x5', false])
+      ).toEqual({ hash: 'replacement' });
+      old.resolve([{ status: 'fulfilled', value: { hash: 'orphan' } }]);
+      expect(await observed).toEqual({ hash: 'orphan' });
+      provider.readMany.mockImplementationOnce(async () => [
+        {
+          status: 'fulfilled',
+          value: { hash: 'newest' },
+        },
+      ]);
+      expect(
+        await phase.sendFresh('eth_getBlockByNumber', ['0x5', false])
+      ).toEqual({ hash: 'newest' });
+      expect(provider.readMany).toHaveBeenCalledTimes(3);
+    }
+  );
+});
+
+it('preserves fresh verification through a nested phase', async () => {
+  const { provider } = fixture();
+  await withEvmReadPhase(
+    provider,
+    () => undefined,
+    async (outer) => {
+      await outer.send('eth_getBlockByNumber', ['0x5', false]);
+      provider.readMany.mockImplementationOnce(async () => [
+        {
+          status: 'fulfilled',
+          value: { hash: 'replacement' },
+        },
+      ]);
+      await withEvmReadPhase(
+        outer,
+        () => undefined,
+        async (inner) => {
+          expect(
+            await inner.sendFresh('eth_getBlockByNumber', ['0x5', false])
+          ).toEqual({ hash: 'replacement' });
+        }
+      );
+      expect(provider.readMany).toHaveBeenCalledTimes(2);
+    }
+  );
+});
 it('enforces the total timeout and cancels the phase transport', async () => {
   const { provider } = fixture();
   provider.readMany.mockImplementation(() => new Promise(() => undefined));

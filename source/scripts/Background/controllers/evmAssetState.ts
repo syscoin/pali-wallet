@@ -14,6 +14,7 @@ import {
   type EvmAssetState,
   type EvmTransferAsset,
 } from '../../../shared/evmAssetState';
+import { readFreshEvmState } from '../../../shared/evmReadPhase';
 import {
   decodeRetainedNftTransfer,
   encodeNftTransferData,
@@ -221,7 +222,10 @@ export async function assertWorkerAssetBasis(
       { ...owner.envelope, nonce: String(nonce) },
       mode
     );
-    await assertEvmAssetStateCanonical(read, basis);
+    await assertEvmAssetStateCanonical(
+      (method, params) => readFreshEvmState(provider, method, [...params]),
+      basis
+    );
   } catch {
     assertCurrent();
     if (provider.signal.aborted) throw provider.signal.reason;

@@ -2,6 +2,7 @@ import { parseEvmFeeQuantity } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 
 import { EvmAssetStateError } from '../../../shared/evmAssetState';
 import { availableEvmNativeBalance } from '../../../shared/evmAutoNonce';
+import { readFreshEvmState } from '../../../shared/evmReadPhase';
 import { EVM_SIGNED_RECORD_NONCE_CONFLICT } from '../../../wallet/evmSignedRecords';
 import {
   EVM_ASSET_REVIEW_MESSAGE,
@@ -325,11 +326,12 @@ async function planNonce(
     } else if (!quoteBlock) {
       await verifyChain();
     }
-    if (!quoteBlock) {
-      const currentBlock = (await read('eth_getBlockByNumber', [
-        canonicalBlock.number,
-        false,
-      ])) as { hash?: string } | null;
+    if (!quoteBlock && !assetBasis) {
+      const currentBlock = (await readFreshEvmState(
+        provider,
+        'eth_getBlockByNumber',
+        [canonicalBlock.number, false]
+      )) as { hash?: string } | null;
       if (currentBlock?.hash?.toLowerCase() !== canonicalBlock.hash)
         throw unavailable();
     }

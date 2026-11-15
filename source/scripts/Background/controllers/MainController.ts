@@ -86,7 +86,10 @@ import {
   assertEvmFeeRefreshApproved,
 } from '../../../shared/evmFeeApproval';
 import { assertSynchronousEvmFeeGuard } from '../../../shared/evmFeeGuard';
-import { withEvmReadPhase } from '../../../shared/evmReadPhase';
+import {
+  readFreshEvmState,
+  withEvmReadPhase,
+} from '../../../shared/evmReadPhase';
 import {
   observeEvmTransaction,
   readEvmRpcHash,
@@ -2195,6 +2198,14 @@ class MainController {
         metadata: feePreflight?.metadata,
         preflight: async (record, assertDispatchCurrent, snapshot) => {
           if (feePreflight?.beforePersist) {
+            await feePreflight.preflight(
+              record,
+              assertDispatchCurrent,
+              snapshot
+            );
+            return;
+          }
+          if (feePreflight && !assetOperation) {
             await feePreflight.preflight(
               record,
               assertDispatchCurrent,
@@ -11521,12 +11532,6 @@ class MainController {
       request.nonce === undefined
         ? undefined
         : reviewedExtensionNonce(request.nonce, 'manual');
-    const plan = await this.inspectOrdinaryEvmNonce(read, account.address, {
-      reviewed: explicit,
-    });
-    read.assertCurrent();
-    const walletNonce =
-      explicit ?? reviewedExtensionNonce(plan.nonce, 'automatic');
     const context: IEvmTransactionContext = {
       account: {
         id: activeAccount.id,
@@ -11540,9 +11545,9 @@ class MainController {
     };
     return (
       await this.prepareGenericEvmFeeReview(
-        { ...request, nonce: walletNonce.nonce },
+        request,
         context,
-        walletNonce,
+        explicit,
         read.assertCurrent,
         { hardwareScope: { ...scope } },
         { kind: 'wallet' }
@@ -11678,10 +11683,11 @@ class MainController {
                   assertCurrent();
                 },
                 verifyBlock: async (block) => {
-                  const current = await provider.send('eth_getBlockByNumber', [
-                    `0x${BigInt(block.number).toString(16)}`,
-                    false,
-                  ]);
+                  const current = await readFreshEvmState(
+                    provider,
+                    'eth_getBlockByNumber',
+                    [`0x${BigInt(block.number).toString(16)}`, false]
+                  );
                   assertCurrent();
                   if (
                     readEvmRpcHash(current?.hash) !== block.hash ||
@@ -15133,10 +15139,11 @@ class MainController {
             noncePlan
           );
         } else {
-          const current = await phase.send('eth_getBlockByNumber', [
-            noncePlan.canonicalBlock.number,
-            false,
-          ]);
+          const current = await readFreshEvmState(
+            phase,
+            'eth_getBlockByNumber',
+            [noncePlan.canonicalBlock.number, false]
+          );
           if (readEvmRpcHash(current?.hash) !== block.hash)
             throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
         }

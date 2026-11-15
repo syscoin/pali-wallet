@@ -54,6 +54,7 @@ import {
   NATIVE_EVM_FEE_FUNDING,
 } from '../../../shared/evmFeeApproval';
 import { KeyringAccountType } from 'types/network';
+import { EVM_TRANSACTION_CONTEXT_CHANGED } from 'utils/evmTransactionContext';
 import { buildSmartAccountUserOperation } from 'utils/smartAccount/account';
 import { paliEntryPointInterface } from 'utils/smartAccount/contracts';
 import { createSmartAccountPendingState } from 'utils/smartAccount/pendingState';
@@ -635,6 +636,33 @@ it('refuses an otherwise valid fee cap when the fresh base fee requires raising 
   });
   expect(f.send).not.toHaveBeenCalled();
   expect(f.records.append).not.toHaveBeenCalled();
+});
+
+it('rejects a reorg after a numbered header was reused by pending reconciliation', async () => {
+  const f = fixture();
+  let replaced = false;
+  let numberedReads = 0;
+  const original = f.provider.send.getMockImplementation()!;
+  f.options.assertPendingState.mockImplementation(async (...args) => {
+    const provider = args[0] as any;
+    await provider.send('eth_getBlockByNumber', ['0x10', false]);
+  });
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (method === 'eth_getBlockByNumber' && params?.[0] === '0x10') {
+      numberedReads++;
+      return { ...block, hash: replaced ? '0x' + '55'.repeat(32) : block.hash };
+    }
+    if (method === 'eth_estimateGas') replaced = true;
+    return original(method, params);
+  });
+  await expect(f.submit()).rejects.toMatchObject({
+    message: EVM_TRANSACTION_CONTEXT_CHANGED,
+    transactionNotBroadcast: true,
+  });
+  expect(numberedReads).toBe(2);
+  expect(f.send).not.toHaveBeenCalled();
+  expect(f.records.append).not.toHaveBeenCalled();
+  expect(f.broadcast).not.toHaveBeenCalled();
 });
 
 it('routes deployment prefunding through the same payer checks', async () => {
