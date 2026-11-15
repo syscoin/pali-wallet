@@ -90,6 +90,22 @@ test('RPC budget and receipts for local wallet transfers', async () => {
     phase = next;
     output.markers.push({ phase, at: Date.now() });
   };
+  const waitForReadSettlement = () =>
+    expect
+      .poll(
+        () => {
+          const requests = output.requests;
+          const settled = requests.every(
+            (request: any) => request.finished !== undefined
+          );
+          const lastStarted = requests.length
+            ? requests[requests.length - 1].started
+            : 0;
+          return settled && Date.now() - lastStarted >= 250;
+        },
+        { timeout: 10000 }
+      )
+      .toBe(true);
   const receipt = async (hash: string) => {
     let result: any;
     await expect
@@ -551,21 +567,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         await expect(
           page.getByText('Confirmed', { exact: true }).first()
         ).toBeVisible({ timeout: 15000 });
-        await expect
-          .poll(
-            () => {
-              const requests = output.requests;
-              const settled = requests.every(
-                (request: any) => request.finished !== undefined
-              );
-              const lastStarted = requests.length
-                ? requests[requests.length - 1].started
-                : 0;
-              return settled && Date.now() - lastStarted >= 250;
-            },
-            { timeout: 10000 }
-          )
-          .toBe(true);
+        await waitForReadSettlement();
       }
     );
     await send('warm');
@@ -842,6 +844,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
       await wallet.step(
         'return from dapp and select software account',
         async () => {
+          mark('account-switch');
           await app.close();
           await wallet.gotoRoute('#/home');
           await page
@@ -851,6 +854,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           expect((await wallet.getActiveAccountAddress()).toLowerCase()).toBe(
             payer.toLowerCase()
           );
+          await waitForReadSettlement();
         }
       );
       await send('eoa-native');
