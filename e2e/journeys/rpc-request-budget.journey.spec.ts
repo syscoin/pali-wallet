@@ -557,6 +557,16 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         }
         await expect(page).toHaveURL(/#\/home$/, { timeout: 20000 });
         mark(label + ':home');
+        await expect(page.getByText('Pending', { exact: true })).toHaveCount(
+          0,
+          {
+            timeout: 15000,
+          }
+        );
+        await expect(
+          page.getByText('Confirmed', { exact: true }).first()
+        ).toBeVisible({ timeout: 15000 });
+        await waitForReadSettlement();
       });
     await send('deployment');
     await wallet.step(
