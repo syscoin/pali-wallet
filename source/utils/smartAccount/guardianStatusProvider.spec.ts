@@ -227,7 +227,7 @@ function wireFixture(active: string) {
       headers: { get: () => null },
       text: async () => JSON.stringify([...replies].reverse()),
       json: async () => [...replies].reverse(),
-    } as Response;
+    } as unknown as Response;
   }) as any;
   const provider = new CustomJsonRpcProvider(
     new AbortController().signal,
