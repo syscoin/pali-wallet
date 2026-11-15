@@ -521,6 +521,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
 
       {/* Initial loading blocks as before; slow status owns in-flow space. */}
       <PageLoadingOverlay
+        key={connectionUnavailable ? 'reconnecting' : 'loading'}
         isLoading={isLoading || connectionUnavailable}
         message={
           connectionUnavailable

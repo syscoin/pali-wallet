@@ -160,7 +160,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
       try {
         await controllerEmitter(
           ['wallet', 'refreshActiveAccountBalances'],
-          [{ includeAssets: true }]
+          [{ includeAssets: true, showLoading: false }]
         );
       } catch (error) {
         console.error('Failed to refresh send balances:', error);

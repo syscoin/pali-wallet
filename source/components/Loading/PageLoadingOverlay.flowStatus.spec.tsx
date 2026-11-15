@@ -9,6 +9,7 @@ import fr from 'assets/locales/fr.json';
 import {
   MAX_BLOCKING_LOADING_MS,
   PageLoadingOverlay,
+  RECONNECT_FEEDBACK_MS,
 } from './PageLoadingOverlay';
 
 let mockLanguage: 'en' | 'fr' = 'en';
@@ -112,7 +113,7 @@ it('retains the initial fixed pointer-blocking backdrop through the two-second b
   expect(status.querySelector('span')).toHaveClass('animate-spin', 'shrink-0');
 });
 
-it('keeps an immediate unavailable-worker status in flow without adding a blocking backdrop', () => {
+it('keeps persistent unavailable-worker status in flow after a brief delay without adding a blocking backdrop', () => {
   const view = render(
     <PageLoadingOverlay
       isLoading
@@ -120,6 +121,10 @@ it('keeps an immediate unavailable-worker status in flow without adding a blocki
       message={en.components.walletServiceReconnecting}
     />
   );
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  advance(RECONNECT_FEEDBACK_MS - 1);
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  advance(1);
   expectInFlow(screen.getByRole('status'));
   expect(screen.getByRole('status')).toHaveTextContent(
     en.components.walletServiceReconnecting
@@ -128,6 +133,23 @@ it('keeps an immediate unavailable-worker status in flow without adding a blocki
   advance(MAX_BLOCKING_LOADING_MS);
   expectInFlow(screen.getByRole('status'));
   expect(backdrop(view.container)).toBeUndefined();
+});
+
+it('does not flash unavailable-worker feedback when a focus check recovers promptly', () => {
+  const view = render(
+    <PageLoadingOverlay
+      isLoading
+      nonBlocking
+      message={en.components.walletServiceReconnecting}
+    />
+  );
+  advance(RECONNECT_FEEDBACK_MS - 1);
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  view.rerender(<PageLoadingOverlay isLoading={false} nonBlocking />);
+  advance(MAX_BLOCKING_LOADING_MS);
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  expect(backdrop(view.container)).toBeUndefined();
+  expect(jest.getTimerCount()).toBe(0);
 });
 
 it('uses the installed French message without fixed positioning or nowrap constraints', () => {
@@ -165,6 +187,8 @@ it.each([false, true])(
       />
     );
     if (nonBlocking) {
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      advance(RECONNECT_FEEDBACK_MS);
       expectHeaderlessStatus(screen.getByRole('status'));
       expect(backdrop(view.container)).toBeUndefined();
     } else {
