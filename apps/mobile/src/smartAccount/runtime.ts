@@ -572,7 +572,7 @@ export function createNativeSmartOperation(
           },
           options.feeFunding,
           transactionMetadata?.smartAccountExecution === true ? options.assertAssetState : null,
-          transactionMetadata?.smartAccountDeploymentPrefund === true
+          (transactionMetadata?.smartAccountDeploymentPrefund === true || transactionMetadata?.smartAccountExecution === true)
             ? (provider, hash, admission) => options.assertPendingState(provider, hash, admission)
             : undefined
         );
@@ -590,7 +590,7 @@ export function createNativeSmartOperation(
           guard
         );
         if (transactionMetadata?.smartAccountExecution === true || transactionMetadata?.smartAccountDeploymentPrefund === true)
-          await options.assertPendingState();
+          await pending.withReadPhase(phase => options.assertPendingState(phase.provider));
         else await pending.assertNonce(prepared.userOperation);
         if (intent.kind === 'guardian-policy')
           await ports.assertGuardianPolicy!(signal, guard);

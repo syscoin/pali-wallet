@@ -151,3 +151,34 @@ test('the actual SDK carries three pending getters in one HTTP envelope per phas
     assert(posts[0]!.every(request => request.params[1] === 'pending'));
   } finally { client.destroy(); }
 });
+
+test('actual native full admission batches the nonce and spendability with two chain probes', async () => {
+  const { createNativeNetwork } = await import('../src/custody/networkContext.ts');
+  const { EvmTransferReadRpc } = await import('../src/custody/evmTransferReadRpc.ts');
+  const { createNativeSmartAccountProvider } = await import('../src/smartAccount/provider.ts');
+  const { createSmartAccountPendingState } = await import('../../../source/utils/smartAccount/pendingState.ts');
+  const { assertSmartAccountSpendability } = await import('../../../source/utils/smartAccount/assetSpendability.ts');
+  const { ERC7579_MODE_SINGLE_DEFAULT, SMART_ACCOUNT_ZERO_GAS_FEES } = await import('../../../source/utils/smartAccount/account.ts');
+  const { paliSmartAccountInterface } = await import('../../../source/utils/smartAccount/contracts.ts');
+  const network = createNativeNetwork({ id: 'financial', chainId: '1', name: 'Financial', kind: 'evm', rpcUrl: 'https://financial.invalid', slip44: 60, symbol: 'ETH', decimals: 18, testnet: true });
+  const posts: string[][] = [];
+  const rpc = new EvmTransferReadRpc(network, { fetch: async (_url, init) => {
+    const input = JSON.parse(String(init.body));
+    const rows = Array.isArray(input) ? input : [input];
+    posts.push(rows.map(row => row.method));
+    const output = rows.map(row => ({ jsonrpc: '2.0', id: row.id, result: row.method === 'eth_chainId' ? '0x1'
+      : row.method === 'eth_getBalance' ? '0x64' : uint(row.params[0].data.startsWith(paliEntryPointInterface.getFunction('getNonce')!.selector) ? 0n : 7n) }));
+    return Response.json(Array.isArray(input) ? output : output[0]);
+  } });
+  const provider = createNativeSmartAccountProvider(network, rpc, new AbortController().signal, () => undefined);
+  const pending = createSmartAccountPendingState(provider, { profileId: '0x' + '33'.repeat(32), read: async () => [] }, 1, account, () => undefined);
+  const operation = { sender: account, nonce: '0', initCode: '0x',
+    callData: paliSmartAccountInterface.encodeFunctionData('execute', [ERC7579_MODE_SINGLE_DEFAULT, `0x${'22'.repeat(20)}${5n.toString(16).padStart(64, '0')}`]),
+    accountGasLimits: '0x' + '00'.repeat(32), gasFees: SMART_ACCOUNT_ZERO_GAS_FEES, preVerificationGas: '0', paymasterAndData: '0x', signature: '0x',
+  };
+  await pending.withReadPhase(async phase => {
+    await phase.assertNonce(operation);
+    await assertSmartAccountSpendability({ provider: phase.provider, chainId: 1, userOperation: operation, assertCurrent: () => undefined });
+  });
+  assert.deepEqual(posts, [['eth_chainId'], ['eth_call', 'eth_getBalance', 'eth_call'], ['eth_chainId']]);
+});

@@ -1740,9 +1740,9 @@ for (const alreadyDeployed of [false, true]) test(`real SDK smart native send au
     assert.equal('0x' + execution.slice(2, 42), recipient);
     assert.equal(BigInt('0x' + execution.slice(42, 106)), 9n);
     assert.equal(f.calls.includes('eth_getTransactionReceipt'), false);
-    // Preparation, owner signing and payer authorization each observe spendability.
+    // Preparation, owner signing, payer review and durable dispatch each observe spendability.
     // Counterfactual sends also recheck before prefunding and in prefund calculation.
-    const expectedReads = alreadyDeployed ? 3 : 5;
+    const expectedReads = alreadyDeployed ? 4 : 6;
     assert.equal(f.spendabilityReads.native - initialReads.native, expectedReads);
     assert.equal(f.spendabilityReads.deposit - initialReads.deposit, expectedReads);
   } finally { operation?.dispose(); await f.close(); }
@@ -2167,6 +2167,48 @@ for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`co
   } finally { operation?.dispose(); await f.close(); }
 });
 
+
+for (const change of ['balance', 'nonce'] as const) for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`deployed Smart final admission rejects ${change} change during ${boundary}`, async () => {
+  let changeState: (() => void) | undefined;
+  let changed = false;
+  const f = await fixture({ after(kind, sql) {
+    if (boundary === 'payer-persistence' && kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records') && changeState) {
+      changeState(); changeState = undefined;
+    }
+  } }, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Late native admission' });
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    assert.equal(operation.getSnapshot().authorization!.initCode, '0x');
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    const review = operation.getSnapshot().payerReview;
+    assert(review, JSON.stringify(operation.getSnapshot()));
+    assert.equal(review.purpose, 'submit-operation');
+    const mutate = () => { changed = true; if (change === 'balance') f.smartBalance(8n); else f.advanceSmartNonce(); };
+    if (boundary === 'payer-signing') f.onPayerSignature(mutate); else changeState = mutate;
+    f.onBroadcast(() => operation!.cancel());
+    operation.confirmPayer(review.id);
+    await sending;
+    assert(changed, 'the fixture must reach the post-review boundary');
+    assert.equal(f.payerSignatures.length, 1);
+    assert.equal(operation.getSnapshot().phase, change === 'nonce' ? 'authorize' : 'failed', JSON.stringify(operation.getSnapshot()));
+    if (change === 'nonce') {
+      assert.equal(BigInt(operation.getSnapshot().authorization!.nonce) & ((1n << 64n) - 1n), 1n);
+      assert.equal(operation.getSnapshot().transactionHash, null);
+    }
+    assert.equal(f.submitted.length, 0);
+    const identity = (await f.storage.recovery.readIdentity())!.root!;
+    const retained = await f.storage.signedRecords.read(identity.profileId);
+    assert(retained, 'the signed outer bytes remain durably inspectable');
+    assert.equal(inspectEvmSignedBundle(retained, identity.profileId).transactions, 1);
+  } finally { operation?.dispose(); await f.close(); }
+});
 
 for (const standard of ['ERC-721', 'ERC-1155'] as const) test(`Smart ${standard} uses the shared safe transfer and retains inner failure after restart`, async () => {
   const f = await fixture();
