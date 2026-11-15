@@ -20,6 +20,7 @@ import { Interface } from 'ethers/abi';
 import http from 'http';
 import https from 'https';
 
+import { createRpcReadCapabilitiesOwner } from '../../../shared/rpcReadCapabilities';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store, { persistCommittedWalletState } from 'state/store';
 import { restoreVaultSnapshot, setAccountAssets } from 'state/vault';
@@ -238,6 +239,7 @@ beforeEach(async () => {
   };
   wallet = Object.create(MainController.prototype);
   Object.assign(wallet, {
+    rpcReadCapabilities: createRpcReadCapabilitiesOwner(),
     walletSessionGeneration: 0,
     walletStateGeneration: 0,
     targetedBalanceVersions: new Map(),

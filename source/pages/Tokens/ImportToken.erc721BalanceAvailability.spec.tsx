@@ -12,6 +12,8 @@ import {
   render,
   screen,
 } from '@testing-library/react';
+import fs from 'fs';
+import { resolve } from 'path';
 import React from 'react';
 import { Provider } from 'react-redux';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
@@ -125,6 +127,16 @@ let owned: string;
 let fungibleDecimals: number | undefined;
 let multicallDeployed: boolean;
 const multicallAddress = PALI_MULTICALL3_CANONICAL_ADDRESS.toLowerCase();
+const multicallCreation = fs
+  .readFileSync(
+    resolve(__dirname, '../../utils/smartAccount/deployment.ts'),
+    'utf8'
+  )
+  .match(/const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/)![1];
+const multicallRuntime = `0x${multicallCreation.slice(
+  2 + 0x20 * 2,
+  2 + (0x20 + 0xee0) * 2
+)}`;
 const multicallAbi = new Interface([
   'function aggregate3((address target,bool allowFailure,bytes callData)[] calls) view returns ((bool success,bytes returnData)[] returnData)',
 ]);
@@ -143,7 +155,9 @@ const runner = {
       PALI_INFRASTRUCTURE_METADATA_BY_ID.multicall3.address.toLowerCase(),
     ]).toContain(target);
     reads.push({ name: 'multicallCode' });
-    return target === multicallAddress && multicallDeployed ? '0x6000' : '0x';
+    return target === multicallAddress && multicallDeployed
+      ? multicallRuntime
+      : '0x';
   },
   readMany: async (
     requests: readonly { method: string; params: unknown[] }[]

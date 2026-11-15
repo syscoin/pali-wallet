@@ -664,11 +664,10 @@ function sdkRunner721(
       tokenId === '42'
         ? probe
         : { result: abi721.encodeFunctionResult('ownerOf', [OWNER]) };
-    return {
-      ok: status === 200,
-      status,
-      json: async () => ({ jsonrpc: '2.0', id: request.id, ...response }),
-    } as Response;
+    return new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: request.id, ...response }),
+      { status, headers: { 'content-type': 'application/json' } }
+    );
   });
   return { provider, calls };
 }

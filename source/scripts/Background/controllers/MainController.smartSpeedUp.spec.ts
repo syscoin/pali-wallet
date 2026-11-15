@@ -443,6 +443,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       } else throw new Error(`unexpected ${method}`);
       return new Response(JSON.stringify({ jsonrpc, id, result }), {
         status: 200,
+        headers: { 'content-type': 'application/json' },
       });
     });
     let baseFee = 150;

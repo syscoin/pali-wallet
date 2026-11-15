@@ -80,6 +80,7 @@ jest.mock('utils/ethersV6Compat', () => ({
 
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 
+import { createRpcReadCapabilitiesOwner } from '../../../shared/rpcReadCapabilities';
 import { KeyringAccountType } from 'types/network';
 import { Contract } from 'utils/ethersV6Compat';
 
@@ -140,6 +141,7 @@ beforeEach(() => {
   (Contract as jest.Mock).mockReturnValue({ balanceOf });
   controller = Object.create(MainController.prototype);
   Object.assign(controller, {
+    rpcReadCapabilities: createRpcReadCapabilitiesOwner(),
     receiptBalanceRefresh: new ReceiptBalanceRefresh(),
     targetedBalanceVersions: new Map(),
     targetedBalanceEvictions: 0,

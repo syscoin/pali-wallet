@@ -222,24 +222,41 @@ describe.each([true, false])(
       jest.spyOn(https, 'get').mockImplementation(denyNetwork);
       jest.spyOn(globalThis, 'fetch').mockImplementation(denyNetwork);
       jest
-        .spyOn(CustomJsonRpcProvider.prototype as any, 'requestRpc')
-        .mockImplementation(async (payload: any) =>
-          (Array.isArray(payload) ? payload : [payload]).map((request: any) => {
-            if (
-              !['eth_getBalance', 'eth_blockNumber', 'eth_chainId'].includes(
-                request.method
+        .spyOn(CustomJsonRpcProvider.prototype as any, 'fetchRpc')
+        .mockImplementation(async (url: string, init: RequestInit) => {
+          expect(url).toBe(evmNetwork.url);
+          expect(init.method).toBe('POST');
+          expect(init.signal?.aborted).toBe(false);
+          const payload = JSON.parse(String(init.body));
+          const responses = (Array.isArray(payload) ? payload : [payload]).map(
+            (request: any) => {
+              if (
+                !['eth_getBalance', 'eth_blockNumber', 'eth_chainId'].includes(
+                  request.method
+                )
               )
-            )
-              throw new Error(
-                `Unexpected synthetic RPC method: ${request.method}`
-              );
-            return {
-              jsonrpc: '2.0',
-              id: request.id,
-              result: request.method === 'eth_chainId' ? '0x1644' : '0x0',
-            };
-          })
-        );
+                throw new Error(
+                  `Unexpected synthetic RPC method: ${request.method}`
+                );
+              expect(request.jsonrpc).toBe('2.0');
+              expect(Array.isArray(request.params)).toBe(true);
+              if (request.method !== 'eth_getBalance')
+                expect(request.params).toEqual([]);
+              else {
+                expect(request.params[0]).toMatch(/^0x[0-9a-fA-F]{40}$/);
+                expect(request.params[1]).toBe('latest');
+              }
+              return {
+                jsonrpc: '2.0',
+                id: request.id,
+                result: request.method === 'eth_chainId' ? '0x1644' : '0x0',
+              };
+            }
+          );
+          return Response.json(
+            Array.isArray(payload) ? responses : responses[0]
+          );
+        });
       // Keep the SDK's real network-switch/session path. Only the eventual
       // Blockbook response is synthetic, including a complete empty inventory.
       jest

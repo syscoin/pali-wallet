@@ -280,13 +280,18 @@ it('caches a native decode failure and permits a fresh read after the existing c
   cached.unmount();
 
   clock.mockReturnValue(now + 5 * 60_000 + 1);
-  jest.mocked(fetch).mockResolvedValue({
-    ok: true,
-    blob: async () =>
-      new Blob(['<svg xmlns="http://www.w3.org/2000/svg"></svg>'], {
-        type: 'image/svg+xml',
-      }),
-  } as Response);
+  const fetchMarket = jest.mocked(fetch).getMockImplementation()!;
+  jest.mocked(fetch).mockImplementation(async (...args) =>
+    args[0] === LOGO
+      ? ({
+          ok: true,
+          blob: async () =>
+            new Blob(['<svg xmlns="http://www.w3.org/2000/svg"></svg>'], {
+              type: 'image/svg+xml',
+            }),
+        } as Response)
+      : fetchMarket(...args)
+  );
   display();
   const recovered = await screen.findByAltText('SYN');
   await waitFor(() =>

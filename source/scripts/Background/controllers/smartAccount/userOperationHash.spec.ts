@@ -17,6 +17,7 @@ import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions
 import { Transaction } from 'ethers/transaction';
 import { recoverAddress } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
@@ -31,25 +32,26 @@ import {
 
 import SmartAccountController from './index';
 
-const ACCOUNT = '0x1111111111111111111111111111111111111111';
 const INTENDED_TARGET = '0x2222222222222222222222222222222222222222';
 const ATTACKER = '0x3333333333333333333333333333333333333333';
 const VALIDATOR = '0x4444444444444444444444444444444444444444';
 const PRIVATE_KEY = `0x${'11'.repeat(32)}`; // Deliberately public synthetic key.
 const owner = new Wallet(PRIVATE_KEY);
+const identity = smartAccountAddressFixture(1, owner.address);
+const ACCOUNT = identity.account.address;
 const gasPayer = {
   address: owner.address,
   id: 0,
   type: KeyringAccountType.HDAccount,
 };
 const metadata = {
+  ...identity.account.smartAccount,
   auth: {
     data: encodeEcdsaValidatorInitData([owner.address], 1),
     module: 'ecdsa',
     validator: VALIDATOR,
   },
   chainId: 1,
-  deploymentSalt: `0x${'00'.repeat(32)}`,
   installedModules: [
     {
       address: VALIDATOR,
@@ -159,7 +161,10 @@ describe('smart-account owner signing intent', () => {
         getEthereumTransaction: () => ethereumTransaction,
         sendAndSaveEthTransaction: send,
       } as any);
-      const active = { account: { address: ACCOUNT, id: 7 }, metadata };
+      const active = {
+        account: { ...identity.account, smartAccount: metadata, id: 7 },
+        metadata,
+      };
       controller.assertSmartAccountExecutionTargetsAllowed = jest.fn();
       controller.getSmartAccountById = jest.fn(() => active);
       controller.getWalletGasPayerCandidates = jest.fn(() => []);
