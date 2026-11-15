@@ -179,6 +179,27 @@ it('enforces the total timeout and cancels the phase transport', async () => {
   expect(provider.readMany.mock.calls[0][1]!.signal.aborted).toBe(true);
   expect(jest.getTimerCount()).toBe(0);
 });
+it('retires the fee operation signal on expiry without retiring its provider', async () => {
+  const { provider } = fixture();
+  let operationSignal: AbortSignal | undefined;
+  provider.getFeeData.mockImplementation((reader) => {
+    operationSignal = reader.signal;
+    return new Promise(() => undefined);
+  });
+  const run = withEvmReadPhase(
+    provider,
+    () => undefined,
+    async (phase) => phase.getFeeData()
+  );
+  const failed = expect(run).rejects.toThrow('phase timed out');
+  await jest.advanceTimersByTimeAsync(0);
+  expect(operationSignal?.aborted).toBe(false);
+  await jest.advanceTimersByTimeAsync(EVM_READ_PHASE_TIMEOUT_MS);
+  await failed;
+  expect(operationSignal?.aborted).toBe(true);
+  expect(provider.signal.aborted).toBe(false);
+  expect(jest.getTimerCount()).toBe(0);
+});
 it('rejects a late helper result after owner retirement', async () => {
   const { provider } = fixture();
   const delayed = deferred<any>();

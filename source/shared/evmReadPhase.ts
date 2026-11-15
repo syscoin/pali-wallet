@@ -318,6 +318,7 @@ export async function withEvmReadPhase<T>(
       getFeeData: () =>
         guardedHelper('getFeeData', [], () =>
           source.getFeeData({
+            signal: lifetime.signal,
             getBlock: (tag: 'latest') =>
               send('eth_getBlockByNumber', [tag, false]),
             send: (method: string, params: unknown[]) => send(method, params),
