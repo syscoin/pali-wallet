@@ -123,7 +123,7 @@ test('ten saved ERC721 collections share one canonical observation and isolate f
   assert.equal(f.requests.filter(row => row.method === 'eth_chainId').length, 2);
   assert.equal(f.requests.filter(row => row.method === 'eth_getBlockByNumber').length, 2);
   assert.equal(f.requests.filter(row => row.method === 'eth_getCode').length, 10);
-  assert.equal(f.requests.length, 32);
+  assert.equal(f.requests.length, 34);
 });
 
 test('ten saved ERC1155 IDs share contract code, negative probe and balanceOfBatch', async () => {
@@ -200,4 +200,79 @@ test('the maximum saved ERC1155 group fits one bounded balanceOfBatch response',
   assert.equal(result.collectibles.length, 256);
   assert(result.collectibles.every(row => row.status === 'available' && row.units === '5'));
   assert.equal(f.requests.length, 7);
+});
+
+for (const scenario of ['one-stalled', 'one-stalled-scalar', 'one-stalled-unresponsive-scalar', 'forty-batched', 'forty-scalar', 'canonical-change'] as const) test(`grouped NFT deadlines preserve healthy rows (${scenario})`, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const count = scenario.startsWith('one-stalled') || scenario === 'canonical-change' ? 10 : 40;
+  const collectibles = Array.from({ length: count }, (_, index) => ({
+    contractAddress: `0x${(index + 1).toString(16).padStart(40, '0')}`,
+    tokenStandard: 'ERC-721' as const,
+  }));
+  const requests: Wire[] = [];
+  let active = 0, peak = 0, finalChecks = 0;
+  const read = createScopedPortfolioAssetReader({
+    async load() { return { revision: 1, items: [], collectibles }; },
+    async fetch(_url, init) {
+      const payload = JSON.parse(String(init.body)) as Wire | Wire[];
+      const rows = Array.isArray(payload) ? payload : [payload];
+      requests.push(...rows);
+      active++; peak = Math.max(peak, active);
+      const stalled = scenario.startsWith('one-stalled') && rows.some(row =>
+        row.params[0] === collectibles[0]!.contractAddress || row.params[0]?.to === collectibles[0]!.contractAddress);
+      if (scenario.endsWith('scalar') && Array.isArray(payload)) {
+        active--;
+        return Response.json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Batch unsupported' } });
+      }
+      if (stalled) return new Promise<Response>((_resolve, reject) => {
+        if (scenario === 'one-stalled-unresponsive-scalar') return;
+        init.signal!.addEventListener('abort', () => { active--; reject(new Error('aborted stalled collection')); }, { once: true });
+      });
+      await new Promise(resolve => setTimeout(resolve, 450));
+      active--;
+      const replies = rows.map(row => {
+        if (row.method === 'eth_getBlockByNumber' && row.params[0] === '0x10') finalChecks++;
+        return { jsonrpc: '2.0', id: row.id, result: row.method === 'eth_chainId' ? '0x1'
+          : row.method === 'eth_getBlockByNumber' ? { number: '0x10', hash: `0x${(scenario === 'canonical-change' && row.params[0] === '0x10' ? 'b' : 'a').repeat(64)}` }
+          : row.method === 'eth_getCode' ? '0x6000' : uint(row.params[0].data.startsWith('0x01ffc9a7') ? 1 : 3) };
+      });
+      return Response.json(Array.isArray(payload) ? replies : replies[0]);
+    },
+  });
+  let completed = false;
+  const pending = read(scope, new AbortController().signal, () => undefined).then(value => { completed = true; return value; });
+  for (let elapsed = 0; !completed && elapsed < 35000; elapsed += 50) {
+    await new Promise(resolve => setImmediate(resolve));
+    t.mock.timers.tick(50);
+  }
+  const result = await pending;
+  assert.equal(result.collectibles.filter(row => row.status === 'available').length, scenario === 'canonical-change' ? 0 : count - (scenario.startsWith('one-stalled') ? 1 : 0));
+  assert.equal(finalChecks, 1);
+  assert(peak <= 4, `physical peak ${peak}`);
+  assert(requests.some(row => row.method === 'eth_call'));
+});
+
+test('external cancellation immediately aborts each active collection read', async () => {
+  const controller = new AbortController();
+  const started = Promise.withResolvers<void>();
+  const active: AbortSignal[] = [];
+  const read = createScopedPortfolioAssetReader({
+    async load() { return { revision: 1, items: [], collectibles: [{ contractAddress: collectionAddress, tokenStandard: 'ERC-721' }] }; },
+    async fetch(_url, init) {
+      const payload = JSON.parse(String(init.body)) as Wire | Wire[];
+      const rows = Array.isArray(payload) ? payload : [payload];
+      if (rows.some(row => row.method === 'eth_getCode')) {
+        active.push(init.signal as AbortSignal); started.resolve();
+        return new Promise<Response>(() => undefined);
+      }
+      return Response.json(rows.map(row => ({ jsonrpc: '2.0', id: row.id,
+        result: row.method === 'eth_chainId' ? '0x1' : { number: '0x10', hash: `0x${'a'.repeat(64)}` } })));
+    },
+  });
+  const result = read(scope, controller.signal, () => undefined);
+  await started.promise;
+  controller.abort();
+  await assert.rejects(result);
+  assert.equal(active.length, 1);
+  assert(active.every(signal => signal.aborted));
 });

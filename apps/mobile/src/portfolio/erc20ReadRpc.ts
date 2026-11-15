@@ -83,6 +83,8 @@ type Read = ((
   many(
     requests: readonly ReadRequest[]
   ): Promise<PromiseSettledResult<unknown>[]>;
+  scoped(signal: AbortSignal, timeoutMs: number, cancel: () => void): Read;
+  signal: AbortSignal;
 };
 type CapturedScope = Readonly<{
   network: NativeNetworkRegistration;
@@ -209,7 +211,8 @@ function createReadOperation(options: ReadOptions, maximumCallBytes = 16 * 1024)
     external: AbortSignal,
     work: (read: Read, block: string, holder: string) => Promise<T>,
     scope?: CapturedScope,
-    batchedEnvelope = false
+    batchedEnvelope = false,
+    operationTimeoutMs = timeoutMs
   ): Promise<T> {
     check(external);
     let network: ReturnType<typeof getNativeNetwork>;
@@ -225,7 +228,7 @@ function createReadOperation(options: ReadOptions, maximumCallBytes = 16 * 1024)
     const controller = new AbortController();
     const abort = () => controller.abort();
     external.addEventListener('abort', abort, { once: true });
-    const timer = setTimeout(abort, timeoutMs);
+    const timer = setTimeout(abort, operationTimeoutMs);
     const assertCurrent = () => {
       check(controller.signal);
       if (scope) {
@@ -245,93 +248,125 @@ function createReadOperation(options: ReadOptions, maximumCallBytes = 16 * 1024)
       capabilities.set(capabilityKey, capability);
       if (capabilities.size > 16) capabilities.delete(capabilities.keys().next().value!);
     }
-    const batch = new JsonRpcReadClient(network.rpcUrl, {
-      capabilities: capability,
-      signal: controller.signal,
-      timeoutMs,
-      recoverResponse: false,
-      maxConcurrency: 4,
-      maxBatchItems: 40,
-      maxRequestBytes: 128 * 1024,
-      maxResponseBytes: 512 * 1024,
-      requestInit: {
-        credentials: 'omit',
-        redirect: 'error',
-        cache: 'no-store',
-        referrerPolicy: 'no-referrer',
-      },
-      fetch: async (url, init) => {
-        assertCurrent();
-        if (url !== network.rpcUrl) return fail('WRONG_CHAIN');
-        const response = await boundedFetch(url, init);
-        try {
+    const clients: JsonRpcReadClient[] = [];
+    const createClient = (maxConcurrency = 4, rejectResponse = abort, lifetime = controller.signal) => {
+      const client = new JsonRpcReadClient(network.rpcUrl, {
+        capabilities: capability,
+        signal: lifetime,
+        timeoutMs: operationTimeoutMs,
+        recoverResponse: false,
+        maxConcurrency,
+        maxBatchItems: 40,
+        maxRequestBytes: 128 * 1024,
+        maxResponseBytes: 512 * 1024,
+        requestInit: {
+          credentials: 'omit',
+          redirect: 'error',
+          cache: 'no-store',
+          referrerPolicy: 'no-referrer',
+        },
+        fetch: async (url, init) => {
           assertCurrent();
-          if (response.redirected || (response.url && response.url !== network.rpcUrl))
-            return fail('WRONG_CHAIN');
-          const contentType = response.headers.get('content-type');
-          if (contentType && !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(contentType))
-            return fail('INVALID_RESPONSE');
-          return response;
-        } catch (error) {
-          abort();
-          try { await response.body?.cancel(); } catch { /* Keep the primary refusal. */ }
-          throw error;
-        }
-      },
-    });
+          if (url !== network.rpcUrl) return fail('WRONG_CHAIN');
+          const response = await boundedFetch(url, init);
+          try {
+            assertCurrent();
+            if (
+              response.redirected ||
+              (response.url && response.url !== network.rpcUrl)
+            )
+              return fail('WRONG_CHAIN');
+            const contentType = response.headers.get('content-type');
+            if (
+              contentType &&
+              !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(
+                contentType
+              )
+            )
+              return fail('INVALID_RESPONSE');
+            return response;
+          } catch (error) {
+            rejectResponse();
+            try {
+              await response.body?.cancel();
+            } catch {
+              /* Keep the primary refusal. */
+            }
+            throw error;
+          }
+        },
+      });
+      clients.push(client);
+      return client;
+    };
+    const batch = createClient();
     const maximumFor = (method: Method) =>
       method === 'eth_getBlockByNumber'
         ? 512 * 1024
         : method === 'eth_getCode'
         ? CODE_BYTES * 2 + 512
         : maximumCallBytes;
-    const read = (async (
-      method: Method,
-      params: readonly unknown[],
-      captureRpcError?: true
-    ) => {
-      assertCurrent();
-      try {
-        const value = await batch.read(method, params, {
-          signal: controller.signal,
-          maxResponseBytes: maximumFor(method),
+    const makeRead = (
+      childSignal = controller.signal,
+      childTimeout = operationTimeoutMs,
+      childAbort?: () => void
+    ): Read => {
+      const client = childAbort ? createClient(1, childAbort, childSignal) : batch;
+      const read = (async (
+        method: Method,
+        params: readonly unknown[],
+        captureRpcError?: true
+      ) => {
+        assertCurrent();
+        try {
+          const value = await client.read(method, params, {
+            signal: childSignal,
+            timeoutMs: childTimeout,
+            maxResponseBytes: maximumFor(method),
+          });
+          assertCurrent();
+          return value;
+        } catch (error) {
+          if (controller.signal.aborted) return fail('CANCELLED');
+          if (
+            captureRpcError &&
+            method === 'eth_call' &&
+            error instanceof RpcReadError
+          )
+            throw new ScopedCallRpcError({
+              code: error.code,
+              message: error.message,
+              data: error.data,
+            });
+          return fail('INVALID_RESPONSE');
+        }
+      }) as Read;
+      read.many = async (requests) => {
+        assertCurrent();
+        const results = await client.readMany(requests, {
+          signal: childSignal,
+          timeoutMs: childTimeout,
         });
         assertCurrent();
-        return value;
-      } catch (error) {
-        if (controller.signal.aborted) return fail('CANCELLED');
-        if (
-          captureRpcError &&
-          method === 'eth_call' &&
-          error instanceof RpcReadError
-        )
-          throw new ScopedCallRpcError({
-            code: error.code,
-            message: error.message,
-            data: error.data,
-          });
-        return fail('INVALID_RESPONSE');
-      }
-    }) as Read;
-    read.many = async (requests) => {
-      assertCurrent();
-      const results = await batch.readMany(requests, {
-        signal: controller.signal,
-      });
-      assertCurrent();
-      return results.map((result, index) => {
-        if (
-          result.status === 'fulfilled' &&
-          new TextEncoder().encode(JSON.stringify(result.value)).byteLength >
-            maximumFor(requests[index]!.method)
-        )
-          return {
-            status: 'rejected' as const,
-            reason: new Erc20ReadError('INVALID_RESPONSE'),
-          };
-        return result;
-      });
+        return results.map((result, index) => {
+          if (
+            result.status === 'fulfilled' &&
+            new TextEncoder().encode(JSON.stringify(result.value)).byteLength >
+              maximumFor(requests[index]!.method)
+          )
+            return {
+              status: 'rejected' as const,
+              reason: new Erc20ReadError('INVALID_RESPONSE'),
+            };
+          return result;
+        });
+      };
+      read.signal = controller.signal;
+      read.scoped = (signal, timeout, cancel) =>
+        makeRead(signal, timeout, cancel);
+      return read;
     };
+    const read = makeRead();
     const accepted = (result: PromiseSettledResult<unknown>) => {
       if (result.status === 'rejected') throw result.reason;
       return result.value;
@@ -391,7 +426,7 @@ function createReadOperation(options: ReadOptions, maximumCallBytes = 16 * 1024)
       clearTimeout(timer);
       external.removeEventListener('abort', abort);
       controller.abort();
-      batch.destroy();
+      clients.forEach((client) => client.destroy());
     }
   }
   return operation;
@@ -559,44 +594,159 @@ export type ScopedCallOutcome =
   | Readonly<{ kind: 'result'; data: string }>
   | Readonly<{ kind: 'rpc-error'; error: unknown }>;
 
-/** One anchored selected-account observation for bounded saved NFT groups. */
+type NftPortfolioCall = ((data: string) => Promise<ScopedCallOutcome>) & {
+  many(data: readonly string[]): Promise<ScopedCallOutcome[]>;
+};
+
+/** One anchored observation; each collection owns a shorter cancellable read budget. */
 export function createSelectedNftPortfolioReadOperation(options: SelectedNftReadOptions) {
-  // A 256-item balanceOfBatch result includes two ABI header words.
   const operation = createReadOperation(options, 32 * 1024);
-  return async <T>(networkId: EvmNetworkId, owner: string, addresses: readonly string[], signal: AbortSignal,
-    guard: () => void, work: (scope: Readonly<{ holder: string; call(target: string, data: string): Promise<ScopedCallOutcome> }>) => Promise<T>): Promise<T> => {
-    if (!addresses.length || addresses.length > 256) return fail('INVALID_INPUT');
+  return async <T>(
+    networkId: EvmNetworkId,
+    owner: string,
+    addresses: readonly string[],
+    signal: AbortSignal,
+    guard: () => void,
+    work: (
+      scope: Readonly<{
+        holder: string;
+        withContract<V>(
+          target: string,
+          work: (call: NftPortfolioCall) => Promise<V>
+        ): Promise<V>;
+      }>
+    ) => Promise<T>
+  ): Promise<T> => {
+    if (!addresses.length || addresses.length > 256)
+      return fail('INVALID_INPUT');
     const targets = new Set(addresses.map(contract));
     const network = snapshotNativeNetwork(getNativeNetwork(networkId, options.registrations()));
+    const timeout = Math.min(
+      30_000,
+      Math.max(
+        options.timeoutMs ?? 12_000,
+        Math.ceil(addresses.length / 4) * 2_000 + 4_000
+      )
+    );
+    const workDeadline = Date.now() + timeout - 2_000;
     const assertCurrent = () => {
       const result: unknown = guard();
       if (result !== undefined) {
-        if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined);
+        if (
+          result &&
+          (typeof result === 'object' || typeof result === 'function')
+        )
+          void Promise.resolve(result).catch(() => undefined);
         fail('CANCELLED');
       }
       if (snapshotNativeNetwork(getNativeNetwork(networkId, options.registrations())).registrationHash !== network.registrationHash)
         fail('CANCELLED');
     };
-    return operation(networkId, owner, signal, async (read, block, holder) => {
-      const codes = new Map<string, Promise<void>>();
-      let calls = 0;
-      return work({ holder, async call(target, data) {
-        target = contract(target);
-        if (!targets.has(target) || ++calls > addresses.length * 3 || typeof data !== 'string' ||
-            data.length < 10 || data.length > 34000 || !/^0x(?:[0-9a-fA-F]{2})+$/.test(data)) return fail('INVALID_INPUT');
-        let code = codes.get(target);
-        if (!code) { code = read('eth_getCode', [target, block]).then(codeResult); codes.set(target, code); }
-        await code;
-        try {
-          const value = await read('eth_call', [{ to: target, data }, block], true);
-          if (typeof value !== 'string' || !/^0x(?:[0-9a-fA-F]{2})*$/.test(value)) return fail('INVALID_RESPONSE');
-          return { kind: 'result', data: value };
-        } catch (error) {
-          if (error instanceof ScopedCallRpcError) return { kind: 'rpc-error', error: error.value };
-          throw error;
-        }
-      } });
-    }, { network, assertCurrent }, true);
+    return operation(
+      networkId,
+      owner,
+      signal,
+      async (read, block, holder) => {
+        let calls = 0;
+        return work({
+          holder,
+          async withContract(target, work) {
+            target = contract(target);
+            const remaining = Math.min(2_000, workDeadline - Date.now());
+            if (!targets.has(target) || remaining <= 0)
+              return fail('UNAVAILABLE');
+            const controller = new AbortController();
+            const cancel = () => controller.abort();
+            read.signal.addEventListener('abort', cancel, { once: true });
+            if (read.signal.aborted) cancel();
+            const timer = setTimeout(cancel, remaining);
+            const groupRead = read.scoped(controller.signal, remaining, () =>
+              controller.abort()
+            );
+            const validateData = (data: string) => {
+              if (
+                ++calls > addresses.length * 3 ||
+                typeof data !== 'string' ||
+                data.length < 10 ||
+                data.length > 34000 ||
+                !/^0x(?:[0-9a-fA-F]{2})+$/.test(data)
+              )
+                return fail('INVALID_INPUT');
+            };
+            let code: Promise<void> | undefined;
+            const call = Object.assign(
+              async (data: string): Promise<ScopedCallOutcome> => {
+                validateData(data);
+                code ??= groupRead('eth_getCode', [target, block]).then(
+                  codeResult
+                );
+                await code;
+                try {
+                  const value = await groupRead(
+                    'eth_call',
+                    [{ to: target, data }, block],
+                    true
+                  );
+                  if (
+                    typeof value !== 'string' ||
+                    !/^0x(?:[0-9a-fA-F]{2})*$/.test(value)
+                  )
+                    return fail('INVALID_RESPONSE');
+                  return { kind: 'result', data: value };
+                } catch (error) {
+                  if (error instanceof ScopedCallRpcError)
+                    return { kind: 'rpc-error', error: error.value };
+                  throw error;
+                }
+              },
+              {
+                many: async (
+                  data: readonly string[]
+                ): Promise<ScopedCallOutcome[]> => {
+                  data.forEach(validateData);
+                  const values = await groupRead.many([
+                    { method: 'eth_getCode', params: [target, block] },
+                    ...data.map((value) => ({
+                      method: 'eth_call' as const,
+                      params: [{ to: target, data: value }, block],
+                    })),
+                  ]);
+                  const first = values[0];
+                  if (!first || first.status === 'rejected')
+                    throw first?.status === 'rejected'
+                      ? first.reason
+                      : new Error('Missing collection code');
+                  codeResult(first.value);
+                  return values.slice(1).map((value) => {
+                    if (value.status === 'rejected')
+                      return {
+                        kind: 'rpc-error' as const,
+                        error: value.reason,
+                      };
+                    if (
+                      typeof value.value !== 'string' ||
+                      !/^0x(?:[0-9a-fA-F]{2})*$/.test(value.value)
+                    )
+                      return fail('INVALID_RESPONSE');
+                    return { kind: 'result' as const, data: value.value };
+                  });
+                },
+              }
+            );
+            try {
+              return await work(call);
+            } finally {
+              clearTimeout(timer);
+              read.signal.removeEventListener('abort', cancel);
+              controller.abort();
+            }
+          },
+        });
+      },
+      { network, assertCurrent },
+      true,
+      timeout
+    );
   };
 }
 
