@@ -215,6 +215,21 @@ beforeEach(async () => {
       throw new Error('Unexpected synthetic contract read');
     },
   };
+  Object.assign(provider, {
+    readMany: async (
+      requests: readonly { method: string; params: unknown[] }[]
+    ) =>
+      Promise.allSettled(
+        requests.map(({ method, params }) => {
+          if (method !== 'eth_call')
+            throw new Error('Unexpected token RPC ' + method);
+          return provider.call({
+            ...(params[0] as object),
+            blockTag: params[1],
+          });
+        })
+      ),
+  });
   const keyring = { ethereumTransaction: { web3Provider: provider } };
   mockReceiptProvider = {
     ...provider,

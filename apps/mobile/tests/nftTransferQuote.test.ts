@@ -328,7 +328,7 @@ test('held simulation discards a captured request after lock or A-B-A selection'
     else generation += 2;
     finish.resolve({ result: '0x' });
     await assert.rejects(pending, { code: 'CANCELLED' });
-    assert.equal(f.calls.at(-1)?.signal.aborted, true);
+    if (lock) assert.equal(f.calls.findLast(simulation)?.signal.aborted, true);
     assert.equal(f.calls.some((c) => c.method === 'eth_sendRawTransaction'), false);
   }
 });

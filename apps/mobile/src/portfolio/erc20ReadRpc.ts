@@ -1,3 +1,4 @@
+import { createErc20BalanceBatch } from '../../../../source/shared/erc20BalanceBatch.ts';
 import {
   ERC20_TEXT_LIMITS,
   parseErc20Decimals,
@@ -15,10 +16,24 @@ import type {
   EvmNetworkId,
   NativeNetworkRegistration,
 } from '../custody/networkContext.ts';
-import { boundedResponseText, parseRpcQuantity } from '../platformRpc.ts';
+import { cancelResponseBody, parseRpcQuantity } from '../platformRpc.ts';
+import {
+  JsonRpcReadClient,
+  RpcReadError,
+} from '@sidhujag/sysweb3-keyring/cjs/rpc-read-client.js';
 
 export type { Erc20Metadata } from '../../../../source/shared/erc20.ts';
+export type Erc20BalanceResult = Readonly<
+  { status: 'available'; units: string } | { status: 'error'; units: null }
+>;
 export interface Erc20Reader {
+  readBalances?(
+    network: EvmNetworkId,
+    address: string,
+    tokens: readonly Erc20Metadata[],
+    signal: AbortSignal,
+    assertCurrent?: () => void
+  ): Promise<readonly Erc20BalanceResult[]>;
   readToken(
     network: EvmNetworkId,
     address: string,
@@ -57,11 +72,16 @@ type ReadOptions = {
   timeoutMs?: number;
   registrations?: () => readonly NativeNetworkRegistration[] | undefined;
 };
-type Read = (
+type ReadRequest = Readonly<{ method: Method; params: readonly unknown[] }>;
+type Read = ((
   method: Method,
   params: readonly unknown[],
   captureRpcError?: true
-) => Promise<unknown>;
+) => Promise<unknown>) & {
+  many(
+    requests: readonly ReadRequest[]
+  ): Promise<PromiseSettledResult<unknown>[]>;
+};
 type CapturedScope = Readonly<{
   network: NativeNetworkRegistration;
   assertCurrent(): void;
@@ -88,19 +108,7 @@ const check = (signal: AbortSignal): void => {
   if (signal.aborted) fail('CANCELLED');
 };
 
-function cancellable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) {
-    void promise.catch(() => undefined);
-    return Promise.reject(new Erc20ReadError('CANCELLED'));
-  }
-  return new Promise<T>((resolve, reject) => {
-    const abort = () => reject(new Erc20ReadError('CANCELLED'));
-    signal.addEventListener('abort', abort, { once: true });
-    promise
-      .then(resolve, reject)
-      .finally(() => signal.removeEventListener('abort', abort));
-  });
-}
+
 function word(value: unknown): bigint {
   if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value))
     return fail('INVALID_RESPONSE');
@@ -190,48 +198,94 @@ function createReadOperation(options: ReadOptions) {
   const timeoutMs = options.timeoutMs ?? 12_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000)
     throw new Error('Invalid RPC timeout');
-  let sequence = 0;
   let active = 0;
-  const waiting: { signal: AbortSignal; admit(): void; abort(): void }[] = [];
-  const release = () => {
-    active--;
-    const next = waiting.shift();
-    if (next) next.admit();
-  };
-  async function acquire(signal: AbortSignal): Promise<() => void> {
-    check(signal);
-    if (active < 4) {
-      active++;
-      return release;
-    }
-    if (waiting.length >= 16) return fail('UNAVAILABLE');
-    await new Promise<void>((resolve, reject) => {
+  const waiting: { admit(): void; cancel(): void }[] = [];
+  const acquire = (signal: AbortSignal) =>
+    new Promise<void>((resolve, reject) => {
       const ticket = {
-        signal,
         admit() {
-          signal.removeEventListener('abort', ticket.abort);
+          signal.removeEventListener('abort', ticket.cancel);
           active++;
           resolve();
         },
-        abort() {
+        cancel() {
           const index = waiting.indexOf(ticket);
           if (index >= 0) waiting.splice(index, 1);
-          signal.removeEventListener('abort', ticket.abort);
           reject(new Erc20ReadError('CANCELLED'));
         },
       };
-      waiting.push(ticket);
-      signal.addEventListener('abort', ticket.abort, { once: true });
+      if (signal.aborted) ticket.cancel();
+      else if (active < 4) ticket.admit();
+      else if (waiting.length >= 16) reject(new Erc20ReadError('UNAVAILABLE'));
+      else {
+        waiting.push(ticket);
+        signal.addEventListener('abort', ticket.cancel, { once: true });
+      }
     });
-    return release;
-  }
+  const boundedFetch: FetchLike = async (url, init) => {
+    await acquire(init.signal as AbortSignal);
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      active--;
+      waiting.shift()?.admit();
+    };
+    try {
+      if (init.signal?.aborted) return fail('CANCELLED');
+      const response = await fetcher(url, init);
+      const body = response.body;
+      let text: Promise<string> | undefined;
+      const consumeText = () => text ??= response.text().finally(release);
+      const wrappedBody = body
+        ? {
+            async cancel(reason?: unknown) {
+              try { await body.cancel(reason); } finally { release(); }
+            },
+            ...(typeof body.getReader === 'function'
+              ? { getReader() {
+                  const reader = body.getReader();
+                  return {
+                    async read() {
+                      try {
+                        // The SDK always cancels in finally. Retain the slot
+                        // through that cleanup, including an EOF response.
+                        return await reader.read();
+                      } catch (error) {
+                        try { await reader.cancel(); } finally { release(); }
+                        throw error;
+                      }
+                    },
+                    async cancel(reason?: unknown) {
+                      try { await reader.cancel(reason); } finally { release(); }
+                    },
+                    releaseLock() { reader.releaseLock(); },
+                  };
+                } }
+              : {}),
+          }
+        : { async cancel() { await consumeText(); } };
+      return new Proxy(response, {
+        get(target, property) {
+          if (property === 'body') return wrappedBody;
+          if (property === 'text') return consumeText;
+          const value = Reflect.get(target, property, target);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    } catch (error) {
+      release();
+      throw error;
+    }
+  };
 
   async function operation<T>(
     networkId: EvmNetworkId,
     address: string,
     external: AbortSignal,
     work: (read: Read, block: string, holder: string) => Promise<T>,
-    scope?: CapturedScope
+    scope?: CapturedScope,
+    batchedEnvelope = false
   ): Promise<T> {
     check(external);
     let network: ReturnType<typeof getNativeNetwork>;
@@ -260,110 +314,135 @@ function createReadOperation(options: ReadOptions) {
         check(controller.signal);
       }
     };
-    const read: Read = async (method, params, captureRpcError) => {
+    const batch = new JsonRpcReadClient(network.rpcUrl, {
+      signal: controller.signal,
+      timeoutMs,
+      recoverResponse: false,
+      maxConcurrency: 4,
+      maxBatchItems: 40,
+      maxRequestBytes: 128 * 1024,
+      maxResponseBytes: 512 * 1024,
+      requestInit: {
+        credentials: 'omit',
+        redirect: 'error',
+        cache: 'no-store',
+        referrerPolicy: 'no-referrer',
+      },
+      fetch: async (url, init) => {
+        assertCurrent();
+        if (url !== network.rpcUrl) return fail('WRONG_CHAIN');
+        const response = await boundedFetch(url, init);
+        try {
+          assertCurrent();
+          if (response.redirected || (response.url && response.url !== network.rpcUrl))
+            return fail('WRONG_CHAIN');
+          const contentType = response.headers.get('content-type');
+          if (contentType && !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(contentType))
+            return fail('INVALID_RESPONSE');
+          return response;
+        } catch (error) {
+          cancelResponseBody(response);
+          throw error;
+        }
+      },
+    });
+    const maximumFor = (method: Method) =>
+      method === 'eth_getBlockByNumber'
+        ? 512 * 1024
+        : method === 'eth_getCode'
+        ? CODE_BYTES * 2 + 512
+        : 16 * 1024;
+    const read = (async (
+      method: Method,
+      params: readonly unknown[],
+      captureRpcError?: true
+    ) => {
       assertCurrent();
-      if (
-        ![
-          'eth_chainId',
-          'eth_getBlockByNumber',
-          'eth_getCode',
-          'eth_call',
-        ].includes(method)
-      )
-        return fail('INVALID_INPUT');
-      const done = await acquire(controller.signal);
       try {
+        const value = await batch.read(method, params, {
+          signal: controller.signal,
+          maxResponseBytes: maximumFor(method),
+        });
         assertCurrent();
-        const id = ++sequence;
-        if (!Number.isSafeInteger(id)) return fail('UNAVAILABLE');
-        const response = await cancellable(
-          fetcher(network.rpcUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            },
-            body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
-            signal: controller.signal,
-            credentials: 'omit',
-            redirect: 'error',
-            cache: 'no-store',
-            referrerPolicy: 'no-referrer',
-          }),
-          controller.signal
-        );
-        assertCurrent();
-        if (!response.ok) return fail('UNAVAILABLE');
-        const contentType = response.headers.get('content-type');
+        return value;
+      } catch (error) {
+        if (controller.signal.aborted) return fail('CANCELLED');
         if (
-          contentType &&
-          !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(
-            contentType
-          )
+          captureRpcError &&
+          method === 'eth_call' &&
+          error instanceof RpcReadError
         )
-          return fail('INVALID_RESPONSE');
-        let body: string;
-        try {
-          body = await cancellable(
-            boundedResponseText(
-              response,
-              controller.signal,
-              method === 'eth_getBlockByNumber'
-                ? 512 * 1024
-                : method === 'eth_getCode'
-                ? CODE_BYTES * 2 + 512
-                : 16 * 1024
-            ),
-            controller.signal
-          );
-        } catch {
-          check(controller.signal);
-          return fail('INVALID_RESPONSE');
-        }
-        assertCurrent();
-        let decoded: unknown;
-        try {
-          decoded = JSON.parse(body);
-        } catch {
-          return fail('INVALID_RESPONSE');
-        }
-        if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded))
-          return fail('INVALID_RESPONSE');
-        const result = decoded as Record<string, unknown>;
-        if (result.jsonrpc !== '2.0' || result.id !== id)
-          return fail('INVALID_RESPONSE');
-        const hasResult = Object.hasOwn(result, 'result');
-        if (Object.hasOwn(result, 'error')) {
-          if (captureRpcError && method === 'eth_call' && !hasResult)
-            throw new ScopedCallRpcError(result.error);
-          return fail('INVALID_RESPONSE');
-        }
-        if (!hasResult) return fail('INVALID_RESPONSE');
-        return result.result;
-      } finally {
-        done();
+          throw new ScopedCallRpcError({
+            code: error.code,
+            message: error.message,
+            data: error.data,
+          });
+        return fail('INVALID_RESPONSE');
       }
+    }) as Read;
+    read.many = async (requests) => {
+      assertCurrent();
+      const results = await batch.readMany(requests, {
+        signal: controller.signal,
+      });
+      assertCurrent();
+      return results.map((result, index) => {
+        if (
+          result.status === 'fulfilled' &&
+          new TextEncoder().encode(JSON.stringify(result.value)).byteLength >
+            maximumFor(requests[index]!.method)
+        )
+          return {
+            status: 'rejected' as const,
+            reason: new Erc20ReadError('INVALID_RESPONSE'),
+          };
+        return result;
+      });
+    };
+    const accepted = (result: PromiseSettledResult<unknown>) => {
+      if (result.status === 'rejected') throw result.reason;
+      return result.value;
     };
     try {
+      const initial = batchedEnvelope
+        ? await read.many([
+            { method: 'eth_chainId', params: [] },
+            { method: 'eth_getBlockByNumber', params: ['latest', false] },
+          ])
+        : null;
       let chain: bigint;
       try {
-        chain = parseRpcQuantity(await read('eth_chainId', []));
+        chain = parseRpcQuantity(
+          initial ? accepted(initial[0]!) : await read('eth_chainId', [])
+        );
       } catch (cause) {
         if (cause instanceof Erc20ReadError) throw cause;
         return fail('INVALID_RESPONSE');
       }
       if (chain !== BigInt(network.chainId)) return fail('WRONG_CHAIN');
       const block = blockIdentity(
-        await read('eth_getBlockByNumber', ['latest', false])
+        initial
+          ? accepted(initial[1]!)
+          : await read('eth_getBlockByNumber', ['latest', false])
       );
       const result = await work(read, block.number, holder);
+      const final = batchedEnvelope
+        ? await read.many([
+            { method: 'eth_getBlockByNumber', params: [block.number, false] },
+            { method: 'eth_chainId', params: [] },
+          ])
+        : null;
       const finalBlock = blockIdentity(
-        await read('eth_getBlockByNumber', [block.number, false])
+        final
+          ? accepted(final[0]!)
+          : await read('eth_getBlockByNumber', [block.number, false])
       );
       if (finalBlock.number !== block.number || finalBlock.hash !== block.hash)
         return fail('INVALID_RESPONSE');
       try {
-        chain = parseRpcQuantity(await read('eth_chainId', []));
+        chain = parseRpcQuantity(
+          final ? accepted(final[1]!) : await read('eth_chainId', [])
+        );
       } catch (cause) {
         if (cause instanceof Erc20ReadError) throw cause;
         return fail('INVALID_RESPONSE');
@@ -379,6 +458,7 @@ function createReadOperation(options: ReadOptions) {
       clearTimeout(timer);
       external.removeEventListener('abort', abort);
       controller.abort();
+      batch.destroy();
     }
   }
   return operation;
@@ -394,6 +474,7 @@ function contract(value: unknown): string {
 
 export function createErc20Reader(options: ReadOptions = {}): Erc20Reader {
   const operation = createReadOperation(options);
+  const aggregateByNetwork = new Map<string, ReturnType<typeof createErc20BalanceBatch>>();
   const call = (read: Read, address: string, data: string, block: string) =>
     read('eth_call', [{ to: address, data }, block]);
   const balanceData = (holder: string) =>
@@ -434,6 +515,71 @@ export function createErc20Reader(options: ReadOptions = {}): Erc20Reader {
             units,
           });
         }
+      );
+    },
+    readBalances: async (
+      network: EvmNetworkId,
+      address: string,
+      tokens: readonly Erc20Metadata[],
+      signal: AbortSignal,
+      assertCurrent: () => void = () => undefined
+    ) => {
+      if (!Array.isArray(tokens) || tokens.length > 256)
+        return fail('INVALID_INPUT');
+      let selected: Erc20Metadata[];
+      try {
+        selected = tokens.map(parseErc20Metadata);
+      } catch {
+        return fail('INVALID_INPUT');
+      }
+      if (!selected.length) return Object.freeze([]);
+      const registration = getNativeNetwork(network, options.registrations?.());
+      const key = `${registration.registrationHash}:${registration.rpcUrl}`;
+      let aggregate = aggregateByNetwork.get(key);
+      if (!aggregate) {
+        aggregate = createErc20BalanceBatch();
+        aggregateByNetwork.set(key, aggregate);
+        if (aggregateByNetwork.size > 16) aggregateByNetwork.delete(aggregateByNetwork.keys().next().value!);
+      }
+      return operation(
+        network,
+        address,
+        signal,
+        async (read, block, holder) => {
+          const calls = selected.flatMap((token) => [
+            { target: token.contractAddress, data: SELECTORS.decimals },
+            { target: token.contractAddress, data: balanceData(holder) },
+          ]);
+          const requests = calls.map((call) => ({
+            method: 'eth_call' as const,
+            params: [{ to: call.target, data: call.data }, block],
+          }));
+          const observations = selected.length > 1
+            ? await aggregate!({ read, readMany: read.many }, calls, block)
+            : await read.many(requests);
+          return Object.freeze(
+            selected.map((token, index): Erc20BalanceResult => {
+              const precision = observations[index * 2]!;
+              const balance = observations[index * 2 + 1]!;
+              try {
+                if (
+                  precision.status !== 'fulfilled' ||
+                  balance.status !== 'fulfilled' ||
+                  decimalsResult(precision.value) !== token.decimals
+                )
+                  return Object.freeze({ status: 'error', units: null });
+                return Object.freeze({
+                  status: 'available',
+                  units: unitsResult(balance.value),
+                });
+              } catch {
+                return Object.freeze({ status: 'error', units: null });
+              }
+            })
+          );
+        },
+        { network: registration, assertCurrent },
+        true
       );
     },
     readBalance: async (

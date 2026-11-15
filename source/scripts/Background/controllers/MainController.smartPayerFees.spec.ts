@@ -10,12 +10,15 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 }));
 jest.mock('@sidhujag/sysweb3-keyring/cjs/evm-fees.js', () => ({
   ...jest.requireActual('@sidhujag/sysweb3-keyring/cjs/evm-fees.js'),
-  getEvmFeeData: async (provider) => ({
-    gasPrice: BigInt(3),
-    maxFeePerGas: BigInt(3),
-    maxPriorityFeePerGas: BigInt(1),
-    baseFeePerGas: (await provider.getBlock()).baseFeePerGas,
-  }),
+  getEvmFeeData: async (provider) => {
+    const { baseFeePerGas } = await provider.getBlock();
+    return {
+      gasPrice: BigInt(3),
+      maxFeePerGas: BigInt(3),
+      maxPriorityFeePerGas: BigInt(1),
+      ...(baseFeePerGas === null ? {} : { baseFeePerGas }),
+    };
+  },
 }));
 jest.mock('utils/evmCallBlacklist', () => ({
   getBlacklistTargetsForEvmCallWithContractType: jest.fn(async () => []),
@@ -51,6 +54,7 @@ import {
   NATIVE_EVM_FEE_FUNDING,
 } from '../../../shared/evmFeeApproval';
 import { KeyringAccountType } from 'types/network';
+import { EVM_TRANSACTION_CONTEXT_CHANGED } from 'utils/evmTransactionContext';
 import { buildSmartAccountUserOperation } from 'utils/smartAccount/account';
 import { paliEntryPointInterface } from 'utils/smartAccount/contracts';
 import { createSmartAccountPendingState } from 'utils/smartAccount/pendingState';
@@ -242,7 +246,9 @@ function fixture() {
   const options = {
     assertBeforeSign: () => undefined,
     assertCurrentContext: () => undefined,
-    assertPendingState: jest.fn(async () => undefined),
+    assertPendingState: jest.fn(async (...args: unknown[]) => {
+      void args;
+    }),
     assertAssetState: jest.fn(async () => undefined),
     feeFunding: NATIVE_EVM_FEE_FUNDING,
     clearNavigation: false,
@@ -337,8 +343,13 @@ it('does not reject its own newly persisted handleOps row as an unrelated pendin
   });
   const read = f.provider.send.getMockImplementation()!;
   f.provider.send.mockImplementation(async (method, params) => {
+    if (method === 'eth_getCode') return '0x';
     if (method === 'eth_call')
-      return paliEntryPointInterface.encodeFunctionResult('getNonce', [0]);
+      return (params[0] as { data: string }).data.startsWith(
+        paliEntryPointInterface.getFunction('balanceOf')!.selector
+      )
+        ? paliEntryPointInterface.encodeFunctionResult('balanceOf', [0])
+        : paliEntryPointInterface.encodeFunctionResult('getNonce', [0]);
     if (
       method === 'eth_getTransactionReceipt' ||
       method === 'eth_getTransactionByHash'
@@ -367,7 +378,13 @@ it('does not reject its own newly persisted handleOps row as an unrelated pendin
     smart,
     () => undefined
   );
-  f.options.assertPendingState = jest.fn(() => pending.assertNonce(operation));
+  f.options.assertPendingState = jest.fn((provider, hash) =>
+    provider
+      ? pending
+          .onProvider(provider, hash as string | undefined)
+          .assertNonce(operation)
+      : pending.assertNonce(operation)
+  );
   await f.submit();
   expect(f.records.append).toHaveBeenCalledTimes(1);
   expect(f.broadcast).toHaveBeenCalledTimes(1);
@@ -383,7 +400,7 @@ it('uses verified gas credit without requiring native gas and rechecks it at dis
   f.setBalance(BigInt(0));
   const verify = jest.fn(async (approval) => BigInt(approval.maximumFeeUnits));
   await f.submit(createOwnedEvmFeeFunding(verify));
-  expect(verify).toHaveBeenCalledTimes(4);
+  expect(verify).toHaveBeenCalledTimes(2);
   expect(f.records.append).toHaveBeenCalledTimes(1);
   expect(f.broadcast).toHaveBeenCalledTimes(1);
 });
@@ -402,14 +419,14 @@ it('still requires the native transfer value when gas is covered', async () => {
   expect(f.send).not.toHaveBeenCalled();
 });
 
-it('refuses funding lost during signing before appending signed bytes', async () => {
+it('retains signed bytes and refuses dispatch when funding is lost during signing', async () => {
   const f = fixture();
   f.onSigned(() => f.setBalance(BigInt(0)));
   await expect(f.submit()).rejects.toMatchObject({
     transactionNotBroadcast: true,
   });
   expect(f.send).toHaveBeenCalledTimes(1);
-  expect(f.records.append).not.toHaveBeenCalled();
+  expect(f.records.append).toHaveBeenCalledTimes(1);
   expect(f.broadcast).not.toHaveBeenCalled();
 });
 
@@ -439,9 +456,7 @@ it.each(['review', 'signing', 'persistence'] as const)(
     await expect(f.submit()).rejects.toMatchObject({
       transactionNotBroadcast: true,
     });
-    expect(f.records.append).toHaveBeenCalledTimes(
-      stage === 'persistence' ? 1 : 0
-    );
+    expect(f.records.append).toHaveBeenCalledTimes(stage === 'review' ? 0 : 1);
     expect(f.broadcast).not.toHaveBeenCalled();
   }
 );
@@ -476,7 +491,7 @@ it.each(['signing', 'persistence'] as const)(
     await expect(f.submit(funding)).rejects.toMatchObject({
       transactionNotBroadcast: true,
     });
-    expect(f.records.append).toHaveBeenCalledTimes(stage === 'signing' ? 0 : 1);
+    expect(f.records.append).toHaveBeenCalledTimes(1);
     expect(f.broadcast).not.toHaveBeenCalled();
   }
 );
@@ -497,7 +512,7 @@ it('retains all authorization and pending-state checks after signing', async () 
   expect(f.broadcast).not.toHaveBeenCalled();
 });
 
-it('rechecks other pending Smart operations after signing and before its own append', async () => {
+it('refuses dispatch for other pending Smart operations after signing', async () => {
   const f = fixture();
   let competing = false;
   f.options.assertPendingState = jest.fn(async () => {
@@ -509,7 +524,7 @@ it('rechecks other pending Smart operations after signing and before its own app
   await expect(f.submit()).rejects.toMatchObject({
     transactionNotBroadcast: true,
   });
-  expect(f.records.append).not.toHaveBeenCalled();
+  expect(f.records.append).toHaveBeenCalledTimes(1);
   expect(f.broadcast).not.toHaveBeenCalled();
 });
 
@@ -623,6 +638,33 @@ it('refuses an otherwise valid fee cap when the fresh base fee requires raising 
   expect(f.records.append).not.toHaveBeenCalled();
 });
 
+it('rejects a reorg after a numbered header was reused by pending reconciliation', async () => {
+  const f = fixture();
+  let replaced = false;
+  let numberedReads = 0;
+  const original = f.provider.send.getMockImplementation()!;
+  f.options.assertPendingState.mockImplementation(async (...args) => {
+    const provider = args[0] as any;
+    await provider.send('eth_getBlockByNumber', ['0x10', false]);
+  });
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (method === 'eth_getBlockByNumber' && params?.[0] === '0x10') {
+      numberedReads++;
+      return { ...block, hash: replaced ? '0x' + '55'.repeat(32) : block.hash };
+    }
+    if (method === 'eth_estimateGas') replaced = true;
+    return original(method, params);
+  });
+  await expect(f.submit()).rejects.toMatchObject({
+    message: EVM_TRANSACTION_CONTEXT_CHANGED,
+    transactionNotBroadcast: true,
+  });
+  expect(numberedReads).toBe(2);
+  expect(f.send).not.toHaveBeenCalled();
+  expect(f.records.append).not.toHaveBeenCalled();
+  expect(f.broadcast).not.toHaveBeenCalled();
+});
+
 it('routes deployment prefunding through the same payer checks', async () => {
   const f = fixture();
   f.setBalance(BigInt(0));
@@ -632,4 +674,57 @@ it('routes deployment prefunding through the same payer checks', async () => {
     } as any)
   ).rejects.toMatchObject({ transactionNotBroadcast: true });
   expect(f.send).not.toHaveBeenCalled();
+});
+
+it.each([false, true])(
+  'discovers deployment prefund fees, legacy=%s',
+  async (legacy) => {
+    const f = fixture();
+    if (legacy) {
+      const read = f.provider.send.getMockImplementation()!;
+      f.provider.send.mockImplementation(async (method, params) =>
+        method === 'eth_getBlockByNumber'
+          ? { ...block, baseFeePerGas: null }
+          : read(method, params)
+      );
+    }
+    await f.submit(
+      NATIVE_EVM_FEE_FUNDING,
+      {
+        chainId: 57,
+        from: signer.address,
+        to: smart,
+        value: '100',
+      } as any,
+      { smartAccountDeploymentPrefund: true } as any
+    );
+    expect(f.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: smart,
+        value: '100',
+        ...(legacy
+          ? { gasPrice: '3' }
+          : { maxFeePerGas: '3', maxPriorityFeePerGas: '1' }),
+      }),
+      legacy,
+      expect.objectContaining({ mode: 'reviewed-generic' })
+    );
+    expect(f.records.append).toHaveBeenCalledTimes(1);
+    expect(f.broadcast).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('rejects an unfunded deployment prefund after discovering fees', async () => {
+  const f = fixture();
+  f.setBalance(BigInt(0));
+  await expect(
+    f.submit(
+      NATIVE_EVM_FEE_FUNDING,
+      { chainId: 57, from: signer.address, to: smart, value: '100' } as any,
+      { smartAccountDeploymentPrefund: true } as any
+    )
+  ).rejects.toMatchObject({ transactionNotBroadcast: true });
+  expect(f.send).not.toHaveBeenCalled();
+  expect(f.records.append).not.toHaveBeenCalled();
+  expect(f.broadcast).not.toHaveBeenCalled();
 });

@@ -20,7 +20,7 @@ function fixture(options:{id?:EvmNetworkId;stage?:Stage;kind?:'stream'|'text'|'d
    if(options.missing)result=null;
    else if(options.oversized!==false&&(options.stage!=='repeated'||receipts>1)){
     const body=JSON.stringify({jsonrpc:'2.0',id:request.id,result:largeReceipt});
-    if(options.kind==='text')return {ok:true,headers:new Headers({'content-type':'application/json'}),body:null,text:async()=>body} as Response;
+    if(options.kind==='text')return {ok:true,status:200,headers:new Headers({'content-type':'application/json'}),body:null,text:async()=>body} as Response;
     return new Response(body,{headers:{'content-type':'application/json',...(options.kind==='declared'?{'content-length':String(body.length)}:{})}});
    }else result=receipt;
   }else if(request.method==='eth_getTransactionCount')result=options.consumed===false?'0x7':'0x8';
@@ -35,13 +35,13 @@ for(const stage of ['initial','repeated'] as const)for(const kind of ['stream','
  const f=fixture({stage,kind,consumed});
  if(stage==='repeated')assert.equal((await f.rpc.receipt(expected,signal(),guard))?.status,'included');
  const before=f.calls.length;
- await assert.rejects(f.rpc.receipt(expected,signal(),guard),{code:'UNAVAILABLE'});
+ await assert.rejects(f.rpc.receipt(expected,signal(),guard),{code:'INVALID_RESPONSE'});
  assert.deepEqual(f.calls.slice(before).map(c=>c.method),['eth_chainId','eth_getTransactionReceipt']);
  assert.equal(f.calls.slice(before).some(c=>c.method==='eth_sendRawTransaction'||c.params.includes('finalized')),false);
 });
 
 for(const id of ['syscoin-nevm','zksys-testnet','base','arbitrum','rollux'] as const)test(`${id} has the same oversized-receipt failure semantics`,async()=>{
- const f=fixture({id});await assert.rejects(f.rpc.receipt(expected,signal(),guard),{code:'UNAVAILABLE'});
+ const f=fixture({id});await assert.rejects(f.rpc.receipt(expected,signal(),guard),{code:'INVALID_RESPONSE'});
  assert.deepEqual(f.calls.map(c=>c.method),['eth_chainId','eth_getTransactionReceipt']);
 });
 
@@ -50,7 +50,7 @@ test('healthy receipt canonicality retains bounded block and chain checks',async
  const wide=fixture({oversized:false,blockResult:c=>({number:c.params[0],hash:blockHash,gasLimit:'0x1c9c380',transactions:Array(300).fill(hash)})});
  assert.equal((await wide.rpc.receipt(expected,signal(),guard))?.status,'included');
  const huge=fixture({oversized:false,blockResult:()=>({number:'0x8',hash:blockHash,gasLimit:'0x1c9c380',extra:'x'.repeat(512*1024)})});
- await assert.rejects(huge.rpc.receipt(expected,signal(),guard),{code:'UNAVAILABLE'});
+ await assert.rejects(huge.rpc.receipt(expected,signal(),guard),{code:'INVALID_RESPONSE'});
  await assert.rejects(fixture({oversized:false,chain:n=>n===1?'0x1':'0x2'}).rpc.receipt(expected,signal(),guard),{code:'PROFILE_CHANGED'});
 });
 

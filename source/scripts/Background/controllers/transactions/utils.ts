@@ -1,9 +1,7 @@
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
-import flatMap from 'lodash/flatMap';
 import isEmpty from 'lodash/isEmpty';
-import range from 'lodash/range';
 
 import {
   belongsToEvmHistoryAccount,
@@ -47,187 +45,207 @@ export const getFormattedEvmTransactionResponse = async (
   );
 };
 
+const HISTORY_READ_TIMEOUT_MS = 20000;
+// Keep immutable bodies across the manager's one-minute display-result expiry.
+// Every reuse still verifies the cached anchor against the current chain.
+const HISTORY_CACHE_TTL_MS = 5 * 60000;
+const HISTORY_CACHE_BLOCKS = 64;
+const HISTORY_CACHE_BYTES = 8 * 1024 * 1024;
+
+type HistoryBlock = {
+  hash: string;
+  number: number;
+  parentHash: string;
+  timestamp: number;
+  transactions: IEvmTransactionResponse[];
+};
+type HistoryScanCache = {
+  blocks: Map<number, HistoryBlock>;
+  scope: string;
+  updatedAt: number;
+};
+const historyScans = new WeakMap<CustomJsonRpcProvider, HistoryScanCache>();
+const historyScope = () => {
+  const { activeAccount, accounts, activeNetwork } = store.getState().vault;
+  return JSON.stringify([
+    activeNetwork?.chainId,
+    activeNetwork?.url,
+    activeAccount?.type,
+    activeAccount?.id,
+    accounts?.[activeAccount?.type]?.[
+      activeAccount?.id
+    ]?.address?.toLowerCase(),
+  ]);
+};
+const historyNumber = (value: unknown): number => {
+  if (typeof value !== 'string' || !/^0x(?:0|[1-9a-f][0-9a-f]*)$/i.test(value))
+    throw new Error('Invalid history block quantity');
+  const result = Number(BigInt(value));
+  if (!Number.isSafeInteger(result))
+    throw new Error('Invalid history block quantity');
+  return result;
+};
+const historyHash = (value: unknown): string => {
+  if (typeof value !== 'string' || !/^0x[0-9a-f]{64}$/i.test(value))
+    throw new Error('Invalid history block hash');
+  return value.toLowerCase();
+};
+const historyHeader = (value: any) => ({
+  number: historyNumber(value?.number),
+  hash: historyHash(value?.hash),
+  parentHash: historyHash(value?.parentHash),
+});
+
+/** Bounded display scan; only complete, canonically checked block windows are reused. */
 export const findUserTxsInProviderByBlocksRange = async (
   provider: CustomJsonRpcProvider,
-  numBlocks: number
-): Promise<IEvmTransactionResponse[] | any> => {
-  const { isBitcoinBased } = store.getState().vault;
-
-  // This function is EVM-specific, shouldn't be called for UTXO networks
-  if (isBitcoinBased) {
-    console.warn(
-      'findUserTxsInProviderByBlocksRange called on UTXO network - returning empty array'
+  numBlocks: number,
+  isCurrentRead: () => boolean = () => true
+): Promise<IEvmTransactionResponse[]> => {
+  if (store.getState().vault.isBitcoinBased) return [];
+  if (!Number.isSafeInteger(numBlocks) || numBlocks < 0 || numBlocks > 1000)
+    throw new Error('Invalid history block range');
+  const scope = historyScope();
+  const chainId = BigInt(store.getState().vault.activeNetwork.chainId);
+  const deadline = new AbortController();
+  const abort = () => deadline.abort(provider.signal.reason);
+  provider.signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(
+    () => deadline.abort(new Error('History refresh timed out')),
+    HISTORY_READ_TIMEOUT_MS
+  );
+  const check = () => {
+    if (deadline.signal.aborted) throw deadline.signal.reason;
+    if (
+      provider.signal?.aborted ||
+      !isCurrentRead() ||
+      historyScope() !== scope
+    )
+      throw new Error('History context changed');
+  };
+  const request = async (calls: { method: string; params: unknown[] }[]) => {
+    check();
+    const results = await provider.readMany(calls, { signal: deadline.signal });
+    check();
+    return results.map((result) => {
+      if (result.status === 'rejected') throw result.reason;
+      return result.value;
+    });
+  };
+  const readMany = (params: unknown[][]): Promise<any[]> =>
+    request(
+      params.map((values) => ({
+        method: 'eth_getBlockByNumber',
+        params: values,
+      }))
     );
-    return [];
-  }
-
-  // Get the latest block number first
-  const latestBlockNumber = await provider.getBlockNumber();
-
-  // Calculate the range: from (latest - numBlocks) to latest
-  const startBlock = Math.max(0, latestBlockNumber - numBlocks);
-  const endBlock = latestBlockNumber;
-
-  const rangeBlocksToRun = range(startBlock, endBlock + 1); // +1 to include endBlock
-
-  // Start with a conservative batch size and let it adapt based on provider limits
-  let currentBatchSize = 5; // Conservative starting point
-  const allResponses = [];
-
-  // Process blocks in chunks with dynamic batch size
-  let i = 0;
-  let chunkCount = 0;
-  let consecutiveErrors = 0;
-
-  while (i < rangeBlocksToRun.length) {
-    const chunk = rangeBlocksToRun.slice(i, i + currentBatchSize);
-
-    try {
-      // Use sendBatch to send all block requests in a single batch
-      const batchParams = chunk.map((blockNumber) => [
-        `0x${blockNumber.toString(16)}`,
-        true,
-      ]);
-
-      const responses = await provider.sendBatch(
-        'eth_getBlockByNumber',
-        batchParams
-      );
-      allResponses.push(...responses);
-
-      // Reset consecutive errors on success
-      consecutiveErrors = 0;
-
-      // Move to next chunk
-      i += currentBatchSize;
-      chunkCount++;
-
-      // Add progressive delay between chunks to avoid rate limiting
-      if (i < rangeBlocksToRun.length) {
-        // Base delay: 100ms, increases by 50ms every 10 chunks
-        const baseDelay = 100;
-        const progressiveDelay = Math.floor(chunkCount / 10) * 50;
-        const delay = Math.min(baseDelay + progressiveDelay, 500); // Cap at 500ms
-
-        if (chunkCount % 10 === 0) {
-          console.log(
-            `Processed ${chunkCount} chunks, current delay: ${delay}ms`
-          );
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    } catch (error: any) {
-      console.error('Error fetching blocks:', error);
-      consecutiveErrors++;
-
-      // Check for rate limiting errors
-      const isRateLimitError =
-        (error.message &&
-          (error.message.includes('rate limit') ||
-            error.message.includes('Too many requests') ||
-            error.message.includes('429'))) ||
-        error.status === 429 ||
-        error.code === 429;
-
-      if (isRateLimitError) {
-        // Exponential backoff for rate limiting
-        const backoffDelay = Math.min(
-          1000 * Math.pow(2, consecutiveErrors),
-          10000
-        ); // Max 10 seconds
-        console.warn(`Rate limit hit, waiting ${backoffDelay}ms before retry`);
-        await new Promise((resolve) => setTimeout(resolve, backoffDelay));
-        continue; // Retry the same chunk
-      }
-
-      // Check for various batch size limit errors
-      const isBatchSizeError =
-        (error.message &&
-          (error.message.includes('Batch size too large') ||
-            error.message.includes('Batch of more than') ||
-            (error.message.includes('batch') &&
-              error.message.includes('not allowed')))) ||
-        (error.body &&
-          typeof error.body === 'string' &&
-          error.body.includes('Batch of more than'));
-
-      if (isBatchSizeError) {
-        // Extract batch limit from error message if possible
-        const batchLimitMatch =
-          error.message?.match(/Batch of more than (\d+)/) ||
-          error.body?.match(/Batch of more than (\d+)/);
-
-        if (batchLimitMatch && batchLimitMatch[1]) {
-          const maxAllowed = parseInt(batchLimitMatch[1]);
-          currentBatchSize = Math.min(currentBatchSize, maxAllowed);
-          console.warn(
-            `Batch size limit detected: max ${maxAllowed} allowed. Reducing batch size to ${currentBatchSize}`
-          );
-        } else if (currentBatchSize > 1) {
-          // If we can't parse the limit, reduce by half
-          currentBatchSize = Math.max(1, Math.floor(currentBatchSize / 2));
-          console.warn(
-            `Batch size error detected. Reducing batch size to ${currentBatchSize}`
-          );
-        }
-
-        // Retry the same chunk with smaller batch size
-        continue;
-      } else if (currentBatchSize > 1) {
-        // For other errors, try reducing batch size anyway
-        currentBatchSize = Math.max(1, Math.floor(currentBatchSize / 2));
-        console.warn(
-          `Unknown error, reducing batch size to ${currentBatchSize} and retrying`
-        );
-        continue;
-      } else {
-        // If we're already at batch size 1, skip this block
-        console.error(
-          `Failed to fetch block ${chunk[0]} even with batch size 1:`,
-          error
-        );
-        i += 1; // Move to next block
+  const verifyChain = async () => {
+    const [actual] = await request([{ method: 'eth_chainId', params: [] }]);
+    if (typeof actual !== 'string' || BigInt(actual) !== chainId)
+      throw new Error('History network changed');
+  };
+  try {
+    check();
+    await verifyChain();
+    check();
+    const [rawTip] = await readMany([['latest', false]]);
+    const tip = historyHeader(rawTip);
+    const start = Math.max(0, tip.number - numBlocks);
+    const cached = historyScans.get(provider);
+    let blocks = new Map<number, HistoryBlock>();
+    if (
+      cached?.scope === scope &&
+      cached.blocks.size > 0 &&
+      Date.now() - cached.updatedAt < HISTORY_CACHE_TTL_MS
+    ) {
+      const oldTip = Math.max(...cached.blocks.keys());
+      if (oldTip <= tip.number) {
+        const observed =
+          oldTip === tip.number
+            ? tip
+            : historyHeader(
+                (await readMany([[`0x${oldTip.toString(16)}`, false]]))[0]
+              );
+        if (observed.hash === cached.blocks.get(oldTip)?.hash)
+          blocks = new Map(cached.blocks);
       }
     }
-  }
-
-  return flatMap(
-    allResponses.map((response: any) => {
-      const filterTxsByAddress = response.transactions
-        .filter((tx) => tx?.from || tx?.to)
-        .map((txWithConfirmations) => {
-          // Calculate confirmations based on actual latest block number
-          // Confirmations = (latest block number - transaction block number) + 1
-          // But if transaction is in pending state (blockNumber is null), confirmations = 0
-          const txBlockNumber = txWithConfirmations.blockNumber
-            ? parseInt(txWithConfirmations.blockNumber, 16)
-            : null;
-
-          const confirmations = txBlockNumber
-            ? Math.max(0, latestBlockNumber - txBlockNumber)
-            : 0;
-
-          return {
-            ...txWithConfirmations,
-            chainId: Number(txWithConfirmations.chainId),
-            confirmations,
-            timestamp: response.timestamp
-              ? Number(response.timestamp)
-              : Math.floor(Date.now() / 1000),
-            nonce:
-              txWithConfirmations.nonce !== undefined &&
-              txWithConfirmations.nonce !== null
-                ? typeof txWithConfirmations.nonce === 'string'
-                  ? parseInt(txWithConfirmations.nonce, 16) // RPC returns nonce as hex string
-                  : Number(txWithConfirmations.nonce)
-                : undefined,
-          };
+    const missing: number[] = [];
+    for (let number = start; number <= tip.number; number++) {
+      if (!blocks.has(number)) missing.push(number);
+    }
+    for (let offset = 0; offset < missing.length; offset += 5) {
+      const chunk = missing.slice(offset, offset + 5);
+      const values = await readMany(
+        chunk.map((number) => [`0x${number.toString(16)}`, true])
+      );
+      values.forEach((raw, index) => {
+        const header = historyHeader(raw);
+        if (
+          header.number !== chunk[index] ||
+          !Array.isArray(raw.transactions) ||
+          raw.transactions.some(
+            (tx: unknown) => !tx || typeof tx !== 'object' || Array.isArray(tx)
+          )
+        )
+          throw new Error('Invalid history block');
+        blocks.set(header.number, {
+          ...header,
+          timestamp: historyNumber(raw.timestamp),
+          transactions: raw.transactions,
         });
-
-      return filterTxsByAddress;
-    })
-  );
+      });
+    }
+    const window: HistoryBlock[] = [];
+    for (let number = start; number <= tip.number; number++) {
+      const block = blocks.get(number)!;
+      if (
+        !block ||
+        (window.length && block.parentHash !== window[window.length - 1].hash)
+      )
+        throw new Error('History block chain changed');
+      window.push(block);
+    }
+    const finalTip = historyHeader(
+      (await readMany([[`0x${tip.number.toString(16)}`, false]]))[0]
+    );
+    if (finalTip.hash !== tip.hash || blocks.get(tip.number)?.hash !== tip.hash)
+      throw new Error('History block chain changed');
+    await verifyChain();
+    check();
+    const retained = new Map<number, HistoryBlock>();
+    let retainedBytes = 0;
+    for (const block of window.slice(-HISTORY_CACHE_BLOCKS).reverse()) {
+      retainedBytes += JSON.stringify(block).length * 2;
+      if (retainedBytes > HISTORY_CACHE_BYTES) break;
+      retained.set(block.number, block);
+    }
+    historyScans.set(provider, {
+      scope,
+      updatedAt: Date.now(),
+      blocks: retained,
+    });
+    return window.flatMap((block) =>
+      block.transactions
+        .filter((tx) => tx?.from || tx?.to)
+        .map((tx) => ({
+          ...tx,
+          chainId: Number(tx.chainId),
+          confirmations: tx.blockNumber
+            ? Math.max(0, tip.number - historyNumber(tx.blockNumber))
+            : 0,
+          timestamp: block.timestamp,
+          nonce:
+            typeof tx.nonce === 'string' ? historyNumber(tx.nonce) : tx.nonce,
+        }))
+    );
+  } catch (error) {
+    historyScans.delete(provider);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    provider.signal?.removeEventListener('abort', abort);
+  }
 };
 
 // Optimized function that deduplicates, sorts, and limits in one go

@@ -225,6 +225,7 @@ it.each(cases)('shares initial quote policy for $name', async (fixture) => {
         };
       if (method === 'eth_getBalance') return balance;
       if (method === 'eth_maxPriorityFeePerGas') return '2';
+      if (method === 'eth_gasPrice') return '4';
       if (method === 'eth_estimateGas') {
         extensionEstimates.push(params[0]);
         return `0x${fixture.estimate.toString(16)}`;
@@ -252,36 +253,46 @@ it.each(cases)('shares initial quote policy for $name', async (fixture) => {
   const read = new EvmTransferReadRpc(registration, {
     monotonicMilliseconds: () => 1,
     fetch: async (_url, init) => {
-      const request = JSON.parse(String(init.body));
-      let result: unknown;
-      if (request.method === 'eth_chainId')
-        result = `0x${chainId.toString(16)}`;
-      else if (request.method === 'eth_getBlockByNumber')
-        result = {
-          ...header,
-          number: request.params[0] === '0x10' ? '0x10' : header.number,
-          gasLimit: `0x${blockLimit.toString(16)}`,
-          baseFeePerGas: '0x2',
-        };
-      else if (request.method === 'eth_getTransactionCount') result = '0x9';
-      else if (request.method === 'eth_getBalance')
-        result = `0x${BigInt(balance).toString(16)}`;
-      else if (request.method === 'eth_gasPrice') result = '0x4';
-      else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x2';
-      else if (request.method === 'eth_estimateGas') {
-        nativeEstimates.push(request.params[0]);
-        result = `0x${fixture.estimate.toString(16)}`;
-      } else throw new Error(`Unexpected native RPC ${request.method}`);
+      const payload = JSON.parse(String(init.body));
+      const respond = (request: {
+        id: number;
+        method: string;
+        params: unknown[];
+      }) => {
+        let result: unknown;
+        if (request.method === 'eth_chainId')
+          result = `0x${chainId.toString(16)}`;
+        else if (request.method === 'eth_getBlockByNumber')
+          result = {
+            ...header,
+            number: request.params[0] === '0x10' ? '0x10' : header.number,
+            gasLimit: `0x${blockLimit.toString(16)}`,
+            baseFeePerGas: '0x2',
+          };
+        else if (request.method === 'eth_getTransactionCount') result = '0x9';
+        else if (request.method === 'eth_getBalance')
+          result = `0x${BigInt(balance).toString(16)}`;
+        else if (request.method === 'eth_gasPrice') result = '0x4';
+        else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x2';
+        else if (request.method === 'eth_estimateGas') {
+          nativeEstimates.push(request.params[0]);
+          result = `0x${fixture.estimate.toString(16)}`;
+        } else throw new Error(`Unexpected native RPC ${request.method}`);
+        return { jsonrpc: '2.0', id: request.id, result };
+      };
+      const response = Array.isArray(payload)
+        ? payload.map(respond)
+        : respond(payload);
       return {
         ok: true,
+        status: 200,
         redirected: false,
         url: '',
         headers: {
           get: (name: string) =>
             name === 'content-type' ? 'application/json' : null,
         },
-        text: async () =>
-          JSON.stringify({ jsonrpc: '2.0', id: request.id, result }),
+        text: async () => JSON.stringify(response),
       } as Response;
     },
   });

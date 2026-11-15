@@ -33,7 +33,7 @@ import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 
 import { createTestEvmSubmissionCapture } from '../../../../../tests/helpers/evmSubmission';
 import { KeyringAccountType } from 'types/network';
-import { BigNumber } from 'utils/ethersV6Compat';
+import { BigNumber, Interface } from 'utils/ethersV6Compat';
 import {
   buildSmartAccountUserOperation,
   encodeSmartAccountGasFees,
@@ -176,10 +176,23 @@ describe('SmartAccountController smart account execution fees', () => {
 
   const buildController = () => {
     const estimateGas = jest.fn().mockResolvedValue('143280');
-    const sendAndSaveEthTransaction = jest.fn().mockResolvedValue({
-      hash: '0xabc',
-      wait: jest.fn(),
-    });
+    const broadcast = jest
+      .fn()
+      .mockResolvedValue({ hash: '0xabc', wait: jest.fn() });
+    const sendAndSaveEthTransaction: jest.Mock = jest.fn(
+      async (transaction) => {
+        if (transaction.gasLimit === undefined) {
+          try {
+            await estimateGas(transaction);
+          } catch (error) {
+            throw Object.assign(new Error((error as Error).message), {
+              transactionNotBroadcast: true,
+            });
+          }
+        }
+        return broadcast(transaction);
+      }
+    );
     const transaction = { web3Provider: { estimateGas } };
     const controller: any = new SmartAccountController({
       captureSmartAccountPendingRecords: async () => ({
@@ -203,7 +216,7 @@ describe('SmartAccountController smart account execution fees', () => {
     controller.getLocalNativeExecutionRecipients = jest.fn(() => []);
     controller.invalidateHydratedMetadata = jest.fn();
 
-    return { controller, estimateGas, sendAndSaveEthTransaction };
+    return { controller, estimateGas, sendAndSaveEthTransaction, broadcast };
   };
 
   const buildUserOperation = () =>
@@ -412,8 +425,8 @@ describe('SmartAccountController smart account execution fees', () => {
     expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
   });
 
-  it('marks an outer estimate failure before either sender as definitely not broadcast', async () => {
-    const { controller, estimateGas, sendAndSaveEthTransaction } =
+  it('marks the delegated outer estimate failure as definitely not broadcast', async () => {
+    const { controller, estimateGas, sendAndSaveEthTransaction, broadcast } =
       buildController();
     const error = Object.freeze(new Error('execution reverted'));
     estimateGas.mockRejectedValueOnce(error);
@@ -430,7 +443,8 @@ describe('SmartAccountController smart account execution fees', () => {
       transactionNotBroadcast: true,
     });
     expect(error).not.toHaveProperty('transactionNotBroadcast');
-    expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
+    expect(sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
+    expect(broadcast).not.toHaveBeenCalled();
   });
 
   it('still marks a failed estimate as prebroadcast when deployment prefunding made no send', async () => {
@@ -456,6 +470,88 @@ describe('SmartAccountController smart account execution fees', () => {
     expect(controller.ensureSmartAccountDeploymentPrefund).toHaveBeenCalled();
     expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
   });
+
+  it.each(['balance decreased', 'transfer paused'])(
+    'rechecks counterfactual asset spendability before prefunding when %s after preparation',
+    async (change) => {
+      const { controller, sendAndSaveEthTransaction, broadcast } =
+        buildController();
+      const token = new Interface([
+        'function balanceOf(address) view returns(uint256)',
+        'function decimals() view returns(uint8)',
+        'function transfer(address,uint256) returns(bool)',
+      ]);
+      const target = '0x3333333333333333333333333333333333333333';
+      const recipient = '0x4444444444444444444444444444444444444444';
+      const execution = encodeERC7579Executions([
+        {
+          target,
+          value: '0',
+          data: token.encodeFunctionData('transfer', [recipient, 9]),
+        },
+      ]);
+      const userOperation = {
+        ...buildUserOperation(),
+        initCode: identity.deploymentInitCode,
+        callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+          execution.mode,
+          execution.executionCalldata,
+        ]),
+      };
+      const prepared = withPreparedDeployment(controller, userOperation);
+      const provider = controller.ethereumTransaction.web3Provider;
+      const originalRead = provider.send;
+      provider.send = jest.fn(async (method, params) => {
+        if (method === 'eth_call' && params[0].to.toLowerCase() === target) {
+          const call = token.parseTransaction({ data: params[0].data })!;
+          if (call.name === 'balanceOf')
+            return token.encodeFunctionResult(call.fragment, [
+              change === 'balance decreased' ? 0 : 9,
+            ]);
+          if (call.name === 'decimals')
+            return token.encodeFunctionResult(call.fragment, [0]);
+          throw new Error('Token transfer paused');
+        }
+        return originalRead(method, params);
+      });
+      const prefund = jest.spyOn(
+        controller,
+        'ensureSmartAccountDeploymentPrefund'
+      );
+
+      await expect(
+        submitReviewed(controller, {
+          ...prepared,
+          gasPayer,
+          signature: '0x1234',
+        })
+      ).rejects.toMatchObject({
+        message:
+          change === 'balance decreased'
+            ? 'Insufficient token or collectible balance'
+            : 'Token transfer paused',
+        transactionNotBroadcast: true,
+      });
+      const assetCalls = provider.send.mock.calls.filter(
+        ([method, params]) =>
+          method === 'eth_call' && params[0].to.toLowerCase() === target
+      );
+      expect(
+        assetCalls.some(([, params]) =>
+          params[0].data.startsWith(token.getFunction('balanceOf')!.selector)
+        )
+      ).toBe(true);
+      if (change === 'transfer paused')
+        expect(
+          assetCalls.some(([, params]) =>
+            params[0].data.startsWith(token.getFunction('transfer')!.selector)
+          )
+        ).toBe(true);
+      expect(prefund).not.toHaveBeenCalled();
+      expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
+      expect(broadcast).not.toHaveBeenCalled();
+    }
+  );
 
   it('never funds a first UserOperation with altered deployment bytes', async () => {
     const { controller, sendAndSaveEthTransaction } = buildController();
@@ -589,7 +685,6 @@ describe('SmartAccountController smart account execution fees', () => {
 
     expect(sendAndSaveEthTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
-        gasLimit: '143280',
         maxFeePerGas: '1000000000',
         maxPriorityFeePerGas: '0',
       }),
@@ -604,9 +699,9 @@ describe('SmartAccountController smart account execution fees', () => {
       })
     );
     expect(estimateGas).toHaveBeenCalledWith(
-      expect.not.objectContaining({
-        maxFeePerGas: expect.anything(),
-        maxPriorityFeePerGas: expect.anything(),
+      expect.objectContaining({
+        maxFeePerGas: '1000000000',
+        maxPriorityFeePerGas: '0',
       })
     );
   });
@@ -899,6 +994,7 @@ describe('SmartAccountController smart account execution fees', () => {
       const provider = {
         verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
         getTransactionCount: jest.fn().mockResolvedValue(7),
+        estimateGas: jest.fn().mockResolvedValue(BigNumber.from(143280)),
         getNetwork: jest.fn().mockResolvedValue({ chainId: CHAIN_ID }),
         getGasPrice: jest.fn().mockResolvedValue(BigNumber.from('999999999')),
         getFeeData: jest

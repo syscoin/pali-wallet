@@ -120,6 +120,8 @@ function depositFixture() {
       if (method === 'eth_getBalance')
         return '0x' + (await provider.getBalance(_params[0])).toString(16);
       if (method === 'eth_maxPriorityFeePerGas') return '0x1';
+      if (method === 'eth_gasPrice')
+        return '0x' + (await provider.getGasPrice()).toString(16);
       throw new Error('Unexpected synthetic RPC');
     }),
     estimateGas: jest.fn<Promise<bigint>, [unknown]>(async () =>
@@ -538,7 +540,7 @@ it('checks the session again after controller responses', async () => {
 });
 
 it('uses fresh deposit nonce observations while the actual SDK read cache still holds an earlier nonce', async () => {
-  jest.useFakeTimers();
+  jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
   const { CustomJsonRpcProvider } = jest.requireActual(
     '@sidhujag/sysweb3-keyring/cjs/providers'
   );
@@ -565,6 +567,14 @@ it('uses fresh deposit nonce observations while the actual SDK read cache still 
         })
       )
   );
+  provider.readMany = jest.fn(async (calls) => {
+    const responses = await provider.requestRpc(calls, calls.length > 1);
+    return responses.map((response) => ({
+      status: 'fulfilled' as const,
+      value: response.result,
+    }));
+  });
+  installProviderReadFetch(provider, 'https://synthetic.invalid');
   provider.estimateGas = jest.fn(async () => BigInt(100000));
   provider.getFeeData = jest.fn(async () => ({
     maxFeePerGas: BigInt(100),
@@ -1068,6 +1078,31 @@ it.each([
   }
 );
 
+function installProviderReadFetch(provider: any, url: string) {
+  jest.spyOn(global, 'fetch').mockImplementation(async (address, init) => {
+    expect(String(address)).toBe(url);
+    const payload = JSON.parse(String(init!.body));
+    const requests = Array.isArray(payload) ? payload : [payload];
+    const responses = await provider.requestRpc(
+      requests,
+      Array.isArray(payload)
+    );
+    const correlated = responses.map((response, index) => ({
+      ...response,
+      jsonrpc: '2.0',
+      id: requests[index].id,
+    }));
+    const body = Array.isArray(payload) ? correlated : correlated[0];
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      text: async () => JSON.stringify(body),
+      json: async () => body,
+    } as unknown as Response;
+  });
+}
+
 function cachedChainProvider(
   fallback: ReturnType<typeof depositFixture>['provider']
 ) {
@@ -1097,6 +1132,14 @@ function cachedChainProvider(
         })
       )
   );
+  live.readMany = jest.fn(async (calls) => {
+    const responses = await live.requestRpc(calls, calls.length > 1);
+    return responses.map((response) => ({
+      status: 'fulfilled' as const,
+      value: response.result,
+    }));
+  });
+  installProviderReadFetch(live, 'https://operator.example');
   live.estimateGas = jest.fn(async () => BigInt(100001));
   live.getFeeData = jest.fn(async () => ({
     maxFeePerGas: BigInt(100),

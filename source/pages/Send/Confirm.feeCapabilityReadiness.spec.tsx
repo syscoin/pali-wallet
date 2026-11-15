@@ -244,7 +244,7 @@ afterAll(() => {
   window.matchMedia = previousGlobals.matchMedia;
 });
 beforeEach(() => {
-  jest.useFakeTimers();
+  jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
   jest.clearAllMocks();
   jest.spyOn(console, 'error').mockImplementation();
   capability = undefined;
@@ -270,7 +270,18 @@ beforeEach(() => {
         expect(params[1]).toBe(false);
         // Only the primary provider's capability probe is delayed or failed.
         // Independent canonical-state reads still receive a coherent header.
-        return this === provider ? capability?.promise ?? block() : block();
+        if (this === provider) return capability?.promise ?? block();
+        const header = block();
+        return {
+          ...header,
+          gasLimit: '0x' + header.gasLimit.toBigInt().toString(16),
+          ...(header.baseFeePerGas
+            ? {
+                baseFeePerGas:
+                  '0x' + header.baseFeePerGas.toBigInt().toString(16),
+              }
+            : {}),
+        };
       }
       if (method === 'eth_maxPriorityFeePerGas') return '0x3b9aca00';
       if (method === 'eth_getTransactionCount' || method === 'eth_getBalance') {

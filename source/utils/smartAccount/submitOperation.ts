@@ -34,6 +34,7 @@ import {
   getExplicitSmartAccountGasPrice,
   type SmartAccountGasPayer,
 } from './prepareOperation.ts';
+import type { EvmAutoNonceSnapshot } from '../../shared/evmAutoNonce.ts';
 import type {
   IKeyringAccountState,
   ISmartAccountMetadata,
@@ -261,14 +262,6 @@ async function submitOwnedSmartAccountOperation<
       ...params.userOperation,
       signature: params.signature,
     };
-    const assertSpendable = () =>
-      assertSmartAccountSpendability({
-        provider: host.provider,
-        chainId: active.metadata.chainId,
-        userOperation: signedUserOperation,
-        assertCurrent,
-      });
-    await assertSpendable();
     assertCurrent();
     const callData = entryPoint.interface.encodeFunctionData('handleOps', [
       [signedUserOperation],
@@ -306,6 +299,16 @@ async function submitOwnedSmartAccountOperation<
       signedUserOperation.initCode !== '0x' &&
       !requiredPrefund.isZero()
     ) {
+      await host.pending.withReadPhase(async (phase) => {
+        await phase.assertNonce(signedUserOperation);
+        await assertSmartAccountSpendability({
+          provider: phase.provider,
+          chainId: active.metadata.chainId,
+          userOperation: signedUserOperation,
+          assertCurrent,
+        });
+      });
+      assertCurrent();
       await host.ensureDeploymentPrefund(
         active.account.address,
         signedUserOperation,
@@ -329,7 +332,7 @@ async function submitOwnedSmartAccountOperation<
     // estimation must not validate a different fee model from publication.
     // Existing EIP-1559 estimation stays fee-less. Tank mode reuses its exact
     // preflight, and the resolved gas limit avoids a second signer estimate.
-    if (!outerGasLimit) {
+    if (!outerGasLimit && initCode && initCode !== '0x') {
       const provider = host.provider;
       if (!provider) {
         throw new Error(PROVIDER_UNAVAILABLE_ERROR);
@@ -345,7 +348,6 @@ async function submitOwnedSmartAccountOperation<
       );
       assertCurrent();
     }
-    await host.pending.assertNonce(params.userOperation);
     assertCurrent();
     financialSubmissionAttempted = true;
     handleOpsStarted = true;
@@ -354,7 +356,7 @@ async function submitOwnedSmartAccountOperation<
         chainId: active.metadata.chainId,
         data: callData,
         from: gasPayer.address,
-        gasLimit: outerGasLimit.toString(),
+        ...(outerGasLimit ? { gasLimit: outerGasLimit.toString() } : {}),
         ...(legacyGasPrice !== undefined
           ? { gasPrice: legacyGasPrice }
           : params.maxFeePerGas && params.maxPriorityFeePerGas
@@ -406,14 +408,28 @@ async function submitOwnedSmartAccountOperation<
           : NATIVE_EVM_FEE_FUNDING,
         assertBeforeSign: assertCurrent,
         assertCurrentContext: assertContext,
-        async assertPendingState() {
-          await host.pending.assertNonce(params.userOperation);
-          await assertSpendable();
+        async assertPendingState(
+          provider?: any,
+          currentSignedHash?: string,
+          admission?: EvmAutoNonceSnapshot
+        ) {
+          const phase = provider
+            ? host.pending.onProvider(provider, currentSignedHash, admission)
+            : host.pending;
+          await phase.assertNonce(params.userOperation);
+          await assertSmartAccountSpendability({
+            provider: phase.provider,
+            chainId: active.metadata.chainId,
+            userOperation: signedUserOperation,
+            assertCurrent,
+          });
           assertCurrent();
         },
-        assertAssetState: () =>
+        assertAssetState: (provider?: any) =>
           assertSmartAccountAssetSpendability({
-            provider: host.provider,
+            provider: provider
+              ? host.pending.onProvider(provider).provider
+              : host.provider,
             chainId: active.metadata.chainId,
             userOperation: signedUserOperation,
             assertCurrent,

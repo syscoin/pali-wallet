@@ -2,6 +2,7 @@ import { parseEvmFeeQuantity } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 
 import { EvmAssetStateError } from '../../../shared/evmAssetState';
 import { availableEvmNativeBalance } from '../../../shared/evmAutoNonce';
+import { readFreshEvmState } from '../../../shared/evmReadPhase';
 import { EVM_SIGNED_RECORD_NONCE_CONFLICT } from '../../../wallet/evmSignedRecords';
 import {
   EVM_ASSET_REVIEW_MESSAGE,
@@ -171,18 +172,7 @@ export async function assertNoObservedLegacyPending({
   check();
 }
 
-/** Read fresh counts directly from the same owned RPC route used for submission. */
-export async function planExtensionEvmNonce({
-  provider,
-  scope,
-  snapshot,
-  acceptance,
-  assertCurrent,
-  reviewed,
-  minimumBalance,
-  assetBasis,
-  beforeAssetFinal,
-}: Readonly<{
+type NoncePlanInput = Readonly<{
   acceptance: EvmAutoNonceAcceptance;
   assertCurrent(): void;
   assetBasis?: WorkerAssetBasis;
@@ -193,7 +183,51 @@ export async function planExtensionEvmNonce({
   reviewed?: ExtensionReviewedNonce;
   scope: NonceScope;
   snapshot: EvmAutoNonceSnapshot;
-}>) {
+}>;
+type CanonicalNonceBlock = Readonly<{ hash: string; number: string }>;
+
+/** Read fresh counts directly from the same owned RPC route used for submission. */
+export function planExtensionEvmNonce(input: NoncePlanInput) {
+  return planNonce(input);
+}
+
+/** Internal quote substep. Its enclosing fee quote owns the fresh chain and
+ * final canonical-block checks; this only reads nonces and reservations on
+ * that same provider and sampled block. Never retain it across quote phases. */
+export function planExtensionEvmNonceForQuote(
+  input: Omit<
+    NoncePlanInput,
+    'assetBasis' | 'beforeAssetFinal' | 'minimumBalance'
+  >,
+  block: CanonicalNonceBlock
+) {
+  return planNonce(
+    {
+      acceptance: input.acceptance,
+      assertCurrent: input.assertCurrent,
+      provider: input.provider,
+      reviewed: input.reviewed,
+      scope: input.scope,
+      snapshot: input.snapshot,
+    },
+    block
+  );
+}
+
+async function planNonce(
+  {
+    provider,
+    scope,
+    snapshot,
+    acceptance,
+    assertCurrent,
+    reviewed,
+    minimumBalance,
+    assetBasis,
+    beforeAssetFinal,
+  }: NoncePlanInput,
+  quoteBlock?: CanonicalNonceBlock
+) {
   const check = () => {
     assertCurrent();
     if (provider.signal.aborted) throw provider.signal.reason;
@@ -222,9 +256,10 @@ export async function planExtensionEvmNonce({
     );
   } else {
     if (beforeAssetFinal) throw unavailable();
-    await verifyChain();
+    if (!quoteBlock) await verifyChain();
   }
-  const block = (assetState ??
+  const block = (quoteBlock ??
+    assetState ??
     (await read('eth_getBlockByNumber', ['latest', false]))) as {
     hash: unknown;
     number: unknown;
@@ -288,15 +323,18 @@ export async function planExtensionEvmNonce({
         reviewed?.source ?? 'automatic'
       );
       check();
-    } else {
+    } else if (!quoteBlock) {
       await verifyChain();
     }
-    const currentBlock = (await read('eth_getBlockByNumber', [
-      canonicalBlock.number,
-      false,
-    ])) as { hash?: string } | null;
-    if (currentBlock?.hash?.toLowerCase() !== canonicalBlock.hash)
-      throw unavailable();
+    if (!quoteBlock && !assetBasis) {
+      const currentBlock = (await readFreshEvmState(
+        provider,
+        'eth_getBlockByNumber',
+        [canonicalBlock.number, false]
+      )) as { hash?: string } | null;
+      if (currentBlock?.hash?.toLowerCase() !== canonicalBlock.hash)
+        throw unavailable();
+    }
     return Object.freeze({
       nonce,
       state,

@@ -99,7 +99,16 @@ describe('smart-account owner signing intent', () => {
         }),
         send: jest.fn(async (method, params) => {
           if (method === 'eth_chainId') return '0x1';
+          if (method === 'eth_getBalance') return '0xffffffffffffffff';
           if (method === 'eth_call') {
+            if (
+              params[0].data.startsWith(
+                paliEntryPointInterface.getFunction('balanceOf')!.selector
+              )
+            )
+              return paliEntryPointInterface.encodeFunctionResult('balanceOf', [
+                0,
+              ]);
             const [, key] = paliEntryPointInterface.decodeFunctionData(
               'getNonce',
               params[0].data
@@ -123,7 +132,11 @@ describe('smart-account owner signing intent', () => {
           maxPriorityFeePerGas: 1,
         }),
       };
-      const send = jest.fn();
+      const broadcast = jest.fn();
+      const send = jest.fn(async (transaction) => {
+        await provider.estimateGas(transaction);
+        return broadcast(transaction);
+      });
       const ethereumTransaction = { web3Provider: provider };
       (store.getState as jest.Mock).mockReturnValue({
         vault: {
@@ -232,7 +245,8 @@ describe('smart-account owner signing intent', () => {
       expect(Transaction.from(unrelatedTransaction.serialized).from).not.toBe(
         owner.address
       );
-      expect(send).not.toHaveBeenCalled();
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(broadcast).not.toHaveBeenCalled();
       expect(prepared.actionHash).not.toBe(unrelatedTransaction.unsignedHash);
       expect(getUserOpHash).not.toHaveBeenCalled();
     }

@@ -95,6 +95,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let initialEoaNonce = 0;
   let physicalStorageCloses = 0;
   const spendabilityReads = { native: 0, deposit: 0 };
+  const rpcBatches: string[][] = [];
   const tokens = new Map<string, { balance: bigint; decimals: number }>();
   const tokenInterface = new Interface(['function balanceOf(address) view returns(uint256)', 'function decimals() view returns(uint8)', 'function transfer(address,uint256) returns(bool)']);
   let deployed = false;
@@ -145,8 +146,17 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     initialized = true;
     return storage;
   };
-  const backend = async (network: NativeNetworkRegistration, init: RequestInit) => {
-        const request = JSON.parse(String(init.body));
+  const backend = async (network: NativeNetworkRegistration, init: RequestInit): Promise<Response> => {
+        const payload = JSON.parse(String(init.body));
+        if (Array.isArray(payload)) {
+          rpcBatches.push(payload.map(request => request.method));
+          const rows = await Promise.all(payload.map(async request => {
+            const response = await backend(network, { ...init, body: JSON.stringify(request) });
+            return response.json();
+          }));
+          return Response.json(rows);
+        }
+        const request = payload;
         calls.push(request.method);
         if (request.method === 'eth_getBalance' && request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase()) spendabilityReads.native++;
         if (request.method === 'eth_call' && request.params[0].to.toLowerCase() === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase() && request.params[0].data.startsWith(paliEntryPointInterface.getFunction('balanceOf')!.selector)) spendabilityReads.deposit++;
@@ -442,7 +452,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; },
     transferRpc: new NativeTransferRpc({ registration: getNativeNetwork('ethereum'), fetch: (_url, init) => backend(getNativeNetwork(runtime.catalogue.getSnapshot()?.active.networkId ?? 'ethereum'), init) }),
     get sdkHost() { assert(sdkHost); return sdkHost; }, get sdkHostStorage() { assert(sdkHostStorage); return sdkHostStorage; },
-    get physicalStorageCloses() { return physicalStorageCloses; }, calls, submitted, signatures, payerSignatures, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
+    get physicalStorageCloses() { return physicalStorageCloses; }, calls, rpcBatches, submitted, signatures, payerSignatures, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
     infrastructureCode(id: PaliInfrastructureContractId, present: boolean) {
       const address = PALI_INFRASTRUCTURE_METADATA_BY_ID[id].address.toLowerCase();
       if (present) missingInfrastructure.delete(address); else missingInfrastructure.add(address);
@@ -1667,9 +1677,9 @@ for (const alreadyDeployed of [false, true]) test(`real SDK smart native send au
     assert.equal('0x' + execution.slice(2, 42), recipient);
     assert.equal(BigInt('0x' + execution.slice(42, 106)), 9n);
     assert.equal(f.calls.includes('eth_getTransactionReceipt'), false);
-    // Four explicit spendability boundaries. Counterfactual sends also keep
-    // the existing deployment-prefund check, even when no topup is needed.
-    const expectedReads = alreadyDeployed ? 4 : 5;
+    // Preparation, owner signing and payer authorization each observe spendability.
+    // Counterfactual sends also recheck before prefunding and in prefund calculation.
+    const expectedReads = alreadyDeployed ? 3 : 5;
     assert.equal(f.spendabilityReads.native - initialReads.native, expectedReads);
     assert.equal(f.spendabilityReads.deposit - initialReads.deposit, expectedReads);
   } finally { operation?.dispose(); await f.close(); }
@@ -1687,12 +1697,12 @@ for (const boundary of ['before-authentication', 'during-signing', 'payer-review
     if (boundary === 'before-authentication') f.smartBalance(8n);
     if (boundary === 'during-signing') f.onSignature(() => { f.smartBalance(8n); });
     const sending = operation.authorize(operation.getSnapshot().revision);
-    if (boundary === 'payer-review') {
+    if (boundary !== 'before-authentication') {
       for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
         await new Promise(resolve => setTimeout(resolve, 5));
       const review = operation.getSnapshot().payerReview;
       assert(review, JSON.stringify(operation.getSnapshot()));
-      f.smartBalance(8n);
+      if (boundary === 'payer-review') f.smartBalance(8n);
       operation.confirmPayer(review.id);
     }
     await sending;
@@ -1951,6 +1961,22 @@ for (const sponsored of [false, true]) test(`Smart native MAX uses the shared re
 });
 
 
+test('native Smart preparation batches all eleven infrastructure reads', async () => {
+  const f = await fixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Infrastructure batch' });
+    f.fundedSmart(); f.deployed();
+    f.rpcBatches.length = 0;
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', {
+      kind: 'exact', amount: '0.000001',
+    }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    assert(f.rpcBatches.some(methods => methods.length === 11 && methods.every(method => method === 'eth_getCode')));
+  } finally { operation?.dispose(); await f.close(); }
+});
+
 test('Smart ERC20 send preserves 255-decimal base units through approval, signing and Activity', async () => {
   const f = await fixture();
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
@@ -2004,6 +2030,30 @@ test('Smart ERC20 send requires the selected account owned token catalogue', asy
     }, () => undefined, null), { code: 'NOT_READY' });
     assert.equal(f.submitted.length, 0);
   } finally { await f.close(); }
+});
+
+test('counterfactual Smart ERC20 balance loss after owner signing prevents deployment prefunding', async () => {
+  const f = await fixture({}, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Token prefund guard' });
+    const token = { contractAddress: '0x5555555555555555555555555555555555555555', decimals: 0, name: 'Token', symbol: 'TOKEN' };
+    f.tokenBalance(token.contractAddress, 9n, token.decimals);
+    const registry = await f.runtime.tokens!.load(() => undefined);
+    await f.runtime.tokens!.add(registry.revision, token, () => undefined);
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', {
+      kind: 'erc20', contractAddress: token.contractAddress, amount: '9',
+    }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    assert.notEqual(operation.getSnapshot().authorization!.initCode, '0x');
+    f.onSignature(() => f.tokenBalance(token.contractAddress, 0n, token.decimals));
+    await operation.authorize(operation.getSnapshot().revision);
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(operation.getSnapshot().payerReview, null);
+    assert.equal(f.signatures.length, 1);
+    assert.equal(f.submitted.length, 0);
+  } finally { operation?.dispose(); await f.close(); }
 });
 
 

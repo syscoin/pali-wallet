@@ -822,7 +822,8 @@ it.each(['send', 'cancel'] as const)(
     let chain = '0x7b';
     jest.spyOn(global, 'fetch').mockImplementation(async (url, init) => {
       expect(url).toBe(context.network.url);
-      expect(init?.signal).toBe(abort.signal);
+      expect(init?.signal).toBeDefined();
+      expect(init?.signal?.aborted).toBe(false);
       const { id, method, params } = JSON.parse(init!.body as string);
       wire.push({ method, params });
       const replies = new Map<string, unknown>([
@@ -836,8 +837,11 @@ it.each(['send', 'cancel'] as const)(
       return {
         ok: true,
         status: 200,
+        headers: { get: () => null },
+        text: async () =>
+          JSON.stringify({ jsonrpc: '2.0', id, result: replies.get(method) }),
         json: async () => ({ jsonrpc: '2.0', id, result: replies.get(method) }),
-      } as Response;
+      } as unknown as Response;
     });
     try {
       await expect(live.send('eth_chainId', [])).resolves.toBe('0x7b');
@@ -888,7 +892,8 @@ it.each([
     let chain = '0x7b';
     jest.spyOn(global, 'fetch').mockImplementation(async (url, init) => {
       expect(url).toBe(context.network.url);
-      expect(init?.signal).toBe(abort.signal);
+      expect(init?.signal).toBeDefined();
+      expect(init?.signal?.aborted).toBe(false);
       const { id, method } = JSON.parse(init!.body as string);
       wire.push(method);
       let result: unknown;
@@ -901,8 +906,10 @@ it.each([
       return {
         ok: true,
         status: 200,
+        headers: { get: () => null },
+        text: async () => JSON.stringify({ jsonrpc: '2.0', id, result }),
         json: async () => ({ jsonrpc: '2.0', id, result }),
-      } as Response;
+      } as unknown as Response;
     });
     try {
       // The real installed provider caches the first result for send().
@@ -1583,10 +1590,22 @@ describe('worker-owned token state at review and initial held POST', () => {
     expect(
       good.verifyConfiguredChainId.mock.invocationCallOrder[1]
     ).toBeGreaterThan(good.send.mock.invocationCallOrder[simulationIndex]);
-    expect(good.send).toHaveBeenLastCalledWith('eth_getBlockByNumber', [
-      '0x10',
-      false,
+    expect(good.send).toHaveBeenLastCalledWith('eth_getTransactionCount', [
+      signer.address,
+      'latest',
     ]);
+    expect(
+      good.send.mock.calls.filter(
+        ([method, args]) =>
+          method === 'eth_getBlockByNumber' && args[0] === '0x10'
+      )
+    ).toHaveLength(1);
+    expect(
+      good.send.mock.calls.filter(
+        ([method, args]) =>
+          method === 'eth_getTransactionCount' && args[1] === '0x10'
+      )
+    ).toHaveLength(1);
     const bad = rpcFixture({ staleBalance: true });
     await expect(
       wallet.inspectOrdinaryEvmNonce(

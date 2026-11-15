@@ -1,3 +1,4 @@
+import { withEvmReadPhase } from '../../../../source/shared/evmReadPhase.ts';
 import { assertNativeSmartModuleCommandCurrent } from './modules.ts';
 import { preflightCustomValidatorInstall } from '../../../../source/utils/smartAccount/custom.ts';
 import { buildSmartAccountUserOpSigningIntent } from '../../../../source/utils/smartAccount/userOperationHash.ts';
@@ -213,230 +214,253 @@ export function createNativeSmartOperation(
         account.address,
         assertCurrent
       );
-      const provider = pending.provider;
-      await pending.verify();
-      if (intent.kind === 'modules') {
-        await assertSmartAccountTargetsAllowed(getBlacklistTargetsForEvmCall({ to: account.address, data: '0x' }), ports.checkAddress, assertCurrent);
-      } else if (intent.kind === 'dapp-batch') {
-        for (const call of createSmartAccountCallsExecutions(intent.calls))
+      // Deployment can land while preparation runs. Keep its first observation
+      // separate so the operation's later admission reads the chain again.
+      const deploymentState = intent.kind === 'deploy'
+        ? await withEvmReadPhase(rawProvider, assertCurrent, provider =>
+            readSmartAccountDeploymentState({ account, chainId, provider, assertCurrent }))
+        : undefined;
+      return withEvmReadPhase(rawProvider, assertCurrent, async (scopedProvider) => {
+        const pending = createSmartAccountPendingState(scopedProvider, ports.pendingRecords, chainId, account.address, assertCurrent);
+        const provider = pending.provider;
+        await pending.verify();
+        if (intent.kind === 'modules') {
+          await assertSmartAccountTargetsAllowed(getBlacklistTargetsForEvmCall({ to: account.address, data: '0x' }), ports.checkAddress, assertCurrent);
+        } else if (intent.kind === 'dapp-batch') {
+          for (const call of createSmartAccountCallsExecutions(intent.calls))
+            await assertSmartAccountTargetsAllowed(
+              getBlacklistTargetsForEvmCall({ to: call.target, data: call.data }),
+              ports.checkAddress,
+              assertCurrent
+            );
+        } else if (
+          intent.kind !== 'deploy' &&
+          intent.kind !== 'guardian-policy' &&
+          intent.kind !== 'authenticator'
+        ) {
           await assertSmartAccountTargetsAllowed(
-            getBlacklistTargetsForEvmCall({ to: call.target, data: call.data }),
+            getBlacklistTargetsForEvmCall(
+              intent.kind === 'nft-transfer'
+                ? {
+                    to: intent.contractAddress,
+                    data: buildSmartAccountNftTransfer(nftIntent!).data,
+                  }
+                : intent.kind === 'erc20-transfer'
+                ? {
+                    to: intent.token.contractAddress,
+                    data: buildSmartAccountErc20Transfer(
+                      intent.token.contractAddress,
+                      intent.recipient,
+                      intent.amountUnits
+                    ).data,
+                  }
+                : {
+                    to: intent.recipient,
+                    data: intent.kind === 'dapp-call' ? intent.data : '0x',
+                  }
+            ),
             ports.checkAddress,
             assertCurrent
           );
-      } else if (
-        intent.kind !== 'deploy' &&
-        intent.kind !== 'guardian-policy' &&
-        intent.kind !== 'authenticator'
-      ) {
-        await assertSmartAccountTargetsAllowed(
-          getBlacklistTargetsForEvmCall(
-            intent.kind === 'nft-transfer'
-              ? {
-                  to: intent.contractAddress,
-                  data: buildSmartAccountNftTransfer(nftIntent!).data,
-                }
-              : intent.kind === 'erc20-transfer'
-              ? {
-                  to: intent.token.contractAddress,
-                  data: buildSmartAccountErc20Transfer(
-                    intent.token.contractAddress,
-                    intent.recipient,
-                    intent.amountUnits
-                  ).data,
-                }
-              : {
-                  to: intent.recipient,
-                  data: intent.kind === 'dapp-call' ? intent.data : '0x',
-                }
-          ),
-          ports.checkAddress,
-          assertCurrent
-        );
-      }
-      await ports.rpc.assertSmartAccountSupported(signal, assertCurrent);
-      const state = await readSmartAccountDeploymentState({
-        account,
-        chainId,
-        provider,
-        assertCurrent,
-      });
-      if (state === 'deployed' && intent.kind === 'deploy') {
-        await ports.markDeployed(assertCurrent);
-        assertCurrent();
-        return { kind: 'already-deployed' };
-      }
-      if (intent.kind === 'authenticator' || intent.kind === 'modules') {
-        if (state !== 'deployed' && (intent.kind !== 'modules' || intent.command.deploymentAdmission !== 'constructor-or-deployed' || intent.command.sourceIsDeployed))
-          throw new Error('Smart account must be deployed');
-        metadata = await readSmartAccountValidatorMetadata({
-          account: intent.kind === 'modules' ? { ...account, smartAccount: metadata } : account,
-          chainId,
-          provider,
-          assertCurrent,
+        }
+        const { SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES, projectSmartAccountInfrastructureObservation,
+          assertSmartAccountInfrastructureReady } = await import('../../../../source/utils/smartAccount/infrastructureObservation.ts');
+        const codeResults = await provider.readMany(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => ({
+          method: 'eth_getCode', params: [address, 'latest'],
+        })));
+        const codes = codeResults.map((result: PromiseSettledResult<unknown>) => {
+          if (result.status === 'rejected') throw result.reason;
+          return result.value;
         });
-        assertCurrent();
-        if (intent.kind === 'modules') await assertValidatorSwitch(assertCurrent, metadata);
-        else if (intent.command.purpose === 'add-to-combined') assertSmartAccountBuiltinInstallCurrent(intent.command, metadata);
-        else assertSmartAccountValidatorSwitchCurrent(intent.command, metadata);
-        if (intent.kind === 'authenticator' && intent.command.executions.length === 0)
-          return { kind: 'already-configured' };
-      } else if (
-        intent.kind !== 'deploy' &&
-        state === 'deployed' &&
-        (!metadata.isDeployed || !hasUsableSmartAccountAuthMetadata(metadata))
-      ) {
-        metadata = await readSmartAccountValidatorMetadata({
+        const infrastructure = projectSmartAccountInfrastructureObservation(chainId, codes);
+        if (!infrastructure) throw new Error('Invalid smart account infrastructure response');
+        assertSmartAccountInfrastructureReady(infrastructure);
+        const state = deploymentState ?? await readSmartAccountDeploymentState({
           account,
           chainId,
           provider,
           assertCurrent,
         });
-        assertCurrent();
-      }
-      const authenticator = assertNativeSmartAccountAuthenticator(metadata);
-      if (!['ecdsa', 'composite'].includes(authenticator.module) &&
-          !(authenticator.module === 'slh-dsa' && ports.slhDsa !== null) &&
-          !(authenticator.module === 'p256-webauthn' && ports.p256WebAuthn !== null))
-        throw new Error(
-          'This authenticator is not available for native transfers'
-        );
-      const prepare = (
-        executions: { target: string; data: string; value: string }[]
-      ) =>
-        prepareSmartAccountOperation({
-          account: { ...account, smartAccount: metadata },
-          chainId,
-          provider,
-          pending,
-          knownDeployed:
-            intent.kind !== 'deploy' &&
-            state === 'deployed' &&
-            metadata.isDeployed &&
-            hasUsableSmartAccountAuthMetadata(metadata),
-          executions,
-          ...(feeOverrides ? { feeOverrides } : intent.kind === 'dapp-call'
-            ? {
-                // Match extension Smart submissions. EOA gas/gasLimit fields
-                // do not replace the shared UserOperation gas estimate.
-                feeOverrides: {
-                  ...(intent.maxFeePerGas === undefined
-                    ? {}
-                    : { maxFeePerGas: intent.maxFeePerGas }),
-                  ...(intent.maxPriorityFeePerGas === undefined
-                    ? {}
-                    : { maxPriorityFeePerGas: intent.maxPriorityFeePerGas }),
-                },
-              }
-            : {}),
-          assertCurrent,
-          async selectGasPayer(gasEstimate, maxFeePerGas) {
-            const primary = getSmartAccountGasPayerCandidates(
-              ports.wallet,
-              metadata.deploymentGasPayer
-            )[0];
-            const useGasTank = primary
-              ? await canUseSmartAccountGasTank(provider, {
-                  chainId,
-                  gasEstimate,
-                  maxFeePerGas,
-                  gasPayerAddress: primary.address,
-                })
-              : false;
-            assertCurrent();
-            const gasPayer = useGasTank
+        if (state === 'deployed' && intent.kind === 'deploy') {
+          await ports.markDeployed(assertCurrent);
+          assertCurrent();
+          return { kind: 'already-deployed' };
+        }
+        if (intent.kind === 'authenticator' || intent.kind === 'modules') {
+          if (state !== 'deployed' && (intent.kind !== 'modules' || intent.command.deploymentAdmission !== 'constructor-or-deployed' || intent.command.sourceIsDeployed))
+            throw new Error('Smart account must be deployed');
+          metadata = await readSmartAccountValidatorMetadata({
+            account: intent.kind === 'modules' ? { ...account, smartAccount: metadata } : account,
+            chainId,
+            provider,
+            assertCurrent,
+          });
+          assertCurrent();
+          if (intent.kind === 'modules') await assertValidatorSwitch(assertCurrent, metadata);
+          else if (intent.command.purpose === 'add-to-combined') assertSmartAccountBuiltinInstallCurrent(intent.command, metadata);
+          else assertSmartAccountValidatorSwitchCurrent(intent.command, metadata);
+          if (intent.kind === 'authenticator' && intent.command.executions.length === 0)
+            return { kind: 'already-configured' };
+        } else if (
+          intent.kind !== 'deploy' &&
+          state === 'deployed' &&
+          (!metadata.isDeployed || !hasUsableSmartAccountAuthMetadata(metadata))
+        ) {
+          metadata = await readSmartAccountValidatorMetadata({
+            account,
+            chainId,
+            provider,
+            assertCurrent,
+          });
+          assertCurrent();
+        }
+        const authenticator = assertNativeSmartAccountAuthenticator(metadata);
+        if (!['ecdsa', 'composite'].includes(authenticator.module) &&
+            !(authenticator.module === 'slh-dsa' && ports.slhDsa !== null) &&
+            !(authenticator.module === 'p256-webauthn' && ports.p256WebAuthn !== null))
+          throw new Error(
+            'This authenticator is not available for native transfers'
+          );
+        const prepare = (
+          executions: { target: string; data: string; value: string }[]
+        ) =>
+          prepareSmartAccountOperation({
+            account: { ...account, smartAccount: metadata },
+            chainId,
+            provider,
+            pending,
+            knownDeployed:
+              intent.kind !== 'deploy' &&
+              state === 'deployed' &&
+              metadata.isDeployed &&
+              hasUsableSmartAccountAuthMetadata(metadata),
+            executions,
+            ...(feeOverrides ? { feeOverrides } : intent.kind === 'dapp-call'
               ? {
-                  address: primary!.address,
-                  id: primary!.id,
-                  type: primary!.type,
+                  // Match extension Smart submissions. EOA gas/gasLimit fields
+                  // do not replace the shared UserOperation gas estimate.
+                  feeOverrides: {
+                    ...(intent.maxFeePerGas === undefined
+                      ? {}
+                      : { maxFeePerGas: intent.maxFeePerGas }),
+                    ...(intent.maxPriorityFeePerGas === undefined
+                      ? {}
+                      : { maxPriorityFeePerGas: intent.maxPriorityFeePerGas }),
+                  },
                 }
-              : await selectSmartAccountGasPayer(
-                  ports.wallet,
-                  provider,
-                  metadata.deploymentGasPayer
-                );
-            assertCurrent();
-            return { gasPayer, useGasTank };
-          },
-        });
-      if (intent.kind === 'native-max') {
-        const maximum = await prepareSmartAccountNativeMaximum({
-          target: intent.recipient,
-          assertCurrent,
-          async readBalance() {
-            return (await provider.getBalance(account.address)).toString();
-          },
-          async quote(execution) {
-            const quote = await prepare([{ ...execution }]);
-            return {
-              quote,
-              maximumFeeUnits: getSmartAccountUserOpRequiredPrefund(
-                quote.userOperation
-              ).toString(),
-            };
-          },
-        });
-        issued = maximum.quote;
+              : {}),
+            assertCurrent,
+            async selectGasPayer(gasEstimate, maxFeePerGas) {
+              const primary = getSmartAccountGasPayerCandidates(
+                ports.wallet,
+                metadata.deploymentGasPayer
+              )[0];
+              const useGasTank = primary
+                ? await canUseSmartAccountGasTank(provider, {
+                    chainId,
+                    gasEstimate,
+                    maxFeePerGas,
+                    gasPayerAddress: primary.address,
+                  })
+                : false;
+              assertCurrent();
+              const gasPayer = useGasTank
+                ? {
+                    address: primary!.address,
+                    id: primary!.id,
+                    type: primary!.type,
+                  }
+                : await selectSmartAccountGasPayer(
+                    ports.wallet,
+                    provider,
+                    metadata.deploymentGasPayer
+                  );
+              assertCurrent();
+              return { gasPayer, useGasTank };
+            },
+          });
+        if (intent.kind === 'native-max') {
+          const maximum = await prepareSmartAccountNativeMaximum({
+            target: intent.recipient,
+            assertCurrent,
+            async readBalance() {
+              return (await provider.getBalance(account.address)).toString();
+            },
+            async quote(execution) {
+              const quote = await prepare([{ ...execution }]);
+              return {
+                quote,
+                maximumFeeUnits: getSmartAccountUserOpRequiredPrefund(
+                  quote.userOperation
+                ).toString(),
+              };
+            },
+          });
+          issued = maximum.quote;
+          assertCurrent();
+          return {
+            kind: 'authorization',
+            operation: issued,
+            intent: {
+              kind: 'native-transfer',
+              recipient: intent.recipient,
+              amountUnits: BigInt(maximum.execution.value).toString(),
+              ...(intent.feeChoice ? { feeChoice: intent.feeChoice } : {}),
+            },
+          };
+        }
+        issued = await prepare(
+          intent.kind === 'authenticator' || intent.kind === 'modules'
+            ? intent.command.executions.map((execution) => ({ ...execution }))
+            : intent.kind === 'guardian-policy'
+            ? buildGuardianPolicyExecutions(intent.command)
+            : intent.kind === 'dapp-batch'
+            ? [...createSmartAccountCallsExecutions(intent.calls)]
+            : intent.kind === 'deploy'
+            ? [{ target: account.address, data: '0x', value: '0x0' }]
+            : intent.kind === 'nft-transfer'
+            ? [{ ...buildSmartAccountNftTransfer(nftIntent!) }]
+            : intent.kind === 'erc20-transfer'
+            ? [
+                {
+                  ...buildSmartAccountErc20Transfer(
+                    intent.token.contractAddress,
+                    intent.recipient,
+                    intent.amountUnits
+                  ),
+                },
+              ]
+            : [
+                {
+                  target: intent.recipient,
+                  data: intent.kind === 'dapp-call' ? intent.data : '0x',
+                  value: intent.amountUnits,
+                },
+              ]
+        );
         assertCurrent();
-        return {
-          kind: 'authorization',
-          operation: issued,
-          intent: {
-            kind: 'native-transfer',
-            recipient: intent.recipient,
-            amountUnits: BigInt(maximum.execution.value).toString(),
-            ...(intent.feeChoice ? { feeChoice: intent.feeChoice } : {}),
-          },
-        };
-      }
-      issued = await prepare(
-        intent.kind === 'authenticator' || intent.kind === 'modules'
-          ? intent.command.executions.map((execution) => ({ ...execution }))
-          : intent.kind === 'guardian-policy'
-          ? buildGuardianPolicyExecutions(intent.command)
-          : intent.kind === 'dapp-batch'
-          ? [...createSmartAccountCallsExecutions(intent.calls)]
-          : intent.kind === 'deploy'
-          ? [{ target: account.address, data: '0x', value: '0x0' }]
-          : intent.kind === 'nft-transfer'
-          ? [{ ...buildSmartAccountNftTransfer(nftIntent!) }]
-          : intent.kind === 'erc20-transfer'
-          ? [
-              {
-                ...buildSmartAccountErc20Transfer(
-                  intent.token.contractAddress,
-                  intent.recipient,
-                  intent.amountUnits
-                ),
-              },
-            ]
-          : [
-              {
-                target: intent.recipient,
-                data: intent.kind === 'dapp-call' ? intent.data : '0x',
-                value: intent.amountUnits,
-              },
-            ]
-      );
-      assertCurrent();
-      if (intent.kind === 'deploy' && issued.userOperation.initCode === '0x') {
-        await ports.markDeployed(assertCurrent);
-        assertCurrent();
-        return { kind: 'already-deployed' };
-      }
-      return { kind: 'authorization', operation: issued, intent };
+        if (intent.kind === 'deploy' && issued.userOperation.initCode === '0x') {
+          await ports.markDeployed(assertCurrent);
+          assertCurrent();
+          return { kind: 'already-deployed' };
+        }
+        return { kind: 'authorization', operation: issued, intent } as const;
+      });
     },
     async sign(prepared, assertCurrent, signal) {
       if (prepared !== issued) throw new Error('SMART_OPERATION_EXPIRED');
       await assertValidatorSwitch(assertCurrent);
       if (intent.kind === 'guardian-policy')
         await ports.assertGuardianPolicy!(policySignal, assertCurrent);
-      await pending.assertNonce(prepared.userOperation);
-      await assertSmartAccountSpendability({
-        provider: pending.provider,
-        chainId,
-        userOperation: prepared.userOperation,
-        assertCurrent,
+      await withEvmReadPhase(pending.provider, assertCurrent, async provider => {
+        const current = createSmartAccountPendingState(provider, ports.pendingRecords, chainId, account.address, assertCurrent);
+        await current.assertNonce(prepared.userOperation);
+        await assertSmartAccountSpendability({
+          provider: current.provider,
+          chainId,
+          userOperation: prepared.userOperation,
+          assertCurrent,
+        });
       });
       const signingIntent = buildSmartAccountUserOpSigningIntent(prepared.userOperation, chainId);
       const signature = await ports.withOwnerProof(signal, assertCurrent, () => signNativeSmartAccountActionHash({

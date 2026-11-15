@@ -95,7 +95,10 @@ const getSmartAccountSubmitJobKey = async ({
 }: {
   accountAddress?: string;
   accountId?: number;
-  approvedFeeQuote?: Pick<SmartAccountFeeQuote, 'feePayer' | 'maximumFeeWei'>;
+  approvedFeeQuote?: Pick<
+    SmartAccountFeeQuote,
+    'feePayer' | 'maximumFeeWei' | 'executionContextId'
+  >;
   executions: SmartAccountExecutionIntent[];
   expectedContext?: IEvmTransactionContext;
   feeOverrides?: SmartAccountFeeOverrides;
@@ -128,7 +131,10 @@ const getSmartAccountSubmitJobKey = async ({
 export type SubmitSmartAccountExecutionsParams = {
   accountAddress?: string;
   accountId?: number;
-  approvedFeeQuote?: Pick<SmartAccountFeeQuote, 'feePayer' | 'maximumFeeWei'>;
+  approvedFeeQuote?: Pick<
+    SmartAccountFeeQuote,
+    'feePayer' | 'maximumFeeWei' | 'executionContextId'
+  >;
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
   controllerEmitter: ControllerEmitter;
   executions: SmartAccountExecutionIntent[];
@@ -254,6 +260,7 @@ export const prepareSmartAccountFeeQuote = async ({
   )
     throw new Error(INVALID_FEE_QUOTE_ERROR);
   return {
+    executionContextId: prepared.executionContextId,
     feePayer: {
       address: getAddress(payer.address),
       id: payer.id,
@@ -524,8 +531,17 @@ export const signAndSubmitSmartAccountExecutions = async (
   let submissionStarted = false;
   const prepareSignAndSubmit = async (useCachedMetadataOverride?: boolean) => {
     submissionStarted = false;
+    const retainedContextId =
+      useCachedMetadataOverride !== false
+        ? approvedFeeQuote?.executionContextId
+        : undefined;
     const prepared = (await controllerEmitter(
-      ['wallet', 'prepareSmartAccountExecutions'],
+      [
+        'wallet',
+        retainedContextId
+          ? 'reuseSmartAccountExecutions'
+          : 'prepareSmartAccountExecutions',
+      ],
       [
         executions,
         accountId,
@@ -533,6 +549,9 @@ export const signAndSubmitSmartAccountExecutions = async (
           ...(expectedContext ? { expectedContext } : {}),
           feeOverrides,
           useCachedMetadata: useCachedMetadataOverride,
+          ...(retainedContextId
+            ? { executionContextId: retainedContextId }
+            : {}),
         },
       ],
       300000
@@ -577,12 +596,7 @@ export const signAndSubmitSmartAccountExecutions = async (
     await assertContext();
 
     const signature = await signSmartAccountActionHash({
-      assertBeforeAuthentication: async () => {
-        await controllerEmitter(
-          ['wallet', 'assertSmartAccountPreparedNonce'],
-          [prepared.executionContextId, prepared.actionHash]
-        );
-      },
+      assertBeforeAuthentication: assertContext,
       accountId: prepared.accountId,
       actionHash: prepared.actionHash,
       executionContextId: prepared.executionContextId,

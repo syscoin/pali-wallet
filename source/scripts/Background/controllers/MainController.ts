@@ -68,8 +68,15 @@ import {
   isEvmEmptySelfCall,
   isEvmProtectedEmptySelfCall,
 } from '../../../shared/evmCancellationPayer.ts';
-import { prepareEvmDappQuote } from '../../../shared/evmDappPreparation';
-import { prepareEvmDappReview } from '../../../shared/evmDappReview';
+import {
+  prepareEvmDappQuote,
+  type EvmDappBlock,
+} from '../../../shared/evmDappPreparation';
+import {
+  prepareEvmDappReview,
+  prepareAndSubmitEvmDappReview,
+  type EvmDappReviewPorts,
+} from '../../../shared/evmDappReview';
 import {
   NATIVE_EVM_FEE_FUNDING,
   type EvmFeeFunding,
@@ -79,6 +86,10 @@ import {
   assertEvmFeeRefreshApproved,
 } from '../../../shared/evmFeeApproval';
 import { assertSynchronousEvmFeeGuard } from '../../../shared/evmFeeGuard';
+import {
+  readFreshEvmState,
+  withEvmReadPhase,
+} from '../../../shared/evmReadPhase';
 import {
   observeEvmTransaction,
   readEvmRpcHash,
@@ -460,6 +471,7 @@ import {
 import {
   assertNoObservedLegacyPending,
   planExtensionEvmNonce,
+  planExtensionEvmNonceForQuote,
   reviewedExtensionNonce,
   type ExtensionReviewedNonce,
 } from './evmAutoNonce';
@@ -483,6 +495,7 @@ import {
   freshSdkGasEstimate,
   getSdkGasOverrides,
   recheckReviewedNativeEvmTransfer,
+  readNativeEvmReviewBlock,
 } from './freshNativeGasEstimate';
 import { clearProviderCache } from './message-handler/requests';
 import {
@@ -2185,6 +2198,14 @@ class MainController {
         metadata: feePreflight?.metadata,
         preflight: async (record, assertDispatchCurrent, snapshot) => {
           if (feePreflight?.beforePersist) {
+            await feePreflight.preflight(
+              record,
+              assertDispatchCurrent,
+              snapshot
+            );
+            return;
+          }
+          if (feePreflight && !assetOperation) {
             await feePreflight.preflight(
               record,
               assertDispatchCurrent,
@@ -4163,7 +4184,14 @@ class MainController {
     };
     const reviews = new WeakMap<
       IEvmTransactionContext,
-      Awaited<ReturnType<MainController['prepareGenericEvmFeeReview']>>
+      Readonly<{
+        submit(
+          assertBeforeSign: () => void,
+          onBroadcast: (response: IEvmTransactionResponse) => Promise<void>,
+          dispatch?: () => Promise<void>
+        ): Promise<IEvmTransactionResponse>;
+        token: ReturnType<typeof issueGenericEvmFeeReview>;
+      }>
     >();
     const reviewed = (context: IEvmTransactionContext) => {
       const result = reviews.get(context);
@@ -4423,7 +4451,14 @@ class MainController {
     };
     const reviews = new WeakMap<
       IEvmTransactionContext,
-      Awaited<ReturnType<MainController['prepareGenericEvmFeeReview']>>
+      Readonly<{
+        submit(
+          assertBeforeSign: () => void,
+          onBroadcast: (response: IEvmTransactionResponse) => Promise<void>,
+          dispatch?: () => Promise<void>
+        ): Promise<IEvmTransactionResponse>;
+        token: ReturnType<typeof issueGenericEvmFeeReview>;
+      }>
     >();
     const sessions = new WeakMap<
       IEvmTransactionContext,
@@ -9948,10 +9983,14 @@ class MainController {
     targetAccount?: { id: number; type: KeyringAccountType },
     transactionMetadata?: Record<string, unknown>,
     saveOptions?: {
-      assertAssetState?: () => Promise<void>;
+      assertAssetState?: (provider?: any) => Promise<void>;
       assertBeforeSign?: () => void;
       assertCurrentContext?: () => void;
-      assertPendingState?: () => Promise<void>;
+      assertPendingState?: (
+        provider?: any,
+        currentSignedHash?: string,
+        admission?: EvmAutoNonceSnapshot
+      ) => Promise<void>;
       authorizeDapp?: () => void;
       beforeDispatch?: () => Promise<void>;
       clearNavigation?: boolean;
@@ -10157,17 +10196,10 @@ class MainController {
           request.nonce === undefined
             ? undefined
             : reviewedExtensionNonce(request.nonce, 'manual');
-        const plan = await this.inspectOrdinaryEvmNonce(read, payer.address, {
-          reviewed: explicit,
-          assertCurrent: check,
-        });
-        check();
-        const nonce =
-          explicit ?? reviewedExtensionNonce(plan.nonce, 'automatic');
-        const prepared = await this.prepareGenericEvmFeeReview(
-          { ...request, nonce: nonce.nonce },
+        return await this.prepareGenericEvmFeeReview(
+          request,
           payerOwner,
-          nonce,
+          explicit,
           check,
           { assertCurrentContext: check },
           {
@@ -10184,10 +10216,6 @@ class MainController {
             saveOptions,
           }
         );
-        check();
-        return await prepared.submit(check, async (response) => {
-          await saveOptions.onBroadcast?.(response);
-        });
       } catch (error) {
         if (error instanceof PrivateSubmissionError)
           throw Object.assign(error, error.failure);
@@ -10323,24 +10351,34 @@ class MainController {
             Math.floor(performance.now())
           );
         };
-        prepareNativeReview = async () => {
-          const noncePlan = await this.inspectOrdinaryEvmNonce(
-            read,
-            account.address,
-            {
-              reviewed: reviewedNonce,
-              assertCurrent: assertNativeReviewCurrent,
-            }
-          );
-          return read.run((provider) =>
-            recheckReviewedNativeEvmTransfer(
-              stored.review,
+        prepareNativeReview = () =>
+          read.run((provider) =>
+            withEvmReadPhase(
               provider,
-              read.assertCurrent,
-              noncePlan
+              assertNativeReviewCurrent!,
+              async (phase) => {
+                const block = await readNativeEvmReviewBlock(
+                  phase,
+                  assertNativeReviewCurrent!
+                );
+                const noncePlan = await this.inspectOrdinaryEvmNonce(
+                  read,
+                  account.address,
+                  {
+                    reviewed: reviewedNonce,
+                    assertCurrent: assertNativeReviewCurrent,
+                    quotePhase: { provider: phase, block },
+                  }
+                );
+                return recheckReviewedNativeEvmTransfer(
+                  stored.review,
+                  phase,
+                  assertNativeReviewCurrent!,
+                  noncePlan
+                );
+              }
             )
           );
-        };
       }
 
       // Check the call target and obvious calldata recipients/spenders.
@@ -10378,7 +10416,11 @@ class MainController {
       const nativeTransaction = prepareNativeReview
         ? await prepareNativeReview()
         : undefined;
-      if (hardwareScope && params.data === '0x') {
+      if (
+        hardwareScope &&
+        params.data === '0x' &&
+        !saveOptions?.genericDispatchId
+      ) {
         const read = this.captureFreshEvmRead(hardwareScope);
         const { activeAccount, accounts } = store.getState().vault;
         const account = accounts[activeAccount.type]?.[activeAccount.id];
@@ -10401,7 +10443,7 @@ class MainController {
         });
         walletNonce = reviewed;
       }
-      if (authorizeDapp) {
+      if (authorizeDapp && !saveOptions?.genericDispatchId) {
         const approval = saveOptions?.dappNonceApproval;
         if (
           !approval ||
@@ -10455,7 +10497,10 @@ class MainController {
         type: target.type,
         expectedAddress: targetAccountExists.address,
       };
-      if (transactionMetadata?.smartAccountExecution === true) {
+      if (
+        transactionMetadata?.smartAccountExecution === true &&
+        !saveOptions?.genericDispatchId
+      ) {
         if (
           typeof saveOptions?.assertPendingState !== 'function' ||
           typeof saveOptions.assertAssetState !== 'function'
@@ -10927,6 +10972,13 @@ class MainController {
     );
   }
 
+  public reuseSmartAccountExecutions(
+    ...args: Parameters<typeof this.smartAccount.reuseSmartAccountExecutions>
+  ) {
+    this.assertWalletReadyForSigning();
+    return this.smartAccount.reuseSmartAccountExecutions(...args);
+  }
+
   public async assertSmartAccountPreparedNonce(
     executionContextId: string,
     actionHash?: string
@@ -11306,6 +11358,10 @@ class MainController {
       asset?: WorkerAsset;
       currentSignedHash?: string;
       minimumBalance?: bigint;
+      quotePhase?: Readonly<{
+        block: EvmDappBlock;
+        provider: CustomJsonRpcProvider;
+      }>;
       reviewed?: ExtensionReviewedNonce;
       signal?: AbortSignal;
       snapshot?: EvmAutoNonceSnapshot;
@@ -11326,7 +11382,7 @@ class MainController {
         from
       ));
     assertCurrent();
-    return read.run(async (provider) => {
+    const inspect = async (provider: CustomJsonRpcProvider) => {
       const scope = { chainId, endpoint: read.network.url, from };
       if (
         options.asset &&
@@ -11374,7 +11430,7 @@ class MainController {
           assertCurrent,
         });
       };
-      const plan = await planExtensionEvmNonce({
+      const input = {
         ...options,
         ...(basis
           ? {
@@ -11389,10 +11445,21 @@ class MainController {
         snapshot,
         acceptance: records.autoNonceAcceptance,
         assertCurrent,
-      });
+      };
+      if (options.quotePhase && (basis || options.minimumBalance !== undefined))
+        throw new Error('Invalid quote nonce phase');
+      const plan = options.quotePhase
+        ? await planExtensionEvmNonceForQuote(input, options.quotePhase.block)
+        : await planExtensionEvmNonce(input);
       if (!basis) await verifyLegacy(plan.nonce);
       return plan;
-    }, options.signal);
+    };
+    return options.quotePhase
+      ? inspect(options.quotePhase.provider)
+      : read.run(
+          (provider) => withEvmReadPhase(provider, assertCurrent, inspect),
+          options.signal
+        );
   }
 
   public async getRecommendedEvmNonce(address: string): Promise<number> {
@@ -11465,12 +11532,6 @@ class MainController {
       request.nonce === undefined
         ? undefined
         : reviewedExtensionNonce(request.nonce, 'manual');
-    const plan = await this.inspectOrdinaryEvmNonce(read, account.address, {
-      reviewed: explicit,
-    });
-    read.assertCurrent();
-    const walletNonce =
-      explicit ?? reviewedExtensionNonce(plan.nonce, 'automatic');
     const context: IEvmTransactionContext = {
       account: {
         id: activeAccount.id,
@@ -11484,9 +11545,9 @@ class MainController {
     };
     return (
       await this.prepareGenericEvmFeeReview(
-        { ...request, nonce: walletNonce.nonce },
+        request,
         context,
-        walletNonce,
+        explicit,
         read.assertCurrent,
         { hardwareScope: { ...scope } },
         { kind: 'wallet' }
@@ -11494,10 +11555,50 @@ class MainController {
     ).token;
   }
 
+  private prepareGenericEvmFeeReview(
+    params: unknown,
+    context: IEvmTransactionContext,
+    walletNonce: ExtensionReviewedNonce | undefined,
+    assertAuthority: () => void,
+    authority:
+      | { authorizeDapp: () => void; dappApprovalOwner: object }
+      | { hardwareScope: IWalletNavigationScope }
+      | { assertCurrentContext: () => void },
+    feeAuthority: import('./nativeEvmFeeReviews').GenericEvmFeeAuthority
+  ): Promise<
+    Readonly<{
+      submit(
+        assertBeforeSign: () => void,
+        onBroadcast: (response: IEvmTransactionResponse) => Promise<void>,
+        dispatch?: () => Promise<void>
+      ): Promise<IEvmTransactionResponse>;
+      token: ReturnType<typeof issueGenericEvmFeeReview>;
+    }>
+  >;
+  private prepareGenericEvmFeeReview(
+    params: unknown,
+    context: IEvmTransactionContext,
+    walletNonce: ExtensionReviewedNonce | undefined,
+    assertAuthority: () => void,
+    authority:
+      | { authorizeDapp: () => void; dappApprovalOwner: object }
+      | { hardwareScope: IWalletNavigationScope }
+      | { assertCurrentContext: () => void },
+    feeAuthority: import('./nativeEvmFeeReviews').GenericEvmFeeAuthority,
+    payerDispatch: Readonly<{
+      funding: EvmFeeFunding;
+      saveOptions: NonNullable<
+        Parameters<MainController['sendAndSaveEthTransaction']>[4]
+      >;
+      selectedContext: IEvmTransactionContext;
+      targetAccount: { id: number; type: KeyringAccountType };
+      transactionMetadata: Record<string, unknown>;
+    }>
+  ): Promise<IEvmTransactionResponse>;
   private async prepareGenericEvmFeeReview(
     params: unknown,
     context: IEvmTransactionContext,
-    walletNonce: ExtensionReviewedNonce,
+    walletNonce: ExtensionReviewedNonce | undefined,
     assertAuthority: () => void,
     authority:
       | { authorizeDapp: () => void; dappApprovalOwner: object }
@@ -11531,10 +11632,7 @@ class MainController {
     const initial: Admission = { kind: 'review' };
     let reviewId = '';
     let beforeDispatch: (() => Promise<void>) | undefined;
-    const review = await prepareEvmDappReview<
-      Admission,
-      IEvmTransactionResponse
-    >(params, {
+    const ports: EvmDappReviewPorts<Admission, IEvmTransactionResponse> = {
       chainId: String(context.chainId),
       scope: JSON.stringify(expected),
       signal: this.ethereumTransaction.web3Provider.signal,
@@ -11542,111 +11640,132 @@ class MainController {
       assertCurrent: check,
       now: () => Math.floor(performance.now()),
       prepare: (request, assertCurrent, admission, approved) =>
-        read.run(async (provider) => {
-          // Once our exact signed row is persisted, the broad Smart-account
-          // pending gate includes it. Dispatch checks its envelope and payer
-          // nonce below; only pre-sign reviews use the no-predecessor gate.
-          if (
-            admission.kind === 'review' &&
-            payerDispatch?.saveOptions.assertPendingState
-          ) {
-            await payerDispatch.saveOptions.assertPendingState();
-            assertCurrent();
-          }
-          // Asset ownership/balance can change after signing or persistence,
-          // independently of the payer nonce and this operation's own row.
-          if (payerDispatch?.saveOptions.assertAssetState) {
-            await payerDispatch.saveOptions.assertAssetState();
-            assertCurrent();
-          }
-          return prepareEvmDappQuote(
-            request,
-            {
-              chainId: String(context.chainId),
-              scope: JSON.stringify(expected),
-              funding: payerDispatch?.funding ?? NATIVE_EVM_FEE_FUNDING,
-              gasPolicy:
-                feeAuthority.kind === 'private-withdrawal'
-                  ? { kind: 'fixed', gasLimit: '650000' }
-                  : { kind: 'estimate' },
-              assertCurrent,
-              now: () => Math.floor(performance.now()),
-              read: (method, values) => provider.send(method, [...values]),
-              verifyChain: async () => {
-                await provider.verifyConfiguredChainId(true);
-                assertCurrent();
-              },
-              verifyBlock: async (block) => {
-                const current = await provider.send('eth_getBlockByNumber', [
-                  `0x${BigInt(block.number).toString(16)}`,
-                  false,
-                ]);
-                assertCurrent();
-                if (
-                  readEvmRpcHash(current?.hash) !== block.hash ||
-                  readEvmRpcQuantity(current?.number).toString() !==
-                    block.number
-                )
-                  throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-              },
-              nonce: async (sampled) => {
-                const plan = await this.inspectOrdinaryEvmNonce(
-                  read,
-                  request.from,
-                  {
-                    reviewed: walletNonce,
-                    assertCurrent,
-                    ...(admission.kind === 'dispatch'
-                      ? {
-                          snapshot: admission.snapshot,
-                          currentSignedHash: admission.hash,
-                        }
-                      : {}),
-                  }
-                );
-                if (
-                  plan.nonce !== walletNonce.nonce ||
-                  plan.canonicalBlock.hash !== sampled.hash ||
-                  BigInt(plan.canonicalBlock.number).toString() !==
-                    sampled.number
-                )
-                  throw new Error(
-                    'EVM nonce changed. Review this transaction again.'
+        read.run((rawProvider) =>
+          withEvmReadPhase(rawProvider, assertCurrent, async (provider) => {
+            // Once our exact signed row is persisted, the broad Smart-account
+            // pending gate includes it. Dispatch checks its envelope and payer
+            // nonce below; only pre-sign reviews use the no-predecessor gate.
+            if (payerDispatch?.saveOptions.assertPendingState) {
+              await payerDispatch.saveOptions.assertPendingState(
+                provider,
+                admission.kind === 'dispatch' ? admission.hash : undefined,
+                admission.kind === 'dispatch' ? admission.snapshot : undefined
+              );
+              assertCurrent();
+            }
+            // Asset ownership/balance can change after signing or persistence,
+            // independently of the payer nonce and this operation's own row.
+            if (payerDispatch?.saveOptions.assertAssetState) {
+              await payerDispatch.saveOptions.assertAssetState(provider);
+              assertCurrent();
+            }
+            return prepareEvmDappQuote(
+              request,
+              {
+                chainId: String(context.chainId),
+                scope: JSON.stringify(expected),
+                funding: payerDispatch?.funding ?? NATIVE_EVM_FEE_FUNDING,
+                ...(payerDispatch &&
+                (request.gasPrice !== undefined ||
+                  (request.maxFeePerGas !== undefined &&
+                    request.maxPriorityFeePerGas !== undefined))
+                  ? { feePolicy: 'fixed' as const }
+                  : {}),
+                gasPolicy:
+                  feeAuthority.kind === 'private-withdrawal'
+                    ? { kind: 'fixed', gasLimit: '650000' }
+                    : { kind: 'estimate' },
+                assertCurrent,
+                now: () => Math.floor(performance.now()),
+                read: (method, values) => provider.send(method, [...values]),
+                verifyChain: async () => {
+                  await provider.verifyConfiguredChainId(true);
+                  assertCurrent();
+                },
+                verifyBlock: async (block) => {
+                  const current = await readFreshEvmState(
+                    provider,
+                    'eth_getBlockByNumber',
+                    [`0x${BigInt(block.number).toString(16)}`, false]
                   );
-                return { ...plan, nonce: BigInt(plan.nonce) };
-              },
-              balance: async (sampled, nonceState) => {
-                const [plan, canonical, pending] = await Promise.all([
-                  nonceState,
-                  provider.send('eth_getBalance', [
+                  assertCurrent();
+                  if (
+                    readEvmRpcHash(current?.hash) !== block.hash ||
+                    readEvmRpcQuantity(current?.number).toString() !==
+                      block.number
+                  )
+                    throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+                },
+                nonce: async (sampled) => {
+                  const plan = await this.inspectOrdinaryEvmNonce(
+                    read,
                     request.from,
-                    `0x${BigInt(sampled.number).toString(16)}`,
-                  ]),
-                  provider.send('eth_getBalance', [request.from, 'pending']),
-                ]);
-                assertCurrent();
-                return availableEvmNativeBalance(
-                  {
-                    canonical: parseEvmFeeQuantity(canonical),
-                    pending: parseEvmFeeQuantity(pending),
-                  },
-                  plan.nativeReservations,
-                  plan.balanceState
-                );
+                    {
+                      reviewed: walletNonce,
+                      assertCurrent,
+                      quotePhase: { provider, block: sampled },
+                      ...(admission.kind === 'dispatch'
+                        ? {
+                            snapshot: admission.snapshot,
+                            currentSignedHash: admission.hash,
+                          }
+                        : {}),
+                    }
+                  );
+                  if (
+                    (walletNonce && plan.nonce !== walletNonce.nonce) ||
+                    plan.canonicalBlock.hash !== sampled.hash ||
+                    BigInt(plan.canonicalBlock.number).toString() !==
+                      sampled.number
+                  )
+                    throw new Error(
+                      'EVM nonce changed. Review this transaction again.'
+                    );
+                  walletNonce ??= reviewedExtensionNonce(
+                    plan.nonce,
+                    'automatic'
+                  );
+                  return { ...plan, nonce: BigInt(plan.nonce) };
+                },
+                balance: async (sampled, nonceState) => {
+                  const [plan, canonical, pending] = await Promise.all([
+                    nonceState,
+                    provider.send('eth_getBalance', [
+                      request.from,
+                      `0x${BigInt(sampled.number).toString(16)}`,
+                    ]),
+                    provider.send('eth_getBalance', [request.from, 'pending']),
+                  ]);
+                  assertCurrent();
+                  return availableEvmNativeBalance(
+                    {
+                      canonical: parseEvmFeeQuantity(canonical),
+                      pending: parseEvmFeeQuantity(pending),
+                    },
+                    plan.nativeReservations,
+                    plan.balanceState
+                  );
+                },
+                fees: (sampled) =>
+                  getEvmFeeData(
+                    {
+                      getGasPrice: () => provider.getGasPrice(),
+                      getBlock: async () => ({
+                        baseFeePerGas: sampled.baseFee,
+                      }),
+                      send: (method, values) => provider.send(method, values),
+                    },
+                    {
+                      ...read.overrides,
+                      signal: provider.signal,
+                      assertCurrent,
+                    }
+                  ),
               },
-              fees: (sampled) =>
-                getEvmFeeData(
-                  {
-                    getGasPrice: () => provider.getGasPrice(),
-                    getBlock: async () => ({ baseFeePerGas: sampled.baseFee }),
-                    send: (method, values) => provider.send(method, values),
-                  },
-                  { ...read.overrides, signal: provider.signal, assertCurrent }
-                ),
-            },
-            approved
-          );
-        }),
+              approved
+            );
+          })
+        ),
       send: async (
         transaction,
         assertCurrent,
@@ -11705,39 +11824,87 @@ class MainController {
           ? settleEoaCallsSignedSubmission(work, submission.attempt)
           : work;
       },
-    });
-    check();
+    };
+    const admit = (
+      review: import('../../../shared/evmDappReview').EvmDappReview<IEvmTransactionResponse>
+    ) => {
+      check();
+      if (payerDispatch) {
+        // These fields were already approved; a higher shared quote requires
+        // another review, never an implicit increase during submission.
+        const request = normalizeDappTransaction(params);
+        for (const key of [
+          'gasLimit',
+          'gasPrice',
+          'maxFeePerGas',
+          'maxPriorityFeePerGas',
+        ] as const) {
+          const supplied =
+            request[key] ?? (key === 'gasLimit' ? request.gas : undefined);
+          const quoted = review.transaction[key];
+          if (
+            supplied !== undefined &&
+            quoted !== undefined &&
+            BigInt(quoted) > BigInt(supplied)
+          )
+            throw new Error('REVIEW_REQUIRED');
+        }
+      }
+      const token = issueGenericEvmFeeReview(
+        this,
+        review,
+        expected,
+        walletNonce,
+        check,
+        Math.floor(performance.now()),
+        feeAuthority
+      );
+      reviewId = token.id;
+      return token;
+    };
     if (payerDispatch) {
-      // These fields were already approved; a higher shared quote requires
-      // another review, never an implicit increase during submission.
-      const request = normalizeDappTransaction(params);
-      for (const key of [
-        'gasLimit',
-        'gasPrice',
-        'maxFeePerGas',
-        'maxPriorityFeePerGas',
-      ] as const) {
-        const supplied =
-          request[key] ?? (key === 'gasLimit' ? request.gas : undefined);
-        const quoted = review.transaction[key];
-        if (
-          supplied !== undefined &&
-          quoted !== undefined &&
-          BigInt(quoted) > BigInt(supplied)
-        )
-          throw new Error('REVIEW_REQUIRED');
+      let consumed: ReturnType<typeof consumeGenericEvmFeeReview> | undefined;
+      let sdkEntered: (() => boolean) | undefined;
+      try {
+        return await prepareAndSubmitEvmDappReview(params, ports, {
+          assertCurrent: check,
+          onPrepared: (review) => {
+            const token = admit(review);
+            sdkEntered = captureGenericEvmFeeSdkEntryState(this, token.id);
+            consumed = consumeGenericEvmFeeReview(
+              this,
+              token.id,
+              expected,
+              check,
+              Math.floor(performance.now()),
+              feeAuthority
+            );
+          },
+          onBroadcast: (hash) => {
+            void payerDispatch.saveOptions.onBroadcast?.({
+              hash,
+            } as IEvmTransactionResponse);
+          },
+          submission: { kind: 'transaction' },
+        });
+      } catch (error) {
+        const failure = evmSubmissionFailure(error);
+        throw new PrivateSubmissionError(
+          {
+            transactionNotBroadcast:
+              !sdkEntered?.() || failure?.transactionNotBroadcast === true,
+            ...(failure?.signedTransactionHash
+              ? { signedTransactionHash: failure.signedTransactionHash }
+              : {}),
+          },
+          error
+        );
+      } finally {
+        consumed?.close();
       }
     }
-    const token = issueGenericEvmFeeReview(
-      this,
-      review,
-      expected,
-      walletNonce,
-      check,
-      Math.floor(performance.now()),
-      feeAuthority
-    );
-    reviewId = token.id;
+    const review = await prepareEvmDappReview(params, ports);
+    const token = admit(review);
     const sdkEntered = captureGenericEvmFeeSdkEntryState(this, token.id);
     return Object.freeze({
       token,
@@ -14907,7 +15074,8 @@ class MainController {
     params: Record<string, unknown>,
     isLegacy: boolean,
     maximumFee: string,
-    scope: IWalletNavigationScope
+    scope: IWalletNavigationScope,
+    recheck = false
   ) {
     const read = this.captureFreshEvmRead(scope);
     const { vault } = store.getState();
@@ -14940,30 +15108,52 @@ class MainController {
       review.nonce === undefined
         ? undefined
         : reviewedExtensionNonce(review.nonce, 'manual');
-    const noncePlan = await this.inspectOrdinaryEvmNonce(
-      read,
-      account.address,
-      {
-        reviewed: explicit,
-      }
+    return read.run((provider) =>
+      withEvmReadPhase(provider, read.assertCurrent, async (phase) => {
+        const block = await readNativeEvmReviewBlock(phase, read.assertCurrent);
+        const noncePlan = await this.inspectOrdinaryEvmNonce(
+          read,
+          account.address,
+          {
+            reviewed: explicit,
+            quotePhase: { provider: phase, block },
+          }
+        );
+        const walletNonce =
+          explicit ?? reviewedExtensionNonce(noncePlan.nonce, 'automatic');
+        const owned = captureReviewedNativeEvmTransfer(
+          { ...review.transaction, nonce: walletNonce.nonce },
+          isLegacy,
+          maximumFee,
+          account.address,
+          read.network.chainId,
+          read.overrides,
+          review.approval.scope,
+          now
+        );
+        if (recheck) {
+          await recheckReviewedNativeEvmTransfer(
+            owned,
+            phase,
+            read.assertCurrent,
+            noncePlan
+          );
+        } else {
+          const current = await readFreshEvmState(
+            phase,
+            'eth_getBlockByNumber',
+            [noncePlan.canonicalBlock.number, false]
+          );
+          if (readEvmRpcHash(current?.hash) !== block.hash)
+            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        }
+        return {
+          read,
+          review: Object.freeze({ ...owned, walletNonce }),
+          noncePlan,
+        };
+      })
     );
-    const walletNonce =
-      explicit ?? reviewedExtensionNonce(noncePlan.nonce, 'automatic');
-    const owned = captureReviewedNativeEvmTransfer(
-      { ...review.transaction, nonce: walletNonce.nonce },
-      isLegacy,
-      maximumFee,
-      account.address,
-      read.network.chainId,
-      read.overrides,
-      review.approval.scope,
-      now
-    );
-    return {
-      read,
-      review: Object.freeze({ ...owned, walletNonce }),
-      noncePlan,
-    };
   }
 
   public async reviewNativeEvmFee(
@@ -14992,19 +15182,12 @@ class MainController {
     maximumFee: string,
     scope: IWalletNavigationScope
   ) {
-    const { read, review, noncePlan } = await this.captureNativeEvmFeeReview(
+    const { read, review } = await this.captureNativeEvmFeeReview(
       params,
       isLegacy,
       maximumFee,
-      scope
-    );
-    await read.run((provider) =>
-      recheckReviewedNativeEvmTransfer(
-        review,
-        provider,
-        read.assertCurrent,
-        noncePlan
-      )
+      scope,
+      true
     );
     return issueNativeEvmFeeReview(
       this,

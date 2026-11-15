@@ -32,27 +32,26 @@ export function nativeCoinQuoteSource(registration: NativeCoinQuoteNetwork | nul
   return asset ? { kind: 'evm', asset } : null;
 }
 
+type PendingQuote = {
+  promise: Promise<NativeCoinQuote | null>;
+  request: AbortController;
+  subscribers: number;
+  settled: boolean;
+};
+
 export function createNativeCoinQuoteReader(fetch: WalletHttpFetch, now = () => performance.now()) {
   const cache = new Map<string, NativeCoinQuote>();
-  return async (source: QuoteSource, currency: FiatCurrency, owner: AbortSignal): Promise<NativeCoinQuote | null> => {
-    if (owner.aborted || !isFiatCurrency(currency)) return null;
-    const url = source.kind === 'utxo' ? `${source.endpoint}/${BLOCKBOOK_TICKER_PATH}` : coinGeckoNativeQuoteUrl(source.asset, currency);
-    const key = `${currency}:${url}`;
-    const cached = cache.get(key);
-    const remaining = cached ? cached.expiresAt - now() : 0;
-    if (cached && remaining > 0 && remaining <= QUOTE_LIFETIME_MS) return cached;
-    const request = new AbortController();
-    const cancel = () => request.abort();
-    const { signal } = request;
-    owner.addEventListener('abort', cancel, { once: true });
-    const timer = setTimeout(cancel, REQUEST_TIMEOUT_MS);
+  const pending = new Map<string, PendingQuote>();
+  const load = async (source: QuoteSource, currency: FiatCurrency, url: string, key: string, work: PendingQuote) => {
+    const { request } = work, { signal } = request;
+    const timer = setTimeout(() => request.abort(), REQUEST_TIMEOUT_MS);
     let accepted = false;
     try {
-      const pending = fetch(url, { method: 'GET', signal, credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer' }).then((response) => {
+      const result = fetch(url, { method: 'GET', signal, credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer' }).then((response) => {
         if (signal.aborted) cancelResponseBody(response);
         return response;
       });
-      const response = await abortable(pending, signal);
+      const response = await abortable(result, signal);
       if (signal.aborted || !response.ok || response.redirected || (response.url && response.url !== url)) {
         cancelResponseBody(response);
         return null;
@@ -62,7 +61,7 @@ export function createNativeCoinQuoteReader(fetch: WalletHttpFetch, now = () => 
       const quote = source.kind === 'utxo' ? readBlockbookNativeQuote(body, currency) : readCoinGeckoNativeQuote(body, source.asset, currency);
       if (!quote) return null;
       const value = Object.freeze({ price: quote.price, expiresAt: now() + QUOTE_LIFETIME_MS });
-      if (source.kind !== 'utxo' || quote.price !== 0) {
+      if (pending.get(key) === work && work.subscribers && (source.kind !== 'utxo' || quote.price !== 0)) {
         cache.delete(key);
         cache.set(key, value);
         if (cache.size > MAX_QUOTES) cache.delete(cache.keys().next().value!);
@@ -72,9 +71,41 @@ export function createNativeCoinQuoteReader(fetch: WalletHttpFetch, now = () => 
     } catch { return null; }
     finally {
       clearTimeout(timer);
-      owner.removeEventListener('abort', cancel);
-      // Cancelling the response stream alone can leave the native request open.
-      if (!accepted && !signal.aborted) cancel();
+      if (!accepted && !signal.aborted) request.abort();
     }
+  };
+  return async (source: QuoteSource, currency: FiatCurrency, owner: AbortSignal): Promise<NativeCoinQuote | null> => {
+    if (owner.aborted || !isFiatCurrency(currency)) return null;
+    const url = source.kind === 'utxo' ? `${source.endpoint}/${BLOCKBOOK_TICKER_PATH}` : coinGeckoNativeQuoteUrl(source.asset, currency);
+    const key = `${currency}:${url}`;
+    const cached = cache.get(key);
+    const remaining = cached ? cached.expiresAt - now() : 0;
+    if (cached && remaining > 0 && remaining <= QUOTE_LIFETIME_MS) return cached;
+    let work = pending.get(key);
+    if (!work || work.request.signal.aborted) {
+      work = { request: new AbortController(), subscribers: 0, settled: false, promise: Promise.resolve(null) };
+      pending.set(key, work);
+      const captured = work;
+      work.promise = load(source, currency, url, key, work).finally(() => {
+        captured.settled = true;
+        if (pending.get(key) === captured) pending.delete(key);
+      });
+    }
+    const selected = work;
+    selected.subscribers++;
+    return new Promise(resolve => {
+      let done = false;
+      const finish = (value: NativeCoinQuote | null) => {
+        if (done) return;
+        done = true;
+        owner.removeEventListener('abort', cancel);
+        selected.subscribers--;
+        if (!selected.settled && !selected.subscribers) selected.request.abort();
+        resolve(owner.aborted ? null : value);
+      };
+      const cancel = () => finish(null);
+      owner.addEventListener('abort', cancel, { once: true });
+      selected.promise.then(finish, () => finish(null));
+    });
   };
 }

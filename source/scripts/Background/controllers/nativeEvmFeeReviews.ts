@@ -351,11 +351,7 @@ export function captureGenericEvmFeeDispatch(
     context.walletNonce?.source !== value.walletNonce.source
   )
     throw new Error('Generic fee review dispatch context changed');
-  const preflight = async (
-    record: EvmSignedSubmission,
-    assertCurrent: () => void,
-    snapshot: EvmAutoNonceSnapshot
-  ) => {
+  const validate = (record: EvmSignedSubmission, assertCurrent: () => void) => {
     if (pending!.get(identity.id) !== entry || entry.phase !== 'dispatch')
       throw new Error('Generic fee review dispatch is unavailable');
     assertSynchronousEvmFeeGuard(assertCurrent);
@@ -366,30 +362,28 @@ export function captureGenericEvmFeeDispatch(
       value.unsignedHash
     )
       throw new Error('Generic fee review signed envelope changed');
+  };
+  const preflight = async (
+    record: EvmSignedSubmission,
+    assertCurrent: () => void,
+    snapshot: EvmAutoNonceSnapshot
+  ) => {
+    validate(record, assertCurrent);
     await dispatch(record, assertCurrent, snapshot);
-    if (pending!.get(identity.id) !== entry)
-      throw new Error('Generic fee review dispatch is unavailable');
-    assertSynchronousEvmFeeGuard(assertCurrent);
-    assertSynchronousEvmFeeGuard(value.assertCurrent);
-    assertEvmFeeApprovalCurrent(value.approval, Math.floor(performance.now()));
+    validate(record, assertCurrent);
   };
   return Object.freeze({
     preflight,
     beforePersist:
       value.authority.kind === 'smart-payer'
-        ? (() => {
-            const checkPendingState = value.authority.checkPendingState;
-            return async (
-              record: EvmSignedSubmission,
-              assertCurrent: () => void,
-              snapshot: EvmAutoNonceSnapshot
-            ) => {
-              assertSynchronousEvmFeeGuard(assertCurrent);
-              assertSynchronousEvmFeeGuard(value.assertCurrent);
-              await checkPendingState?.();
-              await preflight(record, assertCurrent, snapshot);
-            };
-          })()
+        ? async (
+            record: EvmSignedSubmission,
+            assertCurrent: () => void,
+            _snapshot: EvmAutoNonceSnapshot
+          ) => {
+            void _snapshot;
+            validate(record, assertCurrent);
+          }
         : null,
     metadata:
       value.authority.kind === 'smart-payer'

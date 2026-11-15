@@ -23,6 +23,7 @@ jest.mock('../../../../shared/nftReads', () => ({
   verifyERC1155OwnershipHelper: jest.fn(),
 }));
 
+import { retryableFetch } from '@sidhujag/sysweb3-network';
 import {
   cleanTokenSymbol,
   contractChecker,
@@ -581,3 +582,108 @@ it.each(['ERC-721', 'ERC-1155'])(
     expect(result[0].rawBalance).toBe(rawBalance);
   }
 );
+
+it('reads each ERC721 collection once and fans exact balances out to every saved ID', async () => {
+  const other = `0x${'44'.repeat(20)}`;
+  const balanceOf = jest.fn(async () => BigInt(12));
+  (Contract as jest.Mock).mockImplementation((address) => {
+    if (address === other) throw new Error('Unavailable collection');
+    return { balanceOf };
+  });
+  const assets = [
+    ...Array.from({ length: 10 }, (_, index) => ({
+      contractAddress:
+        index % 2 ? TOKEN.toUpperCase().replace('0X', '0x') : TOKEN,
+      chainId: 1,
+      balance: 9,
+      rawBalance: '9',
+      decimals: 0,
+      isNft: true,
+      tokenStandard: 'ERC-721',
+      tokenId: String(index),
+      tokenSymbol: 'NFT',
+    })),
+    {
+      contractAddress: other,
+      chainId: 1,
+      balance: 3,
+      rawBalance: '3',
+      decimals: 0,
+      isNft: true,
+      tokenStandard: 'ERC-721',
+      tokenId: '0',
+      tokenSymbol: 'OTHER',
+    },
+  ];
+  const read = jest.fn();
+  const pending = EvmAssetsController().updateAllEvmTokens(
+    { address: ACCOUNT } as any,
+    1,
+    {} as any,
+    assets as any,
+    read
+  );
+  await jest.advanceTimersByTimeAsync(100);
+  const result = await pending;
+  expect(Contract).toHaveBeenCalledTimes(2);
+  expect(balanceOf).toHaveBeenCalledTimes(1);
+  expect(balanceOf).toHaveBeenCalledWith(ACCOUNT);
+  expect(read).toHaveBeenCalledTimes(10);
+  expect(read.mock.calls.map(([asset]) => asset.tokenId)).toEqual(
+    assets.slice(0, 10).map((asset) => asset.tokenId)
+  );
+  expect(
+    result.find((asset) => asset.contractAddress.toLowerCase() === TOKEN)
+  ).toMatchObject({ balance: 12, rawBalance: '12' });
+  expect(result.find((asset) => asset.contractAddress === other)).toEqual(
+    assets[10]
+  );
+});
+
+it('coalesces concurrent native price reads by market identity and currency', async () => {
+  (store.getState as jest.Mock).mockImplementation(() => ({
+    vault: { activeNetwork: network },
+    vaultGlobal: {
+      networks: {
+        ethereum: {
+          1: { coingeckoId: 'ethereum' },
+          10: { coingeckoId: 'ethereum' },
+        },
+      },
+    },
+  }));
+  const held = deferred();
+  (retryableFetch as jest.Mock).mockReturnValue(held.promise);
+  const controller = EvmAssetsController();
+  const first = controller.getTokenPriceData(1, 'usd');
+  const second = controller.getTokenPriceData(10, 'usd');
+  expect(retryableFetch).toHaveBeenCalledTimes(1);
+  held.resolve(response({ ethereum: { usd: 12, eur: 11 } }));
+  expect(await first).toEqual({
+    available: true,
+    price: 12,
+    priceChange24h: undefined,
+  });
+  expect(await second).toEqual(await first);
+  await controller.getTokenPriceData(1, 'usd');
+  expect(retryableFetch).toHaveBeenCalledTimes(1);
+  await controller.getTokenPriceData(1, 'eur');
+  expect(retryableFetch).toHaveBeenCalledTimes(2);
+});
+
+it('does not cache a failed native price read or hold later retries behind it', async () => {
+  (store.getState as jest.Mock).mockImplementation(() => ({
+    vault: { activeNetwork: network },
+    vaultGlobal: { networks: { ethereum: { 1: { coingeckoId: 'ethereum' } } } },
+  }));
+  const controller = EvmAssetsController();
+  (retryableFetch as jest.Mock)
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValue(response({ ethereum: { usd: 5 } }));
+  expect(await controller.getTokenPriceData(1, 'usd')).toEqual({
+    available: false,
+    price: 0,
+  });
+  expect((await controller.getTokenPriceData(1, 'usd')).price).toBe(5);
+  expect(retryableFetch).toHaveBeenCalledTimes(2);
+});

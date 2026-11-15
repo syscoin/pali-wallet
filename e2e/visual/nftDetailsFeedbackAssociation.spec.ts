@@ -9,6 +9,7 @@ import { utils as sys } from 'syscoinjs-lib';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { isolatedVaultEvmResult } from '../harness/isolatedVaultFixture';
 import { PaliWallet } from '../harness/pali';
 import { verifyExecutingWorker } from '../harness/runtimeIdentity';
 import { extensionEvidence } from '../harness/testDappConformance';
@@ -788,10 +789,17 @@ for (const viewport of [
           if (
             call.method === 'eth_getBlockByNumber' &&
             p.length === 2 &&
-            ['0x0', '0x1'].includes(p[0]) &&
-            p[1] === true
-          )
-            result = { number: p[0], timestamp: '0x1', transactions: [] };
+            ['latest', '0x0', '0x1'].includes(p[0]) &&
+            typeof p[1] === 'boolean'
+          ) {
+            const genesis = p[0] === '0x0';
+            result = {
+              ...(isolatedVaultEvmResult('eth_getBlockByNumber') as object),
+              number: genesis ? '0x0' : '0x1',
+              hash: '0x' + (genesis ? '11' : '12').repeat(32),
+              parentHash: '0x' + (genesis ? '00' : '11').repeat(32),
+            };
+          }
           if (
             call.method === 'eth_call' &&
             p.length === 2 &&

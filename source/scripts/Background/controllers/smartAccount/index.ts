@@ -305,9 +305,11 @@ class SmartAccountController {
     {
       accountId: number;
       actionHash: string;
+      executionIntent?: string;
       expiresAt: number;
       gasPrice?: string;
       pending?: SmartAccountPendingState;
+      prepared?: Awaited<ReturnType<typeof prepareSmartAccountOperation>>;
       purpose: 'user-operation' | 'recovery-digest';
       snapshot: ReturnType<SmartAccountController['infrastructureContext']>;
       userOperation?: SmartAccountPackedUserOperation;
@@ -488,13 +490,17 @@ class SmartAccountController {
     const context = this.executionContexts.get(executionContextId)!;
     if (context.userOperation) {
       if (!context.pending) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-      await context.pending.assertNonce(context.userOperation);
-      await assertSmartAccountSpendability({
-        provider: context.pending.provider,
-        chainId: context.snapshot.chainId,
-        userOperation: context.userOperation,
-        assertCurrent: () =>
-          this.assertSmartAccountExecutionContext(executionContextId),
+      await context.pending.withReadPhase(async (phase) => {
+        await Promise.all([
+          phase.assertNonce(context.userOperation!),
+          assertSmartAccountSpendability({
+            provider: phase.provider,
+            chainId: context.snapshot.chainId,
+            userOperation: context.userOperation!,
+            assertCurrent: () =>
+              this.assertSmartAccountExecutionContext(executionContextId),
+          }),
+        ]);
       });
       this.assertSmartAccountExecutionContext(executionContextId);
     }
@@ -1782,9 +1788,56 @@ class SmartAccountController {
       gasPrice: legacyGasPrice,
       snapshot,
       userOperation: Object.freeze({ ...userOperation }),
+      prepared,
+      executionIntent: JSON.stringify({
+        executions: params.map(({ target, data, value }) => ({
+          target: getAddress(target),
+          data: data || '0x',
+          value: BigInt(value).toString(),
+        })),
+        feeOverrides,
+      }),
       pending,
     });
     return { ...prepared, accountId: active.account.id, executionContextId };
+  }
+
+  public reuseSmartAccountExecutions(
+    executions: Array<{ data?: string; target: string; value: string }>,
+    accountId: number | undefined,
+    options: {
+      executionContextId: string;
+      expectedContext?: IEvmTransactionContext;
+      feeOverrides?: {
+        gasPrice?: string;
+        maxFeePerGas?: string;
+        maxPriorityFeePerGas?: string;
+      };
+    }
+  ) {
+    this.assertSmartAccountExecutionContext(options.executionContextId);
+    if (options.expectedContext)
+      this.assertExpectedExecutionContext(options.expectedContext, accountId);
+    const context = this.executionContexts.get(options.executionContextId)!;
+    const intent = JSON.stringify({
+      executions: executions.map(({ target, data, value }) => ({
+        target: getAddress(target),
+        data: data || '0x',
+        value: BigInt(value).toString(),
+      })),
+      feeOverrides: options.feeOverrides || {},
+    });
+    if (
+      !context.prepared ||
+      context.executionIntent !== intent ||
+      (accountId !== undefined && accountId !== context.accountId)
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    return {
+      ...context.prepared,
+      accountId: context.accountId,
+      executionContextId: options.executionContextId,
+    };
   }
 
   private async assertSmartAccountExecutionTargetsAllowed(

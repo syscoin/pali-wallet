@@ -92,7 +92,6 @@ export async function prepareSmartAccountOperation({
   executions,
   feeOverrides = {},
   knownDeployed,
-  provider,
   pending,
   selectGasPayer,
   assertCurrent,
@@ -112,6 +111,32 @@ export async function prepareSmartAccountOperation({
     maxFeePerGas: BigNumber
   ): Promise<{ gasPayer: SmartAccountGasPayer; useGasTank: boolean }>;
 }) {
+  return pending.withReadPhase((phase) =>
+    prepareOperation({
+      account,
+      chainId,
+      executions,
+      feeOverrides,
+      knownDeployed,
+      pending: phase,
+      provider: phase.provider,
+      selectGasPayer,
+      assertCurrent,
+    })
+  );
+}
+
+async function prepareOperation({
+  account,
+  chainId,
+  executions,
+  feeOverrides = {},
+  knownDeployed,
+  provider,
+  pending,
+  selectGasPayer,
+  assertCurrent,
+}: Parameters<typeof prepareSmartAccountOperation>[0]) {
   assertSynchronousEvmFeeGuard(assertCurrent);
   await pending.verify();
   feeOverrides = { ...feeOverrides };

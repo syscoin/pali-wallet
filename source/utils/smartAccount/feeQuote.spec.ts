@@ -48,6 +48,7 @@ describe('trusted smart-account fee quote', () => {
         feeOverrides: { maxFeePerGas: '5', maxPriorityFeePerGas: '0' },
       })
     ).resolves.toEqual({
+      executionContextId: 'read-only-quote',
       feePayer,
       gasUnits: '860000',
       maximumFeeWei: '4300000',
@@ -110,6 +111,7 @@ describe('trusted smart-account fee quote', () => {
       feeOverrides: { gasPrice: '5' },
     };
     await expect(prepareSmartAccountFeeQuote(params)).resolves.toEqual({
+      executionContextId: 'read-only-quote',
       feePayer,
       gasUnits: '860000',
       maximumFeeWei: '0',

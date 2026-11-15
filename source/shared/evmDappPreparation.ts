@@ -90,6 +90,7 @@ export type EvmDappPreparationPorts<Sample extends NonceSample> = Readonly<{
   assertCurrent(): void;
   balance(block: EvmDappBlock, nonce: Promise<Sample>): Promise<bigint>;
   chainId: string;
+  feePolicy?: 'fixed';
   fees(block: EvmDappBlock): Promise<FeeData>;
   funding: EvmFeeFunding;
   gasPolicy: EvmGasPolicy;
@@ -178,9 +179,10 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
     await ports.read('eth_getBlockByNumber', ['latest', false])
   );
   check();
-  const pendingHeader = approved
-    ? null
-    : await ports.read('eth_getBlockByNumber', ['pending', false]);
+  const pendingHeader =
+    approved || ports.feePolicy === 'fixed'
+      ? null
+      : await ports.read('eth_getBlockByNumber', ['pending', false]);
   // Some generic RPCs expose pending state without a pending block header.
   // In that case the canonical header still supplies observed fee/gas bounds.
   const header = pendingHeader === null ? undefined : record(pendingHeader);
@@ -193,11 +195,34 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
   const feeGasLimit = header
     ? readEvmRpcQuantity(header.gasLimit)
     : sampled.gasLimit;
+  const fixedFees: FeeData | undefined =
+    ports.feePolicy === 'fixed'
+      ? request.gasPrice !== undefined
+        ? {
+            gasPrice: BigInt(request.gasPrice),
+            maxFeePerGas: BigInt(request.gasPrice),
+            maxPriorityFeePerGas: BigInt(0),
+            ...(feeBase === null ? {} : { baseFeePerGas: feeBase }),
+          }
+        : request.maxFeePerGas !== undefined &&
+          request.maxPriorityFeePerGas !== undefined
+        ? {
+            gasPrice: BigInt(request.maxFeePerGas),
+            maxFeePerGas: BigInt(request.maxFeePerGas),
+            maxPriorityFeePerGas: BigInt(request.maxPriorityFeePerGas),
+            ...(feeBase === null ? {} : { baseFeePerGas: feeBase }),
+          }
+        : undefined
+      : undefined;
+  if (ports.feePolicy === 'fixed' && !fixedFees)
+    throw new EvmDappReviewRequiredError();
   const nonceState = ports.nonce(sampled, request.nonce);
   const [sample, balance, fees] = await Promise.all([
     nonceState,
     ports.balance(sampled, nonceState),
-    ports.fees({ ...sampled, baseFee: feeBase }),
+    approved
+      ? Promise.resolve(null)
+      : fixedFees ?? ports.fees({ ...sampled, baseFee: feeBase }),
   ]);
   check();
   const selected = approved
@@ -216,8 +241,18 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
             ? {}
             : { maxPriorityFeePerGas: BigInt(request.maxPriorityFeePerGas) }),
         },
-        fees
+        fees!
       );
+  if (
+    ports.feePolicy === 'fixed' &&
+    selected &&
+    (selected.type === 0
+      ? selected.gasPrice.toString() !== request.gasPrice
+      : selected.maxFeePerGas.toString() !== request.maxFeePerGas ||
+        selected.maxPriorityFeePerGas.toString() !==
+          request.maxPriorityFeePerGas)
+  )
+    throw new EvmDappReviewRequiredError();
   const source = approved?.transaction ?? selected!;
   const selectedFees =
     source.type === 0
@@ -272,6 +307,12 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
       await ports.read('eth_estimateGas', [estimateRequest, sample.state])
     );
     check();
+    if (
+      ports.feePolicy === 'fixed' &&
+      request.gasLimit !== undefined &&
+      executionGas > BigInt(request.gasLimit)
+    )
+      throw new EvmDappReviewRequiredError();
     gasLimit =
       approved?.transaction.gasLimit ??
       selectEvmDappGasLimit(
@@ -313,37 +354,40 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
   check();
   const coveredFee = getEvmCoveredFee(approval, coverage);
   return Object.freeze({
-    feeComparison: compareEvmDappFees(
-      {
-        type: request.type,
-        ...(request.gasLimit === undefined
-          ? {}
-          : { gasLimit: BigInt(request.gasLimit) }),
-        ...(request.gasPrice === undefined
-          ? {}
-          : { gasPrice: BigInt(request.gasPrice) }),
-        ...(request.maxFeePerGas === undefined
-          ? {}
-          : { maxFeePerGas: BigInt(request.maxFeePerGas) }),
-        ...(request.maxPriorityFeePerGas === undefined
-          ? {}
-          : { maxPriorityFeePerGas: BigInt(request.maxPriorityFeePerGas) }),
-      },
-      transaction.type === 0
-        ? {
-            type: 0,
-            gasLimit: BigInt(transaction.gasLimit),
-            gasPrice: BigInt(transaction.gasPrice),
-          }
-        : {
-            type: 2,
-            gasLimit: BigInt(transaction.gasLimit),
-            maxFeePerGas: BigInt(transaction.maxFeePerGas),
-            maxPriorityFeePerGas: BigInt(transaction.maxPriorityFeePerGas),
-          },
-      executionGas,
-      fees
-    ),
+    // Refresh the exact approved envelope without fetching new recommendations.
+    feeComparison:
+      approved?.feeComparison ??
+      compareEvmDappFees(
+        {
+          type: request.type,
+          ...(request.gasLimit === undefined
+            ? {}
+            : { gasLimit: BigInt(request.gasLimit) }),
+          ...(request.gasPrice === undefined
+            ? {}
+            : { gasPrice: BigInt(request.gasPrice) }),
+          ...(request.maxFeePerGas === undefined
+            ? {}
+            : { maxFeePerGas: BigInt(request.maxFeePerGas) }),
+          ...(request.maxPriorityFeePerGas === undefined
+            ? {}
+            : { maxPriorityFeePerGas: BigInt(request.maxPriorityFeePerGas) }),
+        },
+        transaction.type === 0
+          ? {
+              type: 0,
+              gasLimit: BigInt(transaction.gasLimit),
+              gasPrice: BigInt(transaction.gasPrice),
+            }
+          : {
+              type: 2,
+              gasLimit: BigInt(transaction.gasLimit),
+              maxFeePerGas: BigInt(transaction.maxFeePerGas),
+              maxPriorityFeePerGas: BigInt(transaction.maxPriorityFeePerGas),
+            },
+        executionGas,
+        fees!
+      ),
     transaction,
     balanceUnits: balance.toString(),
     maximumFeeUnits: approval.maximumFeeUnits,

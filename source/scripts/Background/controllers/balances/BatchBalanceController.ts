@@ -1,7 +1,6 @@
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 
 import { formatErc20Balance } from '../../../../shared/erc20';
-import { Queue } from '../transactions/queue';
 import { ITokenEthProps } from 'types/tokens';
 import { defaultAbiCoder } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
@@ -82,7 +81,7 @@ export class BatchBalanceController {
         Number(network.chainId)
       );
       if (!multicallAddress) {
-        return await this.fallbackToIndividualCalls(tokens, userAddress);
+        return this.fallbackToRpcReads(tokens, userAddress);
       }
 
       // Prepare multicall
@@ -145,60 +144,62 @@ export class BatchBalanceController {
     } catch (error) {
       console.error('[BatchBalanceController] Multicall failed:', error);
       // Fall back to individual calls
-      return await this.fallbackToIndividualCalls(tokens, userAddress);
+      return this.fallbackToRpcReads(tokens, userAddress);
     }
   }
 
-  /**
-   * Fallback method using individual RPC calls
-   */
-  private async fallbackToIndividualCalls(
+  /** The shared transport bounds and splits fallback reads for this endpoint. */
+  private async fallbackToRpcReads(
     tokens: ITokenEthProps[],
     userAddress: string
   ): Promise<TokenBalances> {
-    console.log(
-      '[BatchBalanceController] Falling back to individual balance calls'
-    );
     const balances: TokenBalances = new Map();
-
-    // Use Queue to limit concurrent requests to 3 to avoid rate limiting
-    const queue = new Queue(3);
-
-    // Add a small delay between requests to be respectful to public RPCs
-    const DELAY_BETWEEN_REQUESTS = 100; // 100ms between each request
-
-    // Queue each token individually - this ensures only 3 run at a time
-    tokens.forEach((token) => {
-      queue.execute(async () => {
-        // SYSCOIN: Keep three workers paced, without growing O(n²) sleep time.
-        await new Promise((resolve) =>
-          setTimeout(resolve, DELAY_BETWEEN_REQUESTS)
+    const requests = tokens.flatMap((token) => {
+      try {
+        const contract = new Contract(
+          token.contractAddress,
+          ERC20_BALANCE_ABI,
+          this.provider
         );
-
-        try {
-          const contract = new Contract(
-            token.contractAddress,
-            ERC20_BALANCE_ABI,
-            this.provider
-          );
-          const balance = await contract.balanceOf(userAddress);
-          balances.set(
-            token.contractAddress.toLowerCase(),
-            formatErc20Balance(balance, token.decimals)
-          );
-        } catch {
-          // A missing observation leaves the prior balance intact.
-        }
-      });
+        return [
+          {
+            token,
+            method: 'eth_call',
+            params: [
+              {
+                to: token.contractAddress,
+                data: contract.interface.encodeFunctionData('balanceOf', [
+                  userAddress,
+                ]),
+              },
+              'latest',
+            ],
+          },
+        ];
+      } catch {
+        return [];
+      }
     });
-
-    // Wait for all queued operations to complete
-    await queue.done();
-
-    console.log(
-      `[BatchBalanceController] Fetched ${balances.size} balances with rate limiting`
+    if (!requests.length) return balances;
+    const results = await this.provider.readMany(
+      requests.map(({ method, params }) => ({ method, params }))
     );
-
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') return;
+      try {
+        const decoded = defaultAbiCoder.decode(
+          ['uint256'],
+          result.value as string
+        );
+        const token = requests[index].token;
+        balances.set(
+          token.contractAddress.toLowerCase(),
+          formatErc20Balance(decoded[0], token.decimals)
+        );
+      } catch {
+        // An unavailable or malformed token result preserves its prior balance.
+      }
+    });
     return balances;
   }
 }

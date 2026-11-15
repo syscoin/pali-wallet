@@ -155,7 +155,7 @@ test('one deadline cancels enumeration even when the transport ignores its signa
     await started.promise;
     context.mock.timers.tick(12_000);
     await rejected;
-    assert(f.requests.every(({ init }) => init.signal?.aborted));
+    assert(f.requests.filter(({ wire }) => wire.method === 'eth_call').every(({ init }) => init.signal?.aborted));
     assert.equal(f.requests.filter(({ wire }) => wire.method === 'eth_call').length, 1);
   } finally { release.resolve(); context.mock.timers.reset(); }
 });

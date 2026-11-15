@@ -12,6 +12,7 @@ import { E2E_CONFIG } from '../harness/config';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
+  isolatedVaultEvmResult,
 } from '../harness/isolatedVaultFixture';
 import { PaliWallet } from '../harness/pali';
 import { verifyExecutingWorker } from '../harness/runtimeIdentity';
@@ -551,14 +552,21 @@ test('manual ERC1155 token ID guidance distinguishes malformed input from health
         }
         // MainController's ordinary background history refresh still scans
         // empty EOAs after an empty explorer result. With the fixed tip0x1,
-        // transactions/utils.ts requests only these two full empty blocks.
+        // transactions/utils.ts verifies their canonical headers on each scan.
         if (
           call.method === 'eth_getBlockByNumber' &&
           params.length === 2 &&
-          ['0x0', '0x1'].includes(params[0]) &&
-          params[1] === true
-        )
-          result = { number: params[0], timestamp: '0x1', transactions: [] };
+          ['latest', '0x0', '0x1'].includes(params[0]) &&
+          typeof params[1] === 'boolean'
+        ) {
+          const genesis = params[0] === '0x0';
+          result = {
+            ...(isolatedVaultEvmResult('eth_getBlockByNumber') as object),
+            number: genesis ? '0x0' : '0x1',
+            hash: '0x' + (genesis ? '11' : '12').repeat(32),
+            parentHash: '0x' + (genesis ? '00' : '11').repeat(32),
+          };
+        }
         if (
           ['eth_getBalance', 'eth_getTransactionCount'].includes(call.method) &&
           params.length === 2 &&

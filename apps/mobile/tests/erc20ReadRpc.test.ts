@@ -45,14 +45,20 @@ function result(request: Request): unknown {
 }
 function readerWith(rewrite?: (request: Request) => unknown) {
   const requests: { request: Request; init: RequestInit; url: string }[] = [];
+  let posts = 0;
   const reader = createErc20Reader({
     fetch: async (url, init) => {
-      const request = JSON.parse(String(init.body)) as Request;
-      requests.push({ request, init, url });
-      return json(request.id, rewrite ? rewrite(request) : result(request));
+      posts++;
+      const body = JSON.parse(String(init.body)) as Request | Request[];
+      const rows = Array.isArray(body) ? body : [body];
+      const responses = rows.map(request => {
+        requests.push({ request, init, url });
+        return { jsonrpc: '2.0', id: request.id, result: rewrite ? rewrite(request) : result(request) };
+      });
+      return Response.json(Array.isArray(body) ? responses : responses[0]);
     },
   });
-  return { reader, requests };
+  return { reader, requests, posts: () => posts };
 }
 test('import verifies chain first, sends only bounded read calls and uses one observed block', async () => {
   const { reader, requests } = readerWith();
@@ -312,7 +318,7 @@ test('cancellation settles ignored transport and one deadline bounds the complet
     contractAddress,
     signal.signal
   );
-  await Promise.resolve();
+  while (calls === 0) await new Promise(resolve => setImmediate(resolve));
   signal.abort();
   await assert.rejects(pending, { code: 'CANCELLED' });
   assert.equal(calls, 1);
@@ -378,8 +384,186 @@ test('ABI reads fan out to at most four calls and late successful transport afte
     contractAddress,
     controller.signal
   );
-  await Promise.resolve();
+  while (!release) await new Promise<void>(resolve => setImmediate(resolve));
   controller.abort();
   release(json(1, '0x1'));
   await assert.rejects(pending, { code: 'CANCELLED' });
+});
+
+test('twenty saved balances share one canonical envelope while preserving every precision check', async () => {
+  const { reader, requests, posts } = readerWith();
+  const tokens = Array.from({ length: 20 }, (_, index) => ({ ...metadata,
+    contractAddress: `0x${(index + 1).toString(16).padStart(40, '0')}` }));
+  const balances = await reader.readBalances!('ethereum', holder, tokens, new AbortController().signal);
+  assert.equal(balances.length, tokens.length);
+  assert(balances.every(balance => balance.status === 'available' && balance.units === ((1n << 256n) - 1n).toString()));
+  assert.equal(requests.length, 46);
+  assert.equal(posts(), 5);
+  requests.length = 0;
+  const beforeWarm = posts();
+  await reader.readBalances!('ethereum', holder, tokens, new AbortController().signal);
+  assert.equal(requests.length, 44);
+  assert.equal(posts() - beforeWarm, 3);
+  assert.equal(requests.filter(({ request }) => request.method === 'eth_chainId').length, 2);
+  assert.equal(requests.filter(({ request }) => request.method === 'eth_getBlockByNumber').length, 2);
+  assert(requests.filter(({ request }) => request.method === 'eth_call').every(({ request }) => request.params[1] === '0x123'));
+});
+
+test('saved balance groups isolate precision failures and reject a changed common anchor', async () => {
+  const second = { ...metadata, contractAddress: '0x2222222222222222222222222222222222222222' };
+  const partial = readerWith(request => request.method === 'eth_call' && request.params[0].to === second.contractAddress &&
+    request.params[0].data === '0x313ce567' ? uint(6) : result(request));
+  assert.deepEqual((await partial.reader.readBalances!('ethereum', holder, [metadata, second], new AbortController().signal)).map(value => value.status), ['available', 'error']);
+  let blocks = 0;
+  const reorg = readerWith(request => request.method === 'eth_getBlockByNumber' && ++blocks === 2 ?
+    { number: '0x123', hash: '0x' + 'b'.repeat(64) } : result(request));
+  await assert.rejects(reorg.reader.readBalances!('ethereum', holder, [metadata, second], new AbortController().signal), { code: 'INVALID_RESPONSE' });
+});
+
+test('verified Multicall3 serves twenty warm saved balances in five wire methods', async () => {
+  const { Interface } = await import('ethers/abi');
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../../../source/utils/smartAccount/deployment.ts', import.meta.url), 'utf8');
+  const creation = source.match(/const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/)![1]!;
+  const runtime = `0x${creation.slice(2 + 0x20 * 2, 2 + (0x20 + 0xee0) * 2)}`;
+  const abi = new Interface(['function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)']);
+  const requests: Request[] = [];
+  let posts = 0;
+  const reader = createErc20Reader({ fetch: async (_url, init) => {
+    posts++;
+    const body = JSON.parse(String(init.body));
+    const rows = Array.isArray(body) ? body : [body];
+    const responses = rows.map((request: Request) => {
+      requests.push(request);
+      let value = result(request);
+      if (request.method === 'eth_getCode') value = runtime;
+      if (request.method === 'eth_call' && request.params[0].data.startsWith(abi.getFunction('aggregate3')!.selector)) {
+        const calls = abi.decodeFunctionData('aggregate3', request.params[0].data)[0];
+        value = abi.encodeFunctionResult('aggregate3', [Array.from(calls, (call: { callData: string }) => ({ success: true,
+          returnData: call.callData === '0x313ce567' ? uint(18) : uint(123) }))]);
+      }
+      return { jsonrpc: '2.0', id: request.id, result: value };
+    });
+    return Response.json(Array.isArray(body) ? responses : responses[0]);
+  } });
+  const tokens = Array.from({ length: 20 }, (_, index) => ({ ...metadata, contractAddress: `0x${(index + 1).toString(16).padStart(40, '0')}` }));
+  await reader.readBalances!('ethereum', holder, tokens, new AbortController().signal);
+  requests.length = 0; posts = 0;
+  const balances = await reader.readBalances!('ethereum', holder, tokens, new AbortController().signal);
+  assert.equal(requests.length, 5);
+  assert.equal(posts, 3);
+  assert(balances.every(balance => balance.status === 'available' && balance.units === '123'));
+  requests.length = 0; posts = 0;
+  const maximum = Array.from({ length: 256 }, (_, index) => ({ ...metadata,
+    contractAddress: `0x${(index + 1).toString(16).padStart(40, '0')}` }));
+  const full = await reader.readBalances!('ethereum', holder, maximum, new AbortController().signal);
+  assert.equal(full.length, 256);
+  assert(full.every(balance => balance.status === 'available' && balance.units === '123'));
+  assert.equal(requests.length, 17);
+  assert.equal(posts, 4);
+});
+
+test('one oversized aggregate member leaves a healthy token available at the same block', async () => {
+  const { Interface } = await import('ethers/abi');
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../../../source/utils/smartAccount/deployment.ts', import.meta.url), 'utf8');
+  const creation = source.match(/const multicall3Bytecode =\s*'(0x[0-9a-f]+)'/)![1]!;
+  const runtime = `0x${creation.slice(2 + 0x20 * 2, 2 + (0x20 + 0xee0) * 2)}`;
+  const aggregate = new Interface(['function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)']);
+  const bad = { ...metadata, contractAddress: `0x${'22'.repeat(20)}` };
+  const reader = createErc20Reader({ fetch: async (_url, init) => {
+    const body = JSON.parse(String(init.body));
+    const rows = Array.isArray(body) ? body : [body];
+    const responses = rows.map((request: Request) => {
+      let value = result(request);
+      if (request.method === 'eth_getCode') value = runtime;
+      if (request.method === 'eth_call') {
+        assert.equal(request.params[1], '0x123');
+        const input = request.params[0];
+        if (input.data.startsWith(aggregate.getFunction('aggregate3')!.selector)) {
+          const calls = aggregate.decodeFunctionData('aggregate3', input.data)[0];
+          value = aggregate.encodeFunctionResult('aggregate3', [Array.from(calls, (call: { target: string; callData: string }) => ({
+            success: true, returnData: call.callData === '0x313ce567' ? uint(18)
+              : call.target.toLowerCase() === bad.contractAddress ? `0x${'00'.repeat(20 * 1024)}` : uint(5),
+          }))]);
+        } else if (input.data !== '0x313ce567') value = input.to === bad.contractAddress ? `0x${'00'.repeat(20 * 1024)}` : uint(5);
+      }
+      return { jsonrpc: '2.0', id: request.id, result: value };
+    });
+    return Response.json(Array.isArray(body) ? responses : responses[0]);
+  } });
+  const values = await reader.readBalances!('ethereum', holder, [metadata, bad], new AbortController().signal);
+  assert.deepEqual(values, [{ status: 'available', units: '5' }, { status: 'error', units: null }]);
+});
+
+test('cross-operation admission retains its four slots until response bodies finish', async () => {
+  let active = 0, maximum = 0;
+  const releases: (() => void)[] = [];
+  const reader = createErc20Reader({ timeoutMs: 1000, fetch: async (_url, init) => {
+    active++; maximum = Math.max(maximum, active);
+    const request = JSON.parse(String(init.body)) as Request;
+    return { ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }),
+      text: () => new Promise<string>(resolve => releases.push(() => {
+        active--; resolve(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: result(request) }));
+      })),
+    } as Response;
+  } });
+  const reads = Array.from({ length: 8 }, () => reader.readBalance('ethereum', holder, metadata, new AbortController().signal));
+  for (let i = 0; i < 10; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(active, 4);
+  let complete = false;
+  const finished = Promise.all(reads).then(() => { complete = true; });
+  while (!complete) {
+    releases.splice(0).forEach(release => release());
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  await finished;
+  assert.equal(maximum, 4);
+});
+
+test('invalid response headers retain slots until asynchronous body cancellation finishes', async () => {
+  let opened = 0;
+  const releases: (() => void)[] = [];
+  const controllers = Array.from({ length: 8 }, () => new AbortController());
+  const reader = createErc20Reader({ fetch: async () => {
+    opened++;
+    return { ok: true, status: 200, headers: new Headers({ 'content-type': 'text/html' }),
+      body: { cancel: () => new Promise<void>(resolve => releases.push(resolve)) },
+    } as unknown as Response;
+  } });
+  const reads = controllers.map(controller => reader.readBalance('ethereum', holder, metadata, controller.signal));
+  const settled = Promise.allSettled(reads);
+  for (let i = 0; i < 10; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(opened, 4);
+  controllers.forEach(controller => controller.abort());
+  assert((await settled).every(result => result.status === 'rejected'));
+  releases.splice(0).forEach(release => release());
+});
+
+test('stream completion retains physical capacity until reader cancellation drains', async () => {
+  let active = 0, maximum = 0;
+  const releases: (() => void)[] = [];
+  const reader = createErc20Reader({ timeoutMs: 2000, fetch: async (_url, init) => {
+    active++; maximum = Math.max(maximum, active);
+    const request = JSON.parse(String(init.body)) as Request;
+    const bytes = new TextEncoder().encode(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: result(request) }));
+    return { ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }),
+      body: { getReader() {
+        let read = false;
+        return { read: async () => read ? { done: true } : (read = true, { done: false, value: bytes }),
+          cancel: () => new Promise<void>(resolve => releases.push(() => { active--; resolve(); })), releaseLock() {} };
+      } },
+    } as unknown as Response;
+  } });
+  const work = Promise.all(Array.from({ length: 8 }, () => reader.readBalance('ethereum', holder, metadata, new AbortController().signal)));
+  for (let i = 0; i < 10; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(active, 4);
+  let complete = false;
+  const done = work.then(() => { complete = true; });
+  while (!complete) {
+    releases.splice(0).forEach(release => release());
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  await done;
+  assert.equal(maximum, 4);
 });

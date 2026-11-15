@@ -169,6 +169,11 @@ async function runFaucetScope(
   const deniedClaims: string[] = [];
   const deniedRollux: unknown[] = [];
   const rolluxReads: string[] = [];
+  const rolluxHeadReads: Array<{
+    hash: string;
+    number: string;
+    params: unknown[];
+  }> = [];
   const deniedRolluxExplorer: string[] = [];
   const rolluxExplorerReads: Array<{
     action: string;
@@ -250,7 +255,7 @@ async function runFaucetScope(
             )
               return undefined;
             const genesis = call.params[0] === '0x0';
-            result = {
+            const block = {
               number: genesis ? '0x0' : '0x1',
               hash: '0x' + (genesis ? '30' : '31').repeat(32),
               parentHash: '0x' + (genesis ? '00' : '30').repeat(32),
@@ -264,6 +269,13 @@ async function runFaucetScope(
               transactions: [],
               baseFeePerGas: '0x3b9aca00',
             };
+            result = block;
+            if (call.params[0] === 'latest' && call.params[1] === false)
+              rolluxHeadReads.push({
+                params: call.params,
+                number: block.number,
+                hash: block.hash,
+              });
             break;
           }
           default:
@@ -477,14 +489,19 @@ async function runFaucetScope(
             expect.arrayContaining([
               'eth_getBalance',
               'eth_getTransactionCount',
-              'eth_blockNumber',
               'eth_getBlockByNumber',
             ])
           );
+        expect(rolluxHeadReads).toContainEqual({
+          params: ['latest', false],
+          number: '0x1',
+          hash: '0x' + '31'.repeat(32),
+        });
         observations.rolluxHistory = {
           address,
           explorerReads: rolluxExplorerReads.slice(),
           rpcReads: rolluxReads.slice(),
+          headReads: rolluxHeadReads.slice(),
         };
         await capture(other!);
       }
@@ -901,7 +918,7 @@ async function runFaucetScope(
           expect.arrayContaining([
             'eth_getBalance',
             'eth_getTransactionCount',
-            'eth_blockNumber',
+            'eth_getBlockByNumber',
           ])
         );
         expect(rolluxExplorerReads).toEqual(
@@ -947,6 +964,7 @@ async function runFaucetScope(
             claims,
             deniedClaims,
             rolluxReads,
+            rolluxHeadReads,
             deniedRollux,
             rolluxExplorerReads,
             deniedRolluxExplorer,

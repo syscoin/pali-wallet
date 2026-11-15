@@ -1845,7 +1845,8 @@ export class EvmSignedRecords {
     session: EvmSignedRecordSession,
     owner: string,
     entries: readonly Entry[],
-    nonceFloor: number
+    nonceFloor: number,
+    authenticatedEntries: readonly Entry[]
   ): EvmAutoNonceSnapshot {
     const byHash = new Map(entries.map((entry) => [entry.hash, entry]));
     const budgets = new Map<
@@ -1889,6 +1890,24 @@ export class EvmSignedRecords {
       ),
       readMaximumCost: async (hash: string) =>
         (await readBudget(hash)).maximumCost,
+      // The admission already authenticated this complete manifest while holding
+      // its storage queue. Project from that exact snapshot without re-entering it.
+      readSmartAccountOperations: async (chainId, address) => {
+        guard(session);
+        const account = getAddress(address);
+        const operations: RetainedSmartAccountOperation[] = [];
+        for (const entry of authenticatedEntries) {
+          if (entry.chainId !== chainId) continue;
+          const materialized = await this.materialize(session, entry);
+          operations.push(
+            ...decodeRetainedSmartAccountOperations(materialized).filter(
+              (operation) => operation.account === account
+            )
+          );
+        }
+        guard(session);
+        return Object.freeze(operations);
+      },
       readAssetDebit: async (hash, input) => {
         const asset = snapshotEvmTransferAsset(input);
         const tx = (await readBudget(hash)).transaction;
@@ -1941,7 +1960,8 @@ export class EvmSignedRecords {
         (bundle?.entries ?? []).filter(
           (entry) => entry.chainId === chainId && entry.from === from
         ),
-        minimumNonce(bundle, { chainId, from })
+        minimumNonce(bundle, { chainId, from }),
+        bundle?.entries ?? []
       );
     });
   }
@@ -2439,7 +2459,8 @@ export class EvmSignedRecords {
             session,
             id,
             sender.filter((entry) => entry.hash !== hash),
-            minimumNonce(bundle, { chainId, from: address })
+            minimumNonce(bundle, { chainId, from: address }),
+            bundle?.entries ?? []
           )
         );
         guard(session);

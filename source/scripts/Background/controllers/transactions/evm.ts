@@ -29,11 +29,13 @@ const fetchExplorerApi = (url: string, options?: RequestInit) =>
 const EvmTransactionsController = (): IEvmTransactionsController => {
   const getUserTransactionByDefaultProvider = async (
     numBlocks: number,
-    web3Provider: CustomJsonRpcProvider
+    web3Provider: CustomJsonRpcProvider,
+    isCurrentRead?: () => boolean
   ) => {
     const providerUserTxs = await findUserTxsInProviderByBlocksRange(
       web3Provider,
-      numBlocks
+      numBlocks,
+      isCurrentRead
     );
 
     // Just return the raw transactions - let the caller handle processing
@@ -612,7 +614,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       if (isPolling && !isRapidPolling) {
         rawTransactions = await getUserTransactionByDefaultProvider(
           blocksToScan,
-          web3Provider
+          web3Provider,
+          isCurrentRead
         );
       }
 

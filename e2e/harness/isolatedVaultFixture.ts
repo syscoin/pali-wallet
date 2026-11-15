@@ -68,7 +68,7 @@ function emptyUtxoRead(fixture: Fixture, text: string, method: string) {
   };
 }
 
-function evmResult(method: string): unknown | undefined {
+export function isolatedVaultEvmResult(method: string): unknown | undefined {
   switch (method) {
     case 'eth_chainId':
       return '0x1644';
@@ -154,7 +154,7 @@ export async function installIsolatedVaultRoutes(
       const replies = calls.map((call) => {
         if (!call || call.jsonrpc !== '2.0' || !Array.isArray(call.params))
           return undefined;
-        const result = evmResult(call.method);
+        const result = isolatedVaultEvmResult(call.method);
         if (result === undefined) return undefined;
         return { jsonrpc: '2.0', id: call.id, result };
       });

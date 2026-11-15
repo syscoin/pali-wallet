@@ -156,7 +156,7 @@ let blockbookCatalogue: ChainInfo[];
 
 beforeEach(async () => {
   httpRules = [];
-  jest.useFakeTimers();
+  jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation();
   jest.spyOn(console, 'warn').mockImplementation();

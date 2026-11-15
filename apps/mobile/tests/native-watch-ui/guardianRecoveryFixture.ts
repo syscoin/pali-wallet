@@ -48,7 +48,16 @@ export function createGuardianRecoveryFixture(account = GUARDIAN_FIXTURE_ACCOUNT
     interrupted: () => interrupted,
     async fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response | undefined> {
       if (String(input) !== RPC || typeof init?.body !== 'string') return;
-      const { method, id, params } = JSON.parse(init.body);
+      const body = JSON.parse(init.body);
+      if (Array.isArray(body)) {
+        const responses = await Promise.all(body.map(async request => {
+          const response = await this.fetch(input, { ...init, body: JSON.stringify(request) });
+          if (!response) throw new Error('Unexpected batch fixture RPC');
+          return response.json();
+        }));
+        return Response.json(responses);
+      }
+      const { method, id, params } = body;
       if (method === 'eth_getBalance') return;
       if (init.credentials !== 'omit' || init.redirect !== 'error' || init.method !== 'POST' || !init.signal)
         throw new Error('Unowned fixture RPC');

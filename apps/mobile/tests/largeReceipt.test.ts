@@ -59,6 +59,7 @@ function fixture(
           if (options.kind === 'text')
             return {
               ok: true,
+              status: 200,
               headers: new Headers({ 'content-type': 'application/json' }),
               body: null,
               text: async () => text,
@@ -97,7 +98,7 @@ for (const stage of ['initial', 'repeated'] as const) for (const kind of ['strea
     const f = fixture({ stage, kind, consumed });
     if (stage === 'repeated') assert.deepEqual(await f.rpc.receipt(expected, new AbortController().signal), { status: 'confirmed', blockHash, blockNumber: '8' });
     const before = f.calls.length;
-    await assert.rejects(f.rpc.receipt(expected, new AbortController().signal), { code: 'UNAVAILABLE' });
+    await assert.rejects(f.rpc.receipt(expected, new AbortController().signal), { code: 'INVALID_RESPONSE' });
     assert.deepEqual(f.calls.slice(before).map(c => c.method), ['eth_chainId', 'eth_getTransactionReceipt']);
     assert(!f.calls.some(c => c.method === 'eth_sendRawTransaction' || c.params.includes('finalized')));
   });
@@ -171,6 +172,6 @@ test('ordinary receipt failures cannot become nonce-used evidence', async () => 
 
 test('opaque oversized bodies establish no receipt or nonce-used outcome', async () => {
   const f = fixture({ receiptResponse: () => jsonBody('x'.repeat(1024 * 1024 + 1)) });
-  await assert.rejects(f.rpc.receipt(expected, new AbortController().signal), { code: 'UNAVAILABLE' });
+  await assert.rejects(f.rpc.receipt(expected, new AbortController().signal), { code: 'INVALID_RESPONSE' });
   assert(!f.calls.some(c => c.method === 'eth_getTransactionCount'));
 });
