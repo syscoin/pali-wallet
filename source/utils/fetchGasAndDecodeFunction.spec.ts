@@ -661,6 +661,44 @@ describe('dapp transaction fee preparation', () => {
     expect(result.formTx.gasPrice).toBe('1500000000');
   });
 
+  it.each([false, true])(
+    'skips the EOA nonce plan for a smart-account dapp review while retaining direct simulation (account type=%s)',
+    async (byAccountType) => {
+      if (byAccountType) {
+        state.vault.accounts.SmartAccount = {
+          0: { ...state.vault.accounts.HDAccount[0] },
+        };
+        state.vault.activeAccount.type = KeyringAccountType.SmartAccount;
+      } else {
+        state.vault.accounts.HDAccount[0].isSmartAccount = true;
+      }
+      const data = '0xa9059cbb';
+      const result = await prepare({ data, gas: 70000 });
+      expect(callsFor('wallet.getRecommendedEvmNonce')).toHaveLength(0);
+      expect(result.nonce).toBeUndefined();
+      expect(result.formTx).not.toHaveProperty('nonce');
+      expect(rpcCalls('eth_call')[0][1]).toEqual([
+        'eth_call',
+        [{ from: FROM, to: TO, data, value: '0x0' }, 'latest'],
+      ]);
+      expect(rpcCalls('eth_estimateGas')).toHaveLength(1);
+      expect(rpcCalls('eth_estimateGas')[0][1][1][0]).toEqual({
+        from: FROM,
+        to: TO,
+        data,
+        value: '0x0',
+      });
+      expect(result.formTx.gasLimit.toString()).toBe('70000');
+      expect(result.feeDetails.smartAccountFeeQuote).toBeDefined();
+      expect(result.feeSafety).toEqual({
+        gasLimit: undefined,
+        gasPrice: undefined,
+        maxFeePerGas: undefined,
+        maxPriorityFeePerGas: undefined,
+      });
+    }
+  );
+
   it('keeps gas estimation fee-neutral when zkSYS rejects a fee-inflated omitted-gas affordability ceiling', async () => {
     const execute = emitterMock.getMockImplementation()!;
     estimatedGas = 21000;

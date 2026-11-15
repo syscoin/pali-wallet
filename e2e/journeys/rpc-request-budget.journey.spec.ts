@@ -29,10 +29,17 @@ import { startUtxoFixtureServer } from '../harness/utxoFixture';
 // are disposable loopback fixtures. The launch proxy blocks other RPC traffic.
 // PALI_RPC_EXTENDED=1 adds ERC20/ERC721 and dapp approvals.
 // PALI_RPC_NO_MULTICALL=1 and PALI_RPC_REJECT_BATCH=1 qualify fallback readers.
-// The ordinary configuration caps warm-send work at 30 logical RPC methods.
+// The ordinary configuration caps warm-send work at 33 methods in 22 HTTP requests.
 // PALI_RPC_REFERENCE=1 disables this cap for historical-artifact comparisons.
 test('RPC budget and receipts for local wallet transfers', async () => {
   test.setTimeout(240000);
+  const responseDelayMs = Number(process.env.PALI_RPC_RESPONSE_DELAY_MS || 0);
+  if (
+    !Number.isSafeInteger(responseDelayMs) ||
+    responseDelayMs < 0 ||
+    responseDelayMs > 500
+  )
+    throw new Error('Invalid RPC response delay');
   const old = { ...E2E_CONFIG };
   const chain = LOCAL_CHAINS[0];
   const stop = await startLocalChains();
@@ -46,6 +53,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
     broadcasts: [],
     setup: [],
     diagnostics: [],
+    responseDelayMs,
   };
   let wallet: PaliWallet | undefined;
   const originalLaunch = chromium.launchPersistentContext;
@@ -151,6 +159,8 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         url.pathname === '/'
       ) {
         const raw = request.postDataJSON();
+        if (responseDelayMs)
+          await new Promise((resolve) => setTimeout(resolve, responseDelayMs));
         if (Array.isArray(raw) && process.env.PALI_RPC_REJECT_BATCH === '1') {
           return route.fulfill({
             status: 200,
@@ -719,31 +729,67 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           );
           const limits: Record<string, readonly [number, number]> = fallback
             ? {
-                deployment: [56, 52],
-                warm: [45, 41],
-                erc20: [70, 66],
-                erc721: [74, 70],
-                'dapp-native': [45, 41],
-                'dapp-erc20': [69, 65],
-                'dapp-erc721': [74, 70],
+                deployment: [50, 46],
+                warm: [39, 35],
+                erc20: [63, 59],
+                erc721: [68, 64],
+                'dapp-native': [39, 35],
+                'dapp-erc20': [63, 59],
+                'dapp-erc721': [68, 64],
                 'eoa-native': [24, 22],
                 'eoa-erc20': [30, 28],
                 'eoa-dapp-native': [30, 25],
                 'eoa-dapp-erc20': [30, 25],
               }
             : {
-                deployment: [40, 35],
-                warm: [30, 25],
-                erc20: [54, 45],
-                erc721: [59, 53],
-                'dapp-native': [30, 25],
-                'dapp-erc20': [54, 45],
-                'dapp-erc721': [59, 53],
+                deployment: [43, 30],
+                warm: [33, 22],
+                erc20: [57, 42],
+                erc721: [62, 50],
+                'dapp-native': [33, 22],
+                'dapp-erc20': [57, 42],
+                'dapp-erc721': [62, 50],
                 'eoa-native': [20, 16],
                 'eoa-erc20': [26, 23],
                 'eoa-dapp-native': [22, 17],
                 'eoa-dapp-erc20': [22, 17],
               };
+          const reviewLimits: Record<string, readonly [number, number]> =
+            fallback
+              ? {
+                  deployment: [16, 16],
+                  warm: [40, 30],
+                  erc20: [44, 34],
+                  erc721: [45, 35],
+                  'dapp-native': [54, 44],
+                  'dapp-erc20': [60, 50],
+                  'dapp-erc721': [58, 48],
+                  'eoa-native': [16, 16],
+                  'eoa-erc20': [16, 16],
+                  'eoa-dapp-native': [38, 34],
+                  'eoa-dapp-erc20': [49, 45],
+                }
+              : {
+                  deployment: [16, 14],
+                  warm: [28, 16],
+                  erc20: [34, 21],
+                  erc721: [34, 22],
+                  'dapp-native': [42, 30],
+                  'dapp-erc20': [48, 35],
+                  'dapp-erc721': [48, 35],
+                  'eoa-native': [16, 14],
+                  'eoa-erc20': [16, 14],
+                  'eoa-dapp-native': [32, 28],
+                  'eoa-dapp-erc20': [42, 38],
+                };
+          const formLimits: Record<string, readonly [number, number]> = {
+            deployment: [16, 8],
+            warm: [12, 8],
+            erc20: [20, 20],
+            erc721: [20, 20],
+            'eoa-native': [16, 16],
+            'eoa-erc20': [20, 20],
+          };
           const labels =
             process.env.PALI_RPC_EXTENDED === '1'
               ? Object.keys(limits)
@@ -766,8 +812,8 @@ test('RPC budget and receipts for local wallet transfers', async () => {
                 stage === 'confirm'
                   ? limits[label]!
                   : stage === 'form'
-                  ? [40, 40]
-                  : [96, 80];
+                  ? formLimits[label]!
+                  : reviewLimits[label]!;
               expect(
                 rows.reduce(
                   (total: number, row: any) => total + row.methods.length,
@@ -785,14 +831,14 @@ test('RPC budget and receipts for local wallet transfers', async () => {
                   0
                 ),
                 phaseName + ' request bytes'
-              ).toBeLessThanOrEqual(128 * 1024);
+              ).toBeLessThanOrEqual(32 * 1024);
               expect(
                 rows.reduce(
                   (total: number, row: any) => total + row.responseBytes,
                   0
                 ),
                 phaseName + ' response bytes'
-              ).toBeLessThanOrEqual(512 * 1024);
+              ).toBeLessThanOrEqual((stage === 'confirm' ? 128 : 256) * 1024);
             }
           }
         }
@@ -825,10 +871,10 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           end: row.finished ?? row.started,
         }))
         .sort((left: any, right: any) => left.start - right.start);
-      let sequentialStages = 0;
+      let requestGroups = 0;
       let stageEnd = -Infinity;
       for (const interval of intervals) {
-        if (interval.start > stageEnd) sequentialStages++;
+        if (interval.start > stageEnd) requestGroups++;
         stageEnd = Math.max(stageEnd, interval.end);
       }
       const counts = (items: any[]) => ({
@@ -842,7 +888,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
       });
       return {
         name,
-        sequentialStages,
+        requestGroups,
         durationMs: intervals.length
           ? Math.max(...intervals.map((item: any) => item.end)) -
             intervals[0].start

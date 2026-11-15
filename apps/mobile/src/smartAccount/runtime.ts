@@ -14,6 +14,7 @@ import {
   normalizeDappCallsRequest,
 } from '../../../../source/shared/dappCalls.ts';
 import type { SmartAccountPendingRecords } from '../../../../source/wallet/evmSignedRecords.ts';
+import type { EvmAutoNonceSnapshot } from '../../../../source/shared/evmAutoNonce.ts';
 import type { SmartAccountActivityIdentity } from '../../../../source/wallet/smartAccountActivity.ts';
 import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer.ts';
 import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
@@ -69,8 +70,13 @@ import {
   type PreparedSmartAccountOperation,
 } from './operation.ts';
 import { createNativeSmartAccountProvider } from './provider.ts';
+import { createSmartAccountInfrastructureReader, SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES,
+  assertSmartAccountInfrastructureReady } from '../../../../source/utils/smartAccount/infrastructureObservation.ts';
+
+const infrastructureReaders = new WeakMap<SmartAccountPayerWallet, ReturnType<typeof createSmartAccountInfrastructureReader>>();
 
 type Response = { hash: string; wait(): Promise<unknown> };
+export type NativeSmartPayerAdmission = (provider: unknown, currentSignedHash: string, admission: EvmAutoNonceSnapshot) => Promise<void>;
 export type NativeSmartOperationPorts = Readonly<{
   intent: NativeSmartAccountIntent;
   pendingRecords: SmartAccountPendingRecords;
@@ -104,7 +110,8 @@ export type NativeSmartOperationPorts = Readonly<{
     guard: () => void,
     metadata: Readonly<Record<string, unknown>>,
     funding: EvmFeeFunding,
-    assertAssetState: (() => Promise<void>) | null
+    assertAssetState: (() => Promise<void>) | null,
+    assertFinalAdmission?: NativeSmartPayerAdmission
   ): Promise<NativePreparedConnectionTransaction>;
   waitForReceipt(
     hash: string,
@@ -132,6 +139,8 @@ export function createNativeSmartOperation(
   if (!Object.hasOwn(ports, 'slhDsa') || (ports.slhDsa !== null && typeof ports.slhDsa !== 'function'))
     throw new TypeError('Explicit native SLH signing capability is required');
   const account = ports.account;
+  const readInfrastructureCodes = infrastructureReaders.get(ports.wallet) ?? createSmartAccountInfrastructureReader();
+  infrastructureReaders.set(ports.wallet, readInfrastructureCodes);
   let metadata = account.smartAccount;
   const selectedFees = ports.intent.feeChoice === undefined ? undefined : snapshotEvmFeeChoice(ports.intent.feeChoice);
   if (selectedFees && (selectedFees.kind !== 'custom' || selectedFees.gasLimit !== undefined))
@@ -263,17 +272,18 @@ export function createNativeSmartOperation(
             assertCurrent
           );
         }
-        const { SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES, projectSmartAccountInfrastructureObservation,
-          assertSmartAccountInfrastructureReady } = await import('../../../../source/utils/smartAccount/infrastructureObservation.ts');
-        const codeResults = await provider.readMany(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => ({
-          method: 'eth_getCode', params: [address, 'latest'],
-        })));
-        const codes = codeResults.map((result: PromiseSettledResult<unknown>) => {
-          if (result.status === 'rejected') throw result.reason;
-          return result.value;
+        const infrastructure = await readInfrastructureCodes({
+          chainId, url: ports.network.rpcUrl, provider, assertCurrent,
+          readCodes: async blockTag => {
+            const codeResults = await provider.readMany(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => ({
+              method: 'eth_getCode', params: [address, blockTag],
+            })));
+            return codeResults.map((result: PromiseSettledResult<unknown>) => {
+              if (result.status === 'rejected') throw result.reason;
+              return result.value;
+            });
+          },
         });
-        const infrastructure = projectSmartAccountInfrastructureObservation(chainId, codes);
-        if (!infrastructure) throw new Error('Invalid smart account infrastructure response');
         assertSmartAccountInfrastructureReady(infrastructure);
         const state = deploymentState ?? await readSmartAccountDeploymentState({
           account,
@@ -518,7 +528,7 @@ export function createNativeSmartOperation(
           !options ||
           typeof options.assertBeforeSign !== 'function' ||
           typeof options.assertCurrentContext !== 'function' ||
-          (transactionMetadata?.smartAccountExecution === true &&
+          ((transactionMetadata?.smartAccountExecution === true || transactionMetadata?.smartAccountDeploymentPrefund === true) &&
             (typeof options.assertPendingState !== 'function' || typeof options.assertAssetState !== 'function')) ||
           !options.feeFunding
         )
@@ -556,7 +566,10 @@ export function createNativeSmartOperation(
             smartAccountOperationHash: prepared.actionHash,
           },
           options.feeFunding,
-          transactionMetadata?.smartAccountExecution === true ? options.assertAssetState : null
+          transactionMetadata?.smartAccountExecution === true ? options.assertAssetState : null,
+          transactionMetadata?.smartAccountDeploymentPrefund === true
+            ? (provider, hash, admission) => options.assertPendingState(provider, hash, admission)
+            : undefined
         );
         guard();
         await reviewPayer(
@@ -571,7 +584,7 @@ export function createNativeSmartOperation(
           },
           guard
         );
-        if (transactionMetadata?.smartAccountExecution === true)
+        if (transactionMetadata?.smartAccountExecution === true || transactionMetadata?.smartAccountDeploymentPrefund === true)
           await options.assertPendingState();
         else await pending.assertNonce(prepared.userOperation);
         if (intent.kind === 'guardian-policy')

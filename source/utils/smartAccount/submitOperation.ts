@@ -69,6 +69,14 @@ type SmartAccountRecord = {
   account: IKeyringAccountState;
   metadata: ISmartAccountMetadata;
 };
+export type SmartAccountSubmissionChecks = {
+  assertAssetState(provider?: any): Promise<void>;
+  assertPendingState(
+    provider?: any,
+    currentSignedHash?: string,
+    admission?: EvmAutoNonceSnapshot
+  ): Promise<void>;
+};
 export type SmartAccountSubmitHost<
   TResponse extends { hash: string; wait(): Promise<unknown> }
 > = {
@@ -85,7 +93,7 @@ export type SmartAccountSubmitHost<
     entryPoint: string,
     payer: SmartAccountGasPayer,
     chainId: number,
-    options: {
+    options: SmartAccountSubmissionChecks & {
       assertBeforeSign: () => void;
       assertCurrentContext(): void;
       onAcknowledged(): void;
@@ -262,6 +270,30 @@ async function submitOwnedSmartAccountOperation<
       ...params.userOperation,
       signature: params.signature,
     };
+    const submissionChecks: SmartAccountSubmissionChecks = {
+      async assertPendingState(provider, currentSignedHash, admission) {
+        const phase = provider
+          ? host.pending.onProvider(provider, currentSignedHash, admission)
+          : host.pending;
+        await phase.assertNonce(signedUserOperation);
+        await assertSmartAccountSpendability({
+          provider: phase.provider,
+          chainId: active.metadata.chainId,
+          userOperation: signedUserOperation,
+          assertCurrent,
+        });
+        assertCurrent();
+      },
+      assertAssetState: (provider) =>
+        assertSmartAccountAssetSpendability({
+          provider: provider
+            ? host.pending.onProvider(provider).provider
+            : host.provider,
+          chainId: active.metadata.chainId,
+          userOperation: signedUserOperation,
+          assertCurrent,
+        }),
+    };
     assertCurrent();
     const callData = entryPoint.interface.encodeFunctionData('handleOps', [
       [signedUserOperation],
@@ -316,6 +348,7 @@ async function submitOwnedSmartAccountOperation<
         gasPayer,
         active.metadata.chainId,
         {
+          ...submissionChecks,
           assertBeforeSign: assertCurrent,
           assertCurrentContext: assertContext,
           onSubmissionAttempt() {
@@ -408,32 +441,7 @@ async function submitOwnedSmartAccountOperation<
           : NATIVE_EVM_FEE_FUNDING,
         assertBeforeSign: assertCurrent,
         assertCurrentContext: assertContext,
-        async assertPendingState(
-          provider?: any,
-          currentSignedHash?: string,
-          admission?: EvmAutoNonceSnapshot
-        ) {
-          const phase = provider
-            ? host.pending.onProvider(provider, currentSignedHash, admission)
-            : host.pending;
-          await phase.assertNonce(params.userOperation);
-          await assertSmartAccountSpendability({
-            provider: phase.provider,
-            chainId: active.metadata.chainId,
-            userOperation: signedUserOperation,
-            assertCurrent,
-          });
-          assertCurrent();
-        },
-        assertAssetState: (provider?: any) =>
-          assertSmartAccountAssetSpendability({
-            provider: provider
-              ? host.pending.onProvider(provider).provider
-              : host.provider,
-            chainId: active.metadata.chainId,
-            userOperation: signedUserOperation,
-            assertCurrent,
-          }),
+        ...submissionChecks,
         clearNavigation: true,
         async onBroadcast(broadcast: { hash: string }) {
           acknowledgedHandleOpsHash = broadcast.hash;

@@ -19,6 +19,7 @@ import type {
 import { cancelResponseBody, parseRpcQuantity } from '../platformRpc.ts';
 import {
   JsonRpcReadClient,
+  RpcReadCapabilities,
   RpcReadError,
 } from '@sidhujag/sysweb3-keyring/cjs/rpc-read-client.js';
 
@@ -198,6 +199,7 @@ function createReadOperation(options: ReadOptions) {
   const timeoutMs = options.timeoutMs ?? 12_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000)
     throw new Error('Invalid RPC timeout');
+  const capabilities = new Map<string, RpcReadCapabilities>();
   let active = 0;
   const waiting: { admit(): void; cancel(): void }[] = [];
   const acquire = (signal: AbortSignal) =>
@@ -314,7 +316,15 @@ function createReadOperation(options: ReadOptions) {
         check(controller.signal);
       }
     };
+    const capabilityKey = `${network.registrationHash}:${network.rpcUrl}`;
+    let capability = capabilities.get(capabilityKey);
+    if (!capability) {
+      capability = new RpcReadCapabilities(network.rpcUrl);
+      capabilities.set(capabilityKey, capability);
+      if (capabilities.size > 16) capabilities.delete(capabilities.keys().next().value!);
+    }
     const batch = new JsonRpcReadClient(network.rpcUrl, {
+      capabilities: capability,
       signal: controller.signal,
       timeoutMs,
       recoverResponse: false,
@@ -599,23 +609,20 @@ export function createErc20Reader(options: ReadOptions = {}): Erc20Reader {
         address,
         signal,
         async (read, block, holder) => {
-          const [decimals, units] = await Promise.all([
-            call(
-              read,
-              selected.contractAddress,
-              SELECTORS.decimals,
-              block
-            ).then(decimalsResult),
-            call(
-              read,
-              selected.contractAddress,
-              balanceData(holder),
-              block
-            ).then(unitsResult),
+          const [precision, balance] = await read.many([
+            { method: 'eth_call', params: [{ to: selected.contractAddress, data: SELECTORS.decimals }, block] },
+            { method: 'eth_call', params: [{ to: selected.contractAddress, data: balanceData(holder) }, block] },
           ]);
+          if (!precision || !balance) return fail('INVALID_RESPONSE');
+          if (precision.status === 'rejected') throw precision.reason;
+          if (balance.status === 'rejected') throw balance.reason;
+          const decimals = decimalsResult(precision.value);
+          const units = unitsResult(balance.value);
           if (decimals !== selected.decimals) return fail('CHANGED_PRECISION');
           return Object.freeze({ units });
-        }
+        },
+        undefined,
+        true
       );
     },
   });

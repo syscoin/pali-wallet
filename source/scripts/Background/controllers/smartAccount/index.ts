@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { captureSmartAccountCallsIdentity } from '../../../../shared/dappCallsStatus.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../shared/evmFeeGuard';
+import { readFreshEvmState } from '../../../../shared/evmReadPhase';
 import { createSmartAccountRawSigningIntent } from '../../../../utils/smartAccount/ownerSigningIntent.ts';
 import { buildSmartAccountUserOpSigningIntent } from '../../../../utils/smartAccount/userOperationHash.ts';
 import {
@@ -123,6 +124,7 @@ import {
 } from 'utils/smartAccount/infrastructureActions';
 import {
   assertSmartAccountInfrastructureReady,
+  createSmartAccountInfrastructureReader,
   projectSmartAccountInfrastructureObservation,
   SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES,
   type SmartAccountInfrastructureObservation,
@@ -154,6 +156,7 @@ import {
 import { signSmartAccountEcdsaOperation } from 'utils/smartAccount/signOperation';
 import {
   submitSmartAccountOperation,
+  type SmartAccountSubmissionChecks,
   type SmartAccountSubmitParams,
 } from 'utils/smartAccount/submitOperation';
 import { assertSmartAccountTargetsAllowed } from 'utils/smartAccount/targetPolicy';
@@ -299,6 +302,8 @@ const randomBytes32Hex = () => {
 };
 
 class SmartAccountController {
+  private readonly readInfrastructureCodes =
+    createSmartAccountInfrastructureReader();
   private readonly guardianRecoverySubmissions = new Map<string, AsyncMutex>();
   private readonly executionContexts = new Map<
     string,
@@ -313,14 +318,6 @@ class SmartAccountController {
       purpose: 'user-operation' | 'recovery-digest';
       snapshot: ReturnType<SmartAccountController['infrastructureContext']>;
       userOperation?: SmartAccountPackedUserOperation;
-    }
-  >();
-  private readonly infrastructureStatusCache = new Map<
-    string,
-    {
-      context: ReturnType<SmartAccountController['infrastructureContext']>;
-      status: SmartAccountInfrastructureStatus;
-      timestamp: number;
     }
   >();
   private readonly infrastructureDeployments = new Map<
@@ -634,7 +631,8 @@ class SmartAccountController {
 
   private async readInfrastructureStatus(
     context: ReturnType<SmartAccountController['infrastructureContext']>,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    forceRefresh = false
   ): Promise<SmartAccountInfrastructureStatus> {
     const deadline = Date.now() + 18000;
     const withinDeadline = <T>(
@@ -663,36 +661,53 @@ class SmartAccountController {
       readInfrastructureJournal(context, assertCurrent)
     );
     const addresses = SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES;
-    let status: SmartAccountInfrastructureStatus | undefined;
-    try {
-      const batched = await withinDeadline(
-        () =>
-          context.provider.sendBatch(
-            'eth_getCode',
-            addresses.map((address) => [address, 'latest'])
-          ),
-        1800
-      );
-      status = projectSmartAccountInfrastructureObservation(
-        context.chainId,
-        batched
-      );
-    } catch {
-      // A failed batch can still be checked through individual reads.
-      assertCurrent();
-    }
-    if (!status) {
-      const individual = await withinDeadline(() =>
-        Promise.all(
-          addresses.map((address) => context.provider.getCode(address))
-        )
-      );
-      status = projectSmartAccountInfrastructureObservation(
-        context.chainId,
-        individual
-      );
-      if (!status) throw new Error(INFRASTRUCTURE_CODE_ERROR);
-    }
+    const status: SmartAccountInfrastructureStatus =
+      await this.readInfrastructureCodes({
+        chainId: context.chainId,
+        url: context.url,
+        provider: {
+          send: (method, params) =>
+            withinDeadline(() => context.provider.send(method, params)),
+          sendFresh: (method, params) =>
+            withinDeadline(() =>
+              readFreshEvmState(context.provider, method, params)
+            ),
+          verifyConfiguredChainId: () =>
+            withinDeadline(() =>
+              context.provider.verifyConfiguredChainId(true)
+            ),
+        },
+        assertCurrent,
+        forceRefresh,
+        readCodes: async (blockTag) => {
+          try {
+            const batched = await withinDeadline(
+              () =>
+                context.provider.sendBatch(
+                  'eth_getCode',
+                  addresses.map((address) => [address, blockTag])
+                ),
+              1800
+            );
+            if (
+              projectSmartAccountInfrastructureObservation(
+                context.chainId,
+                batched
+              )
+            )
+              return batched;
+          } catch {
+            assertCurrent();
+          }
+          return withinDeadline(() =>
+            Promise.all(
+              addresses.map((address) =>
+                context.provider.getCode(address, blockTag)
+              )
+            )
+          );
+        },
+      });
     if (
       journal &&
       !status.contracts.some((contract) => contract.id === journal.contractId)
@@ -769,11 +784,6 @@ class SmartAccountController {
       pending = latestPending;
     if (pending) status.pending = pending;
     assertCurrent();
-    this.infrastructureStatusCache.set(context.key, {
-      context,
-      timestamp: Date.now(),
-      status,
-    });
     return status;
   }
 
@@ -792,17 +802,7 @@ class SmartAccountController {
     assertCurrent: () => void
   ): Promise<SmartAccountInfrastructureStatus> {
     assertCurrent();
-    const cached = this.infrastructureStatusCache.get(context.key);
-    if (
-      !forceRefresh &&
-      cached &&
-      this.sameInfrastructureContext(cached.context, context) &&
-      Date.now() - cached.timestamp < 5000 &&
-      !cached.status.pending &&
-      !this.pendingInfrastructure.has(context.chainId)
-    )
-      return cached.status;
-    return this.readInfrastructureStatus(context, assertCurrent);
+    return this.readInfrastructureStatus(context, assertCurrent, forceRefresh);
   }
 
   public deploySmartAccountInfrastructure(): Promise<InfrastructureDeploymentResult> {
@@ -823,7 +823,6 @@ class SmartAccountController {
           operation
         )
           this.infrastructureDeployments.delete(context.chainId);
-        this.infrastructureStatusCache.delete(context.key);
       }
     );
     this.infrastructureDeployments.set(context.chainId, {
@@ -849,228 +848,211 @@ class SmartAccountController {
     if (!context.address)
       throw new Error('Deployment gas payer is unavailable');
     let nextNonce = 0;
-    try {
-      for (const contract of getPaliInfrastructureContracts(context.chainId)) {
-        this.assertInfrastructureContext(context);
-        const code = await this.infrastructureDeadline(
-          context.provider.send('eth_getCode', [contract.address, 'latest'])
-        );
-        this.assertInfrastructureContext(context);
-        if (typeof code !== 'string' || !/^0x(?:[0-9a-fA-F]{2})*$/.test(code))
-          throw new Error(INFRASTRUCTURE_CODE_ERROR);
-        if (code !== '0x') {
-          skipped.push(contract.id);
-          continue;
-        }
-        if (contract.externallyDeployed || !contract.deployCalldata)
-          throw new Error(
-            `${contract.displayName} must be deployed by the zkSYS launch flow before Pali smart account infrastructure can be deployed.`
-          );
-        const pendingNonce = await this.infrastructureDeadline(
-          context.provider.send('eth_getTransactionCount', [
-            context.address,
-            'pending',
-          ])
-        );
-        this.assertInfrastructureContext(context);
-        if (
-          typeof pendingNonce !== 'string' ||
-          !/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(pendingNonce)
-        )
-          throw new Error(DEPLOYMENT_NONCE_ERROR);
-        const parsedNonce = Number(pendingNonce);
-        if (!Number.isSafeInteger(parsedNonce) || parsedNonce < 0)
-          throw new Error(DEPLOYMENT_NONCE_ERROR);
-        const nonce = Math.max(nextNonce, parsedNonce);
-        const command = buildInfrastructureDeploymentCommand({
-          contract,
-          chainId: context.chainId,
-          from: context.address,
-          nonce,
-        });
-        const reservation: InfrastructurePending = {
-          contractId: contract.id,
-          attemptId: randomBytes32Hex(),
-          payerAddress: context.address,
-          rpcUrl: context.url,
-          // Hardware paths currently choose their own nonce. Trust theirs only
-          // once an acknowledged response supplies it.
-          nonce: [
-            PaliKeyringAccountType.HDAccount,
-            PaliKeyringAccountType.Imported,
-          ].includes(context.account.type)
-            ? nonce
-            : undefined,
-        };
-        const reservationWrite = writeInfrastructureJournal(
-          context,
-          reservation
-        );
-        try {
-          await this.infrastructureDeadline(reservationWrite);
-        } catch (error) {
-          // No sender has been invoked. Storage may finish after its deadline;
-          // release only this unsent attempt once the write actually settles.
-          const clearUnsentAttempt = () =>
-            clearInfrastructureJournal(context, reservation, null);
-          void reservationWrite
-            .then(clearUnsentAttempt, clearUnsentAttempt)
-            .catch(() => undefined);
-          throw error;
-        }
-        this.pendingInfrastructure.set(context.chainId, reservation);
-        this.infrastructureStatusCache.delete(context.key);
-        let response: IEvmTransactionResponse;
-        try {
-          this.assertInfrastructureContext(context);
-          response = await this.deps.sendAndSaveEthTransaction(
-            command,
-            false,
-            context.account,
-            {
-              smartAccountInfrastructureDeployment: true,
-              smartAccountInfrastructureId: contract.id,
-              smartAccountInfrastructureRpcUrl: context.url,
-            },
-            {
-              clearNavigation: false,
-              persist: true,
-              assertBeforeSign: () => this.assertInfrastructureContext(context),
-              assertCurrentContext: () =>
-                this.assertInfrastructureContext(context),
-              onBroadcast: async (broadcast) => {
-                const pending = {
-                  ...reservation,
-                  transactionHash: broadcast.hash,
-                  nonce:
-                    Number.isSafeInteger(broadcast.nonce) &&
-                    broadcast.nonce >= 0
-                      ? broadcast.nonce
-                      : reservation.nonce,
-                };
-                this.pendingInfrastructure.set(context.chainId, pending);
-                this.infrastructureStatusCache.delete(context.key);
-                await this.infrastructureDeadline(
-                  writeInfrastructureJournal(context, pending)
-                );
-              },
-            }
-          );
-        } catch (error) {
-          const hash = (error as any)?.transactionHash;
-          if (hash) {
-            const acknowledged = this.pendingInfrastructure.get(
-              context.chainId
-            );
-            const pending = {
-              ...reservation,
-              ...(infrastructurePendingIdentity(acknowledged) ===
-              reservation.attemptId
-                ? acknowledged
-                : {}),
-              transactionHash: hash,
-            };
-            const acknowledgedNonce = (error as any)?.transactionNonce;
-            if (
-              Number.isSafeInteger(acknowledgedNonce) &&
-              acknowledgedNonce >= 0
-            )
-              pending.nonce = acknowledgedNonce;
-            this.pendingInfrastructure.set(context.chainId, pending);
-            this.infrastructureStatusCache.delete(context.key);
-            // The broadcast callback may have failed its first storage write.
-            // Retry this same acknowledged attempt before reporting the error;
-            // permanent storage failure keeps the existing reservation closed.
-            await this.infrastructureDeadline(
-              writeInfrastructureJournal(context, pending)
-            ).catch(() => undefined);
-          }
-          // Definite pre-broadcast rejection is safe to release. Ambiguous
-          // transport failures retain the reservation across worker restarts.
-          const transactionNotBroadcast = (error as any)
-            ?.transactionNotBroadcast;
-          if (
-            !hash &&
-            (transactionNotBroadcast === true ||
-              (transactionNotBroadcast === undefined &&
-                ((error as any)?.code === 'ACTION_REJECTED' ||
-                  (error as any)?.code === 4001 ||
-                  // Keyring hardware signers use this error only when signing
-                  // fails, before their provider.sendTransaction call.
-                  ([
-                    PaliKeyringAccountType.Trezor,
-                    PaliKeyringAccountType.Ledger,
-                  ].includes(context.account.type) &&
-                    /^Transaction Signature Failed\. Error: /.test(
-                      (error as Error)?.message || ''
-                    )) ||
-                  /insufficient funds|user rejected|user denied|denied transaction|rejected by user|wallet context changed|transaction blocked|target account .*not found/i.test(
-                    (error as Error)?.message || ''
-                  ))))
-          ) {
-            const releaseRejectedAttempt = clearInfrastructureJournal(
-              context,
-              reservation,
-              null
-            ).then(() => {
-              // A successful clear may arrive after its deadline. Settle the
-              // same unsent in-memory attempt then, without touching a retry.
-              if (
-                infrastructurePendingIdentity(
-                  this.pendingInfrastructure.get(context.chainId)
-                ) === reservation.attemptId
-              )
-                this.pendingInfrastructure.delete(context.chainId);
-            });
-            await this.infrastructureDeadline(releaseRejectedAttempt);
-          }
-          throw error;
-        }
-        const pending = {
-          ...reservation,
-          transactionHash: response.hash,
-          nonce:
-            Number.isSafeInteger(response.nonce) && response.nonce >= 0
-              ? response.nonce
-              : reservation.nonce,
-        };
-        this.pendingInfrastructure.set(context.chainId, pending);
-        nextNonce = nonce + 1;
-        const deadline = Date.now() + 15000;
-        let receipt: any;
-        do {
-          receipt = await this.infrastructureDeadline(
-            context.provider.getTransactionReceipt(response.hash),
-            Math.max(1, Math.min(1800, deadline - Date.now()))
-          ).catch(() => null);
-          if (receipt && !validInfrastructureReceipt(receipt, response.hash))
-            throw new Error(DEPLOYMENT_RECEIPT_ERROR);
-          if (receipt) break;
-          if (Date.now() >= deadline) return { deployed, skipped, pending };
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        } while (true);
-        await this.infrastructureDeadline(
-          clearInfrastructureJournal(context, pending, null)
-        );
-        if (
-          infrastructurePendingIdentity(
-            this.pendingInfrastructure.get(context.chainId)
-          ) === infrastructurePendingIdentity(pending)
-        )
-          this.pendingInfrastructure.delete(context.chainId);
-        if (Number(receipt.status) !== 1)
-          throw new Error(
-            `${contract.displayName} deployment failed. Refresh status before retrying.`
-          );
-        deployed.push(contract.id);
-        if (contract.id === 'multicall3')
-          clearMulticall3AddressCache(context.chainId);
+    for (const contract of getPaliInfrastructureContracts(context.chainId)) {
+      this.assertInfrastructureContext(context);
+      const code = await this.infrastructureDeadline(
+        context.provider.send('eth_getCode', [contract.address, 'latest'])
+      );
+      this.assertInfrastructureContext(context);
+      if (typeof code !== 'string' || !/^0x(?:[0-9a-fA-F]{2})*$/.test(code))
+        throw new Error(INFRASTRUCTURE_CODE_ERROR);
+      if (code !== '0x') {
+        skipped.push(contract.id);
+        continue;
       }
-      await this.readInfrastructureStatus(context, assertCurrent);
-      return { deployed, skipped };
-    } finally {
-      this.infrastructureStatusCache.delete(context.key);
+      if (contract.externallyDeployed || !contract.deployCalldata)
+        throw new Error(
+          `${contract.displayName} must be deployed by the zkSYS launch flow before Pali smart account infrastructure can be deployed.`
+        );
+      const pendingNonce = await this.infrastructureDeadline(
+        context.provider.send('eth_getTransactionCount', [
+          context.address,
+          'pending',
+        ])
+      );
+      this.assertInfrastructureContext(context);
+      if (
+        typeof pendingNonce !== 'string' ||
+        !/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(pendingNonce)
+      )
+        throw new Error(DEPLOYMENT_NONCE_ERROR);
+      const parsedNonce = Number(pendingNonce);
+      if (!Number.isSafeInteger(parsedNonce) || parsedNonce < 0)
+        throw new Error(DEPLOYMENT_NONCE_ERROR);
+      const nonce = Math.max(nextNonce, parsedNonce);
+      const command = buildInfrastructureDeploymentCommand({
+        contract,
+        chainId: context.chainId,
+        from: context.address,
+        nonce,
+      });
+      const reservation: InfrastructurePending = {
+        contractId: contract.id,
+        attemptId: randomBytes32Hex(),
+        payerAddress: context.address,
+        rpcUrl: context.url,
+        // Hardware paths currently choose their own nonce. Trust theirs only
+        // once an acknowledged response supplies it.
+        nonce: [
+          PaliKeyringAccountType.HDAccount,
+          PaliKeyringAccountType.Imported,
+        ].includes(context.account.type)
+          ? nonce
+          : undefined,
+      };
+      const reservationWrite = writeInfrastructureJournal(context, reservation);
+      try {
+        await this.infrastructureDeadline(reservationWrite);
+      } catch (error) {
+        // No sender has been invoked. Storage may finish after its deadline;
+        // release only this unsent attempt once the write actually settles.
+        const clearUnsentAttempt = () =>
+          clearInfrastructureJournal(context, reservation, null);
+        void reservationWrite
+          .then(clearUnsentAttempt, clearUnsentAttempt)
+          .catch(() => undefined);
+        throw error;
+      }
+      this.pendingInfrastructure.set(context.chainId, reservation);
+      let response: IEvmTransactionResponse;
+      try {
+        this.assertInfrastructureContext(context);
+        response = await this.deps.sendAndSaveEthTransaction(
+          command,
+          false,
+          context.account,
+          {
+            smartAccountInfrastructureDeployment: true,
+            smartAccountInfrastructureId: contract.id,
+            smartAccountInfrastructureRpcUrl: context.url,
+          },
+          {
+            clearNavigation: false,
+            persist: true,
+            assertBeforeSign: () => this.assertInfrastructureContext(context),
+            assertCurrentContext: () =>
+              this.assertInfrastructureContext(context),
+            onBroadcast: async (broadcast) => {
+              const pending = {
+                ...reservation,
+                transactionHash: broadcast.hash,
+                nonce:
+                  Number.isSafeInteger(broadcast.nonce) && broadcast.nonce >= 0
+                    ? broadcast.nonce
+                    : reservation.nonce,
+              };
+              this.pendingInfrastructure.set(context.chainId, pending);
+              await this.infrastructureDeadline(
+                writeInfrastructureJournal(context, pending)
+              );
+            },
+          }
+        );
+      } catch (error) {
+        const hash = (error as any)?.transactionHash;
+        if (hash) {
+          const acknowledged = this.pendingInfrastructure.get(context.chainId);
+          const pending = {
+            ...reservation,
+            ...(infrastructurePendingIdentity(acknowledged) ===
+            reservation.attemptId
+              ? acknowledged
+              : {}),
+            transactionHash: hash,
+          };
+          const acknowledgedNonce = (error as any)?.transactionNonce;
+          if (Number.isSafeInteger(acknowledgedNonce) && acknowledgedNonce >= 0)
+            pending.nonce = acknowledgedNonce;
+          this.pendingInfrastructure.set(context.chainId, pending);
+          // The broadcast callback may have failed its first storage write.
+          // Retry this same acknowledged attempt before reporting the error;
+          // permanent storage failure keeps the existing reservation closed.
+          await this.infrastructureDeadline(
+            writeInfrastructureJournal(context, pending)
+          ).catch(() => undefined);
+        }
+        // Definite pre-broadcast rejection is safe to release. Ambiguous
+        // transport failures retain the reservation across worker restarts.
+        const transactionNotBroadcast = (error as any)?.transactionNotBroadcast;
+        if (
+          !hash &&
+          (transactionNotBroadcast === true ||
+            (transactionNotBroadcast === undefined &&
+              ((error as any)?.code === 'ACTION_REJECTED' ||
+                (error as any)?.code === 4001 ||
+                // Keyring hardware signers use this error only when signing
+                // fails, before their provider.sendTransaction call.
+                ([
+                  PaliKeyringAccountType.Trezor,
+                  PaliKeyringAccountType.Ledger,
+                ].includes(context.account.type) &&
+                  /^Transaction Signature Failed\. Error: /.test(
+                    (error as Error)?.message || ''
+                  )) ||
+                /insufficient funds|user rejected|user denied|denied transaction|rejected by user|wallet context changed|transaction blocked|target account .*not found/i.test(
+                  (error as Error)?.message || ''
+                ))))
+        ) {
+          const releaseRejectedAttempt = clearInfrastructureJournal(
+            context,
+            reservation,
+            null
+          ).then(() => {
+            // A successful clear may arrive after its deadline. Settle the
+            // same unsent in-memory attempt then, without touching a retry.
+            if (
+              infrastructurePendingIdentity(
+                this.pendingInfrastructure.get(context.chainId)
+              ) === reservation.attemptId
+            )
+              this.pendingInfrastructure.delete(context.chainId);
+          });
+          await this.infrastructureDeadline(releaseRejectedAttempt);
+        }
+        throw error;
+      }
+      const pending = {
+        ...reservation,
+        transactionHash: response.hash,
+        nonce:
+          Number.isSafeInteger(response.nonce) && response.nonce >= 0
+            ? response.nonce
+            : reservation.nonce,
+      };
+      this.pendingInfrastructure.set(context.chainId, pending);
+      nextNonce = nonce + 1;
+      const deadline = Date.now() + 15000;
+      let receipt: any;
+      do {
+        receipt = await this.infrastructureDeadline(
+          context.provider.getTransactionReceipt(response.hash),
+          Math.max(1, Math.min(1800, deadline - Date.now()))
+        ).catch(() => null);
+        if (receipt && !validInfrastructureReceipt(receipt, response.hash))
+          throw new Error(DEPLOYMENT_RECEIPT_ERROR);
+        if (receipt) break;
+        if (Date.now() >= deadline) return { deployed, skipped, pending };
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      } while (true);
+      await this.infrastructureDeadline(
+        clearInfrastructureJournal(context, pending, null)
+      );
+      if (
+        infrastructurePendingIdentity(
+          this.pendingInfrastructure.get(context.chainId)
+        ) === infrastructurePendingIdentity(pending)
+      )
+        this.pendingInfrastructure.delete(context.chainId);
+      if (Number(receipt.status) !== 1)
+        throw new Error(
+          `${contract.displayName} deployment failed. Refresh status before retrying.`
+        );
+      deployed.push(contract.id);
+      if (contract.id === 'multicall3')
+        clearMulticall3AddressCache(context.chainId);
     }
+    await this.readInfrastructureStatus(context, assertCurrent);
+    return { deployed, skipped };
   }
 
   public async prepareSmartAccount(params: {
@@ -1955,7 +1937,7 @@ class SmartAccountController {
     entryPointAddress: string,
     gasPayer: { address: string; id: number; type: PaliKeyringAccountType },
     chainId: number,
-    options: {
+    options: SmartAccountSubmissionChecks & {
       assertBeforeSign: () => void;
       assertCurrentContext: () => void;
       onAcknowledged: () => void;

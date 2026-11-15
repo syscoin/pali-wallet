@@ -59,9 +59,11 @@ describe('smart-account infrastructure deployment lifecycle', () => {
   let receipts: Record<string, any>;
   let generation: number;
   let journalStorage: Record<string, any>;
+  let head: { hash: string; number: string };
 
   beforeEach(() => {
     jest.useFakeTimers();
+    head = { number: '0x1', hash: hash(100) };
     generation = 0;
     journalStorage = {};
     (chromeStorage.getItem as jest.Mock).mockImplementation(
@@ -98,12 +100,18 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     };
     (store.getState as jest.Mock).mockImplementation(() => state);
     provider = {
+      verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
+      sendFresh: jest.fn(async () => ({ ...head })),
       sendBatch: jest.fn(async (_method, addresses) =>
         addresses.map(([address]: [string]) => codes[address])
       ),
       getCode: jest.fn(async (address) => codes[address]),
       send: jest.fn(async (method, params) =>
-        method === 'eth_getTransactionCount' ? '0x0' : codes[params[0]]
+        method === 'eth_getBlockByNumber'
+          ? { number: '0x1', hash: hash(100) }
+          : method === 'eth_getTransactionCount'
+          ? '0x0'
+          : codes[params[0]]
       ),
       getTransactionReceipt: jest.fn(
         async (txHash) => receipts[txHash] || null
@@ -124,6 +132,10 @@ describe('smart-account infrastructure deployment lifecycle', () => {
           const contractAddress =
             params.data === '0x01' ? implementation : factory;
           codes[contractAddress] = '0x11';
+          head = {
+            number: '0x' + (BigInt(head.number) + BigInt(1)).toString(16),
+            hash: hash(Number(BigInt(head.number)) + 100),
+          };
           receipts[txHash] = { status: 1, hash: txHash };
           const response = {
             hash: txHash,
@@ -303,7 +315,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     }
   );
 
-  it('expires cached status and separates RPC endpoints on the same chain', async () => {
+  it('refreshes cached code on a new canonical block and separates RPC endpoints', async () => {
     expect(
       (await controller.getSmartAccountInfrastructureStatus()).missing
     ).toHaveLength(2);
@@ -312,6 +324,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       (await controller.getSmartAccountInfrastructureStatus()).missing
     ).toHaveLength(2);
     await jest.advanceTimersByTimeAsync(5001);
+    head = { number: '0x2', hash: hash(101) };
     expect(
       (await controller.getSmartAccountInfrastructureStatus()).missing
     ).toEqual(['factory']);
@@ -473,6 +486,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     deps.sendAndSaveEthTransaction
       .mockImplementationOnce(async () => {
         codes[implementation] = '0x11';
+        head = { number: '0x2', hash: hash(101) };
         receipts[hash(1)] = { status: 1, hash: hash(1) };
         return { hash: hash(1) };
       })
@@ -648,6 +662,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     });
     expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
     codes[implementation] = '0x11';
+    head = { number: '0x2', hash: hash(101) };
     await expect(restarted.deploySmartAccountInfrastructure()).resolves.toEqual(
       { deployed: ['factory'], skipped: ['accountImplementation'] }
     );

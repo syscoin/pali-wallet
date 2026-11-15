@@ -39,9 +39,10 @@ export function createNativeSmartAccountProvider(
   network: NativeNetworkRegistration,
   rpc: EvmTransferReadRpc,
   signal: AbortSignal,
-  assertCurrent: () => void
+  assertCurrent: () => void,
+  phase?: NativeSmartAccountReadPhase
 ) {
-  return smartAccountProvider(network, rpc, signal, assertCurrent);
+  return smartAccountProvider(network, rpc, signal, assertCurrent, phase);
 }
 
 function smartAccountProvider(

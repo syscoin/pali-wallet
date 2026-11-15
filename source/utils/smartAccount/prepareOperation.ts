@@ -1,3 +1,5 @@
+import { parseEvmFeeQuantity } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
+
 import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 import { BigNumber, Contract, hexConcat } from '../ethersV6Compat.ts';
 import { EVM_TRANSACTION_CONTEXT_CHANGED } from '../evmTransactionContext.ts';
@@ -185,20 +187,37 @@ async function prepareOperation({
   const nonce = await pending.readNonce(BigInt(smartAccount.getNonceKey()));
   assertSynchronousEvmFeeGuard(assertCurrent);
   const callData = smartAccount.encodeCalls(executions);
-  const feeData = await provider.getFeeData();
+  const hasCompleteFeeOverrides =
+    legacyGasPrice !== undefined ||
+    (feeOverrides.maxFeePerGas !== undefined &&
+      feeOverrides.maxFeePerGas !== null &&
+      feeOverrides.maxPriorityFeePerGas !== undefined &&
+      feeOverrides.maxPriorityFeePerGas !== null);
+  const feeData = hasCompleteFeeOverrides ? {} : await provider.getFeeData();
   assertSynchronousEvmFeeGuard(assertCurrent);
-  if (
-    legacyGasPrice !== undefined &&
-    feeData.lastBaseFeePerGas !== null &&
-    feeData.lastBaseFeePerGas !== undefined &&
-    BigNumber.from(legacyGasPrice).lt(feeData.lastBaseFeePerGas)
-  )
-    throw Object.assign(
-      new Error(
-        'Legacy gas price is below the current base fee. Refresh the app quote.'
-      ),
-      { transactionNotBroadcast: true }
-    );
+  if (legacyGasPrice !== undefined) {
+    // A complete legacy price needs the base-fee safety check, without fetching
+    // gas-price or priority-fee recommendations that cannot change the quote.
+    const block = await provider.send('eth_getBlockByNumber', [
+      'latest',
+      false,
+    ]);
+    assertSynchronousEvmFeeGuard(assertCurrent);
+    if (!block || typeof block !== 'object' || Array.isArray(block))
+      throw new Error('Invalid block fee data');
+    if (
+      block.baseFeePerGas !== undefined &&
+      block.baseFeePerGas !== null &&
+      BigInt(legacyGasPrice) <
+        parseEvmFeeQuantity(block.baseFeePerGas, 'base fee')
+    )
+      throw Object.assign(
+        new Error(
+          'Legacy gas price is below the current base fee. Refresh the app quote.'
+        ),
+        { transactionNotBroadcast: true }
+      );
+  }
   const validatorProfile = getSmartAccountValidatorProfile(metadata);
   const gasEstimate = await estimateSmartAccountUserOpGas(provider, {
     callData,
@@ -221,18 +240,33 @@ async function prepareOperation({
         feeData.maxPriorityFeePerGas !== null &&
         feeData.maxPriorityFeePerGas !== undefined));
   const maxFeePerGas = BigNumber.from(
-    legacyGasPrice ??
-      feeOverrides.maxFeePerGas ??
-      feeData.maxFeePerGas ??
-      feeData.gasPrice ??
-      0
+    parseEvmFeeQuantity(
+      legacyGasPrice ??
+        feeOverrides.maxFeePerGas ??
+        feeData.maxFeePerGas ??
+        feeData.gasPrice ??
+        0,
+      'smart-account maximum fee'
+    )
   );
   const maxPriorityFeePerGas = BigNumber.from(
-    legacyGasPrice ??
-      feeOverrides.maxPriorityFeePerGas ??
-      feeData.maxPriorityFeePerGas ??
-      0
+    parseEvmFeeQuantity(
+      legacyGasPrice ??
+        feeOverrides.maxPriorityFeePerGas ??
+        feeData.maxPriorityFeePerGas ??
+        0,
+      'smart-account priority fee'
+    )
   );
+  if (
+    maxFeePerGas.lt(0) ||
+    maxFeePerGas.gte(BigNumber.from(2).pow(128)) ||
+    maxPriorityFeePerGas.lt(0) ||
+    maxPriorityFeePerGas.gt(maxFeePerGas)
+  )
+    throw Object.assign(new Error('Invalid smart-account fee caps'), {
+      transactionNotBroadcast: true,
+    });
   const { gasPayer, useGasTank } = await selectGasPayer(
     gasEstimate,
     maxFeePerGas

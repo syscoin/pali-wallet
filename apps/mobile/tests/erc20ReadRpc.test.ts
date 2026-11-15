@@ -102,7 +102,7 @@ test('import verifies chain first, sends only bounded read calls and uses one ob
   );
 });
 test('balance refresh preserves known zero and verifies stored precision without metadata fallback', async () => {
-  const { reader, requests } = readerWith((request) =>
+  const { reader, requests, posts } = readerWith((request) =>
     request.method === 'eth_call' &&
     request.params[0].data.startsWith('0x70a08231')
       ? uint(0)
@@ -118,6 +118,7 @@ test('balance refresh preserves known zero and verifies stored precision without
     { units: '0' }
   );
   assert.equal(requests.length, 6);
+  assert.equal(posts(), 3);
   const changed = readerWith((request) =>
     request.method === 'eth_call' && request.params[0].data === '0x313ce567'
       ? uint(6)
@@ -187,13 +188,11 @@ test('wrong chain stops before account disclosure and every supported selected n
     const reader = createErc20Reader({
       fetch: async (url, init) => {
         seen.push(url);
-        const request = JSON.parse(String(init.body)) as Request;
-        return json(
-          request.id,
-          request.method === 'eth_chainId'
-            ? `0x${BigInt(network.chainId).toString(16)}`
-            : result(request)
-        );
+        const payload = JSON.parse(String(init.body)) as Request | Request[];
+        const reply = (request: Request) => ({ jsonrpc: '2.0', id: request.id,
+          result: request.method === 'eth_chainId' ? `0x${BigInt(network.chainId).toString(16)}` : result(request),
+        });
+        return Response.json(Array.isArray(payload) ? payload.map(reply) : reply(payload));
       },
     });
     await reader.readBalance(
@@ -501,10 +500,11 @@ test('cross-operation admission retains its four slots until response bodies fin
   const releases: (() => void)[] = [];
   const reader = createErc20Reader({ timeoutMs: 1000, fetch: async (_url, init) => {
     active++; maximum = Math.max(maximum, active);
-    const request = JSON.parse(String(init.body)) as Request;
+    const payload = JSON.parse(String(init.body)) as Request | Request[];
+    const reply = (request: Request) => ({ jsonrpc: '2.0', id: request.id, result: result(request) });
     return { ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }),
       text: () => new Promise<string>(resolve => releases.push(() => {
-        active--; resolve(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: result(request) }));
+        active--; resolve(JSON.stringify(Array.isArray(payload) ? payload.map(reply) : reply(payload)));
       })),
     } as Response;
   } });
@@ -545,8 +545,9 @@ test('stream completion retains physical capacity until reader cancellation drai
   const releases: (() => void)[] = [];
   const reader = createErc20Reader({ timeoutMs: 2000, fetch: async (_url, init) => {
     active++; maximum = Math.max(maximum, active);
-    const request = JSON.parse(String(init.body)) as Request;
-    const bytes = new TextEncoder().encode(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: result(request) }));
+    const payload = JSON.parse(String(init.body)) as Request | Request[];
+    const reply = (request: Request) => ({ jsonrpc: '2.0', id: request.id, result: result(request) });
+    const bytes = new TextEncoder().encode(JSON.stringify(Array.isArray(payload) ? payload.map(reply) : reply(payload)));
     return { ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }),
       body: { getReader() {
         let read = false;
@@ -566,4 +567,20 @@ test('stream completion retains physical capacity until reader cancellation drai
   }
   await done;
   assert.equal(maximum, 4);
+});
+
+test('independent observations reuse only the selected endpoint batch capability', async () => {
+  const widths: number[] = [];
+  const reader = createErc20Reader({ fetch: async (_url, init) => {
+    const payload = JSON.parse(String(init.body)) as Request | Request[];
+    widths.push(Array.isArray(payload) ? payload.length : 1);
+    if (Array.isArray(payload)) return Response.json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Batch unsupported' } });
+    return json(payload.id, result(payload));
+  } });
+  const signal = () => new AbortController().signal;
+  assert.deepEqual(await reader.readBalance('ethereum', holder, metadata, signal()), { units: ((1n << 256n) - 1n).toString() });
+  assert.deepEqual(widths, [2, 1, 1, 1, 1, 1, 1]);
+  widths.length = 0;
+  await reader.readBalance('ethereum', holder, metadata, signal());
+  assert.deepEqual(widths, [1, 1, 1, 1, 1, 1]);
 });

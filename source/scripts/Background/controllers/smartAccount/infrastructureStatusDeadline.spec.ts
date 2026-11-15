@@ -82,6 +82,8 @@ describe('infrastructure status aggregate deadline', () => {
     };
     jest.mocked(store.getState).mockImplementation(() => state);
     provider = {
+      verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
+      send: jest.fn(async () => ({ number: '0x1', hash: hash(100) })),
       sendBatch: jest.fn().mockResolvedValue(['0x11', '0x']),
       getCode: jest.fn(async (address: string) =>
         address === PALI_CREATE2_DEPLOYER_ADDRESS ? '0x11' : '0x'
@@ -125,7 +127,7 @@ describe('infrastructure status aggregate deadline', () => {
     expect(jest.getTimerCount()).toBe(0);
   });
 
-  it('does not reuse the previous selected account status at the same endpoint', async () => {
+  it('reuses only canonical code observations across accounts while refreshing their status', async () => {
     await controller.getSmartAccountInfrastructureStatus();
     await controller.getSmartAccountInfrastructureStatus();
     expect(provider.sendBatch).toHaveBeenCalledTimes(1);
@@ -135,7 +137,8 @@ describe('infrastructure status aggregate deadline', () => {
     };
     state.vault.activeAccount = { id: 1, type: KeyringAccountType.HDAccount };
     await controller.getSmartAccountInfrastructureStatus();
-    expect(provider.sendBatch).toHaveBeenCalledTimes(2);
+    expect(provider.sendBatch).toHaveBeenCalledTimes(1);
+    expect(readInfrastructureJournal).toHaveBeenCalledTimes(3);
   });
 
   it('shares one eighteen-second budget across storage, fallback, receipt and journal clearing', async () => {

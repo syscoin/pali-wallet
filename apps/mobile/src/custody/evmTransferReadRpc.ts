@@ -53,6 +53,7 @@ type Method = DappPublicRpcMethod | 'eth_chainId' | 'eth_getBlockByNumber' | 'et
 const METHODS: readonly string[] = Object.freeze([...DAPP_PUBLIC_RPC_METHODS, 'eth_chainId', 'eth_getBlockByNumber', 'eth_getCode', 'eth_call', 'eth_getStorageAt', 'eth_gasPrice',
   'eth_maxPriorityFeePerGas', 'eth_feeHistory', 'eth_getBalance', 'eth_estimateGas', 'eth_getTransactionReceipt', 'eth_getTransactionCount', 'eth_getTransactionByHash']);
 type Reader = ((method: Method, params: readonly unknown[]) => Promise<unknown>) & {
+  signal: AbortSignal;
   assertCurrent(): void;
   many(requests: readonly { method: Method; params: readonly unknown[] }[]): Promise<PromiseSettledResult<unknown>[]>;
 };
@@ -60,7 +61,7 @@ type TransferRequest = Readonly<{ from: string; to: string; value: string; data:
 type ReadBlock = EvmSampledBlock & Readonly<{ baseFee: bigint | null; gasLimit: bigint }>;
 type ReceiptRequest = Readonly<{ hash: string; from: string; to: string | null; nonce: string }>;
 export type NativeAutomaticNoncePlanner = (
-  input: Pick<Parameters<EvmAutoNonceAcceptance['plan']>[0], 'latest' | 'pending' | 'readPending' | 'assertCurrent' | 'assetState' | 'nonceOverride'>
+  input: Pick<Parameters<EvmAutoNonceAcceptance['plan']>[0], 'latest' | 'pending' | 'readPending' | 'assertCurrent' | 'assetState' | 'nonceOverride'> & { readPhase?: NativeSmartAccountReadPhase }
 ) => Promise<EvmAutoNoncePlan>;
 type SendNonceSample = Readonly<{
   nonce: bigint;
@@ -236,6 +237,7 @@ export class EvmTransferReadRpc {
         throw error;
       }
     }, {
+      signal: controller.signal,
       many: async (requests: readonly { method: Method; params: readonly unknown[] }[]) => {
         guardedRead(guard);
         const results = await batch.readMany(requests, { signal: controller.signal });
@@ -718,6 +720,12 @@ export class EvmTransferReadRpc {
       ...(nonceOverride === undefined ? {} : { nonceOverride }),
       readPending: (hash) => read('eth_getTransactionByHash', [hash]),
       assertCurrent: read.assertCurrent,
+      readPhase: {
+        read,
+        readMany: read.many,
+        feeData: () => this.feeData(read, sampled, read.signal),
+        assertCurrent: read.assertCurrent,
+      },
     });
     read.assertCurrent();
     if (plan.kind === 'unresolved') throw new EvmAutomaticNonceUnresolved(plan.nonce, plan.reason);

@@ -20,7 +20,10 @@ import {
   hasGuardianRecoveryNotReadyRevert,
   hasNativeGasFailure,
 } from './operationErrors.ts';
-import type { SmartAccountSubmitHost } from './submitOperation.ts';
+import type {
+  SmartAccountSubmissionChecks,
+  SmartAccountSubmitHost,
+} from './submitOperation.ts';
 import type {
   IKeyringAccountState,
   KeyringAccountType,
@@ -203,7 +206,7 @@ export async function ensureSmartAccountDeploymentPrefund<
   entryPointAddress: string,
   gasPayer: { address: string; id: number; type: KeyringAccountType },
   chainId: number,
-  options: {
+  options: SmartAccountSubmissionChecks & {
     assertBeforeSign: () => void;
     assertCurrentContext: () => void;
     onAcknowledged: () => void;
@@ -252,6 +255,8 @@ export async function ensureSmartAccountDeploymentPrefund<
       feeFunding: NATIVE_EVM_FEE_FUNDING,
       assertBeforeSign: options.assertBeforeSign,
       assertCurrentContext: options.assertCurrentContext,
+      assertPendingState: options.assertPendingState,
+      assertAssetState: options.assertAssetState,
       clearNavigation: false,
       onBroadcast: async () => options.onAcknowledged(),
       persist: true,

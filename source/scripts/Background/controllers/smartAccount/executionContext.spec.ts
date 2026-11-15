@@ -75,6 +75,7 @@ describe('smart-account execution approval context', () => {
   let controller: any;
   let send: jest.Mock;
   let provider: any;
+  let pendingBaseFee: number | null;
   const expectedContext = {
     account: { address: ADDRESS, id: 7, type: KeyringAccountType.SmartAccount },
     chainId: 1,
@@ -146,6 +147,7 @@ describe('smart-account execution approval context', () => {
   };
 
   beforeEach(() => {
+    pendingBaseFee = null;
     jest
       .mocked(toPaliSmartAccount)
       .mockImplementation(
@@ -199,6 +201,8 @@ describe('smart-account execution approval context', () => {
       }),
       send: jest.fn(async (method, params) => {
         if (method === 'eth_chainId') return '0x1';
+        if (method === 'eth_getBlockByNumber')
+          return { baseFeePerGas: pendingBaseFee };
         if (method === 'eth_getBalance') return '0xde0b6b3a7640000';
         if (method === 'eth_call') {
           if (
@@ -1112,6 +1116,7 @@ describe('smart-account execution approval context', () => {
   });
 
   it('keeps an explicit zero legacy price instead of treating it as an absent override', async () => {
+    pendingBaseFee = 0;
     provider.getFeeData.mockResolvedValue({
       gasPrice: 1000,
       lastBaseFeePerGas: 0,
@@ -1135,6 +1140,7 @@ describe('smart-account execution approval context', () => {
   });
 
   it('rejects an explicit legacy price below a known protocol base fee without substituting the recommendation', async () => {
+    pendingBaseFee = 20;
     provider.getFeeData.mockResolvedValue({
       gasPrice: 1000,
       lastBaseFeePerGas: 20,

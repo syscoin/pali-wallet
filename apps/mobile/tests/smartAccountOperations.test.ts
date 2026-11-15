@@ -19,6 +19,7 @@ const payer = { id: 0, type: 'HDAccount' as KeyringAccountType, address: owner }
 const chainId = 1;
 function fixture() {
   const funds = { balance: BigInt(0), deposit: BigInt(0), failEstimate: false, balanceReads: 0, depositReads: 0 };
+  const feeReads = { recommendations: 0, headers: 0, baseFee: '0x1' as string | null };
   const factoryAddress = getPaliSmartAccountFactoryAddress(chainId);
   const descriptor = getPaliSmartAccountDescriptor({ accountIndex: 0, chainId, factoryAddress, accountVersion: PALI_SMART_ACCOUNT_VERSION,
     anchor: `pali:eip155:${chainId}:${owner}:smart-account-v1` });
@@ -32,6 +33,7 @@ function fixture() {
     async verifyConfiguredChainId() { assert.equal(await rawProvider.send('eth_chainId', []), '0x1'); },
     send: async (method: string, params: any[]) => {
       if (method === 'eth_chainId') return '0x1';
+      if (method === 'eth_getBlockByNumber') { assert.deepEqual(params, ['latest', false]); feeReads.headers++; return { baseFeePerGas: feeReads.baseFee }; }
       if (method === 'eth_getCode') return '0x';
       if (method === 'eth_getBalance') { funds.balanceReads++; return '0x' + funds.balance.toString(16); }
       if (method === 'eth_estimateGas' && funds.failEstimate) throw new Error('execution reverted');
@@ -44,12 +46,12 @@ function fixture() {
     },
     getCode: async () => '0x',
     call: async () => AbiCoder.defaultAbiCoder().encode(['uint256'], [0]),
-    getFeeData: async () => ({ maxFeePerGas: BigNumber.from(2), maxPriorityFeePerGas: BigNumber.from(1), gasPrice: BigNumber.from(2), lastBaseFeePerGas: BigNumber.from(1) }),
+    getFeeData: async () => { feeReads.recommendations++; return { maxFeePerGas: BigNumber.from(2), maxPriorityFeePerGas: BigNumber.from(1), gasPrice: BigNumber.from(2), lastBaseFeePerGas: BigNumber.from(1) }; },
     getBalance: async () => BigNumber.from(0),
     estimateGas: async () => BigNumber.from(100000),
   };
   const pending = createSmartAccountPendingState(rawProvider, { profileId: '0x' + '11'.repeat(32), read: async () => [] }, chainId, account.address, () => undefined);
-  return { account, metadata, deployment, provider: pending.provider, rawProvider, pending, funds };
+  return { account, metadata, deployment, provider: pending.provider, rawProvider, pending, funds, feeReads };
 }
 
 const nativeRecipient = '0x2222222222222222222222222222222222222222';
@@ -245,6 +247,77 @@ test('portable shared preparation uses the canonical deployment and local UserOp
   assert.equal(prepared.gasPayer.address, owner);
   assert.match(prepared.actionHash, /^0x[0-9a-f]{64}$/i);
   assert.equal(prepared.execution!.target, f.account.address);
+});
+
+test('complete smart-account fee overrides avoid market recommendations while retaining legacy base-fee checks', async () => {
+  for (const feeOverrides of [
+    { maxFeePerGas: '2', maxPriorityFeePerGas: '1' },
+    { maxFeePerGas: '0', maxPriorityFeePerGas: '0' },
+    { gasPrice: '2' },
+    { gasPrice: '0' },
+  ]) {
+    const f = fixture();
+    f.feeReads.baseFee = '0x0';
+    const prepared = await prepareSmartAccountOperation({ account: f.account as IKeyringAccountState & { smartAccount: typeof f.metadata }, chainId,
+      executions: [{ target: f.account.address, value: '0', data: '0x' }], knownDeployed: true, provider: f.provider, pending: f.pending, feeOverrides,
+      async selectGasPayer() { return { gasPayer: payer, useGasTank: false }; }, assertCurrent() {} });
+    assert.equal(f.feeReads.recommendations, 0);
+    assert.equal(f.feeReads.headers, feeOverrides.gasPrice === undefined ? 0 : 1);
+    assert.equal(prepared.gasPrice, feeOverrides.gasPrice);
+    assert.equal(prepared.maxFeePerGas, feeOverrides.maxFeePerGas);
+    assert.equal(prepared.maxPriorityFeePerGas, feeOverrides.maxPriorityFeePerGas);
+  }
+});
+
+test('partial smart-account fee overrides still obtain missing recommendations', async () => {
+  const f = fixture();
+  const prepared = await prepareSmartAccountOperation({ account: f.account as IKeyringAccountState & { smartAccount: typeof f.metadata }, chainId,
+    executions: [{ target: f.account.address, value: '0', data: '0x' }], knownDeployed: true, provider: f.provider, pending: f.pending,
+    feeOverrides: { maxFeePerGas: '3' }, async selectGasPayer() { return { gasPayer: payer, useGasTank: false }; }, assertCurrent() {} });
+  assert.equal(f.feeReads.recommendations, 1);
+  assert.equal(prepared.maxFeePerGas, '3');
+  assert.equal(prepared.maxPriorityFeePerGas, '1');
+});
+
+test('explicit legacy smart-account fees fail below the observed base fee without fetching recommendations', async () => {
+  const f = fixture();
+  f.feeReads.baseFee = '0x3';
+  await assert.rejects(prepareSmartAccountOperation({ account: f.account as IKeyringAccountState & { smartAccount: typeof f.metadata }, chainId,
+    executions: [{ target: f.account.address, value: '0', data: '0x' }], knownDeployed: true, provider: f.provider, pending: f.pending,
+    feeOverrides: { gasPrice: '2' }, async selectGasPayer() { assert.fail('Invalid fee reached payer selection'); }, assertCurrent() {} }), /below the current base fee/);
+  assert.equal(f.feeReads.recommendations, 0);
+  assert.equal(f.feeReads.headers, 1);
+});
+
+test('legacy smart-account fee checks reject malformed base fees and account changes during the header read', async () => {
+  for (const changeContext of [false, true]) {
+    const f = fixture();
+    f.feeReads.baseFee = changeContext ? '0x1' : 'invalid';
+    let current = true;
+    const read = f.rawProvider.send;
+    f.rawProvider.send = async (method, params) => {
+      const result = await read(method, params);
+      if (changeContext && method === 'eth_getBlockByNumber') current = false;
+      return result;
+    };
+    await assert.rejects(prepareSmartAccountOperation({ account: f.account as IKeyringAccountState & { smartAccount: typeof f.metadata }, chainId,
+      executions: [{ target: f.account.address, value: '0', data: '0x' }], knownDeployed: true, provider: f.provider, pending: f.pending,
+      feeOverrides: { gasPrice: '2' }, async selectGasPayer() { assert.fail('Invalid fee or context reached payer selection'); }, assertCurrent() { assert(current, 'account changed'); } }),
+    changeContext ? /account changed/ : /Invalid base fee/);
+    assert.equal(f.feeReads.recommendations, 0);
+  }
+});
+
+test('complete smart-account fee overrides remain bounded and internally consistent', async () => {
+  for (const [maxFeePerGas, maxPriorityFeePerGas] of [
+    ['-1', '0'], ['1', '2'], [(BigInt(1) << BigInt(128)).toString(), '1'], ['1.5', '0'], ['bad', '0'],
+  ]) {
+    const f = fixture();
+    await assert.rejects(prepareSmartAccountOperation({ account: f.account as IKeyringAccountState & { smartAccount: typeof f.metadata }, chainId,
+      executions: [{ target: f.account.address, value: '0', data: '0x' }], knownDeployed: true, provider: f.provider, pending: f.pending,
+      feeOverrides: { maxFeePerGas, maxPriorityFeePerGas }, async selectGasPayer() { assert.fail('Invalid fee reached payer selection'); }, assertCurrent() {} }));
+    assert.equal(f.feeReads.recommendations, 0);
+  }
 });
 
 test('shared ECDSA operation signing rejects an owner change before releasing the signature', async () => {

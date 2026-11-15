@@ -94,8 +94,9 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let failInfrastructureBroadcast = false;
   let initialEoaNonce = 0;
   let physicalStorageCloses = 0;
-  const spendabilityReads = { native: 0, deposit: 0 };
+  const spendabilityReads = { native: 0, deposit: 0, token: 0 };
   const rpcBatches: string[][] = [];
+  let observedHead = { number: '0x10', hash: '0x' + 'aa'.repeat(32) };
   const tokens = new Map<string, { balance: bigint; decimals: number }>();
   const tokenInterface = new Interface(['function balanceOf(address) view returns(uint256)', 'function decimals() view returns(uint8)', 'function transfer(address,uint256) returns(bool)']);
   let deployed = false;
@@ -113,6 +114,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let interruptAfterReceipt = false;
   let smartCodeRead: (() => void | Promise<void>) | undefined;
   let beforeSignature: (() => void | Promise<void>) | undefined;
+  let afterPayerSignature: (() => void) | undefined;
   let afterBroadcast: (() => void | Promise<void>) | undefined;
   let guardian: ReturnType<typeof createGuardianRecoveryFixture> | undefined;
   let externalOwner = false;
@@ -226,7 +228,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           result = transaction && readReceipts ? { transactionHash: transaction.hash, from: transaction.from, to: transaction.to, status: '0x1',
             blockNumber: '0x10', blockHash: '0x' + 'aa'.repeat(32), gasUsed: '0x186a0', logs } : null;
         }
-        else if (request.method === 'eth_getBlockByNumber') result = { number: '0x10', hash: '0x' + 'aa'.repeat(32), gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
+        else if (request.method === 'eth_getBlockByNumber') result = { ...observedHead, gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
         else if (request.method === 'eth_sendRawTransaction') {
           const identity = (await storage.recovery.readIdentity())!.root!;
           const saved = await storage.signedRecords.read(identity.profileId);
@@ -258,6 +260,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const token = tokens.get(to);
           if (token) {
             const call = tokenInterface.parseTransaction({ data }); assert(call);
+            if (call.name === 'balanceOf') spendabilityReads.token++;
             if (call.name === 'decimals') result = tokenInterface.encodeFunctionResult(call.fragment, [token.decimals]);
             else if (call.name === 'balanceOf') {
               assert(runtime.catalogue.getSnapshot()?.accounts.some(account => account.address.toLowerCase() === call.args[0].toLowerCase()));
@@ -411,6 +414,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           this.signPreparedEvmTransaction = (...input: Parameters<typeof signPrepared>) => {
             const signed = signPrepared(...input);
             payerSignatures.push(signed.rawTransaction);
+            afterPayerSignature?.();
             return signed;
           };
         }
@@ -457,6 +461,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
       const address = PALI_INFRASTRUCTURE_METADATA_BY_ID[id].address.toLowerCase();
       if (present) missingInfrastructure.delete(address); else missingInfrastructure.add(address);
     },
+    advanceHead() { observedHead = { number: '0x11', hash: '0x' + 'bb'.repeat(32) }; },
     infrastructureResponseLost() { failInfrastructureBroadcast = true; },
     initialEoaNonce(value: number) { assert(Number.isSafeInteger(value) && value >= 0); initialEoaNonce = value; },
     smartGuardian(address: string, owners: string[], options: { compositeThreshold?: number; threshold?: number; deployed?: boolean } = {}) {
@@ -499,6 +504,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     onSmartCodeRead(hook: () => void | Promise<void>) { smartCodeRead = hook; },
     onCredentialRequest(hook: (check: () => void) => void | Promise<void>) { onCredentialRequest = hook; },
     onSignature(hook: () => void | Promise<void>) { beforeSignature = hook; },
+    onPayerSignature(hook: () => void) { afterPayerSignature = hook; },
     onBroadcast(hook: () => void | Promise<void>) { afterBroadcast = hook; },
     substitute() { substituteAddress = true; }, hold(value: () => Promise<void>) { hold = value; },
     async change(request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) {
@@ -1632,6 +1638,31 @@ test('Smart Activity speeds up the exact outer transaction using its original lo
   } finally { operation?.dispose(); transfers?.dispose(); await f.close(); }
 });
 
+test('native Smart preparations reuse canonical infrastructure code and refresh it on the next block', async () => {
+  const f = await fixture();
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Infrastructure cache' });
+    f.fundedSmart(); f.deployed();
+    f.rpcBatches.length = 0;
+    const prepare = async () => {
+      operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+      await operation.prepare();
+      assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+      operation.dispose(); operation = undefined;
+    };
+    const codeBatches = () => f.rpcBatches.filter(batch => batch.length === SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.length && batch.every(method => method === 'eth_getCode')).length;
+    await prepare();
+    assert.equal(codeBatches(), 1);
+    await prepare();
+    assert.equal(codeBatches(), 1, 'same-head second operation reuses only infrastructure code');
+    f.advanceHead();
+    await prepare();
+    assert.equal(codeBatches(), 2, 'new canonical head fetches every infrastructure code again');
+    assert.equal(f.submitted.length, 0);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
 for (const alreadyDeployed of [false, true]) test(`real SDK smart native send authorizes exact value and submits without waiting (${alreadyDeployed ? 'deployed' : 'counterfactual'})`, async () => {
   const f = await fixture();
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
@@ -2053,6 +2084,54 @@ test('counterfactual Smart ERC20 balance loss after owner signing prevents deplo
     assert.equal(operation.getSnapshot().payerReview, null);
     assert.equal(f.signatures.length, 1);
     assert.equal(f.submitted.length, 0);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`counterfactual Smart ERC20 balance loss during ${boundary} prevents prefund broadcast`, async () => {
+  let loseBalance: (() => void) | undefined;
+  let changed = false;
+  let readsAtChange = 0;
+  const f = await fixture({ after(kind, sql) {
+    if (boundary === 'payer-persistence' && kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records') && loseBalance) {
+      changed = true;
+      loseBalance();
+      loseBalance = undefined;
+    }
+  } }, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Late token prefund guard' });
+    const token = { contractAddress: '0x5555555555555555555555555555555555555555', decimals: 0, name: 'Token', symbol: 'TOKEN' };
+    f.tokenBalance(token.contractAddress, 9n, token.decimals);
+    const registry = await f.runtime.tokens!.load(() => undefined);
+    await f.runtime.tokens!.add(registry.revision, token, () => undefined);
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', {
+      kind: 'erc20', contractAddress: token.contractAddress, amount: '9',
+    }, () => undefined, null);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    assert.notEqual(operation.getSnapshot().authorization!.initCode, '0x');
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    const review = operation.getSnapshot().payerReview;
+    assert(review, JSON.stringify(operation.getSnapshot()));
+    assert.equal(review.purpose, 'fund-account');
+    const lose = () => { changed = true; readsAtChange = f.spendabilityReads.token; f.tokenBalance(token.contractAddress, 0n, token.decimals); };
+    if (boundary === 'payer-signing') f.onPayerSignature(lose);
+    else loseBalance = lose;
+    f.onBroadcast(() => operation!.cancel());
+    operation.confirmPayer(review.id);
+    await sending;
+    assert.equal(changed, true, 'the failure is injected after the payer review');
+    assert.equal(f.payerSignatures.length, 1);
+    assert(f.spendabilityReads.token > readsAtChange, 'final admission observes the changed token balance');
+    assert.equal(operation.getSnapshot().phase, 'failed', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length, 0);
+    const identity = (await f.storage.recovery.readIdentity())!.root!;
+    const retained = await f.storage.signedRecords.read(identity.profileId);
+    assert(retained, 'the exact signed prefund was persisted before final admission');
+    assert.equal(inspectEvmSignedBundle(retained, identity.profileId).transactions, 1);
   } finally { operation?.dispose(); await f.close(); }
 });
 

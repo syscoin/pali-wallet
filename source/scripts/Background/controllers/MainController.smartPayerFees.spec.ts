@@ -47,22 +47,38 @@ import {
 import { webcrypto } from 'crypto';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 
 import { getController } from '..';
 import {
   createOwnedEvmFeeFunding,
   NATIVE_EVM_FEE_FUNDING,
 } from '../../../shared/evmFeeApproval';
+import { decodeRetainedSmartAccountOperations } from '../../../wallet/smartAccountActivity';
 import { KeyringAccountType } from 'types/network';
 import { EVM_TRANSACTION_CONTEXT_CHANGED } from 'utils/evmTransactionContext';
-import { buildSmartAccountUserOperation } from 'utils/smartAccount/account';
-import { paliEntryPointInterface } from 'utils/smartAccount/contracts';
+import {
+  buildSmartAccountUserOperation,
+  encodeERC7579Executions,
+  encodeSmartAccountGasFees,
+  encodeSmartAccountGasLimits,
+  encodeSmartAccountValidatorNonceKey,
+} from 'utils/smartAccount/account';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+  paliSmartAccountInterface,
+} from 'utils/smartAccount/contracts';
+import { ensureSmartAccountDeploymentPrefund } from 'utils/smartAccount/payerPolicy';
 import { createSmartAccountPendingState } from 'utils/smartAccount/pendingState';
+import { submitSmartAccountOperation } from 'utils/smartAccount/submitOperation';
 
 import MainController from './MainController';
 
 const signer = new Wallet('0x' + '1'.padStart(64, '0'));
-const smart = '0x' + '22'.repeat(20);
+const deployment = smartAccountAddressFixture(57, signer.address);
+const smart = deployment.account.address;
+const profileId = '0x' + '99'.repeat(32);
 const receiver = '0x' + '33'.repeat(20);
 const block = {
   number: '0x10',
@@ -117,11 +133,12 @@ function fixture() {
     ),
   };
   const snapshot = {
-    owner: 'owned',
+    owner: profileId,
     minimumNonce: 0,
     retained: [],
     readMaximumCost: async () => BigInt(0),
     readAssetDebit: async () => BigInt(0),
+    readSmartAccountOperations: jest.fn(async () => []),
   };
   const records: any = {
     captureSession: (session: any) => session,
@@ -135,7 +152,7 @@ function fixture() {
     }),
     withReplayAdmission: jest.fn(
       async (_session, _identity, admit, _previous, preflight) => {
-        await preflight.run('owned', () => snapshot);
+        await preflight.run(profileId, () => snapshot);
         return admit();
       }
     ),
@@ -261,6 +278,7 @@ function fixture() {
     broadcast,
     request,
     options,
+    snapshot,
     setBalance(value: bigint) {
       balance = value;
     },
@@ -728,3 +746,216 @@ it('rejects an unfunded deployment prefund after discovering fees', async () => 
   expect(f.records.append).not.toHaveBeenCalled();
   expect(f.broadcast).not.toHaveBeenCalled();
 });
+
+it.each(['signing', 'persistence', 'unchanged'] as const)(
+  'binds counterfactual prefunding to the signed token operation through payer %s',
+  async (stage) => {
+    const f = fixture();
+    const token = '0x' + '66'.repeat(20);
+    const execution = encodeERC7579Executions([
+      {
+        target: token,
+        data:
+          '0xa9059cbb' +
+          receiver.slice(2).padStart(64, '0') +
+          BigInt(9).toString(16).padStart(64, '0'),
+        value: '0',
+      },
+    ]);
+    const nonce = (
+      BigInt(
+        encodeSmartAccountValidatorNonceKey(
+          deployment.account.smartAccount.auth.validator
+        )
+      ) << BigInt(64)
+    ).toString();
+    const operation = buildSmartAccountUserOperation({
+      sender: smart,
+      nonce,
+      initCode: deployment.deploymentInitCode,
+      callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+        execution.mode,
+        execution.executionCalldata,
+      ]),
+      accountGasLimits: encodeSmartAccountGasLimits({
+        callGasLimit: 1,
+        verificationGasLimit: 1,
+      }),
+      gasFees: encodeSmartAccountGasFees({
+        maxFeePerGas: 1,
+        maxPriorityFeePerGas: 0,
+      }),
+      preVerificationGas: '0',
+    });
+    let tokenBalance = BigInt(9);
+    let retainedSnapshotRead = false;
+    const balanceAtRead: bigint[] = [];
+    const originalRead = f.provider.send.getMockImplementation()!;
+    f.provider.send.mockImplementation(async (method, params) => {
+      if (
+        method === 'eth_getBalance' &&
+        String(params?.[0]).toLowerCase() === smart.toLowerCase()
+      )
+        return '0x0';
+      if (method === 'eth_getCode')
+        return String(params?.[0]).toLowerCase() === token.toLowerCase()
+          ? '0x01'
+          : '0x';
+      if (method === 'eth_call') {
+        const call = params?.[0] as { data: string; to: string };
+        if (
+          call.to.toLowerCase() === getPaliEntryPointAddress(57).toLowerCase()
+        ) {
+          if (
+            call.data.startsWith(
+              paliEntryPointInterface.getFunction('getNonce')!.selector
+            )
+          )
+            return paliEntryPointInterface.encodeFunctionResult('getNonce', [
+              nonce,
+            ]);
+          if (
+            call.data.startsWith(
+              paliEntryPointInterface.getFunction('balanceOf')!.selector
+            )
+          )
+            return paliEntryPointInterface.encodeFunctionResult('balanceOf', [
+              0,
+            ]);
+        }
+        if (call.to.toLowerCase() === token.toLowerCase()) {
+          if (call.data.startsWith('0x70a08231')) {
+            balanceAtRead.push(tokenBalance);
+            return '0x' + tokenBalance.toString(16).padStart(64, '0');
+          }
+          if (call.data === '0x313ce567') return '0x' + '0'.repeat(64);
+          if (call.data.startsWith('0xa9059cbb'))
+            return '0x' + '0'.repeat(63) + '1';
+        }
+        throw new Error('Unexpected prefund contract read');
+      }
+      return originalRead(method, params);
+    });
+    const pending = createSmartAccountPendingState(
+      f.provider,
+      {
+        profileId,
+        read: async () => {
+          if (f.records.append.mock.calls.length) {
+            throw new Error(
+              'Final admission must use its authenticated snapshot'
+            );
+          }
+          return [];
+        },
+      },
+      57,
+      smart,
+      () => undefined
+    );
+    f.snapshot.readSmartAccountOperations.mockImplementation(async () => {
+      retainedSnapshotRead = true;
+      return [];
+    });
+    const revoke = () => {
+      tokenBalance = BigInt(0);
+    };
+    if (stage === 'signing') f.onSigned(revoke);
+    if (stage === 'persistence') f.onPersisted(revoke);
+    const fund = jest.fn(async (...args: any[]) =>
+      ensureSmartAccountDeploymentPrefund(
+        pending.provider,
+        async (...sendArgs) => {
+          const response = await f.wallet.sendAndSaveEthTransaction(
+            ...sendArgs
+          );
+          return { ...response, wait: async () => undefined };
+        },
+        args[0],
+        args[1],
+        args[2],
+        args[3],
+        args[4],
+        args[5]
+      )
+    );
+    const work = submitSmartAccountOperation(
+      {
+        accountId: 2,
+        executionContextId: 'counterfactual-token',
+        signature: '0x1234',
+        userOperation: operation,
+      },
+      {
+        chainId: 57,
+        provider: pending.provider,
+        pending,
+        assertExpectedExecutionContext: () => undefined,
+        assertSmartAccountExecutionContext: () => undefined,
+        getExecutionContext: () => ({ accountId: 2, userOperation: operation }),
+        getSmartAccountById: () => ({
+          account: { ...deployment.account, id: 2 } as any,
+          metadata: deployment.account.smartAccount,
+        }),
+        getWalletGasPayerAccount: async () => ({
+          id: 0,
+          type: KeyringAccountType.HDAccount,
+          address: signer.address,
+        }),
+        getLocalNativeExecutionRecipients: () => [],
+        invalidateMetadata: () => undefined,
+        ensureDeploymentPrefund: fund,
+        sendTransaction: async () => {
+          throw new Error('Reached handleOps');
+        },
+        assertGasTankCoversTransaction: async () => {
+          throw new Error('Unexpected gas tank');
+        },
+      },
+      () => undefined
+    );
+    if (stage === 'unchanged') {
+      await expect(work).rejects.toThrow('Reached handleOps');
+      expect(f.broadcast).toHaveBeenCalledTimes(1);
+      expect(tokenBalance).toBe(BigInt(9));
+    } else {
+      await expect(work).rejects.toMatchObject({
+        message: 'Insufficient token or collectible balance',
+        transactionNotBroadcast: true,
+      });
+      expect(f.broadcast).not.toHaveBeenCalled();
+      expect(balanceAtRead).toContain(BigInt(0));
+    }
+    expect(f.records.append).toHaveBeenCalledTimes(1);
+    expect(fund).toHaveBeenCalledTimes(1);
+    expect(retainedSnapshotRead).toBe(true);
+    const retained = f.records.append.mock.calls[0][1];
+    const transaction = Transaction.from(retained.rawTransaction);
+    expect(transaction.to).toBe(smart);
+    expect(transaction.value).toBe(BigInt(2));
+    expect(decodeRetainedSmartAccountOperations(retained)).toEqual([]);
+  }
+);
+
+it.each(['assertPendingState', 'assertAssetState'] as const)(
+  'requires %s for deployment prefunding',
+  async (guard) => {
+    const f = fixture();
+    delete (f.options as Partial<typeof f.options>)[guard];
+    await expect(
+      f.submit(
+        NATIVE_EVM_FEE_FUNDING,
+        {
+          chainId: 57,
+          from: signer.address,
+          to: smart,
+          value: '2',
+        } as any,
+        { smartAccountDeploymentPrefund: true } as any
+      )
+    ).rejects.toMatchObject({ transactionNotBroadcast: true });
+    expect(f.send).not.toHaveBeenCalled();
+    expect(f.records.append).not.toHaveBeenCalled();
+    expect(f.broadcast).not.toHaveBeenCalled();
+  }
+);

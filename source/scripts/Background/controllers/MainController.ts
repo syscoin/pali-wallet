@@ -10132,9 +10132,8 @@ class MainController {
           !targetAccount ||
           !saveOptions?.feeFunding ||
           typeof saveOptions.assertBeforeSign !== 'function' ||
-          (transactionMetadata?.smartAccountExecution === true &&
-            (typeof saveOptions.assertPendingState !== 'function' ||
-              typeof saveOptions.assertAssetState !== 'function'))
+          typeof saveOptions.assertPendingState !== 'function' ||
+          typeof saveOptions.assertAssetState !== 'function'
         )
           throw new Error('Smart account payer approval is required');
         const scope = getWalletNavigationScope();
