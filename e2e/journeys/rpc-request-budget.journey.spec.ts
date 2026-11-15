@@ -983,12 +983,12 @@ test('RPC budget and receipts for local wallet transfers', async () => {
             fallback
               ? {
                   deployment: [16, 16],
-                  warm: [25, 25],
-                  erc20: [27, 27],
-                  erc721: [28, 28],
-                  'dapp-native': [39, 39],
-                  'dapp-erc20': [43, 43],
-                  'dapp-erc721': [41, 41],
+                  warm: [22, 22],
+                  erc20: [24, 24],
+                  erc721: [25, 25],
+                  'dapp-native': [36, 36],
+                  'dapp-erc20': [40, 40],
+                  'dapp-erc721': [38, 38],
                   'eoa-native': [12, 12],
                   'eoa-erc20': [12, 12],
                   'eoa-dapp-native': [33, 33],
@@ -996,15 +996,15 @@ test('RPC budget and receipts for local wallet transfers', async () => {
                 }
               : {
                   deployment: [16, 14],
-                  warm: [25, 14],
-                  erc20: [27, 16],
-                  erc721: [28, 18],
-                  'dapp-native': [39, 28],
-                  'dapp-erc20': [43, 32],
-                  'dapp-erc721': [41, 31],
+                  warm: [12, 11],
+                  erc20: [14, 13],
+                  erc721: [15, 15],
+                  'dapp-native': [26, 25],
+                  'dapp-erc20': [30, 29],
+                  'dapp-erc721': [28, 28],
                   'eoa-native': [12, 11],
                   'eoa-erc20': [12, 11],
-                  'eoa-dapp-native': [33, 27],
+                  'eoa-dapp-native': [33, 28],
                   'eoa-dapp-erc20': [40, 36],
                 };
           const formLimits: Record<string, readonly [number, number]> = {
@@ -1020,7 +1020,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           if (gasTank) {
             limits.deployment = fallback ? [38, 38] : [36, 25];
             limits.warm = fallback ? [38, 38] : [36, 25];
-            reviewLimits.warm = fallback ? [26, 26] : [26, 15];
+            reviewLimits.warm = fallback ? [23, 23] : [13, 12];
           }
           if (includeErc1155 || prefund)
             reviewLimits.deployment = prefund
@@ -1033,12 +1033,13 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           if (includeErc1155) {
             limits.erc1155 = fallback ? [46, 46] : [46, 40];
             limits['dapp-erc1155'] = limits.erc1155;
-            reviewLimits.erc1155 = fallback ? [28, 28] : [28, 18];
-            reviewLimits['dapp-erc1155'] = fallback ? [46, 46] : [46, 36];
+            reviewLimits.erc1155 = fallback ? [25, 25] : [15, 15];
+            reviewLimits['dapp-erc1155'] = fallback ? [43, 43] : [33, 33];
             formLimits.erc1155 = [8, 8];
             if (fallback) formLimits['eoa-native'] = [28, 28];
           }
           if (prefund) {
+            formLimits.deployment = [10, 10];
             const rows = output.requests.filter(
               (row: any) => row.phase === 'prefund:confirm'
             );
@@ -1064,6 +1065,26 @@ test('RPC budget and receipts for local wallet transfers', async () => {
               ),
               'two-transaction prefund response bytes'
             ).toBeLessThanOrEqual(64 * 1024);
+          }
+          if (responseDelayMs > 0) {
+            // At 80 ms per response the real receipt/history poll can overlap
+            // the next action. Keep these measured slow-link envelopes local.
+            formLimits.deployment = [16, 7];
+            formLimits['eoa-native'] = [14, 6];
+            formLimits.erc20 = [18, 18];
+            reviewLimits.deployment = [20, 19];
+            reviewLimits.erc20 = [20, 19];
+            reviewLimits.erc721 = [20, 20];
+            reviewLimits['dapp-native'] = [46, 36];
+            reviewLimits['dapp-erc20'] = [39, 38];
+            reviewLimits['dapp-erc721'] = [42, 42];
+            reviewLimits['eoa-native'] = [41, 33];
+            reviewLimits['eoa-dapp-native'] = [35, 30];
+            reviewLimits['eoa-dapp-erc20'] = [45, 41];
+            limits.erc721 = [56, 50];
+            limits['dapp-erc20'] = [45, 36];
+            limits['eoa-erc20'] = [34, 31];
+            limits['eoa-dapp-erc20'] = [30, 25];
           }
           const labels =
             process.env.PALI_RPC_EXTENDED === '1'

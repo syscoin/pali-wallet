@@ -607,3 +607,18 @@ for (const phase of ['quote', 'dispatch'] as const) {
     assert.equal(f.calls.some((call) => call.method === 'eth_sendRawTransaction'), false);
   });
 }
+
+test('EOA ERC721 quote and final dispatch preserve the bound missing-ID negative probe', async () => {
+  const f = fixture();
+  const quote = await f.rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner);
+  await f.rpc.requoteNft(selection, quote, signal(), current, emptyNoncePlanner);
+  const before = f.calls.length;
+  await f.rpc.verifyForDispatch(quote.envelope, signal(), current, emptyNoncePlanner,
+    { standard: 'ERC721', contractAddress: target, tokenId: '0', amountUnits: '1' }, undefined, quote.intent);
+  await f.rpc.verifyNftForDispatch(quote.intent, quote.envelope, signal(), current, false, undefined, emptyNoncePlanner);
+  const ownership = f.calls.filter(call => call.method === 'eth_call' && !simulation(call));
+  assert.equal(ownership.length, 8);
+  assert.equal(ownership.filter(call => abi.parseTransaction(call.params[0] as { data: string })!.args[0] === 0n).length, 4);
+  assert(f.calls.slice(before).some(call => call.method === 'eth_estimateGas'));
+  assert.equal(f.calls.some(call => call.method === 'eth_sendRawTransaction'), false);
+});

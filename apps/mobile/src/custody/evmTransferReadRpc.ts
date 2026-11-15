@@ -205,12 +205,16 @@ export class EvmTransferReadRpc {
           throw unsupported;
         }
         if (method === 'eth_call') {
-          if (scope === 'smart-account' && params[0] && typeof params[0] === 'object') {
+          if ((scope === 'smart-account' || scope === 'nft-quote') && params[0] && typeof params[0] === 'object') {
             const to = Object.getOwnPropertyDescriptor(params[0], 'to')?.value;
             const data = Object.getOwnPropertyDescriptor(params[0], 'data')?.value;
             if (typeof to === 'string' && typeof data === 'string') {
               const normalized = normalizeNftExecutionRevert(error, { to, data });
-              if (normalized) { smartCallReverts.add(normalized); throw normalized; }
+              if (normalized) {
+                if (scope === 'nft-quote' && Object.getOwnPropertyDescriptor(params[0], 'from'))
+                  throw new EvmAssetStateError('TRANSFER_REJECTED');
+                smartCallReverts.add(normalized); throw normalized;
+              }
             }
           }
           throw error;
@@ -247,7 +251,7 @@ export class EvmTransferReadRpc {
     });
     const readFailure = (error: unknown): never => {
       guardedRead(guard);
-      if (error instanceof EvmTransferReadError) throw error;
+      if (error instanceof EvmTransferReadError || error instanceof EvmAssetStateError) throw error;
       if (controller.signal.aborted) return rejectRead('CANCELLED');
       if (error instanceof Error && (smartCallReverts.has(error) || unsupportedPriorityErrors.has(error))) throw error;
       if (error instanceof RpcResponseIntegrityError) return rejectRead('INVALID_RESPONSE');
@@ -804,7 +808,7 @@ export class EvmTransferReadRpc {
       await this.canonical(read, sampled);
       await this.checkChain(read);
       read.assertCurrent();
-    }, 'endpoint');
+    }, nft ? 'nft-quote' : 'endpoint');
   }
 
   private async readSendBalance(read: Reader, from: string, sampled: ReadBlock,
