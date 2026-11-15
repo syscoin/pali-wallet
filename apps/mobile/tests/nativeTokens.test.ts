@@ -341,8 +341,9 @@ test('manual collectible checks use the selected registered RPC without an explo
       assert.equal(url, selected.rpcUrl);
       assert.equal(init.credentials, 'omit');
       assert.equal(init.redirect, 'error');
-      const { id, method, params } = JSON.parse(String(init.body));
-      const respond = (result: unknown) => Response.json({ jsonrpc: '2.0', id, result });
+      const payload = JSON.parse(String(init.body));
+      const reply = ({ id, method, params }: { id: number; method: string; params: any[] }) => {
+      const respond = (result: unknown) => ({ jsonrpc: '2.0', id, result });
       calls.push(method);
       if (method === 'eth_chainId') return respond('0x1');
       if (method === 'eth_getBlockByNumber') return respond(block);
@@ -363,6 +364,8 @@ test('manual collectible checks use the selected registered RPC without an explo
       assert.deepEqual(Array.from(call.args[0]), [A]);
       assert.deepEqual(Array.from(call.args[1]), [max]);
       return respond(abi.encodeFunctionResult(call.name, [[max]]));
+      };
+      return Response.json(Array.isArray(payload) ? payload.map(reply) : reply(payload));
     },
   });
   const f = fixture({

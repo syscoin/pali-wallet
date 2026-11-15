@@ -174,7 +174,11 @@ export async function withEvmReadPhase<T>(
           : JSON.parse(JSON.stringify(value));
       });
     };
-    const guardedHelper = (name: string, args: unknown[]) => {
+    const guardedHelper = (
+      name: string,
+      args: unknown[],
+      invoke?: () => Promise<unknown>
+    ) => {
       active();
       const method = source[name];
       if (typeof method !== 'function')
@@ -192,7 +196,9 @@ export async function withEvmReadPhase<T>(
         result = bounded(
           Promise.resolve().then(() => {
             active();
-            return method.apply(source, JSON.parse(JSON.stringify(args)));
+            return invoke
+              ? invoke()
+              : method.apply(source, JSON.parse(JSON.stringify(args)));
           })
         );
         helpers.set(key, result);
@@ -309,7 +315,14 @@ export async function withEvmReadPhase<T>(
           )
         ),
       getNetwork: () => guardedHelper('getNetwork', []),
-      getFeeData: () => guardedHelper('getFeeData', []),
+      getFeeData: () =>
+        guardedHelper('getFeeData', [], () =>
+          source.getFeeData({
+            getBlock: (tag: 'latest') =>
+              send('eth_getBlockByNumber', [tag, false]),
+            send: (method: string, params: unknown[]) => send(method, params),
+          })
+        ),
       getBlock: (...args: unknown[]) => guardedHelper('getBlock', args),
     });
     const result = await bounded(Promise.resolve().then(() => work(scoped)));

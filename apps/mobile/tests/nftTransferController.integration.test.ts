@@ -161,7 +161,9 @@ async function withController(
   };
   const openTransfers = (): NativeTransfers => new NativeTransfers(authority, () => runtime?.transfers, {
     now: () => performance.now() + clockOffset,
-    fetch: async (url, init) => {
+    fetch: async function fetchFixture(url, init): Promise<Response> {
+      const request = JSON.parse(String(init.body));
+      if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fetchFixture(url, { ...init, body: JSON.stringify(row) })).json())));
       assert.equal(url, network.rpcUrl);
       assert.equal(init.method, 'POST');
       assert.equal(init.redirect, 'error');

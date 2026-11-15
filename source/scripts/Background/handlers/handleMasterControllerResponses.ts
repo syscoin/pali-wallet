@@ -471,6 +471,7 @@ export const handleMasterControllerResponses = (
               throw transactionApprovalExpired();
 
             let argumentsForCall = params;
+            let recordQuotedNonce: ((value: unknown) => void) | undefined;
             if (stopsEoaCalls) {
               const batch = dappApproval?.batch;
               if (
@@ -487,10 +488,12 @@ export const handleMasterControllerResponses = (
               ];
             } else if (reviewsEvm) {
               if (!dappApproval) throw transactionApprovalExpired();
+              const quoteNonce = dappApproval.beginFeeQuote(params?.[0]?.nonce);
+              recordQuotedNonce = quoteNonce.record;
               argumentsForCall = [
                 params?.[0],
                 dappApproval.context,
-                dappApproval.reviewNonce(params?.[0]?.nonce),
+                quoteNonce.approval,
                 dappApproval.assertCurrent,
                 dappApproval.owner,
               ];
@@ -617,6 +620,7 @@ export const handleMasterControllerResponses = (
             if (smartMethod === 'signSmartAccountPreparedOwner')
               sourceAuthority?.assertCurrent();
             recordNonce?.(response);
+            recordQuotedNonce?.(response?.transaction?.nonce);
             // Hardware message signing can remain pending while wallet storage
             // becomes unavailable. Do not release that signature after the
             // existing admission gate closes. Transaction submissions retain

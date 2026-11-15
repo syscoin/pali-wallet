@@ -20,17 +20,23 @@ const abi = new Interface([
 type Wire = { id: number; method: string; params: unknown[] };
 type Rewrite = (wire: Wire, reply: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>;
 
-function fixture({ enumerable = true, balance = maximum, rewrite = (_wire, reply) => reply }: {
-  enumerable?: boolean; balance?: string; rewrite?: Rewrite;
+function fixture({ enumerable = true, balance = maximum, scalarOnly = false, rewrite = (_wire, reply) => reply }: {
+  enumerable?: boolean; balance?: string; scalarOnly?: boolean; rewrite?: Rewrite;
 } = {}) {
-  let registrations = [network], active = 0, maximumActive = 0;
+  let registrations = [network], active = 0, maximumActive = 0, posts = 0;
   const requests: { wire: Wire; url: string; init: RequestInit }[] = [];
   const read = createNftEnumerationReader({ registrations: () => registrations,
     async fetch(url, init) {
-      const wire: Wire = JSON.parse(String(init.body));
-      requests.push({ wire, url, init });
+      const payload = JSON.parse(String(init.body)) as Wire | Wire[];
+      posts++;
+      if (scalarOnly && Array.isArray(payload)) return Response.json({
+        jsonrpc: '2.0', id: null,
+        error: { code: -32600, message: 'Batch requests are not supported' },
+      });
       maximumActive = Math.max(maximumActive, ++active);
       try {
+        const reply = async (wire: Wire) => {
+        requests.push({ wire, url, init });
         let result: unknown;
         if (wire.method === 'eth_chainId') result = '0x4d2';
         else if (wire.method === 'eth_getBlockByNumber') result = block;
@@ -52,11 +58,13 @@ function fixture({ enumerable = true, balance = maximum, rewrite = (_wire, reply
             result = abi.encodeFunctionResult(name, [args[1] === 0n ? '0' : args[1] === 1n ? maximum : args[1]]);
           }
         }
-        return Response.json(await rewrite(wire, { jsonrpc: '2.0', id: wire.id, result }));
+        return rewrite(wire, { jsonrpc: '2.0', id: wire.id, result });
+        };
+        return Response.json(Array.isArray(payload) ? await Promise.all(payload.map(reply)) : await reply(payload));
       } finally { active--; }
     },
   });
-  return { read, requests, maximumActive: () => maximumActive,
+  return { read, requests, maximumActive: () => maximumActive, posts: () => posts,
     replaceNetwork() { registrations = [createNativeNetwork({ ...network, rpcUrl: 'https://changed.invalid/rpc' })]; } };
 }
 
@@ -68,11 +76,22 @@ test('enumeration uses the selected RPC and one block, caps ten IDs, and returns
   assert.equal(f.requests.filter(({ wire }) => wire.method === 'eth_call').length, 12);
   assert(f.maximumActive() <= 4);
   assert.equal(f.requests.length, 17);
+  assert.equal(f.posts(), 6);
   for (const { url, init } of f.requests) {
     assert.equal(url, network.rpcUrl); assert.equal(init.credentials, 'omit'); assert.equal(init.redirect, 'error');
   }
   assert.deepEqual(f.requests.at(-2)!.wire.params, [block.number, false]);
   assert.equal(f.requests.at(-1)!.wire.method, 'eth_chainId');
+});
+
+test('a scalar-only endpoint retains enumeration and bounds its fallback calls', async () => {
+  const f = fixture({ scalarOnly: true });
+  const value = await f.read(selection, new AbortController().signal, () => undefined);
+  assert.equal(value.tokenIds.length, 10);
+  assert.equal(value.tokenIds[1], maximum);
+  assert.equal(f.requests.length, 17);
+  assert.equal(f.posts(), 18, 'One unsupported batch probe precedes the seventeen scalar reads');
+  assert(f.maximumActive() <= 4);
 });
 
 test('non-enumerable, empty and failed enumeration retain manual entry without fabricated IDs', async () => {

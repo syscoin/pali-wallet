@@ -20,7 +20,9 @@ const signal=()=>new AbortController().signal;
 type Call={method:string;params:unknown[];signal:AbortSignal};
 function fixture(network=getNativeNetwork('ethereum'), override?:(call:Call)=>unknown|Promise<unknown>){
  const calls:Call[]=[];
- const rpc=new EvmTransferReadRpc(network,{monotonicMilliseconds:()=>1000,fetch:async(url,init)=>{
+ const fetcher = async(url: string,init: RequestInit): Promise<Response>=>{
+  const request = JSON.parse(String(init.body));
+  if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fetcher(url, { ...init, body: JSON.stringify(row) })).json())));
   assert.equal(url,network.rpcUrl);assert.equal(init.redirect,'error');assert.equal(init.credentials,'omit');
   const body=JSON.parse(String(init.body));const call={...body,signal:init.signal} as Call;calls.push(call);
   const inspect=(value:unknown):void=>{if(Array.isArray(value))value.forEach(inspect);else if(value&&typeof value==='object')Object.values(value).forEach(inspect);else if(typeof value==='string'&&/^0x[0-9a-f]+$/i.test(value)){let tx:Transaction|undefined;try{tx=Transaction.from(value)}catch{/* Not a transaction. */}assert.equal(tx?.isSigned()??false,false);}};
@@ -36,7 +38,7 @@ function fixture(network=getNativeNetwork('ethereum'), override?:(call:Call)=>un
    else throw Error('Unexpected read method '+call.method);
   }
   return new Response(JSON.stringify({jsonrpc:'2.0',id:body.id,result}),{headers:{'content-type':'application/json'}});
- }});return {rpc,calls};
+ }; const rpc=new EvmTransferReadRpc(network,{monotonicMilliseconds:()=>1000,fetch:fetcher});return {rpc,calls};
 }
 
 for(const network of [...NATIVE_NETWORKS,custom])test(`${network.id} quotes the same exact unsigned envelope without chain profiles`,async()=>{

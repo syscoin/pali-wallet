@@ -47,12 +47,24 @@ type MarketReadWork = {
 export function createNativeAssetMarketReader(fetch: WalletHttpFetch, purpose: AssetMarketPurpose, clock = nativeAssetMarketNow) {
   if (purpose !== 'price' && purpose !== 'history') throw new Error('Invalid market purpose');
   const cache = new Map<string, NativeAssetMarketResult>();
+  const tokenIds = new Map<string, { id: string; expiresAt: number }>();
   const pending = new Map<string, MarketReadWork>();
+  const tokenId = async (source: Extract<AssetMarketSource, { kind: 'token' }>, read: (url: string, limit: number) => Promise<unknown>, signal: AbortSignal) => {
+    const key = JSON.stringify([source.platform, source.contract]);
+    const cached = tokenIds.get(key), remaining = cached ? cached.expiresAt - clock() : 0;
+    if (cached && remaining > 0 && remaining <= 86_400_000) return cached.id;
+    const id = readTokenMarketId(await read(tokenMarketIdentityUrl(source.platform, source.contract), 512 * 1024), source.platform, source.contract);
+    if (id && !signal.aborted) {
+      tokenIds.delete(key); tokenIds.set(key, { id, expiresAt: clock() + 86_400_000 });
+      if (tokenIds.size > 24) tokenIds.delete(tokenIds.keys().next().value!);
+    }
+    return id;
+  };
   const load = async (source: AssetMarketSource, currency: FiatCurrency, key: string, request: AbortController) => {
     const timer = setTimeout(() => request.abort(), 8000);
     const read = (url: string, limit: number): Promise<unknown> => readPublicMarketJson(fetch, url, limit, request.signal);
     try {
-      const id = source.kind === 'native' ? source.id : readTokenMarketId(await read(tokenMarketIdentityUrl(source.platform, source.contract), 512 * 1024), source.platform, source.contract);
+      const id = source.kind === 'native' ? source.id : await tokenId(source, read, request.signal);
       if (!id || request.signal.aborted) return null;
       const quote = read(assetMarketUrl(id, currency), 64 * 1024);
       const history = purpose === 'history'

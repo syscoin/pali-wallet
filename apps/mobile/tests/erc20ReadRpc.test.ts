@@ -60,8 +60,8 @@ function readerWith(rewrite?: (request: Request) => unknown) {
   });
   return { reader, requests, posts: () => posts };
 }
-test('import verifies chain first, sends only bounded read calls and uses one observed block', async () => {
-  const { reader, requests } = readerWith();
+test('import verifies chain first and batches nine bounded reads into four envelopes at one block', async () => {
+  const { reader, requests, posts } = readerWith();
   const actual = await reader.readToken(
     'ethereum',
     holder.toLowerCase(),
@@ -96,6 +96,7 @@ test('import verifies chain first, sends only bounded read calls and uses one ob
     if (request.method === 'eth_call') assert.equal(request.params[1], '0x123');
   }
   assert.equal(ids.size, 9);
+  assert.equal(posts(), 4);
   assert.equal(
     requests[6]!.request.params[0].data,
     `0x70a08231${holder.slice(2).toLowerCase().padStart(64, '0')}`
@@ -177,7 +178,9 @@ test('wrong chain stops before account disclosure and every supported selected n
     ),
     { code: 'WRONG_CHAIN' }
   );
-  assert.equal(wrong.requests.length, 1);
+  assert.deepEqual(wrong.requests.map(({ request }) => request.method), [
+    'eth_chainId', 'eth_getBlockByNumber',
+  ]);
   for (const id of [
     'base',
     'rollux',
@@ -231,9 +234,10 @@ test('hostile ABI offsets, lengths, padding, strings, units and non-contracts fa
     );
   }
   for (const bad of ['0x', '0x0', '0x123', '0x' + 'ff'.repeat(32769)]) {
-    const { reader } = readerWith((request) =>
+    const { reader, requests } = readerWith((request) =>
       request.method === 'eth_getCode' ? bad : result(request)
     );
+    assert(!requests.some(({ request }) => request.method === 'eth_call'));
     await assert.rejects(
       reader.readToken(
         'ethereum',
@@ -337,12 +341,17 @@ test('cancellation settles ignored transport and one deadline bounds the complet
   assert.throws(() => createErc20Reader({ timeoutMs: 0 }));
   assert.throws(() => createErc20Reader({ timeoutMs: 30001 }));
 });
-test('ABI reads fan out to at most four calls and late successful transport after abort cannot return an observation', async () => {
+test('scalar-only ABI reads fan out to at most four calls and late success after abort cannot return an observation', async () => {
   let active = 0;
   let maximum = 0;
   const reader = createErc20Reader({
     fetch: async (_, init) => {
-      const request = JSON.parse(String(init.body)) as Request;
+      const payload = JSON.parse(String(init.body)) as Request | Request[];
+      if (Array.isArray(payload)) return Response.json({
+        jsonrpc: '2.0', id: null,
+        error: { code: -32600, message: 'Batch requests are not supported' },
+      });
+      const request = payload;
       active++;
       maximum = Math.max(active, maximum);
       await new Promise((resolve) => setTimeout(resolve, 1));
@@ -387,6 +396,25 @@ test('ABI reads fan out to at most four calls and late successful transport afte
   controller.abort();
   release(json(1, '0x1'));
   await assert.rejects(pending, { code: 'CANCELLED' });
+});
+
+test('one rejected metadata batch member refuses import without repeating getters', async () => {
+  const methods: string[] = [];
+  const reader = createErc20Reader({
+    fetch: async (_url, init) => {
+      const payload = JSON.parse(String(init.body)) as Request | Request[];
+      const reply = (request: Request) => {
+        methods.push(request.method);
+        if (request.method === 'eth_call' && request.params[0].data === '0x95d89b41')
+          return { jsonrpc: '2.0', id: request.id, error: { code: -32000, message: 'reverted' } };
+        return { jsonrpc: '2.0', id: request.id, result: result(request) };
+      };
+      return Response.json(Array.isArray(payload) ? payload.map(reply) : reply(payload));
+    },
+  });
+  await assert.rejects(reader.readToken('ethereum', holder, contractAddress, new AbortController().signal));
+  assert.equal(methods.filter(method => method === 'eth_call').length, 4);
+  assert.equal(methods.filter(method => method === 'eth_chainId').length, 1);
 });
 
 test('twenty saved balances share one canonical envelope while preserving every precision check', async () => {

@@ -107,7 +107,8 @@ async function fixture(type: DappWatchAssetRequest['type'] = 'ERC721') {
     registrations: () => catalogue.networks,
     async fetch(url, init) {
       assert.equal(url, network.rpcUrl);
-      const wire = JSON.parse(String(init.body));
+      const payload = JSON.parse(String(init.body));
+      const reply = (wire: { id: number; method: string; params: any[] }) => {
       let result: unknown;
       if (wire.method === 'eth_chainId') result = '0x1';
       else if (wire.method === 'eth_getBlockByNumber') result = block;
@@ -139,7 +140,9 @@ async function fixture(type: DappWatchAssetRequest['type'] = 'ERC721') {
           result = abi.encodeFunctionResult(parsed.name, [0]);
         else assert.fail('Unexpected contract read');
       } else assert.fail('Unexpected RPC');
-      return Response.json({ jsonrpc: '2.0', id: wire.id, result });
+      return { jsonrpc: '2.0', id: wire.id, result };
+      };
+      return Response.json(Array.isArray(payload) ? payload.map(reply) : reply(payload));
     },
   });
   const source = {

@@ -19,7 +19,10 @@ jest.mock(
 );
 jest.mock('utils/ethUtil', () => ({ decodeTransactionData: jest.fn() }));
 
-import { normalizeDappRpcRequest } from '../../shared/dappRpcReads';
+import {
+  classifyDappRpcMethod,
+  normalizeDappRpcRequest,
+} from '../../shared/dappRpcReads';
 import { getController } from 'scripts/Background';
 import { getUnrestrictedMethods } from 'scripts/Background/controllers/message-handler/method-registry';
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
@@ -198,14 +201,20 @@ describe('EthProvider public RPC admission and errors', () => {
         },
       });
       expect(
-        await native.read(expected, new AbortController().signal, () => {})
+        await native.read(
+          expected,
+          new AbortController().signal,
+          () => undefined
+        )
       ).toEqual(extensionResult);
       expect(rpc.send).toHaveBeenCalledTimes(1);
       expect(rpc.send).toHaveBeenCalledWith(method, [...expected.params]);
       expect(observed.map((value) => value.method)).toEqual([
         'eth_chainId',
         method,
-        'eth_chainId',
+        ...(classifyDappRpcMethod(String(method)) === 'node-control'
+          ? ['eth_chainId']
+          : []),
       ]);
       expect(observed[1]!.params).toEqual(expected.params);
       expect(popupMock).not.toHaveBeenCalled();

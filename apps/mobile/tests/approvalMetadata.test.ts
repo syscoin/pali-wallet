@@ -11,14 +11,15 @@ function fixture(standard: 'ERC-721' | 'ERC-1155' | 'ERC-20' | 'ambiguous' | 'un
   const calls: string[] = [];
   let onRead = () => {};
   const fetcher = async (_url: string, init: RequestInit) => {
-    const { id, method, params } = JSON.parse(String(init.body));
+    const payload = JSON.parse(String(init.body));
+    const reply = ({ id, method, params }: { id: number; method: string; params: unknown[] }) => {
     onRead();
     let result: unknown;
     if (method === 'eth_chainId') result = '0x1';
     else if (method === 'eth_getBlockByNumber') result = { number: '0x10', hash: '0x' + '33'.repeat(32) };
     else if (method === 'eth_getCode') result = '0x6000';
     else {
-      const data = String(params[0].data); calls.push(data);
+      const data = String((params[0] as { data: string }).data); calls.push(data);
       if (data.startsWith('0x01ffc9a7')) result = abi.encode(['bool'], [
         standard === 'ambiguous' || standard === 'ERC-721' && data.includes('80ac58cd') || standard === 'ERC-1155' && data.includes('d9b67a26'),
       ]);
@@ -27,7 +28,9 @@ function fixture(standard: 'ERC-721' | 'ERC-1155' | 'ERC-20' | 'ambiguous' | 'un
         : abi.encode(['uint256'], [data === '0x313ce567' ? 255 : 1]);
       else result = '0x';
     }
-    return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), { headers: { 'content-type': 'application/json' } });
+    return { jsonrpc: '2.0', id, result };
+    };
+    return Response.json(Array.isArray(payload) ? payload.map(reply) : reply(payload));
   };
   return { calls, controller, onRead(fn: () => void) { onRead = fn; }, read: () => readNativeApprovalMetadata({
     network: getNativeNetwork('ethereum'), owner, contract, signal: controller.signal,

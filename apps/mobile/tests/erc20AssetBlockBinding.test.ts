@@ -56,7 +56,9 @@ function fixture(options: { holdBalance?: boolean } = {}) {
     firstPlanCompleted.resolve();
     return result;
   };
-  const fetcher = async (_url: string, init: RequestInit) => {
+  const fetcher = async (_url: string, init: RequestInit): Promise<Response> => {
+      const payload = JSON.parse(String(init.body));
+      if (Array.isArray(payload)) return Response.json(await Promise.all(payload.map(async row => (await fetcher(_url, { ...init, body: JSON.stringify(row) })).json())));
       const request = JSON.parse(String(init?.body)) as RpcRequest;
       requests.push(request);
       let result: unknown;

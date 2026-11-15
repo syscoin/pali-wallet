@@ -352,6 +352,30 @@ it('preserves AA inner-token hints through the actual pending-to-receipt update'
   ).toEqual([T]);
 });
 
+it('skips the head read while a directly observed transaction has no receipt', async () => {
+  const hash = `0x${'ab'.repeat(32)}`;
+  provider.getTransaction = jest.fn().mockResolvedValue({
+    hash,
+    from: A,
+    to: T,
+    value: BigInt(0),
+    chainId: 1,
+    data: '0x',
+  });
+  provider.getTransactionReceipt = jest.fn().mockResolvedValue(null);
+  provider.getBlockNumber = jest.fn().mockResolvedValue(11);
+  provider.getBlock = jest.fn();
+  const transaction = await controller.getEvmTransactionFromProvider(hash);
+  expect(transaction).toMatchObject({
+    hash,
+    status: 'pending',
+    confirmations: 0,
+    blockNumber: null,
+  });
+  expect(provider.getBlockNumber).not.toHaveBeenCalled();
+  expect(provider.getBlock).not.toHaveBeenCalled();
+});
+
 it('carries actual router receipt Transfer logs through direct confirmation into targeted refresh', async () => {
   const hash = `0x${'aa'.repeat(32)}`;
   const router = `0x${'66'.repeat(20)}`;

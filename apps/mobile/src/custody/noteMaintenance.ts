@@ -1,4 +1,3 @@
-import { normalizeDappRpcRequest } from '../../../../source/shared/dappRpcReads.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import { getPrivacyPool, PRIVACY_CHAIN_ID } from '../../../../source/utils/privacy/registry.ts';
 import { prepareSpentCompletion, type SpentCompletionRequest } from '../../../../source/utils/privacy/spentCompletion.ts';
@@ -15,17 +14,16 @@ export function createNativeNoteMaintenanceProofs(options: Readonly<{
   network: NativeNetworkRegistration;
   signal: AbortSignal;
   assertCurrent(): void;
-  rpc: Pick<EvmTransferReadRpc, 'retirementRead' | 'dappRequest'>;
+  rpc: Pick<EvmTransferReadRpc, 'noteMaintenanceRead'>;
 }>): NativeNoteMaintenanceProofs {
   const network = snapshotNativeNetwork(options.network);
   if (network.chainId !== String(PRIVACY_CHAIN_ID) ||
-      typeof options.rpc?.retirementRead !== 'function' || typeof options.rpc?.dappRequest !== 'function' ||
+      typeof options.rpc?.noteMaintenanceRead !== 'function' ||
       typeof options.signal?.aborted !== 'boolean' || typeof options.signal.addEventListener !== 'function' ||
       typeof options.signal.removeEventListener !== 'function')
     throw new Error('privacy_spent_proof_unavailable');
   const { signal, assertCurrent } = options;
-  const retirementRead = options.rpc.retirementRead.bind(options.rpc);
-  const dappRequest = options.rpc.dappRequest.bind(options.rpc);
+  const noteMaintenanceRead = options.rpc.noteMaintenanceRead.bind(options.rpc);
   const check = () => {
     assertSynchronousEvmFeeGuard(assertCurrent);
     if (signal.aborted) throw new Error('privacy_vault_session_changed');
@@ -39,14 +37,7 @@ export function createNativeNoteMaintenanceProofs(options: Readonly<{
     const current = () => { check(); guard(); if (external.aborted || lifetime.signal.aborted) throw new Error('privacy_vault_session_changed'); };
     try {
       current();
-      let result: unknown;
-      switch (method) {
-        case 'eth_chainId': case 'eth_getBlockByNumber': case 'eth_getTransactionReceipt':
-          result = await retirementRead(method, params, lifetime.signal, current); break;
-        case 'eth_call': case 'eth_getTransactionByHash':
-          result = await dappRequest(normalizeDappRpcRequest(method, params), lifetime.signal, current); break;
-        default: throw new Error('privacy_rpc_unavailable');
-      }
+      const result = await noteMaintenanceRead(method, params, lifetime.signal, current);
       current(); return result;
     } finally {
       signal.removeEventListener('abort', abort); external.removeEventListener('abort', abort); lifetime.abort();

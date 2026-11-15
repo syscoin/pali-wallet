@@ -443,8 +443,6 @@ function contract(value: unknown): string {
 export function createErc20Reader(options: ReadOptions = {}): Erc20Reader {
   const operation = createReadOperation(options);
   const aggregateByNetwork = new Map<string, ReturnType<typeof createErc20BalanceBatch>>();
-  const call = (read: Read, address: string, data: string, block: string) =>
-    read('eth_call', [{ to: address, data }, block]);
   const balanceData = (holder: string) =>
     `${SELECTORS.balanceOf}${holder.slice(2).toLowerCase().padStart(64, '0')}`;
   return Object.freeze({
@@ -461,18 +459,18 @@ export function createErc20Reader(options: ReadOptions = {}): Erc20Reader {
         signal,
         async (read, block, holder) => {
           codeResult(await read('eth_getCode', [selected, block]));
-          const [name, symbol, decimals, units] = await Promise.all([
-            call(read, selected, SELECTORS.name, block).then((value) =>
-              textResult(value, 'name')
-            ),
-            call(read, selected, SELECTORS.symbol, block).then((value) =>
-              textResult(value, 'symbol')
-            ),
-            call(read, selected, SELECTORS.decimals, block).then(
-              decimalsResult
-            ),
-            call(read, selected, balanceData(holder), block).then(unitsResult),
-          ]);
+          const observations = await read.many(
+            [SELECTORS.name, SELECTORS.symbol, SELECTORS.decimals, balanceData(holder)]
+              .map(data => ({ method: 'eth_call', params: [{ to: selected, data }, block] }))
+          );
+          const values = observations.map(observation => {
+            if (observation.status === 'rejected') throw observation.reason;
+            return observation.value;
+          });
+          const name = textResult(values[0], 'name');
+          const symbol = textResult(values[1], 'symbol');
+          const decimals = decimalsResult(values[2]);
+          const units = unitsResult(values[3]);
           return Object.freeze({
             metadata: parseErc20Metadata({
               contractAddress: selected,
@@ -482,7 +480,9 @@ export function createErc20Reader(options: ReadOptions = {}): Erc20Reader {
             }),
             units,
           });
-        }
+        },
+        undefined,
+        true
       );
     },
     readBalances: async (
@@ -836,6 +836,35 @@ function createSelectedContractReadOperation(
       async (read, block, holder) => {
         codeResult(await read('eth_getCode', [target, block]));
         let calls = 0;
+        let pending: {
+          data: string;
+          resolve(value: ScopedCallOutcome): void;
+          reject(error: unknown): void;
+        }[] = [];
+        const flush = async () => {
+          const batch = pending;
+          pending = [];
+          try {
+            const results = await read.many(batch.map(({ data }) => ({
+              method: 'eth_call', params: [{ to: target, data }, block],
+            })));
+            for (const [index, job] of batch.entries()) {
+              const result = results[index];
+              if (!result) job.reject(new Erc20ReadError('INVALID_RESPONSE'));
+              else if (result.status === 'rejected') {
+                const error = result.reason;
+                if (error instanceof RpcReadError) job.resolve({ kind: 'rpc-error', error: {
+                  code: error.code, message: error.message, data: error.data,
+                } });
+                else job.reject(error);
+              } else if (typeof result.value !== 'string' || !/^0x(?:[0-9a-fA-F]{2})*$/.test(result.value))
+                job.reject(new Erc20ReadError('INVALID_RESPONSE'));
+              else job.resolve({ kind: 'result', data: result.value });
+            }
+          } catch (error) {
+            batch.forEach(job => job.reject(error));
+          }
+        };
         return work({
           holder,
           target,
@@ -848,27 +877,15 @@ function createSelectedContractReadOperation(
               !/^0x(?:[0-9a-fA-F]{2})+$/.test(data)
             )
               return fail('INVALID_INPUT');
-            try {
-              const value = await read(
-                'eth_call',
-                [{ to: target, data }, block],
-                true
-              );
-              if (
-                typeof value !== 'string' ||
-                !/^0x(?:[0-9a-fA-F]{2})*$/.test(value)
-              )
-                return fail('INVALID_RESPONSE');
-              return { kind: 'result', data: value };
-            } catch (error) {
-              if (error instanceof ScopedCallRpcError)
-                return { kind: 'rpc-error', error: error.value };
-              throw error;
-            }
+            return new Promise<ScopedCallOutcome>((resolve, reject) => {
+              pending.push({ data, resolve, reject });
+              if (pending.length === 1) void Promise.resolve().then(flush);
+            });
           },
         });
       },
-      { network, assertCurrent }
+      { network, assertCurrent },
+      true
     );
   };
 }

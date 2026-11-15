@@ -32,6 +32,8 @@ import {
 } from 'utils/evmTransactionContext';
 import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 
+import { readPublicRpc } from './publicRpcBatch';
+
 export const EthProvider = (host: string, context: IEnhancedRequestContext) => {
   const sendTransaction = async (params: ITransactionParams) => {
     const tx = normalizeDappTransaction(params);
@@ -286,20 +288,26 @@ export const EthProvider = (host: string, context: IEnhancedRequestContext) => {
       ]);
     };
     const identity = sourceIdentity();
+    const assertCurrent = () => {
+      assertRequestActive(signal);
+      if (
+        getController().wallet !== wallet ||
+        sourceIdentity() !== identity ||
+        wallet.ethereumTransaction !== ethereumTransaction ||
+        ethereumTransaction.web3Provider !== provider
+      )
+        throw ethErrors.provider.unauthorized(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
     return executeDappRpcRequest(request, {
-      assertCurrent() {
-        assertRequestActive(signal);
-        if (
-          getController().wallet !== wallet ||
-          sourceIdentity() !== identity ||
-          wallet.ethereumTransaction !== ethereumTransaction ||
-          ethereumTransaction.web3Provider !== provider
-        )
-          throw ethErrors.provider.unauthorized(
-            EVM_TRANSACTION_CONTEXT_CHANGED
-          );
-      },
-      request: (request) => provider.send(request.method, [...request.params]),
+      assertCurrent,
+      request: (query) =>
+        readPublicRpc(
+          provider,
+          JSON.stringify([host, identity]),
+          query,
+          signal,
+          assertCurrent
+        ),
       verifyPersonalMessage: (message, signature) =>
         ethereumTransaction.verifyPersonalMessage(message, signature),
     });

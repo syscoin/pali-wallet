@@ -1,9 +1,9 @@
 import { withEvmReadPhase } from '../../../../source/shared/evmReadPhase.ts';
 import { createBoundedRpcFetch } from './boundedRpcFetch.ts';
 import { JsonRpcReadClient, RpcReadCapabilities, RpcReadError } from '@sidhujag/sysweb3-keyring/cjs/rpc-read-client.js';
-import { RpcResponseIntegrityError } from '@sidhujag/sysweb3-keyring/cjs/rpc-transport.js';
+import { isReadOnlyRpcMethod, RpcResponseIntegrityError } from '@sidhujag/sysweb3-keyring/cjs/rpc-transport.js';
 import { AUTOMATIC_FEE, chooseEvmFees, snapshotEvmFeeChoice, type EvmFeeChoice, type EvmFeeRates } from '../../../../source/shared/transactionFeeChoice.ts';
-import { DAPP_PUBLIC_RPC_METHODS, normalizeDappRpcRequest, type DappPublicRpcMethod, type DappPublicRpcRequest } from '../../../../source/shared/dappRpcReads.ts';
+import { classifyDappRpcMethod, DAPP_PUBLIC_RPC_METHODS, normalizeDappRpcRequest, type DappPublicRpcMethod, type DappPublicRpcRequest } from '../../../../source/shared/dappRpcReads.ts';
 import { EthereumRpcErrorHandler } from '../../../../source/helpers/errors/errorClassesHandlers.ts';
 import { assertJsonWorkBudget, DAPP_REQUEST_LIMITS } from '../../../../source/utils/requestPayloadBudget.ts';
 import { privacyWithdrawalFees } from '../../../../source/utils/privacy/withdrawalFees.ts';
@@ -59,6 +59,8 @@ type Reader = ((method: Method, params: readonly unknown[]) => Promise<unknown>)
   signal: AbortSignal;
   assertCurrent(): void;
   many(requests: readonly { method: Method; params: readonly unknown[] }[]): Promise<PromiseSettledResult<unknown>[]>;
+  verifyChain?(): Promise<void>;
+  fresh?(method: Method, params: readonly unknown[]): Promise<unknown>;
 };
 type TransferRequest = Readonly<{ from: string; to: string; value: string; data: string }>;
 type ReadBlock = EvmSampledBlock & Readonly<{ baseFee: bigint | null; gasLimit: bigint }>;
@@ -206,7 +208,7 @@ export class EvmTransferReadRpc {
           throw unsupported;
         }
         if (method === 'eth_call') {
-          if ((scope === 'smart-account' || scope === 'nft-quote') && params[0] && typeof params[0] === 'object') {
+          if ((scope === 'smart-account' || scope === 'nft-quote' || scope === 'endpoint') && params[0] && typeof params[0] === 'object') {
             const to = Object.getOwnPropertyDescriptor(params[0], 'to')?.value;
             const data = Object.getOwnPropertyDescriptor(params[0], 'data')?.value;
             if (typeof to === 'string' && typeof data === 'string') {
@@ -228,7 +230,8 @@ export class EvmTransferReadRpc {
     const batch = new JsonRpcReadClient(this.network.rpcUrl, {
       capabilities: this.capabilities,
       signal: controller.signal, timeoutMs: this.timeoutMs, recoverResponse: false, maxConcurrency: 4,
-      maxBatchItems: 40, maxResponseBytes: 2 * 1024 * 1024,
+      maxBatchItems: 40, maxRequestBytes: scope === 'dapp-rpc' ? DAPP_REQUEST_LIMITS.bytes : 256 * 1024,
+      maxResponseBytes: 2 * 1024 * 1024,
       requestInit: { credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer' },
       fetch: async (url, init) => {
         guardedRead(guard);
@@ -294,8 +297,10 @@ export class EvmTransferReadRpc {
             return result;
           }
           try {
-            if (result.reason instanceof RpcReadError)
-              return { status: 'fulfilled', value: resultValue({ error: result.reason }, requests[index]!.method, requests[index]!.params) };
+            if (result.reason instanceof RpcReadError) {
+              try { return { status: 'fulfilled', value: resultValue({ error: { code: result.reason.code, message: result.reason.message, data: result.reason.data } }, requests[index]!.method, requests[index]!.params) }; }
+              catch (error) { readFailure(error); }
+            }
             readFailure(result.reason);
           } catch (error) { return { status: 'rejected', reason: error }; }
           return result;
@@ -326,22 +331,52 @@ export class EvmTransferReadRpc {
     }
   }
   private async checkChain(read: Reader) {
+    if (read.verifyChain) return read.verifyChain();
     read.assertCurrent();
     const chain = await read('eth_chainId', []);
     read.assertCurrent();
     if (quantity(chain) !== BigInt(this.network.chainId)) rejectRead('PROFILE_CHANGED');
   }
+  private readPhaseOperation<T>(external: AbortSignal, guard: () => void, work: (read: Reader) => Promise<T>,
+    scope: 'endpoint' | 'nft-quote' = 'endpoint'): Promise<T> {
+    return this.operation(external, guard, read => withEvmReadPhase({
+      signal: read.signal,
+      send: (method, params) => read(method as Method, params),
+      readMany: requests => read.many(requests.map(request => ({ ...request, method: request.method as Method }))),
+      verifyConfiguredChainId: () => this.checkChain(read),
+    }, read.assertCurrent, provider => work(Object.assign(
+      (method: Method, params: readonly unknown[]) => provider.send(method, [...params]),
+      { signal: read.signal, assertCurrent: read.assertCurrent, many: provider.readMany,
+        fresh: (method: Method, params: readonly unknown[]) => provider.sendFresh(method, [...params]),
+        verifyChain: () => provider.verifyConfiguredChainId() },
+    ) as Reader)), scope);
+  }
   private async canonical(read: Reader, expected: EvmSampledBlock) {
     read.assertCurrent();
-    const current = block(await read('eth_getBlockByNumber', [hex(BigInt(expected.number)), false]));
+    const current = block(await (read.fresh ?? read)('eth_getBlockByNumber', [hex(BigInt(expected.number)), false]));
     read.assertCurrent();
     if (current.number !== expected.number || current.hash !== expected.hash) rejectRead('PROFILE_CHANGED');
+  }
+  private assertAssetCanonical(read: Reader, state: EvmAssetState): Promise<void> {
+    return assertEvmAssetStateCanonical(read.fresh ?? read, state);
   }
   retirementRead(method: EvmSignedRetirementReadMethod, params: readonly unknown[],
     signal: AbortSignal, guard: () => void): Promise<unknown> {
     if (typeof method !== 'string' || !Object.hasOwn(RETIREMENT_METHODS, method))
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     return this.operation(signal, guard, (read) => read(method, params), 'endpoint');
+  }
+  /** The shared finalized-note verifier owns the surrounding chain and anchor checks. */
+  noteMaintenanceRead(method: string, params: readonly unknown[], signal: AbortSignal, guard: () => void): Promise<unknown> {
+    if (method === 'eth_chainId') {
+      if (!Array.isArray(params) || params.length !== 0)
+        return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
+      return this.operation(signal, guard, read => read('eth_chainId', []), 'endpoint');
+    }
+    if (!['eth_getBlockByNumber', 'eth_getTransactionReceipt', 'eth_getTransactionByHash', 'eth_call'].includes(method))
+      return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
+    const normalized = normalizeDappRpcRequest(method, params);
+    return this.operation(signal, guard, read => read(normalized.method, normalized.params), 'endpoint');
   }
   verifyNetwork(signal: AbortSignal, guard: () => void): Promise<void> {
     return this.operation(signal, guard, async (read) => { await this.checkChain(read); }, 'endpoint');
@@ -357,6 +392,27 @@ export class EvmTransferReadRpc {
       await (verifyPublicIdentity ? verifyPublicIdentity() : this.checkChain(read));
       assertJsonWorkBudget(result);
       return result;
+    }, 'dapp-rpc');
+  }
+  /** The caller owns the verified public-read lease and each subscriber's cancellation. */
+  dappReadBatch(requests: readonly DappPublicRpcRequest[], signal: AbortSignal,
+    guard: () => void): Promise<PromiseSettledResult<unknown>[]> {
+    if (!Array.isArray(requests) || requests.length < 1 || requests.length > 32)
+      return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
+    const normalized = requests.map(request => normalizeDappRpcRequest(request.method, request.params));
+    if (normalized.some(request => classifyDappRpcMethod(request.method) !== 'node-query' ||
+        !isReadOnlyRpcMethod(request.method) ||
+        (request.method === 'eth_call' || request.method === 'eth_estimateGas') &&
+        (request.params[0] as { chainId?: string }).chainId !== undefined &&
+        BigInt((request.params[0] as { chainId: string }).chainId) !== BigInt(this.network.chainId)))
+      return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
+    return this.operation(signal, guard, async read => {
+      const results = await read.many(normalized);
+      return results.map(result => {
+        if (result.status === 'rejected') return result;
+        try { assertJsonWorkBudget(result.value); return result; }
+        catch (reason) { return { status: 'rejected', reason } as PromiseRejectedResult; }
+      });
     }, 'dapp-rpc');
   }
   smartAccountRead(method: 'eth_call' | 'eth_getCode' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getBlockByNumber' | 'eth_chainId' | 'eth_gasPrice' | 'eth_maxPriorityFeePerGas' | 'eth_feeHistory',
@@ -514,7 +570,7 @@ export class EvmTransferReadRpc {
   }
 
   feeRecommendations(signal: AbortSignal, guard: () => void): Promise<EvmFeeRates> {
-    return this.operation(signal, guard, async read => {
+    return this.readPhaseOperation(signal, guard, async read => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
       const fees = await this.feeData(read, sampled, signal);
@@ -530,7 +586,7 @@ export class EvmTransferReadRpc {
     const { from, to, hash, nonce, chainId } = original;
     if (!from || !hash || rates.type !== original.type || chainId.toString() !== this.network.chainId)
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
-    return this.operation(signal, guard, async (read) => {
+    return this.readPhaseOperation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
       const verifyPayer = source === 'saved'
@@ -574,7 +630,7 @@ export class EvmTransferReadRpc {
     const { from, to, nonce, value, data, gasLimit, chainId } = original;
     if (!from || rates.type !== original.type || chainId.toString() !== this.network.chainId)
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
-    return this.operation(signal, guard, async (read) => {
+    return this.readPhaseOperation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
       const [rawBalance, rawNonce] = await Promise.all([
@@ -633,7 +689,7 @@ export class EvmTransferReadRpc {
       if (approved) approved = snapshotUnsignedTransfer(approved, this.network);
       feeChoice = snapshotEvmFeeChoice(feeChoice);
     } catch { return Promise.reject(new EvmTransferReadError('INVALID_INPUT')); }
-    return this.operation(signal, guard, async (read) => {
+    return this.readPhaseOperation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
       const assetState = asset && await readEvmAssetState(read, request.from, asset, { number: hex(BigInt(sampled.number)), hash: sampled.hash });
@@ -644,7 +700,7 @@ export class EvmTransferReadRpc {
       }
       const quote = await this.prepareAtBlock(read, sampled, request, signal, approved, nonceOverride, automaticNonce, undefined, assetState, undefined, feeChoice);
       if (assetState) await simulateEvmAssetTransfer(read, assetState, quote.transaction, nonceOverride === undefined ? 'automatic' : 'manual');
-      if (assetState) await assertEvmAssetStateCanonical(read, assetState);
+      if (assetState) await this.assertAssetCanonical(read, assetState);
       else await this.canonical(read, sampled);
       await this.checkChain(read); read.assertCurrent();
       return assetState ? Object.freeze({ ...quote, assetBalanceUnits: assetState.balanceUnits.toString() }) : quote;
@@ -661,7 +717,7 @@ export class EvmTransferReadRpc {
       if (/^0x0{40}$/i.test(request.from) || /^0x0{40}$/i.test(request.to) || reserveUnits < 0n)
         throw new Error('Invalid maximum transfer');
     } catch { return Promise.reject(new EvmTransferReadError('INVALID_INPUT')); }
-    return this.operation(signal, guard, async read => {
+    return this.readPhaseOperation(signal, guard, async read => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
       const quote = await this.prepareAtBlock(read, sampled, request, signal, undefined, nonceOverride, automaticNonce,
@@ -703,7 +759,7 @@ export class EvmTransferReadRpc {
     const intent = snapshotNftTransferSelection(selection, input, this.network);
     const approved = approval && snapshotNftQuoteEnvelope(approval.envelope, this.network, intent);
     const request = Object.freeze({ from: intent.from, to: intent.contractAddress, value: '0', data: encodeNftTransferData(intent) });
-    const result = await this.operation(signal, guard, async (read) => {
+    const result = await this.readPhaseOperation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
       const assetState = await readEvmAssetState(read, intent.from, nftAsset(intent), { number: hex(BigInt(sampled.number)), hash: sampled.hash });
@@ -713,7 +769,7 @@ export class EvmTransferReadRpc {
       await simulateEvmAssetTransfer(read, assetState, transaction, nonceOverride === undefined ? 'automatic' : 'manual');
       if (BigInt(amounts.totalUnits) > BigInt(amounts.balanceUnits))
         return rejectRead('INSUFFICIENT_BALANCE');
-      await assertEvmAssetStateCanonical(read, assetState);
+      await this.assertAssetCanonical(read, assetState);
       await this.checkChain(read);
       const expiresAtMonotonicMilliseconds = approval?.expiresAtMonotonicMilliseconds ?? this.feeQuoteExpiry();
       read.assertCurrent();
@@ -784,7 +840,7 @@ export class EvmTransferReadRpc {
     guard: () => void, planner: NativeAutomaticNoncePlanner, asset?: EvmTransferAsset, nonceOverride?: number, nft?: NftTransferIntent): Promise<void> {
     const envelope = nft ? snapshotNftQuoteEnvelope(input, this.network, nft) : snapshotUnsignedTransfer(input, this.network);
     if (envelope.data !== '0x' && !asset) return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
-    return this.operation(signal, guard, async (read) => {
+    return this.readPhaseOperation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
       const assetState = asset && await readEvmAssetState(read, envelope.from, asset,
@@ -805,9 +861,9 @@ export class EvmTransferReadRpc {
             estimatedGas, sampledBlockGasLimit: sampled.gasLimit,
             ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, this.monotonicMilliseconds(), captureNativeEvmFeeCoverage(approval));
         } catch (error) { return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED'); }
-        await assertEvmAssetStateCanonical(read, assetState);
+        await this.assertAssetCanonical(read, assetState);
       }
-      await this.canonical(read, sampled);
+      if (!assetState) await this.canonical(read, sampled);
       await this.checkChain(read);
       read.assertCurrent();
     }, nft ? 'nft-quote' : 'endpoint');
@@ -831,7 +887,7 @@ export class EvmTransferReadRpc {
     const manual = nonceOverride !== undefined;
     if (manual && (replay || String(nonceOverride) !== envelope.nonce))
       return Promise.reject(new EvmTransferReadError('REVIEW_REQUIRED'));
-    return this.operation(signal, guard, async (read) => {
+    return this.readPhaseOperation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
       const assetState = await readEvmAssetState(read, intent.from, nftAsset(intent), { number: hex(BigInt(sampled.number)), hash: sampled.hash });
@@ -865,7 +921,7 @@ export class EvmTransferReadRpc {
       } catch (error) {
         return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED');
       }
-      await assertEvmAssetStateCanonical(read, assetState); read.assertCurrent();
+      await this.assertAssetCanonical(read, assetState); read.assertCurrent();
       await this.checkChain(read); read.assertCurrent();
     }, 'nft-quote');
   }
@@ -881,7 +937,7 @@ export class EvmTransferReadRpc {
     const [sample, balance, fees] = await Promise.all([
       nonceState,
       this.readSendBalance(read, request.from, sampled, nonceState),
-      this.feeData(read, sampled, signal),
+      approved ? undefined : this.feeData(read, sampled, signal),
     ]);
     const { count: observed, nonce, state } = sample;
     read.assertCurrent();
@@ -893,8 +949,8 @@ export class EvmTransferReadRpc {
     const selectedRates = approved
       ? approved.type === 0 ? { type: 0 as const, gasPrice: approved.gasPrice }
         : { type: 2 as const, accessList: [], maxFeePerGas: approved.maxFeePerGas, maxPriorityFeePerGas: approved.maxPriorityFeePerGas }
-      : chooseEvmFees(fees.baseFeePerGas === undefined ? { type: 0 as const, gasPrice: fees.gasPrice.toString() }
-        : { type: 2 as const, maxFeePerGas: fees.maxFeePerGas.toString(), maxPriorityFeePerGas: fees.maxPriorityFeePerGas.toString() }, feeChoice);
+      : chooseEvmFees(fees!.baseFeePerGas === undefined ? { type: 0 as const, gasPrice: fees!.gasPrice.toString() }
+        : { type: 2 as const, maxFeePerGas: fees!.maxFeePerGas.toString(), maxPriorityFeePerGas: fees!.maxPriorityFeePerGas.toString() }, feeChoice);
     const selectedFees = selectedRates.type === 2 ? { ...selectedRates, accessList: [] } : selectedRates;
     if (approved && (approved.nonce !== nonce.toString() || approved.from !== request.from || approved.to !== request.to || approved.value !== request.value || approved.data !== request.data)) return rejectRead('REVIEW_REQUIRED');
     if (selectedFees.type === 2 && (sampled.baseFee === null || BigInt(selectedFees.maxFeePerGas) < sampled.baseFee)) return rejectRead('REVIEW_REQUIRED');
@@ -952,7 +1008,7 @@ export class EvmTransferReadRpc {
   }
   /** Public fee observations only; no note or proof is passed to this reader. */
   withdrawalGasPrice(signal: AbortSignal, guard: () => void): Promise<string> {
-    return this.operation(signal, guard, async (read) => {
+    return this.readPhaseOperation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
       const fees = await this.feeData(read, sampled, signal);
@@ -965,7 +1021,7 @@ export class EvmTransferReadRpc {
 
   /** The shared fixed-gas formatter uses the ordinary nonce and spend-budget policy. */
   withdrawalFees(from: string, planner: NativeAutomaticNoncePlanner, signal: AbortSignal, guard: () => void) {
-    return this.operation(signal, guard, async (read) => {
+    return this.readPhaseOperation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
       const nonce = this.sampleSendNonce(read, from, sampled, undefined, planner);

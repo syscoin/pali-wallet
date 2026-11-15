@@ -21,7 +21,7 @@ const fixture = () => {
       }));
     }),
     getNetwork: jest.fn(async () => ({ chainId: BigInt(1) })),
-    getFeeData: jest.fn(async () => ({ gasPrice: '0x1' })),
+    getFeeData: jest.fn<Promise<any>, any[]>(async () => ({ gasPrice: '0x1' })),
     getSigner: jest.fn(),
     broadcastTransaction: jest.fn(),
   };
@@ -74,6 +74,35 @@ it('retires all exposed methods and never exposes signer or broadcast methods', 
     'phase ended'
   );
   expect(provider.getSigner).not.toHaveBeenCalled();
+});
+it('routes delegated fee reads through the phase batch and shares its header', async () => {
+  const { provider } = fixture();
+  provider.getFeeData.mockImplementation(async (reader) => {
+    const [block, gasPrice, priorityFee] = await Promise.all([
+      reader.getBlock('latest'),
+      reader.send('eth_gasPrice', []),
+      reader.send('eth_maxPriorityFeePerGas', []),
+    ]);
+    return { block, gasPrice, priorityFee };
+  });
+  await withEvmReadPhase(
+    provider,
+    () => undefined,
+    async (phase) => {
+      await Promise.all([
+        phase.getFeeData(),
+        phase.send('eth_getBlockByNumber', ['latest', false]),
+      ]);
+      await phase.getFeeData();
+    }
+  );
+  expect(provider.getFeeData).toHaveBeenCalledTimes(1);
+  expect(provider.readMany).toHaveBeenCalledTimes(1);
+  expect(provider.readMany.mock.calls[0][0]).toEqual([
+    { method: 'eth_getBlockByNumber', params: ['latest', false] },
+    { method: 'eth_gasPrice', params: [] },
+    { method: 'eth_maxPriorityFeePerGas', params: [] },
+  ]);
 });
 it('fresh verification does not reuse completed or in-flight observations', async () => {
   const { provider } = fixture();

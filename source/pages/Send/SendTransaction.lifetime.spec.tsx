@@ -298,18 +298,21 @@ beforeEach(() => {
       if (quote.isInvalidTxData || quote.gasLimitError)
         throw new Error('Quote unavailable');
       return {
-        ...reviewedDappFeeFixture(args[0], {
-          gasLimit: quote.feeDetails.gasLimit,
-          gasPrice: parseUnits(String(quote.feeDetails.gasPrice ?? 2), 9),
-          maxFeePerGas: parseUnits(
-            String(quote.feeDetails.maxFeePerGas ?? 2),
-            9
-          ),
-          maxPriorityFeePerGas: parseUnits(
-            String(quote.feeDetails.maxPriorityFeePerGas ?? 1),
-            9
-          ),
-        }),
+        ...reviewedDappFeeFixture(
+          { ...args[0], nonce: args[0].nonce ?? mockRecommendedNonce },
+          {
+            gasLimit: quote.feeDetails.gasLimit,
+            gasPrice: parseUnits(String(quote.feeDetails.gasPrice ?? 2), 9),
+            maxFeePerGas: parseUnits(
+              String(quote.feeDetails.maxFeePerGas ?? 2),
+              9
+            ),
+            maxPriorityFeePerGas: parseUnits(
+              String(quote.feeDetails.maxPriorityFeePerGas ?? 1),
+              9
+            ),
+          }
+        ),
         id: `lifetime-fee-${++mockFeeReviewSerial}`,
       };
     }
@@ -2102,6 +2105,7 @@ describe('SendTransaction error close lifetimes', () => {
     const view = await prepare();
     try {
       let sends = 0;
+      mockRecommendedNonce = 1;
       const invoke = mockEmitter.getMockImplementation()!;
       mockEmitter.mockImplementation(async (path, args, ...rest) => {
         const method = path[1];

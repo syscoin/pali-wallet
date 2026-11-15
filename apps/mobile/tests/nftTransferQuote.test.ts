@@ -58,7 +58,9 @@ function fixture(options: {
   responseUrl?: string;
 } = {}) {
   const calls: Call[] = [];
-  const fetch = async (url: string, init: RequestInit) => {
+  const fetch = async (url: string, init: RequestInit): Promise<Response> => {
+      const request = JSON.parse(String(init.body));
+      if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fetch(url, { ...init, body: JSON.stringify(row) })).json())));
       assert.equal(url, network.rpcUrl);
       assert.equal(init.method, 'POST');
       assert.equal(init.redirect, 'error');

@@ -12,7 +12,7 @@ const sender = Wallet.fromPhrase(
 );
 const recipient = '0x1111111111111111111111111111111111111111';
 const signal = () => new AbortController().signal;
-function fixture(overrides: Record<string, unknown> = {}) {
+function fixture(overrides: Record<string, unknown> = {}, scalarOnly = false) {
   const calls: { method: string; params: unknown[]; init: RequestInit }[] = [];
   const values: Record<string, unknown> = {
     eth_chainId: '0x1',
@@ -26,7 +26,11 @@ function fixture(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
   const rpc = new NativeTransferRpc({ networkId: 'ethereum',
-    fetch: async (_url, init) => {
+    fetch: async function fetchFixture(_url, init): Promise<Response> {
+      const request = JSON.parse(String(init.body));
+      if (Array.isArray(request) && scalarOnly)
+        return Response.json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Batch requests not supported' } });
+      if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fetchFixture(_url, { ...init, body: JSON.stringify(row) })).json())));
       const body = JSON.parse(String(init.body));
       calls.push({ ...body, init });
       const raw = values[body.method];
@@ -219,7 +223,7 @@ test('aborts unresolved sibling requests when one quote component fails', async 
       observed = init.signal as AbortSignal;
       return new Promise(() => undefined);
     },
-  });
+  }, true);
   await assert.rejects(f.rpc.prepare(sender.address, recipient, '1', signal(), undefined, emptyNoncePlanner));
   assert.equal(observed?.aborted, true);
 });

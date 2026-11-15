@@ -3,7 +3,10 @@ import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
 import { isValidMethod } from '../controllers/message-handler/method-registry';
 import * as sendCallsBundles from '../controllers/message-handler/sendCallsBundles';
 
-import { watchApprovalSubmission } from './approvalSubmission';
+import {
+  captureDappEvmSubmission,
+  watchApprovalSubmission,
+} from './approvalSubmission';
 import {
   controllerErrorResponse,
   handleMasterControllerResponses,
@@ -875,6 +878,132 @@ describe('document-bound dapp nonce dispatch', () => {
       expect(quote.mock.calls[0][3]).toThrow('no longer current');
     } finally {
       stop();
+    }
+  });
+
+  it('registers an automatic nonce from the same completed worker fee quote', async () => {
+    const quote = jest.fn<Promise<any>, unknown[]>(async () => ({
+      id: 'quote',
+      transaction: { nonce: '4' },
+    }));
+    handleMasterControllerResponses({
+      wallet: { reviewDappEvmFee: quote },
+    } as any);
+    const add = chrome.runtime.onMessage.addListener as jest.Mock;
+    const listener = add.mock.calls[add.mock.calls.length - 1][0];
+    const stop = watchApprovalSubmission(documentId, jest.fn(), evmReview());
+    try {
+      await expect(
+        invoke(listener, ['wallet', 'reviewDappEvmFee'], [{}])
+      ).resolves.toMatchObject({ id: 'quote' });
+      expect(quote.mock.calls[0][2]).toBeUndefined();
+      expect(captureDappEvmSubmission(sender)!.reviewNonce(4)).toEqual({
+        nonce: 4,
+        source: 'automatic',
+      });
+      expect(() => captureDappEvmSubmission(sender)!.reviewNonce(5)).toThrow();
+    } finally {
+      stop();
+    }
+  });
+
+  it.each(['document', 'newer-quote'] as const)(
+    'refuses automatic quote registration after its %s ownership changes',
+    async (change) => {
+      let release!: () => void;
+      let start!: () => void;
+      const started = new Promise<void>((resolve) => {
+        start = resolve;
+      });
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const quote = jest.fn(async () => {
+        start();
+        await held;
+        return { id: 'quote', transaction: { nonce: '4' } };
+      });
+      handleMasterControllerResponses({
+        wallet: { reviewDappEvmFee: quote },
+      } as any);
+      const add = chrome.runtime.onMessage.addListener as jest.Mock;
+      const listener = add.mock.calls[add.mock.calls.length - 1][0];
+      const stop = watchApprovalSubmission(documentId, jest.fn(), evmReview());
+      const logging = jest.spyOn(console, 'error').mockImplementation();
+      try {
+        const pending = invoke(listener, ['wallet', 'reviewDappEvmFee'], [{}]);
+        await started;
+        if (change === 'document') stop();
+        else captureDappEvmSubmission(sender)!.beginFeeQuote(undefined);
+        release();
+        await expect(pending).resolves.toMatchObject({ success: false });
+        if (change === 'newer-quote')
+          expect(() =>
+            captureDappEvmSubmission(sender)!.reviewNonce(4)
+          ).toThrow();
+      } finally {
+        release();
+        stop();
+        logging.mockRestore();
+      }
+    }
+  );
+
+  it('keeps explicit and batch nonce authorization mandatory', () => {
+    const stop = watchApprovalSubmission(
+      documentId,
+      jest.fn(),
+      evmReview({ originalNonce: 4 })
+    );
+    try {
+      const owner = captureDappEvmSubmission(sender)!;
+      expect(() => owner.beginFeeQuote(undefined)).toThrow();
+      expect(owner.beginFeeQuote(4).approval).toEqual({
+        nonce: 4,
+        source: 'manual',
+      });
+      expect(() => owner.beginFeeQuote(5)).toThrow();
+    } finally {
+      stop();
+    }
+    const stopBatch = watchApprovalSubmission(
+      documentId,
+      jest.fn(),
+      evmReview({
+        batch: {
+          host: 'test.invalid',
+          id: 'bundle',
+          reservationId: 'reservation',
+          callCount: 2,
+        },
+      })
+    );
+    try {
+      expect(() =>
+        captureDappEvmSubmission(sender)!.beginFeeQuote(undefined)
+      ).toThrow();
+    } finally {
+      stopBatch();
+    }
+  });
+
+  it('expires a nonce registered by a completed fee quote and honors context guards', () => {
+    const clock = jest.spyOn(performance, 'now').mockReturnValue(1000);
+    const review = evmReview();
+    const stop = watchApprovalSubmission(documentId, jest.fn(), review);
+    try {
+      const owner = captureDappEvmSubmission(sender)!;
+      owner.beginFeeQuote(undefined).record!(4);
+      expect(owner.reviewNonce(4)).toEqual({ nonce: 4, source: 'automatic' });
+      clock.mockReturnValue(301001);
+      expect(() => owner.reviewNonce(4)).toThrow();
+      review.assertCurrent.mockImplementation(() => {
+        throw new Error('context changed');
+      });
+      expect(() => owner.beginFeeQuote(undefined)).toThrow('context changed');
+    } finally {
+      stop();
+      clock.mockRestore();
     }
   });
 

@@ -25,7 +25,8 @@ import type {
 
 type Captured = Omit<EvmReplaySession, 'observe' | 'dispatch'> &
   Readonly<{
-    provider: Pick<CustomJsonRpcProvider, 'send' | '_send'>;
+    provider: Pick<CustomJsonRpcProvider, 'send' | '_send'> &
+      Partial<Pick<CustomJsonRpcProvider, 'readMany'>>;
   }>;
 
 export async function readLiveEvmChainId(
@@ -171,10 +172,22 @@ export function createExtensionEvmReplaySession(
           captured.assertCurrent
         );
         if (speedUp) {
-          const [nonce, block] = await Promise.all([
-            send('eth_getTransactionCount', [context.from, 'latest']),
-            send('eth_getBlockByNumber', ['latest', false]),
-          ]);
+          const reads = [
+            {
+              method: 'eth_getTransactionCount',
+              params: [context.from, 'latest'],
+            },
+            { method: 'eth_getBlockByNumber', params: ['latest', false] },
+          ];
+          const results = captured.provider.readMany
+            ? await captured.provider.readMany(reads)
+            : await Promise.allSettled(
+                reads.map(({ method, params }) => send(method, params))
+              );
+          const [nonce, block] = results.map((result) => {
+            if (result.status === 'rejected') throw result.reason;
+            return result.value;
+          });
           captured.assertCurrent();
           assertEvmSpeedUpExecutable(speedUp, nonce, block);
           await assertLiveEvmReplacementChain(

@@ -19,7 +19,8 @@ const input = abi.encodeFunctionData('withdraw', [proof, root, identity.nullifie
 const withdrawal = { attemptHash: word(13), createdAt: 10, inputHash: keccak256(AbiCoder.defaultAbiCoder().encode(Array(6).fill('uint256'), [root, identity.nullifierHash, recipient, zero, 0, 0])), intentId: 'public-fixture',
   mode: 'direct', nonce: '2', phase: 'submitted', proofHash: keccak256(proof), transactionHash: hash, from: account } as const;
 function fixture(reverted = false) {
-  let current = true, spent = false, known = false, canonical = blockHash;
+  let current = true, spent = false, known = false, canonical = blockHash, chain = '0x1';
+  let onRead = (_method: string) => {};
   const signal = new AbortController(), calls: { method: string; params: unknown[] }[] = [];
   const network = createNativeNetwork({ id: 'saved-ethereum', name: 'Saved Ethereum', kind: 'evm', chainId: '1', slip44: 60,
     rpcUrl: 'https://privacy-fixture.invalid/rpc', symbol: 'ETH', decimals: 18, testnet: false });
@@ -29,8 +30,9 @@ function fixture(reverted = false) {
   const encoded = abi.encodeEventLog(abi.getEvent('Withdrawal')!, [recipient, identity.nullifierHash, zero, 0]);
   const rpc = new EvmTransferReadRpc(network, { fetch: async (_url, init) => {
     const { id, method, params } = JSON.parse(String(init?.body)); calls.push({ method, params });
+    onRead(method);
     let result: unknown;
-    if (method === 'eth_chainId') result = '0x1';
+    if (method === 'eth_chainId') result = chain;
     else if (method === 'eth_getBlockByNumber') result = params[0] === '0x70'
       ? { number: '0x70', hash: canonical } : { number: '0x80', hash: anchor };
     else if (method === 'eth_getTransactionReceipt') result = { transactionHash: hash, blockHash, blockNumber: '0x70',
@@ -42,21 +44,62 @@ function fixture(reverted = false) {
     return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), { headers: { 'content-type': 'application/json' } });
   } });
   const ports = createNativeNoteMaintenanceProofs({ network, signal: signal.signal, assertCurrent: check, rpc });
-  return { ports, session, signal, calls, setCurrent(value: boolean) { current = value; }, setSpent(value: boolean) { spent = value; }, setKnown(value: boolean) { known = value; }, reorg() { canonical = word(100); } };
+  return { ports, session, signal, calls, rpc, check, onRead(value: typeof onRead) { onRead = value; }, setChain(value: string) { chain = value; }, setCurrent(value: boolean) { current = value; }, setSpent(value: boolean) { spent = value; }, setKnown(value: boolean) { known = value; }, reorg() { canonical = word(100); } };
 }
 test('native completion uses the shared finalized event/nonce verifier and rechecks its original RPC before removal', async () => {
   const f = fixture();
   const lease = await f.ports.prepareCompletionProof(identity, withdrawal, undefined, f.session);
-  assert(f.calls.length > 0); assert(!f.calls.some(call => JSON.stringify(call.params).includes(identity.nullifierHash)));
-  await lease.revalidate(); f.reorg(); await assert.rejects(lease.revalidate(), /privacy_spent_proof_unavailable/);
+  assert.equal(f.calls.length, 7); assert(!f.calls.some(call => JSON.stringify(call.params).includes(identity.nullifierHash)));
+  await lease.revalidate(); assert.equal(f.calls.length, 14);
+  assert.equal(f.calls.filter(call => call.method === 'eth_chainId').length, 2);
+  f.reorg(); await assert.rejects(lease.revalidate(), /privacy_spent_proof_unavailable/);
 });
 test('native recovery requires the same failed transaction, evicted original root and unspent nullifier', async () => {
   const f = fixture(true);
   const lease = await f.ports.prepareWithdrawalRecovery(identity, withdrawal, f.session);
-  assert.equal(lease.receipt.root, root); await lease.revalidate();
+  assert.equal(lease.receipt.root, root); assert.equal(f.calls.length, 9);
+  await lease.revalidate(); assert.equal(f.calls.length, 18);
   f.setKnown(true); await assert.rejects(lease.revalidate(), /privacy_withdrawal_recovery_unavailable/);
   f.setKnown(false); f.setSpent(true);
   await assert.rejects(f.ports.prepareWithdrawalRecovery(identity, withdrawal, f.session), /privacy_withdrawal_recovery_unavailable/);
+});
+
+test('each maintenance run rechecks chain identity before disclosing transaction or nullifier', async () => {
+  for (const recovery of [false, true]) {
+    const f = fixture(recovery);
+    const lease = recovery
+      ? await f.ports.prepareWithdrawalRecovery(identity, withdrawal, f.session)
+      : await f.ports.prepareCompletionProof(identity, withdrawal, undefined, f.session);
+    const before = f.calls.length;
+    f.setChain('0x2');
+    await assert.rejects(lease.revalidate());
+    assert.deepEqual(f.calls.slice(before).map(call => call.method), ['eth_chainId']);
+  }
+});
+
+test('maintenance transport denies unsupported methods and malformed parameters before any RPC', async () => {
+  const f = fixture();
+  for (const [method, params] of [
+    ['eth_sendRawTransaction', ['0x1234']],
+    ['eth_getBalance', [account, 'latest']],
+    ['eth_chainId', ['unexpected']],
+    ['eth_getTransactionByHash', ['bad-hash']],
+    ['eth_call', [{ to: account, data: 'invalid' }, 'latest']],
+  ] as const) await assert.rejects(async () => f.rpc.noteMaintenanceRead(method, params, f.signal.signal, f.check));
+  assert.equal(f.calls.length, 0);
+});
+
+test('an aborted or failed maintenance read cannot produce a completion proof', async () => {
+  for (const failure of ['abort', 'failure']) {
+    const f = fixture();
+    f.onRead(method => {
+      if (method !== 'eth_getTransactionReceipt') return;
+      if (failure === 'abort') f.signal.abort();
+      else throw new Error('transport failed');
+    });
+    await assert.rejects(f.ports.prepareCompletionProof(identity, withdrawal, undefined, f.session));
+    assert(!f.calls.some(call => call.method === 'eth_getTransactionByHash'));
+  }
 });
 test('native maintenance refuses unknown attempts, revoked sessions and aborts without additional RPC', async () => {
   const f = fixture();

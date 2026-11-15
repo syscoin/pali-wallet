@@ -120,7 +120,7 @@ test('portfolio native and token pricing request no history in any display curre
       assert.deepEqual(data?.data.prices, []);
       assert.equal(await read(source, currency, new AbortController().signal), data);
     }
-    assert.equal(urls.length - before, source.kind === 'native' ? 2 : 4, 'Each native price needs one quote; a token also needs identity');
+    assert.equal(urls.length - before, source.kind === 'native' ? 2 : 3, 'Token identity is shared across currency quotes');
   }
   assert.throws(() => createNativeAssetMarketReader(async () => Response.json([]), undefined as never));
 });
@@ -267,4 +267,67 @@ test('simultaneous token price and chart share public identity and quote reads',
   assert.equal(urls.length, 3);
   assert.equal(quote?.data.price, 2200);
   assert.deepEqual(graph?.data.prices, [7700, 8080]);
+});
+
+test('validated token identity outlives price quotes while contracts and expiry stay isolated', async () => {
+  let elapsed = 0;
+  const contracts = ['0x' + '11'.repeat(20), '0x' + '22'.repeat(20)];
+  const urls: string[] = [];
+  const read = createNativeAssetMarketReader(async url => {
+    urls.push(url);
+    if (url.includes('/contract/')) return Response.json({ id: 'ethereum', platforms: { ethereum: url.split('/').at(-1) } });
+    return Response.json(market());
+  }, 'price', () => elapsed);
+  const source = { kind: 'token' as const, platform: 'ethereum', contract: contracts[0]! };
+  await read(source, 'usd', new AbortController().signal);
+  elapsed = 300_000;
+  await read(source, 'usd', new AbortController().signal);
+  await read(source, 'aed', new AbortController().signal);
+  assert.equal(urls.filter(url => url.includes('/contract/')).length, 1);
+  assert.equal(urls.length, 4);
+  await read({ ...source, contract: contracts[1]! }, 'usd', new AbortController().signal);
+  assert.equal(urls.filter(url => url.includes('/contract/')).length, 2);
+  elapsed = 86_400_000;
+  await read(source, 'usd', new AbortController().signal);
+  assert.equal(urls.filter(url => url.includes('/contract/')).length, 3);
+});
+
+test('invalid token identity is retried and never seeds the metadata cache', async () => {
+  const contract = '0x' + '11'.repeat(20);
+  let attempts = 0;
+  const read = createNativeAssetMarketReader(async url => {
+    if (url.includes('/contract/')) {
+      attempts++;
+      return Response.json({ id: 'ethereum', platforms: { ethereum: attempts === 1 ? '0x' + '22'.repeat(20) : contract } });
+    }
+    return Response.json(market());
+  }, 'price');
+  const source = { kind: 'token' as const, platform: 'ethereum', contract };
+  assert.equal(await read(source, 'usd', new AbortController().signal), null);
+  assert.equal((await read(source, 'usd', new AbortController().signal))?.data.price, 2200);
+  assert.equal(attempts, 2);
+});
+
+test('concurrent currency quotes join one identity read and cancel independently', async () => {
+  const contract = '0x' + '11'.repeat(20);
+  let identities = 0;
+  let finish!: (response: Response) => void;
+  const read = createNativeAssetMarketReader(async url => {
+    if (url.includes('/contract/')) {
+      identities++;
+      return new Promise<Response>(resolve => { finish = resolve; });
+    }
+    return Response.json(market());
+  }, 'price');
+  const source = { kind: 'token' as const, platform: 'ethereum', contract };
+  const owner = new AbortController();
+  const usd = read(source, 'usd', owner.signal);
+  const aed = read(source, 'aed', new AbortController().signal);
+  assert.equal(identities, 1);
+  owner.abort();
+  assert.equal(await usd, null);
+  finish(Response.json({ id: 'ethereum', platforms: { ethereum: contract } }));
+  assert.equal((await aed)?.data.price, 2200);
+  assert.equal((await read(source, 'usd', new AbortController().signal))?.data.price, 2200);
+  assert.equal(identities, 1);
 });

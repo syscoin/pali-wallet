@@ -278,6 +278,7 @@ test('sixteen different reads keep four physical requests active across owner re
   const host = createNativeDappRpcReadHost({ registration: () => registration, context: () => context,
     verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
       const request = JSON.parse(String(init.body));
+      if (Array.isArray(request)) return Response.json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Batch not supported' } });
       if (request.method === 'eth_chainId') return json(request.id, { result: '0x1' });
       active++; peak = Math.max(peak, active);
       await new Promise<void>(resolve => releases.push(() => { active--; resolve(); }));
@@ -426,6 +427,7 @@ test('owner replacement waits for four held body cancellations before new physic
   const host = createNativeDappRpcReadHost({ registration: () => registration, context: () => context,
     verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
       const request = JSON.parse(String(init.body));
+      if (Array.isArray(request)) return Response.json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Batch not supported' } });
       if (request.method === 'eth_chainId') return json(request.id, { result: '0x1' });
       if (context === 'second') return json(request.id, { result: '0x42' });
       physical++; peak = Math.max(peak, physical);
@@ -450,4 +452,100 @@ test('owner replacement waits for four held body cancellations before new physic
   assert.equal(physical, 4); assert.equal(complete, false);
   releaseBodies.forEach(release => release());
   assert.equal(await second, '0x42'); assert.equal(physical, 0); assert.equal(peak, 4);
+});
+
+
+test('twenty distinct concurrent public reads use one bounded batch after identity verification', async () => {
+  const envelopes: unknown[][] = [];
+  const host = createNativeDappRpcReadHost({ registration: () => registration, now: () => 1,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const input = JSON.parse(String(init.body));
+      const requests = Array.isArray(input) ? input : [input];
+      envelopes.push(requests);
+      const responses = requests.map(request => ({ jsonrpc: '2.0', id: request.id,
+        result: request.method === 'eth_chainId' ? '0x1' : request.params[0] }));
+      return Response.json(Array.isArray(input) ? responses.reverse() : responses[0]);
+    } });
+  const addresses = Array.from({ length: 20 }, (_, index) => `0x${(index + 1).toString(16).padStart(40, '0')}`);
+  const results = await Promise.all(addresses.map(address => host.read(
+    normalizeDappRpcRequest('eth_getBalance', [address, 'latest']), new AbortController().signal, () => {})));
+  assert.deepEqual(results, addresses);
+  assert.deepEqual(envelopes.map(rows => rows.length), [1, 20]);
+});
+
+test('a public batch rechecks an identity lease that expires while its response is pending', async () => {
+  let time = 1, chain = '0x1';
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const calls: string[] = [];
+  const host = createNativeDappRpcReadHost({ registration: () => registration, now: () => time,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const input = JSON.parse(String(init.body));
+      const requests = Array.isArray(input) ? input : [input];
+      calls.push(...requests.map(request => request.method));
+      if (requests[0].method !== 'eth_chainId') { entered.resolve(); await release.promise; }
+      const responses = requests.map(request => ({ jsonrpc: '2.0', id: request.id,
+        result: request.method === 'eth_chainId' ? chain : '0x42' }));
+      return Response.json(Array.isArray(input) ? responses : responses[0]);
+    } });
+  const pending = host.read(normalizeDappRpcRequest('eth_blockNumber', []), new AbortController().signal, () => {});
+  const rejected = assert.rejects(pending);
+  await entered.promise; time = 30002; chain = '0x2'; release.resolve(); await rejected;
+  assert.deepEqual(calls, ['eth_chainId', 'eth_blockNumber', 'eth_chainId']);
+});
+
+
+test('one invalid-chain simulation does not reject a healthy sibling query', async () => {
+  const calls: string[] = [];
+  const host = createNativeDappRpcReadHost({ registration: () => registration,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const input = JSON.parse(String(init.body));
+      const requests = Array.isArray(input) ? input : [input];
+      calls.push(...requests.map(request => request.method));
+      const responses = requests.map(request => ({ jsonrpc: '2.0', id: request.id,
+        result: request.method === 'eth_chainId' ? '0x1' : '0x42' }));
+      return Response.json(Array.isArray(input) ? responses : responses[0]);
+    } });
+  const wrong = host.read(normalizeDappRpcRequest('eth_call', [{ chainId: '0x2', to: `0x${'11'.repeat(20)}` }]), new AbortController().signal, () => {});
+  const good = host.read(normalizeDappRpcRequest('eth_blockNumber', []), new AbortController().signal, () => {});
+  await assert.rejects(wrong, { code: -32602 });
+  assert.equal(await good, '0x42');
+  assert.deepEqual(calls, ['eth_chainId', 'eth_blockNumber']);
+});
+
+test('one oversized logical result rejects only that batch member', async () => {
+  const host = createNativeDappRpcReadHost({ registration: () => registration,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const input = JSON.parse(String(init.body));
+      const requests = Array.isArray(input) ? input : [input];
+      const responses = requests.map(request => ({ jsonrpc: '2.0', id: request.id,
+        result: request.method === 'eth_chainId' ? '0x1' : request.method === 'eth_getLogs' ? Array(10001).fill(0) : '0x42' }));
+      return Response.json(Array.isArray(input) ? responses : responses[0]);
+    } });
+  const oversized = host.read(normalizeDappRpcRequest('eth_getLogs', [{}]), new AbortController().signal, () => {});
+  const good = host.read(normalizeDappRpcRequest('eth_blockNumber', []), new AbortController().signal, () => {});
+  await assert.rejects(oversized);
+  assert.equal(await good, '0x42');
+});
+
+test('cancelling one batch member preserves its sibling and the warm identity lease', async () => {
+  let chains = 0;
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const host = createNativeDappRpcReadHost({ registration: () => registration,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const input = JSON.parse(String(init.body));
+      const requests = Array.isArray(input) ? input : [input];
+      if (requests[0].method === 'eth_chainId') chains++;
+      else if (Array.isArray(input)) { entered.resolve(); await release.promise; }
+      const responses = requests.map(request => ({ jsonrpc: '2.0', id: request.id,
+        result: request.method === 'eth_chainId' ? '0x1' : '0x42' }));
+      return Response.json(Array.isArray(input) ? responses : responses[0]);
+    } });
+  const lifetime = new AbortController();
+  const a = host.read(normalizeDappRpcRequest('eth_blockNumber', []), lifetime.signal, () => {});
+  const rejected = assert.rejects(a);
+  const b = host.read(normalizeDappRpcRequest('eth_gasPrice', []), new AbortController().signal, () => {});
+  await entered.promise; lifetime.abort(); await rejected; release.resolve();
+  assert.equal(await b, '0x42');
+  await host.read(normalizeDappRpcRequest('eth_blockNumber', []), new AbortController().signal, () => {});
+  assert.equal(chains, 1);
 });

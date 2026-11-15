@@ -1315,13 +1315,7 @@ export const SendTransaction = () => {
           throw new Error('Invalid smart account fee override');
         if (!isSmartAccountApproval) {
           setGenericFeeView(undefined);
-          const nonce =
-            customNonce ??
-            dataTx.nonce ??
-            (await controllerEmitter(
-              ['wallet', 'getRecommendedEvmNonce'],
-              [approvedContext.account.address]
-            ));
+          const nonce = customNonce ?? dataTx.nonce;
           if (customNonce !== undefined || dataTx.nonce !== undefined)
             await controllerEmitter(
               ['wallet', 'authorizeDappManualNonce'],

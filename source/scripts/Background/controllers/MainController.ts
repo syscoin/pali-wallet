@@ -11483,7 +11483,7 @@ class MainController {
   public async reviewDappEvmFee(
     params: unknown,
     context: IEvmTransactionContext,
-    walletNonce: ExtensionReviewedNonce,
+    walletNonce: ExtensionReviewedNonce | undefined,
     authorizeDapp: () => void,
     requestOwner: object
   ) {
@@ -15680,23 +15680,20 @@ class MainController {
       // Keep every read on the provider that started this lookup, even if the
       // active network changes while the transaction request is in flight.
       const provider = this.ethereumTransaction.web3Provider;
-      // Get transaction from provider
       const tx = await provider.getTransaction(hash);
       if (!tx || tx.hash?.toLowerCase() !== hash.toLowerCase()) return null;
 
-      // Get receipt for confirmation status
       let receipt = null;
       try {
         receipt = await provider.getTransactionReceipt(hash);
-      } catch (receiptError) {
-        // Transaction might be pending, receipt not available yet
+      } catch {
         console.log(
           `Transaction ${hash} receipt not available (likely pending)`
         );
       }
 
-      // Get current block number for confirmation count
-      const latestBlock = await provider.getBlockNumber();
+      // Pending transactions have zero confirmations without a head lookup.
+      const latestBlock = receipt ? await provider.getBlockNumber() : 0;
       const blockNumber = receipt
         ? this.convertHexValue(receipt.blockNumber, 'number')
         : null;

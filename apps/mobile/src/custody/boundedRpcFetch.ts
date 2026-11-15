@@ -32,9 +32,12 @@ export function createBoundedRpcFetch(fetcher: FetchLike): FetchLike {
   return async (url, init) => {
     await acquire(init.signal);
     let released = false;
+    let abortResponse: (() => void) | undefined;
     const release = () => {
       if (released) return;
       released = true;
+      if (abortResponse)
+        init.signal?.removeEventListener('abort', abortResponse);
       active--;
       queue.shift()?.run();
     };
@@ -42,17 +45,20 @@ export function createBoundedRpcFetch(fetcher: FetchLike): FetchLike {
       if (init.signal?.aborted) throw aborted();
       const response = await fetcher(url, init);
       const body = response.body;
+      let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
       let text: Promise<string> | undefined,
         cancellation: Promise<void> | undefined;
       const consumeText = () =>
         (text ??= response.text().then(
-          (value) => {
-            release();
+          async (value) => {
+            if (body && cancellation) await cancellation;
+            else release();
+            if (init.signal?.aborted) throw aborted();
             return value;
           },
           async (error) => {
             try {
-              if (body) await body.cancel();
+              if (body) await cancel();
             } finally {
               release();
             }
@@ -62,12 +68,17 @@ export function createBoundedRpcFetch(fetcher: FetchLike): FetchLike {
       const cancel = (reason?: unknown) =>
         (cancellation ??= (async () => {
           try {
-            if (body) await body.cancel(reason);
+            if (reader) await reader.cancel(reason);
+            else if (body) await body.cancel(reason);
             else await consumeText();
           } finally {
             release();
           }
         })());
+      abortResponse = () => {
+        void cancel(init.signal?.reason).catch(() => undefined);
+      };
+      init.signal?.addEventListener('abort', abortResponse, { once: true });
       if (init.signal?.aborted) {
         try {
           await cancel();
@@ -81,38 +92,52 @@ export function createBoundedRpcFetch(fetcher: FetchLike): FetchLike {
         ...(typeof body?.getReader === 'function'
           ? {
               getReader() {
-                let reader: ReadableStreamDefaultReader<Uint8Array>;
+                if (init.signal?.aborted) throw aborted();
                 try {
                   reader = body.getReader();
                 } catch (error) {
                   void cancel().catch(() => undefined);
                   throw error;
                 }
-                let readerCancellation: Promise<void> | undefined;
-                const cancelReader = (reason?: unknown) =>
-                  (readerCancellation ??= (async () => {
-                    try {
-                      await reader.cancel(reason);
-                    } finally {
-                      release();
-                    }
-                  })());
+                const acquiredReader = reader;
                 return {
                   async read() {
                     try {
-                      return await reader.read();
+                      return await new Promise<
+                        ReadableStreamReadResult<Uint8Array>
+                      >((resolve, reject) => {
+                        const abort = () => {
+                          init.signal?.removeEventListener('abort', abort);
+                          reject(aborted());
+                        };
+                        init.signal?.addEventListener('abort', abort, {
+                          once: true,
+                        });
+                        if (init.signal?.aborted) abort();
+                        else
+                          acquiredReader
+                            .read()
+                            .then((result) => {
+                              if (init.signal?.aborted) reject(aborted());
+                              else resolve(result);
+                            }, reject)
+                            .finally(() =>
+                              init.signal?.removeEventListener('abort', abort)
+                            );
+                      });
                     } catch (error) {
+                      if (init.signal?.aborted) throw error;
                       try {
-                        await cancelReader();
+                        await cancel();
                       } catch {
                         /* Preserve read failure. */
                       }
                       throw error;
                     }
                   },
-                  cancel: cancelReader,
+                  cancel,
                   releaseLock() {
-                    reader.releaseLock();
+                    acquiredReader.releaseLock();
                   },
                 };
               },

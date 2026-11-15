@@ -99,10 +99,10 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let observedHead = { number: '0x10', hash: '0x' + 'aa'.repeat(32) };
   const tokens = new Map<string, { balance: bigint; decimals: number }>();
   const tokenInterface = new Interface(['function balanceOf(address) view returns(uint256)', 'function decimals() view returns(uint8)', 'function transfer(address,uint256) returns(bool)']);
-  const nfts = new Map<string, { standard: 'ERC-721' | 'ERC-1155'; balance: bigint }>();
+  const nfts = new Map<string, { standard: 'ERC-721' | 'ERC-1155'; balance: bigint; owner: string }>();
   const nftInterface = new Interface(['function supportsInterface(bytes4) view returns(bool)', 'function ownerOf(uint256) view returns(address)',
     'function balanceOf(address,uint256) view returns(uint256)', 'function balanceOfBatch(address[],uint256[]) view returns(uint256[])',
-    'function safeTransferFrom(address,address,uint256)', 'function safeTransferFrom(address,address,uint256,uint256,bytes)']);
+    'function transferFrom(address,address,uint256)', 'function safeTransferFrom(address,address,uint256)', 'function safeTransferFrom(address,address,uint256,uint256,bytes)']);
   let deployed = false;
   let deployedCode = '0x01';
   let readReceipts = true;
@@ -269,13 +269,12 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
               [call.args[0] === (nft.standard === 'ERC-721' ? '0x80ac58cd' : '0xd9b67a26')]);
             else if (call.name === 'ownerOf') {
               if (call.args[0] !== 0n) return Response.json({ jsonrpc: '2.0', id: request.id, error: { code: 3, message: 'execution reverted', data: '0x' } });
-              const owner = runtime.catalogue.getSnapshot()!.accounts.find(account => account.type === 'SmartAccount')!.address;
-              result = nftInterface.encodeFunctionResult(call.fragment, [nft.balance > 0n ? owner : '0x1111111111111111111111111111111111111111']);
+              result = nftInterface.encodeFunctionResult(call.fragment, [nft.balance > 0n ? nft.owner : '0x1111111111111111111111111111111111111111']);
             } else if (call.name === 'balanceOf') result = nftInterface.encodeFunctionResult(call.fragment, [call.args[1] === 0n ? nft.balance : 0n]);
             else if (call.name === 'balanceOfBatch') result = nftInterface.encodeFunctionResult(call.fragment,
               [[...call.args[1]].map(id => id === 0n ? nft.balance : 0n)]);
             else {
-              assert.equal(call.name, 'safeTransferFrom');
+              assert(['safeTransferFrom', 'transferFrom'].includes(call.name));
               assert(nft.balance >= (nft.standard === 'ERC-721' ? 1n : call.args[3]));
               result = '0x';
             }
@@ -288,7 +287,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
               result = tokenInterface.encodeFunctionResult(call.fragment, [token.balance]);
             } else {
               assert.equal(call.name, 'transfer');
-              assert(runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === request.params[0].from?.toLowerCase()));
+              assert(runtime.catalogue.getSnapshot()?.accounts.some(account => account.address.toLowerCase() === request.params[0].from?.toLowerCase()));
               assert(call.args[1] <= token.balance);
               result = tokenInterface.encodeFunctionResult(call.fragment, [true]);
             }
@@ -516,7 +515,12 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     fundedSmart() { smartBalance = '0x1000000000000000'; },
     smartBalance(value: bigint) { smartBalance = '0x' + value.toString(16); },
     tokenBalance(contract: string, balance: bigint, decimals: number) { tokens.set(contract.toLowerCase(), { balance, decimals }); },
-    nftBalance(contract: string, standard: 'ERC-721' | 'ERC-1155', balance: bigint) { nfts.set(contract.toLowerCase(), { standard, balance }); },
+    nftBalance(contract: string, standard: 'ERC-721' | 'ERC-1155', balance: bigint) {
+      const snapshot = runtime.catalogue.getSnapshot()!;
+      const owner = nfts.get(contract.toLowerCase())?.owner ?? snapshot.accounts.find(account => account.type === 'SmartAccount')?.address ??
+        snapshot.accounts.find(account => account.id === snapshot.active.accountId)!.address;
+      nfts.set(contract.toLowerCase(), { standard, balance, owner });
+    },
     holdReceipts() { readReceipts = false; },
     showReceipts(success = true) { readReceipts = true; userOperationSuccess = success; },
     reorg() { readReceipts = false; nonceReset = true; },
@@ -6415,4 +6419,40 @@ test(`deployed Smart ${standard} final admission rejects asset loss during ${bou
       assert.equal(inspectEvmSignedBundle(retained, identity.profileId).transactions, 1);
     }
   } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const standard of ['native', 'ERC20', 'ERC-721', 'ERC-1155'] as const) test(`counted actual native EOA transfer (${standard})`, async () => {
+  const f = await fixture({}, true);
+  const transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, { rpc: f.transferRpc });
+  try {
+    const contractAddress = '0x5555555555555555555555555555555555555555';
+    const recipient = '0x2222222222222222222222222222222222222222';
+    const registry = await f.runtime.tokens!.load(() => undefined);
+    if (standard === 'ERC20') {
+      f.tokenBalance(contractAddress, 9n, 0);
+      await f.runtime.tokens!.add(registry.revision, { contractAddress, name: 'Asset', symbol: 'ASSET', decimals: 0 }, () => undefined);
+    } else if (standard !== 'native') {
+      f.nftBalance(contractAddress, standard, 9n);
+      await f.runtime.tokens!.addCollectible!(registry.revision, standard === 'ERC-721'
+        ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId: '0' }, () => undefined);
+    }
+    f.holdReceipts(); f.calls.length = 0; f.rpcBatches.length = 0;
+    const measure = () => ({ methods: f.calls.length,
+      http: f.calls.length - f.rpcBatches.reduce((sum, batch) => sum + batch.length - 1, 0),
+      chains: f.calls.filter(method => method === 'eth_chainId').length });
+    if (standard === 'native') await transfers.prepare(recipient, '0.000000000000000001');
+    else if (standard === 'ERC20') await transfers.prepareToken(contractAddress, recipient, '1');
+    else await transfers.prepareCollectible(standard === 'ERC-721'
+      ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId: '0' }, recipient, '0', '1');
+    const review = transfers.getSnapshot().review; assert(review, JSON.stringify(transfers.getSnapshot()));
+    const preparation = measure(); f.calls.length = 0; f.rpcBatches.length = 0;
+    await transfers.confirm(review.id, { method: 'device' });
+    assert.equal(f.submitted.length, 1, JSON.stringify(transfers.getSnapshot()));
+    assert.deepEqual(preparation, standard === 'native'
+      ? { methods: 12, http: 7, chains: 2 } : { methods: 17, http: 12, chains: 2 });
+    assert.deepEqual(measure(), standard === 'native'
+      ? { methods: 20, http: 12, chains: 4 }
+      : standard === 'ERC20' ? { methods: 30, http: 22, chains: 4 } : { methods: 31, http: 23, chains: 4 });
+    console.log('NATIVE_EOA_COUNTS', JSON.stringify({ standard, preparation, confirm: measure() }));
+  } finally { transfers.dispose(); await f.close(); }
 });
