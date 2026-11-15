@@ -240,7 +240,9 @@ async function withFixture(
           if (
             call.method === 'eth_getCode' &&
             params.length === 2 &&
-            atLatest &&
+            (atLatest ||
+              (params[1] === '0x1' &&
+                infrastructureTargets.has(params[0]?.toLowerCase()))) &&
             (owner ||
               params[0]?.toLowerCase() === TOKEN ||
               infrastructureTargets.has(params[0]?.toLowerCase()))

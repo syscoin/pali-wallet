@@ -563,7 +563,11 @@ const allowsHubCarrierRpc = (
       ['latest', 'pending'].includes(p[1])
     );
   if (call.method === 'eth_getCode')
-    return p.length === 2 && code.includes(lower(p[0])) && p[1] === 'latest';
+    return (
+      p.length === 2 &&
+      code.includes(lower(p[0])) &&
+      ['latest', '0x2a', '0x2b'].includes(p[1])
+    );
   if (call.method === 'eth_call') {
     const tx = p[0];
     const calls = [
@@ -640,6 +644,22 @@ const allowsHubCarrierRpc = (
 const verifyHubHydrationFence = (
   fixture: ReturnType<typeof createVisualFixture>
 ) => {
+  const infrastructureCode = {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'eth_getCode',
+    params: [fixture.infrastructure[0].address, '0x2b'],
+  };
+  expect(allowsHubCarrierRpc(infrastructureCode, fixture)).toBe(true);
+  for (const params of [
+    [fixture.infrastructure[0].address, 'pending'],
+    [fixture.infrastructure[0].address, '0x2c'],
+    [`0x${'ff'.repeat(20)}`, '0x2b'],
+    [...infrastructureCode.params, false],
+  ])
+    expect(
+      allowsHubCarrierRpc({ ...infrastructureCode, params }, fixture)
+    ).toBe(false);
   const make = (to: string, data: string) => ({
     jsonrpc: '2.0',
     id: 1,
