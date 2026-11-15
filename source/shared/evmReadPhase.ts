@@ -20,6 +20,7 @@ const READ_METHODS = new Set([
   'eth_estimateGas',
   'eth_gasPrice',
   'eth_maxPriorityFeePerGas',
+  'eth_feeHistory',
 ]);
 export const EVM_READ_PHASE_TIMEOUT_MS = 10000;
 const MAX_PHASE_READS = 200;
