@@ -76,6 +76,7 @@ export type SmartAccountSubmissionChecks = {
     currentSignedHash?: string,
     admission?: EvmAutoNonceSnapshot
   ): Promise<void>;
+  readonly assertPendingStateIncludesAssets?: true;
 };
 export type SmartAccountSubmitHost<
   TResponse extends { hash: string; wait(): Promise<unknown> }
@@ -270,6 +271,7 @@ async function submitOwnedSmartAccountOperation<
       signature: params.signature,
     };
     const submissionChecks: SmartAccountSubmissionChecks = {
+      assertPendingStateIncludesAssets: true,
       async assertPendingState(provider, currentSignedHash, admission) {
         const phase = provider
           ? host.pending.onProvider(provider, currentSignedHash, admission)

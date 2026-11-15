@@ -57,26 +57,48 @@ export async function readSmartAccountNonce(
   return nonce.toString();
 }
 
-export async function readSmartAccountBalances(
+export async function readSmartAccountBalance(
+  provider: FinancialProvider,
+  address: string
+): Promise<BigNumber> {
+  return BigNumber.from(
+    quantity(
+      await provider.send('eth_getBalance', [getAddress(address), 'pending'])
+    )
+  );
+}
+
+export async function readSmartAccountDeposit(
   provider: FinancialProvider,
   chainId: number,
   address: string
+): Promise<BigNumber> {
+  const data = paliEntryPointInterface.encodeFunctionData('balanceOf', [
+    getAddress(address),
+  ]);
+  return BigNumber.from(
+    word(
+      await provider.send('eth_call', [
+        { to: getPaliEntryPointAddress(chainId), data },
+        'pending',
+      ])
+    )
+  );
+}
+
+export async function readSmartAccountBalances(
+  provider: FinancialProvider,
+  chainId: number,
+  address: string,
+  includeDeposit = true
 ): Promise<SmartAccountBalances> {
-  const account = getAddress(address);
-  const entryPoint = getPaliEntryPointAddress(chainId);
-  const depositData = paliEntryPointInterface.encodeFunctionData('balanceOf', [
-    account,
-  ]);
   const [balance, deposit] = await Promise.all([
-    provider.send('eth_getBalance', [account, 'pending']).then(quantity),
-    provider
-      .send('eth_call', [{ to: entryPoint, data: depositData }, 'pending'])
-      .then(word),
+    readSmartAccountBalance(provider, address),
+    includeDeposit
+      ? readSmartAccountDeposit(provider, chainId, address)
+      : Promise.resolve(BigNumber.from(0)),
   ]);
-  return Object.freeze({
-    balance: BigNumber.from(balance),
-    deposit: BigNumber.from(deposit),
-  });
+  return Object.freeze({ balance, deposit });
 }
 
 /** Independent pending getters share the owner's bounded read phase when needed. */

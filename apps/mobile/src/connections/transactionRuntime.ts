@@ -29,6 +29,7 @@ type Ports = Readonly<{
   network: NativeNetworkRegistration;
   funding: EvmFeeFunding;
   gasPolicy: EvmGasPolicy;
+  feePolicy?: 'fixed';
   rpc: EvmTransferReadRpc;
   signal: AbortSignal;
   planner: NativeAutomaticNoncePlanner;
@@ -55,7 +56,7 @@ export async function prepareNativeConnectionTransaction(input: unknown, ports: 
     now: ports.now ?? (() => Math.floor(performance.now())),
     assertCurrent: check,
     prepare: (request, assertCurrent, planner, approved) =>
-      ports.rpc.prepareDapp(request, ports.signal, assertCurrent, planner, approved, ports.funding, gasPolicy),
+      ports.rpc.prepareDapp(request, ports.signal, assertCurrent, planner, approved, ports.funding, gasPolicy, ports.feePolicy),
     async send(transaction, assertCurrent, verifyDispatch, onBroadcast, submission) {
       const signed = await ports.sign(transaction, assertCurrent);
       assertCurrent();

@@ -6228,3 +6228,66 @@ test('unknown additive Passkey receipt survives cold reopen and the same profile
     assert.equal(assertions,1);assert.equal(creates,1);assert.equal(f.submitted.length,1);f.assertNoSigningKeys();
   } finally {scope.retire();connection?.approval.dispose();await operation?.dispose();await f.close();}
 });
+
+for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`sponsored native final admission rejects credit loss during ${boundary}`, async () => {
+  let loseCredit: (() => void) | undefined;
+  const f = await fixture({ after(kind, sql) {
+    if (boundary === 'payer-persistence' && kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records') && loseCredit) { loseCredit(); loseCredit = undefined; }
+  } }, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.selectNetwork('zksys-testnet');
+    await f.change({ kind: 'create-smart', label: 'Late sponsored admission' });
+    f.fundedSmart(); f.deployed(); f.holdReceipts(); f.gasSponsored();
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    await operation.prepare();
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    const review = operation.getSnapshot().payerReview; assert(review, JSON.stringify(operation.getSnapshot()));
+    assert.equal(review.coveredFeeUnits, review.maximumFeeUnits);
+    let changed = false;
+    const mutate = () => { changed = true; f.loseGasCredit(); };
+    if (boundary === 'payer-signing') f.onPayerSignature(mutate); else loseCredit = mutate;
+    operation.confirmPayer(review.id); await sending;
+    assert(changed);
+    assert.equal(f.payerSignatures.length, 1);
+    assert.equal(f.submitted.length, 0);
+    assert.equal(operation.getSnapshot().phase, 'failed');
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const sponsored of [false, true]) test(`counted native warm Smart payer phases (${sponsored ? 'sponsored' : 'ordinary'})`, async () => {
+  const f = await fixture({}, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    if (sponsored) await f.selectNetwork('zksys-testnet');
+    await f.change({ kind: 'create-smart', label: 'Counted payer phases' });
+    f.fundedSmart(); f.deployed();
+    f.mutateSelectedSmart(account => {
+      account.smartAccount!.isDeployed = true;
+      account.smartAccount!.installedModules = [{ type: 'validator', id: 'ecdsa', address: getConfiguredAuthenticatorAddress(Number(account.smartAccount!.chainId), 'ecdsa'), config: { owners: [f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!.address], threshold: 1 } }];
+    });
+    f.deployed(); f.holdReceipts();
+    if (sponsored) f.gasSponsored();
+    f.calls.length = 0; f.rpcBatches.length = 0;
+    const measure = () => ({ methods: f.calls.length,
+      http: f.calls.length - f.rpcBatches.reduce((sum, batch) => sum + batch.length - 1, 0),
+      chains: f.calls.filter(method => method === 'eth_chainId').length });
+    const delta = (before: ReturnType<typeof measure>) => { const after = measure(); return { methods: after.methods - before.methods, http: after.http - before.http, chains: after.chains - before.chains }; };
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined, null);
+    const start = measure(); await operation.prepare(); const preparation = delta(start);
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    const reviewed = measure(); const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    const review = operation.getSnapshot().payerReview; assert(review, JSON.stringify(operation.getSnapshot()));
+    const payerReview = delta(reviewed), confirmed = measure();
+    const payerMethods = f.calls.slice(reviewed.methods);
+    assert.equal(payerMethods.filter(method => method === 'eth_gasPrice' || method === 'eth_maxPriorityFeePerGas').length, 0);
+    assert.deepEqual(payerReview, { methods: 15, http: 11, chains: 4 });
+    operation.confirmPayer(review.id); await sending;
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length, 1);
+    assert.deepEqual(measure(), { methods: 55, http: sponsored ? 41 : 38, chains: 13 });
+    console.log('NATIVE_PHASE_COUNTS', JSON.stringify({ sponsored, preparation, payerReview, confirmation: delta(confirmed), total: measure() }));
+  } finally { operation?.dispose(); await f.close(); }
+});

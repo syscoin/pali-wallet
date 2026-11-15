@@ -28,8 +28,10 @@ function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance 
     input.assertCurrent(); nonceOverrides.push(input.nonceOverride);
     return { kind: 'ready', nonce: input.nonceOverride ?? 4, balanceState: 'pending', nativeReservations: { canonical: 0n, pending: 0n } };
   };
-  const fetcher = async (_url: string, init: RequestInit) => {
-    const request = JSON.parse(String(init.body)); calls.push(request);
+  const fetcher = async (_url: string, init: RequestInit): Promise<Response> => {
+    const request = JSON.parse(String(init.body));
+    if (Array.isArray(request)) return Response.json(await Promise.all(request.map(async row => (await fetcher(_url, { ...init, body: JSON.stringify(row) })).json())));
+    calls.push(request);
     const { method, params, id } = request;
     let result: unknown;
     if (method === 'eth_chainId') result = '0x1';
@@ -149,7 +151,7 @@ for (const lose of ['never', 'before-confirm', 'during-sign'] as const) test(`ve
     await review.submit(f.guard, () => undefined, { kind: 'transaction' });
     assert.equal(f.signs, 1); assert.equal(f.broadcasts, 1); assert.equal(checks, 3);
   } else {
-    await assert.rejects(review.submit(f.guard, () => undefined, { kind: 'transaction' }), { code: 'UNAVAILABLE' });
+    await assert.rejects(review.submit(f.guard, () => undefined, { kind: 'transaction' }), /credit unavailable/);
     assert.equal(f.broadcasts, 0);
     assert.equal(f.signs, lose === 'during-sign' ? 1 : 0);
   }
@@ -170,6 +172,18 @@ test('null pending block uses canonical fee bounds while malformed pending data 
   const malformed = fixture(NATIVE_EVM_FEE_FUNDING, '0x100000000000000', 'malformed');
   await assert.rejects(malformed.prepare({ from: wallet.address, to: recipient }), { code: 'INVALID_RESPONSE' });
   assert.equal(malformed.signs, 0);
+});
+
+test('external dapp requests retain market fee observation with complete explicit fees', async () => {
+  for (const fees of [{ gasPrice: '0x7' }, { type: '0x2', maxFeePerGas: '0x7', maxPriorityFeePerGas: '0x2' }]) {
+    const f = fixture();
+    await f.prepare({ from: wallet.address, to: recipient, ...fees });
+    assert(f.calls.some(call => call.method === 'eth_getBlockByNumber' && call.params[0] === 'pending'));
+    assert(f.calls.some(call => call.method === 'eth_gasPrice'));
+    assert(f.calls.some(call => call.method === 'eth_maxPriorityFeePerGas'));
+    assert.equal(f.signs, 0);
+    assert.equal(f.broadcasts, 0);
+  }
 });
 
 test('recognized asset call obtains bound display metadata without signing', async () => {

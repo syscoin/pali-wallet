@@ -159,7 +159,7 @@ export function createSmartAccountGasTankFunding(
     throw new Error('Invalid sponsored Smart account transaction');
   let reviewed: string | undefined;
   return createOwnedEvmFeeFunding(
-    async (approval, assertCurrent, executionGas) => {
+    async (approval, assertCurrent, executionGas, scopedProvider) => {
       const check = () => {
         assertSynchronousEvmFeeGuard(assertOwner);
         assertSynchronousEvmFeeGuard(assertCurrent);
@@ -178,7 +178,7 @@ export function createSmartAccountGasTankFunding(
       if (reviewed !== undefined && reviewed !== identity)
         throw new Error('Sponsored transaction changed');
       reviewed = identity;
-      await assertSmartAccountGasTankCredit(provider, {
+      await assertSmartAccountGasTankCredit(scopedProvider ?? provider, {
         chainId: bound.chainId,
         gasPayerAddress: bound.payer,
         maxFeePerGas:
@@ -260,6 +260,8 @@ export async function ensureSmartAccountDeploymentPrefund<
       assertBeforeSign: options.assertBeforeSign,
       assertCurrentContext: options.assertCurrentContext,
       assertPendingState: options.assertPendingState,
+      assertPendingStateIncludesAssets:
+        options.assertPendingStateIncludesAssets,
       assertAssetState: options.assertAssetState,
       clearNavigation: false,
       onBroadcast: async () => options.onAcknowledged(),

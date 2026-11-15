@@ -3,7 +3,7 @@ import test from 'node:test';
 import { createNativeDappRpcReadHost } from '../src/custody/dappRpcReads.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { createNativeNetwork } from '../src/custody/networkContext.ts';
-import { executeDappRpcRequest, normalizeDappRpcRequest } from '../../../source/shared/dappRpcReads.ts';
+import { classifyDappRpcMethod, executeDappRpcRequest, normalizeDappRpcRequest } from '../../../source/shared/dappRpcReads.ts';
 import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js';
 import { Wallet } from 'ethers/wallet';
 import { Signature } from 'ethers/crypto';
@@ -21,7 +21,7 @@ const NODE_PUBLIC_CASES = [
   ['eth_submitHashrate', [`0x${'00'.repeat(31)}01`, HASH], false],
   ['eth_submitWork', ['0x0000000000000001', HASH, HASH], false],
 ] as const;
-test('public reads use the saved endpoint, verify the chain twice and carry the request guard', async () => {
+test('public reads use the saved endpoint and a bounded verified identity lease', async () => {
   const calls: { method: string; params: unknown[] }[] = [];
   let checks = 0;
   const host = createNativeDappRpcReadHost({ verifyPersonalMessage() { throw new Error('RPC reads must not invoke recovery'); }, registration: () => registration, async fetch(url, init) {
@@ -30,8 +30,8 @@ test('public reads use the saved endpoint, verify the chain twice and carry the 
     return json(request.id, { result: request.method === 'eth_chainId' ? '0x1' : '0x42' });
   } });
   assert.equal(await host.read(normalizeDappRpcRequest('eth_blockNumber', []), new AbortController().signal, () => { checks++; }), '0x42');
-  assert.deepEqual(calls.map(value => value.method), ['eth_chainId', 'eth_blockNumber', 'eth_chainId']);
-  assert(checks > 5);
+  assert.deepEqual(calls.map(value => value.method), ['eth_chainId', 'eth_blockNumber']);
+  assert(checks >= 4);
 });
 test('RPC execution errors retain the exact revert code, message and hex data', async () => {
   const host = createNativeDappRpcReadHost({ verifyPersonalMessage() { throw new Error('RPC reads must not invoke recovery'); }, registration: () => registration, async fetch(_url, init) {
@@ -66,7 +66,7 @@ for (const [method, params, result] of [
   ['eth_getProof', [`0x${'11'.repeat(20)}`, ['0XABC', '0x', `0x${'00'.repeat(32)}`], null], { storageProof: [] }],
   ['web3_clientVersion', [], 'Example/v1'], ['net_listening', [], false], ['net_peerCount', [], '0x0'],
   ...NODE_PUBLIC_CASES,
-] as const) test(`${method} uses the common execution request with the existing three-call chain fence`, async () => {
+] as const) test(`${method} uses the common execution request with its public-read identity policy`, async () => {
   const calls: { method: string; params: unknown[] }[] = [];
   const host = createNativeDappRpcReadHost({ registration: () => registration,
     verifyPersonalMessage() { throw Error('Must not verify'); }, async fetch(_url, init) {
@@ -75,7 +75,7 @@ for (const [method, params, result] of [
     } });
   const request = normalizeDappRpcRequest(method, params);
   assert.deepEqual(await host.read(request, new AbortController().signal, () => {}), result);
-  assert.deepEqual(calls.map(value => value.method), ['eth_chainId', method, 'eth_chainId']);
+  assert.deepEqual(calls.map(value => value.method), classifyDappRpcMethod(method) === 'node-query' ? ['eth_chainId', method] : ['eth_chainId', method, 'eth_chainId']);
   assert.deepEqual(calls[1]!.params, request.params);
 });
 
@@ -141,4 +141,182 @@ test('local recovery retains source/abort guards and cannot leak onto the HTTP-o
   await assert.rejects(host.read(request, lifetime.signal, () => {}), /CONTEXT_CHANGED/);
   await assert.rejects(new EvmTransferReadRpc(registration, { fetch: async () => { throw Error('Must not fetch'); } })
     .dappRequest(request, new AbortController().signal, () => {}), /INVALID_INPUT/);
+});
+
+test('twenty sequential display queries share one identity check and expiry refreshes it', async () => {
+  let time = 1, chains = 0, queries = 0;
+  const host = createNativeDappRpcReadHost({ registration: () => registration, now: () => time,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const request = JSON.parse(String(init.body));
+      if (request.method === 'eth_chainId') chains++; else queries++;
+      return json(request.id, { result: request.method === 'eth_chainId' ? '0x1' : '0x42' });
+    } });
+  const request = normalizeDappRpcRequest('eth_getBalance', [`0x${'11'.repeat(20)}`, 'latest']);
+  for (let index = 0; index < 20; index++) assert.equal(await host.read(request, new AbortController().signal, () => {}), '0x42');
+  assert.equal(chains, 1); assert.equal(queries, 20);
+  time += 30001;
+  await host.read(request, new AbortController().signal, () => {});
+  assert.equal(chains, 2);
+  host.reset!();
+  await host.read(request, new AbortController().signal, () => {});
+  assert.equal(chains, 3);
+});
+
+test('identical concurrent queries share transport with independent cancellation', async () => {
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let queries = 0, signal: AbortSignal | undefined;
+  const host = createNativeDappRpcReadHost({ registration: () => registration,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const request = JSON.parse(String(init.body));
+      if (request.method === 'eth_chainId') return json(request.id, { result: '0x1' });
+      queries++; signal = init.signal as AbortSignal; entered.resolve(); await release.promise;
+      return json(request.id, { result: { records: [1] } });
+    } });
+  const request = normalizeDappRpcRequest('eth_getLogs', [{}]);
+  const first = new AbortController();
+  const a = host.read(request, first.signal, () => {}), b = host.read(request, new AbortController().signal, () => {});
+  const rejected = assert.rejects(a);
+  await entered.promise; first.abort(); await rejected;
+  assert.equal(signal!.aborted, false); release.resolve();
+  assert.deepEqual(await b, { records: [1] }); assert.equal(queries, 1);
+});
+
+test('sixteen different reads keep four physical requests active across owner replacement', async () => {
+  let context = 'first', active = 0, peak = 0;
+  const releases: (() => void)[] = [];
+  const host = createNativeDappRpcReadHost({ registration: () => registration, context: () => context,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const request = JSON.parse(String(init.body));
+      if (request.method === 'eth_chainId') return json(request.id, { result: '0x1' });
+      active++; peak = Math.max(peak, active);
+      await new Promise<void>(resolve => releases.push(() => { active--; resolve(); }));
+      return json(request.id, { result: '0x42' });
+    } });
+  const tasks = Array.from({ length: 16 }, (_, index) => host.read(normalizeDappRpcRequest('eth_getBalance', [`0x${(index + 1).toString(16).padStart(40, '0')}`, 'latest']), new AbortController().signal, () => {}));
+  const completed = Promise.allSettled(tasks);
+  for (let i = 0; i < 10; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(active, 4); context = 'second'; host.reset!();
+  await completed;
+  const next = host.read(normalizeDappRpcRequest('eth_blockNumber', []), new AbortController().signal, () => {});
+  for (let i = 0; i < 3; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(active, 4);
+  releases.splice(0).forEach(release => release());
+  for (let i = 0; i < 10; i++) await new Promise(resolve => setImmediate(resolve));
+  releases.splice(0).forEach(release => release());
+  assert.equal(await next, '0x42'); assert(peak <= 4);
+});
+
+test('controls never join and context replacement retires the identity lease', async () => {
+  let context = 'a', chains = 0, controls = 0;
+  const host = createNativeDappRpcReadHost({ registration: () => registration, context: () => context,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const request = JSON.parse(String(init.body));
+      if (request.method === 'eth_chainId') chains++; else controls++;
+      return json(request.id, { result: request.method === 'eth_chainId' ? '0x1' : '0x42' });
+    } });
+  const control = normalizeDappRpcRequest('eth_newBlockFilter', []);
+  await Promise.all([host.read(control, new AbortController().signal, () => {}), host.read(control, new AbortController().signal, () => {})]);
+  assert.equal(controls, 2); assert.equal(chains, 4);
+  const read = normalizeDappRpcRequest('eth_blockNumber', []);
+  await host.read(read, new AbortController().signal, () => {}); assert.equal(chains, 5);
+  context = 'b'; await host.read(read, new AbortController().signal, () => {}); assert.equal(chains, 6);
+  context = 'a'; await host.read(read, new AbortController().signal, () => {}); assert.equal(chains, 7);
+});
+
+test('one cancelled query does not cancel shared identity verification needed by another query', async () => {
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let chains = 0, verificationSignal: AbortSignal | undefined;
+  const methods: string[] = [];
+  const host = createNativeDappRpcReadHost({ registration: () => registration,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const request = JSON.parse(String(init.body)); methods.push(request.method);
+      if (request.method === 'eth_chainId') {
+        chains++; verificationSignal = init.signal as AbortSignal;
+        entered.resolve(); await release.promise;
+      }
+      return json(request.id, { result: request.method === 'eth_chainId' ? '0x1' : '0x42' });
+    } });
+  const first = new AbortController();
+  const a = host.read(normalizeDappRpcRequest('eth_blockNumber', []), first.signal, () => {});
+  const rejected = assert.rejects(a);
+  const b = host.read(normalizeDappRpcRequest('eth_gasPrice', []), new AbortController().signal, () => {});
+  await entered.promise;
+  first.abort(); await rejected;
+  assert.equal(verificationSignal!.aborted, false);
+  release.resolve();
+  assert.equal(await b, '0x42');
+  assert.equal(chains, 1);
+  assert.deepEqual(methods, ['eth_chainId', 'eth_gasPrice']);
+});
+
+test('joined query subscribers receive independently mutable result copies', async () => {
+  const release = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
+  let queries = 0;
+  const host = createNativeDappRpcReadHost({ registration: () => registration,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const request = JSON.parse(String(init.body));
+      if (request.method === 'eth_chainId') return json(request.id, { result: '0x1' });
+      queries++; entered.resolve(); await release.promise;
+      return json(request.id, { result: [{ topics: ['original'] }] });
+    } });
+  const request = normalizeDappRpcRequest('eth_getLogs', [{}]);
+  const first = host.read(request, new AbortController().signal, () => {});
+  const second = host.read(request, new AbortController().signal, () => {});
+  await entered.promise; release.resolve();
+  const [a, b] = await Promise.all([first, second]) as { topics: string[] }[][];
+  assert(a && b);
+  a[0]!.topics[0] = 'changed';
+  assert.equal(b[0]!.topics[0], 'original');
+  assert.notEqual(a, b); assert.notEqual(a[0], b[0]); assert.equal(queries, 1);
+});
+
+test('expired identity refuses wrong-chain reads and retries verification before serving again', async () => {
+  let time = 1000, chain = '0x1', chains = 0, queries = 0;
+  const host = createNativeDappRpcReadHost({ registration: () => registration, now: () => time,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const request = JSON.parse(String(init.body));
+      if (request.method === 'eth_chainId') chains++; else queries++;
+      return json(request.id, { result: request.method === 'eth_chainId' ? chain : '0x42' });
+    } });
+  const request = normalizeDappRpcRequest('eth_blockNumber', []);
+  await host.read(request, new AbortController().signal, () => {});
+  time += 30001; chain = '0x2';
+  await assert.rejects(host.read(request, new AbortController().signal, () => {}));
+  assert.equal(queries, 1);
+  chain = '0x1';
+  assert.equal(await host.read(request, new AbortController().signal, () => {}), '0x42');
+  assert.equal(chains, 3); assert.equal(queries, 2);
+});
+
+test('owner replacement waits for four held body cancellations before new physical reads', async () => {
+  let context = 'first', physical = 0, peak = 0, entered = 0;
+  const allEntered = Promise.withResolvers<void>();
+  const releaseBodies: (() => void)[] = [];
+  const host = createNativeDappRpcReadHost({ registration: () => registration, context: () => context,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const request = JSON.parse(String(init.body));
+      if (request.method === 'eth_chainId') return json(request.id, { result: '0x1' });
+      if (context === 'second') return json(request.id, { result: '0x42' });
+      physical++; peak = Math.max(peak, physical);
+      const cleanup = Promise.withResolvers<void>();
+      releaseBodies.push(() => { physical--; cleanup.resolve(); });
+      return { ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => { throw Error('Streaming response must use its reader'); },
+        body: { cancel: () => cleanup.promise, getReader: () => ({
+          read: () => { entered++; if (entered === 4) allEntered.resolve(); return new Promise(() => {}); },
+          cancel: () => cleanup.promise, releaseLock() {},
+        }) },
+      } as unknown as Response;
+    } });
+  const first = Promise.allSettled(Array.from({ length: 4 }, (_, index) => host.read(
+    normalizeDappRpcRequest('eth_getBalance', [`0x${(index + 1).toString(16).padStart(40, '0')}`, 'latest']),
+    new AbortController().signal, () => {})));
+  await allEntered.promise;
+  context = 'second'; host.reset!(); await first;
+  let complete = false;
+  const second = host.read(normalizeDappRpcRequest('eth_blockNumber', []), new AbortController().signal, () => {}).then(value => { complete = true; return value; });
+  for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(physical, 4); assert.equal(complete, false);
+  releaseBodies.forEach(release => release());
+  assert.equal(await second, '0x42'); assert.equal(physical, 0); assert.equal(peak, 4);
 });

@@ -579,6 +579,8 @@ export class NativeConnectionsController {
       this.revalidateReads();
       const previous = this.publishedScope;
       const current = this.publicScope();
+      if (phase !== 'ready' || !current || current.network !== previous?.network || current.accounts !== previous?.accounts)
+        this.host?.reads.reset?.();
       this.publishedScope = current;
       if (current && previous)
         for (const connection of this.connections.values()) {
@@ -618,6 +620,7 @@ export class NativeConnectionsController {
   }
   private unavailable() {
     if (!this.disposed) {
+      this.host?.reads.reset?.();
       for (const read of this.reads.values()) read.lifetime.abort();
       this.accountChanges.clear(); this.controls.clear(); this.sentry.clear(); this.psbt.clear(); this.preparations.clear(); this.handoffs.cancelDapp();
       this.restored = false;
@@ -3657,6 +3660,7 @@ export class NativeConnectionsController {
   }
   async dispose(): Promise<void> {
     return this.disposal.close(() => {
+      this.host?.reads.reset?.();
       this.dismissStatus();
       this.disposed = true;
       this.clearDeadlines(); this.canceledPairings.clear();

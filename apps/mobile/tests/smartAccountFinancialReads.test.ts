@@ -180,5 +180,23 @@ test('actual native full admission batches the nonce and spendability with two c
     await phase.assertNonce(operation);
     await assertSmartAccountSpendability({ provider: phase.provider, chainId: 1, userOperation: operation, assertCurrent: () => undefined });
   });
-  assert.deepEqual(posts, [['eth_chainId'], ['eth_call', 'eth_getBalance', 'eth_call'], ['eth_chainId']]);
+  assert.deepEqual(posts, [['eth_chainId'], ['eth_call', 'eth_getBalance'], ['eth_chainId']]);
+});
+
+
+test('zero-prefund financial reuse never hides a later required deposit', async () => {
+  const { createSmartAccountPendingState } = await import('../../../source/utils/smartAccount/pendingState.ts');
+  const f = fixture();
+  const pending = createSmartAccountPendingState({ ...f.provider, verifyConfiguredChainId: async () => undefined }, {
+    profileId: '0x' + '33'.repeat(32), read: async () => [],
+  }, 1, account, () => undefined);
+  await pending.withReadPhase(async phase => {
+    const first = await phase.provider.readSmartAccountFinancialState(0n, false);
+    assert.equal(first.deposit.toString(), '0');
+    assert.equal(f.calls.length, 2);
+    const second = await phase.provider.readSmartAccountFinancialState(0n, true);
+    assert.equal(second.deposit.toString(), '7');
+    assert.equal(f.calls.length, 3);
+    assert.equal(f.calls.filter(row => row.method === 'eth_getBalance').length, 1);
+  });
 });

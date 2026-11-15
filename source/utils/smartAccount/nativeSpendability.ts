@@ -56,7 +56,8 @@ export async function assertSmartAccountNativeSpendability({
   const financial =
     typeof provider.readSmartAccountFinancialState === 'function'
       ? await provider.readSmartAccountFinancialState(
-          BigInt(operation.nonce) >> BigInt(64)
+          BigInt(operation.nonce) >> BigInt(64),
+          !requiredPrefund.isZero()
         )
       : undefined;
   const [[balance], rawDeposit] = financial

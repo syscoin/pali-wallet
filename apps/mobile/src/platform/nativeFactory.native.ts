@@ -322,6 +322,12 @@ export function createNativeWalletControllers() {
       const captured = runtime, connection = await captured.openConnectionHost();
       if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
       const reads = createNativeDappRpcReadHost({ fetch: walletFetch, registration: readRegistration,
+        context() {
+          if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
+          const state = authority.getSnapshot(), catalogue = authority.getCatalogue();
+          if (state.phase !== 'ready' || !catalogue) throw new CustodyOperationError('CANCELLED');
+          return JSON.stringify([state.revision, catalogue.revision, catalogue.active.accountId, catalogue.active.networkId]);
+        },
         verifyPersonalMessage(message, signature) {
           if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
           return connection.verifyPersonalMessage(message, signature);

@@ -6,15 +6,18 @@ import { withEvmReadPhase } from '../../shared/evmReadPhase.ts';
 import { observeEvmTransaction } from '../../shared/evmTransactionObservation.ts';
 import { BigNumber } from '../ethersV6Compat.ts';
 
-import type { SmartAccountPackedUserOperation } from './account.ts';
+import {
+  getSmartAccountUserOpRequiredPrefund,
+  type SmartAccountPackedUserOperation,
+} from './account.ts';
 import {
   getPaliEntryPointAddress,
   paliEntryPointInterface,
 } from './contracts.ts';
 import {
-  readSmartAccountBalances,
+  readSmartAccountBalance,
+  readSmartAccountDeposit,
   readSmartAccountNonce,
-  type SmartAccountBalances,
   type SmartAccountFinancialState,
 } from './financialReads.ts';
 import { getSmartAccountNativeValue } from './nativeSpendability.ts';
@@ -107,7 +110,8 @@ export function createSmartAccountPendingState(
     return value;
   };
   const nonceReads = new Map<string, Promise<string>>();
-  let balances: Promise<SmartAccountBalances> | undefined;
+  let balance: Promise<BigNumber> | undefined;
+  let deposit: Promise<BigNumber> | undefined;
   const nonceState = (key: bigint) => {
     const identity = key.toString();
     let result = nonceReads.get(identity);
@@ -117,21 +121,27 @@ export function createSmartAccountPendingState(
     }
     return result;
   };
-  const financialState = async (key: bigint) => {
+  const financialState = async (key: bigint, includeDeposit = true) => {
     check();
     await provider.verifyConfiguredChainId(true);
     check();
     const nonce = nonceState(key);
-    balances ??= readSmartAccountBalances({ send: read }, chainId, account);
-    const [observedNonce, observedBalances] = await Promise.all([
-      nonce,
-      balances,
-    ]);
+    balance ??= readSmartAccountBalance({ send: read }, account);
+    if (includeDeposit)
+      deposit ??= readSmartAccountDeposit({ send: read }, chainId, account);
+    const [observedNonce, observedBalance, observedDeposit] = await Promise.all(
+      [
+        nonce,
+        balance,
+        includeDeposit ? deposit : Promise.resolve(BigNumber.from(0)),
+      ]
+    );
     await provider.verifyConfiguredChainId(true);
     check();
     return Object.freeze({
       nonce: observedNonce,
-      ...observedBalances,
+      balance: observedBalance,
+      deposit: observedDeposit!,
     }) satisfies SmartAccountFinancialState;
   };
   const pendingProvider = new Proxy(Object.create(null), {
@@ -166,7 +176,8 @@ export function createSmartAccountPendingState(
   const readNonce = async (
     key: bigint,
     fresh: boolean,
-    includeBalances = false
+    includeBalances = false,
+    includeDeposit = true
   ): Promise<string> => {
     await verify();
     if (key < BigInt(0) || key >= BigInt(1) << BigInt(192))
@@ -183,7 +194,7 @@ export function createSmartAccountPendingState(
     const nonce = phaseScoped
       ? BigInt(
           includeBalances
-            ? (await financialState(key)).nonce
+            ? (await financialState(key, includeDeposit)).nonce
             : await nonceState(key)
         )
       : BigInt(
@@ -228,11 +239,14 @@ export function createSmartAccountPendingState(
   const assertNonce = async (operation: SmartAccountPackedUserOperation) => {
     if (getAddress(operation.sender) !== account) throw unavailable();
     const nonce = BigInt(operation.nonce);
+    const hasNativeValue = !getSmartAccountNativeValue(operation).isZero();
     if (
       (await readNonce(
         nonce >> BigInt(64),
         true,
-        phaseScoped && !getSmartAccountNativeValue(operation).isZero()
+        phaseScoped && hasNativeValue,
+        hasNativeValue &&
+          !getSmartAccountUserOpRequiredPrefund(operation).isZero()
       )) !== operation.nonce
     )
       throw unavailable();

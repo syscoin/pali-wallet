@@ -35,7 +35,9 @@ const budget = {
   // DMK's isolated ESM host adds device/signing code. After byte-identical BN
   // deduplication and page-only translations, the composed package is 12.05 MB.
   // Keep normal wallet startup caps fixed and allow 12.15 MB for this feature.
-  package: 12150000,
+  // Provider-owned write cancellation and bounded response decoding add about
+  // 2 KB to the package. Allow 5 KB for this shared transport protection.
+  package: 12155000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

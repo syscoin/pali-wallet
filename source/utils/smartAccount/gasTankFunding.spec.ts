@@ -122,3 +122,47 @@ it.each([0, 2] as const)(
     expect(provider.call).toHaveBeenCalledTimes(3);
   }
 );
+
+it('uses only the current owned phase for fresh tank credit and preserves credit loss', async () => {
+  const payer = '0x1111111111111111111111111111111111111111',
+    chainId = 57057,
+    to = getPaliEntryPointAddress(chainId);
+  const oldProvider = {
+    call: jest.fn(async () => {
+      throw Error('Unscoped read');
+    }),
+  };
+  let credit = BigInt(2000000);
+  const phase = {
+    call: jest.fn(async () => defaultAbiCoder.encode(['uint256'], [credit])),
+  };
+  const funding = createSmartAccountGasTankFunding(
+    oldProvider,
+    { chainId, payer, to, data: '0x1234', value: '0' },
+    jest.fn()
+  );
+  const approval = captureEvmFeeApproval(
+    {
+      chainId: String(chainId),
+      from: payer,
+      to,
+      data: '0x1234',
+      value: '0',
+      gasLimit: '150000',
+      nonce: '1',
+      type: 0,
+      gasPrice: '10',
+    },
+    'phase',
+    1000
+  );
+  await expect(
+    resolveEvmFeeFunding(funding, approval, jest.fn(), BigInt(100000), phase)
+  ).resolves.toEqual({ coveredFeeUnits: '1500000' });
+  credit = BigInt(1);
+  await expect(
+    resolveEvmFeeFunding(funding, approval, jest.fn(), BigInt(100000), phase)
+  ).rejects.toThrow('PALI_ZKSYS_GAS_TANK_REQUIRED');
+  expect(oldProvider.call).not.toHaveBeenCalled();
+  expect(phase.call).toHaveBeenCalledTimes(2);
+});

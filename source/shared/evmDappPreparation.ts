@@ -93,6 +93,7 @@ export type EvmDappPreparationPorts<Sample extends NonceSample> = Readonly<{
   feePolicy?: 'fixed';
   fees(block: EvmDappBlock): Promise<FeeData>;
   funding: EvmFeeFunding;
+  fundingProvider?: unknown;
   gasPolicy: EvmGasPolicy;
   nonce(block: EvmDappBlock, requested: number | undefined): Promise<Sample>;
   now(): number;
@@ -335,7 +336,8 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
     ports.funding,
     approval,
     check,
-    ports.gasPolicy.kind === 'estimate' ? executionGas : undefined
+    ports.gasPolicy.kind === 'estimate' ? executionGas : undefined,
+    ports.fundingProvider
   );
   try {
     assertEvmFeeEstimateApproved(

@@ -535,6 +535,15 @@ it.each(['review', 'signing', 'persistence'] as const)(
   }
 );
 
+it('uses the full Smart admission callback without repeating its asset reads', async () => {
+  const f = fixture();
+  Object.assign(f.options, { assertPendingStateIncludesAssets: true });
+  await f.submit();
+  expect(f.options.assertPendingState).toHaveBeenCalled();
+  expect(f.options.assertAssetState).not.toHaveBeenCalled();
+  expect(f.broadcast).toHaveBeenCalledTimes(1);
+});
+
 it('requires the explicit Smart asset check before signing', async () => {
   const f = fixture();
   delete (f.options as Partial<typeof f.options>).assertAssetState;

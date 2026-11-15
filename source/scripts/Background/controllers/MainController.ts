@@ -9994,6 +9994,7 @@ class MainController {
         currentSignedHash?: string,
         admission?: EvmAutoNonceSnapshot
       ) => Promise<void>;
+      assertPendingStateIncludesAssets?: true;
       authorizeDapp?: () => void;
       beforeDispatch?: () => Promise<void>;
       clearNavigation?: boolean;
@@ -11655,9 +11656,14 @@ class MainController {
               );
               assertCurrent();
             }
-            // Asset ownership/balance can change after signing or persistence,
-            // independently of the payer nonce and this operation's own row.
-            if (payerDispatch?.saveOptions.assertAssetState) {
+            // Full Smart admission already checks assets in this same phase.
+            if (
+              !(
+                payerDispatch?.saveOptions.assertPendingState &&
+                payerDispatch.saveOptions.assertPendingStateIncludesAssets
+              ) &&
+              payerDispatch?.saveOptions.assertAssetState
+            ) {
               await payerDispatch.saveOptions.assertAssetState(provider);
               assertCurrent();
             }
@@ -11667,6 +11673,7 @@ class MainController {
                 chainId: String(context.chainId),
                 scope: JSON.stringify(expected),
                 funding: payerDispatch?.funding ?? NATIVE_EVM_FEE_FUNDING,
+                fundingProvider: provider,
                 ...(payerDispatch &&
                 (request.gasPrice !== undefined ||
                   (request.maxFeePerGas !== undefined &&

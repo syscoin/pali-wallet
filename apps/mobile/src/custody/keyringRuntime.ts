@@ -1342,6 +1342,8 @@ export function createKeyringRuntimeFactory(
             network.chainId, selected.address, network.rpcUrl);
           return prepareNativeConnectionTransaction({ ...normalized, from: selected.address }, {
             network, rpc, signal, planner, funding, gasPolicy, assertCurrent: check,
+            feePolicy: metadata?.smartAccountExecution === true && (normalized.gasPrice !== undefined ||
+              (normalized.maxFeePerGas !== undefined && normalized.maxPriorityFeePerGas !== undefined)) ? 'fixed' : undefined,
             readApprovalMetadata: (contract, assertCurrent) => readNativeApprovalMetadata({
               network, owner: selected.address, contract, signal, assertCurrent, fetch,
             }),

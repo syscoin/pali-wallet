@@ -1,3 +1,4 @@
+import { withEvmReadPhase } from '../../../../source/shared/evmReadPhase.ts';
 import { createBoundedRpcFetch } from './boundedRpcFetch.ts';
 import { JsonRpcReadClient, RpcReadCapabilities, RpcReadError } from '@sidhujag/sysweb3-keyring/cjs/rpc-read-client.js';
 import { RpcResponseIntegrityError } from '@sidhujag/sysweb3-keyring/cjs/rpc-transport.js';
@@ -345,14 +346,15 @@ export class EvmTransferReadRpc {
   verifyNetwork(signal: AbortSignal, guard: () => void): Promise<void> {
     return this.operation(signal, guard, async (read) => { await this.checkChain(read); }, 'endpoint');
   }
-  dappRequest(input: DappPublicRpcRequest, signal: AbortSignal, guard: () => void): Promise<unknown> {
+  dappRequest(input: DappPublicRpcRequest, signal: AbortSignal, guard: () => void,
+    verifyPublicIdentity?: () => Promise<void>): Promise<unknown> {
     const request = normalizeDappRpcRequest(input.method, input.params);
     if (request.method === 'personal_ecRecover') return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     if ((request.method === 'eth_call' || request.method === 'eth_estimateGas') && (request.params[0] as { chainId?: string }).chainId !== undefined && BigInt((request.params[0] as { chainId: string }).chainId) !== BigInt(this.network.chainId)) return Promise.reject(new EthereumRpcErrorHandler(-32602, 'Transaction chainId does not match selected chain'));
     return this.operation(signal, guard, async read => {
-      await this.checkChain(read);
+      await (verifyPublicIdentity ? verifyPublicIdentity() : this.checkChain(read));
       const result = await read(request.method, request.params);
-      await this.checkChain(read);
+      await (verifyPublicIdentity ? verifyPublicIdentity() : this.checkChain(read));
       assertJsonWorkBudget(result);
       return result;
     }, 'dapp-rpc');
@@ -978,25 +980,35 @@ export class EvmTransferReadRpc {
 
   /** Generic dapp envelope through the same owned reads, nonce planner and fee policy. */
   prepareDapp(request: EvmDappTransactionRequest, signal: AbortSignal, guard: () => void,
-    automaticNonce: NativeAutomaticNoncePlanner, approved: EvmDappPreparedQuote | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy): Promise<EvmDappPreparedQuote> {
+    automaticNonce: NativeAutomaticNoncePlanner, approved: EvmDappPreparedQuote | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy,
+    feePolicy?: 'fixed'): Promise<EvmDappPreparedQuote> {
     gasPolicy = captureEvmGasPolicy(gasPolicy);
     return this.operation(signal, guard, async (read) => {
       try {
-        return await prepareEvmDappQuote(request, {
-          chainId: this.network.chainId,
-          scope: this.network.registrationHash,
-          funding,
-          gasPolicy,
-          assertCurrent: read.assertCurrent,
-          read,
-          now: this.monotonicMilliseconds,
-          verifyChain: () => this.checkChain(read),
-          verifyBlock: (sampled) => this.canonical(read, sampled),
-          nonce: (sampled, requested) =>
-            this.sampleSendNonce(read, request.from, sampled, requested, automaticNonce),
-          balance: (sampled, nonce) => this.readSendBalance(read, request.from, sampled, nonce),
-          fees: (sampled) => this.feeData(read, sampled, signal),
-        }, approved);
+        return await withEvmReadPhase({ signal: read.signal, send: (method, params) => read(method as Method, params),
+          readMany: requests => read.many(requests.map(request => ({ ...request, method: request.method as Method }))),
+          verifyConfiguredChainId: () => this.checkChain(read) }, read.assertCurrent, async provider => {
+          const phase = Object.assign((method: Method, params: readonly unknown[]) => provider.send(method, [...params]), {
+            signal: read.signal, assertCurrent: read.assertCurrent, many: provider.readMany,
+          }) as Reader;
+          return prepareEvmDappQuote(request, {
+            chainId: this.network.chainId,
+            scope: this.network.registrationHash,
+            funding,
+            fundingProvider: provider,
+            gasPolicy,
+            feePolicy,
+            assertCurrent: read.assertCurrent,
+            read: phase,
+            now: this.monotonicMilliseconds,
+            verifyChain: () => provider.verifyConfiguredChainId(),
+            verifyBlock: (sampled) => this.canonical(phase, sampled),
+            nonce: (sampled, requested) =>
+              this.sampleSendNonce(phase, request.from, sampled, requested, automaticNonce),
+            balance: (sampled, nonce) => this.readSendBalance(phase, request.from, sampled, nonce),
+            fees: (sampled) => this.feeData(phase, sampled, signal),
+          }, approved);
+        });
       } catch (error) {
         if (error instanceof EvmFeeBalanceError) return rejectRead('INSUFFICIENT_BALANCE');
         if (error instanceof EvmDappReviewRequiredError) return rejectRead('REVIEW_REQUIRED');
