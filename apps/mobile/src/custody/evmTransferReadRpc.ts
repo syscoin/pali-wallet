@@ -381,14 +381,14 @@ export class EvmTransferReadRpc {
     return this.operation(signal, guard, async (read) => { await this.checkChain(read); }, 'endpoint');
   }
   dappRequest(input: DappPublicRpcRequest, signal: AbortSignal, guard: () => void,
-    verifyPublicIdentity?: () => Promise<void>): Promise<unknown> {
+    verifyPublicIdentity?: (signal: AbortSignal, assertCurrent: () => void) => Promise<void>): Promise<unknown> {
     const request = normalizeDappRpcRequest(input.method, input.params);
     if (request.method === 'personal_ecRecover') return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     if ((request.method === 'eth_call' || request.method === 'eth_estimateGas') && (request.params[0] as { chainId?: string }).chainId !== undefined && BigInt((request.params[0] as { chainId: string }).chainId) !== BigInt(this.network.chainId)) return Promise.reject(new EthereumRpcErrorHandler(-32602, 'Transaction chainId does not match selected chain'));
     return this.operation(signal, guard, async read => {
-      await (verifyPublicIdentity ? verifyPublicIdentity() : this.checkChain(read));
+      await (verifyPublicIdentity ? verifyPublicIdentity(read.signal, read.assertCurrent) : this.checkChain(read));
       const result = await read(request.method, request.params);
-      await (verifyPublicIdentity ? verifyPublicIdentity() : this.checkChain(read));
+      await (verifyPublicIdentity ? verifyPublicIdentity(read.signal, read.assertCurrent) : this.checkChain(read));
       assertJsonWorkBudget(result);
       return result;
     }, 'dapp-rpc');

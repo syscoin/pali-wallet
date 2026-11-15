@@ -549,3 +549,44 @@ test('cancelling one batch member preserves its sibling and the warm identity le
   await host.read(normalizeDappRpcRequest('eth_blockNumber', []), new AbortController().signal, () => {});
   assert.equal(chains, 1);
 });
+
+test('control deadlines cancel post-control verification before a delayed response handoff', async context => {
+  context.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+  const postSignals: AbortSignal[] = [];
+  const controlReleases: (() => void)[] = [];
+  const reply = Promise.withResolvers<void>();
+  let controls = 0, heldChecks = 0;
+  const host = createNativeDappRpcReadHost({ registration: () => registration, now: () => Date.now(),
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const request = JSON.parse(String(init.body));
+      if (request.method === 'eth_newBlockFilter') {
+        controls++;
+        await new Promise<void>(resolve => controlReleases.push(resolve));
+        return json(request.id, { result: '0x1' });
+      }
+      if (request.method === 'eth_chainId' && Date.now() >= 11000 && heldChecks < 4) {
+        heldChecks++;
+        const signal = init.signal as AbortSignal; postSignals.push(signal);
+        await new Promise<void>((_resolve, reject) => signal.addEventListener('abort', () => reject(Error('Fetch aborted')), { once: true }));
+      }
+      return json(request.id, { result: request.method === 'eth_chainId' ? '0x1' : '0x42' });
+    } });
+  const owners = Array.from({ length: 4 }, () => new AbortController());
+  const requests = owners.map(owner => host.read(normalizeDappRpcRequest('eth_newBlockFilter', []), owner.signal, () => {}));
+  const outcomes = Promise.allSettled(requests);
+  const handoffs = Promise.all(requests.map(work => work.catch(async () => reply.promise)));
+  const flush = async () => { for (let index = 0; index < 5; index++) await new Promise(resolve => setImmediate(resolve)); };
+  try {
+    await flush();
+    assert.equal(controls, 4);
+    context.mock.timers.tick(11000); controlReleases.forEach(release => release());
+    await flush(); assert.equal(postSignals.length, 4);
+    context.mock.timers.tick(1000); await flush();
+    assert((await outcomes).every(result => result.status === 'rejected'));
+    assert(postSignals.every(signal => signal.aborted));
+    assert(owners.every(owner => !owner.signal.aborted), 'caller lifetime remains live while response handoff waits');
+    const next = host.read(normalizeDappRpcRequest('eth_blockNumber', []), new AbortController().signal, () => {});
+    await flush();
+    assert.equal(await next, '0x42');
+  } finally { host.reset?.(); reply.resolve(); await handoffs; context.mock.timers.reset(); }
+});

@@ -281,8 +281,8 @@ export function createNativeDappRpcReadHost(
           classifyDappRpcMethod(request.method) === 'node-query'
             ? query(captured, request, signal, check)
             : captured.rpc
-                .dappRequest(request, signal, check, () =>
-                  captured.rpc.verifyNetwork(signal, check)
+                .dappRequest(request, signal, check, (operationSignal, operationGuard) =>
+                  captured.rpc.verifyNetwork(operationSignal, operationGuard)
                 )
                 .catch((error) => {
                   invalidateAfterFailure(captured, error, signal);
