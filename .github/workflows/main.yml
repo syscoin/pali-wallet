@@ -339,6 +339,15 @@ jobs:
           PALI_TEST_DAPP_EXTENSION_PATH: ${{ github.workspace }}/build/chrome
           PALI_RPC_EXTENDED: '1'
         run: yarn e2e:harness rpc-request-budget.journey.spec.ts
+      - name: Check RPC fallback budget and transfer receipts
+        env:
+          PALI_E2E_RUN_ID: rpc-fallback-${{ github.run_id }}-${{ github.run_attempt }}
+          PALI_TEST_DAPP_REVISION: ${{ github.sha }}
+          PALI_TEST_DAPP_EXTENSION_PATH: ${{ github.workspace }}/build/chrome
+          PALI_RPC_EXTENDED: '1'
+          PALI_RPC_NO_MULTICALL: '1'
+          PALI_RPC_REJECT_BATCH: '1'
+        run: yarn e2e:harness rpc-request-budget.journey.spec.ts
       - name: Upload conformance evidence
         if: always()
         uses: actions/upload-artifact@v7

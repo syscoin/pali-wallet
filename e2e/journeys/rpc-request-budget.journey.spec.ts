@@ -90,6 +90,7 @@ test('RPC budget and receipts for local wallet transfers', async () => {
     });
     chromium.launchPersistentContext = originalLaunch;
     const observations = new Map<Request, any>();
+    const bodies: Promise<void>[] = [];
     wallet.context.on('request', (request) => {
       if (request.url() !== chain.url && request.url() !== chain.url + '/')
         return;
@@ -122,15 +123,18 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         /* non-RPC */
       }
     });
-    wallet.context.on('response', async (response) => {
+    wallet.context.on('response', (response) => {
       const item = observations.get(response.request());
-      if (item) {
-        item.finished = Date.now();
-        item.status = response.status();
-        item.responseBytes = (
-          await response.body().catch(() => Buffer.alloc(0))
-        ).length;
-      }
+      if (!item) return;
+      item.status = response.status();
+      bodies.push(
+        (async () => {
+          item.responseBytes = (
+            await response.body().catch(() => Buffer.alloc(0))
+          ).length;
+          item.finished = Date.now();
+        })()
+      );
     });
     await wallet.context.route('**/*', async (route) => {
       const request = route.request();
@@ -704,31 +708,95 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         }
       );
     }
-    if (
-      !process.env.PALI_RPC_NO_MULTICALL &&
-      !process.env.PALI_RPC_REJECT_BATCH &&
-      !process.env.PALI_RPC_REFERENCE
-    ) {
-      await wallet.step('verify warm-send RPC request budget', async () => {
-        const broadcast = output.broadcasts.find(
-          (entry: any) => entry.phase === 'warm:confirm'
-        );
-        expect(broadcast).toBeDefined();
-        const methods = output.requests
-          .filter(
-            (request: any) =>
-              request.phase === 'warm:confirm' &&
-              request.started <= broadcast.at
-          )
-          .reduce(
-            (total: number, request: any) => total + request.methods.length,
-            0
+    if (!process.env.PALI_RPC_REFERENCE) {
+      await wallet.step(
+        'verify RPC methods, HTTP requests and byte budgets',
+        async () => {
+          await Promise.all(bodies);
+          const fallback = Boolean(
+            process.env.PALI_RPC_NO_MULTICALL ||
+              process.env.PALI_RPC_REJECT_BATCH
           );
-        expect(
-          methods,
-          'warm smart-account send logical RPC methods through broadcast'
-        ).toBeLessThanOrEqual(30);
-      });
+          const limits: Record<string, readonly [number, number]> = fallback
+            ? {
+                deployment: [56, 52],
+                warm: [45, 41],
+                erc20: [70, 66],
+                erc721: [74, 70],
+                'dapp-native': [45, 41],
+                'dapp-erc20': [69, 65],
+                'dapp-erc721': [74, 70],
+                'eoa-native': [24, 22],
+                'eoa-erc20': [30, 28],
+                'eoa-dapp-native': [30, 25],
+                'eoa-dapp-erc20': [30, 25],
+              }
+            : {
+                deployment: [40, 35],
+                warm: [30, 25],
+                erc20: [54, 45],
+                erc721: [59, 53],
+                'dapp-native': [30, 25],
+                'dapp-erc20': [54, 45],
+                'dapp-erc721': [59, 53],
+                'eoa-native': [20, 16],
+                'eoa-erc20': [26, 23],
+                'eoa-dapp-native': [22, 17],
+                'eoa-dapp-erc20': [22, 17],
+              };
+          const labels =
+            process.env.PALI_RPC_EXTENDED === '1'
+              ? Object.keys(limits)
+              : ['deployment', 'warm'];
+          for (const label of labels) {
+            const marker = label + ':confirm';
+            const broadcast = output.broadcasts.find(
+              (entry: any) => entry.phase === marker
+            );
+            expect(broadcast, marker + ' broadcast').toBeDefined();
+            for (const stage of ['form', 'review', 'confirm']) {
+              const phaseName = label + ':' + stage;
+              const rows = output.requests.filter(
+                (request: any) =>
+                  request.phase === phaseName &&
+                  (stage !== 'confirm' || request.started <= broadcast.at)
+              );
+              if (!rows.length && stage !== 'confirm') continue;
+              const [methods, posts] =
+                stage === 'confirm'
+                  ? limits[label]!
+                  : stage === 'form'
+                  ? [40, 40]
+                  : [96, 80];
+              expect(
+                rows.reduce(
+                  (total: number, row: any) => total + row.methods.length,
+                  0
+                ),
+                phaseName + ' methods'
+              ).toBeLessThanOrEqual(methods);
+              expect(
+                rows.length,
+                phaseName + ' HTTP requests'
+              ).toBeLessThanOrEqual(posts);
+              expect(
+                rows.reduce(
+                  (total: number, row: any) => total + row.requestBytes,
+                  0
+                ),
+                phaseName + ' request bytes'
+              ).toBeLessThanOrEqual(128 * 1024);
+              expect(
+                rows.reduce(
+                  (total: number, row: any) => total + row.responseBytes,
+                  0
+                ),
+                phaseName + ' response bytes'
+              ).toBeLessThanOrEqual(512 * 1024);
+            }
+          }
+        }
+      );
     }
     await wallet.step('capture final wallet state', async () => {
       await page.screenshot({
@@ -751,6 +819,18 @@ test('RPC budget and receipts for local wallet transfers', async () => {
       const beforeBroadcast = broadcast
         ? rows.filter((row: any) => row.started <= broadcast.at)
         : rows;
+      const intervals = beforeBroadcast
+        .map((row: any) => ({
+          start: row.started,
+          end: row.finished ?? row.started,
+        }))
+        .sort((left: any, right: any) => left.start - right.start);
+      let sequentialStages = 0;
+      let stageEnd = -Infinity;
+      for (const interval of intervals) {
+        if (interval.start > stageEnd) sequentialStages++;
+        stageEnd = Math.max(stageEnd, interval.end);
+      }
       const counts = (items: any[]) => ({
         httpRequests: items.length,
         rpcMethods: items.reduce((total, row) => total + row.methods.length, 0),
@@ -762,6 +842,11 @@ test('RPC budget and receipts for local wallet transfers', async () => {
       });
       return {
         name,
+        sequentialStages,
+        durationMs: intervals.length
+          ? Math.max(...intervals.map((item: any) => item.end)) -
+            intervals[0].start
+          : 0,
         total: counts(rows),
         beforeBroadcast: counts(beforeBroadcast),
         methods: Object.fromEntries(
