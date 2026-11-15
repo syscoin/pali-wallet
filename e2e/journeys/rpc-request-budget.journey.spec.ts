@@ -70,30 +70,6 @@ test('RPC budget and receipts for local wallet transfers', async () => {
     return result;
   };
   try {
-    const [payer, recipient] = await localRpc(chain.url, 'eth_accounts');
-    for (const item of getPaliInfrastructureContracts()) {
-      if (
-        !item.deployCalldata ||
-        (item.id === 'multicall3' && process.env.PALI_RPC_NO_MULTICALL === '1')
-      )
-        continue;
-      const hash = await localRpc(chain.url, 'eth_sendTransaction', [
-        {
-          from: payer,
-          to: PALI_CREATE2_DEPLOYER_ADDRESS,
-          data: item.deployCalldata,
-          gas: '0x1c9c380',
-        },
-      ]);
-      await receipt(hash);
-      output.setup.push({
-        id: item.id,
-        address: item.address,
-        runtimeHash: keccak256(
-          await localRpc(chain.url, 'eth_getCode', [item.address, 'latest'])
-        ),
-      });
-    }
     Object.assign(E2E_CONFIG, {
       seedPhrase: TEST_DAPP_MNEMONIC,
       password: 'DisposableRpcCount!2026',
@@ -244,6 +220,37 @@ test('RPC budget and receipts for local wallet transfers', async () => {
       }
       return route.abort('blockedbyclient');
     });
+    const [payer, recipient] = await wallet.step(
+      'deploy local infrastructure fixtures',
+      async () => {
+        const [payer, recipient] = await localRpc(chain.url, 'eth_accounts');
+        for (const item of getPaliInfrastructureContracts()) {
+          if (
+            !item.deployCalldata ||
+            (item.id === 'multicall3' &&
+              process.env.PALI_RPC_NO_MULTICALL === '1')
+          )
+            continue;
+          const hash = await localRpc(chain.url, 'eth_sendTransaction', [
+            {
+              from: payer,
+              to: PALI_CREATE2_DEPLOYER_ADDRESS,
+              data: item.deployCalldata,
+              gas: '0x1c9c380',
+            },
+          ]);
+          await receipt(hash);
+          output.setup.push({
+            id: item.id,
+            address: item.address,
+            runtimeHash: keccak256(
+              await localRpc(chain.url, 'eth_getCode', [item.address, 'latest'])
+            ),
+          });
+        }
+        return [payer, recipient] as const;
+      }
+    );
     await wallet.step('import disposable wallet', () =>
       wallet!.importSeedAndCreatePassword()
     );
@@ -363,7 +370,6 @@ test('RPC budget and receipts for local wallet transfers', async () => {
     );
     await send('warm');
     if (process.env.PALI_RPC_EXTENDED === '1') {
-      mark('asset-fixture');
       const erc20 = officialDeploymentContracts.contracts.erc20;
       const erc721 = officialDeploymentContracts.contracts.erc721;
       const erc20Abi = new Interface([
@@ -382,46 +388,57 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         ]);
         return (await receipt(hash)).contractAddress;
       };
-      const token = await deployToken(
-        erc20.bytecode + erc20Abi.encodeDeploy([1000, 'TST', 4, 'TST']).slice(2)
+      const { token, nft } = await wallet.step(
+        'deploy and fund token fixtures',
+        async () => {
+          mark('asset-fixture');
+          const token = await deployToken(
+            erc20.bytecode +
+              erc20Abi.encodeDeploy([1000, 'TST', 4, 'TST']).slice(2)
+          );
+          const nft = await deployToken(erc721.bytecode);
+          await receipt(
+            await localRpc(chain.url, 'eth_sendTransaction', [
+              {
+                from: payer,
+                to: token,
+                data: erc20Abi.encodeFunctionData('transfer', [
+                  account,
+                  100000,
+                ]),
+                gas: '0xf4240',
+              },
+            ])
+          );
+          await receipt(
+            await localRpc(chain.url, 'eth_sendTransaction', [
+              {
+                from: payer,
+                to: nft,
+                data: erc721Abi.encodeFunctionData('mintNFTs', [2]),
+                gas: '0xf4240',
+              },
+            ])
+          );
+          for (const id of [1, 2])
+            await receipt(
+              await localRpc(chain.url, 'eth_sendTransaction', [
+                {
+                  from: payer,
+                  to: nft,
+                  data: erc721Abi.encodeFunctionData('transferFrom', [
+                    payer,
+                    account,
+                    id,
+                  ]),
+                  gas: '0xf4240',
+                },
+              ])
+            );
+          output.assets = { token, nft };
+          return { token, nft };
+        }
       );
-      const nft = await deployToken(erc721.bytecode);
-      await receipt(
-        await localRpc(chain.url, 'eth_sendTransaction', [
-          {
-            from: payer,
-            to: token,
-            data: erc20Abi.encodeFunctionData('transfer', [account, 100000]),
-            gas: '0xf4240',
-          },
-        ])
-      );
-      await receipt(
-        await localRpc(chain.url, 'eth_sendTransaction', [
-          {
-            from: payer,
-            to: nft,
-            data: erc721Abi.encodeFunctionData('mintNFTs', [2]),
-            gas: '0xf4240',
-          },
-        ])
-      );
-      for (const id of [1, 2])
-        await receipt(
-          await localRpc(chain.url, 'eth_sendTransaction', [
-            {
-              from: payer,
-              to: nft,
-              data: erc721Abi.encodeFunctionData('transferFrom', [
-                payer,
-                account,
-                id,
-              ]),
-              gas: '0xf4240',
-            },
-          ])
-        );
-      output.assets = { token, nft };
       const importAsset = async (contract: string, symbol: string) =>
         wallet!.step('import ' + symbol, async () => {
           await wallet.gotoRoute('#/tokens/add?tab=custom');
@@ -437,73 +454,98 @@ test('RPC budget and receipts for local wallet transfers', async () => {
       await importAsset(token, 'TST');
       await importAsset(nft, 'TDN');
       await send('erc20', { symbol: 'TST' });
-      expect(
-        BigInt(
-          await localRpc(chain.url, 'eth_call', [
-            {
-              to: token,
-              data: erc20Abi.encodeFunctionData('balanceOf', [recipient]),
-            },
-            'latest',
-          ])
-        )
-      ).toBe(BigInt(10000));
+      await wallet.step(
+        'verify smart-account ERC20 recipient balance',
+        async () => {
+          expect(
+            BigInt(
+              await localRpc(chain.url, 'eth_call', [
+                {
+                  to: token,
+                  data: erc20Abi.encodeFunctionData('balanceOf', [recipient]),
+                },
+                'latest',
+              ])
+            )
+          ).toBe(BigInt(10000));
+        }
+      );
       await send('erc721', { symbol: 'TDN', tokenId: '1' });
-      expect(
-        erc721Abi
-          .decodeFunctionResult(
-            'ownerOf',
-            await localRpc(chain.url, 'eth_call', [
-              { to: nft, data: erc721Abi.encodeFunctionData('ownerOf', [1]) },
-              'latest',
-            ])
-          )[0]
-          .toLowerCase()
-      ).toBe(recipient.toLowerCase());
-      await wallet.context.addInitScript(() => {
-        const state = { requests: [] as any[] };
-        (window as any).__paliConformance = state;
-        window.addEventListener('eip6963:announceProvider', ((
-          event: CustomEvent
-        ) => {
-          const provider = event.detail.provider;
-          if ((window as any).__paliConformanceProvider) return;
-          (window as any).__paliConformanceProvider = provider;
-          const request = provider.request.bind(provider);
-          provider.request = async (args: any) => {
-            const item: any = { method: args.method, started: Date.now() };
-            state.requests.push(item);
-            try {
-              item.result = await request(args);
-              return item.result;
-            } catch (error: any) {
-              item.error = { message: error.message, code: error.code };
-              throw error;
-            } finally {
-              item.settled = true;
-            }
-          };
-        }) as EventListener);
+      await wallet.step(
+        'verify smart-account NFT recipient ownership',
+        async () => {
+          expect(
+            erc721Abi
+              .decodeFunctionResult(
+                'ownerOf',
+                await localRpc(chain.url, 'eth_call', [
+                  {
+                    to: nft,
+                    data: erc721Abi.encodeFunctionData('ownerOf', [1]),
+                  },
+                  'latest',
+                ])
+              )[0]
+              .toLowerCase()
+          ).toBe(recipient.toLowerCase());
+        }
+      );
+      await wallet.step('prepare dapp provider instrumentation', async () => {
+        await wallet.context.addInitScript(() => {
+          const state = { requests: [] as any[] };
+          (window as any).__paliConformance = state;
+          window.addEventListener('eip6963:announceProvider', ((
+            event: CustomEvent
+          ) => {
+            const provider = event.detail.provider;
+            if ((window as any).__paliConformanceProvider) return;
+            (window as any).__paliConformanceProvider = provider;
+            const request = provider.request.bind(provider);
+            provider.request = async (args: any) => {
+              const item: any = { method: args.method, started: Date.now() };
+              state.requests.push(item);
+              try {
+                item.result = await request(args);
+                return item.result;
+              } catch (error: any) {
+                item.error = { message: error.message, code: error.code };
+                throw error;
+              } finally {
+                item.settled = true;
+              }
+            };
+          }) as EventListener);
+        });
       });
-      await page.goto('about:blank');
-      const app = await wallet.context.newPage();
-      await app.goto(dapp!.url);
-      await app.waitForFunction(() =>
-        Boolean((window as any).__paliConformanceProvider)
+      const app = await wallet.step(
+        'connect smart account to dapp',
+        async (capture) => {
+          await page.goto('about:blank');
+          const app = await wallet.context.newPage();
+          await app.goto(dapp!.url);
+          await app.waitForFunction(() =>
+            Boolean((window as any).__paliConformanceProvider)
+          );
+          const connection = await approve(
+            wallet.context,
+            app,
+            await startRequest(app, 'eth_requestAccounts'),
+            capture
+          );
+          expect(connection.result[0].toLowerCase()).toBe(
+            account.toLowerCase()
+          );
+          return app;
+        }
       );
-      const connection = await approve(
-        wallet.context,
-        app,
-        await startRequest(app, 'eth_requestAccounts')
-      );
-      expect(connection.result[0].toLowerCase()).toBe(account.toLowerCase());
       const dappSend = async (label: string, request: Record<string, string>) =>
-        wallet!.step(label + ' approval', async () => {
+        wallet!.step(label + ' approval', async (capture) => {
           mark(label + ':review');
           const id = await startRequest(app, 'eth_sendTransaction', [
             { from: account, ...request },
           ]);
           const sent = await approve(wallet.context, app, id, async (popup) => {
+            await capture(popup);
             await popup.screenshot({
               path: path.join(E2E_CONFIG.artifactsDir, label + '-approval.png'),
             });
@@ -528,66 +570,93 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           2,
         ]),
       });
-      expect(
-        BigInt(
-          await localRpc(chain.url, 'eth_call', [
-            {
-              to: token,
-              data: erc20Abi.encodeFunctionData('balanceOf', [recipient]),
-            },
-            'latest',
-          ])
-        )
-      ).toBe(BigInt(20000));
-      expect(
-        erc721Abi
-          .decodeFunctionResult(
-            'ownerOf',
-            await localRpc(chain.url, 'eth_call', [
-              { to: nft, data: erc721Abi.encodeFunctionData('ownerOf', [2]) },
-              'latest',
-            ])
-          )[0]
-          .toLowerCase()
-      ).toBe(recipient.toLowerCase());
-      await app.close();
-      await wallet.gotoRoute('#/home');
-      await page
-        .getByRole('button', { name: 'GENERAL OPTIONS', exact: true })
-        .click();
-      await page.locator('[id^="account-HDAccount"]').first().click();
-      expect((await wallet.getActiveAccountAddress()).toLowerCase()).toBe(
-        payer.toLowerCase()
+      await wallet.step(
+        'verify dapp ERC20 balance and NFT ownership',
+        async () => {
+          expect(
+            BigInt(
+              await localRpc(chain.url, 'eth_call', [
+                {
+                  to: token,
+                  data: erc20Abi.encodeFunctionData('balanceOf', [recipient]),
+                },
+                'latest',
+              ])
+            )
+          ).toBe(BigInt(20000));
+          expect(
+            erc721Abi
+              .decodeFunctionResult(
+                'ownerOf',
+                await localRpc(chain.url, 'eth_call', [
+                  {
+                    to: nft,
+                    data: erc721Abi.encodeFunctionData('ownerOf', [2]),
+                  },
+                  'latest',
+                ])
+              )[0]
+              .toLowerCase()
+          ).toBe(recipient.toLowerCase());
+        }
+      );
+      await wallet.step(
+        'return from dapp and select software account',
+        async () => {
+          await app.close();
+          await wallet.gotoRoute('#/home');
+          await page
+            .getByRole('button', { name: 'GENERAL OPTIONS', exact: true })
+            .click();
+          await page.locator('[id^="account-HDAccount"]').first().click();
+          expect((await wallet.getActiveAccountAddress()).toLowerCase()).toBe(
+            payer.toLowerCase()
+          );
+        }
       );
       await send('eoa-native');
       await importAsset(token, 'TST');
       await send('eoa-erc20', { symbol: 'TST' });
-      expect(
-        BigInt(
-          await localRpc(chain.url, 'eth_call', [
-            {
-              to: token,
-              data: erc20Abi.encodeFunctionData('balanceOf', [recipient]),
-            },
-            'latest',
-          ])
-        )
-      ).toBe(BigInt(30000));
-      await page.goto('about:blank');
-      const eoaApp = await wallet.context.newPage();
-      await eoaApp.goto(dapp!.url);
-      await eoaApp.waitForFunction(() =>
-        Boolean((window as any).__paliConformanceProvider)
+      await wallet.step(
+        'verify software-account ERC20 recipient balance',
+        async () => {
+          expect(
+            BigInt(
+              await localRpc(chain.url, 'eth_call', [
+                {
+                  to: token,
+                  data: erc20Abi.encodeFunctionData('balanceOf', [recipient]),
+                },
+                'latest',
+              ])
+            )
+          ).toBe(BigInt(30000));
+        }
       );
-      await providerRequest(eoaApp, 'wallet_revokePermissions', [
-        { ['eth_accounts']: {} },
-      ]);
-      const eoaConnection = await approve(
-        wallet.context,
-        eoaApp,
-        await startRequest(eoaApp, 'eth_requestAccounts')
+      const eoaApp = await wallet.step(
+        'replace dapp connection with software account',
+        async (capture) => {
+          await page.goto('about:blank');
+          const eoaApp = await wallet.context.newPage();
+          await eoaApp.goto(dapp!.url);
+          await eoaApp.waitForFunction(() =>
+            Boolean((window as any).__paliConformanceProvider)
+          );
+          await providerRequest(eoaApp, 'wallet_revokePermissions', [
+            { ['eth_accounts']: {} },
+          ]);
+          const eoaConnection = await approve(
+            wallet.context,
+            eoaApp,
+            await startRequest(eoaApp, 'eth_requestAccounts'),
+            capture
+          );
+          expect(eoaConnection.result[0].toLowerCase()).toBe(
+            payer.toLowerCase()
+          );
+          return eoaApp;
+        }
       );
-      expect(eoaConnection.result[0].toLowerCase()).toBe(payer.toLowerCase());
       for (const [label, request] of [
         ['eoa-dapp-native', { to: recipient, value: '0x38d7ea4c68000' }],
         [
@@ -616,49 +685,57 @@ test('RPC budget and receipts for local wallet transfers', async () => {
           output[label + ':receipt'] = await receipt(sent.result);
         });
       }
-      await eoaApp.close();
-      await wallet.gotoRoute('#/home');
-      await wallet.step('verify final recipient token balance', async () => {
-        expect(
-          BigInt(
-            await localRpc(chain.url, 'eth_call', [
-              {
-                to: token,
-                data: erc20Abi.encodeFunctionData('balanceOf', [recipient]),
-              },
-              'latest',
-            ])
-          )
-        ).toBe(BigInt(40000));
-      });
+      await wallet.step(
+        'return home and verify final recipient token balance',
+        async () => {
+          await eoaApp.close();
+          await wallet.gotoRoute('#/home');
+          expect(
+            BigInt(
+              await localRpc(chain.url, 'eth_call', [
+                {
+                  to: token,
+                  data: erc20Abi.encodeFunctionData('balanceOf', [recipient]),
+                },
+                'latest',
+              ])
+            )
+          ).toBe(BigInt(40000));
+        }
+      );
     }
     if (
       !process.env.PALI_RPC_NO_MULTICALL &&
       !process.env.PALI_RPC_REJECT_BATCH &&
       !process.env.PALI_RPC_REFERENCE
     ) {
-      const broadcast = output.broadcasts.find(
-        (entry: any) => entry.phase === 'warm:confirm'
-      );
-      expect(broadcast).toBeDefined();
-      const methods = output.requests
-        .filter(
-          (request: any) =>
-            request.phase === 'warm:confirm' && request.started <= broadcast.at
-        )
-        .reduce(
-          (total: number, request: any) => total + request.methods.length,
-          0
+      await wallet.step('verify warm-send RPC request budget', async () => {
+        const broadcast = output.broadcasts.find(
+          (entry: any) => entry.phase === 'warm:confirm'
         );
-      expect(
-        methods,
-        'warm smart-account send logical RPC methods through broadcast'
-      ).toBeLessThanOrEqual(30);
+        expect(broadcast).toBeDefined();
+        const methods = output.requests
+          .filter(
+            (request: any) =>
+              request.phase === 'warm:confirm' &&
+              request.started <= broadcast.at
+          )
+          .reduce(
+            (total: number, request: any) => total + request.methods.length,
+            0
+          );
+        expect(
+          methods,
+          'warm smart-account send logical RPC methods through broadcast'
+        ).toBeLessThanOrEqual(30);
+      });
     }
-    output.result = 'passed';
-    await page.screenshot({
-      path: path.join(E2E_CONFIG.artifactsDir, 'warm-send.png'),
+    await wallet.step('capture final wallet state', async () => {
+      await page.screenshot({
+        path: path.join(E2E_CONFIG.artifactsDir, 'warm-send.png'),
+      });
     });
+    output.result = 'passed';
   } finally {
     chromium.launchPersistentContext = originalLaunch;
     output.result ??= 'failed';
