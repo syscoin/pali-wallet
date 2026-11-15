@@ -625,7 +625,7 @@ export function createSelectedNftPortfolioReadOperation(options: SelectedNftRead
       30_000,
       Math.max(
         options.timeoutMs ?? 12_000,
-        Math.ceil(addresses.length / 4) * 2_000 + 4_000
+        Math.ceil(addresses.length / 4) * 6_000 + 4_000
       )
     );
     const workDeadline = Date.now() + timeout - 2_000;
@@ -652,7 +652,7 @@ export function createSelectedNftPortfolioReadOperation(options: SelectedNftRead
           holder,
           async withContract(target, work) {
             target = contract(target);
-            const remaining = Math.min(2_000, workDeadline - Date.now());
+            const remaining = Math.min(6_000, workDeadline - Date.now());
             if (!targets.has(target) || remaining <= 0)
               return fail('UNAVAILABLE');
             const controller = new AbortController();

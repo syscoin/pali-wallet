@@ -202,7 +202,7 @@ test('the maximum saved ERC1155 group fits one bounded balanceOfBatch response',
   assert.equal(f.requests.length, 7);
 });
 
-for (const scenario of ['one-stalled', 'one-stalled-scalar', 'one-stalled-unresponsive-scalar', 'forty-batched', 'forty-scalar', 'canonical-change'] as const) test(`grouped NFT deadlines preserve healthy rows (${scenario})`, async t => {
+for (const scenario of ['one-stalled', 'one-stalled-scalar', 'one-stalled-unresponsive-scalar', 'forty-batched', 'forty-scalar', 'forty-batched-750', 'forty-scalar-750', 'canonical-change'] as const) test(`grouped NFT deadlines preserve healthy rows (${scenario})`, async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   const count = scenario.startsWith('one-stalled') || scenario === 'canonical-change' ? 10 : 40;
   const collectibles = Array.from({ length: count }, (_, index) => ({
@@ -220,7 +220,7 @@ for (const scenario of ['one-stalled', 'one-stalled-scalar', 'one-stalled-unresp
       active++; peak = Math.max(peak, active);
       const stalled = scenario.startsWith('one-stalled') && rows.some(row =>
         row.params[0] === collectibles[0]!.contractAddress || row.params[0]?.to === collectibles[0]!.contractAddress);
-      if (scenario.endsWith('scalar') && Array.isArray(payload)) {
+      if (scenario.includes('scalar') && Array.isArray(payload)) {
         active--;
         return Response.json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Batch unsupported' } });
       }
@@ -228,7 +228,7 @@ for (const scenario of ['one-stalled', 'one-stalled-scalar', 'one-stalled-unresp
         if (scenario === 'one-stalled-unresponsive-scalar') return;
         init.signal!.addEventListener('abort', () => { active--; reject(new Error('aborted stalled collection')); }, { once: true });
       });
-      await new Promise(resolve => setTimeout(resolve, 450));
+      await new Promise(resolve => setTimeout(resolve, scenario.endsWith('750') ? 750 : 450));
       active--;
       const replies = rows.map(row => {
         if (row.method === 'eth_getBlockByNumber' && row.params[0] === '0x10') finalChecks++;
@@ -275,4 +275,34 @@ test('external cancellation immediately aborts each active collection read', asy
   await assert.rejects(result);
   assert.equal(active.length, 1);
   assert(active.every(signal => signal.aborted));
+});
+
+for (const standard of ['ERC-721', 'ERC-1155', 'ERC-1155 fallback'] as const) test(`healthy 750ms scalar ${standard} group fits its sequential work budget`, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const collectible = standard === 'ERC-721' ? { contractAddress: collectionAddress, tokenStandard: standard }
+    : { contractAddress: collectionAddress, tokenStandard: 'ERC-1155' as const, tokenId: '1' };
+  const read = createScopedPortfolioAssetReader({
+    async load() { return { revision: 1, items: [], collectibles: [collectible] }; },
+    async fetch(_url, init) {
+      const payload = JSON.parse(String(init.body)) as Wire | Wire[];
+      if (Array.isArray(payload)) return Response.json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Batch unsupported' } });
+      await new Promise(resolve => setTimeout(resolve, 750));
+      const data = payload.params[0]?.data as string | undefined;
+      let result: unknown = payload.method === 'eth_chainId' ? '0x1'
+        : payload.method === 'eth_getBlockByNumber' ? { number: '0x10', hash: `0x${'a'.repeat(64)}` }
+        : payload.method === 'eth_getCode' ? '0x6000'
+        : data?.startsWith('0x01ffc9a7') ? uint(1) : uint(3);
+      if (data?.startsWith('0x00fdd58e')) result = uint(abi.decodeFunctionData('balanceOf', data)[1] === 1n ? 3 : 0);
+      if (data?.startsWith('0x4e1273f4') && standard === 'ERC-1155 fallback')
+        return Response.json({ jsonrpc: '2.0', id: payload.id, error: { code: -32000, message: 'Batch balance unavailable' } });
+      if (data?.startsWith('0x4e1273f4')) result = abi.encodeFunctionResult('balanceOfBatch', [[3]]);
+      return Response.json({ jsonrpc: '2.0', id: payload.id, result });
+    },
+  });
+  let complete = false;
+  const pending = read(scope, new AbortController().signal, () => undefined).then(result => { complete = true; return result; });
+  for (let elapsed = 0; !complete && elapsed < 15000; elapsed += 50) {
+    await new Promise(resolve => setImmediate(resolve)); t.mock.timers.tick(50);
+  }
+  assert.equal((await pending).collectibles[0]!.status, 'available');
 });
