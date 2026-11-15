@@ -17,6 +17,7 @@ import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
+  isolatedVaultEvmResult,
 } from '../harness/isolatedVaultFixture';
 import { PaliWallet } from '../harness/pali';
 import { checkReviewInputFocusRing } from '../harness/reviewGeometry';
@@ -127,7 +128,7 @@ async function withWallet(
       const rpc = route.request().postDataJSON();
       const calls = Array.isArray(rpc) ? rpc : [rpc];
       const replies = calls.map((call: any) => {
-        let result: unknown;
+        let result: unknown = isolatedVaultEvmResult(call.method);
         if (
           call.method === 'eth_getBalance' &&
           fixture.evmAddresses.some(

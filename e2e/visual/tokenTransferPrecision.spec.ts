@@ -7,6 +7,7 @@ import { E2E_CONFIG } from '../harness/config';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
+  isolatedVaultEvmResult,
 } from '../harness/isolatedVaultFixture';
 import { PaliWallet } from '../harness/pali';
 import { extensionEvidence } from '../harness/testDappConformance';
@@ -90,7 +91,7 @@ test('token transfers retain exact verified MAX amounts and large NFT identifier
         );
       const replies = calls.map((call: any) => {
         const asset = findAsset(call);
-        let result: unknown;
+        let result: unknown = isolatedVaultEvmResult(call.method);
         if (call.method === 'eth_chainId') result = '0x1644';
         if (
           call.method === 'eth_getBalance' &&

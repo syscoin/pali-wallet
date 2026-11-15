@@ -7,6 +7,7 @@ import { dismissRejectedApproval } from '../harness/dismissRejectedApproval';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
+  isolatedVaultEvmResult,
 } from '../harness/isolatedVaultFixture';
 import { PaliWallet } from '../harness/pali';
 import {
@@ -77,7 +78,7 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
         return route.abort('blockedbyclient');
       }
       const replies = calls.map((call: any) => {
-        let result: unknown;
+        let result: unknown = isolatedVaultEvmResult(call.method);
         if (
           call.method === 'eth_getBalance' &&
           fixture.evmAddresses.some(
