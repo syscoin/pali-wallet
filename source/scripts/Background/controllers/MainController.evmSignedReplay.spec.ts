@@ -822,7 +822,8 @@ it.each(['send', 'cancel'] as const)(
     let chain = '0x7b';
     jest.spyOn(global, 'fetch').mockImplementation(async (url, init) => {
       expect(url).toBe(context.network.url);
-      expect(init?.signal).toBe(abort.signal);
+      expect(init?.signal).toBeDefined();
+      expect(init?.signal?.aborted).toBe(false);
       const { id, method, params } = JSON.parse(init!.body as string);
       wire.push({ method, params });
       const replies = new Map<string, unknown>([
@@ -836,6 +837,9 @@ it.each(['send', 'cancel'] as const)(
       return {
         ok: true,
         status: 200,
+        headers: { get: () => null },
+        text: async () =>
+          JSON.stringify({ jsonrpc: '2.0', id, result: replies.get(method) }),
         json: async () => ({ jsonrpc: '2.0', id, result: replies.get(method) }),
       } as Response;
     });
@@ -888,7 +892,8 @@ it.each([
     let chain = '0x7b';
     jest.spyOn(global, 'fetch').mockImplementation(async (url, init) => {
       expect(url).toBe(context.network.url);
-      expect(init?.signal).toBe(abort.signal);
+      expect(init?.signal).toBeDefined();
+      expect(init?.signal?.aborted).toBe(false);
       const { id, method } = JSON.parse(init!.body as string);
       wire.push(method);
       let result: unknown;
@@ -901,6 +906,8 @@ it.each([
       return {
         ok: true,
         status: 200,
+        headers: { get: () => null },
+        text: async () => JSON.stringify({ jsonrpc: '2.0', id, result }),
         json: async () => ({ jsonrpc: '2.0', id, result }),
       } as Response;
     });

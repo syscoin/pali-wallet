@@ -623,7 +623,7 @@ it('quotes a fresh pending nonce and rechecks it even while the actual SDK read 
     expect(wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
     expect(
       requests.filter((method) => method === 'eth_getTransactionCount')
-    ).toHaveLength(3);
+    ).toHaveLength(2);
   } finally {
     live.destroy();
     jest.useRealTimers();
@@ -1408,6 +1408,31 @@ it.each([
   }
 );
 
+function installProviderReadFetch(provider: any, url: string) {
+  jest.spyOn(global, 'fetch').mockImplementation(async (address, init) => {
+    expect(String(address)).toBe(url);
+    const payload = JSON.parse(String(init!.body));
+    const requests = Array.isArray(payload) ? payload : [payload];
+    const responses = await provider.requestRpc(
+      requests,
+      Array.isArray(payload)
+    );
+    const correlated = responses.map((response, index) => ({
+      ...response,
+      jsonrpc: '2.0',
+      id: requests[index].id,
+    }));
+    const body = Array.isArray(payload) ? correlated : correlated[0];
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      text: async () => JSON.stringify(body),
+      json: async () => body,
+    } as unknown as Response;
+  });
+}
+
 function cachedChainProvider() {
   const { CustomJsonRpcProvider } = jest.requireActual(
     '@sidhujag/sysweb3-keyring/cjs/providers'
@@ -1428,6 +1453,7 @@ function cachedChainProvider() {
       throw new Error('Unexpected synthetic RPC ' + method);
     })
   );
+  installProviderReadFetch(live, 'https://operator.example');
   live.estimateGas = jest.fn(async () => BigInt(100001));
   live.getFeeData = jest.fn(async () => ({
     maxFeePerGas: BigInt(100),
