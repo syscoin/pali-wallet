@@ -3,7 +3,9 @@ import {
   executeDappRpcRequest,
   type DappPublicRpcRequest,
 } from '../../../../source/shared/dappRpcReads.ts';
+import { EthereumRpcErrorHandler } from '../../../../source/helpers/errors/errorClassesHandlers.ts';
 import { createBoundedRpcFetch } from './boundedRpcFetch.ts';
+import { EvmTransferReadError } from './evmFeeContracts.ts';
 import {
   snapshotNativeNetwork,
   type NativeNetworkRegistration,
@@ -66,6 +68,22 @@ export function createNativeDappRpcReadHost(
       if (owner === captured) reset();
       throw cancelled();
     }
+  };
+  const invalidateAfterFailure = (
+    captured: ReadOwner,
+    error: unknown,
+    signal: AbortSignal
+  ) => {
+    if (owner !== captured || error instanceof EthereumRpcErrorHandler) return;
+    if (error instanceof EvmTransferReadError) {
+      if (error.code === 'PROFILE_CHANGED') {
+        reset();
+        return;
+      }
+      if (error.code === 'CANCELLED' && signal.aborted) return;
+    }
+    captured.verifiedUntil = 0;
+    captured.verification?.controller.abort();
   };
   const capture = () => {
     const identity = key();
@@ -144,7 +162,7 @@ export function createNativeDappRpcReadHost(
           () => verify(captured)
         )
         .catch((error) => {
-          captured.verifiedUntil = 0;
+          invalidateAfterFailure(captured, error, controller.signal);
           throw error;
         })
         .finally(() => {
@@ -208,14 +226,14 @@ export function createNativeDappRpcReadHost(
         request: (request) =>
           classifyDappRpcMethod(request.method) === 'node-query'
             ? query(captured, request, signal, check)
-            : captured.rpc.dappRequest(request, signal, check),
-      }).catch((error) => {
-        if (
-          classifyDappRpcMethod(request.method) === 'node-control' &&
-          owner === captured
-        )
-          reset();
-        throw error;
+            : captured.rpc
+                .dappRequest(request, signal, check, () =>
+                  captured.rpc.verifyNetwork(signal, check)
+                )
+                .catch((error) => {
+                  invalidateAfterFailure(captured, error, signal);
+                  throw error;
+                }),
       });
       check();
       return result;

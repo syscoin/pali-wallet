@@ -1325,6 +1325,7 @@ export function createKeyringRuntimeFactory(
           if (validateSigningAndBroadcast !== null && typeof validateSigningAndBroadcast !== 'function') throw new KeyringRuntimeError('INVALID_INPUT');
           if (beforeSigningFailure !== null && (typeof beforeSigningFailure !== 'function' || authentication === null || !metadata)) throw new KeyringRuntimeError('INVALID_INPUT');
           if (beforePrivateExecution !== null && (typeof beforePrivateExecution !== 'function' || authentication === null || !metadata)) throw new KeyringRuntimeError('INVALID_INPUT');
+          if (finalAdmissionIncludesAssets === true && typeof assertSmartAdmission !== 'function') throw new KeyringRuntimeError('INVALID_INPUT');
           const hardware = selected.type === 'Ledger' || selected.type === 'Trezor';
           if (hardware ? !hardwareSigner || typeof hardwareSigner.signTransaction !== 'function' || typeof hardwareSigner.keyring !== 'function'
             : (hardwareSigner !== null || (selected.type !== 'HDAccount' && selected.type !== 'Imported')))
@@ -1345,6 +1346,9 @@ export function createKeyringRuntimeFactory(
             network, rpc, signal, planner, funding, gasPolicy, assertCurrent: check,
             feePolicy: metadata?.smartAccountExecution === true && (normalized.gasPrice !== undefined ||
               (normalized.maxFeePerGas !== undefined && normalized.maxPriorityFeePerGas !== undefined)) ? 'fixed' : undefined,
+            assertRefreshedState: finalAdmissionIncludesAssets === true &&
+              (metadata?.smartAccountExecution === true || metadata?.smartAccountDeploymentPrefund === true)
+              ? provider => assertSmartAdmission!(provider) : undefined,
             readApprovalMetadata: (contract, assertCurrent) => readNativeApprovalMetadata({
               network, owner: selected.address, contract, signal, assertCurrent, fetch,
             }),

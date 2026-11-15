@@ -40,6 +40,97 @@ test('RPC execution errors retain the exact revert code, message and hex data', 
   } });
   await assert.rejects(host.read(normalizeDappRpcRequest('eth_call', [{ to: `0x${'11'.repeat(20)}` }]), new AbortController().signal, () => {}), { code: 3, message: 'execution reverted', data: '0x1234' });
 });
+
+test('twenty valid RPC reverts preserve the verified identity lease', async () => {
+  const calls: string[] = [];
+  const host = createNativeDappRpcReadHost({ registration: () => registration, now: () => 1000,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const request = JSON.parse(String(init.body)); calls.push(request.method);
+      return json(request.id, request.method === 'eth_chainId' ? { result: '0x1' }
+        : { error: { code: 3, message: 'execution reverted', data: '0x1234' } });
+    } });
+  const request = normalizeDappRpcRequest('eth_call', [{ to: `0x${'11'.repeat(20)}` }]);
+  for (let index = 0; index < 20; index++)
+    await assert.rejects(host.read(request, new AbortController().signal, () => {}), { code: 3, message: 'execution reverted', data: '0x1234' });
+  assert.equal(calls.filter(method => method === 'eth_chainId').length, 1);
+  assert.equal(calls.filter(method => method === 'eth_call').length, 20);
+});
+
+test('a valid control error preserves an existing query identity lease', async () => {
+  const calls: string[] = [];
+  const host = createNativeDappRpcReadHost({ registration: () => registration, now: () => 1000,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const request = JSON.parse(String(init.body)); calls.push(request.method);
+      return json(request.id, request.method === 'eth_newBlockFilter'
+        ? { error: { code: -32601, message: 'Method unavailable on this node' } }
+        : { result: request.method === 'eth_chainId' ? '0x1' : '0x42' });
+    } });
+  const request = normalizeDappRpcRequest('eth_blockNumber', []);
+  await host.read(request, new AbortController().signal, () => {});
+  await assert.rejects(host.read(normalizeDappRpcRequest('eth_newBlockFilter', []), new AbortController().signal, () => {}), { code: -32601 });
+  assert.equal(await host.read(request, new AbortController().signal, () => {}), '0x42');
+  assert.deepEqual(calls, ['eth_chainId', 'eth_blockNumber', 'eth_chainId', 'eth_newBlockFilter', 'eth_blockNumber']);
+});
+
+for (const lane of ['query', 'control'] as const) test(`a malformed ${lane} response invalidates the identity lease`, async () => {
+  let malformed = false;
+  const calls: string[] = [];
+  const host = createNativeDappRpcReadHost({ registration: () => registration, now: () => 1000,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const request = JSON.parse(String(init.body)); calls.push(request.method);
+      if (malformed && request.method !== 'eth_chainId') return json(request.id + 1, { result: '0x42' });
+      return json(request.id, { result: request.method === 'eth_chainId' ? '0x1' : '0x42' });
+    } });
+  const query = normalizeDappRpcRequest('eth_blockNumber', []);
+  await host.read(query, new AbortController().signal, () => {});
+  malformed = true;
+  await assert.rejects(host.read(lane === 'query' ? query : normalizeDappRpcRequest('eth_newBlockFilter', []), new AbortController().signal, () => {}));
+  malformed = false;
+  const before = calls.length;
+  assert.equal(await host.read(query, new AbortController().signal, () => {}), '0x42');
+  assert.deepEqual(calls.slice(before), ['eth_chainId', 'eth_blockNumber']);
+});
+
+test('a control chain-probe RPC error invalidates a warm identity lease', async () => {
+  let failChain = false;
+  const calls: string[] = [];
+  const host = createNativeDappRpcReadHost({ registration: () => registration, now: () => 1000,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const request = JSON.parse(String(init.body)); calls.push(request.method);
+      return json(request.id, failChain && request.method === 'eth_chainId'
+        ? { error: { code: -32601, message: 'Method unavailable on this node' } }
+        : { result: request.method === 'eth_chainId' ? '0x1' : '0x42' });
+    } });
+  const query = normalizeDappRpcRequest('eth_blockNumber', []);
+  await host.read(query, new AbortController().signal, () => {});
+  failChain = true;
+  await assert.rejects(host.read(normalizeDappRpcRequest('eth_newBlockFilter', []), new AbortController().signal, () => {}));
+  await assert.rejects(host.read(query, new AbortController().signal, () => {}));
+  assert.deepEqual(calls, ['eth_chainId', 'eth_blockNumber', 'eth_chainId', 'eth_chainId']);
+});
+
+for (const lane of ['query', 'control'] as const) test(`cancelled ${lane} work preserves the current identity lease`, async () => {
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const lifetime = new AbortController();
+  const calls: string[] = [];
+  let held = false;
+  const host = createNativeDappRpcReadHost({ registration: () => registration, now: () => 1000,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const request = JSON.parse(String(init.body)); calls.push(request.method);
+      if (held && request.method !== 'eth_chainId') { entered.resolve(); await release.promise; }
+      return json(request.id, { result: request.method === 'eth_chainId' ? '0x1' : '0x42' });
+    } });
+  const query = normalizeDappRpcRequest('eth_blockNumber', []);
+  await host.read(query, new AbortController().signal, () => {});
+  held = true;
+  const stopped = host.read(lane === 'query' ? query : normalizeDappRpcRequest('eth_newBlockFilter', []), lifetime.signal, () => {});
+  const rejected = assert.rejects(stopped);
+  await entered.promise; lifetime.abort(); await rejected;
+  held = false; release.resolve(); await new Promise(resolve => setImmediate(resolve));
+  const before = calls.length;
+  assert.equal(await host.read(query, new AbortController().signal, () => {}), '0x42');
+  assert.deepEqual(calls.slice(before), ['eth_blockNumber']);
+});
 for (const fault of ['chain', 'registration', 'redirect', 'bytes', 'guard', 'abort']) test(`public reads fail closed on ${fault}`, async () => {
   let selected = registration, valid = true;
   const controller = new AbortController();

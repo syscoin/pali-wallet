@@ -34,6 +34,7 @@ type Ports = Readonly<{
   signal: AbortSignal;
   planner: NativeAutomaticNoncePlanner;
   assertCurrent(): void;
+  assertRefreshedState?(provider: unknown): Promise<void>;
   sign(transaction: PreparedEvmTransaction, assertCurrent: () => void): Promise<SignedTransaction>;
   submit(transaction: PreparedEvmTransaction, signed: SignedTransaction, assertCurrent: () => void,
     verifyDispatch: NativeTransferDispatchValidation, onBroadcast: (hash: string) => void,
@@ -56,7 +57,8 @@ export async function prepareNativeConnectionTransaction(input: unknown, ports: 
     now: ports.now ?? (() => Math.floor(performance.now())),
     assertCurrent: check,
     prepare: (request, assertCurrent, planner, approved) =>
-      ports.rpc.prepareDapp(request, ports.signal, assertCurrent, planner, approved, ports.funding, gasPolicy, ports.feePolicy),
+      ports.rpc.prepareDapp(request, ports.signal, assertCurrent, planner, approved, ports.funding, gasPolicy, ports.feePolicy,
+        planner === ports.planner ? ports.assertRefreshedState : undefined),
     async send(transaction, assertCurrent, verifyDispatch, onBroadcast, submission) {
       const signed = await ports.sign(transaction, assertCurrent);
       assertCurrent();

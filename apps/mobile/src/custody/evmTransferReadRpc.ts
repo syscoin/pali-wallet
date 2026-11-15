@@ -981,7 +981,7 @@ export class EvmTransferReadRpc {
   /** Generic dapp envelope through the same owned reads, nonce planner and fee policy. */
   prepareDapp(request: EvmDappTransactionRequest, signal: AbortSignal, guard: () => void,
     automaticNonce: NativeAutomaticNoncePlanner, approved: EvmDappPreparedQuote | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy,
-    feePolicy?: 'fixed'): Promise<EvmDappPreparedQuote> {
+    feePolicy?: 'fixed', assertRefreshedState?: (provider: unknown) => Promise<void>): Promise<EvmDappPreparedQuote> {
     gasPolicy = captureEvmGasPolicy(gasPolicy);
     return this.operation(signal, guard, async (read) => {
       try {
@@ -1003,8 +1003,11 @@ export class EvmTransferReadRpc {
             now: this.monotonicMilliseconds,
             verifyChain: () => provider.verifyConfiguredChainId(),
             verifyBlock: (sampled) => this.canonical(phase, sampled),
-            nonce: (sampled, requested) =>
-              this.sampleSendNonce(phase, request.from, sampled, requested, automaticNonce),
+            nonce: async (sampled, requested) => {
+              const nonce = await this.sampleSendNonce(phase, request.from, sampled, requested, automaticNonce);
+              if (approved && assertRefreshedState) await assertRefreshedState(provider);
+              return nonce;
+            },
             balance: (sampled, nonce) => this.readSendBalance(phase, request.from, sampled, nonce),
             fees: (sampled) => this.feeData(phase, sampled, signal),
           }, approved);

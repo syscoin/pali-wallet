@@ -2190,7 +2190,7 @@ for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`co
 });
 
 
-for (const change of ['balance', 'nonce'] as const) for (const boundary of ['payer-signing', 'payer-persistence'] as const) test(`deployed Smart final admission rejects ${change} change during ${boundary}`, async () => {
+for (const change of ['balance', 'nonce'] as const) for (const boundary of ['payer-review', 'payer-signing', 'payer-persistence'] as const) test(`deployed Smart final admission rejects ${change} change during ${boundary}`, async () => {
   let changeState: (() => void) | undefined;
   let changed = false;
   const f = await fixture({ after(kind, sql) {
@@ -2213,12 +2213,14 @@ for (const change of ['balance', 'nonce'] as const) for (const boundary of ['pay
     assert(review, JSON.stringify(operation.getSnapshot()));
     assert.equal(review.purpose, 'submit-operation');
     const mutate = () => { changed = true; if (change === 'balance') f.smartBalance(8n); else f.advanceSmartNonce(); };
-    if (boundary === 'payer-signing') f.onPayerSignature(mutate); else changeState = mutate;
+    if (boundary === 'payer-review') mutate();
+    else if (boundary === 'payer-signing') f.onPayerSignature(mutate);
+    else changeState = mutate;
     f.onBroadcast(() => operation!.cancel());
     operation.confirmPayer(review.id);
     await sending;
     assert(changed, 'the fixture must reach the post-review boundary');
-    assert.equal(f.payerSignatures.length, 1);
+    assert.equal(f.payerSignatures.length, boundary === 'payer-review' ? 0 : 1);
     assert.equal(operation.getSnapshot().phase, change === 'nonce' ? 'authorize' : 'failed', JSON.stringify(operation.getSnapshot()));
     if (change === 'nonce') {
       assert.equal(BigInt(operation.getSnapshot().authorization!.nonce) & ((1n << 64n) - 1n), 1n);
@@ -2227,8 +2229,12 @@ for (const change of ['balance', 'nonce'] as const) for (const boundary of ['pay
     assert.equal(f.submitted.length, 0);
     const identity = (await f.storage.recovery.readIdentity())!.root!;
     const retained = await f.storage.signedRecords.read(identity.profileId);
-    assert(retained, 'the signed outer bytes remain durably inspectable');
-    assert.equal(inspectEvmSignedBundle(retained, identity.profileId).transactions, 1);
+    if (boundary === 'payer-review') {
+      assert(!retained || inspectEvmSignedBundle(retained, identity.profileId).transactions === 0);
+    } else {
+      assert(retained, 'the signed outer bytes remain durably inspectable');
+      assert.equal(inspectEvmSignedBundle(retained, identity.profileId).transactions, 1);
+    }
   } finally { operation?.dispose(); await f.close(); }
 });
 
@@ -6309,7 +6315,7 @@ for (const sponsored of [false, true]) test(`counted native warm Smart payer pha
     operation.confirmPayer(review.id); await sending;
     assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
     assert.equal(f.submitted.length, 1);
-    assert.deepEqual(measure(), { methods: 55, http: sponsored ? 41 : 38, chains: 13 });
+    assert.deepEqual(measure(), { methods: 53, http: sponsored ? 39 : 36, chains: 11 });
     console.log('NATIVE_PHASE_COUNTS', JSON.stringify({ sponsored, preparation, payerReview, confirmation: delta(confirmed), total: measure() }));
   } finally { operation?.dispose(); await f.close(); }
 });
@@ -6350,13 +6356,13 @@ for (const standard of ['ERC20', 'ERC-721', 'ERC-1155'] as const) test(`counted 
     const counts = { methods: f.calls.length,
       http: f.calls.length - f.rpcBatches.reduce((sum, batch) => sum + batch.length - 1, 0),
       chains: f.calls.filter(method => method === 'eth_chainId').length };
-    assert.deepEqual(counts, { methods: standard === 'ERC20' ? 40 : 43, http: standard === 'ERC20' ? 29 : 35, chains: 9 });
+    assert.deepEqual(counts, { methods: standard === 'ERC20' ? 32 : 34, http: standard === 'ERC20' ? 22 : 26, chains: 5 });
     console.log('NATIVE_ASSET_CONFIRM_COUNTS', JSON.stringify({ standard, ...counts }));
   } finally { operation?.dispose(); await f.close(); }
 });
 
 for (const standard of ['ERC20', 'ERC-721', 'ERC-1155'] as const)
-for (const boundary of ['payer-signing', 'payer-persistence'] as const)
+for (const boundary of ['payer-review', 'payer-signing', 'payer-persistence'] as const)
 test(`deployed Smart ${standard} final admission rejects asset loss during ${boundary}`, async () => {
   let loseBalance: (() => void) | undefined, changed = false;
   const f = await fixture({ after(kind, sql) {
@@ -6392,15 +6398,21 @@ test(`deployed Smart ${standard} final admission rejects asset loss during ${bou
       if (standard === 'ERC20') f.tokenBalance(contractAddress, 0n, 0);
       else f.nftBalance(contractAddress, standard, 0n);
     };
-    if (boundary === 'payer-signing') f.onPayerSignature(lose); else loseBalance = lose;
+    if (boundary === 'payer-review') lose();
+    else if (boundary === 'payer-signing') f.onPayerSignature(lose);
+    else loseBalance = lose;
     operation.confirmPayer(review.id); await sending;
     assert(changed);
-    assert.equal(f.payerSignatures.length, 1);
+    assert.equal(f.payerSignatures.length, boundary === 'payer-review' ? 0 : 1);
     assert.equal(f.submitted.length, 0);
     assert.equal(operation.getSnapshot().phase, 'failed', JSON.stringify(operation.getSnapshot()));
     const identity = (await f.storage.recovery.readIdentity())!.root!;
     const retained = await f.storage.signedRecords.read(identity.profileId);
-    assert(retained);
-    assert.equal(inspectEvmSignedBundle(retained, identity.profileId).transactions, 1);
+    if (boundary === 'payer-review') {
+      assert(!retained || inspectEvmSignedBundle(retained, identity.profileId).transactions === 0);
+    } else {
+      assert(retained);
+      assert.equal(inspectEvmSignedBundle(retained, identity.profileId).transactions, 1);
+    }
   } finally { operation?.dispose(); await f.close(); }
 });

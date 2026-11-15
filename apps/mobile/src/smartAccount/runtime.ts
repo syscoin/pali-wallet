@@ -75,7 +75,7 @@ import { createSmartAccountInfrastructureReader, SMART_ACCOUNT_INFRASTRUCTURE_CO
 const infrastructureReaders = new WeakMap<SmartAccountPayerWallet, ReturnType<typeof createSmartAccountInfrastructureReader>>();
 
 type Response = { hash: string; wait(): Promise<unknown> };
-export type NativeSmartPayerAdmission = (provider: unknown, currentSignedHash: string, admission: EvmAutoNonceSnapshot) => Promise<void>;
+export type NativeSmartPayerAdmission = (provider: unknown, currentSignedHash?: string, admission?: EvmAutoNonceSnapshot) => Promise<void>;
 export type NativeSmartOperationPorts = Readonly<{
   intent: NativeSmartAccountIntent;
   pendingRecords: SmartAccountPendingRecords;
@@ -572,11 +572,8 @@ export function createNativeSmartOperation(
             smartAccountOperationHash: prepared.actionHash,
           },
           options.feeFunding,
-          transactionMetadata?.smartAccountExecution === true
-            ? intent.kind === 'native-transfer' || intent.kind === 'native-max'
-              ? options.assertAssetState
-              : () => pending.withReadPhase(phase => options.assertAssetState(phase.provider))
-            : null,
+          transactionMetadata?.smartAccountExecution === true && options.assertPendingStateIncludesAssets !== true
+            ? options.assertAssetState : null,
           (transactionMetadata?.smartAccountDeploymentPrefund === true || transactionMetadata?.smartAccountExecution === true)
             ? (provider, hash, admission) => options.assertPendingState(provider, hash, admission)
             : undefined,
@@ -595,9 +592,10 @@ export function createNativeSmartOperation(
           },
           guard
         );
-        if (transactionMetadata?.smartAccountExecution === true || transactionMetadata?.smartAccountDeploymentPrefund === true)
-          await pending.withReadPhase(phase => options.assertPendingState(phase.provider));
-        else await pending.assertNonce(prepared.userOperation);
+        if (transactionMetadata?.smartAccountExecution === true || transactionMetadata?.smartAccountDeploymentPrefund === true) {
+          if (options.assertPendingStateIncludesAssets !== true)
+            await pending.withReadPhase(phase => options.assertPendingState(phase.provider));
+        } else await pending.assertNonce(prepared.userOperation);
         if (intent.kind === 'guardian-policy')
           await ports.assertGuardianPolicy!(signal, guard);
         await assertValidatorSwitch(guard);

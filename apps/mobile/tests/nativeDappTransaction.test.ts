@@ -19,6 +19,7 @@ function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance 
   let current = true, now = 1, estimate = 21_000, estimates = 0, signs = 0, broadcasts = 0;
   let signingHook = () => {};
   let metadataReads = 0;
+  let assertRefreshedState: ((provider: unknown) => Promise<void>) | undefined;
   let metadataReader = async (_contract: string): Promise<ApprovalContractMetadata | undefined> => undefined;
   const nonceOverrides: (number | undefined)[] = [];
   const calls: { method: string; params: any[] }[] = [];
@@ -53,6 +54,7 @@ function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance 
   const sender = new NativeTransferRpc({ registration: network, fetch: fetcher });
   const prepare = (input: unknown) => prepareNativeConnectionTransaction(input, {
     funding, gasPolicy: { kind: 'estimate' }, network, rpc, planner, signal: lifetime.signal, assertCurrent: guard, now: () => now,
+    assertRefreshedState: provider => assertRefreshedState?.(provider) ?? Promise.resolve(),
     async readApprovalMetadata(contract, check) { metadataReads++; check(); const result = await metadataReader(contract); check(); return result; },
     async sign(transaction, assertCurrent) {
       assertCurrent(); signs++; signingHook(); assertCurrent();
@@ -69,9 +71,27 @@ function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance 
   return { prepare, calls, nonceOverrides, guard, retire() { current = false; lifetime.abort(); },
     expire() { now += 90_000; }, increaseEstimate() { estimate = 40_000; },
     onSign(hook: () => void) { signingHook = hook; },
+    onRefresh(hook: (provider: unknown) => Promise<void>) { assertRefreshedState = hook; },
     setMetadataReader(read: typeof metadataReader) { metadataReader = read; }, get metadataReads() { return metadataReads; },
     get signs() { return signs; }, get broadcasts() { return broadcasts; }, get estimates() { return estimates; } };
 }
+
+test('private full admission uses the owned refresh phase and retires before signing', async () => {
+  const f = fixture();
+  const phases: { send(method: string, params: unknown[]): Promise<unknown> }[] = [];
+  f.onRefresh(async value => {
+    const phase = value as (typeof phases)[number];
+    phases.push(phase);
+    await phase.send('eth_getBalance', [wallet.address, 'pending']);
+  });
+  const review = await f.prepare({ from: wallet.address, to: recipient });
+  assert.equal(phases.length, 0);
+  f.onSign(() => assert.equal(phases.length, 1));
+  await review.submit(f.guard, () => {}, { kind: 'transaction' });
+  assert.equal(phases.length, 2);
+  for (const phase of phases) await assert.rejects(async () => phase.send('eth_getBalance', [wallet.address, 'pending']), { code: 'CANCELLED' });
+  assert.equal(f.broadcasts, 1);
+});
 
 for (const destination of [recipient, null]) test(`generic dapp ${destination === null ? 'creation' : 'call'} keeps exact access list and explicit nonce`, async () => {
   const f = fixture();
