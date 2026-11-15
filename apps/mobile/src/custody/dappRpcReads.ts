@@ -209,6 +209,13 @@ export function createNativeDappRpcReadHost(
           classifyDappRpcMethod(request.method) === 'node-query'
             ? query(captured, request, signal, check)
             : captured.rpc.dappRequest(request, signal, check),
+      }).catch((error) => {
+        if (
+          classifyDappRpcMethod(request.method) === 'node-control' &&
+          owner === captured
+        )
+          reset();
+        throw error;
       });
       check();
       return result;

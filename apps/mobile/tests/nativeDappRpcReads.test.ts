@@ -288,6 +288,46 @@ test('expired identity refuses wrong-chain reads and retries verification before
   assert.equal(chains, 3); assert.equal(queries, 2);
 });
 
+test('a failed control retires the warm identity lease before the next query', async () => {
+  let chain = '0x1';
+  const calls: string[] = [];
+  const host = createNativeDappRpcReadHost({ registration: () => registration, now: () => 1000,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const request = JSON.parse(String(init.body)); calls.push(request.method);
+      return json(request.id, { result: request.method === 'eth_chainId' ? chain : '0x42' });
+    } });
+  const query = normalizeDappRpcRequest('eth_blockNumber', []);
+  assert.equal(await host.read(query, new AbortController().signal, () => {}), '0x42');
+  chain = '0x2';
+  await assert.rejects(host.read(normalizeDappRpcRequest('eth_newBlockFilter', []), new AbortController().signal, () => {}));
+  await assert.rejects(host.read(query, new AbortController().signal, () => {}));
+  assert.deepEqual(calls, ['eth_chainId', 'eth_blockNumber', 'eth_chainId', 'eth_chainId']);
+});
+
+test('a late failed control cannot retire the replacement owner identity lease', async () => {
+  let context = 'first';
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const calls: string[] = [];
+  const host = createNativeDappRpcReadHost({ registration: () => registration, context: () => context, now: () => 1000,
+    verifyPersonalMessage() { throw Error('Unexpected recovery'); }, async fetch(_url, init) {
+      const request = JSON.parse(String(init.body)); calls.push(request.method);
+      if (request.method === 'eth_newBlockFilter') {
+        entered.resolve(); await release.promise;
+        return json(request.id, { error: { code: -32601, message: 'Control unavailable' } });
+      }
+      return json(request.id, { result: request.method === 'eth_chainId' ? '0x1' : '0x42' });
+    } });
+  const query = normalizeDappRpcRequest('eth_blockNumber', []);
+  const old = host.read(normalizeDappRpcRequest('eth_newBlockFilter', []), new AbortController().signal, () => {});
+  const rejected = assert.rejects(old);
+  await entered.promise;
+  context = 'second';
+  assert.equal(await host.read(query, new AbortController().signal, () => {}), '0x42');
+  release.resolve(); await rejected;
+  assert.equal(await host.read(query, new AbortController().signal, () => {}), '0x42');
+  assert.deepEqual(calls, ['eth_chainId', 'eth_newBlockFilter', 'eth_chainId', 'eth_blockNumber', 'eth_blockNumber']);
+});
+
 test('owner replacement waits for four held body cancellations before new physical reads', async () => {
   let context = 'first', physical = 0, peak = 0, entered = 0;
   const allEntered = Promise.withResolvers<void>();
