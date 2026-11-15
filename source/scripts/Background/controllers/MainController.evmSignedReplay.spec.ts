@@ -841,7 +841,7 @@ it.each(['send', 'cancel'] as const)(
         text: async () =>
           JSON.stringify({ jsonrpc: '2.0', id, result: replies.get(method) }),
         json: async () => ({ jsonrpc: '2.0', id, result: replies.get(method) }),
-      } as Response;
+      } as unknown as Response;
     });
     try {
       await expect(live.send('eth_chainId', [])).resolves.toBe('0x7b');
@@ -909,7 +909,7 @@ it.each([
         headers: { get: () => null },
         text: async () => JSON.stringify({ jsonrpc: '2.0', id, result }),
         json: async () => ({ jsonrpc: '2.0', id, result }),
-      } as Response;
+      } as unknown as Response;
     });
     try {
       // The real installed provider caches the first result for send().
