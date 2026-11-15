@@ -90,11 +90,11 @@ function rpcResult(chainId: number, owner: string, call: any) {
   if (
     call.method === 'eth_getBlockByNumber' &&
     params.length === 2 &&
-    ['0x0', '0x1'].includes(params[0]) &&
-    params[1] === true
+    ['latest', 'pending', '0x0', '0x1'].includes(params[0]) &&
+    typeof params[1] === 'boolean'
   )
     return {
-      number: params[0],
+      number: ['latest', 'pending'].includes(params[0]) ? '0x1' : params[0],
       hash: '0x' + (params[0] === '0x0' ? '11' : '12').repeat(32),
       parentHash: '0x' + (params[0] === '0x0' ? '00' : '11').repeat(32),
       nonce: '0x0000000000000000',

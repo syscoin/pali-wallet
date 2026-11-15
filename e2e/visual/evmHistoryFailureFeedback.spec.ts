@@ -8,6 +8,7 @@ import { E2E_CONFIG } from '../harness/config';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
+  isolatedVaultEvmResult,
 } from '../harness/isolatedVaultFixture';
 import { PaliWallet } from '../harness/pali';
 import { extensionEvidence } from '../harness/testDappConformance';
@@ -140,6 +141,7 @@ test('configured EVM history explains failed reads and retries the same account 
     status?: number;
   };
   const historyReads: HistoryRead[] = [];
+  const blockReads: unknown[][] = [];
   const unexpected: string[] = [];
   const attemptedWrites: string[] = [];
   const pageErrors: string[] = [];
@@ -169,8 +171,49 @@ test('configured EVM history explains failed reads and retries the same account 
       fixture,
       server.url
     );
-    // Only exact explorer HTTP replies vary. The existing public RPC/Blockbook
-    // fixtures, deny proxy, actual SDK/controller/store and clocks stay intact.
+    // Supply a coherent two-block chain for the ordinary history scan.
+    await wallet.context.route('https://rpc.tanenbaum.io/', async (route) => {
+      const body = route.request().postDataJSON();
+      const calls = Array.isArray(body) ? body : [body];
+      if (!calls.some((call) => call?.method === 'eth_getBlockByNumber'))
+        return route.fallback();
+      const replies = calls.map((call) => {
+        const params = call?.params;
+        if (
+          route.request().method() !== 'POST' ||
+          call?.jsonrpc !== '2.0' ||
+          call.method !== 'eth_getBlockByNumber' ||
+          !Array.isArray(params) ||
+          params.length !== 2 ||
+          !['latest', '0x0', '0x1'].includes(params[0]) ||
+          typeof params[1] !== 'boolean'
+        )
+          return undefined;
+        blockReads.push(params);
+        const genesis = params[0] === '0x0';
+        return {
+          jsonrpc: '2.0',
+          id: call.id,
+          result: {
+            ...(isolatedVaultEvmResult('eth_getBlockByNumber') as object),
+            number: genesis ? '0x0' : '0x1',
+            hash: '0x' + (genesis ? '11' : '12').repeat(32),
+            parentHash: '0x' + (genesis ? '00' : '11').repeat(32),
+          },
+        };
+      });
+      if (!replies.length || replies.some((reply) => reply === undefined)) {
+        unexpected.push('Unsupported history block request');
+        return route.abort('blockedbyclient');
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(Array.isArray(body) ? replies : replies[0]),
+      });
+    });
+    // Only exact explorer HTTP replies vary after chain setup. The deny proxy,
+    // actual SDK/controller/store and clocks stay intact.
     await wallet.context.route(
       'https://explorer.tanenbaum.io/api**',
       async (route) => {
@@ -270,6 +313,14 @@ test('configured EVM history explains failed reads and retries the same account 
         await expect(empty).toBeVisible();
         await expect(error).toHaveCount(0);
         await expect(retry).toHaveCount(0);
+        expect(blockReads).toEqual(
+          expect.arrayContaining([
+            ['latest', false],
+            ['0x0', true],
+            ['0x1', true],
+            ['0x1', false],
+          ])
+        );
         const state = await publicHistory(page);
         expect(state.account).toEqual({
           id: 0,
@@ -487,6 +538,7 @@ test('configured EVM history explains failed reads and retries the same account 
             controllerResultReplaced: false,
             clocksOrAlarmsReplaced: false,
             historyReads,
+            blockReads,
             observations,
             attemptedWrites,
             unexpected,

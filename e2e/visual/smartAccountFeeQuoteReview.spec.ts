@@ -216,13 +216,15 @@ for (const width of [400, 320]) {
       Array.isArray(call.params) &&
       call.params.length === 2 &&
       call.params[1] === 'pending' &&
-      Object.keys(call.params[0] || {})
-        .sort()
-        .join(',') === 'data,to,value' &&
+      ['data,to', 'data,to,value'].includes(
+        Object.keys(call.params[0] || {})
+          .sort()
+          .join(',')
+      ) &&
       String(call.params[0].to).toLowerCase() === entryPoint.toLowerCase() &&
       String(call.params[0].data).toLowerCase() ===
         entryPointDepositData.toLowerCase() &&
-      call.params[0].value === '0x0';
+      (call.params[0].value === undefined || call.params[0].value === '0x0');
     const isNonce = (call: any) => {
       if (
         call.method !== 'eth_call' ||
