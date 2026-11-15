@@ -206,6 +206,8 @@ test('RPC budget and receipts for local wallet transfers', async () => {
         if (responseDelayMs)
           await new Promise((resolve) => setTimeout(resolve, responseDelayMs));
         if (Array.isArray(raw) && process.env.PALI_RPC_REJECT_BATCH === '1') {
+          const observation = observations.get(request);
+          if (observation) observation.batchCapabilityProbe = true;
           return route.fulfill({
             status: 200,
             contentType: 'application/json',
@@ -1124,15 +1126,31 @@ test('RPC budget and receipts for local wallet transfers', async () => {
                   : stage === 'form'
                   ? formLimits[label]!
                   : reviewLimits[label]!;
+              // The endpoint's 30-second capability expires independently of
+              // the UI stage. Concurrent probes can precede the first refusal.
+              // Keep every refused probe in total traffic.
+              const probes = rows.filter(
+                (row: any) => row.batchCapabilityProbe
+              );
+              if (probes.length) {
+                const firstRefusal = Math.min(
+                  ...probes.map((probe: any) => probe.finished ?? probe.started)
+                );
+                expect(
+                  probes.every((probe: any) => probe.started <= firstRefusal),
+                  phaseName + ' probes must precede the first refusal'
+                ).toBe(true);
+              }
+              const work = rows.filter((row: any) => !row.batchCapabilityProbe);
               expect(
-                rows.reduce(
+                work.reduce(
                   (total: number, row: any) => total + row.methods.length,
                   0
                 ),
                 phaseName + ' methods'
               ).toBeLessThanOrEqual(methods);
               expect(
-                rows.length,
+                work.length,
                 phaseName + ' HTTP requests'
               ).toBeLessThanOrEqual(posts);
               expect(
@@ -1204,6 +1222,9 @@ test('RPC budget and receipts for local wallet transfers', async () => {
             intervals[0].start
           : 0,
         total: counts(rows),
+        capabilityProbes: counts(
+          rows.filter((row: any) => row.batchCapabilityProbe)
+        ),
         beforeBroadcast: counts(beforeBroadcast),
         methods: Object.fromEntries(
           Array.from(
