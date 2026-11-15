@@ -7,6 +7,15 @@ const shared =
 
 describe('smart-account execution chunk isolation', () => {
   test.each([
+    ['/repo/source/pages/Send/EditPriority.tsx', true],
+    ['C:\\repo\\source\\pages\\Send\\EditPriority.tsx', true],
+    ['/repo/source/pages/Send/SendEth.tsx', false],
+    ['/repo/source/pages/Send/EditPriority.spec.tsx', false],
+  ])('shares only the exact fee-review page %s', (resource, expected) => {
+    expect(shared.test({ resource })).toBe(expected);
+  });
+
+  test.each([
     ['app', 'app', false, true],
     ['external', 'external', false, true],
     ['both UI runtimes', new Set(['app', 'external']), false, true],

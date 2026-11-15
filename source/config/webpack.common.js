@@ -436,6 +436,8 @@ module.exports = {
               .split(String.fromCharCode(92))
               .join('/');
             return (
+              // Both lazy fee-review routes otherwise package this page twice.
+              /\/source\/pages\/Send\/EditPriority\.tsx$/.test(resource) ||
               /\/source\/utils\/smartAccount\/(?:adapter|aggregate|authenticatorDispatch|authenticators|capabilities|custom|erc7739|execution|gas|guardianPolicy|index|modules|ownerSigningIntent|recovery|signature|slhDsaPurpose|templates|userOperationHash|validatorSignability)\.ts$/.test(
                 resource
               ) ||
