@@ -176,10 +176,23 @@ describe('SmartAccountController smart account execution fees', () => {
 
   const buildController = () => {
     const estimateGas = jest.fn().mockResolvedValue('143280');
-    const sendAndSaveEthTransaction = jest.fn().mockResolvedValue({
-      hash: '0xabc',
-      wait: jest.fn(),
-    });
+    const broadcast = jest
+      .fn()
+      .mockResolvedValue({ hash: '0xabc', wait: jest.fn() });
+    const sendAndSaveEthTransaction: jest.Mock = jest.fn(
+      async (transaction) => {
+        if (transaction.gasLimit === undefined) {
+          try {
+            await estimateGas(transaction);
+          } catch (error) {
+            throw Object.assign(new Error((error as Error).message), {
+              transactionNotBroadcast: true,
+            });
+          }
+        }
+        return broadcast(transaction);
+      }
+    );
     const transaction = { web3Provider: { estimateGas } };
     const controller: any = new SmartAccountController({
       captureSmartAccountPendingRecords: async () => ({
@@ -203,7 +216,7 @@ describe('SmartAccountController smart account execution fees', () => {
     controller.getLocalNativeExecutionRecipients = jest.fn(() => []);
     controller.invalidateHydratedMetadata = jest.fn();
 
-    return { controller, estimateGas, sendAndSaveEthTransaction };
+    return { controller, estimateGas, sendAndSaveEthTransaction, broadcast };
   };
 
   const buildUserOperation = () =>
@@ -412,8 +425,8 @@ describe('SmartAccountController smart account execution fees', () => {
     expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
   });
 
-  it('marks an outer estimate failure before either sender as definitely not broadcast', async () => {
-    const { controller, estimateGas, sendAndSaveEthTransaction } =
+  it('marks the delegated outer estimate failure as definitely not broadcast', async () => {
+    const { controller, estimateGas, sendAndSaveEthTransaction, broadcast } =
       buildController();
     const error = Object.freeze(new Error('execution reverted'));
     estimateGas.mockRejectedValueOnce(error);
@@ -430,7 +443,8 @@ describe('SmartAccountController smart account execution fees', () => {
       transactionNotBroadcast: true,
     });
     expect(error).not.toHaveProperty('transactionNotBroadcast');
-    expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
+    expect(sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
+    expect(broadcast).not.toHaveBeenCalled();
   });
 
   it('still marks a failed estimate as prebroadcast when deployment prefunding made no send', async () => {
@@ -589,7 +603,6 @@ describe('SmartAccountController smart account execution fees', () => {
 
     expect(sendAndSaveEthTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
-        gasLimit: '143280',
         maxFeePerGas: '1000000000',
         maxPriorityFeePerGas: '0',
       }),
@@ -604,9 +617,9 @@ describe('SmartAccountController smart account execution fees', () => {
       })
     );
     expect(estimateGas).toHaveBeenCalledWith(
-      expect.not.objectContaining({
-        maxFeePerGas: expect.anything(),
-        maxPriorityFeePerGas: expect.anything(),
+      expect.objectContaining({
+        maxFeePerGas: '1000000000',
+        maxPriorityFeePerGas: '0',
       })
     );
   });
@@ -899,6 +912,7 @@ describe('SmartAccountController smart account execution fees', () => {
       const provider = {
         verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
         getTransactionCount: jest.fn().mockResolvedValue(7),
+        estimateGas: jest.fn().mockResolvedValue(BigNumber.from(143280)),
         getNetwork: jest.fn().mockResolvedValue({ chainId: CHAIN_ID }),
         getGasPrice: jest.fn().mockResolvedValue(BigNumber.from('999999999')),
         getFeeData: jest

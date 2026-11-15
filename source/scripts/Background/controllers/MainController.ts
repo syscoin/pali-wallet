@@ -11660,7 +11660,12 @@ class MainController {
                 chainId: String(context.chainId),
                 scope: JSON.stringify(expected),
                 funding: payerDispatch?.funding ?? NATIVE_EVM_FEE_FUNDING,
-                ...(payerDispatch ? { feePolicy: 'fixed' as const } : {}),
+                ...(payerDispatch &&
+                (request.gasPrice !== undefined ||
+                  (request.maxFeePerGas !== undefined &&
+                    request.maxPriorityFeePerGas !== undefined))
+                  ? { feePolicy: 'fixed' as const }
+                  : {}),
                 gasPolicy:
                   feeAuthority.kind === 'private-withdrawal'
                     ? { kind: 'fixed', gasLimit: '650000' }

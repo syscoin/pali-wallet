@@ -644,3 +644,29 @@ it('routes deployment prefunding through the same payer checks', async () => {
   ).rejects.toMatchObject({ transactionNotBroadcast: true });
   expect(f.send).not.toHaveBeenCalled();
 });
+
+it('discovers fees for a funded deployment prefund without supplied fee fields', async () => {
+  const f = fixture();
+  await f.submit(
+    NATIVE_EVM_FEE_FUNDING,
+    {
+      chainId: 57,
+      from: signer.address,
+      to: smart,
+      value: '100',
+    } as any,
+    { smartAccountDeploymentPrefund: true } as any
+  );
+  expect(f.send).toHaveBeenCalledWith(
+    expect.objectContaining({
+      to: smart,
+      value: '100',
+      maxFeePerGas: '3',
+      maxPriorityFeePerGas: '1',
+    }),
+    false,
+    expect.objectContaining({ mode: 'reviewed-generic' })
+  );
+  expect(f.records.append).toHaveBeenCalledTimes(1);
+  expect(f.broadcast).toHaveBeenCalledTimes(1);
+});
