@@ -125,6 +125,13 @@ async function checkEnsProviderSource(sourceChanges: boolean) {
       return {
         ok: true,
         status: 200,
+        headers: { get: () => null },
+        text: async () =>
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: request.id,
+            result: observedChain,
+          }),
         json: async () => ({
           jsonrpc: '2.0',
           id: request.id,

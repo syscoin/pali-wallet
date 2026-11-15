@@ -21,6 +21,9 @@ test('uses actual uncached keyring wire chain identity after a same-URL network 
     return {
       ok: true,
       status: 200,
+      headers: { get: () => null },
+      text: async () =>
+        JSON.stringify(Array.isArray(body) ? body.map(result) : result(body)),
       json: async () => (Array.isArray(body) ? body.map(result) : result(body)),
     };
   });
@@ -221,7 +224,9 @@ function wireFixture(active: string) {
     return {
       ok: true,
       status: 200,
-      json: async () => replies.reverse(),
+      headers: { get: () => null },
+      text: async () => JSON.stringify([...replies].reverse()),
+      json: async () => [...replies].reverse(),
     } as Response;
   }) as any;
   const provider = new CustomJsonRpcProvider(
